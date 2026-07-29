@@ -218,6 +218,35 @@ describe('managed Sarah Realtime voice session route', () => {
     expect(fixture.close).toHaveBeenCalledOnce()
   })
 
+  test('audits a bounded storage failure before returning unavailable', async () => {
+    const fixture = makeDependencies(
+      vi.fn(async () => {
+        throw new Error('reservation failed')
+      }),
+    )
+    const audit = vi.fn()
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      { ...fixture.dependencies, audit },
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'disclosure-1',
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({
+      error: 'sarah_voice_storage_unavailable',
+    })
+    expect(audit).toHaveBeenCalledWith('storage_unavailable', {
+      errorMessage: 'reservation failed',
+      errorName: 'Error',
+    })
+    expect(fixture.close).toHaveBeenCalledOnce()
+  })
+
   test('waives only the staging owner credit hold', async () => {
     const fixture = makeDependencies(
       undefined,

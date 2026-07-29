@@ -811,6 +811,15 @@ const handleControl = (ws: Socket, raw: string): void => {
       !sameIdentity(control.identity, identity) ||
       control.sequence !== ws.data.expectedControlSequence
     ) {
+      console.error(
+        JSON.stringify({
+          event: 'sarah_voice_sequence_gap',
+          stream: 'control',
+          expected: ws.data.expectedControlSequence,
+          actual: control.sequence,
+          identityMatches: sameIdentity(control.identity, identity),
+        }),
+      )
       sendControl(ws, {
         _tag: 'error',
         code: 'sequence_gap',
@@ -991,6 +1000,18 @@ export const makeSarahRealtimeWebSocketHandlers = () => ({
         !sameIdentity(media.identity, identityForSession(ws.data.session)) ||
         media.sequence !== ws.data.expectedAudioSequence
       ) {
+        console.error(
+          JSON.stringify({
+            event: 'sarah_voice_sequence_gap',
+            stream: 'audio',
+            expected: ws.data.expectedAudioSequence,
+            actual: media.sequence,
+            identityMatches: sameIdentity(
+              media.identity,
+              identityForSession(ws.data.session),
+            ),
+          }),
+        )
         sendControl(ws, {
           _tag: 'error',
           code: 'sequence_gap',

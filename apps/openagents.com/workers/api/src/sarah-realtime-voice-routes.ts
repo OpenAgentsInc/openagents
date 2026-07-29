@@ -80,7 +80,8 @@ export type SarahRealtimeVoiceRouteDependencies<User, Bindings> = Readonly<{
   audit?: (
     event:
       | 'staging_owner_entitlement_applied'
-      | 'staging_owner_entitlement_inactive',
+      | 'staging_owner_entitlement_inactive'
+      | 'storage_unavailable',
     fields: Readonly<Record<string, string>>,
   ) => void
   config: (env: Bindings) => SarahRealtimeVoiceRouteConfig | undefined
@@ -402,6 +403,11 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
     if (error instanceof SarahVoiceSessionRejectedError) {
       return noStoreJson({ error: 'sarah_voice_not_entitled' }, 403)
     }
+    dependencies.audit?.('storage_unavailable', {
+      errorMessage:
+        error instanceof Error ? error.message.slice(0, 256) : 'unknown error',
+      errorName: error instanceof Error ? error.name : typeof error,
+    })
     return noStoreJson({ error: 'sarah_voice_storage_unavailable' }, 503)
   } finally {
     try {
