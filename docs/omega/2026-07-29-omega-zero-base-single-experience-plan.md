@@ -83,7 +83,7 @@ live logs (`~/Library/Logs/omega-rc/omega-rc.log`,
 | C3 | "Add More Agents" entry in the `+` menu. | A + C | Dispatches `omega::AcpRegistry` (refused). Its handler also opens into the invisible centre. |
 | C4 | Workbench rail surfaces Files, Git, Terminal. | B | The buttons render enabled, then `prepare_*_surface` fails with "the native Files surface is still loading" because `ProjectPanel`, `GitPanel`, `TerminalPanel` exist only in the full-editor branch. The error renders as a small rail warning triangle. Log: `could not prepare the Files work surface`. |
 | C5 | Directory links and directory mentions in the transcript. | B | They emit `RevealInProjectPanel`, whose only subscriber is the never-added `ProjectPanel`. Total silent no-op. |
-| C6 | Vim keys in the composer when `vim_mode` was on. | A | The `vim` namespace is not admitted. The rc log shows more than 180 refused vim actions from one session. The owner has since set `vim_mode: false`. Repair: admit the vim action set (section 6, vim stays). |
+| C6 | Vim keys in the composer when `vim_mode` was on. | A | The `vim` namespace is not admitted. The rc log shows more than 180 refused vim actions from one session. The owner has since set `vim_mode: false`. Repair: admit the vim action set (section 7, vim stays). |
 | C7 | Thread-outline artifact "open source". | C | `navigate_to_outline_artifact_source` calls `workspace.open_path` with no reveal. The same bug was fixed one hour earlier for `thread_view.rs` in `259930d92f`, but two more call sites remain. |
 | C8 | Skill mention chips. | C | `open_skill_file` and `open_skill_content_buffer` open into the invisible centre. |
 | C9 | The shared `open_abs_path_at_point` helper. | C | Only the file-peek caller reveals the centre first. Every other caller lands invisibly. |
@@ -149,7 +149,7 @@ three of them are the reason "remove the editor" does not mean "remove the
 | `settings_ui` | `omega::OpenSettings` and friends are individually admitted, and settings opens its own window, which is why it is one of the few controls that already works. |
 | `onboarding` (identity section) | `OMEGA-DELTA-0040`: the identity gate is a centre-pane item and must render before the seal. `OMEGA-DELTA-0051` already strips the rest of the page. |
 | `markdown`, `buffer_search`, `notifications` | Transcript rendering, terminal search, and the toast layer outside the seal. |
-| `vim` and `assets/keymaps/vim.json` | Owner decision, 2026-07-29 (section 6). Modal editing in the composer and the `OMEGA-DELTA-0139` centre pane. Requires admitting the vim action set. |
+| `vim` and `assets/keymaps/vim.json` | Owner decision, 2026-07-29 (section 7). Modal editing in the composer and the `OMEGA-DELTA-0139` centre pane. Requires admitting the vim action set. |
 
 ## 5. What goes
 
@@ -172,7 +172,7 @@ All five collapse to their Zero Base shape. The `--full-editor`, `--diff`,
 ### 5.2 The crate removal set
 
 The measured full-editor-only set was 54 to 55 crates. With `vim` retained by
-the section 6 owner decision, the removal set is roughly 54 crates, 222,000
+the section 7 owner decision, the removal set is roughly 54 crates, 222,000
 lines, and 249 `.rs` files — about 18% of the build graph. The set without
 vim remains transitively closed (the original measurement dropped the graph
 from 245 to 190 crates with zero unexpected extra drops, and vim is a leaf on
@@ -221,7 +221,108 @@ single experience they are removed rather than hidden, which resolves the
 2026-07-26 document's own warning that its brand-gate classifications would
 need a pass when hiding ever became removal.
 
-## 6. Vim stays — owner decision, 2026-07-29
+## 6. Everything the full editor has that Zero Base does not — keep it if
+
+This section is the complete keep-or-cut catalog. It lists every part of the
+Zed full editor that Zero Base does not render, grouped by kind, with the
+concrete condition under which keeping it makes sense. An entry with no
+believable condition is a cut. The default disposition for every entry is
+**remove**, per the owner's single-experience direction — a keep is a
+deliberate decision against that default, recorded with its reason.
+
+Three entries in the catalog are already dead ends today: the extensions
+surface points at an `.invalid` registry (`OMEGA-DELTA-0026`), the update
+surface has no feed behind it, and edit predictions default to provider
+`"none"`. Keeping any of those means reviving a capability, not preserving
+one.
+
+### 6.1 Surfaces and panels
+
+| Part | What it is | Keep it if you want |
+| --- | --- | --- |
+| Full centre pane system: tabs, splits, pane groups | Multi-file editing with `pane::Split*`, tab bars, drag-to-split. Zero Base has exactly one revealed pane (`OMEGA-DELTA-0139`). | Long hand-editing sessions across several files at once inside Omega. If editing stays incidental (fix a line the agent named), the single revealed pane is enough. |
+| Outline panel (`outline_panel`, 8,255 LOC) | Symbol tree for the active buffer, docked. | Navigating large files by structure while hand-editing. The agent answers "where is X" conversationally, which is the Zero Base substitute. |
+| Debugger (`debugger_ui` + `debugger_tools` + `dap_adapters`, 29,596 LOC) | Breakpoints, stack frames, variable list, DAP adapters. | Interactive step-through debugging in Omega. If debugging happens through the agent and the workbench terminal, this is the largest clean cut in the set. |
+| Diagnostics panel and indicator (`diagnostics`, 5,100 LOC) | Project-wide error list plus the status-bar error count. | A standing project-errors view. The agent surfaces diagnostics per task, and the terminal shows compiler output. |
+| Multi-workspace sidebar (`sidebar`, 23,779 LOC) | The project switcher hanging off `MultiWorkspace`. | Several projects open in one window with fast switching. Zero Base's premise is one thread bound to one folder, so this contradicts the product shape. |
+| Welcome and onboarding pages beyond identity | New-file, clone-repo, explore-extensions starter surface. | Nothing. `OMEGA-DELTA-0051` already subtracted it, and the identity section stays. |
+| Dev container support (`dev_container`, 16,513 LOC, `--dev-container`) | Opening projects inside container-defined environments. | Container-isolated agent workspaces as a product feature. Nothing in the current roadmap asks for it. |
+| Diff view (`--diff`) | Two-file diff as a startup mode. | Command-line diff review. The workbench Review surface covers agent-change review, which is the case the product cares about. |
+
+### 6.2 The status bar and its items
+
+The status bar itself does not render in Zero Base (`OMEGA-DELTA-0053`), so
+each item is only worth keeping if it gets a new home, most plausibly the
+composer bar or the workbench rail.
+
+| Item | Keep it if you want |
+| --- | --- |
+| Cursor position + `go_to_line` | Line:column readout and go-to-line while editing in the revealed pane. Cheap and genuinely useful the moment real editing happens. |
+| Language selector | Manually overriding syntax for a buffer. Rarely needed when files open from transcript links with real paths. |
+| LSP button (`language_tools`) | Seeing and restarting language servers. Useful for debugging LSP behind the agent's tools, not just the editor. |
+| Activity indicator | Progress for language-server downloads and long background work. Without it, LSP startup is invisible. |
+| Edit-prediction button (`edit_prediction` family, 42,532 LOC) | Inline AI completions while hand-editing. Dead today (provider `"none"`), and the agent is the product's completion story. |
+| Git blame + merge-conflict indicators (`git_ui`, kept crate) | Blame and conflict state in the revealed pane. The Git workbench surface already exists, so these are candidates to resurface there rather than keep as chrome. |
+| Vim mode indicator | The modal-state readout for the kept vim mode (section 7). Needs the new home most urgently of this list. |
+| Encoding, line-ending, toolchain selectors, image info | File-encoding edge cases, per-project toolchain switching, image metadata. Niche. Cut unless a real workflow surfaces. |
+| Search button (`search`, kept crate) | A mouse path into project search. The workbench Search surface is the Zero Base path. |
+
+### 6.3 Navigation and pickers
+
+| Part | Keep it if you want |
+| --- | --- |
+| File finder (`file_finder`, 7,777 LOC, cmd-p) | Keyboard-first jump-to-file into the revealed pane. The strongest keep candidate in this group: it matches the keyboard-centric product feel and costs little. |
+| Tab switcher (`tab_switcher`, 1,503 LOC) | Cycling among many open tabs. Only meaningful if the full tab system stays (6.1). |
+| Buffer outline modal (`outline`, 1,234 LOC, cmd-shift-o) | Jump-to-symbol inside the open buffer. Same condition as hand-editing generally. |
+| Project symbols (`project_symbols`, 1,392 LOC) | Workspace-wide symbol jump. The agent's search tools are the substitute. |
+| Recent projects (`recent_projects`, 9,236 LOC) | Reopening past projects from a picker. The threads sidebar already reopens past work with its folder attached, which is the Zero Base equivalent. |
+
+### 6.4 Editing extras
+
+| Part | Keep it if you want |
+| --- | --- |
+| REPL / Jupyter kernels (`repl`, 12,526 LOC) | Notebook-style evaluation inside buffers. No roadmap demand. |
+| Tasks (`tasks_ui`, 2,128 LOC) | Zed's task-runner UI. The agent and the thread terminal run commands in this product. |
+| Snippets UI (`snippets_ui`) | Snippet management. Hand-editing convenience only. |
+| Markdown / SVG / CSV previews, image viewer (~9,000 LOC combined) | Rendered previews when opening those file types from transcript links. Markdown preview is the least implausible keep, since agents produce markdown constantly — but the transcript already renders markdown, which is why the default stays remove. |
+| Journal (`journal`) | Daily-notes files. No product connection. |
+
+### 6.5 Configuration and app surfaces
+
+| Part | Keep it if you want |
+| --- | --- |
+| Keymap editor (`keymap_editor`, 6,054 LOC) | GUI keymap editing. The settings window and JSON keymap files remain the supported path. |
+| Theme selector (`theme_selector`) | Quick theme switching from the palette. Settings covers it; Omega ships a deliberate look. |
+| Settings profiles (`settings_profile_selector`) | Switching whole settings profiles. Niche. |
+| Extensions UI (`extensions_ui`, 2,408 LOC) | A browsable extension registry. Dead today (`.invalid` host). Keep only when an Omega extension ecosystem is a decided product direction — and then it returns as a designed surface, not this one. |
+| Update UI (`auto_update_ui`) + Install CLI (`install_cli`) | In-app update checks and the `omega` shell-command installer. Dead feed today, but the 2026-07-27 cloud build audit proposes an owned update path — if that lands, an update surface returns on purpose. The CLI installer is worth a one-command equivalent somewhere. |
+| Feedback (`feedback`) | The Zed feedback dialog. Omega's feedback path is not Zed's. |
+
+### 6.6 Developer and diagnostic tooling
+
+| Part | Keep it if you want |
+| --- | --- |
+| ACP tools (`acp_tools`, 842 LOC) | A live view of Agent Client Protocol traffic. The strongest keep in this group: Omega *is* an ACP product, and its own developers debug that boundary. Candidate to keep behind a dev flag rather than delete. |
+| GPUI inspector (`inspector_ui`), miniprofiler, component preview, input-latency UI, `which_key` | UI-framework debugging and development aids. Keep whichever ones Omega's own UI development actually uses, behind dev builds, and delete the rest. |
+| LSP logs (`language_tools`, 5,483 LOC) | Language-server log inspection. Same dev-flag logic as ACP tools if LSP stays load-bearing for agent tools. |
+
+### 6.7 Collaboration remnant
+
+| Part | Keep it if you want |
+| --- | --- |
+| Calls and screen share (`call`, 3,407 LOC, plus `livekit_client` linkage in `title_bar`) | Zed-style calls and screen sharing. Zed collab is already removed (`OMEGA-DELTA-0012`), and Sarah voice runs on its own path in `workroom_ui`, not on `call`. Cut, and unlink `livekit_client` from the title bar with it. |
+
+### 6.8 Summary
+
+The keeps with a live case, in rough priority order: **file finder**,
+**cursor position and go-to-line**, **ACP tools behind a dev flag**, the
+**LSP/activity visibility pair**, and **markdown preview** as a maybe. The
+conditional revivals are **update UI** (owned feed) and **extensions UI**
+(ecosystem decision). Everything else in this catalog has an agent-shaped or
+workbench-shaped substitute already in the product, which is the practical
+meaning of the single experience.
+
+## 7. Vim stays — owner decision, 2026-07-29
 
 The owner decided on 2026-07-29: **vim mode is kept.** `vim` (47,986 LOC,
 about 56 source files) moves from the removal set to the kept closure, and
@@ -244,7 +345,7 @@ Keeping vim creates three concrete work items:
    bar is the natural host. Until it has a home, vim works without a visible
    mode readout, which is worth a small follow-up rather than a blocker.
 
-## 7. The phased plan
+## 8. The phased plan
 
 The phases are ordered so the application gets less broken at every step.
 Phase 0 repairs what ships today and needs no removal. Removal starts only
@@ -270,7 +371,7 @@ after the surface is honest.
 4. **Fix or remove "Add More Agents".** Either admit `omega::AcpRegistry` and
    reveal the centre for its registry view, or remove the entry until the
    registry is a workbench surface. Fixes C3.
-5. **Admit vim** (section 6, decided: vim stays). Admit the vim action set so
+5. **Admit vim** (section 7, decided: vim stays). Admit the vim action set so
    `vim_mode: true` works in the composer instead of being silently refused,
    and verify the modal keys against the C6 log evidence.
 
@@ -313,7 +414,7 @@ highest-visibility fix for "buttons that do nothing."
 ### Phase 3 — delete the crate set
 
 Delete the 54-crate set in reverse dependency order, in bounded commits, each
-commit carrying its own keymap strip and delta bookkeeping (section 8). The
+commit carrying its own keymap strip and delta bookkeeping (section 9). The
 edits inside kept crates (`title_bar`, `project_panel`, `initialize_pane`,
 `notifications`) land first so each crate deletion is a leaf deletion. The
 `zed` crate's own `main.rs` init list (some forty `::init` calls in
@@ -331,7 +432,7 @@ edits inside kept crates (`title_bar`, `project_panel`, `initialize_pane`,
 3. Rewrite `taxonomy.md` and the mode documentation: Zero Base is no longer a
    mode with an escape, it is the application.
 
-## 8. The constraint ledger — what breaks if this is done naively
+## 9. The constraint ledger — what breaks if this is done naively
 
 Every constraint below is mechanical and already tripped somebody once.
 
@@ -385,7 +486,7 @@ Every constraint below is mechanical and already tripped somebody once.
    adds a binary, and the visual runner remains a test binary, but the gate
    re-runs on the shrunk package.
 
-## 9. Delta bookkeeping this plan implies
+## 10. Delta bookkeeping this plan implies
 
 Following the 2026-07-26 convention, this document allocates no numbers. The
 work needs approximately four new entries and four amendments:
@@ -409,9 +510,9 @@ work needs approximately four new entries and four amendments:
   render is the render), **amend 0116** (a path argument names the project —
   unchanged in substance, restated without the mode vocabulary).
 
-## 10. Open owner decisions
+## 11. Open owner decisions
 
-1. **Vim** — decided, 2026-07-29: vim stays (section 6). The remaining
+1. **Vim** — decided, 2026-07-29: vim stays (section 7). The remaining
    choice is where the mode indicator lives once the status bar is gone.
 2. **`--full-editor` failure shape** — explanatory startup error for one
    release, or immediate unknown-argument failure. Recommendation: the error,
@@ -424,7 +525,7 @@ work needs approximately four new entries and four amendments:
 5. **`PRODUCT.md` rewrite** — the product contract is the owner's document,
    and Phase 2 makes the "IDE" language a contradiction rather than a lag.
 
-## 11. Verification
+## 12. Verification
 
 - Phase exit for 0 and 1: `cargo test -p omega_deltas -p omega_zero_base`,
   plus a scripted `--omega-send` session over the drawn surface with an
@@ -439,7 +540,7 @@ work needs approximately four new entries and four amendments:
   strip and delta amendment travel in the same commit, so any single commit
   reverts cleanly.
 
-## 12. Size estimate
+## 13. Size estimate
 
 Phase 0 and 1 are days: they touch `zed.rs`, `agent_panel.rs`, `app_menus.rs`,
 and the admitted set, all in code paths the delta suite already covers.
