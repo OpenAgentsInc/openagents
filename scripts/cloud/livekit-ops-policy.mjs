@@ -111,6 +111,27 @@ const assertBoolean = (value, label) => {
 
 export const sha256 = (value) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
 
+export function validateServerKeyProjection(value) {
+  assertExactKeys(value, ["api_key", "api_secret", "keys_yaml"], [], "server key projection");
+  const apiKey = assertString(value.api_key, "server key projection.api_key");
+  const apiSecret = assertString(value.api_secret, "server key projection.api_secret");
+  const keysYaml = assertString(value.keys_yaml, "server key projection.keys_yaml");
+  assert(
+    /^API[23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{12}$/u.test(apiKey),
+    "server key projection api_key has an unsupported shape",
+  );
+  assert(
+    /^[A-Za-z0-9]{43,52}$/u.test(apiSecret),
+    "server key projection api_secret has an unsupported shape",
+  );
+  const exactMapping = `${apiKey}: ${apiSecret}`;
+  assert(
+    keysYaml === exactMapping || keysYaml === `${exactMapping}\n`,
+    "server key projection keys_yaml is not the exact admitted mapping",
+  );
+  return value;
+}
+
 export function assertPublicSafe(value, path = "value") {
   if (Array.isArray(value)) {
     value.forEach((item, index) => assertPublicSafe(item, `${path}[${index}]`));
@@ -129,6 +150,14 @@ export function assertPublicSafe(value, path = "value") {
 }
 
 export function validateDeploymentBundle(value) {
+  return validateDeploymentBundleInternal(value, false);
+}
+
+export function validateHistoricalDeploymentBundle(value) {
+  return validateDeploymentBundleInternal(value, true);
+}
+
+function validateDeploymentBundleInternal(value, historical) {
   assertExactKeys(
     value,
     [
@@ -172,24 +201,32 @@ export function validateDeploymentBundle(value) {
     `bundle namespace must be ${LIVEKIT_OPS.namespace}`,
   );
   assertCommit(value.sourceBaseRevision, "bundle.sourceBaseRevision");
-  assert(
-    value.sourceBaseRevision === LIVEKIT_OPS.sourceBaseRevision,
-    "bundle source base revision is not admitted",
-  );
+  if (!historical) {
+    assert(
+      value.sourceBaseRevision === LIVEKIT_OPS.sourceBaseRevision,
+      "bundle source base revision is not admitted",
+    );
+  }
   assertDigest(value.configurationDigest, "bundle.configurationDigest");
   assertDigest(value.renderedManifestDigest, "bundle.renderedManifestDigest");
 
   assertExactKeys(value.chart, ["version", "sourceCommit", "archiveSha256"], [], "bundle.chart");
-  assert(value.chart.version === LIVEKIT_OPS.chartVersion, "bundle chart version is not pinned");
-  assert(
-    value.chart.sourceCommit === LIVEKIT_OPS.chartSourceCommit,
-    "bundle chart source commit is not pinned",
-  );
+  assertString(value.chart.version, "bundle.chart.version");
+  assertCommit(value.chart.sourceCommit, "bundle.chart.sourceCommit");
+  if (!historical) {
+    assert(value.chart.version === LIVEKIT_OPS.chartVersion, "bundle chart version is not pinned");
+    assert(
+      value.chart.sourceCommit === LIVEKIT_OPS.chartSourceCommit,
+      "bundle chart source commit is not pinned",
+    );
+  }
   assertDigestHex(value.chart.archiveSha256, "bundle.chart.archiveSha256");
-  assert(
-    `sha256:${value.chart.archiveSha256}` === LIVEKIT_OPS.chartArchiveDigest,
-    "bundle chart archive digest is not pinned",
-  );
+  if (!historical) {
+    assert(
+      `sha256:${value.chart.archiveSha256}` === LIVEKIT_OPS.chartArchiveDigest,
+      "bundle chart archive digest is not pinned",
+    );
+  }
 
   assertExactKeys(
     value.serverImage,
@@ -198,16 +235,31 @@ export function validateDeploymentBundle(value) {
     "bundle.serverImage",
   );
   const imageReference = assertString(value.serverImage.reference, "bundle.serverImage.reference");
-  assert(imageReference === LIVEKIT_OPS.serverImage, "bundle server image reference is not pinned");
+  assert(
+    /^docker\.io\/livekit\/livekit-server:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$/u.test(
+      imageReference,
+    ),
+    "bundle server image reference is not an immutable LiveKit server image",
+  );
+  if (!historical) {
+    assert(imageReference === LIVEKIT_OPS.serverImage, "bundle server image reference is not pinned");
+  }
   assertDigest(value.serverImage.digest, "bundle.serverImage.digest");
   assert(
-    value.serverImage.digest === LIVEKIT_OPS.serverImageDigest,
-    "bundle server image digest is not pinned",
+    imageReference.endsWith(`@${value.serverImage.digest}`),
+    "bundle server image reference and digest do not agree",
   );
-  assert(
-    value.serverImage.sourceCommit === LIVEKIT_OPS.serverImageSourceCommit,
-    "bundle server image source commit is not pinned",
-  );
+  assertCommit(value.serverImage.sourceCommit, "bundle.serverImage.sourceCommit");
+  if (!historical) {
+    assert(
+      value.serverImage.digest === LIVEKIT_OPS.serverImageDigest,
+      "bundle server image digest is not pinned",
+    );
+    assert(
+      value.serverImage.sourceCommit === LIVEKIT_OPS.serverImageSourceCommit,
+      "bundle server image source commit is not pinned",
+    );
+  }
 
   const expectedResources = {
     cluster: "oa-livekit-prod",

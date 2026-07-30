@@ -22,7 +22,7 @@
     "sourceCommit": "0b3fd288e3ef3263ec475ba0d78cf3ad77459981"
   },
   "configurationDigest": "sha256:b0bf0f0cb801943b789906c615d3277629a8f73bd6d06b52a60aaf2c86eb8a7d",
-  "renderedManifestDigest": "sha256:1f04042856fb666c9a01ed58a7b9953ef4658152e5cce8f2c77972b24d894522",
+  "renderedManifestDigest": "sha256:45bd75cb71c980d41576883a68454e517ef2b57f4fc43c249269a213ceff86df",
   "resources": {
     "cluster": "oa-livekit-prod",
     "sfuNodePool": "oa-livekit-prod-sfu",
@@ -68,10 +68,6 @@
       "sha256": "sha256:b0bf0f0cb801943b789906c615d3277629a8f73bd6d06b52a60aaf2c86eb8a7d"
     },
     {
-      "path": "infra/livekit/production/observability/dashboard.json",
-      "sha256": "sha256:3b2e6f40f3c2bc40e8b3d6385940908fc48d962c7887217179541ff33d3f76ba"
-    },
-    {
       "path": "infra/livekit/production/post-render.sh",
       "sha256": "sha256:b1a48050a15cee7c4595cec1993278f407956a97c2b358a47a925d8b51baea66"
     },
@@ -100,8 +96,8 @@
       "sha256": "sha256:21891c3355a3f17c7a994d2ebc6cbc7d79d27f18de5c3d21d0f56c4681ace6e9"
     },
     {
-      "path": "infra/livekit/production/resources/alert-rules.yaml",
-      "sha256": "sha256:f57693ca2114fe1f53dd61659681acb5659d65031b19a8b649f9eee150e60895"
+      "path": "infra/livekit/production/resources/cert-manager-monitoring.yaml",
+      "sha256": "sha256:bc44d1049f93c6d2cdd10ea40310b9d060fd4c09ba50aec530b686844fc364d1"
     },
     {
       "path": "infra/livekit/production/resources/certificate-issuer.yaml",
@@ -117,7 +113,7 @@
     },
     {
       "path": "infra/livekit/production/resources/kustomization.yaml",
-      "sha256": "sha256:811f10372ed6180c8b101739ee3308581952c9f1da0fd415a342f7397965e74d"
+      "sha256": "sha256:4b960c492f2258eadfa533ddea6505f1d162ae78ee7eb36fff6db97d5062b6bd"
     },
     {
       "path": "infra/livekit/production/resources/namespace.yaml",

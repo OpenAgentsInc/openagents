@@ -11,15 +11,48 @@ import {
   validateConnectivityObservation,
   validateDeploymentBundle,
   validateDrillObservation,
+  validateHistoricalDeploymentBundle,
   validateLoadObservation,
   validatePrerequisiteReceipt,
   validateRollbackObservation,
   validateSecretScanObservation,
+  validateServerKeyProjection,
   validateSourceOnlyReceipt,
 } from "./livekit-ops-policy.mjs";
 
 const digest = (character) => `sha256:${character.repeat(64)}`;
 const deployedRevision = "1".repeat(40);
+
+test("server key projection binds token minting and runtime authentication", () => {
+  const apiKey = "API23456789ABCD";
+  const apiSecret = "B".repeat(43);
+  const projection = {
+    api_key: apiKey,
+    api_secret: apiSecret,
+    keys_yaml: `${apiKey}: ${apiSecret}\n`,
+  };
+  assert.equal(validateServerKeyProjection(projection), projection);
+  assert.throws(
+    () => validateServerKeyProjection({ ...projection, keys_yaml: `${apiKey}: ${"C".repeat(43)}` }),
+    /exact admitted mapping/u,
+  );
+  assert.throws(
+    () => validateServerKeyProjection({ ...projection, api_key: "A".repeat(24) }),
+    /api_key/u,
+  );
+  assert.throws(
+    () => validateServerKeyProjection({ ...projection, api_secret: "B".repeat(42) }),
+    /api_secret/u,
+  );
+  assert.throws(
+    () => validateServerKeyProjection({ ...projection, keys_yaml: `${apiKey}: ${apiSecret}\nextra: key\n` }),
+    /exact admitted mapping/u,
+  );
+  assert.throws(
+    () => validateServerKeyProjection({ ...projection, extra: "not-admitted" }),
+    /unsupported field/u,
+  );
+});
 
 const bundle = {
   schemaVersion: "openagents.livekit_deployment_bundle.v1",
@@ -134,6 +167,34 @@ test("deployment bundle pins the exact project, region, resources, and caps", ()
         resources: { ...bundle.resources, cluster: "unrelated-cluster" },
       }),
     /cluster must be oa-livekit-prod/u,
+  );
+});
+
+test("historical bundle validation preserves topology while permitting older immutable pins", () => {
+  const historicalDigest = digest("a");
+  const historical = {
+    ...bundle,
+    sourceBaseRevision: "b".repeat(40),
+    chart: {
+      version: "1.10.0",
+      sourceCommit: "c".repeat(40),
+      archiveSha256: "d".repeat(64),
+    },
+    serverImage: {
+      reference: `docker.io/livekit/livekit-server:v1.12.0@${historicalDigest}`,
+      digest: historicalDigest,
+      sourceCommit: "e".repeat(40),
+    },
+  };
+  assert.equal(validateHistoricalDeploymentBundle(historical), historical);
+  assert.throws(() => validateDeploymentBundle(historical), /source base revision/u);
+  assert.throws(
+    () =>
+      validateHistoricalDeploymentBundle({
+        ...historical,
+        resources: { ...historical.resources, cluster: "another-cluster" },
+      }),
+    /bundle.resources.cluster/u,
   );
 });
 

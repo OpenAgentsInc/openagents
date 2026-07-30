@@ -351,6 +351,45 @@ resource "google_redis_instance" "livekit" {
   }
 }
 
+resource "google_compute_firewall" "redis_allow_sfu_pool" {
+  project     = var.project_id
+  name        = "${var.cluster_name}-redis-allow-sfu"
+  network     = var.network_id
+  direction   = "EGRESS"
+  priority    = 700
+  target_tags = [var.sfu_network_tag]
+
+  destination_ranges = ["${google_redis_instance.livekit.host}/32"]
+
+  allow {
+    protocol = "tcp"
+    ports    = ["6378"]
+  }
+
+  log_config {
+    metadata = "INCLUDE_ALL_METADATA"
+  }
+}
+
+resource "google_compute_firewall" "redis_deny_non_sfu" {
+  project   = var.project_id
+  name      = "${var.cluster_name}-redis-deny-non-sfu"
+  network   = var.network_id
+  direction = "EGRESS"
+  priority  = 800
+
+  destination_ranges = ["${google_redis_instance.livekit.host}/32"]
+
+  deny {
+    protocol = "tcp"
+    ports    = ["6378"]
+  }
+
+  log_config {
+    metadata = "INCLUDE_ALL_METADATA"
+  }
+}
+
 resource "google_service_account" "server" {
   project      = var.project_id
   account_id   = var.server_service_account_id

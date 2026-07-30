@@ -118,10 +118,10 @@ current owner authority.
    the actual 40-hex `HEAD` separately as `deployedRevision`.
 2. Use the documented Google automation identity without exporting its
    credential material.
-3. Install pinned-compatible `gcloud`, OpenTofu, `kubectl`, Helm 3, OpenSSL,
-   `dig`, and the LiveKit CLI. Helm 4 is rejected because the pinned render and
-   addon path has not admitted it. Record versions by digest or exact version
-   in private operator evidence.
+3. Install pinned-compatible `gcloud`, OpenTofu, `kubectl`, Helm 3, `yq`,
+   OpenSSL, `dig`, and the LiveKit CLI. Helm 4 is rejected because the pinned
+   render and addon path has not admitted it. Record versions by digest or
+   exact version in private operator evidence.
 4. Confirm the active project is exactly `openagentsgemini`. Every command
    still passes `--project openagentsgemini`; ambient CLI configuration is not
    authority.
@@ -307,8 +307,9 @@ in Git.
 
 ### Mandatory destroy
 
-Destroy the canary after equivalent production connectivity passes or when
-the six-hour TTL expires:
+Remove both staging DNS records from every authoritative Cloudflare name
+server first. Then destroy the canary after equivalent production
+connectivity passes or when the six-hour TTL expires:
 
 ```sh
 node scripts/cloud/livekit-gcp-ops.mjs \
@@ -323,10 +324,12 @@ node scripts/cloud/livekit-gcp-ops.mjs \
   --apply
 ```
 
-The destroy target is the exact isolated canary state. It must not use a
-project-wide name filter or wildcard. Verify zero canary VM, disk, address,
-firewall, certificate, secret-binding, and DNS residue. Production resources
-are outside this destroy graph.
+The runner refuses to destroy while either staging hostname has any recursive
+or authoritative `A`, `AAAA`, `CNAME`, `HTTPS`, or `SVCB` answer. The destroy
+target is the exact isolated canary state. It verifies empty OpenTofu state
+and zero canary VM, boot disk, address, two firewalls, VPC, subnet, runtime
+service account, four secret containers, and DNS residue before emitting a
+receipt. Production resources are outside this destroy graph.
 
 ## Stage B: production candidate
 
@@ -664,14 +667,39 @@ Plan first:
 node scripts/cloud/livekit-gcp-ops.mjs \
   --operation production-rollback \
   --bundle infra/livekit/bundle.json \
+  --current-manifest <current-rendered-manifest.yaml> \
   --previous-bundle <last-healthy-bundle.json> \
+  --previous-manifest <last-healthy-rendered-manifest.yaml> \
+  --previous-deployment-receipt <last-healthy-deployment-receipt.json> \
   --admission-receipt <private-admission-disable-receipt.json>
 ```
 
 Then apply with the owner interlock, the exact previous bundle, and a new
 public receipt path. The runner refuses unless the admission receipt proves
 new LiveKit admission disabled and names the same environment/generation
-boundary.
+boundary. It also requires the prior successful deployment receipt, exact
+current and target inventories, and the same pinned cert-manager and External
+Secrets addons:
+
+```sh
+OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
+node scripts/cloud/livekit-gcp-ops.mjs \
+  --operation production-rollback \
+  --bundle infra/livekit/bundle.json \
+  --current-manifest <current-rendered-manifest.yaml> \
+  --previous-bundle <last-healthy-bundle.json> \
+  --previous-manifest <last-healthy-rendered-manifest.yaml> \
+  --previous-deployment-receipt <last-healthy-deployment-receipt.json> \
+  --admission-receipt <private-admission-disable-receipt.json> \
+  --receipt docs/ops/receipts/livekit/production-runtime-rollback-<UTC>.json \
+  --apply
+```
+
+Rollback server-side applies the target, deletes only the closed set of
+current-only manifest resources, and then proves the exact target inventory,
+Deployment convergence, ready pod count, and one target container image
+digest. A changed addon pin is rejected instead of being rounded into a
+runtime rollback claim.
 
 Project the post-rollback observation:
 

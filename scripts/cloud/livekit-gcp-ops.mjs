@@ -10,6 +10,8 @@ import {
   sha256,
   validateAddonLock,
   validateDeploymentBundle,
+  validateHistoricalDeploymentBundle,
+  validateServerKeyProjection,
   validateSourceOnlyReceipt,
 } from "./livekit-ops-policy.mjs";
 
@@ -57,7 +59,8 @@ const usage = () => {
     --operation validate-source|canary-plan|canary-infra-apply|canary-apply|canary-destroy|production-plan|production-infra-apply|production-runtime-apply|production-rollback \\
     --bundle infra/livekit/bundle.json \\
     [--receipt docs/ops/receipts/livekit/<name>.json] \\
-    [--previous-bundle PATH --previous-manifest PATH --admission-receipt PATH] \\
+    [--current-manifest PATH --previous-bundle PATH --previous-manifest PATH \\
+      --previous-deployment-receipt PATH --admission-receipt PATH] \\
     [--apply]
 
 Default mode validates local source and prints an exact command plan. It does
@@ -82,16 +85,20 @@ const parseArgs = (args) => {
     admissionReceipt: undefined,
     apply: false,
     bundle: undefined,
+    currentManifest: undefined,
     operation: undefined,
     previousBundle: undefined,
+    previousDeploymentReceipt: undefined,
     previousManifest: undefined,
     receipt: undefined,
   };
   const valueFlags = new Map([
     ["--admission-receipt", "admissionReceipt"],
     ["--bundle", "bundle"],
+    ["--current-manifest", "currentManifest"],
     ["--operation", "operation"],
     ["--previous-bundle", "previousBundle"],
+    ["--previous-deployment-receipt", "previousDeploymentReceipt"],
     ["--previous-manifest", "previousManifest"],
     ["--receipt", "receipt"],
   ]);
@@ -123,12 +130,24 @@ const parseArgs = (args) => {
     throw new Error("--receipt is accepted only with --apply");
   }
   if (parsed.operation === "production-rollback") {
-    if (!parsed.previousBundle || !parsed.previousManifest || !parsed.admissionReceipt) {
+    if (
+      !parsed.currentManifest ||
+      !parsed.previousBundle ||
+      !parsed.previousDeploymentReceipt ||
+      !parsed.previousManifest ||
+      !parsed.admissionReceipt
+    ) {
       throw new Error(
-        "production-rollback requires --previous-bundle, --previous-manifest, and --admission-receipt",
+        "production-rollback requires current/previous manifests, previous bundle/deployment receipt, and admission receipt",
       );
     }
-  } else if (parsed.previousBundle || parsed.previousManifest || parsed.admissionReceipt) {
+  } else if (
+    parsed.currentManifest ||
+    parsed.previousBundle ||
+    parsed.previousDeploymentReceipt ||
+    parsed.previousManifest ||
+    parsed.admissionReceipt
+  ) {
     throw new Error("previous/admission inputs are accepted only for production-rollback");
   }
   return parsed;
@@ -200,6 +219,116 @@ const validateRenderedManifest = (path, expectedDigest) => {
     }
   }
   return observedDigest;
+};
+
+const ADMITTED_RUNTIME_KINDS = new Set([
+  "apps/v1/Deployment",
+  "autoscaling/v2/HorizontalPodAutoscaler",
+  "cert-manager.io/v1/Certificate",
+  "cert-manager.io/v1/ClusterIssuer",
+  "cloud.google.com/v1/BackendConfig",
+  "external-secrets.io/v1/ExternalSecret",
+  "external-secrets.io/v1/SecretStore",
+  "monitoring.googleapis.com/v1/PodMonitoring",
+  "networking.gke.io/v1/ManagedCertificate",
+  "networking.k8s.io/v1/Ingress",
+  "policy/v1/PodDisruptionBudget",
+  "scheduling.k8s.io/v1/PriorityClass",
+  "v1/ConfigMap",
+  "v1/Namespace",
+  "v1/Service",
+  "v1/ServiceAccount",
+]);
+const ADMITTED_CLUSTER_SCOPED_KINDS = new Set(["ClusterIssuer", "Namespace", "PriorityClass"]);
+
+const inventoryKey = ({ apiVersion, kind, namespace, name }) =>
+  `${apiVersion}/${kind}/${namespace ?? "<cluster>"}/${name}`;
+
+const validateManifestInventory = (value, label) => {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`${label} must contain at least one Kubernetes resource`);
+  }
+  const keys = new Set();
+  for (const [index, resource] of value.entries()) {
+    requireExactKeys(
+      resource,
+      ["apiVersion", "kind", "namespace", "name"],
+      `${label}[${index}]`,
+    );
+    if (
+      typeof resource.apiVersion !== "string" ||
+      typeof resource.kind !== "string" ||
+      typeof resource.name !== "string" ||
+      resource.name === "" ||
+      !ADMITTED_RUNTIME_KINDS.has(`${resource.apiVersion}/${resource.kind}`)
+    ) {
+      throw new Error(`${label}[${index}] is outside the admitted runtime kind set`);
+    }
+    if (ADMITTED_CLUSTER_SCOPED_KINDS.has(resource.kind)) {
+      if (resource.namespace !== null) {
+        throw new Error(`${label}[${index}] cluster-scoped resource has a namespace`);
+      }
+    } else if (!["livekit-system", "cert-manager"].includes(resource.namespace)) {
+      throw new Error(`${label}[${index}] has an unsupported namespace`);
+    }
+    const key = inventoryKey(resource);
+    if (keys.has(key)) throw new Error(`${label} contains duplicate resource ${key}`);
+    keys.add(key);
+  }
+  return [...value].sort((left, right) => inventoryKey(left).localeCompare(inventoryKey(right)));
+};
+
+const manifestInventory = (path, label) => {
+  const expression =
+    '[. | select(. != null) | {"apiVersion": .apiVersion, "kind": .kind, "namespace": (.metadata.namespace // null), "name": .metadata.name}]';
+  let inventory;
+  try {
+    inventory = JSON.parse(
+      captureCommand(
+        "yq",
+        ["eval-all", "-o=json", "-I=0", expression, resolve(path)],
+        `read ${label} inventory`,
+      ),
+    );
+  } catch (error) {
+    throw new Error(`${label} inventory is not readable JSON`, { cause: error });
+  }
+  return validateManifestInventory(inventory, label);
+};
+
+const writePruneInventory = (path, inventory) => {
+  const value = {
+    apiVersion: "v1",
+    kind: "List",
+    items: inventory.map((resource) => ({
+      apiVersion: resource.apiVersion,
+      kind: resource.kind,
+      metadata: {
+        name: resource.name,
+        ...(resource.namespace === null ? {} : { namespace: resource.namespace }),
+      },
+    })),
+  };
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+};
+
+const validatePreviousDeploymentReceipt = (value, bundle, expectedAddonRefs) => {
+  validateSourceOnlyReceipt(value);
+  if (
+    value.stage !== "production" ||
+    value.phase !== "deployment" ||
+    value.outcome !== "passed" ||
+    value.evidenceTier !== "live_observed" ||
+    value.bundleDigest !== sha256(JSON.stringify(bundle)) ||
+    value.configurationDigest !== bundle.configurationDigest ||
+    expectedAddonRefs.some((ref) => !value.resourceRefs.includes(ref))
+  ) {
+    throw new Error("previous deployment receipt does not bind the rollback target bundle");
+  }
+  return value;
 };
 
 const validateAdmissionReceipt = (value, bundle) => {
@@ -411,6 +540,157 @@ const captureCommand = (bin, args, label) => {
   return result.stdout;
 };
 
+const captureCommandWithEnvironment = (bin, args, label, environment) => {
+  const result = spawnSync(bin, args, {
+    encoding: "utf8",
+    env: environment,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (result.status !== 0) {
+    const message = publicSafeLines(result.stderr || result.stdout).slice(0, 2_000);
+    throw new Error(`${label} failed${message ? `: ${message}` : ""}`);
+  }
+  return result.stdout;
+};
+
+const inventoryFromKubernetesList = (value, label) => {
+  const items = value?.kind === "List" && Array.isArray(value.items) ? value.items : [value];
+  return validateManifestInventory(
+    items.map((item) => ({
+      apiVersion: item.apiVersion,
+      kind: item.kind,
+      namespace: item.metadata?.namespace ?? null,
+      name: item.metadata?.name,
+    })),
+    label,
+  );
+};
+
+const verifyRollbackRuntime = ({
+  kubeconfig,
+  previousManifest,
+  pruneManifest,
+  prunedInventory,
+  targetBundle,
+  targetInventory,
+}) => {
+  const environment = kubectlEnv(kubeconfig);
+  let observedResources;
+  try {
+    observedResources = JSON.parse(
+      captureCommandWithEnvironment(
+        "kubectl",
+        ["get", "-f", previousManifest, "-o", "json"],
+        "read restored runtime inventory",
+        environment,
+      ),
+    );
+  } catch (error) {
+    throw new Error("restored runtime inventory is not valid JSON", { cause: error });
+  }
+  const observedInventory = inventoryFromKubernetesList(
+    observedResources,
+    "restored runtime inventory",
+  );
+  if (
+    JSON.stringify(observedInventory.map(inventoryKey)) !==
+    JSON.stringify(targetInventory.map(inventoryKey))
+  ) {
+    throw new Error("restored runtime inventory does not equal the target manifest");
+  }
+  if (
+    prunedInventory.length > 0 &&
+    captureCommandWithEnvironment(
+      "kubectl",
+      ["get", "-f", pruneManifest, "--ignore-not-found", "-o", "name"],
+      "verify current-only runtime resources were pruned",
+      environment,
+    ).trim() !== ""
+  ) {
+    throw new Error("current-only runtime resources survived rollback pruning");
+  }
+
+  let deployment;
+  let pods;
+  try {
+    deployment = JSON.parse(
+      captureCommandWithEnvironment(
+        "kubectl",
+        [
+          "--namespace",
+          LIVEKIT_OPS.namespace,
+          "get",
+          `deployment/${LIVEKIT_OPS.release}`,
+          "-o",
+          "json",
+        ],
+        "read restored LiveKit deployment",
+        environment,
+      ),
+    );
+    pods = JSON.parse(
+      captureCommandWithEnvironment(
+        "kubectl",
+        [
+          "--namespace",
+          LIVEKIT_OPS.namespace,
+          "get",
+          "pods",
+          "--selector=app.kubernetes.io/name=livekit-server,app.kubernetes.io/instance=livekit-server",
+          "-o",
+          "json",
+        ],
+        "read restored LiveKit pods",
+        environment,
+      ),
+    );
+  } catch (error) {
+    throw new Error("restored LiveKit workload status is not valid JSON", { cause: error });
+  }
+  const desiredReplicas = deployment.spec?.replicas;
+  const container = deployment.spec?.template?.spec?.containers?.find(
+    (candidate) => candidate.name === LIVEKIT_OPS.release,
+  );
+  if (
+    !Number.isSafeInteger(desiredReplicas) ||
+    desiredReplicas < 1 ||
+    deployment.status?.observedGeneration !== deployment.metadata?.generation ||
+    deployment.status?.updatedReplicas !== desiredReplicas ||
+    deployment.status?.availableReplicas !== desiredReplicas ||
+    (deployment.status?.unavailableReplicas ?? 0) !== 0 ||
+    typeof container?.image !== "string" ||
+    !container.image.includes("/livekit-server:") ||
+    !container.image.endsWith(`@${targetBundle.serverImage.digest}`)
+  ) {
+    throw new Error("restored LiveKit deployment has not converged on the target image");
+  }
+  if (!Array.isArray(pods.items) || pods.items.length !== desiredReplicas) {
+    throw new Error("restored LiveKit pod count does not match the deployment");
+  }
+  const imageIds = new Set();
+  for (const pod of pods.items) {
+    const ready = pod.status?.conditions?.some(
+      (condition) => condition.type === "Ready" && condition.status === "True",
+    );
+    const status = pod.status?.containerStatuses?.find(
+      (candidate) => candidate.name === LIVEKIT_OPS.release,
+    );
+    if (
+      pod.status?.phase !== "Running" ||
+      ready !== true ||
+      status?.ready !== true ||
+      typeof status?.imageID !== "string" ||
+      !status.imageID.endsWith(targetBundle.serverImage.digest)
+    ) {
+      throw new Error("a restored LiveKit pod is not ready on the target image digest");
+    }
+    imageIds.add(status.imageID);
+  }
+  if (imageIds.size !== 1) {
+    throw new Error("restored LiveKit pods contain mixed image digests");
+  }
+};
+
 const requireExactKeys = (value, expectedKeys, label) => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(`${label} must be a JSON object`);
@@ -497,6 +777,47 @@ const requireHostnameAtAddress = (hostname, address) => {
   }
 };
 
+const requireHostnameAbsent = (hostname) => {
+  const answers = captureCommand("dig", ["+short", hostname], `verify ${hostname} is absent`)
+    .split(/\s+/u)
+    .filter(Boolean);
+  if (answers.length !== 0) {
+    throw new Error(`${hostname} must be removed before canary destruction`);
+  }
+  const nameServers = captureCommand(
+    "dig",
+    ["+short", "NS", "openagents.com"],
+    "discover authoritative openagents.com name servers",
+  )
+    .split(/\s+/u)
+    .filter(Boolean);
+  if (nameServers.length === 0) {
+    throw new Error("openagents.com has no observable authoritative name servers");
+  }
+  for (const nameServer of nameServers) {
+    for (const recordType of ["A", "AAAA", "CNAME", "HTTPS", "SVCB"]) {
+      const authoritativeAnswers = captureCommand(
+        "dig",
+        ["+short", `@${nameServer}`, hostname, recordType],
+        `verify authoritative ${recordType} absence for ${hostname}`,
+      )
+        .split(/\s+/u)
+        .filter(Boolean);
+      if (authoritativeAnswers.length !== 0) {
+        throw new Error(
+          `${hostname} ${recordType} must be removed from every authoritative name server`,
+        );
+      }
+    }
+  }
+};
+
+const requireEmptyCommandOutput = (bin, args, label) => {
+  if (captureCommand(bin, args, label).trim() !== "") {
+    throw new Error(`${label} found unexpected residue`);
+  }
+};
+
 const runOpenSsl = (args, label) => captureCommand("openssl", args, label);
 
 const validateCanaryCertificate = (temporaryDirectory) => {
@@ -562,6 +883,139 @@ const requireNoCanaryInstance = () => {
   if (names !== "") throw new Error("the canary VM already exists before the gated apply");
 };
 
+const validateCanaryDestroyPreflight = () => {
+  requireHostnameAbsent(CANARY_SIGNAL_HOSTNAME);
+  requireHostnameAbsent(CANARY_TURN_HOSTNAME);
+};
+
+const verifyCanaryDestroyed = () => {
+  requireHostnameAbsent(CANARY_SIGNAL_HOSTNAME);
+  requireHostnameAbsent(CANARY_TURN_HOSTNAME);
+  requireEmptyCommandOutput(
+    "tofu",
+    [`-chdir=${CANARY_TERRAFORM_ROOT}`, "state", "list"],
+    "verify canary OpenTofu state is empty",
+  );
+  const exactAbsenceChecks = [
+    [
+      "gcloud",
+      [
+        "compute",
+        "instances",
+        "list",
+        "--project",
+        LIVEKIT_OPS.project,
+        "--filter=name=oa-livekit-canary",
+        "--format=value(name)",
+      ],
+      "verify canary instance absence",
+    ],
+    [
+      "gcloud",
+      [
+        "compute",
+        "disks",
+        "list",
+        "--project",
+        LIVEKIT_OPS.project,
+        "--filter=name=oa-livekit-canary",
+        "--format=value(name)",
+      ],
+      "verify canary boot disk absence",
+    ],
+    [
+      "gcloud",
+      [
+        "compute",
+        "addresses",
+        "list",
+        "--project",
+        LIVEKIT_OPS.project,
+        "--regions",
+        LIVEKIT_OPS.region,
+        "--filter=name=oa-livekit-canary",
+        "--format=value(name)",
+      ],
+      "verify canary address absence",
+    ],
+    [
+      "gcloud",
+      [
+        "compute",
+        "firewall-rules",
+        "list",
+        "--project",
+        LIVEKIT_OPS.project,
+        "--filter=name=(oa-livekit-canary-media oa-livekit-canary-iap-ssh)",
+        "--format=value(name)",
+      ],
+      "verify canary firewall absence",
+    ],
+    [
+      "gcloud",
+      [
+        "compute",
+        "networks",
+        "list",
+        "--project",
+        LIVEKIT_OPS.project,
+        "--filter=name=oa-livekit-staging",
+        "--format=value(name)",
+      ],
+      "verify canary network absence",
+    ],
+    [
+      "gcloud",
+      [
+        "compute",
+        "networks",
+        "subnets",
+        "list",
+        "--project",
+        LIVEKIT_OPS.project,
+        "--regions",
+        LIVEKIT_OPS.region,
+        "--filter=name=oa-livekit-staging-nodes",
+        "--format=value(name)",
+      ],
+      "verify canary subnet absence",
+    ],
+    [
+      "gcloud",
+      [
+        "iam",
+        "service-accounts",
+        "list",
+        "--project",
+        LIVEKIT_OPS.project,
+        "--filter=email=oa-livekit-canary-runtime@openagentsgemini.iam.gserviceaccount.com",
+        "--format=value(email)",
+      ],
+      "verify canary service account absence",
+    ],
+  ];
+  for (const [bin, args, label] of exactAbsenceChecks) {
+    requireEmptyCommandOutput(bin, args, label);
+  }
+  const canarySecretIds = new Set(CANARY_SECRET_IDS);
+  const remainingCanarySecrets = captureCommand(
+    "gcloud",
+    [
+      "secrets",
+      "list",
+      "--project",
+      LIVEKIT_OPS.project,
+      "--format=value(name)",
+    ],
+    "inspect canary secret container absence",
+  )
+    .split(/\s+/u)
+    .filter((name) => canarySecretIds.has(name.split("/").at(-1)));
+  if (remainingCanarySecrets.length !== 0) {
+    throw new Error("verify canary secret container absence found unexpected residue");
+  }
+};
+
 const validateCanaryPreflight = (temporaryDirectory) => {
   requireEnabledLatestSecretVersions(CANARY_SECRET_IDS);
   requireNoCanaryInstance();
@@ -594,9 +1048,7 @@ const validateProductionPreflight = () => {
     "api_secret",
     "keys_yaml",
   ]);
-  if (!serverKeys.keys_yaml.includes(":")) {
-    throw new Error("oa-livekit-prod-server-keys.keys_yaml is not a key map");
-  }
+  validateServerKeyProjection(serverKeys);
   const redisSecret = parseStructuredSecret("oa-livekit-prod-redis-auth", ["host", "ca_cert"]);
   let redis;
   try {
@@ -963,6 +1415,11 @@ const run = () => {
   let commands = [];
   let receipt;
   let rollbackAdmissionReceipt;
+  let rollbackPreviousManifest;
+  let rollbackPruneManifest;
+  let rollbackPrunedInventory;
+  let rollbackTargetBundle;
+  let rollbackTargetInventory;
   try {
     if (args.operation === "validate-source") {
       if (args.apply) {
@@ -1037,22 +1494,43 @@ const run = () => {
         ]),
       ];
     } else if (args.operation === "production-rollback") {
-      const previousBundle = validateDeploymentBundle(
+      rollbackTargetBundle = validateHistoricalDeploymentBundle(
         readJson(args.previousBundle, "previous deployment bundle"),
       );
       rollbackAdmissionReceipt = validateAdmissionReceipt(
         readJson(args.admissionReceipt, "admission-disable receipt"),
         bundle,
       );
+      validatePreviousDeploymentReceipt(
+        readJson(args.previousDeploymentReceipt, "previous deployment receipt"),
+        rollbackTargetBundle,
+        addonResourceRefs(addonLock),
+      );
       if (
-        previousBundle.renderedManifestDigest === bundle.renderedManifestDigest &&
-        previousBundle.configurationDigest === bundle.configurationDigest &&
-        previousBundle.serverImage.digest === bundle.serverImage.digest
+        rollbackTargetBundle.renderedManifestDigest === bundle.renderedManifestDigest &&
+        rollbackTargetBundle.configurationDigest === bundle.configurationDigest &&
+        rollbackTargetBundle.serverImage.digest === bundle.serverImage.digest
       ) {
         throw new Error("rollback previous bundle does not change the pinned deployment");
       }
-      const previousManifest = resolve(args.previousManifest);
-      validateRenderedManifest(previousManifest, previousBundle.renderedManifestDigest);
+      const currentManifest = resolve(args.currentManifest);
+      rollbackPreviousManifest = resolve(args.previousManifest);
+      validateRenderedManifest(currentManifest, bundle.renderedManifestDigest);
+      validateRenderedManifest(
+        rollbackPreviousManifest,
+        rollbackTargetBundle.renderedManifestDigest,
+      );
+      const currentInventory = manifestInventory(currentManifest, "current runtime manifest");
+      rollbackTargetInventory = manifestInventory(
+        rollbackPreviousManifest,
+        "rollback target manifest",
+      );
+      const targetKeys = new Set(rollbackTargetInventory.map(inventoryKey));
+      rollbackPrunedInventory = currentInventory.filter(
+        (resource) => !targetKeys.has(inventoryKey(resource)),
+      );
+      rollbackPruneManifest = resolve(temporaryDirectory, "rollback-prune-list.json");
+      writePruneInventory(rollbackPruneManifest, rollbackPrunedInventory);
       commands = [
         ...productionInfrastructureValidationCommands(),
         productionCredentialsCommand(kubeconfig),
@@ -1063,8 +1541,20 @@ const run = () => {
           "--server-side",
           "--field-manager=openagents-livekit-ops",
           "-f",
-          previousManifest,
+          rollbackPreviousManifest,
         ]),
+        ...(rollbackPrunedInventory.length === 0
+          ? []
+          : [
+              command("kubectl", [
+                "delete",
+                "-f",
+                rollbackPruneManifest,
+                "--ignore-not-found=true",
+                "--wait=true",
+                "--timeout=10m",
+              ]),
+            ]),
         command("kubectl", [
           "--namespace",
           LIVEKIT_OPS.namespace,
@@ -1082,6 +1572,9 @@ const run = () => {
         exactResourceScope: args.operation.startsWith("canary")
           ? "gcp-resource-ref://livekit/canary"
           : "gcp-resource-ref://livekit/production",
+        ...(rollbackTargetBundle === undefined
+          ? {}
+          : { rollbackTargetBundleDigest: sha256(JSON.stringify(rollbackTargetBundle)) }),
       });
       return;
     }
@@ -1101,6 +1594,9 @@ const run = () => {
 
     if (args.operation === "canary-apply") {
       validateCanaryPreflight(temporaryDirectory);
+    }
+    if (args.operation === "canary-destroy") {
+      validateCanaryDestroyPreflight();
     }
     if (args.operation === "production-runtime-apply") {
       validateProductionPreflight();
@@ -1122,23 +1618,23 @@ const run = () => {
     }
 
     if (args.operation === "canary-apply") verifyCanary();
-    if (args.operation === "canary-destroy") {
-      const residue = spawnSync(
-        "gcloud",
-        [
-          "compute",
-          "instances",
-          "list",
-          "--project",
-          LIVEKIT_OPS.project,
-          "--filter=name=oa-livekit-canary",
-          "--format=value(name)",
-        ],
-        { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-      );
-      if (residue.status !== 0 || residue.stdout.trim() !== "") {
-        throw new Error("canary destroy left instance residue");
-      }
+    if (args.operation === "canary-destroy") verifyCanaryDestroyed();
+    if (
+      args.operation === "production-rollback" &&
+      rollbackPreviousManifest !== undefined &&
+      rollbackPruneManifest !== undefined &&
+      rollbackPrunedInventory !== undefined &&
+      rollbackTargetBundle !== undefined &&
+      rollbackTargetInventory !== undefined
+    ) {
+      verifyRollbackRuntime({
+        kubeconfig,
+        previousManifest: rollbackPreviousManifest,
+        pruneManifest: rollbackPruneManifest,
+        prunedInventory: rollbackPrunedInventory,
+        targetBundle: rollbackTargetBundle,
+        targetInventory: rollbackTargetInventory,
+      });
     }
 
     const canary = args.operation.startsWith("canary");
@@ -1157,17 +1653,27 @@ const run = () => {
         ...addonResourceRefs(addonLock),
       );
     }
-    receipt = writeReceipt(args.receipt, bundle, {
+    const receiptBundle = rollback ? rollbackTargetBundle : bundle;
+    if (receiptBundle === undefined) {
+      throw new Error("rollback target bundle is unavailable at receipt boundary");
+    }
+    receipt = writeReceipt(args.receipt, receiptBundle, {
       stage: canary ? "canary" : "production",
       phase: destroy ? "destroy" : rollback ? "rollback" : "deployment",
       outcome: destroy ? "destroyed" : rollback ? "rolled_back" : "passed",
       resourceRefs,
       result: {
         operation: args.operation,
-        bundleDigest: sha256(JSON.stringify(bundle)),
+        bundleDigest: sha256(JSON.stringify(receiptBundle)),
         commandPlanDigest: sha256(JSON.stringify(commands)),
         exactProject: true,
         exactRegion: true,
+        ...(rollbackTargetInventory === undefined
+          ? {}
+          : { targetInventoryDigest: sha256(JSON.stringify(rollbackTargetInventory)) }),
+        ...(rollbackPrunedInventory === undefined
+          ? {}
+          : { prunedInventoryDigest: sha256(JSON.stringify(rollbackPrunedInventory)) }),
       },
       deployedRevision,
     });

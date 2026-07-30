@@ -19,10 +19,6 @@ locals {
       title  = "Lost packets"
       metric = "prometheus.googleapis.com/livekit_packet_loss_total/counter"
     },
-    {
-      title  = "Direct, TCP, and TURN connections"
-      metric = "prometheus.googleapis.com/livekit_connection_total/gauge"
-    },
   ]
 }
 
@@ -62,6 +58,8 @@ resource "google_logging_metric" "livekit_errors" {
     "resource.type=\"k8s_container\"",
     "resource.labels.cluster_name=\"${var.cluster_name}\"",
     "resource.labels.location=\"${var.cluster_location}\"",
+    "resource.labels.namespace_name=\"livekit-system\"",
+    "resource.labels.container_name=\"livekit-server\"",
     "severity>=ERROR",
   ])
 
@@ -148,9 +146,9 @@ resource "google_monitoring_alert_policy" "certificate_expiry" {
   }
 }
 
-resource "google_monitoring_alert_policy" "sfu_cpu" {
+resource "google_monitoring_alert_policy" "turn_certificate_expiry" {
   project      = var.project_id
-  display_name = "LiveKit ${var.environment}: SFU node CPU saturation"
+  display_name = "LiveKit ${var.environment}: TURN certificate expiry"
   combiner     = "OR"
   enabled      = true
 
@@ -162,13 +160,39 @@ resource "google_monitoring_alert_policy" "sfu_cpu" {
   }
 
   conditions {
-    display_name = "Maximum node allocatable CPU utilization exceeds 80%"
+    display_name = "TURN TLS certificate has less than fourteen days remaining"
+    condition_prometheus_query_language {
+      query                     = "min(certmanager_certificate_expiration_timestamp_seconds{cluster=\"${var.cluster_name}\",location=\"${var.cluster_location}\",name=\"livekit-turn\",exported_namespace=\"livekit-system\"} - time()) < 1209600 or absent(certmanager_certificate_expiration_timestamp_seconds{cluster=\"${var.cluster_name}\",location=\"${var.cluster_location}\",name=\"livekit-turn\",exported_namespace=\"livekit-system\"})"
+      duration                  = "0s"
+      evaluation_interval       = "300s"
+      disable_metric_validation = true
+    }
+  }
+}
+
+resource "google_monitoring_alert_policy" "livekit_cpu" {
+  project      = var.project_id
+  display_name = "LiveKit ${var.environment}: server CPU saturation"
+  combiner     = "OR"
+  enabled      = true
+
+  notification_channels = var.notification_channel_ids
+
+  documentation {
+    content   = local.alert_documentation
+    mime_type = "text/markdown"
+  }
+
+  conditions {
+    display_name = "Maximum LiveKit container CPU limit utilization exceeds 80%"
     condition_threshold {
       filter = join(" ", [
-        "metric.type=\"kubernetes.io/node/cpu/allocatable_utilization\"",
-        "resource.type=\"k8s_node\"",
+        "metric.type=\"kubernetes.io/container/cpu/limit_utilization\"",
+        "resource.type=\"k8s_container\"",
         "resource.label.cluster_name=\"${var.cluster_name}\"",
         "resource.label.location=\"${var.cluster_location}\"",
+        "resource.label.namespace_name=\"livekit-system\"",
+        "resource.label.container_name=\"livekit-server\"",
       ])
       comparison      = "COMPARISON_GT"
       threshold_value = 0.8
@@ -178,7 +202,7 @@ resource "google_monitoring_alert_policy" "sfu_cpu" {
         alignment_period     = "60s"
         per_series_aligner   = "ALIGN_MEAN"
         cross_series_reducer = "REDUCE_MAX"
-        group_by_fields      = ["resource.label.node_name"]
+        group_by_fields      = ["resource.label.pod_name"]
       }
 
       trigger {
@@ -205,7 +229,7 @@ resource "google_monitoring_alert_policy" "redis_memory" {
     display_name = "Redis memory utilization exceeds 80%"
     condition_threshold {
       filter = join(" ", [
-        "metric.type=\"redis.googleapis.com/stats/memory/usage_ratio\"",
+        "metric.type=\"redis.googleapis.com/stats/memory/system_memory_usage_ratio\"",
         "resource.type=\"redis_instance\"",
         "resource.label.instance_id=\"${var.redis_instance_id}\"",
       ])
@@ -221,6 +245,126 @@ resource "google_monitoring_alert_policy" "redis_memory" {
       trigger {
         count = 1
       }
+    }
+  }
+}
+
+resource "google_monitoring_alert_policy" "redis_unavailable" {
+  project      = var.project_id
+  display_name = "LiveKit ${var.environment}: Redis unavailable"
+  combiner     = "OR"
+  enabled      = true
+
+  notification_channels = var.notification_channel_ids
+
+  documentation {
+    content   = local.alert_documentation
+    mime_type = "text/markdown"
+  }
+
+  conditions {
+    display_name = "Redis uptime telemetry is absent"
+    condition_absent {
+      filter = join(" ", [
+        "metric.type=\"redis.googleapis.com/server/uptime\"",
+        "resource.type=\"redis_instance\"",
+        "resource.label.instance_id=\"${var.redis_instance_id}\"",
+      ])
+      duration = "300s"
+
+      aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_MAX"
+      }
+
+      trigger {
+        count = 1
+      }
+    }
+  }
+}
+
+resource "google_monitoring_alert_policy" "redis_rejected_connections" {
+  project      = var.project_id
+  display_name = "LiveKit ${var.environment}: Redis rejected connections"
+  combiner     = "OR"
+  enabled      = true
+
+  notification_channels = var.notification_channel_ids
+
+  documentation {
+    content   = local.alert_documentation
+    mime_type = "text/markdown"
+  }
+
+  conditions {
+    display_name = "Redis rejected one or more connections"
+    condition_threshold {
+      filter = join(" ", [
+        "metric.type=\"redis.googleapis.com/stats/reject_connections_count\"",
+        "resource.type=\"redis_instance\"",
+        "resource.label.instance_id=\"${var.redis_instance_id}\"",
+      ])
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      duration        = "0s"
+
+      aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_DELTA"
+      }
+
+      trigger {
+        count = 1
+      }
+    }
+  }
+}
+
+resource "google_monitoring_alert_policy" "server_scrape_quorum" {
+  project      = var.project_id
+  display_name = "LiveKit ${var.environment}: server scrape quorum"
+  combiner     = "OR"
+  enabled      = true
+
+  notification_channels = var.notification_channel_ids
+
+  documentation {
+    content   = local.alert_documentation
+    mime_type = "text/markdown"
+  }
+
+  conditions {
+    display_name = "Fewer than two LiveKit server targets are up"
+    condition_prometheus_query_language {
+      query                     = "sum(up{cluster=\"${var.cluster_name}\",location=\"${var.cluster_location}\",namespace=\"livekit-system\",job=~\".*livekit-server.*\"}) < 2 or absent(up{cluster=\"${var.cluster_name}\",location=\"${var.cluster_location}\",namespace=\"livekit-system\",job=~\".*livekit-server.*\"})"
+      duration                  = "120s"
+      evaluation_interval       = "30s"
+      disable_metric_validation = true
+    }
+  }
+}
+
+resource "google_monitoring_alert_policy" "participant_join_failures" {
+  project      = var.project_id
+  display_name = "LiveKit ${var.environment}: participant join failures"
+  combiner     = "OR"
+  enabled      = true
+
+  notification_channels = var.notification_channel_ids
+
+  documentation {
+    content   = local.alert_documentation
+    mime_type = "text/markdown"
+  }
+
+  conditions {
+    display_name = "Participant join failures are sustained"
+    condition_prometheus_query_language {
+      query                     = "sum(rate(livekit_participant_join_total{cluster=\"${var.cluster_name}\",location=\"${var.cluster_location}\",state=~\"signal_failed|signal_validation_failed|signal_upgrade_failed|signal_write_initial_response_failed|rtc_failure\"}[5m])) > 0.1"
+      duration                  = "300s"
+      evaluation_interval       = "30s"
+      disable_metric_validation = true
     }
   }
 }
@@ -275,9 +419,10 @@ resource "google_monitoring_alert_policy" "room_capacity" {
   conditions {
     display_name = "Admitted room capacity reached"
     condition_prometheus_query_language {
-      query               = "sum(livekit_room_total{cluster=\"${var.cluster_name}\",location=\"${var.cluster_location}\"}) >= ${var.max_rooms}"
-      duration            = "120s"
-      evaluation_interval = "30s"
+      query                     = "sum(livekit_room_total{cluster=\"${var.cluster_name}\",location=\"${var.cluster_location}\"}) >= ${var.max_rooms}"
+      duration                  = "120s"
+      evaluation_interval       = "30s"
+      disable_metric_validation = true
     }
   }
 }
@@ -298,9 +443,10 @@ resource "google_monitoring_alert_policy" "participant_capacity" {
   conditions {
     display_name = "Admitted participant capacity reached"
     condition_prometheus_query_language {
-      query               = "sum(livekit_participant_total{cluster=\"${var.cluster_name}\",location=\"${var.cluster_location}\"}) >= ${var.max_participants}"
-      duration            = "120s"
-      evaluation_interval = "30s"
+      query                     = "sum(livekit_participant_total{cluster=\"${var.cluster_name}\",location=\"${var.cluster_location}\"}) >= ${var.max_participants}"
+      duration                  = "120s"
+      evaluation_interval       = "30s"
+      disable_metric_validation = true
     }
   }
 }

@@ -168,6 +168,14 @@ const canaryStartup = await readFile(
   resolve(repositoryRoot, "infra/modules/livekit-gce-canary/startup.sh.tftpl"),
   "utf8",
 );
+const gkeInfrastructure = await readFile(
+  resolve(repositoryRoot, "infra/modules/livekit-gke/main.tf"),
+  "utf8",
+);
+const observabilityInfrastructure = await readFile(
+  resolve(repositoryRoot, "infra/modules/livekit-observability/main.tf"),
+  "utf8",
+);
 requireEqual(bundle.configurationDigest, `sha256:${sha256(configurationBytes)}`, "configuration digest");
 requireEqual(bundle.renderedManifestDigest, `sha256:${sha256(rendered)}`, "rendered manifest digest");
 requireIncludes(
@@ -198,6 +206,41 @@ requireIncludes(
 );
 requireIncludes(canaryStartup, "--key-file /run/livekit/keys.yaml", "canary key-file use");
 requireExcludes(canaryStartup, 'cat >"$runtime_dir/livekit.yaml"', "synthesized canary configuration");
+requireIncludes(
+  gkeInfrastructure,
+  'name        = "${var.cluster_name}-redis-allow-sfu"',
+  "SFU-only Redis allow boundary",
+);
+requireIncludes(
+  gkeInfrastructure,
+  'name      = "${var.cluster_name}-redis-deny-non-sfu"',
+  "non-SFU Redis deny boundary",
+);
+requireIncludes(
+  observabilityInfrastructure,
+  'state=~\\"signal_failed|signal_validation_failed|signal_upgrade_failed|signal_write_initial_response_failed|rtc_failure\\"',
+  "exact LiveKit join failure states",
+);
+requireIncludes(
+  observabilityInfrastructure,
+  "certmanager_certificate_expiration_timestamp_seconds",
+  "TURN certificate expiry telemetry",
+);
+requireIncludes(
+  observabilityInfrastructure,
+  "notification_channels = var.notification_channel_ids",
+  "Cloud Monitoring notification routing",
+);
+requireExcludes(
+  observabilityInfrastructure,
+  "livekit_connection_total",
+  "unsupported transport-path attribution",
+);
+requireExcludes(
+  observabilityInfrastructure,
+  "livekit_packet_loss_total[5m]",
+  "invalid aggregate packet-loss ratio",
+);
 
 for (const entry of bundle.manifests) {
   requireKnownKeys(entry, ["path", "sha256"], `manifest ${entry.path ?? "<missing>"}`);
@@ -228,7 +271,7 @@ requireIncludes(rendered, "mountPath: /etc/livekit/keys.yaml", "absolute key-fil
 requireIncludes(rendered, "kind: ClusterIssuer", "TURN certificate issuer");
 requireIncludes(rendered, "kind: Certificate", "TURN certificate");
 requireIncludes(rendered, "kind: PodMonitoring", "managed Prometheus scrape");
-requireIncludes(rendered, "kind: Rules", "managed Prometheus alerts");
+requireExcludes(rendered, "kind: Rules", "unrouted in-cluster alert rules");
 requireIncludes(rendered, "kind: Ingress", "signaling ingress");
 requireIncludes(rendered, "cloud.google.com/neg: '{\"ingress\": true}'", "signaling NEG");
 requireIncludes(rendered, "kubernetes.io/ingress.global-static-ip-name: oa-livekit-prod-signal", "signaling address pin");

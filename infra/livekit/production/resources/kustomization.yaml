@@ -9,5 +9,5 @@ resources:
   - signaling-certificate.yaml
   - disruption-budget.yaml
   - pod-monitoring.yaml
-  - alert-rules.yaml
+  - cert-manager-monitoring.yaml
   - certificate-issuer.yaml
