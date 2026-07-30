@@ -10,12 +10,12 @@ in-process, GPUI-bound interactive agent engine. It owns the editor-facing
 conversation loop, project-aware tools, permission and terminal policy,
 durable thread history, ACP bridging, and native/external subagent execution.
 
-Probe is a Bun/Effect runtime being rebuilt as the first-party OpenAgents
-coding runtime. Its current concrete slice concentrates on assignment,
-provider, backend, evidence, and policy contracts; it also has a lightweight
-CLI coding loop for Gemini. Its intended destination is a portable,
-assignment-driven runtime that can run locally or remotely and report redacted
-events and artifacts back to OpenAgents infrastructure.
+Probe's existing Bun/Effect runtime is source material for a rebuild. The
+target implementation is `probe-rs`, a native Rust crate and ACP executable
+for fast, low-latency repository work that aligns with Omega's Rust
+`crates/agent` architecture. It retains Probe's bounded-assignment and
+evidence direction while using native search, tree-sitter structural analysis,
+and async ACP streaming.
 
 The premise that the current Probe is a semantic/structural code index is not
 supported by its current source. Its `search_code` implementation invokes
@@ -23,9 +23,9 @@ supported by its current source. Its `search_code` implementation invokes
 database, symbol graph, or incremental indexer. The Blueprint
 `code_search` definition is an allowed-tool contract, not an implementation of
 semantic retrieval. The best integration is therefore not to embed current
-Probe as a magical index, but to establish an analysis-only Probe executor
-with a compact, structured repository-map protocol, then add indexed search
-behind that protocol when measurements justify it.
+Probe as a magical index, but to establish `probe-rs` behind a compact,
+structured ACP protocol, then add indexed search when measurements justify it.
+The complete rebuild contract is in [the `probe-rs` specification](rust-probe-spec.md).
 
 ## Scope and evidence
 
@@ -145,7 +145,7 @@ construction under the same host control.
 | Dimension | Probe | Omega Agent |
 | --- | --- | --- |
 | Primary purpose | Portable first-party OpenAgents runtime for bounded, policy-routed coding assignments. | Full interactive in-editor coding agent for Omega users. |
-| Host architecture | Bun/Effect CLI/backend runtime; designed for local/remote sandbox hosts and OpenAgents receipts. | Rust GPUI library embedded in Omega; ACP and UI bindings are native concerns. |
+| Host architecture | Target: `probe-rs`, a Rust crate and ACP binary using native search, tree-sitter, and async streaming; the Bun/Effect runtime is migration source material. | Rust GPUI library embedded in Omega; ACP and UI bindings are native concerns. |
 | Main loop | Provider/backend completion and tool dispatch; current concrete chat is lightweight. | Durable streaming turn loop with compaction, steering, retry, tool rounds, and UI events. |
 | Retrieval | Current lexical `rg` search only; no index or semantic graph. | Project search plus language-service navigation, diagnostics, and code actions. |
 | Tools | Small local CLI set plus Blueprint-selected backend menu; no real terminal or delegation currently. | Broad filesystem, terminal, editor-semantic, MCP, artifact, and delegation tools. |
@@ -179,14 +179,21 @@ unexplainable answers.
 
 ## Roadmap: Probe as an Omega specialized analysis subagent
 
-### Product boundary
+### Product boundary and operating modes
 
 Make the integration an *analysis worker*, not a second unrestricted coding
-agent. Its initial allowed outcomes should be repository maps, symbol traces,
-candidate files, dependency/impact summaries, and evidence references. It
-must not edit files, execute arbitrary shell commands, independently delegate,
-or change Omega's approval decision. The parent Omega thread remains the sole
-interactive actor and decides whether to read, edit, test, or delegate further.
+agent. `probe-rs` defaults to `read_only`: its allowed outcomes are repository
+maps, symbol traces, candidate files, dependency/impact summaries, and
+evidence references. It must not edit files, execute arbitrary shell commands,
+independently delegate, or change Omega's approval decision. The parent Omega
+thread remains the sole interactive actor and decides whether to read, edit,
+test, or delegate further.
+
+For targeted patches, probes, and automated trial edits, Omega may explicitly
+request `read_write` mode. Only that mode registers `apply_patch` and `write`;
+the mode remains workspace-bounded and every change is returned as evidence.
+The read-only and read-write tool contract is specified in
+[the `probe-rs` specification](rust-probe-spec.md#minimal-toolset).
 
 This boundary uses Probe's policy-selected tool-menu and evidence strengths,
 while avoiding a confusing duplicate of Omega's mature editor/terminal loop.
@@ -198,16 +205,18 @@ loop or a named external ACP executor and rejects silent substitution. It does
 not currently expose an arbitrary in-process service call as a delegate.
 Therefore the clean integration path is:
 
-1. Build a Probe analysis executable that speaks ACP, registers as an external
-   executor (for example `probe-analysis-acp`), and reports a coherent executor
+1. Build the `probe-rs` ACP executable, register it as an external executor
+   (for example `probe-analysis-acp`), and report a coherent executor
    disclosure. Do not overload the generic `probe` CLI chat protocol.
 2. Let Omega's existing external-subagent creation/resume/transcript flow own
    lifecycle, cancellation, UI events, attribution, and parent/child linkage.
    The parent calls `delegate` with the installed executor name and receives a
    normal subagent result/transcript.
-3. Pass a bounded assignment through ACP metadata or a versioned request
-   envelope: workspace/worktree identity, repository revision, task,
-   allowlisted paths, evidence/output budget, deadline, and analysis mode.
+3. Pass a bounded assignment through the versioned ACP metadata envelope:
+   workspace/worktree identity, repository revision, task, allowlisted paths,
+   evidence/output budget, deadline, mode, requested model, and reasoning
+   effort. Omega validates the model (for example `gpt-5.6-terra`), reasoning
+   level (`low`, `medium`, `high`, or `extreme`), and mode before delegation.
    No bearer credentials or broad sandbox grant belongs in it.
 4. Return a versioned structured result plus concise Markdown: file and symbol
    identifiers, source ranges, relationship edges, confidence, commands or
@@ -222,18 +231,20 @@ envelope/result schema, but should not precede a working external boundary.
 
 ### Phased capability plan
 
-**Phase 0 — baseline and contract.** Define `RepositoryAnalysisRequest` and
-`RepositoryAnalysisResult`; implement four read-only operations using current
-Probe primitives: `repo_map`, `text_search`, `trace_symbol`, and
-`impact_summary`. Use ripgrep plus bounded reads, return exact evidence, and
-benchmark against Omega `grep`, definition, and references. Reject paths
-outside the assigned worktree and cap bytes, files, tool calls, and wall time.
+**Phase 0 — Rust baseline and contract.** Define `RepositoryAnalysisRequest`
+and `RepositoryAnalysisResult`; build `probe-rs` with default `read_only` mode
+and the `grep`/`rg`, `file_tree`/`find_paths`, and `read_range` tools. Use Rust
+`regex` and `ignore` crates or ripgrep primitives plus bounded reads, return
+exact evidence, and benchmark against Omega `grep`, definition, and
+references. Reject paths outside the assigned worktree and cap bytes, files,
+tool calls, and wall time.
 
-**Phase 1 — structural adapter.** Add language adapters that emit a normalized
-symbol graph from parsers/LSP, with source ranges and an explicit `partial`
-status for unsupported languages. Consume Omega's project/LSP facts where the
-ACP boundary can safely carry them; otherwise rebuild only enough read-only
-state in Probe. Do not claim semantic completeness from text search.
+**Phase 1 — tree-sitter structural adapter.** Add tree-sitter language
+adapters that emit `outline` and `symbol_map` results with source ranges and an
+explicit `partial` status for unsupported languages. Consume Omega's
+project/LSP facts where the ACP boundary can safely carry them; otherwise
+rebuild only enough read-only state in Probe. Do not claim semantic completeness
+from text search.
 
 **Phase 2 — incremental repository index.** Add a content-addressed index
 keyed by repository identity, commit/worktree generation, file digest, parser
@@ -248,11 +259,13 @@ measured index hit makes it cheaper than normal tools. Keep small direct
 lookups in Omega. Capture elapsed time, files scanned, cache/index hit rate,
 result precision judged by follow-up opens, and model/tool-round reduction.
 
-**Phase 4 — trusted remote operation.** Only after the read-only version is
-reliable, use Probe's assignment, runner identity, redacted receipt, and
-scoped-auth mechanisms for remote execution. Preserve Omega's local permission
-and review authority; remote completion is evidence, not acceptance or a
-writeback authorization.
+**Phase 4 — controlled mutation and remote operation.** Only after the
+read-only version is reliable, enable the `read_write` variant with
+`apply_patch` and `write` for targeted, evidence-producing edits. Then use
+Probe's assignment, runner identity, redacted receipt, and scoped-auth
+mechanisms for remote execution. Preserve Omega's local permission and review
+authority; remote completion is evidence, not acceptance or a writeback
+authorization.
 
 ### Acceptance criteria
 
@@ -267,10 +280,12 @@ writeback authorization.
 
 ## Recommendation
 
-Use Omega Agent as the primary interactive coding surface. Evolve Probe into a
-portable, bounded execution and analysis runtime whose initial Omega role is a
-read-only ACP specialist. Preserve its assignment/evidence/remote-host design,
-but do not duplicate Omega's editor, terminal, persistence, or permission
-systems. Introduce structural and indexed retrieval only behind an observable,
-revision-safe analysis contract and only after the lexical and LSP baselines
-show a clear gap.
+Use Omega Agent as the primary interactive coding surface. Rebuild Probe as
+`probe-rs`: a portable, bounded Rust execution and analysis runtime whose
+initial Omega role is a read-only ACP specialist. Preserve its
+assignment/evidence/remote-host design, but do not duplicate Omega's editor,
+terminal, persistence, or permission systems. Parameterize delegation by
+model, reasoning effort, and mode; introduce controlled writes only through
+the explicit read-write variant. Introduce structural and indexed retrieval
+only behind an observable, revision-safe analysis contract and only after the
+lexical and LSP baselines show a clear gap.
