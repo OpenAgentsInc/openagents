@@ -3,27 +3,27 @@
   "product": "omega",
   "productName": "Omega",
   "channel": "alpha",
-  "version": "0.2.0-rc26",
-  "releaseTag": "v0.2.0-rc26",
-  "releasedAt": "2026-07-29T20:57:30Z",
-  "releaseNotes": "Fixes Sarah voice sessions requiring a manual reconnect after transient transport drops.",
-  "releasePageUrl": "https://github.com/OpenAgentsInc/omega/releases/tag/v0.2.0-rc26",
+  "version": "0.2.0-rc28",
+  "releaseTag": "v0.2.0-rc28",
+  "releasedAt": "2026-07-30T16:48:54Z",
+  "releaseNotes": "First notarized Omega release candidate: Developer ID signed, notarized by Apple, and stapled on both the app and the disk image.",
+  "releasePageUrl": "https://github.com/OpenAgentsInc/omega/releases/tag/v0.2.0-rc28",
   "sourceRepository": "https://github.com/OpenAgentsInc/omega",
-  "sourceRevision": "7142e3404ae59af22a7a975615935e807c3e1288",
+  "sourceRevision": "c9c27d91711cd4b3269b3e607f794d89833438c0",
   "signingPolicy": { "alg": "ed25519", "keyId": "2dbe811d19f67528" },
   "artifacts": [
     {
       "target": "darwin-arm64",
       "format": "dmg",
-      "name": "Omega-v0.2.0-rc26-macos-arm64.dmg",
-      "url": "https://github.com/OpenAgentsInc/omega/releases/download/v0.2.0-rc26/Omega-v0.2.0-rc26-macos-arm64.dmg",
-      "sha256": "e39cd7b822fc143f03e1d54d68a36ec0fe150bc33334d2bb50573342de3fcee3",
-      "byteLength": 193720537,
+      "name": "Omega-v0.2.0-rc28-macos-arm64.dmg",
+      "url": "https://github.com/OpenAgentsInc/omega/releases/download/v0.2.0-rc28/Omega-v0.2.0-rc28-macos-arm64.dmg",
+      "sha256": "3fa5baba97cc74ccfed16ed42957831ebff6a3b4df306a76f02335ce8e0b505e",
+      "byteLength": 194176678,
       "minimumOs": "11.0",
       "apple": {
         "teamId": "HQWSG26L43",
         "signingIdentity": "Developer ID Application: OpenAgents, Inc. (HQWSG26L43)",
-        "notarization": "not_notarized"
+        "notarization": "notarized"
       }
     }
   ],
