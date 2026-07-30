@@ -365,7 +365,7 @@ test("monitoring prerequisite preserves only the channel ref and redacted status
   );
 });
 
-test("API prerequisite preserves the exact four service refs and success only", () => {
+test("API prerequisite preserves the exact five service refs and success only", () => {
   const receipt = {
     schemaVersion: "openagents.livekit_prerequisite_receipt.v1",
     receiptRef: "livekit-prerequisite-receipt-ref://sha256/api-enablement",
@@ -376,6 +376,7 @@ test("API prerequisite preserves the exact four service refs and success only", 
       "gcp-service-ref://openagentsgemini/billingbudgets.googleapis.com",
       "gcp-service-ref://openagentsgemini/networkmanagement.googleapis.com",
       "gcp-service-ref://openagentsgemini/iamcredentials.googleapis.com",
+      "gcp-service-ref://openagentsgemini/sts.googleapis.com",
     ],
     status: "succeeded",
     observedAt: "2026-07-30T21:46:34.000Z",

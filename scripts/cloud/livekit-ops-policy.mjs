@@ -827,6 +827,7 @@ export function validatePrerequisiteReceipt(value) {
       "gcp-service-ref://openagentsgemini/billingbudgets.googleapis.com",
       "gcp-service-ref://openagentsgemini/networkmanagement.googleapis.com",
       "gcp-service-ref://openagentsgemini/iamcredentials.googleapis.com",
+      "gcp-service-ref://openagentsgemini/sts.googleapis.com",
     ];
     assert(
       Array.isArray(value.resourceRefs) &&
