@@ -604,6 +604,12 @@ The owner's cost approval permits required infrastructure, but budget alerts
 remain mandatory. A forecast or quota alarm disables new admissions before it
 causes an unbounded or partially admitted cohort.
 
+The Terraform budget filter covers resources that preserve the
+`service=livekit` label. Kubernetes-created load balancers and network egress
+can be unlabelled, so that alert is a guardrail rather than complete cost
+evidence. Daily billing-export reconciliation must include those unlabelled
+charges before the cost gate can pass.
+
 Project a measured cost observation only after billing export and the active
 alerts have been inspected:
 

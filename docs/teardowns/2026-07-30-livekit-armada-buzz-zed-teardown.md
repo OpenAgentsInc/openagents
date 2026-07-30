@@ -2483,7 +2483,10 @@ infrastructure needed for EP263 on 2026-07-30, overriding the repository
 profile's default spend ceiling for this program. That grant does not turn
 credits into zero cost or remove budget alerts, cost reconciliation, redaction,
 rollback, hard application caps, or canary deletion. Google and OpenAI costs
-remain separate ledgers. [source] [inferred]
+remain separate ledgers. The label-filtered Google budget is only a guardrail:
+Kubernetes-created load balancers and network egress can arrive unlabelled, so
+the cost gate must reconcile the complete billing export rather than treating
+the budget filter as invoice evidence. [source] [inferred]
 
 The acceptance parser refuses to round source evidence up. Connectivity needs
 packaged Omega plus observed direct UDP, TCP fallback, and TURN/TLS. Load,
