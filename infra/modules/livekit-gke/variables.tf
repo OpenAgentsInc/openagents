@@ -53,11 +53,6 @@ variable "service_range_name" {
   type        = string
 }
 
-variable "master_ipv4_cidr_block" {
-  description = "Unique /28 used by the GKE control plane."
-  type        = string
-}
-
 variable "master_authorized_networks" {
   description = "CIDRs allowed to reach the public GKE control-plane endpoint."
   type = list(object({

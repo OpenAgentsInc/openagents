@@ -38,7 +38,6 @@ module "platform" {
   pod_range_name     = module.network.pod_range_name
   service_range_name = module.network.service_range_name
 
-  master_ipv4_cidr_block     = "172.16.0.0/28"
   master_authorized_networks = var.master_authorized_networks
   deletion_protection        = true
 

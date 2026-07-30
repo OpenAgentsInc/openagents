@@ -172,6 +172,14 @@ const gkeInfrastructure = await readFile(
   resolve(repositoryRoot, "infra/modules/livekit-gke/main.tf"),
   "utf8",
 );
+const gkeVariables = await readFile(
+  resolve(repositoryRoot, "infra/modules/livekit-gke/variables.tf"),
+  "utf8",
+);
+const productionInfrastructure = await readFile(
+  resolve(repositoryRoot, "infra/livekit-production/main.tf"),
+  "utf8",
+);
 const observabilityInfrastructure = await readFile(
   resolve(repositoryRoot, "infra/modules/livekit-observability/main.tf"),
   "utf8",
@@ -265,6 +273,42 @@ requireExcludes(
   "canary Caddy image command override without executable",
 );
 requireExcludes(canaryStartup, 'cat >"$runtime_dir/livekit.yaml"', "synthesized canary configuration");
+for (const infrastructureSource of [
+  gkeInfrastructure,
+  gkeVariables,
+  productionInfrastructure,
+]) {
+  requireExcludes(
+    infrastructureSource,
+    "master_ipv4_cidr_block",
+    "legacy GKE control-plane CIDR incompatible with Private Service Connect",
+  );
+}
+requireIncludes(
+  gkeInfrastructure,
+  "private_cluster_config {\n    enable_private_endpoint = false\n    enable_private_nodes    = false\n  }",
+  "public GKE control-plane endpoint and nodes",
+);
+requireIncludes(
+  gkeInfrastructure,
+  "master_authorized_networks_config {",
+  "GKE control-plane authorized networks",
+);
+requireIncludes(
+  gkeVariables,
+  "length(var.master_authorized_networks) > 0",
+  "non-empty GKE control-plane authorized networks",
+);
+requireIncludes(
+  gkeVariables,
+  'network.cidr_block != "0.0.0.0/0"',
+  "bounded GKE control-plane authorized networks",
+);
+requireIncludes(
+  productionInfrastructure,
+  "master_authorized_networks = var.master_authorized_networks",
+  "production GKE control-plane authorized networks projection",
+);
 requireIncludes(
   gkeInfrastructure,
   'name        = "${var.cluster_name}-redis-allow-sfu"',
