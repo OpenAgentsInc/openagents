@@ -227,17 +227,22 @@ const serverAudioFrame = (
 };
 
 describe("managed Sarah mobile voice client", () => {
-  test("bootstraps the canonical Sarah thread and renders brokered command activity", async () => {
+  test("bootstraps the canonical Sarah thread and executes a paired desktop command", async () => {
     const sockets: FixtureSocket[] = [];
     const vault = makeVault();
     let identity: VoiceIdentity | null = null;
     const canonicalThreadRef = "thread.sarah.canonical-owner";
+    const executed: Array<unknown> = [];
     const client = new SarahVoiceClient({
       baseUrl: "https://openagents.com",
       publicKeyHex,
       signer,
       vault: vault.vault,
       commandCenter: true,
+      executeCommand: async (command) => {
+        executed.push(command);
+        return { ok: true, summary: "Submitted to the paired Omega desktop agent thread." };
+      },
       fetch: (async (input, init) => {
         const url = String(input);
         if (url.endsWith("/api/omega/auth/session")) {
@@ -275,37 +280,51 @@ describe("managed Sarah mobile voice client", () => {
 
     await client.start();
     const socket = sockets[0]!;
+    socket.open();
     socket.serverControl(
       control(identity!, 0, {
-        _tag: "tool_activity",
-        activityRef: "call-1",
-        toolName: "codex_workers_start",
-        phase: "started",
-        summary: "Dispatching one coding worker.",
+        _tag: "tool_proposal",
+        proposalRef: "proposal-1",
+        proposalDigest: "f".repeat(64),
+        command: {
+          _tag: "start_agent_thread",
+          message: "Run the desktop editor test.",
+          presentation: "background",
+        },
+        confirmationRequired: false,
+        expiresAtMs: 70_000,
       }),
     );
     socket.serverControl(
       control(identity!, 1, {
-        _tag: "tool_activity",
-        activityRef: "call-1",
-        toolName: "codex_workers_start",
-        phase: "succeeded",
-        summary: "Started one coding worker.",
+        _tag: "tool_execute",
+        proposalRef: "proposal-1",
+        proposalDigest: "f".repeat(64),
+        command: {
+          _tag: "start_agent_thread",
+          message: "Run the desktop editor test.",
+          presentation: "background",
+        },
       }),
     );
     await tick();
-    expect(client.snapshot().transcripts).toEqual([
+    expect(executed).toEqual([
       {
-        utteranceRef: "call-1",
-        source: "tool",
-        text: "codex_workers_start — succeeded: Started one coding worker.",
-        final: true,
+        _tag: "start_agent_thread",
+        message: "Run the desktop editor test.",
+        presentation: "background",
       },
     ]);
+    expect(JSON.parse(String(socket.sent.at(-1)))).toMatchObject({
+      _tag: "tool_outcome",
+      proposalRef: "proposal-1",
+      ok: true,
+      summary: "Submitted to the paired Omega desktop agent thread.",
+    });
     await client.end();
   });
 
-  test("authenticates with protected NIP-98 identity and refuses mobile device tools", async () => {
+  test("authenticates with protected NIP-98 identity and refuses unavailable device tools", async () => {
     const sockets: FixtureSocket[] = [];
     const vault = makeVault();
     let sessionIdentity: VoiceIdentity | null = null;
@@ -453,7 +472,7 @@ describe("managed Sarah mobile voice client", () => {
     await tick();
     expect(client.snapshot()).toMatchObject({
       phase: "error",
-      message: "Mobile Sarah voice refused an unsupported device action.",
+      message: "The paired Omega desktop command lane is unavailable.",
     });
     expect(socket.closes.at(-1)).toEqual({
       code: 1011,

@@ -19,12 +19,9 @@ import type {
 } from '@openagentsinc/khala-sync-server'
 import type { RuntimeServerWebSocket } from '@openagentsinc/runtime-platform'
 import { createHash, randomUUID } from 'node:crypto'
-import { Effect } from 'effect'
 import WebSocket, { type RawData } from 'ws'
 
 import type { BackgroundTasks } from './execution-context'
-import type { SarahAgentTool } from '../sarah-agent-runtime'
-
 export type SarahRealtimeBridgeData = {
   readonly _tag: 'sarah_realtime'
   readonly session: SarahVoiceSessionRecord
@@ -34,7 +31,6 @@ export type SarahRealtimeBridgeData = {
   readonly store: SarahRealtimeVoiceStore
   readonly closeStore: () => Promise<void>
   readonly tasks: BackgroundTasks
-  readonly commandTools: ReadonlyArray<SarahAgentTool>
   upstream: WebSocket | undefined
   expectedControlSequence: number
   expectedAudioSequence: number
@@ -45,9 +41,7 @@ export type SarahRealtimeBridgeData = {
   cleanupStarted: boolean
   currentOutputItemRef: string | undefined
   readonly proposals: Map<string, ToolProposal>
-  readonly executedCommandCalls: Set<string>
   meteringTail: Promise<void>
-  toolExecutionTail: Promise<void>
   expiryTimer: ReturnType<typeof setTimeout> | undefined
   providerHeartbeatTimer: ReturnType<typeof setInterval> | undefined
 }
@@ -153,7 +147,7 @@ const cleanup = (ws: Socket, closeReason: string): Promise<void> => {
     clearInterval(ws.data.providerHeartbeatTimer)
   }
   safeProviderClose(ws.data.upstream)
-  return Promise.all([ws.data.meteringTail, ws.data.toolExecutionTail])
+  return ws.data.meteringTail
     .then(() =>
       ws.data.store.settle({
         sessionRef: ws.data.session.sessionRef,
@@ -347,7 +341,6 @@ Keep claims honest. Distinguish observed, submitted, in progress, blocked, and c
 
 export const sessionUpdateForSarahClientProfile = (
   clientProfile: SarahVoiceSessionRecord['clientProfile'],
-  commandTools: ReadonlyArray<SarahAgentTool> = [],
 ) => ({
   type: 'session.update' as const,
   session: {
@@ -358,7 +351,7 @@ export const sessionUpdateForSarahClientProfile = (
         ? 'You are Sarah in the OpenAgents mobile app. Have a voice conversation only. ' +
           'Do not request, perform, or claim any editor, file, URL, shell, Git, payment, or device action.'
         : clientProfile === 'mobile_command_center'
-          ? `${SARAH_OMEGA_INSTRUCTIONS}\n\nThis is the mobile command center. Use only the server-owned command tools supplied here. You have no direct editor, file, shell, Git, URL, payment, account, or device authority. Delegate repository work through codex_workers_start, inspect real receipts, and describe Full Auto controls as pending until Desktop applies them.`
+          ? `${SARAH_OMEGA_INSTRUCTIONS}\n\nThis is the mobile command center paired to the owner's Omega desktop. Delegate desktop work only through start_agent_thread; the phone signs and submits that command to the paired desktop. Never use or mention Agent Computer, Codex Pylon, Claude Pylon, worker capacity, or cloud coding. A successful submission means the desktop accepted the command for delivery, not that the work is complete.`
         : SARAH_OMEGA_INSTRUCTIONS,
     output_modalities: ['audio'] as const,
     audio: {
@@ -381,7 +374,8 @@ export const sessionUpdateForSarahClientProfile = (
       clientProfile === 'mobile_voice_only'
         ? []
         : clientProfile === 'mobile_command_center'
-          ? commandTools.map(tool => ({ type: 'function' as const, ...tool.definition }))
+          ? toolDefinitions
+              .filter(tool => tool.name === 'start_agent_thread')
           : toolDefinitions,
     tool_choice: clientProfile === 'mobile_voice_only' ? 'none' : 'auto',
     max_output_tokens: 'inf' as const,
@@ -476,95 +470,11 @@ const sendToolOutput = (
   upstream.send(JSON.stringify({ type: 'response.create' }))
 }
 
-const executeMobileCommandTool = async (
-  ws: Socket,
-  item: Readonly<Record<string, unknown>>,
-): Promise<void> => {
-  const callRef = typeof item.call_id === 'string' ? item.call_id : ''
-  const name = typeof item.name === 'string' ? item.name : ''
-  if (callRef !== '' && ws.data.executedCommandCalls.has(callRef)) {
-    sendToolOutput(ws.data.upstream, callRef, {
-      ok: false,
-      error: 'duplicate_tool_call',
-    })
-    return
-  }
-  const tool = ws.data.commandTools.find(candidate => candidate.definition.name === name)
-  if (callRef === '' || tool === undefined) {
-    sendToolOutput(ws.data.upstream, callRef, { ok: false, error: 'tool_not_allowed' })
-    sendControl(ws, {
-      _tag: 'tool_activity',
-      activityRef: callRef === '' ? `tool_${randomUUID()}` : callRef,
-      toolName: name === '' ? 'unknown' : name,
-      phase: 'failed',
-      summary: 'Sarah refused an unavailable mobile command.',
-    })
-    return
-  }
-  ws.data.executedCommandCalls.add(callRef)
-  sendControl(ws, {
-    _tag: 'tool_activity',
-    activityRef: callRef,
-    toolName: name,
-    phase: 'started',
-    summary: `Running ${tool.definition.description}`.slice(0, 2_048),
-  })
-  try {
-    const args =
-      typeof item.arguments === 'string' ? JSON.parse(item.arguments) : {}
-    const result = await Effect.runPromise(
-      tool.execute(args, {
-        id: callRef,
-        type: 'function',
-        function: {
-          name,
-          arguments: typeof item.arguments === 'string' ? item.arguments : '{}',
-        },
-      }),
-    )
-    sendToolOutput(ws.data.upstream, callRef, {
-      ok: result.isError !== true,
-      authorityAllowed: result.authorityAllowed,
-      authorityReceiptRef: result.authorityReceiptRef,
-      resultRefs: result.resultRefs,
-      summary: result.summary,
-      content: result.content,
-    })
-    sendControl(ws, {
-      _tag: 'tool_activity',
-      activityRef: callRef,
-      toolName: name,
-      phase: result.isError === true ? 'failed' : 'succeeded',
-      summary: result.summary.slice(0, 2_048),
-    })
-  } catch {
-    sendToolOutput(ws.data.upstream, callRef, {
-      ok: false,
-      error: 'tool_execution_failed',
-    })
-    sendControl(ws, {
-      _tag: 'tool_activity',
-      activityRef: callRef,
-      toolName: name,
-      phase: 'failed',
-      summary: 'The brokered mobile command failed safely.',
-    })
-  }
-}
-
 const handleToolCall = (
   ws: Socket,
   item: Readonly<Record<string, unknown>>,
 ): void => {
   const callRef = typeof item.call_id === 'string' ? item.call_id : ''
-  if (ws.data.session.clientProfile === 'mobile_command_center') {
-    const execution = ws.data.toolExecutionTail
-      .then(() => executeMobileCommandTool(ws, item))
-      .then(() => undefined)
-    ws.data.toolExecutionTail = execution
-    ws.data.tasks.add(execution)
-    return
-  }
   if (ws.data.session.clientProfile === 'mobile_voice_only') {
     sendToolOutput(ws.data.upstream, callRef, {
       ok: false,
@@ -612,7 +522,9 @@ const handleToolCall = (
       command,
       expiresAtMs,
     )
-    const confirmationRequired = sarahEditorCommandRequiresConfirmation(command)
+    const confirmationRequired =
+      ws.data.session.clientProfile !== 'mobile_command_center' &&
+      sarahEditorCommandRequiresConfirmation(command)
     const proposal: ToolProposal = {
       proposalRef,
       proposalDigest: digest,
@@ -1040,10 +952,7 @@ export const makeSarahRealtimeWebSocketHandlers = () => ({
     upstream.on('open', () => {
       upstream.send(
         JSON.stringify(
-          sessionUpdateForSarahClientProfile(
-            ws.data.session.clientProfile,
-            ws.data.commandTools,
-          ),
+          sessionUpdateForSarahClientProfile(ws.data.session.clientProfile),
         ),
       )
       ws.data.providerHeartbeatTimer = setInterval(() => {
@@ -1177,12 +1086,10 @@ export const makeSarahRealtimeBridgeData = (
     store: SarahRealtimeVoiceStore
     closeStore: () => Promise<void>
     tasks: BackgroundTasks
-    commandTools?: ReadonlyArray<SarahAgentTool>
   }>,
 ): SarahRealtimeBridgeData => ({
   _tag: 'sarah_realtime',
   ...input,
-  commandTools: input.commandTools ?? [],
   upstream: undefined,
   expectedControlSequence: 0,
   expectedAudioSequence: 0,
@@ -1193,9 +1100,7 @@ export const makeSarahRealtimeBridgeData = (
   cleanupStarted: false,
   currentOutputItemRef: undefined,
   proposals: new Map(),
-  executedCommandCalls: new Set(),
   meteringTail: Promise.resolve(),
-  toolExecutionTail: Promise.resolve(),
   expiryTimer: undefined,
   providerHeartbeatTimer: undefined,
 })

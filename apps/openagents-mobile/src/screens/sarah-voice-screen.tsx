@@ -26,6 +26,7 @@ import { SARAH_BETA_VOICE_BASE_URL } from "../sarah-voice/environment";
 import { base64ToBytes, bytesToBase64 } from "../sarah-voice/protocol";
 import { makeSarahVoiceSessionVault } from "../sarah-voice/session-vault";
 import { makeSarahVoiceTranscriptStore } from "../sarah-voice/transcript-store";
+import { submitOmegaAgentThreadMessage } from "../workroom/omega-command-lane";
 import {
   expoIssue31DeviceKeyPlatform,
   openExpoIssue31DeviceIdentity,
@@ -94,7 +95,13 @@ const phaseTone = (snapshot: SarahVoiceSnapshot): "success" | "info" | "danger" 
         ? "info"
         : "neutral";
 
-export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) => {
+export const SarahVoiceScreen = ({
+  desktopThreadRef,
+  onClose,
+}: {
+  readonly desktopThreadRef: string | null;
+  readonly onClose: () => void;
+}) => {
   const [snapshot, setSnapshot] = useState<SarahVoiceSnapshot>({
     phase: "idle",
     muted: false,
@@ -224,6 +231,18 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
             SecureStore as unknown as NativeSessionSecureStore,
           ),
           commandCenter: true,
+          executeCommand: async (command) => {
+            if (command._tag !== "start_agent_thread" || desktopThreadRef === null) {
+              return {
+                ok: false,
+                summary: "No paired Omega desktop agent thread is available for this command.",
+              };
+            }
+            return submitOmegaAgentThreadMessage({
+              threadRef: desktopThreadRef,
+              text: command.message,
+            });
+          },
           persistFinalTranscript: transcriptStore.append,
           onTranscriptPersistenceError: () =>
             setLocalError("This conversation could not be saved locally. End voice and retry."),
@@ -240,7 +259,6 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
             return;
           }
           stopCapture();
-          clearDrainTimer();
           try {
             RealtimeAudio.start(24_000);
             RealtimeAudio.enqueue(bytesToBase64(pcm));
@@ -288,7 +306,7 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
       identityRef.current?.close();
       identityRef.current = null;
     };
-  }, [clearDrainTimer, stopCapture]);
+  }, [clearDrainTimer, desktopThreadRef, stopCapture]);
 
   useEffect(() => {
     if (snapshot.phase === "speaking") {

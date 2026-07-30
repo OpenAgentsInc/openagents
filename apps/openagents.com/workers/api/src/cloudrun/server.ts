@@ -19,7 +19,7 @@ import { createHash } from 'node:crypto'
  * Run with `node --import tsx ./src/cloudrun/server.ts`.
  */
 
-import worker, { makeSarahVoiceRuntimeTools } from '../index'
+import worker from '../index'
 import { defaultMakeKhalaSyncSqlClient } from '../khala-sync-push-routes'
 import {
   SARAH_REALTIME_VOICE_SESSION_HEADER,
@@ -324,16 +324,6 @@ const main = async (): Promise<void> => {
               store,
               closeStore: client.end,
               tasks,
-              commandTools:
-                session.clientProfile === 'mobile_command_center'
-                  ? makeSarahVoiceRuntimeTools({
-                      env: runtime.env,
-                      sql: client.sql,
-                      ownerUserId: session.ownerUserId,
-                      threadRef: session.threadRef,
-                      turnId: session.sessionRef,
-                    })
-                  : [],
             }),
           })
           if (upgraded) return undefined

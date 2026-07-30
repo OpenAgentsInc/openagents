@@ -23,6 +23,7 @@ import { colors, fontAssets } from "./ui/theme";
  */
 export const App = () => {
   const [surface, setSurface] = useState<"omega" | "sarah_voice">("omega");
+  const [desktopThreadRef, setDesktopThreadRef] = useState<string | null>(null);
   const [loaded, error] = useFonts(fontAssets);
   if (!loaded && error === null) {
     return <View style={{ flex: 1, backgroundColor: colors.background }} />;
@@ -30,9 +31,17 @@ export const App = () => {
   return (
     <SafeAreaProvider>
       {surface === "sarah_voice" ? (
-        <SarahVoiceScreen onClose={() => setSurface("omega")} />
+        <SarahVoiceScreen
+          desktopThreadRef={desktopThreadRef}
+          onClose={() => setSurface("omega")}
+        />
       ) : (
-        <OmegaHomeScreen onSarahVoicePressed={() => setSurface("sarah_voice")} />
+        <OmegaHomeScreen
+          onSarahVoicePressed={(threadRef) => {
+            setDesktopThreadRef(threadRef);
+            setSurface("sarah_voice");
+          }}
+        />
       )}
     </SafeAreaProvider>
   );

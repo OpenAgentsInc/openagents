@@ -12,7 +12,6 @@ import {
   PostgresPortablePhaseOperationStore,
   PostgresPortableTargetPylonBindingStore,
   RUNTIME_START_TURN_MUTATOR_NAME,
-  type SyncSql,
   makeFleetRunAuthorityRepository,
   makeFleetSteeringExchangeRepository,
   makeSarahRealtimeVoiceStore,
@@ -7289,37 +7288,6 @@ const probeSarahAgentComputerCapacity = async (
     }
   }
   return capacity
-}
-
-const MOBILE_SARAH_COMMAND_TOOLS = new Set([
-  'codex_workers_start',
-  'codex_workers_status',
-  'full_auto_status',
-  'full_auto_control',
-])
-
-export const makeSarahVoiceRuntimeTools = (input: Readonly<{
-  env: OpenAgentsWorkerEnv
-  sql: SyncSql
-  ownerUserId: string
-  threadRef: string
-  turnId: string
-}>) => {
-  const khalaCatalog = makeKhalaMcpCatalog<OpenAgentsWorkerEnv>({
-    agentStore: environment => makeAgentRegistrationStoreForEnv(environment),
-    pylonStore: environment => makePylonApiStoreForEnv(environment),
-  })
-  return makeSarahRuntimeTools({
-    dispatchCloudCoding: makeSarahCloudCodingDispatch({ sql: input.sql }),
-    env: input.env,
-    khalaCatalog,
-    ownerUserId: input.ownerUserId,
-    probeCloudCodingCapacity: () =>
-      probeSarahAgentComputerCapacity(input.env, input.ownerUserId),
-    sql: input.sql,
-    threadRef: input.threadRef,
-    turnId: input.turnId,
-  }).filter(tool => MOBILE_SARAH_COMMAND_TOOLS.has(tool.definition.name))
 }
 
 const releaseCloudCodingAdmissionReservation = async (

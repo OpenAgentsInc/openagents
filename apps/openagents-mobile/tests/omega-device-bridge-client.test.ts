@@ -118,7 +118,7 @@ describe("openagents.omega.device_bridge.v1 mobile client", () => {
     });
   });
 
-  test("uses the required cached, announcement, QR, and manual dial order", () => {
+  test("prioritizes an explicit pairing before cached and discovered endpoints", () => {
     const ladder = omegaBridgeDialLadder({
       stored: {
         schemaVersion: 1,
@@ -151,8 +151,68 @@ describe("openagents.omega.device_bridge.v1 mobile client", () => {
       defaultPort: 4_317,
     });
 
-    expect(ladder.map((entry) => entry.source)).toEqual(["cached", "announcement", "qr", "manual"]);
+    expect(ladder.map((entry) => entry.source)).toEqual(["qr", "cached", "announcement", "manual"]);
     expect(ladder.map((entry) => entry.url)).not.toContain("wss://expired.tail:4317");
+  });
+
+  test("uses a fresh pairing secret instead of replaying an older grant", async () => {
+    const socket = new FixtureSocket();
+    const store = createMemoryOmegaDeviceBridgeStore({
+      schemaVersion: 1,
+      endpoint: { url: "wss://cached.tail:4317", hostPublicKeyHex },
+      grant: {
+        grantRef: "grant-old",
+        hostPublicKeyHex,
+        devicePublicKeyHex,
+        expiresAt: 50_000,
+      },
+      cursor: { generation: 7, sequence: 4 },
+    });
+    const client = createOmegaDeviceBridgeClient({
+      identity: identityFixture(),
+      store,
+      createSocket: () => socket,
+      now: () => 10_000,
+      randomNonce: () => "nonce-repair",
+      defaultPort: 4_317,
+    });
+
+    const connecting = Effect.runPromise(
+      client.connect({
+        announcements: [],
+        pairing: {
+          endpoint: "wss://pair.tail:4317",
+          hostPublicKeyHex,
+          pairingSecret: "fresh-one-use-secret",
+          expiresAt: 20_000,
+        },
+        manualMagicDns: null,
+      }),
+    );
+    socket.emit("open");
+    await tick();
+
+    expect(socket.sent[0]).toMatchObject({
+      grantRef: null,
+      pairingSecret: "fresh-one-use-secret",
+    });
+    socket.emit(
+      "message",
+      JSON.stringify({
+        type: "grant",
+        admitted: true,
+        grantRef: "grant-new",
+        hostPublicKeyHex,
+        devicePublicKeyHex,
+        expiresAt: 60_000,
+        generation: 8,
+      }),
+    );
+    await connecting;
+    expect(store.inspect()?.grant).toMatchObject({
+      grantRef: "grant-new",
+      generation: 8,
+    });
   });
 
   test("proves the device key, resumes, admits a grant, and keeps the mirror ephemeral", async () => {

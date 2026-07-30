@@ -382,6 +382,7 @@ export const OmegaDeviceBridgeStoredStateSchema = Schema.Struct({
       hostPublicKeyHex: Hex32,
       devicePublicKeyHex: Hex32,
       expiresAt: NonNegativeInteger,
+      generation: Schema.optional(NonNegativeInteger),
     }),
   ),
   cursor: Schema.NullOr(OmegaDeviceBridgeCursorSchema),
@@ -463,6 +464,16 @@ export const omegaBridgeDialLadder = (
   }>,
 ): ReadonlyArray<OmegaBridgeEndpoint> => {
   const candidates: Array<OmegaBridgeEndpoint> = [];
+  if (input.pairing !== null && input.pairing.expiresAt > input.now) {
+    candidates.push({
+      url: input.pairing.endpoint,
+      source: "qr",
+      hostPublicKeyHex: input.pairing.hostPublicKeyHex,
+      generation: 0,
+      expiresAt: input.pairing.expiresAt,
+      pairingSecret: input.pairing.pairingSecret,
+    });
+  }
   if (input.stored?.endpoint !== null && input.stored?.endpoint !== undefined) {
     candidates.push({
       ...input.stored.endpoint,
@@ -490,16 +501,6 @@ export const omegaBridgeDialLadder = (
         pairingSecret: null,
       });
     }
-  }
-  if (input.pairing !== null && input.pairing.expiresAt > input.now) {
-    candidates.push({
-      url: input.pairing.endpoint,
-      source: "qr",
-      hostPublicKeyHex: input.pairing.hostPublicKeyHex,
-      generation: 0,
-      expiresAt: input.pairing.expiresAt,
-      pairingSecret: input.pairing.pairingSecret,
-    });
   }
   const magicDns = input.manualMagicDns?.trim();
   if (magicDns !== undefined && magicDns !== "") {
@@ -747,6 +748,7 @@ export const createOmegaDeviceBridgeClient = (
 
           const sendHello = (resumeCursor: OmegaDeviceBridgeCursor | null): void => {
             const grant =
+              endpoint.pairingSecret === null &&
               currentStored?.grant?.hostPublicKeyHex === endpoint.hostPublicKeyHex &&
               currentStored.grant.devicePublicKeyHex === input.identity.publicKeyHex &&
               currentStored.grant.expiresAt > input.now()
@@ -869,6 +871,7 @@ export const createOmegaDeviceBridgeClient = (
                   hostPublicKeyHex: frame.hostPublicKeyHex,
                   devicePublicKeyHex: frame.devicePublicKeyHex,
                   expiresAt: frame.expiresAt,
+                  generation: frame.generation,
                 },
                 cursor: currentStored?.cursor ?? null,
               };

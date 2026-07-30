@@ -7,6 +7,7 @@ import {
   decodeSarahVoiceNostrChallengeResponse,
   decodeSarahVoiceServerControl,
   decodeSarahVoiceSessionResponse,
+  type SarahEditorCommand,
   type SarahVoiceServerControl,
   type VoiceIdentity,
 } from "@openagentsinc/audio-contract";
@@ -59,6 +60,14 @@ type ClientControlPayload =
   | Readonly<{
       _tag: "close";
       reason: "user_stop" | "app_backgrounded" | "transport_error";
+    }>
+  | Readonly<{
+      _tag: "tool_outcome";
+      proposalRef: string;
+      proposalDigest: string;
+      outcomeRef: string;
+      ok: boolean;
+      summary: string;
     }>
   | Readonly<{ _tag: "heartbeat" }>;
 
@@ -119,6 +128,9 @@ export type SarahVoiceClientDependencies = Readonly<{
   clearTimeout: (handle: ReturnType<typeof setTimeout>) => void;
   recoverDeviceLink?: SarahVoiceDeviceLinkRecovery;
   commandCenter?: boolean;
+  executeCommand?: (
+    command: SarahEditorCommand,
+  ) => Promise<Readonly<{ ok: boolean; summary: string }>>;
   persistFinalTranscript?: (
     record: Readonly<{
       recordedAt: string;
@@ -1047,9 +1059,39 @@ export class SarahVoiceClient {
         return;
       }
       case "tool_proposal":
+        if (control.confirmationRequired) {
+          this.shouldRun = false;
+          this.transportFailure("This desktop action requires confirmation in Omega.", false);
+        }
+        return;
       case "tool_execute":
-        this.shouldRun = false;
-        this.transportFailure("Mobile Sarah voice refused an unsupported device action.", false);
+        if (this.dependencies.executeCommand === undefined) {
+          this.shouldRun = false;
+          this.transportFailure("The paired Omega desktop command lane is unavailable.", false);
+          return;
+        }
+        void this.dependencies
+          .executeCommand(control.command)
+          .then((result) => {
+            this.sendControl({
+              _tag: "tool_outcome",
+              proposalRef: control.proposalRef,
+              proposalDigest: control.proposalDigest,
+              outcomeRef: `omega_mobile_${this.dependencies.randomUuid()}`,
+              ok: result.ok,
+              summary: result.summary,
+            });
+          })
+          .catch(() => {
+            this.sendControl({
+              _tag: "tool_outcome",
+              proposalRef: control.proposalRef,
+              proposalDigest: control.proposalDigest,
+              outcomeRef: `omega_mobile_${this.dependencies.randomUuid()}`,
+              ok: false,
+              summary: "The paired Omega desktop command could not be submitted.",
+            });
+          });
         return;
       case "error":
         if (control.code === "credit_limit") {

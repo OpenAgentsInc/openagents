@@ -25,6 +25,7 @@ import {
   type OmegaMirrorThread,
 } from "../workroom/omega-device-bridge-client";
 import { openExpoIssue31DeviceIdentity } from "../workroom/issue31-device-key-vault";
+import { submitOmegaAgentThreadMessage } from "../workroom/omega-command-lane";
 import { productSafeNotice, startOmegaBridgeSession } from "./omega-bridge-session";
 import { watchOmegaPairingLinks } from "./omega-pairing-link";
 import {
@@ -170,13 +171,14 @@ export const OmegaHomeScreen = ({
 }: {
   readonly bridge?: OmegaDeviceBridgeClient;
   readonly scanPairing?: () => Promise<OmegaBridgePairingBootstrap | null>;
-  readonly onSarahVoicePressed?: () => void;
+  readonly onSarahVoicePressed?: (threadRef: string | null) => void;
 }) => {
   const [client, setClient] = useState<OmegaDeviceBridgeClient | null>(bridge ?? null);
   const [state, setState] = useState<OmegaDeviceBridgeState>(bridge?.state() ?? offlineState);
   const [selectedThreadRef, setSelectedThreadRef] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const [commandNotice, setCommandNotice] = useState<string | null>(null);
   const [observedAt, setObservedAt] = useState(Date.now());
   const [manualUpdateBusy, setManualUpdateBusy] = useState(false);
   const [manualUpdateError, setManualUpdateError] = useState(false);
@@ -315,11 +317,8 @@ export const OmegaHomeScreen = ({
     activity: activityOf(state),
     selectedThread,
     threadDraft: draft,
-    // The device bridge is read-only by law (OMEGA-DELTA-0154). Sending from
-    // the phone travels the signed relay command lane, which this surface does
-    // not open yet, so it says so rather than offering a control that cannot work.
-    commandLaneAvailable: false,
-    commandNotice: null,
+    commandLaneAvailable: state.paired,
+    commandNotice,
     update,
     now: observedAt,
   };
@@ -332,9 +331,32 @@ export const OmegaHomeScreen = ({
         onActivitySelected: setSelectedThreadRef,
         onThreadClosed: () => setSelectedThreadRef(null),
         onDraftChanged: setDraft,
-        onEnqueuePressed: () => undefined,
-        onSteerPressed: () => undefined,
-        onSarahVoicePressed,
+        onEnqueuePressed: () => {
+          if (selectedThread === null) return;
+          void submitOmegaAgentThreadMessage({
+            threadRef: selectedThread.threadRef,
+            text: draft,
+            disposition: "enqueue",
+          }).then((result) => {
+            setCommandNotice(result.summary);
+            if (result.ok) setDraft("");
+          }).catch(() => setCommandNotice("The Omega desktop command could not be submitted."));
+        },
+        onSteerPressed: () => {
+          if (selectedThread === null) return;
+          void submitOmegaAgentThreadMessage({
+            threadRef: selectedThread.threadRef,
+            text: draft,
+            disposition: "steer",
+          }).then((result) => {
+            setCommandNotice(result.summary);
+            if (result.ok) setDraft("");
+          }).catch(() => setCommandNotice("The Omega desktop command could not be submitted."));
+        },
+        onSarahVoicePressed: () =>
+          onSarahVoicePressed(
+            selectedThreadRef ?? state.mirror?.threads[0]?.threadRef ?? null,
+          ),
         onUpdatePressed,
         onUpdateCopied,
       }}

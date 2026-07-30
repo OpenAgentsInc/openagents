@@ -311,24 +311,14 @@ describe('Sarah Realtime bridge metering', () => {
     expect(update.session.max_output_tokens).toBe('inf')
   })
 
-  test('advertises only injected server tools to the mobile command center', () => {
-    const update = sessionUpdateForSarahClientProfile('mobile_command_center', [
-      {
-        definition: {
-          name: 'full_auto_status',
-          description: 'Inspect the existing Full Auto run.',
-          parameters: { type: 'object', additionalProperties: false },
-        },
-        execute: () => {
-          throw new Error('not executed by projection test')
-        },
-      },
-    ])
+  test('advertises only paired desktop delegation to the mobile command center', () => {
+    const update = sessionUpdateForSarahClientProfile('mobile_command_center')
     expect(update.session.tools.map(tool => tool.name)).toEqual([
-      'full_auto_status',
+      'start_agent_thread',
     ])
     expect(update.session.tool_choice).toBe('auto')
     expect(update.session.instructions).toContain('mobile command center')
-    expect(update.session.instructions).toContain('no direct editor')
+    expect(update.session.instructions).toContain('paired to the owner\'s Omega desktop')
+    expect(update.session.instructions).toContain('Never use or mention Agent Computer')
   })
 })
