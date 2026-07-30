@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "openagents.livekit_ops_receipt.v1",
+  "receiptRef": "livekit-ops-receipt-ref://sha256/00cf7b5d0e1b4c77bfad9785aa2db20825f83e4e2ccb631bf661c9f300ee27fe",
+  "issueRef": "github-issue-ref://OpenAgentsInc/openagents/9284",
+  "stage": "canary",
+  "phase": "deployment",
+  "sourceBaseRevision": "c10a0ba1c13edb2e599140ea29b054b893ffbccf",
+  "deployedRevision": "1a664cc06725266bda4c3828ef5b7b42bdda7b98",
+  "bundleDigest": "sha256:3ad3638a7884fb37a6c159f114a9b2e50a255be43e28b0f8a061dd990936fac2",
+  "configurationDigest": "sha256:b0bf0f0cb801943b789906c615d3277629a8f73bd6d06b52a60aaf2c86eb8a7d",
+  "resourceRefs": [
+    "gcp-resource-ref://livekit/canary",
+    "gcp-preflight-ref://livekit/canary/secrets-dns-certificate-empty-vm"
+  ],
+  "startedAt": "2026-07-30T22:51:25.220Z",
+  "settledAt": "2026-07-30T22:51:25.220Z",
+  "outcome": "passed",
+  "evidenceTier": "live_observed",
+  "liveProof": true,
+  "resultDigest": "sha256:00cf7b5d0e1b4c77bfad9785aa2db20825f83e4e2ccb631bf661c9f300ee27fe",
+  "limitations": [
+    "This operation receipt proves only the scoped deployment lifecycle step.",
+    "Connectivity, load, drills, scans, cost, and rollback acceptance require separate receipts."
+  ]
+}
