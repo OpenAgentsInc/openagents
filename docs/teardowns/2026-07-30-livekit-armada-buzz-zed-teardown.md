@@ -4,14 +4,16 @@ Commit-pinned, read-only synthesis of the LiveKit and realtime-media paths in
 the existing [Armada](./2026-07-30-armada-teardown.md),
 [Buzz](./2026-07-21-buzz-teardown.md), and
 [Zed](./2026-07-18-zed-teardown.md) teardowns, extended with source tours of
-LiveKit's JavaScript Agents framework and Rust SDKs and a migration analysis
-for Sarah's current OpenAI Realtime voice path. It also audits LiveKit's
-self-hosting server, deployment generator, and Helm chart and turns them into
-a concrete Google Cloud deployment and Sarah cutover plan. This review traced
-the source trees more narrowly than the original product audits. It did not
-install dependencies, run the products, provision Google Cloud resources,
-connect to LiveKit or OpenAI, join a Buzz huddle, or exercise media devices.
-[limitation]
+LiveKit's JavaScript Agents framework, Rust SDKs, and React Native SDK and a
+migration analysis for Sarah's current OpenAI Realtime voice path. It also
+audits LiveKit's self-hosting server, deployment generator, and Helm chart and
+turns them into a concrete Google Cloud deployment and Sarah cutover plan. The
+final section defines how one durable Sarah identity can serve editor and
+mobile 1:1 conversations and join Armada-shaped community rooms with
+Buzz-shaped agent identity and participation. This review traced the source
+trees more narrowly than the original product audits. It did not install
+dependencies, run the products, provision Google Cloud resources, connect to
+LiveKit or OpenAI, join a Buzz huddle, or exercise media devices. [limitation]
 
 ## Summary
 
@@ -49,6 +51,14 @@ These systems do not present variations of the same integration:
   direct UDP/TCP media reachability, a separate TURN endpoint, Redis, and
   separately operated Agents workers. Cloud Run remains the admission,
   command, accounting, and settlement authority; Cloudflare remains DNS-only.
+- **A Buzz-like Sarah in Armada-like rooms is feasible, but it is not a
+  transport clone.** Sarah should have one stable `principal.sarah` and Nostr
+  public key while each 1:1 conversation or community room gets a separate
+  presence lease, Agents job, OpenAI Realtime session, context partition, and
+  usage ledger. Stock LiveKit `RoomIO` links one participant at a time, so the
+  first group implementation should give Sarah an explicit, server-validated
+  speaking floor rather than mix ambient speech from an entire room into one
+  unattributed model stream.
 
 The direct answer to the Sarah question is therefore **yes**:
 [LiveKit's OpenAI Realtime plugin](https://docs.livekit.io/agents/models/realtime/plugins/openai/)
@@ -107,6 +117,8 @@ control tradeoff of owning the media transport instead of adopting an SFU.
 | Zed | [`zed-industries/zed@f032f4d4`](https://github.com/zed-industries/zed/tree/f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4) | Native LiveKit media plane below Zed collaboration control | GPL-3.0-or-later by default; marked components may differ |
 | LiveKit Agents JS | [`livekit/agents-js@d5d8d048`](https://github.com/livekit/agents-js/tree/d5d8d0487d2e99f49a1b56ab6b9e82b481491955) | Server-side agent worker, room I/O, voice orchestration, and OpenAI Realtime provider plugin | Apache-2.0 framework; bundled LiveKit model artifacts have separate terms |
 | LiveKit Rust SDKs | [`livekit/rust-sdks@00258d1e`](https://github.com/livekit/rust-sdks/tree/00258d1e52e563327f3ed75807ea03a189a5c2d2) | Native LiveKit room, media, data, E2EE, token, and server APIs; no agent runtime | Apache-2.0; preserve applicable bundled third-party notices |
+| LiveKit React Native SDK | [`livekit/client-sdk-react-native@8ae9b600`](https://github.com/livekit/client-sdk-react-native/tree/8ae9b600f44b7f03b3dfe3d983006826ed9745f8) | React Native room, WebRTC, track, and mobile audio-session client used by a future OpenAgents Mobile room path | Apache-2.0 |
+| LiveKit React Native Expo plugin | [`livekit/client-sdk-react-native-expo-plugin@5bd7ed7d`](https://github.com/livekit/client-sdk-react-native-expo-plugin/tree/5bd7ed7d86cba726fecb21491a370a302b00e380) | Native Expo prebuild configuration for the React Native SDK and WebRTC dependency | Apache-2.0 |
 | LiveKit Server | [`livekit/livekit@ced94b86`](https://github.com/livekit/livekit/tree/ced94b8645829263a1a9ef6c8101936897252d6b) | Self-hosted signaling, SFU, embedded TURN, distributed routing, configuration, and metrics | Apache-2.0 |
 | LiveKit Deploy | [`livekit/deploy@1a7b369f`](https://github.com/livekit/deploy/tree/1a7b369f94e3a2f890d366fceeb4f273bf9fb3f6) | Production Docker Compose, Caddy, TLS, TURN, Redis, and VM startup-file generator | Apache-2.0 |
 | LiveKit Helm | [`livekit/livekit-helm@8f0ad080`](https://github.com/livekit/livekit-helm/tree/8f0ad0809c2be8cbed375a6f8bef10625e5e8a2b) | Kubernetes deployment, GKE ingress/backend, TURN load balancer, HPA, and secret-mount templates | Apache-2.0 |
@@ -826,13 +838,50 @@ for capture, echo cancellation, resampling, playback, reconnection, and
 latency. Distribution must also preserve applicable third-party notices.
 [source] [limitation]
 
-### 8.4 How the two SDKs compose
+### 8.4 React Native SDK and Expo plugin: mobile room substrate
+
+[`livekit/client-sdk-react-native`](https://github.com/livekit/client-sdk-react-native/tree/8ae9b600f44b7f03b3dfe3d983006826ed9745f8)
+wraps LiveKit's JavaScript room model and native WebRTC implementation for
+React Native. It depends on `@livekit/react-native-webrtc` and
+`livekit-client`; applications register the WebRTC globals, start and stop a
+native `AudioSession`, and join with a short-lived URL/token through
+`LiveKitRoom` or the lower-level room API. It is a room/media client, not an
+Agents worker or OpenAI client. [source]
+
+The separate
+[`client-sdk-react-native-expo-plugin`](https://github.com/livekit/client-sdk-react-native-expo-plugin/tree/5bd7ed7d86cba726fecb21491a370a302b00e380)
+configures the native modules for Expo projects and pairs with the React
+Native WebRTC config plugin. It supports development/store builds produced
+through Expo prebuild; it does not make WebRTC available inside Expo Go.
+Android can select communication versus media audio behavior. iOS has an
+optional iOS 18+ multitasking-camera path, but Sarah's first mobile scope
+needs microphone audio only and should not enable background camera or
+recording. [source] [inferred]
+
+This maps cleanly to OpenAgents Mobile's existing native-build posture, but
+not to its current recorder. For `livekit_room_v1`, one component must own the
+mobile audio session, microphone capture, playback, route changes, and
+interruption. The existing native Realtime recorder/player and `expo-audio`
+must not capture simultaneously with LiveKit. App backgrounding, Bluetooth,
+phone-call interruption, permission revocation, and over-the-air compatibility
+need packaged-device tests because adding or changing these native modules
+requires a new native build. [source] [inferred]
+
+Primary sources:
+
+- [`README.md`](https://github.com/livekit/client-sdk-react-native/blob/8ae9b600f44b7f03b3dfe3d983006826ed9745f8/README.md)
+- [`src/components/LiveKitRoom.tsx`](https://github.com/livekit/client-sdk-react-native/blob/8ae9b600f44b7f03b3dfe3d983006826ed9745f8/src/components/LiveKitRoom.tsx)
+- [`src/audio`](https://github.com/livekit/client-sdk-react-native/tree/8ae9b600f44b7f03b3dfe3d983006826ed9745f8/src/audio)
+- [Expo plugin setup](https://github.com/livekit/client-sdk-react-native-expo-plugin/blob/5bd7ed7d86cba726fecb21491a370a302b00e380/README.md)
+
+### 8.5 How the SDKs compose
 
 The repositories cover different sides of one design:
 
 | Layer | SDK | Responsibility |
 | --- | --- | --- |
 | Omega client | `livekit/rust-sdks` | Join room, capture/play media, publish/subscribe tracks, optional data and E2EE |
+| OpenAgents Mobile | `client-sdk-react-native` plus Expo plugin | Join room, own the native mobile audio session, capture/play media, publish/subscribe tracks |
 | LiveKit service | LiveKit Server or Cloud | Room signaling, SFU routing, participant grants, worker dispatch |
 | Sarah worker | `livekit/agents-js` | Join as server participant, manage room I/O and agent lifecycle |
 | Model bridge | `@livekit/agents-plugin-openai` | Open server-side OpenAI Realtime WebSocket, translate audio/events/tools |
@@ -1692,24 +1741,692 @@ Standard for production, not on Cloud Run or Autopilot**. Neither answer
 proves that LiveKit should replace the simpler direct path for Sarah's current
 one-user desktop contract. [source] [inferred]
 
-## 15. Central finding
+## 15. One Sarah across editor, mobile, and community rooms
+
+### 15.1 Decision
+
+OpenAgents can build the requested product:
+
+- Sarah remains available from the editor input bar for an owner-private 1:1
+  conversation.
+- The same owner-private Sarah conversation can be reached from OpenAgents
+  Mobile, subject to an explicit device handoff law.
+- Sarah can be invited into, or made resident in, a community channel call and
+  speak to its members.
+- The surrounding product can use Armada's community/category/channel/thread,
+  role, moderation, direct-message, and persistent-call shape.
+- Sarah can present one durable Nostr identity and publish signed room messages
+  like a Buzz agent.
+- OpenAI Realtime can continue to supply Sarah's voice and model behavior using
+  the owner-supplied OpenAI credit, while self-hosted LiveKit, Agents workers,
+  Redis, load balancing, TURN, and observability consume eligible Google Cloud
+  credit.
+
+The important qualification is that **“the same Sarah” means one canonical
+identity and persona, not one shared model socket or one shared context**.
+Each active private conversation or community room must have a separate
+presence lease, Agents job, OpenAI Realtime session, context partition, usage
+ledger, and settlement lifecycle. One global Realtime session would leak
+private/editor context into rooms, merge unrelated room histories, make
+speaker-level safety attribution ambiguous, and turn a provider disconnect
+into a system-wide failure. [inferred]
+
+The closest safe composition is:
+
+```text
+Armada product shell
+  community → category → channel → text/thread + optional live call
+                                        │
+                                        ▼
+Buzz identity and participation laws
+  Nostr members + Sarah npub + signed messages + room-scoped agent context
+                                        │
+                                        ▼
+LiveKit media and agent orchestration
+  room + participant grants + explicit dispatch + Sarah audio participant
+                                        │
+                                        ▼
+OpenAI Realtime intelligence
+  one server-side provider session for this exact room execution
+```
+
+This is a behavioral composition, not a code merge. Armada is the room and
+call reference. Buzz is the identity, membership, and agent participation
+reference. LiveKit replaces Buzz's custom voice transport and client-local
+speech synthesis. Existing OpenAgents contracts remain the authority,
+accounting, and privacy reference. [source] [inferred]
+
+### 15.2 What Buzz actually does when an agent “joins a huddle”
+
+Buzz does not place an LLM directly on a mixed audio stream. Its path is a
+text-mediated voice loop:
+
+1. A huddle is represented by a random, ephemeral NIP-29 channel. Buzz posts
+   voice-mode guidelines and adds selected agent public keys as bot members.
+2. Every human desktop captures its own microphone and performs local VAD and
+   speech-to-text.
+3. The client publishes the utterance as a signed Nostr kind `9` group message
+   and `p`-tags the current agent public keys.
+4. The ACP harness receives mention events, applies its author gate, and queues
+   one prompt at a time for that channel. Multiple workers may share one bot
+   identity, but the same channel is not processed by two workers
+   concurrently.
+5. The agent publishes a signed text response from its bot key.
+6. Each human client subscribes live-only to admitted bot authors and performs
+   local TTS. Fail-closed bot membership and event-id deduplication determine
+   which messages are spoken.
+
+Buzz's “shared identity” pattern is directly useful: users see one bot key
+while executions can run concurrently across different channels. Its strict
+per-channel session and queue are also the right isolation unit for Sarah.
+Its voice prompt—short spoken answers, no markdown, do nothing when not
+addressed—is a useful room-mode behavior profile. [source]
+
+The parts to copy are:
+
+- a stable agent public identity;
+- explicit bot membership in a room;
+- one isolated agent context and serialized response queue per channel;
+- owner/allowlist/anyone author policies;
+- fail-closed rules for deciding whose output may be spoken;
+- signed text messages that remain useful when no voice client is present.
+
+The parts not to copy are client-local speech recognition, client-local agent
+TTS, or the custom Opus WebSocket relay. With LiveKit and OpenAI Realtime,
+clients publish audio to a room, Sarah's server-side participant consumes the
+current speaker's audio, and Sarah publishes one audio track that all room
+members can hear. A signed Sarah text message can accompany the answer, but it
+is a projection of the answer rather than the audio transport. [inferred]
+
+### 15.3 Product surfaces and room model
+
+Armada's strongest lesson is that the call is a capability of a durable
+conversation surface, not the top-level product. OpenAgents should preserve
+this hierarchy:
+
+```text
+OpenAgents community
+├─ category
+│  ├─ channel
+│  │  ├─ ordered text messages
+│  │  ├─ threads
+│  │  └─ optional live room epoch
+│  └─ channel
+├─ members, roles, moderation, invites, bans
+└─ direct conversations
+
+Owner workspace
+└─ canonical owner-private Sarah conversation
+   ├─ editor surface
+   └─ mobile surface
+```
+
+NIP-29 group state or another admitted OpenAgents community service owns
+community membership, roles, and moderation. LiveKit owns only the live room
+epoch and media participants. A channel persists when nobody is in its call;
+a LiveKit room may be created on first join and deleted after the last
+participant or Sarah lease leaves. Threads and text history do not become
+LiveKit data. [source] [inferred]
+
+| Surface | Conversation authority | LiveKit shape | Sarah policy | Context allowed |
+| --- | --- | --- | --- | --- |
+| Editor 1:1 | Canonical owner-private Sarah thread plus exact workspace binding | Generation-unique, maximum-two-participant room | Explicit start from the existing voice button; Sarah explicitly dispatched | Owner-private thread plus the exact admitted workspace context and current command laws |
+| Mobile 1:1 | The same canonical owner-private Sarah thread, not a separate mobile persona | Generation-unique, maximum-two-participant room | Explicit start; initially require handoff from another active private voice session | Owner-private thread plus the current bounded mobile capability profile |
+| Community channel | Exact community, channel, membership revision, and live room epoch | Multi-participant channel room with Sarah as a named participant | Invite, mention/on-demand, or admin-enabled resident policy | Public/group-shared channel context only |
+| Direct conversation with another user | Exact DM participants and conversation | Small private room | Explicitly invite Sarah; every participant sees that Sarah is present | Only facts admitted to that DM |
+
+The editor voice button should keep its current user contract: the owner starts
+voice from the input bar, sees capture/playback/retention truth, can mute or
+end immediately, and receives proposals rather than hidden effects. The
+implementation changes beneath that button from `custom_wss_v1` media to the
+LiveKit media adapter only for the admitted cohort. It should not open a
+second Sarah identity or a disconnected chat history. [source] [inferred]
+
+OpenAgents Mobile already uses Expo prebuilds and a native Realtime audio
+module. The pinned React Native SDK requires `@livekit/react-native`,
+`@livekit/react-native-webrtc`, and `livekit-client`, calls
+`registerGlobals()`, and expects an explicit `AudioSession` lifecycle. The
+pinned Expo plugin adds the native configuration and itself requires the
+React Native WebRTC config plugin. Therefore the mobile implementation is a
+native development/store build change, not an Expo Go or over-the-air
+JavaScript-only change. The existing `expo-audio` capture path must be
+disabled while a LiveKit room owns the microphone; two native recorders or
+two audio-session owners would make interruption and echo behavior
+unreliable. [source] [inferred]
+
+### 15.4 One identity, many isolated presences
+
+Sarah already has the stable OpenAgents principal `principal.sarah`, a public
+Nostr key, Secret Manager custody, and a sign-only interface. Preserve that
+identity, but distinguish every layer that surrounds it:
+
+| Layer | Example | Meaning | Not proof of |
+| --- | --- | --- | --- |
+| OpenAgents principal | `principal.sarah` | Durable product and authority identity | A live process or room membership |
+| Nostr identity | Sarah public key / `npub` | Durable signed social identity | Possession of a LiveKit participant token |
+| Conversation | Owner-private ref or NIP-29 group/channel ref | Context and disclosure partition | A currently active call |
+| Live room epoch | Opaque channel-call generation | One bounded media-room lifetime | Durable channel state |
+| LiveKit participant | Generation-scoped opaque identity, display name `Sarah` | Media connection in one room | Command or workspace authority |
+| Agent dispatch | Named agent plus opaque dispatch ref | Requested worker job | Sarah's public identity |
+| Sarah presence lease | Server-owned binding of all the above | Admitted Sarah execution in one room | Model truth or settlement |
+| Provider session | One OpenAI Realtime WebSocket | Model/audio execution for that lease | Durable memory or a resumable billable generation |
+
+A versioned, server-owned presence record should bind at least:
+
+```text
+sarahPresenceLeaseV1
+  principalRef = principal.sarah
+  sarahPubkey
+  conversationRef
+  roomEpochRef
+  livekitRoomRef
+  livekitParticipantRef
+  dispatchRef
+  sessionRef
+  generation
+  scope = owner_private | community_shared | direct_shared
+  capabilityProfileRef
+  membershipRevision
+  admissionDigest
+  issuedAt / expiresAt
+```
+
+Only Cloud Run authority may issue this lease after membership, disclosure,
+admission, entitlement, and hold checks. The LiveKit worker receives opaque
+references, resolves the canonical record server-side, and rejects
+client-provided metadata that disagrees. LiveKit attributes and the display
+name “Sarah” are presentation data. [inferred]
+
+Nostr supplies the durable social proof. On join, an OpenAgents-specific,
+public-safe signed presence attestation can bind Sarah's public key to the
+opaque room epoch and participant reference, and Sarah's room-visible text
+responses can be signed kind `9` messages in the NIP-29 group. This proves
+which Nostr identity authored the attestation or text. It does **not**
+cryptographically sign each audio frame, prove who held the LiveKit bearer
+token, or grant command authority. Participants should treat the server-owned
+lease plus the Sarah signature as the display binding and should show an
+unverified state when either side is missing or contested. [inferred]
+
+Do not mount Sarah's raw Nostr secret into every autoscaled Agents pod. The
+current sealed in-process signer is appropriate for a bounded Cloud Run
+authority, but multiplying it across GKE workers broadens key exposure.
+Introduce a narrow Google-authenticated signing service or remote-signing
+boundary that accepts an exact event template and returns a signature, never
+an `nsec` or private bytes. Agents pods use Workload Identity and an allowlist
+of public-safe Sarah event kinds/templates. Key rotation changes the canonical
+Sarah identity record and invalidates future leases without pretending old
+signatures changed. [source] [inferred]
+
+### 15.5 Google Cloud and provider topology
+
+The self-hosted room product composes the control and media systems described
+earlier:
+
+```text
+Editor / OpenAgents Mobile / room clients
+        │  admission, membership, typed control
+        ▼
+Cloud Run OpenAgents authority ───── owner-private + NIP-29 services
+        │  short-lived room grants          │
+        │  explicit Sarah dispatch          └─ Sarah signed text/presence
+        ▼
+GKE Standard regional cluster
+  ├─ public-node LiveKit SFU pods ─ Redis HA
+  ├─ TURN/TLS and direct UDP/TCP media
+  └─ Sarah Agents worker pool
+          │  one job per active Sarah room
+          ▼
+OpenAI Realtime WebSocket
+  gpt-realtime-2.1 + admitted voice/instructions/tools
+```
+
+Google Cloud is the production infrastructure authority. Cloudflare remains
+DNS-only. GKE Standard runs the host-networked SFU and Agents workers; the
+regional load-balancing, public addresses, certificates, Redis, metrics,
+logs, node pools, and TURN traffic are Google Cloud resources. Cloud Run keeps
+the application authority and receives exact typed provider-usage records
+from the worker. OpenAI remains a separate provider reached over server-side
+WebSockets. Google Cloud credit cannot pay an OpenAI invoice and OpenAI credit
+cannot pay Google infrastructure. [inferred]
+
+Every active room with Sarah consumes:
+
+- one LiveKit participant and published agent audio track;
+- one Agents job and a bounded share of a worker process;
+- one OpenAI Realtime connection and its accumulated conversation;
+- ingress/egress and, for restricted clients, potentially TURN relay
+  bandwidth;
+- Redis/control-plane, metrics, and load-balancer capacity;
+- one independent hold, usage stream, and settlement record.
+
+Text-only rooms do not need any of those media resources. A channel should
+not keep an idle Sarah provider socket alive merely because Sarah remains a
+visible bot member. Durable Nostr membership and an offline presence state
+are cheap; a live media participant and Realtime session are not. [inferred]
+
+### 15.6 Dispatch and lifecycle
+
+Use [explicit agent dispatch](https://docs.livekit.io/agents/server/agent-dispatch/)
+for Sarah. Register a named worker such as `sarah-room-v1`; keep the
+participant display name `Sarah` separate from that internal dispatch name.
+The authority, not a client, dispatches the agent with opaque lease and
+generation references after the room admission commits. [source]
+
+Self-hosting does not provide every LiveKit Cloud agent-management behavior.
+In particular, the Agent Dispatch API documents its restart policy field as
+Cloud-only. OpenAgents must supervise workers with Kubernetes and must not
+interpret a restarted job as permission to reopen an old provider generation.
+A crashed worker settles or marks the old execution indeterminate according
+to the existing contract; a replacement Sarah execution requires a new
+generation and, when billable, a new admission. [source] [inferred]
+
+Recommended room policies:
+
+- **Private 1:1:** dispatch immediately after the admitted owner joins.
+- **Invite:** a member with the exact channel permission invites Sarah for the
+  current live room epoch.
+- **On demand:** a member uses `@Sarah` or “Talk to Sarah”; the authority
+  dispatches Sarah if absent and grants that member a bounded speaking turn.
+- **Resident:** an owner/admin explicitly enables Sarah for the channel. Sarah
+  may keep room membership while humans are active, but the provider session
+  still closes after a short, disclosed idle period.
+- **Removal:** kick, ban, membership revision, room expiry, admin stop, or
+  exhausted hold revokes the presence lease, disables media, closes the
+  provider connection, settles the execution, then cleans up the participant
+  and room.
+
+The default for community rooms should be **on demand**, not ambient resident
+listening. Resident Sarah is an opt-in later capability with a clear room
+indicator, idle timeout, concurrency cap, and admin kill switch. [inferred]
+
+### 15.7 Multi-participant speech: the non-obvious implementation constraint
+
+The pinned `agents-js` source and official
+[AgentSession documentation](https://docs.livekit.io/agents/logic/sessions/)
+show that `RoomIO` links the agent to one participant. By default it chooses
+the first participant; it can instead receive a participant identity or
+switch with `setParticipant`. Its input holds one participant audio stream
+and selects that participant's microphone track. It is not an automatic
+room-wide mixer. [source]
+
+LiveKit's official
+[turn-handling guide](https://docs.livekit.io/agents/logic/turns/)
+describes the relevant multi-participant pattern: a room RPC identifies the
+caller, the server calls `session.room_io.set_participant(caller_identity)`,
+and manual turn control determines when the agent listens and responds.
+[source]
+
+| Group-audio design | Benefit | Failure or cost | Disposition |
+| --- | --- | --- | --- |
+| Explicit speaking floor | Exact current speaker; clear consent; bounded interruption; maps to LiveKit's documented participant switching | Members must press/tap or invoke Sarah before speaking | **First implementation** |
+| Automatic active-speaker switching | More conversational | Crosstalk can switch inputs mid-utterance; spoofed/noisy speakers; harder safety and transcript attribution | Later controlled experiment |
+| Custom room mixer into one model input | Sarah hears everyone continuously | OpenAI receives one unattributed stream; overlapping speech is destructive; per-user safety identity and consent are unresolved | Reject for initial product |
+| One Realtime session per human publisher | Per-person audio and safety identity | Multiple Sarah minds, conflicting replies, fragmented shared context, sharply higher provider cost | Reject |
+
+The first community-room flow should be:
+
+1. An admitted member presses “Talk to Sarah,” invokes a signed room command,
+   or uses an authenticated LiveKit RPC.
+2. Cloud authority validates current membership, room epoch, Sarah presence,
+   rate limit, and floor availability and returns a short turn lease.
+3. The worker verifies the caller identity against the server-owned mapping,
+   switches `RoomIO` to that participant, and enables input for the turn.
+4. The UI shows exactly who Sarah is listening to. Other microphones may
+   continue serving the human call but are not forwarded into Sarah's model
+   input.
+5. End-of-turn detection commits the user's utterance. Sarah answers on one
+   published audio track heard by the room and optionally publishes a signed
+   room text projection.
+6. Only the floor holder may barge in during that response. A moderator can
+   mute or stop Sarah. After answer/timeout/cancel, the floor lease closes.
+
+The turn envelope must bind member, Nostr identity, LiveKit participant,
+conversation, room epoch, lease nonce, issuance, and expiry. Nostr text,
+transcription, participant attributes, active-speaker events, or the model's
+guess about a voice are not enough to change the linked participant.
+[inferred]
+
+OpenAI Realtime adds a separate safety issue. OpenAI's
+[Realtime guide](https://developers.openai.com/api/docs/guides/realtime)
+recommends a stable, privacy-preserving `OpenAI-Safety-Identifier` for each
+individual end user; when used, it must be sent on every Realtime session
+because it does not carry across sessions. A single provider WebSocket serving
+a group has one connection-scoped identifier while its audio may come from
+several people over time. The explicit floor preserves OpenAgents'
+speaker-level attribution, but it does not by itself prove that one OpenAI
+session can correctly represent multiple end users under current provider
+policy. Before a non-owner or public-room rollout, OpenAgents must obtain a
+documented provider answer or choose a reviewed architecture that satisfies
+the policy. Do not label the room owner, Sarah, or a generic “community” value
+as every speaker. Until resolved, keep the group pilot to authenticated,
+allowlisted members under OpenAgents abuse controls and treat public rooms as
+blocked. [source] [inferred]
+
+### 15.8 Context and memory partitioning
+
+One identity must not collapse the existing “two rooms” law. Owner-private
+Sarah and a community Sarah share persona and public identity, not private
+memory:
+
+| Context partition | Contents | May feed |
+| --- | --- | --- |
+| Public Sarah profile | Name, public description, public behavior and safety policy | Every Sarah execution |
+| Owner-private conversation | Owner's durable Sarah messages and admitted memory | Owner-private editor/mobile sessions only |
+| Workspace-private context | Exact admitted file/editor/task context | The bound editor session only |
+| Community-shared context | Current channel messages, member-visible room summary, public Sarah messages | That exact community/channel only |
+| Direct-shared context | Messages visible to every participant in that DM | That exact DM only |
+| Realtime-ephemeral context | Current provider events and audio for one presence lease | That exact lease only |
+
+Never reuse an OpenAI Realtime session across rooms. Never inject an
+owner-private transcript, mobile tool result, editor selection, path,
+credential, memory, or private thread summary into a community session.
+Moving a fact from private to group context is a deliberate publication by
+the owner, with an exact preview and destination—not retrieval convenience.
+Likewise, a community member telling Sarah to “remember this for Christopher”
+does not write owner-private memory. [inferred]
+
+Editor and mobile may expose the same durable owner-private conversation, but
+the first LiveKit release should allow only one active owner-private voice
+generation at a time. Moving from desktop to mobile is an explicit handoff:
+stop input, close the old provider session, record exact usage, settle the old
+generation, then issue the new device's admission. A text-visible handoff
+summary may be generated under the owner-private memory law; raw provider
+audio state and a live model socket do not migrate. Concurrent community-room
+presences are separate and cannot inherit this private thread. [inferred]
+
+### 15.9 Tools and authority by surface
+
+The same Sarah identity may operate under different closed capability
+profiles. Capability is determined by the admitted surface, not by Sarah's
+name or Nostr signature:
+
+| Surface | Permitted initial behavior | Explicitly forbidden |
+| --- | --- | --- |
+| Editor owner-private | Current typed proposals, visible confirmation, and local Omega effect validation against the exact workspace | Hidden edits, shell/git effects without existing authority, treating speech/transcript as confirmation |
+| Mobile owner-private | Current bounded server-owned mobile tools and exact owner-private records | Editor/file/shell/git credential authority not present in the mobile profile |
+| Community room | Converse, answer from public/group-shared context, publish signed room text, read public-safe room facts | Workspace access, owner-private memory, payments, releases, member administration, secrets, accepting work on the owner's behalf |
+| Direct shared room | Converse over facts visible to all participants | Owner-private tools or facts that other participants cannot see |
+
+If a room member asks Sarah to change code, spend funds, hire an agent, release
+work, moderate a member, or expose owner data, room Sarah may create only a
+public-safe request proposal. It can be delivered to the owner's private
+control surface for a fresh authority decision. No community member can
+confirm on the owner's behalf, and Sarah must not reveal whether a private
+proposal was accepted unless the owner deliberately publishes an outcome.
+[inferred]
+
+A signed Nostr request proves authorship, not permission. A LiveKit RPC proves
+control of an admitted connection for its bounded lifetime, not OpenAgents
+command authority. OpenAI function calls, speech recognition, Sarah's
+transcript, and model prose remain untrusted proposals. Existing typed
+digests, expiries, actor bindings, one-use confirmations, local effect checks,
+work receipts, acceptance, release, and settlement boundaries remain
+unchanged. [inferred]
+
+### 15.10 Privacy, disclosure, E2EE, and retention
+
+Every surface must say who can hear what:
+
+- A community room shows Sarah as a participant and shows whether Sarah is
+  absent, joining, listening to a named floor holder, speaking, idle, or
+  failed.
+- The first use and every material policy change disclose that audio selected
+  for Sarah travels through OpenAgents' self-hosted LiveKit infrastructure and
+  to OpenAI for inference.
+- Mute, stop-talking-to-Sarah, remove Sarah, and leave-room controls must work
+  immediately and visibly.
+- Server recording, egress, SIP, raw-audio object storage, and provider-audio
+  retention stay off in the first room release.
+- Raw media never enters Nostr, Redis values, application logs, traces, crash
+  reports, Cloud SQL, Sync, or the command/receipt stream.
+- Provider and LiveKit transcripts are display/proposal data. If a room wants
+  durable text, publish a visible signed room message under the room policy;
+  do not silently convert every person's speech into permanent Nostr history.
+
+If Armada-style frame E2EE is enabled, Sarah's worker must receive the room
+media key to understand speech. E2EE can hide frames from an untrusted SFU,
+but it does not hide them from the Sarah worker or OpenAI. Membership changes
+must rotate sender/media keys and revoke departed members. The product must
+not claim “only room members can hear” without naming Sarah/OpenAgents/OpenAI
+as admitted processors. [source] [inferred]
+
+For the group pilot, collect no server-side transcript by default. If a
+visible text projection is enabled, show which Sarah response it represents,
+sign it through the narrow Sarah signer, and keep the provider transcript
+separate from the authoritative room event. Human transcription publication
+should require a separately disclosed room policy and exact speaker consent.
+[inferred]
+
+### 15.11 Credit strategy and unit economics
+
+The approximately **$10,000 OpenAI credit** and **$50,000 remaining Google
+Cloud credit** are owner-supplied planning inputs. This review did not inspect
+billing accounts, balances, expiration, eligible SKUs, negotiated rates,
+taxes, or quota. Credits are not authority to spend and should not be modeled
+as zero-cost infrastructure. [limitation]
+
+OpenAI and Google consumption must be measured separately:
+
+```text
+openai_cost(room_execution) =
+  Σ response.done input text/audio/cached usage × current admitted rates
+  + Σ response.done output text/audio usage × current admitted rates
+  + input-transcription usage × current admitted transcription rate
+
+gcp_cost(room_execution) =
+  allocated SFU + Agents worker + Redis + load balancer + NAT/egress
+  + direct media egress + TURN-relayed bandwidth
+  + logging/metrics/storage actually retained
+```
+
+OpenAI's current
+[Realtime cost guide](https://developers.openai.com/api/docs/guides/realtime-costs)
+says user audio is approximately one token per 100 milliseconds and assistant
+audio approximately one token per 50 milliseconds. Each response is billed
+over its input and output, later turns repeatedly include accumulated
+conversation, prompt caching is best-effort, and enabled input transcription
+is separately billed. Exact `response.done` usage—not audio duration
+estimates—must drive Sarah's existing idempotent accounting. Current rates
+belong in a versioned server price catalog checked at admission, not in this
+teardown. [source]
+
+Google cost is workload-dependent. Direct WebRTC traffic and TURN-relayed
+traffic have materially different egress and network paths; resident idle
+rooms waste worker/provider capacity; and a GKE regional base, Redis HA, load
+balancers, observability, and spare failover nodes cost money before the first
+conversation. Capacity and billing dashboards must separate:
+
+- private 1:1 and community-room executions;
+- direct UDP, TCP fallback, and TURN/TLS minutes;
+- model input, model output, transcription, and cached tokens;
+- idle, listening, and speaking time;
+- SFU, worker, Redis, load-balancing, egress, logs, and metrics;
+- room, owner, member, model, provider generation, and cohort—using opaque
+  references rather than private transcript or identity data.
+
+A conservative authorization ladder, subject to owner approval and verified
+credit terms, is:
+
+| Gate | OpenAI cumulative authorization | Google Cloud cumulative authorization | Required proof |
+| --- | ---: | ---: | --- |
+| Offline/contracts | $0 | $0 beyond existing development | Fixtures, threat model, cost model, no network |
+| Connectivity canary | Up to $500 | Up to $2,500 | Packaged desktop/mobile audio, TURN, exact usage, forced cleanup |
+| Owner/invited pilot | Up to $2,000 | Up to $10,000 | Measured unit cost, quality, failure drills, privacy and authority gates |
+| Expansion | Separate approval | Separate approval | Forecast from observed p95 room-hour cost and verified remaining/expiring credits |
+
+This keeps at least $8,000 of the reported OpenAI pool and $40,000 of the
+reported Google pool outside the pilot until the architecture proves value.
+The exact amounts are proposed caps, not spend authority. Each environment
+also needs hard technical limits: maximum concurrent Sarah rooms, per-owner
+and per-community concurrency, short idle timeout, maximum room execution,
+maximum response length, hold exhaustion, daily provider budget, GCP budget
+alerts, and an emergency dispatch disable. OpenAI's
+[Realtime conversation guide](https://developers.openai.com/api/docs/guides/realtime-conversations)
+permits sessions up to 60 minutes; OpenAgents should choose a shorter admitted
+room-generation limit and rotate only through settlement plus new admission.
+[source]
+
+Do not use the credits to justify ambient Sarah in every empty channel.
+Credits are best spent first on the capabilities the direct gateway cannot
+prove: cross-device 1:1, invited group conversation, Nostr-linked presence,
+TURN connectivity, and room concurrency. The comparison metric is not “credit
+burned”; it is successful, settled Sarah room-hours and useful turns per
+dollar at the required latency, privacy, and authority level. [inferred]
+
+### 15.12 Implementation path
+
+The implementation should preserve the current direct gateway as a control
+cohort and rollback path:
+
+| Phase | Product slice | Main code/infrastructure change | Exit condition |
+| --- | --- | --- | --- |
+| 0 | Contracts only | Add room scope, presence lease, speaker-turn lease, dispatch, usage, and settlement fixtures | Two-room, authority, replay, and context-leak tests pass without network |
+| 1 | Editor owner 1:1 | Add `livekit_room_v1` behind the existing voice button; deploy one named Agents worker and GCE connectivity canary | Feature parity with `custom_wss_v1`, exact usage, one audio owner, safe rollback |
+| 2 | Mobile owner 1:1 | Add pinned React Native SDK/Expo plugins, native build, audio-session ownership, and explicit desktop/mobile handoff | iOS/Android packaged tests pass for foreground, interruption, Bluetooth, reconnect, and handoff |
+| 3 | Invited group | Multi-member room, Sarah invite/on-demand dispatch, explicit speaking floor, no privileged tools | Three-to-five authenticated members converse without attribution, privacy, context, or settlement failure |
+| 4 | Nostr-native room presence | Signed Sarah presence binding and signed room text; NIP-29 membership/role projection | Clients fail closed on missing/contested mapping and removed members lose media |
+| 5 | Armada-shaped product | Durable community/category/channel/thread UI, floating call owner, moderation, channel room lifecycle | Calls survive navigation while membership and text remain outside LiveKit |
+| 6 | Resident Sarah | Admin opt-in, idle suspension, capacity controls, visible state, kill switch | Unit economics, abuse, privacy, and failure SLOs hold |
+| 7 | Broader rooms | Only after OpenAI group safety-identifier policy is resolved | Provider approval/architecture plus public abuse and scale gates |
+
+Likely ownership:
+
+- `packages/sarah`: versioned Sarah presence, conversation-scope,
+  speaker-turn, public-safe signing, and two-room schemas.
+- OpenAgents API/Cloud Run: membership projection, room admission, grant
+  minting, explicit dispatch, generation lookup, holds, exact usage, and
+  settlement.
+- A new bounded `sarah-livekit-agent` service: `agents-js`, the OpenAI
+  Realtime plugin, one-room job execution, dynamic participant linking,
+  proposal adapter, and typed provider usage.
+- Omega/editor: a LiveKit Rust media adapter beneath the current voice button;
+  no restoration of Zed collaboration authority.
+- OpenAgents Mobile: the LiveKit React Native SDK and Expo config plugins,
+  replacing the existing recorder/player only while LiveKit owns audio.
+- Community/relay service: NIP-29 membership and public signed Sarah
+  presence/text, never raw audio or private workspace state.
+- Google Cloud: the GCE canary, then the GKE Standard/Redis/TURN/metrics
+  production candidate from sections 11–13.
+
+An admitted Sarah join should execute in this order:
+
+1. Resolve the exact owner or community conversation and current membership
+   revision.
+2. Show the correct private/group disclosure and consume one-use admission.
+3. Reserve the provider hold and create the generation-scoped presence lease.
+4. Create/bind the LiveKit room epoch, mint short-lived participant grants,
+   and explicitly dispatch the named Sarah agent.
+5. Join the human client and worker; validate both against canonical
+   server-side records rather than participant metadata.
+6. Publish Sarah's signed public-safe presence binding without exposing owner,
+   workspace, provider, or billing data.
+7. Open one OpenAI Realtime session for this exact lease, with the admitted
+   model, voice, instructions, capability profile, and safety identifier.
+8. In a group, issue a server-validated speaker-turn lease before linking a
+   participant to `RoomIO`.
+9. Stream exact provider usage and typed proposals to the existing authority
+   plane.
+10. On end/failure/expiry, disable input, close the provider generation,
+    reconcile usage, settle the hold, sign/project any admitted terminal
+    state, then remove participants and delete the room epoch.
+
+Rollback stops issuing new `livekit_room_v1` grants and drains admitted rooms.
+It never silently moves an active generation back to `custom_wss_v1`.
+[inferred]
+
+### 15.13 Acceptance scenarios
+
+The room product is not ready merely because Sarah can be heard. It must pass:
+
+1. Editor and mobile show the same durable owner-private conversation while
+   explicit handoff prevents overlapping private voice generations.
+2. Sarah serves two community rooms concurrently with one public identity but
+   distinct worker jobs, provider sessions, contexts, holds, usage, and
+   settlement.
+3. A private editor fact, mobile tool result, file path, or owner memory never
+   appears in a community response, summary, trace, or prompt.
+4. A community prompt asking Sarah to ignore private boundaries, spend money,
+   edit code, administer members, or expose owner data creates no privileged
+   effect.
+5. A member removed or banned during a turn immediately loses the Sarah floor
+   and room media; Sarah's session either continues safely for remaining
+   members or settles.
+6. A forged LiveKit display name, participant attribute, Sarah text message,
+   presence record, floor request, or replayed JWT cannot impersonate Sarah or
+   a permitted speaker.
+7. The Sarah Nostr private key is absent from GKE pod files, environment,
+   memory dumps exposed to the app, logs, and crash reports; the signer
+   rejects non-allowlisted templates.
+8. Two humans speaking together, noisy active-speaker changes, barge-in,
+   floor timeout, moderator stop, and Sarah removal have deterministic UI and
+   model behavior.
+9. LiveKit reconnect, worker restart, OpenAI disconnect, mobile
+   background/foreground, device handoff, and the provider session limit
+   cannot reopen or overlap a billable generation.
+10. Every `response.done`, transcription charge, cancel, timeout, and failure
+    reconciles exactly to one hold; modeled and invoiced cohort totals remain
+    within the approved OpenAI and Google caps.
+11. Raw audio is absent from Nostr, Redis values, Cloud Storage, Cloud SQL,
+    Sync, logs, traces, and crash artifacts.
+12. E2EE tests rotate keys on membership change, admit Sarah explicitly, and
+    make accurate OpenAgents/OpenAI processor disclosures.
+13. Packaged macOS, Windows, Linux, iOS, and Android clients pass microphone,
+    playback, echo, Bluetooth, interruption, mute, leave, direct UDP, TCP, and
+    TURN/TLS tests for their supported scope.
+14. The group safety-identifier question has a documented OpenAI-compatible
+    answer before public or untrusted multi-user rooms are enabled.
+
+### 15.14 Recommendation
+
+Build this as **one Sarah identity with many isolated room executions**:
+
+1. preserve the existing editor voice button and prove private 1:1 LiveKit
+   media there first;
+2. add the native React Native client and an explicit desktop/mobile handoff;
+3. introduce Sarah into a small invited channel with no privileged tools and
+   an explicit speaking floor;
+4. bind her LiveKit presence to her stable Nostr identity and publish
+   room-visible signed text;
+5. then build out Armada's durable channel/call product and consider resident
+   Sarah only after measured unit economics and safety gates pass.
+
+Do not begin with an ambient mixed room, one provider session shared across
+rooms, private memory injected into community prompts, or an `nsec` copied
+into autoscaled agents. The explicit floor is less magical than a room-wide
+open microphone, but it is the shortest path to a Sarah who can genuinely
+join rooms and talk while preserving speaker attribution, cost controls,
+Nostr identity, command authority, and the existing two-room privacy law.
+
+The resulting division is coherent: **Armada supplies the collaboration
+shape, Buzz supplies the agent identity and per-channel participation
+semantics, LiveKit supplies the media and dispatch plane, OpenAI Realtime
+supplies Sarah's voice intelligence, and OpenAgents remains the only authority
+for identity, memory boundaries, tools, accounting, and settlement.**
+[source] [inferred]
+
+## 16. Central finding
 
 **Armada makes LiveKit part of the community product, Zed makes LiveKit a
 replaceable media subsystem beneath collaboration authority, Buzz replaces
 LiveKit with a custom relay-native audio system, and LiveKit Agents offers
 Sarah a supported but optional room-to-OpenAI Realtime bridge. Self-hosting
 that bridge is feasible on OpenAgents' Google Cloud, but it creates a
-GCE/GKE/Redis/TURN operations plane rather than removing an authority plane.**
+GCE/GKE/Redis/TURN operations plane rather than removing an authority plane.
+One Nostr-native Sarah can serve private editor/mobile conversations and
+community rooms, provided every room execution, context, capability profile,
+provider session, and ledger remains isolated.**
 
 Armada is the most relevant reference for portable calls, blind admission, and
 media E2EE. Zed is the strongest reference for a native Rust client and
-server-owned permission bridge. Buzz is the strongest counterfactual: it shows
-what a team must own when it declines an SFU dependency. `agents-js` is the
-missing server-side agent layer; `rust-sdks` is the native room substrate, not
-an agent runtime.
+server-owned permission bridge. Buzz shows both what a team must own when it
+declines an SFU dependency and how one signed bot identity can participate in
+several isolated channels. `agents-js` is the missing server-side agent layer;
+`rust-sdks` and the React Native SDK are the native client room substrates,
+not agent runtimes.
 
 The common architectural law is stable across all four: **media transport is
 not membership, identity, workspace state, command authority, or settlement.**
 A future LiveKit Sarah mode should be chosen for room/media capabilities only
-after those boundaries, credential semantics, privacy claims, reconnect laws,
-accounting projections, and packaged proof are explicit.
+after those boundaries, group-speaker attribution, credential semantics,
+privacy claims, reconnect laws, accounting projections, provider
+safety-identifier policy, and packaged proof are explicit.
