@@ -101,6 +101,11 @@ Read these documents in this order:
     [Episode 263 Omega alpha release gap analysis](./2026-07-29-episode-263-alpha-release-gap-analysis.md)
     before claiming or releasing the three-mode alpha described by the
     owner-locked Episode 263 script.
+38. Read the
+    [Omega Nostr authentication and onboarding target](./2026-07-30-omega-nostr-authentication-and-onboarding.md)
+    for the source-pinned path from background identity provisioning to a full
+    Rust-first account, signer, recovery, relay-authentication, and
+    interoperability product.
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.
@@ -188,6 +193,13 @@ promise with the current installed product shape. It owns the no-go verdict,
 the restoration packets for Direct Agent, Omega Agent, Sarah, tester channels,
 and Omega downloads, and the installed-candidate acceptance matrix. It does
 not itself admit the public claim or promote a build.
+
+The Omega Nostr authentication and onboarding target reconciles the removed
+first-run identity wizard with the current background-created identity. It
+compares the current product with Buzz and Armada, then proposes progressive
+activation, multiple signer types, account switching, bounded hydration,
+device grants, and NIP-29/Buzz/Armada entry without moving root-key custody out
+of the Rust service. It is a proposal and does not admit those packets.
 
 The accepted plan owns the product and repository boundary.
 The master roadmap owns priority across OpenAgents programs.
