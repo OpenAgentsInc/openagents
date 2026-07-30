@@ -35,6 +35,40 @@ The database permits one active Sarah voice session for each user.
 The default maximum session time is 600 seconds.
 The configured maximum cannot be more than 900 seconds.
 
+## Admission before microphone access
+
+Clients must call the read-only admission endpoint before enabling the microphone:
+
+```text
+POST /api/omega/sarah/voice/admission
+```
+
+The request uses `openagents.sarah.voice.admission.v1` and the same identity,
+device header, disclosure, profile, bearer authentication, or one-time NIP-98
+challenge proof as session issuance. NIP-98 admission returns the linked bearer
+credential. Invalid, expired, and replayed challenges fail before admission.
+
+Admission does not create a ticket, hold credit, or create a voice session. Its
+response gives the exact configured credit rate, required hold, current
+spendable credit, maximum duration, selected client profile, active cohort,
+credit mode, and capability boundary. A refusal is a normal `200` response with
+`admitted: false` and either `cohort_inactive` or `insufficient_credit`.
+
+Metered users must have an active `sarah_voice_cohort:alpha_v1` membership.
+The staging-owner entitlement remains separate. The session transaction checks
+the membership or entitlement again, so a client cannot bypass admission.
+
+The profiles expose these provider capabilities:
+
+- `omega_editor`: exact context, reveal, replace, save, and delegated-thread
+  proposals. Replace, save, and delegation require confirmation.
+- `mobile_voice_only`: conversation only, with no tools.
+- `mobile_command_center`: delegated-thread proposals only.
+
+No profile grants this voice session direct shell, Git, filesystem discovery,
+credential, payment, deployment, or device-control authority. A delegated
+thread has separate authority and produces separate outcomes and receipts.
+
 ## Session request
 
 Use this path:
@@ -385,6 +419,35 @@ Settlement releases the full hold and debits the recorded charge in one transact
 For a nonzero charge, the transaction writes a paid `pay_ins` adjustment and its balance leg.
 Settlement is idempotent for one session.
 
+After close, an authenticated owner reads the final projection with:
+
+```text
+GET /api/omega/sarah/voice/settlement
+x-openagents-sarah-voice-session: <sessionRef>
+```
+
+Only settled or released owner-scoped sessions are returned. The response uses
+`openagents.sarah.voice.settlement.v1` and includes the final charge, spendable
+remaining credit (or `null` for the staging entitlement), and receipt reference.
+
+## Alpha cohort operations
+
+`admit-sarah-voice-npub.ts` creates or reuses the Nostr user and finite balance,
+then records the explicit active alpha membership. Re-running it never refills
+an existing balance and cannot reactivate a revoked membership.
+
+An authenticated OpenAgents administrator can revoke every active member of
+the fixed alpha cohort immediately for new admissions and reservations:
+
+```text
+POST /api/operator/omega/sarah/voice/cohort/revoke
+```
+
+The request uses `openagents.sarah.voice.cohort-revocation.v1`, the fixed
+`sarah_voice_cohort:alpha_v1` cohort reference, and a bounded reason. The store
+writes the operator actor, reason, time, and one audit event per membership.
+The endpoint cannot revoke arbitrary cohorts or the staging-owner entitlement.
+
 ## Cleanup
 
 Normal close, provider close, and session expiry start settlement.
@@ -420,8 +483,9 @@ The default is 600 seconds.
 
 The Cloud Run deployment already mounts `OPENAI_API_KEY` from Secret Manager.
 Do not put that key in an environment file, response, log, trace, or client package.
-Apply database migrations `0103_sarah_realtime_voice.sql` and
-`0104_sarah_voice_client_profile.sql` before you enable the feature.
+Apply database migrations `0103_sarah_realtime_voice.sql`,
+`0104_sarah_voice_client_profile.sql`, and
+`0107_sarah_voice_alpha_cohort.sql` before you enable the feature.
 
 ## Logs and private data
 

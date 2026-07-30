@@ -1,6 +1,10 @@
 import {
+  SARAH_VOICE_ADMISSION_PATH,
+  SARAH_VOICE_ADMISSION_PROTOCOL_VERSION,
+  SARAH_VOICE_COHORT_REVOCATION_PROTOCOL_VERSION,
   SARAH_VOICE_PROTOCOL_VERSION,
   SARAH_VOICE_SESSION_PATH,
+  SARAH_VOICE_SETTLEMENT_PROTOCOL_VERSION,
 } from '@openagentsinc/audio-contract'
 import {
   type SarahRealtimeVoiceStore,
@@ -10,7 +14,11 @@ import { describe, expect, test, vi } from 'vitest'
 
 import {
   SARAH_REALTIME_VOICE_DEVICE_HEADER,
+  SARAH_REALTIME_VOICE_SESSION_HEADER,
+  handleSarahRealtimeVoiceAdmissionRequest,
+  handleSarahRealtimeVoiceCohortRevocationRequest,
   handleSarahRealtimeVoiceSessionRequest,
+  handleSarahRealtimeVoiceSettlementRequest,
 } from './sarah-realtime-voice-routes'
 
 const identity = {
@@ -52,6 +60,7 @@ const makeDependencies = (
     clientProfile: input.clientProfile,
     creditMode: input.creditMode,
     entitlementRef: input.entitlementRef,
+    admissionCohortRef: input.admissionCohortRef,
     state: 'reserved' as const,
     reservedMsat: input.reservedMsat,
     chargedMsat: 0,
@@ -68,7 +77,15 @@ const makeDependencies = (
     reserve,
     connect: vi.fn(),
     recordUsage: vi.fn(),
+    readActiveAlphaMembership: vi.fn(async input => ({
+      membershipRef: `sarah_voice_alpha:${input.ownerUserId}`,
+      cohortRef: input.cohortRef,
+      ownerUserId: input.ownerUserId,
+    })),
     readActiveStagingOwnerEntitlement,
+    readSettlement: vi.fn(),
+    readSpendableCredit: vi.fn(async () => 100_000),
+    revokeAlphaCohort: vi.fn(),
     settle: vi.fn(),
     sweepExpired: vi.fn(),
   } as unknown as SarahRealtimeVoiceStore
@@ -77,6 +94,7 @@ const makeDependencies = (
     dependencies: {
       config: () => ({
         enabled: true,
+        creditMsatPerMillionTokens: 100_000,
         maxSessionSeconds: 600,
         reservationMsat: 25_000,
       }),
@@ -90,6 +108,7 @@ const makeDependencies = (
     },
     reserve,
     readActiveStagingOwnerEntitlement,
+    store,
   }
 }
 
@@ -216,6 +235,26 @@ describe('managed Sarah Realtime voice session route', () => {
     expect(response.status).toBe(402)
     expect(await response.json()).toEqual({ error: 'insufficient_credit' })
     expect(fixture.close).toHaveBeenCalledOnce()
+  })
+
+  test('rejects a revoked alpha member before reserving credit', async () => {
+    const fixture = makeDependencies()
+    vi.mocked(fixture.store.readActiveAlphaMembership).mockResolvedValue(
+      undefined,
+    )
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      fixture.dependencies,
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'disclosure-1',
+      }),
+      {},
+      ctx,
+    )
+    expect(response.status).toBe(403)
+    expect(await response.json()).toEqual({ error: 'sarah_voice_not_entitled' })
+    expect(fixture.reserve).not.toHaveBeenCalled()
   })
 
   test('audits a bounded storage failure before returning unavailable', async () => {
@@ -498,5 +537,307 @@ describe('managed Sarah Realtime voice session route', () => {
     expect(fixture.reserve).not.toHaveBeenCalled()
     expect(dependencies.mintNostrSession).not.toHaveBeenCalled()
     expect(dependencies.authenticateNostrSession).not.toHaveBeenCalled()
+  })
+})
+
+describe('managed Sarah Realtime voice admission and closeout routes', () => {
+  const admissionBody = {
+    schema: SARAH_VOICE_ADMISSION_PROTOCOL_VERSION,
+    identity,
+    disclosureRef: 'disclosure-1',
+    clientProfile: 'omega_editor',
+  } as const
+
+  test('returns exact admission economics and capabilities without reserving credit', async () => {
+    const fixture = makeDependencies()
+    const response = await handleSarahRealtimeVoiceAdmissionRequest(
+      fixture.dependencies,
+      new Request(`https://openagents.com${SARAH_VOICE_ADMISSION_PATH}`, {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer test',
+          [SARAH_REALTIME_VOICE_DEVICE_HEADER]: identity.deviceRef,
+        },
+        body: JSON.stringify(admissionBody),
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      schema: SARAH_VOICE_ADMISSION_PROTOCOL_VERSION,
+      admitted: true,
+      clientProfile: 'omega_editor',
+      admissionCohortRef: 'sarah_voice_cohort:alpha_v1',
+      creditMode: 'metered',
+      creditRateMsatPerMillionTokens: 100_000,
+      requiredHoldMsat: 25_000,
+      spendableRemainingCreditMsat: 100_000,
+      maxDurationSeconds: 600,
+      capabilityBoundary: {
+        commands: [
+          'context_read',
+          'reveal_range',
+          'replace_selection',
+          'save_document',
+          'start_agent_thread',
+        ],
+        confirmationRequired: [
+          'replace_selection',
+          'save_document',
+          'start_agent_thread',
+        ],
+        directShell: false,
+        directGit: false,
+        payment: false,
+        credentialAccess: false,
+        deviceControl: false,
+      },
+    })
+    expect(fixture.reserve).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    {
+      membershipActive: false,
+      spendableMsat: 100_000,
+      reason: 'cohort_inactive',
+    },
+    {
+      membershipActive: true,
+      spendableMsat: 10_000,
+      reason: 'insufficient_credit',
+    },
+  ] as const)(
+    'reports $reason without creating a reservation',
+    async fixtureCase => {
+      const fixture = makeDependencies()
+      vi.mocked(fixture.store.readActiveAlphaMembership).mockResolvedValue(
+        fixtureCase.membershipActive
+          ? {
+              membershipRef: 'sarah_voice_alpha:user-1',
+              cohortRef: 'sarah_voice_cohort:alpha_v1',
+              ownerUserId: 'user-1',
+            }
+          : undefined,
+      )
+      vi.mocked(fixture.store.readSpendableCredit).mockResolvedValue(
+        fixtureCase.spendableMsat,
+      )
+      const response = await handleSarahRealtimeVoiceAdmissionRequest(
+        fixture.dependencies,
+        new Request(`https://openagents.com${SARAH_VOICE_ADMISSION_PATH}`, {
+          method: 'POST',
+          headers: {
+            authorization: 'Bearer test',
+            [SARAH_REALTIME_VOICE_DEVICE_HEADER]: identity.deviceRef,
+          },
+          body: JSON.stringify(admissionBody),
+        }),
+        {},
+        ctx,
+      )
+      expect(await response.json()).toMatchObject({
+        admitted: false,
+        refusalReason: fixtureCase.reason,
+        spendableRemainingCreditMsat: fixtureCase.spendableMsat,
+      })
+      expect(fixture.reserve).not.toHaveBeenCalled()
+    },
+  )
+
+  test('authenticates NIP-98 admission and rejects a replayed or expired challenge', async () => {
+    const fixture = makeDependencies()
+    const body = {
+      ...admissionBody,
+      auth: {
+        method: 'nostr_nip98',
+        challenge: 'challenge_abcdefghijklmnopqrstuvwxyz012345',
+      },
+    } as const
+    const dependencies = {
+      ...fixture.dependencies,
+      authenticateNostrSession: vi.fn(async () => ({
+        _tag: 'Authenticated' as const,
+        pubkey: 'a'.repeat(64),
+        user: { userId: 'user-1' },
+      })),
+      consumeNostrChallenge: vi.fn(async () => 'Invalid' as const),
+      mintNostrSession: vi.fn(),
+      verifyNostrProof: vi.fn(async () => ({
+        _tag: 'Verified' as const,
+        eventId: 'b'.repeat(64),
+        isOwner: false,
+        pubkey: 'a'.repeat(64),
+        pubkeyDigest: 'c'.repeat(64),
+      })),
+    }
+    const response = await handleSarahRealtimeVoiceAdmissionRequest(
+      dependencies,
+      new Request(`https://openagents.com${SARAH_VOICE_ADMISSION_PATH}`, {
+        method: 'POST',
+        headers: {
+          authorization: 'Nostr signed-event',
+          [SARAH_REALTIME_VOICE_DEVICE_HEADER]: identity.deviceRef,
+        },
+        body: JSON.stringify(body),
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({
+      error: 'sarah_voice_auth_challenge_invalid',
+    })
+    expect(dependencies.authenticateNostrSession).not.toHaveBeenCalled()
+    expect(dependencies.mintNostrSession).not.toHaveBeenCalled()
+    expect(fixture.reserve).not.toHaveBeenCalled()
+  })
+
+  test('authenticates NIP-98 admission and keeps it bound to the request device', async () => {
+    const fixture = makeDependencies()
+    const nostrBody = {
+      ...admissionBody,
+      auth: {
+        method: 'nostr_nip98',
+        challenge: 'challenge_abcdefghijklmnopqrstuvwxyz012345',
+      },
+    } as const
+    const dependencies = {
+      ...fixture.dependencies,
+      authenticateNostrSession: vi.fn(async () => ({
+        _tag: 'Authenticated' as const,
+        pubkey: 'a'.repeat(64),
+        user: { userId: 'user-1' },
+      })),
+      consumeNostrChallenge: vi.fn(async () => 'Consumed' as const),
+      mintNostrSession: vi.fn(async () => ({
+        _tag: 'Issued' as const,
+        accessToken: `oa_omega_${'a'.repeat(43)}`,
+        expiresIn: 900,
+        user: { userId: 'user-1' },
+      })),
+      verifyNostrProof: vi.fn(
+        async (_request: Request, _env: unknown, payload: Uint8Array) => {
+          expect(new TextDecoder().decode(payload)).toBe(
+            JSON.stringify(nostrBody),
+          )
+          return {
+            _tag: 'Verified' as const,
+            eventId: 'b'.repeat(64),
+            isOwner: false,
+            pubkey: 'a'.repeat(64),
+            pubkeyDigest: 'c'.repeat(64),
+          }
+        },
+      ),
+    }
+    const admitted = await handleSarahRealtimeVoiceAdmissionRequest(
+      dependencies,
+      new Request(`https://openagents.com${SARAH_VOICE_ADMISSION_PATH}`, {
+        method: 'POST',
+        headers: {
+          authorization: 'Nostr signed-event',
+          [SARAH_REALTIME_VOICE_DEVICE_HEADER]: identity.deviceRef,
+        },
+        body: JSON.stringify(nostrBody),
+      }),
+      {},
+      ctx,
+    )
+    expect(admitted.status).toBe(200)
+    expect(await admitted.json()).toMatchObject({
+      admitted: true,
+      auth: {
+        method: 'nostr_nip98',
+        accessToken: `oa_omega_${'a'.repeat(43)}`,
+        expiresIn: 900,
+      },
+    })
+
+    const response = await handleSarahRealtimeVoiceAdmissionRequest(
+      dependencies,
+      new Request(`https://openagents.com${SARAH_VOICE_ADMISSION_PATH}`, {
+        method: 'POST',
+        headers: {
+          authorization: 'Nostr signed-event',
+          [SARAH_REALTIME_VOICE_DEVICE_HEADER]: 'different-device',
+        },
+        body: JSON.stringify(nostrBody),
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(403)
+    expect(fixture.reserve).not.toHaveBeenCalled()
+  })
+
+  test('returns owner-scoped settlement evidence', async () => {
+    const fixture = makeDependencies()
+    vi.mocked(fixture.store.readSettlement).mockResolvedValue({
+      sessionRef: identity.sessionRef,
+      state: 'settled',
+      creditMode: 'metered',
+      finalChargeMsat: 750,
+      spendableRemainingCreditMsat: 99_250,
+      settlementReceiptRef: 'sarah_voice_settlement:voice-1',
+    })
+    const response = await handleSarahRealtimeVoiceSettlementRequest(
+      fixture.dependencies,
+      new Request('https://openagents.com/api/omega/sarah/voice/settlement', {
+        headers: {
+          authorization: 'Bearer test',
+          [SARAH_REALTIME_VOICE_SESSION_HEADER]: identity.sessionRef,
+        },
+      }),
+      {},
+      ctx,
+    )
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      schema: SARAH_VOICE_SETTLEMENT_PROTOCOL_VERSION,
+      sessionRef: identity.sessionRef,
+      state: 'settled',
+      creditMode: 'metered',
+      finalChargeMsat: 750,
+      spendableRemainingCreditMsat: 99_250,
+      receiptRef: 'sarah_voice_settlement:voice-1',
+    })
+  })
+
+  test('lets an operator revoke only the fixed alpha cohort', async () => {
+    const fixture = makeDependencies()
+    vi.mocked(fixture.store.revokeAlphaCohort).mockResolvedValue(1)
+    const response = await handleSarahRealtimeVoiceCohortRevocationRequest(
+      {
+        openStore: fixture.dependencies.openStore,
+        requireOperator: async () => ({ actorRef: 'operator:user-admin' }),
+        now: fixture.dependencies.now,
+      },
+      new Request(
+        'https://openagents.com/api/operator/omega/sarah/voice/cohort/revoke',
+        {
+          method: 'POST',
+          headers: { authorization: 'Bearer admin' },
+          body: JSON.stringify({
+            schema: SARAH_VOICE_COHORT_REVOCATION_PROTOCOL_VERSION,
+            cohortRef: 'sarah_voice_cohort:alpha_v1',
+            reason: 'End alpha access',
+          }),
+        },
+      ),
+      {},
+      ctx,
+    )
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      schema: SARAH_VOICE_COHORT_REVOCATION_PROTOCOL_VERSION,
+      cohortRef: 'sarah_voice_cohort:alpha_v1',
+      state: 'revoked',
+      revokedCount: 1,
+    })
   })
 })

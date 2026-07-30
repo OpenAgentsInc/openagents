@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test";
 import { runMigrations } from "./migrate.js";
 import {
   SarahVoiceConcurrentSessionError,
-  SarahVoiceInsufficientCreditError,
+  SarahVoiceSessionRejectedError,
   makeSarahRealtimeVoiceStore,
 } from "./sarah-realtime-voice-store.js";
 import type { SyncSql } from "./sql.js";
@@ -41,6 +41,17 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
           '2026-07-28T12:00:00.000Z', '2026-07-28T12:00:00.000Z'
         )
       `;
+    await sql`
+      INSERT INTO sarah_voice_alpha_memberships (
+        membership_ref, cohort_ref, owner_user_id, state, admitted_at,
+        admission_actor_ref, admission_reason, updated_at
+      ) VALUES (
+        'sarah_voice_alpha:user-sarah-voice',
+        'sarah_voice_cohort:alpha_v1', 'user-sarah-voice', 'active',
+        '2026-07-28T12:00:00.000Z', 'operator:test', 'Test admission',
+        '2026-07-28T12:00:00.000Z'
+      )
+    `;
   });
 
   afterAll(async () => {
@@ -60,6 +71,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       clientProfile: "mobile_voice_only",
       creditMode: "metered",
       entitlementRef: null,
+      admissionCohortRef: "sarah_voice_cohort:alpha_v1",
       reservedMsat: 1_000,
       ticketExpiresAt: "2026-07-28T12:01:00.000Z",
       sessionExpiresAt: "2026-07-28T12:10:00.000Z",
@@ -138,6 +150,16 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       `;
     expect(Number(afterReplay?.balance_msat)).toBe(9_750);
     expect(Number(afterReplay?.held_msat)).toBe(0);
+    expect(
+      await store.readSettlement({
+        sessionRef: "voice-session-1",
+        ownerUserId: "user-sarah-voice",
+      }),
+    ).toMatchObject({
+      finalChargeMsat: 250,
+      spendableRemainingCreditMsat: 9_750,
+      settlementReceiptRef: "sarah_voice_settlement:voice-session-1",
+    });
   });
 
   test("releases an unconnected reservation when its ticket expires", async () => {
@@ -155,6 +177,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       clientProfile: "mobile_voice_only",
       creditMode: "metered",
       entitlementRef: null,
+      admissionCohortRef: "sarah_voice_cohort:alpha_v1",
       reservedMsat: 1_000,
       ticketExpiresAt: "2026-07-28T12:01:00.000Z",
       sessionExpiresAt: "2026-07-28T12:10:00.000Z",
@@ -218,6 +241,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       clientProfile: "mobile_voice_only",
       creditMode: "staging_owner_entitlement",
       entitlementRef: entitlement?.entitlementRef ?? null,
+      admissionCohortRef: "sarah_voice_cohort:staging_owner_v1",
       reservedMsat: 0,
       ticketExpiresAt: "2026-07-28T12:01:00.000Z",
       sessionExpiresAt: "2026-07-28T12:05:00.000Z",
@@ -294,12 +318,13 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         clientProfile: "mobile_voice_only",
         creditMode: "metered",
         entitlementRef: null,
+        admissionCohortRef: "sarah_voice_cohort:alpha_v1",
         reservedMsat: 1,
         ticketExpiresAt: "2026-07-28T12:05:00.000Z",
         sessionExpiresAt: "2026-07-28T12:09:00.000Z",
         nowIso: "2026-07-28T12:04:00.000Z",
       }),
-    ).rejects.toBeInstanceOf(SarahVoiceInsufficientCreditError);
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
 
     const [unexpectedBalance] = await sql`
       SELECT actor_ref
@@ -307,5 +332,52 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       WHERE actor_ref = 'agent:user-sarah-staging-owner'
     `;
     expect(unexpectedBalance).toBeUndefined();
+  });
+
+  test("revokes the alpha cohort before any new reservation can be created", async () => {
+    const store = makeSarahRealtimeVoiceStore(sql as unknown as SyncSql);
+    expect(
+      await store.readActiveAlphaMembership({
+        ownerUserId: "user-sarah-voice",
+        cohortRef: "sarah_voice_cohort:alpha_v1",
+        nowIso: "2026-07-28T12:04:00.000Z",
+      }),
+    ).toMatchObject({ ownerUserId: "user-sarah-voice" });
+    expect(
+      await store.revokeAlphaCohort({
+        cohortRef: "sarah_voice_cohort:alpha_v1",
+        actorRef: "operator:test",
+        reason: "End alpha access",
+        nowIso: "2026-07-28T12:05:00.000Z",
+      }),
+    ).toBe(1);
+    expect(
+      await store.readActiveAlphaMembership({
+        ownerUserId: "user-sarah-voice",
+        cohortRef: "sarah_voice_cohort:alpha_v1",
+        nowIso: "2026-07-28T12:06:00.000Z",
+      }),
+    ).toBeUndefined();
+    await expect(
+      store.reserve({
+        sessionRef: "voice-after-revocation",
+        reservationRef: "voice-after-revocation-reservation",
+        ownerUserId: "user-sarah-voice",
+        ownerActorRef: "agent:user-sarah-voice",
+        deviceRef: "omega-revoked",
+        threadRef: "thread-revoked",
+        generation: 1,
+        ticketDigest: "f".repeat(64),
+        disclosureRef: "disclosure-revoked",
+        clientProfile: "omega_editor",
+        creditMode: "metered",
+        entitlementRef: null,
+        admissionCohortRef: "sarah_voice_cohort:alpha_v1",
+        reservedMsat: 1,
+        ticketExpiresAt: "2026-07-28T12:07:00.000Z",
+        sessionExpiresAt: "2026-07-28T12:10:00.000Z",
+        nowIso: "2026-07-28T12:06:00.000Z",
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
   });
 });

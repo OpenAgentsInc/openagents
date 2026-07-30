@@ -1605,6 +1605,14 @@ come from the Freerange teardown
 
 ### Persistent Voice and Raw Media
 
+- Sarah voice admission is a read-only preflight: it never creates a ticket,
+  session, or credit hold. Metered admission and reservation both require the
+  exact active alpha-cohort membership; operator revocation therefore fails
+  closed even when a client skips preflight. Admission reports the configured
+  rate, required hold, spendable credit, maximum duration, profile boundary,
+  and cohort, while final settlement reports the owner-scoped charge, remaining
+  credit, and receipt. NIP-98 admission uses the same one-time challenge,
+  body-binding, identity, and device checks as session issuance.
 - A voice generation starts only after an explicit, versioned disclosure, stop,
   revoke, and restart fail closed, and restart never silently resumes capture.
 - Capture, network egress, retention, and playback are separate authoritative

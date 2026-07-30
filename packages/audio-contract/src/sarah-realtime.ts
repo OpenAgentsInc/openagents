@@ -5,6 +5,12 @@ export const SARAH_VOICE_PROTOCOL_VERSION =
   "openagents.sarah.voice.v1" as const;
 export const SARAH_VOICE_SESSION_PATH =
   "/api/omega/sarah/voice/session" as const;
+export const SARAH_VOICE_ADMISSION_PATH =
+  "/api/omega/sarah/voice/admission" as const;
+export const SARAH_VOICE_SETTLEMENT_PATH =
+  "/api/omega/sarah/voice/settlement" as const;
+export const SARAH_VOICE_COHORT_REVOCATION_PATH =
+  "/api/operator/omega/sarah/voice/cohort/revoke" as const;
 export const SARAH_VOICE_CONNECT_PATH =
   "/api/omega/sarah/voice/connect" as const;
 export const SARAH_VOICE_NOSTR_CHALLENGE_PATH =
@@ -17,6 +23,12 @@ export const SARAH_VOICE_MODEL = "gpt-realtime-2.1" as const;
 export const SARAH_VOICE_NOSTR_AUTH_METHOD = "nostr_nip98" as const;
 export const SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION =
   "openagents.sarah.voice.auth-challenge.v1" as const;
+export const SARAH_VOICE_ADMISSION_PROTOCOL_VERSION =
+  "openagents.sarah.voice.admission.v1" as const;
+export const SARAH_VOICE_SETTLEMENT_PROTOCOL_VERSION =
+  "openagents.sarah.voice.settlement.v1" as const;
+export const SARAH_VOICE_COHORT_REVOCATION_PROTOCOL_VERSION =
+  "openagents.sarah.voice.cohort-revocation.v1" as const;
 export const OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PROTOCOL_VERSION =
   "openagents.omega.nostr-device-link-challenge.v1" as const;
 export const OMEGA_NOSTR_DEVICE_LINK_PROTOCOL_VERSION =
@@ -26,6 +38,17 @@ export const SARAH_VOICE_CLIENT_PROFILES = [
   "mobile_voice_only",
   "mobile_command_center",
 ] as const;
+export const SARAH_VOICE_CAPABILITIES = [
+  "context_read",
+  "reveal_range",
+  "replace_selection",
+  "save_document",
+  "start_agent_thread",
+] as const;
+export const SARAH_VOICE_ALPHA_COHORT_REF =
+  "sarah_voice_cohort:alpha_v1" as const;
+export const SARAH_VOICE_STAGING_OWNER_COHORT_REF =
+  "sarah_voice_cohort:staging_owner_v1" as const;
 
 const Ref = S.Trim.check(S.isMinLength(1), S.isMaxLength(256));
 const Text = S.String.check(S.isMaxLength(16_384));
@@ -49,6 +72,96 @@ export const SarahVoiceSessionRequestSchema = S.Struct({
 });
 export type SarahVoiceSessionRequest =
   typeof SarahVoiceSessionRequestSchema.Type;
+
+export const SarahVoiceAdmissionRequestSchema = S.Struct({
+  schema: S.Literal(SARAH_VOICE_ADMISSION_PROTOCOL_VERSION),
+  identity: VoiceIdentitySchema,
+  disclosureRef: Ref,
+  clientProfile: S.optional(S.Literals(SARAH_VOICE_CLIENT_PROFILES)),
+  auth: S.optional(
+    S.Struct({
+      method: S.Literal(SARAH_VOICE_NOSTR_AUTH_METHOD),
+      challenge: S.String.check(S.isPattern(/^[A-Za-z0-9_-]{32,256}$/u)),
+    }),
+  ),
+});
+export type SarahVoiceAdmissionRequest =
+  typeof SarahVoiceAdmissionRequestSchema.Type;
+
+const SarahVoiceCapabilityBoundarySchema = S.Struct({
+  commands: S.Array(S.Literals(SARAH_VOICE_CAPABILITIES)),
+  confirmationRequired: S.Array(S.Literals(SARAH_VOICE_CAPABILITIES)),
+  directShell: S.Literal(false),
+  directGit: S.Literal(false),
+  payment: S.Literal(false),
+  credentialAccess: S.Literal(false),
+  deviceControl: S.Literal(false),
+});
+
+export const SarahVoiceAdmissionResponseSchema = S.Struct({
+  schema: S.Literal(SARAH_VOICE_ADMISSION_PROTOCOL_VERSION),
+  admitted: S.Boolean,
+  clientProfile: S.Literals(SARAH_VOICE_CLIENT_PROFILES),
+  admissionCohortRef: S.Literals([
+    SARAH_VOICE_ALPHA_COHORT_REF,
+    SARAH_VOICE_STAGING_OWNER_COHORT_REF,
+  ]),
+  creditMode: S.Literals(["metered", "staging_owner_entitlement"]),
+  creditRateMsatPerMillionTokens: Seq,
+  requiredHoldMsat: Seq,
+  spendableRemainingCreditMsat: S.NullOr(Seq),
+  maxDurationSeconds: S.Int.check(
+    S.isGreaterThanOrEqualTo(1),
+    S.isLessThanOrEqualTo(3_600),
+  ),
+  capabilityBoundary: SarahVoiceCapabilityBoundarySchema,
+  refusalReason: S.optional(
+    S.Literals(["cohort_inactive", "insufficient_credit"]),
+  ),
+  auth: S.optional(
+    S.Struct({
+      method: S.Literal(SARAH_VOICE_NOSTR_AUTH_METHOD),
+      accessToken: S.String.check(
+        S.isPattern(/^oa_omega_[A-Za-z0-9_-]{32,256}$/u),
+      ),
+      expiresIn: S.Int.check(
+        S.isGreaterThanOrEqualTo(1),
+        S.isLessThanOrEqualTo(3_600),
+      ),
+    }),
+  ),
+});
+export type SarahVoiceAdmissionResponse =
+  typeof SarahVoiceAdmissionResponseSchema.Type;
+
+export const SarahVoiceSettlementResponseSchema = S.Struct({
+  schema: S.Literal(SARAH_VOICE_SETTLEMENT_PROTOCOL_VERSION),
+  sessionRef: Ref,
+  state: S.Literals(["settled", "released"]),
+  creditMode: S.Literals(["metered", "staging_owner_entitlement"]),
+  finalChargeMsat: Seq,
+  spendableRemainingCreditMsat: S.NullOr(Seq),
+  receiptRef: Ref,
+});
+export type SarahVoiceSettlementResponse =
+  typeof SarahVoiceSettlementResponseSchema.Type;
+
+export const SarahVoiceCohortRevocationRequestSchema = S.Struct({
+  schema: S.Literal(SARAH_VOICE_COHORT_REVOCATION_PROTOCOL_VERSION),
+  cohortRef: S.Literal(SARAH_VOICE_ALPHA_COHORT_REF),
+  reason: S.Trim.check(S.isMinLength(1), S.isMaxLength(256)),
+});
+export type SarahVoiceCohortRevocationRequest =
+  typeof SarahVoiceCohortRevocationRequestSchema.Type;
+
+export const SarahVoiceCohortRevocationResponseSchema = S.Struct({
+  schema: S.Literal(SARAH_VOICE_COHORT_REVOCATION_PROTOCOL_VERSION),
+  cohortRef: S.Literal(SARAH_VOICE_ALPHA_COHORT_REF),
+  state: S.Literals(["revoked", "already_revoked"]),
+  revokedCount: Seq,
+});
+export type SarahVoiceCohortRevocationResponse =
+  typeof SarahVoiceCohortRevocationResponseSchema.Type;
 
 export const SarahVoiceNostrChallengeRequestSchema = S.Struct({
   schema: S.Literal(SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION),
@@ -343,6 +456,31 @@ export type SarahVoiceServerControl = typeof SarahVoiceServerControlSchema.Type;
 
 export const decodeSarahVoiceSessionRequest = (value: unknown) =>
   S.decodeUnknownSync(SarahVoiceSessionRequestSchema)(value, {
+    onExcessProperty: "error",
+  });
+
+export const decodeSarahVoiceAdmissionRequest = (value: unknown) =>
+  S.decodeUnknownSync(SarahVoiceAdmissionRequestSchema)(value, {
+    onExcessProperty: "error",
+  });
+
+export const decodeSarahVoiceAdmissionResponse = (value: unknown) =>
+  S.decodeUnknownSync(SarahVoiceAdmissionResponseSchema)(value, {
+    onExcessProperty: "error",
+  });
+
+export const decodeSarahVoiceSettlementResponse = (value: unknown) =>
+  S.decodeUnknownSync(SarahVoiceSettlementResponseSchema)(value, {
+    onExcessProperty: "error",
+  });
+
+export const decodeSarahVoiceCohortRevocationRequest = (value: unknown) =>
+  S.decodeUnknownSync(SarahVoiceCohortRevocationRequestSchema)(value, {
+    onExcessProperty: "error",
+  });
+
+export const decodeSarahVoiceCohortRevocationResponse = (value: unknown) =>
+  S.decodeUnknownSync(SarahVoiceCohortRevocationResponseSchema)(value, {
     onExcessProperty: "error",
   });
 

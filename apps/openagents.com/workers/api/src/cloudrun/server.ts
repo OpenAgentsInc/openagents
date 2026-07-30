@@ -50,7 +50,6 @@ import {
   isSarahRealtimeVoiceUpgrade,
   makeSarahRealtimeBridgeData,
   makeSarahRealtimeWebSocketHandlers,
-  parseSarahRealtimeBridgeCreditRate,
 } from './sarah-realtime-bridge'
 import {
   assertStartUiArtifactsExist,
@@ -275,9 +274,6 @@ const main = async (): Promise<void> => {
 
       if (isSarahRealtimeVoiceUpgrade(request)) {
         const routeConfig = parseSarahRealtimeVoiceRouteConfig(runtime.env)
-        const creditRate = parseSarahRealtimeBridgeCreditRate(
-          runtime.env.SARAH_REALTIME_CREDIT_MSAT_PER_MILLION_TOKENS,
-        )
         const apiKey = runtime.env.OPENAI_API_KEY?.trim()
         const connectionString =
           runtime.env.KHALA_SYNC_DB?.connectionString?.trim()
@@ -290,7 +286,6 @@ const main = async (): Promise<void> => {
         if (
           routeConfig === undefined ||
           !routeConfig.enabled ||
-          creditRate === undefined ||
           apiKey === undefined ||
           apiKey === '' ||
           connectionString === undefined ||
@@ -320,7 +315,8 @@ const main = async (): Promise<void> => {
               session,
               apiKey,
               safetyIdentifier,
-              creditMsatPerMillionTokens: creditRate,
+              creditMsatPerMillionTokens:
+                routeConfig.creditMsatPerMillionTokens,
               store,
               closeStore: client.end,
               tasks,

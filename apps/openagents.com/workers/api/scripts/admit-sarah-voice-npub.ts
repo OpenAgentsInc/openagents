@@ -6,6 +6,7 @@ import { defaultMakeKhalaSyncSqlClient } from '../src/khala-sync-push-routes'
 
 const ADMISSION_GATE = 'I_APPROVE_BOUNDED_SARAH_VOICE_CREDIT'
 const MAX_INITIAL_BALANCE_MSAT = 1_000_000_000
+const ALPHA_COHORT_REF = 'sarah_voice_cohort:alpha_v1'
 
 const requiredEnv = (name: string): string => {
   const value = process.env[name]?.trim()
@@ -89,7 +90,7 @@ const databaseUrl = requiredEnv('KHALA_SYNC_DATABASE_URL')
 const client = await defaultMakeKhalaSyncSqlClient(databaseUrl)
 
 try {
-  const userId = await client.sql.begin(async transaction => {
+  const result = await client.sql.begin(async transaction => {
     let identities = await transaction<ReadonlyArray<{ user_id: string }>>`
       SELECT user_id
       FROM auth_identities
@@ -166,33 +167,82 @@ try {
 
     const actorRef = `agent:${admittedUserId}`
     const existingBalance = await transaction<
-      ReadonlyArray<{ actor_ref: string }>
+      ReadonlyArray<{ actor_ref: string; balance_msat: number | string }>
     >`
-      SELECT actor_ref
+      SELECT actor_ref, balance_msat
       FROM agent_balances
       WHERE actor_ref = ${actorRef}
       FOR UPDATE
     `
-    if (existingBalance[0] !== undefined) {
-      throw new Error(
-        'the npub already has a balance; this command never refills or overwrites it',
-      )
+    if (existingBalance[0] === undefined) {
+      await transaction`
+        INSERT INTO agent_balances (
+          actor_ref, balance_msat, held_msat, usd_credit_msat, created_at,
+          updated_at
+        ) VALUES (
+          ${actorRef}, ${input.balanceMsat}, 0, ${input.balanceMsat},
+          ${nowIso}, ${nowIso}
+        )
+      `
+    }
+    const balanceMsat =
+      existingBalance[0] === undefined
+        ? input.balanceMsat
+        : Number(existingBalance[0].balance_msat)
+    if (!Number.isSafeInteger(balanceMsat) || balanceMsat < 0) {
+      throw new Error('the existing balance is outside the safe integer range')
     }
 
-    await transaction`
-      INSERT INTO agent_balances (
-        actor_ref, balance_msat, held_msat, usd_credit_msat, created_at,
-        updated_at
+    const membershipRef = `sarah_voice_alpha:${admittedUserId}`
+    const admitted = await transaction<
+      ReadonlyArray<{ membership_ref: string }>
+    >`
+      INSERT INTO sarah_voice_alpha_memberships (
+        membership_ref, cohort_ref, owner_user_id, state, admitted_at,
+        admission_actor_ref, admission_reason, updated_at
       ) VALUES (
-        ${actorRef}, ${input.balanceMsat}, 0, ${input.balanceMsat},
-        ${nowIso}, ${nowIso}
+        ${membershipRef}, ${ALPHA_COHORT_REF}, ${admittedUserId}, 'active',
+        ${nowIso}, 'operator:admit-sarah-voice-npub',
+        'Approved finite-credit Sarah voice alpha admission', ${nowIso}
       )
+      ON CONFLICT (owner_user_id) DO NOTHING
+      RETURNING membership_ref
     `
-    return admittedUserId
+    if (admitted[0] !== undefined) {
+      await transaction`
+        INSERT INTO sarah_voice_alpha_membership_audit (
+          event_ref, membership_ref, cohort_ref, action, actor_ref, reason,
+          source, occurred_at
+        ) VALUES (
+          ${`${membershipRef}:admitted`}, ${membershipRef}, ${ALPHA_COHORT_REF},
+          'admitted', 'operator:admit-sarah-voice-npub',
+          'Approved finite-credit Sarah voice alpha admission',
+          'operator:script', ${nowIso}
+        )
+        ON CONFLICT (event_ref) DO NOTHING
+      `
+    }
+    const memberships = await transaction<
+      ReadonlyArray<{ cohort_ref: string; state: string }>
+    >`
+      SELECT cohort_ref, state
+      FROM sarah_voice_alpha_memberships
+      WHERE owner_user_id = ${admittedUserId}
+      FOR UPDATE
+    `
+    if (
+      memberships[0]?.cohort_ref !== ALPHA_COHORT_REF ||
+      memberships[0]?.state !== 'active'
+    ) {
+      throw new Error('the npub has a revoked or conflicting alpha membership')
+    }
+    return {
+      userId: admittedUserId,
+      balanceMsat,
+      balanceCreated: existingBalance[0] === undefined,
+    }
   })
-  process.stdout.write(
-    `${JSON.stringify({ npub: input.npub, userId, balanceMsat: input.balanceMsat })}\n`,
-  )
+  process.stdout.write(`${JSON.stringify({ npub: input.npub, ...result })}\n`)
 } finally {
   await client.end()
 }

@@ -2,14 +2,21 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PROTOCOL_VERSION,
   OMEGA_NOSTR_DEVICE_LINK_PROTOCOL_VERSION,
+  SARAH_VOICE_ADMISSION_PROTOCOL_VERSION,
+  SARAH_VOICE_COHORT_REVOCATION_PROTOCOL_VERSION,
   SARAH_VOICE_PROTOCOL_VERSION,
+  SARAH_VOICE_SETTLEMENT_PROTOCOL_VERSION,
   decodeOmegaNostrDeviceLinkChallengeRequest,
   decodeOmegaNostrDeviceLinkRequest,
   decodeSarahEditorCommand,
+  decodeSarahVoiceAdmissionRequest,
+  decodeSarahVoiceAdmissionResponse,
   decodeSarahVoiceClientControl,
+  decodeSarahVoiceCohortRevocationRequest,
   decodeSarahVoiceSessionRequest,
   decodeSarahVoiceSessionResponse,
   decodeSarahVoiceServerControl,
+  decodeSarahVoiceSettlementResponse,
 } from "./sarah-realtime.js";
 
 const identity = {
@@ -133,6 +140,68 @@ describe("Sarah Realtime voice contract", () => {
     ).toBe("lifecycle");
   });
 
+  test("decodes exact admission economics without accepting a ticket", () => {
+    expect(
+      decodeSarahVoiceAdmissionRequest({
+        schema: SARAH_VOICE_ADMISSION_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: "disclosure-1",
+        auth: {
+          method: "nostr_nip98",
+          challenge: "c".repeat(43),
+        },
+      }).auth?.method,
+    ).toBe("nostr_nip98");
+    const admission = {
+      schema: SARAH_VOICE_ADMISSION_PROTOCOL_VERSION,
+      admitted: true,
+      clientProfile: "omega_editor",
+      admissionCohortRef: "sarah_voice_cohort:alpha_v1",
+      creditMode: "metered",
+      creditRateMsatPerMillionTokens: 100_000,
+      requiredHoldMsat: 25_000,
+      spendableRemainingCreditMsat: 75_000,
+      maxDurationSeconds: 600,
+      capabilityBoundary: {
+        commands: ["context_read", "start_agent_thread"],
+        confirmationRequired: ["start_agent_thread"],
+        directShell: false,
+        directGit: false,
+        payment: false,
+        credentialAccess: false,
+        deviceControl: false,
+      },
+    } as const;
+    expect(decodeSarahVoiceAdmissionResponse(admission).admitted).toBe(true);
+    expect(() =>
+      decodeSarahVoiceAdmissionResponse({
+        ...admission,
+        ticket: "must-not-be-created-by-admission",
+      }),
+    ).toThrow();
+  });
+
+  test("decodes settlement evidence and fixes revocation to the alpha cohort", () => {
+    expect(
+      decodeSarahVoiceSettlementResponse({
+        schema: SARAH_VOICE_SETTLEMENT_PROTOCOL_VERSION,
+        sessionRef: identity.sessionRef,
+        state: "settled",
+        creditMode: "metered",
+        finalChargeMsat: 250,
+        spendableRemainingCreditMsat: 9_750,
+        receiptRef: "sarah_voice_settlement:session-1",
+      }).finalChargeMsat,
+    ).toBe(250);
+    expect(() =>
+      decodeSarahVoiceCohortRevocationRequest({
+        schema: SARAH_VOICE_COHORT_REVOCATION_PROTOCOL_VERSION,
+        cohortRef: "sarah_voice_cohort:staging_owner_v1",
+        reason: "Wrong authority",
+      }),
+    ).toThrow();
+  });
+
   test("requires an exact client profile in the pre-release session response", () => {
     const response = {
       schema: SARAH_VOICE_PROTOCOL_VERSION,
@@ -156,9 +225,7 @@ describe("Sarah Realtime voice contract", () => {
         channels: 1,
       },
     } as const;
-    expect(decodeSarahVoiceSessionResponse(response).clientProfile).toBe(
-      "mobile_voice_only",
-    );
+    expect(decodeSarahVoiceSessionResponse(response).clientProfile).toBe("mobile_voice_only");
     expect(() =>
       decodeSarahVoiceSessionResponse({
         ...response,

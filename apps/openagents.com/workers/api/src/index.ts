@@ -1307,8 +1307,14 @@ import {
 } from './sarah-owner-routes'
 import { makeSarahVoiceNostrChallengeService } from './sarah-realtime-nostr-auth'
 import {
+  SARAH_REALTIME_VOICE_ADMISSION_PATH,
+  SARAH_REALTIME_VOICE_COHORT_REVOCATION_PATH,
   SARAH_REALTIME_VOICE_SESSION_PATH,
+  SARAH_REALTIME_VOICE_SETTLEMENT_PATH,
+  handleSarahRealtimeVoiceAdmissionRequest,
+  handleSarahRealtimeVoiceCohortRevocationRequest,
   handleSarahRealtimeVoiceSessionRequest,
+  handleSarahRealtimeVoiceSettlementRequest,
   parseSarahRealtimeVoiceRouteConfig,
 } from './sarah-realtime-voice-routes'
 import { makeSarahRuntimeTools } from './sarah-runtime-tools'
@@ -3701,6 +3707,47 @@ const sarahVoiceNostrChallengeService =
       return linked?.userId
     },
   })
+
+const openSarahRealtimeVoiceStore = async (workerEnv: Env) => {
+  const connectionString = workerEnv.KHALA_SYNC_DB?.connectionString
+  if (connectionString === undefined) {
+    throw new Error('Sarah voice storage is not configured')
+  }
+  const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+  return {
+    store: makeSarahRealtimeVoiceStore(client.sql),
+    close: client.end,
+  }
+}
+
+const sarahStagingOwnerEntitlementEnabled = (workerEnv: Env): boolean => {
+  const enabled = ['1', 'true', 'on'].includes(
+    workerEnv.SARAH_STAGING_OWNER_VOICE_ENTITLEMENT_ENABLED?.trim().toLowerCase() ??
+      '',
+  )
+  if (!enabled) return false
+  try {
+    const host = new URL(workerEnv.OPENAGENTS_APP_URL ?? '').hostname
+    return host.startsWith('openagents-monolith-staging-')
+  } catch {
+    return false
+  }
+}
+
+const sarahRealtimeVoiceRouteDependencies = {
+  audit: (event: string, fields: Readonly<Record<string, string>>) =>
+    logWorkerRouteInfo(`sarah_voice_${event}`, fields),
+  authenticateNostrSession: omegaNostrSessionService.authenticateVerified,
+  config: sarahRealtimeVoiceConfigForEnv,
+  consumeNostrChallenge: sarahVoiceNostrChallengeService.consume,
+  mintNostrSession: omegaNostrSessionService.mint,
+  openStore: openSarahRealtimeVoiceStore,
+  stagingOwnerEntitlementEnabled: sarahStagingOwnerEntitlementEnabled,
+  requireUserBearerSession,
+  userIdFromSession: (session: Readonly<{ user: UserSubject }>) =>
+    session.user.userId,
+  verifyNostrProof: omegaNostrSessionService.verify,
+}
 
 // AIUR-3 (#8501): the ops views (users/runs/executor health) reuse the
 // EXACT SAME owner-gate composition as the credits console above — see
@@ -13833,50 +13880,66 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       ),
   },
   {
+    path: SARAH_REALTIME_VOICE_ADMISSION_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        handleSarahRealtimeVoiceAdmissionRequest(
+          sarahRealtimeVoiceRouteDependencies,
+          request,
+          env,
+          ctx,
+        ),
+      ),
+  },
+  {
     path: SARAH_REALTIME_VOICE_SESSION_PATH,
     handler: (request, env, ctx) =>
       Effect.promise(() =>
         handleSarahRealtimeVoiceSessionRequest(
+          sarahRealtimeVoiceRouteDependencies,
+          request,
+          env,
+          ctx,
+        ),
+      ),
+  },
+  {
+    path: SARAH_REALTIME_VOICE_SETTLEMENT_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        handleSarahRealtimeVoiceSettlementRequest(
+          sarahRealtimeVoiceRouteDependencies,
+          request,
+          env,
+          ctx,
+        ),
+      ),
+  },
+  {
+    path: SARAH_REALTIME_VOICE_COHORT_REVOCATION_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        handleSarahRealtimeVoiceCohortRevocationRequest(
           {
-            audit: (event, fields) =>
-              logWorkerRouteInfo(`sarah_voice_${event}`, fields),
-            authenticateNostrSession:
-              omegaNostrSessionService.authenticateVerified,
-            config: sarahRealtimeVoiceConfigForEnv,
-            consumeNostrChallenge: sarahVoiceNostrChallengeService.consume,
-            mintNostrSession: omegaNostrSessionService.mint,
-            openStore: async workerEnv => {
-              const connectionString = workerEnv.KHALA_SYNC_DB?.connectionString
-              if (connectionString === undefined) {
-                throw new Error('Sarah voice storage is not configured')
-              }
-              const client =
-                await defaultMakeKhalaSyncSqlClient(connectionString)
-              return {
-                store: makeSarahRealtimeVoiceStore(client.sql),
-                close: client.end,
-              }
-            },
-            stagingOwnerEntitlementEnabled: workerEnv => {
-              const enabled = ['1', 'true', 'on'].includes(
-                workerEnv.SARAH_STAGING_OWNER_VOICE_ENTITLEMENT_ENABLED?.trim().toLowerCase() ??
-                  '',
+            openStore: openSarahRealtimeVoiceStore,
+            requireOperator: async (
+              operatorRequest,
+              operatorEnv,
+              operatorCtx,
+            ) => {
+              const session = await requireUserBearerSession(
+                operatorRequest,
+                operatorEnv,
+                operatorCtx,
               )
-              if (!enabled) return false
-              try {
-                const host = new URL(workerEnv.OPENAGENTS_APP_URL ?? '')
-                  .hostname
-                if (!host.startsWith('openagents-monolith-staging-')) {
-                  return false
-                }
-              } catch {
-                return false
+              if (
+                session === undefined ||
+                !isOpenAgentsAdminEmail(session.user.email)
+              ) {
+                return undefined
               }
-              return true
+              return { actorRef: `operator:${session.user.userId}` }
             },
-            requireUserBearerSession,
-            userIdFromSession: session => session.user.userId,
-            verifyNostrProof: omegaNostrSessionService.verify,
           },
           request,
           env,

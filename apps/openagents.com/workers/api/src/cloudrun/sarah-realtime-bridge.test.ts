@@ -60,6 +60,7 @@ describe('Sarah Realtime bridge metering', () => {
         clientProfile: 'omega_editor',
         creditMode: 'metered',
         entitlementRef: null,
+        admissionCohortRef: 'sarah_voice_cohort:alpha_v1',
         state: 'connected',
         reservedMsat: 1_000,
         chargedMsat: 0,
@@ -106,6 +107,7 @@ describe('Sarah Realtime bridge metering', () => {
         clientProfile: 'omega_editor',
         creditMode: 'metered',
         entitlementRef: null,
+        admissionCohortRef: 'sarah_voice_cohort:alpha_v1',
         state: 'connected',
         reservedMsat: 1_000,
         chargedMsat: 0,
@@ -282,22 +284,22 @@ describe('Sarah Realtime bridge metering', () => {
     expect(update.session.tool_choice).toBe('auto')
     expect(update.session.tools[0]?.name).toBe('start_agent_thread')
     expect(update.session.tools[0]?.description).toContain(
-      'primary capability for repository inspection',
+      'separate Omega agent thread',
     )
     expect(update.session.tools.map(tool => tool.name)).not.toContain(
       'editor_open_path',
     )
     expect(update.session.instructions).toContain(
-      'persistent orchestrator and fleet commander',
+      'only the tools listed in the current Realtime session',
     )
     expect(update.session.instructions).toContain(
-      'Default to command, inspection, and delegation rather than conversation',
+      'no direct shell, Git, filesystem discovery, credential, payment',
     )
     expect(update.session.instructions).toContain(
-      'Do not ask the owner to paste file contents',
+      'A delegated thread is a separate authority boundary',
     )
     expect(update.session.instructions).toContain(
-      'Distinguish observed, submitted, in progress, blocked, and completed',
+      'Distinguish observed, proposed, submitted, in progress, blocked, and completed',
     )
     expect(update.session.instructions).toContain(
       'default to one short sentence',
