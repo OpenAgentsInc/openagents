@@ -50,6 +50,16 @@ components, a doorbell wire bus, DMs, bots, polls, calendar, private Lightning
 zaps, WebXDC apps, NIP-34 git activity, Android Bluetooth mesh, and release
 tooling on ngit-ci. [source]
 
+The first-run product is equally opinionated. There is no registration server:
+creating an account generates a Nostr secret locally, forces an explicit backup,
+logs the new identity in, offers a public profile, and then asks the person to
+create an encrypted Concord community or join an existing Concord, Buzz, or
+NIP-29 destination. Electron, web, Android, and iOS render this same React
+wizard, but their custody guarantees are not equal. Capacitor persists login
+records in Keychain/Keystore; web and Electron use origin `localStorage`;
+Android additionally has Credential Manager and NIP-55 signer support. The
+details and important gaps are in §4.5–§4.12. [source]
+
 The central OpenAgents decision: **track Armada as the strongest open
 serverless-E2EE community client and Concord product evidence, and as a peer
 client for NIP-29 / Buzz / Nostr identity surfaces. Do not adopt Armada as a
@@ -245,10 +255,11 @@ degraded fallback. Concord decrypted rumors have their own store path. [source]
 ### 4.2 Auth and key storage
 
 Login uses Nostrify's login provider with a storage adapter: Capacitor secure
-storage on native (Keychain/Keystore), `localStorage` on web. Native migrates
-legacy plaintext copies into secure storage on first read. Web still stores nsec
-in `localStorage`, which the code itself treats as weaker. NIP-46 remote signers
-and Android NIP-55 external signers are supported paths. [source]
+storage on native (Keychain/Keystore), `localStorage` on web and Electron.
+Native migrates legacy plaintext copies into secure storage on first read.
+Web/Electron still store nsec logins in `localStorage`, which the code itself
+treats as weaker. NIP-46 remote signers and Android NIP-55 external signers are
+supported paths. [source]
 
 Agent conventions hard-ban automatic publish of user lists (follows, mutes,
 NIP-65, DM relays, Concord membership lists). Empty reads are treated as
@@ -269,10 +280,283 @@ process source enumeration plus an in-app picker. [source]
 
 Android is the feature-complete native host: background notification relay
 service, shared SQLite, Amber signing, Bluetooth mesh (vendored bitchat
-stack), Credential Manager nsec export, App Links for `armada.buzz`. iOS has
+stack), Credential Manager nsec backup, fallback file export, and App Links for
+`armada.buzz`. iOS has
 secure storage and LiveKit media permissions but no notifications, no mesh, no
 NIP-55, and no universal links yet. Agents are told not to use
 `isNativeRuntime()` for notification-gated UI. [source]
+
+### 4.5 One onboarding product across four hosts
+
+Armada does not have separate desktop, mobile, and web account models. The
+Electron app serves the bundled Vite application from the secure custom origin
+`app://armada`; Android and iOS embed the same application through Capacitor;
+the hosted/PWA form serves it over HTTPS. All four mount the same
+`NostrLoginProvider`, `WelcomePage`, `SyncGate`, `LoginSetup`, route guards,
+profile editor, and create/join body. The native and Electron shells add
+capabilities around that application; they do not replace its identity flow.
+[source]
+
+This gives Armada unusually high behavioral parity:
+
+- a signed-out launch routes to `/welcome`;
+- a public community or invite can render while signed out, but DMs and
+  Settings redirect to the welcome surface;
+- the landing page has one **Join** action, which opens the existing-account
+  dialog and offers **Create account** as the escape into the full-screen
+  wizard;
+- restored logins render immediately from local state, while a genuinely new
+  login runs a bounded recovery sync; and
+- the account-creation wizard alone continues into profile and community
+  setup. A signed-in person with no communities is not forced through
+  onboarding again after reload; they land in DMs, or in Android mesh while
+  offline. [source]
+
+The shared UI should not be mistaken for shared security.
+`Capacitor.isNativePlatform()` selects secure login storage on Android/iOS.
+Electron is not Capacitor and therefore follows the web storage path. Mobile
+also changes remote-signer navigation, notifications, battery setup, deep
+links, and available external signers. [source]
+
+### 4.6 Desktop account creation, step by step
+
+On desktop, “create account” is not an API call and there is no username,
+email, phone, password, CAPTCHA, server-issued session, or uniqueness check.
+It is a four-step client-side wizard:
+
+1. **Generate identity.** `generateSecretKey()` produces a new Nostr secret,
+   `nip19.nsecEncode` renders it as `nsec1…`, and the matching secp256k1 public
+   key becomes the account identifier. The screen explains that the key lives
+   on the device and is the identity. At this point nothing has been published
+   and no account exists on a server; the generated secret is held in React
+   state. [source]
+2. **Back up before login.** The secret is masked by default but can be
+   revealed or copied. **Save key & continue** validates the nsec, derives the
+   public key/npub, and requires a successful backup path before advancing.
+   The preferred desktop/web path calls the Credential Management API to store
+   a password credential keyed by the npub. If that API is absent or fails,
+   Armada downloads `armada-secret-key.txt`. Cancelling the keyring sheet keeps
+   the user on the step; a failed file export also keeps them there. [source]
+3. **Create the local session.** After backup, the wizard puts the nsec into a
+   Nostrify `nsec` login, makes it the active login, and persists the login
+   record under `armada:login`. A new-account flag suppresses the ordinary
+   fresh-login recovery overlay because the identity has no remote settings or
+   memberships yet. This is the point at which Electron/web `localStorage` also
+   receives the local-signing login record. [source]
+4. **Profile, then destination.** The wizard offers the normal WYSIWYG profile
+   editor. Saving signs and publishes a replaceable kind `0` metadata event;
+   skipping publishes nothing. The last step embeds the normal Add flow: start
+   a Concord V2 community, or paste a Concord V1/V2 invite, Buzz invite,
+   relay-qualified NIP-29 group link, or NIP-29 relay URL. The person can skip
+   this and use DMs. [source]
+
+Creating a Concord V2 community is meaningful protocol work, not local UI
+scaffolding. The user names it and can edit its relay set. Armada mints the
+community locally, publishes owner-signed genesis metadata and a public
+`#general` channel, records the secret join material in the user's encrypted
+Community List, and best-effort publishes the founder's Guestbook Join. The
+new identity becomes the owner. Default relay candidates combine configured
+app relays, shared CORD interoperability relays, and the creator's DM relays,
+filtered for portable reachability. [source]
+
+Pasting an invite is resolved before commitment where possible. Concord V2
+previews verify and open the invite bundle; joining fails closed if the current
+banlist cannot be read or names the joiner. Buzz invites can require terms and
+an age attestation before the signed claim. A NIP-29 group address routes to
+the group page, where kind `9021` performs the actual join. Merely adding a
+NIP-29 relay or Buzz server updates the signed kind `10009` list that drives the
+community rail. [source]
+
+### 4.7 Existing-account login on desktop
+
+The **Join / Log in** dialog deliberately compresses several custody models
+into one surface:
+
+| Method | Desktop interaction | Secret/capability held by Armada | Session dependency |
+| --- | --- | --- | --- |
+| Raw nsec | Paste `nsec1…`, select a `.txt` key file, or accept a credential offered by the password manager | The user's full nsec is placed in the persisted login record and used for local signing | Renderer storage plus the local app profile |
+| NIP-07 extension | Button appears only when `window.nostr` exists | Login type and public key; the extension retains the user key | The same extension must remain available and authorized |
+| NIP-46 `bunker://` | Paste the URI into the same input | A newly generated client secret, bunker pubkey, and frozen relay set; not the user's nsec | Reachable bunker relays and remote signer approval |
+| NIP-46 `nostrconnect://` | Show a QR code for a signer on another device | The client pairing secret, responder bunker pubkey, user pubkey, and relay set | The paired signer and rendezvous relays |
+
+The stock Electron package does not install a NIP-07 browser extension. The
+extension path exists only if something has injected `window.nostr`; ordinary
+packaged-desktop users therefore primarily see nsec, key-file, bunker, and QR
+paths. [source] [inferred]
+
+The NIP-46 pairing flow deserves detail. Armada generates a client key and
+selects app/platform relays as rendezvous points before it knows the user's
+kind `10009` servers. A throwaway plain-WebSocket transport listens for the
+kind `24133` acknowledgement, decrypts it with NIP-44, asks the remote signer
+for the user's public key, and best-effort adopts signer-reported relays. The
+merged set is capped and frozen into the login. The long-lived signer then uses
+a dedicated reconnecting transport with one persistent response subscription.
+It retries silence or publish failure, but an explicit rejection fails
+immediately so “deny” does not produce another prompt. [source]
+
+NIP-46 protects the root user key from the Armada client, but the stored client
+secret is still a live signing-channel capability. On Electron/web it is in the
+same `localStorage` login record as other login metadata; on Capacitor it is in
+Keychain/Keystore. Remote signing therefore reduces root-key exposure without
+making compromised client storage irrelevant. [source] [inferred]
+
+### 4.8 What happens immediately after an existing login
+
+Armada distinguishes a restored session from a fresh login. The login set
+present when React mounts is the restored baseline and does not show a blocking
+overlay. A newly added or newly selected identity runs `SyncGate`, which keeps
+the app behind a branded progress screen while `useInitialSync` attempts to:
+
+1. fetch and NIP-44-decrypt Armada settings from kind `30078`;
+2. fetch the kind `10009` NIP-29 server/group list;
+3. cache a recent page for as many as eight joined NIP-29 channels;
+4. restore up to six Concord V1 communities and recent sealed traffic;
+5. decrypt the Concord V2 Community List; and
+6. register stream keys, sweep control/guestbook planes, persist safe folds,
+   and decrypt recent Concord V2 channel pages, bounded at 200 channels.
+
+The overall gate has a 30-second ceiling and individual network steps have
+shorter budgets. Failures are best-effort: defaults or cached state show, and
+normal runtime recovery continues after the gate lifts. An offline login skips
+network recovery and reports mesh mode. A brand-new wizard identity explicitly
+skips this gate. [source]
+
+This is how the “portable identity” claim becomes a product journey. Moving an
+nsec or reconnecting the same external signer on a fresh device recovers
+published profile/settings, NIP-29 memberships, and the self-encrypted Concord
+community lists from relays. It does not recover data that was only local,
+relay history that disappeared, a lost external-signer pairing, or an nsec
+that was never backed up. [source] [inferred]
+
+### 4.9 Post-login setup and signer consent
+
+After the sync overlay, a second shared full-screen queue asks only questions
+that apply:
+
+- Android can request notification permission, then ask for exemption from
+  battery optimization so its foreground relay service survives Doze.
+- A surface that needs uncached bulk decryption can enqueue one app-wide
+  consent step. Accepting lets Armada use the signer quietly for future
+  decrypts; declining leaves messages locked behind explicit **Decrypt** or
+  **Decrypt all** actions.
+- Web, Electron, and local-nsec users normally see no notification/battery
+  steps. The decrypt question is demand-driven and chiefly protects extension,
+  NIP-46, and Android-signer users from a storm of approval prompts. [source]
+
+The consent value is local and app-wide, not per conversation. Concurrent
+decrypt callers share one pending decision. If no UI is available, the gate
+declines conservatively. Already cached plaintext does not touch the signer and
+does not prompt. [source]
+
+### 4.10 Web, Android, and iOS differences
+
+The web experience is the desktop renderer without Electron's native shell.
+Hosted HTTPS and PWA users can use nsec, a key file, NIP-07, bunker, or
+nostrconnect. On a mobile browser, nostrconnect becomes an **Open signer app**
+deep link rather than a desktop QR. The callback returns to
+`/remoteloginsuccess`, shows approval, and attempts to close or navigate back
+after giving the still-live login dialog time to persist the acknowledgement.
+The web login record, including an nsec or NIP-46 client secret, remains in
+origin `localStorage`. [source]
+
+Android adds three native advantages:
+
+1. the Nostrify login record is stored by `capacitor-secure-storage-plugin`
+   rather than WebView `localStorage`, with one-time migration of a legacy
+   plaintext copy;
+2. account creation can invoke Android Credential Manager to store the nsec as
+   a password credential, or write a plaintext fallback to Downloads; and
+3. installed signer apps such as Amber appear as direct NIP-55 choices.
+   Armada stores the selected package name and public key, invokes the signer
+   for each cryptographic action, and verifies returned event signatures.
+
+The Android password-manager backup and the secure local login store are
+different copies serving different purposes. Credential Manager is a
+recoverable user backup chosen through system UI. Secure storage keeps the
+currently active Armada session out of ordinary WebView storage. An Android
+person who chooses the fallback file has still created a plaintext nsec in a
+public/user-visible location. [source]
+
+iOS gets the secure-storage half: Capacitor login records go to Keychain, and a
+legacy WebView copy is migrated. It does not have the Android NIP-55 picker.
+Mobile NIP-46 remains available through the URL scheme/callback pattern, though
+the audited iOS target does not yet provide universal links. [source]
+
+There is a static-source onboarding gap on iOS. `saveToKeyring` routes every
+native platform through the custom `ArmadaCredential` plugin, and its fallback
+`exportNsec` calls the same plugin. Only Android registers an
+`ArmadaCredentialPlugin`; no iOS implementation exists in the audited tree.
+Therefore a newly generated iOS account appears unable to satisfy **Save key &
+continue**: plugin failure becomes “unavailable,” file export then fails, and
+the wizard stays on the backup step even if the user copied the key. Importing
+an existing nsec can still create a secure Keychain-backed login, and the later
+Settings backup action uses the native share sheet, but the new-account path
+cannot reach Settings until it advances. This was not exercised on device, so
+it is a high-confidence source inference rather than runtime proof. [source]
+[inferred] [limitation]
+
+### 4.11 Key and plaintext security by host
+
+| Host/login | Persistent signing material | Backup/export path | Important exposure |
+| --- | --- | --- | --- |
+| Electron + nsec | Full nsec in `app://armada` renderer `localStorage` | Chromium Credential API when available; otherwise plaintext `armada-secret-key.txt` download | Renderer/XSS or desktop-profile access reaches the root key; Electron does not use `safeStorage` or an OS-keychain adapter |
+| Browser/PWA + nsec | Full nsec in HTTPS-origin `localStorage` | Browser password manager when available; otherwise plaintext download | Origin script compromise, XSS, extensions, profile access, or storage eviction |
+| Android + nsec | Full login record in secure storage backed by Android facilities | Credential Manager; otherwise plaintext Downloads file; Settings can share/copy | Clipboard/share/file destinations can escape secure storage |
+| iOS + nsec | Full login record in Keychain-backed secure storage after login | Settings share sheet; create-account backup is apparently blocked as above | Clipboard/share destination plus the account-creation defect |
+| NIP-07 | No user nsec in Armada; public login metadata persists | Recovery belongs to the extension | Extension compromise/availability and approval policy |
+| NIP-46 | No user nsec; local client/pairing nsec and relay metadata persist | Recovery belongs to the remote signer; pairing may need recreation | Client capability theft, relay metadata, remote-signer availability, approval fatigue |
+| Android NIP-55 | Package name and public key persist; signer app holds the user key | Recovery belongs to signer app | Android intent boundary and signer-app trust |
+
+Electron's main-process defaults reduce the blast radius of web content:
+`contextIsolation` is on, Node integration is off, the renderer is sandboxed,
+external navigation is denied into the app window, and permissions are
+allowlisted for the app origin. Those are valuable controls, but they do not
+turn renderer `localStorage` into protected key custody. The root document also
+does not declare a Content Security Policy in the audited source; the sandboxed
+WebXDC frames have their own CSP, which is a different boundary. [source]
+[inferred]
+
+Key isolation also does not mean content isolation. `AppSigner` deliberately
+persists successful NIP-04/NIP-44 decryptions as plaintext in an IndexedDB
+content-addressed cache so external signers are not asked to decrypt the same
+ciphertext repeatedly. Concord decrypted rumors and other product caches also
+have persistent stores. Expiring DMs can opt out of the decrypt cache, and the
+cache is wiped on final logout, but ordinary decrypted content is readable to
+someone with access to the app profile/disk. Native secure storage protects the
+login record, not all decrypted application data. [source]
+
+### 4.12 Accounts, switching, logout, and recovery limits
+
+Nostrify keeps an ordered set of logins; the first is active. Armada resolves
+kind `0` profiles for them, lets a person add another account through the same
+login dialog, and switches by promoting the selected login. A freshly selected
+identity can trigger the same recovery gate. Signer objects are cached by login
+id so one identity's signer is not reused for another. Wallet configuration is
+also partitioned by public key. [source]
+
+Logging out one of several accounts removes that login, clears its wallet
+secrets, and drops in-memory rendered DM plaintext while leaving shared caches
+needed by the remaining identities. Logging out the final account removes the
+login and best-effort deletes local storage, IndexedDB databases, Cache Storage,
+the event store, Concord/DM rumor stores, drafts, read state, preferences,
+decrypted images, and the persistent decrypt cache before returning to
+`/welcome`. The purge is a local-device action; it cannot retract events or
+copies held by relays and peers. [source]
+
+There is no password reset or custodial recovery authority. A raw-nsec account
+is recoverable only from another copy of that secret. An external-signer
+account is recoverable according to that signer's own backup and re-pairing
+model. Nostr kind `0` is a profile, not registration evidence, and deleting
+local state does not delete the public-key identity. The onboarding warning
+correctly says the nsec is the only login for a locally held key. [source]
+
+The legal copy is inconsistent with the implementation. The privacy page
+correctly limits its “never accessed or stored” statement to extension and
+external-signer methods. The Terms page says Armada never accesses or stores a
+private key directly and that a chosen signer always manages it, while the
+account wizard, nsec login, Nostrify storage adapter, and key-backup settings
+all explicitly handle and persist the nsec. The Terms language should be
+corrected before it is used as a security claim. [source]
 
 ## 5. Adjacent product surfaces
 
@@ -336,6 +620,13 @@ OpenAgents' receipted Work Unit / grant / verification chain. [inferred]
    Aligns with OpenAgents Desktop hardening goals.
 8. **Empty baked-in servers for shipped clients.** Runtime-configured relays
    and brokers preserve user sovereignty and make air-gapped operation real.
+9. **Identity-first onboarding with an honest recovery gate.** Account creation
+   makes backup a prerequisite, then separates optional profile publication
+   from community creation. Existing identities get a bounded, visible recovery
+   pass instead of an empty shell that silently fills in.
+10. **One consent gate for prompting signers.** Coalescing uncached bulk
+    decrypts behind one app-wide decision avoids remote-signer prompt storms,
+    while explicit per-message decrypt remains available after refusal.
 
 ### 7.2 Reject or fence
 
@@ -343,8 +634,9 @@ OpenAgents' receipted Work Unit / grant / verification chain. [inferred]
    read-only design evidence unless there is an explicit owner license decision.
 2. **React + Tailwind + shadcn as product architecture.** OpenAgents UI remains
    Effect Native with thin host renderers.
-3. **Web `localStorage` nsec as a model for Desktop secrets.** Native secure
-   storage is better; web key storage remains a known weak path.
+3. **Web/Electron `localStorage` nsec as a model for Desktop secrets.** Native
+   secure storage is better. A sandboxed renderer and a secure custom scheme do
+   not make renderer storage an OS-backed key vault.
 4. **Capacitor WebView mobile as the OpenAgents mobile architecture.** Useful
    for packaging lessons; not a substitute for Effect Native on Expo.
 5. **Relay or sealed-plane fold as release/acceptance authority.** Membership
@@ -356,6 +648,10 @@ OpenAgents' receipted Work Unit / grant / verification chain. [inferred]
 7. **Buzz/NIP-29/Concord triple surface as one OpenAgents UI authority.** Keep
    explicit adapters and projections; do not collapse three membership models
    into one ambient "server" object.
+8. **Persistent plaintext decrypt caches without an explicit device-security
+   contract.** Remote signing protects the root key, not cached message
+   plaintext. OpenAgents needs encrypted-at-rest policy, retention, backup, and
+   logout/eviction evidence for every private projection.
 
 ### 7.3 Decision for the catalog
 
@@ -706,6 +1002,34 @@ Until those are decided, the safe next admission is `OMEGA-ROOM-00` followed
 by the durable store work. Neither commits the product to Concord authority or
 to running Buzz infrastructure. [inferred]
 
+### 8.11 Onboarding implications for Omega
+
+Armada supplies a strong journey reference but not a custody implementation to
+copy. A Rust-first Omega room product should preserve the sequence—identity,
+verified backup/recovery, optional profile, destination, bounded recovery
+sync—while changing the security boundary:
+
+1. Desktop key creation/import must terminate in `omega_identity`, with the
+   root secret remaining outside GPUI and any web renderer.
+2. “Backed up” must mean a typed, confirmed recovery outcome. Clipboard copy or
+   initiating a plaintext download is not sufficient evidence by itself.
+3. Local, NIP-07/55-style external, and NIP-46 remote signers must disclose
+   different custody, availability, decryption, Bitcoin, and recovery
+   capabilities before a person chooses one.
+4. A remote signer must not imply that private content is absent from disk.
+   The onboarding disclosure should separately describe key custody, decrypted
+   cache policy, and device backup.
+5. New-account and existing-account flows need packaged tests on every host.
+   A shared React component did not prevent Armada's apparent iOS backup-gate
+   defect; capability probes must come from implemented host truth.
+6. Cross-device recovery should show which records can be reconstructed from
+   relays, which require the identity signer, which require Concord community
+   material, and which were local-only.
+
+This work belongs beside `OMEGA-ROOM-00` and the signer/store contracts, not as
+late UI polish. An interoperability profile that can decrypt a room but cannot
+explain or recover its keys is not product parity. [inferred]
+
 ## 9. Suggested follow-ups (not admitted work)
 
 These are research or candidate seeds only:
@@ -725,6 +1049,12 @@ These are research or candidate seeds only:
    before any outbound Buzz compatibility work.
 8. Decide whether the first Concord proof is an external Rust crate, an Omega
    crate, or a reviewed upstream dependency before implementing crypto.
+9. Run the account-creation and existing-login matrix on packaged Electron,
+   hosted web/PWA, Android, and iOS builds, including password-manager
+   cancellation, unavailable providers, remote-signer return, offline login,
+   account switching, and final logout.
+10. Confirm the inferred iOS `ArmadaCredential` gap on a device and reconcile
+    the Terms page with the nsec storage paths.
 
 ## 10. Central finding
 
@@ -742,4 +1072,8 @@ parity is to finish that standards-first NIP-29 substrate, add a pinned Buzz
 profile, then add Concord as a separate Rust crypto/fold profile over the same
 durable room product. Shared UI does not require shared authority, and protocol
 interoperability does not require replacing Omega's execution, receipt, Git,
-or settlement owners.
+or settlement owners. Armada's onboarding is a strong product sequence—local
+identity, mandatory backup, optional profile, community choice, bounded
+recovery—but not a uniform security boundary: Electron/web retain local signer
+material in renderer storage, decrypted content is cached separately, and the
+audited iOS new-account backup path appears incomplete.
