@@ -428,30 +428,40 @@ resource "google_service_account_iam_member" "server_workload_identity" {
   service_account_id = google_service_account.server.name
   role               = "roles/iam.workloadIdentityUser"
   member             = local.server_workload_identity_member
+
+  depends_on = [google_container_cluster.livekit]
 }
 
 resource "google_service_account_iam_member" "agent_workload_identity" {
   service_account_id = google_service_account.agent.name
   role               = "roles/iam.workloadIdentityUser"
   member             = local.agent_workload_identity_member
+
+  depends_on = [google_container_cluster.livekit]
 }
 
 resource "google_service_account_iam_member" "secret_reader_workload_identity" {
   service_account_id = google_service_account.secret_reader.name
   role               = "roles/iam.workloadIdentityUser"
   member             = local.secret_reader_workload_identity_member
+
+  depends_on = [google_container_cluster.livekit]
 }
 
 resource "google_service_account_iam_member" "dns_secret_reader_workload_identity" {
   service_account_id = google_service_account.dns_secret_reader.name
   role               = "roles/iam.workloadIdentityUser"
   member             = local.dns_secret_reader_workload_identity_member
+
+  depends_on = [google_container_cluster.livekit]
 }
 
 resource "google_service_account_iam_member" "sarah_secret_reader_workload_identity" {
   service_account_id = google_service_account.sarah_secret_reader.name
   role               = "roles/iam.workloadIdentityUser"
   member             = local.sarah_secret_reader_workload_identity_member
+
+  depends_on = [google_container_cluster.livekit]
 }
 
 resource "google_secret_manager_secret" "server_keys" {

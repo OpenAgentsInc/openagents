@@ -309,6 +309,40 @@ requireIncludes(
   "master_authorized_networks = var.master_authorized_networks",
   "production GKE control-plane authorized networks projection",
 );
+const workloadIdentityBindings = new Map(
+  [
+    ...gkeInfrastructure.matchAll(
+      /resource "google_service_account_iam_member" "([^"]+)" \{([\s\S]*?)\n\}/g,
+    ),
+  ].map((match) => [match[1], match[2]]),
+);
+const expectedWorkloadIdentityBindings = [
+  "server_workload_identity",
+  "agent_workload_identity",
+  "secret_reader_workload_identity",
+  "dns_secret_reader_workload_identity",
+  "sarah_secret_reader_workload_identity",
+];
+requireEqual(
+  JSON.stringify([...workloadIdentityBindings.keys()]),
+  JSON.stringify(expectedWorkloadIdentityBindings),
+  "Workload Identity IAM binding inventory",
+);
+for (const bindingName of expectedWorkloadIdentityBindings) {
+  const binding = workloadIdentityBindings.get(bindingName);
+  requireEqual(
+    JSON.stringify([
+      ...binding.matchAll(/^\s*role\s*=\s*"([^"]+)"$/gm),
+    ].map((match) => match[1])),
+    JSON.stringify(["roles/iam.workloadIdentityUser"]),
+    `${bindingName} least-privilege role`,
+  );
+  requireIncludes(
+    binding,
+    "depends_on = [google_container_cluster.livekit]",
+    `${bindingName} workload-pool ordering dependency`,
+  );
+}
 requireIncludes(
   gkeInfrastructure,
   'name        = "${var.cluster_name}-redis-allow-sfu"',
