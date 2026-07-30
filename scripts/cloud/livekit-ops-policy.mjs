@@ -27,6 +27,14 @@ export const LIVEKIT_OPS = Object.freeze({
   canaryMaximumLifetimeSeconds: 21_600,
 });
 
+export const LIVEKIT_PREREQUISITE_SERVICE_REFS = Object.freeze([
+  "gcp-service-ref://openagentsgemini/servicenetworking.googleapis.com",
+  "gcp-service-ref://openagentsgemini/billingbudgets.googleapis.com",
+  "gcp-service-ref://openagentsgemini/networkmanagement.googleapis.com",
+  "gcp-service-ref://openagentsgemini/iamcredentials.googleapis.com",
+  "gcp-service-ref://openagentsgemini/sts.googleapis.com",
+]);
+
 const DIGEST = /^sha256:[0-9a-f]{64}$/u;
 const COMMIT = /^[0-9a-f]{40}$/u;
 const REF = /^[a-z][a-z0-9_.-]*-ref:\/\/[a-zA-Z0-9._~:/?#@!$&'()*+,;=%-]+$/u;
@@ -913,17 +921,12 @@ export function validatePrerequisiteReceipt(value) {
       value.issueRef === "github-issue-ref://OpenAgentsInc/openagents/9284",
       "prerequisite receipt issueRef is wrong",
     );
-    const expectedServices = [
-      "gcp-service-ref://openagentsgemini/servicenetworking.googleapis.com",
-      "gcp-service-ref://openagentsgemini/billingbudgets.googleapis.com",
-      "gcp-service-ref://openagentsgemini/networkmanagement.googleapis.com",
-      "gcp-service-ref://openagentsgemini/iamcredentials.googleapis.com",
-      "gcp-service-ref://openagentsgemini/sts.googleapis.com",
-    ];
     assert(
       Array.isArray(value.resourceRefs) &&
-        value.resourceRefs.length === expectedServices.length &&
-        expectedServices.every((ref, index) => value.resourceRefs[index] === ref),
+        value.resourceRefs.length === LIVEKIT_PREREQUISITE_SERVICE_REFS.length &&
+        LIVEKIT_PREREQUISITE_SERVICE_REFS.every(
+          (ref, index) => value.resourceRefs[index] === ref,
+        ),
       "prerequisite service refs are outside the exact LiveKit API set",
     );
     value.resourceRefs.forEach((ref, index) =>

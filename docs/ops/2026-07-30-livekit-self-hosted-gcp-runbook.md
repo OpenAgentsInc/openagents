@@ -172,9 +172,13 @@ untracked production OpenTofu variable. The redacted prerequisite receipt is
 [`receipts/livekit/monitoring-channel-prerequisite.json`](receipts/livekit/monitoring-channel-prerequisite.json).
 That receipt proves channel presence only, not policy attachment or delivery.
 
-The isolated rollout also has the required Google APIs enabled for Service
-Networking, Billing Budgets, Network Management, and IAM Credentials. Preserve
-only their service refs and success state in public evidence; see
+The isolated rollout also has the exact required Google API set enabled in
+`openagentsgemini`: Service Networking, Billing Budgets, Network Management,
+IAM Credentials, and Security Token Service. The production Google provider
+sets both `billing_project` and `user_project_override` to that same project so
+quota-bearing requests, including the Billing Budgets API call, cannot fall
+back to an unrelated OAuth credential consumer project. Preserve only the five
+service refs and success state in public evidence; see
 [`receipts/livekit/google-api-prerequisites.json`](receipts/livekit/google-api-prerequisites.json).
 API enablement is a prerequisite, not a deployment or connectivity result.
 

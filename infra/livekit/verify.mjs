@@ -180,6 +180,10 @@ const productionInfrastructure = await readFile(
   resolve(repositoryRoot, "infra/livekit-production/main.tf"),
   "utf8",
 );
+const productionProviders = await readFile(
+  resolve(repositoryRoot, "infra/livekit-production/providers.tf"),
+  "utf8",
+);
 const observabilityInfrastructure = await readFile(
   resolve(repositoryRoot, "infra/modules/livekit-observability/main.tf"),
   "utf8",
@@ -308,6 +312,16 @@ requireIncludes(
   productionInfrastructure,
   "master_authorized_networks = var.master_authorized_networks",
   "production GKE control-plane authorized networks projection",
+);
+requireIncludes(
+  productionProviders,
+  "billing_project       = var.project_id",
+  "production Google API quota project",
+);
+requireIncludes(
+  productionProviders,
+  "user_project_override = true",
+  "production Google API quota project override",
 );
 const workloadIdentityBindings = new Map(
   [

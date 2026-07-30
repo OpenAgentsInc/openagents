@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 import {
   LIVEKIT_OPS,
+  LIVEKIT_PREREQUISITE_SERVICE_REFS,
   REQUIRED_DRILLS,
   assertPublicSafe,
   buildPublicReceipt,
@@ -529,19 +530,20 @@ test("monitoring prerequisite preserves only the channel ref and redacted status
   );
 });
 
-test("API prerequisite preserves the exact five service refs and success only", () => {
+test("API prerequisite preserves the exact production service refs and success only", () => {
+  assert.deepEqual(LIVEKIT_PREREQUISITE_SERVICE_REFS, [
+    "gcp-service-ref://openagentsgemini/servicenetworking.googleapis.com",
+    "gcp-service-ref://openagentsgemini/billingbudgets.googleapis.com",
+    "gcp-service-ref://openagentsgemini/networkmanagement.googleapis.com",
+    "gcp-service-ref://openagentsgemini/iamcredentials.googleapis.com",
+    "gcp-service-ref://openagentsgemini/sts.googleapis.com",
+  ]);
   const receipt = {
     schemaVersion: "openagents.livekit_prerequisite_receipt.v1",
     receiptRef: "livekit-prerequisite-receipt-ref://sha256/api-enablement",
     issueRef: "github-issue-ref://OpenAgentsInc/openagents/9284",
     kind: "google_api_enablement",
-    resourceRefs: [
-      "gcp-service-ref://openagentsgemini/servicenetworking.googleapis.com",
-      "gcp-service-ref://openagentsgemini/billingbudgets.googleapis.com",
-      "gcp-service-ref://openagentsgemini/networkmanagement.googleapis.com",
-      "gcp-service-ref://openagentsgemini/iamcredentials.googleapis.com",
-      "gcp-service-ref://openagentsgemini/sts.googleapis.com",
-    ],
+    resourceRefs: [...LIVEKIT_PREREQUISITE_SERVICE_REFS],
     status: "succeeded",
     observedAt: "2026-07-30T21:46:34.000Z",
     evidenceTier: "live_observed",
