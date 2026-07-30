@@ -5,10 +5,13 @@ the existing [Armada](./2026-07-30-armada-teardown.md),
 [Buzz](./2026-07-21-buzz-teardown.md), and
 [Zed](./2026-07-18-zed-teardown.md) teardowns, extended with source tours of
 LiveKit's JavaScript Agents framework and Rust SDKs and a migration analysis
-for Sarah's current OpenAI Realtime voice path. This review traced the source
-trees more narrowly than the original product audits. It did not install
-dependencies, run the products, connect to LiveKit or OpenAI, join a Buzz
-huddle, or exercise media devices. [limitation]
+for Sarah's current OpenAI Realtime voice path. It also audits LiveKit's
+self-hosting server, deployment generator, and Helm chart and turns them into
+a concrete Google Cloud deployment and Sarah cutover plan. This review traced
+the source trees more narrowly than the original product audits. It did not
+install dependencies, run the products, provision Google Cloud resources,
+connect to LiveKit or OpenAI, join a Buzz huddle, or exercise media devices.
+[limitation]
 
 ## Summary
 
@@ -39,6 +42,13 @@ These systems do not present variations of the same integration:
   Agents worker that joins the room and opens its own server-side OpenAI
   Realtime WebSocket. It is compatible, but it is an architectural migration,
   not a URL or SDK substitution.
+- **Self-hosted LiveKit fits OpenAgents' Google Cloud boundary, but not its
+  current Cloud Run shape.** A disposable single-VM deployment is the fastest
+  connectivity proof. A production service requires a public-node GKE
+  Standard regional cluster, host networking, one SFU pod per dedicated node,
+  direct UDP/TCP media reachability, a separate TURN endpoint, Redis, and
+  separately operated Agents workers. Cloud Run remains the admission,
+  command, accounting, and settlement authority; Cloudflare remains DNS-only.
 
 The direct answer to the Sarah question is therefore **yes**:
 [LiveKit's OpenAI Realtime plugin](https://docs.livekit.io/agents/models/realtime/plugins/openai/)
@@ -73,7 +83,7 @@ Omega ── one-use ticket + OAA1 PCM/control WSS ── OpenAgents gateway
                                                      └── OpenAI Realtime WSS
 
 Sarah with LiveKit Agents
-Omega ── WebRTC room via rust-sdks ── LiveKit ── agents-js worker
+Omega ── WebRTC room via rust-sdks ── self-hosted LiveKit ── agents-js worker
                                                    │
                                                    └── OpenAI Realtime WSS
 ```
@@ -97,6 +107,9 @@ control tradeoff of owning the media transport instead of adopting an SFU.
 | Zed | [`zed-industries/zed@f032f4d4`](https://github.com/zed-industries/zed/tree/f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4) | Native LiveKit media plane below Zed collaboration control | GPL-3.0-or-later by default; marked components may differ |
 | LiveKit Agents JS | [`livekit/agents-js@d5d8d048`](https://github.com/livekit/agents-js/tree/d5d8d0487d2e99f49a1b56ab6b9e82b481491955) | Server-side agent worker, room I/O, voice orchestration, and OpenAI Realtime provider plugin | Apache-2.0 framework; bundled LiveKit model artifacts have separate terms |
 | LiveKit Rust SDKs | [`livekit/rust-sdks@00258d1e`](https://github.com/livekit/rust-sdks/tree/00258d1e52e563327f3ed75807ea03a189a5c2d2) | Native LiveKit room, media, data, E2EE, token, and server APIs; no agent runtime | Apache-2.0; preserve applicable bundled third-party notices |
+| LiveKit Server | [`livekit/livekit@ced94b86`](https://github.com/livekit/livekit/tree/ced94b8645829263a1a9ef6c8101936897252d6b) | Self-hosted signaling, SFU, embedded TURN, distributed routing, configuration, and metrics | Apache-2.0 |
+| LiveKit Deploy | [`livekit/deploy@1a7b369f`](https://github.com/livekit/deploy/tree/1a7b369f94e3a2f890d366fceeb4f273bf9fb3f6) | Production Docker Compose, Caddy, TLS, TURN, Redis, and VM startup-file generator | Apache-2.0 |
+| LiveKit Helm | [`livekit/livekit-helm@8f0ad080`](https://github.com/livekit/livekit-helm/tree/8f0ad0809c2be8cbed375a6f8bef10625e5e8a2b) | Kubernetes deployment, GKE ingress/backend, TURN load balancer, HPA, and secret-mount templates | Apache-2.0 |
 | Sarah | Omega [`0136fca2`](https://github.com/OpenAgentsInc/omega/tree/0136fca2d11900ddc7982665482ed8cd035391c7) and this OpenAgents snapshot | Custom authenticated PCM/control gateway to server-side OpenAI Realtime | Repository-specific; outside this SDK license comparison |
 
 The Armada and Zed identities match the exact source snapshots in their
@@ -133,6 +146,12 @@ This review proves source shape, not deployed behavior. It does not prove:
   transcript, reconnect, and audio-processing contracts.
 - LiveKit Rust SDK packaged size, device behavior, WebRTC APM interaction, or
   end-to-end latency in Omega.
+- Google Cloud quota, current project policy, DNS ownership, certificate
+  issuance, actual regional capacity, machine-family availability, pricing,
+  load-balancer behavior, or LiveKit scale under Sarah's workload.
+- A self-hosted LiveKit uptime target, in-flight room survival after node
+  loss, Redis failover behavior, TURN reachability from restricted networks,
+  or a safe Kubernetes upgrade and drain procedure.
 - cryptographic security, traffic-analysis resistance, platform permission
   behavior, or end-to-end call quality for any project.
 
@@ -985,12 +1004,702 @@ profiles, command confirmation, local effect authority, separate delegated
 work receipts, and settlement-before-replacement remain non-negotiable under
 either transport. [inferred]
 
-## 11. Central finding
+## 11. Self-hosting LiveKit: source tour and operational facts
+
+The official
+[self-hosting overview](https://docs.livekit.io/transport/self-hosting/)
+answers the product-level question, and the three additional repositories
+answer the implementation question. Self-hosting includes the LiveKit server
+and Agents protocol, but not LiveKit Cloud's managed agent hosting, built-in
+inference, managed observability, global network, or uptime promise. OpenAgents
+must bring its own OpenAI key, worker scheduler, metrics, logs, upgrades,
+capacity, and incident response. Ingress, egress, and SIP are separate
+services, not features that appear merely by running the SFU. [source]
+
+One self-hosting difference is especially important for Sarah: the comparison
+table marks access-token revocation unavailable in self-hosted LiveKit. A
+short-lived JWT, participant removal, room deletion, and a
+generation-unique room reduce replay opportunity, but they do not turn the JWT
+into Sarah's current atomic one-use ticket. A token can be replayed during its
+valid join window unless an additional authority prevents it. This is a
+migration gate, not a detail to bury in deployment configuration. [source]
+[inferred]
+
+### 11.1 `livekit/deploy`: a one-machine production-shaped proof
+
+[`livekit/deploy`](https://github.com/livekit/deploy/tree/1a7b369f94e3a2f890d366fceeb4f273bf9fb3f6)
+contains the generator behind the official VM path. Its production generator:
+
+1. asks for distinct primary and TURN domains;
+2. creates a LiveKit API key and secret;
+3. emits LiveKit, Caddy, Docker Compose, Redis, and optional startup files;
+4. enables external-IP discovery, TCP fallback, a 10,000-port UDP range, and
+   embedded TURN/TLS and TURN/UDP;
+5. obtains public certificates through Caddy using Let's Encrypt or ZeroSSL;
+6. optionally adds the separately deployed ingress and egress services.
+
+The generated server config is specific: signaling listens on `7880`, WebRTC
+TCP on `7881`, direct ICE UDP on `50000-60000`, TURN/TLS on `5349`, and
+TURN/UDP on `3478`. Caddy terminates the public HTTPS connection and forwards
+signaling and TURN/TLS locally. The official
+[VM guide](https://docs.livekit.io/transport/self-hosting/vm/) explicitly
+includes a Google Cloud startup-script flow. [source]
+
+That is a good staging artifact, not the production OpenAgents topology. A
+single VM, local Redis, local certificates, and one SFU failure domain cannot
+establish high availability. Its purpose is to prove DNS, certificates,
+Omega's Rust client, OpenAI worker audio, and difficult firewall paths before
+OpenAgents accepts the cost and complexity of a GKE service. [inferred]
+
+### 11.2 `livekit/livekit`: the server contract we would operate
+
+The pinned
+[`config-sample.yaml`](https://github.com/livekit/livekit/blob/ced94b8645829263a1a9ef6c8101936897252d6b/config-sample.yaml)
+is broader than the deployment page. It exposes:
+
+- the signaling, RTC TCP, RTC UDP range, optional UDP mux, and external-IP
+  settings;
+- Redis single-address, Sentinel, cluster, TLS, username, and password
+  settings;
+- embedded TURN domains, certificates, TLS, UDP, and external-TLS behavior;
+- Prometheus metrics, node selection, region, room limits, webhooks, and
+  ingress/egress integration;
+- room `auto_create` and `max_participants` policy;
+- congestion, codec, telemetry, logging, and graceful-drain controls.
+
+The server reads the full YAML through `LIVEKIT_CONFIG`. Its CLI also has
+separate environment boundaries for `LIVEKIT_KEYS`, `LIVEKIT_REGION`,
+`REDIS_PASSWORD`, TURN certificate/key paths, node IP, and UDP port. That
+means OpenAgents does not need to place API secrets or the Redis password in
+the Helm ConfigMap. The key-file parser rejects unsafe key-file permissions;
+the Helm chart mounts a key secret at mode `0600`. [source]
+
+Redis is not an optional cache in a multi-node deployment. LiveKit uses it as
+the shared store and message bus that lets signaling instances find and proxy
+to the node that owns a room. The
+[distributed deployment guide](https://docs.livekit.io/transport/self-hosting/distributed/)
+also sets a hard scaling boundary: one room is assigned to one node and must
+fit on that node. Adding nodes increases the number of rooms and aggregate
+participants; it does not shard one Sarah room across SFUs. [source]
+
+### 11.3 `livekit-helm`: useful baseline, not a sealed production module
+
+The pinned Helm chart defaults to:
+
+- `hostNetwork: true`;
+- one LiveKit container exposing host RTC, TURN, and optional metrics ports;
+- a five-hour Kubernetes termination grace period;
+- a GKE BackendConfig with a ten-hour backend timeout and 60-second
+  connection draining;
+- an optional HPA and `ServiceMonitor`;
+- node selector, affinity, and toleration extension points;
+- a separate `LoadBalancer` Service mapping public TCP `443` to the configured
+  embedded TURN/TLS port.
+
+Its GKE example uses two replicas, Redis, external-IP discovery, embedded TURN,
+GKE TLS ingress, CPU HPA from one to five pods, and resources sized around an
+eight-core node: `7000m` CPU requested, `7500m` limited, and 1-2 GiB memory.
+The values file says only one LiveKit instance can run per physical node
+because of port restrictions. [source]
+
+The chart does **not** enforce that one-pod-per-node rule. OpenAgents must add
+required pod anti-affinity by hostname, a dedicated tainted node pool, matching
+tolerations and selector, and zone-spread constraints. It also does not
+provide a PodDisruptionBudget, prove a safe GKE upgrade, or guarantee spare
+capacity for a surge pod. Those are OpenAgents overlays. [inferred]
+
+The chart is pinned at chart and application version `1.11.0`; the server
+repository was audited at a later independent commit. Production must pin both
+the chart and an explicitly reviewed server image tag or digest, then run
+compatibility smoke tests. It must not inherit `latest` or assume that a
+chart's `appVersion` is the desired server release. [source] [inferred]
+
+### 11.4 Required public network surface
+
+The official
+[ports and firewall guide](https://docs.livekit.io/transport/self-hosting/ports-firewall/)
+separates signaling from media:
+
+| Surface | Port | Exposure and OpenAgents treatment |
+| --- | --- | --- |
+| LiveKit API and signaling | TCP `7880` internally | Put behind the Google external Application Load Balancer and TLS; do not expose the container port directly |
+| Direct WebRTC ICE | UDP `50000-60000` | Publicly reachable on LiveKit node external IPs; firewall targets only the dedicated SFU node identity/tag |
+| WebRTC TCP fallback | TCP `7881` | Publicly reachable on LiveKit node external IPs; same targeted firewall |
+| Optional WebRTC UDP mux | UDP `7882` by convention | Defer until load and compatibility tests justify replacing the port range |
+| TURN/TLS | TCP `5349` internally, public `443` through a layer-4 load balancer | Give it a separate domain and trusted certificate; this is the broad corporate-firewall fallback |
+| TURN/UDP | UDP `3478`, optionally public `443` in a separately designed endpoint | Add only after the GKE forwarding path is explicitly modeled and tested |
+| Prometheus | TCP `6789` when enabled | Internal monitoring only; never an internet endpoint |
+
+The
+[deployment guide](https://docs.livekit.io/transport/self-hosting/deployment/)
+recommends compute-optimized hosts and 10 Gbps or faster networking and says
+host networking is optimal in containers. It also explains why TURN/TLS is
+necessary: some enterprise networks block UDP and non-secure TCP, while TLS on
+`443` resembles ordinary HTTPS. TURN is therefore a launch requirement for a
+desktop agent, not a later video-call embellishment. [source]
+
+## 12. Proposed OpenAgents Google Cloud architecture
+
+### 12.1 Decision
+
+Use two deliberately different stages:
+
+1. **Connectivity canary:** one disposable GCE VM in `us-central1` generated
+   from `livekit/deploy`, with no production availability claim.
+2. **Production candidate:** a public-node, regional **GKE Standard** cluster
+   in `us-central1`, with dedicated LiveKit SFU nodes across three zones,
+   Memorystore for Redis Standard Tier, Google load balancers, and separate
+   Sarah agent workers.
+
+Do not run the SFU on Cloud Run. Cloud Run cannot provide LiveKit's direct UDP
+range, node public-IP advertisement, or host network. Do not use GKE
+Autopilot: Autopilot disallows `hostNetwork`, while the LiveKit Kubernetes
+guide requires it. Do not use a private-node cluster for the first production
+shape: LiveKit's official
+[Kubernetes guide](https://docs.livekit.io/transport/self-hosting/kubernetes/)
+warns that serverless and private clusters are unsupported because NAT
+prevents the required WebRTC address topology. [source] [inferred]
+
+Google recommends regional clusters for production because their control plane
+is replicated across zones, and regional Standard node pools can span zones.
+That improves control-plane and new-session availability. It does **not**
+replicate the live media state of a room. If the SFU node owning a Sarah room
+dies, that in-flight conversation must follow Sarah's failed-session and fresh
+admission law; other nodes keep accepting new rooms. [source] [inferred]
+
+```text
+Cloudflare DNS-only
+  livekit.openagents.com ───────────────┐
+  turn.livekit.openagents.com ───────┐ │
+                                      │ │
+Google Cloud, project openagentsgemini, us-central1
+                                      │ └─ global external Application LB
+                                      │        TLS + WSS → LiveKit :7880
+                                      │
+                                      └── external passthrough/L4 LB
+                                               TCP :443 → TURN/TLS :5349
+
+  GKE Standard regional cluster
+    dedicated public SFU node pool, three zones
+      node A ─ hostNetwork LiveKit pod ─ direct UDP 50000-60000 / TCP 7881
+      node B ─ hostNetwork LiveKit pod ─ direct UDP 50000-60000 / TCP 7881
+      node C ─ hostNetwork LiveKit pod ─ direct UDP 50000-60000 / TCP 7881
+                         │
+                         └── private VPC → Memorystore Redis Standard Tier
+
+    ordinary application node pool, no public inbound service
+      Sarah Agents worker replicas ─ outbound WSS → LiveKit signaling
+                                  └─ outbound WSS/TLS → OpenAI Realtime
+
+  existing Cloud Run monolith
+    identity · preflight · admission · hold · room create · JWT mint
+    command proposal/decision · provider usage · settlement · room teardown
+```
+
+Cloudflare does not terminate or proxy either hostname. It publishes DNS-only
+records to reserved Google IPs. Google Cloud remains the sole runtime and
+certificate/load-balancer authority. [inferred]
+
+### 12.2 Stage A: disposable GCE connectivity canary
+
+Provision the canary in a new, separate Terraform staging state before
+creating the cluster:
+
+| Resource | Proposed identity | Purpose |
+| --- | --- | --- |
+| Static external IP | `oa-livekit-staging-ip` | Stable DNS and ICE candidate |
+| VM | `oa-livekit-staging` | Compute-optimized Ubuntu VM, Docker, host networking |
+| Service account | `oa-livekit-staging` | Minimum logging, monitoring, and secret access |
+| Signaling DNS | `livekit-staging.openagents.com` | DNS-only record to the static IP |
+| TURN DNS | `turn-livekit-staging.openagents.com` | DNS-only record to the same canary IP |
+| Secrets | staging-only LiveKit key/secret and OpenAI key | Never shared with production |
+
+Generate “LiveKit Server only” configuration from the pinned deploy
+repository, pin the server image rather than selecting `latest`, and use Caddy
+for both trusted certificates. Open only `80`/`443` for certificate and
+signaling/TURN, `7881/TCP`, `3478/UDP`, and `50000-60000/UDP`; keep SSH behind
+IAP or a narrowly admitted administrator path. Run local Redis only because
+the VM is disposable. Do not enable ingress, egress, recording, or SIP.
+[source] [inferred]
+
+The canary exit test is not “the homepage responds.” It must cover:
+
+- a Rust SDK room join from a packaged Omega build;
+- microphone publish and Sarah audio subscribe in both directions;
+- direct UDP, WebRTC TCP fallback, and TURN/TLS from a normal network, a VPN,
+  and at least one restricted corporate-style network;
+- certificate rotation/restart, process restart, and forced room failure;
+- exact `gpt-realtime-2.1` audio, transcription, interruption, tool-event, and
+  usage visibility through a throwaway worker;
+- no audio, transcript, or provider secret in logs or persistent volumes.
+
+Destroy the canary once GKE reaches equivalent connectivity. It must not become
+an unreviewed singleton production service merely because it worked. [inferred]
+
+### 12.3 Stage B: GKE Standard production candidate
+
+Add reviewed Terraform modules to the existing `infra/prod` authority. The
+current baseline owns Cloud Run, Cloud SQL, GCS, Secret Manager, and the global
+application load balancer but no GKE or Memorystore resources, so this is a
+real infrastructure expansion, not another Cloud Run service declaration.
+The module boundary should own at least:
+
+- a regional GKE Standard cluster in `us-central1`;
+- a dedicated LiveKit SFU node pool spread across three selected zones;
+- a separate ordinary application node pool for Sarah workers and cluster
+  services;
+- VPC/subnet/firewall rules, reserved public IPs, health checks, signaling and
+  TURN load balancers, DNS output values, and certificates;
+- Memorystore for Redis Standard Tier in the same VPC and region;
+- Workload Identity bindings, service accounts, Secret Manager containers and
+  access grants;
+- dashboards, log sinks, uptime checks, and alert policies.
+
+Start the SFU pool at three nodes, one per zone, using a currently available
+compute-optimized eight-vCPU class with high network bandwidth. Treat the
+machine family as a benchmark result, not a permanent textual constant.
+Reserve enough external IPv4 quota for every SFU node and surge capacity
+before cluster creation. GKE regional clusters can otherwise exhaust modest
+default regional IP quotas. [source] [inferred]
+
+The LiveKit workload overlay should require:
+
+- `hostNetwork: true`;
+- a node selector and taint/toleration dedicated to the SFU pool;
+- required pod anti-affinity on `kubernetes.io/hostname`;
+- topology spread across zones;
+- three replicas minimum and a PodDisruptionBudget preserving at least two
+  ready pods;
+- requests close to an entire node, beginning with the chart's seven-vCPU
+  request for an eight-core class;
+- `RollingUpdate` with no planned unavailability and enough spare nodes for a
+  surge pod;
+- five-hour termination grace plus LiveKit drain before termination;
+- an explicit, pinned chart version and server image digest;
+- read-only filesystem and dropped capabilities where compatible with the
+  pinned server, proven rather than assumed.
+
+HPA can add pods around 50-60% sustained CPU, causing the cluster autoscaler to
+add one node for each pending pod. Disable aggressive SFU scale-down at first:
+a room cannot move to another node, and a five-hour grace period is a signal
+that ordinary bin-packing assumptions are wrong. Scale down only after the
+node is marked draining, no new rooms are assigned, existing rooms reach zero,
+and the node is demonstrably safe to remove. Keep a zonal-failure capacity
+margin rather than sizing three nodes to their combined peak. [source]
+[inferred]
+
+### 12.4 Signaling, TLS, media, and TURN routing
+
+Reserve independent addresses and certificates for signaling and TURN:
+
+- `livekit.openagents.com` terminates a trusted certificate at a global
+  external Application Load Balancer and forwards HTTPS/WSS to LiveKit
+  `7880`. Health checks and the container port remain load-balancer-only.
+- `turn.livekit.openagents.com` resolves to a separate external layer-4
+  frontend that forwards public TCP `443` to embedded TURN/TLS. The TURN
+  domain must match the certificate mounted in LiveKit.
+- clients receive direct node external-IP candidates for UDP
+  `50000-60000` and TCP `7881`. Firewall rules allow those public media ports
+  only on the dedicated SFU nodes, not on every cluster node.
+
+Google's external Application Load Balancer supports WebSocket upgrade without
+special protocol configuration. Active WebSockets have a fixed 24-hour
+maximum on that load-balancer family, independent of a larger backend timeout,
+so both the Rust room client and Sarah contract still need deliberate
+reconnection behavior. The Helm chart's ten-hour BackendConfig is useful for
+ordinary long responses but is not a promise of an immortal signaling socket.
+[source]
+
+Launch with direct ICE plus TURN/TLS. Add TURN/UDP only after a separately
+reviewed GKE UDP forwarding rule or load-balancer Service proves that its
+advertised address reaches every selected backend correctly. Do not advertise
+UDP `443` while the signaling frontend already owns that address/port pair;
+use a separate reserved address if that optimization is adopted. [inferred]
+
+### 12.5 Redis, secrets, and identity
+
+Use Memorystore for Redis **Standard Tier**, not Basic Tier or a Redis pod.
+Google's Standard Tier replicates across zones and automatically fails over.
+LiveKit clients must still reconnect after a Redis failover connection drop.
+Place it on private VPC addressing in `us-central1`, enable the strongest
+compatible authentication and in-transit encryption, and alert on
+availability, connections, memory, evictions, latency, failover, and rejected
+connections. [source] [inferred]
+
+Keep these values in Secret Manager with separate staging and production
+instances:
+
+- LiveKit API key and secret;
+- OpenAI API key;
+- Redis authentication material;
+- TURN certificate and private key if Google does not terminate that TLS leg;
+- any Sarah worker-to-authority bearer or workload credential.
+
+Use Workload Identity for Google API access. Materialize Kubernetes secrets
+through a reviewed Secret Manager CSI or external-secret controller and point
+the Helm chart at `storeKeysInSecret.existingSecret`. Do not put `livekit.keys`,
+Redis passwords, OpenAI keys, or certificate private keys into Helm values,
+Git, Terraform variables, ConfigMaps, container arguments, or static service
+account JSON. Secret payloads remain out-of-band from Terraform state, matching
+the current OpenAgents Secret Manager law. [source] [inferred]
+
+Create distinct least-privilege identities:
+
+| Identity | Grants |
+| --- | --- |
+| LiveKit server | Read its LiveKit/Redis/TURN secrets and emit telemetry; no OpenAI or OpenAgents database access |
+| Sarah worker | Read its distinct LiveKit API key/secret, OpenAI key, and worker-auth secret; connect to LiveKit and OpenAgents authority endpoints; no OpenAgents database access |
+| Cloud Run authority | Read the server-side LiveKit key needed to create/delete rooms and mint grants; retain current admission, hold, usage, and settlement access |
+| Deployment automation | Change GKE/Helm resources and secret references, but never read provider or API secret payloads during ordinary rollout |
+
+`AgentServer` authenticates with a LiveKit API key and secret, so the worker
+does hold a sensitive server credential. Give Cloud Run and the worker
+different key pairs for rotation and attribution, but do not claim the worker
+pair is least-privilege until the pinned server proves enforceable key-level
+scopes. A stolen symmetric signing secret can mint grants. The worker
+therefore belongs in the trusted service boundary even though it has no
+database authority. [source] [inferred]
+
+### 12.6 Sarah workers and optional LiveKit services
+
+Deploy `sarah-livekit-agent` as its own GKE Deployment on the ordinary
+application node pool. LiveKit Agents workers need outbound WebSocket access
+to LiveKit and outbound TLS/WebSocket access to OpenAI; they do not need a
+public inbound port. Begin with at least two replicas, four CPU cores and 8 GiB
+per pod as an initial measurement point, a ten-minute or longer termination
+grace, explicit drain, and separate staging and production agent names. Scale
+on LiveKit-reported worker load, active jobs, CPU, event-loop delay, and
+provider connection count rather than HTTP request concurrency. [source]
+[inferred]
+
+Do not deploy LiveKit Ingress, Egress, recording, or SIP for the first Sarah
+cohort. A one-human/one-agent room needs none of them, and each adds a separate
+service, permission surface, resource profile, persistence question, and
+retention policy. Add one only when an admitted recording, telephony, external
+stream, or import requirement exists. [source] [inferred]
+
+### 12.7 Observability, capacity, and failure drills
+
+Enable LiveKit Prometheus metrics on `6789` for internal scraping only and
+export them to Managed Service for Prometheus and Cloud Monitoring. Combine
+them with structured server/worker logs and OpenTelemetry from the Agents
+worker. At minimum, dashboard and alert:
+
+- ready/draining SFU nodes, room and participant counts, job placement, and
+  room-start failures;
+- CPU, memory, network packets and bytes, packet loss, jitter, retransmits,
+  NACK/PLI, reconnects, and high stream-start latency;
+- direct UDP versus TCP versus TURN selection and TURN allocation failures;
+- signaling and TURN load-balancer health and certificate expiry;
+- Redis reachability, failover, connections, memory, evictions, and latency;
+- worker load, active jobs, OpenAI connection failures, first-audio latency,
+  interruption latency, tool round trips, and provider usage projection;
+- end-to-end admission-to-room, mouth-to-first-audio, settlement, and teardown
+  latency by `transport`, without putting raw audio or transcript text in
+  metrics, logs, or traces.
+
+LiveKit's
+[benchmark guide](https://docs.livekit.io/transport/self-hosting/benchmark/)
+uses a 16-core GCP `c2-standard-16` reference and `lk load-test`, but its large
+single-room examples are not Sarah's shape. Sarah is many concurrent rooms
+with two participants, one server-side agent, a bidirectional audio track, and
+an OpenAI socket per room. Build a matching harness and measure p50/p95/p99
+latency, CPU and bandwidth per room, worker saturation, TURN percentage, and
+Redis load. Test packaged Omega clients from outside Google Cloud; an
+in-cluster load generator cannot prove last-mile ICE or TURN. [source]
+[inferred]
+
+Before a production cohort, drill:
+
+1. SFU pod drain and replacement with active rooms;
+2. abrupt SFU node loss;
+3. one-zone loss;
+4. Redis manual failover and transient disconnect;
+5. signaling backend removal and certificate renewal;
+6. TURN backend loss from a TURN-only client;
+7. agent-worker drain, crash, and OpenAI disconnect;
+8. HPA scale-up from no spare node and a quota-exhaustion failure;
+9. a chart/server rollback;
+10. provider or LiveKit outage while a credit hold exists.
+
+The pass condition is not uninterrupted speech in every drill. Some failures
+must terminate the conversation. The pass condition is bounded failure:
+no overlapping provider session, no authority replay, no lost usage, no
+unsettled hold, explicit user disclosure, and a new admission before any new
+billable generation. [inferred]
+
+## 13. Converting Sarah to self-hosted LiveKit
+
+### 13.1 Target boundary
+
+The desired topology changes Sarah's media and provider orchestration, not its
+authority:
+
+```text
+Omega
+  ├─ existing authenticated control WSS ───────────────┐
+  └─ LiveKit Rust room client ─ audio ─┐               │
+                                       ▼               ▼
+                              self-hosted LiveKit   Cloud Run authority
+                                       │               │
+                                       ▼               │
+                              Sarah Agents worker ──────┤ provider events,
+                                       │               │ tools, usage
+                                       ▼               │
+                              OpenAI Realtime WSS       │
+                                                       ▼
+                                         command decision + settlement
+```
+
+For the first cohort, use LiveKit for media only and retain the current
+authenticated control WebSocket for admission-bound control frames, command
+proposals, digest decisions, effect outcomes, provider usage, and settlement.
+That produces two coordinated connections, but it prevents an SFU migration
+from simultaneously replacing Sarah's security and economic protocol.
+Reliable LiveKit data or RPC can be evaluated later as a transport for the
+same versioned envelopes; room metadata, participant attributes, transcript
+text, or an agent function call never becomes authority. [inferred]
+
+Responsibility after the move:
+
+| Concern | Owner |
+| --- | --- |
+| Owner/device/thread identity, terms, capability profile, admission, entitlement, hold | Existing OpenAgents Cloud Run authority |
+| Room creation/deletion and join grant minting | Cloud Run authority after admission consumption |
+| Audio capture, playback, WebRTC connection | Omega using pinned LiveKit Rust SDK |
+| SFU, ICE, congestion, TURN, room routing | Self-hosted LiveKit on GKE |
+| Room join, audio adaptation, OpenAI Realtime socket, model-event translation | `sarah-livekit-agent` using pinned `agents-js` and OpenAI plugin |
+| Tool proposal/decision, explicit confirmation, local effect validation | Existing OpenAgents/Omega command plane |
+| Exact provider usage projection, charge idempotency, settlement | Existing Sarah usage store and Cloud Run authority |
+| Transcript recovery | Omega's bounded local JSONL, not LiveKit recording |
+
+### 13.2 Versioned session and credential contract
+
+Add an explicit server-selected transport union rather than changing the
+meaning of the current response:
+
+```text
+transport: custom_wss_v1
+  gateway URL + one-use ticket + OAA1 media/control contract
+
+transport: livekit_room_v1
+  livekit URL
+  generation-unique room reference
+  short-lived participant JWT
+  participant reference
+  join expiry
+  existing control gateway/ticket
+```
+
+Issue `livekit_room_v1` only after preflight, reviewed start, admission
+consumption, entitlement, and credit hold succeed. The authority pre-creates a
+generation-unique room with automatic creation disabled, a two-participant
+limit for Omega and Sarah, and a named Sarah agent dispatch. It then mints an
+Omega token constrained to:
+
+- join exactly that room;
+- use a pseudonymous generation-scoped participant identity;
+- publish microphone audio only;
+- subscribe to Sarah audio;
+- publish no camera, screen share, arbitrary tracks, or room data in the
+  media-only phase;
+- carry the shortest join validity that still passes initial-connect and
+  expected reconnect tests, beginning with a roughly one-minute join window.
+
+The token must not contain owner identity, email, workspace path, command
+capability, account balance, or OpenAI credentials. Canonical owner, device,
+thread, session, generation, and sequence stay in the control protocol and
+server store. [inferred]
+
+Because self-hosted LiveKit has no access-token revocation, this contract does
+not yet equal the current one-use ticket. Mitigations are:
+
+- consume the admission before minting;
+- use a unique room and participant identity per generation;
+- minimize token validity;
+- pre-create the room and reject unexpected participants;
+- remove the participant and delete the room at settlement;
+- fence every control event and usage record by the canonical generation;
+- fail closed on duplicate participant, job, or provider-session evidence.
+
+If red-team testing can still replay the JWT into an overlapping media
+participant or revive a settled generation, `livekit_room_v1` remains
+staging-only until a one-use broker or equivalent join authorization is
+designed. [source] [inferred]
+
+### 13.3 Sarah agent implementation
+
+Create a narrowly scoped `sarah-livekit-agent` package around
+`@livekit/agents` and `@livekit/agents-plugin-openai`:
+
+1. register a named `AgentServer` and accept only server-dispatched Sarah jobs;
+2. validate room/session/generation attributes against a signed lookup from
+   the Cloud Run authority, never against client-supplied metadata alone;
+3. connect with audio-only subscription and publish only the Sarah microphone
+   track and disclosed transcript delivery;
+4. construct `openai.realtime.RealtimeModel` with the admitted
+   `gpt-realtime-2.1`, `marin`, instructions, modalities, transcription, and
+   exactly one turn-detection owner;
+5. preserve the stable OpenAI safety identifier used by the current gateway;
+   if the plugin cannot send the required header, wrap or patch it before
+   cohort admission;
+6. forward raw provider response, transcription, usage, function-call, error,
+   and interruption events to a typed accounting/control adapter;
+7. convert provider tool calls into current Sarah typed proposals, wait for
+   the canonical Omega decision/effect outcome, then return only that result
+   to OpenAI;
+8. drain explicitly and reject new jobs before Kubernetes termination.
+
+Start with OpenAI semantic VAD as the sole turn detector if exact parity with
+the current gateway is the priority, and disable LiveKit turn detection.
+Alternatively, test LiveKit turn detection in a separate experiment with
+OpenAI turn detection set to `null`. Never enable both without a written
+interruption and response-creation law. [source] [inferred]
+
+The plugin's proactive OpenAI reconnection cannot silently apply to Sarah.
+Wrap or modify its reconnect boundary so that an OpenAI socket loss ends and
+settles the old Sarah generation before any replacement provider connection
+is billable. Text-only conversation reconstruction is not equivalent to a
+resumed audio session. LiveKit's room reconnection may repair the media leg
+only while the same admitted provider generation is still alive and the
+server authorizes it; otherwise both legs close and admission restarts.
+[source] [inferred]
+
+### 13.4 Omega client and audio migration
+
+Reintroduce LiveKit to Omega as a new, isolated media adapter, not by restoring
+the deleted Zed collaboration stack:
+
+- pin the audited Rust SDK or a reviewed successor;
+- map `livekit_room_v1` to `Room::connect` and reject unrecognized URLs,
+  transport versions, room references, or grants;
+- publish one microphone track and subscribe only to the dispatched Sarah
+  participant;
+- bind every room event back to the canonical session and generation;
+- stop tracks, disconnect, zero buffers, and release devices before reporting
+  settlement complete;
+- keep the existing `custom_wss_v1` implementation as the control cohort and
+  rollback path.
+
+Choose one audio-processing owner. The long-term room-native shape should let
+the LiveKit/WebRTC device path own capture, echo cancellation, jitter,
+resampling, and playout and remove the duplicated current cpal/Rodio AEC path
+for `livekit_room_v1`. A lower-risk experiment may inject Omega's processed PCM
+through a native audio source, but then LiveKit processing that would duplicate
+AEC or gain control must be disabled and proven. Never stack two echo
+cancellers. [source] [inferred]
+
+The room media clock is not Sarah's current OAA1 wire clock. LiveKit transports
+Opus/WebRTC audio at its room-native rates; the Agents plugin adapts room audio
+to OpenAI's 24 kHz mono input. Keep 24 kHz PCM as a
+`custom_wss_v1`/provider-boundary detail rather than a global Omega device
+contract. Measure resampler delay, mouth-to-ear latency, barge-in, clipping,
+device switching, sleep/wake, Bluetooth, and packaged binary size on every
+supported desktop platform. [source] [inferred]
+
+### 13.5 Command, accounting, reconnect, and privacy laws
+
+The LiveKit cohort is blocked unless all of these survive intact:
+
+- **Commands:** OpenAI and LiveKit events produce proposals only. The current
+  digest, expiry, visible confirmation, workspace/path/version/range checks,
+  and local Omega effect execution remain unchanged.
+- **Accounting:** every provider response and transcription usage reference
+  reaches the current idempotent store with the canonical session/generation.
+  Estimated audio duration or LiveKit track statistics cannot replace exact
+  provider usage.
+- **Settlement:** room deletion is cleanup after settlement, not proof of
+  settlement. A worker crash, SFU loss, Redis failover, or OpenAI timeout must
+  still close the hold deterministically.
+- **Reconnect:** no LiveKit, Agents, Kubernetes, or OpenAI automatic reconnect
+  may create an overlapping provider session or reuse a settled generation.
+  A replacement billable generation repeats admission and disclosure.
+- **Transcript:** LiveKit transcription packets are delivery only. Omega's
+  bounded local JSONL remains recovery authority. Server recording, egress,
+  and transcript persistence stay disabled.
+- **Raw media:** audio is never written to Redis, Cloud Storage, Cloud SQL,
+  logs, traces, crash reports, or packet captures used outside a separately
+  admitted test.
+- **E2EE:** if frame E2EE is adopted, the Sarah worker must receive a decryption
+  key to hear the user. Self-hosting and E2EE do not make OpenAgents or OpenAI
+  cryptographically unable to access audio in an agent conversation.
+
+### 13.6 Delivery sequence
+
+| Phase | Change | Exit evidence |
+| --- | --- | --- |
+| 0. Contract fixtures | Add `livekit_room_v1` schemas, grants, authority mappings, fake room events, and no network | Existing Sarah laws pass for both transport variants; old clients reject the new shape safely |
+| 1. VM connectivity canary | Disposable GCE LiveKit plus throwaway agent and packaged Omega build | Direct UDP, TCP fallback, TURN/TLS, audio, model, and failure results recorded; no production users |
+| 2. GKE infrastructure | Regional Standard cluster, dedicated SFU pool, Redis HA, signaling/TURN, secrets, metrics | Load, zone/node/Redis/TURN/drain tests pass before Sarah traffic |
+| 3. Media-only staging | Rust room adapter plus Sarah worker; current control WSS remains authoritative | Exact model/tool/usage/reconnect/privacy parity against fixtures and live staging |
+| 4. Owner-only cohort | Server feature flag selects `livekit_room_v1` for explicit owner sessions | Latency, quality, cost, TURN, charge, and failure comparison against `custom_wss_v1` |
+| 5. Bounded production cohort | Small disclosed cohort with automatic stop conditions | SLOs and invariants hold through a full observation window |
+| 6. Product decision | Expand, retain dual mode, or remove LiveKit | Concrete room/telephony/multidevice value exceeds added infra and operational cost |
+
+The server, not Omega, owns cohort selection. Rollback stops issuing
+`livekit_room_v1` to new sessions; existing LiveKit rooms drain or fail under
+their admitted contract; new sessions receive `custom_wss_v1`. Never swap an
+active conversation from LiveKit to the direct gateway silently because that
+would change credentials, audio behavior, provider generation, and billing
+mid-session. [inferred]
+
+### 13.7 Production acceptance gates
+
+The cutover decision needs explicit, reviewable evidence for:
+
+1. **Connectivity:** direct UDP, TCP fallback, and TURN/TLS success from the
+   actual supported client networks.
+2. **Latency and quality:** p50/p95/p99 admission-to-audio,
+   mouth-to-first-audio, interruption, loss recovery, jitter, and device
+   switching no worse than the admitted budget.
+3. **Model parity:** exact model, voice, safety identifier, instructions,
+   transcription, semantic VAD, function calls, cancellation, and errors.
+4. **Authority:** participant or data replay cannot cause commands, work,
+   effects, acceptance, receipts, release, or settlement.
+5. **One-use behavior:** JWT replay and duplicate join tests cannot overlap or
+   revive a billable Sarah generation; otherwise production is blocked.
+6. **Accounting:** exact provider references reconcile to every hold under
+   success, cancellation, crash, reconnect, and timeout.
+7. **Audio ownership:** one APM chain; packaged Omega passes device,
+   Bluetooth, echo, barge-in, and binary-size tests.
+8. **Privacy:** no raw media/server transcript retention, secrets in logs, or
+   misleading E2EE claim.
+9. **Operations:** node/zone/Redis/TURN/worker/provider drills, upgrades,
+   certificate renewal, capacity, quota, budget, and image rollback pass.
+10. **Value:** LiveKit delivers an admitted room, telephony, multi-device,
+    multimodal, or worker-orchestration capability that the direct gateway
+    does not, at an accepted steady-state cost.
+
+## 14. Recommendation after the self-hosting review
+
+The self-hosting material strengthens, rather than reverses, the earlier
+recommendation:
+
+- build the disposable GCE canary when OpenAgents is ready to measure a real
+  LiveKit path;
+- build GKE Standard only as an explicit production-candidate infrastructure
+  project, never as an incidental Sarah refactor;
+- start Sarah with LiveKit media plus the existing control plane;
+- retain the direct gateway as the default and rollback path until one-use
+  admission, exact accounting, reconnect, audio, privacy, and failure gates
+  pass;
+- expand only for a concrete room-shaped product requirement.
+
+The Realtime plugin answers “can LiveKit connect Sarah to OpenAI Realtime?”
+with **yes**. The server, deploy, and Helm sources answer “can we self-host it
+on our Google Cloud?” with **yes, on GCE for a canary and public-node GKE
+Standard for production, not on Cloud Run or Autopilot**. Neither answer
+proves that LiveKit should replace the simpler direct path for Sarah's current
+one-user desktop contract. [source] [inferred]
+
+## 15. Central finding
 
 **Armada makes LiveKit part of the community product, Zed makes LiveKit a
 replaceable media subsystem beneath collaboration authority, Buzz replaces
 LiveKit with a custom relay-native audio system, and LiveKit Agents offers
-Sarah a supported but optional room-to-OpenAI Realtime bridge.**
+Sarah a supported but optional room-to-OpenAI Realtime bridge. Self-hosting
+that bridge is feasible on OpenAgents' Google Cloud, but it creates a
+GCE/GKE/Redis/TURN operations plane rather than removing an authority plane.**
 
 Armada is the most relevant reference for portable calls, blind admission, and
 media E2EE. Zed is the strongest reference for a native Rust client and
