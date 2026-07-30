@@ -31,6 +31,10 @@ const START_SERVER_REQUEST_PATHS = new Set([
   // DIST-10 (#8923): Desktop download resolver + verified artifact redirect.
   '/api/public/desktop-download',
   '/api/public/desktop-download/artifact',
+  // #9280: Omega download resolver + verified artifact redirect — a SEPARATE
+  // signed product feed beside the Desktop one, never a relabeling of it.
+  '/api/public/omega-download',
+  '/api/public/omega-download/artifact',
 ])
 const FORGE_REPOSITORY_ASSET_REQUEST_PATH =
   /^\/internal\/v1\/repositories\/[^/]+\/[^/]+\/web-read-asset\/.+$/u

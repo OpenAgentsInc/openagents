@@ -911,6 +911,30 @@ come from the Freerange teardown
   marketing surface carries a hard-coded version or artifact URL, and the
   no-JavaScript/fetch-failure page is the same server-rendered honest state —
   covered by `routes/-download.test.tsx`.
+- (#9280, EP263-07) Omega is a SEPARATE download product beside OpenAgents
+  Desktop on `openagents.com/download`, with distinct name, version line,
+  package, and update path. The Electron Desktop artifact is never relabeled
+  as Omega, and Omega artifacts never enter the Desktop ReleaseSet. The Omega
+  entry renders exclusively from ONE Ed25519-signed manifest
+  (`openagents.omega.download_manifest.v1`, signed by the pinned release key
+  kid `2dbe811d19f67528`, generated + self-verified by
+  `apps/openagents.com/apps/start/scripts/sign-omega-download-manifest.ts`,
+  served fail-closed by
+  `apps/openagents.com/apps/start/src/omega-download-resolver.server.ts` at
+  `/api/public/omega-download` + `/artifact` redirect). A platform cell is
+  published exactly when the signed manifest carries it — with version, alpha
+  channel, platform/architecture, format, minimum OS, artifact SHA-256, and
+  Apple signature/notarization truth — and every unpublished target appears
+  only as an explicit unavailable statement. Artifact URLs must live under
+  the manifest's own `<sourceRepository>/releases/download/<releaseTag>/`
+  prefix. The alpha positioning (experienced developers/coding-agent power
+  users, prerelease warning, prerequisites, tester-channel support boundary,
+  data-risk warning) renders beside the download, and no public page may
+  claim Omega is unavailable while the signed alpha entry is published.
+  Automated boundary: `omega-download-resolver.server.test.ts` (tamper/kid/
+  URL-escape/target-conflict fail-closed proofs plus verification of the
+  checked-in manifest against the production public pin) and
+  `routes/-omega-download.test.tsx`.
 - (DIST-01, #8914) Once DIST-13 lands, the only documented production Desktop
   release entrypoint is root `pnpm run release` mapped exactly to
   `node --import tsx scripts/release.ts`. It owns freeze, target-capable owned

@@ -29,6 +29,8 @@ import {
   type DesktopDownloadTarget,
   type Loadable,
 } from './-download-data'
+import type { OmegaDownloadResolution } from './-omega-download-data'
+import { OmegaDownloadSection } from './-omega-download-section'
 import { PublicSiteShell } from './-public-site'
 
 // ---------------------------------------------------------------------------
@@ -386,9 +388,10 @@ function VerificationAndSupport({
     <section aria-labelledby="oa-download-verify-title" className="oa-download-section">
       <h2 id="oa-download-verify-title">Verification and support</h2>
       <p>
-        Every download link on this page resolves through the signed release set — the same
-        verified feed the installed app updates from. If a platform is not listed as available,
-        no build for it has been promoted yet, and this page will not pretend otherwise.
+        Every OpenAgents Desktop download link on this page resolves through the signed
+        release set — the same verified feed the installed app updates from. If a platform is
+        not listed as available, no build for it has been promoted yet, and this page will not
+        pretend otherwise.
       </p>
       {selected === null ? null : (
         <details className="oa-download-checksum">
@@ -477,8 +480,15 @@ export const downloadPageStructuredData = (
 
 export function DownloadPage({
   resolution,
+  omega,
 }: {
   resolution: Loadable<DesktopDownloadResolution>
+  /**
+   * Omega product entry (#9280) — a SEPARATE product beside OpenAgents
+   * Desktop, resolved from the signed Omega download manifest. `undefined`
+   * renders the honest Omega unavailable state, never a fabricated link.
+   */
+  omega?: Loadable<OmegaDownloadResolution> | undefined
 }) {
   const resolved = resolution.state === 'ok' ? resolution.data : null
   return (
@@ -517,6 +527,8 @@ export function DownloadPage({
           ) : null}
 
           <VerificationAndSupport resolution={resolved} />
+
+          <OmegaDownloadSection resolution={omega} />
         </div>
       </section>
     </PublicSiteShell>

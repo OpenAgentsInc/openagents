@@ -1,0 +1,42 @@
+{
+  "schema": "openagents.omega.download_manifest.v1",
+  "product": "omega",
+  "productName": "Omega",
+  "channel": "alpha",
+  "version": "0.2.0-rc26",
+  "releaseTag": "v0.2.0-rc26",
+  "releasedAt": "2026-07-29T20:57:30Z",
+  "releaseNotes": "Fixes Sarah voice sessions requiring a manual reconnect after transient transport drops.",
+  "releasePageUrl": "https://github.com/OpenAgentsInc/omega/releases/tag/v0.2.0-rc26",
+  "sourceRepository": "https://github.com/OpenAgentsInc/omega",
+  "sourceRevision": "7142e3404ae59af22a7a975615935e807c3e1288",
+  "signingPolicy": { "alg": "ed25519", "keyId": "2dbe811d19f67528" },
+  "artifacts": [
+    {
+      "target": "darwin-arm64",
+      "format": "dmg",
+      "name": "Omega-v0.2.0-rc26-macos-arm64.dmg",
+      "url": "https://github.com/OpenAgentsInc/omega/releases/download/v0.2.0-rc26/Omega-v0.2.0-rc26-macos-arm64.dmg",
+      "sha256": "e39cd7b822fc143f03e1d54d68a36ec0fe150bc33334d2bb50573342de3fcee3",
+      "byteLength": 193720537,
+      "minimumOs": "11.0",
+      "apple": {
+        "teamId": "HQWSG26L43",
+        "signingIdentity": "Developer ID Application: OpenAgents, Inc. (HQWSG26L43)",
+        "notarization": "not_notarized"
+      }
+    }
+  ],
+  "unavailableTargets": [
+    { "target": "darwin-x64", "statement": "No Omega build is published for Intel Macs in this alpha." },
+    { "target": "win32-x64", "statement": "No Omega build is published for Windows in this alpha." },
+    { "target": "win32-arm64", "statement": "No Omega build is published for Windows in this alpha." },
+    { "target": "linux-x64", "statement": "No Omega build is published for Linux in this alpha." },
+    { "target": "linux-arm64", "statement": "No Omega build is published for Linux in this alpha." }
+  ],
+  "knownLimitations": [
+    "Alpha prerelease: Omega has not passed every release-readiness gate, and features can be incomplete, broken, or removed between candidates.",
+    "Published for Apple silicon Macs only. No Intel Mac, Windows, or Linux build exists in this alpha.",
+    "Omega is a separate application from OpenAgents Desktop, with its own version line, package, and update path."
+  ]
+}

@@ -184,6 +184,20 @@ a.oa-platform-action:hover { border-color: var(--oa-energy); background: var(--o
 .oa-download-checksum code { display: inline-block; max-width: 100%; overflow-wrap: anywhere; color: var(--oa-text); font-family: var(--oa-mono); font-size: .74rem; }
 .oa-download-support-links { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 1.25rem; font-size: .82rem; }
 .oa-download-unavailable { max-width: 46rem; padding: 1.25rem 1.5rem; border: 1px solid var(--oa-border); border-radius: .5rem; color: var(--oa-muted); font-size: .9rem; line-height: 1.7; }
+.oa-omega-download { max-width: none; margin-top: clamp(2.5rem, 6vw, 4rem); border-top: 1px solid var(--oa-border); }
+.oa-omega-download > p, .oa-omega-download .oa-omega-alpha-warnings { max-width: 46rem; }
+.oa-omega-channel-badge { display: inline-flex; align-items: center; margin-left: .6rem; padding: .2rem .55rem; border: 1px solid var(--oa-border); border-radius: .3rem; color: var(--oa-energy-soft); font-family: var(--oa-mono); font-size: .68rem; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; vertical-align: middle; }
+.oa-omega-alpha-warnings { margin-top: 1rem; padding-left: 1.15rem; color: var(--oa-muted); font-size: .85rem; line-height: 1.7; }
+.oa-omega-alpha-warnings li + li { margin-top: .5rem; }
+.oa-omega-alpha-warnings strong { color: var(--oa-text); font-weight: 600; }
+.oa-omega-download .oa-platform-list { margin-top: 1.5rem; }
+.oa-omega-artifact-detail { max-width: 46rem; margin-top: 1rem; }
+.oa-omega-artifact-detail > p { color: var(--oa-muted); font-size: .82rem; line-height: 1.65; }
+.oa-omega-limitations { max-width: 46rem; margin-top: 1.5rem; }
+.oa-omega-limitations h3 { font-size: .95rem; font-weight: 630; }
+.oa-omega-limitations ul { margin-top: .5rem; padding-left: 1.15rem; color: var(--oa-muted); font-size: .82rem; line-height: 1.65; }
+.oa-omega-limitations li + li { margin-top: .35rem; }
+.oa-omega-release-notes { max-width: 46rem; }
 
 @media (prefers-reduced-motion: reduce) {
   .oa-public-site *, .oa-public-site *::before, .oa-public-site *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }

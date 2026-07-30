@@ -37,6 +37,12 @@ describe('public Start homepage host boundary', () => {
     expect(isStartServerRequestPath('/api/public/desktop-download/artifact')).toBe(true)
     expect(isStartServerRequestPath('/api/public/desktop-download/')).toBe(false)
     expect(isStartServerRequestPath('/api/public/desktop-download/other')).toBe(false)
+    // #9280: Omega download resolver + verified artifact redirect are the
+    // SEPARATE Omega product feed beside the Desktop one.
+    expect(isStartServerRequestPath('/api/public/omega-download')).toBe(true)
+    expect(isStartServerRequestPath('/api/public/omega-download/artifact')).toBe(true)
+    expect(isStartServerRequestPath('/api/public/omega-download/')).toBe(false)
+    expect(isStartServerRequestPath('/api/public/omega-download/other')).toBe(false)
     expect(
       isStartServerRequestPath(
         '/internal/v1/repositories/tenant.openagents/omega/web-read-asset/crates/zed/icon.png',

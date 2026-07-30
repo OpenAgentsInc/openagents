@@ -640,7 +640,7 @@ const splashQuestions = [
   ],
   [
     'Is Omega available yet?',
-    'Not yet. Omega is in active development, and the latest candidate has not passed every release-readiness gate. The current Electron-based OpenAgents Desktop remains the supported application until Omega earns the cutover.',
+    'An early alpha is available now from the openagents.com download page, intended for experienced developers and coding agent power users on Apple silicon Macs. It is a prerelease that has not passed every release-readiness gate, and the current Electron-based OpenAgents Desktop remains the supported application until Omega earns the cutover.',
   ],
 ] as const
 

@@ -9,6 +9,7 @@ import {
 } from '../../../workers/api/src/inference/discovery-surfaces'
 import { routeWellKnownAgentSurfaceRequest } from '../../../workers/api/src/well-known-agent-surfaces-routes'
 import { routeDesktopDownloadRequest } from './desktop-download-resolver.server'
+import { routeOmegaDownloadRequest } from './omega-download-resolver.server'
 import { routeForgeRepositoryAssetRequest } from './forge-repository-asset-proxy'
 import { routeKhalaSyncProxyRequest } from './khala-sync-proxy'
 import { routeManagedSandboxProxyRequest } from './managed-sandbox-proxy'
@@ -72,6 +73,12 @@ export async function routeSharedAgentSurface(
   // from the promoted signed release set (fail-closed, no handwritten URLs).
   const desktopDownloadResponse = await routeDesktopDownloadRequest(request)
   if (desktopDownloadResponse !== undefined) return desktopDownloadResponse
+
+  // #9280: Omega download identity — a SEPARATE signed product entry beside
+  // OpenAgents Desktop; every artifact URL derives from the verified signed
+  // Omega download manifest (fail-closed, no handwritten URLs).
+  const omegaDownloadResponse = await routeOmegaDownloadRequest(request)
+  if (omegaDownloadResponse !== undefined) return omegaDownloadResponse
 
   return undefined
 }

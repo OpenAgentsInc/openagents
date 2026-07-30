@@ -81,7 +81,10 @@ describe('Desktop splash', () => {
     expect(html).toContain('What Omega is—and where it’s going.')
     expect(html).toContain('What is Omega?')
     expect(html).toContain('Is Omega available yet?')
-    expect(html).toContain('Not yet. Omega is in active development')
+    // #9280: the Omega alpha is downloadable now — the FAQ must not claim
+    // Omega is unavailable while /download publishes the signed alpha entry.
+    expect(html).toContain('An early alpha is available now')
+    expect(html).not.toContain('Not yet. Omega is in active development')
     expect(html).toContain('aria-label="Product links"')
     expect(html).not.toContain('>Blog</a>')
     expect(html).toContain('aria-label="Community links"')
