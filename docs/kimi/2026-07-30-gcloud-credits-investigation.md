@@ -1,9 +1,35 @@
 # Can our Google Cloud credits host Kimi K3? (investigation)
 
-Status: **first live pass complete** (2026-07-30). All findings below were
-gathered against project `openagentsgemini` with the workspace automation
-service account (`oa-mvp-automation@…`) plus the owner session where billing
-permissions required it.
+Status: **first live pass complete, owner answers partially in**
+(2026-07-30). All findings below were gathered against project
+`openagentsgemini` with the workspace automation service account
+(`oa-mvp-automation@…`) plus the owner session where billing permissions
+required it.
+
+## Owner answers (2026-07-30, same day)
+
+- **Credits: $48,000** (owner-reported; expiry and SKU-scope column still
+  unread).
+- **Console K3 page**: reports that Google "provides deployment
+  instructions that allow you to securely retrieve the Kimi K3 model
+  weights directly from the publisher and deploy them to a GKE cluster
+  within your own Google Cloud project. **Model Garden self-deployment
+  will be available soon.**" So today the "Model Garden path" for K3 is
+  really the GKE recipe with publisher-hosted weights; the one-click
+  Vertex deploy does not exist yet, matching the API probe.
+
+### $48k runway against the recipe shapes
+
+The announcement's recommended A4X config (4× `a4x-highgpu-4g`, 16×
+GB200) has **no public SKU at all** — see §4b. The priceable equivalent is
+the A4 B200 variant (2× `a4-highgpu-8g`, 16× B200, same TP=16):
+
+| Consumption model | 16-GPU $/hr | $48k lasts |
+| --- | --- | --- |
+| On-demand | 257.76 | ~7.8 days |
+| DWS Flex Start | 128.88 | ~15.5 days |
+| Spot | 79.27 | ~25 days |
+| Vertex MaaS (K2-Thinking rates) | per-token | ~19B output tokens |
 
 ## Questions and answers
 
@@ -89,6 +115,25 @@ Compute Engine catalog, A4 B200 per-GPU-hour (Americas), 2026-07-30:
 
 (Plus GKE cluster fee, 2× a4-highgpu-8g CPU/RAM components, ~2TB of GCS
 for weights, and egress — the GPU line dominates.)
+
+### 4b. The recommended A4X (GB200) config has no public price
+
+The AI Hypercomputer recipe recommends **4× `a4x-highgpu-4g` (16× GB200,
+multi-node NVLink, TP=16, LeaderWorkerSet Helm chart)**. Findings
+(2026-07-30):
+
+- Two full sweeps of the Compute Engine billing catalog (31,577 SKUs)
+  found **zero** SKUs matching GB200 / A4X / Blackwell-superchip terms —
+  unlike A4/B200, which has the six on-demand/Spot/DWS/CUD SKUs above.
+- Google's public pricing pages list no A4X price, and the Spot VM docs
+  exclude A4X from Spot.
+- Conclusion: A4X GB200 capacity is **reservation-channel only** (AI
+  Hypercomputer / Cluster Director reservations, DWS calendar mode, or a
+  sales-negotiated commitment). There is no self-serve hourly path, so a
+  credit-funded ad-hoc A4X run is not currently possible for us.
+- Practical fallback with identical GPU count and a published price: the
+  A4 B200 2-node variant from the same announcement (the GKE B200
+  manifest in the digest doc), priced in the table above.
 
 A bounded experiment is a different story: an 8-hour Spot window on 16
 B200s is roughly **$630–700 all-in**, and a Flex-Start window about
