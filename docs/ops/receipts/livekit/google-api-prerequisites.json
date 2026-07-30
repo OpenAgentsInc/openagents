@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "openagents.livekit_prerequisite_receipt.v1",
+  "receiptRef": "livekit-prerequisite-receipt-ref://sha256/5e1237e522ff6da77fba1a2ebcacc7113280856cfe513e33b636164654f9f12e",
+  "issueRef": "github-issue-ref://OpenAgentsInc/openagents/9284",
+  "kind": "google_api_enablement",
+  "resourceRefs": [
+    "gcp-service-ref://openagentsgemini/servicenetworking.googleapis.com",
+    "gcp-service-ref://openagentsgemini/billingbudgets.googleapis.com",
+    "gcp-service-ref://openagentsgemini/networkmanagement.googleapis.com",
+    "gcp-service-ref://openagentsgemini/iamcredentials.googleapis.com"
+  ],
+  "status": "succeeded",
+  "observedAt": "2026-07-30T21:46:34.000Z",
+  "evidenceTier": "live_observed",
+  "resultDigest": "sha256:5e1237e522ff6da77fba1a2ebcacc7113280856cfe513e33b636164654f9f12e",
+  "limitations": [
+    "This proves only that the four named Google service APIs were enabled for the isolated rollout.",
+    "No infrastructure resource, network path, budget alert, LiveKit runtime, or packaged client acceptance is proven."
+  ]
+}

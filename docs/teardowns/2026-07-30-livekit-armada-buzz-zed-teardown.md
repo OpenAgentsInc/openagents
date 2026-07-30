@@ -1370,27 +1370,36 @@ use a separate reserved address if that optimization is adopted. [inferred]
 Use Memorystore for Redis **Standard Tier**, not Basic Tier or a Redis pod.
 Google's Standard Tier replicates across zones and automatically fails over.
 LiveKit clients must still reconnect after a Redis failover connection drop.
-Place it on private VPC addressing in `us-central1`, enable the strongest
-compatible authentication and in-transit encryption, and alert on
-availability, connections, memory, evictions, latency, failover, and rejected
-connections. [source] [inferred]
+Place it on private VPC addressing in `us-central1` through Private Services
+Access, enable in-transit encryption, and alert on availability, connections,
+memory, evictions, latency, failover, and rejected connections. [source]
+[inferred]
+
+The implemented Terraform boundary uses `STANDARD_HA`, TLS, and
+`auth_enabled=false`. The Google provider otherwise exposes the computed Redis
+AUTH value in Terraform state, which violates the repository secret-state
+boundary. The structured `oa-livekit-prod-redis-auth` payload therefore has
+exactly `host` and `ca_cert` despite its retained name; no password is
+projected into Kubernetes or the LiveKit pod. Private VPC/PSA plus TLS does not
+become a claim of Redis AUTH. [source] [limitation]
 
 Keep these values in Secret Manager with separate staging and production
 instances:
 
 - LiveKit API key and secret;
 - OpenAI API key;
-- Redis authentication material;
+- Redis host and CA certificate;
 - TURN certificate and private key if Google does not terminate that TLS leg;
 - any Sarah worker-to-authority bearer or workload credential.
 
 Use Workload Identity for Google API access. Materialize Kubernetes secrets
 through a reviewed Secret Manager CSI or external-secret controller and point
 the Helm chart at `storeKeysInSecret.existingSecret`. Do not put `livekit.keys`,
-Redis passwords, OpenAI keys, or certificate private keys into Helm values,
-Git, Terraform variables, ConfigMaps, container arguments, or static service
-account JSON. Secret payloads remain out-of-band from Terraform state, matching
-the current OpenAgents Secret Manager law. [source] [inferred]
+OpenAI keys, or certificate private keys into Helm values, Git, Terraform
+variables, ConfigMaps, container arguments, or static service account JSON. No
+Redis password exists in the admitted first-release shape. Secret payloads
+remain out-of-band from Terraform state, matching the current OpenAgents Secret
+Manager law. [source] [inferred]
 
 Create distinct least-privilege identities:
 
@@ -2447,6 +2456,75 @@ Realtime relay, Omega Rust room media adapter, membership-revocation event
 wiring, speaking-floor policy, deployment canaries, and packaged acceptance
 proof. No production LiveKit room or Sarah worker is claimed by this contract
 substrate. [inferred]
+
+### 15.16 EP263-LK-02 operations substrate and cost decision
+
+**Repository evidence, source-only for issue #9284:** the Google Cloud runbook,
+deployment-bundle validator, acceptance parsers, redacted receipt projection,
+and source-only receipt fixtures now define the exact operator path. Every
+live read or mutation is default-off behind explicit `--apply`. The policy
+pins `openagentsgemini`, `us-central1`, the three zones, the regional Standard
+cluster and two node pools, Memorystore, separate signaling/TURN addresses,
+chart source, server image digest, rendered configuration digest, Workload
+Identity, named secret refs, and manifest digests. A changed or unknown target
+refuses before a provider effect. [source]
+
+The first application cap is 20 concurrent Sarah rooms, one owner-private
+generation, two Sarah rooms per community, 120 seconds idle, and a 30-minute
+room generation. Twenty rooms is not yet a capacity claim: the live gate
+requires that matching small-room load with at least 20% spare capacity, hard
+cap refusal, bounded CPU/packet loss/first-audio, and exact terminal
+settlement. [source] [limitation]
+
+The initial regional candidate has an approximately **$1,500/month fixed
+planning floor** before direct/TURN egress, autoscaling, NAT, log/metric
+volume, and OpenAI Realtime usage. The owner approved provisioning all
+infrastructure needed for EP263 on 2026-07-30, overriding the repository
+profile's default spend ceiling for this program. That grant does not turn
+credits into zero cost or remove budget alerts, cost reconciliation, redaction,
+rollback, hard application caps, or canary deletion. Google and OpenAI costs
+remain separate ledgers. [source] [inferred]
+
+The acceptance parser refuses to round source evidence up. Connectivity needs
+packaged Omega plus observed direct UDP, TCP fallback, and TURN/TLS. Load,
+eleven failure drills, secret/log/raw-media/transcript scans, cost, and scoped
+rollback have separate typed observations. Failure drills may end speech; they
+pass only with visible bounded failure, no provider overlap, terminal
+accounting, and fresh admission. Public receipts retain opaque refs, digests,
+timestamps, and outcomes while rejecting endpoints, IPs, secret-shaped
+fields, transcripts, and audio. The checked-in fixtures say `source_only`,
+`planned`, and `liveProof: false`. [source]
+
+The deployment boundary is deliberately two-phase. Canary infrastructure is
+applied with the VM disabled; only after four enabled secret versions, both
+DNS names, a trusted/current two-SAN certificate and matching key, and an empty
+VM slot pass may the six-hour VM be enabled. Production infrastructure creates
+GKE, Redis, addresses, identities, observability, and empty secret containers.
+Only after exact structured secret schemas, Sarah's existing production
+OpenAI key, and separate DNS-only address bindings pass may the runtime start.
+The runner then requires Helm 3, verifies the pinned cert-manager `v1.21.1` and
+External Secrets `2.8.0` chart archive digests, schedules every controller on
+the application pool, and waits for controllers and CRDs before applying their
+custom resources. [source]
+
+The bundle's `sourceBaseRevision` is the reviewed contract base, not a
+deployment claim. Every live operation instead requires a clean `main` whose
+`HEAD` is the current remote `origin/main` and records that commit separately
+as `deployedRevision`. The pinned LiveKit server image maps to source commit
+`0b3fd288e3ef3263ec475ba0d78cf3ad77459981`; any later checkout used for
+analysis is not runtime provenance. [source]
+
+Production Redis is `STANDARD_HA`, TLS-only on the dedicated private VPC/PSA
+path, and explicitly `auth_enabled=false`. Enabling provider-managed AUTH would
+persist the computed secret in Terraform state. The retained
+`oa-livekit-prod-redis-auth` name therefore projects exactly `{host,ca_cert}`
+and no password; network isolation and TLS are not described as Redis AUTH.
+[source] [limitation]
+
+**Still incomplete:** no source fixture proves that GCE, GKE, Redis, DNS,
+certificates, LiveKit, TURN, workers, packaged Omega media, load, failure
+handling, billing, or rollback was observed. The issue close gate requires
+new live-observed receipts and zero-residue canary destruction. [limitation]
 
 ## 16. Central finding
 

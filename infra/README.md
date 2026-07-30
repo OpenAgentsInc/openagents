@@ -33,6 +33,9 @@ infra/
     monitoring-alerts/   CPU / connections / 5xx / budget policies (not yet instantiated)
     secret-manager-secret/  secret CONTAINER + accessor grants — versions stay out-of-band
     global-external-lb/  static IP + Certificate Manager cert + host routing for the monolith
+  livekit/             pinned LiveKit runtime bundle, production manifests, render and verify tools
+  livekit-staging/     isolated disposable GCE canary root (state prefix livekit/staging)
+  livekit-production/  regional GKE/Redis/network root (state prefix livekit/production)
 ```
 
 Note: `backend.tf` and `providers.tf` live inside `prod/` (not at `infra/`)
@@ -41,19 +44,19 @@ its own copies with a different state prefix.
 
 ## What is under management (imported 2026-07-06)
 
-| Resource | Address |
-| --- | --- |
-| Cloud SQL `khala-sync-pg` (PG17, HA, PITR) + 4 users | `module.khala_sync_pg` |
-| Cloud SQL `l402-aperture-db` (PG15) + 3 users, VP-1 cold recovery evidence (`activation_policy=NEVER`) | `module.l402_aperture_db` |
-| Cloud SQL `autopilot4-pg` (PG16) + 2 users | `module.autopilot4_pg` |
-| Cloud SQL `oa-convex-nonprod-pg` (PG16) + 2 users | `module.oa_convex_nonprod_pg` |
-| Cloud Run `oa-updates` (shell) | `module.oa_updates` |
-| Cloud Run `oa-cloud-run-bridge` (shell) | `module.oa_cloud_run_bridge` |
-| GCS `openagentsgemini-oa-updates` | `module.oa_updates_bucket` |
-| GCS `openagentsgemini-terraform-state` | `module.terraform_state_bucket` |
-| Secret Manager `oa-updates-codesign-key` + accessor grant (#8530) | `module.oa_updates_codesign_key` |
-| Cloud Run `openagents-monolith` (shell pre-created for CFG-9/#8524) | `module.openagents_monolith` |
-| Global External LB for `openagents.com` + `auth.openagents.com` — static IP, Certificate Manager cert + DNS authorizations, serverless NEG, backend, URL maps, HTTP(S) proxies, forwarding rules (CFG-10/#8525) | `module.openagents_lb` |
+| Resource                                                                                                                                                                                                        | Address                          |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| Cloud SQL `khala-sync-pg` (PG17, HA, PITR) + 4 users                                                                                                                                                            | `module.khala_sync_pg`           |
+| Cloud SQL `l402-aperture-db` (PG15) + 3 users, VP-1 cold recovery evidence (`activation_policy=NEVER`)                                                                                                          | `module.l402_aperture_db`        |
+| Cloud SQL `autopilot4-pg` (PG16) + 2 users                                                                                                                                                                      | `module.autopilot4_pg`           |
+| Cloud SQL `oa-convex-nonprod-pg` (PG16) + 2 users                                                                                                                                                               | `module.oa_convex_nonprod_pg`    |
+| Cloud Run `oa-updates` (shell)                                                                                                                                                                                  | `module.oa_updates`              |
+| Cloud Run `oa-cloud-run-bridge` (shell)                                                                                                                                                                         | `module.oa_cloud_run_bridge`     |
+| GCS `openagentsgemini-oa-updates`                                                                                                                                                                               | `module.oa_updates_bucket`       |
+| GCS `openagentsgemini-terraform-state`                                                                                                                                                                          | `module.terraform_state_bucket`  |
+| Secret Manager `oa-updates-codesign-key` + accessor grant (#8530)                                                                                                                                               | `module.oa_updates_codesign_key` |
+| Cloud Run `openagents-monolith` (shell pre-created for CFG-9/#8524)                                                                                                                                             | `module.openagents_monolith`     |
+| Global External LB for `openagents.com` + `auth.openagents.com` — static IP, Certificate Manager cert + DNS authorizations, serverless NEG, backend, URL maps, HTTP(S) proxies, forwarding rules (CFG-10/#8525) | `module.openagents_lb`           |
 
 19 resources on import day, +2 imported for #8530, +16 created for #8525
 (CFG-10 LB pre-stage, the LB IP receives no traffic until the DNS flip in
@@ -67,6 +70,21 @@ The module defines one Cloud Run Git service and one persistent-disk repository
 authority on a small owned GCE NFS host. It also adds a `/git` backend to the
 current load balancer. The estimated fixed cost stays below the standing cloud
 budget. The Forge Git runbook records the estimate and its limits.
+
+EP263-LK-02 (#9284) adds an isolated disposable GCE canary and a regional GKE
+Standard production candidate for Sarah room media. The production shape uses
+the exact `oa-livekit-prod` cluster, dedicated public SFU nodes, an application
+pool, Memorystore Standard Tier, separate signaling and TURN addresses,
+Workload Identity, Secret Manager references, Google load balancing, and
+Cloudflare DNS-only records. It is not part of the legacy `infra/prod` Cloud
+Run root and has its own bounded state and rollback graph.
+
+The fixed planning floor is approximately $1,500 per month before variable
+media egress, TURN relay, autoscaling, logs/metrics, and OpenAI Realtime usage.
+The owner approved all infrastructure required for EP263 on 2026-07-30.
+Budget alerts, measured-cost receipts, hard 20-room/idle/lifetime caps, and
+canary destruction remain mandatory. See
+[`docs/ops/2026-07-30-livekit-self-hosted-gcp-runbook.md`](../docs/ops/2026-07-30-livekit-self-hosted-gcp-runbook.md).
 
 ## Deliberate design decisions
 
@@ -88,6 +106,20 @@ budget. The Forge Git runbook records the estimate and its limits.
   refreshed to the secret-ref shape and all superseded GCS state versions
   containing the inline key were purged (they linger in the bucket's 7-day
   soft-delete window until ~2026-07-13, admin-restore only, then are gone).
+- **LiveKit is not a Cloud Run or Autopilot workload.** Its SFU requires
+  public node candidates, host networking, direct UDP/TCP media, and embedded
+  TURN. The canary is GCE and disposable; the production candidate is regional
+  GKE Standard. Raw media and transcripts never enter Terraform state,
+  Redis, logs, traces, or receipts. Canary and production are both two-phase:
+  infrastructure first, then a secret/DNS preflight before any runtime boots.
+  Production installs digest-pinned cert-manager and External Secrets charts
+  with Helm 3 before applying their custom resources.
+- **LiveKit Redis is private TLS without Redis AUTH.** The exact first-release
+  instance is `STANDARD_HA` on the dedicated VPC/Private Services Access path.
+  `auth_enabled=false` avoids the Google provider persisting its computed AUTH
+  value in Terraform state. The structured secret therefore has exactly
+  `{host,ca_cert}` and no password; this is not a claim of application-layer
+  Redis authentication.
 - **Destroy guards.** `deletion_protection = true` (Terraform-side) on every
   SQL instance and Cloud Run service, so a bad refactor cannot plan a
   destroy/replace of live data.
