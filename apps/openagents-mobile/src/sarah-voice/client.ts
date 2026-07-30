@@ -999,16 +999,25 @@ export class SarahVoiceClient {
         return;
       case "transcript_delta":
       case "transcript_final": {
-        const next = this.snapshotValue.transcripts.filter(
-          (entry) => entry.utteranceRef !== control.utteranceRef,
+        const next = [...this.snapshotValue.transcripts];
+        const existingIndex = next.findIndex(
+          (entry) => entry.utteranceRef === control.utteranceRef,
         );
+        const existing = existingIndex >= 0 ? next[existingIndex] : undefined;
         const transcript = {
           utteranceRef: control.utteranceRef,
           source: control.source,
-          text: control.text,
+          text:
+            control._tag === "transcript_delta"
+              ? `${existing?.text ?? ""}${control.text}`
+              : control.text,
           final: control._tag === "transcript_final",
         } as const;
-        next.push(transcript);
+        if (existingIndex >= 0) {
+          next[existingIndex] = transcript;
+        } else {
+          next.push(transcript);
+        }
         this.persistTranscript(transcript);
         this.update({ ...this.snapshotValue, transcripts: next.slice(-40) });
         return;

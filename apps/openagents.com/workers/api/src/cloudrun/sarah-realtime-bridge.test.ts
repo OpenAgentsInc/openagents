@@ -308,7 +308,7 @@ describe('Sarah Realtime bridge metering', () => {
     expect(update.session.instructions).toContain(
       'If the owner begins speaking, stop immediately',
     )
-    expect(update.session.max_output_tokens).toBe(384)
+    expect(update.session.max_output_tokens).toBe('inf')
   })
 
   test('advertises only injected server tools to the mobile command center', () => {

@@ -1,7 +1,7 @@
 import AVFoundation
 import ExpoModulesCore
 
-private let maximumQueuedSeconds: Int64 = 4
+private let maximumQueuedSeconds: Int64 = 120
 
 public final class ExpoRealtimeAudioModule: Module {
   private let engine = AVAudioEngine()
@@ -329,6 +329,8 @@ public final class ExpoRealtimeAudioModule: Module {
 
     var playedMilliseconds = 0.0
     if
+      currentStarted,
+      player.engine != nil,
       let renderTime = player.lastRenderTime,
       let playerTime = player.playerTime(forNodeTime: renderTime)
     {

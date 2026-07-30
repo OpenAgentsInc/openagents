@@ -17,7 +17,8 @@ import java.util.concurrent.atomic.AtomicLong
 
 private const val REQUIRED_SAMPLE_RATE = 24_000
 private const val MAXIMUM_FRAME_BYTES = 24_000
-private const val MAXIMUM_QUEUED_BYTES = REQUIRED_SAMPLE_RATE * 2 * 4
+private const val MAXIMUM_QUEUED_SECONDS = 120
+private const val MAXIMUM_QUEUED_BYTES = REQUIRED_SAMPLE_RATE * 2 * MAXIMUM_QUEUED_SECONDS
 
 class ExpoRealtimeAudioModule : Module() {
   private var audioTrack: AudioTrack? = null

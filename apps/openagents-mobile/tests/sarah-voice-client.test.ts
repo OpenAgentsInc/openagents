@@ -405,6 +405,24 @@ describe("managed Sarah mobile voice client", () => {
     );
     socket.serverControl(
       control(identity, 2, {
+        _tag: "transcript_delta",
+        source: "user",
+        utteranceRef: "utterance-1",
+        text: " Sarah",
+      }),
+    );
+    await tick();
+    expect(client.snapshot().transcripts).toEqual([
+      {
+        utteranceRef: "utterance-1",
+        source: "user",
+        text: "Hello Sarah",
+        final: false,
+      },
+    ]);
+
+    socket.serverControl(
+      control(identity, 3, {
         _tag: "transcript_final",
         source: "user",
         utteranceRef: "utterance-1",
@@ -422,7 +440,7 @@ describe("managed Sarah mobile voice client", () => {
     ]);
 
     socket.serverControl(
-      control(identity, 3, {
+      control(identity, 4, {
         _tag: "tool_execute",
         proposalRef: "proposal-1",
         proposalDigest: "f".repeat(64),

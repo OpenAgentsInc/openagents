@@ -22,6 +22,13 @@ const realtimeAudioModuleSource = readFileSync(
   join(appRoot, "modules/expo-realtime-audio/ios/ExpoRealtimeAudioModule.swift"),
   "utf8",
 )
+const realtimeAudioAndroidModuleSource = readFileSync(
+  join(
+    appRoot,
+    "modules/expo-realtime-audio/android/src/main/java/expo/modules/realtimeaudio/ExpoRealtimeAudioModule.kt",
+  ),
+  "utf8",
+)
 
 const appConfig = JSON.parse(
   readFileSync(join(appRoot, "app.json"), "utf8"),
@@ -128,5 +135,16 @@ describe("contract openagents_mobile.identity.v1", () => {
     expect(sarahVoiceScreenSource).toContain("RealtimeAudio.startMicrophone(24_000)")
     expect(realtimeAudioModuleSource).toContain('Events("onMicrophoneBuffer")')
     expect(realtimeAudioModuleSource).toContain('Function("startMicrophone")')
+  })
+
+  test("playback status never queries an unattached AVAudioPlayerNode", () => {
+    expect(realtimeAudioModuleSource).toContain(
+      "currentStarted,\n      player.engine != nil,\n      let renderTime = player.lastRenderTime",
+    )
+  })
+
+  test("native playback queues a complete normal voice response", () => {
+    expect(realtimeAudioModuleSource).toContain("maximumQueuedSeconds: Int64 = 120")
+    expect(realtimeAudioAndroidModuleSource).toContain("MAXIMUM_QUEUED_SECONDS = 120")
   })
 })

@@ -384,7 +384,7 @@ export const sessionUpdateForSarahClientProfile = (
           ? commandTools.map(tool => ({ type: 'function' as const, ...tool.definition }))
           : toolDefinitions,
     tool_choice: clientProfile === 'mobile_voice_only' ? 'none' : 'auto',
-    max_output_tokens: 384,
+    max_output_tokens: 'inf' as const,
   },
 })
 

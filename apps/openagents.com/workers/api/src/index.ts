@@ -7292,7 +7292,6 @@ const probeSarahAgentComputerCapacity = async (
 }
 
 const MOBILE_SARAH_COMMAND_TOOLS = new Set([
-  'codex_workers_capacity',
   'codex_workers_start',
   'codex_workers_status',
   'full_auto_status',
