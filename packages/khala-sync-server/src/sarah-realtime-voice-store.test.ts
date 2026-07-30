@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test";
 
 import { runMigrations } from "./migrate.js";
 import {
+  SarahVoiceAdmissionRejectedError,
   SarahVoiceConcurrentSessionError,
   SarahVoiceSessionRejectedError,
   makeSarahRealtimeVoiceStore,
@@ -332,6 +333,126 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       WHERE actor_ref = 'agent:user-sarah-staging-owner'
     `;
     expect(unexpectedBalance).toBeUndefined();
+  });
+
+  test("binds one Omega reservation to one unexpired exact admission", async () => {
+    const store = makeSarahRealtimeVoiceStore(sql as unknown as SyncSql);
+    const [balanceBefore] = await sql`
+      SELECT balance_msat - held_msat AS spendable_msat
+      FROM agent_balances
+      WHERE actor_ref = 'agent:user-sarah-voice'
+    `;
+    const spendableMsat = Number(balanceBefore?.spendable_msat);
+    const common = {
+      sessionRef: "voice-bound-session-1",
+      reservationRef: "voice-bound-reservation-1",
+      ownerUserId: "user-sarah-voice",
+      ownerActorRef: "agent:user-sarah-voice",
+      deviceRef: "omega-bound",
+      threadRef: "thread-bound",
+      generation: 1,
+      ticketDigest: "1".repeat(64),
+      disclosureRef: "disclosure-bound",
+      clientProfile: "omega_editor",
+      creditMode: "metered",
+      entitlementRef: null,
+      admissionCohortRef: "sarah_voice_cohort:alpha_v1",
+      reservedMsat: 1_000,
+      ticketExpiresAt: "2026-07-28T12:01:00.000Z",
+      sessionExpiresAt: "2026-07-28T12:10:00.000Z",
+      nowIso: "2026-07-28T12:00:00.000Z",
+    } as const;
+    await store.issueAdmission({
+      admissionRef: "sarah_voice_admission:bound-1",
+      ownerUserId: common.ownerUserId,
+      deviceRef: common.deviceRef,
+      threadRef: common.threadRef,
+      sessionRef: common.sessionRef,
+      generation: common.generation,
+      disclosureRef: common.disclosureRef,
+      clientProfile: common.clientProfile,
+      admissionCohortRef: common.admissionCohortRef,
+      creditMode: common.creditMode,
+      termsDigest: "a".repeat(64),
+      spendableRemainingCreditMsat: spendableMsat,
+      nowIso: common.nowIso,
+      expiresAt: "2026-07-28T12:02:00.000Z",
+    });
+
+    await expect(
+      store.reserve({
+        ...common,
+        admissionBinding: {
+          admissionRef: "sarah_voice_admission:bound-1",
+          termsDigest: "b".repeat(64),
+          spendableRemainingCreditMsat: spendableMsat,
+        },
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceAdmissionRejectedError);
+
+    const reserved = await store.reserve({
+      ...common,
+      admissionBinding: {
+        admissionRef: "sarah_voice_admission:bound-1",
+        termsDigest: "a".repeat(64),
+        spendableRemainingCreditMsat: spendableMsat,
+      },
+    });
+    expect(reserved.admissionExpiresAt).toBe("2026-07-28T12:02:00.000Z");
+    await expect(
+      store.reserve({
+        ...common,
+        reservationRef: "voice-bound-reservation-replay",
+        ticketDigest: "2".repeat(64),
+        admissionBinding: {
+          admissionRef: "sarah_voice_admission:bound-1",
+          termsDigest: "a".repeat(64),
+          spendableRemainingCreditMsat: spendableMsat,
+        },
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceAdmissionRejectedError);
+    expect(await store.sweepExpired("2026-07-28T12:02:00.000Z")).toBe(1);
+
+    await store.issueAdmission({
+      admissionRef: "sarah_voice_admission:balance-change",
+      ownerUserId: common.ownerUserId,
+      deviceRef: common.deviceRef,
+      threadRef: common.threadRef,
+      sessionRef: "voice-bound-session-balance-change",
+      generation: common.generation,
+      disclosureRef: common.disclosureRef,
+      clientProfile: common.clientProfile,
+      admissionCohortRef: common.admissionCohortRef,
+      creditMode: common.creditMode,
+      termsDigest: "c".repeat(64),
+      spendableRemainingCreditMsat: spendableMsat,
+      nowIso: "2026-07-28T12:03:00.000Z",
+      expiresAt: "2026-07-28T12:05:00.000Z",
+    });
+    await sql`
+      UPDATE agent_balances
+      SET balance_msat = balance_msat - 1
+      WHERE actor_ref = 'agent:user-sarah-voice'
+    `;
+    await expect(
+      store.reserve({
+        ...common,
+        sessionRef: "voice-bound-session-balance-change",
+        reservationRef: "voice-bound-reservation-balance-change",
+        ticketDigest: "3".repeat(64),
+        nowIso: "2026-07-28T12:03:00.000Z",
+        admissionBinding: {
+          admissionRef: "sarah_voice_admission:balance-change",
+          termsDigest: "c".repeat(64),
+          spendableRemainingCreditMsat: spendableMsat,
+        },
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceAdmissionRejectedError);
+    await sql`
+      UPDATE agent_balances
+      SET balance_msat = balance_msat + 1
+      WHERE actor_ref = 'agent:user-sarah-voice'
+    `;
   });
 
   test("revokes the alpha cohort before any new reservation can be created", async () => {

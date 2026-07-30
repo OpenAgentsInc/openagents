@@ -162,6 +162,8 @@ describe("Sarah Realtime voice contract", () => {
       requiredHoldMsat: 25_000,
       spendableRemainingCreditMsat: 75_000,
       maxDurationSeconds: 600,
+      admissionRef: "sarah_voice_admission:binding-1",
+      admissionExpiresAtMs: 120_000,
       capabilityBoundary: {
         commands: ["context_read", "start_agent_thread"],
         confirmationRequired: ["start_agent_thread"],
@@ -232,5 +234,17 @@ describe("Sarah Realtime voice contract", () => {
         clientProfile: "arbitrary_device_commands",
       }),
     ).toThrow();
+  });
+
+  test("carries the Omega admission binding through session issue", () => {
+    expect(
+      decodeSarahVoiceSessionRequest({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: "omega.voice.disclosure.v1",
+        clientProfile: "omega_editor",
+        admissionRef: "sarah_voice_admission:binding-1",
+      }).admissionRef,
+    ).toBe("sarah_voice_admission:binding-1");
   });
 });

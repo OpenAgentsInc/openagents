@@ -51,12 +51,20 @@ credential. Invalid, expired, and replayed challenges fail before admission.
 Admission does not create a ticket, hold credit, or create a voice session. Its
 response gives the exact configured credit rate, required hold, current
 spendable credit, maximum duration, selected client profile, active cohort,
-credit mode, and capability boundary. A refusal is a normal `200` response with
-`admitted: false` and either `cohort_inactive` or `insufficient_credit`.
+credit mode, and capability boundary. An admitted response also contains a
+random `admissionRef` and `admissionExpiresAtMs`. The reference expires after
+120 seconds and can create one session only. A refusal is a normal `200`
+response with `admitted: false` and either `cohort_inactive` or
+`insufficient_credit`; refusals do not contain an admission reference.
 
 Metered users must have an active `sarah_voice_cohort:alpha_v1` membership.
 The staging-owner entitlement remains separate. The session transaction checks
-the membership or entitlement again, so a client cannot bypass admission.
+the membership or entitlement again. For `omega_editor`, the transaction also
+locks the admission, verifies its owner, device, thread, session, generation,
+disclosure, profile, unexpired state, exact current spendable credit, and an
+internal digest of all displayed economics and capabilities. It consumes the
+admission in the same transaction that creates the hold and reservation. A
+changed, expired, or replayed admission returns `409` without a hold or ticket.
 
 The profiles expose these provider capabilities:
 
@@ -101,12 +109,20 @@ Example request:
     "generation": 1
   },
   "disclosureRef": "omega.voice.disclosure.v1",
-  "clientProfile": "omega_editor"
+  "clientProfile": "omega_editor",
+  "admissionRef": "sarah_voice_admission:<random value from admission>"
 }
 ```
 
-The success response contains the gateway URL, one-use ticket, expiry values, held credit, model, and fixed audio formats.
-It also contains the selected `clientProfile`.
+`admissionRef` is required for `omega_editor`. It remains optional for the
+existing mobile profiles.
+
+The success response contains the gateway URL, one-use ticket, expiry values,
+held credit, model, and fixed audio formats. For `omega_editor`, it also echoes
+the consumed admission reference and expiry plus the cohort, credit mode,
+effective rate, exact pre-hold spendable credit, and capability boundary. The
+client must compare these fields with the terms that the user reviewed before
+it connects the WebSocket.
 The API returns `402` when available credit is too low.
 The API returns `409` when the user has an active session.
 The response always has `Cache-Control: no-store`.

@@ -1612,7 +1612,13 @@ come from the Freerange teardown
   rate, required hold, spendable credit, maximum duration, profile boundary,
   and cohort, while final settlement reports the owner-scoped charge, remaining
   credit, and receipt. NIP-98 admission uses the same one-time challenge,
-  body-binding, identity, and device checks as session issuance.
+  body-binding, identity, and device checks as session issuance. An admitted
+  Omega editor receives a random, short-lived, one-use admission reference.
+  Session reservation transactionally revalidates its exact identity, profile,
+  cohort or entitlement, spendable credit, and internal terms digest, then
+  consumes it in the same transaction as the hold. Changed, expired, or replayed
+  admission never creates a ticket or hold. Existing mobile profiles retain
+  their compatible session path without this Omega-specific reference.
 - A voice generation starts only after an explicit, versioned disclosure, stop,
   revoke, and restart fail closed, and restart never silently resumes capture.
 - Capture, network egress, retention, and playback are separate authoritative

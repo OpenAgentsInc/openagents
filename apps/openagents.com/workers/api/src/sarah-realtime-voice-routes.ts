@@ -18,6 +18,7 @@ import {
 } from '@openagentsinc/audio-contract'
 import {
   type SarahRealtimeVoiceStore,
+  SarahVoiceAdmissionRejectedError,
   SarahVoiceConcurrentSessionError,
   SarahVoiceInsufficientCreditError,
   SarahVoiceSessionRejectedError,
@@ -162,12 +163,30 @@ export const sha256Hex = async (value: string): Promise<string> => {
     new TextEncoder().encode(value),
   )
   return [...new Uint8Array(digest)]
-    .map(byte => byte.toString(16).padStart(2, '0'))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('')
 }
 
 const makeTicket = (): string =>
   base64Url(crypto.getRandomValues(new Uint8Array(32)))
+
+const SARAH_VOICE_ADMISSION_LIFETIME_MS = 120_000
+
+const makeAdmissionRef = (): string =>
+  `sarah_voice_admission:${base64Url(crypto.getRandomValues(new Uint8Array(32)))}`
+
+const admissionTermsDigest = async (
+  terms: Readonly<{
+    clientProfile: string
+    admissionCohortRef: string
+    creditMode: string
+    creditRateMsatPerMillionTokens: number
+    requiredHoldMsat: number
+    spendableRemainingCreditMsat: number | null
+    maxDurationSeconds: number
+    capabilityBoundary: ReturnType<typeof capabilityBoundaryForProfile>
+  }>,
+): Promise<string> => sha256Hex(JSON.stringify(terms))
 
 const parseRequest = async (request: Request) => {
   const contentLength = Number(request.headers.get('content-length') ?? '0')
@@ -415,7 +434,8 @@ export const handleSarahRealtimeVoiceAdmissionRequest = async <User, Bindings>(
     return noStoreJson({ error: 'sarah_voice_unavailable' }, 503)
   }
 
-  const nowIso = new Date((dependencies.now ?? Date.now)()).toISOString()
+  const nowMs = (dependencies.now ?? Date.now)()
+  const nowIso = new Date(nowMs).toISOString()
   const clientProfile = body.clientProfile ?? 'omega_editor'
   let opened:
     | Readonly<{ store: SarahRealtimeVoiceStore; close: () => Promise<void> }>
@@ -431,18 +451,41 @@ export const handleSarahRealtimeVoiceAdmissionRequest = async <User, Bindings>(
           })
         : undefined
     if (stagingEntitlement !== undefined) {
+      const terms = {
+        clientProfile,
+        admissionCohortRef: SARAH_VOICE_STAGING_OWNER_COHORT_REF,
+        creditMode: 'staging_owner_entitlement' as const,
+        creditRateMsatPerMillionTokens: config.creditMsatPerMillionTokens,
+        requiredHoldMsat: 0,
+        spendableRemainingCreditMsat: null,
+        maxDurationSeconds: config.maxSessionSeconds,
+        capabilityBoundary: capabilityBoundaryForProfile(clientProfile),
+      }
+      const admissionRef = makeAdmissionRef()
+      const admissionExpiresAtMs = nowMs + SARAH_VOICE_ADMISSION_LIFETIME_MS
+      await opened.store.issueAdmission({
+        admissionRef,
+        ownerUserId: userId,
+        deviceRef: body.identity.deviceRef,
+        threadRef: body.identity.threadRef,
+        sessionRef: body.identity.sessionRef,
+        generation: body.identity.generation,
+        disclosureRef: body.disclosureRef,
+        clientProfile,
+        admissionCohortRef: terms.admissionCohortRef,
+        creditMode: terms.creditMode,
+        termsDigest: await admissionTermsDigest(terms),
+        spendableRemainingCreditMsat: null,
+        nowIso,
+        expiresAt: new Date(admissionExpiresAtMs).toISOString(),
+      })
       return noStoreJson(
         {
           schema: SARAH_VOICE_ADMISSION_PROTOCOL_VERSION,
           admitted: true,
-          clientProfile,
-          admissionCohortRef: SARAH_VOICE_STAGING_OWNER_COHORT_REF,
-          creditMode: 'staging_owner_entitlement',
-          creditRateMsatPerMillionTokens: config.creditMsatPerMillionTokens,
-          requiredHoldMsat: 0,
-          spendableRemainingCreditMsat: null,
-          maxDurationSeconds: config.maxSessionSeconds,
-          capabilityBoundary: capabilityBoundaryForProfile(clientProfile),
+          ...terms,
+          admissionRef,
+          admissionExpiresAtMs,
           ...(issuedNostrAuth === undefined
             ? {}
             : {
@@ -470,18 +513,46 @@ export const handleSarahRealtimeVoiceAdmissionRequest = async <User, Bindings>(
     const admitted =
       membership !== undefined &&
       spendableRemainingCreditMsat >= config.reservationMsat
+    const terms = {
+      clientProfile,
+      admissionCohortRef: SARAH_VOICE_ALPHA_COHORT_REF,
+      creditMode: 'metered' as const,
+      creditRateMsatPerMillionTokens: config.creditMsatPerMillionTokens,
+      requiredHoldMsat: config.reservationMsat,
+      spendableRemainingCreditMsat,
+      maxDurationSeconds: config.maxSessionSeconds,
+      capabilityBoundary: capabilityBoundaryForProfile(clientProfile),
+    }
+    let admissionBinding:
+      | Readonly<{ admissionRef: string; admissionExpiresAtMs: number }>
+      | undefined
+    if (admitted) {
+      const admissionRef = makeAdmissionRef()
+      const admissionExpiresAtMs = nowMs + SARAH_VOICE_ADMISSION_LIFETIME_MS
+      await opened.store.issueAdmission({
+        admissionRef,
+        ownerUserId: userId,
+        deviceRef: body.identity.deviceRef,
+        threadRef: body.identity.threadRef,
+        sessionRef: body.identity.sessionRef,
+        generation: body.identity.generation,
+        disclosureRef: body.disclosureRef,
+        clientProfile,
+        admissionCohortRef: terms.admissionCohortRef,
+        creditMode: terms.creditMode,
+        termsDigest: await admissionTermsDigest(terms),
+        spendableRemainingCreditMsat,
+        nowIso,
+        expiresAt: new Date(admissionExpiresAtMs).toISOString(),
+      })
+      admissionBinding = { admissionRef, admissionExpiresAtMs }
+    }
     return noStoreJson(
       {
         schema: SARAH_VOICE_ADMISSION_PROTOCOL_VERSION,
         admitted,
-        clientProfile,
-        admissionCohortRef: SARAH_VOICE_ALPHA_COHORT_REF,
-        creditMode: 'metered',
-        creditRateMsatPerMillionTokens: config.creditMsatPerMillionTokens,
-        requiredHoldMsat: config.reservationMsat,
-        spendableRemainingCreditMsat,
-        maxDurationSeconds: config.maxSessionSeconds,
-        capabilityBoundary: capabilityBoundaryForProfile(clientProfile),
+        ...terms,
+        ...admissionBinding,
         ...(admitted
           ? {}
           : {
@@ -701,6 +772,7 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
   }
   const body = parsed.body
   const clientProfile = body.clientProfile ?? 'omega_editor'
+  const admissionRef = body.admissionRef
   const userId = dependencies.userIdFromSession(session)
   const deviceRef = request.headers
     .get(SARAH_REALTIME_VOICE_DEVICE_HEADER)
@@ -711,6 +783,9 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
     deviceRef !== body.identity.deviceRef
   ) {
     return noStoreJson({ error: 'sarah_voice_identity_mismatch' }, 403)
+  }
+  if (clientProfile === 'omega_editor' && admissionRef === undefined) {
+    return noStoreJson({ error: 'sarah_voice_admission_required' }, 409)
   }
 
   const config = dependencies.config(env)
@@ -772,7 +847,29 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
     const creditMode =
       entitlement === undefined ? 'metered' : 'staging_owner_entitlement'
     const reservedMsat = entitlement === undefined ? config.reservationMsat : 0
-    await opened.store.reserve({
+    const admissionCohortRef =
+      entitlement === undefined
+        ? SARAH_VOICE_ALPHA_COHORT_REF
+        : SARAH_VOICE_STAGING_OWNER_COHORT_REF
+    const spendableRemainingCreditMsat =
+      clientProfile === 'omega_editor' && entitlement === undefined
+        ? await opened.store.readSpendableCredit({
+            ownerUserId: userId,
+            ownerActorRef: `agent:${userId}`,
+          })
+        : null
+    const capabilityBoundary = capabilityBoundaryForProfile(clientProfile)
+    const currentTerms = {
+      clientProfile,
+      admissionCohortRef,
+      creditMode,
+      creditRateMsatPerMillionTokens: config.creditMsatPerMillionTokens,
+      requiredHoldMsat: reservedMsat,
+      spendableRemainingCreditMsat,
+      maxDurationSeconds: config.maxSessionSeconds,
+      capabilityBoundary,
+    }
+    const reserved = await opened.store.reserve({
       deviceRef: body.identity.deviceRef,
       disclosureRef: body.disclosureRef,
       clientProfile,
@@ -783,17 +880,38 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
       reservationRef: `sarah:voice:reserve:${userId}:${body.identity.sessionRef}`,
       creditMode,
       entitlementRef: entitlement?.entitlementRef ?? null,
-      admissionCohortRef:
-        entitlement === undefined
-          ? SARAH_VOICE_ALPHA_COHORT_REF
-          : SARAH_VOICE_STAGING_OWNER_COHORT_REF,
+      admissionCohortRef,
       reservedMsat,
       sessionExpiresAt: new Date(sessionExpiresAtMs).toISOString(),
       sessionRef: body.identity.sessionRef,
       threadRef: body.identity.threadRef,
       ticketDigest: await sha256Hex(ticket),
       ticketExpiresAt: new Date(ticketExpiresAtMs).toISOString(),
+      ...(clientProfile === 'omega_editor' && admissionRef !== undefined
+        ? {
+            admissionBinding: {
+              admissionRef,
+              termsDigest: await admissionTermsDigest(currentTerms),
+              spendableRemainingCreditMsat,
+            },
+          }
+        : {}),
     })
+    const admissionExpiresAtMs =
+      clientProfile === 'omega_editor' &&
+      reserved.admissionExpiresAt !== undefined
+        ? Date.parse(reserved.admissionExpiresAt)
+        : undefined
+    if (
+      clientProfile === 'omega_editor' &&
+      (admissionExpiresAtMs === undefined ||
+        !Number.isSafeInteger(admissionExpiresAtMs) ||
+        admissionExpiresAtMs <= nowMs)
+    ) {
+      throw new SarahVoiceAdmissionRejectedError(
+        'The consumed Sarah voice admission expiry was invalid',
+      )
+    }
     return noStoreJson(
       {
         schema: SARAH_VOICE_PROTOCOL_VERSION,
@@ -806,6 +924,17 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
         reservedCreditMsat: reservedMsat,
         maxDurationSeconds: config.maxSessionSeconds,
         clientProfile,
+        ...(clientProfile === 'omega_editor' && admissionRef !== undefined
+          ? {
+              admissionRef,
+              admissionExpiresAtMs,
+              admissionCohortRef,
+              creditMode,
+              creditRateMsatPerMillionTokens: config.creditMsatPerMillionTokens,
+              spendableRemainingCreditMsat,
+              capabilityBoundary,
+            }
+          : {}),
         inputAudio: {
           codec: 'pcm_s16le',
           sampleRateHz: 24_000,
@@ -828,6 +957,9 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
       201,
     )
   } catch (error) {
+    if (error instanceof SarahVoiceAdmissionRejectedError) {
+      return noStoreJson({ error: 'sarah_voice_admission_invalid' }, 409)
+    }
     if (error instanceof SarahVoiceInsufficientCreditError) {
       return noStoreJson({ error: 'insufficient_credit' }, 402)
     }

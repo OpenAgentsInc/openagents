@@ -63,6 +63,7 @@ export const SarahVoiceSessionRequestSchema = S.Struct({
   identity: VoiceIdentitySchema,
   disclosureRef: Ref,
   clientProfile: S.optional(S.Literals(SARAH_VOICE_CLIENT_PROFILES)),
+  admissionRef: S.optional(Ref),
   auth: S.optional(
     S.Struct({
       method: S.Literal(SARAH_VOICE_NOSTR_AUTH_METHOD),
@@ -115,6 +116,8 @@ export const SarahVoiceAdmissionResponseSchema = S.Struct({
     S.isLessThanOrEqualTo(3_600),
   ),
   capabilityBoundary: SarahVoiceCapabilityBoundarySchema,
+  admissionRef: S.optional(Ref),
+  admissionExpiresAtMs: S.optional(Seq),
   refusalReason: S.optional(
     S.Literals(["cohort_inactive", "insufficient_credit"]),
   ),
@@ -231,6 +234,18 @@ export const SarahVoiceSessionResponseSchema = S.Struct({
     S.isLessThanOrEqualTo(3_600),
   ),
   clientProfile: S.Literals(SARAH_VOICE_CLIENT_PROFILES),
+  admissionRef: S.optional(Ref),
+  admissionExpiresAtMs: S.optional(Seq),
+  admissionCohortRef: S.optional(
+    S.Literals([
+      SARAH_VOICE_ALPHA_COHORT_REF,
+      SARAH_VOICE_STAGING_OWNER_COHORT_REF,
+    ]),
+  ),
+  creditMode: S.optional(S.Literals(["metered", "staging_owner_entitlement"])),
+  creditRateMsatPerMillionTokens: S.optional(Seq),
+  spendableRemainingCreditMsat: S.optional(S.NullOr(Seq)),
+  capabilityBoundary: S.optional(SarahVoiceCapabilityBoundarySchema),
   inputAudio: S.Struct({
     codec: S.Literal("pcm_s16le"),
     sampleRateHz: S.Literal(24_000),

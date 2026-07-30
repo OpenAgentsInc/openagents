@@ -8,6 +8,7 @@ import {
 } from '@openagentsinc/audio-contract'
 import {
   type SarahRealtimeVoiceStore,
+  SarahVoiceAdmissionRejectedError,
   SarahVoiceInsufficientCreditError,
 } from '@openagentsinc/khala-sync-server'
 import { describe, expect, test, vi } from 'vitest'
@@ -40,7 +41,13 @@ const request = (
       'content-type': 'application/json',
       [SARAH_REALTIME_VOICE_DEVICE_HEADER]: deviceRef,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(
+      typeof body === 'object' &&
+        body !== null &&
+        (!('clientProfile' in body) || body.clientProfile === 'omega_editor')
+        ? { ...body, admissionRef: 'sarah_voice_admission:test' }
+        : body,
+    ),
   })
 
 const ctx = {
@@ -49,7 +56,7 @@ const ctx = {
 } as unknown as ExecutionContext
 
 const makeDependencies = (
-  reserve: SarahRealtimeVoiceStore['reserve'] = vi.fn(async input => ({
+  reserve: SarahRealtimeVoiceStore['reserve'] = vi.fn(async (input) => ({
     sessionRef: input.sessionRef,
     ownerUserId: input.ownerUserId,
     ownerActorRef: input.ownerActorRef,
@@ -67,6 +74,10 @@ const makeDependencies = (
     ticketExpiresAt: input.ticketExpiresAt,
     sessionExpiresAt: input.sessionExpiresAt,
     settlementReceiptRef: null,
+    admissionExpiresAt:
+      input.admissionBinding === undefined
+        ? undefined
+        : '2026-07-28T12:02:00.000Z',
   })),
   readActiveStagingOwnerEntitlement: SarahRealtimeVoiceStore['readActiveStagingOwnerEntitlement'] = vi.fn(
     async () => undefined,
@@ -75,9 +86,13 @@ const makeDependencies = (
   const close = vi.fn(async () => undefined)
   const store = {
     reserve,
+    issueAdmission: vi.fn(async (input) => ({
+      admissionRef: input.admissionRef,
+      admissionExpiresAt: input.expiresAt,
+    })),
     connect: vi.fn(),
     recordUsage: vi.fn(),
-    readActiveAlphaMembership: vi.fn(async input => ({
+    readActiveAlphaMembership: vi.fn(async (input) => ({
       membershipRef: `sarah_voice_alpha:${input.ownerUserId}`,
       cohortRef: input.cohortRef,
       ownerUserId: input.ownerUserId,
@@ -113,6 +128,59 @@ const makeDependencies = (
 }
 
 describe('managed Sarah Realtime voice session route', () => {
+  test('requires a server-issued admission for the Omega editor profile', async () => {
+    const fixture = makeDependencies()
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      fixture.dependencies,
+      new Request(`https://openagents.com${SARAH_VOICE_SESSION_PATH}`, {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer test',
+          'content-type': 'application/json',
+          [SARAH_REALTIME_VOICE_DEVICE_HEADER]: identity.deviceRef,
+        },
+        body: JSON.stringify({
+          schema: SARAH_VOICE_PROTOCOL_VERSION,
+          identity,
+          disclosureRef: 'disclosure-1',
+          clientProfile: 'omega_editor',
+        }),
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({
+      error: 'sarah_voice_admission_required',
+    })
+    expect(fixture.reserve).not.toHaveBeenCalled()
+  })
+
+  test('maps an expired, replayed, or changed admission to conflict', async () => {
+    const fixture = makeDependencies(
+      vi.fn(async () => {
+        throw new SarahVoiceAdmissionRejectedError('admission changed')
+      }),
+    )
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      fixture.dependencies,
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'disclosure-1',
+        clientProfile: 'omega_editor',
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({
+      error: 'sarah_voice_admission_invalid',
+    })
+  })
+
   test('issues a one-use OpenAgents ticket after reserving credit', async () => {
     const fixture = makeDependencies()
     const response = await handleSarahRealtimeVoiceSessionRequest(
@@ -138,6 +206,31 @@ describe('managed Sarah Realtime voice session route', () => {
       reservedCreditMsat: 25_000,
       maxDurationSeconds: 600,
       clientProfile: 'omega_editor',
+      admissionRef: 'sarah_voice_admission:test',
+      admissionExpiresAtMs: Date.UTC(2026, 6, 28, 12, 2, 0),
+      admissionCohortRef: 'sarah_voice_cohort:alpha_v1',
+      creditMode: 'metered',
+      creditRateMsatPerMillionTokens: 100_000,
+      spendableRemainingCreditMsat: 100_000,
+      capabilityBoundary: {
+        commands: [
+          'context_read',
+          'reveal_range',
+          'replace_selection',
+          'save_document',
+          'start_agent_thread',
+        ],
+        confirmationRequired: [
+          'replace_selection',
+          'save_document',
+          'start_agent_thread',
+        ],
+        directShell: false,
+        directGit: false,
+        payment: false,
+        credentialAccess: false,
+        deviceControl: false,
+      },
     })
     expect(body.gatewayUrl).toBe(
       'wss://openagents.com/api/omega/sarah/voice/connect',
@@ -149,6 +242,11 @@ describe('managed Sarah Realtime voice session route', () => {
         clientProfile: 'omega_editor',
         reservedMsat: 25_000,
         ticketDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        admissionBinding: {
+          admissionRef: 'sarah_voice_admission:test',
+          spendableRemainingCreditMsat: 100_000,
+          termsDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        },
       }),
     )
     expect(fixture.close).toHaveBeenCalledOnce()
@@ -289,7 +387,7 @@ describe('managed Sarah Realtime voice session route', () => {
   test('waives only the staging owner credit hold', async () => {
     const fixture = makeDependencies(
       undefined,
-      vi.fn(async input => ({
+      vi.fn(async (input) => ({
         entitlementRef: input.entitlementRef,
         ownerUserId: input.ownerUserId,
         expiresAt: input.expiresAt,
@@ -398,6 +496,7 @@ describe('managed Sarah Realtime voice session route', () => {
       schema: SARAH_VOICE_PROTOCOL_VERSION,
       identity,
       disclosureRef: 'disclosure-1',
+      admissionRef: 'sarah_voice_admission:test',
       auth: {
         method: 'nostr_nip98',
         challenge: 'challenge_abcdefghijklmnopqrstuvwxyz012345',
@@ -594,6 +693,10 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
         credentialAccess: false,
         deviceControl: false,
       },
+      admissionRef: expect.stringMatching(
+        /^sarah_voice_admission:[A-Za-z0-9_-]{32,}$/u,
+      ),
+      admissionExpiresAtMs: Date.UTC(2026, 6, 28, 12, 2, 0),
     })
     expect(fixture.reserve).not.toHaveBeenCalled()
   })
@@ -611,7 +714,7 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
     },
   ] as const)(
     'reports $reason without creating a reservation',
-    async fixtureCase => {
+    async (fixtureCase) => {
       const fixture = makeDependencies()
       vi.mocked(fixture.store.readActiveAlphaMembership).mockResolvedValue(
         fixtureCase.membershipActive

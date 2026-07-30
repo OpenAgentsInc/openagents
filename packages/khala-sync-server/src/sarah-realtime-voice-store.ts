@@ -19,6 +19,11 @@ export type SarahVoiceAlphaMembership = Readonly<{
   ownerUserId: string;
 }>;
 
+export type SarahVoiceAdmissionRecord = Readonly<{
+  admissionRef: string;
+  admissionExpiresAt: string;
+}>;
+
 export type SarahVoiceSettlementProjection = Readonly<{
   sessionRef: string;
   state: "settled" | "released";
@@ -48,6 +53,9 @@ export type SarahVoiceSessionRecord = Readonly<{
   settlementReceiptRef: string | null;
 }>;
 
+export type SarahVoiceReservationRecord = SarahVoiceSessionRecord &
+  Readonly<{ admissionExpiresAt: string | undefined }>;
+
 export type SarahVoiceUsage = Readonly<{
   providerResponseRef: string;
   inputTokens: number;
@@ -69,6 +77,10 @@ export class SarahVoiceConcurrentSessionError extends Error {
 
 export class SarahVoiceSessionRejectedError extends Error {
   override readonly name = "SarahVoiceSessionRejectedError";
+}
+
+export class SarahVoiceAdmissionRejectedError extends Error {
+  override readonly name = "SarahVoiceAdmissionRejectedError";
 }
 
 export class SarahVoiceStorageError extends Error {
@@ -140,6 +152,55 @@ const isUniqueViolation = (error: unknown): boolean =>
 export type SarahRealtimeVoiceStore = ReturnType<typeof makeSarahRealtimeVoiceStore>;
 
 export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
+  const issueAdmission = async (
+    input: Readonly<{
+      admissionRef: string;
+      ownerUserId: string;
+      deviceRef: string;
+      threadRef: string;
+      sessionRef: string;
+      generation: number;
+      disclosureRef: string;
+      clientProfile: SarahVoiceClientProfile;
+      admissionCohortRef: string;
+      creditMode: SarahVoiceCreditMode;
+      termsDigest: string;
+      spendableRemainingCreditMsat: number | null;
+      nowIso: string;
+      expiresAt: string;
+    }>,
+  ): Promise<SarahVoiceAdmissionRecord> => {
+    try {
+      const rows = (await sql`
+        INSERT INTO sarah_voice_admissions (
+          admission_ref, owner_user_id, device_ref, thread_ref, session_ref,
+          generation, disclosure_ref, client_profile, admission_cohort_ref,
+          credit_mode, terms_digest, spendable_remaining_credit_msat, state,
+          issued_at, expires_at, consumed_at
+        ) VALUES (
+          ${input.admissionRef}, ${input.ownerUserId}, ${input.deviceRef},
+          ${input.threadRef}, ${input.sessionRef}, ${input.generation},
+          ${input.disclosureRef}, ${input.clientProfile},
+          ${input.admissionCohortRef}, ${input.creditMode},
+          ${input.termsDigest}, ${input.spendableRemainingCreditMsat}, 'active',
+          ${input.nowIso}, ${input.expiresAt}, NULL
+        )
+        RETURNING admission_ref, expires_at
+      `) as ReadonlyArray<{ admission_ref: string; expires_at: string }>;
+      const row = first(rows);
+      if (row === undefined) {
+        throw new SarahVoiceStorageError("The admission did not return a row", null);
+      }
+      return {
+        admissionRef: row.admission_ref,
+        admissionExpiresAt: row.expires_at,
+      };
+    } catch (error) {
+      if (error instanceof SarahVoiceStorageError) throw error;
+      throw new SarahVoiceStorageError("Sarah voice admission issue failed", error);
+    }
+  };
+
   const readActiveAlphaMembership = async (
     input: Readonly<{
       ownerUserId: string;
@@ -326,10 +387,16 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       ticketExpiresAt: string;
       sessionExpiresAt: string;
       nowIso: string;
+      admissionBinding?: Readonly<{
+        admissionRef: string;
+        termsDigest: string;
+        spendableRemainingCreditMsat: number | null;
+      }>;
     }>,
-  ): Promise<SarahVoiceSessionRecord> => {
+  ): Promise<SarahVoiceReservationRecord> => {
     try {
       return await sql.begin(async (tx) => {
+        let admissionExpiresAt: string | undefined;
         const users = (await tx`
           SELECT id
           FROM users
@@ -340,6 +407,47 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         `) as ReadonlyArray<{ id: string }>;
         if (first(users) === undefined) {
           throw new SarahVoiceSessionRejectedError("The user is not active");
+        }
+
+        if (input.admissionBinding !== undefined) {
+          const admissions = (await tx`
+            SELECT admission_ref, expires_at
+            FROM sarah_voice_admissions
+            WHERE admission_ref = ${input.admissionBinding.admissionRef}
+              AND owner_user_id = ${input.ownerUserId}
+              AND device_ref = ${input.deviceRef}
+              AND thread_ref = ${input.threadRef}
+              AND session_ref = ${input.sessionRef}
+              AND generation = ${input.generation}
+              AND disclosure_ref = ${input.disclosureRef}
+              AND client_profile = ${input.clientProfile}
+              AND admission_cohort_ref = ${input.admissionCohortRef}
+              AND credit_mode = ${input.creditMode}
+              AND terms_digest = ${input.admissionBinding.termsDigest}
+              AND spendable_remaining_credit_msat IS NOT DISTINCT FROM
+                ${input.admissionBinding.spendableRemainingCreditMsat}
+              AND state = 'active'
+              AND expires_at > ${input.nowIso}
+            FOR UPDATE
+          `) as ReadonlyArray<{ admission_ref: string; expires_at: string }>;
+          const admission = first(admissions);
+          if (admission === undefined) {
+            throw new SarahVoiceAdmissionRejectedError(
+              "The Sarah voice admission is missing, changed, expired, or already consumed",
+            );
+          }
+          const admissionExpiresAtMs = Date.parse(admission.expires_at);
+          const nowMs = Date.parse(input.nowIso);
+          if (
+            !Number.isSafeInteger(admissionExpiresAtMs) ||
+            !Number.isSafeInteger(nowMs) ||
+            admissionExpiresAtMs <= nowMs
+          ) {
+            throw new SarahVoiceAdmissionRejectedError(
+              "The Sarah voice admission expiry is invalid",
+            );
+          }
+          admissionExpiresAt = admission.expires_at;
         }
 
         if (input.creditMode === "metered") {
@@ -356,6 +464,24 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             throw new SarahVoiceSessionRejectedError(
               "The Sarah voice alpha membership is not active",
             );
+          }
+          if (input.admissionBinding !== undefined) {
+            const balances = (await tx`
+              SELECT balance_msat - held_msat AS spendable_msat
+              FROM agent_balances
+              WHERE actor_ref = ${input.ownerActorRef}
+              FOR UPDATE
+            `) as ReadonlyArray<{ spendable_msat: number | string }>;
+            const balance = first(balances);
+            if (
+              balance === undefined ||
+              toSafeInteger(balance.spendable_msat, "spendable_msat") !==
+                input.admissionBinding.spendableRemainingCreditMsat
+            ) {
+              throw new SarahVoiceAdmissionRejectedError(
+                "The spendable credit changed after Sarah voice admission",
+              );
+            }
           }
           const balances = (await tx`
             UPDATE agent_balances
@@ -387,6 +513,21 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           }
         }
 
+        if (input.admissionBinding !== undefined) {
+          const consumed = (await tx`
+            UPDATE sarah_voice_admissions
+            SET state = 'consumed', consumed_at = ${input.nowIso}
+            WHERE admission_ref = ${input.admissionBinding.admissionRef}
+              AND state = 'active'
+            RETURNING admission_ref
+          `) as ReadonlyArray<{ admission_ref: string }>;
+          if (first(consumed) === undefined) {
+            throw new SarahVoiceAdmissionRejectedError(
+              "The Sarah voice admission could not be consumed",
+            );
+          }
+        }
+
         const rows = (await tx`
           INSERT INTO sarah_realtime_voice_sessions (
             session_ref, reservation_ref, owner_user_id, owner_actor_ref,
@@ -413,12 +554,13 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         if (row === undefined) {
           throw new SarahVoiceStorageError("The reservation did not return a row", null);
         }
-        return toRecord(row);
+        return { ...toRecord(row), admissionExpiresAt };
       });
     } catch (error) {
       if (
         error instanceof SarahVoiceInsufficientCreditError ||
-        error instanceof SarahVoiceSessionRejectedError
+        error instanceof SarahVoiceSessionRejectedError ||
+        error instanceof SarahVoiceAdmissionRejectedError
       ) {
         throw error;
       }
@@ -765,6 +907,12 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
   };
 
   const sweepExpired = async (nowIso: string): Promise<number> => {
+    await sql`
+      UPDATE sarah_voice_admissions
+      SET state = 'expired'
+      WHERE state = 'active'
+        AND expires_at <= ${nowIso}
+    `;
     const rows = (await sql`
       SELECT session_ref, state
       FROM sarah_realtime_voice_sessions
@@ -775,7 +923,10 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         ELSE session_expires_at
       END
       LIMIT 100
-    `) as ReadonlyArray<{ session_ref: string; state: "reserved" | "connected" }>;
+    `) as ReadonlyArray<{
+      session_ref: string;
+      state: "reserved" | "connected";
+    }>;
     let settled = 0;
     for (const row of rows) {
       // Run one settlement at a time to protect the shared database pool.
@@ -793,6 +944,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
   return {
     connect,
     ensureStagingOwnerEntitlement,
+    issueAdmission,
     readActiveAlphaMembership,
     readActiveStagingOwnerEntitlement,
     readSettlement,
