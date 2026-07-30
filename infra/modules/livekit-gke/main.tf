@@ -304,7 +304,6 @@ resource "google_compute_address" "turn" {
   name         = "${var.cluster_name}-turn"
   region       = var.region
   address_type = "EXTERNAL"
-  purpose      = "SHARED_LOADBALANCER_VIP"
   network_tier = "PREMIUM"
   description  = "Reserved Google Cloud address for the LiveKit TURN endpoint."
   labels       = local.resource_labels

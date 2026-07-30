@@ -8,6 +8,7 @@ import {
   REQUIRED_DRILLS,
   assertPublicSafe,
   buildPublicReceipt,
+  publicSafeCommandFailure,
   sha256,
   validateCostObservation,
   validateAddonLock,
@@ -44,6 +45,17 @@ test("billing account IDs admit Google's uppercase alphanumeric shape", () => {
       /billing account variable/u,
     );
   }
+});
+
+test("command failure projection never leaves a provider failure blank after redaction", () => {
+  const providerFailure =
+    "Error creating Address: Invalid resource.purpose SHARED_LOADBALANCER_VIP for external address";
+  assert.equal(
+    publicSafeCommandFailure(providerFailure, ""),
+    "provider diagnostics were redacted by policy",
+  );
+  assert.equal(publicSafeCommandFailure("Error: quota exhausted", ""), "Error: quota exhausted");
+  assert.equal(publicSafeCommandFailure("", ""), "");
 });
 
 test("canary boot invokes Caddy, opens exact host ports, and grants only log-write IAM", () => {
@@ -100,6 +112,25 @@ test("canary boot invokes Caddy, opens exact host ports, and grants only log-wri
   assert.match(binding, /member  = "serviceAccount:\$\{google_service_account\.canary\.email\}"/u);
   assert.doesNotMatch(binding, /roles\/(?:editor|logging\.admin|owner)/u);
   assert.match(module, /google_project_iam_member\.canary_log_writer,/u);
+});
+
+test("production TURN reserves a premium external address without an internal-only purpose", () => {
+  const module = readFileSync(
+    resolve(import.meta.dirname, "../../infra/modules/livekit-gke/main.tf"),
+    "utf8",
+  );
+  const resourceStart = module.indexOf('resource "google_compute_address" "turn"');
+  const resourceEnd = module.indexOf(
+    'resource "google_redis_instance" "livekit"',
+    resourceStart,
+  );
+  assert.notEqual(resourceStart, -1);
+  assert.notEqual(resourceEnd, -1);
+  const turnAddress = module.slice(resourceStart, resourceEnd);
+
+  assert.match(turnAddress, /^\s*address_type\s*=\s*"EXTERNAL"$/mu);
+  assert.match(turnAddress, /^\s*network_tier\s*=\s*"PREMIUM"$/mu);
+  assert.doesNotMatch(turnAddress, /^\s*purpose\s*=/mu);
 });
 
 test("server key projection binds token minting and runtime authentication", () => {

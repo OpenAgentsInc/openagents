@@ -7,6 +7,7 @@ import { dirname, resolve, sep } from "node:path";
 import {
   LIVEKIT_OPS,
   assertPublicSafe,
+  publicSafeCommandFailure,
   sha256,
   validateAddonLock,
   validateBillingAccountId,
@@ -530,7 +531,7 @@ const executeCommands = (commands, environment) => {
       stdio: ["ignore", "pipe", "pipe"],
     });
     if (result.status !== 0) {
-      const message = publicSafeLines(result.stderr || result.stdout).slice(0, 2_000);
+      const message = publicSafeCommandFailure(result.stderr, result.stdout);
       throw new Error(`${step.label} failed${message ? `: ${message}` : ""}`);
     }
     const safeOutput = publicSafeLines(result.stdout);
@@ -545,7 +546,7 @@ const captureCommand = (bin, args, label) => {
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (result.status !== 0) {
-    const message = publicSafeLines(result.stderr || result.stdout).slice(0, 2_000);
+    const message = publicSafeCommandFailure(result.stderr, result.stdout);
     throw new Error(`${label} failed${message ? `: ${message}` : ""}`);
   }
   return result.stdout;
@@ -559,7 +560,7 @@ const captureCommandWithEnvironment = (bin, args, label, environment) => {
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (result.status !== 0) {
-    const message = publicSafeLines(result.stderr || result.stdout).slice(0, 2_000);
+    const message = publicSafeCommandFailure(result.stderr, result.stdout);
     throw new Error(`${label} failed${message ? `: ${message}` : ""}`);
   }
   return result.stdout;

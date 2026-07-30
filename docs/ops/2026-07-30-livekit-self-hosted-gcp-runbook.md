@@ -355,7 +355,8 @@ The plan must preserve:
 - five-hour termination grace and explicit LiveKit drain;
 - separate application nodes for Sarah workers;
 - Memorystore Standard Tier with private connectivity;
-- separate signaling and TURN addresses;
+- separate signaling and TURN addresses; the regional TURN address is
+  `EXTERNAL` with Premium Network Tier and has no internal-address `purpose`;
 - direct node UDP/TCP reachability and TURN/TLS on public `443`;
 - internal-only Prometheus on `6789`;
 - Secret Manager/Workload Identity references with no secret payload;
@@ -385,6 +386,14 @@ This phase creates and verifies the regional cluster, node pools, private
 addresses, Workload Identity bindings, observability resources, and empty
 Secret Manager containers. It does not install controllers or the LiveKit
 runtime.
+
+If an infrastructure apply stops after a subset of resources succeeds, do not
+destroy the completed resources. Run `production-plan` from the corrected,
+clean `origin/main`, require zero destroys and only the expected unfinished
+resources, and then resume the same idempotent infrastructure apply. In
+particular, a Google regional external address must not set
+`SHARED_LOADBALANCER_VIP`; Google admits that purpose only on an internal
+address.
 
 After the infrastructure receipt passes:
 

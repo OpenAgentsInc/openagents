@@ -42,6 +42,10 @@ const SECRETISH_KEY =
   /(authorization|cookie|credential|private.?key|secret.?value|token|transcript|audio|prompt|email|ip.?address|endpoint|url)$/iu;
 const SECRETISH_VALUE =
   /(-----BEGIN [A-Z ]*PRIVATE KEY-----|(?:sk|sess|pat|ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_-]{12,}|bearer\s+[A-Za-z0-9._~+/=-]{12,}|wss?:\/\/|https?:\/\/|\b(?:\d{1,3}\.){3}\d{1,3}\b)/iu;
+const COMMAND_OUTPUT_SECRETISH_LINE =
+  /(address|authorization|cookie|credential|email|endpoint|password|private.?key|secret|token|transcript|audio|prompt)/iu;
+const COMMAND_OUTPUT_NETWORK_VALUE =
+  /(?:https?|wss?):\/\/|\b(?:\d{1,3}\.){3}\d{1,3}\b/iu;
 const CERT_MANAGER_IMAGES = Object.freeze({
   controller:
     "quay.io/jetstack/cert-manager-controller:v1.21.1@sha256:416a2d76870d996460e62bd7f521bf14fa017be9e3e904aab92163a331fcb61a",
@@ -58,6 +62,23 @@ const EXTERNAL_SECRETS_IMAGE =
   "ghcr.io/external-secrets/external-secrets:v2.8.0@sha256:24c0dd3699e0988520afd2218612758cd97d1f702757b5b4fcf89adaa33ef679";
 
 const isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+
+export const publicSafeCommandFailure = (stderr, stdout) => {
+  const failureOutput =
+    typeof stderr === "string" && stderr.trim().length > 0 ? stderr : (stdout ?? "");
+  const safeMessage = failureOutput
+    .split("\n")
+    .filter(
+      (line) =>
+        !COMMAND_OUTPUT_SECRETISH_LINE.test(line) && !COMMAND_OUTPUT_NETWORK_VALUE.test(line),
+    )
+    .slice(0, 20)
+    .join("\n")
+    .trim()
+    .slice(0, 2_000);
+  if (safeMessage) return safeMessage;
+  return failureOutput.trim().length > 0 ? "provider diagnostics were redacted by policy" : "";
+};
 
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);

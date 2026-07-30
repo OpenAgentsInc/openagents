@@ -314,6 +314,18 @@ requireIncludes(
   "production GKE control-plane authorized networks projection",
 );
 requireIncludes(
+  gkeInfrastructure,
+  'resource "google_compute_address" "turn"',
+  "regional TURN address",
+);
+requireIncludes(gkeInfrastructure, 'address_type = "EXTERNAL"', "external TURN address type");
+requireIncludes(gkeInfrastructure, 'network_tier = "PREMIUM"', "premium TURN address tier");
+requireExcludes(
+  gkeInfrastructure,
+  "SHARED_LOADBALANCER_VIP",
+  "internal-only purpose on external TURN address",
+);
+requireIncludes(
   productionProviders,
   "billing_project       = var.project_id",
   "production Google API quota project",
