@@ -57,7 +57,8 @@ product shell, React/Tailwind/shadcn stack, Capacitor host, or AGPL dependency.
 Keep OpenAgents authority on Thread/Sync/WorkContext, grants, containment, and
 receipts. Harvest selected protocol lessons — sealed collaboration planes, list
 publish discipline, store-first wire, blind voice brokers, and transport-agnostic
-bot manifests — only behind explicit OpenAgents policy.**
+bot manifests — only behind explicit OpenAgents policy. Section 8 turns that
+disposition into a Rust-first Omega integration path.**
 
 ## 1. Snapshot, provenance, and limits
 
@@ -371,7 +372,341 @@ Do not open an implementation packet from this document alone. Any adoption
 requires a separate admitted plan or issue, authority reconciliation, and a
 license decision for anything beyond protocol interop.
 
-## 8. Suggested follow-ups (not admitted work)
+## 8. Omega integration path
+
+This section is the 2026-07-30 Omega follow-up. It compares Armada with the
+current Omega source and the existing Buzz and NIP-29 plans. It is an
+integration path, not implementation admission. The important correction to
+the earlier high-level disposition is that Omega is no longer starting from a
+placeholder NIP-29 reader. It already has a useful native slice. [source]
+
+This follow-up inspected OpenAgents at
+`c12308f87eccef73be32bc421ac7251a844717a3` and Omega `origin/main` at
+`806ed312573b5ff4228bee40bbdfb0686974c1f4`. The local Omega worktree had
+unrelated in-progress changes, so the current-state claims below use the
+fetched remote tree for affected public-channel and identity files. [source]
+
+### 8.1 What Omega has now
+
+Omega's current NIP-29 work is split across a deliberately narrow public-room
+product and a broader community model:
+
+| Current surface | Implemented behavior | Boundary that remains |
+| --- | --- | --- |
+| `agent_ui::omega_public_channels` | Versioned registry and descriptors; canonical `wss` relay URLs; relay-qualified `(relay_url, group_id)` coordinates; bounded kind sets and limits; two pinned destinations (`omega-alpha-feedback` and `openagents-public`); selected-channel snapshots, lifecycle, caching, and unread counts | The shipped registry is still a bounded tester-channel profile, not a directory or complete room repository |
+| `agent_ui::omega_public_channel_timeline` and view | Verified timeline rows, profiles, reactions, author deletions, relay moderation tombstones, pins, content warnings, gated media with digest checks, event facts, pagination, replay/reconnect states, and visible stale/outage behavior | No complete membership, roles, invite, subgroup, migration, or branch resolver |
+| `agent_ui::omega_public_channel_publish` | Kind `9` messages and kind `1984` reports; exact bounded event construction; `previous` references; `omega_identity` signing; verification of returned signed bytes; NIP-42 publication and relay acknowledgements; retry without exporting secret material | This is scoped tester-channel writing, not a general NIP-29 composer or moderation client |
+| `omega_identity` | Native key custody, import/create/recovery, and admitted signing requests | Signing policy needs room coordinate, supported-kind, membership, role, expiry, rate, media, and human-confirmation grants |
+| `omega_effectd` | NIP-01 sessions, NIP-42 authentication, bounded cache, failover mechanics, and publish acknowledgements | NIP-29 authoritative-relay semantics must override generic failover for writes |
+| `omega_community` | Rust values for Forge audiences, relay lists, signed records, an outbox, joined rooms, presence, and command parsing | It is NIP-34/NIP-22 plus Forge membership. It must remain a separate authority from a NIP-29 room |
+| `workroom_ui::community` | Typed source labels and projections for NIP-29 membership/transcript, NIP-LBR work, and awards | Much of this is a projection shell; it is not yet wired to a complete room store |
+| `public-nostr-chat` skill | An agent can read or write a configured public NIP-29 group with its own signer | A procedural skill is not a product session, durable store, or ambient signing grant |
+
+The practical result is a **signed public-channel wedge**: Omega can show and
+write a carefully bounded NIP-29-flavored channel without making the relay its
+work, execution, or product authority. This is the correct base for
+interoperability. The next work should generalize the protocol and store below
+that view rather than replace the GPUI product with Armada or Buzz UI.
+[source] [inferred]
+
+The complete NIP-29 target already exists in
+`docs/nostr/2026-07-27-omega-nip29-relay-groups-integration-spec.md`. It defines
+relay-qualified room identity, NIP-11 relay-self verification, NIP-42,
+membership actions, relay-signed `39000`–`39005` projections, moderation,
+pins, subgroups, branch/migration state, media, signer grants, and cross-client
+fixtures. Current source has completed material parts of its first two phases
+and part of its posting phase, but not the complete target. [source]
+
+### 8.2 What the Buzz plan already commits Omega to
+
+The current roadmap does not propose a Buzz fork. Packets `OMEGA-BZ-00`
+through `OMEGA-BZ-09` instead reproduce selected outcomes:
+
+1. freeze shared workroom, thread, item, actor, decision, evidence, and receipt
+   identities with generated Rust and TypeScript contracts;
+2. add native GPUI workroom, attention, timeline, roster, work, run, and
+   receipt panes;
+3. attach existing agents through capability-declaring ACP adapters;
+4. add replies, reactions, mentions, pins, bookmarks, read state, reminders,
+   presence, typing, notifications, direct/group threads, and authorized
+   search;
+5. join rooms to project, worktree, editor, Git, terminal, task, test, diff,
+   review, commit, and delivery projections;
+6. add typed decisions, blockers, workflows, approvals, receipts, and
+   multi-user governance;
+7. add optional Nostr interoperability through an isolated signer and Nostr
+   process; and
+8. dogfood one complete feature from decision through delivery receipt.
+
+The authority constraints are already clear: do not import the Buzz server,
+relay authority, Tauri/Flutter clients, administrative client, forge, or broad
+custom-NIP surface. Do not let membership grant file, process, provider,
+release, spend, or publication authority. Git remains repository authority;
+OpenAgents admission remains action authority; Omega remains execution
+authority. [source]
+
+Armada changes the ordering, not those constraints. Because Armada speaks both
+NIP-29 and a Buzz-shaped protocol, Omega should make its Buzz outcome work
+arrive as explicit wire profiles on one Rust room substrate. Concord then
+becomes a third profile on the same product model, not a second chat
+application.
+
+### 8.3 Target architecture: one room product, three wire profiles
+
+Omega should expose one native room/workroom experience over three non-
+interchangeable protocol profiles:
+
+```text
+                              GPUI room/workroom panes
+                                         |
+                         typed Room / Thread / Item projections
+                                         |
+                  verified store + cursor + outbox + doorbell bus
+                         /               |                 \
+                        /                |                  \
+          NIP-29 baseline       Buzz compatibility       Concord v2
+         relay-owned room       relay-owned workspace   sealed client fold
+      kinds 9/7/5 + 9xxx      45xxx + Buzz extensions   1059/21059 wraps
+                        \                |                  /
+                         \               |                 /
+                    relay sessions + signer broker + media broker
+                                         |
+              OpenAgents admission / Omega execution / Git authority
+```
+
+The shared product model must not erase protocol authority:
+
+| Question | NIP-29 profile | Buzz profile | Concord profile | OpenAgents/Omega authority |
+| --- | --- | --- | --- | --- |
+| Who may write chat? | Authoritative relay membership/policy | Buzz relay community and channel membership | Client-folded sealed control, grants, roles, and epoch | May further restrict an agent signer, but must not fabricate peer membership |
+| What is a room? | Normalized relay URL plus group id | Buzz relay plus channel UUID/profile | Community commitment, epoch, plane, and stream derivation | Stable local `RoomRef` maps to the external coordinate; it does not replace it |
+| What is message truth? | Verified accepted room events and relay state | Verified Buzz events under the pinned compatibility profile | Verified/decrypted wraps and folded Concord control/chat planes | Local store records provenance and gaps; it does not silently merge profiles |
+| What may start work? | Nothing by signature alone | Nothing by signature alone | Nothing by membership or a sealed command alone | An explicit OpenAgents admitted command with generation, scope, idempotency, and grant |
+| What proves completion/payment/release? | Not the room log | Not Buzz workflow or usage events | Not the sealed plane or private zap | Existing receipts, verification, acceptance, settlement, Git, and release gates |
+
+This is intentionally a profile architecture rather than a universal event
+translator. Lossless forwarding may preserve exact signed events or Concord
+wraps. Cross-profile projection is read-only by default. A bridge that
+re-publishes content must be an explicit actor, cite the source event, declare
+loss, prevent loops, and obtain authority for the destination. [inferred]
+
+### 8.4 Rust-first component boundaries
+
+Most of this path belongs in Rust. TypeScript remains useful for the existing
+web/mobile surfaces, deterministic fixtures, and protocol comparison, but
+Omega Desktop should not introduce a Node or WebView runtime for chat.
+
+1. **Protocol-neutral room contract.** Freeze `RoomRef`, `ExternalRoomCoordinate`,
+   `RoomProfile`, `VerifiedEnvelope`, `TimelineItem`, `ThreadRef`,
+   `MembershipState`, `RoleState`, `BranchState`, `Cursor`, `Gap`,
+   `OutboxAttempt`, `MediaDescriptor`, and `SignerGrant`. Define the canonical
+   schema once, generate or verify Rust and TypeScript forms, and retain
+   unknown kinds as bounded raw records.
+2. **Rust verified event store.** Admit bytes only after size, JSON, event-id,
+   signature, tag, coordinate, profile, and timestamp checks. Persist raw
+   events, source relay, receipt/acknowledgement, verification result, cursor,
+   and derived projection separately. Commit before notifying GPUI. Decrypted
+   Concord rumors need a separate encrypted-at-rest namespace from public
+   NIP-29/Buzz events.
+3. **Rust doorbell bus.** Emit coalesced invalidations keyed by room, plane,
+   thread, membership, outbox, and media. GPUI controllers re-read durable
+   projections instead of owning a second timeline cache. This adapts Armada's
+   strongest substrate lesson without importing its React Query stack.
+4. **Rust relay/session manager.** Reuse `omega_effectd` NIP-01/NIP-42,
+   reconnect, cache, and acknowledgement mechanics. Add per-profile
+   subscriptions, NIP-11 self-key verification, authoritative-write routing,
+   explicit replica reads, backfill bounds, and relay capability reports.
+5. **Rust signer broker.** Extend `omega_identity` admitted requests. The
+   broker receives a typed unsigned intent, checks the current external room
+   state and Omega grant, shows the exact actor/room/kind/audience, obtains any
+   required gesture, signs once, verifies returned bytes, and records the
+   immutable attempt. It never accepts raw arbitrary JSON from a view or agent.
+6. **Rust profile adapters.** Each adapter owns accepted kinds, validation,
+   fold rules, outbound builders, capability discovery, and golden vectors.
+   The GPUI view receives only typed projections and capability flags.
+7. **TypeScript edge packages.** Keep Effect Schema decoders and the current
+   `public-nostr-chat` behavior for web/mobile. Consume the same JSON vectors.
+   TypeScript can also generate upstream conformance fixtures from pinned
+   Armada/Buzz source, but it is not Desktop signing or store authority.
+
+Implement these as additions to existing crates where the boundary already
+exists. New crates are justified only for a substantial reusable protocol core
+or Concord crypto/fold module; UI, transport, identity, and community behavior
+should not be fragmented into many small crates. [inferred]
+
+### 8.5 Profile 1: finish standards-first NIP-29
+
+This is the shared interoperability floor for native NIP-29 relays, Buzz, and
+Armada's relay-owned mode.
+
+1. Promote the tester-channel descriptor into a versioned room-profile
+   registry with source revision, capability evidence, relay-self key, and
+   profile-specific kind meanings.
+2. Move current timeline/session state into the durable verified store while
+   preserving current pagination, reconnect overlap, all-`EOSE` currentness,
+   media gates, tombstones, report flow, and visible degraded states.
+3. Implement NIP-11 and NIP-42 per authoritative relay. Treat relay-self key
+   changes as reviewable security events.
+4. Fold `39000`–`39005` state, including optional/missing projection behavior.
+   Add membership `9021`/`9022`, relay results `9000`/`9001`, moderation
+   `9002`/`9005`, invites `9009`, pin replacement `9010`, and explicit relay
+   capability mappings. Do not infer powers from role labels.
+5. Add join/leave, membership-aware composer state, invites, roles,
+   moderation, pins, subgroups, and branch/migration review.
+6. Add bounded background subscriptions and durable unread/read state only
+   after selected-channel correctness survives restart and replay.
+
+Acceptance requires conformance against at least the owned OpenAgents relay
+profile and one independently implemented NIP-29 relay, plus malicious-frame,
+wrong-relay-state-key, duplicate, fork, late-event, outbox, and restart tests.
+A room with the same group id on two relays must remain two branches. [inferred]
+
+### 8.6 Profile 2: Buzz compatibility
+
+Buzz compatibility should be a pinned extension of NIP-29, not a claim that
+Buzz implements every current NIP-29 behavior. The known differences matter:
+Buzz uses custom Forum roots/replies/votes (`45001`–`45003`), adds channel
+types, community commands, and other workspace kinds, and historically used
+`39005` for a thread-summary overlay where the pinned NIP-29 assigns group
+pins. Its direct-reply conventions also differ from the pinned NIP-10 text.
+[source]
+
+The adapter path is:
+
+1. Pin exact Buzz and Armada commits and build a compatibility manifest:
+   accepted kinds, required tags, deletion/edit/reply semantics, state kinds,
+   authentication, search/pagination, media, and known collisions. Never
+   dispatch a kind using only its integer; dispatch by `(profile, kind)`.
+2. Add golden inbound and outbound vectors from Buzz Desktop, Buzz relay, and
+   Armada's `src/buzz/` adapter. A vector must state whether each peer accepts,
+   renders, ignores, or rejects it.
+3. First ship read-only channel and Forum interop: channel metadata/roster,
+   kind `9` timeline, `45001` roots, `45003` replies, kind `7` reactions,
+   kind `5` author deletion, `9005` moderation, profiles, search cursors, and
+   media references.
+4. Then ship bounded writes for the intersection proven against both peers.
+   Keep `45002` votes separate from reactions. Reject Buzz thread-summary
+   `39005` as a NIP-29 pin; support it only under the pinned Buzz profile and
+   map it to a non-authoritative summary projection.
+5. Add optional Buzz identity projections in roadmap order: OA/AA/AP/AE first,
+   then AM/AO and other families only where product policy exists. Usage and
+   live-state events remain telemetry, not billing or completion receipts.
+6. Project Buzz agents as room actors, then attach them to Omega ACP sessions
+   through explicit grants. An inbound mention or command creates a proposal;
+   it cannot directly start a process, spend money, publish, or merge code.
+
+The first meaningful parity milestone is mutual channel and Forum
+participation: a Buzz user, Armada user in Buzz mode, and Omega user can read
+and reply in one relay-owned workspace, observe consistent deletions and
+reactions, and see explicit degradation for every unsupported feature.
+[inferred]
+
+### 8.7 Profile 3: Armada Concord v2
+
+Concord is not an encryption toggle on a NIP-29 room. It has different
+addresses, membership authority, replay, rekey, and failure modes. It therefore
+needs a dedicated Rust protocol core and store namespace.
+
+1. Pin upstream Concord and the audited Armada implementation separately.
+   Treat upstream as protocol authority and Armada as peer-client evidence.
+   Record every Armada-local `CORD.md` extension independently.
+2. Implement derivation labels and kind registry as typed constants with
+   byte-for-byte golden vectors. A changed HKDF label is an address migration,
+   not a refactor.
+3. Implement read-only stream admission: kind `1059` and `21059` wraps,
+   reversed gift-wrap roles, NIP-44 bounds, seal signature checks, rumor-id
+   binding, timestamp validation, community/epoch/plane coordinates, parked
+   wraps awaiting keys, and deterministic fold ordering.
+4. Implement control-plane folds before chat writes: metadata, roles, channel
+   grants, banlist, invite registry, dissolved state, guestbook join/leave,
+   kicks with authority citations, control editions, and epoch commitments.
+5. Add secret custody and recovery: community secrets in native secure
+   storage, explicit invite import/export, rekey resume without fork, stranded
+   recovery, relay mirroring of verbatim wraps, and deletion of expired
+   plaintext working material. Never route Concord plaintext through normal
+   telemetry, public search, or the device bridge.
+6. Add chat-plane publish and common social features: messages, comments,
+   reactions, deletions, edits, polls, calendar, and WebXDC only after each
+   kind has cross-client vectors. Preserve sealed content; do not "improve
+   compatibility" by also publishing public beacons.
+7. Add CORD-07 voice last. Reuse the admitted native LiveKit/WebRTC path or a
+   separate Rust media component, keep per-sender media encryption, and use a
+   blind token broker. Broker reachability is not membership authority.
+
+The first Concord milestone should be read/join/rekey/message interoperability
+with Armada across two ordinary relays, including offline catch-up and a
+missed-epoch recovery case. The release gate needs adversarial crypto review;
+passing peer fixtures is interoperability evidence, not a security proof.
+[inferred]
+
+### 8.8 Product parity after wire interoperability
+
+Wire support alone will still feel far behind Armada. After the three profiles
+share the native room shell, apply the Buzz roadmap's product packets in this
+order:
+
+| Product slice | Native Omega outcome | Interoperability rule |
+| --- | --- | --- |
+| Room navigation and attention | Multi-room rail, unread/mentions, bookmarks, pins, reminders, presence, typing, notifications | Store a local normalized projection, but retain original external coordinates and capability gaps |
+| Threads and Forum | Timeline threads plus long-form topic list/thread panes | Use profile-native reply semantics; never rewrite one signed topology into another silently |
+| People and agents | Roster, identity facts, role/membership state, agent ownership and grant display | A room role never implies Omega tool or execution authority |
+| Work and code | Link room items to WorkContext, project, worktree, task, diff, review, commit, and receipt | Carry references and digests; Git and OpenAgents remain authoritative |
+| Bots and commands | Discover transport-agnostic manifests and render `/command` affordances | Plain text remains valid; invocation requires destination membership plus an Omega command admission |
+| Files and apps | Safe previews, content-addressed blobs, then sandboxed WebXDC/canvas surfaces | Large bytes stay off Nostr; signed events carry digests and references |
+| Voice | Native room calls, reactions, raise hand, agent STT/TTS only after audio admission | NIP-29/Buzz and Concord use separate membership/token paths behind one capability UI |
+| Payments | Optional private tips/proofs in sealed rooms and public-safe payment references elsewhere | Payment proof is not work acceptance or settlement authority |
+
+Omega should not chase every Armada feature before proving the shared work
+loop. The dogfood gate remains one feature that starts with a typed decision,
+uses a room with a separately granted agent, produces code/tests/review, and
+ends in an OpenAgents delivery receipt. Repeat that journey once over NIP-29 or
+Buzz and once over Concord. [inferred]
+
+### 8.9 Delivery packets and gates
+
+The detailed path can be admitted as these bounded packets:
+
+| Packet | Deliverable | Exit evidence |
+| --- | --- | --- |
+| `OMEGA-ROOM-00` | Profile-neutral Rust/TypeScript contract, authority table, source pins, collision registry, and cross-language fixtures | Schema round trips and unknown-kind preservation |
+| `OMEGA-ROOM-01` | Durable verified event store, outbox, cursor/gap model, and coalesced invalidation bus | Restart, corruption, replay, duplicate, and partial-write tests |
+| `OMEGA-ROOM-02` | Complete standards-first NIP-29 adapter and native room administration | Two-relay conformance and person/agent signer tests |
+| `OMEGA-ROOM-03` | Buzz read interop, Forum projections, and three-client fixture matrix | Buzz and Armada-Buzz captures render equivalently or expose named gaps |
+| `OMEGA-ROOM-04` | Buzz bounded writes and agent identity projections | Cross-client post/reply/reaction/delete/report journey |
+| `OMEGA-ROOM-05` | Concord read/control fold, secure secret store, invites, and rekey/recovery | Armada cross-client replay and missed-epoch recovery |
+| `OMEGA-ROOM-06` | Concord chat writes and common sealed social kinds | Two-relay offline/reconnect journey and security review |
+| `OMEGA-ROOM-07` | Native attention, threads, roster, work links, bots, files, and search | Packaged GPUI accessibility/restart proof |
+| `OMEGA-ROOM-08` | Profile-specific voice and optional payments | Blind-broker/media crypto proof; explicit payment authority review |
+| `OMEGA-ROOM-09` | Web/mobile adapters, migration/export, dogfood, and parity ledger | Rust/TypeScript vector parity and end-to-end release evidence |
+
+Every packet must record current behavior as `equivalent`, `stronger native
+replacement`, `intentionally unsupported`, or `blocked`. "Parsed the event"
+does not count as product support. Every write path needs peer acceptance,
+local acknowledgement, restart recovery, refusal UX, and an authority test.
+
+### 8.10 Decisions required before admission
+
+The path still needs owner decisions on:
+
+- whether Concord is an optional community profile or a strategic primary
+  private-room profile;
+- which exact Buzz revision and feature subset constitute compatibility;
+- whether Omega runs only client adapters or also an owned Buzz-compatible
+  NIP-29 relay profile;
+- the encrypted-at-rest store and backup policy for Concord secrets and
+  decrypted rumors;
+- the NIP-29/Buzz media upload provider and the CORD-07 blind AV broker;
+- the first web/mobile write surface and its signer custody;
+- whether any bridge may re-publish between profiles, and under whose visible
+  identity; and
+- the license review boundary for clean-room protocol implementation from
+  upstream specifications versus Armada's AGPL source.
+
+Until those are decided, the safe next admission is `OMEGA-ROOM-00` followed
+by the durable store work. Neither commits the product to Concord authority or
+to running Buzz infrastructure. [inferred]
+
+## 9. Suggested follow-ups (not admitted work)
 
 These are research or candidate seeds only:
 
@@ -384,8 +719,14 @@ These are research or candidate seeds only:
    sealed-plane profile versus current Cloud SQL / Sync authority.
 5. If bot-manifest interop becomes useful, treat `NIP.md` kind `10304` as a
    draft external convention, not as OpenAgents tool authority.
+6. Turn the current Omega tester-channel implementation into an exact
+   current-state evidence matrix against the July 27 NIP-29 target.
+7. Capture three-client golden vectors from Buzz, Armada Buzz mode, and Omega
+   before any outbound Buzz compatibility work.
+8. Decide whether the first Concord proof is an external Rust crate, an Omega
+   crate, or a reviewed upstream dependency before implementing crypto.
 
-## 9. Central finding
+## 10. Central finding
 
 Armada is the best open product evidence that a Discord-class community client
 can default to **serverless end-to-end encryption over ordinary Nostr relays**,
@@ -394,4 +735,11 @@ surface packaging, private payments, bots, git activity, and offline mesh on
 Android. The protocol depth is real and unusually well documented for a seven-
 week-old repository. OpenAgents should learn from its sealed-plane, store-first,
 list-discipline, and blind-broker patterns — and should refuse to adopt its
-stack, license, or membership log as product authority.
+stack, license, or membership log as product authority. Omega already has the
+right first wedge: a Rust/GPUI, identity-backed, relay-qualified public channel
+that keeps signed chat separate from work authority. The path toward Armada
+parity is to finish that standards-first NIP-29 substrate, add a pinned Buzz
+profile, then add Concord as a separate Rust crypto/fold profile over the same
+durable room product. Shared UI does not require shared authority, and protocol
+interoperability does not require replacing Omega's execution, receipt, Git,
+or settlement owners.
