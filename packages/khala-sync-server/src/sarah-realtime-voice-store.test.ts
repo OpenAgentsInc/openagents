@@ -110,8 +110,16 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       chargeMsat: 250,
       observedAt: "2026-07-28T12:01:00.000Z",
     } as const;
-    await store.recordUsage({ sessionRef: "voice-session-1", usage });
-    await store.recordUsage({ sessionRef: "voice-session-1", usage });
+    await store.recordUsage({
+      sessionRef: "voice-session-1",
+      generation: 1,
+      usage,
+    });
+    await store.recordUsage({
+      sessionRef: "voice-session-1",
+      generation: 1,
+      usage,
+    });
     const settled = await store.settle({
       sessionRef: "voice-session-1",
       closeReason: "user_stop",
@@ -255,6 +263,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
     });
     const usage = await store.recordUsage({
       sessionRef: "voice-entitled-session-1",
+      generation: 1,
       usage: {
         providerResponseRef: "entitled-response-1",
         inputTokens: 100,
@@ -419,7 +428,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       deviceRef: common.deviceRef,
       threadRef: common.threadRef,
       sessionRef: "voice-bound-session-balance-change",
-      generation: common.generation,
+      generation: 2,
       disclosureRef: common.disclosureRef,
       clientProfile: common.clientProfile,
       admissionCohortRef: common.admissionCohortRef,
@@ -439,6 +448,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         ...common,
         sessionRef: "voice-bound-session-balance-change",
         reservationRef: "voice-bound-reservation-balance-change",
+        generation: 2,
         ticketDigest: "3".repeat(64),
         nowIso: "2026-07-28T12:03:00.000Z",
         admissionBinding: {
@@ -500,5 +510,341 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         nowIso: "2026-07-28T12:06:00.000Z",
       }),
     ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
+  });
+
+  test("binds one LiveKit generation, rejects join replay, and gates cleanup on accounting", async () => {
+    const store = makeSarahRealtimeVoiceStore(sql as unknown as SyncSql);
+    await sql`
+      INSERT INTO users (
+        id, kind, display_name, status, created_at, updated_at
+      ) VALUES (
+        'user-sarah-livekit', 'human', 'LiveKit Tester', 'active',
+        '2026-07-28T13:00:00.000Z', '2026-07-28T13:00:00.000Z'
+      )
+    `;
+    await sql`
+      INSERT INTO agent_balances (
+        actor_ref, balance_msat, held_msat, usd_credit_msat,
+        created_at, updated_at
+      ) VALUES (
+        'agent:user-sarah-livekit', 10000, 0, 0,
+        '2026-07-28T13:00:00.000Z', '2026-07-28T13:00:00.000Z'
+      )
+    `;
+    await sql`
+      INSERT INTO sarah_voice_alpha_memberships (
+        membership_ref, cohort_ref, owner_user_id, state, admitted_at,
+        admission_actor_ref, admission_reason, updated_at
+      ) VALUES (
+        'sarah_voice_alpha:user-sarah-livekit',
+        'sarah_voice_cohort:alpha_v1', 'user-sarah-livekit', 'active',
+        '2026-07-28T13:00:00.000Z', 'operator:test', 'Test admission',
+        '2026-07-28T13:00:00.000Z'
+      )
+    `;
+    const reservation = {
+      ownerUserId: "user-sarah-livekit",
+      ownerActorRef: "agent:user-sarah-livekit",
+      deviceRef: "omega-livekit",
+      threadRef: "thread-livekit",
+      disclosureRef: "disclosure-livekit",
+      clientProfile: "mobile_voice_only",
+      creditMode: "metered",
+      entitlementRef: null,
+      admissionCohortRef: "sarah_voice_cohort:alpha_v1",
+      reservedMsat: 1_000,
+      nowIso: "2026-07-28T13:00:00.000Z",
+    } as const;
+    await store.issueAdmission({
+      admissionRef: "sarah_voice_admission:livekit-1",
+      ownerUserId: reservation.ownerUserId,
+      deviceRef: reservation.deviceRef,
+      threadRef: reservation.threadRef,
+      sessionRef: "voice-livekit-1",
+      generation: 1,
+      disclosureRef: reservation.disclosureRef,
+      clientProfile: reservation.clientProfile,
+      admissionCohortRef: reservation.admissionCohortRef,
+      creditMode: reservation.creditMode,
+      termsDigest: "8".repeat(64),
+      spendableRemainingCreditMsat: 10_000,
+      nowIso: reservation.nowIso,
+      expiresAt: "2026-07-28T13:02:00.000Z",
+    });
+    await store.reserve({
+      ...reservation,
+      sessionRef: "voice-livekit-1",
+      reservationRef: "voice-livekit-reservation-1",
+      generation: 1,
+      transportKind: "livekit_room_v1",
+      ticketDigest: "4".repeat(64),
+      ticketExpiresAt: "2026-07-28T13:01:00.000Z",
+      sessionExpiresAt: "2026-07-28T13:10:00.000Z",
+      admissionBinding: {
+        admissionRef: "sarah_voice_admission:livekit-1",
+        termsDigest: "8".repeat(64),
+        spendableRemainingCreditMsat: 10_000,
+      },
+    });
+    const binding = {
+      sessionRef: "voice-livekit-1",
+      ownerUserId: reservation.ownerUserId,
+      deviceRef: reservation.deviceRef,
+      threadRef: reservation.threadRef,
+      generation: 1,
+      capabilityProfile: reservation.clientProfile,
+      admissionRef: "sarah_voice_admission:livekit-1",
+      admissionDigest: "8".repeat(64),
+      roomContext: {
+        kind: "community",
+        communityRef: "community-livekit",
+        channelRef: "channel-livekit",
+        membershipRevision: "membership-revision-7",
+      } as const,
+      roomRef: "room-livekit-1",
+      roomEpoch: 1,
+      participantRef: "participant-owner-livekit-1",
+      sarahParticipantRef: "participant-sarah-livekit-1",
+      participantGrantDigest: "5".repeat(64),
+      joinExpiresAt: "2026-07-28T13:01:00.000Z",
+      dispatchRef: "dispatch-livekit-1",
+      sarahPresenceLeaseRef: "presence-livekit-1",
+      publishAllowed: false,
+      subscribeAllowed: true,
+      nowIso: reservation.nowIso,
+    };
+    await store.prepareLiveKitProvisioningIntent({
+      sessionRef: binding.sessionRef,
+      ownerUserId: binding.ownerUserId,
+      deviceRef: binding.deviceRef,
+      threadRef: binding.threadRef,
+      generation: binding.generation,
+      capabilityProfile: binding.capabilityProfile,
+      admissionRef: binding.admissionRef,
+      admissionDigest: binding.admissionDigest,
+      idempotencyKey: "sarah-livekit:voice-livekit-1:1",
+      roomContext: binding.roomContext,
+      nowIso: binding.nowIso,
+    });
+    expect(
+      await store.claimLiveKitProvisioningIntents({
+        staleBeforeIso: "2026-07-28T12:59:00.000Z",
+        nowIso: "2026-07-28T13:00:01.000Z",
+      }),
+    ).toEqual([]);
+    await sql`
+      UPDATE sarah_livekit_provisioning_intents
+      SET state = 'reconciling', updated_at = '2026-07-28T12:58:00.000Z'
+      WHERE session_ref = 'voice-livekit-1'
+    `;
+    expect(
+      await store.claimLiveKitProvisioningIntents({
+        staleBeforeIso: "2026-07-28T12:59:00.000Z",
+        nowIso: "2026-07-28T13:00:02.000Z",
+      }),
+    ).toEqual([
+      {
+        sessionRef: "voice-livekit-1",
+        generation: 1,
+        idempotencyKey: "sarah-livekit:voice-livekit-1:1",
+      },
+    ]);
+    await sql`
+      UPDATE sarah_livekit_provisioning_intents
+      SET state = 'pending', updated_at = '2026-07-28T13:00:00.000Z'
+      WHERE session_ref = 'voice-livekit-1'
+    `;
+    await expect(
+      store.bindLiveKitRoom({
+        ...binding,
+        roomContext: {
+          ...binding.roomContext,
+          membershipRevision: "membership-revision-8",
+        },
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
+    await store.bindLiveKitRoom(binding);
+    await expect(store.bindLiveKitRoom(binding)).rejects.toBeInstanceOf(
+      SarahVoiceSessionRejectedError,
+    );
+    expect(
+      await store.readLiveKitCleanup({
+        sessionRef: binding.sessionRef,
+        generation: 1,
+      }),
+    ).toBeUndefined();
+
+    await store.recordLiveKitParticipantJoin({
+      sessionRef: binding.sessionRef,
+      generation: 1,
+      roomRef: binding.roomRef,
+      participantRef: binding.participantRef,
+      role: "owner",
+      nowIso: "2026-07-28T13:00:20.000Z",
+    });
+    await expect(
+      store.recordLiveKitParticipantJoin({
+        sessionRef: binding.sessionRef,
+        generation: 1,
+        roomRef: binding.roomRef,
+        participantRef: binding.participantRef,
+        role: "owner",
+        nowIso: "2026-07-28T13:00:21.000Z",
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
+    await expect(
+      store.recordLiveKitParticipantJoin({
+        sessionRef: binding.sessionRef,
+        generation: 1,
+        roomRef: binding.roomRef,
+        participantRef: "participant-unexpected",
+        role: "sarah",
+        nowIso: "2026-07-28T13:00:21.000Z",
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
+    await store.recordLiveKitParticipantJoin({
+      sessionRef: binding.sessionRef,
+      generation: 1,
+      roomRef: binding.roomRef,
+      participantRef: binding.sarahParticipantRef,
+      role: "sarah",
+      nowIso: "2026-07-28T13:00:22.000Z",
+    });
+    await store.connect({
+      sessionRef: binding.sessionRef,
+      ticketDigest: "4".repeat(64),
+      nowIso: "2026-07-28T13:00:30.000Z",
+    });
+    const usage = {
+      providerResponseRef: "livekit-provider-response-1",
+      inputTokens: 100,
+      outputTokens: 50,
+      cachedInputTokens: 10,
+      audioInputTokens: 80,
+      audioOutputTokens: 40,
+      chargeMsat: 250,
+      observedAt: "2026-07-28T13:00:40.000Z",
+    } as const;
+    await expect(
+      store.recordUsage({
+        sessionRef: binding.sessionRef,
+        generation: 2,
+        usage,
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
+    await store.recordUsage({
+      sessionRef: binding.sessionRef,
+      generation: 1,
+      usage,
+    });
+    await expect(
+      store.recordUsage({
+        sessionRef: binding.sessionRef,
+        generation: 1,
+        usage: { ...usage, chargeMsat: usage.chargeMsat + 1 },
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
+    await store.recordUsage({
+      sessionRef: binding.sessionRef,
+      generation: 1,
+      usage,
+    });
+    await expect(
+      store.revokeLiveKitRoom({
+        sessionRef: binding.sessionRef,
+        generation: 2,
+        reason: "operator_kill",
+        nowIso: "2026-07-28T13:01:00.000Z",
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
+    const settled = await store.revokeLiveKitRoom({
+      sessionRef: binding.sessionRef,
+      generation: 1,
+      reason: "membership_removed",
+      nowIso: "2026-07-28T13:01:00.000Z",
+    });
+    expect(settled).toMatchObject({ state: "settled", chargedMsat: 250 });
+    expect(
+      await store.revokeLiveKitRoom({
+        sessionRef: binding.sessionRef,
+        generation: 1,
+        reason: "operator_kill",
+        nowIso: "2026-07-28T13:01:01.000Z",
+      }),
+    ).toMatchObject({ state: "settled", chargedMsat: 250 });
+    const [revokedSession] = await sql`
+      SELECT close_reason
+      FROM sarah_realtime_voice_sessions
+      WHERE session_ref = 'voice-livekit-1'
+    `;
+    expect(revokedSession?.close_reason).toBe("membership_removed");
+    const cleanup = await store.readLiveKitCleanup({
+      sessionRef: binding.sessionRef,
+      generation: 1,
+    });
+    expect(cleanup).toMatchObject({
+      roomRef: binding.roomRef,
+      dispatchRef: binding.dispatchRef,
+    });
+    await store.markLiveKitCleanup({
+      sessionRef: binding.sessionRef,
+      generation: 1,
+      state: "cleaned",
+      nowIso: "2026-07-28T13:01:10.000Z",
+    });
+    await store.markLiveKitCleanup({
+      sessionRef: binding.sessionRef,
+      generation: 1,
+      state: "cleaned",
+      nowIso: "2026-07-28T13:01:11.000Z",
+    });
+    expect(
+      await store.readLiveKitCleanup({
+        sessionRef: binding.sessionRef,
+        generation: 1,
+      }),
+    ).toBeUndefined();
+    const [usageCount] = await sql`
+      SELECT COUNT(*) AS count
+      FROM sarah_realtime_voice_usage
+      WHERE session_ref = 'voice-livekit-1'
+    `;
+    expect(Number(usageCount?.count)).toBe(1);
+
+    await store.reserve({
+      ...reservation,
+      sessionRef: "voice-livekit-2",
+      reservationRef: "voice-livekit-reservation-2",
+      generation: 2,
+      ticketDigest: "6".repeat(64),
+      ticketExpiresAt: "2026-07-28T13:03:00.000Z",
+      sessionExpiresAt: "2026-07-28T13:10:00.000Z",
+      nowIso: "2026-07-28T13:02:00.000Z",
+    });
+    await sql.begin(async (tx) => {
+      await tx`
+        UPDATE sarah_realtime_voice_sessions
+        SET state = 'failed', ticket_digest = NULL,
+            updated_at = '2026-07-28T13:02:10.000Z'
+        WHERE session_ref = 'voice-livekit-2'
+      `;
+      await tx`
+        UPDATE agent_balances
+        SET held_msat = held_msat - 1000
+        WHERE actor_ref = 'agent:user-sarah-livekit'
+      `;
+    });
+    await expect(
+      store.reserve({
+        ...reservation,
+        sessionRef: "voice-livekit-3",
+        reservationRef: "voice-livekit-reservation-3",
+        generation: 3,
+        ticketDigest: "7".repeat(64),
+        ticketExpiresAt: "2026-07-28T13:04:00.000Z",
+        sessionExpiresAt: "2026-07-28T13:10:00.000Z",
+        nowIso: "2026-07-28T13:03:00.000Z",
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceConcurrentSessionError);
   });
 });

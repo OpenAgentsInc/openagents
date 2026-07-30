@@ -47,6 +47,67 @@ const clientAudioFrame = (sequence: number): Uint8Array => {
 }
 
 describe('Sarah Realtime bridge metering', () => {
+  test('keeps a LiveKit ticket connection control-only and rejects audio frames', () => {
+    const nowMs = Date.now()
+    const data = makeSarahRealtimeBridgeData({
+      session: {
+        sessionRef: 'session-1',
+        ownerUserId: 'user-1',
+        ownerActorRef: 'agent:user-1',
+        deviceRef: 'device-1',
+        threadRef: 'thread-1',
+        generation: 1,
+        disclosureRef: 'disclosure-1',
+        clientProfile: 'omega_editor',
+        transportKind: 'livekit_room_v1',
+        creditMode: 'metered',
+        entitlementRef: null,
+        admissionCohortRef: 'sarah_voice_cohort:alpha_v1',
+        state: 'connected',
+        reservedMsat: 1_000,
+        chargedMsat: 0,
+        ticketExpiresAt: new Date(nowMs + 30_000).toISOString(),
+        sessionExpiresAt: new Date(nowMs + 60_000).toISOString(),
+        settlementReceiptRef: null,
+      },
+      apiKey: 'must-not-be-used',
+      safetyIdentifier: 'test-safety',
+      creditMsatPerMillionTokens: 1_000,
+      store: {} as never,
+      closeStore: async () => undefined,
+      tasks: {
+        add: () => undefined,
+        size: () => 0,
+        drain: async () => undefined,
+      },
+    })
+    data.helloReceived = true
+    const sent: Array<string> = []
+    const socket = {
+      data,
+      send: (message: string) => sent.push(message),
+      close: () => undefined,
+    }
+    const handlers = makeSarahRealtimeWebSocketHandlers()
+
+    handlers.open(socket as never)
+    expect(data.upstream).toBeUndefined()
+    expect(sent.map(message => JSON.parse(message)._tag)).toEqual([
+      'lifecycle',
+      'session_ready',
+      'lifecycle',
+    ])
+
+    handlers.message(socket as never, clientAudioFrame(0))
+    expect(JSON.parse(sent.at(-1) ?? '{}')).toMatchObject({
+      _tag: 'error',
+      code: 'invalid_frame',
+      retryable: false,
+    })
+    expect(data.expectedAudioSequence).toBe(0)
+    if (data.expiryTimer !== undefined) clearTimeout(data.expiryTimer)
+  })
+
   test('advances audio sequence while upstream is still connecting', () => {
     const data = makeSarahRealtimeBridgeData({
       session: {
@@ -58,6 +119,7 @@ describe('Sarah Realtime bridge metering', () => {
         generation: 1,
         disclosureRef: 'disclosure-1',
         clientProfile: 'omega_editor',
+        transportKind: 'custom_wss_v1',
         creditMode: 'metered',
         entitlementRef: null,
         admissionCohortRef: 'sarah_voice_cohort:alpha_v1',
@@ -105,6 +167,7 @@ describe('Sarah Realtime bridge metering', () => {
         generation: 1,
         disclosureRef: 'disclosure-1',
         clientProfile: 'omega_editor',
+        transportKind: 'custom_wss_v1',
         creditMode: 'metered',
         entitlementRef: null,
         admissionCohortRef: 'sarah_voice_cohort:alpha_v1',
@@ -274,7 +337,9 @@ describe('Sarah Realtime bridge metering', () => {
     expect(update.session.tools).toEqual([])
     expect(update.session.tool_choice).toBe('none')
     expect(update.session.instructions).toContain('voice conversation only')
-    expect(update.session.instructions).toContain('Do not request, perform, or claim')
+    expect(update.session.instructions).toContain(
+      'Do not request, perform, or claim',
+    )
     expect(update.session.instructions).toContain('device action')
   })
 
@@ -320,7 +385,11 @@ describe('Sarah Realtime bridge metering', () => {
     ])
     expect(update.session.tool_choice).toBe('auto')
     expect(update.session.instructions).toContain('mobile command center')
-    expect(update.session.instructions).toContain('paired to the owner\'s Omega desktop')
-    expect(update.session.instructions).toContain('Never use or mention Agent Computer')
+    expect(update.session.instructions).toContain(
+      "paired to the owner's Omega desktop",
+    )
+    expect(update.session.instructions).toContain(
+      'Never use or mention Agent Computer',
+    )
   })
 })

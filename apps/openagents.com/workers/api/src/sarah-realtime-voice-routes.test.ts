@@ -16,10 +16,14 @@ import { describe, expect, test, vi } from 'vitest'
 import {
   SARAH_REALTIME_VOICE_DEVICE_HEADER,
   SARAH_REALTIME_VOICE_SESSION_HEADER,
+  finalizeSarahLiveKitRoom,
   handleSarahRealtimeVoiceAdmissionRequest,
   handleSarahRealtimeVoiceCohortRevocationRequest,
   handleSarahRealtimeVoiceSessionRequest,
   handleSarahRealtimeVoiceSettlementRequest,
+  reconcileSarahLiveKitProvisioningIntents,
+  recordSarahLiveKitParticipantJoin,
+  recordSarahLiveKitProviderUsage,
 } from './sarah-realtime-voice-routes'
 
 const identity = {
@@ -56,7 +60,7 @@ const ctx = {
 } as unknown as ExecutionContext
 
 const makeDependencies = (
-  reserve: SarahRealtimeVoiceStore['reserve'] = vi.fn(async (input) => ({
+  reserve: SarahRealtimeVoiceStore['reserve'] = vi.fn(async input => ({
     sessionRef: input.sessionRef,
     ownerUserId: input.ownerUserId,
     ownerActorRef: input.ownerActorRef,
@@ -65,6 +69,7 @@ const makeDependencies = (
     generation: input.generation,
     disclosureRef: input.disclosureRef,
     clientProfile: input.clientProfile,
+    transportKind: input.transportKind ?? 'custom_wss_v1',
     creditMode: input.creditMode,
     entitlementRef: input.entitlementRef,
     admissionCohortRef: input.admissionCohortRef,
@@ -84,15 +89,27 @@ const makeDependencies = (
   ),
 ) => {
   const close = vi.fn(async () => undefined)
-  const store = {
-    reserve,
-    issueAdmission: vi.fn(async (input) => ({
+  const bindLiveKitRoom = vi.fn(async () => undefined)
+  const prepareLiveKitProvisioningIntent = vi.fn(async () => undefined)
+  const markLiveKitProvisioningIntent = vi.fn(async () => undefined)
+  const settle = vi.fn(async () => undefined)
+  const issueAdmission = vi.fn(
+    async (
+      input: Parameters<SarahRealtimeVoiceStore['issueAdmission']>[0],
+    ) => ({
       admissionRef: input.admissionRef,
       admissionExpiresAt: input.expiresAt,
-    })),
+    }),
+  )
+  const store = {
+    bindLiveKitRoom,
+    prepareLiveKitProvisioningIntent,
+    markLiveKitProvisioningIntent,
+    reserve,
+    issueAdmission,
     connect: vi.fn(),
     recordUsage: vi.fn(),
-    readActiveAlphaMembership: vi.fn(async (input) => ({
+    readActiveAlphaMembership: vi.fn(async input => ({
       membershipRef: `sarah_voice_alpha:${input.ownerUserId}`,
       cohortRef: input.cohortRef,
       ownerUserId: input.ownerUserId,
@@ -101,7 +118,7 @@ const makeDependencies = (
     readSettlement: vi.fn(),
     readSpendableCredit: vi.fn(async () => 100_000),
     revokeAlphaCohort: vi.fn(),
-    settle: vi.fn(),
+    settle,
     sweepExpired: vi.fn(),
   } as unknown as SarahRealtimeVoiceStore
   return {
@@ -123,6 +140,11 @@ const makeDependencies = (
     },
     reserve,
     readActiveStagingOwnerEntitlement,
+    bindLiveKitRoom,
+    prepareLiveKitProvisioningIntent,
+    markLiveKitProvisioningIntent,
+    issueAdmission,
+    settle,
     store,
   }
 }
@@ -235,6 +257,7 @@ describe('managed Sarah Realtime voice session route', () => {
     expect(body.gatewayUrl).toBe(
       'wss://openagents.com/api/omega/sarah/voice/connect',
     )
+    expect(body).not.toHaveProperty('transport')
     expect(body.ticket).toMatch(/^[A-Za-z0-9_-]{32,}$/u)
     expect(fixture.reserve).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -250,6 +273,476 @@ describe('managed Sarah Realtime voice session route', () => {
       }),
     )
     expect(fixture.close).toHaveBeenCalledOnce()
+  })
+
+  test('provisions and server-binds an explicitly requested LiveKit room', async () => {
+    const fixture = makeDependencies()
+    const provision = {
+      livekitUrl: 'wss://livekit.openagents.test',
+      roomRef: 'sarah-room:voice-1:g1',
+      roomEpoch: 1,
+      participantRef: 'participant:user-1:voice-1:g1',
+      sarahParticipantRef: 'participant:sarah:voice-1:g1',
+      participantGrant: 'opaque-livekit-participant-grant',
+      joinExpiresAtMs: Date.UTC(2026, 6, 28, 12, 1, 0),
+      dispatchRef: 'dispatch:voice-1:g1',
+      sarahPresenceLeaseRef: 'sarah-presence:voice-1:g1',
+      grantClaims: {
+        roomRef: 'sarah-room:voice-1:g1',
+        participantRef: 'participant:user-1:voice-1:g1',
+        expiresAtMs: Date.UTC(2026, 6, 28, 12, 1, 0),
+        roomJoin: true,
+        canPublish: true,
+        canSubscribe: true,
+        canPublishData: false,
+        canUpdateOwnMetadata: false,
+        canPublishSources: ['microphone'],
+        roomAdmin: false,
+        roomCreate: false,
+        roomList: false,
+      },
+    } as const
+    const broker = {
+      provision: vi.fn(async () => provision),
+      cleanup: vi.fn(async () => undefined),
+      cleanupByIdempotencyKey: vi.fn(async () => undefined),
+      cleanupRoom: vi.fn(async () => undefined),
+    }
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      {
+        ...fixture.dependencies,
+        liveKitRoomBroker: broker,
+      },
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'disclosure-1',
+        requestedTransport: 'livekit_room_v1',
+        roomContext: { kind: 'private' },
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(201)
+    const body = await response.json()
+    expect(body).toMatchObject({
+      transport: {
+        kind: 'livekit_room_v1',
+        livekitUrl: provision.livekitUrl,
+        roomRef: provision.roomRef,
+        roomEpoch: 1,
+        participantRef: provision.participantRef,
+        participantGrant: provision.participantGrant,
+        dispatchRef: provision.dispatchRef,
+        sarahPresenceLeaseRef: provision.sarahPresenceLeaseRef,
+        permissions: {
+          roomJoin: true,
+          canPublish: true,
+          canSubscribe: true,
+          roomAdmin: false,
+          roomCreate: false,
+          roomList: false,
+        },
+      },
+    })
+    expect(fixture.bindLiveKitRoom).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerUserId: 'user-1',
+        deviceRef: 'omega-1',
+        threadRef: 'thread-1',
+        sessionRef: 'voice-1',
+        generation: 1,
+        roomRef: provision.roomRef,
+        participantGrantDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        roomContext: { kind: 'private' },
+      }),
+    )
+    const transport = (body as { transport: Record<string, unknown> }).transport
+    expect(transport).not.toHaveProperty('email')
+    expect(transport).not.toHaveProperty('filesystemPath')
+    expect(transport).not.toHaveProperty('openAiApiKey')
+    expect(transport).not.toHaveProperty('balanceMsat')
+    expect(transport).not.toHaveProperty('commandCapabilities')
+    expect(transport).not.toHaveProperty('sarahSigningKey')
+  })
+
+  test('does not silently select LiveKit when its broker is unavailable', async () => {
+    const fixture = makeDependencies()
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      fixture.dependencies,
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'disclosure-1',
+        requestedTransport: 'livekit_room_v1',
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({
+      error: 'sarah_voice_livekit_unavailable',
+    })
+    expect(fixture.reserve).not.toHaveBeenCalled()
+  })
+
+  test('requires one-use admission for every LiveKit client profile', async () => {
+    const fixture = makeDependencies()
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      fixture.dependencies,
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'disclosure-1',
+        clientProfile: 'mobile_voice_only',
+        requestedTransport: 'livekit_room_v1',
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({
+      error: 'sarah_voice_admission_required',
+    })
+    expect(fixture.reserve).not.toHaveBeenCalled()
+  })
+
+  test('uses authoritative community membership and publish policy', async () => {
+    const fixture = makeDependencies()
+    const broker = {
+      provision: vi.fn(
+        async () =>
+          ({
+            livekitUrl: 'wss://livekit.openagents.test',
+            roomRef: 'community-room:channel-7:g1',
+            roomEpoch: 7,
+            participantRef: 'participant:user-1:channel-7:g1',
+            sarahParticipantRef: 'participant:sarah:channel-7:g1',
+            participantGrant: 'opaque-community-grant',
+            joinExpiresAtMs: Date.UTC(2026, 6, 28, 12, 1, 0),
+            dispatchRef: 'dispatch:channel-7:g1',
+            sarahPresenceLeaseRef: 'sarah-presence:channel-7:g1',
+            grantClaims: {
+              roomRef: 'community-room:channel-7:g1',
+              participantRef: 'participant:user-1:channel-7:g1',
+              expiresAtMs: Date.UTC(2026, 6, 28, 12, 1, 0),
+              roomJoin: true,
+              canPublish: false,
+              canSubscribe: true,
+              canPublishData: false,
+              canUpdateOwnMetadata: false,
+              canPublishSources: ['microphone'],
+              roomAdmin: false,
+              roomCreate: false,
+              roomList: false,
+            },
+          }) as const,
+      ),
+      cleanup: vi.fn(async () => undefined),
+      cleanupByIdempotencyKey: vi.fn(async () => undefined),
+      cleanupRoom: vi.fn(async () => undefined),
+    }
+    const resolveLiveKitCommunityAccess = vi.fn(async () => ({
+      communityRef: 'community-7',
+      channelRef: 'channel-7',
+      membershipRevision: 'membership-revision-42',
+      publishAllowed: false,
+      subscribeAllowed: true,
+    }))
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      {
+        ...fixture.dependencies,
+        liveKitRoomBroker: broker,
+        resolveLiveKitCommunityAccess,
+      },
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'disclosure-1',
+        requestedTransport: 'livekit_room_v1',
+        roomContext: {
+          kind: 'community',
+          communityRef: 'community-7',
+          channelRef: 'channel-7',
+        },
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(201)
+    expect(await response.json()).toMatchObject({
+      transport: {
+        kind: 'livekit_room_v1',
+        permissions: { canPublish: false, canSubscribe: true },
+      },
+    })
+    expect(broker.provision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roomContext: {
+          kind: 'community',
+          communityRef: 'community-7',
+          channelRef: 'channel-7',
+          membershipRevision: 'membership-revision-42',
+          publishAllowed: false,
+          subscribeAllowed: true,
+        },
+        publishAllowed: false,
+      }),
+    )
+    expect(fixture.bindLiveKitRoom).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roomContext: expect.objectContaining({
+          membershipRevision: 'membership-revision-42',
+        }),
+        publishAllowed: false,
+      }),
+    )
+  })
+
+  test('binds a LiveKit admission digest to the current community membership revision', async () => {
+    const fixture = makeDependencies()
+    let membershipRevision = 'membership-revision-1'
+    const dependencies = {
+      ...fixture.dependencies,
+      resolveLiveKitCommunityAccess: vi.fn(async () => ({
+        communityRef: 'community-7',
+        channelRef: 'channel-7',
+        membershipRevision,
+        publishAllowed: false,
+        subscribeAllowed: true,
+      })),
+    }
+    const makeAdmissionRequest = () =>
+      new Request(`https://openagents.com${SARAH_VOICE_ADMISSION_PATH}`, {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer test',
+          'content-type': 'application/json',
+          [SARAH_REALTIME_VOICE_DEVICE_HEADER]: identity.deviceRef,
+        },
+        body: JSON.stringify({
+          schema: SARAH_VOICE_ADMISSION_PROTOCOL_VERSION,
+          identity,
+          disclosureRef: 'disclosure-1',
+          clientProfile: 'omega_editor',
+          requestedTransport: 'livekit_room_v1',
+          roomContext: {
+            kind: 'community',
+            communityRef: 'community-7',
+            channelRef: 'channel-7',
+          },
+        }),
+      })
+
+    expect(
+      (
+        await handleSarahRealtimeVoiceAdmissionRequest(
+          dependencies,
+          makeAdmissionRequest(),
+          {},
+          ctx,
+        )
+      ).status,
+    ).toBe(200)
+    membershipRevision = 'membership-revision-2'
+    expect(
+      (
+        await handleSarahRealtimeVoiceAdmissionRequest(
+          dependencies,
+          makeAdmissionRequest(),
+          {},
+          ctx,
+        )
+      ).status,
+    ).toBe(200)
+
+    expect(fixture.issueAdmission.mock.calls[0]?.[0].termsDigest).not.toBe(
+      fixture.issueAdmission.mock.calls[1]?.[0].termsDigest,
+    )
+  })
+
+  test('settles before cleaning up a provision whose binding fails', async () => {
+    const fixture = makeDependencies()
+    fixture.bindLiveKitRoom.mockRejectedValueOnce(new Error('binding failed'))
+    const provision = {
+      livekitUrl: 'wss://livekit.openagents.test',
+      roomRef: 'sarah-room:binding-failure',
+      roomEpoch: 1,
+      participantRef: 'participant:user-1:binding-failure',
+      sarahParticipantRef: 'participant:sarah:binding-failure',
+      participantGrant: 'opaque-failed-binding-grant',
+      joinExpiresAtMs: Date.UTC(2026, 6, 28, 12, 1, 0),
+      dispatchRef: 'dispatch:binding-failure',
+      sarahPresenceLeaseRef: 'sarah-presence:binding-failure',
+      grantClaims: {
+        roomRef: 'sarah-room:binding-failure',
+        participantRef: 'participant:user-1:binding-failure',
+        expiresAtMs: Date.UTC(2026, 6, 28, 12, 1, 0),
+        roomJoin: true,
+        canPublish: true,
+        canSubscribe: true,
+        canPublishData: false,
+        canUpdateOwnMetadata: false,
+        canPublishSources: ['microphone'],
+        roomAdmin: false,
+        roomCreate: false,
+        roomList: false,
+      },
+    } as const
+    const broker = {
+      provision: vi.fn(async () => provision),
+      cleanup: vi.fn(async () => undefined),
+      cleanupByIdempotencyKey: vi.fn(async () => undefined),
+      cleanupRoom: vi.fn(async () => undefined),
+    }
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      { ...fixture.dependencies, liveKitRoomBroker: broker },
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'disclosure-1',
+        requestedTransport: 'livekit_room_v1',
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(503)
+    expect(fixture.settle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionRef: 'voice-1',
+        closeReason: 'livekit_provision_failed',
+      }),
+    )
+    expect(broker.cleanup).toHaveBeenCalledWith(provision)
+    expect(fixture.settle.mock.invocationCallOrder[0]).toBeLessThan(
+      broker.cleanup.mock.invocationCallOrder[0] ?? 0,
+    )
+  })
+
+  test('exposes generation-bound worker lifecycle and crash reconciliation seams', async () => {
+    const recordLiveKitParticipantJoin = vi.fn(async () => undefined)
+    const recordUsage = vi.fn(async () => ({
+      chargedMsat: 25,
+      reservedMsat: 100,
+      creditLimitReached: false,
+    }))
+    const readLiveKitCleanup = vi.fn(async () => ({
+      sessionRef: 'voice-1',
+      generation: 1,
+      roomRef: 'room-1',
+      roomEpoch: 1,
+      dispatchRef: 'dispatch-1',
+      sarahPresenceLeaseRef: 'presence-1',
+    }))
+    const markLiveKitCleanup = vi.fn(async () => undefined)
+    const claimLiveKitProvisioningIntents = vi.fn(async () => [
+      {
+        sessionRef: 'crashed-voice',
+        generation: 3,
+        idempotencyKey: 'sarah-livekit:crashed-voice:3',
+      },
+    ])
+    const markLiveKitProvisioningIntent = vi.fn(async () => undefined)
+    const settleLiveKitProvisioningIntent = vi.fn(async () => undefined)
+    const close = vi.fn(async () => undefined)
+    const store = {
+      recordLiveKitParticipantJoin,
+      recordUsage,
+      readLiveKitCleanup,
+      markLiveKitCleanup,
+      claimLiveKitProvisioningIntents,
+      markLiveKitProvisioningIntent,
+      settleLiveKitProvisioningIntent,
+    } as unknown as SarahRealtimeVoiceStore
+    const broker = {
+      provision: vi.fn(),
+      cleanup: vi.fn(),
+      cleanupByIdempotencyKey: vi.fn(async () => undefined),
+      cleanupRoom: vi.fn(async () => undefined),
+    }
+    const dependencies = {
+      broker,
+      creditMsatPerMillionTokens: 2_000_000,
+      now: () => Date.UTC(2026, 6, 28, 12, 0, 0),
+      openStore: async () => ({ store, close }),
+    }
+
+    await recordSarahLiveKitParticipantJoin(
+      dependencies,
+      {},
+      {
+        sessionRef: 'voice-1',
+        generation: 1,
+        roomRef: 'room-1',
+        participantRef: 'participant-1',
+        role: 'owner',
+      },
+    )
+    await recordSarahLiveKitProviderUsage(
+      dependencies,
+      {},
+      {
+        sessionRef: 'voice-1',
+        generation: 1,
+        usage: {
+          providerResponseRef: 'provider-response-1',
+          inputTokens: 1,
+          outputTokens: 1,
+          cachedInputTokens: 0,
+          audioInputTokens: 1,
+          audioOutputTokens: 1,
+        },
+      },
+    )
+    expect(
+      await finalizeSarahLiveKitRoom(
+        dependencies,
+        {},
+        {
+          sessionRef: 'voice-1',
+          generation: 1,
+        },
+      ),
+    ).toBe(true)
+    expect(
+      await reconcileSarahLiveKitProvisioningIntents(dependencies, {}),
+    ).toEqual({
+      cleaned: 1,
+      failed: 0,
+    })
+
+    expect(recordLiveKitParticipantJoin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nowIso: '2026-07-28T12:00:00.000Z',
+      }),
+    )
+    expect(recordUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionRef: 'voice-1',
+        generation: 1,
+        usage: expect.objectContaining({
+          chargeMsat: 4,
+          observedAt: '2026-07-28T12:00:00.000Z',
+        }),
+      }),
+    )
+    expect(broker.cleanupRoom).toHaveBeenCalledOnce()
+    expect(broker.cleanupByIdempotencyKey).toHaveBeenCalledWith(
+      'sarah-livekit:crashed-voice:3',
+    )
+    expect(
+      settleLiveKitProvisioningIntent.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      broker.cleanupByIdempotencyKey.mock.invocationCallOrder[0] ?? 0,
+    )
+    expect(markLiveKitProvisioningIntent).toHaveBeenCalledWith(
+      expect.objectContaining({ state: 'cleaned' }),
+    )
   })
 
   test('persists and echoes the voice-only mobile profile', async () => {
@@ -387,7 +880,7 @@ describe('managed Sarah Realtime voice session route', () => {
   test('waives only the staging owner credit hold', async () => {
     const fixture = makeDependencies(
       undefined,
-      vi.fn(async (input) => ({
+      vi.fn(async input => ({
         entitlementRef: input.entitlementRef,
         ownerUserId: input.ownerUserId,
         expiresAt: input.expiresAt,
@@ -714,7 +1207,7 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
     },
   ] as const)(
     'reports $reason without creating a reservation',
-    async (fixtureCase) => {
+    async fixtureCase => {
       const fixture = makeDependencies()
       vi.mocked(fixture.store.readActiveAlphaMembership).mockResolvedValue(
         fixtureCase.membershipActive

@@ -22,6 +22,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import WebSocket, { type RawData } from 'ws'
 
 import type { BackgroundTasks } from './execution-context'
+
 export type SarahRealtimeBridgeData = {
   readonly _tag: 'sarah_realtime'
   readonly session: SarahVoiceSessionRecord
@@ -352,7 +353,7 @@ export const sessionUpdateForSarahClientProfile = (
           'Do not request, perform, or claim any editor, file, URL, shell, Git, payment, or device action.'
         : clientProfile === 'mobile_command_center'
           ? `${SARAH_OMEGA_INSTRUCTIONS}\n\nThis is the mobile command center paired to the owner's Omega desktop. Delegate desktop work only through start_agent_thread; the phone signs and submits that command to the paired desktop. Never use or mention Agent Computer, Codex Pylon, Claude Pylon, worker capacity, or cloud coding. A successful submission means the desktop accepted the command for delivery, not that the work is complete.`
-        : SARAH_OMEGA_INSTRUCTIONS,
+          : SARAH_OMEGA_INSTRUCTIONS,
     output_modalities: ['audio'] as const,
     audio: {
       input: {
@@ -374,8 +375,7 @@ export const sessionUpdateForSarahClientProfile = (
       clientProfile === 'mobile_voice_only'
         ? []
         : clientProfile === 'mobile_command_center'
-          ? toolDefinitions
-              .filter(tool => tool.name === 'start_agent_thread')
+          ? toolDefinitions.filter(tool => tool.name === 'start_agent_thread')
           : toolDefinitions,
     tool_choice: clientProfile === 'mobile_voice_only' ? 'none' : 'auto',
     max_output_tokens: 'inf' as const,
@@ -649,7 +649,11 @@ const recordUsageAndEnforceLimit = (
   const metering = ws.data.meteringTail
     .then(() =>
       ws.data.store
-        .recordUsage({ sessionRef: ws.data.session.sessionRef, usage })
+        .recordUsage({
+          sessionRef: ws.data.session.sessionRef,
+          generation: ws.data.session.generation,
+          usage,
+        })
         .then(result => {
           if (result.creditLimitReached) {
             closeClient(ws, 'credit_limit', 1008)
@@ -787,7 +791,8 @@ export const handleSarahProviderEvent = (ws: Socket, raw: string): void => {
     if (usage !== undefined) {
       recordUsageAndEnforceLimit(ws, usage)
     }
-    if (!hasToolCalls) sendControl(ws, { _tag: 'lifecycle', state: 'listening' })
+    if (!hasToolCalls)
+      sendControl(ws, { _tag: 'lifecycle', state: 'listening' })
     return
   }
   if (type === 'error') {
@@ -941,6 +946,24 @@ const handleControl = (ws: Socket, raw: string): void => {
 export const makeSarahRealtimeWebSocketHandlers = () => ({
   open(ws: Socket) {
     sendControl(ws, { _tag: 'lifecycle', state: 'connecting' })
+    const expiryDelay = Math.max(
+      1,
+      Date.parse(ws.data.session.sessionExpiresAt) - Date.now(),
+    )
+    ws.data.expiryTimer = setTimeout(() => {
+      closeClient(ws, 'session_expired', 1008)
+      ws.data.tasks.add(cleanup(ws, 'session_expired'))
+    }, expiryDelay)
+    if (ws.data.session.transportKind === 'livekit_room_v1') {
+      sendControl(ws, {
+        _tag: 'session_ready',
+        model: SARAH_VOICE_MODEL,
+        expiresAtMs: Date.parse(ws.data.session.sessionExpiresAt),
+        reservedCreditMsat: ws.data.session.reservedMsat,
+      })
+      sendControl(ws, { _tag: 'lifecycle', state: 'listening' })
+      return
+    }
     const upstream = new WebSocket(realtimeUrl, {
       headers: {
         authorization: `Bearer ${ws.data.apiKey}`,
@@ -990,18 +1013,18 @@ export const makeSarahRealtimeWebSocketHandlers = () => ({
       })
       closeClient(ws, 'provider_error', 1011)
     })
-    const expiryDelay = Math.max(
-      1,
-      Date.parse(ws.data.session.sessionExpiresAt) - Date.now(),
-    )
-    ws.data.expiryTimer = setTimeout(() => {
-      closeClient(ws, 'session_expired', 1008)
-      ws.data.tasks.add(cleanup(ws, 'session_expired'))
-    }, expiryDelay)
   },
   message(ws: Socket, message: string | Uint8Array) {
     if (typeof message === 'string') {
       handleControl(ws, message)
+      return
+    }
+    if (ws.data.session.transportKind === 'livekit_room_v1') {
+      sendControl(ws, {
+        _tag: 'error',
+        code: 'invalid_frame',
+        retryable: false,
+      })
       return
     }
     if (!ws.data.helloReceived) {

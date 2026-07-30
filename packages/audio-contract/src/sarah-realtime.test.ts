@@ -228,6 +228,53 @@ describe("Sarah Realtime voice contract", () => {
       },
     } as const;
     expect(decodeSarahVoiceSessionResponse(response).clientProfile).toBe("mobile_voice_only");
+    expect(decodeSarahVoiceSessionResponse(response).transport).toBeUndefined();
+    expect(
+      decodeSarahVoiceSessionResponse({
+        ...response,
+        transport: { kind: "custom_wss_v1" },
+      }).transport,
+    ).toEqual({ kind: "custom_wss_v1" });
+    const liveKitTransport = {
+      kind: "livekit_room_v1",
+      livekitUrl: "wss://livekit.openagents.test",
+      roomRef: "room-1",
+      roomEpoch: 1,
+      participantRef: "participant-1",
+      participantGrant: "opaque-grant",
+      joinExpiresAtMs: 1_500,
+      dispatchRef: "dispatch-1",
+      sarahPresenceLeaseRef: "presence-1",
+      permissions: {
+        roomJoin: true,
+        canPublish: true,
+        canSubscribe: true,
+        canPublishData: false,
+        canUpdateOwnMetadata: false,
+        canPublishSources: ["microphone"],
+        roomAdmin: false,
+        roomCreate: false,
+        roomList: false,
+      },
+    } as const;
+    expect(
+      decodeSarahVoiceSessionResponse({
+        ...response,
+        transport: liveKitTransport,
+      }).transport,
+    ).toEqual(liveKitTransport);
+    expect(() =>
+      decodeSarahVoiceSessionResponse({
+        ...response,
+        transport: {
+          ...liveKitTransport,
+          permissions: {
+            ...liveKitTransport.permissions,
+            openAiApiKey: "must-not-pass",
+          },
+        },
+      }),
+    ).toThrow();
     expect(() =>
       decodeSarahVoiceSessionResponse({
         ...response,
@@ -246,5 +293,25 @@ describe("Sarah Realtime voice contract", () => {
         admissionRef: "sarah_voice_admission:binding-1",
       }).admissionRef,
     ).toBe("sarah_voice_admission:binding-1");
+  });
+
+  test("requires an explicit known transport when a client opts into LiveKit", () => {
+    expect(
+      decodeSarahVoiceSessionRequest({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: "omega.voice.disclosure.v1",
+        requestedTransport: "livekit_room_v1",
+        roomContext: { kind: "private" },
+      }).requestedTransport,
+    ).toBe("livekit_room_v1");
+    expect(() =>
+      decodeSarahVoiceSessionRequest({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: "omega.voice.disclosure.v1",
+        requestedTransport: "livekit_future_v2",
+      }),
+    ).toThrow();
   });
 });

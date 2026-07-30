@@ -22,6 +22,7 @@ import {
   SarahVoiceConcurrentSessionError,
   SarahVoiceInsufficientCreditError,
   SarahVoiceSessionRejectedError,
+  type SarahVoiceUsage,
 } from '@openagentsinc/khala-sync-server'
 
 export const SARAH_REALTIME_VOICE_DEVICE_HEADER =
@@ -92,6 +93,223 @@ export type SarahRealtimeVoiceRouteConfig = Readonly<{
   reservationMsat: number
 }>
 
+export type SarahVoiceLiveKitCommunityAccess = Readonly<{
+  communityRef: string
+  channelRef: string
+  membershipRevision: string
+  publishAllowed: boolean
+  subscribeAllowed: boolean
+}>
+
+export type SarahVoiceLiveKitProvision = Readonly<{
+  livekitUrl: string
+  roomRef: string
+  roomEpoch: number
+  participantRef: string
+  sarahParticipantRef: string
+  participantGrant: string
+  joinExpiresAtMs: number
+  dispatchRef: string
+  sarahPresenceLeaseRef: string
+  grantClaims: Readonly<{
+    roomRef: string
+    participantRef: string
+    expiresAtMs: number
+    roomJoin: true
+    canPublish: boolean
+    canSubscribe: boolean
+    canPublishData: false
+    canUpdateOwnMetadata: false
+    canPublishSources: readonly ['microphone']
+    roomAdmin: false
+    roomCreate: false
+    roomList: false
+  }>
+}>
+
+export type SarahVoiceLiveKitRoomBroker = Readonly<{
+  provision: (
+    input: Readonly<{
+      idempotencyKey: string
+      ownerUserId: string
+      deviceRef: string
+      threadRef: string
+      sessionRef: string
+      generation: number
+      capabilityProfile: string
+      admissionRef: string
+      admissionDigest: string
+      roomContext:
+        | Readonly<{ kind: 'private' }>
+        | (SarahVoiceLiveKitCommunityAccess & Readonly<{ kind: 'community' }>)
+      publishAllowed: boolean
+      subscribeAllowed: boolean
+      expiresAtMs: number
+    }>,
+  ) => Promise<SarahVoiceLiveKitProvision>
+  cleanup: (provision: SarahVoiceLiveKitProvision) => Promise<void>
+  cleanupByIdempotencyKey: (idempotencyKey: string) => Promise<void>
+  cleanupRoom: (
+    room: Readonly<{
+      sessionRef: string
+      generation: number
+      roomRef: string
+      roomEpoch: number
+      dispatchRef: string
+      sarahPresenceLeaseRef: string
+    }>,
+  ) => Promise<void>
+}>
+
+export type SarahVoiceLiveKitLifecycleDependencies<Bindings> = Readonly<{
+  broker: SarahVoiceLiveKitRoomBroker
+  creditMsatPerMillionTokens: number
+  now?: (() => number) | undefined
+  openStore: (
+    env: Bindings,
+  ) => Promise<
+    Readonly<{ store: SarahRealtimeVoiceStore; close: () => Promise<void> }>
+  >
+}>
+
+export const recordSarahLiveKitParticipantJoin = async <Bindings>(
+  dependencies: SarahVoiceLiveKitLifecycleDependencies<Bindings>,
+  env: Bindings,
+  input: Omit<
+    Parameters<SarahRealtimeVoiceStore['recordLiveKitParticipantJoin']>[0],
+    'nowIso'
+  >,
+): Promise<void> => {
+  const opened = await dependencies.openStore(env)
+  try {
+    await opened.store.recordLiveKitParticipantJoin({
+      ...input,
+      nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
+    })
+  } finally {
+    await opened.close()
+  }
+}
+
+export const recordSarahLiveKitProviderUsage = async <Bindings>(
+  dependencies: SarahVoiceLiveKitLifecycleDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{
+    sessionRef: string
+    generation: number
+    usage: Omit<SarahVoiceUsage, 'chargeMsat' | 'observedAt'>
+  }>,
+) => {
+  const opened = await dependencies.openStore(env)
+  try {
+    return await opened.store.recordUsage({
+      sessionRef: input.sessionRef,
+      generation: input.generation,
+      usage: {
+        ...input.usage,
+        chargeMsat: Math.ceil(
+          ((input.usage.inputTokens + input.usage.outputTokens) *
+            dependencies.creditMsatPerMillionTokens) /
+            1_000_000,
+        ),
+        observedAt: new Date((dependencies.now ?? Date.now)()).toISOString(),
+      },
+    })
+  } finally {
+    await opened.close()
+  }
+}
+
+export const finalizeSarahLiveKitRoom = async <Bindings>(
+  dependencies: SarahVoiceLiveKitLifecycleDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{ sessionRef: string; generation: number }>,
+): Promise<boolean> => {
+  const opened = await dependencies.openStore(env)
+  try {
+    const cleanup = await opened.store.readLiveKitCleanup(input)
+    if (cleanup === undefined) return false
+    const nowIso = new Date((dependencies.now ?? Date.now)()).toISOString()
+    try {
+      await dependencies.broker.cleanupRoom(cleanup)
+      await opened.store.markLiveKitCleanup({
+        ...input,
+        state: 'cleaned',
+        nowIso,
+      })
+    } catch (error) {
+      await opened.store.markLiveKitCleanup({
+        ...input,
+        state: 'cleanup_failed',
+        nowIso,
+      })
+      throw error
+    }
+    return true
+  } finally {
+    await opened.close()
+  }
+}
+
+export const reconcileSarahLiveKitProvisioningIntents = async <Bindings>(
+  dependencies: SarahVoiceLiveKitLifecycleDependencies<Bindings>,
+  env: Bindings,
+): Promise<Readonly<{ cleaned: number; failed: number }>> => {
+  const opened = await dependencies.openStore(env)
+  let cleaned = 0
+  let failed = 0
+  try {
+    const nowMs = (dependencies.now ?? Date.now)()
+    const intents = await opened.store.claimLiveKitProvisioningIntents({
+      staleBeforeIso: new Date(
+        nowMs - SARAH_VOICE_ADMISSION_LIFETIME_MS,
+      ).toISOString(),
+      nowIso: new Date(nowMs).toISOString(),
+      limit: 100,
+    })
+    for (const intent of intents) {
+      let state: 'cleaned' | 'cleanup_failed' = 'cleaned'
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await opened.store.settleLiveKitProvisioningIntent({
+          sessionRef: intent.sessionRef,
+          generation: intent.generation,
+          closeReason: 'livekit_provisioning_reconcile',
+          nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
+        })
+      } catch {
+        failed += 1
+        // eslint-disable-next-line no-await-in-loop
+        await opened.store.markLiveKitProvisioningIntent({
+          sessionRef: intent.sessionRef,
+          generation: intent.generation,
+          state: 'cleanup_failed',
+          nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
+        })
+        continue
+      }
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await dependencies.broker.cleanupByIdempotencyKey(intent.idempotencyKey)
+        cleaned += 1
+      } catch {
+        state = 'cleanup_failed'
+        failed += 1
+      }
+      // eslint-disable-next-line no-await-in-loop
+      await opened.store.markLiveKitProvisioningIntent({
+        sessionRef: intent.sessionRef,
+        generation: intent.generation,
+        state,
+        nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
+      })
+    }
+    return { cleaned, failed }
+  } finally {
+    await opened.close()
+  }
+}
+
 export type SarahRealtimeVoiceOperatorRouteDependencies<Bindings> = Readonly<{
   now?: (() => number) | undefined
   openStore: (
@@ -132,6 +350,15 @@ export type SarahRealtimeVoiceRouteDependencies<User, Bindings> = Readonly<{
     }>,
   ) => Promise<'Consumed' | 'Invalid' | 'Unavailable'>
   mintNostrSession?: NostrSessionMint<User, Bindings> | undefined
+  liveKitRoomBroker?: SarahVoiceLiveKitRoomBroker | undefined
+  resolveLiveKitCommunityAccess?: (
+    env: Bindings,
+    input: Readonly<{
+      ownerUserId: string
+      communityRef: string
+      channelRef: string
+    }>,
+  ) => Promise<SarahVoiceLiveKitCommunityAccess | undefined>
   requireUserBearerSession: UserBearerSessionBoundary<User, Bindings>
   stagingOwnerEntitlementEnabled?: (env: Bindings) => boolean
   userIdFromSession: (session: Readonly<{ user: User }>) => string
@@ -163,7 +390,7 @@ export const sha256Hex = async (value: string): Promise<string> => {
     new TextEncoder().encode(value),
   )
   return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .map(byte => byte.toString(16).padStart(2, '0'))
     .join('')
 }
 
@@ -185,6 +412,10 @@ const admissionTermsDigest = async (
     spendableRemainingCreditMsat: number | null
     maxDurationSeconds: number
     capabilityBoundary: ReturnType<typeof capabilityBoundaryForProfile>
+    transportKind: 'custom_wss_v1' | 'livekit_room_v1'
+    roomContext:
+      | Readonly<{ kind: 'private' }>
+      | (SarahVoiceLiveKitCommunityAccess & Readonly<{ kind: 'community' }>)
   }>,
 ): Promise<string> => sha256Hex(JSON.stringify(terms))
 
@@ -253,6 +484,76 @@ const gatewayUrlForRequest = (request: Request): string | undefined => {
   } catch {
     return undefined
   }
+}
+
+const validLiveKitProvision = (
+  provision: SarahVoiceLiveKitProvision,
+  expected: Readonly<{
+    nowMs: number
+    maximumExpiresAtMs: number
+    publishAllowed: boolean
+    subscribeAllowed: boolean
+  }>,
+): boolean => {
+  let url: URL
+  try {
+    url = new URL(provision.livekitUrl)
+  } catch {
+    return false
+  }
+  const validRef = (value: string): boolean =>
+    value.trim() === value && value.length > 0 && value.length <= 256
+  const grantClaimKeys = Object.keys(provision.grantClaims).sort().join(',')
+  return (
+    url.protocol === 'wss:' &&
+    url.username === '' &&
+    url.password === '' &&
+    provision.livekitUrl.trim() === provision.livekitUrl &&
+    provision.livekitUrl.length <= 2_048 &&
+    Number.isSafeInteger(provision.roomEpoch) &&
+    provision.roomEpoch >= 1 &&
+    Number.isSafeInteger(provision.joinExpiresAtMs) &&
+    provision.joinExpiresAtMs > expected.nowMs &&
+    provision.joinExpiresAtMs <= expected.maximumExpiresAtMs &&
+    provision.participantGrant.length > 0 &&
+    provision.participantGrant.length <= 4_096 &&
+    validRef(provision.roomRef) &&
+    validRef(provision.participantRef) &&
+    validRef(provision.sarahParticipantRef) &&
+    provision.participantRef !== provision.sarahParticipantRef &&
+    validRef(provision.dispatchRef) &&
+    validRef(provision.sarahPresenceLeaseRef) &&
+    provision.grantClaims.roomRef === provision.roomRef &&
+    provision.grantClaims.participantRef === provision.participantRef &&
+    provision.grantClaims.expiresAtMs === provision.joinExpiresAtMs &&
+    grantClaimKeys ===
+      [
+        'canPublish',
+        'canPublishData',
+        'canPublishSources',
+        'canSubscribe',
+        'canUpdateOwnMetadata',
+        'expiresAtMs',
+        'participantRef',
+        'roomAdmin',
+        'roomCreate',
+        'roomJoin',
+        'roomList',
+        'roomRef',
+      ]
+        .sort()
+        .join(',') &&
+    provision.grantClaims.roomJoin === true &&
+    provision.grantClaims.canPublish === expected.publishAllowed &&
+    provision.grantClaims.canSubscribe === expected.subscribeAllowed &&
+    provision.grantClaims.canPublishData === false &&
+    provision.grantClaims.canUpdateOwnMetadata === false &&
+    provision.grantClaims.canPublishSources.length === 1 &&
+    provision.grantClaims.canPublishSources[0] === 'microphone' &&
+    provision.grantClaims.roomAdmin === false &&
+    provision.grantClaims.roomCreate === false &&
+    provision.grantClaims.roomList === false
+  )
 }
 
 export const parseSarahRealtimeVoiceRouteConfig = (
@@ -437,11 +738,46 @@ export const handleSarahRealtimeVoiceAdmissionRequest = async <User, Bindings>(
   const nowMs = (dependencies.now ?? Date.now)()
   const nowIso = new Date(nowMs).toISOString()
   const clientProfile = body.clientProfile ?? 'omega_editor'
+  const requestedTransport = body.requestedTransport ?? 'custom_wss_v1'
+  const requestedRoomContext = body.roomContext ?? { kind: 'private' as const }
+  if (
+    requestedTransport === 'custom_wss_v1' &&
+    body.roomContext !== undefined
+  ) {
+    return noStoreJson({ error: 'sarah_voice_room_context_not_supported' }, 400)
+  }
   let opened:
     | Readonly<{ store: SarahRealtimeVoiceStore; close: () => Promise<void> }>
     | undefined
   try {
     opened = await dependencies.openStore(env)
+    let admissionRoomContext:
+      | Readonly<{ kind: 'private' }>
+      | (SarahVoiceLiveKitCommunityAccess & Readonly<{ kind: 'community' }>) = {
+      kind: 'private',
+    }
+    if (
+      requestedTransport === 'livekit_room_v1' &&
+      requestedRoomContext.kind === 'community'
+    ) {
+      const access = await dependencies.resolveLiveKitCommunityAccess?.(env, {
+        ownerUserId: userId,
+        communityRef: requestedRoomContext.communityRef,
+        channelRef: requestedRoomContext.channelRef,
+      })
+      if (
+        access === undefined ||
+        access.communityRef !== requestedRoomContext.communityRef ||
+        access.channelRef !== requestedRoomContext.channelRef ||
+        !access.subscribeAllowed
+      ) {
+        return noStoreJson(
+          { error: 'sarah_voice_community_membership_inactive' },
+          403,
+        )
+      }
+      admissionRoomContext = { kind: 'community', ...access }
+    }
     const stagingEntitlement =
       dependencies.stagingOwnerEntitlementEnabled?.(env) === true
         ? await opened.store.readActiveStagingOwnerEntitlement({
@@ -474,7 +810,11 @@ export const handleSarahRealtimeVoiceAdmissionRequest = async <User, Bindings>(
         clientProfile,
         admissionCohortRef: terms.admissionCohortRef,
         creditMode: terms.creditMode,
-        termsDigest: await admissionTermsDigest(terms),
+        termsDigest: await admissionTermsDigest({
+          ...terms,
+          transportKind: requestedTransport,
+          roomContext: admissionRoomContext,
+        }),
         spendableRemainingCreditMsat: null,
         nowIso,
         expiresAt: new Date(admissionExpiresAtMs).toISOString(),
@@ -540,7 +880,11 @@ export const handleSarahRealtimeVoiceAdmissionRequest = async <User, Bindings>(
         clientProfile,
         admissionCohortRef: terms.admissionCohortRef,
         creditMode: terms.creditMode,
-        termsDigest: await admissionTermsDigest(terms),
+        termsDigest: await admissionTermsDigest({
+          ...terms,
+          transportKind: requestedTransport,
+          roomContext: admissionRoomContext,
+        }),
         spendableRemainingCreditMsat,
         nowIso,
         expiresAt: new Date(admissionExpiresAtMs).toISOString(),
@@ -773,6 +1117,10 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
   const body = parsed.body
   const clientProfile = body.clientProfile ?? 'omega_editor'
   const admissionRef = body.admissionRef
+  const requestedTransport = body.requestedTransport ?? 'custom_wss_v1'
+  const requestedRoomContext = body.roomContext ?? { kind: 'private' as const }
+  const requiresAdmission =
+    clientProfile === 'omega_editor' || requestedTransport === 'livekit_room_v1'
   const userId = dependencies.userIdFromSession(session)
   const deviceRef = request.headers
     .get(SARAH_REALTIME_VOICE_DEVICE_HEADER)
@@ -784,8 +1132,20 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
   ) {
     return noStoreJson({ error: 'sarah_voice_identity_mismatch' }, 403)
   }
-  if (clientProfile === 'omega_editor' && admissionRef === undefined) {
+  if (requiresAdmission && admissionRef === undefined) {
     return noStoreJson({ error: 'sarah_voice_admission_required' }, 409)
+  }
+  if (
+    requestedTransport === 'custom_wss_v1' &&
+    body.roomContext !== undefined
+  ) {
+    return noStoreJson({ error: 'sarah_voice_room_context_not_supported' }, 400)
+  }
+  if (
+    requestedTransport === 'livekit_room_v1' &&
+    dependencies.liveKitRoomBroker === undefined
+  ) {
+    return noStoreJson({ error: 'sarah_voice_livekit_unavailable' }, 503)
   }
 
   const config = dependencies.config(env)
@@ -852,7 +1212,7 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
         ? SARAH_VOICE_ALPHA_COHORT_REF
         : SARAH_VOICE_STAGING_OWNER_COHORT_REF
     const spendableRemainingCreditMsat =
-      clientProfile === 'omega_editor' && entitlement === undefined
+      requiresAdmission && entitlement === undefined
         ? await opened.store.readSpendableCredit({
             ownerUserId: userId,
             ownerActorRef: `agent:${userId}`,
@@ -869,10 +1229,61 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
       maxDurationSeconds: config.maxSessionSeconds,
       capabilityBoundary,
     }
+    let liveKitRoomContext:
+      | Readonly<{ kind: 'private' }>
+      | (SarahVoiceLiveKitCommunityAccess & Readonly<{ kind: 'community' }>) = {
+      kind: 'private',
+    }
+    if (
+      requestedTransport === 'livekit_room_v1' &&
+      requestedRoomContext.kind === 'community'
+    ) {
+      const access = await dependencies.resolveLiveKitCommunityAccess?.(env, {
+        ownerUserId: userId,
+        communityRef: requestedRoomContext.communityRef,
+        channelRef: requestedRoomContext.channelRef,
+      })
+      if (
+        access === undefined ||
+        access.communityRef !== requestedRoomContext.communityRef ||
+        access.channelRef !== requestedRoomContext.channelRef ||
+        !access.subscribeAllowed
+      ) {
+        throw new SarahVoiceSessionRejectedError(
+          'The Sarah voice community room membership is not active',
+        )
+      }
+      liveKitRoomContext = { kind: 'community', ...access }
+    }
+    const currentAdmissionDigest =
+      requiresAdmission && admissionRef !== undefined
+        ? await admissionTermsDigest({
+            ...currentTerms,
+            transportKind: requestedTransport,
+            roomContext: liveKitRoomContext,
+          })
+        : null
+    if (
+      requiresAdmission &&
+      (admissionRef === undefined || currentAdmissionDigest === null)
+    ) {
+      throw new SarahVoiceAdmissionRejectedError(
+        'The Sarah voice admission binding is incomplete',
+      )
+    }
+    const exactAdmissionBinding =
+      admissionRef !== undefined && currentAdmissionDigest !== null
+        ? {
+            admissionRef,
+            termsDigest: currentAdmissionDigest,
+            spendableRemainingCreditMsat,
+          }
+        : undefined
     const reserved = await opened.store.reserve({
       deviceRef: body.identity.deviceRef,
       disclosureRef: body.disclosureRef,
       clientProfile,
+      transportKind: requestedTransport,
       generation: body.identity.generation,
       nowIso,
       ownerActorRef: `agent:${userId}`,
@@ -887,23 +1298,16 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
       threadRef: body.identity.threadRef,
       ticketDigest: await sha256Hex(ticket),
       ticketExpiresAt: new Date(ticketExpiresAtMs).toISOString(),
-      ...(clientProfile === 'omega_editor' && admissionRef !== undefined
-        ? {
-            admissionBinding: {
-              admissionRef,
-              termsDigest: await admissionTermsDigest(currentTerms),
-              spendableRemainingCreditMsat,
-            },
-          }
+      ...(requiresAdmission && exactAdmissionBinding !== undefined
+        ? { admissionBinding: exactAdmissionBinding }
         : {}),
     })
     const admissionExpiresAtMs =
-      clientProfile === 'omega_editor' &&
-      reserved.admissionExpiresAt !== undefined
+      requiresAdmission && reserved.admissionExpiresAt !== undefined
         ? Date.parse(reserved.admissionExpiresAt)
         : undefined
     if (
-      clientProfile === 'omega_editor' &&
+      requiresAdmission &&
       (admissionExpiresAtMs === undefined ||
         !Number.isSafeInteger(admissionExpiresAtMs) ||
         admissionExpiresAtMs <= nowMs)
@@ -912,11 +1316,173 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
         'The consumed Sarah voice admission expiry was invalid',
       )
     }
+    let liveKitProvision: SarahVoiceLiveKitProvision | undefined
+    if (requestedTransport === 'livekit_room_v1') {
+      const broker = dependencies.liveKitRoomBroker
+      if (
+        broker === undefined ||
+        admissionRef === undefined ||
+        currentAdmissionDigest === null ||
+        admissionExpiresAtMs === undefined
+      ) {
+        throw new SarahVoiceAdmissionRejectedError(
+          'The LiveKit voice admission binding is incomplete',
+        )
+      }
+      const liveKitIdempotencyKey = `sarah-livekit:${body.identity.sessionRef}:${body.identity.generation}`
+      try {
+        const publishAllowed =
+          liveKitRoomContext.kind === 'private'
+            ? true
+            : liveKitRoomContext.publishAllowed
+        const subscribeAllowed =
+          liveKitRoomContext.kind === 'private'
+            ? true
+            : liveKitRoomContext.subscribeAllowed
+        await opened.store.prepareLiveKitProvisioningIntent({
+          sessionRef: body.identity.sessionRef,
+          ownerUserId: userId,
+          deviceRef: body.identity.deviceRef,
+          threadRef: body.identity.threadRef,
+          generation: body.identity.generation,
+          capabilityProfile: clientProfile,
+          admissionRef,
+          admissionDigest: currentAdmissionDigest,
+          idempotencyKey: liveKitIdempotencyKey,
+          roomContext: liveKitRoomContext,
+          nowIso,
+        })
+        liveKitProvision = await broker.provision({
+          idempotencyKey: liveKitIdempotencyKey,
+          ownerUserId: userId,
+          deviceRef: body.identity.deviceRef,
+          threadRef: body.identity.threadRef,
+          sessionRef: body.identity.sessionRef,
+          generation: body.identity.generation,
+          capabilityProfile: clientProfile,
+          admissionRef,
+          admissionDigest: currentAdmissionDigest,
+          roomContext: liveKitRoomContext,
+          publishAllowed,
+          subscribeAllowed,
+          expiresAtMs: sessionExpiresAtMs,
+        })
+        if (
+          !validLiveKitProvision(liveKitProvision, {
+            nowMs,
+            maximumExpiresAtMs: Math.min(
+              sessionExpiresAtMs,
+              admissionExpiresAtMs,
+            ),
+            publishAllowed,
+            subscribeAllowed,
+          })
+        ) {
+          throw new Error('invalid_livekit_provision')
+        }
+        await opened.store.bindLiveKitRoom({
+          sessionRef: body.identity.sessionRef,
+          ownerUserId: userId,
+          deviceRef: body.identity.deviceRef,
+          threadRef: body.identity.threadRef,
+          generation: body.identity.generation,
+          capabilityProfile: clientProfile,
+          admissionRef,
+          admissionDigest: currentAdmissionDigest,
+          roomContext: liveKitRoomContext,
+          roomRef: liveKitProvision.roomRef,
+          roomEpoch: liveKitProvision.roomEpoch,
+          participantRef: liveKitProvision.participantRef,
+          sarahParticipantRef: liveKitProvision.sarahParticipantRef,
+          participantGrantDigest: await sha256Hex(
+            liveKitProvision.participantGrant,
+          ),
+          joinExpiresAt: new Date(
+            liveKitProvision.joinExpiresAtMs,
+          ).toISOString(),
+          dispatchRef: liveKitProvision.dispatchRef,
+          sarahPresenceLeaseRef: liveKitProvision.sarahPresenceLeaseRef,
+          publishAllowed,
+          subscribeAllowed,
+          nowIso,
+        })
+      } catch {
+        let accountingTerminal = false
+        try {
+          await opened.store.settle({
+            sessionRef: body.identity.sessionRef,
+            closeReason: 'livekit_provision_failed',
+            nowIso,
+          })
+          accountingTerminal = true
+        } catch {
+          // The provisioning intent remains available for reconciliation.
+        }
+        let cleanupState: 'cleaned' | 'cleanup_failed' = 'cleaned'
+        if (accountingTerminal) {
+          try {
+            if (liveKitProvision !== undefined) {
+              await broker.cleanup(liveKitProvision)
+            } else {
+              await broker.cleanupByIdempotencyKey(liveKitIdempotencyKey)
+            }
+          } catch {
+            cleanupState = 'cleanup_failed'
+          }
+        } else {
+          cleanupState = 'cleanup_failed'
+        }
+        try {
+          await opened.store.markLiveKitProvisioningIntent({
+            sessionRef: body.identity.sessionRef,
+            generation: body.identity.generation,
+            state: cleanupState,
+            nowIso,
+          })
+        } catch {
+          // The idempotent broker key still permits later reconciliation.
+        }
+        return noStoreJson({ error: 'sarah_voice_livekit_unavailable' }, 503)
+      }
+    }
     return noStoreJson(
       {
         schema: SARAH_VOICE_PROTOCOL_VERSION,
         sessionRef: body.identity.sessionRef,
         model: SARAH_VOICE_MODEL,
+        ...(body.requestedTransport === undefined
+          ? {}
+          : {
+              transport:
+                liveKitProvision === undefined
+                  ? { kind: 'custom_wss_v1' as const }
+                  : {
+                      kind: 'livekit_room_v1',
+                      livekitUrl: liveKitProvision.livekitUrl,
+                      roomRef: liveKitProvision.roomRef,
+                      roomEpoch: liveKitProvision.roomEpoch,
+                      participantRef: liveKitProvision.participantRef,
+                      participantGrant: liveKitProvision.participantGrant,
+                      joinExpiresAtMs: liveKitProvision.joinExpiresAtMs,
+                      dispatchRef: liveKitProvision.dispatchRef,
+                      sarahPresenceLeaseRef:
+                        liveKitProvision.sarahPresenceLeaseRef,
+                      permissions: {
+                        roomJoin: true,
+                        canPublish:
+                          liveKitRoomContext.kind === 'private'
+                            ? true
+                            : liveKitRoomContext.publishAllowed,
+                        canSubscribe: true,
+                        canPublishData: false,
+                        canUpdateOwnMetadata: false,
+                        canPublishSources: ['microphone'],
+                        roomAdmin: false,
+                        roomCreate: false,
+                        roomList: false,
+                      },
+                    },
+            }),
         gatewayUrl,
         ticket,
         ticketExpiresAtMs,
@@ -924,7 +1490,7 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
         reservedCreditMsat: reservedMsat,
         maxDurationSeconds: config.maxSessionSeconds,
         clientProfile,
-        ...(clientProfile === 'omega_editor' && admissionRef !== undefined
+        ...(requiresAdmission && admissionRef !== undefined
           ? {
               admissionRef,
               admissionExpiresAtMs,

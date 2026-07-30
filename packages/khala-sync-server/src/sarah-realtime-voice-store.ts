@@ -6,6 +6,7 @@ export type SarahVoiceClientProfile =
   | "mobile_voice_only"
   | "mobile_command_center";
 export type SarahVoiceCreditMode = "metered" | "staging_owner_entitlement";
+export type SarahVoiceTransportKind = "custom_wss_v1" | "livekit_room_v1";
 
 export type SarahVoiceCreditEntitlement = Readonly<{
   entitlementRef: string;
@@ -42,6 +43,7 @@ export type SarahVoiceSessionRecord = Readonly<{
   generation: number;
   disclosureRef: string;
   clientProfile: SarahVoiceClientProfile;
+  transportKind: SarahVoiceTransportKind;
   creditMode: SarahVoiceCreditMode;
   entitlementRef: string | null;
   admissionCohortRef: string | null;
@@ -65,6 +67,30 @@ export type SarahVoiceUsage = Readonly<{
   audioOutputTokens: number;
   chargeMsat: number;
   observedAt: string;
+}>;
+
+export type SarahVoiceLiveKitRoomContext =
+  | Readonly<{ kind: "private" }>
+  | Readonly<{
+      kind: "community";
+      communityRef: string;
+      channelRef: string;
+      membershipRevision: string;
+    }>;
+
+export type SarahVoiceLiveKitCleanup = Readonly<{
+  sessionRef: string;
+  generation: number;
+  roomRef: string;
+  roomEpoch: number;
+  dispatchRef: string;
+  sarahPresenceLeaseRef: string;
+}>;
+
+export type SarahVoiceLiveKitProvisioningIntent = Readonly<{
+  sessionRef: string;
+  generation: number;
+  idempotencyKey: string;
 }>;
 
 export class SarahVoiceInsufficientCreditError extends Error {
@@ -102,6 +128,7 @@ type SessionRow = Readonly<{
   generation: number | string;
   disclosure_ref: string;
   client_profile: SarahVoiceClientProfile;
+  transport_kind: SarahVoiceTransportKind;
   credit_mode: SarahVoiceCreditMode;
   entitlement_ref: string | null;
   admission_cohort_ref: string | null;
@@ -130,6 +157,7 @@ const toRecord = (row: SessionRow): SarahVoiceSessionRecord => ({
   generation: toSafeInteger(row.generation, "generation"),
   disclosureRef: row.disclosure_ref,
   clientProfile: row.client_profile,
+  transportKind: row.transport_kind,
   creditMode: row.credit_mode,
   entitlementRef: row.entitlement_ref,
   admissionCohortRef: row.admission_cohort_ref,
@@ -380,6 +408,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       ticketDigest: string;
       disclosureRef: string;
       clientProfile: SarahVoiceClientProfile;
+      transportKind?: SarahVoiceTransportKind;
       creditMode: SarahVoiceCreditMode;
       entitlementRef: string | null;
       admissionCohortRef: string;
@@ -448,6 +477,31 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             );
           }
           admissionExpiresAt = admission.expires_at;
+        }
+
+        const priorSessions = (await tx`
+          SELECT generation, state
+          FROM sarah_realtime_voice_sessions
+          WHERE owner_user_id = ${input.ownerUserId}
+            AND thread_ref = ${input.threadRef}
+          ORDER BY generation DESC, created_at DESC
+          LIMIT 1
+          FOR UPDATE
+        `) as ReadonlyArray<{
+          generation: number | string;
+          state: SarahVoiceSessionState;
+        }>;
+        const priorSession = first(priorSessions);
+        if (priorSession !== undefined) {
+          const priorGeneration = toSafeInteger(priorSession.generation, "generation");
+          if (priorSession.state !== "settled" && priorSession.state !== "released") {
+            throw new SarahVoiceConcurrentSessionError(
+              "The prior Sarah voice generation has not completed accounting",
+            );
+          }
+          if (input.generation <= priorGeneration) {
+            throw new SarahVoiceSessionRejectedError("The Sarah voice generation must advance");
+          }
         }
 
         if (input.creditMode === "metered") {
@@ -532,20 +586,22 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           INSERT INTO sarah_realtime_voice_sessions (
             session_ref, reservation_ref, owner_user_id, owner_actor_ref,
             device_ref, thread_ref, generation, ticket_digest, disclosure_ref,
-            client_profile, credit_mode, entitlement_ref, state, reserved_msat,
+            client_profile, transport_kind, credit_mode, entitlement_ref, state, reserved_msat,
             admission_cohort_ref, charged_msat, ticket_expires_at,
             session_expires_at, created_at, updated_at
           ) VALUES (
             ${input.sessionRef}, ${input.reservationRef}, ${input.ownerUserId},
             ${input.ownerActorRef}, ${input.deviceRef}, ${input.threadRef},
             ${input.generation}, ${input.ticketDigest}, ${input.disclosureRef},
-            ${input.clientProfile}, ${input.creditMode}, ${input.entitlementRef},
+            ${input.clientProfile}, ${input.transportKind ?? "custom_wss_v1"},
+            ${input.creditMode}, ${input.entitlementRef},
             'reserved', ${input.reservedMsat}, ${input.admissionCohortRef}, 0,
             ${input.ticketExpiresAt},
             ${input.sessionExpiresAt}, ${input.nowIso}, ${input.nowIso}
           )
           RETURNING session_ref, owner_user_id, owner_actor_ref, device_ref,
-            thread_ref, generation, disclosure_ref, client_profile, credit_mode,
+            thread_ref, generation, disclosure_ref, client_profile,
+            transport_kind, credit_mode,
             entitlement_ref, admission_cohort_ref, state, reserved_msat,
             charged_msat, ticket_expires_at, session_expires_at,
             settlement_receipt_ref
@@ -559,6 +615,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     } catch (error) {
       if (
         error instanceof SarahVoiceInsufficientCreditError ||
+        error instanceof SarahVoiceConcurrentSessionError ||
         error instanceof SarahVoiceSessionRejectedError ||
         error instanceof SarahVoiceAdmissionRejectedError
       ) {
@@ -594,7 +651,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             AND ticket_expires_at > ${input.nowIso}
             AND session_expires_at > ${input.nowIso}
           RETURNING session_ref, owner_user_id, owner_actor_ref, device_ref,
-            thread_ref, generation, disclosure_ref, client_profile, credit_mode,
+            thread_ref, generation, disclosure_ref, client_profile,
+            transport_kind, credit_mode,
             entitlement_ref, admission_cohort_ref, state, reserved_msat,
             charged_msat, ticket_expires_at, session_expires_at,
             settlement_receipt_ref
@@ -611,9 +669,529 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }
   };
 
+  const prepareLiveKitProvisioningIntent = async (
+    input: Readonly<{
+      sessionRef: string;
+      ownerUserId: string;
+      deviceRef: string;
+      threadRef: string;
+      generation: number;
+      capabilityProfile: SarahVoiceClientProfile;
+      admissionRef: string;
+      admissionDigest: string;
+      idempotencyKey: string;
+      roomContext: SarahVoiceLiveKitRoomContext;
+      nowIso: string;
+    }>,
+  ): Promise<void> => {
+    try {
+      await sql.begin(async (tx) => {
+        const authorized = (await tx`
+          SELECT session.session_ref
+          FROM sarah_realtime_voice_sessions AS session
+          INNER JOIN sarah_voice_admissions AS admission
+            ON admission.session_ref = session.session_ref
+          WHERE session.session_ref = ${input.sessionRef}
+            AND session.owner_user_id = ${input.ownerUserId}
+            AND session.device_ref = ${input.deviceRef}
+            AND session.thread_ref = ${input.threadRef}
+            AND session.generation = ${input.generation}
+            AND session.client_profile = ${input.capabilityProfile}
+            AND session.transport_kind = 'livekit_room_v1'
+            AND session.state = 'reserved'
+            AND admission.admission_ref = ${input.admissionRef}
+            AND admission.terms_digest = ${input.admissionDigest}
+            AND admission.state = 'consumed'
+          FOR UPDATE OF session
+        `) as ReadonlyArray<{ session_ref: string }>;
+        if (first(authorized) === undefined) {
+          throw new SarahVoiceAdmissionRejectedError(
+            "The LiveKit provisioning intent is not authorized",
+          );
+        }
+        await tx`
+          INSERT INTO sarah_livekit_provisioning_intents (
+            session_ref, generation, idempotency_key, owner_user_id,
+            device_ref, thread_ref, capability_profile, admission_ref,
+            admission_digest, room_context_kind, community_ref, channel_ref,
+            membership_revision, state, created_at, updated_at
+          ) VALUES (
+            ${input.sessionRef}, ${input.generation}, ${input.idempotencyKey},
+            ${input.ownerUserId}, ${input.deviceRef}, ${input.threadRef},
+            ${input.capabilityProfile}, ${input.admissionRef},
+            ${input.admissionDigest}, ${input.roomContext.kind},
+            ${input.roomContext.kind === "community" ? input.roomContext.communityRef : null},
+            ${input.roomContext.kind === "community" ? input.roomContext.channelRef : null},
+            ${input.roomContext.kind === "community" ? input.roomContext.membershipRevision : null},
+            'pending', ${input.nowIso}, ${input.nowIso}
+          )
+          ON CONFLICT (session_ref) DO NOTHING
+        `;
+        const intents = (await tx`
+          SELECT session_ref
+          FROM sarah_livekit_provisioning_intents
+          WHERE session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+            AND idempotency_key = ${input.idempotencyKey}
+            AND owner_user_id = ${input.ownerUserId}
+            AND device_ref = ${input.deviceRef}
+            AND thread_ref = ${input.threadRef}
+            AND capability_profile = ${input.capabilityProfile}
+            AND admission_ref = ${input.admissionRef}
+            AND admission_digest = ${input.admissionDigest}
+            AND room_context_kind = ${input.roomContext.kind}
+            AND community_ref IS NOT DISTINCT FROM ${
+              input.roomContext.kind === "community" ? input.roomContext.communityRef : null
+            }
+            AND channel_ref IS NOT DISTINCT FROM ${
+              input.roomContext.kind === "community" ? input.roomContext.channelRef : null
+            }
+            AND membership_revision IS NOT DISTINCT FROM ${
+              input.roomContext.kind === "community" ? input.roomContext.membershipRevision : null
+            }
+            AND state IN ('pending', 'bound')
+        `) as ReadonlyArray<{ session_ref: string }>;
+        if (first(intents) === undefined) {
+          throw new SarahVoiceSessionRejectedError(
+            "The LiveKit provisioning intent conflicts with an existing generation",
+          );
+        }
+      });
+    } catch (error) {
+      if (
+        error instanceof SarahVoiceAdmissionRejectedError ||
+        error instanceof SarahVoiceSessionRejectedError
+      ) {
+        throw error;
+      }
+      throw new SarahVoiceStorageError("Sarah LiveKit provisioning intent failed", error);
+    }
+  };
+
+  const markLiveKitProvisioningIntent = async (
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+      state: "cleanup_failed" | "cleaned";
+      nowIso: string;
+    }>,
+  ): Promise<void> => {
+    try {
+      await sql`
+        UPDATE sarah_livekit_provisioning_intents
+        SET state = ${input.state}, updated_at = ${input.nowIso}
+        WHERE session_ref = ${input.sessionRef}
+          AND generation = ${input.generation}
+          AND state IN ('pending', 'reconciling', 'cleanup_failed', 'cleaned')
+      `;
+    } catch (error) {
+      throw new SarahVoiceStorageError("Sarah LiveKit provisioning intent update failed", error);
+    }
+  };
+
+  const claimLiveKitProvisioningIntents = async (
+    input: Readonly<{
+      staleBeforeIso: string;
+      nowIso: string;
+      limit?: number;
+    }>,
+  ): Promise<ReadonlyArray<SarahVoiceLiveKitProvisioningIntent>> => {
+    try {
+      const boundedLimit = Math.max(1, Math.min(100, Math.trunc(input.limit ?? 100)));
+      const rows = await sql.begin(
+        async (tx) =>
+          (await tx`
+          WITH candidates AS (
+            SELECT session_ref
+            FROM sarah_livekit_provisioning_intents
+            WHERE state IN ('pending', 'reconciling', 'cleanup_failed')
+              AND updated_at <= ${input.staleBeforeIso}
+            ORDER BY created_at
+            LIMIT ${boundedLimit}
+            FOR UPDATE SKIP LOCKED
+          )
+          UPDATE sarah_livekit_provisioning_intents AS intent
+          SET state = 'reconciling', updated_at = ${input.nowIso}
+          FROM candidates
+          WHERE intent.session_ref = candidates.session_ref
+          RETURNING intent.session_ref, intent.generation,
+            intent.idempotency_key
+        `) as ReadonlyArray<{
+            session_ref: string;
+            generation: number | string;
+            idempotency_key: string;
+          }>,
+      );
+      return rows.map((row) => ({
+        sessionRef: row.session_ref,
+        generation: toSafeInteger(row.generation, "generation"),
+        idempotencyKey: row.idempotency_key,
+      }));
+    } catch (error) {
+      throw new SarahVoiceStorageError("Sarah LiveKit provisioning intent claim failed", error);
+    }
+  };
+
+  const bindLiveKitRoom = async (
+    input: Readonly<{
+      sessionRef: string;
+      ownerUserId: string;
+      deviceRef: string;
+      threadRef: string;
+      generation: number;
+      capabilityProfile: SarahVoiceClientProfile;
+      admissionRef: string;
+      admissionDigest: string;
+      roomContext: SarahVoiceLiveKitRoomContext;
+      roomRef: string;
+      roomEpoch: number;
+      participantRef: string;
+      sarahParticipantRef: string;
+      participantGrantDigest: string;
+      joinExpiresAt: string;
+      dispatchRef: string;
+      sarahPresenceLeaseRef: string;
+      publishAllowed: boolean;
+      subscribeAllowed: boolean;
+      nowIso: string;
+    }>,
+  ): Promise<void> => {
+    try {
+      await sql.begin(async (tx) => {
+        const intents = (await tx`
+          SELECT session_ref
+          FROM sarah_livekit_provisioning_intents
+          WHERE session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+            AND owner_user_id = ${input.ownerUserId}
+            AND device_ref = ${input.deviceRef}
+            AND thread_ref = ${input.threadRef}
+            AND capability_profile = ${input.capabilityProfile}
+            AND admission_ref = ${input.admissionRef}
+            AND admission_digest = ${input.admissionDigest}
+            AND room_context_kind = ${input.roomContext.kind}
+            AND community_ref IS NOT DISTINCT FROM ${
+              input.roomContext.kind === "community" ? input.roomContext.communityRef : null
+            }
+            AND channel_ref IS NOT DISTINCT FROM ${
+              input.roomContext.kind === "community" ? input.roomContext.channelRef : null
+            }
+            AND membership_revision IS NOT DISTINCT FROM ${
+              input.roomContext.kind === "community" ? input.roomContext.membershipRevision : null
+            }
+            AND state = 'pending'
+          FOR UPDATE
+        `) as ReadonlyArray<{ session_ref: string }>;
+        if (first(intents) === undefined) {
+          throw new SarahVoiceSessionRejectedError(
+            "The LiveKit room has no matching provisioning intent",
+          );
+        }
+        const sessions = (await tx`
+          SELECT session_ref
+          FROM sarah_realtime_voice_sessions
+          WHERE session_ref = ${input.sessionRef}
+            AND owner_user_id = ${input.ownerUserId}
+            AND device_ref = ${input.deviceRef}
+            AND thread_ref = ${input.threadRef}
+            AND generation = ${input.generation}
+            AND client_profile = ${input.capabilityProfile}
+            AND state = 'reserved'
+            AND session_expires_at > ${input.nowIso}
+          FOR UPDATE
+        `) as ReadonlyArray<{ session_ref: string }>;
+        if (first(sessions) === undefined) {
+          throw new SarahVoiceSessionRejectedError(
+            "The LiveKit room binding does not match the reserved voice generation",
+          );
+        }
+
+        const admissions = (await tx`
+            SELECT admission_ref
+            FROM sarah_voice_admissions
+            WHERE admission_ref = ${input.admissionRef}
+              AND session_ref = ${input.sessionRef}
+              AND owner_user_id = ${input.ownerUserId}
+              AND device_ref = ${input.deviceRef}
+              AND thread_ref = ${input.threadRef}
+              AND generation = ${input.generation}
+              AND client_profile = ${input.capabilityProfile}
+              AND terms_digest = ${input.admissionDigest}
+              AND state = 'consumed'
+            FOR SHARE
+        `) as ReadonlyArray<{ admission_ref: string }>;
+        if (first(admissions) === undefined) {
+          throw new SarahVoiceAdmissionRejectedError(
+            "The LiveKit room binding does not match the consumed admission",
+          );
+        }
+
+        await tx`
+          INSERT INTO sarah_livekit_room_bindings (
+            session_ref, owner_user_id, device_ref, thread_ref, generation,
+            capability_profile, admission_ref, admission_digest,
+            room_context_kind, community_ref, channel_ref, membership_revision,
+            room_ref, room_epoch, participant_ref, sarah_participant_ref,
+            participant_grant_digest, join_expires_at, dispatch_ref,
+            sarah_presence_lease_ref, publish_allowed, subscribe_allowed,
+            state, created_at, updated_at
+          ) VALUES (
+            ${input.sessionRef}, ${input.ownerUserId}, ${input.deviceRef},
+            ${input.threadRef}, ${input.generation}, ${input.capabilityProfile},
+            ${input.admissionRef}, ${input.admissionDigest},
+            ${input.roomContext.kind},
+            ${input.roomContext.kind === "community" ? input.roomContext.communityRef : null},
+            ${input.roomContext.kind === "community" ? input.roomContext.channelRef : null},
+            ${input.roomContext.kind === "community" ? input.roomContext.membershipRevision : null},
+            ${input.roomRef}, ${input.roomEpoch}, ${input.participantRef},
+            ${input.sarahParticipantRef}, ${input.participantGrantDigest},
+            ${input.joinExpiresAt}, ${input.dispatchRef},
+            ${input.sarahPresenceLeaseRef}, ${input.publishAllowed},
+            ${input.subscribeAllowed}, 'prepared', ${input.nowIso},
+            ${input.nowIso}
+          )
+        `;
+        await tx`
+          UPDATE sarah_livekit_provisioning_intents
+          SET state = 'bound', updated_at = ${input.nowIso}
+          WHERE session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+            AND state = 'pending'
+        `;
+      });
+    } catch (error) {
+      if (
+        error instanceof SarahVoiceSessionRejectedError ||
+        error instanceof SarahVoiceAdmissionRejectedError
+      ) {
+        throw error;
+      }
+      if (isUniqueViolation(error)) {
+        throw new SarahVoiceSessionRejectedError(
+          "The LiveKit room or participant grant was already bound",
+        );
+      }
+      throw new SarahVoiceStorageError("Sarah LiveKit room binding failed", error);
+    }
+  };
+
+  const recordLiveKitParticipantJoin = async (
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+      roomRef: string;
+      participantRef: string;
+      role: "owner" | "sarah";
+      nowIso: string;
+    }>,
+  ): Promise<void> => {
+    try {
+      const rows =
+        input.role === "owner"
+          ? ((await sql`
+              UPDATE sarah_livekit_room_bindings
+              SET owner_joined_at = ${input.nowIso},
+                  state = 'active',
+                  updated_at = ${input.nowIso}
+              WHERE session_ref = ${input.sessionRef}
+                AND generation = ${input.generation}
+                AND room_ref = ${input.roomRef}
+                AND participant_ref = ${input.participantRef}
+                AND owner_joined_at IS NULL
+                AND state IN ('prepared', 'active')
+                AND join_expires_at > ${input.nowIso}
+              RETURNING session_ref
+            `) as ReadonlyArray<{ session_ref: string }>)
+          : ((await sql`
+          UPDATE sarah_livekit_room_bindings
+          SET sarah_joined_at = ${input.nowIso},
+              state = 'active',
+              updated_at = ${input.nowIso}
+          WHERE session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+            AND room_ref = ${input.roomRef}
+            AND sarah_participant_ref = ${input.participantRef}
+            AND sarah_joined_at IS NULL
+            AND state IN ('prepared', 'active')
+            AND join_expires_at > ${input.nowIso}
+          RETURNING session_ref
+        `) as ReadonlyArray<{ session_ref: string }>);
+      if (first(rows) === undefined) {
+        throw new SarahVoiceSessionRejectedError(
+          "The LiveKit participant is unexpected, duplicated, revoked, or expired",
+        );
+      }
+    } catch (error) {
+      if (error instanceof SarahVoiceSessionRejectedError) throw error;
+      throw new SarahVoiceStorageError("Sarah LiveKit participant join failed", error);
+    }
+  };
+
+  const readLiveKitCleanup = async (
+    input: Readonly<{ sessionRef: string; generation: number }>,
+  ): Promise<SarahVoiceLiveKitCleanup | undefined> => {
+    try {
+      const rows = (await sql`
+        SELECT binding.session_ref, binding.generation, binding.room_ref,
+          binding.room_epoch, binding.dispatch_ref,
+          binding.sarah_presence_lease_ref
+        FROM sarah_livekit_room_bindings AS binding
+        INNER JOIN sarah_realtime_voice_sessions AS session
+          ON session.session_ref = binding.session_ref
+        WHERE binding.session_ref = ${input.sessionRef}
+          AND binding.generation = ${input.generation}
+          AND binding.state IN ('cleanup_ready', 'cleanup_failed')
+          AND session.state IN ('settled', 'released')
+          AND session.settlement_receipt_ref IS NOT NULL
+      `) as ReadonlyArray<{
+        session_ref: string;
+        generation: number | string;
+        room_ref: string;
+        room_epoch: number | string;
+        dispatch_ref: string;
+        sarah_presence_lease_ref: string;
+      }>;
+      const row = first(rows);
+      return row === undefined
+        ? undefined
+        : {
+            sessionRef: row.session_ref,
+            generation: toSafeInteger(row.generation, "generation"),
+            roomRef: row.room_ref,
+            roomEpoch: toSafeInteger(row.room_epoch, "room_epoch"),
+            dispatchRef: row.dispatch_ref,
+            sarahPresenceLeaseRef: row.sarah_presence_lease_ref,
+          };
+    } catch (error) {
+      throw new SarahVoiceStorageError("Sarah LiveKit cleanup lookup failed", error);
+    }
+  };
+
+  const markLiveKitCleanup = async (
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+      state: "cleaned" | "cleanup_failed";
+      nowIso: string;
+    }>,
+  ): Promise<void> => {
+    try {
+      const rows = (await sql`
+        UPDATE sarah_livekit_room_bindings AS binding
+        SET state = ${input.state},
+            cleanup_attempted_at = ${input.nowIso},
+            cleaned_at = CASE
+              WHEN ${input.state} = 'cleaned'
+                THEN COALESCE(binding.cleaned_at, ${input.nowIso})
+              ELSE NULL
+            END,
+            updated_at = ${input.nowIso}
+        FROM sarah_realtime_voice_sessions AS session
+        WHERE binding.session_ref = ${input.sessionRef}
+          AND binding.generation = ${input.generation}
+          AND session.session_ref = binding.session_ref
+          AND session.state IN ('settled', 'released')
+          AND session.settlement_receipt_ref IS NOT NULL
+          AND (
+            binding.state IN ('cleanup_ready', 'cleanup_failed')
+            OR (${input.state} = 'cleaned' AND binding.state = 'cleaned')
+          )
+        RETURNING binding.session_ref
+      `) as ReadonlyArray<{ session_ref: string }>;
+      if (first(rows) === undefined) {
+        throw new SarahVoiceSessionRejectedError(
+          "LiveKit cleanup is not eligible before terminal accounting",
+        );
+      }
+    } catch (error) {
+      if (error instanceof SarahVoiceSessionRejectedError) throw error;
+      throw new SarahVoiceStorageError("Sarah LiveKit cleanup update failed", error);
+    }
+  };
+
+  const revokeLiveKitRoom = async (
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+      reason: string;
+      nowIso: string;
+    }>,
+  ): Promise<SarahVoiceSessionRecord> => {
+    try {
+      return await sql.begin(async (tx) => {
+        const rows = (await tx`
+          SELECT session_ref
+          FROM sarah_livekit_room_bindings
+          WHERE session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+            AND state IN (
+              'prepared',
+              'active',
+              'cleanup_ready',
+              'cleanup_failed',
+              'cleaned'
+            )
+          FOR UPDATE
+        `) as ReadonlyArray<{ session_ref: string }>;
+        if (first(rows) === undefined) {
+          throw new SarahVoiceSessionRejectedError("The LiveKit room generation is not active");
+        }
+        return settleInTransaction(tx, {
+          sessionRef: input.sessionRef,
+          closeReason: input.reason,
+          nowIso: input.nowIso,
+        });
+      });
+    } catch (error) {
+      if (error instanceof SarahVoiceSessionRejectedError) throw error;
+      throw new SarahVoiceStorageError("Sarah LiveKit room revocation failed", error);
+    }
+  };
+
+  const settleLiveKitProvisioningIntent = async (
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+      closeReason: string;
+      nowIso: string;
+    }>,
+  ): Promise<SarahVoiceSessionRecord> => {
+    try {
+      return await sql.begin(async (tx) => {
+        const intents = (await tx`
+          SELECT session_ref
+          FROM sarah_livekit_provisioning_intents
+          WHERE session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+            AND state IN (
+              'pending',
+              'reconciling',
+              'cleanup_failed',
+              'cleaned'
+            )
+          FOR UPDATE
+        `) as ReadonlyArray<{ session_ref: string }>;
+        if (first(intents) === undefined) {
+          throw new SarahVoiceSessionRejectedError(
+            "The LiveKit provisioning generation does not exist",
+          );
+        }
+        return settleInTransaction(tx, {
+          sessionRef: input.sessionRef,
+          closeReason: input.closeReason,
+          nowIso: input.nowIso,
+        });
+      });
+    } catch (error) {
+      if (error instanceof SarahVoiceSessionRejectedError) throw error;
+      throw new SarahVoiceStorageError("Sarah LiveKit provisioning settlement failed", error);
+    }
+  };
+
   const recordUsage = async (
     input: Readonly<{
       sessionRef: string;
+      generation: number;
       usage: SarahVoiceUsage;
     }>,
   ): Promise<
@@ -625,6 +1203,26 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
   > => {
     try {
       return await sql.begin(async (tx) => {
+        const sessions = (await tx`
+          SELECT generation, state
+          FROM sarah_realtime_voice_sessions
+          WHERE session_ref = ${input.sessionRef}
+          FOR UPDATE
+        `) as ReadonlyArray<{
+          generation: number | string;
+          state: SarahVoiceSessionState;
+        }>;
+        const session = first(sessions);
+        if (
+          session === undefined ||
+          toSafeInteger(session.generation, "generation") !== input.generation ||
+          session.state !== "connected"
+        ) {
+          throw new SarahVoiceSessionRejectedError(
+            "The provider usage does not match the active Sarah voice generation",
+          );
+        }
+
         const inserted = (await tx`
           INSERT INTO sarah_realtime_voice_usage (
             session_ref, provider_response_ref, input_tokens, output_tokens,
@@ -641,7 +1239,42 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           RETURNING session_ref
         `) as ReadonlyArray<{ session_ref: string }>;
 
-        if (first(inserted) !== undefined) {
+        if (first(inserted) === undefined) {
+          const replayed = (await tx`
+            SELECT input_tokens, output_tokens, cached_input_tokens,
+              audio_input_tokens, audio_output_tokens, charge_msat, observed_at
+            FROM sarah_realtime_voice_usage
+            WHERE session_ref = ${input.sessionRef}
+              AND provider_response_ref = ${input.usage.providerResponseRef}
+            FOR SHARE
+          `) as ReadonlyArray<{
+            input_tokens: number | string;
+            output_tokens: number | string;
+            cached_input_tokens: number | string;
+            audio_input_tokens: number | string;
+            audio_output_tokens: number | string;
+            charge_msat: number | string;
+            observed_at: string;
+          }>;
+          const replay = first(replayed);
+          if (
+            replay === undefined ||
+            toSafeInteger(replay.input_tokens, "input_tokens") !== input.usage.inputTokens ||
+            toSafeInteger(replay.output_tokens, "output_tokens") !== input.usage.outputTokens ||
+            toSafeInteger(replay.cached_input_tokens, "cached_input_tokens") !==
+              input.usage.cachedInputTokens ||
+            toSafeInteger(replay.audio_input_tokens, "audio_input_tokens") !==
+              input.usage.audioInputTokens ||
+            toSafeInteger(replay.audio_output_tokens, "audio_output_tokens") !==
+              input.usage.audioOutputTokens ||
+            toSafeInteger(replay.charge_msat, "charge_msat") !== input.usage.chargeMsat ||
+            replay.observed_at !== input.usage.observedAt
+          ) {
+            throw new SarahVoiceSessionRejectedError(
+              "The provider response reference was replayed with changed usage",
+            );
+          }
+        } else {
           await tx`
             UPDATE sarah_realtime_voice_sessions
             SET input_tokens = input_tokens + ${input.usage.inputTokens},
@@ -661,6 +1294,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
                 END,
                 updated_at = ${input.usage.observedAt}
             WHERE session_ref = ${input.sessionRef}
+              AND generation = ${input.generation}
               AND state = 'connected'
           `;
         }
@@ -703,7 +1337,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
   ): Promise<SarahVoiceSessionRecord> => {
     const rows = (await tx`
       SELECT session_ref, owner_user_id, owner_actor_ref, device_ref,
-        thread_ref, generation, disclosure_ref, client_profile, credit_mode,
+        thread_ref, generation, disclosure_ref, client_profile,
+        transport_kind, credit_mode,
         entitlement_ref, admission_cohort_ref, state, reserved_msat,
         charged_msat, ticket_expires_at, session_expires_at,
         settlement_receipt_ref
@@ -788,7 +1423,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           updated_at = ${input.nowIso}
       WHERE session_ref = ${current.sessionRef}
       RETURNING session_ref, owner_user_id, owner_actor_ref, device_ref,
-        thread_ref, generation, disclosure_ref, client_profile, credit_mode,
+        thread_ref, generation, disclosure_ref, client_profile,
+        transport_kind, credit_mode,
         entitlement_ref, admission_cohort_ref, state, reserved_msat,
         charged_msat, ticket_expires_at, session_expires_at,
         settlement_receipt_ref
@@ -797,6 +1433,13 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     if (settled === undefined) {
       throw new SarahVoiceStorageError("The settlement did not return a row", null);
     }
+    await tx`
+      UPDATE sarah_livekit_room_bindings
+      SET state = 'cleanup_ready',
+          updated_at = ${input.nowIso}
+      WHERE session_ref = ${current.sessionRef}
+        AND state IN ('prepared', 'active', 'cleanup_failed')
+    `;
     return toRecord(settled);
   };
 
@@ -942,17 +1585,26 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
   };
 
   return {
+    bindLiveKitRoom,
     connect,
     ensureStagingOwnerEntitlement,
     issueAdmission,
+    markLiveKitCleanup,
+    markLiveKitProvisioningIntent,
+    prepareLiveKitProvisioningIntent,
     readActiveAlphaMembership,
     readActiveStagingOwnerEntitlement,
+    readLiveKitCleanup,
+    claimLiveKitProvisioningIntents,
     readSettlement,
     readSpendableCredit,
+    recordLiveKitParticipantJoin,
     recordUsage,
     reserve,
     revokeAlphaCohort,
+    revokeLiveKitRoom,
     settle,
+    settleLiveKitProvisioningIntent,
     sweepExpired,
   } as const;
 };

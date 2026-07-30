@@ -1,24 +1,17 @@
 import { Schema as S } from "effect";
 import { VoiceIdentitySchema } from "./voice-identity.js";
 
-export const SARAH_VOICE_PROTOCOL_VERSION =
-  "openagents.sarah.voice.v1" as const;
-export const SARAH_VOICE_SESSION_PATH =
-  "/api/omega/sarah/voice/session" as const;
-export const SARAH_VOICE_ADMISSION_PATH =
-  "/api/omega/sarah/voice/admission" as const;
-export const SARAH_VOICE_SETTLEMENT_PATH =
-  "/api/omega/sarah/voice/settlement" as const;
+export const SARAH_VOICE_PROTOCOL_VERSION = "openagents.sarah.voice.v1" as const;
+export const SARAH_VOICE_SESSION_PATH = "/api/omega/sarah/voice/session" as const;
+export const SARAH_VOICE_ADMISSION_PATH = "/api/omega/sarah/voice/admission" as const;
+export const SARAH_VOICE_SETTLEMENT_PATH = "/api/omega/sarah/voice/settlement" as const;
 export const SARAH_VOICE_COHORT_REVOCATION_PATH =
   "/api/operator/omega/sarah/voice/cohort/revoke" as const;
-export const SARAH_VOICE_CONNECT_PATH =
-  "/api/omega/sarah/voice/connect" as const;
-export const SARAH_VOICE_NOSTR_CHALLENGE_PATH =
-  "/api/omega/sarah/voice/auth/challenge" as const;
+export const SARAH_VOICE_CONNECT_PATH = "/api/omega/sarah/voice/connect" as const;
+export const SARAH_VOICE_NOSTR_CHALLENGE_PATH = "/api/omega/sarah/voice/auth/challenge" as const;
 export const OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PATH =
   "/api/omega/auth/nostr-device-link/challenge" as const;
-export const OMEGA_NOSTR_DEVICE_LINK_PATH =
-  "/api/omega/auth/nostr-device-link" as const;
+export const OMEGA_NOSTR_DEVICE_LINK_PATH = "/api/omega/auth/nostr-device-link" as const;
 export const SARAH_VOICE_MODEL = "gpt-realtime-2.1" as const;
 export const SARAH_VOICE_NOSTR_AUTH_METHOD = "nostr_nip98" as const;
 export const SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION =
@@ -38,6 +31,7 @@ export const SARAH_VOICE_CLIENT_PROFILES = [
   "mobile_voice_only",
   "mobile_command_center",
 ] as const;
+export const SARAH_VOICE_TRANSPORTS = ["custom_wss_v1", "livekit_room_v1"] as const;
 export const SARAH_VOICE_CAPABILITIES = [
   "context_read",
   "reveal_range",
@@ -45,18 +39,13 @@ export const SARAH_VOICE_CAPABILITIES = [
   "save_document",
   "start_agent_thread",
 ] as const;
-export const SARAH_VOICE_ALPHA_COHORT_REF =
-  "sarah_voice_cohort:alpha_v1" as const;
-export const SARAH_VOICE_STAGING_OWNER_COHORT_REF =
-  "sarah_voice_cohort:staging_owner_v1" as const;
+export const SARAH_VOICE_ALPHA_COHORT_REF = "sarah_voice_cohort:alpha_v1" as const;
+export const SARAH_VOICE_STAGING_OWNER_COHORT_REF = "sarah_voice_cohort:staging_owner_v1" as const;
 
 const Ref = S.Trim.check(S.isMinLength(1), S.isMaxLength(256));
 const Text = S.String.check(S.isMaxLength(16_384));
 const SmallText = S.String.check(S.isMaxLength(2_048));
-const Seq = S.Int.check(
-  S.isGreaterThanOrEqualTo(0),
-  S.isLessThanOrEqualTo(9_007_199_254_740_991),
-);
+const Seq = S.Int.check(S.isGreaterThanOrEqualTo(0), S.isLessThanOrEqualTo(9_007_199_254_740_991));
 
 export const SarahVoiceSessionRequestSchema = S.Struct({
   schema: S.Literal(SARAH_VOICE_PROTOCOL_VERSION),
@@ -64,6 +53,19 @@ export const SarahVoiceSessionRequestSchema = S.Struct({
   disclosureRef: Ref,
   clientProfile: S.optional(S.Literals(SARAH_VOICE_CLIENT_PROFILES)),
   admissionRef: S.optional(Ref),
+  requestedTransport: S.optional(S.Literals(SARAH_VOICE_TRANSPORTS)),
+  roomContext: S.optional(
+    S.Union([
+      S.Struct({
+        kind: S.Literal("private"),
+      }),
+      S.Struct({
+        kind: S.Literal("community"),
+        communityRef: Ref,
+        channelRef: Ref,
+      }),
+    ]),
+  ),
   auth: S.optional(
     S.Struct({
       method: S.Literal(SARAH_VOICE_NOSTR_AUTH_METHOD),
@@ -71,14 +73,24 @@ export const SarahVoiceSessionRequestSchema = S.Struct({
     }),
   ),
 });
-export type SarahVoiceSessionRequest =
-  typeof SarahVoiceSessionRequestSchema.Type;
+export type SarahVoiceSessionRequest = typeof SarahVoiceSessionRequestSchema.Type;
 
 export const SarahVoiceAdmissionRequestSchema = S.Struct({
   schema: S.Literal(SARAH_VOICE_ADMISSION_PROTOCOL_VERSION),
   identity: VoiceIdentitySchema,
   disclosureRef: Ref,
   clientProfile: S.optional(S.Literals(SARAH_VOICE_CLIENT_PROFILES)),
+  requestedTransport: S.optional(S.Literals(SARAH_VOICE_TRANSPORTS)),
+  roomContext: S.optional(
+    S.Union([
+      S.Struct({ kind: S.Literal("private") }),
+      S.Struct({
+        kind: S.Literal("community"),
+        communityRef: Ref,
+        channelRef: Ref,
+      }),
+    ]),
+  ),
   auth: S.optional(
     S.Struct({
       method: S.Literal(SARAH_VOICE_NOSTR_AUTH_METHOD),
@@ -86,8 +98,7 @@ export const SarahVoiceAdmissionRequestSchema = S.Struct({
     }),
   ),
 });
-export type SarahVoiceAdmissionRequest =
-  typeof SarahVoiceAdmissionRequestSchema.Type;
+export type SarahVoiceAdmissionRequest = typeof SarahVoiceAdmissionRequestSchema.Type;
 
 const SarahVoiceCapabilityBoundarySchema = S.Struct({
   commands: S.Array(S.Literals(SARAH_VOICE_CAPABILITIES)),
@@ -111,31 +122,20 @@ export const SarahVoiceAdmissionResponseSchema = S.Struct({
   creditRateMsatPerMillionTokens: Seq,
   requiredHoldMsat: Seq,
   spendableRemainingCreditMsat: S.NullOr(Seq),
-  maxDurationSeconds: S.Int.check(
-    S.isGreaterThanOrEqualTo(1),
-    S.isLessThanOrEqualTo(3_600),
-  ),
+  maxDurationSeconds: S.Int.check(S.isGreaterThanOrEqualTo(1), S.isLessThanOrEqualTo(3_600)),
   capabilityBoundary: SarahVoiceCapabilityBoundarySchema,
   admissionRef: S.optional(Ref),
   admissionExpiresAtMs: S.optional(Seq),
-  refusalReason: S.optional(
-    S.Literals(["cohort_inactive", "insufficient_credit"]),
-  ),
+  refusalReason: S.optional(S.Literals(["cohort_inactive", "insufficient_credit"])),
   auth: S.optional(
     S.Struct({
       method: S.Literal(SARAH_VOICE_NOSTR_AUTH_METHOD),
-      accessToken: S.String.check(
-        S.isPattern(/^oa_omega_[A-Za-z0-9_-]{32,256}$/u),
-      ),
-      expiresIn: S.Int.check(
-        S.isGreaterThanOrEqualTo(1),
-        S.isLessThanOrEqualTo(3_600),
-      ),
+      accessToken: S.String.check(S.isPattern(/^oa_omega_[A-Za-z0-9_-]{32,256}$/u)),
+      expiresIn: S.Int.check(S.isGreaterThanOrEqualTo(1), S.isLessThanOrEqualTo(3_600)),
     }),
   ),
 });
-export type SarahVoiceAdmissionResponse =
-  typeof SarahVoiceAdmissionResponseSchema.Type;
+export type SarahVoiceAdmissionResponse = typeof SarahVoiceAdmissionResponseSchema.Type;
 
 export const SarahVoiceSettlementResponseSchema = S.Struct({
   schema: S.Literal(SARAH_VOICE_SETTLEMENT_PROTOCOL_VERSION),
@@ -146,16 +146,14 @@ export const SarahVoiceSettlementResponseSchema = S.Struct({
   spendableRemainingCreditMsat: S.NullOr(Seq),
   receiptRef: Ref,
 });
-export type SarahVoiceSettlementResponse =
-  typeof SarahVoiceSettlementResponseSchema.Type;
+export type SarahVoiceSettlementResponse = typeof SarahVoiceSettlementResponseSchema.Type;
 
 export const SarahVoiceCohortRevocationRequestSchema = S.Struct({
   schema: S.Literal(SARAH_VOICE_COHORT_REVOCATION_PROTOCOL_VERSION),
   cohortRef: S.Literal(SARAH_VOICE_ALPHA_COHORT_REF),
   reason: S.Trim.check(S.isMinLength(1), S.isMaxLength(256)),
 });
-export type SarahVoiceCohortRevocationRequest =
-  typeof SarahVoiceCohortRevocationRequestSchema.Type;
+export type SarahVoiceCohortRevocationRequest = typeof SarahVoiceCohortRevocationRequestSchema.Type;
 
 export const SarahVoiceCohortRevocationResponseSchema = S.Struct({
   schema: S.Literal(SARAH_VOICE_COHORT_REVOCATION_PROTOCOL_VERSION),
@@ -171,8 +169,7 @@ export const SarahVoiceNostrChallengeRequestSchema = S.Struct({
   deviceRef: Ref,
   pubkey: S.String.check(S.isPattern(/^[0-9A-Fa-f]{64}$/u)),
 });
-export type SarahVoiceNostrChallengeRequest =
-  typeof SarahVoiceNostrChallengeRequestSchema.Type;
+export type SarahVoiceNostrChallengeRequest = typeof SarahVoiceNostrChallengeRequestSchema.Type;
 
 export const SarahVoiceNostrChallengeResponseSchema = S.Struct({
   schema: S.Literal(SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION),
@@ -180,8 +177,7 @@ export const SarahVoiceNostrChallengeResponseSchema = S.Struct({
   expiresAtMs: Seq,
   ownerRef: Ref,
 });
-export type SarahVoiceNostrChallengeResponse =
-  typeof SarahVoiceNostrChallengeResponseSchema.Type;
+export type SarahVoiceNostrChallengeResponse = typeof SarahVoiceNostrChallengeResponseSchema.Type;
 
 const NostrPubkey = S.String.check(S.isPattern(/^[0-9a-f]{64}$/u));
 const NostrChallenge = S.String.check(S.isPattern(/^[A-Za-z0-9_-]{32,256}$/u));
@@ -209,38 +205,60 @@ export const OmegaNostrDeviceLinkRequestSchema = S.Struct({
   ownerRef: Ref,
   deviceRef: Ref,
 });
-export type OmegaNostrDeviceLinkRequest =
-  typeof OmegaNostrDeviceLinkRequestSchema.Type;
+export type OmegaNostrDeviceLinkRequest = typeof OmegaNostrDeviceLinkRequestSchema.Type;
 
 export const OmegaNostrDeviceLinkResponseSchema = S.Struct({
   schema: S.Literal(OMEGA_NOSTR_DEVICE_LINK_PROTOCOL_VERSION),
   linked: S.Literal(true),
   ownerRef: Ref,
 });
-export type OmegaNostrDeviceLinkResponse =
-  typeof OmegaNostrDeviceLinkResponseSchema.Type;
+export type OmegaNostrDeviceLinkResponse = typeof OmegaNostrDeviceLinkResponseSchema.Type;
+
+const SarahVoiceTransportSchema = S.Union([
+  S.Struct({
+    kind: S.Literal("custom_wss_v1"),
+  }),
+  S.Struct({
+    kind: S.Literal("livekit_room_v1"),
+    livekitUrl: S.String.check(S.isMinLength(1), S.isMaxLength(2_048)),
+    roomRef: Ref,
+    roomEpoch: Seq,
+    participantRef: Ref,
+    participantGrant: S.String.check(S.isMinLength(1), S.isMaxLength(4_096)),
+    joinExpiresAtMs: Seq,
+    dispatchRef: Ref,
+    sarahPresenceLeaseRef: Ref,
+    permissions: S.Struct({
+      roomJoin: S.Literal(true),
+      canPublish: S.Boolean,
+      canSubscribe: S.Literal(true),
+      canPublishData: S.Literal(false),
+      canUpdateOwnMetadata: S.Literal(false),
+      canPublishSources: S.Tuple([S.Literal("microphone")]),
+      roomAdmin: S.Literal(false),
+      roomCreate: S.Literal(false),
+      roomList: S.Literal(false),
+    }),
+  }),
+]);
+export type SarahVoiceTransport = typeof SarahVoiceTransportSchema.Type;
 
 export const SarahVoiceSessionResponseSchema = S.Struct({
   schema: S.Literal(SARAH_VOICE_PROTOCOL_VERSION),
   sessionRef: Ref,
   model: S.Literal(SARAH_VOICE_MODEL),
+  transport: S.optional(SarahVoiceTransportSchema),
   gatewayUrl: S.String.check(S.isMaxLength(2_048)),
   ticket: S.String.check(S.isPattern(/^[A-Za-z0-9_-]{32,256}$/u)),
   ticketExpiresAtMs: Seq,
   sessionExpiresAtMs: Seq,
   reservedCreditMsat: Seq,
-  maxDurationSeconds: S.Int.check(
-    S.isGreaterThanOrEqualTo(1),
-    S.isLessThanOrEqualTo(3_600),
-  ),
+  maxDurationSeconds: S.Int.check(S.isGreaterThanOrEqualTo(1), S.isLessThanOrEqualTo(3_600)),
   clientProfile: S.Literals(SARAH_VOICE_CLIENT_PROFILES),
   admissionRef: S.optional(Ref),
   admissionExpiresAtMs: S.optional(Seq),
   admissionCohortRef: S.optional(
-    S.Literals([
-      SARAH_VOICE_ALPHA_COHORT_REF,
-      SARAH_VOICE_STAGING_OWNER_COHORT_REF,
-    ]),
+    S.Literals([SARAH_VOICE_ALPHA_COHORT_REF, SARAH_VOICE_STAGING_OWNER_COHORT_REF]),
   ),
   creditMode: S.optional(S.Literals(["metered", "staging_owner_entitlement"])),
   creditRateMsatPerMillionTokens: S.optional(Seq),
@@ -259,18 +277,12 @@ export const SarahVoiceSessionResponseSchema = S.Struct({
   auth: S.optional(
     S.Struct({
       method: S.Literal(SARAH_VOICE_NOSTR_AUTH_METHOD),
-      accessToken: S.String.check(
-        S.isPattern(/^oa_omega_[A-Za-z0-9_-]{32,256}$/u),
-      ),
-      expiresIn: S.Int.check(
-        S.isGreaterThanOrEqualTo(1),
-        S.isLessThanOrEqualTo(3_600),
-      ),
+      accessToken: S.String.check(S.isPattern(/^oa_omega_[A-Za-z0-9_-]{32,256}$/u)),
+      expiresIn: S.Int.check(S.isGreaterThanOrEqualTo(1), S.isLessThanOrEqualTo(3_600)),
     }),
   ),
 });
-export type SarahVoiceSessionResponse =
-  typeof SarahVoiceSessionResponseSchema.Type;
+export type SarahVoiceSessionResponse = typeof SarahVoiceSessionResponseSchema.Type;
 
 const EditorTargetSchema = S.Struct({
   workspaceRef: Ref,
