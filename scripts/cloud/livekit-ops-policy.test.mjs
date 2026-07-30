@@ -118,6 +118,18 @@ const addonLock = {
     version: LIVEKIT_OPS.certManagerVersion,
     chartSha256: LIVEKIT_OPS.certManagerChartDigest.slice("sha256:".length),
     resourceApiVersion: "cert-manager.io/v1",
+    images: {
+      controller:
+        "quay.io/jetstack/cert-manager-controller:v1.21.1@sha256:416a2d76870d996460e62bd7f521bf14fa017be9e3e904aab92163a331fcb61a",
+      cainjector:
+        "quay.io/jetstack/cert-manager-cainjector:v1.21.1@sha256:ccf6b919ec0500745a47a910118f834f9636d0aac1ff221245cd2557ed8c7c98",
+      webhook:
+        "quay.io/jetstack/cert-manager-webhook:v1.21.1@sha256:d8b3961b51c8c7320633f8208dc46bf88aa13804d0f7cbe48a096b2c523cee42",
+      acmeSolver:
+        "quay.io/jetstack/cert-manager-acmesolver:v1.21.1@sha256:dbc7cc1354f603918e7c5af7f55a0a620537394452c93a565bde75c6f48e8837",
+      startupApiCheck:
+        "quay.io/jetstack/cert-manager-startupapicheck:v1.21.1@sha256:d8ab6416e6e7303a86fa0a8daa82c94a8001f21c9d78eb2e7db20534e5d07ae8",
+    },
   },
   externalSecrets: {
     repository: "https://charts.external-secrets.io",
@@ -125,11 +137,13 @@ const addonLock = {
     version: LIVEKIT_OPS.externalSecretsVersion,
     chartSha256: LIVEKIT_OPS.externalSecretsChartDigest.slice("sha256:".length),
     resourceApiVersion: "external-secrets.io/v1",
+    image:
+      "ghcr.io/external-secrets/external-secrets:v2.8.0@sha256:24c0dd3699e0988520afd2218612758cd97d1f702757b5b4fcf89adaa33ef679",
   },
   managedPrometheus: {
     delivery: "gke-managed-collection",
     resourceApiVersion: "monitoring.googleapis.com/v1",
-    binaryVersionAuthority: "pinned-gke-cluster-version",
+    binaryVersionAuthority: "gke-stable-release-channel",
   },
 };
 
@@ -207,6 +221,17 @@ test("addon lock pins controllers, API versions, and chart archive digests", () 
         certManager: { ...addonLock.certManager, chartSha256: "0".repeat(64) },
       }),
     /cert-manager addon digest is not admitted/u,
+  );
+  assert.throws(
+    () =>
+      validateAddonLock({
+        ...addonLock,
+        certManager: {
+          ...addonLock.certManager,
+          images: { ...addonLock.certManager.images, controller: "tag-only:latest" },
+        },
+      }),
+    /controller image is not digest-pinned/u,
   );
   assert.throws(
     () =>

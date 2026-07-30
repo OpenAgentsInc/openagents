@@ -19,10 +19,11 @@ The bundle has three authority boundaries:
 
 `pins.lock.json` pins the audited LiveKit Helm source archive and the exact
 multi-platform server image index. `addons.lock.json` pins the cert-manager and
-External Secrets charts expected by the resources in this bundle. Google
+External Secrets chart archives and every controller, webhook, solver, and
+startup image expected by the resources in this bundle. Google
 Managed Service for Prometheus is a GKE-managed add-on; its `v1` resource API
-is pinned here, while the cluster's exact GKE version owns the collector
-binary.
+is pinned here, while the cluster's STABLE release channel owns the collector
+binary version.
 
 `bundle.json.sourceBaseRevision` records the repository revision this source
 was designed against. It is not the deployment revision and cannot

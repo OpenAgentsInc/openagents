@@ -2506,8 +2506,9 @@ GKE, Redis, addresses, identities, observability, and empty secret containers.
 Only after exact structured secret schemas, Sarah's existing production
 OpenAI key, and separate DNS-only address bindings pass may the runtime start.
 The runner then requires Helm 3, verifies the pinned cert-manager `v1.21.1` and
-External Secrets `2.8.0` chart archive digests, schedules every controller on
-the application pool, and waits for controllers and CRDs before applying their
+External Secrets `2.8.0` chart archive digests plus every controller, webhook,
+solver, and startup OCI image digest, schedules every controller on the
+application pool, and waits for controllers and CRDs before applying their
 custom resources. [source]
 
 The bundle's `sourceBaseRevision` is the reviewed contract base, not a

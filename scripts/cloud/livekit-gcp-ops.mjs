@@ -123,8 +123,17 @@ const parseArgs = (args) => {
     throw new Error("--operation is missing or unsupported");
   }
   if (!parsed.bundle) throw new Error("--bundle is required");
-  if (parsed.apply && parsed.operation !== "validate-source" && !parsed.receipt) {
+  const planOperation = parsed.operation === "canary-plan" || parsed.operation === "production-plan";
+  if (
+    parsed.apply &&
+    parsed.operation !== "validate-source" &&
+    !planOperation &&
+    !parsed.receipt
+  ) {
     throw new Error("a live operation requires --receipt");
+  }
+  if (planOperation && parsed.receipt) {
+    throw new Error("plan operations cannot write deployment receipts");
   }
   if (!parsed.apply && parsed.receipt) {
     throw new Error("--receipt is accepted only with --apply");
@@ -194,7 +203,7 @@ const validateRenderedManifest = (path, expectedDigest) => {
   const text = bytes.toString("utf8");
   const forbidden = [
     /\bstringData\s*:/u,
-    /^\s*data\s*:\s*$/mu,
+    /^kind:\s*Secret\s*$/mu,
     /-----BEGIN [A-Z ]*PRIVATE KEY-----/u,
     /(?:sk|sess|pat|ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_-]{12,}/u,
     /\b(?:OPENAI_API_KEY|LIVEKIT_API_SECRET|REDIS_PASSWORD)\s*:\s*[^$<{]/u,
@@ -531,6 +540,7 @@ const executeCommands = (commands, environment) => {
 const captureCommand = (bin, args, label) => {
   const result = spawnSync(bin, args, {
     encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (result.status !== 0) {
@@ -544,6 +554,7 @@ const captureCommandWithEnvironment = (bin, args, label, environment) => {
   const result = spawnSync(bin, args, {
     encoding: "utf8",
     env: environment,
+    maxBuffer: 64 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (result.status !== 0) {
@@ -1137,6 +1148,110 @@ const validateDownloadedAddonCharts = (addonLock, temporaryDirectory) => {
   }
 };
 
+const imageDigest = (reference) => {
+  const digest = reference.split("@").at(1);
+  if (!/^sha256:[0-9a-f]{64}$/u.test(digest ?? "")) {
+    throw new Error("addon image reference is not digest-pinned");
+  }
+  return digest;
+};
+
+const imageTagAndDigest = (reference) => {
+  const imageName = reference.split("/").at(-1) ?? "";
+  const value = imageName.slice(imageName.indexOf(":") + 1);
+  if (!/^v?[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$/u.test(value)) {
+    throw new Error("addon image tag and digest are invalid");
+  }
+  return value;
+};
+
+const certManagerImageArguments = (addonLock) => [
+  "--set-string",
+  `image.digest=${imageDigest(addonLock.certManager.images.controller)}`,
+  "--set-string",
+  `cainjector.image.digest=${imageDigest(addonLock.certManager.images.cainjector)}`,
+  "--set-string",
+  `webhook.image.digest=${imageDigest(addonLock.certManager.images.webhook)}`,
+  "--set-string",
+  `acmesolver.image.digest=${imageDigest(addonLock.certManager.images.acmeSolver)}`,
+  "--set-string",
+  `startupapicheck.image.digest=${imageDigest(addonLock.certManager.images.startupApiCheck)}`,
+];
+
+const externalSecretsImageArguments = (addonLock) => {
+  const tagAndDigest = imageTagAndDigest(addonLock.externalSecrets.image);
+  return [
+    "--set-string",
+    `image.tag=${tagAndDigest}`,
+    "--set-string",
+    `webhook.image.tag=${tagAndDigest}`,
+    "--set-string",
+    `certController.image.tag=${tagAndDigest}`,
+  ];
+};
+
+const validateRenderedAddonImages = (addonLock, temporaryDirectory) => {
+  const certManagerArchive = resolve(
+    temporaryDirectory,
+    `cert-manager-${addonLock.certManager.version}.tgz`,
+  );
+  const externalSecretsArchive = resolve(
+    temporaryDirectory,
+    `external-secrets-${addonLock.externalSecrets.version}.tgz`,
+  );
+  const certManagerManifest = captureCommand(
+    "helm",
+    [
+      "template",
+      "cert-manager",
+      certManagerArchive,
+      "--namespace",
+      "cert-manager",
+      "--set",
+      "crds.enabled=true",
+      ...certManagerImageArguments(addonLock),
+    ],
+    "render digest-pinned cert-manager addon",
+  );
+  const externalSecretsManifest = captureCommand(
+    "helm",
+    [
+      "template",
+      "external-secrets",
+      externalSecretsArchive,
+      "--namespace",
+      "external-secrets",
+      "--set",
+      "installCRDs=true",
+      ...externalSecretsImageArguments(addonLock),
+    ],
+    "render digest-pinned External Secrets addon",
+  );
+  const expectedImages = [
+    ...Object.values(addonLock.certManager.images).map((reference) =>
+      reference.replace(/:[^/:@]+@sha256:/u, "@sha256:"),
+    ),
+    addonLock.externalSecrets.image,
+  ];
+  const rendered = `${certManagerManifest}\n${externalSecretsManifest}`;
+  for (const image of expectedImages) {
+    if (!rendered.includes(image)) {
+      throw new Error(`addon render omitted pinned image ${image.split("@")[0]}`);
+    }
+  }
+  const mutableExecutionLines = rendered
+    .split("\n")
+    .filter(
+      (line) =>
+        /(?:image:|solver-image=).*(?:quay\.io\/jetstack|ghcr\.io\/external-secrets)/u.test(
+          line,
+        ) && !line.includes("@sha256:"),
+    );
+  if (mutableExecutionLines.length !== 0) {
+    throw new Error("addon render contains a mutable execution image");
+  }
+};
+
 const addonInstallCommands = (addonLock, temporaryDirectory) => {
   const certManagerArchive = resolve(
     temporaryDirectory,
@@ -1164,6 +1279,7 @@ const addonInstallCommands = (addonLock, temporaryDirectory) => {
       "crds.enabled=true",
       "--set-string",
       `${appPoolSelector}=oa-livekit-prod-app`,
+      ...certManagerImageArguments(addonLock),
     ]),
     command("kubectl", [
       "wait",
@@ -1201,6 +1317,7 @@ const addonInstallCommands = (addonLock, temporaryDirectory) => {
       `webhook.${externalSecretsSelector}=oa-livekit-prod-app`,
       "--set-string",
       `certController.${externalSecretsSelector}=oa-livekit-prod-app`,
+      ...externalSecretsImageArguments(addonLock),
     ]),
     command("kubectl", [
       "wait",
@@ -1225,6 +1342,13 @@ const addonInstallCommands = (addonLock, temporaryDirectory) => {
 const addonResourceRefs = (addonLock) => [
   `helm-chart-ref://cert-manager/${addonLock.certManager.version}/sha256/${addonLock.certManager.chartSha256}`,
   `helm-chart-ref://external-secrets/${addonLock.externalSecrets.version}/sha256/${addonLock.externalSecrets.chartSha256}`,
+  ...Object.entries(addonLock.certManager.images).map(
+    ([name, reference]) =>
+      `oci-image-ref://cert-manager/${name}/sha256/${imageDigest(reference).slice("sha256:".length)}`,
+  ),
+  `oci-image-ref://external-secrets/controller/sha256/${imageDigest(
+    addonLock.externalSecrets.image,
+  ).slice("sha256:".length)}`,
 ];
 
 const printPlan = (operation, bundle, commands, extra = {}) => {
@@ -1426,7 +1550,11 @@ const run = () => {
         if (process.env.OA_LIVEKIT_OWNER_GATE !== OWNER_GATE) {
           throw new Error(`--apply requires OA_LIVEKIT_OWNER_GATE=${OWNER_GATE}`);
         }
+        validateHelm3();
         renderProduction(bundle, temporaryDirectory, true);
+        executeCommands(addonDownloadCommands(addonLock, temporaryDirectory), process.env);
+        validateDownloadedAddonCharts(addonLock, temporaryDirectory);
+        validateRenderedAddonImages(addonLock, temporaryDirectory);
       }
       process.stdout.write(
         `${JSON.stringify({
@@ -1612,9 +1740,24 @@ const run = () => {
       );
       executeCommands(commands.slice(firstPullIndex, firstPullIndex + 2), kubectlEnv(kubeconfig));
       validateDownloadedAddonCharts(addonLock, temporaryDirectory);
+      validateRenderedAddonImages(addonLock, temporaryDirectory);
       executeCommands(commands.slice(firstPullIndex + 2), kubectlEnv(kubeconfig));
     } else {
       executeCommands(commands, kubectlEnv(kubeconfig));
+    }
+
+    if (args.operation === "canary-plan" || args.operation === "production-plan") {
+      process.stdout.write(
+        `${JSON.stringify({
+          operation: args.operation,
+          outcome: "planned",
+          bundleDigest: sha256(JSON.stringify(bundle)),
+          liveStateRead: true,
+          mutationExecuted: false,
+          liveProof: false,
+        })}\n`,
+      );
+      return;
     }
 
     if (args.operation === "canary-apply") verifyCanary();

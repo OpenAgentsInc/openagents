@@ -34,6 +34,20 @@ const SECRETISH_KEY =
   /(authorization|cookie|credential|private.?key|secret.?value|token|transcript|audio|prompt|email|ip.?address|endpoint|url)$/iu;
 const SECRETISH_VALUE =
   /(-----BEGIN [A-Z ]*PRIVATE KEY-----|(?:sk|sess|pat|ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_-]{12,}|bearer\s+[A-Za-z0-9._~+/=-]{12,}|wss?:\/\/|https?:\/\/|\b(?:\d{1,3}\.){3}\d{1,3}\b)/iu;
+const CERT_MANAGER_IMAGES = Object.freeze({
+  controller:
+    "quay.io/jetstack/cert-manager-controller:v1.21.1@sha256:416a2d76870d996460e62bd7f521bf14fa017be9e3e904aab92163a331fcb61a",
+  cainjector:
+    "quay.io/jetstack/cert-manager-cainjector:v1.21.1@sha256:ccf6b919ec0500745a47a910118f834f9636d0aac1ff221245cd2557ed8c7c98",
+  webhook:
+    "quay.io/jetstack/cert-manager-webhook:v1.21.1@sha256:d8b3961b51c8c7320633f8208dc46bf88aa13804d0f7cbe48a096b2c523cee42",
+  acmeSolver:
+    "quay.io/jetstack/cert-manager-acmesolver:v1.21.1@sha256:dbc7cc1354f603918e7c5af7f55a0a620537394452c93a565bde75c6f48e8837",
+  startupApiCheck:
+    "quay.io/jetstack/cert-manager-startupapicheck:v1.21.1@sha256:d8ab6416e6e7303a86fa0a8daa82c94a8001f21c9d78eb2e7db20534e5d07ae8",
+});
+const EXTERNAL_SECRETS_IMAGE =
+  "ghcr.io/external-secrets/external-secrets:v2.8.0@sha256:24c0dd3699e0988520afd2218612758cd97d1f702757b5b4fcf89adaa33ef679";
 
 const isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -381,7 +395,7 @@ export function validateAddonLock(value) {
   );
   assertExactKeys(
     value.certManager,
-    ["repository", "chart", "version", "chartSha256", "resourceApiVersion"],
+    ["repository", "chart", "version", "chartSha256", "resourceApiVersion", "images"],
     [],
     "addon lock certManager",
   );
@@ -397,10 +411,22 @@ export function validateAddonLock(value) {
     `sha256:${value.certManager.chartSha256}` === LIVEKIT_OPS.certManagerChartDigest,
     "cert-manager addon digest is not admitted",
   );
+  assertExactKeys(
+    value.certManager.images,
+    Object.keys(CERT_MANAGER_IMAGES),
+    [],
+    "addon lock certManager.images",
+  );
+  for (const [name, image] of Object.entries(CERT_MANAGER_IMAGES)) {
+    assert(
+      value.certManager.images[name] === image,
+      `cert-manager ${name} image is not digest-pinned`,
+    );
+  }
 
   assertExactKeys(
     value.externalSecrets,
-    ["repository", "chart", "version", "chartSha256", "resourceApiVersion"],
+    ["repository", "chart", "version", "chartSha256", "resourceApiVersion", "image"],
     [],
     "addon lock externalSecrets",
   );
@@ -416,6 +442,10 @@ export function validateAddonLock(value) {
     `sha256:${value.externalSecrets.chartSha256}` === LIVEKIT_OPS.externalSecretsChartDigest,
     "External Secrets addon digest is not admitted",
   );
+  assert(
+    value.externalSecrets.image === EXTERNAL_SECRETS_IMAGE,
+    "External Secrets image is not digest-pinned",
+  );
 
   assertExactKeys(
     value.managedPrometheus,
@@ -424,9 +454,9 @@ export function validateAddonLock(value) {
     "addon lock managedPrometheus",
   );
   assert(
-    value.managedPrometheus.delivery === "gke-managed-collection" &&
+      value.managedPrometheus.delivery === "gke-managed-collection" &&
       value.managedPrometheus.resourceApiVersion === "monitoring.googleapis.com/v1" &&
-      value.managedPrometheus.binaryVersionAuthority === "pinned-gke-cluster-version",
+      value.managedPrometheus.binaryVersionAuthority === "gke-stable-release-channel",
     "managed Prometheus addon authority is not admitted",
   );
   return value;

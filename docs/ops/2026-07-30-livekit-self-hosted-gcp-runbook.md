@@ -423,7 +423,8 @@ process memory and never printed or retained in the public receipt.
 
 Runtime apply requires Helm 3 and rejects Helm 4. It reads
 `infra/livekit/addons.lock.json`, downloads the exact chart archives, verifies
-their SHA-256 digests before installation, and installs:
+their SHA-256 digests, renders every execution image by immutable OCI digest,
+rejects tag-only output, and installs:
 
 | Addon            | Version   | Archive SHA-256                                                    | Namespace          |
 | ---------------- | --------- | ------------------------------------------------------------------ | ------------------ |
@@ -431,10 +432,12 @@ their SHA-256 digests before installation, and installs:
 | External Secrets | `2.8.0`   | `251e4615013c6d2f9ade5cedf1cd8615613f286bfc381e44fb005f197e611ecd` | `external-secrets` |
 
 CRD installation is explicit. Every addon component is selected onto
-`oa-livekit-prod-app`; the runner waits for the required CRDs to become
-Established and for all controller deployments to roll out before applying
-any `Certificate`, `ClusterIssuer`, `SecretStore`, or `ExternalSecret`.
-Receipts retain only opaque chart refs, versions, and archive digests.
+`oa-livekit-prod-app`; the lock includes the ACME solver and startup check
+because they execute outside the long-running Deployments. The runner waits
+for the required CRDs to become Established and for all controller deployments
+to roll out before applying any `Certificate`, `ClusterIssuer`, `SecretStore`,
+or `ExternalSecret`. Receipts retain only opaque chart and image refs,
+versions, and digests.
 
 The runner uses a temporary `KUBECONFIG`, validates the exact cluster, node
 pools, Redis tier, addresses, Kubernetes namespace, Workload Identity
