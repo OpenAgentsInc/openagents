@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import test from "node:test";
 import {
   LIVEKIT_OPS,
@@ -22,6 +24,62 @@ import {
 
 const digest = (character) => `sha256:${character.repeat(64)}`;
 const deployedRevision = "1".repeat(40);
+
+test("canary boot invokes Caddy, opens exact host ports, and grants only log-write IAM", () => {
+  const startup = readFileSync(
+    resolve(import.meta.dirname, "../../infra/modules/livekit-gce-canary/startup.sh.tftpl"),
+    "utf8",
+  );
+  const module = readFileSync(
+    resolve(import.meta.dirname, "../../infra/modules/livekit-gce-canary/main.tf"),
+    "utf8",
+  );
+
+  assert.ok(
+    startup.includes(
+      '"${reverse_proxy_image}" \\\n  caddy run --config /run/livekit/Caddyfile --adapter caddyfile',
+    ),
+  );
+  assert.ok(
+    !startup.includes('"${reverse_proxy_image}" \\\n  run --config /run/livekit/Caddyfile'),
+  );
+
+  for (const projection of [
+    "tcp_fallback_port         = var.tcp_fallback_port",
+    "turn_tls_port             = var.turn_tls_port",
+    "media_udp_port_start      = var.media_udp_port_range.start",
+    "media_udp_port_end        = var.media_udp_port_range.end",
+    "enable_turn_udp           = var.enable_turn_udp",
+    "turn_udp_port             = var.turn_udp_port",
+  ]) {
+    assert.ok(module.includes(projection));
+  }
+  assert.match(startup, /iptables --wait --check INPUT/u);
+  assert.match(startup, /iptables --wait --insert INPUT 1/u);
+  const hostFirewallRules = [...startup.matchAll(/^\s*allow_host_port (tcp|udp) "([^"]+)"$/gmu)].map(
+    (match) => `${match[1]}:${match[2]}`,
+  );
+  assert.deepEqual(hostFirewallRules, [
+    "tcp:443",
+    "tcp:${tcp_fallback_port}",
+    "tcp:${turn_tls_port}",
+    "udp:${media_udp_port_start}:${media_udp_port_end}",
+    "udp:${turn_udp_port}",
+  ]);
+  assert.ok(startup.includes("if ${enable_turn_udp}; then"));
+  assert.ok(!startup.includes('allow_host_port tcp "7880"'));
+
+  const bindingStart = module.indexOf('resource "google_project_iam_member" "canary_log_writer"');
+  assert.notEqual(bindingStart, -1);
+  const bindingEnd = module.indexOf("\n}\n", bindingStart);
+  assert.notEqual(bindingEnd, -1);
+  const binding = module.slice(bindingStart, bindingEnd);
+  assert.match(binding, /project = var\.project_id/u);
+  assert.match(binding, /role    = "roles\/logging\.logWriter"/u);
+  assert.match(binding, /member  = "serviceAccount:\$\{google_service_account\.canary\.email\}"/u);
+  assert.doesNotMatch(binding, /roles\/(?:editor|logging\.admin|owner)/u);
+  assert.match(module, /google_project_iam_member\.canary_log_writer,/u);
+});
 
 test("server key projection binds token minting and runtime authentication", () => {
   const apiKey = "API23456789ABCD";

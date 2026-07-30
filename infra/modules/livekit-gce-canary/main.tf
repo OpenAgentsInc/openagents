@@ -14,7 +14,13 @@ resource "google_service_account" "canary" {
   project      = var.project_id
   account_id   = local.service_account_id
   display_name = "${var.name} runtime"
-  description  = "Disposable LiveKit canary identity with access only to its secret containers."
+  description  = "Disposable LiveKit canary identity with secret-read and log-write access only."
+}
+
+resource "google_project_iam_member" "canary_log_writer" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.canary.email}"
 }
 
 resource "google_secret_manager_secret" "api_key" {
@@ -203,6 +209,12 @@ resource "google_compute_instance" "canary" {
     tls_certificate_secret_id = google_secret_manager_secret.tls_certificate.secret_id
     tls_private_key_secret_id = google_secret_manager_secret.tls_private_key.secret_id
     livekit_config_base64     = base64encode(var.livekit_config)
+    tcp_fallback_port         = var.tcp_fallback_port
+    turn_tls_port             = var.turn_tls_port
+    media_udp_port_start      = var.media_udp_port_range.start
+    media_udp_port_end        = var.media_udp_port_range.end
+    enable_turn_udp           = var.enable_turn_udp
+    turn_udp_port             = var.turn_udp_port
   })
 
   scheduling {
@@ -223,7 +235,10 @@ resource "google_compute_instance" "canary" {
     enable_vtpm                 = true
   }
 
-  depends_on = [google_secret_manager_secret_iam_member.canary]
+  depends_on = [
+    google_project_iam_member.canary_log_writer,
+    google_secret_manager_secret_iam_member.canary,
+  ]
 
   lifecycle {
     precondition {

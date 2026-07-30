@@ -199,12 +199,71 @@ requireIncludes(
   "livekit_config_base64     = base64encode(var.livekit_config)",
   "canary module configuration projection",
 );
+for (const projection of [
+  "tcp_fallback_port         = var.tcp_fallback_port",
+  "turn_tls_port             = var.turn_tls_port",
+  "media_udp_port_start      = var.media_udp_port_range.start",
+  "media_udp_port_end        = var.media_udp_port_range.end",
+  "enable_turn_udp           = var.enable_turn_udp",
+  "turn_udp_port             = var.turn_udp_port",
+]) {
+  requireIncludes(canaryModule, projection, "canary host firewall variable projection");
+}
+requireIncludes(
+  canaryModule,
+  'resource "google_project_iam_member" "canary_log_writer"',
+  "canary Cloud Logging IAM binding",
+);
+requireIncludes(
+  canaryModule,
+  'role    = "roles/logging.logWriter"',
+  "canary least-privilege log writer role",
+);
+requireIncludes(
+  canaryModule,
+  'member  = "serviceAccount:${google_service_account.canary.email}"',
+  "canary log writer identity",
+);
+requireIncludes(
+  canaryModule,
+  "google_project_iam_member.canary_log_writer,",
+  "canary VM log writer dependency",
+);
 requireIncludes(
   canaryStartup,
   "printf '%s' '${livekit_config_base64}' | base64 --decode",
   "canary launcher audited configuration use",
 );
 requireIncludes(canaryStartup, "--key-file /run/livekit/keys.yaml", "canary key-file use");
+for (const rule of [
+  'allow_host_port tcp "443"',
+  'allow_host_port tcp "${tcp_fallback_port}"',
+  'allow_host_port tcp "${turn_tls_port}"',
+  'allow_host_port udp "${media_udp_port_start}:${media_udp_port_end}"',
+  'allow_host_port udp "${turn_udp_port}"',
+]) {
+  requireIncludes(canaryStartup, rule, "canary host firewall rule");
+}
+requireIncludes(
+  canaryStartup,
+  "if ${enable_turn_udp}; then",
+  "canary conditional TURN UDP host firewall rule",
+);
+requireExcludes(
+  canaryStartup,
+  'allow_host_port tcp "7880"',
+  "canary internal signaling host firewall rule",
+);
+requireIncludes(
+  canaryStartup,
+  "caddy run --config /run/livekit/Caddyfile --adapter caddyfile",
+  "canary Caddy binary invocation",
+);
+requireExcludes(
+  canaryStartup,
+  '"${reverse_proxy_image}" \\\n  run --config /run/livekit/Caddyfile',
+  "canary Caddy image command override without executable",
+);
 requireExcludes(canaryStartup, 'cat >"$runtime_dir/livekit.yaml"', "synthesized canary configuration");
 requireIncludes(
   gkeInfrastructure,

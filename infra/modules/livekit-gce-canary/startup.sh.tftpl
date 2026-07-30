@@ -60,6 +60,30 @@ EOF
 chmod 0400 "$runtime_dir/Caddyfile"
 
 systemctl start docker
+
+allow_host_port() {
+  local protocol="$1"
+  local destination_port="$2"
+
+  if ! iptables --wait --check INPUT \
+    --protocol "$protocol" \
+    --destination-port "$destination_port" \
+    --jump ACCEPT; then
+    iptables --wait --insert INPUT 1 \
+      --protocol "$protocol" \
+      --destination-port "$destination_port" \
+      --jump ACCEPT
+  fi
+}
+
+allow_host_port tcp "443"
+allow_host_port tcp "${tcp_fallback_port}"
+allow_host_port tcp "${turn_tls_port}"
+allow_host_port udp "${media_udp_port_start}:${media_udp_port_end}"
+if ${enable_turn_udp}; then
+  allow_host_port udp "${turn_udp_port}"
+fi
+
 docker pull "${livekit_server_image}"
 docker pull "${reverse_proxy_image}"
 
@@ -88,4 +112,4 @@ docker run \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,size=32m \
   --volume "$runtime_dir:/run/livekit:ro" \
   "${reverse_proxy_image}" \
-  run --config /run/livekit/Caddyfile --adapter caddyfile
+  caddy run --config /run/livekit/Caddyfile --adapter caddyfile
