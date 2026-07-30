@@ -1,16 +1,18 @@
-# LiveKit in Armada, Buzz, and Zed — 2026-07-30
+# LiveKit across Armada, Buzz, Zed, and Sarah — 2026-07-30
 
 Commit-pinned, read-only synthesis of the LiveKit and realtime-media paths in
 the existing [Armada](./2026-07-30-armada-teardown.md),
 [Buzz](./2026-07-21-buzz-teardown.md), and
-[Zed](./2026-07-18-zed-teardown.md) teardowns. This review traced their source
+[Zed](./2026-07-18-zed-teardown.md) teardowns, extended with source tours of
+LiveKit's JavaScript Agents framework and Rust SDKs and a migration analysis
+for Sarah's current OpenAI Realtime voice path. This review traced the source
 trees more narrowly than the original product audits. It did not install
-dependencies, run the products, connect to a LiveKit service, join a Buzz
+dependencies, run the products, connect to LiveKit or OpenAI, join a Buzz
 huddle, or exercise media devices. [limitation]
 
 ## Summary
 
-These projects do not present three variations of the same integration:
+These systems do not present variations of the same integration:
 
 - **Armada embeds LiveKit as its cross-platform room-media product.** React
   owns the room lifecycle and UI. NIP-29 relays or a Concord blind broker mint
@@ -30,6 +32,21 @@ These projects do not present three variations of the same integration:
   TypeScript comment mentions a “Mic track from LiveKit”; no dependency,
   token endpoint, room, credential, SDK call, or deployment setting supports
   that comment.
+- **Sarah does not currently integrate LiveKit, but LiveKit Agents explicitly
+  supports its OpenAI Realtime model family.** Omega connects to an
+  OpenAgents-owned WebSocket gateway, and that gateway connects server-side to
+  OpenAI Realtime. A LiveKit design would put Omega in a room and add an
+  Agents worker that joins the room and opens its own server-side OpenAI
+  Realtime WebSocket. It is compatible, but it is an architectural migration,
+  not a URL or SDK substitution.
+
+The direct answer to the Sarah question is therefore **yes**:
+[LiveKit's OpenAI Realtime plugin](https://docs.livekit.io/agents/models/realtime/plugins/openai/)
+runs an OpenAI Realtime model inside an `AgentSession` in Node.js or Python.
+The plugin page answers provider compatibility. The source tours below answer
+the separate implementation question: `agents-js` supplies the worker and
+model bridge, while `rust-sdks` supplies native room/media transport and does
+not itself contain an OpenAI client or agent runtime. [source]
 
 ```text
 Armada
@@ -49,6 +66,16 @@ NIP-29 huddle events ── direct getUserMedia ── Tauri Opus pipeline
           │                                         │
           └── NIP-42 audio WebSocket ── buzz-relay ──┘
                       optional Redis/QUIC pod mesh; no LiveKit
+
+Sarah today
+Omega ── one-use ticket + OAA1 PCM/control WSS ── OpenAgents gateway
+                                                     │
+                                                     └── OpenAI Realtime WSS
+
+Sarah with LiveKit Agents
+Omega ── WebRTC room via rust-sdks ── LiveKit ── agents-js worker
+                                                   │
+                                                   └── OpenAI Realtime WSS
 ```
 
 The useful design comparison is therefore not “which LiveKit wrapper is
@@ -68,6 +95,9 @@ control tradeoff of owning the media transport instead of adopting an SFU.
 | Armada | [`soapbox-pub/armada@5b99f88d`](https://github.com/soapbox-pub/armada/tree/5b99f88d309052abc1eeb4f0b2ef437de086e709) | LiveKit JS room product across web, Electron, Android, and iOS | AGPL-3.0 client; Electron package metadata says MIT |
 | Buzz | [`block/buzz@be13b4bb`](https://github.com/block/buzz/tree/be13b4bb9ce228b21fa3682ce75d75cba5950561) | Custom Opus/WebSocket huddles; no LiveKit integration | Apache-2.0 |
 | Zed | [`zed-industries/zed@f032f4d4`](https://github.com/zed-industries/zed/tree/f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4) | Native LiveKit media plane below Zed collaboration control | GPL-3.0-or-later by default; marked components may differ |
+| LiveKit Agents JS | [`livekit/agents-js@d5d8d048`](https://github.com/livekit/agents-js/tree/d5d8d0487d2e99f49a1b56ab6b9e82b481491955) | Server-side agent worker, room I/O, voice orchestration, and OpenAI Realtime provider plugin | Apache-2.0 framework; bundled LiveKit model artifacts have separate terms |
+| LiveKit Rust SDKs | [`livekit/rust-sdks@00258d1e`](https://github.com/livekit/rust-sdks/tree/00258d1e52e563327f3ed75807ea03a189a5c2d2) | Native LiveKit room, media, data, E2EE, token, and server APIs; no agent runtime | Apache-2.0; preserve applicable bundled third-party notices |
+| Sarah | Omega [`0136fca2`](https://github.com/OpenAgentsInc/omega/tree/0136fca2d11900ddc7982665482ed8cd035391c7) and this OpenAgents snapshot | Custom authenticated PCM/control gateway to server-side OpenAI Realtime | Repository-specific; outside this SDK license comparison |
 
 The Armada and Zed identities match the exact source snapshots in their
 original teardowns. The Buzz comparison uses the later Forum follow-up commit
@@ -99,6 +129,10 @@ This review proves source shape, not deployed behavior. It does not prove:
 - Buzz audio quality, multi-pod behavior, or failure recovery on a live relay.
 - Zed's hosted collab or LiveKit Cloud configuration, production availability,
   or current upstream behavior beyond the pinned commit.
+- LiveKit Agents interoperability with Sarah's exact command, accounting,
+  transcript, reconnect, and audio-processing contracts.
+- LiveKit Rust SDK packaged size, device behavior, WebRTC APM interaction, or
+  end-to-end latency in Omega.
 - cryptographic security, traffic-analysis resistance, platform permission
   behavior, or end-to-end call quality for any project.
 
@@ -613,19 +647,360 @@ separately admitted product and assurance contract chooses a media path and
 proves it in the packaged application. Inert LiveKit configuration is not a
 roadmap commitment. [inferred]
 
-## 8. Central finding
+## 8. LiveKit SDK tours
+
+### 8.1 `agents-js`: the server-side agent and model bridge
+
+[`livekit/agents-js`](https://github.com/livekit/agents-js/tree/d5d8d0487d2e99f49a1b56ab6b9e82b481491955)
+is a pnpm/Turbo monorepo centered on `@livekit/agents`. It is not a browser
+room SDK. It runs programmable server-side participants and combines room
+I/O, jobs, voice sessions, tools, telemetry, and provider plugins. The audited
+tree has 38 provider, avatar, and VAD plugin packages, 63 TypeScript examples,
+and 178 TypeScript test files. [source]
+
+The important lifecycle is:
+
+1. `AgentServer` authenticates to LiveKit with `LIVEKIT_URL`,
+   `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET`, registers agent capabilities,
+   receives job availability and assignment messages, and launches accepted
+   work in its process pool.
+2. `JobContext.connect()` joins the assigned LiveKit room through
+   `@livekit/rtc-node`, with selective subscription and optional E2EE.
+3. `AgentSession` composes VAD, STT, LLM or realtime model, TTS, chat, tools,
+   user state, room I/O, and telemetry.
+4. `RoomIO` selects and subscribes to the user participant, reads room audio,
+   and publishes the agent microphone track and transcriptions back into the
+   room.
+
+Primary paths:
+
+- [`agents/src/worker.ts`](https://github.com/livekit/agents-js/blob/d5d8d0487d2e99f49a1b56ab6b9e82b481491955/agents/src/worker.ts)
+- [`agents/src/job.ts`](https://github.com/livekit/agents-js/blob/d5d8d0487d2e99f49a1b56ab6b9e82b481491955/agents/src/job.ts)
+- [`agents/src/voice/agent_session.ts`](https://github.com/livekit/agents-js/blob/d5d8d0487d2e99f49a1b56ab6b9e82b481491955/agents/src/voice/agent_session.ts)
+- [`agents/src/voice/room_io/room_io.ts`](https://github.com/livekit/agents-js/blob/d5d8d0487d2e99f49a1b56ab6b9e82b481491955/agents/src/voice/room_io/room_io.ts)
+
+The framework supplies production concerns that Sarah's custom bridge would
+otherwise continue to own: worker registration and dispatch, draining,
+participant subscription, interruptions and turn strategies, handoffs,
+transcriptions, metrics, OpenTelemetry hooks, reconnection, and provider
+portability. That value comes with a separate worker deployment and a second
+authenticated realtime leg for every conversation. [source] [inferred]
+
+### 8.2 The OpenAI Realtime plugin answers the compatibility question
+
+The official
+[OpenAI Realtime plugin page](https://docs.livekit.io/agents/models/realtime/plugins/openai/)
+is directly dispositive. In Node.js, `@livekit/agents-plugin-openai` exposes
+`openai.realtime.RealtimeModel`, which can be passed as the `llm` in a
+`voice.AgentSession`. It reads a server-side `OPENAI_API_KEY`, supports text
+and audio modalities, exposes semantic and server VAD settings, and allows
+the model and voice to be configured. Python has the equivalent integration.
+[source]
+
+The source shows the exact topology. The agent consumes 24 kHz mono room audio,
+resamples and chunks frames as needed, encodes them as OpenAI
+`input_audio_buffer.append` events, and opens a server-side `ws` WebSocket
+directly to OpenAI. It streams text, audio, transcript, speech-boundary,
+generation, and function-call events through LiveKit's realtime model
+contract. Local agent tools are converted to OpenAI function definitions and
+their results are returned to the provider. LiveKit is not proxying the
+inference call and the client is not connecting to OpenAI WebRTC. [source]
+
+Primary paths and examples:
+
+- [`plugins/openai/src/realtime/realtime_model.ts`](https://github.com/livekit/agents-js/blob/d5d8d0487d2e99f49a1b56ab6b9e82b481491955/plugins/openai/src/realtime/realtime_model.ts)
+- [`plugins/openai/src/realtime/api_proto.ts`](https://github.com/livekit/agents-js/blob/d5d8d0487d2e99f49a1b56ab6b9e82b481491955/plugins/openai/src/realtime/api_proto.ts)
+- [`agents/src/llm/realtime.ts`](https://github.com/livekit/agents-js/blob/d5d8d0487d2e99f49a1b56ab6b9e82b481491955/agents/src/llm/realtime.ts)
+- [`examples/src/realtime_agent.ts`](https://github.com/livekit/agents-js/blob/d5d8d0487d2e99f49a1b56ab6b9e82b481491955/examples/src/realtime_agent.ts)
+- [`examples/src/realtime_with_tts.ts`](https://github.com/livekit/agents-js/blob/d5d8d0487d2e99f49a1b56ab6b9e82b481491955/examples/src/realtime_with_tts.ts)
+- [`examples/src/realtime_turn_detector.ts`](https://github.com/livekit/agents-js/blob/d5d8d0487d2e99f49a1b56ab6b9e82b481491955/examples/src/realtime_turn_detector.ts)
+
+This aligns with OpenAI's own transport guidance:
+[WebSocket is appropriate for a server-side agent or media pipeline](https://developers.openai.com/api/docs/guides/realtime-websocket),
+while WebRTC is recommended for a client directly capturing and playing
+audio. OpenAI also supports a
+[server-side sideband control connection](https://developers.openai.com/api/docs/guides/realtime-server-controls)
+alongside a client WebRTC or SIP session, so moving tools off the client does
+not by itself require LiveKit. [source]
+
+Important plugin limits for Sarah:
+
+- The docs currently show `gpt-realtime` as the default, while Sarah requires
+  `gpt-realtime-2.1`. The plugin's model option is configurable, so a proof
+  must set and verify Sarah's admitted model rather than accept the default.
+- Provider turn detection and LiveKit turn detection are separate choices.
+  The example that uses LiveKit turn detection explicitly sets OpenAI
+  `turnDetection` to `null`; enabling both without a designed ownership rule
+  risks contradictory interruption behavior.
+- The plugin proactively reconnects the OpenAI socket and reconstructs
+  options, tools, and text conversation state. Restored items are text-only
+  and cannot be truncated like live audio. That is not Sarah's current law,
+  which settles the old session before admitting a new one.
+- The official page warns that loading conversation history into an audio
+  model can produce a text-only response. It suggests text modality with a
+  separate TTS plugin when exact history loading is required.
+- The documented video-input path is Python-only, not Node.js. A Node Sarah
+  worker should not assume camera or screen-share frames can be added to the
+  current Realtime plugin.
+- The plugin exposes raw queued OpenAI client events and received server
+  events, but LiveKit owns the higher-level state machine. Sarah would still
+  need to prove that every usage, transcription, interruption, and function
+  event required for attribution and settlement remains observable and stable.
+
+### 8.3 `rust-sdks`: native room and media substrate
+
+[`livekit/rust-sdks`](https://github.com/livekit/rust-sdks/tree/00258d1e52e563327f3ed75807ea03a189a5c2d2)
+is the relevant native substrate for an Omega room client. Its workspace
+includes:
+
+- `livekit`, the high-level room and participant client;
+- `livekit-api`, JWT/token and server APIs;
+- `livekit-protocol`, generated signaling and service types;
+- `libwebrtc` and `webrtc-sys`, the WebRTC wrapper and pinned native build;
+- runtime, networking, data-track, FFI, UniFFI, device, image, YUV,
+  resampling, and wake-word support crates.
+
+`Room::connect(url, token, RoomOptions)` returns a `Room` plus an asynchronous
+`RoomEvent` receiver. The client can publish and subscribe to audio or video,
+select native device capture or submit PCM/video frames, publish simulcast or
+SVC, exchange reliable or lossy data packets, use text/byte streams and RPC,
+receive transcription and active-speaker events, and close explicitly.
+Options cover auto-subscribe, dynacast, E2EE, ICE servers, and retry/timeouts.
+The README still marks adaptive streaming as incomplete despite an option
+being present, so API shape is not proof of feature parity. [source]
+
+Media E2EE uses frame cryptors and application-supplied shared or
+per-participant keys with key rings and ratcheting. Data tracks have a
+separate encryption provider. The application still owns key distribution,
+rotation, participant admission, and the truth of who may decrypt. A
+server-side Sarah worker must receive usable media keys if it is expected to
+hear or answer; an E2EE room cannot simultaneously claim that the Sarah
+service is cryptographically unable to access the audio. [source] [inferred]
+
+`livekit-api` can mint identities, metadata, attributes, and grants and call
+room, ingress, egress, SIP, agent-dispatch, and connector services. Agent
+dispatch targets a separately registered agent; it does not turn the Rust
+process into an Agents worker. Generated capability fields mentioning agent
+sessions likewise do not expose a public Rust agent-session implementation in
+this snapshot. [source]
+
+Most importantly, this repository contains **no OpenAI Realtime client,
+STT/TTS/LLM orchestration, agent worker/job runtime, or LiveKit equivalent of
+the JavaScript `AgentSession`**. `Room::connect` cannot be pointed at OpenAI.
+An all-Rust implementation would have to retain or rebuild Sarah's OpenAI
+WebSocket bridge, event state machine, turn ownership, tools, usage, and
+settlement around the room SDK. [source]
+
+Primary paths:
+
+- [`livekit/src/room/mod.rs`](https://github.com/livekit/rust-sdks/blob/00258d1e52e563327f3ed75807ea03a189a5c2d2/livekit/src/room/mod.rs)
+- [`livekit/src/room/options.rs`](https://github.com/livekit/rust-sdks/blob/00258d1e52e563327f3ed75807ea03a189a5c2d2/livekit/src/room/options.rs)
+- [`livekit/src/room/track`](https://github.com/livekit/rust-sdks/tree/00258d1e52e563327f3ed75807ea03a189a5c2d2/livekit/src/room/track)
+- [`livekit/src/room/e2ee`](https://github.com/livekit/rust-sdks/tree/00258d1e52e563327f3ed75807ea03a189a5c2d2/livekit/src/room/e2ee)
+- [`livekit-api/src`](https://github.com/livekit/rust-sdks/tree/00258d1e52e563327f3ed75807ea03a189a5c2d2/livekit-api/src)
+
+The native cost is material. `webrtc-sys` downloads and statically links a
+pinned libwebrtc build with platform-specific build and packaging work.
+Desktop and mobile targets are represented; this is not a web SDK. Before
+adoption, Omega would need packaged size/startup checks and real device tests
+for capture, echo cancellation, resampling, playback, reconnection, and
+latency. Distribution must also preserve applicable third-party notices.
+[source] [limitation]
+
+### 8.4 How the two SDKs compose
+
+The repositories cover different sides of one design:
+
+| Layer | SDK | Responsibility |
+| --- | --- | --- |
+| Omega client | `livekit/rust-sdks` | Join room, capture/play media, publish/subscribe tracks, optional data and E2EE |
+| LiveKit service | LiveKit Server or Cloud | Room signaling, SFU routing, participant grants, worker dispatch |
+| Sarah worker | `livekit/agents-js` | Join as server participant, manage room I/O and agent lifecycle |
+| Model bridge | `@livekit/agents-plugin-openai` | Open server-side OpenAI Realtime WebSocket, translate audio/events/tools |
+| Product authority | OpenAgents and Omega | Admission, identity, terms, economics, capabilities, confirmations, effects, receipts, settlement |
+
+Neither SDK should absorb the final row. A LiveKit token proves only bounded
+media admission. A participant identity, room attribute, RPC call, data
+packet, transcript, agent tool registration, or spoken sentence is not
+OpenAgents work authority or permission to mutate Omega. [inferred]
+
+## 9. Sarah's current direct Realtime path
+
+Sarah is already a server-side Realtime design, not a desktop client calling
+OpenAI directly:
+
+```text
+Omega admission UI
+  → OpenAgents admission preflight
+  → reviewed Start voice action
+  → credit hold + one-use gateway ticket
+  → custom WSS carrying OAA1 audio/control frames
+  → OpenAgents Cloud Run gateway
+  → OpenAI Realtime WSS using a server-held key
+```
+
+The admitted session requires `gpt-realtime-2.1`, signed little-endian PCM16
+at 24 kHz mono in both directions, a same-origin `wss://openagents.com`
+gateway, short ticket and session lifetimes, and unchanged terms,
+capabilities, and economics. Omega rejects a different gateway or media
+contract. The gateway configures audio output, `gpt-4o-mini-transcribe`,
+semantic VAD, automatic response creation and interruption, and the `marin`
+voice. [source]
+
+Omega currently owns capture and playback. It converts device input to 48 kHz
+stereo for its existing echo canceller, mixes and resamples to 24 kHz mono,
+sends 20 ms microphone frames, and plays 24 kHz mono through Rodio while
+sharing the echo-cancellation state. A LiveKit/WebRTC path would introduce its
+own capture, Opus/RTP, jitter, and WebRTC audio-processing assumptions. The
+design must choose one owner for capture, echo cancellation, resampling, and
+output rather than stack two APM pipelines. [source] [inferred]
+
+The custom envelope is also an authority and accounting protocol:
+
+- OAA1 audio frames bind identity, generation, sequence, and content digest.
+- Control envelopes independently bind owner, device, thread, session,
+  generation, and contiguous sequence.
+- OpenAI function calls become typed proposals; the provider cannot execute
+  Omega effects directly.
+- Protected operations require a visible one-shot confirmation and an
+  unchanged command digest before Omega revalidates workspace, path,
+  document version, range, and effect locally.
+- Provider response and transcription usage references become idempotent
+  charge records against the session hold.
+- Reconnect deliberately settles the old session, repeats admission, verifies
+  the disclosed terms, and consumes a new one-use ticket. It does not resume a
+  socket or provider session.
+- Completed transcript text is stored locally in a bounded JSONL log; the
+  service intentionally retains neither audio nor transcript text.
+
+These are not incidental WebSocket details. A LiveKit mode must either
+preserve them above room media and data transport or replace them with a
+separately reviewed contract that proves the same product laws. [source]
+
+Primary current paths:
+
+- Omega admission and session validation:
+  [`openagents_sarah_voice.rs`](https://github.com/OpenAgentsInc/omega/blob/0136fca2d11900ddc7982665482ed8cd035391c7/crates/omega_effectd/src/openagents_sarah_voice.rs)
+  and
+  [`openagents_session.rs`](https://github.com/OpenAgentsInc/omega/blob/0136fca2d11900ddc7982665482ed8cd035391c7/crates/omega_effectd/src/openagents_session.rs)
+- Omega audio, wire protocol, tools, transcript, and reconnect:
+  [`voice.rs`](https://github.com/OpenAgentsInc/omega/blob/0136fca2d11900ddc7982665482ed8cd035391c7/crates/workroom_ui/src/voice.rs)
+  and
+  [`panel.rs`](https://github.com/OpenAgentsInc/omega/blob/0136fca2d11900ddc7982665482ed8cd035391c7/crates/workroom_ui/src/panel.rs)
+- OpenAgents admission and session issuance:
+  [`sarah-realtime-voice-routes.ts`](../../apps/openagents.com/workers/api/src/sarah-realtime-voice-routes.ts)
+- OpenAgents provider bridge:
+  [`sarah-realtime-bridge.ts`](../../apps/openagents.com/workers/api/src/cloudrun/sarah-realtime-bridge.ts)
+- OpenAgents usage and settlement store:
+  [`sarah-realtime-voice-store.ts`](../../packages/khala-sync-server/src/sarah-realtime-voice-store.ts)
+
+## 10. Should Sarah adopt LiveKit?
+
+### 10.1 What LiveKit would add
+
+LiveKit is compelling when Sarah needs a room-shaped product:
+
+- browser, mobile, native, and telephony clients on one WebRTC media plane;
+- multiple human or agent participants;
+- SIP, ingress, egress, recording, avatars, camera, or screen sharing;
+- SFU congestion control, participant routing, and room observability;
+- agent dispatch, worker scaling/draining, handoffs, and provider portability;
+- less custom audio transport and provider event orchestration.
+
+It does not automatically improve Sarah's current admission, command safety,
+accounting, or transcript privacy. Those are OpenAgents product properties,
+not SFU features. It also adds a client-to-LiveKit connection, an
+agent-to-LiveKit connection, LiveKit credentials and operations, and the
+agent-to-OpenAI connection that already exists today. [inferred]
+
+### 10.2 Viable integration shapes
+
+| Shape | Description | Assessment |
+| --- | --- | --- |
+| Keep `custom_wss_v1` | Current Omega-to-OpenAgents PCM/control gateway and direct server-side OpenAI Realtime WSS | Lowest complexity for one tightly controlled desktop user; already matches OpenAI's server WebSocket guidance |
+| LiveKit media, current control WSS | Rust SDK carries audio; existing WSS carries commands, authority, usage, and settlement | Lowest authority migration risk, but two coordinated connections and duplicated lifecycle |
+| LiveKit media and data | Room audio plus reliable LiveKit data carries versioned Sarah control envelopes | Cleaner room topology, but sequence/digest/reconnect and DTLS-SRTP versus OAA1 integrity semantics need explicit redesign |
+| LiveKit Agents worker | Omega joins via Rust SDK; `agents-js` worker joins the room and uses the OpenAI Realtime plugin | Most LiveKit value and least custom provider plumbing; greatest migration of event, tool, reconnect, and accounting behavior |
+| Custom all-Rust bridge | Rust SDK room participant wrapped around Sarah's current OpenAI bridge | Possible, but gains no Rust agent runtime and retains the difficult provider/state-machine work |
+
+The strongest incremental shape is a versioned server-selected transport
+beneath the existing Sarah contract:
+
+```text
+existing OpenAgents identity, admission, terms, capabilities, and economics
+  → session selects transport
+      ├── custom_wss_v1
+      └── livekit_room_v1
+  → common command authority, usage projection, settlement, and receipts
+```
+
+For `livekit_room_v1`, session issuance would return a short-lived LiveKit URL,
+room, token, and generation binding only after admission is consumed and the
+hold is reserved. The server must bind those credentials to the canonical
+owner, device, thread, session, and generation; participant metadata is not
+proof of those values. Existing clients must not receive this shape silently:
+Omega currently and correctly rejects non-OpenAgents gateway URLs and
+non-PCM session contracts. [inferred]
+
+### 10.3 Recommendation
+
+**Keep Sarah's current direct gateway as the default for its present
+one-user desktop scope, and prototype LiveKit Agents as a separately admitted
+`livekit_room_v1` cohort only when a concrete room, telephony, multi-device,
+multimodal, or worker-orchestration requirement justifies it.**
+
+The current path is already the OpenAI-recommended server-side WebSocket
+topology for a backend media pipeline, tightly integrated with Sarah's
+authority and settlement model. The LiveKit plugin proves that the Realtime
+model is supported, but compatibility alone does not make the extra media and
+worker control planes free. A dual-mode proof preserves a control cohort,
+measures the actual value, and avoids making LiveKit an implicit authority
+rewrite. [source] [inferred]
+
+An adoption gate should prove:
+
+1. `gpt-realtime-2.1`, voice, instructions, transcription, semantic VAD,
+   interruption, and tool behavior match the admitted session.
+2. The worker exposes exact provider usage and transcription references needed
+   for idempotent charging, caps, expiry, and final settlement.
+3. Command proposals retain canonical identity, generation, expiry, digest,
+   explicit confirmation, and local Omega effect validation.
+4. Reconnect cannot bypass one-use admission or create overlapping billable
+   sessions, whether LiveKit and OpenAI reconnect independently or together.
+5. One audio layer owns device capture, WebRTC APM/echo cancellation,
+   resampling, playback, and barge-in.
+6. End-to-end latency, loss recovery, transcript alignment, CPU, memory,
+   binary size, and service cost are measured against `custom_wss_v1`.
+7. E2EE key distribution admits the Sarah worker explicitly, rotates on
+   membership changes, and makes no contradictory privacy claim.
+8. Server audio/transcript retention remains off unless a newly disclosed
+   policy is admitted.
+9. Node plugin limits around video and history restoration are either accepted
+   or covered by a separately tested architecture.
+
+OpenAgents identity, bearer/NIP-98 authentication, read-only admission before
+microphone access, reviewed terms, one-use credentials, entitlement and hold,
+server-held OpenAI credentials and safety identifier, closed capability
+profiles, command confirmation, local effect authority, separate delegated
+work receipts, and settlement-before-replacement remain non-negotiable under
+either transport. [inferred]
+
+## 11. Central finding
 
 **Armada makes LiveKit part of the community product, Zed makes LiveKit a
-replaceable media subsystem beneath collaboration authority, and Buzz replaces
-LiveKit with a custom relay-native audio system.**
+replaceable media subsystem beneath collaboration authority, Buzz replaces
+LiveKit with a custom relay-native audio system, and LiveKit Agents offers
+Sarah a supported but optional room-to-OpenAI Realtime bridge.**
 
 Armada is the most relevant reference for portable calls, blind admission, and
 media E2EE. Zed is the strongest reference for a native Rust client and
 server-owned permission bridge. Buzz is the strongest counterfactual: it shows
-exactly what a team must own when it declines an SFU dependency.
+what a team must own when it declines an SFU dependency. `agents-js` is the
+missing server-side agent layer; `rust-sdks` is the native room substrate, not
+an agent runtime.
 
-The common architectural law is stable across all three: **media transport is
-not membership, identity, workspace state, or work authority.** A future
-OpenAgents or Omega media plane should be chosen only after those boundaries,
-credential semantics, privacy claims, reconnect laws, and packaged proof are
-explicit.
+The common architectural law is stable across all four: **media transport is
+not membership, identity, workspace state, command authority, or settlement.**
+A future LiveKit Sarah mode should be chosen for room/media capabilities only
+after those boundaries, credential semantics, privacy claims, reconnect laws,
+accounting projections, and packaged proof are explicit.
