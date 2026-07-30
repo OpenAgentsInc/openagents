@@ -97,8 +97,11 @@ LiveKit uses `hostNetwork` because clients must reach each SFU node's public
 ICE address. The chart is constrained to the tainted
 `oa-livekit-prod-sfu` pool. Required hostname anti-affinity enforces one SFU
 pod per node, zone spread avoids concentration, the PDB preserves two ready
-pods, and rolling updates permit no planned unavailability. A room is still
-owned by one SFU and cannot migrate after abrupt node loss.
+pods, and rolling updates permit no planned unavailability. The signaling
+backend drains for 1,800 seconds, matching the admitted maximum room lifetime,
+while the pod retains the longer five-hour termination grace for LiveKit's
+own room drain. A room is still owned by one SFU and cannot migrate after
+abrupt node loss.
 
 Kubernetes NetworkPolicy is not used for the SFU pod. GKE does not provide a
 portable NetworkPolicy boundary for `hostNetwork` media, and an apparent

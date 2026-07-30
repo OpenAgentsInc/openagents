@@ -125,7 +125,7 @@ gcp:
   backendConfig:
     timeoutSec: 36000
     connectionDraining:
-      drainingTimeoutSec: 60
+      drainingTimeoutSec: 1800
     healthCheck:
       checkIntervalSec: 10
       timeoutSec: 5

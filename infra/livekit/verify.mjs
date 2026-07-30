@@ -182,6 +182,7 @@ requireIncludes(rendered, "topologyKey: kubernetes.io/hostname", "one-pod-per-no
 requireIncludes(rendered, "topologyKey: topology.kubernetes.io/zone", "zone spread");
 requireIncludes(rendered, "minAvailable: 2", "disruption budget");
 requireIncludes(rendered, "maxUnavailable: 0", "rolling update availability");
+requireIncludes(rendered, "drainingTimeoutSec: 1800", "signaling connection draining");
 requireIncludes(rendered, "minReplicas: 3", "minimum replica count");
 requireIncludes(rendered, "maxReplicas: 6", "maximum replica count");
 requireIncludes(rendered, pins.serverImage.tagAndDigest, "pinned server image");
