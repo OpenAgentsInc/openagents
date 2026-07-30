@@ -77,6 +77,11 @@ variable "reverse_proxy_image" {
   }
 }
 
+variable "livekit_config" {
+  description = "Audited LiveKit canary configuration supplied by the staging root."
+  type        = string
+}
+
 variable "turn_domain" {
   description = "Trusted TURN/TLS DNS name covered by the canary certificate."
   type        = string

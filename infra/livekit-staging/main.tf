@@ -42,6 +42,7 @@ module "canary" {
   boot_image               = var.canary_boot_image
   livekit_server_image     = var.livekit_server_image
   reverse_proxy_image      = var.reverse_proxy_image
+  livekit_config           = file("${path.module}/../livekit/canary/livekit.yaml")
   turn_domain              = var.turn_hostname
   enable_turn_udp          = var.enable_turn_udp
   max_run_duration_seconds = 14400

@@ -159,6 +159,15 @@ requireEqual(
 
 const configurationBytes = await readFile(resolve(directory, "production/livekit.yaml"));
 const canaryConfiguration = await readFile(resolve(directory, "canary/livekit.yaml"), "utf8");
+const canaryRoot = await readFile(resolve(repositoryRoot, "infra/livekit-staging/main.tf"), "utf8");
+const canaryModule = await readFile(
+  resolve(repositoryRoot, "infra/modules/livekit-gce-canary/main.tf"),
+  "utf8",
+);
+const canaryStartup = await readFile(
+  resolve(repositoryRoot, "infra/modules/livekit-gce-canary/startup.sh.tftpl"),
+  "utf8",
+);
 requireEqual(bundle.configurationDigest, `sha256:${sha256(configurationBytes)}`, "configuration digest");
 requireEqual(bundle.renderedManifestDigest, `sha256:${sha256(rendered)}`, "rendered manifest digest");
 requireIncludes(
@@ -167,6 +176,28 @@ requireIncludes(
   "canary TURN certificate domain",
 );
 requireExcludes(canaryConfiguration, "udp_port:", "canary TURN/UDP");
+requireIncludes(
+  canaryConfiguration,
+  "cert_file: /run/livekit/tls.crt",
+  "canary TURN certificate path",
+);
+requireIncludes(
+  canaryRoot,
+  'livekit_config           = file("${path.module}/../livekit/canary/livekit.yaml")',
+  "canary root configuration source",
+);
+requireIncludes(
+  canaryModule,
+  "livekit_config_base64     = base64encode(var.livekit_config)",
+  "canary module configuration projection",
+);
+requireIncludes(
+  canaryStartup,
+  "printf '%s' '${livekit_config_base64}' | base64 --decode",
+  "canary launcher audited configuration use",
+);
+requireIncludes(canaryStartup, "--key-file /run/livekit/keys.yaml", "canary key-file use");
+requireExcludes(canaryStartup, 'cat >"$runtime_dir/livekit.yaml"', "synthesized canary configuration");
 
 for (const entry of bundle.manifests) {
   requireKnownKeys(entry, ["path", "sha256"], `manifest ${entry.path ?? "<missing>"}`);

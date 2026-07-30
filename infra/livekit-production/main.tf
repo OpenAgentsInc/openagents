@@ -44,7 +44,7 @@ module "platform" {
 
   sfu_machine_type = "c2-standard-8"
   sfu_min_nodes    = 3
-  sfu_max_nodes    = 6
+  sfu_max_nodes    = 7
   sfu_network_tag  = "oa-livekit-prod-sfu"
 
   app_machine_type = "e2-standard-8"
@@ -82,8 +82,8 @@ module "observability" {
   notification_channel_ids = var.notification_channel_ids
   billing_account_id       = var.billing_account_id
   monthly_budget_usd       = var.monthly_budget_usd
-  max_rooms                = 100
-  max_participants         = 300
+  max_rooms                = 20
+  max_participants         = 60
   labels                   = local.labels
 }
 

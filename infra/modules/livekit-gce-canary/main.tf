@@ -202,12 +202,7 @@ resource "google_compute_instance" "canary" {
     api_secret_secret_id      = google_secret_manager_secret.api_secret.secret_id
     tls_certificate_secret_id = google_secret_manager_secret.tls_certificate.secret_id
     tls_private_key_secret_id = google_secret_manager_secret.tls_private_key.secret_id
-    turn_domain               = var.turn_domain
-    tcp_fallback_port         = var.tcp_fallback_port
-    media_udp_port_start      = var.media_udp_port_range.start
-    media_udp_port_end        = var.media_udp_port_range.end
-    turn_tls_port             = var.turn_tls_port
-    turn_udp_config           = var.enable_turn_udp ? "  udp_port: ${var.turn_udp_port}" : ""
+    livekit_config_base64     = base64encode(var.livekit_config)
   })
 
   scheduling {

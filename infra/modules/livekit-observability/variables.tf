@@ -75,13 +75,13 @@ variable "monthly_budget_usd" {
 variable "max_rooms" {
   description = "Hard admitted room capacity mirrored by the room-count alert."
   type        = number
-  default     = 100
+  default     = 20
 }
 
 variable "max_participants" {
   description = "Hard admitted participant capacity mirrored by the participant alert."
   type        = number
-  default     = 300
+  default     = 60
 }
 
 variable "labels" {

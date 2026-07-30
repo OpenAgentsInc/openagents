@@ -61,7 +61,7 @@
   "manifests": [
     {
       "path": "infra/livekit/canary/livekit.yaml",
-      "sha256": "sha256:8c6c2519225808b5683c8a29892d08698c634d3497cb41ada10020a41b3b0652"
+      "sha256": "sha256:4167b363486d9b791da228e8d142282eca5dc268ae897d7bc9fe71a30537f029"
     },
     {
       "path": "infra/livekit/production/livekit.yaml",

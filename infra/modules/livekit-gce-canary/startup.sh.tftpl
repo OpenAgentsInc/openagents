@@ -44,29 +44,11 @@ api_secret="$(tr -d '\r\n' <"$runtime_dir/api-secret")"
 test -n "$api_key"
 test -n "$api_secret"
 
-cat >"$runtime_dir/livekit.yaml" <<EOF
-port: 7880
-log_level: info
-prometheus:
-  port: 6789
-rtc:
-  tcp_port: ${tcp_fallback_port}
-  port_range_start: ${media_udp_port_start}
-  port_range_end: ${media_udp_port_end}
-  use_external_ip: true
-keys:
-  "$api_key": "$api_secret"
-room:
-  auto_create: false
-turn:
-  enabled: true
-${turn_udp_config}
-  tls_port: ${turn_tls_port}
-  domain: ${turn_domain}
-  cert_file: /run/livekit/tls.crt
-  key_file: /run/livekit/tls.key
-EOF
+printf '%s' '${livekit_config_base64}' | base64 --decode >"$runtime_dir/livekit.yaml"
 chmod 0400 "$runtime_dir/livekit.yaml"
+
+printf '%s: %s\n' "$api_key" "$api_secret" >"$runtime_dir/keys.yaml"
+chmod 0400 "$runtime_dir/keys.yaml"
 unset api_key api_secret
 
 cat >"$runtime_dir/Caddyfile" <<'EOF'
@@ -91,7 +73,8 @@ docker run \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m \
   --volume "$runtime_dir:/run/livekit:ro" \
   "${livekit_server_image}" \
-  --config /run/livekit/livekit.yaml
+  --config /run/livekit/livekit.yaml \
+  --key-file /run/livekit/keys.yaml
 
 docker run \
   --detach \

@@ -121,7 +121,7 @@ variable "sfu_min_nodes" {
 variable "sfu_max_nodes" {
   description = "Maximum total SFU node count across the regional pool."
   type        = number
-  default     = 6
+  default     = 7
 }
 
 variable "app_machine_type" {
