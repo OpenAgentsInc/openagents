@@ -1,0 +1,27 @@
+port: 7880
+log_level: info
+prometheus_port: 6789
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 60000
+  use_external_ip: true
+redis:
+  tls:
+    enabled: true
+    insecure: false
+    ca_cert_file: /etc/livekit/redis/ca.crt
+key_file: /etc/livekit/keys.yaml
+room:
+  auto_create: false
+  empty_timeout: 120
+  departure_timeout: 20
+  max_participants: 3
+  enabled_codecs:
+    - mime: audio/opus
+  enable_remote_unmute: false
+turn:
+  enabled: true
+  domain: turn.livekit.openagents.com
+  tls_port: 5349
+  ttl_seconds: 120

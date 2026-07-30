@@ -1,0 +1,125 @@
+# OpenAgents LiveKit runtime bundle
+
+This directory is the pinned Kubernetes runtime source for the first
+self-hosted Sarah voice cohort. It renders one production manifest for the
+regional GKE Standard cluster. It does not deploy Sarah workers, recording,
+egress, ingress, SIP, or TURN/UDP.
+
+The bundle has three authority boundaries:
+
+- OpenAgents admission creates every room and participant grant. LiveKit
+  rejects implicit room creation.
+- Kubernetes carries only reference material from Google Secret Manager.
+  This repository contains no LiveKit key, Redis password, private key, or
+  secret payload.
+- LiveKit carries media. It does not carry command, transcript, accounting,
+  settlement, or OpenAgents identity authority.
+
+## Pinned source
+
+`pins.lock.json` pins the audited LiveKit Helm source archive and the exact
+multi-platform server image index. `addons.lock.json` pins the cert-manager and
+External Secrets charts expected by the resources in this bundle. Google
+Managed Service for Prometheus is a GKE-managed add-on; its `v1` resource API
+is pinned here, while the cluster's exact GKE version owns the collector
+binary.
+
+`bundle.json.sourceBaseRevision` records the repository revision this source
+was designed against. It is not the deployment revision and cannot
+self-reference the commit that contains the bundle. Deployment automation and
+receipts must record the actual `git rev-parse HEAD` separately.
+
+The upstream Helm chart enables `--disable-strict-config` and mixes chart-only
+TURN service fields into the server ConfigMap. The post-render step replaces
+that ConfigMap with `production/livekit.yaml`, binds its digest to the
+Deployment, and removes the strict-parser opt-out. `verify.sh` refuses a render
+that restores it, uses an unpinned image, exposes TURN/UDP, or loses the
+production placement and availability controls.
+
+## Render
+
+Requirements: Node.js 24, Helm 3, `kubectl` with Kustomize support, `curl`,
+`tar`, and `shasum`.
+
+```sh
+infra/livekit/verify.sh
+infra/livekit/render.sh --output /tmp/openagents-livekit-render
+```
+
+The second command writes only
+`/tmp/openagents-livekit-render/livekit-production.yaml`. It fetches the exact
+Git archive, verifies its SHA-256 digest, renders chart `1.11.0`, applies the
+post-render policy, and appends the first-party resources.
+
+## Required cluster dependencies
+
+Before applying the rendered manifest:
+
+1. provision the exact GKE, node-pool, Redis, address, firewall, Workload
+   Identity, and IAM resources named by `bundle.json`;
+2. install the pinned cert-manager and External Secrets charts from
+   `addons.lock.json`;
+3. enable Google Managed Service for Prometheus managed collection;
+4. grant the two bundle service accounts only their documented Google Secret
+   Manager containers;
+5. add current secret versions to `oa-livekit-prod-server-keys`,
+   `oa-livekit-prod-redis-auth`, and `oa-livekit-prod-cloudflare-dns` in Google
+   Secret Manager; and
+6. map DNS-only Cloudflare records to the Google addresses after their
+   corresponding Google load balancers are healthy.
+
+`oa-livekit-prod-server-keys` is a structured secret with `api_key`,
+`api_secret`, and `keys_yaml` properties. The runtime bundle consumes only the
+LiveKit key-file form in `keys_yaml`; the separate fields support bounded
+server-side minting without putting a key in Helm. `oa-livekit-prod-redis-auth`
+has `host` and `ca_cert` properties. Its retained name identifies the Redis
+connection-material boundary; it does not imply that Memorystore AUTH is
+enabled. The Google provider exposes a computed AUTH credential in Terraform
+state when AUTH is enabled, which violates the repository credential-state
+boundary. Production therefore uses Standard Tier HA, in-transit TLS, and a
+dedicated private VPC/Private Service Access path with AUTH disabled. The
+private network and verified TLS certificate are both required; neither is
+equivalent to application-layer authentication.
+`oa-livekit-prod-cloudflare-dns` has only an `api_token` property for a
+zone-scoped DNS-01 token. External Secrets materializes
+`livekit-server-keys`, `livekit-redis-auth`, and `cloudflare-dns-token`.
+The media and certificate secret readers use disjoint Workload Identity
+service accounts.
+
+The `livekit-public-dns01` ClusterIssuer uses that DNS-only token. The TURN
+`Certificate` writes `livekit-turn-tls`. LiveKit terminates TURN/TLS on `5349`;
+the dedicated external passthrough service publishes TCP `443`. TURN/UDP is
+deliberately absent.
+
+## Placement and disruption
+
+LiveKit uses `hostNetwork` because clients must reach each SFU node's public
+ICE address. The chart is constrained to the tainted
+`oa-livekit-prod-sfu` pool. Required hostname anti-affinity enforces one SFU
+pod per node, zone spread avoids concentration, the PDB preserves two ready
+pods, and rolling updates permit no planned unavailability. A room is still
+owned by one SFU and cannot migrate after abrupt node loss.
+
+Kubernetes NetworkPolicy is not used for the SFU pod. GKE does not provide a
+portable NetworkPolicy boundary for `hostNetwork` media, and an apparent
+deny-list would be misleading because RTC and TURN need arbitrary client
+addresses. The dedicated node pool, GCP firewall targets, load-balancer
+backends, and service-account boundaries are the applicable controls. No
+non-host-network application pod is part of this bundle.
+
+## Capacity limits
+
+The limits in `bundle.json` are admission limits, not source-only capacity
+claims. Twenty concurrent Sarah rooms become admissible only after live load,
+failure, TURN, and settlement acceptance. The server itself limits each room
+to three participants, permits Opus only, and refuses automatic room creation.
+The OpenAgents control plane owns per-owner, per-community, idle, and maximum
+lifetime enforcement.
+
+## Canary seam
+
+`canary/livekit.yaml` is the strict server configuration for the disposable
+single-node GCE connectivity canary. The canary launcher supplies
+`LIVEKIT_KEYS` and the TURN certificate paths at runtime. Redis is deliberately
+absent because the canary is not a distributed deployment. It uses the same
+server image digest and policy but is not a production availability target.

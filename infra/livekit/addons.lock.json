@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "openagents.livekit_addon_pins.v1",
+  "certManager": {
+    "repository": "https://charts.jetstack.io",
+    "chart": "cert-manager",
+    "version": "v1.21.1",
+    "chartSha256": "c27101f3f3e2349fb4a9e704316105bf7b52ad73b8c8257d3498ef7f2f6a4adc",
+    "resourceApiVersion": "cert-manager.io/v1"
+  },
+  "externalSecrets": {
+    "repository": "https://charts.external-secrets.io",
+    "chart": "external-secrets",
+    "version": "2.8.0",
+    "chartSha256": "251e4615013c6d2f9ade5cedf1cd8615613f286bfc381e44fb005f197e611ecd",
+    "resourceApiVersion": "external-secrets.io/v1"
+  },
+  "managedPrometheus": {
+    "delivery": "gke-managed-collection",
+    "resourceApiVersion": "monitoring.googleapis.com/v1",
+    "binaryVersionAuthority": "pinned-gke-cluster-version"
+  }
+}

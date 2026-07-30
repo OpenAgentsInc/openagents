@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "openagents.livekit_runtime_pins.v1",
+  "helm": {
+    "repository": "https://github.com/livekit/livekit-helm",
+    "sourceCommit": "8f0ad0809c2be8cbed375a6f8bef10625e5e8a2b",
+    "archiveUrl": "https://github.com/livekit/livekit-helm/archive/8f0ad0809c2be8cbed375a6f8bef10625e5e8a2b.tar.gz",
+    "archiveSha256": "e63ac0d2605b78e849ebbe850f28adafbf9aa36973d2d77a20743d47ee559272",
+    "chartPath": "livekit-server",
+    "chartVersion": "1.11.0"
+  },
+  "serverImage": {
+    "reference": "docker.io/livekit/livekit-server:v1.13.4@sha256:189f7c81b704a36642bc5c7e2d3e1ae83744627c11978a23a251bf19fbec64e0",
+    "repository": "livekit/livekit-server",
+    "tagAndDigest": "v1.13.4@sha256:189f7c81b704a36642bc5c7e2d3e1ae83744627c11978a23a251bf19fbec64e0",
+    "ociIndexDigest": "sha256:189f7c81b704a36642bc5c7e2d3e1ae83744627c11978a23a251bf19fbec64e0",
+    "upstreamSourceCommit": "0b3fd288e3ef3263ec475ba0d78cf3ad77459981",
+    "auditedAnalysisSourceCommit": "ced94b8645829263a1a9ef6c8101936897252d6b"
+  }
+}

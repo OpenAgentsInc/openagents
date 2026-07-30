@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: livekit-system
+resources:
+  - chart.yaml
+patches:
+  - path: deployment.patch.yaml
+  - path: service-account.patch.yaml
+  - path: signaling-service.patch.yaml
+  - path: turn-service.patch.yaml
+  - path: ingress.patch.yaml

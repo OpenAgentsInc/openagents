@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: livekit-server
+spec:
+  minReadySeconds: 30
+  progressDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        openagents.com/component: livekit-sfu
+        openagents.com/raw-media: in-memory-only
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      priorityClassName: livekit-media-critical
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: livekit-server
+              app.kubernetes.io/instance: livekit-server
+      containers:
+        - name: livekit-server
+          args: []
+          env:
+            - name: REDIS_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: livekit-redis-auth
+                  key: host
+          startupProbe:
+            httpGet:
+              path: /
+              port: http
+            failureThreshold: 30
+            periodSeconds: 2
+            timeoutSeconds: 1
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            failureThreshold: 3
+            periodSeconds: 5
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            failureThreshold: 3
+            periodSeconds: 10
+            timeoutSeconds: 2
+          volumeMounts:
+            - name: redis-ca
+              mountPath: /etc/livekit/redis
+              readOnly: true
+      volumes:
+        - name: redis-ca
+          secret:
+            secretName: livekit-redis-auth
+            defaultMode: 292
+            items:
+              - key: ca.crt
+                path: ca.crt

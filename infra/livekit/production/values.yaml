@@ -1,0 +1,139 @@
+fullnameOverride: livekit-server
+replicaCount: 3
+
+image:
+  repository: livekit/livekit-server
+  tag: v1.13.4@sha256:189f7c81b704a36642bc5c7e2d3e1ae83744627c11978a23a251bf19fbec64e0
+  pullPolicy: IfNotPresent
+
+terminationGracePeriodSeconds: 18000
+
+livekit:
+  port: 7880
+  log_level: info
+  prometheus_port: 6789
+  rtc:
+    tcp_port: 7881
+    port_range_start: 50000
+    port_range_end: 60000
+    use_external_ip: true
+  redis:
+    tls:
+      enabled: true
+      insecure: false
+      ca_cert_file: /etc/livekit/redis/ca.crt
+  key_file: keys.yaml
+  room:
+    auto_create: false
+    empty_timeout: 120
+    departure_timeout: 20
+    max_participants: 3
+    enabled_codecs:
+      - mime: audio/opus
+    enable_remote_unmute: false
+  turn:
+    enabled: true
+    domain: turn.livekit.openagents.com
+    tls_port: 5349
+    ttl_seconds: 120
+    secretName: livekit-turn-tls
+    serviceType: LoadBalancer
+    loadBalancerAnnotations:
+      cloud.google.com/l4-rbs: "enabled"
+      networking.gke.io/load-balancer-ip-addresses: oa-livekit-prod-turn
+
+storeKeysInSecret:
+  enabled: true
+  existingSecret: livekit-server-keys
+
+loadBalancer:
+  type: gke-managed-cert
+  servicePort: 80
+  staticIpName: oa-livekit-prod-signal
+  certificateName: livekit-signal
+  tls:
+    - hosts:
+        - livekit.openagents.com
+
+turnLoadbalancer:
+  enable: true
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 55
+
+nodeSelector:
+  cloud.google.com/gke-nodepool: oa-livekit-prod-sfu
+  openagents.com/livekit-workload: sfu
+
+resources:
+  requests:
+    cpu: 7000m
+    memory: 2Gi
+  limits:
+    cpu: 7500m
+    memory: 4Gi
+
+serviceAccount:
+  create: true
+  name: livekit-server
+  annotations:
+    iam.gke.io/gcp-service-account: oa-livekit-server@openagentsgemini.iam.gserviceaccount.com
+
+podHostNetwork: true
+
+podAnnotations:
+  sidecar.istio.io/inject: "false"
+  linkerd.io/inject: disabled
+  openagents.com/raw-media-boundary: host-network-only
+
+podSecurityContext:
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+
+tolerations:
+  - key: openagents.com/livekit-workload
+    operator: Equal
+    value: sfu
+    effect: NoSchedule
+
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: livekit-server
+            app.kubernetes.io/instance: livekit-server
+        topologyKey: kubernetes.io/hostname
+
+deploymentStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+gcp:
+  backendConfig:
+    timeoutSec: 36000
+    connectionDraining:
+      drainingTimeoutSec: 60
+    healthCheck:
+      checkIntervalSec: 10
+      timeoutSec: 5
+      healthyThreshold: 2
+      unhealthyThreshold: 3
+      type: HTTP
+      requestPath: /
+      port: 7880
+
+serviceMonitor:
+  create: false

@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: livekit-cert-manager-secret-reader
+  namespace: cert-manager
+  annotations:
+    iam.gke.io/gcp-service-account: oa-livekit-cert-manager-reader@openagentsgemini.iam.gserviceaccount.com
+automountServiceAccountToken: false
+---
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: livekit-google-secret-manager
+  namespace: cert-manager
+spec:
+  provider:
+    gcpsm:
+      projectID: openagentsgemini
+      auth:
+        workloadIdentity:
+          clusterProjectID: openagentsgemini
+          clusterLocation: us-central1
+          clusterName: oa-livekit-prod
+          serviceAccountRef:
+            name: livekit-cert-manager-secret-reader
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: cloudflare-dns-token
+  namespace: cert-manager
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: livekit-google-secret-manager
+    kind: SecretStore
+  target:
+    name: cloudflare-dns-token
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    template:
+      type: Opaque
+  data:
+    - secretKey: api-token
+      remoteRef:
+        key: oa-livekit-prod-cloudflare-dns
+        property: api_token
+        conversionStrategy: Default
+        decodingStrategy: None
+        metadataPolicy: None
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: livekit-public-dns01
+spec:
+  acme:
+    email: security@openagents.com
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: livekit-public-dns01-account
+    solvers:
+      - selector:
+          dnsZones:
+            - livekit.openagents.com
+        dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-dns-token
+              key: api-token
