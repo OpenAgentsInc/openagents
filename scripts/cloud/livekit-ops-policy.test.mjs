@@ -10,6 +10,7 @@ import {
   sha256,
   validateCostObservation,
   validateAddonLock,
+  validateBillingAccountId,
   validateConnectivityObservation,
   validateDeploymentBundle,
   validateDrillObservation,
@@ -24,6 +25,25 @@ import {
 
 const digest = (character) => `sha256:${character.repeat(64)}`;
 const deployedRevision = "1".repeat(40);
+
+test("billing account IDs admit Google's uppercase alphanumeric shape", () => {
+  const linkedBillingAccountId = "01D15C-64524A-1062EA";
+  assert.equal(validateBillingAccountId(linkedBillingAccountId), linkedBillingAccountId);
+
+  for (const invalidBillingAccountId of [
+    "",
+    " ",
+    "01d15c-64524A-1062EA",
+    "01D15_-64524A-1062EA",
+    "01D15-64524A-1062EA",
+    "01D15C-64524A-1062E",
+  ]) {
+    assert.throws(
+      () => validateBillingAccountId(invalidBillingAccountId),
+      /billing account variable/u,
+    );
+  }
+});
 
 test("canary boot invokes Caddy, opens exact host ports, and grants only log-write IAM", () => {
   const startup = readFileSync(

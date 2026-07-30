@@ -71,6 +71,15 @@ const assertString = (value, label) => {
   return value;
 };
 
+export const validateBillingAccountId = (value) => {
+  const billingAccountId = assertString(value, "billing account variable");
+  assert(
+    /^[0-9A-Z]{6}(?:-[0-9A-Z]{6}){2}$/u.test(billingAccountId),
+    "billing account variable has an invalid identifier shape",
+  );
+  return billingAccountId;
+};
+
 const assertInteger = (value, minimum, maximum, label) => {
   assert(
     Number.isSafeInteger(value) && value >= minimum && value <= maximum,

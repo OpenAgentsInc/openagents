@@ -9,6 +9,7 @@ import {
   assertPublicSafe,
   sha256,
   validateAddonLock,
+  validateBillingAccountId,
   validateDeploymentBundle,
   validateHistoricalDeploymentBundle,
   validateServerKeyProjection,
@@ -1522,9 +1523,7 @@ const validateProductionRuntimeVariables = () => {
   ) {
     throw new Error("notification channels must contain the exact redacted LiveKit on-call ref");
   }
-  if (!/^\d{6}-\d{6}-\d{6}$/u.test(billingAccount)) {
-    throw new Error("billing account variable has an invalid identifier shape");
-  }
+  validateBillingAccountId(billingAccount);
 };
 
 const run = () => {
