@@ -333,6 +333,7 @@ describe('managed Sarah Realtime voice session route', () => {
         roomRef: provision.roomRef,
         roomEpoch: 1,
         participantRef: provision.participantRef,
+        sarahParticipantRef: provision.sarahParticipantRef,
         participantGrant: provision.participantGrant,
         dispatchRef: provision.dispatchRef,
         sarahPresenceLeaseRef: provision.sarahPresenceLeaseRef,
@@ -386,6 +387,39 @@ describe('managed Sarah Realtime voice session route', () => {
       error: 'sarah_voice_livekit_unavailable',
     })
     expect(fixture.reserve).not.toHaveBeenCalled()
+  })
+
+  test('blocks new LiveKit dispatches when the emergency admission seam is disabled', async () => {
+    const fixture = makeDependencies()
+    const broker = {
+      provision: vi.fn(),
+      cleanup: vi.fn(),
+      cleanupByIdempotencyKey: vi.fn(),
+      cleanupRoom: vi.fn(),
+    }
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      {
+        ...fixture.dependencies,
+        liveKitRoomBroker: broker,
+        liveKitNewAdmissionsEnabled: () => false,
+      },
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'disclosure-1',
+        requestedTransport: 'livekit_room_v1',
+        roomContext: { kind: 'private' },
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({
+      error: 'sarah_voice_livekit_admissions_disabled',
+    })
+    expect(fixture.reserve).not.toHaveBeenCalled()
+    expect(broker.provision).not.toHaveBeenCalled()
   })
 
   test('requires one-use admission for every LiveKit client profile', async () => {
@@ -1191,6 +1225,37 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
       ),
       admissionExpiresAtMs: Date.UTC(2026, 6, 28, 12, 2, 0),
     })
+    expect(fixture.reserve).not.toHaveBeenCalled()
+  })
+
+  test('blocks new LiveKit admissions at the emergency rollback seam', async () => {
+    const fixture = makeDependencies()
+    const response = await handleSarahRealtimeVoiceAdmissionRequest(
+      {
+        ...fixture.dependencies,
+        liveKitNewAdmissionsEnabled: () => false,
+      },
+      new Request(`https://openagents.com${SARAH_VOICE_ADMISSION_PATH}`, {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer test',
+          [SARAH_REALTIME_VOICE_DEVICE_HEADER]: identity.deviceRef,
+        },
+        body: JSON.stringify({
+          ...admissionBody,
+          requestedTransport: 'livekit_room_v1',
+          roomContext: { kind: 'private' },
+        }),
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({
+      error: 'sarah_voice_livekit_admissions_disabled',
+    })
+    expect(fixture.issueAdmission).not.toHaveBeenCalled()
     expect(fixture.reserve).not.toHaveBeenCalled()
   })
 

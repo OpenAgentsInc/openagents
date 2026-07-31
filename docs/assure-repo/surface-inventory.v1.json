@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:e50a16b78fa8eee712049f84e2f8f05008f526dde55c7064605408fb9f3f1a03",
+  "sourceDigest": "sha256:03dfdec73311d15a9450f2d5a211ff7159b890ab0d5a015b5bd52cb9102ff2d1",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -217,7 +217,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents.com (1127 tracked test files)"
+          "ref": "apps/openagents.com (1129 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -510,6 +510,23 @@
         {
           "type": "test",
           "ref": "apps/qa-runner (56 tracked test files)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
+      "id": "app:@openagentsinc/sarah-livekit-agent",
+      "kind": "app",
+      "owningPath": "apps/sarah-livekit-agent",
+      "title": "@openagentsinc/sarah-livekit-agent",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/sarah-livekit-agent (3 tracked test files)"
         }
       ],
       "obligation": {
@@ -1935,7 +1952,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/audio-contract (5 tracked test files)"
+          "ref": "packages/audio-contract (6 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -3313,7 +3330,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents.com/workers/api (1011 tracked test files)"
+          "ref": "apps/openagents.com/workers/api (1013 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -3387,9 +3404,9 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 176,
+    "totalSurfaces": 177,
     "byKind": {
-      "app": 17,
+      "app": 18,
       "crate": 6,
       "document": 52,
       "package": 89,
@@ -3397,7 +3414,7 @@
       "release-pipeline": 9,
       "worker": 1
     },
-    "withOracle": 162,
+    "withOracle": 163,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3405,7 +3422,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 126,
+      "designed": 127,
       "inconclusive": 9,
       "mapped": 36,
       "out-of-scope": 5

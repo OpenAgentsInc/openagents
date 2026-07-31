@@ -85,3 +85,4 @@ export const decodeServerControl = (value: unknown) => S.decodeUnknownSync(Serve
 export const decodeMediaHeader = (value: unknown) => S.decodeUnknownSync(MediaHeaderSchema)(value, { onExcessProperty: "error" })
 
 export * from "./sarah-realtime.js"
+export * from "./sarah-livekit-worker.js"

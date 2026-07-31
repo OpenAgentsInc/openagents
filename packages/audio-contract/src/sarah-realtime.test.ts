@@ -241,6 +241,7 @@ describe("Sarah Realtime voice contract", () => {
       roomRef: "room-1",
       roomEpoch: 1,
       participantRef: "participant-1",
+      sarahParticipantRef: "principal.sarah",
       participantGrant: "opaque-grant",
       joinExpiresAtMs: 1_500,
       dispatchRef: "dispatch-1",

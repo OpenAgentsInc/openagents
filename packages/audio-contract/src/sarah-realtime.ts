@@ -224,6 +224,7 @@ const SarahVoiceTransportSchema = S.Union([
     roomRef: Ref,
     roomEpoch: Seq,
     participantRef: Ref,
+    sarahParticipantRef: Ref,
     participantGrant: S.String.check(S.isMinLength(1), S.isMaxLength(4_096)),
     joinExpiresAtMs: Seq,
     dispatchRef: Ref,

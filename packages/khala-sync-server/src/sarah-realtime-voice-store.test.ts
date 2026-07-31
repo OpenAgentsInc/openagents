@@ -5,6 +5,7 @@ import { runMigrations } from "./migrate.js";
 import {
   SarahVoiceAdmissionRejectedError,
   SarahVoiceConcurrentSessionError,
+  SarahVoiceLiveKitCapacityError,
   SarahVoiceSessionRejectedError,
   makeSarahRealtimeVoiceStore,
 } from "./sarah-realtime-voice-store.js";
@@ -609,6 +610,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       joinExpiresAt: "2026-07-28T13:01:00.000Z",
       dispatchRef: "dispatch-livekit-1",
       sarahPresenceLeaseRef: "presence-livekit-1",
+      workerControlTokenDigest: "b".repeat(64),
       publishAllowed: false,
       subscribeAllowed: true,
       nowIso: reservation.nowIso,
@@ -623,6 +625,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       admissionRef: binding.admissionRef,
       admissionDigest: binding.admissionDigest,
       idempotencyKey: "sarah-livekit:voice-livekit-1:1",
+      workerControlTokenDigest: binding.workerControlTokenDigest,
       roomContext: binding.roomContext,
       nowIso: binding.nowIso,
     });
@@ -673,6 +676,53 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         generation: 1,
       }),
     ).toBeUndefined();
+
+    const workerClaim = {
+      workerControlTokenDigest: binding.workerControlTokenDigest,
+      workerRefDigest: "c".repeat(64),
+      workerJobRef: "job-livekit-1",
+      workerRoomSid: "RM_livekit_1",
+      sessionRef: binding.sessionRef,
+      generation: binding.generation,
+      roomRef: binding.roomRef,
+      roomEpoch: binding.roomEpoch,
+      dispatchRef: binding.dispatchRef,
+      participantRef: binding.participantRef,
+      sarahParticipantRef: binding.sarahParticipantRef,
+      sarahPresenceLeaseRef: binding.sarahPresenceLeaseRef,
+      capabilityProfile: binding.capabilityProfile,
+      roomContext: binding.roomContext,
+      nowIso: "2026-07-28T13:00:10.000Z",
+    } as const;
+    await expect(store.claimLiveKitWorkerJob(workerClaim)).resolves.toMatchObject({
+      sessionRef: binding.sessionRef,
+      generation: 1,
+      ownerUserId: binding.ownerUserId,
+      roomContext: binding.roomContext,
+    });
+    await expect(store.claimLiveKitWorkerJob(workerClaim)).resolves.toMatchObject({
+      sessionRef: binding.sessionRef,
+      generation: 1,
+    });
+    await expect(
+      store.claimLiveKitWorkerJob({
+        ...workerClaim,
+        workerRefDigest: "d".repeat(64),
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
+    await expect(
+      store.authorizeLiveKitWorkerEvent({
+        workerControlTokenDigest: binding.workerControlTokenDigest,
+        workerJobRef: workerClaim.workerJobRef,
+        workerRoomSid: workerClaim.workerRoomSid,
+        sessionRef: binding.sessionRef,
+        generation: 1,
+        nowIso: "2026-07-28T13:00:11.000Z",
+      }),
+    ).resolves.toMatchObject({
+      roomRef: binding.roomRef,
+      sarahParticipantRef: binding.sarahParticipantRef,
+    });
 
     await store.recordLiveKitParticipantJoin({
       sessionRef: binding.sessionRef,
@@ -846,5 +896,104 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         nowIso: "2026-07-28T13:03:00.000Z",
       }),
     ).rejects.toBeInstanceOf(SarahVoiceConcurrentSessionError);
+  });
+
+  test("refuses room 21 in authoritative LiveKit provisioning state", async () => {
+    const store = makeSarahRealtimeVoiceStore(sql as unknown as SyncSql);
+    try {
+      await sql`
+        INSERT INTO sarah_realtime_voice_sessions (
+          session_ref, reservation_ref, owner_user_id, owner_actor_ref,
+          device_ref, thread_ref, generation, disclosure_ref, state,
+          reserved_msat, charged_msat, ticket_expires_at, session_expires_at,
+          created_at, updated_at, client_profile, credit_mode, transport_kind
+        )
+        SELECT
+          'capacity-session-' || slot,
+          'capacity-reservation-' || slot,
+          'capacity-owner-' || slot,
+          'agent:capacity-owner-' || slot,
+          'capacity-device-' || slot,
+          'capacity-thread-' || slot,
+          1,
+          'capacity-disclosure-' || slot,
+          'reserved',
+          1,
+          0,
+          '2026-07-28T14:01:00.000Z',
+          '2026-07-28T14:10:00.000Z',
+          '2026-07-28T14:00:00.000Z',
+          '2026-07-28T14:00:00.000Z',
+          'omega_editor',
+          'metered',
+          'livekit_room_v1'
+        FROM generate_series(1, 21) AS slot
+      `;
+      await sql`
+        INSERT INTO sarah_livekit_provisioning_intents (
+          session_ref, generation, idempotency_key, owner_user_id,
+          device_ref, thread_ref, capability_profile, admission_ref,
+          admission_digest, room_context_kind, worker_control_token_digest,
+          state, created_at, updated_at
+        )
+        SELECT
+          'capacity-session-' || slot,
+          1,
+          'capacity-idempotency-' || slot,
+          'capacity-owner-' || slot,
+          'capacity-device-' || slot,
+          'capacity-thread-' || slot,
+          'omega_editor',
+          'capacity-admission-' || slot,
+          repeat('a', 64),
+          'private',
+          lpad(slot::text, 64, '0'),
+          'pending',
+          '2026-07-28T14:00:00.000Z',
+          '2026-07-28T14:00:00.000Z'
+        FROM generate_series(1, 20) AS slot
+      `;
+      await sql`
+        INSERT INTO sarah_voice_admissions (
+          admission_ref, owner_user_id, device_ref, thread_ref, session_ref,
+          generation, disclosure_ref, client_profile, admission_cohort_ref,
+          credit_mode, terms_digest, spendable_remaining_credit_msat, state,
+          issued_at, expires_at, consumed_at
+        ) VALUES (
+          'capacity-admission-21', 'capacity-owner-21',
+          'capacity-device-21', 'capacity-thread-21',
+          'capacity-session-21', 1, 'capacity-disclosure-21',
+          'omega_editor', 'sarah_voice_cohort:alpha_v1', 'metered',
+          ${"e".repeat(64)}, 1000, 'consumed',
+          '2026-07-28T14:00:00.000Z', '2026-07-28T14:02:00.000Z',
+          '2026-07-28T14:00:00.000Z'
+        )
+      `;
+      await expect(
+        store.prepareLiveKitProvisioningIntent({
+          sessionRef: "capacity-session-21",
+          ownerUserId: "capacity-owner-21",
+          deviceRef: "capacity-device-21",
+          threadRef: "capacity-thread-21",
+          generation: 1,
+          capabilityProfile: "omega_editor",
+          admissionRef: "capacity-admission-21",
+          admissionDigest: "e".repeat(64),
+          idempotencyKey: "capacity-idempotency-21",
+          workerControlTokenDigest: "f".repeat(64),
+          roomContext: { kind: "private" },
+          nowIso: "2026-07-28T14:00:01.000Z",
+        }),
+      ).rejects.toBeInstanceOf(SarahVoiceLiveKitCapacityError);
+    } finally {
+      await sql`
+        DELETE FROM sarah_voice_admissions
+        WHERE admission_ref LIKE 'capacity-admission-%'
+      `;
+      await sql`
+        DELETE FROM sarah_realtime_voice_sessions
+        WHERE session_ref LIKE 'capacity-session-%'
+      `;
+    }
   });
 });

@@ -13,6 +13,7 @@ packages:
   - apps/khala-live-hub
   - apps/oa-queue-worker
   - apps/oa-updates
+  - apps/sarah-livekit-agent
   - apps/openagents-mobile
   - apps/openagents-audio
   - apps/openagents-audio-edge
@@ -77,6 +78,7 @@ packageExtensions:
       vite: "catalog:"
 
 patchedDependencies:
+  '@livekit/agents-plugin-openai@1.6.0': patches/@livekit__agents-plugin-openai@1.6.0.patch
   electron-installer-common@0.10.4: patches/electron-installer-common@0.10.4.patch
   electron-installer-redhat@3.4.0: patches/electron-installer-redhat@3.4.0.patch
   foldkit@0.102.1: patches/foldkit@0.102.1.patch

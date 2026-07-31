@@ -131,6 +131,7 @@ export type SarahVoiceLiveKitRoomBroker = Readonly<{
   provision: (
     input: Readonly<{
       idempotencyKey: string
+      workerControlToken: string
       ownerUserId: string
       deviceRef: string
       threadRef: string
@@ -361,6 +362,7 @@ export type SarahRealtimeVoiceRouteDependencies<User, Bindings> = Readonly<{
   ) => Promise<SarahVoiceLiveKitCommunityAccess | undefined>
   requireUserBearerSession: UserBearerSessionBoundary<User, Bindings>
   stagingOwnerEntitlementEnabled?: (env: Bindings) => boolean
+  liveKitNewAdmissionsEnabled?: (env: Bindings) => boolean
   userIdFromSession: (session: Readonly<{ user: User }>) => string
   verifyNostrProof?: NostrProofVerify<Bindings> | undefined
   now?: (() => number) | undefined
@@ -741,6 +743,15 @@ export const handleSarahRealtimeVoiceAdmissionRequest = async <User, Bindings>(
   const requestedTransport = body.requestedTransport ?? 'custom_wss_v1'
   const requestedRoomContext = body.roomContext ?? { kind: 'private' as const }
   if (
+    requestedTransport === 'livekit_room_v1' &&
+    dependencies.liveKitNewAdmissionsEnabled?.(env) === false
+  ) {
+    return noStoreJson(
+      { error: 'sarah_voice_livekit_admissions_disabled' },
+      503,
+    )
+  }
+  if (
     requestedTransport === 'custom_wss_v1' &&
     body.roomContext !== undefined
   ) {
@@ -1119,6 +1130,15 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
   const admissionRef = body.admissionRef
   const requestedTransport = body.requestedTransport ?? 'custom_wss_v1'
   const requestedRoomContext = body.roomContext ?? { kind: 'private' as const }
+  if (
+    requestedTransport === 'livekit_room_v1' &&
+    dependencies.liveKitNewAdmissionsEnabled?.(env) === false
+  ) {
+    return noStoreJson(
+      { error: 'sarah_voice_livekit_admissions_disabled' },
+      503,
+    )
+  }
   const requiresAdmission =
     clientProfile === 'omega_editor' || requestedTransport === 'livekit_room_v1'
   const userId = dependencies.userIdFromSession(session)
@@ -1330,6 +1350,12 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
         )
       }
       const liveKitIdempotencyKey = `sarah-livekit:${body.identity.sessionRef}:${body.identity.generation}`
+      const liveKitWorkerControlToken = `oa_sarah_lk_${base64Url(
+        crypto.getRandomValues(new Uint8Array(32)),
+      )}`
+      const liveKitWorkerControlTokenDigest = await sha256Hex(
+        liveKitWorkerControlToken,
+      )
       try {
         const publishAllowed =
           liveKitRoomContext.kind === 'private'
@@ -1349,11 +1375,13 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
           admissionRef,
           admissionDigest: currentAdmissionDigest,
           idempotencyKey: liveKitIdempotencyKey,
+          workerControlTokenDigest: liveKitWorkerControlTokenDigest,
           roomContext: liveKitRoomContext,
           nowIso,
         })
         liveKitProvision = await broker.provision({
           idempotencyKey: liveKitIdempotencyKey,
+          workerControlToken: liveKitWorkerControlToken,
           ownerUserId: userId,
           deviceRef: body.identity.deviceRef,
           threadRef: body.identity.threadRef,
@@ -1402,6 +1430,7 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
           ).toISOString(),
           dispatchRef: liveKitProvision.dispatchRef,
           sarahPresenceLeaseRef: liveKitProvision.sarahPresenceLeaseRef,
+          workerControlTokenDigest: liveKitWorkerControlTokenDigest,
           publishAllowed,
           subscribeAllowed,
           nowIso,
@@ -1462,6 +1491,7 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
                       roomRef: liveKitProvision.roomRef,
                       roomEpoch: liveKitProvision.roomEpoch,
                       participantRef: liveKitProvision.participantRef,
+                      sarahParticipantRef: liveKitProvision.sarahParticipantRef,
                       participantGrant: liveKitProvision.participantGrant,
                       joinExpiresAtMs: liveKitProvision.joinExpiresAtMs,
                       dispatchRef: liveKitProvision.dispatchRef,

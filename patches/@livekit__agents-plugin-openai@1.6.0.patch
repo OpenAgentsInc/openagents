@@ -1,0 +1,40 @@
+diff --git a/dist/realtime/realtime_model.cjs b/dist/realtime/realtime_model.cjs
+index f8c477b423c4000fe7ce26d50d3f21cf6dd72218..00a605f6dbb755fd2f21cd2f83a8e487aae72460 100644
+--- a/dist/realtime/realtime_model.cjs
++++ b/dist/realtime/realtime_model.cjs
+@@ -773,8 +773,14 @@ ${instructions}`;
+     this.responseCreatedFutures = {};
+   }
+   async createWsConn() {
++    if (this._options.safetyIdentifier !== undefined && !/^[a-f0-9]{64}$/.test(this._options.safetyIdentifier)) {
++      throw new Error("OpenAI-Safety-Identifier must be a 64-character lowercase hexadecimal digest");
++    }
+     const headers = {
+-      "User-Agent": "LiveKit-Agents-JS"
++      "User-Agent": "LiveKit-Agents-JS",
++      ...(this._options.safetyIdentifier === undefined ? {} : {
++        "OpenAI-Safety-Identifier": this._options.safetyIdentifier
++      })
+     };
+     if (this._options.isAzure) {
+       if (this._options.entraToken) {
+diff --git a/dist/realtime/realtime_model.js b/dist/realtime/realtime_model.js
+index beb80efa320e7720f2e45f2b1177893df6f57f0e..879336c6409c1c67e826fc6c718fe9d237811dd6 100644
+--- a/dist/realtime/realtime_model.js
++++ b/dist/realtime/realtime_model.js
+@@ -752,8 +752,14 @@ ${instructions}`;
+     this.responseCreatedFutures = {};
+   }
+   async createWsConn() {
++    if (this._options.safetyIdentifier !== undefined && !/^[a-f0-9]{64}$/.test(this._options.safetyIdentifier)) {
++      throw new Error("OpenAI-Safety-Identifier must be a 64-character lowercase hexadecimal digest");
++    }
+     const headers = {
+-      "User-Agent": "LiveKit-Agents-JS"
++      "User-Agent": "LiveKit-Agents-JS",
++      ...(this._options.safetyIdentifier === undefined ? {} : {
++        "OpenAI-Safety-Identifier": this._options.safetyIdentifier
++      })
+     };
+     if (this._options.isAzure) {
+       if (this._options.entraToken) {

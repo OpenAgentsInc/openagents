@@ -93,6 +93,15 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   SARAH_REALTIME_CREDIT_MSAT_PER_MILLION_TOKENS?: string | undefined
   // Whole seconds. Values outside 60..900 fail configuration validation.
   SARAH_REALTIME_MAX_SESSION_SECONDS?: string | undefined
+  // Self-hosted LiveKit server endpoint and server credentials. These values
+  // stay in the Cloud Run API and are never returned to a client or worker.
+  SARAH_LIVEKIT_URL?: string | undefined
+  SARAH_LIVEKIT_API_KEY?: string | undefined
+  SARAH_LIVEKIT_API_SECRET?: string | undefined
+  // Emergency rollback seam. Unset or exact true/1/on permits new LiveKit
+  // admissions; false or malformed values block admission and dispatch while
+  // existing worker generations retain their usage and close paths.
+  SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED?: string | undefined
   // Staging-only owner access. The composition root also requires the exact
   // staging service origin and the canonical primary owner account. The first
   // admitted request creates one expiring, revocable database entitlement.

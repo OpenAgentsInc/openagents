@@ -41,6 +41,7 @@
   },
   "dependencies": {
     "@liquid-js/qrcode-generator": "1.1.6",
+    "@livekit/protocol": "1.50.4",
     "@openagentsinc/agent-experience-memory": "workspace:*",
     "@openagentsinc/agent-readiness": "workspace:*",
     "@openagentsinc/agent-runtime-schema": "0.2.1-rc.4",
@@ -78,6 +79,7 @@
     "arctic": "^2.2.2",
     "effect": "4.0.0-beta.94",
     "hono": "^4.12.23",
+    "livekit-server-sdk": "2.17.0",
     "nostr-effect": "https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz",
     "postgres": "3.4.9",
     "react": "19.2.7",

@@ -1298,6 +1298,16 @@ import {
   readSarahHarnessStatus,
   reviewSarahHarnessHistory,
 } from './sarah-harness-service'
+import {
+  makeSarahLiveKitRoomBroker,
+  parseSarahLiveKitRoomBrokerConfig,
+} from './sarah-livekit-room-broker'
+import {
+  SARAH_LIVEKIT_WORKER_CLAIM_PATH,
+  SARAH_LIVEKIT_WORKER_EVENT_PATH,
+  handleSarahLiveKitWorkerClaim,
+  handleSarahLiveKitWorkerEvent,
+} from './sarah-livekit-worker-routes'
 import { makeSarahManagedSandboxTools } from './sarah-managed-sandbox'
 import {
   SARAH_OWNER_PATH,
@@ -1311,6 +1321,7 @@ import {
   SARAH_REALTIME_VOICE_COHORT_REVOCATION_PATH,
   SARAH_REALTIME_VOICE_SESSION_PATH,
   SARAH_REALTIME_VOICE_SETTLEMENT_PATH,
+  finalizeSarahLiveKitRoom,
   handleSarahRealtimeVoiceAdmissionRequest,
   handleSarahRealtimeVoiceCohortRevocationRequest,
   handleSarahRealtimeVoiceSessionRequest,
@@ -3747,6 +3758,51 @@ const sarahRealtimeVoiceRouteDependencies = {
   userIdFromSession: (session: Readonly<{ user: UserSubject }>) =>
     session.user.userId,
   verifyNostrProof: omegaNostrSessionService.verify,
+}
+
+const sarahLiveKitRoomBrokerForEnv = (workerEnv: Env) => {
+  const config = parseSarahLiveKitRoomBrokerConfig(workerEnv)
+  return config === undefined ? undefined : makeSarahLiveKitRoomBroker(config)
+}
+
+const sarahLiveKitNewAdmissionsEnabled = (workerEnv: Env): boolean => {
+  const value =
+    workerEnv.SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED?.trim().toLowerCase()
+  return value === undefined || ['true', '1', 'on'].includes(value)
+}
+
+const sarahRealtimeVoiceDependenciesForEnv = (workerEnv: Env) => ({
+  ...sarahRealtimeVoiceRouteDependencies,
+  liveKitRoomBroker: sarahLiveKitRoomBrokerForEnv(workerEnv),
+  liveKitNewAdmissionsEnabled: sarahLiveKitNewAdmissionsEnabled,
+})
+
+const sarahLiveKitWorkerRouteDependencies = {
+  creditMsatPerMillionTokens: (workerEnv: Env) =>
+    sarahRealtimeVoiceConfigForEnv(workerEnv)?.creditMsatPerMillionTokens,
+  openStore: openSarahRealtimeVoiceStore,
+  cleanup: async (
+    workerEnv: Env,
+    input: {
+      sessionRef: string
+      generation: number
+    },
+  ) => {
+    const broker = sarahLiveKitRoomBrokerForEnv(workerEnv)
+    const config = sarahRealtimeVoiceConfigForEnv(workerEnv)
+    if (broker === undefined || config === undefined) {
+      throw new Error('Sarah LiveKit cleanup is not configured')
+    }
+    await finalizeSarahLiveKitRoom(
+      {
+        broker,
+        creditMsatPerMillionTokens: config.creditMsatPerMillionTokens,
+        openStore: openSarahRealtimeVoiceStore,
+      },
+      workerEnv,
+      input,
+    )
+  },
 }
 
 // AIUR-3 (#8501): the ops views (users/runs/executor health) reuse the
@@ -13884,7 +13940,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env, ctx) =>
       Effect.promise(() =>
         handleSarahRealtimeVoiceAdmissionRequest(
-          sarahRealtimeVoiceRouteDependencies,
+          sarahRealtimeVoiceDependenciesForEnv(env),
           request,
           env,
           ctx,
@@ -13896,7 +13952,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env, ctx) =>
       Effect.promise(() =>
         handleSarahRealtimeVoiceSessionRequest(
-          sarahRealtimeVoiceRouteDependencies,
+          sarahRealtimeVoiceDependenciesForEnv(env),
           request,
           env,
           ctx,
@@ -13912,6 +13968,28 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
           request,
           env,
           ctx,
+        ),
+      ),
+  },
+  {
+    path: SARAH_LIVEKIT_WORKER_CLAIM_PATH,
+    handler: (request, env) =>
+      Effect.promise(() =>
+        handleSarahLiveKitWorkerClaim(
+          sarahLiveKitWorkerRouteDependencies,
+          request,
+          env,
+        ),
+      ),
+  },
+  {
+    path: SARAH_LIVEKIT_WORKER_EVENT_PATH,
+    handler: (request, env) =>
+      Effect.promise(() =>
+        handleSarahLiveKitWorkerEvent(
+          sarahLiveKitWorkerRouteDependencies,
+          request,
+          env,
         ),
       ),
   },
