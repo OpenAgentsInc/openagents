@@ -115,6 +115,30 @@ export type KhalaSyncPushDependencies = Readonly<{
   }>) => void) | undefined
 }>
 
+export const khalaSyncPostgresOptionsFromEnv = (
+  processEnv: Readonly<Record<string, string | undefined>> = process.env,
+): Record<string, unknown> => {
+  const options: Record<string, unknown> = {
+    connect_timeout: 30,
+    prepare: false,
+  }
+  const host = processEnv['PGHOST']
+  if (host === undefined || !host.startsWith('/')) {
+    return options
+  }
+
+  const port = processEnv['PGPORT'] || '5432'
+  const suffix = `/.s.PGSQL.${port}`
+  options['path'] = host.endsWith(suffix) ? host : `${host}${suffix}`
+  if (processEnv['PGUSER']) {
+    options['user'] = processEnv['PGUSER']
+  }
+  if (processEnv['PGPASSWORD'] !== undefined) {
+    options['password'] = processEnv['PGPASSWORD']
+  }
+  return options
+}
+
 const syncErrorResponse = (
   status: number,
   code: SyncErrorCode,
@@ -144,7 +168,7 @@ export const defaultMakeKhalaSyncSqlClient: MakeKhalaSyncPushSqlClient = async (
 ) => {
   const { sql, end } = await acquireSharedPostgresClient({
     connectionString,
-    options: { connect_timeout: 10, prepare: false },
+    options: khalaSyncPostgresOptionsFromEnv(),
     variant: 'sync',
   })
   return { end, sql: sql as unknown as SyncSql }

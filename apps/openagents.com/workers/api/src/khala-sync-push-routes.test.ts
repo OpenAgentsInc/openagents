@@ -17,6 +17,7 @@ import {
 import {
   type ExecutePushFn,
   handleKhalaSyncPush,
+  khalaSyncPostgresOptionsFromEnv,
   KHALA_SYNC_PUSH_PATH,
   KHALA_SYNC_PUSH_SUPPORTED_SCHEMA_VERSIONS,
   type KhalaSyncPushSqlClient,
@@ -115,6 +116,50 @@ const run = (
       registry,
     }),
   )
+
+describe('khalaSyncPostgresOptionsFromEnv', () => {
+  test('normalizes the Cloud SQL connector directory and credentials', () => {
+    expect(
+      khalaSyncPostgresOptionsFromEnv({
+        PGHOST: '/cloudsql/project:region:instance',
+        PGPASSWORD: 'secret',
+        PGUSER: 'khala_app',
+      }),
+    ).toEqual({
+      connect_timeout: 30,
+      password: 'secret',
+      path: '/cloudsql/project:region:instance/.s.PGSQL.5432',
+      prepare: false,
+      user: 'khala_app',
+    })
+  })
+
+  test('preserves an explicit socket path and port', () => {
+    expect(
+      khalaSyncPostgresOptionsFromEnv({
+        PGHOST: '/cloudsql/instance/.s.PGSQL.6543',
+        PGPORT: '6543',
+      }),
+    ).toEqual({
+      connect_timeout: 30,
+      path: '/cloudsql/instance/.s.PGSQL.6543',
+      prepare: false,
+    })
+  })
+
+  test('leaves TCP host resolution to postgres.js', () => {
+    expect(
+      khalaSyncPostgresOptionsFromEnv({
+        PGHOST: '10.0.0.5',
+        PGPASSWORD: 'secret',
+        PGUSER: 'khala_app',
+      }),
+    ).toEqual({
+      connect_timeout: 30,
+      prepare: false,
+    })
+  })
+})
 
 describe('handleKhalaSyncPush', () => {
   test('non-POST methods are 405', async () => {
