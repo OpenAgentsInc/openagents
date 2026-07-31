@@ -2029,6 +2029,54 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
     })
   })
 
+  test('returns durable failure evidence only behind the explicit acceptance header', async () => {
+    const fixture = makeDependencies()
+    const failureEvidence = {
+      principal: 'principal.sarah',
+      generation: 1,
+      providerAccountingStatus: 'uncertain',
+      holdPreserved: true,
+    }
+    vi.mocked(fixture.store.readSettlement).mockResolvedValue({
+      sessionRef: identity.sessionRef,
+      state: 'accounting_uncertain',
+      creditMode: 'metered',
+      recordedChargeMsat: 175,
+      reservedMsat: 1_000,
+      holdPreserved: true,
+      reason: 'livekit_worker_heartbeat_expired',
+      failureEvidence,
+    } as never)
+    const hidden = await handleSarahRealtimeVoiceSettlementRequest(
+      fixture.dependencies,
+      new Request('https://openagents.com/api/omega/sarah/voice/settlement', {
+        headers: {
+          authorization: 'Bearer test',
+          [SARAH_REALTIME_VOICE_SESSION_HEADER]: identity.sessionRef,
+        },
+      }),
+      {},
+      ctx,
+    )
+    expect(await hidden.json()).not.toHaveProperty('failureEvidence')
+
+    const disclosed = await handleSarahRealtimeVoiceSettlementRequest(
+      fixture.dependencies,
+      new Request('https://openagents.com/api/omega/sarah/voice/settlement', {
+        headers: {
+          authorization: 'Bearer test',
+          [SARAH_REALTIME_VOICE_SESSION_HEADER]: identity.sessionRef,
+          [SARAH_LIVEKIT_ACCEPTANCE_EVIDENCE_HEADER]:
+            'live-observation-v1',
+        },
+      }),
+      {},
+      ctx,
+    )
+    expect(disclosed.status).toBe(409)
+    expect(await disclosed.json()).toMatchObject({ failureEvidence })
+  })
+
   test('requires operator authentication for accounting reconciliation', async () => {
     const fixture = makeDependencies()
     const response =

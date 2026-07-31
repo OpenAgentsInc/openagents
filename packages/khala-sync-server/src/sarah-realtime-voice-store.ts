@@ -57,7 +57,37 @@ export type SarahVoiceSettlementProjection =
       reservedMsat: number;
       holdPreserved: true;
       reason: string;
+      failureEvidence?: SarahVoiceLiveKitFailureEvidence;
     }>;
+
+export type SarahVoiceLiveKitFailureEvidence = Readonly<{
+  principal: "principal.sarah";
+  generation: number;
+  identityDigests: Readonly<{
+    job: string;
+    providerSession: string;
+    providerConfiguration: string;
+    hold: string;
+    usage: string;
+  }>;
+  usage: Readonly<{
+    inputTokens: number;
+    outputTokens: number;
+    cachedInputTokens: number;
+    audioInputTokens: number;
+    audioOutputTokens: number;
+    recordedChargeMsat: number;
+    responseCount: number;
+    transcriptionCount: number;
+    cancelledResponseCount: number;
+  }>;
+  providerAccountingStatus: "uncertain";
+  workerJobCount: number;
+  providerSessionCount: number;
+  providerAdmittedAt: string;
+  workerClosedAt: string | null;
+  holdPreserved: true;
+}>;
 
 export type SarahVoiceLiveKitAcceptanceEvidence = Readonly<{
   principal: "principal.sarah";
@@ -137,7 +167,8 @@ export type SarahVoiceLiveKitWorkerStopReason =
   | "hold_exhausted"
   | "membership_revoked"
   | "operator_stop"
-  | "session_expired";
+  | "session_expired"
+  | "worker_unavailable";
 
 type SarahVoiceLiveKitWorkerEventCommon = Readonly<{
   workerControlTokenDigest: string;
@@ -282,6 +313,7 @@ export type SarahVoiceLiveKitMembershipLease = Readonly<{
 // Stop expiry must outlive the 30s worker drain, 45s child shutdown, 10s
 // provider terminal wait, and one worst-case 25.8s durable control delivery.
 export const SARAH_LIVEKIT_WORKER_DRAIN_TIMEOUT_MS = 150_000;
+export const SARAH_LIVEKIT_WORKER_HEARTBEAT_TIMEOUT_MS = 30_000;
 
 export class SarahVoiceInsufficientCreditError extends Error {
   override readonly name = "SarahVoiceInsufficientCreditError";
@@ -2988,7 +3020,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
   ): Promise<SarahVoiceSettlementProjection | undefined> => {
     try {
       const rows = (await sql`
-        SELECT session.session_ref, session.state, session.credit_mode,
+        SELECT session.session_ref, session.generation, session.state, session.credit_mode,
           session.charged_msat, session.reserved_msat,
           session.settlement_receipt_ref, session.reservation_ref,
           session.admission_cohort_ref,
@@ -3021,6 +3053,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           AND session.state IN ('accounting_uncertain', 'settled', 'released')
       `) as ReadonlyArray<{
         session_ref: string;
+        generation: number | string;
         state: "accounting_uncertain" | "settled" | "released";
         credit_mode: SarahVoiceCreditMode;
         charged_msat: number | string;
@@ -3052,6 +3085,76 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       const row = first(rows);
       if (row === undefined) return undefined;
       if (row.state === "accounting_uncertain") {
+        let failureEvidence: SarahVoiceLiveKitFailureEvidence | undefined;
+        if (
+          row.sarah_participant_ref === "principal.sarah" &&
+          row.worker_job_ref !== null &&
+          row.provider_session_ref_digest !== null &&
+          row.provider_configuration_digest !== null &&
+          row.provider_accounting_status === "uncertain" &&
+          row.provider_admitted_at !== null
+        ) {
+          const usageRows = (await sql`
+            SELECT provider_response_ref, usage_kind, provider_status,
+              input_tokens, output_tokens, cached_input_tokens,
+              audio_input_tokens, audio_output_tokens
+            FROM sarah_realtime_voice_usage
+            WHERE session_ref = ${row.session_ref}
+            ORDER BY usage_kind, provider_response_ref
+          `) as ReadonlyArray<{
+            provider_response_ref: string;
+            usage_kind: "response" | "transcription";
+            provider_status: "completed" | "cancelled" | "failed" | "incomplete" | null;
+            input_tokens: number | string;
+            output_tokens: number | string;
+            cached_input_tokens: number | string;
+            audio_input_tokens: number | string;
+            audio_output_tokens: number | string;
+          }>;
+          const workerJobRows = (await sql`
+            SELECT COUNT(DISTINCT worker_job_ref) AS worker_job_count
+            FROM sarah_livekit_worker_events
+            WHERE session_ref = ${row.session_ref}
+          `) as ReadonlyArray<{ worker_job_count: number | string }>;
+          failureEvidence = {
+            principal: "principal.sarah",
+            generation: toSafeInteger(row.generation, "generation"),
+            identityDigests: {
+              job: acceptanceDigest(row.worker_job_ref),
+              providerSession: row.provider_session_ref_digest,
+              providerConfiguration: row.provider_configuration_digest,
+              hold: acceptanceDigest(row.reservation_ref),
+              usage: acceptanceDigest(
+                JSON.stringify(
+                  usageRows.map((usage) => [usage.usage_kind, usage.provider_response_ref]),
+                ),
+              ),
+            },
+            usage: {
+              inputTokens: toSafeInteger(row.input_tokens, "input_tokens"),
+              outputTokens: toSafeInteger(row.output_tokens, "output_tokens"),
+              cachedInputTokens: toSafeInteger(row.cached_input_tokens, "cached_input_tokens"),
+              audioInputTokens: toSafeInteger(row.audio_input_tokens, "audio_input_tokens"),
+              audioOutputTokens: toSafeInteger(row.audio_output_tokens, "audio_output_tokens"),
+              recordedChargeMsat: toSafeInteger(row.charged_msat, "charged_msat"),
+              responseCount: usageRows.filter((usage) => usage.usage_kind === "response").length,
+              transcriptionCount: usageRows.filter((usage) => usage.usage_kind === "transcription")
+                .length,
+              cancelledResponseCount: usageRows.filter(
+                (usage) => usage.usage_kind === "response" && usage.provider_status === "cancelled",
+              ).length,
+            },
+            providerAccountingStatus: "uncertain",
+            workerJobCount: toSafeInteger(
+              first(workerJobRows)?.worker_job_count ?? 0,
+              "worker_job_count",
+            ),
+            providerSessionCount: 1,
+            providerAdmittedAt: row.provider_admitted_at,
+            workerClosedAt: row.worker_closed_at,
+            holdPreserved: true,
+          };
+        }
         return {
           sessionRef: row.session_ref,
           state: row.state,
@@ -3060,6 +3163,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           reservedMsat: toSafeInteger(row.reserved_msat, "reserved_msat"),
           holdPreserved: true,
           reason: row.provider_accounting_uncertain_reason ?? "provider_accounting_uncertain",
+          ...(failureEvidence === undefined ? {} : { failureEvidence }),
         };
       }
       if (row.settlement_receipt_ref === null) {
@@ -4233,6 +4337,9 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
   };
 
   const sweepExpired = async (nowIso: string): Promise<number> => {
+    const workerHeartbeatExpiredBeforeIso = new Date(
+      Date.parse(nowIso) - SARAH_LIVEKIT_WORKER_HEARTBEAT_TIMEOUT_MS,
+    ).toISOString();
     await sql`
       UPDATE sarah_voice_admissions
       SET state = 'expired'
@@ -4243,6 +4350,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       SELECT session.session_ref, session.generation, session.state,
         session.transport_kind, binding.worker_stop_reason,
         binding.worker_stop_close_reason, binding.worker_stop_deadline_at,
+        binding.worker_last_seen_at,
         binding.provider_admitted_at, binding.provider_accounting_status,
         session.credit_rate_msat_per_million_tokens
       FROM sarah_realtime_voice_sessions AS session
@@ -4257,6 +4365,12 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           AND (
             session.session_expires_at <= ${nowIso}
             OR binding.worker_stop_deadline_at <= ${nowIso}
+            OR (
+              session.transport_kind = 'livekit_room_v1'
+              AND binding.worker_stop_reason IS NULL
+              AND binding.worker_job_ref IS NOT NULL
+              AND binding.worker_last_seen_at <= ${workerHeartbeatExpiredBeforeIso}
+            )
           )
         )
       ORDER BY CASE
@@ -4275,6 +4389,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       worker_stop_reason: SarahVoiceLiveKitWorkerStopReason | null;
       worker_stop_close_reason: string | null;
       worker_stop_deadline_at: string | null;
+      worker_last_seen_at: string | null;
       provider_admitted_at: string | null;
       provider_accounting_status: "pending" | "exact" | "uncertain" | null;
       credit_rate_msat_per_million_tokens: number | string | null;
@@ -4288,13 +4403,18 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           row.transport_kind === "livekit_room_v1" &&
           row.worker_stop_reason === null
         ) {
+          const workerUnavailable =
+            row.worker_last_seen_at !== null &&
+            row.worker_last_seen_at <= workerHeartbeatExpiredBeforeIso;
           // eslint-disable-next-line no-await-in-loop
           await sql.begin((tx) =>
             requestLiveKitWorkerStopInTransaction(tx, {
               sessionRef: row.session_ref,
               generation: toSafeInteger(row.generation, "generation"),
-              stopReason: "session_expired",
-              closeReason: "session_expired",
+              stopReason: workerUnavailable ? "worker_unavailable" : "session_expired",
+              closeReason: workerUnavailable
+                ? "livekit_worker_heartbeat_expired"
+                : "session_expired",
               nowIso,
             }),
           );

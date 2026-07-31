@@ -64,6 +64,28 @@ reference or session returns a conflict.
 Never guess missing usage or release the hold manually. If provider evidence is
 incomplete, leave the session uncertain and escalate the incident.
 
+## Worker-loss evidence
+
+The worker sends a generation-bound lease every five seconds. If no durable
+worker event arrives for 30 seconds, the expiry sweep records
+`worker_unavailable` and starts the normal 150-second drain deadline. A worker
+that returns during the drain receives that stop reason and closes its provider
+without reconnecting. If the worker remains unavailable, the sweep moves the
+session to `accounting_uncertain` and preserves the full hold.
+
+For live failure verification, repeat the authenticated settlement read with
+`x-openagents-sarah-livekit-acceptance: live-observation-v1`. An uncertain
+response then includes `failureEvidence`: the generation; digests of the worker
+job, provider session, provider configuration, hold, and recorded usage set;
+numeric recorded usage totals and terminal counts; provider and worker counts;
+and provider admission and worker-close timestamps. It contains no raw provider
+session identifier, transcript, audio, prompt, or tool content.
+
+Use the provider-session digest and recorded usage-set digest to bind the
+provider export to the same generation before submitting reconciliation. The
+failure evidence proves what OpenAgents durably observed; it does not claim
+that the partial set is complete and does not authorize settlement by itself.
+
 ## Legacy rate-authority quarantine
 
 Migration `0117_sarah_voice_frozen_accounting_authority.sql` does not assign the

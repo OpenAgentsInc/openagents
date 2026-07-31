@@ -52,6 +52,7 @@ describe("readMigrationFiles", () => {
     expect(filenames).toContain("0112_sarah_livekit_tool_bridge.sql")
     expect(filenames).toContain("0113_sarah_livekit_provider_accounting.sql")
     expect(filenames).toContain("0118_sarah_livekit_interrupt_control.sql")
+    expect(filenames).toContain("0119_sarah_livekit_worker_heartbeat.sql")
     expect(filenames.indexOf("0111_sarah_livekit_worker_drain.sql")).toBeLessThan(
       filenames.indexOf("0112_sarah_livekit_tool_bridge.sql"),
     )
@@ -60,6 +61,9 @@ describe("readMigrationFiles", () => {
     )
     expect(filenames.indexOf("0113_sarah_livekit_provider_accounting.sql")).toBeLessThan(
       filenames.indexOf("0118_sarah_livekit_interrupt_control.sql"),
+    )
+    expect(filenames.indexOf("0118_sarah_livekit_interrupt_control.sql")).toBeLessThan(
+      filenames.indexOf("0119_sarah_livekit_worker_heartbeat.sql"),
     )
   })
 })

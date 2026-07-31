@@ -1094,6 +1094,9 @@ export const handleSarahRealtimeVoiceSettlementRequest = async <User, Bindings>(
       return noStoreJson({ error: 'sarah_voice_settlement_not_found' }, 404)
     }
     if (settlement.state === 'accounting_uncertain') {
+      const failureEvidenceRequested =
+        request.headers.get(SARAH_LIVEKIT_ACCEPTANCE_EVIDENCE_HEADER) ===
+        'live-observation-v1'
       return noStoreJson(
         {
           error: 'sarah_voice_accounting_uncertain',
@@ -1104,6 +1107,10 @@ export const handleSarahRealtimeVoiceSettlementRequest = async <User, Bindings>(
           reservedCreditMsat: settlement.reservedMsat,
           holdPreserved: settlement.holdPreserved,
           reason: settlement.reason,
+          ...(settlement.failureEvidence === undefined ||
+          !failureEvidenceRequested
+            ? {}
+            : { failureEvidence: settlement.failureEvidence }),
         },
         409,
       )

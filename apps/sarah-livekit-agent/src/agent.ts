@@ -347,6 +347,13 @@ const closeEvent = (
   accountingStatus,
 });
 
+const closeReasonForStop = (
+  stopReason: NonNullable<
+    Awaited<ReturnType<ReturnType<typeof makeSarahLiveKitControlClient>["event"]>>["stopReason"]
+  >,
+): Extract<SarahLiveKitJobEvent, { _tag: "close" }>["reason"] =>
+  stopReason === "worker_unavailable" ? "worker_error" : stopReason;
+
 const entry = async (ctx: JobContext): Promise<void> => {
   if (process.env.LK_OPENAI_DEBUG !== undefined) {
     throw new Error("LK_OPENAI_DEBUG must be unset in the Sarah worker");
@@ -461,7 +468,10 @@ const entry = async (ctx: JobContext): Promise<void> => {
     const operation = eventChain
       .then(async () => {
         const result = await controller.event(dispatch, event);
-        if (result.stopReason !== undefined && fence.settle(result.stopReason)) {
+        if (
+          result.stopReason !== undefined &&
+          fence.settle(closeReasonForStop(result.stopReason))
+        ) {
           requestShutdown();
           return;
         }
@@ -676,7 +686,7 @@ const entry = async (ctx: JobContext): Promise<void> => {
     roomSid: ctx.job.room.sid,
   });
   if (connected.stopReason !== undefined) {
-    fence.settle(connected.stopReason);
+    fence.settle(closeReasonForStop(connected.stopReason));
     requestShutdown();
     return;
   }

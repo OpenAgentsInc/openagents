@@ -35,7 +35,12 @@ export type SarahLiveKitClaimInput = Readonly<{
 export type SarahLiveKitEventResult = Readonly<{
   accepted: true;
   interruptSequence?: number;
-  stopReason?: "hold_exhausted" | "membership_revoked" | "operator_stop" | "session_expired";
+  stopReason?:
+    | "hold_exhausted"
+    | "membership_revoked"
+    | "operator_stop"
+    | "session_expired"
+    | "worker_unavailable";
 }>;
 
 export type SarahLiveKitToolProposalInput = Readonly<{
@@ -208,7 +213,8 @@ const decodeSarahLiveKitEventResult = (body: unknown): SarahLiveKitEventResult =
     (body.stopReason === "hold_exhausted" ||
       body.stopReason === "membership_revoked" ||
       body.stopReason === "operator_stop" ||
-      body.stopReason === "session_expired")
+      body.stopReason === "session_expired" ||
+      body.stopReason === "worker_unavailable")
       ? body.stopReason
       : undefined;
   const interruptSequence =

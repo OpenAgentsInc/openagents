@@ -212,6 +212,29 @@ describe("Sarah LiveKit control client", () => {
     ).resolves.toEqual({ accepted: true, stopReason: "session_expired" });
   });
 
+  test("accepts the authoritative stale-worker stop response", async () => {
+    const client = makeSarahLiveKitControlClient(
+      {
+        baseUrl: "https://openagents.com",
+        workerRef: "worker:one",
+        controlRoot,
+      },
+      vi.fn(async () =>
+        Response.json({ accepted: true, stopReason: "worker_unavailable" }),
+      ) as typeof fetch,
+    );
+    await expect(
+      client.event(dispatch, {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "lease_check",
+        sessionRef: dispatch.sessionRef,
+        generation: dispatch.generation,
+        jobRef: "job:one",
+        eventRef: "lease:stale-worker",
+      }),
+    ).resolves.toEqual({ accepted: true, stopReason: "worker_unavailable" });
+  });
+
   test("authenticates a generation-bound room interrupt and rejects changed authority", () => {
     const unsigned = {
       schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,

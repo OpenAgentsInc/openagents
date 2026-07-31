@@ -1440,6 +1440,26 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       ticket_digest: null,
       connected_at: "2026-07-28T13:00:21.500Z",
     });
+    const [staleWorker] = await sql`
+      SELECT worker_stop_reason, worker_stop_close_reason,
+        worker_stop_requested_at, worker_stop_deadline_at
+      FROM sarah_livekit_room_bindings
+      WHERE session_ref = ${binding.sessionRef}
+        AND generation = ${binding.generation}
+    `;
+    expect(staleWorker).toMatchObject({
+      worker_stop_reason: "worker_unavailable",
+      worker_stop_close_reason: "livekit_worker_heartbeat_expired",
+      worker_stop_requested_at: "2026-07-28T13:01:30.000Z",
+    });
+    expect(staleWorker?.worker_stop_deadline_at).toBe("2026-07-28T13:04:00.000Z");
+    await sql`
+      UPDATE sarah_livekit_room_bindings
+      SET worker_stop_reason = NULL, worker_stop_close_reason = NULL,
+        worker_stop_requested_at = NULL, worker_stop_deadline_at = NULL
+      WHERE session_ref = ${binding.sessionRef}
+        AND generation = ${binding.generation}
+    `;
     const usage = {
       providerResponseRef: "livekit-provider-response-1",
       inputTokens: 100,
@@ -1867,7 +1887,9 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         device_ref, thread_ref, generation, disclosure_ref, state,
         reserved_msat, charged_msat, ticket_expires_at, session_expires_at,
         created_at, updated_at, connected_at, client_profile, credit_mode,
-        transport_kind, credit_rate_msat_per_million_tokens
+        transport_kind, credit_rate_msat_per_million_tokens,
+        input_tokens, output_tokens, cached_input_tokens,
+        audio_input_tokens, audio_output_tokens
       ) VALUES (
         'voice-livekit-reconciliation',
         'voice-livekit-reconciliation-reservation',
@@ -1877,7 +1899,8 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         1000, 15, '2026-07-28T13:31:00.000Z',
         '2026-07-28T13:40:00.000Z', '2026-07-28T13:30:00.000Z',
         '2026-07-28T13:31:00.000Z', '2026-07-28T13:30:30.000Z',
-        'omega_editor', 'metered', 'livekit_room_v1', 100000
+        'omega_editor', 'metered', 'livekit_room_v1', 100000,
+        100, 50, 10, 80, 40
       )
     `;
     await sql`
@@ -1888,6 +1911,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         sarah_participant_ref, participant_grant_digest, join_expires_at,
         dispatch_ref, sarah_presence_lease_ref, publish_allowed,
         subscribe_allowed, state, created_at, updated_at,
+        worker_job_ref, worker_last_seen_at,
         provider_session_ref_digest, provider_configuration_digest,
         provider_admitted_at, provider_accounting_status,
         provider_accounting_uncertain_at,
@@ -1897,10 +1921,11 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         'omega-reconciliation', 'thread-reconciliation', 1,
         'omega_editor', 'admission-reconciliation', ${"a".repeat(64)},
         'private', 'room-reconciliation', 1, 'owner-reconciliation',
-        'sarah-reconciliation', ${"b".repeat(64)},
+        'principal.sarah', ${"b".repeat(64)},
         '2026-07-28T13:35:00.000Z', 'dispatch-reconciliation',
         'presence-reconciliation', false, true, 'active',
         '2026-07-28T13:30:00.000Z', '2026-07-28T13:31:00.000Z',
+        'worker-job-reconciliation', '2026-07-28T13:30:55.000Z',
         ${"c".repeat(64)}, ${"d".repeat(64)},
         '2026-07-28T13:30:30.000Z', 'uncertain',
         '2026-07-28T13:31:00.000Z', 'worker_disappeared'
@@ -1917,6 +1942,40 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         'response', 'completed'
       )
     `;
+
+    await expect(
+      store.readSettlement({
+        sessionRef: "voice-livekit-reconciliation",
+        ownerUserId: "user-sarah-reconciliation",
+      }),
+    ).resolves.toMatchObject({
+      state: "accounting_uncertain",
+      recordedChargeMsat: 15,
+      reservedMsat: 1_000,
+      holdPreserved: true,
+      failureEvidence: {
+        principal: "principal.sarah",
+        generation: 1,
+        identityDigests: {
+          job: expect.stringMatching(/^[0-9a-f]{64}$/u),
+          providerSession: "c".repeat(64),
+          providerConfiguration: "d".repeat(64),
+          hold: expect.stringMatching(/^[0-9a-f]{64}$/u),
+          usage: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        },
+        usage: {
+          inputTokens: 100,
+          outputTokens: 50,
+          recordedChargeMsat: 15,
+          responseCount: 1,
+          transcriptionCount: 0,
+        },
+        providerAccountingStatus: "uncertain",
+        workerJobCount: 0,
+        providerSessionCount: 1,
+        holdPreserved: true,
+      },
+    });
 
     const reconciliation = {
       reconciliationRef: "operator-reconciliation-1",
