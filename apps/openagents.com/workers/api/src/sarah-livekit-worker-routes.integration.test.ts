@@ -21,6 +21,8 @@ import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import {
   handleSarahLiveKitWorkerClaim,
   handleSarahLiveKitWorkerEvent,
+  handleSarahLiveKitWorkerToolProposal,
+  handleSarahLiveKitWorkerToolState,
 } from "./sarah-livekit-worker-routes";
 import { deriveSarahLiveKitControlToken } from "./sarah-livekit-room-broker";
 
@@ -339,6 +341,30 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       observedAt: "2026-07-28T13:01:40.000Z",
     });
 
+    nowMs = Date.parse("2026-07-28T13:01:46.000Z");
+    const toolProposalRequest = {
+      schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+      sessionRef: "voice-livekit-route-1",
+      generation: 1,
+      jobRef: "job:route-one",
+      eventRef: "tool:event:route-one",
+      providerCallRef: "call:route-one",
+      command: {
+        _tag: "start_agent_thread",
+        message: "Inspect the current test failure.",
+        presentation: "foreground",
+      },
+    } as const;
+    const toolProposalResponse = await handleSarahLiveKitWorkerToolProposal(
+      dependencies,
+      authorizedRequest("/api/internal/sarah/livekit/tool/proposal", toolProposalRequest),
+      {},
+    );
+    expect(toolProposalResponse.status).toBe(200);
+    const toolProposal = (await toolProposalResponse.json()) as {
+      proposal: { proposalRef: string; proposalDigest: string };
+    };
+
     const finalUsageEvent = {
       ...usageEvent,
       eventRef: "response:resp_route_final",
@@ -364,6 +390,33 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       accepted: true,
       stopReason: "session_expired",
     });
+    nowMs = Date.parse("2026-07-28T13:02:01.000Z");
+    const stoppedProposalState = await handleSarahLiveKitWorkerToolState(
+      dependencies,
+      authorizedRequest("/api/internal/sarah/livekit/tool/state", {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        sessionRef: "voice-livekit-route-1",
+        generation: 1,
+        jobRef: "job:route-one",
+        proposalRef: toolProposal.proposal.proposalRef,
+        proposalDigest: toolProposal.proposal.proposalDigest,
+      }),
+      {},
+    );
+    expect(stoppedProposalState.status).toBe(200);
+    expect(await stoppedProposalState.json()).toMatchObject({
+      state: "declined",
+    });
+    const proposalAfterStop = await handleSarahLiveKitWorkerToolProposal(
+      dependencies,
+      authorizedRequest("/api/internal/sarah/livekit/tool/proposal", {
+        ...toolProposalRequest,
+        eventRef: "tool:event:route-two",
+        providerCallRef: "call:route-two",
+      }),
+      {},
+    );
+    expect(proposalAfterStop.status).toBe(409);
     const [draining] = await sql`
       SELECT state, charged_msat
       FROM sarah_realtime_voice_sessions

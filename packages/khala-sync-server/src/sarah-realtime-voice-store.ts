@@ -739,14 +739,11 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           UPDATE sarah_realtime_voice_sessions
           SET state = 'connected',
               ticket_digest = NULL,
-              connected_at = COALESCE(connected_at, ${input.nowIso}),
+              connected_at = ${input.nowIso},
               updated_at = ${input.nowIso}
           WHERE session_ref = ${input.sessionRef}
             AND ticket_digest = ${input.ticketDigest}
-            AND (
-              state = 'reserved'
-              OR (state = 'connected' AND transport_kind = 'livekit_room_v1')
-            )
+            AND state = 'reserved'
             AND ticket_expires_at > ${input.nowIso}
             AND session_expires_at > ${input.nowIso}
           RETURNING session_ref, owner_user_id, owner_actor_ref, device_ref,
@@ -2293,6 +2290,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           const sessions = (await tx`
             UPDATE sarah_realtime_voice_sessions
             SET state = 'connected',
+                ticket_digest = NULL,
                 connected_at = COALESCE(connected_at, ${receipt.observedAt}),
                 updated_at = ${receipt.observedAt}
             WHERE session_ref = ${input.sessionRef}
@@ -2401,9 +2399,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     const commandKeys = Object.keys(command);
     if (
       commandKeys.length !== 3 ||
-      commandKeys.some(
-        (key) => key !== "_tag" && key !== "message" && key !== "presentation",
-      ) ||
+      commandKeys.some((key) => key !== "_tag" && key !== "message" && key !== "presentation") ||
       command._tag !== "start_agent_thread" ||
       typeof command.message !== "string" ||
       command.message.length < 1 ||
@@ -2494,12 +2490,12 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             AND binding.capability_profile = 'omega_editor'
             AND binding.state = 'active'
             AND binding.worker_closed_at IS NULL
+            AND binding.worker_stop_reason IS NULL
             AND session.state = 'connected'
             AND session.transport_kind = 'livekit_room_v1'
             AND session.client_profile = 'omega_editor'
             AND session.session_expires_at > ${input.nowIso}
             AND ${input.expiresAt} > ${input.nowIso}
-            AND ${input.expiresAt} <= session.session_expires_at
           FOR UPDATE OF binding, session
         `) as ReadonlyArray<{ session_expires_at: string }>;
         if (first(admitted) === undefined) {
@@ -2520,7 +2516,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             ${input.proposalDigest}, ${input.workerJobRef},
             ${input.workerControlTokenDigest}, ${input.workerEventRef},
             ${input.providerCallRef}, ${input.commandPayloadDigest},
-            ${JSON.stringify(input.command)}::jsonb, 'proposed', NULL, NULL,
+            ${JSON.stringify(input.command)}::text::jsonb, 'proposed', NULL, NULL,
             NULL, ${input.nowIso}, ${input.expiresAt}, NULL, NULL
           )
           RETURNING proposal_ref, proposal_digest, worker_job_ref,
@@ -2572,8 +2568,11 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           AND binding.room_context_kind = 'private'
           AND binding.capability_profile = 'omega_editor'
           AND binding.state = 'active'
+          AND binding.worker_closed_at IS NULL
+          AND binding.worker_stop_reason IS NULL
           AND session.state = 'connected'
           AND session.transport_kind = 'livekit_room_v1'
+          AND session.session_expires_at > ${input.nowIso}
         ORDER BY proposal.created_at ASC
         LIMIT 16
       `) as ReadonlyArray<LiveKitToolProposalRow>;
@@ -2616,8 +2615,11 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             AND binding.room_context_kind = 'private'
             AND binding.capability_profile = 'omega_editor'
             AND binding.state = 'active'
+            AND binding.worker_closed_at IS NULL
+            AND binding.worker_stop_reason IS NULL
             AND session.state = 'connected'
             AND session.transport_kind = 'livekit_room_v1'
+            AND session.session_expires_at > ${input.nowIso}
           FOR UPDATE OF proposal
         `) as ReadonlyArray<LiveKitToolProposalRow>;
         const row = first(rows);
@@ -2735,18 +2737,30 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     try {
       return await sql.begin(async (tx) => {
         await tx`
-          UPDATE sarah_livekit_tool_proposals
+          UPDATE sarah_livekit_tool_proposals AS proposal
           SET state = 'declined',
               decision_at = COALESCE(decision_at, ${input.nowIso})
-          WHERE session_ref = ${input.sessionRef}
-            AND generation = ${input.generation}
-            AND proposal_ref = ${input.proposalRef}
-            AND proposal_digest = ${input.proposalDigest}
-            AND worker_control_token_digest =
+          FROM sarah_livekit_room_bindings AS binding,
+            sarah_realtime_voice_sessions AS session
+          WHERE proposal.session_ref = ${input.sessionRef}
+            AND proposal.generation = ${input.generation}
+            AND proposal.proposal_ref = ${input.proposalRef}
+            AND proposal.proposal_digest = ${input.proposalDigest}
+            AND proposal.worker_control_token_digest =
               ${input.workerControlTokenDigest}
-            AND worker_job_ref = ${input.workerJobRef}
-            AND state = 'proposed'
-            AND expires_at <= ${input.nowIso}
+            AND proposal.worker_job_ref = ${input.workerJobRef}
+            AND proposal.state = 'proposed'
+            AND binding.session_ref = proposal.session_ref
+            AND binding.generation = proposal.generation
+            AND session.session_ref = proposal.session_ref
+            AND (
+              proposal.expires_at <= ${input.nowIso}
+              OR binding.state <> 'active'
+              OR binding.worker_closed_at IS NOT NULL
+              OR binding.worker_stop_reason IS NOT NULL
+              OR session.state <> 'connected'
+              OR session.session_expires_at <= ${input.nowIso}
+            )
         `;
         const rows = (await tx`
           SELECT proposal_ref, proposal_digest, worker_job_ref,

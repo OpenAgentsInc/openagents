@@ -26,10 +26,7 @@ describe("readMigrationFiles", () => {
       await writeFile(path.join(dir, "0002_earlier.sql"), "SELECT 2;\n")
       await writeFile(path.join(dir, "notes.txt"), "not a migration")
       const files = await readMigrationFiles(dir)
-      expect(files.map((f) => f.filename)).toEqual([
-        "0002_earlier.sql",
-        "0010_later.sql",
-      ])
+      expect(files.map((f) => f.filename)).toEqual(["0002_earlier.sql", "0010_later.sql"])
       expect(files[0]?.sha256).toMatch(/^[0-9a-f]{64}$/)
     } finally {
       await rm(dir, { recursive: true, force: true })
@@ -40,9 +37,7 @@ describe("readMigrationFiles", () => {
     const dir = await mkdtemp(path.join(tmpdir(), "khala-sync-migrations-"))
     try {
       await writeFile(path.join(dir, "01_short-prefix.sql"), "SELECT 1;\n")
-      await expect(readMigrationFiles(dir)).rejects.toBeInstanceOf(
-        MigrationFilenameError,
-      )
+      await expect(readMigrationFiles(dir)).rejects.toBeInstanceOf(MigrationFilenameError)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
@@ -50,9 +45,13 @@ describe("readMigrationFiles", () => {
 
   test("the checked-in migrations directory parses", async () => {
     const files = await readMigrationFiles(defaultMigrationsDir)
-    expect(files.map((f) => f.filename)).toContain("0001_khala_sync_core.sql")
-    expect(files.map((f) => f.filename)).toContain(
-      "0097_web_analytics_events.sql",
+    const filenames = files.map((file) => file.filename)
+    expect(filenames).toContain("0001_khala_sync_core.sql")
+    expect(filenames).toContain("0097_web_analytics_events.sql")
+    expect(filenames).toContain("0111_sarah_livekit_worker_drain.sql")
+    expect(filenames).toContain("0112_sarah_livekit_tool_bridge.sql")
+    expect(filenames.indexOf("0111_sarah_livekit_worker_drain.sql")).toBeLessThan(
+      filenames.indexOf("0112_sarah_livekit_tool_bridge.sql"),
     )
   })
 })
@@ -92,9 +91,7 @@ describe.skipIf(!hasLocalPostgres())("migration runner against local Postgres", 
     })
     expect(result.dryRun).toBe(true)
     expect(result.applied).toEqual([])
-    expect(result.plan.pending.map((f) => f.filename)).toContain(
-      "0001_khala_sync_core.sql",
-    )
+    expect(result.plan.pending.map((f) => f.filename)).toContain("0001_khala_sync_core.sql")
     expect(lines.join("\n")).toContain("would apply")
 
     // Nothing was created — not even the ledger table.
@@ -158,13 +155,16 @@ describe.skipIf(!hasLocalPostgres())("migration runner against local Postgres", 
     try {
       const file = path.join(dir, "0001_fixture.sql")
       await writeFile(file, "CREATE TABLE fixture_one (id text PRIMARY KEY);\n")
-      const first = await runMigrations({ databaseUrl: url, migrationsDir: dir })
+      const first = await runMigrations({
+        databaseUrl: url,
+        migrationsDir: dir,
+      })
       expect(first.applied).toEqual(["0001_fixture.sql"])
 
       await writeFile(file, "CREATE TABLE fixture_one_changed (id text PRIMARY KEY);\n")
-      await expect(
-        runMigrations({ databaseUrl: url, migrationsDir: dir }),
-      ).rejects.toBeInstanceOf(MigrationHashMismatchError)
+      await expect(runMigrations({ databaseUrl: url, migrationsDir: dir })).rejects.toBeInstanceOf(
+        MigrationHashMismatchError,
+      )
 
       // Dry run refuses on the same condition.
       await expect(
@@ -184,9 +184,9 @@ describe.skipIf(!hasLocalPostgres())("migration runner against local Postgres", 
       await runMigrations({ databaseUrl: url, migrationsDir: dir })
 
       await rm(file)
-      await expect(
-        runMigrations({ databaseUrl: url, migrationsDir: dir }),
-      ).rejects.toBeInstanceOf(MigrationFileMissingError)
+      await expect(runMigrations({ databaseUrl: url, migrationsDir: dir })).rejects.toBeInstanceOf(
+        MigrationFileMissingError,
+      )
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
@@ -206,7 +206,10 @@ describe.skipIf(!hasLocalPostgres())("migration runner against local Postgres", 
         path.join(dir, "0002_second.sql"),
         "ALTER TABLE ordered_a ADD COLUMN note text;\n",
       )
-      const result = await runMigrations({ databaseUrl: url, migrationsDir: dir })
+      const result = await runMigrations({
+        databaseUrl: url,
+        migrationsDir: dir,
+      })
       expect(result.applied).toEqual(["0002_second.sql"])
       expect(result.plan.alreadyApplied).toEqual(["0001_first.sql"])
     } finally {
@@ -225,17 +228,23 @@ describe.skipIf(!hasLocalPostgres())("migration runner against local Postgres", 
     expect(dry.exitCode).toBe(0)
     expect(dry.stdout.toString()).toContain("would apply      0001_khala_sync_core.sql")
 
-    const apply = Runtime.spawnSync([process.execPath, "--import", "tsx", script, "--database-url", url], {
-      stdout: "pipe",
-      stderr: "pipe",
-    })
+    const apply = Runtime.spawnSync(
+      [process.execPath, "--import", "tsx", script, "--database-url", url],
+      {
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    )
     expect(apply.exitCode).toBe(0)
     expect(apply.stdout.toString()).toContain("applied          0001_khala_sync_core.sql")
 
-    const again = Runtime.spawnSync([process.execPath, "--import", "tsx", script, "--database-url", url], {
-      stdout: "pipe",
-      stderr: "pipe",
-    })
+    const again = Runtime.spawnSync(
+      [process.execPath, "--import", "tsx", script, "--database-url", url],
+      {
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    )
     expect(again.exitCode).toBe(0)
     expect(again.stdout.toString()).toContain("up to date — nothing to apply")
   })

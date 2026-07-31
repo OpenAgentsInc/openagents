@@ -37,7 +37,12 @@ const dispatch = {
 
 describe('Sarah LiveKit private tool bridge', () => {
   test('waits for an authenticated Omega decision and outcome before returning success', async () => {
+    let nowMs = 2_000_000_000_000
     let proposal: SarahLiveKitToolProposal | undefined
+    const proposalAttempts: Array<{
+      proposalDigest: string
+      expiresAt: string
+    }> = []
     let state:
       | { state: 'waiting_decision' }
       | { state: 'declined' }
@@ -53,6 +58,11 @@ describe('Sarah LiveKit private tool bridge', () => {
         command: SarahLiveKitToolProposal['command']
         expiresAt: string
       }) => {
+        proposalAttempts.push({
+          proposalDigest: input.proposalDigest,
+          expiresAt: input.expiresAt,
+        })
+        if (proposal !== undefined) return proposal
         proposal = {
           proposalRef: input.proposalRef,
           proposalDigest: input.proposalDigest,
@@ -95,7 +105,7 @@ describe('Sarah LiveKit private tool bridge', () => {
     const dependencies = {
       controlRoot: () => controlRoot,
       creditMsatPerMillionTokens: () => 100_000,
-      now: () => 2_000_000_000_000,
+      now: () => nowMs,
       openStore: async () => ({ store, close: async () => undefined }),
       cleanup: async () => undefined,
     }
@@ -130,6 +140,23 @@ describe('Sarah LiveKit private tool bridge', () => {
         presentation: 'foreground',
       },
     })
+    nowMs += 5_000
+    const responseLossReplay = await worker.proposeTool(dispatch, {
+      sessionRef: dispatch.sessionRef,
+      generation: dispatch.generation,
+      jobRef: 'job:one',
+      eventRef: 'tool:event:one',
+      providerCallRef: 'call:one',
+      command: {
+        _tag: 'start_agent_thread',
+        message: 'Inspect the current test failure.',
+        presentation: 'foreground',
+      },
+    })
+    expect(responseLossReplay).toEqual(created)
+    expect(proposalAttempts).toHaveLength(2)
+    expect(proposalAttempts[1]).not.toEqual(proposalAttempts[0])
+
     expect(
       await worker.readToolState(dispatch, {
         sessionRef: dispatch.sessionRef,
