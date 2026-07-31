@@ -6,7 +6,11 @@ import {
   type PassthroughFetch,
   makePassthroughAdapter,
 } from "./passthrough-adapter";
-import { InferenceAdapterError, type InferenceRequest } from "./provider-adapter";
+import {
+  InferenceAdapterError,
+  type InferenceRequest,
+  type InferenceToolCallDelta,
+} from "./provider-adapter";
 
 const run = <A>(
   effect: Effect.Effect<A, InferenceAdapterError>,
@@ -741,5 +745,442 @@ describe("passthrough adapter — streaming", () => {
     expect(chunks[0]?.contentDelta).toBe("hi there");
     expect(chunks[0]?.toolCallDeltas).toBeUndefined();
     expect(chunks[1]?.toolCallDeltas).toBeUndefined();
+  });
+});
+
+// --- incremental pass-through stream (streamSse) --------------------------
+//
+// REGRESSION — the hosted `gpt-5.6-luna` lane did not stream: the whole answer
+// appeared at once. The buffered `stream` above is why. It asks the partner for
+// a NON-streamed body, waits for the entire completion, and then emits exactly
+// two frames — so however fast the partner produced tokens, the caller saw one
+// block of text. These tests assert the opposite property directly: MANY frames
+// arrive, in order, as separate deltas.
+
+// An SSE Response over a real ReadableStream that splits every line in HALF
+// across two enqueues, so a frame is only parseable once both reads land. A
+// parser that reads whole lines out of one buffered blob cannot pass this.
+const chunkedSseResponse = (frames: ReadonlyArray<unknown>): Response => {
+  const encoder = new TextEncoder();
+  const lines = [
+    ...frames.map(frame => `data: ${JSON.stringify(frame)}\n\n`),
+    "data: [DONE]\n\n",
+  ];
+  let index = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (index >= lines.length) {
+        controller.close();
+        return;
+      }
+      const line = lines[index]!;
+      const mid = Math.floor(line.length / 2);
+      controller.enqueue(encoder.encode(line.slice(0, mid)));
+      controller.enqueue(encoder.encode(line.slice(mid)));
+      index += 1;
+    },
+  });
+  return new Response(stream, {
+    headers: { "content-type": "text/event-stream" },
+    status: 200,
+  });
+};
+
+const fetchStreaming =
+  (response: () => Response, captured?: Array<Captured>): PassthroughFetch =>
+  async (url, init) => {
+    captured?.push({ url, init });
+    return response();
+  };
+
+const drainSource = async (
+  adapter: ReturnType<typeof makePassthroughAdapter>,
+  input: InferenceRequest,
+) => {
+  const source = successValue(await run(adapter.streamSse!(input)));
+  const deltas: Array<string> = [];
+  const reasoningDeltas: Array<string> = [];
+  const toolCallDeltas: Array<InferenceToolCallDelta> = [];
+  let frameCount = 0;
+  for await (const event of source.frames) {
+    frameCount += 1;
+    if (event.contentDelta !== "") {
+      deltas.push(event.contentDelta);
+    }
+    if (event.reasoningDelta !== undefined) {
+      reasoningDeltas.push(event.reasoningDelta);
+    }
+    if (event.toolCallDeltas !== undefined) {
+      toolCallDeltas.push(...event.toolCallDeltas);
+    }
+  }
+  return { deltas, frameCount, reasoningDeltas, source, toolCallDeltas };
+};
+
+describe("passthrough adapter — incremental SSE pass-through", () => {
+  test("exposes streamSse for the OpenAI wire format", () => {
+    const adapter = makePassthroughAdapter(openAiConfig(fetchReturning(200, openAiPayload)));
+    expect(typeof adapter.streamSse).toBe("function");
+  });
+
+  // Anthropic Messages streams a different event vocabulary this parser does not
+  // speak, so the lane must fall back to the buffered path rather than silently
+  // dropping every frame.
+  test("omits streamSse for the Anthropic wire format", () => {
+    const adapter = makePassthroughAdapter(anthropicConfig(fetchReturning(200, anthropicPayload)));
+    expect(adapter.streamSse).toBeUndefined();
+  });
+
+  test("yields each content delta as its own frame instead of one block", async () => {
+    const captured: Array<Captured> = [];
+    const adapter = makePassthroughAdapter(
+      openAiConfig(
+        fetchStreaming(
+          () =>
+            chunkedSseResponse([
+              { choices: [{ delta: { content: "Hel" }, index: 0 }] },
+              { choices: [{ delta: { content: "lo" }, index: 0 }] },
+              {
+                choices: [{ delta: {}, finish_reason: "stop", index: 0 }],
+                model: "gpt-5.6-luna",
+                usage: {
+                  completion_tokens: 2,
+                  prompt_tokens: 7,
+                  total_tokens: 9,
+                },
+              },
+            ]),
+          captured,
+        ),
+      ),
+    );
+
+    const drained = await drainSource(
+      adapter,
+      request({ model: "gpt-5.6-luna", stream: true }),
+    );
+
+    // THE POINT OF THIS CHANGE: two SEPARATE deltas, not one "Hello".
+    expect(drained.deltas).toEqual(["Hel", "lo"]);
+    expect(drained.deltas.length).toBeGreaterThan(1);
+
+    // The partner is asked to stream, and to stream over SSE.
+    const body = JSON.parse(String(captured[0]?.init.body));
+    expect(body.stream).toBe(true);
+    const headers = captured[0]?.init.headers as Record<string, string>;
+    expect(headers.accept).toBe("text/event-stream");
+
+    // Receipt-first: usage is opted into and surfaced from the terminal frame.
+    expect(body.stream_options).toEqual({ include_usage: true });
+    const terminal = drained.source.terminal();
+    expect(terminal.finishReason).toBe("stop");
+    expect(terminal.servedModel).toBe("gpt-5.6-luna");
+    expect(terminal.usage).toEqual({
+      completionTokens: 2,
+      promptTokens: 7,
+      totalTokens: 9,
+    });
+  });
+
+  test("carries the cached-input dimension from a terminal usage frame", async () => {
+    const adapter = makePassthroughAdapter(
+      openAiConfig(
+        fetchStreaming(() =>
+          chunkedSseResponse([
+            { choices: [{ delta: { content: "ok" }, index: 0 }] },
+            {
+              choices: [{ delta: {}, finish_reason: "stop", index: 0 }],
+              usage: {
+                completion_tokens: 3,
+                prompt_tokens: 11,
+                prompt_tokens_details: { cached_tokens: 4 },
+                total_tokens: 14,
+              },
+            },
+          ]),
+        ),
+      ),
+    );
+
+    const drained = await drainSource(adapter, request({ stream: true }));
+    expect(drained.source.terminal().usage?.cachedPromptTokens).toBe(4);
+  });
+
+  // Receipt-first: a stream without real counts must NOT be settled on an
+  // estimate reconstructed from the deltas.
+  test("leaves terminal usage undefined when the partner sends none", async () => {
+    const adapter = makePassthroughAdapter(
+      openAiConfig(
+        fetchStreaming(() =>
+          chunkedSseResponse([
+            { choices: [{ delta: { content: "ok" }, index: 0 }] },
+            { choices: [{ delta: {}, finish_reason: "stop", index: 0 }] },
+          ]),
+        ),
+      ),
+    );
+
+    const drained = await drainSource(adapter, request({ stream: true }));
+    expect(drained.deltas).toEqual(["ok"]);
+    expect(drained.source.terminal().usage).toBeUndefined();
+    expect(drained.source.terminal().finishReason).toBe("stop");
+  });
+
+  // A coding client always sends tools, and `gpt-5.6-luna` streams a tool call's
+  // arguments as many partial JSON fragments. They must arrive as SEPARATE
+  // frames, verbatim: assembling them here would restore the all-at-once
+  // behavior this change exists to remove.
+  test("forwards tool-call argument fragments verbatim, one frame at a time", async () => {
+    const adapter = makePassthroughAdapter(
+      openAiConfig(
+        fetchStreaming(() =>
+          chunkedSseResponse([
+            {
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        function: { arguments: "", name: "read_file" },
+                        id: "call_luna_1",
+                        index: 0,
+                        type: "function",
+                      },
+                    ],
+                  },
+                  index: 0,
+                },
+              ],
+            },
+            {
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [{ function: { arguments: '{"pa' }, index: 0 }],
+                  },
+                  index: 0,
+                },
+              ],
+            },
+            {
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      { function: { arguments: 'th":"src/main.rs"}' }, index: 0 },
+                    ],
+                  },
+                  index: 0,
+                },
+              ],
+            },
+            {
+              choices: [{ delta: {}, finish_reason: "tool_calls", index: 0 }],
+              usage: { completion_tokens: 18, prompt_tokens: 141, total_tokens: 159 },
+            },
+          ]),
+        ),
+      ),
+    );
+
+    const drained = await drainSource(
+      adapter,
+      request({
+        model: "gpt-5.6-luna",
+        passthroughParams: { tools: [readFileTool] },
+        stream: true,
+      }),
+    );
+
+    // Three separate tool-call frames, arguments NOT pre-concatenated.
+    expect(drained.toolCallDeltas).toHaveLength(3);
+    expect(drained.toolCallDeltas.map(delta => delta.function?.arguments)).toEqual([
+      "",
+      '{"pa',
+      'th":"src/main.rs"}',
+    ]);
+    expect(drained.toolCallDeltas[0]).toEqual({
+      function: { arguments: "", name: "read_file" },
+      id: "call_luna_1",
+      index: 0,
+      type: "function",
+    });
+    // Every fragment stays on index 0 so an accumulating client rebuilds one call.
+    expect(drained.toolCallDeltas.every(delta => delta.index === 0)).toBe(true);
+    expect(drained.source.terminal().finishReason).toBe("tool_calls");
+    expect(drained.source.terminal().usage?.totalTokens).toBe(159);
+  });
+
+  test("keeps parallel tool calls apart by index across frames", async () => {
+    const adapter = makePassthroughAdapter(
+      openAiConfig(
+        fetchStreaming(() =>
+          chunkedSseResponse([
+            {
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        function: { arguments: "", name: "read_file" },
+                        id: "call_luna_1",
+                        index: 0,
+                        type: "function",
+                      },
+                      {
+                        function: { arguments: "", name: "list_directory" },
+                        id: "call_luna_2",
+                        index: 1,
+                        type: "function",
+                      },
+                    ],
+                  },
+                  index: 0,
+                },
+              ],
+            },
+            {
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [{ function: { arguments: '{"path":"a.rs"}' }, index: 0 }],
+                  },
+                  index: 0,
+                },
+              ],
+            },
+          ]),
+        ),
+      ),
+    );
+
+    const drained = await drainSource(adapter, request({ stream: true }));
+    expect(drained.toolCallDeltas.map(delta => delta.index)).toEqual([0, 1, 0]);
+  });
+
+  test("streams provider-labeled reasoning on its own channel", async () => {
+    const adapter = makePassthroughAdapter(
+      openAiConfig(
+        fetchStreaming(() =>
+          chunkedSseResponse([
+            { choices: [{ delta: { reasoning_content: "think" }, index: 0 }] },
+            { choices: [{ delta: { content: "391" }, index: 0 }] },
+          ]),
+        ),
+      ),
+    );
+
+    const drained = await drainSource(adapter, request({ model: "gpt-5.6-luna", stream: true }));
+    expect(drained.reasoningDeltas).toEqual(["think"]);
+    expect(drained.deltas).toEqual(["391"]);
+  });
+
+  test("ignores the [DONE] sentinel and blank lines", async () => {
+    const adapter = makePassthroughAdapter(
+      openAiConfig(
+        fetchStreaming(() =>
+          chunkedSseResponse([
+            { choices: [{ delta: { content: "a" }, index: 0 }] },
+            { choices: [{ delta: { content: "b" }, index: 0 }] },
+          ]),
+        ),
+      ),
+    );
+
+    const drained = await drainSource(adapter, request({ stream: true }));
+    expect(drained.frameCount).toBe(2);
+    expect(drained.deltas).toEqual(["a", "b"]);
+  });
+
+  // The last frame of a stream may arrive without a trailing newline.
+  test("flushes a trailing frame that has no final newline", async () => {
+    const adapter = makePassthroughAdapter(
+      openAiConfig(
+        fetchStreaming(
+          () =>
+            new Response(
+              new ReadableStream<Uint8Array>({
+                start(controller) {
+                  const encoder = new TextEncoder();
+                  controller.enqueue(
+                    encoder.encode(
+                      'data: {"choices":[{"delta":{"content":"first"},"index":0}]}\n',
+                    ),
+                  );
+                  controller.enqueue(
+                    encoder.encode(
+                      'data: {"choices":[{"delta":{"content":"last"},"index":0}]}',
+                    ),
+                  );
+                  controller.close();
+                },
+              }),
+              { headers: { "content-type": "text/event-stream" }, status: 200 },
+            ),
+        ),
+      ),
+    );
+
+    const drained = await drainSource(adapter, request({ stream: true }));
+    expect(drained.deltas).toEqual(["first", "last"]);
+  });
+
+  test("surfaces a partner 429 as a retryable connect-time failure", async () => {
+    const adapter = makePassthroughAdapter(openAiConfig(fetchReturning(429, { error: "slow" })));
+    const exit = await run(adapter.streamSse!(request({ stream: true })));
+    const error = failureError(exit);
+    expect(error.reason).toContain("retryable");
+    expect(error.reason).toContain("429");
+  });
+
+  test("surfaces a partner rejection detail before any byte is emitted", async () => {
+    const adapter = makePassthroughAdapter(
+      openAiConfig(
+        fetchReturning(400, {
+          error: { code: "unsupported_parameter", message: "no streaming here" },
+        }),
+      ),
+    );
+    const exit = await run(adapter.streamSse!(request({ stream: true })));
+    const error = failureError(exit);
+    expect(error.reason).toContain("400");
+    expect(error.reason).toContain("unsupported_parameter");
+    expect(error.reason).not.toContain("retryable");
+  });
+
+  test("fails when the partner returns no response body", async () => {
+    const adapter = makePassthroughAdapter(
+      openAiConfig(fetchStreaming(() => new Response(null, { status: 200 }))),
+    );
+    const exit = await run(adapter.streamSse!(request({ stream: true })));
+    expect(failureError(exit).reason).toContain("no response body");
+  });
+
+  // The restricted reasoning profile still applies on the streamed path: the
+  // body that 400-ed the whole lane must not come back through this door.
+  test("keeps the restricted reasoning body shape on the streamed path", async () => {
+    const captured: Array<Captured> = [];
+    const adapter = makePassthroughAdapter(
+      openAiConfig(
+        fetchStreaming(
+          () => chunkedSseResponse([{ choices: [{ delta: { content: "ok" }, index: 0 }] }]),
+          captured,
+        ),
+      ),
+    );
+
+    await drainSource(
+      adapter,
+      request({
+        model: "gpt-5.6-luna",
+        passthroughParams: { max_tokens: 512, temperature: 0.7 },
+        stream: true,
+      }),
+    );
+
+    const body = lunaBody(captured);
+    expect(body["max_tokens"]).toBeUndefined();
+    expect(body["max_completion_tokens"]).toBe(512);
+    expect(body["temperature"]).toBeUndefined();
   });
 });

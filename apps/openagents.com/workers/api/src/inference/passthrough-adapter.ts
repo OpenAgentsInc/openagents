@@ -24,16 +24,20 @@
 
 import { Effect, Redacted } from "effect";
 
+import { parseJsonRecord, recordFromUnknown } from "../json-boundary";
 import {
   InferenceAdapterError,
   type InferenceProviderAdapter,
   type InferenceRequest,
   type InferenceResult,
   type InferenceStreamChunk,
+  type InferenceStreamEvent,
+  type InferenceStreamSource,
   type InferenceToolCallDelta,
   type InferenceUsage,
 } from "./provider-adapter";
 import {
+  inferenceToolCallDeltasFromUnknown,
   inferenceToolCallsFromUnknown,
   openAiWireMessageFromInferenceMessage,
 } from "./openai-chat-compat";
@@ -206,6 +210,16 @@ const openAiBody = (
     model: request.model,
     messages: request.messages.map(openAiWireMessageFromInferenceMessage),
     stream: request.stream,
+    // RECEIPT-FIRST STREAMING. OpenAI-compatible partners OMIT the `usage`
+    // object from a streamed response unless the caller opts in with
+    // `stream_options.include_usage`. Without it a true pass-through stream has
+    // no terminal usage frame at all, so metering would have to reconstruct
+    // counts from deltas — an estimate, which the canonical token ledger
+    // forbids. Asking for it makes a streamed turn meter exactly like a
+    // non-streamed one. Only sent on streaming requests; a stray caller copy in
+    // passthroughParams cannot override it (this load-bearing field is not on
+    // either forward allow-list).
+    ...(request.stream ? { stream_options: { include_usage: true } } : {}),
   };
   const outputTokenBudget =
     numberParam(request.passthroughParams, "max_tokens") ?? defaultMaxTokens;
@@ -352,18 +366,25 @@ const requestPath = (wireFormat: PassthroughWireFormat): string =>
 
 // Read the Redacted secret to a string at the network boundary only. The value
 // is placed on an outbound header and never logged or returned.
-const requestHeaders = (config: PassthroughAdapterConfig): Record<string, string> => {
+const requestHeaders = (
+  config: PassthroughAdapterConfig,
+  stream: boolean,
+): Record<string, string> => {
   const key = Redacted.value(config.apiKey);
+  // A streamed partner call negotiates SSE, not JSON. Asking for
+  // `application/json` on a `stream: true` request is how a partner is invited
+  // to answer with one buffered body instead of a frame-by-frame stream.
+  const accept = stream ? "text/event-stream" : "application/json";
   if (config.wireFormat === "anthropic") {
     return {
-      accept: "application/json",
+      accept,
       "anthropic-version": config.anthropicVersion ?? DEFAULT_ANTHROPIC_VERSION,
       "content-type": "application/json",
       "x-api-key": key,
     };
   }
   return {
-    accept: "application/json",
+    accept,
     authorization: `Bearer ${key}`,
     "content-type": "application/json",
   };
@@ -380,6 +401,7 @@ const safeSignal = (timeoutMs: number): AbortSignal | undefined => {
 const postToPartner = (
   config: PassthroughAdapterConfig,
   body: unknown,
+  stream: boolean,
 ): Effect.Effect<PartnerResponse, InferenceAdapterError> =>
   Effect.tryPromise({
     catch: (error) =>
@@ -394,7 +416,7 @@ const postToPartner = (
       const signal = safeSignal(config.timeoutMs ?? DEFAULT_TIMEOUT_MS);
       return fetcher(`${config.baseUrl}${requestPath(config.wireFormat)}`, {
         body: JSON.stringify(body),
-        headers: requestHeaders(config),
+        headers: requestHeaders(config, stream),
         method: "POST",
         ...(signal === undefined ? {} : { signal }),
       });
@@ -438,6 +460,196 @@ const partnerErrorDetail = (payload: unknown): string | undefined => {
   const detail =
     text === undefined ? codeText : codeText === undefined ? text : `${codeText}: ${text}`;
   return detail === undefined ? undefined : detail.slice(0, MAX_PARTNER_ERROR_DETAIL);
+};
+
+// ---- OpenAI Chat Completions SSE (true incremental passthrough) ----------
+//
+// The buffered `stream` below asks the partner for ONE non-streamed body and
+// then splits it into two frames, so nothing reaches the client until the whole
+// answer exists upstream. That is why the hosted Luna lane "did not stream": the
+// answer appeared all at once because it WAS produced all at once, from the
+// caller's point of view. The helpers here parse the partner's real SSE off the
+// response byte stream so each delta is forwarded the moment it arrives.
+
+// Parse one SSE line (`data: {...}` / `data: [DONE]`). Blank lines, comments and
+// the terminal sentinel yield undefined. JSON decoding goes through the
+// json-boundary helper (no raw JSON.parse at this boundary).
+const parseSseData = (line: string): Record<string, unknown> | undefined => {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("data:")) {
+    return undefined;
+  }
+  const payload = trimmed.slice("data:".length).trim();
+  if (payload === "" || payload === "[DONE]") {
+    return undefined;
+  }
+  return parseJsonRecord(payload);
+};
+
+const firstStreamChoice = (
+  frame: Record<string, unknown>,
+): Record<string, unknown> | undefined => {
+  const choices = frame["choices"];
+  if (!Array.isArray(choices) || choices.length === 0) {
+    return undefined;
+  }
+  return recordFromUnknown(choices[0]);
+};
+
+const streamDeltaOf = (
+  frame: Record<string, unknown>,
+): Record<string, unknown> | undefined =>
+  recordFromUnknown(firstStreamChoice(frame)?.["delta"]);
+
+const streamContentOf = (frame: Record<string, unknown>): string => {
+  const content = streamDeltaOf(frame)?.["content"];
+  return typeof content === "string" ? content : "";
+};
+
+// Provider-labeled reasoning/thinking, kept on its own channel so a client never
+// has to infer it from prose.
+const streamReasoningOf = (frame: Record<string, unknown>): string | undefined => {
+  const delta = streamDeltaOf(frame);
+  const direct =
+    delta?.["reasoning_content"] ?? delta?.["reasoning"] ?? delta?.["reasoning_delta"];
+  return typeof direct === "string" && direct !== "" ? direct : undefined;
+};
+
+// Tool-call ARGUMENT FRAGMENTS arrive split across many frames; a partner may
+// send `{"pa`, then `th":"src/m`, then `ain.rs"}`. They are forwarded VERBATIM,
+// per frame — never concatenated, parsed, or validated here. Accumulating by
+// index is the client's job (`InferenceStreamEvent.toolCallDeltas`), and holding
+// fragments back to assemble them would re-introduce exactly the buffering this
+// change removes. The lenient per-frame decoder is used deliberately: a mid-call
+// fragment carries only `index` plus a partial `function.arguments`, which the
+// strict whole-call decoder (used by the buffered path) would reject outright.
+const streamToolCallDeltasOf = (
+  frame: Record<string, unknown>,
+): ReadonlyArray<InferenceToolCallDelta> | undefined => {
+  const deltas = inferenceToolCallDeltasFromUnknown(streamDeltaOf(frame)?.["tool_calls"]);
+  return deltas === undefined || deltas.length === 0 ? undefined : deltas;
+};
+
+const streamFinishReasonOf = (frame: Record<string, unknown>): string | undefined => {
+  const reason = firstStreamChoice(frame)?.["finish_reason"];
+  return typeof reason === "string" && reason !== "" ? reason : undefined;
+};
+
+const finiteNumber = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) ? value : undefined;
+
+// Receipt-first: a usage frame is surfaced only when the partner actually sent
+// real prompt/completion counts. A missing or malformed `usage` object yields
+// undefined so the route discloses an unmetered stream rather than settling on
+// a reconstructed estimate.
+const streamUsageOf = (frame: Record<string, unknown>): InferenceUsage | undefined => {
+  const usage = recordFromUnknown(frame["usage"]);
+  if (usage === undefined) {
+    return undefined;
+  }
+  const promptTokens = finiteNumber(usage["prompt_tokens"]);
+  const completionTokens = finiteNumber(usage["completion_tokens"]);
+  if (promptTokens === undefined || completionTokens === undefined) {
+    return undefined;
+  }
+  const details = recordFromUnknown(usage["prompt_tokens_details"]);
+  const cached = details === undefined ? undefined : finiteNumber(details["cached_tokens"]);
+  return {
+    completionTokens,
+    promptTokens,
+    totalTokens: finiteNumber(usage["total_tokens"]) ?? promptTokens + completionTokens,
+    ...(cached === undefined ? {} : { cachedPromptTokens: cached }),
+  };
+};
+
+const streamEventForFrame = (frame: Record<string, unknown>): InferenceStreamEvent => {
+  const reasoningDelta = streamReasoningOf(frame);
+  const toolCallDeltas = streamToolCallDeltasOf(frame);
+  const finishReason = streamFinishReasonOf(frame);
+  const usage = streamUsageOf(frame);
+  const model = frame["model"];
+  return {
+    contentDelta: streamContentOf(frame),
+    ...(reasoningDelta === undefined ? {} : { reasoningDelta }),
+    ...(toolCallDeltas === undefined ? {} : { toolCallDeltas }),
+    ...(finishReason === undefined ? {} : { finishReason }),
+    ...(usage === undefined ? {} : { usage }),
+    ...(typeof model === "string" && model !== "" ? { servedModel: model } : {}),
+  };
+};
+
+// Build a true incremental SSE source over the partner's response body. Frames
+// are decoded and parsed AS BYTES ARRIVE — a line split across two reads is held
+// in `buffer` until it completes — and yielded one at a time, so the route pumps
+// each to the client instead of waiting for the whole completion. The running
+// terminal state (finishReason / usage / servedModel) is captured during
+// iteration and exposed by `terminal()` once the source is drained, so metering
+// still settles receipt-first without re-buffering any content.
+const makeSseSource = (
+  body: ReadableStream<Uint8Array>,
+  fallbackModel: string,
+): InferenceStreamSource => {
+  let finishReason: string | undefined;
+  let usage: InferenceUsage | undefined;
+  let servedModel: string | undefined = fallbackModel;
+
+  const captureTerminal = (event: InferenceStreamEvent): void => {
+    if (event.finishReason !== undefined) {
+      finishReason = event.finishReason;
+    }
+    if (event.usage !== undefined) {
+      usage = event.usage;
+    }
+    if (event.servedModel !== undefined) {
+      servedModel = event.servedModel;
+    }
+  };
+
+  const frames = (async function* (): AsyncIterable<InferenceStreamEvent> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (value !== undefined) {
+          buffer += decoder.decode(value, { stream: true });
+        }
+        // Emit every COMPLETE line currently buffered. OpenAI-compatible chunk
+        // framing keeps one `data:` payload on one line, so line-at-a-time
+        // parsing never holds a frame back waiting for the blank separator.
+        let newlineIndex = buffer.indexOf("\n");
+        while (newlineIndex !== -1) {
+          const line = buffer.slice(0, newlineIndex);
+          buffer = buffer.slice(newlineIndex + 1);
+          const frame = parseSseData(line);
+          if (frame !== undefined) {
+            const event = streamEventForFrame(frame);
+            captureTerminal(event);
+            yield event;
+          }
+          newlineIndex = buffer.indexOf("\n");
+        }
+        if (done) {
+          // Flush a trailing partial line (some partners omit the final \n).
+          const tail = parseSseData(buffer);
+          if (tail !== undefined) {
+            const event = streamEventForFrame(tail);
+            captureTerminal(event);
+            yield event;
+          }
+          break;
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  })();
+
+  return {
+    frames,
+    terminal: () => ({ finishReason, servedModel, usage }),
+  };
 };
 
 // ---- Adapter factory -----------------------------------------------------
@@ -491,7 +703,7 @@ const runCompletion = (
   request: InferenceRequest,
 ): Effect.Effect<InferenceResult, InferenceAdapterError> =>
   Effect.gen(function* () {
-    const response = yield* postToPartner(config, buildBody(config, request));
+    const response = yield* postToPartner(config, buildBody(config, request), false);
 
     if (isRetryableStatus(response.status)) {
       return yield* fail(config.id, transportFailureReason(response.status));
@@ -512,6 +724,46 @@ const runCompletion = (
     return toResult(config, request, payload);
   });
 
+// Streamed request → lazily consumed SSE source. Connect-time failures (429/5xx
+// and partner rejections) surface with exactly the same typed reasons the
+// buffered path uses, so routing can still overflow BEFORE any byte is emitted.
+const runSseStream = (
+  config: PassthroughAdapterConfig,
+  request: InferenceRequest,
+): Effect.Effect<InferenceStreamSource, InferenceAdapterError> =>
+  Effect.gen(function* () {
+    const streamedRequest: InferenceRequest = { ...request, stream: true };
+    const response = yield* postToPartner(
+      config,
+      buildBody(config, streamedRequest),
+      true,
+    );
+
+    if (isRetryableStatus(response.status)) {
+      return yield* fail(config.id, transportFailureReason(response.status));
+    }
+
+    if (!response.ok) {
+      const payload = yield* parseJson(config, response).pipe(
+        Effect.orElseSucceed(() => undefined),
+      );
+      const detail = partnerErrorDetail(payload);
+      return yield* fail(
+        config.id,
+        detail === undefined
+          ? `partner rejected request (${response.status})`
+          : `partner rejected request (${response.status}): ${detail}`,
+      );
+    }
+
+    const body = response.body;
+    if (body === null) {
+      return yield* fail(config.id, "partner stream had no response body");
+    }
+
+    return makeSseSource(body, request.model);
+  });
+
 // Build a passthrough adapter for one partner. Each registered partner gets one
 // adapter id. The adapter is pure data + Effects; it touches the network only
 // when `complete`/`stream` actually run, so registering it under a disabled
@@ -521,12 +773,29 @@ export const makePassthroughAdapter = (
 ): InferenceProviderAdapter => ({
   id: config.id,
   complete: (request: InferenceRequest) => runCompletion(config, request),
-  // Streaming maps to a single non-streamed partner call whose result is split
-  // into a content frame + a terminal usage frame. We force `stream: false` on
-  // the partner request (the route serializes our frames into SSE itself), so
-  // we always settle metering from the partner's real, receipt-first usage
-  // rather than reconstructing counts from SSE deltas. A future revision can
-  // upgrade this to true partner SSE passthrough without changing the contract.
+  // TRUE PASS-THROUGH STREAM for the OpenAI Chat Completions wire format. The
+  // buffered `stream` below asks for a non-streamed body, so the client saw the
+  // entire answer materialize at once — the owner-visible "luna does not
+  // stream" defect. This asks the partner for real SSE and hands the route a
+  // lazily consumed source, so each delta reaches the client the moment the
+  // partner produces it (and every chunk resets the edge idle-timer, so a long
+  // generation cannot time out mid-answer). `stream_options.include_usage`
+  // (set in `openAiBody`) keeps the terminal usage frame receipt-first.
+  //
+  // Only the OpenAI format is wired: Anthropic Messages streams a DIFFERENT
+  // event vocabulary (`content_block_delta` / `message_delta`), which this
+  // parser does not speak. Omitting `streamSse` there is the honest encoding —
+  // the route falls back to the buffered path for that lane rather than
+  // silently dropping every Anthropic frame on the floor.
+  ...(config.wireFormat === "openai"
+    ? { streamSse: (request: InferenceRequest) => runSseStream(config, request) }
+    : {}),
+  // Buffered fallback. Maps to a single non-streamed partner call whose result
+  // is split into a content frame + a terminal usage frame, forcing
+  // `stream: false` on the partner request so metering settles from the
+  // partner's real, receipt-first usage rather than reconstructed counts. It
+  // stays for tests, metering reconstruction, the overflow dispatcher, and the
+  // component-channel path, all of which need the WHOLE assembled completion.
   //
   // The content frame carries the assistant's tool calls as well as its text.
   // Dropping them is what made the hosted Omega Luna lane produce NOTHING: a

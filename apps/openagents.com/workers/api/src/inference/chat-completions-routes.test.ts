@@ -390,43 +390,76 @@ describe('chat completions no-spend admission', () => {
   // partner result carried content only — so the SSE body had no payload at
   // all. This exercises the REAL passthrough adapter (not a stub) end to end
   // through the route, because the seam that broke was between the two.
+  //
+  // The upstream fixture is now the partner's REAL SSE, because the adapter now
+  // asks for `stream: true` and pumps frames through as they arrive (the "luna
+  // does not stream" P0). The tool call's arguments are split across frames the
+  // way the partner actually sends them, so this also asserts the client sees
+  // PROGRESSIVE frames rather than one materialized block.
   test('streams a gpt-5.6-luna tool call to the client instead of an empty body', async () => {
     const registry = new InferenceProviderRegistry()
+    const lunaSseFrames = [
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  function: { arguments: '', name: 'read_file' },
+                  id: 'call_luna_1',
+                  index: 0,
+                  type: 'function',
+                },
+              ],
+            },
+            index: 0,
+          },
+        ],
+        model: GPT_56_LUNA_MODEL_ID,
+      },
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [{ function: { arguments: '{"pa' }, index: 0 }],
+            },
+            index: 0,
+          },
+        ],
+      },
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                { function: { arguments: 'th":"src/main.rs"}' }, index: 0 },
+              ],
+            },
+            index: 0,
+          },
+        ],
+      },
+      {
+        choices: [{ delta: {}, finish_reason: 'tool_calls', index: 0 }],
+        model: GPT_56_LUNA_MODEL_ID,
+        usage: {
+          completion_tokens: 18,
+          prompt_tokens: 141,
+          total_tokens: 159,
+        },
+      },
+    ]
     registry.register(
       makePassthroughAdapter({
         apiKey: Redacted.make('sk-openai-test'),
         baseUrl: 'https://api.openai.com',
         fetch: async () =>
           new Response(
-            JSON.stringify({
-              choices: [
-                {
-                  finish_reason: 'tool_calls',
-                  index: 0,
-                  message: {
-                    content: null,
-                    role: 'assistant',
-                    tool_calls: [
-                      {
-                        function: {
-                          arguments: '{"path":"src/main.rs"}',
-                          name: 'read_file',
-                        },
-                        id: 'call_luna_1',
-                        type: 'function',
-                      },
-                    ],
-                  },
-                },
-              ],
-              model: GPT_56_LUNA_MODEL_ID,
-              usage: {
-                completion_tokens: 18,
-                prompt_tokens: 141,
-                total_tokens: 159,
-              },
-            }),
-            { headers: { 'content-type': 'application/json' }, status: 200 },
+            [
+              ...lunaSseFrames.map(frame => `data: ${JSON.stringify(frame)}\n\n`),
+              'data: [DONE]\n\n',
+            ].join(''),
+            { headers: { 'content-type': 'text/event-stream' }, status: 200 },
           ),
         id: PASSTHROUGH_OPENAI_ADAPTER_ID,
         wireFormat: 'openai',
@@ -471,13 +504,34 @@ describe('chat completions no-spend admission', () => {
 
     expect(response.status).toBe(200)
     const body = await response.text()
-    // The tool call the model actually made reaches the client, whole.
+    // The tool call the model actually made reaches the client.
     expect(body).toContain('"tool_calls"')
     expect(body).toContain('call_luna_1')
     expect(body).toContain('read_file')
-    expect(body).toContain('{\\"path\\":\\"src/main.rs\\"}')
     expect(body).toContain('"finish_reason":"tool_calls"')
     expect(body).toContain('data: [DONE]')
+
+    // PROGRESSIVE, not all-at-once: the argument fragments the partner streamed
+    // reach the client as separate SSE frames, in order, unassembled. A body
+    // carrying one pre-joined `{"path":"src/main.rs"}` would mean the route had
+    // buffered the whole completion before emitting a byte — the P0 defect.
+    const dataFrames = body
+      .split('\n')
+      .filter(line => line.startsWith('data: ') && !line.includes('[DONE]'))
+    expect(dataFrames.length).toBeGreaterThan(2)
+    const argumentFragments = dataFrames.flatMap(line => {
+      const parsed = JSON.parse(line.slice('data: '.length)) as {
+        choices?: ReadonlyArray<{
+          delta?: {
+            tool_calls?: ReadonlyArray<{ function?: { arguments?: string } }>
+          }
+        }>
+      }
+      return (parsed.choices?.[0]?.delta?.tool_calls ?? []).map(
+        call => call.function?.arguments,
+      )
+    })
+    expect(argumentFragments).toEqual(['', '{"pa', 'th":"src/main.rs"}'])
   })
 
   test('fails closed for gpt-5.6-luna when the passthrough-openai arming is absent', async () => {
