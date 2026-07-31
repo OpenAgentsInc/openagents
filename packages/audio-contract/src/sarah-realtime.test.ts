@@ -186,17 +186,46 @@ describe("Sarah Realtime voice contract", () => {
   });
 
   test("decodes settlement evidence and fixes revocation to the alpha cohort", () => {
-    expect(
-      decodeSarahVoiceSettlementResponse({
-        schema: SARAH_VOICE_SETTLEMENT_PROTOCOL_VERSION,
-        sessionRef: identity.sessionRef,
-        state: "settled",
-        creditMode: "metered",
-        finalChargeMsat: 250,
-        spendableRemainingCreditMsat: 9_750,
-        receiptRef: "sarah_voice_settlement:session-1",
-      }).finalChargeMsat,
-    ).toBe(250);
+    const settlement = decodeSarahVoiceSettlementResponse({
+      schema: SARAH_VOICE_SETTLEMENT_PROTOCOL_VERSION,
+      sessionRef: identity.sessionRef,
+      state: "settled",
+      creditMode: "metered",
+      finalChargeMsat: 250,
+      spendableRemainingCreditMsat: 9_750,
+      receiptRef: "sarah_voice_settlement:session-1",
+      acceptanceEvidence: {
+        principal: "principal.sarah",
+        identityDigests: {
+          job: "1".repeat(64),
+          providerSession: "2".repeat(64),
+          providerConfiguration: "3".repeat(64),
+          context: "4".repeat(64),
+          capability: "5".repeat(64),
+          hold: "6".repeat(64),
+          usage: "7".repeat(64),
+          settlement: "8".repeat(64),
+        },
+        usage: {
+          inputTokens: 100,
+          outputTokens: 50,
+          cachedInputTokens: 0,
+          audioInputTokens: 75,
+          audioOutputTokens: 25,
+          chargeMsat: 250,
+          responseCount: 1,
+          transcriptionCount: 1,
+          cancelledResponseCount: 0,
+        },
+        providerAccountingStatus: "exact",
+        workerJobCount: 1,
+        providerSessionCount: 1,
+        workerClosedAt: "2026-07-31T12:00:05.000Z",
+        providerAdmittedAt: "2026-07-31T12:00:00.000Z",
+      },
+    });
+    expect(settlement.finalChargeMsat).toBe(250);
+    expect(settlement.acceptanceEvidence?.principal).toBe("principal.sarah");
     expect(() =>
       decodeSarahVoiceCohortRevocationRequest({
         schema: SARAH_VOICE_COHORT_REVOCATION_PROTOCOL_VERSION,

@@ -943,6 +943,178 @@ export function validateDrillObservation(value) {
   return value;
 }
 
+export const REQUIRED_SARAH_MATRIX_SCENARIOS = Object.freeze([
+  "success",
+  "cancellation",
+  "explicit_interruption",
+  "timeout",
+  "planned_worker_crash",
+  "provider_disconnect",
+  "hold_exhaustion",
+  "reconnect",
+]);
+
+export function validateSarahMatrixObservation(value) {
+  validateObservationEnvelope(value, "sarah_matrix");
+  assertExactKeys(
+    value.results,
+    [
+      "principal",
+      "identityDigests",
+      "providerUsage",
+      "scenarios",
+      "subscriberFanout",
+      "privacyScan",
+    ],
+    [],
+    "observation.results",
+  );
+  assert(value.results.principal === "principal.sarah", "Sarah principal is not literal");
+  assertExactKeys(
+    value.results.identityDigests,
+    [
+      "job",
+      "providerSession",
+      "providerConfiguration",
+      "context",
+      "capability",
+      "hold",
+      "usage",
+      "settlement",
+    ],
+    [],
+    "Sarah identity digests",
+  );
+  const identities = Object.values(value.results.identityDigests);
+  identities.forEach((digest, index) => assertDigest(digest, `Sarah identity digest ${index}`));
+  assert(new Set(identities).size === identities.length, "Sarah acceptance identities overlap");
+
+  assertExactKeys(
+    value.results.providerUsage,
+    [
+      "inputTokens",
+      "outputTokens",
+      "cachedInputTokens",
+      "audioInputTokens",
+      "audioOutputTokens",
+      "chargeMsat",
+      "responseCount",
+      "transcriptionCount",
+      "settlementChargeMsat",
+    ],
+    [],
+    "Sarah provider usage",
+  );
+  for (const key of [
+    "inputTokens",
+    "outputTokens",
+    "cachedInputTokens",
+    "audioInputTokens",
+    "audioOutputTokens",
+    "chargeMsat",
+    "responseCount",
+    "transcriptionCount",
+    "settlementChargeMsat",
+  ]) {
+    assertInteger(value.results.providerUsage[key], 0, 9_007_199_254_740_991, `Sarah usage ${key}`);
+  }
+  assert(
+    value.results.providerUsage.inputTokens +
+      value.results.providerUsage.outputTokens +
+      value.results.providerUsage.cachedInputTokens +
+      value.results.providerUsage.audioInputTokens +
+      value.results.providerUsage.audioOutputTokens >
+      0,
+    "Sarah provider usage is zero",
+  );
+  assert(value.results.providerUsage.chargeMsat > 0, "Sarah provider charge is zero");
+  assert(
+    value.results.providerUsage.chargeMsat === value.results.providerUsage.settlementChargeMsat,
+    "Sarah provider usage and settlement totals disagree",
+  );
+  assert(value.results.providerUsage.responseCount > 0, "Sarah response usage is absent");
+  assert(value.results.providerUsage.transcriptionCount > 0, "Sarah transcription usage is absent");
+
+  assert(Array.isArray(value.results.scenarios), "Sarah scenarios must be an array");
+  assert(
+    value.results.scenarios.length === REQUIRED_SARAH_MATRIX_SCENARIOS.length,
+    "Sarah acceptance requires every exact scenario",
+  );
+  for (const scenarioName of REQUIRED_SARAH_MATRIX_SCENARIOS) {
+    const scenario = value.results.scenarios.find(
+      (candidate) => candidate.scenario === scenarioName,
+    );
+    assert(scenario !== undefined, `Sarah acceptance is missing ${scenarioName}`);
+    assertExactKeys(
+      scenario,
+      [
+        "scenario",
+        "terminalObserved",
+        "exactAccounting",
+        "holdReleasedOrPreserved",
+        "noWorkerOverlap",
+        "noProviderOverlap",
+        "freshGenerationRequired",
+      ],
+      [],
+      `Sarah scenario ${scenarioName}`,
+    );
+    for (const key of [
+      "terminalObserved",
+      "exactAccounting",
+      "holdReleasedOrPreserved",
+      "noWorkerOverlap",
+      "noProviderOverlap",
+      "freshGenerationRequired",
+    ]) {
+      assert(scenario[key] === true, `Sarah ${scenarioName}.${key} did not pass`);
+    }
+  }
+  assertExactKeys(
+    value.results.subscriberFanout,
+    ["subscriberCount", "audibleFrameObservedByEverySubscriber"],
+    [],
+    "Sarah subscriber fanout",
+  );
+  assertInteger(value.results.subscriberFanout.subscriberCount, 2, 100, "subscriber count");
+  assert(
+    value.results.subscriberFanout.audibleFrameObservedByEverySubscriber === true,
+    "Sarah fanout was not observed by every subscriber",
+  );
+  assertExactKeys(
+    value.results.privacyScan,
+    ["scopes", "forbiddenPatternCount", "findings", "rawMediaObjects", "transcriptObjects"],
+    [],
+    "Sarah privacy scan",
+  );
+  const privacyScopes = [
+    "packaged_omega",
+    "packaged_clients",
+    "pods",
+    "logs",
+    "redis",
+    "object_storage",
+    "traces",
+    "crash_artifacts",
+  ];
+  assert(
+    Array.isArray(value.results.privacyScan.scopes) &&
+      value.results.privacyScan.scopes.length === privacyScopes.length &&
+      privacyScopes.every((scope) => value.results.privacyScan.scopes.includes(scope)),
+    "Sarah privacy scan is missing a packaged client or runtime scope",
+  );
+  assertInteger(
+    value.results.privacyScan.forbiddenPatternCount,
+    1,
+    100_000,
+    "Sarah forbidden pattern count",
+  );
+  for (const key of ["findings", "rawMediaObjects", "transcriptObjects"]) {
+    assert(value.results.privacyScan[key] === 0, `Sarah privacy scan ${key} is nonzero`);
+  }
+  return value;
+}
+
 export function validateSecretScanObservation(value) {
   validateObservationEnvelope(value, "secret_scan");
   assertExactKeys(
@@ -1035,6 +1207,7 @@ export const OBSERVATION_VALIDATORS = Object.freeze({
   connectivity: validateConnectivityObservation,
   load: validateLoadObservation,
   drills: validateDrillObservation,
+  sarah_matrix: validateSarahMatrixObservation,
   secret_scan: validateSecretScanObservation,
   cost: validateCostObservation,
   rollback: validateRollbackObservation,
@@ -1111,6 +1284,7 @@ export function validateSourceOnlyReceipt(value) {
       "connectivity",
       "load",
       "drills",
+      "sarah_matrix",
       "secret_scan",
       "cost",
       "rollback",

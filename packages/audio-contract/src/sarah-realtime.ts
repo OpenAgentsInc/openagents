@@ -150,6 +150,37 @@ export const SarahVoiceSettlementResponseSchema = S.Struct({
   finalChargeMsat: Seq,
   spendableRemainingCreditMsat: S.NullOr(Seq),
   receiptRef: Ref,
+  acceptanceEvidence: S.optional(
+    S.Struct({
+      principal: S.Literal("principal.sarah"),
+      identityDigests: S.Struct({
+        job: Digest,
+        providerSession: Digest,
+        providerConfiguration: Digest,
+        context: Digest,
+        capability: Digest,
+        hold: Digest,
+        usage: Digest,
+        settlement: Digest,
+      }),
+      usage: S.Struct({
+        inputTokens: Seq,
+        outputTokens: Seq,
+        cachedInputTokens: Seq,
+        audioInputTokens: Seq,
+        audioOutputTokens: Seq,
+        chargeMsat: Seq,
+        responseCount: Seq,
+        transcriptionCount: Seq,
+        cancelledResponseCount: Seq,
+      }),
+      providerAccountingStatus: S.Literal("exact"),
+      workerJobCount: Seq,
+      providerSessionCount: Seq,
+      workerClosedAt: S.String,
+      providerAdmittedAt: S.String,
+    }),
+  ),
 });
 export type SarahVoiceSettlementResponse = typeof SarahVoiceSettlementResponseSchema.Type;
 

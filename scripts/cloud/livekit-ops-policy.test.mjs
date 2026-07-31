@@ -7,6 +7,7 @@ import {
   LIVEKIT_OPS,
   LIVEKIT_PREREQUISITE_SERVICE_REFS,
   REQUIRED_DRILLS,
+  REQUIRED_SARAH_MATRIX_SCENARIOS,
   assertPublicSafe,
   buildPublicReceipt,
   publicSafeCommandFailure,
@@ -24,6 +25,7 @@ import {
   validateRollbackObservation,
   validateRuntimeManifestInventory,
   validateSecretScanObservation,
+  validateSarahMatrixObservation,
   validateServerKeyProjection,
   validateSourceOnlyReceipt,
 } from "./livekit-ops-policy.mjs";
@@ -709,6 +711,72 @@ test("secret scan covers every persistence surface and rejects findings", () => 
       ),
     /found forbidden material/u,
   );
+});
+
+test("Sarah matrix requires isolated identities, exact usage, every terminal, fanout, and packaged privacy", () => {
+  const identityNames = [
+    "job",
+    "providerSession",
+    "providerConfiguration",
+    "context",
+    "capability",
+    "hold",
+    "usage",
+    "settlement",
+  ];
+  const observation = envelope("sarah_matrix", {
+    principal: "principal.sarah",
+    identityDigests: Object.fromEntries(
+      identityNames.map((name, index) => [name, digest((index + 1).toString(16))]),
+    ),
+    providerUsage: {
+      inputTokens: 100,
+      outputTokens: 40,
+      cachedInputTokens: 0,
+      audioInputTokens: 70,
+      audioOutputTokens: 30,
+      chargeMsat: 29,
+      responseCount: 2,
+      transcriptionCount: 1,
+      settlementChargeMsat: 29,
+    },
+    scenarios: REQUIRED_SARAH_MATRIX_SCENARIOS.map((scenario) => ({
+      scenario,
+      terminalObserved: true,
+      exactAccounting: true,
+      holdReleasedOrPreserved: true,
+      noWorkerOverlap: true,
+      noProviderOverlap: true,
+      freshGenerationRequired: true,
+    })),
+    subscriberFanout: {
+      subscriberCount: 2,
+      audibleFrameObservedByEverySubscriber: true,
+    },
+    privacyScan: {
+      scopes: [
+        "packaged_omega",
+        "packaged_clients",
+        "pods",
+        "logs",
+        "redis",
+        "object_storage",
+        "traces",
+        "crash_artifacts",
+      ],
+      forbiddenPatternCount: 24,
+      findings: 0,
+      rawMediaObjects: 0,
+      transcriptObjects: 0,
+    },
+  });
+  assert.equal(validateSarahMatrixObservation(observation), observation);
+  const overlap = structuredClone(observation);
+  overlap.results.scenarios[7].noProviderOverlap = false;
+  assert.throws(() => validateSarahMatrixObservation(overlap), /noProviderOverlap/u);
+  const missingClient = structuredClone(observation);
+  missingClient.results.privacyScan.scopes.splice(1, 1);
+  assert.throws(() => validateSarahMatrixObservation(missingClient), /packaged client/u);
 });
 
 test("rollback refuses silent transport switching or unsettled accounting", () => {

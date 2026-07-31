@@ -4,6 +4,7 @@ import {
   type SarahEditorCommand,
   validateSarahEditorCommandTarget,
 } from "@openagentsinc/audio-contract";
+import { createHash } from "node:crypto";
 import type { SyncSql, SyncTransactionSql } from "./sql.js";
 
 export type SarahVoiceSessionState =
@@ -46,6 +47,7 @@ export type SarahVoiceSettlementProjection =
       finalChargeMsat: number;
       spendableRemainingCreditMsat: number | null;
       settlementReceiptRef: string;
+      acceptanceEvidence?: SarahVoiceLiveKitAcceptanceEvidence;
     }>
   | Readonly<{
       sessionRef: string;
@@ -56,6 +58,36 @@ export type SarahVoiceSettlementProjection =
       holdPreserved: true;
       reason: string;
     }>;
+
+export type SarahVoiceLiveKitAcceptanceEvidence = Readonly<{
+  principal: "principal.sarah";
+  identityDigests: Readonly<{
+    job: string;
+    providerSession: string;
+    providerConfiguration: string;
+    context: string;
+    capability: string;
+    hold: string;
+    usage: string;
+    settlement: string;
+  }>;
+  usage: Readonly<{
+    inputTokens: number;
+    outputTokens: number;
+    cachedInputTokens: number;
+    audioInputTokens: number;
+    audioOutputTokens: number;
+    chargeMsat: number;
+    responseCount: number;
+    transcriptionCount: number;
+    cancelledResponseCount: number;
+  }>;
+  providerAccountingStatus: "exact";
+  workerJobCount: number;
+  providerSessionCount: number;
+  workerClosedAt: string;
+  providerAdmittedAt: string;
+}>;
 
 export type SarahVoiceSessionRecord = Readonly<{
   sessionRef: string;
@@ -332,6 +364,9 @@ const toRecord = (row: SessionRow): SarahVoiceSessionRecord => ({
 });
 
 const first = <A>(rows: ReadonlyArray<A>): A | undefined => rows[0];
+
+const acceptanceDigest = (value: string): string =>
+  createHash("sha256").update(value).digest("hex");
 
 const plusMillisecondsIso = (value: string, milliseconds: number): string => {
   const epochMilliseconds = Date.parse(value);
@@ -2955,8 +2990,19 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       const rows = (await sql`
         SELECT session.session_ref, session.state, session.credit_mode,
           session.charged_msat, session.reserved_msat,
-          session.settlement_receipt_ref,
+          session.settlement_receipt_ref, session.reservation_ref,
+          session.admission_cohort_ref,
+          session.input_tokens, session.output_tokens,
+          session.cached_input_tokens, session.audio_input_tokens,
+          session.audio_output_tokens,
           binding.provider_accounting_uncertain_reason,
+          binding.worker_job_ref, binding.provider_session_ref_digest,
+          binding.provider_configuration_digest, binding.capability_profile,
+          binding.admission_digest, binding.room_context_kind,
+          binding.community_ref, binding.channel_ref,
+          binding.membership_revision, binding.sarah_participant_ref,
+          binding.provider_accounting_status, binding.worker_closed_at,
+          binding.provider_admitted_at,
           CASE
             WHEN session.credit_mode = 'metered'
               THEN COALESCE(
@@ -2980,7 +3026,27 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         charged_msat: number | string;
         reserved_msat: number | string;
         settlement_receipt_ref: string | null;
+        reservation_ref: string;
+        admission_cohort_ref: string | null;
+        input_tokens: number | string;
+        output_tokens: number | string;
+        cached_input_tokens: number | string;
+        audio_input_tokens: number | string;
+        audio_output_tokens: number | string;
         provider_accounting_uncertain_reason: string | null;
+        worker_job_ref: string | null;
+        provider_session_ref_digest: string | null;
+        provider_configuration_digest: string | null;
+        capability_profile: string | null;
+        admission_digest: string | null;
+        room_context_kind: "private" | "community" | null;
+        community_ref: string | null;
+        channel_ref: string | null;
+        membership_revision: string | null;
+        sarah_participant_ref: string | null;
+        provider_accounting_status: "pending" | "exact" | "uncertain" | null;
+        worker_closed_at: string | null;
+        provider_admitted_at: string | null;
         spendable_remaining_credit_msat: number | string | null;
       }>;
       const row = first(rows);
@@ -2999,6 +3065,90 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       if (row.settlement_receipt_ref === null) {
         throw new SarahVoiceStorageError("Terminal settlement receipt is missing", null);
       }
+      let acceptanceEvidence: SarahVoiceLiveKitAcceptanceEvidence | undefined;
+      if (
+        row.sarah_participant_ref === "principal.sarah" &&
+        row.admission_cohort_ref === "sarah_voice_cohort:alpha_v1" &&
+        row.worker_job_ref !== null &&
+        row.provider_session_ref_digest !== null &&
+        row.provider_configuration_digest !== null &&
+        row.capability_profile !== null &&
+        row.admission_digest !== null &&
+        row.room_context_kind !== null &&
+        row.provider_accounting_status === "exact" &&
+        row.worker_closed_at !== null &&
+        row.provider_admitted_at !== null
+      ) {
+        const usageRows = (await sql`
+          SELECT provider_response_ref, usage_kind, provider_status,
+            input_tokens, output_tokens, cached_input_tokens,
+            audio_input_tokens, audio_output_tokens, charge_msat
+          FROM sarah_realtime_voice_usage
+          WHERE session_ref = ${row.session_ref}
+          ORDER BY usage_kind, provider_response_ref
+        `) as ReadonlyArray<{
+          provider_response_ref: string;
+          usage_kind: "response" | "transcription";
+          provider_status: "completed" | "cancelled" | "failed" | "incomplete" | null;
+          input_tokens: number | string;
+          output_tokens: number | string;
+          cached_input_tokens: number | string;
+          audio_input_tokens: number | string;
+          audio_output_tokens: number | string;
+          charge_msat: number | string;
+        }>;
+        const workerJobRows = (await sql`
+          SELECT COUNT(DISTINCT worker_job_ref) AS worker_job_count
+          FROM sarah_livekit_worker_events
+          WHERE session_ref = ${row.session_ref}
+        `) as ReadonlyArray<{ worker_job_count: number | string }>;
+        const contextAuthority = JSON.stringify([
+          row.room_context_kind,
+          row.community_ref,
+          row.channel_ref,
+          row.membership_revision,
+          row.admission_digest,
+        ]);
+        acceptanceEvidence = {
+          principal: "principal.sarah",
+          identityDigests: {
+            job: acceptanceDigest(row.worker_job_ref),
+            providerSession: row.provider_session_ref_digest,
+            providerConfiguration: row.provider_configuration_digest,
+            context: acceptanceDigest(contextAuthority),
+            capability: acceptanceDigest(row.capability_profile),
+            hold: acceptanceDigest(row.reservation_ref),
+            usage: acceptanceDigest(
+              JSON.stringify(
+                usageRows.map((usage) => [usage.usage_kind, usage.provider_response_ref]),
+              ),
+            ),
+            settlement: acceptanceDigest(row.settlement_receipt_ref),
+          },
+          usage: {
+            inputTokens: toSafeInteger(row.input_tokens, "input_tokens"),
+            outputTokens: toSafeInteger(row.output_tokens, "output_tokens"),
+            cachedInputTokens: toSafeInteger(row.cached_input_tokens, "cached_input_tokens"),
+            audioInputTokens: toSafeInteger(row.audio_input_tokens, "audio_input_tokens"),
+            audioOutputTokens: toSafeInteger(row.audio_output_tokens, "audio_output_tokens"),
+            chargeMsat: toSafeInteger(row.charged_msat, "charged_msat"),
+            responseCount: usageRows.filter((usage) => usage.usage_kind === "response").length,
+            transcriptionCount: usageRows.filter((usage) => usage.usage_kind === "transcription")
+              .length,
+            cancelledResponseCount: usageRows.filter(
+              (usage) => usage.usage_kind === "response" && usage.provider_status === "cancelled",
+            ).length,
+          },
+          providerAccountingStatus: "exact",
+          workerJobCount: toSafeInteger(
+            first(workerJobRows)?.worker_job_count ?? 0,
+            "worker_job_count",
+          ),
+          providerSessionCount: 1,
+          workerClosedAt: row.worker_closed_at,
+          providerAdmittedAt: row.provider_admitted_at,
+        };
+      }
       return {
         sessionRef: row.session_ref,
         state: row.state,
@@ -3009,6 +3159,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             ? null
             : toSafeInteger(row.spendable_remaining_credit_msat, "spendable_remaining_credit_msat"),
         settlementReceiptRef: row.settlement_receipt_ref,
+        ...(acceptanceEvidence === undefined ? {} : { acceptanceEvidence }),
       };
     } catch (error) {
       throw new SarahVoiceStorageError("Sarah voice settlement lookup failed", error);
@@ -3126,9 +3277,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     `) as ReadonlyArray<{ worker_interrupt_sequence: number | string }>;
     const row = first(rows);
     if (row === undefined) {
-      throw new SarahVoiceSessionRejectedError(
-        "The Sarah LiveKit worker binding disappeared",
-      );
+      throw new SarahVoiceSessionRejectedError("The Sarah LiveKit worker binding disappeared");
     }
     return toSafeInteger(row.worker_interrupt_sequence, "worker interrupt sequence");
   };

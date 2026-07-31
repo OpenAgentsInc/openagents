@@ -14,7 +14,7 @@ import {
 const usage = () => {
   process.stderr.write(`Usage:
   node scripts/cloud/livekit-acceptance.mjs \\
-    --phase connectivity|load|drills|secret_scan|cost|rollback \\
+    --phase connectivity|load|drills|sarah_matrix|secret_scan|cost|rollback \\
     --bundle infra/livekit/bundle.json \\
     [--input PRIVATE_OBSERVATION.json --receipt PUBLIC_RECEIPT.json --apply]
 
@@ -58,7 +58,9 @@ const parseArgs = (args) => {
     throw new Error(`unsupported argument ${argument}`);
   }
   if (!parsed.phase || !Object.hasOwn(OBSERVATION_VALIDATORS, parsed.phase)) {
-    throw new Error("--phase must be connectivity, load, drills, secret_scan, cost, or rollback");
+    throw new Error(
+      "--phase must be connectivity, load, drills, sarah_matrix, secret_scan, cost, or rollback",
+    );
   }
   if (!parsed.bundle) throw new Error("--bundle is required");
   if (parsed.apply && (!parsed.input || !parsed.receipt)) {
@@ -123,6 +125,18 @@ const expectation = (phase, bundle) => {
           "server rollback",
           "visible bounded failure, no provider overlap, terminal accounting, fresh admission",
           "no unsupported uninterrupted-speech claim",
+        ],
+      };
+    case "sarah_matrix":
+      return {
+        ...shared,
+        required: [
+          "literal principal.sarah and eight distinct session authority identities",
+          "nonzero provider response and transcription usage equal to exact settlement",
+          "success, cancellation, explicit interruption, timeout, planned worker crash, provider disconnect, hold exhaustion, and reconnect",
+          "no reconnect worker or provider overlap and a fresh generation",
+          "audible output observed by at least two simultaneous subscribers",
+          "packaged Omega, packaged clients, pods, logs, Redis, object storage, traces, and crash artifacts privacy scan",
         ],
       };
     case "secret_scan":

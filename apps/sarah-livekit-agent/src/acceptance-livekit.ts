@@ -338,6 +338,7 @@ const readSettlement = async (
       headers: {
         authorization: `Bearer ${scenario.bearer}`,
         "x-openagents-sarah-voice-session": scenario.sessionRef,
+        "x-openagents-sarah-livekit-acceptance": "live-observation-v1",
       },
       redirect: "error",
     });
@@ -410,13 +411,20 @@ export const runLiveSarahLiveKitScenario = async (
     session.transport.roomRef === "" ||
     session.transport.participantGrant === "" ||
     session.transport.permissions.canPublish !== true ||
-    session.transport.permissions.canSubscribe !== true
+    session.transport.permissions.canSubscribe !== true ||
+    session.transport.sarahParticipantRef !== "principal.sarah"
   ) {
     throw new Error(`${scenario.kind} Sarah session did not return the production LiveKit grant`);
   }
 
   const room = new Room();
   const output = observeSarahOutputs(room, session.transport.sarahParticipantRef, clock.now);
+  const subscriberRoom = new Room();
+  const subscriberOutput = observeSarahOutputs(
+    subscriberRoom,
+    session.transport.sarahParticipantRef,
+    clock.now,
+  );
   let microphone: Awaited<ReturnType<typeof publishMicrophone>> | undefined;
   try {
     const roomConnectStartedAtMs = clock.now();
@@ -435,7 +443,23 @@ export const runLiveSarahLiveKitScenario = async (
     ) {
       throw new Error(`${scenario.kind} LiveKit room identity did not match the server grant`);
     }
+    await timeout(
+      subscriberRoom.connect(session.transport.livekitUrl, scenario.subscriberGrant, {
+        autoSubscribe: true,
+        dynacast: false,
+      }),
+      SCENARIO_TIMEOUT_MS,
+      `${scenario.kind} secondary subscriber connect`,
+    );
+    if (
+      subscriberRoom.name !== session.transport.roomRef ||
+      subscriberRoom.localParticipant?.identity !== scenario.subscriberRef ||
+      scenario.subscriberRef === session.transport.participantRef
+    ) {
+      throw new Error(`${scenario.kind} secondary subscriber grant did not match the room`);
+    }
     output.attachExisting();
+    subscriberOutput.attachExisting();
     const microphonePublishStartedAtMs = clock.now();
     microphone = await timeout(
       publishMicrophone(room, scenario.pcm),
@@ -444,7 +468,9 @@ export const runLiveSarahLiveKitScenario = async (
     );
     const microphonePublishedAtMs = clock.now();
     const [firstSarahAudioAtMs, firstSarahTranscriptionAtMs] = await timeout(
-      Promise.all([output.audio, output.transcription]),
+      Promise.all([output.audio, output.transcription, subscriberOutput.audio]).then(
+        ([audioAtMs, transcriptionAtMs]) => [audioAtMs, transcriptionAtMs] as const,
+      ),
       SCENARIO_TIMEOUT_MS,
       `${scenario.kind} Sarah audio and transcription`,
     );
@@ -461,7 +487,30 @@ export const runLiveSarahLiveKitScenario = async (
     await room.localParticipant?.unpublishTrack(microphone.publicationSid, true);
     microphone = undefined;
     await room.disconnect();
+    await subscriberRoom.disconnect();
     const settlement = await readSettlement(http, clock, scenario);
+    const evidence = (
+      settlement as typeof settlement & {
+        acceptanceEvidence?: Readonly<{
+          principal: "principal.sarah";
+          identityDigests: SarahLiveKitScenarioObservation["identityDigests"];
+          usage: SarahLiveKitScenarioObservation["providerUsage"] &
+            Readonly<{ cancelledResponseCount: number }>;
+          providerAccountingStatus: "exact";
+          workerJobCount: number;
+          providerSessionCount: number;
+        }>;
+      }
+    ).acceptanceEvidence;
+    if (
+      evidence === undefined ||
+      evidence.principal !== "principal.sarah" ||
+      evidence.providerAccountingStatus !== "exact" ||
+      evidence.workerJobCount !== 1 ||
+      evidence.providerSessionCount !== 1
+    ) {
+      throw new Error(`${scenario.kind} terminal LiveKit acceptance evidence was incomplete`);
+    }
     const endedAtMs = clock.now();
     return {
       kind: scenario.kind,
@@ -479,6 +528,22 @@ export const runLiveSarahLiveKitScenario = async (
       microphonePublished: true,
       sarahAudioObserved: true,
       sarahTranscriptionObserved: true,
+      principalSarahObserved: true,
+      identityDigests: evidence.identityDigests,
+      providerUsage: {
+        inputTokens: evidence.usage.inputTokens,
+        outputTokens: evidence.usage.outputTokens,
+        cachedInputTokens: evidence.usage.cachedInputTokens,
+        audioInputTokens: evidence.usage.audioInputTokens,
+        audioOutputTokens: evidence.usage.audioOutputTokens,
+        chargeMsat: evidence.usage.chargeMsat,
+        responseCount: evidence.usage.responseCount,
+        transcriptionCount: evidence.usage.transcriptionCount,
+      },
+      identityIsolationObserved: true,
+      exactProviderUsageObserved: true,
+      subscriberFanoutCount: 2,
+      audibleFanoutObserved: true,
       settlementState: settlement.state,
       settlementCreditMode: settlement.creditMode,
       finalChargeMsat: settlement.finalChargeMsat,
@@ -486,7 +551,9 @@ export const runLiveSarahLiveKitScenario = async (
     };
   } finally {
     output.close();
+    subscriberOutput.close();
     if (room.isConnected) await room.disconnect();
+    if (subscriberRoom.isConnected) await subscriberRoom.disconnect();
     await microphone?.track.close();
   }
 };

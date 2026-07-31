@@ -113,6 +113,17 @@ prints the resulting digest-only image reference. It does not deploy the image.
 Use that reference in the LiveKit manifest and deployment bundle by following
 `infra/livekit/README.md`.
 
+The production acceptance command resolves its source revision from the
+converged Kubernetes Deployment image digest and the image's unique
+`source-<revision>` Artifact Registry tag; it does not accept an operator-entered
+revision. Its session-scoped settlement evidence requires literal
+`principal.sarah`, distinct job/provider/configuration/context/capability/hold/
+usage/settlement digests, one worker and provider session, nonzero exact usage,
+and a settlement charge equal to recorded provider usage. The receipt retains
+only booleans, counts, timings, totals, and digests. Failure injection, fanout,
+reconnect, and packaged-client privacy collection remain separate live operator
+actions projected through the `sarah_matrix` phase in the production runbook.
+
 Both Docker stages pin the Linux AMD64 manifest digest for the official
 `node:24.13.1-bookworm-slim` image. To refresh it, inspect the authoritative
 Docker Hub manifest index with:

@@ -41,6 +41,8 @@ export const SARAH_REALTIME_VOICE_SESSION_HEADER =
   'x-openagents-sarah-voice-session'
 export const SARAH_REALTIME_VOICE_TICKET_HEADER =
   'x-openagents-sarah-voice-ticket'
+export const SARAH_LIVEKIT_ACCEPTANCE_EVIDENCE_HEADER =
+  'x-openagents-sarah-livekit-acceptance'
 
 type UserBearerSessionBoundary<User, Bindings> = (
   request: Request,
@@ -1106,6 +1108,14 @@ export const handleSarahRealtimeVoiceSettlementRequest = async <User, Bindings>(
         409,
       )
     }
+    const acceptanceEvidence = (
+      settlement as typeof settlement & {
+        acceptanceEvidence?: unknown
+      }
+    ).acceptanceEvidence
+    const acceptanceEvidenceRequested =
+      request.headers.get(SARAH_LIVEKIT_ACCEPTANCE_EVIDENCE_HEADER) ===
+      'live-observation-v1'
     return noStoreJson(
       {
         schema: SARAH_VOICE_SETTLEMENT_PROTOCOL_VERSION,
@@ -1115,6 +1125,9 @@ export const handleSarahRealtimeVoiceSettlementRequest = async <User, Bindings>(
         finalChargeMsat: settlement.finalChargeMsat,
         spendableRemainingCreditMsat: settlement.spendableRemainingCreditMsat,
         receiptRef: settlement.settlementReceiptRef,
+        ...(acceptanceEvidence === undefined || !acceptanceEvidenceRequested
+          ? {}
+          : { acceptanceEvidence }),
       },
       200,
     )

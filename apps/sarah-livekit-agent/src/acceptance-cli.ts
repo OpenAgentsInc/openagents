@@ -6,6 +6,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runSarahLiveKitAcceptance } from "./acceptance-harness.js";
 import { runLiveSarahLiveKitScenario } from "./acceptance-livekit.js";
+import { resolveDeployedSarahRevision } from "./acceptance-deployment.js";
 
 const OWNER_GATE = "I_ACCEPT_EP263_LIVEKIT_GCP_COST";
 const repositoryRoot = fileURLToPath(new URL("../../..", import.meta.url));
@@ -13,7 +14,6 @@ const receiptRoot = resolve(repositoryRoot, "docs/ops/receipts/livekit");
 
 type Arguments = Readonly<{
   apply: boolean;
-  sourceRevision?: string;
   privatePcm?: string;
   communityPcm?: string;
   communityRef?: string;
@@ -24,7 +24,6 @@ type Arguments = Readonly<{
 const usage = () => {
   process.stderr.write(`Usage:
   pnpm --dir apps/sarah-livekit-agent acceptance -- \\
-    --source-revision <40-hex deployed revision> \\
     --private-pcm <private 24kHz mono s16le prompt> \\
     --community-pcm <private 24kHz mono s16le prompt> \\
     --community-ref <community ref> --channel-ref <channel ref> \\
@@ -35,8 +34,12 @@ https://openagents.com and wss://livekit.openagents.com. It requires:
   OA_LIVEKIT_OWNER_GATE=${OWNER_GATE}
   OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_BEARER
   OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_OWNER_REF
+  OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_SUBSCRIBER_GRANT
+  OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_SUBSCRIBER_REF
   OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_BEARER
   OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_OWNER_REF
+  OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_SUBSCRIBER_GRANT
+  OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_SUBSCRIBER_REF
 
 The two owner refs must differ because production accounting admits one active
 Sarah voice generation per owner. PCM and transcript content are consumed in
@@ -47,7 +50,6 @@ memory and never written to the receipt.
 const parseArguments = (values: readonly string[]): Arguments => {
   const parsed: {
     apply: boolean;
-    sourceRevision?: string;
     privatePcm?: string;
     communityPcm?: string;
     communityRef?: string;
@@ -55,7 +57,6 @@ const parseArguments = (values: readonly string[]): Arguments => {
     receipt?: string;
   } = { apply: false };
   const fields = new Map<string, keyof Omit<typeof parsed, "apply">>([
-    ["--source-revision", "sourceRevision"],
     ["--private-pcm", "privatePcm"],
     ["--community-pcm", "communityPcm"],
     ["--community-ref", "communityRef"],
@@ -110,6 +111,9 @@ const run = async () => {
           "room-scoped participant grant",
           "microphone publication",
           "Sarah audio and ephemeral transcription",
+          "literal principal.sarah and distinct authority identity digests",
+          "nonzero exact provider usage equal to terminal settlement",
+          "audible Sarah output for owner and secondary subscriber",
           "selected publisher and subscriber ICE paths",
           "overlapping private and community sessions",
           "terminal settlement receipts",
@@ -122,7 +126,7 @@ const run = async () => {
     throw new Error(`--apply requires OA_LIVEKIT_OWNER_GATE=${OWNER_GATE}`);
   }
 
-  const sourceRevision = requiredArgument(args.sourceRevision, "--source-revision");
+  const sourceRevision = await resolveDeployedSarahRevision();
   const privatePcmPath = resolve(requiredArgument(args.privatePcm, "--private-pcm"));
   const communityPcmPath = resolve(requiredArgument(args.communityPcm, "--community-pcm"));
   if (
@@ -151,6 +155,10 @@ const run = async () => {
       privateScenario: {
         kind: "private",
         bearer: requiredEnvironment("OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_BEARER"),
+        subscriberGrant: requiredEnvironment(
+          "OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_SUBSCRIBER_GRANT",
+        ),
+        subscriberRef: requiredEnvironment("OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_SUBSCRIBER_REF"),
         ownerRef: privateOwnerRef,
         deviceRef: `acceptance-private-${runRef}`,
         threadRef: `acceptance-private-${runRef}`,
@@ -162,6 +170,10 @@ const run = async () => {
       communityScenario: {
         kind: "community",
         bearer: requiredEnvironment("OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_BEARER"),
+        subscriberGrant: requiredEnvironment(
+          "OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_SUBSCRIBER_GRANT",
+        ),
+        subscriberRef: requiredEnvironment("OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_SUBSCRIBER_REF"),
         ownerRef: communityOwnerRef,
         deviceRef: `acceptance-community-${runRef}`,
         threadRef: `acceptance-community-${runRef}`,

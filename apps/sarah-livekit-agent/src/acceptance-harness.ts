@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 
-export const SARAH_LIVEKIT_ACCEPTANCE_SCHEMA = "openagents.sarah.livekit-acceptance.v1" as const;
+export const SARAH_LIVEKIT_ACCEPTANCE_SCHEMA = "openagents.sarah.livekit-acceptance.v2" as const;
 
 export type SarahLiveKitAcceptanceScenario = Readonly<{
   kind: "private" | "community";
   bearer: string;
+  subscriberGrant: string;
+  subscriberRef: string;
   ownerRef: string;
   deviceRef: string;
   threadRef: string;
@@ -38,6 +40,31 @@ export type SarahLiveKitScenarioObservation = Readonly<{
   microphonePublished: true;
   sarahAudioObserved: true;
   sarahTranscriptionObserved: true;
+  principalSarahObserved: true;
+  identityDigests: Readonly<{
+    job: string;
+    providerSession: string;
+    providerConfiguration: string;
+    context: string;
+    capability: string;
+    hold: string;
+    usage: string;
+    settlement: string;
+  }>;
+  providerUsage: Readonly<{
+    inputTokens: number;
+    outputTokens: number;
+    cachedInputTokens: number;
+    audioInputTokens: number;
+    audioOutputTokens: number;
+    chargeMsat: number;
+    responseCount: number;
+    transcriptionCount: number;
+  }>;
+  identityIsolationObserved: true;
+  exactProviderUsageObserved: true;
+  subscriberFanoutCount: number;
+  audibleFanoutObserved: true;
   settlementState: "settled" | "released";
   settlementCreditMode: "metered" | "staging_owner_entitlement";
   finalChargeMsat: number;
@@ -47,7 +74,12 @@ export type SarahLiveKitScenarioObservation = Readonly<{
 export type SarahLiveKitPublicScenarioObservation = Readonly<
   Omit<
     SarahLiveKitScenarioObservation,
-    "startedAtMs" | "endedAtMs" | "activeRoomStartedAtMs" | "activeRoomEndedAtMs"
+    | "startedAtMs"
+    | "endedAtMs"
+    | "activeRoomStartedAtMs"
+    | "activeRoomEndedAtMs"
+    | "identityDigests"
+    | "providerUsage"
   > & {
     durationMs: number;
     activeRoomDurationMs: number;
@@ -69,7 +101,7 @@ export type SarahLiveKitAcceptanceReceipt = Readonly<{
   retainedTranscript: false;
   scenarios: readonly SarahLiveKitPublicScenarioObservation[];
   limitations: readonly [
-    "source_revision_operator_supplied",
+    "source_revision_resolved_from_deployed_image_digest",
     "one_selected_ice_path_per_scenario",
     "no_media_or_transcript_content_retained",
     "harness_retention_only_separate_cluster_privacy_scan_required",
@@ -92,6 +124,14 @@ const assertScenarioInput = (scenario: SarahLiveKitAcceptanceScenario): void => 
   }
   if (scenario.bearer.trim() === "" || scenario.bearer.length > 4_096) {
     throw new Error("acceptance bearer is missing or invalid");
+  }
+  if (
+    scenario.subscriberGrant.trim() === "" ||
+    scenario.subscriberGrant.length > 4_096 ||
+    scenario.subscriberRef.trim() === "" ||
+    scenario.subscriberRef.length > 256
+  ) {
+    throw new Error("acceptance secondary subscriber grant is missing or invalid");
   }
   if (
     scenario.pcm.byteLength < 24_000 ||
@@ -123,16 +163,39 @@ const assertObservation = (
     observation.activeRoomEndedAtMs > observation.endedAtMs ||
     timings.some((timing) => !Number.isSafeInteger(timing) || timing < 0) ||
     !Number.isSafeInteger(observation.finalChargeMsat) ||
-    observation.finalChargeMsat < 0 ||
+    observation.finalChargeMsat <= 0 ||
     !observation.selectedIcePathObserved ||
     !observation.publisherIceStatsObserved ||
     !observation.subscriberIceStatsObserved ||
     !observation.microphonePublished ||
     !observation.sarahAudioObserved ||
     !observation.sarahTranscriptionObserved ||
+    !observation.principalSarahObserved ||
+    !observation.identityIsolationObserved ||
+    !observation.exactProviderUsageObserved ||
+    observation.subscriberFanoutCount < 2 ||
+    !observation.audibleFanoutObserved ||
     !/^sha256:[0-9a-f]{64}$/u.test(observation.settlementReceiptDigest)
   ) {
     throw new Error(`${expectedKind} LiveKit acceptance observation is incomplete`);
+  }
+  const identityDigests = Object.values(observation.identityDigests);
+  const providerUsageTotal =
+    observation.providerUsage.inputTokens +
+    observation.providerUsage.outputTokens +
+    observation.providerUsage.cachedInputTokens +
+    observation.providerUsage.audioInputTokens +
+    observation.providerUsage.audioOutputTokens;
+  if (
+    identityDigests.length !== 8 ||
+    new Set(identityDigests).size !== identityDigests.length ||
+    identityDigests.some((digest) => !/^[0-9a-f]{64}$/u.test(digest)) ||
+    providerUsageTotal <= 0 ||
+    observation.providerUsage.chargeMsat !== observation.finalChargeMsat ||
+    observation.providerUsage.responseCount < 1 ||
+    observation.providerUsage.transcriptionCount < 1
+  ) {
+    throw new Error(`${expectedKind} LiveKit acceptance identity or usage evidence is incomplete`);
   }
 };
 
@@ -152,6 +215,11 @@ const publicObservation = (
   microphonePublished: observation.microphonePublished,
   sarahAudioObserved: observation.sarahAudioObserved,
   sarahTranscriptionObserved: observation.sarahTranscriptionObserved,
+  principalSarahObserved: observation.principalSarahObserved,
+  identityIsolationObserved: observation.identityIsolationObserved,
+  exactProviderUsageObserved: observation.exactProviderUsageObserved,
+  subscriberFanoutCount: observation.subscriberFanoutCount,
+  audibleFanoutObserved: observation.audibleFanoutObserved,
   settlementState: observation.settlementState,
   settlementCreditMode: observation.settlementCreditMode,
   finalChargeMsat: observation.finalChargeMsat,
@@ -258,7 +326,7 @@ export const runSarahLiveKitAcceptance = async (
     retainedTranscript: false as const,
     scenarios,
     limitations: [
-      "source_revision_operator_supplied",
+      "source_revision_resolved_from_deployed_image_digest",
       "one_selected_ice_path_per_scenario",
       "no_media_or_transcript_content_retained",
       "harness_retention_only_separate_cluster_privacy_scan_required",

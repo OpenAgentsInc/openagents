@@ -1039,6 +1039,62 @@ The source-only fixtures in this repository have `evidenceTier:
 to say that live work passed. A live action creates a new timestamped receipt
 from a matching private observation.
 
+### Sarah production matrix evidence
+
+The headless Sarah runner no longer accepts a revision typed by the operator. On
+`--apply` it reads the converged `sarah-livekit-agent` Deployment, requires one
+digest-pinned container image, resolves that digest to exactly one Artifact
+Registry `source-<40-hex>` tag, and binds the receipt to that revision. A stale
+rollout, mutable image, missing source tag, or ambiguous source tags fails the
+run before either bearer is used.
+
+An authenticated settlement read can request
+`x-openagents-sarah-livekit-acceptance: live-observation-v1`. The response is
+still owner- and session-scoped and is available only for a LiveKit generation
+admitted through the metered alpha acceptance cohort. It exposes no room,
+owner, job, provider, hold, or
+usage refs. It returns the literal `principal.sarah`, SHA-256 projections for
+the job, provider session, provider configuration, room context, capability,
+hold, usage set, and settlement, exact aggregate provider usage, and provider
+admission/worker-close boundaries. The runner requires all eight identity
+digests to differ, one worker job, one provider session, exact accounting,
+nonzero response and transcription usage, and a positive charge equal to the
+terminal settlement. This is an evidence projection, not a failure-injection
+or general inspection API.
+
+Project the complete private matrix only after live collection:
+
+```sh
+OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
+node scripts/cloud/livekit-acceptance.mjs \
+  --phase sarah_matrix \
+  --bundle infra/livekit/bundle.json \
+  --input <private-sarah-matrix-observation.json> \
+  --receipt docs/ops/receipts/livekit/production-sarah-matrix-<UTC>.json \
+  --apply
+```
+
+The private observation must include successful metered traffic plus
+cancellation, explicit interruption, timeout, planned worker crash, provider
+disconnect, hold exhaustion, and reconnect. Every scenario must have a
+terminal observation, exact accounting, a correctly released or preserved
+hold, no worker/provider overlap, and a required fresh generation. Reconnect is
+collected only after the prior worker close boundary and before the new
+provider admission boundary. The same observation includes audible-frame
+fanout to at least two simultaneous subscribers and a zero-finding privacy scan
+over packaged Omega, every other packaged client, pods, logs, Redis, object
+storage, traces, and crash artifacts.
+
+The validator cannot create these facts. Planned worker crash is driven by a
+scoped pod deletion after the target generation is identified; provider
+disconnect is driven by a generation-scoped provider egress drill; timeout is
+the configured session deadline; hold exhaustion is the normal metering stop;
+and cancellation/explicit interruption use the existing gateway control
+protocol. Subscriber grants are minted by the scoped acceptance operator and
+remain outside the repository. Until those live actions and scans have
+completed, do not create a `sarah_matrix` receipt and do not claim this gate is
+green.
+
 ## Issue close gate
 
 Do not close #9284 until all are linked from #9282:

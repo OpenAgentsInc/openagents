@@ -16,6 +16,7 @@ import {
 import { describe, expect, test, vi } from 'vitest'
 
 import {
+  SARAH_LIVEKIT_ACCEPTANCE_EVIDENCE_HEADER,
   SARAH_REALTIME_VOICE_DEVICE_HEADER,
   SARAH_REALTIME_VOICE_SESSION_HEADER,
   finalizeSarahLiveKitRoom,
@@ -1963,6 +1964,34 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
       spendableRemainingCreditMsat: 99_250,
       receiptRef: 'sarah_voice_settlement:voice-1',
     })
+  })
+
+  test('returns LiveKit acceptance evidence only behind the explicit owner request header', async () => {
+    const fixture = makeDependencies()
+    const acceptanceEvidence = { principal: 'principal.sarah' }
+    vi.mocked(fixture.store.readSettlement).mockResolvedValue({
+      sessionRef: identity.sessionRef,
+      state: 'settled',
+      creditMode: 'metered',
+      finalChargeMsat: 750,
+      spendableRemainingCreditMsat: 99_250,
+      settlementReceiptRef: 'sarah_voice_settlement:voice-1',
+      acceptanceEvidence,
+    } as never)
+    const response = await handleSarahRealtimeVoiceSettlementRequest(
+      fixture.dependencies,
+      new Request('https://openagents.com/api/omega/sarah/voice/settlement', {
+        headers: {
+          authorization: 'Bearer test',
+          [SARAH_REALTIME_VOICE_SESSION_HEADER]: identity.sessionRef,
+          [SARAH_LIVEKIT_ACCEPTANCE_EVIDENCE_HEADER]: 'live-observation-v1',
+        },
+      }),
+      {},
+      ctx,
+    )
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ acceptanceEvidence })
   })
 
   test('reports uncertain provider accounting without fabricating settlement', async () => {

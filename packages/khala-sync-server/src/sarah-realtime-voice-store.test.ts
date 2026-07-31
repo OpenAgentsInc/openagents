@@ -1004,7 +1004,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       roomRef: "room-livekit-1",
       roomEpoch: 1,
       participantRef: "participant-owner-livekit-1",
-      sarahParticipantRef: "participant-sarah-livekit-1",
+      sarahParticipantRef: "principal.sarah",
       participantGrantDigest: "5".repeat(64),
       joinExpiresAt: "2026-07-28T13:01:00.000Z",
       dispatchRef: "dispatch-livekit-1",
@@ -1713,6 +1713,30 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       WHERE session_ref = 'voice-livekit-1'
     `;
     expect(revokedSession?.close_reason).toBe("membership_removed");
+    const acceptanceEvidence = await store.readSettlement({
+      sessionRef: binding.sessionRef,
+      ownerUserId: binding.ownerUserId,
+    });
+    expect(acceptanceEvidence).toMatchObject({
+      acceptanceEvidence: {
+        principal: "principal.sarah",
+        providerAccountingStatus: "exact",
+        workerJobCount: 1,
+        providerSessionCount: 1,
+        usage: {
+          responseCount: 2,
+          cancelledResponseCount: 1,
+          chargeMsat: 20,
+        },
+      },
+    });
+    const identityDigests = Object.values(
+      acceptanceEvidence?.state === "settled"
+        ? (acceptanceEvidence.acceptanceEvidence?.identityDigests ?? {})
+        : {},
+    );
+    expect(identityDigests).toHaveLength(8);
+    expect(new Set(identityDigests).size).toBe(8);
     const cleanup = await store.readLiveKitCleanup({
       sessionRef: binding.sessionRef,
       generation: 1,
