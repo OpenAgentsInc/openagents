@@ -36,6 +36,7 @@ resource "google_project_iam_member" "gateway_roles" {
     "roles/container.clusterViewer",
     "roles/compute.viewer",
     "roles/iam.securityReviewer",
+    "roles/orgpolicy.policyViewer",
     "roles/redis.viewer",
     "roles/logging.logWriter",
   ])

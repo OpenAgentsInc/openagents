@@ -950,6 +950,7 @@ test("deployment control Terraform fixes identity, source, route, and substituti
   assert.match(module, /google_cloudbuildv2_repository" "source/u);
   assert.match(module, /parent_connection\s+=\s+google_cloudbuildv2_connection\.source\.name/u);
   assert.match(module, /roles\/cloudbuild\.connectionViewer/u);
+  assert.match(module, /roles\/orgpolicy\.policyViewer/u);
   assert.match(module, /roles\/artifactregistry\.reader/u);
   assert.match(module, /repository\s*=\s*"oa-cloud"/u);
   assert.match(module, /boundary_digest\s*=\s*"sha256:\$\{filesha256\(/u);
