@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:fe3323d44af5843dd82d4243fee69bdf76df920e29cd8fef98540ed83a21e3f9",
+  "sourceDigest": "sha256:7a2c0e9377cb6374a5a9892fa1ad974e5bc928f87a402d7f336b87b2925a2d3d",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -217,7 +217,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents.com (1134 tracked test files)"
+          "ref": "apps/openagents.com (1136 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -527,6 +527,23 @@
         {
           "type": "test",
           "ref": "apps/sarah-livekit-agent (6 tracked test files)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
+      "id": "app:@openagentsinc/sarah-nostr-signer",
+      "kind": "app",
+      "owningPath": "apps/sarah-nostr-signer",
+      "title": "@openagentsinc/sarah-nostr-signer",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/sarah-nostr-signer (1 tracked test file)"
         }
       ],
       "obligation": {
@@ -2434,7 +2451,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/khala-sync-server (81 tracked test files)"
+          "ref": "packages/khala-sync-server (82 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -3330,7 +3347,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents.com/workers/api (1018 tracked test files)"
+          "ref": "apps/openagents.com/workers/api (1020 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -3404,9 +3421,9 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 177,
+    "totalSurfaces": 178,
     "byKind": {
-      "app": 18,
+      "app": 19,
       "crate": 6,
       "document": 52,
       "package": 89,
@@ -3414,7 +3431,7 @@
       "release-pipeline": 9,
       "worker": 1
     },
-    "withOracle": 163,
+    "withOracle": 164,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3422,7 +3439,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 127,
+      "designed": 128,
       "inconclusive": 9,
       "mapped": 36,
       "out-of-scope": 5
