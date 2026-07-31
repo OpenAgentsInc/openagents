@@ -220,7 +220,7 @@ locals {
 resource "google_tags_tag_binding" "privileged_service_account" {
   for_each = local.protected_service_account_unique_ids
 
-  parent    = "//iam.googleapis.com/projects/${var.project_id}/serviceAccounts/${each.value}"
+  parent    = "//iam.googleapis.com/projects/${var.project_number}/serviceAccounts/${each.value}"
   tag_value = google_tags_tag_value.privileged_service_account.id
 }
 
