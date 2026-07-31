@@ -45,6 +45,14 @@ and documentation reconciliation that can proceed alongside the primary lane.
   final verification, issue state, and push to `main`.
 - Give every subagent an explicit outcome, scope, owning paths, and
   verification contract.
+- Give every subagent a bounded context brief. Use `fork_turns: "none"` or the
+  smallest recent-turn window that carries the task, contract, owning paths,
+  current revision, and verification command. `fork_turns: "all"` is an
+  exception: use it only when the child's correctness depends on the complete
+  conversation, and state that reason before spawning it.
+- Consolidate review into one checklist-driven audit lane per issue. Do not
+  spawn repeated lifecycle, security, deadline, and "final" audits over the
+  same change when one bounded reviewer can own those checklists.
 - Implementation agents use separate clean worktrees. Read-only audit agents
   may inspect the shared tree but do not mutate it.
 - Serialize shared schemas, migrations, generated catalogs, lockfiles, central
@@ -75,14 +83,46 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   moment the loop is active. There is always more work (active product
   integration, the issue backlog, the terminal-agent-systems well, the clarity
   sweep) — "nothing to do" is never true.
-- **Long `ScheduleWakeup` idle waits are banned.** Keep working in the SAME turn:
-  finish a unit → immediately start the next. If you must yield, prefer a fanout
-  whose watcher re-invokes you instantly, only if truly unable to proceed this
-  instant, use a SHORT wakeup (≤120s), never minutes.
+- **Do not idle, but do not poll the model to pass time.** Keep working in the
+  SAME turn when independent in-scope work exists. When a process or external
+  operation must finish before useful work can continue, wait inside one tool
+  call: block on the command, use the tool's long wait, or use a bounded shell
+  loop that returns one summarized result. Never spend repeated model turns
+  asking whether the same operation finished. If a separate wait call is
+  unavoidable, use a yield of at least 60 seconds unless the operation has an
+  established shorter upper bound.
 - **Blocked on the owner? Pull other work.** Write a clear `NEEDS-OWNER:` note
   and immediately continue on a non-blocked item. An owner-gated step never
   stalls the loop. The owner's reply interrupts and takes priority, but you do
   not wait for it.
+
+## Cost, Repetition, and Production-Debugging Stops
+
+Persistence is not permission to repeat a failing loop without a new
+observation. "Keep going", "until all are done", or broad spend authority does
+not waive these controls:
+
+- Treat an owner-provided token, cost, or wall-clock budget as a hard envelope.
+  Report at 50% and 80%. At 100%, stop mutation and provide a closeout unless
+  the owner explicitly extends the budget after seeing the current state.
+- After three consecutive failures of the same externally observable gate,
+  stop attempting that gate. Preserve the last failure, write the smallest
+  reproducible blocker, identify the next falsifiable hypothesis, and hand off.
+  A fourth production attempt requires new evidence or explicit owner direction
+  after the three-failure report.
+- A failed live acceptance is evidence, not a debugger. Add bounded internal
+  stage diagnostics and a regression or integration test before the next
+  deployment. Make one tested hypothesis per deployment.
+- Do not pull unrelated backlog work merely to stay busy while the primary
+  objective is failing. Parallel work must shorten the same critical path or
+  satisfy a separately requested deliverable without contaminating the primary
+  context.
+- Batch related commits and push once per landed unit. Do not pay the push gate
+  after every intermediate commit when the commits form one inseparable
+  delivery.
+- Bound tool output before it enters model context. Store full logs on disk and
+  return a targeted tail, count, digest, or matched span. Do not reopen an
+  unchanged image or reread a large unchanged file; compare its digest first.
 
 ## Delegated Authority
 
@@ -822,6 +862,10 @@ and deterministic Effect tests. Do not skip it merely because
   at `/Users/christopherdavid/work/openagents` onto `main` fast-forwarded to
   `origin/main`, unless unrelated live work makes that unsafe, in which case
   report the reconciliation gate as blocked per the multi-agent hygiene rule.
+  A retry, regression test, or deployment for the same claimed unit is a
+  continuation, not a new unit: reuse its clean worktree instead of checking
+  out the repository again. Put reusable build caches outside disposable
+  worktrees, and remove the worktree only when that unit lands or hands off.
 - **Docs-only changes push with `--no-verify` (owner mandate, 2026-07-20).**
   When a change touches ONLY documentation (Markdown and other docs, with no
   code, config, schema, or generated surface), commit and push to `main` with
