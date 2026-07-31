@@ -1322,11 +1322,13 @@ import {
 } from './sarah-owner-routes'
 import { makeSarahVoiceNostrChallengeService } from './sarah-realtime-nostr-auth'
 import {
+  SARAH_REALTIME_VOICE_ACCOUNTING_RECONCILIATION_PATH,
   SARAH_REALTIME_VOICE_ADMISSION_PATH,
   SARAH_REALTIME_VOICE_COHORT_REVOCATION_PATH,
   SARAH_REALTIME_VOICE_SESSION_PATH,
   SARAH_REALTIME_VOICE_SETTLEMENT_PATH,
   finalizeSarahLiveKitRoom,
+  handleSarahRealtimeVoiceAccountingReconciliationRequest,
   handleSarahRealtimeVoiceAdmissionRequest,
   handleSarahRealtimeVoiceCohortRevocationRequest,
   handleSarahRealtimeVoiceSessionRequest,
@@ -14028,6 +14030,41 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       Effect.promise(() =>
         handleSarahRealtimeVoiceCohortRevocationRequest(
           {
+            openStore: openSarahRealtimeVoiceStore,
+            requireOperator: async (
+              operatorRequest,
+              operatorEnv,
+              operatorCtx,
+            ) => {
+              const session = await requireUserBearerSession(
+                operatorRequest,
+                operatorEnv,
+                operatorCtx,
+              )
+              if (
+                session === undefined ||
+                !isOpenAgentsAdminEmail(session.user.email)
+              ) {
+                return undefined
+              }
+              return { actorRef: `operator:${session.user.userId}` }
+            },
+          },
+          request,
+          env,
+          ctx,
+        ),
+      ),
+  },
+  {
+    path: SARAH_REALTIME_VOICE_ACCOUNTING_RECONCILIATION_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        handleSarahRealtimeVoiceAccountingReconciliationRequest(
+          {
+            creditMsatPerMillionTokens: operatorEnv =>
+              parseSarahRealtimeVoiceRouteConfig(operatorEnv)
+                ?.creditMsatPerMillionTokens,
             openStore: openSarahRealtimeVoiceStore,
             requireOperator: async (
               operatorRequest,

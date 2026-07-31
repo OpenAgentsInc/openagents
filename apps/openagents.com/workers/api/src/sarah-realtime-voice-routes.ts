@@ -1,4 +1,6 @@
 import {
+  SARAH_VOICE_ACCOUNTING_RECONCILIATION_PATH,
+  SARAH_VOICE_ACCOUNTING_RECONCILIATION_PROTOCOL_VERSION,
   SARAH_VOICE_ADMISSION_PATH,
   SARAH_VOICE_ADMISSION_PROTOCOL_VERSION,
   SARAH_VOICE_ALPHA_COHORT_REF,
@@ -12,6 +14,7 @@ import {
   SARAH_VOICE_SETTLEMENT_PATH,
   SARAH_VOICE_SETTLEMENT_PROTOCOL_VERSION,
   SARAH_VOICE_STAGING_OWNER_COHORT_REF,
+  decodeSarahVoiceAccountingReconciliationRequest,
   decodeSarahVoiceAdmissionRequest,
   decodeSarahVoiceCohortRevocationRequest,
   decodeSarahVoiceSessionRequest,
@@ -32,6 +35,8 @@ export const SARAH_REALTIME_VOICE_ADMISSION_PATH = SARAH_VOICE_ADMISSION_PATH
 export const SARAH_REALTIME_VOICE_SETTLEMENT_PATH = SARAH_VOICE_SETTLEMENT_PATH
 export const SARAH_REALTIME_VOICE_COHORT_REVOCATION_PATH =
   SARAH_VOICE_COHORT_REVOCATION_PATH
+export const SARAH_REALTIME_VOICE_ACCOUNTING_RECONCILIATION_PATH =
+  SARAH_VOICE_ACCOUNTING_RECONCILIATION_PATH
 export const SARAH_REALTIME_VOICE_SESSION_HEADER =
   'x-openagents-sarah-voice-session'
 export const SARAH_REALTIME_VOICE_TICKET_HEADER =
@@ -364,6 +369,8 @@ export const reconcileSarahLiveKitProvisioningIntents = async <Bindings>(
 }
 
 export type SarahRealtimeVoiceOperatorRouteDependencies<Bindings> = Readonly<{
+  creditMsatPerMillionTokens?:
+    ((env: Bindings) => number | undefined) | undefined
   now?: (() => number) | undefined
   openStore: (
     env: Bindings,
@@ -415,6 +422,10 @@ export type SarahRealtimeVoiceRouteDependencies<User, Bindings> = Readonly<{
   requireUserBearerSession: UserBearerSessionBoundary<User, Bindings>
   stagingOwnerEntitlementEnabled?: (env: Bindings) => boolean
   liveKitNewAdmissionsEnabled?: (env: Bindings) => boolean
+  waitForLiveKitWorkerClaim?: (
+    store: SarahRealtimeVoiceStore,
+    input: Readonly<{ sessionRef: string; generation: number }>,
+  ) => Promise<boolean>
   userIdFromSession: (session: Readonly<{ user: User }>) => string
   verifyNostrProof?: NostrProofVerify<Bindings> | undefined
   now?: (() => number) | undefined
@@ -609,6 +620,28 @@ const validLiveKitProvision = (
     provision.grantClaims.roomCreate === false &&
     provision.grantClaims.roomList === false
   )
+}
+
+export const waitForSarahLiveKitWorkerClaim = async (
+  store: SarahRealtimeVoiceStore,
+  input: Readonly<{ sessionRef: string; generation: number }>,
+  wait: () => Promise<void> = () =>
+    new Promise(resolve => {
+      setTimeout(resolve, 100)
+    }),
+  maximumChecks = 50,
+): Promise<boolean> => {
+  for (let check = 0; check < maximumChecks; check += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const readiness = await store.readLiveKitWorkerReadiness(input)
+    if (readiness === 'claimed') return true
+    if (readiness === 'closed') return false
+    if (check + 1 < maximumChecks) {
+      // eslint-disable-next-line no-await-in-loop
+      await wait()
+    }
+  }
+  return false
 }
 
 export const parseSarahRealtimeVoiceRouteConfig = (
@@ -1086,6 +1119,140 @@ export const handleSarahRealtimeVoiceSettlementRequest = async <User, Bindings>(
   }
 }
 
+export const handleSarahRealtimeVoiceAccountingReconciliationRequest = async <
+  Bindings,
+>(
+  dependencies: SarahRealtimeVoiceOperatorRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+): Promise<Response> => {
+  if (request.method !== 'POST') {
+    return noStoreJson({ error: 'method_not_allowed' }, 405)
+  }
+  const operator = await dependencies.requireOperator(request, env, ctx)
+  if (operator === undefined) return noStoreJson({ error: 'forbidden' }, 403)
+  const body = await parseBoundedJson(
+    request,
+    decodeSarahVoiceAccountingReconciliationRequest,
+  )
+  if (body === undefined) {
+    return noStoreJson(
+      { error: 'invalid_sarah_voice_accounting_reconciliation' },
+      400,
+    )
+  }
+  const creditRateMsatPerMillionTokens =
+    dependencies.creditMsatPerMillionTokens?.(env)
+  if (
+    creditRateMsatPerMillionTokens === undefined ||
+    !Number.isSafeInteger(creditRateMsatPerMillionTokens) ||
+    creditRateMsatPerMillionTokens <= 0
+  ) {
+    return noStoreJson(
+      { error: 'sarah_voice_accounting_rate_unavailable' },
+      503,
+    )
+  }
+  const providerEvidenceRefs = [...body.providerEvidenceRefs].sort()
+  if (new Set(providerEvidenceRefs).size !== providerEvidenceRefs.length) {
+    return noStoreJson(
+      { error: 'invalid_sarah_voice_accounting_reconciliation' },
+      400,
+    )
+  }
+  const usage = body.usage
+    .map(item =>
+      item.kind === 'response'
+        ? {
+            usageKind: item.kind,
+            providerResponseRef: `response:${item.providerResponseRef}`,
+            providerStatus: item.status,
+            inputTokens: item.inputTokens,
+            outputTokens: item.outputTokens,
+            cachedInputTokens: item.cachedInputTokens,
+            audioInputTokens: item.audioInputTokens,
+            audioOutputTokens: item.audioOutputTokens,
+          }
+        : {
+            usageKind: item.kind,
+            providerResponseRef: `transcription:${item.providerTranscriptionRef}`,
+            inputTokens: item.inputTokens,
+            outputTokens: item.outputTokens,
+            cachedInputTokens: item.cachedInputTokens,
+            audioInputTokens: item.audioInputTokens,
+            audioOutputTokens: item.audioOutputTokens,
+          },
+    )
+    .sort((left, right) =>
+      left.providerResponseRef.localeCompare(right.providerResponseRef),
+    )
+  if (
+    usage.some(item => item.providerResponseRef.length > 256) ||
+    new Set(usage.map(item => item.providerResponseRef)).size !== usage.length
+  ) {
+    return noStoreJson(
+      { error: 'invalid_sarah_voice_accounting_reconciliation' },
+      400,
+    )
+  }
+  const reconciliationPayloadDigest = await sha256Hex(
+    JSON.stringify({
+      reconciliationRef: body.reconciliationRef,
+      sessionRef: body.sessionRef,
+      generation: body.generation,
+      providerEvidenceRefs,
+      usage,
+      reason: body.reason,
+      creditRateMsatPerMillionTokens,
+    }),
+  )
+  let opened:
+    | Readonly<{ store: SarahRealtimeVoiceStore; close: () => Promise<void> }>
+    | undefined
+  try {
+    opened = await dependencies.openStore(env)
+    const result = await opened.store.reconcileLiveKitAccounting({
+      reconciliationRef: body.reconciliationRef,
+      reconciliationPayloadDigest,
+      sessionRef: body.sessionRef,
+      generation: body.generation,
+      operatorActorRef: operator.actorRef,
+      reason: body.reason,
+      providerEvidenceRefs,
+      creditRateMsatPerMillionTokens,
+      usage,
+      nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
+    })
+    return noStoreJson(
+      {
+        schema: SARAH_VOICE_ACCOUNTING_RECONCILIATION_PROTOCOL_VERSION,
+        reconciliationRef: result.reconciliationRef,
+        reconciliationReceiptRef: result.reconciliationReceiptRef,
+        sessionRef: result.sessionRef,
+        state: result.state,
+        finalChargeMsat: result.finalChargeMsat,
+        settlementReceiptRef: result.settlementReceiptRef,
+        replayed: result.replayed,
+      },
+      200,
+    )
+  } catch (error) {
+    return error instanceof SarahVoiceSessionRejectedError
+      ? noStoreJson(
+          { error: 'sarah_voice_accounting_reconciliation_conflict' },
+          409,
+        )
+      : noStoreJson({ error: 'sarah_voice_storage_unavailable' }, 503)
+  } finally {
+    try {
+      await opened?.close()
+    } catch {
+      // The committed reconciliation is unaffected by pool release failure.
+    }
+  }
+}
+
 export const handleSarahRealtimeVoiceCohortRevocationRequest = async <Bindings>(
   dependencies: SarahRealtimeVoiceOperatorRouteDependencies<Bindings>,
   request: Request,
@@ -1532,8 +1699,8 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
           roomContext: liveKitRoomContext,
           nowIso,
         })
-        const claimedProvisioning = await opened.store.claimLiveKitProvisioningIntent(
-          {
+        const claimedProvisioning =
+          await opened.store.claimLiveKitProvisioningIntent({
             sessionRef: body.identity.sessionRef,
             generation: body.identity.generation,
             provisioningOwnerRef,
@@ -1541,8 +1708,7 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
               nowMs - SARAH_LIVEKIT_PROVISIONING_LEASE_MS,
             ).toISOString(),
             nowIso,
-          },
-        )
+          })
         if (!claimedProvisioning) {
           return noStoreJson(
             { error: 'sarah_voice_livekit_issuance_in_progress' },
@@ -1590,6 +1756,22 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
           publishAllowed,
           subscribeAllowed,
           nowIso,
+        })
+        const workerClaimed = await (
+          dependencies.waitForLiveKitWorkerClaim ??
+          waitForSarahLiveKitWorkerClaim
+        )(opened.store, {
+          sessionRef: body.identity.sessionRef,
+          generation: body.identity.generation,
+        })
+        if (!workerClaimed) {
+          throw new Error('livekit_worker_not_ready')
+        }
+        await opened.store.completeLiveKitProvisioningIntent({
+          sessionRef: body.identity.sessionRef,
+          generation: body.identity.generation,
+          provisioningOwnerRef,
+          nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
         })
       } catch {
         let accountingTerminal = false

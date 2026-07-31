@@ -1,4 +1,5 @@
 import {
+  SARAH_VOICE_ACCOUNTING_RECONCILIATION_PROTOCOL_VERSION,
   SARAH_VOICE_ADMISSION_PATH,
   SARAH_VOICE_ADMISSION_PROTOCOL_VERSION,
   SARAH_VOICE_COHORT_REVOCATION_PROTOCOL_VERSION,
@@ -10,6 +11,7 @@ import {
   type SarahRealtimeVoiceStore,
   SarahVoiceAdmissionRejectedError,
   SarahVoiceInsufficientCreditError,
+  SarahVoiceSessionRejectedError,
 } from '@openagentsinc/khala-sync-server'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -17,6 +19,7 @@ import {
   SARAH_REALTIME_VOICE_DEVICE_HEADER,
   SARAH_REALTIME_VOICE_SESSION_HEADER,
   finalizeSarahLiveKitRoom,
+  handleSarahRealtimeVoiceAccountingReconciliationRequest,
   handleSarahRealtimeVoiceAdmissionRequest,
   handleSarahRealtimeVoiceCohortRevocationRequest,
   handleSarahRealtimeVoiceSessionRequest,
@@ -25,6 +28,7 @@ import {
   reconcileSarahLiveKitTerminalRooms,
   recordSarahLiveKitParticipantJoin,
   recordSarahLiveKitProviderUsage,
+  waitForSarahLiveKitWorkerClaim,
 } from './sarah-realtime-voice-routes'
 
 const identity = {
@@ -93,9 +97,25 @@ const makeDependencies = (
 ) => {
   const close = vi.fn(async () => undefined)
   const bindLiveKitRoom = vi.fn(async () => undefined)
+  const completeLiveKitProvisioningIntent = vi.fn(async () => undefined)
   const prepareLiveKitProvisioningIntent = vi.fn(async () => undefined)
   const claimLiveKitProvisioningIntent = vi.fn(async () => true)
   const markLiveKitProvisioningIntent = vi.fn(async () => undefined)
+  const reconcileLiveKitAccounting = vi.fn(
+    async (
+      input: Parameters<
+        SarahRealtimeVoiceStore['reconcileLiveKitAccounting']
+      >[0],
+    ) => ({
+      reconciliationRef: input.reconciliationRef,
+      reconciliationReceiptRef: `receipt:${input.reconciliationRef}`,
+      sessionRef: input.sessionRef,
+      state: 'settled' as const,
+      finalChargeMsat: 18,
+      settlementReceiptRef: `settlement:${input.sessionRef}`,
+      replayed: false,
+    }),
+  )
   const settle = vi.fn(async () => undefined)
   const issueAdmission = vi.fn(
     async (
@@ -107,6 +127,7 @@ const makeDependencies = (
   )
   const store = {
     bindLiveKitRoom,
+    completeLiveKitProvisioningIntent,
     claimLiveKitProvisioningIntent,
     prepareLiveKitProvisioningIntent,
     markLiveKitProvisioningIntent,
@@ -121,7 +142,9 @@ const makeDependencies = (
     })),
     readActiveStagingOwnerEntitlement,
     readSettlement: vi.fn(),
+    readLiveKitWorkerReadiness: vi.fn(async () => 'claimed' as const),
     readSpendableCredit: vi.fn(async () => 100_000),
+    reconcileLiveKitAccounting,
     revokeAlphaCohort: vi.fn(),
     settle,
     settleLiveKitProvisioningIntent: settle,
@@ -148,9 +171,11 @@ const makeDependencies = (
     reserve,
     readActiveStagingOwnerEntitlement,
     bindLiveKitRoom,
+    completeLiveKitProvisioningIntent,
     claimLiveKitProvisioningIntent,
     prepareLiveKitProvisioningIntent,
     markLiveKitProvisioningIntent,
+    reconcileLiveKitAccounting,
     issueAdmission,
     settle,
     store,
@@ -367,6 +392,12 @@ describe('managed Sarah Realtime voice session route', () => {
         roomRef: provision.roomRef,
         participantGrantDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
         roomContext: { kind: 'private' },
+      }),
+    )
+    expect(fixture.completeLiveKitProvisioningIntent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionRef: identity.sessionRef,
+        generation: identity.generation,
       }),
     )
     const transport = (body as { transport: Record<string, unknown> }).transport
@@ -769,6 +800,89 @@ describe('managed Sarah Realtime voice session route', () => {
     )
   })
 
+  test('settles and cleans up when a bound worker never becomes ready', async () => {
+    const fixture = makeDependencies()
+    const provision = {
+      livekitUrl: 'wss://livekit.openagents.test',
+      roomRef: 'sarah-room:worker-timeout',
+      roomEpoch: 1,
+      participantRef: 'participant:user-1:worker-timeout',
+      sarahParticipantRef: 'participant:sarah:worker-timeout',
+      participantGrant: 'opaque-worker-timeout-grant',
+      joinExpiresAtMs: Date.UTC(2026, 6, 28, 12, 1, 0),
+      dispatchRef: 'dispatch:worker-timeout',
+      sarahPresenceLeaseRef: 'sarah-presence:worker-timeout',
+      grantClaims: {
+        roomRef: 'sarah-room:worker-timeout',
+        participantRef: 'participant:user-1:worker-timeout',
+        expiresAtMs: Date.UTC(2026, 6, 28, 12, 1, 0),
+        roomJoin: true,
+        canPublish: true,
+        canSubscribe: true,
+        canPublishData: false,
+        canUpdateOwnMetadata: false,
+        canPublishSources: ['microphone'],
+        roomAdmin: false,
+        roomCreate: false,
+        roomList: false,
+      },
+    } as const
+    const broker = {
+      workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
+      sessionTicket: vi.fn(() => 'livekit-session-ticket'),
+      provision: vi.fn(async () => provision),
+      cleanup: vi.fn(async () => undefined),
+      cleanupByIdempotencyKey: vi.fn(async () => undefined),
+      cleanupRoom: vi.fn(async () => undefined),
+    }
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      {
+        ...fixture.dependencies,
+        liveKitRoomBroker: broker,
+        waitForLiveKitWorkerClaim: vi.fn(async () => false),
+      },
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'disclosure-1',
+        requestedTransport: 'livekit_room_v1',
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(503)
+    expect(fixture.bindLiveKitRoom).toHaveBeenCalledOnce()
+    expect(fixture.completeLiveKitProvisioningIntent).not.toHaveBeenCalled()
+    expect(fixture.settle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionRef: identity.sessionRef,
+        generation: identity.generation,
+        closeReason: 'livekit_provision_failed',
+      }),
+    )
+    expect(broker.cleanup).toHaveBeenCalledWith(provision)
+  })
+
+  test('waits beyond the old two-second bind window for a durable worker claim', async () => {
+    const fixture = makeDependencies()
+    const readiness = vi.mocked(fixture.store.readLiveKitWorkerReadiness)
+    readiness.mockImplementation(async () =>
+      readiness.mock.calls.length <= 21 ? 'waiting' : 'claimed',
+    )
+    const wait = vi.fn(async () => undefined)
+
+    await expect(
+      waitForSarahLiveKitWorkerClaim(
+        fixture.store,
+        { sessionRef: identity.sessionRef, generation: identity.generation },
+        wait,
+      ),
+    ).resolves.toBe(true)
+    expect(readiness).toHaveBeenCalledTimes(22)
+    expect(wait).toHaveBeenCalledTimes(21)
+  })
+
   test('exposes generation-bound worker lifecycle and crash reconciliation seams', async () => {
     const recordLiveKitParticipantJoin = vi.fn(async () => undefined)
     const recordUsage = vi.fn(async () => ({
@@ -999,8 +1113,7 @@ describe('managed Sarah Realtime voice session route', () => {
 
   test('replays the same unconsumed LiveKit ticket after a lost issuance response', async () => {
     let firstReservation:
-      | Awaited<ReturnType<SarahRealtimeVoiceStore['reserve']>>
-      | undefined
+      Awaited<ReturnType<SarahRealtimeVoiceStore['reserve']>> | undefined
     const reserve = vi.fn<SarahRealtimeVoiceStore['reserve']>(async input => {
       if (firstReservation === undefined) {
         firstReservation = {
@@ -1825,6 +1938,168 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
       reservedCreditMsat: 1_000,
       holdPreserved: true,
       reason: 'livekit_worker_provider_disconnect',
+    })
+  })
+
+  test('requires operator authentication for accounting reconciliation', async () => {
+    const fixture = makeDependencies()
+    const response =
+      await handleSarahRealtimeVoiceAccountingReconciliationRequest(
+        {
+          openStore: fixture.dependencies.openStore,
+          requireOperator: async () => undefined,
+          creditMsatPerMillionTokens: () => 100_000,
+        },
+        new Request(
+          'https://openagents.com/api/operator/omega/sarah/voice/accounting/reconcile',
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              schema: SARAH_VOICE_ACCOUNTING_RECONCILIATION_PROTOCOL_VERSION,
+              reconciliationRef: 'reconciliation-1',
+              sessionRef: identity.sessionRef,
+              generation: identity.generation,
+              providerEvidenceRefs: ['provider-export-1'],
+              usage: [],
+              reason: 'Verified against provider export',
+            }),
+          },
+        ),
+        {},
+        ctx,
+      )
+
+    expect(response.status).toBe(403)
+    expect(fixture.reconcileLiveKitAccounting).not.toHaveBeenCalled()
+  })
+
+  test('records only opaque provider evidence and exact usage for reconciliation', async () => {
+    const fixture = makeDependencies()
+    const response =
+      await handleSarahRealtimeVoiceAccountingReconciliationRequest(
+        {
+          openStore: fixture.dependencies.openStore,
+          requireOperator: async () => ({ actorRef: 'operator:user-admin' }),
+          creditMsatPerMillionTokens: () => 100_000,
+          now: fixture.dependencies.now,
+        },
+        new Request(
+          'https://openagents.com/api/operator/omega/sarah/voice/accounting/reconcile',
+          {
+            method: 'POST',
+            headers: { authorization: 'Bearer admin' },
+            body: JSON.stringify({
+              schema: SARAH_VOICE_ACCOUNTING_RECONCILIATION_PROTOCOL_VERSION,
+              reconciliationRef: 'reconciliation-1',
+              sessionRef: identity.sessionRef,
+              generation: identity.generation,
+              providerEvidenceRefs: ['provider-export-1'],
+              usage: [
+                {
+                  kind: 'response',
+                  providerResponseRef: 'provider-response-1',
+                  status: 'completed',
+                  inputTokens: 100,
+                  outputTokens: 50,
+                  cachedInputTokens: 10,
+                  audioInputTokens: 80,
+                  audioOutputTokens: 40,
+                },
+                {
+                  kind: 'transcription',
+                  providerTranscriptionRef: 'provider-transcription-1',
+                  inputTokens: 25,
+                  outputTokens: 0,
+                  cachedInputTokens: 0,
+                  audioInputTokens: 25,
+                  audioOutputTokens: 0,
+                },
+              ],
+              reason: 'Verified against provider export',
+            }),
+          },
+        ),
+        {},
+        ctx,
+      )
+
+    expect(response.status).toBe(200)
+    expect(fixture.reconcileLiveKitAccounting).toHaveBeenCalledWith({
+      reconciliationRef: 'reconciliation-1',
+      reconciliationPayloadDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      sessionRef: identity.sessionRef,
+      generation: identity.generation,
+      operatorActorRef: 'operator:user-admin',
+      reason: 'Verified against provider export',
+      providerEvidenceRefs: ['provider-export-1'],
+      creditRateMsatPerMillionTokens: 100_000,
+      usage: [
+        {
+          usageKind: 'response',
+          providerResponseRef: 'response:provider-response-1',
+          providerStatus: 'completed',
+          inputTokens: 100,
+          outputTokens: 50,
+          cachedInputTokens: 10,
+          audioInputTokens: 80,
+          audioOutputTokens: 40,
+        },
+        {
+          usageKind: 'transcription',
+          providerResponseRef: 'transcription:provider-transcription-1',
+          inputTokens: 25,
+          outputTokens: 0,
+          cachedInputTokens: 0,
+          audioInputTokens: 25,
+          audioOutputTokens: 0,
+        },
+      ],
+      nowIso: '2026-07-28T12:00:00.000Z',
+    })
+    expect(await response.json()).toMatchObject({
+      schema: SARAH_VOICE_ACCOUNTING_RECONCILIATION_PROTOCOL_VERSION,
+      reconciliationRef: 'reconciliation-1',
+      sessionRef: identity.sessionRef,
+      state: 'settled',
+      finalChargeMsat: 18,
+      replayed: false,
+    })
+  })
+
+  test('maps changed reconciliation evidence to a conflict', async () => {
+    const fixture = makeDependencies()
+    fixture.reconcileLiveKitAccounting.mockRejectedValueOnce(
+      new SarahVoiceSessionRejectedError('changed evidence'),
+    )
+    const response =
+      await handleSarahRealtimeVoiceAccountingReconciliationRequest(
+        {
+          openStore: fixture.dependencies.openStore,
+          requireOperator: async () => ({ actorRef: 'operator:user-admin' }),
+          creditMsatPerMillionTokens: () => 100_000,
+        },
+        new Request(
+          'https://openagents.com/api/operator/omega/sarah/voice/accounting/reconcile',
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              schema: SARAH_VOICE_ACCOUNTING_RECONCILIATION_PROTOCOL_VERSION,
+              reconciliationRef: 'reconciliation-1',
+              sessionRef: identity.sessionRef,
+              generation: identity.generation,
+              providerEvidenceRefs: ['provider-export-changed'],
+              usage: [],
+              reason: 'Changed evidence',
+            }),
+          },
+        ),
+        {},
+        ctx,
+      )
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({
+      error: 'sarah_voice_accounting_reconciliation_conflict',
     })
   })
 

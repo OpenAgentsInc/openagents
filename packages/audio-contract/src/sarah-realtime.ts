@@ -7,6 +7,8 @@ export const SARAH_VOICE_ADMISSION_PATH = "/api/omega/sarah/voice/admission" as 
 export const SARAH_VOICE_SETTLEMENT_PATH = "/api/omega/sarah/voice/settlement" as const;
 export const SARAH_VOICE_COHORT_REVOCATION_PATH =
   "/api/operator/omega/sarah/voice/cohort/revoke" as const;
+export const SARAH_VOICE_ACCOUNTING_RECONCILIATION_PATH =
+  "/api/operator/omega/sarah/voice/accounting/reconcile" as const;
 export const SARAH_VOICE_CONNECT_PATH = "/api/omega/sarah/voice/connect" as const;
 export const SARAH_VOICE_NOSTR_CHALLENGE_PATH = "/api/omega/sarah/voice/auth/challenge" as const;
 export const OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PATH =
@@ -22,6 +24,8 @@ export const SARAH_VOICE_SETTLEMENT_PROTOCOL_VERSION =
   "openagents.sarah.voice.settlement.v1" as const;
 export const SARAH_VOICE_COHORT_REVOCATION_PROTOCOL_VERSION =
   "openagents.sarah.voice.cohort-revocation.v1" as const;
+export const SARAH_VOICE_ACCOUNTING_RECONCILIATION_PROTOCOL_VERSION =
+  "openagents.sarah.voice.accounting-reconciliation.v1" as const;
 export const OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PROTOCOL_VERSION =
   "openagents.omega.nostr-device-link-challenge.v1" as const;
 export const OMEGA_NOSTR_DEVICE_LINK_PROTOCOL_VERSION =
@@ -163,6 +167,53 @@ export const SarahVoiceCohortRevocationResponseSchema = S.Struct({
 });
 export type SarahVoiceCohortRevocationResponse =
   typeof SarahVoiceCohortRevocationResponseSchema.Type;
+
+const SarahVoiceAccountingUsageSchema = S.Union([
+  S.Struct({
+    kind: S.Literal("response"),
+    providerResponseRef: Ref,
+    status: S.Literals(["completed", "cancelled", "failed", "incomplete"]),
+    inputTokens: Seq,
+    outputTokens: Seq,
+    cachedInputTokens: Seq,
+    audioInputTokens: Seq,
+    audioOutputTokens: Seq,
+  }),
+  S.Struct({
+    kind: S.Literal("transcription"),
+    providerTranscriptionRef: Ref,
+    inputTokens: Seq,
+    outputTokens: Seq,
+    cachedInputTokens: Seq,
+    audioInputTokens: Seq,
+    audioOutputTokens: Seq,
+  }),
+]);
+
+export const SarahVoiceAccountingReconciliationRequestSchema = S.Struct({
+  schema: S.Literal(SARAH_VOICE_ACCOUNTING_RECONCILIATION_PROTOCOL_VERSION),
+  reconciliationRef: Ref,
+  sessionRef: Ref,
+  generation: S.Int.check(S.isGreaterThanOrEqualTo(1)),
+  providerEvidenceRefs: S.Array(Ref).check(S.isMinLength(1), S.isMaxLength(16)),
+  usage: S.Array(SarahVoiceAccountingUsageSchema).check(S.isMaxLength(1_024)),
+  reason: S.Trim.check(S.isMinLength(1), S.isMaxLength(256)),
+});
+export type SarahVoiceAccountingReconciliationRequest =
+  typeof SarahVoiceAccountingReconciliationRequestSchema.Type;
+
+export const SarahVoiceAccountingReconciliationResponseSchema = S.Struct({
+  schema: S.Literal(SARAH_VOICE_ACCOUNTING_RECONCILIATION_PROTOCOL_VERSION),
+  reconciliationRef: Ref,
+  reconciliationReceiptRef: Ref,
+  sessionRef: Ref,
+  state: S.Literals(["settled", "released"]),
+  finalChargeMsat: Seq,
+  settlementReceiptRef: Ref,
+  replayed: S.Boolean,
+});
+export type SarahVoiceAccountingReconciliationResponse =
+  typeof SarahVoiceAccountingReconciliationResponseSchema.Type;
 
 export const SarahVoiceNostrChallengeRequestSchema = S.Struct({
   schema: S.Literal(SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION),
@@ -542,6 +593,16 @@ export const decodeSarahVoiceCohortRevocationRequest = (value: unknown) =>
 
 export const decodeSarahVoiceCohortRevocationResponse = (value: unknown) =>
   S.decodeUnknownSync(SarahVoiceCohortRevocationResponseSchema)(value, {
+    onExcessProperty: "error",
+  });
+
+export const decodeSarahVoiceAccountingReconciliationRequest = (value: unknown) =>
+  S.decodeUnknownSync(SarahVoiceAccountingReconciliationRequestSchema)(value, {
+    onExcessProperty: "error",
+  });
+
+export const decodeSarahVoiceAccountingReconciliationResponse = (value: unknown) =>
+  S.decodeUnknownSync(SarahVoiceAccountingReconciliationResponseSchema)(value, {
     onExcessProperty: "error",
   });
 

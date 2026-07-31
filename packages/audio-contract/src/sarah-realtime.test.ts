@@ -3,6 +3,7 @@ import {
   OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PROTOCOL_VERSION,
   OMEGA_NOSTR_DEVICE_LINK_PROTOCOL_VERSION,
   SARAH_VOICE_ADMISSION_PROTOCOL_VERSION,
+  SARAH_VOICE_ACCOUNTING_RECONCILIATION_PROTOCOL_VERSION,
   SARAH_VOICE_COHORT_REVOCATION_PROTOCOL_VERSION,
   SARAH_VOICE_PROTOCOL_VERSION,
   SARAH_VOICE_SETTLEMENT_PROTOCOL_VERSION,
@@ -11,6 +12,7 @@ import {
   decodeSarahEditorCommand,
   decodeSarahVoiceAdmissionRequest,
   decodeSarahVoiceAdmissionResponse,
+  decodeSarahVoiceAccountingReconciliationRequest,
   decodeSarahVoiceClientControl,
   decodeSarahVoiceCohortRevocationRequest,
   decodeSarahVoiceSessionRequest,
@@ -200,6 +202,36 @@ describe("Sarah Realtime voice contract", () => {
         schema: SARAH_VOICE_COHORT_REVOCATION_PROTOCOL_VERSION,
         cohortRef: "sarah_voice_cohort:staging_owner_v1",
         reason: "Wrong authority",
+      }),
+    ).toThrow();
+  });
+
+  test("bounds accounting reconciliation to opaque evidence and numeric usage", () => {
+    const request = {
+      schema: SARAH_VOICE_ACCOUNTING_RECONCILIATION_PROTOCOL_VERSION,
+      reconciliationRef: "reconciliation-1",
+      sessionRef: identity.sessionRef,
+      generation: identity.generation,
+      providerEvidenceRefs: ["provider-export-1"],
+      usage: [
+        {
+          kind: "response",
+          providerResponseRef: "provider-response-1",
+          status: "completed",
+          inputTokens: 100,
+          outputTokens: 50,
+          cachedInputTokens: 10,
+          audioInputTokens: 80,
+          audioOutputTokens: 40,
+        },
+      ],
+      reason: "Verified against provider export",
+    } as const;
+    expect(decodeSarahVoiceAccountingReconciliationRequest(request).usage).toHaveLength(1);
+    expect(() =>
+      decodeSarahVoiceAccountingReconciliationRequest({
+        ...request,
+        transcript: "must never cross the operator reconciliation boundary",
       }),
     ).toThrow();
   });

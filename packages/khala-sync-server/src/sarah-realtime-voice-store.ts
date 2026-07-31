@@ -215,6 +215,29 @@ export type SarahVoiceLiveKitWorkerClaim = Readonly<{
   sessionExpiresAt: string;
 }>;
 
+export type SarahVoiceLiveKitWorkerReadiness = "waiting" | "claimed" | "closed";
+
+export type SarahVoiceAccountingReconciliationUsage = Readonly<{
+  usageKind: "response" | "transcription";
+  providerResponseRef: string;
+  providerStatus?: "completed" | "cancelled" | "failed" | "incomplete";
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  audioInputTokens: number;
+  audioOutputTokens: number;
+}>;
+
+export type SarahVoiceAccountingReconciliationResult = Readonly<{
+  reconciliationRef: string;
+  reconciliationReceiptRef: string;
+  sessionRef: string;
+  state: "settled" | "released";
+  finalChargeMsat: number;
+  settlementReceiptRef: string;
+  replayed: boolean;
+}>;
+
 export type SarahVoiceLiveKitMembershipLease = Readonly<{
   ownerUserId: string;
   roomContext: SarahVoiceLiveKitRoomContext;
@@ -596,9 +619,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           FROM sarah_realtime_voice_sessions AS session
           LEFT JOIN sarah_voice_admissions AS admission
             ON admission.session_ref = session.session_ref
-            AND admission.admission_ref = ${
-              input.admissionBinding?.admissionRef ?? null
-            }
+            AND admission.admission_ref = ${input.admissionBinding?.admissionRef ?? null}
             AND admission.state = 'consumed'
           WHERE session.session_ref = ${input.sessionRef}
             AND session.reservation_ref = ${input.reservationRef}
@@ -619,9 +640,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             AND session.ticket_expires_at > ${input.nowIso}
             AND session.session_expires_at > ${input.nowIso}
             AND (
-              ${
-                input.admissionBinding === undefined
-              }
+              ${input.admissionBinding === undefined}
               OR admission.admission_ref IS NOT NULL
             )
           FOR UPDATE OF session
@@ -1285,8 +1304,6 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         await tx`
           UPDATE sarah_livekit_provisioning_intents
           SET state = 'bound',
-              provisioning_owner_ref = NULL,
-              provisioning_claimed_at = NULL,
               updated_at = ${input.nowIso}
           WHERE session_ref = ${input.sessionRef}
             AND generation = ${input.generation}
@@ -1307,6 +1324,42 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         );
       }
       throw new SarahVoiceStorageError("Sarah LiveKit room binding failed", error);
+    }
+  };
+
+  const completeLiveKitProvisioningIntent = async (
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+      provisioningOwnerRef: string;
+      nowIso: string;
+    }>,
+  ): Promise<void> => {
+    try {
+      const rows = (await sql`
+        UPDATE sarah_livekit_provisioning_intents AS intent
+        SET provisioning_owner_ref = NULL,
+            provisioning_claimed_at = NULL,
+            updated_at = ${input.nowIso}
+        FROM sarah_livekit_room_bindings AS binding
+        WHERE intent.session_ref = ${input.sessionRef}
+          AND intent.generation = ${input.generation}
+          AND intent.state = 'bound'
+          AND intent.provisioning_owner_ref = ${input.provisioningOwnerRef}
+          AND binding.session_ref = intent.session_ref
+          AND binding.generation = intent.generation
+          AND binding.worker_job_ref IS NOT NULL
+          AND binding.worker_claimed_at IS NOT NULL
+        RETURNING intent.session_ref
+      `) as ReadonlyArray<{ session_ref: string }>;
+      if (first(rows) === undefined) {
+        throw new SarahVoiceSessionRejectedError(
+          "The LiveKit provisioning intent is not ready for completion",
+        );
+      }
+    } catch (error) {
+      if (error instanceof SarahVoiceSessionRejectedError) throw error;
+      throw new SarahVoiceStorageError("Sarah LiveKit provisioning completion failed", error);
     }
   };
 
@@ -1494,6 +1547,43 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     } catch (error) {
       if (error instanceof SarahVoiceSessionRejectedError) throw error;
       throw new SarahVoiceStorageError("Sarah LiveKit worker claim failed", error);
+    }
+  };
+
+  const readLiveKitWorkerReadiness = async (
+    input: Readonly<{ sessionRef: string; generation: number }>,
+  ): Promise<SarahVoiceLiveKitWorkerReadiness> => {
+    try {
+      const rows = (await sql`
+        SELECT session.state AS session_state, binding.state AS binding_state,
+          binding.worker_job_ref, binding.worker_claimed_at,
+          binding.worker_closed_at, binding.worker_stop_reason
+        FROM sarah_livekit_room_bindings AS binding
+        INNER JOIN sarah_realtime_voice_sessions AS session
+          ON session.session_ref = binding.session_ref
+        WHERE binding.session_ref = ${input.sessionRef}
+          AND binding.generation = ${input.generation}
+      `) as ReadonlyArray<{
+        session_state: SarahVoiceSessionState;
+        binding_state: "prepared" | "active" | "cleanup_ready" | "cleanup_failed" | "cleaned";
+        worker_job_ref: string | null;
+        worker_claimed_at: string | null;
+        worker_closed_at: string | null;
+        worker_stop_reason: SarahVoiceLiveKitWorkerStopReason | null;
+      }>;
+      const row = first(rows);
+      if (
+        row === undefined ||
+        row.worker_closed_at !== null ||
+        row.worker_stop_reason !== null ||
+        !["reserved", "connected"].includes(row.session_state) ||
+        !["prepared", "active"].includes(row.binding_state)
+      ) {
+        return "closed";
+      }
+      return row.worker_job_ref !== null && row.worker_claimed_at !== null ? "claimed" : "waiting";
+    } catch (error) {
+      throw new SarahVoiceStorageError("Sarah LiveKit worker readiness read failed", error);
     }
   };
 
@@ -1927,6 +2017,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             AND provisioning_owner_ref = ${input.provisioningOwnerRef}
             AND state IN (
               'pending',
+              'bound',
               'reconciling',
               'cleanup_failed',
               'cleaned'
@@ -2349,6 +2440,358 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     } catch (error) {
       if (error instanceof SarahVoiceSessionRejectedError) throw error;
       throw new SarahVoiceStorageError("Sarah voice settlement failed", error);
+    }
+  };
+
+  const reconcileLiveKitAccounting = async (
+    input: Readonly<{
+      reconciliationRef: string;
+      reconciliationPayloadDigest: string;
+      sessionRef: string;
+      generation: number;
+      operatorActorRef: string;
+      reason: string;
+      providerEvidenceRefs: ReadonlyArray<string>;
+      creditRateMsatPerMillionTokens: number;
+      usage: ReadonlyArray<SarahVoiceAccountingReconciliationUsage>;
+      nowIso: string;
+    }>,
+  ): Promise<SarahVoiceAccountingReconciliationResult> => {
+    try {
+      if (
+        !/^[0-9a-f]{64}$/u.test(input.reconciliationPayloadDigest) ||
+        !Number.isSafeInteger(input.creditRateMsatPerMillionTokens) ||
+        input.creditRateMsatPerMillionTokens <= 0 ||
+        input.providerEvidenceRefs.length < 1 ||
+        input.providerEvidenceRefs.length > 16 ||
+        new Set(input.providerEvidenceRefs).size !== input.providerEvidenceRefs.length ||
+        input.usage.length > 1_024
+      ) {
+        throw new SarahVoiceSessionRejectedError(
+          "The Sarah voice accounting reconciliation is invalid",
+        );
+      }
+      const reconciliationReceiptRef = `sarah_voice_accounting_reconciliation:${input.reconciliationPayloadDigest}`;
+      return await sql.begin(async (tx) => {
+        const sessions = (await tx`
+          SELECT session_ref, generation, state, transport_kind, credit_mode,
+            reserved_msat, settlement_receipt_ref
+          FROM sarah_realtime_voice_sessions
+          WHERE session_ref = ${input.sessionRef}
+          FOR UPDATE
+        `) as ReadonlyArray<{
+          session_ref: string;
+          generation: number | string;
+          state: SarahVoiceSessionState;
+          transport_kind: SarahVoiceTransportKind;
+          credit_mode: SarahVoiceCreditMode;
+          reserved_msat: number | string;
+          settlement_receipt_ref: string | null;
+        }>;
+        const session = first(sessions);
+        if (
+          session === undefined ||
+          toSafeInteger(session.generation, "generation") !== input.generation
+        ) {
+          throw new SarahVoiceSessionRejectedError(
+            "The Sarah voice accounting reconciliation generation does not exist",
+          );
+        }
+
+        const priorRows = (await tx`
+          SELECT reconciliation_ref, reconciliation_receipt_ref, session_ref,
+            generation, reconciliation_payload_digest, operator_actor_ref,
+            reconciliation_reason, provider_evidence_refs_json,
+            credit_rate_msat_per_million_tokens
+          FROM sarah_livekit_accounting_reconciliations
+          WHERE reconciliation_ref = ${input.reconciliationRef}
+            OR session_ref = ${input.sessionRef}
+          FOR SHARE
+        `) as ReadonlyArray<{
+          reconciliation_ref: string;
+          reconciliation_receipt_ref: string;
+          session_ref: string;
+          generation: number | string;
+          reconciliation_payload_digest: string;
+          operator_actor_ref: string;
+          reconciliation_reason: string;
+          provider_evidence_refs_json: unknown;
+          credit_rate_msat_per_million_tokens: number | string;
+        }>;
+        const prior = first(priorRows);
+        if (prior !== undefined) {
+          const priorEvidence = prior.provider_evidence_refs_json;
+          if (
+            priorRows.length !== 1 ||
+            prior.reconciliation_ref !== input.reconciliationRef ||
+            prior.reconciliation_receipt_ref !== reconciliationReceiptRef ||
+            prior.session_ref !== input.sessionRef ||
+            toSafeInteger(prior.generation, "generation") !== input.generation ||
+            prior.reconciliation_payload_digest !== input.reconciliationPayloadDigest ||
+            prior.operator_actor_ref !== input.operatorActorRef ||
+            prior.reconciliation_reason !== input.reason ||
+            !Array.isArray(priorEvidence) ||
+            JSON.stringify(priorEvidence) !== JSON.stringify(input.providerEvidenceRefs) ||
+            toSafeInteger(
+              prior.credit_rate_msat_per_million_tokens,
+              "credit_rate_msat_per_million_tokens",
+            ) !== input.creditRateMsatPerMillionTokens ||
+            (session.state !== "settled" && session.state !== "released") ||
+            session.settlement_receipt_ref === null
+          ) {
+            throw new SarahVoiceSessionRejectedError(
+              "The Sarah voice accounting reconciliation conflicts with prior evidence",
+            );
+          }
+          const terminalRows = (await tx`
+            SELECT charged_msat
+            FROM sarah_realtime_voice_sessions
+            WHERE session_ref = ${input.sessionRef}
+          `) as ReadonlyArray<{ charged_msat: number | string }>;
+          const terminal = first(terminalRows);
+          if (terminal === undefined) {
+            throw new SarahVoiceStorageError(
+              "The reconciled Sarah voice session disappeared",
+              null,
+            );
+          }
+          return {
+            reconciliationRef: prior.reconciliation_ref,
+            reconciliationReceiptRef: prior.reconciliation_receipt_ref,
+            sessionRef: prior.session_ref,
+            state: session.state,
+            finalChargeMsat: toSafeInteger(terminal.charged_msat, "charged_msat"),
+            settlementReceiptRef: session.settlement_receipt_ref,
+            replayed: true,
+          };
+        }
+        if (
+          session.transport_kind !== "livekit_room_v1" ||
+          session.state !== "accounting_uncertain"
+        ) {
+          throw new SarahVoiceSessionRejectedError(
+            "Only uncertain LiveKit accounting can be reconciled",
+          );
+        }
+        const bindings = (await tx`
+          SELECT provider_admitted_at, provider_accounting_status
+          FROM sarah_livekit_room_bindings
+          WHERE session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+          FOR UPDATE
+        `) as ReadonlyArray<{
+          provider_admitted_at: string | null;
+          provider_accounting_status: "pending" | "exact" | "uncertain";
+        }>;
+        const binding = first(bindings);
+        if (
+          binding === undefined ||
+          binding.provider_admitted_at === null ||
+          binding.provider_accounting_status !== "uncertain"
+        ) {
+          throw new SarahVoiceSessionRejectedError(
+            "The LiveKit provider accounting state is not reconcilable",
+          );
+        }
+
+        const exactUsage = new Map<
+          string,
+          SarahVoiceAccountingReconciliationUsage & Readonly<{ chargeMsat: number }>
+        >();
+        for (const usage of input.usage) {
+          const expectedPrefix = usage.usageKind === "response" ? "response:" : "transcription:";
+          if (
+            !usage.providerResponseRef.startsWith(expectedPrefix) ||
+            (usage.usageKind === "response" && usage.providerStatus === undefined) ||
+            (usage.usageKind === "transcription" && usage.providerStatus !== undefined) ||
+            ![
+              usage.inputTokens,
+              usage.outputTokens,
+              usage.cachedInputTokens,
+              usage.audioInputTokens,
+              usage.audioOutputTokens,
+            ].every((value) => Number.isSafeInteger(value) && value >= 0) ||
+            usage.cachedInputTokens > usage.inputTokens ||
+            usage.audioInputTokens > usage.inputTokens ||
+            usage.audioOutputTokens > usage.outputTokens
+          ) {
+            throw new SarahVoiceSessionRejectedError("The reconciled provider usage is invalid");
+          }
+          const chargeNumerator =
+            (BigInt(usage.inputTokens) + BigInt(usage.outputTokens)) *
+            BigInt(input.creditRateMsatPerMillionTokens);
+          const chargeMsatBigInt = (chargeNumerator + 999_999n) / 1_000_000n;
+          if (
+            chargeMsatBigInt > BigInt(Number.MAX_SAFE_INTEGER) ||
+            exactUsage.has(usage.providerResponseRef)
+          ) {
+            throw new SarahVoiceSessionRejectedError(
+              "The reconciled provider usage is duplicated or too large",
+            );
+          }
+          const chargeMsat = Number(chargeMsatBigInt);
+          exactUsage.set(usage.providerResponseRef, { ...usage, chargeMsat });
+          // Reconciliation inserts only numeric usage and opaque provider refs.
+          // eslint-disable-next-line no-await-in-loop
+          await tx`
+            INSERT INTO sarah_realtime_voice_usage (
+              session_ref, provider_response_ref, input_tokens, output_tokens,
+              cached_input_tokens, audio_input_tokens, audio_output_tokens,
+              charge_msat, observed_at, usage_kind, provider_status
+            ) VALUES (
+              ${input.sessionRef}, ${usage.providerResponseRef},
+              ${usage.inputTokens}, ${usage.outputTokens},
+              ${usage.cachedInputTokens}, ${usage.audioInputTokens},
+              ${usage.audioOutputTokens}, ${chargeMsat}, ${input.nowIso},
+              ${usage.usageKind}, ${usage.providerStatus ?? null}
+            )
+            ON CONFLICT (session_ref, provider_response_ref) DO NOTHING
+          `;
+        }
+
+        const persistedUsage = (await tx`
+          SELECT provider_response_ref, input_tokens, output_tokens,
+            cached_input_tokens, audio_input_tokens, audio_output_tokens,
+            charge_msat, usage_kind, provider_status
+          FROM sarah_realtime_voice_usage
+          WHERE session_ref = ${input.sessionRef}
+          ORDER BY provider_response_ref
+          FOR SHARE
+        `) as ReadonlyArray<{
+          provider_response_ref: string;
+          input_tokens: number | string;
+          output_tokens: number | string;
+          cached_input_tokens: number | string;
+          audio_input_tokens: number | string;
+          audio_output_tokens: number | string;
+          charge_msat: number | string;
+          usage_kind: "response" | "transcription";
+          provider_status: "completed" | "cancelled" | "failed" | "incomplete" | null;
+        }>;
+        if (persistedUsage.length !== exactUsage.size) {
+          throw new SarahVoiceSessionRejectedError(
+            "The reconciliation does not contain the complete provider usage set",
+          );
+        }
+        for (const persisted of persistedUsage) {
+          const expected = exactUsage.get(persisted.provider_response_ref);
+          if (
+            expected === undefined ||
+            toSafeInteger(persisted.input_tokens, "input_tokens") !== expected.inputTokens ||
+            toSafeInteger(persisted.output_tokens, "output_tokens") !== expected.outputTokens ||
+            toSafeInteger(persisted.cached_input_tokens, "cached_input_tokens") !==
+              expected.cachedInputTokens ||
+            toSafeInteger(persisted.audio_input_tokens, "audio_input_tokens") !==
+              expected.audioInputTokens ||
+            toSafeInteger(persisted.audio_output_tokens, "audio_output_tokens") !==
+              expected.audioOutputTokens ||
+            toSafeInteger(persisted.charge_msat, "charge_msat") !== expected.chargeMsat ||
+            persisted.usage_kind !== expected.usageKind ||
+            persisted.provider_status !== (expected.providerStatus ?? null)
+          ) {
+            throw new SarahVoiceSessionRejectedError(
+              "The reconciliation conflicts with previously recorded provider usage",
+            );
+          }
+        }
+
+        const sum = (
+          select: (
+            usage: SarahVoiceAccountingReconciliationUsage & Readonly<{ chargeMsat: number }>,
+          ) => number,
+          field: string,
+        ): number => {
+          const total = [...exactUsage.values()].reduce(
+            (accumulator, usage) => accumulator + BigInt(select(usage)),
+            0n,
+          );
+          if (total > BigInt(Number.MAX_SAFE_INTEGER)) {
+            throw new SarahVoiceSessionRejectedError(`The reconciled ${field} total is too large`);
+          }
+          return Number(total);
+        };
+        const inputTokens = sum((usage) => usage.inputTokens, "input token");
+        const outputTokens = sum((usage) => usage.outputTokens, "output token");
+        const cachedInputTokens = sum((usage) => usage.cachedInputTokens, "cached input token");
+        const audioInputTokens = sum((usage) => usage.audioInputTokens, "audio input token");
+        const audioOutputTokens = sum((usage) => usage.audioOutputTokens, "audio output token");
+        const exactChargeMsat = sum((usage) => usage.chargeMsat, "charge");
+        const finalChargeMsat = Math.min(
+          toSafeInteger(session.reserved_msat, "reserved_msat"),
+          exactChargeMsat,
+        );
+
+        await tx`
+          INSERT INTO sarah_livekit_accounting_reconciliations (
+            reconciliation_ref, reconciliation_receipt_ref, session_ref,
+            generation, reconciliation_payload_digest, operator_actor_ref,
+            reconciliation_reason, provider_evidence_refs_json,
+            credit_rate_msat_per_million_tokens, created_at
+          ) VALUES (
+            ${input.reconciliationRef}, ${reconciliationReceiptRef},
+            ${input.sessionRef}, ${input.generation},
+            ${input.reconciliationPayloadDigest}, ${input.operatorActorRef},
+            ${input.reason},
+            ${JSON.stringify(input.providerEvidenceRefs)}::text::jsonb,
+            ${input.creditRateMsatPerMillionTokens}, ${input.nowIso}
+          )
+        `;
+        await tx`
+          UPDATE sarah_livekit_room_bindings
+          SET provider_accounting_status = 'exact',
+              provider_accounting_terminal_at = ${input.nowIso},
+              provider_accounting_uncertain_at = NULL,
+              provider_accounting_uncertain_reason = NULL,
+              updated_at = ${input.nowIso}
+          WHERE session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+        `;
+        await tx`
+          UPDATE sarah_realtime_voice_sessions
+          SET state = 'connected',
+              input_tokens = ${inputTokens},
+              output_tokens = ${outputTokens},
+              cached_input_tokens = ${cachedInputTokens},
+              audio_input_tokens = ${audioInputTokens},
+              audio_output_tokens = ${audioOutputTokens},
+              charged_msat = ${finalChargeMsat},
+              updated_at = ${input.nowIso}
+          WHERE session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+            AND state = 'accounting_uncertain'
+        `;
+        const settled = await settleInTransaction(tx, {
+          sessionRef: input.sessionRef,
+          closeReason: `accounting_reconciled:${input.reconciliationRef}`,
+          nowIso: input.nowIso,
+        });
+        if (
+          (settled.state !== "settled" && settled.state !== "released") ||
+          settled.settlementReceiptRef === null
+        ) {
+          throw new SarahVoiceStorageError(
+            "The reconciled Sarah voice session did not settle",
+            null,
+          );
+        }
+        return {
+          reconciliationRef: input.reconciliationRef,
+          reconciliationReceiptRef,
+          sessionRef: input.sessionRef,
+          state: settled.state,
+          finalChargeMsat: settled.chargedMsat,
+          settlementReceiptRef: settled.settlementReceiptRef,
+          replayed: false,
+        };
+      });
+    } catch (error) {
+      if (
+        error instanceof SarahVoiceSessionRejectedError ||
+        error instanceof SarahVoiceStorageError
+      ) {
+        throw error;
+      }
+      throw new SarahVoiceStorageError("Sarah voice accounting reconciliation failed", error);
     }
   };
 
@@ -3570,6 +4013,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     claimLiveKitCleanups,
     claimLiveKitWorkerJob,
     closeLiveKitWorkerJob,
+    completeLiveKitProvisioningIntent,
     connect,
     ensureStagingOwnerEntitlement,
     issueAdmission,
@@ -3583,12 +4027,14 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     readLiveKitProviderAdmission,
     readLiveKitToolProposals,
     readLiveKitToolState,
+    readLiveKitWorkerReadiness,
     claimLiveKitProvisioningIntents,
     readSettlement,
     readSpendableCredit,
     recordLiveKitParticipantJoin,
     recordUsage,
     recordLiveKitToolOutcome,
+    reconcileLiveKitAccounting,
     reserve,
     revokeAlphaCohort,
     revokeLiveKitRoom,

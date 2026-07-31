@@ -6,6 +6,7 @@ import {
   admittedRealtimeProvider,
   closeAfterProviderAccounting,
   responseUsageEvent,
+  retrySarahLiveKitWorkerClaim,
   sarahProviderConfigurationDigest,
   type SarahRealtimeProviderProfile,
   transcriptionUsageEvent,
@@ -469,7 +470,15 @@ describe("Sarah LiveKit generation fence", () => {
         usage: { input_tokens: 4, output_tokens: 1 },
       },
     };
-    accounting.observe(done, responseUsageEvent(done, identity) !== undefined);
+    const terminalResponseRef = accounting.observe(
+      done,
+      responseUsageEvent(done, identity) !== undefined,
+    );
+    expect(await Promise.race([waiting, Promise.resolve("pending")])).toBe("pending");
+    if (terminalResponseRef === undefined) {
+      throw new Error("The terminal response fixture was not tracked");
+    }
+    accounting.acknowledgeTerminalUsage(terminalResponseRef);
     expect(await waiting).toBe(true);
     releaseTimeout?.();
   });
@@ -493,7 +502,15 @@ describe("Sarah LiveKit generation fence", () => {
               usage: { input_tokens: 9, output_tokens: 2 },
             },
           };
-          accounting.observe(done, responseUsageEvent(done, identity) !== undefined);
+          const terminalResponseRef = accounting.observe(
+            done,
+            responseUsageEvent(done, identity) !== undefined,
+          );
+          if (terminalResponseRef === undefined) {
+            accounting.failTerminalUsageDelivery();
+          } else {
+            accounting.acknowledgeTerminalUsage(terminalResponseRef);
+          }
           order.push("terminal_usage");
         }, 75);
       },
@@ -533,6 +550,88 @@ describe("Sarah LiveKit generation fence", () => {
 
     expect(accountingStatus).toBe("uncertain");
     expect(fence.closeReason).toBe("worker_error");
+  });
+
+  test("requires durable terminal usage delivery before accounting is exact", async () => {
+    const accounting = new SarahProviderAccounting();
+    const done = {
+      type: "response.done",
+      response: {
+        id: "resp_delivery",
+        status: "completed",
+        usage: { input_tokens: 12, output_tokens: 3 },
+      },
+    };
+    const terminalResponseRef = accounting.observe(
+      done,
+      responseUsageEvent(done, identity) !== undefined,
+    );
+    const waiting = accounting.waitForTerminalResponses(10_000, () => new Promise<void>(() => {}));
+    expect(await Promise.race([waiting, Promise.resolve("pending")])).toBe("pending");
+    if (terminalResponseRef === undefined) {
+      throw new Error("The terminal response fixture was not tracked");
+    }
+    accounting.acknowledgeTerminalUsage(terminalResponseRef);
+    await expect(waiting).resolves.toBe(true);
+  });
+
+  test("marks failed or disconnected control delivery as uncertain after usage", async () => {
+    const failedDelivery = new SarahProviderAccounting();
+    const done = {
+      type: "response.done",
+      response: {
+        id: "resp_unknown_delivery",
+        status: "completed",
+        usage: { input_tokens: 12, output_tokens: 3 },
+      },
+    };
+    failedDelivery.observe(done, responseUsageEvent(done, identity) !== undefined);
+    failedDelivery.failTerminalUsageDelivery();
+    await expect(failedDelivery.waitForTerminalResponses(10_000)).resolves.toBe(false);
+
+    const disconnected = new SarahProviderAccounting();
+    const responseRef = disconnected.observe(
+      done,
+      responseUsageEvent(done, identity) !== undefined,
+    );
+    if (responseRef === undefined) {
+      throw new Error("The terminal response fixture was not tracked");
+    }
+    disconnected.acknowledgeTerminalUsage(responseRef);
+    disconnected.disconnect();
+    await expect(disconnected.waitForTerminalResponses(10_000)).resolves.toBe(false);
+  });
+
+  test("does not report exact when the provider disconnects during close", async () => {
+    const fence = new SarahGenerationFence();
+    const accounting = new SarahProviderAccounting();
+    let accountingStatus: "exact" | "uncertain" | undefined;
+
+    await closeAfterProviderAccounting(
+      fence,
+      accounting,
+      async () => undefined,
+      async () => accounting.disconnect(),
+      async (status) => {
+        accountingStatus = status;
+      },
+      async () => undefined,
+    );
+
+    expect(accountingStatus).toBe("uncertain");
+  });
+
+  test("retries a delayed worker claim beyond the old two-second window", async () => {
+    let attempts = 0;
+    const wait = async () => undefined;
+    await expect(
+      retrySarahLiveKitWorkerClaim(async () => {
+        attempts += 1;
+        if (attempts <= 21) throw new Error("binding not committed");
+        return "claimed";
+      }, wait),
+    ).resolves.toBe("claimed");
+    expect(attempts).toBe(22);
   });
 
   test("bounds participant admission by both expiry and worker shutdown", async () => {

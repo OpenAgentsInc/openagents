@@ -367,6 +367,7 @@ export class SarahProviderAccounting {
   readonly #waiters = new Set<() => void>();
   #providerSessionRefDigest: string | undefined;
   #disconnected = false;
+  #deliveryUncertain = false;
 
   get providerSessionRefDigest(): string | undefined {
     return this.#providerSessionRefDigest;
@@ -376,23 +377,40 @@ export class SarahProviderAccounting {
     return this.#disconnected;
   }
 
-  observe(event: unknown, terminalUsageObserved: boolean): void {
+  get exact(): boolean {
+    return !this.#disconnected && !this.#deliveryUncertain && this.#activeResponseRefs.size === 0;
+  }
+
+  observe(event: unknown, terminalUsageObserved: boolean): string | undefined {
     const envelope = record(event);
     if (envelope?.type === "session.created") {
       const sessionRef = providerSessionRef(event);
       if (sessionRef !== undefined) this.#providerSessionRefDigest = digest(sessionRef);
-      return;
+      return undefined;
     }
     const response = record(envelope?.response);
     const responseRef = boundedProviderRef(response?.id, "");
     if (envelope?.type === "response.created" && responseRef !== undefined) {
       this.#activeResponseRefs.add(responseRef);
-      return;
+      return undefined;
     }
-    if (envelope?.type === "response.done" && responseRef !== undefined && terminalUsageObserved) {
-      this.#activeResponseRefs.delete(responseRef);
-      this.#notifyIfTerminal();
+    if (envelope?.type === "response.done" && responseRef !== undefined) {
+      this.#activeResponseRefs.add(responseRef);
+      if (terminalUsageObserved) return responseRef;
+      this.failTerminalUsageDelivery();
     }
+    return undefined;
+  }
+
+  acknowledgeTerminalUsage(responseRef: string): void {
+    this.#activeResponseRefs.delete(responseRef);
+    this.#notifyIfTerminal();
+  }
+
+  failTerminalUsageDelivery(): void {
+    this.#deliveryUncertain = true;
+    for (const resolve of this.#waiters) resolve();
+    this.#waiters.clear();
   }
 
   disconnect(): void {
@@ -408,8 +426,8 @@ export class SarahProviderAccounting {
         setTimeout(resolve, delayMs);
       }),
   ): Promise<boolean> {
+    if (this.#disconnected || this.#deliveryUncertain) return false;
     if (this.#activeResponseRefs.size === 0) return true;
-    if (this.#disconnected) return false;
     let notify: (() => void) | undefined;
     const terminal = new Promise<void>((resolve) => {
       notify = resolve;
@@ -417,7 +435,7 @@ export class SarahProviderAccounting {
     });
     await Promise.race([terminal, wait(timeoutMs)]);
     if (notify !== undefined) this.#waiters.delete(notify);
-    return this.#activeResponseRefs.size === 0;
+    return !this.#disconnected && !this.#deliveryUncertain && this.#activeResponseRefs.size === 0;
   }
 
   #notifyIfTerminal(): void {
@@ -455,6 +473,30 @@ export const waitForAdmissionUntil = async <Value>(
       (error) => settle(() => reject(error)),
     );
   });
+};
+
+export const retrySarahLiveKitWorkerClaim = async <Value>(
+  claim: () => Promise<Value>,
+  wait: () => Promise<void> = () =>
+    new Promise((resolve) => {
+      setTimeout(resolve, 100);
+    }),
+  maximumAttempts = 300,
+): Promise<Value> => {
+  let lastError: unknown = new Error("Sarah LiveKit claim was unavailable");
+  for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      return await claim();
+    } catch (error) {
+      lastError = error;
+      if (attempt + 1 < maximumAttempts) {
+        // eslint-disable-next-line no-await-in-loop
+        await wait();
+      }
+    }
+  }
+  throw lastError;
 };
 
 export const responseUsageEvent = (
@@ -613,5 +655,5 @@ export const closeAfterProviderAccounting = async (
   }
   await closeProvider();
   await fence.quiesce(waitForIdle);
-  await closeGeneration(terminal ? "exact" : "uncertain");
+  await closeGeneration(terminal && accounting.exact ? "exact" : "uncertain");
 };

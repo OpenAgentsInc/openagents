@@ -819,19 +819,16 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       ...binding,
       provisioningOwnerRef: "issuer:binding",
     });
-    expect(
-      await store.claimLiveKitProvisioningIntent({
+    await expect(
+      store.readLiveKitWorkerReadiness({
         sessionRef: binding.sessionRef,
         generation: binding.generation,
-        provisioningOwnerRef: "issuer:binding-replay",
-        staleBeforeIso: "2026-07-28T12:59:30.000Z",
-        nowIso: binding.nowIso,
       }),
-    ).toBe(true);
+    ).resolves.toBe("waiting");
     await expect(
       store.bindLiveKitRoom({
         ...binding,
-        provisioningOwnerRef: "issuer:binding-replay",
+        provisioningOwnerRef: "issuer:binding",
       }),
     ).resolves.toBeUndefined();
     expect(
@@ -863,6 +860,30 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       generation: 1,
       ownerUserId: binding.ownerUserId,
       roomContext: binding.roomContext,
+    });
+    await expect(
+      store.readLiveKitWorkerReadiness({
+        sessionRef: binding.sessionRef,
+        generation: binding.generation,
+      }),
+    ).resolves.toBe("claimed");
+    await expect(
+      store.completeLiveKitProvisioningIntent({
+        sessionRef: binding.sessionRef,
+        generation: binding.generation,
+        provisioningOwnerRef: "issuer:binding",
+        nowIso: "2026-07-28T13:00:10.000Z",
+      }),
+    ).resolves.toBeUndefined();
+    const [completedIntent] = await sql`
+      SELECT state, provisioning_owner_ref, provisioning_claimed_at
+      FROM sarah_livekit_provisioning_intents
+      WHERE session_ref = ${binding.sessionRef}
+    `;
+    expect(completedIntent).toMatchObject({
+      state: "bound",
+      provisioning_owner_ref: null,
+      provisioning_claimed_at: null,
     });
     await expect(store.claimLiveKitWorkerJob(workerClaim)).resolves.toMatchObject({
       sessionRef: binding.sessionRef,
@@ -1428,6 +1449,212 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         nowIso: "2026-07-28T13:03:00.000Z",
       }),
     ).rejects.toBeInstanceOf(SarahVoiceConcurrentSessionError);
+  });
+
+  test("reconciles uncertain LiveKit accounting exactly and idempotently", async () => {
+    const store = makeSarahRealtimeVoiceStore(sql as unknown as SyncSql);
+    await sql`
+      INSERT INTO users (
+        id, kind, display_name, status, created_at, updated_at
+      ) VALUES (
+        'user-sarah-reconciliation', 'human', 'Reconciliation Tester',
+        'active', '2026-07-28T13:30:00.000Z', '2026-07-28T13:30:00.000Z'
+      )
+    `;
+    await sql`
+      INSERT INTO agent_balances (
+        actor_ref, balance_msat, held_msat, usd_credit_msat,
+        created_at, updated_at
+      ) VALUES (
+        'agent:user-sarah-reconciliation', 10000, 1000, 0,
+        '2026-07-28T13:30:00.000Z', '2026-07-28T13:30:00.000Z'
+      )
+    `;
+    await sql`
+      INSERT INTO sarah_realtime_voice_sessions (
+        session_ref, reservation_ref, owner_user_id, owner_actor_ref,
+        device_ref, thread_ref, generation, disclosure_ref, state,
+        reserved_msat, charged_msat, ticket_expires_at, session_expires_at,
+        created_at, updated_at, connected_at, client_profile, credit_mode,
+        transport_kind
+      ) VALUES (
+        'voice-livekit-reconciliation',
+        'voice-livekit-reconciliation-reservation',
+        'user-sarah-reconciliation', 'agent:user-sarah-reconciliation',
+        'omega-reconciliation', 'thread-reconciliation', 1,
+        'disclosure-reconciliation', 'accounting_uncertain',
+        1000, 15, '2026-07-28T13:31:00.000Z',
+        '2026-07-28T13:40:00.000Z', '2026-07-28T13:30:00.000Z',
+        '2026-07-28T13:31:00.000Z', '2026-07-28T13:30:30.000Z',
+        'omega_editor', 'metered', 'livekit_room_v1'
+      )
+    `;
+    await sql`
+      INSERT INTO sarah_livekit_room_bindings (
+        session_ref, owner_user_id, device_ref, thread_ref, generation,
+        capability_profile, admission_ref, admission_digest,
+        room_context_kind, room_ref, room_epoch, participant_ref,
+        sarah_participant_ref, participant_grant_digest, join_expires_at,
+        dispatch_ref, sarah_presence_lease_ref, publish_allowed,
+        subscribe_allowed, state, created_at, updated_at,
+        provider_session_ref_digest, provider_configuration_digest,
+        provider_admitted_at, provider_accounting_status,
+        provider_accounting_uncertain_at,
+        provider_accounting_uncertain_reason
+      ) VALUES (
+        'voice-livekit-reconciliation', 'user-sarah-reconciliation',
+        'omega-reconciliation', 'thread-reconciliation', 1,
+        'omega_editor', 'admission-reconciliation', ${"a".repeat(64)},
+        'private', 'room-reconciliation', 1, 'owner-reconciliation',
+        'sarah-reconciliation', ${"b".repeat(64)},
+        '2026-07-28T13:35:00.000Z', 'dispatch-reconciliation',
+        'presence-reconciliation', false, true, 'active',
+        '2026-07-28T13:30:00.000Z', '2026-07-28T13:31:00.000Z',
+        ${"c".repeat(64)}, ${"d".repeat(64)},
+        '2026-07-28T13:30:30.000Z', 'uncertain',
+        '2026-07-28T13:31:00.000Z', 'worker_disappeared'
+      )
+    `;
+    await sql`
+      INSERT INTO sarah_realtime_voice_usage (
+        session_ref, provider_response_ref, input_tokens, output_tokens,
+        cached_input_tokens, audio_input_tokens, audio_output_tokens,
+        charge_msat, observed_at, usage_kind, provider_status
+      ) VALUES (
+        'voice-livekit-reconciliation', 'response:provider-response-1',
+        100, 50, 10, 80, 40, 15, '2026-07-28T13:30:40.000Z',
+        'response', 'completed'
+      )
+    `;
+
+    const reconciliation = {
+      reconciliationRef: "operator-reconciliation-1",
+      reconciliationPayloadDigest: "e".repeat(64),
+      sessionRef: "voice-livekit-reconciliation",
+      generation: 1,
+      operatorActorRef: "operator:reconciliation-test",
+      reason: "Verified against provider usage export",
+      providerEvidenceRefs: ["provider-export:2026-07-28:voice-livekit-reconciliation"],
+      creditRateMsatPerMillionTokens: 100_000,
+      usage: [
+        {
+          usageKind: "response" as const,
+          providerResponseRef: "response:provider-response-1",
+          providerStatus: "completed" as const,
+          inputTokens: 100,
+          outputTokens: 50,
+          cachedInputTokens: 10,
+          audioInputTokens: 80,
+          audioOutputTokens: 40,
+        },
+        {
+          usageKind: "transcription" as const,
+          providerResponseRef: "transcription:provider-transcription-1",
+          inputTokens: 25,
+          outputTokens: 0,
+          cachedInputTokens: 0,
+          audioInputTokens: 25,
+          audioOutputTokens: 0,
+        },
+      ],
+      nowIso: "2026-07-28T13:32:00.000Z",
+    } as const;
+    const firstReconciliation = await store.reconcileLiveKitAccounting(reconciliation);
+    expect(firstReconciliation).toMatchObject({
+      reconciliationRef: reconciliation.reconciliationRef,
+      reconciliationReceiptRef: `sarah_voice_accounting_reconciliation:${reconciliation.reconciliationPayloadDigest}`,
+      sessionRef: reconciliation.sessionRef,
+      state: "settled",
+      finalChargeMsat: 18,
+      replayed: false,
+    });
+    await expect(
+      store.reconcileLiveKitAccounting({
+        ...reconciliation,
+        nowIso: "2026-07-28T13:33:00.000Z",
+      }),
+    ).resolves.toEqual({
+      ...firstReconciliation,
+      replayed: true,
+    });
+    await expect(
+      store.reconcileLiveKitAccounting({
+        ...reconciliation,
+        reconciliationPayloadDigest: "f".repeat(64),
+        nowIso: "2026-07-28T13:34:00.000Z",
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
+
+    const [settledSession] = await sql`
+      SELECT state, charged_msat, input_tokens, output_tokens,
+        cached_input_tokens, audio_input_tokens, audio_output_tokens,
+        settlement_receipt_ref
+      FROM sarah_realtime_voice_sessions
+      WHERE session_ref = ${reconciliation.sessionRef}
+    `;
+    expect(settledSession).toMatchObject({
+      state: "settled",
+      charged_msat: "18",
+      input_tokens: "125",
+      output_tokens: "50",
+      cached_input_tokens: "10",
+      audio_input_tokens: "105",
+      audio_output_tokens: "40",
+    });
+    expect(settledSession?.settlement_receipt_ref).toBe(firstReconciliation.settlementReceiptRef);
+    const [balance] = await sql`
+      SELECT balance_msat, held_msat
+      FROM agent_balances
+      WHERE actor_ref = 'agent:user-sarah-reconciliation'
+    `;
+    expect(balance).toMatchObject({
+      balance_msat: "9982",
+      held_msat: "0",
+    });
+    const [receipt] = await sql`
+      SELECT reconciliation_ref, reconciliation_receipt_ref,
+        reconciliation_payload_digest, operator_actor_ref,
+        provider_evidence_refs_json
+      FROM sarah_livekit_accounting_reconciliations
+      WHERE session_ref = ${reconciliation.sessionRef}
+    `;
+    expect(receipt).toMatchObject({
+      reconciliation_ref: reconciliation.reconciliationRef,
+      reconciliation_receipt_ref: firstReconciliation.reconciliationReceiptRef,
+      reconciliation_payload_digest: reconciliation.reconciliationPayloadDigest,
+      operator_actor_ref: reconciliation.operatorActorRef,
+      provider_evidence_refs_json: reconciliation.providerEvidenceRefs,
+    });
+    const [binding] = await sql`
+      SELECT state, provider_accounting_status,
+        provider_accounting_uncertain_at,
+        provider_accounting_uncertain_reason
+      FROM sarah_livekit_room_bindings
+      WHERE session_ref = ${reconciliation.sessionRef}
+    `;
+    expect(binding).toMatchObject({
+      state: "cleanup_ready",
+      provider_accounting_status: "exact",
+      provider_accounting_uncertain_at: null,
+      provider_accounting_uncertain_reason: null,
+    });
+
+    await expect(sql`
+      INSERT INTO sarah_realtime_voice_sessions (
+        session_ref, reservation_ref, owner_user_id, owner_actor_ref,
+        device_ref, thread_ref, generation, disclosure_ref, state,
+        reserved_msat, charged_msat, ticket_expires_at, session_expires_at,
+        created_at, updated_at, client_profile, credit_mode, transport_kind
+      ) VALUES (
+        'voice-after-reconciliation', 'reservation-after-reconciliation',
+        'user-sarah-reconciliation', 'agent:user-sarah-reconciliation',
+        'omega-reconciliation', 'thread-after-reconciliation', 1,
+        'disclosure-after-reconciliation', 'reserved', 1000, 0,
+        '2026-07-28T13:36:00.000Z', '2026-07-28T13:45:00.000Z',
+        '2026-07-28T13:35:00.000Z', '2026-07-28T13:35:00.000Z',
+        'omega_editor', 'metered', 'livekit_room_v1'
+      )
+    `).resolves.toBeDefined();
   });
 
   test("refuses room 21 in authoritative LiveKit provisioning state", async () => {

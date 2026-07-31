@@ -41,6 +41,7 @@ import {
   SarahGenerationFence,
   closeAfterProviderAccounting,
   responseUsageEvent,
+  retrySarahLiveKitWorkerClaim,
   type SarahRealtimeProviderProfile,
   transcriptionUsageEvent,
   waitForAdmissionUntil,
@@ -352,32 +353,23 @@ const entry = async (ctx: JobContext): Promise<void> => {
   ) {
     throw new Error("The LiveKit job disagreed with Sarah dispatch authority");
   }
+  const workerRoomSid = ctx.job.room.sid;
 
   const controller = makeSarahLiveKitControlClient({
     baseUrl: requiredEnvironment("OPENAGENTS_CONTROL_URL"),
     workerRef: requiredEnvironment("SARAH_LIVEKIT_WORKER_REF"),
     controlRoot: process.env.SARAH_LIVEKIT_CONTROL_ROOT ?? "",
   });
-  let claim;
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    try {
-      // The explicit dispatch can reach a worker milliseconds before the API
-      // transaction that stores the matching binding commits.
-      // eslint-disable-next-line no-await-in-loop
-      claim = await controller.claim({
-        dispatch,
-        dispatchRef: ctx.job.dispatchId,
-        jobRef: ctx.job.id,
-        roomSid: ctx.job.room.sid,
-      });
-      break;
-    } catch (error) {
-      if (attempt === 19) throw error;
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-  }
-  if (claim === undefined) throw new Error("Sarah LiveKit claim was unavailable");
+  // The explicit dispatch is created before the binding transaction commits.
+  // Keep this job alive long enough for the API's durable readiness handshake.
+  const claim = await retrySarahLiveKitWorkerClaim(() =>
+    controller.claim({
+      dispatch,
+      dispatchRef: ctx.job.dispatchId,
+      jobRef: ctx.job.id,
+      roomSid: workerRoomSid,
+    }),
+  );
 
   const identity = {
     sessionRef: dispatch.sessionRef,
@@ -460,8 +452,22 @@ const entry = async (ctx: JobContext): Promise<void> => {
   const model = new ObservedRealtimeModel(claim.safetyIdentifier, (event) => {
     fence.observeProviderEvent();
     const usage = responseUsageEvent(event, identity) ?? transcriptionUsageEvent(event, identity);
-    accounting.observe(event, usage?._tag === "response_usage");
-    if (usage !== undefined) sendEvent(usage);
+    const terminalResponseRef = accounting.observe(event, usage?._tag === "response_usage");
+    if (usage !== undefined) {
+      const delivery = sendEvent(usage);
+      if (delivery === undefined) {
+        accounting.failTerminalUsageDelivery();
+      } else {
+        if (terminalResponseRef !== undefined) {
+          void delivery.then(
+            () => accounting.acknowledgeTerminalUsage(terminalResponseRef),
+            () => accounting.failTerminalUsageDelivery(),
+          );
+        } else {
+          void delivery.catch(() => accounting.failTerminalUsageDelivery());
+        }
+      }
+    }
     const observation =
       expectedProviderProfile === undefined
         ? ({ state: "pending" } as const)
