@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-if (($# > 1)) || (($# == 1 && "$1" != "--apply")); then
+if (($# > 1)) || { (($# == 1)) && [[ "$1" != "--apply" ]]; }; then
   printf 'usage: %s [--apply]\n' "$0" >&2
   exit 2
 fi
