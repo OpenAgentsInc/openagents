@@ -184,6 +184,141 @@ export function validateServerKeyProjection(value) {
   return value;
 }
 
+const productionRedisResourceName = () =>
+  `projects/${LIVEKIT_OPS.project}/locations/${LIVEKIT_OPS.region}/instances/oa-livekit-redis`;
+
+const terraformResourceBody = (source, type, name) => {
+  assertString(source, "Terraform source");
+  const declaration = new RegExp(`\\bresource\\s+"${type}"\\s+"${name}"\\s*\\{`, "gu");
+  const matches = [...source.matchAll(declaration)];
+  assert(matches.length === 1, `Terraform source must contain one exact ${type}.${name} resource`);
+
+  const bodyStart = matches[0].index + matches[0][0].length;
+  let depth = 1;
+  let quoted = false;
+  let escaped = false;
+  let lineComment = false;
+  let blockComment = false;
+  let body = "";
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const character = source[index];
+    const next = source[index + 1];
+    if (lineComment) {
+      if (character === "\n") {
+        lineComment = false;
+        body += character;
+      }
+      continue;
+    }
+    if (blockComment) {
+      if (character === "*" && next === "/") {
+        blockComment = false;
+        index += 1;
+      } else if (character === "\n") {
+        body += character;
+      }
+      continue;
+    }
+    if (quoted) {
+      body += character;
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        quoted = false;
+      }
+      continue;
+    }
+    if (character === "#") {
+      lineComment = true;
+      continue;
+    }
+    if (character === "/" && next === "/") {
+      lineComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === "/" && next === "*") {
+      blockComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === '"') {
+      quoted = true;
+      body += character;
+      continue;
+    }
+    if (character === "{") {
+      depth += 1;
+      body += character;
+    } else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) return body;
+      body += character;
+    } else {
+      body += character;
+    }
+  }
+  throw new Error(`Terraform source has an unterminated ${type}.${name} resource`);
+};
+
+const requireTerraformAssignment = (body, name, expected) => {
+  const assignments = [
+    ...body.matchAll(new RegExp(`^\\s*${name}\\s*=\\s*([^\\s#]+)\\s*$`, "gmu")),
+  ].map((match) => match[1]);
+  assert(
+    assignments.length === 1 && assignments[0] === expected,
+    `Terraform Redis source must set ${name} to ${expected}`,
+  );
+};
+
+export function validateProductionRedisProjection(redis, redisSecret, terraformSource) {
+  assertExactKeys(
+    redis,
+    ["name", "tier", "state", "transitEncryptionMode", "host", "serverCaCerts"],
+    ["region", "authEnabled"],
+    "production Redis metadata",
+  );
+  assertExactKeys(redisSecret, ["host", "ca_cert"], [], "production Redis secret projection");
+
+  const redisResource = terraformResourceBody(terraformSource, "google_redis_instance", "livekit");
+  requireTerraformAssignment(redisResource, "tier", '"STANDARD_HA"');
+  requireTerraformAssignment(redisResource, "transit_encryption_mode", '"SERVER_AUTHENTICATION"');
+  requireTerraformAssignment(redisResource, "auth_enabled", "false");
+
+  assert(
+    redis.name === productionRedisResourceName(),
+    "production Redis metadata is not the exact project/location/instance resource",
+  );
+  if (Object.hasOwn(redis, "region")) {
+    assert(
+      redis.region === LIVEKIT_OPS.region,
+      "production Redis metadata region disagrees with its resource name",
+    );
+  }
+  if (Object.hasOwn(redis, "authEnabled")) {
+    assert(
+      redis.authEnabled === false,
+      "production Redis metadata does not explicitly disable AUTH",
+    );
+  }
+  assert(redis.tier === "STANDARD_HA", "production Redis metadata is not STANDARD_HA");
+  assert(redis.state === "READY", "production Redis metadata is not READY");
+  assert(
+    redis.transitEncryptionMode === "SERVER_AUTHENTICATION",
+    "production Redis metadata does not require server-authenticated TLS",
+  );
+  assertString(redis.host, "production Redis metadata.host");
+  const redisCertificate = redis.serverCaCerts?.[0]?.cert;
+  assertString(redisCertificate, "production Redis metadata.serverCaCerts[0].cert");
+  assert(
+    redisSecret.host === redis.host && redisSecret.ca_cert.trim() === redisCertificate.trim(),
+    "production Redis host/CA secret projection does not match live metadata",
+  );
+  return redis;
+}
+
 export function assertPublicSafe(value, path = "value") {
   if (Array.isArray(value)) {
     value.forEach((item, index) => assertPublicSafe(item, `${path}[${index}]`));

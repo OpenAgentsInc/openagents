@@ -164,6 +164,15 @@ pod has no `REDIS_PASSWORD` environment variable. Do not claim Redis AUTH in a
 receipt or re-enable it until a provider path keeps the value out of
 Terraform state.
 
+The production preflight derives region from the authoritative full live
+resource name because `gcloud redis instances describe` does not reliably
+emit a separate `region` field. Its JSON projection can also omit the
+proto-default `authEnabled=false` value. That omission is admitted only for
+`projects/openagentsgemini/locations/us-central1/instances/oa-livekit-redis`
+when the active `google_redis_instance.livekit` Terraform source has one
+literal `auth_enabled=false` assignment. Explicit `true`, short or
+wrong-location names, ambiguous source, and host/CA drift all fail closed.
+
 The production alert notification channel is present at the opaque operational
 resource `projects/openagentsgemini/notificationChannels/1554456325732494481`
 with display name `LiveKit Production On-call`. Its destination is private and

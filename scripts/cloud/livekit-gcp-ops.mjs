@@ -13,6 +13,7 @@ import {
   validateBillingAccountId,
   validateDeploymentBundle,
   validateHistoricalDeploymentBundle,
+  validateProductionRedisProjection,
   validateServerKeyProjection,
   validateSourceOnlyReceipt,
 } from "./livekit-ops-policy.mjs";
@@ -1085,24 +1086,11 @@ const validateProductionPreflight = () => {
   } catch {
     throw new Error("production Redis metadata is not valid JSON");
   }
-  const redisCertificate = redis.serverCaCerts?.[0]?.cert;
-  if (
-    !(
-      redis.name === "oa-livekit-redis" ||
-      String(redis.name).endsWith("/instances/oa-livekit-redis")
-    ) ||
-    redis.region !== LIVEKIT_OPS.region ||
-    redis.tier !== "STANDARD_HA" ||
-    redis.state !== "READY" ||
-    redis.transitEncryptionMode !== "SERVER_AUTHENTICATION" ||
-    redis.authEnabled !== false ||
-    redisSecret.host !== redis.host ||
-    redisSecret.ca_cert.trim() !== String(redisCertificate).trim()
-  ) {
-    throw new Error(
-      "production Redis or its exact host/CA projection is outside the admitted TLS no-AUTH shape",
-    );
-  }
+  validateProductionRedisProjection(
+    redis,
+    redisSecret,
+    readFileSync(resolve("infra/modules/livekit-gke/main.tf"), "utf8"),
+  );
   parseStructuredSecret("oa-livekit-prod-cloudflare-dns", ["api_token"]);
   const sourceOpenAiKey = accessLatestSecret(SARAH_OPENAI_SOURCE_SECRET).trim();
   const liveKitOpenAiKey = accessLatestSecret("oa-livekit-prod-openai-api-key").trim();

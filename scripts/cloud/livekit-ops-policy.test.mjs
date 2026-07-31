@@ -19,6 +19,7 @@ import {
   validateHistoricalDeploymentBundle,
   validateLoadObservation,
   validatePrerequisiteReceipt,
+  validateProductionRedisProjection,
   validateRollbackObservation,
   validateSecretScanObservation,
   validateServerKeyProjection,
@@ -161,6 +162,99 @@ test("server key projection binds token minting and runtime authentication", () 
   assert.throws(
     () => validateServerKeyProjection({ ...projection, extra: "not-admitted" }),
     /unsupported field/u,
+  );
+});
+
+const redisTerraformSource = `
+resource "google_redis_instance" "livekit" {
+  tier                    = "STANDARD_HA"
+  transit_encryption_mode = "SERVER_AUTHENTICATION"
+  auth_enabled            = false
+}
+`;
+const redisMetadata = {
+  name: "projects/openagentsgemini/locations/us-central1/instances/oa-livekit-redis",
+  tier: "STANDARD_HA",
+  state: "READY",
+  transitEncryptionMode: "SERVER_AUTHENTICATION",
+  host: "private-redis-host",
+  serverCaCerts: [{ cert: "redis-ca" }],
+};
+const redisSecret = {
+  host: "private-redis-host",
+  ca_cert: "redis-ca\n",
+};
+
+test("production Redis projection derives omitted defaults from exact live and source evidence", () => {
+  assert.equal(
+    validateProductionRedisProjection(redisMetadata, redisSecret, redisTerraformSource),
+    redisMetadata,
+  );
+  assert.doesNotThrow(() =>
+    validateProductionRedisProjection(
+      { ...redisMetadata, region: "us-central1", authEnabled: false },
+      redisSecret,
+      redisTerraformSource,
+    ),
+  );
+});
+
+test("production Redis projection rejects ambiguous identity and AUTH evidence", () => {
+  for (const invalidMetadata of [
+    { ...redisMetadata, name: "oa-livekit-redis" },
+    {
+      ...redisMetadata,
+      name: "projects/openagentsgemini/locations/us-east1/instances/oa-livekit-redis",
+    },
+    { ...redisMetadata, region: "us-east1" },
+    { ...redisMetadata, authEnabled: true },
+  ]) {
+    assert.throws(
+      () => validateProductionRedisProjection(invalidMetadata, redisSecret, redisTerraformSource),
+      /production Redis/u,
+    );
+  }
+
+  for (const invalidSource of [
+    redisTerraformSource.replace(
+      "auth_enabled            = false",
+      "auth_enabled            = true",
+    ),
+    redisTerraformSource.replace(
+      "auth_enabled            = false",
+      "# auth_enabled            = false",
+    ),
+    redisTerraformSource.replace(
+      "auth_enabled            = false",
+      "/* auth_enabled            = false */",
+    ),
+    `${redisTerraformSource}\nresource "google_redis_instance" "livekit" {\n  auth_enabled = false\n}\n`,
+  ]) {
+    assert.throws(
+      () => validateProductionRedisProjection(redisMetadata, redisSecret, invalidSource),
+      /Terraform/u,
+    );
+  }
+});
+
+test("production Redis projection rejects live host and CA drift", () => {
+  assert.throws(
+    () =>
+      validateProductionRedisProjection(
+        redisMetadata,
+        { ...redisSecret, host: "different-private-host" },
+        redisTerraformSource,
+      ),
+    /host\/CA/u,
+  );
+  assert.throws(
+    () =>
+      validateProductionRedisProjection(
+        redisMetadata,
+        { ...redisSecret, ca_cert: "different-ca" },
+        redisTerraformSource,
+      ),
+    /host\/CA/u,
   );
 });
 

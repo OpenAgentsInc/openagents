@@ -326,6 +326,27 @@ requireExcludes(
   "internal-only purpose on external TURN address",
 );
 requireIncludes(
+  gkeInfrastructure,
+  'resource "google_redis_instance" "livekit"',
+  "production Redis resource",
+);
+requireIncludes(gkeInfrastructure, 'tier               = "STANDARD_HA"', "production Redis tier");
+requireIncludes(
+  gkeInfrastructure,
+  'transit_encryption_mode = "SERVER_AUTHENTICATION"',
+  "production Redis TLS mode",
+);
+requireIncludes(
+  gkeInfrastructure,
+  "auth_enabled            = false",
+  "production Redis no-AUTH mode",
+);
+requireIncludes(
+  productionInfrastructure,
+  'redis_name           = "oa-livekit-redis"',
+  "production Redis instance name",
+);
+requireIncludes(
   productionProviders,
   "billing_project       = var.project_id",
   "production Google API quota project",
