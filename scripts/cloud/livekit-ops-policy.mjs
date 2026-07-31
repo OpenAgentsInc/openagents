@@ -335,7 +335,7 @@ const requireTerraformAssignment = (body, name, expected) => {
 export function validateProductionRedisProjection(redis, redisSecret, terraformSource) {
   assertExactKeys(
     redis,
-    ["name", "tier", "state", "transitEncryptionMode", "host", "serverCaCerts"],
+    ["name", "tier", "state", "transitEncryptionMode", "host", "port", "serverCaCerts"],
     ["region", "authEnabled"],
     "production Redis metadata",
   );
@@ -369,10 +369,15 @@ export function validateProductionRedisProjection(redis, redisSecret, terraformS
     "production Redis metadata does not require server-authenticated TLS",
   );
   assertString(redis.host, "production Redis metadata.host");
+  assert(
+    Number.isSafeInteger(redis.port) && redis.port > 0 && redis.port <= 65_535,
+    "production Redis metadata.port is not a valid TCP port",
+  );
   const redisCertificate = redis.serverCaCerts?.[0]?.cert;
   assertString(redisCertificate, "production Redis metadata.serverCaCerts[0].cert");
   assert(
-    redisSecret.host === redis.host && redisSecret.ca_cert.trim() === redisCertificate.trim(),
+    redisSecret.host === `${redis.host}:${redis.port}` &&
+      redisSecret.ca_cert.trim() === redisCertificate.trim(),
     "production Redis host/CA secret projection does not match live metadata",
   );
   return redis;

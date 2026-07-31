@@ -180,10 +180,11 @@ const redisMetadata = {
   state: "READY",
   transitEncryptionMode: "SERVER_AUTHENTICATION",
   host: "private-redis-host",
+  port: 6378,
   serverCaCerts: [{ cert: "redis-ca" }],
 };
 const redisSecret = {
-  host: "private-redis-host",
+  host: "private-redis-host:6378",
   ca_cert: "redis-ca\n",
 };
 
@@ -244,10 +245,19 @@ test("production Redis projection rejects live host and CA drift", () => {
     () =>
       validateProductionRedisProjection(
         redisMetadata,
-        { ...redisSecret, host: "different-private-host" },
+        { ...redisSecret, host: "different-private-host:6378" },
         redisTerraformSource,
       ),
     /host\/CA/u,
+  );
+  assert.throws(
+    () =>
+      validateProductionRedisProjection(
+        { ...redisMetadata, port: 0 },
+        redisSecret,
+        redisTerraformSource,
+      ),
+    /port/u,
   );
   assert.throws(
     () =>

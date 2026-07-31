@@ -1031,7 +1031,7 @@ const validateProductionPreflight = () => {
           LIVEKIT_OPS.project,
           "--region",
           LIVEKIT_OPS.region,
-          "--format=json(name,region,tier,state,transitEncryptionMode,authEnabled,host,serverCaCerts)",
+          "--format=json(name,region,tier,state,transitEncryptionMode,authEnabled,host,port,serverCaCerts)",
         ],
         "inspect the exact production Redis instance",
       ),
