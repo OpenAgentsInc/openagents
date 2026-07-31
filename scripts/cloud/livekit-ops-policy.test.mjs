@@ -633,10 +633,11 @@ test("production runtime apply relies only on explicit manifest namespaces", () 
     (command) => command.bin === "kubectl" && command.args[0] === "apply",
   );
   assert.equal(applyCommands.length, 1);
-  assert.deepEqual(applyCommands[0].args.slice(0, 4), [
+  assert.deepEqual(applyCommands[0].args.slice(0, 5), [
     "apply",
     "--server-side",
     "--field-manager=openagents-livekit-ops",
+    "--force-conflicts",
     "-f",
   ]);
   assert.ok(!applyCommands[0].args.includes("--namespace"));

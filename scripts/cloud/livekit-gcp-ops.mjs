@@ -381,6 +381,7 @@ const runtimeManifestApplyCommand = (manifestPath) =>
       "apply",
       "--server-side",
       "--field-manager=openagents-livekit-ops",
+      "--force-conflicts",
       "-f",
       manifestPath,
     ],

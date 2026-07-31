@@ -635,7 +635,11 @@ exact API version and kind must admit that namespace. The closed policy permits
 only the expected `cert-manager` and `livekit-system` objects, permits only the
 `livekit-system` Namespace object, and rejects cluster-scoped resources that
 acquire a namespace. The final server-side apply therefore has no default
-namespace flag and preserves each admitted object's explicit scope. It never
+namespace flag and preserves each admitted object's explicit scope. It uses
+the fixed `openagents-livekit-ops` field manager with conflict takeover so the
+reviewed manifest reclaims its closed resource inventory after an explicitly
+recorded break-glass `kubectl set` operation; no competing manager can leave a
+runtime image or configuration field outside the pinned bundle. It never
 prints a Secret, a credential-bearing ConfigMap payload, an external IP, or a
 provider response.
 
