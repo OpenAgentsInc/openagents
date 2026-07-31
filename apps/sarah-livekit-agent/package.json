@@ -17,6 +17,8 @@
     "@livekit/protocol": "1.50.4",
     "@livekit/rtc-node": "0.13.32",
     "@openagentsinc/audio-contract": "workspace:*",
+    "@openagentsinc/sarah": "workspace:*",
+    "effect": "catalog:",
     "ws": "8.21.1",
     "zod": "4.1.8"
   },

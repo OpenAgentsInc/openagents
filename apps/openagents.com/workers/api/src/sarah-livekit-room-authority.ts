@@ -1,9 +1,7 @@
 import {
   SARAH_LIVEKIT_ROOM_AUTHORITY_SCHEMA,
-  SARAH_LIVEKIT_ROOM_PRESENCE_KIND,
   SARAH_LIVEKIT_ROOM_PRINCIPAL,
   SARAH_LIVEKIT_ROOM_PROCESSOR_DISCLOSURE,
-  SARAH_LIVEKIT_ROOM_TEXT_PROJECTION_KIND,
   canonicalSarahLiveKitRoomFloorAuthority,
   canonicalSarahLiveKitRoomPresenceAuthority,
   decodeSarahLiveKitRoomAuthoritySnapshot,
@@ -16,7 +14,9 @@ import {
   type SarahLiveKitRoomRateBucket,
 } from "@openagentsinc/audio-contract";
 import {
+  buildSarahSigningTemplate,
   verifySignedEvent,
+  type SarahSignerTemplate,
   type SarahNostrEventTemplate,
   type SarahNostrSignedEvent,
 } from "@openagentsinc/sarah";
@@ -134,32 +134,22 @@ const assertPresenceLease = (lease: SarahLiveKitRoomPresenceLease): void => {
 const presenceTemplate = (
   lease: SarahLiveKitRoomPresenceLease,
   authorityDigest: string,
-): SarahNostrEventTemplate => ({
-  kind: SARAH_LIVEKIT_ROOM_PRESENCE_KIND,
-  created_at: Math.floor(lease.issuedAtMs / 1_000),
-  tags: [
-    ["d", lease.leaseRef],
-    ["h", lease.communityRef],
-    ["channel", lease.channelRef],
-    ["principal", SARAH_LIVEKIT_ROOM_PRINCIPAL],
-    ["participant", lease.sarahParticipantRef],
-    ["room_epoch", sha256(`${lease.roomRef}\n${lease.roomEpoch}`)],
-    ["session", sha256(lease.sessionRef)],
-    ["generation", String(lease.generation)],
-    ["membership", lease.membershipRevision],
-    ["e2ee_key_revision", lease.e2eeKeyRevision],
-    ["capability", lease.capabilityProfile],
-    ["admission", lease.admissionDigest],
-    ["processors", SARAH_LIVEKIT_ROOM_PROCESSOR_DISCLOSURE],
-    ["expires", String(Math.floor(lease.expiresAtMs / 1_000))],
-    ["alt", "OpenAgents verified Sarah room presence"],
-  ],
-  content: JSON.stringify({
-    schema: SARAH_LIVEKIT_ROOM_AUTHORITY_SCHEMA,
-    authority: "presence_only",
+): SarahNostrEventTemplate =>
+  buildSarahSigningTemplate({
+    type: "presence",
+    createdAt: Math.floor(lease.issuedAtMs / 1_000),
+    expiresAt: Math.floor(lease.expiresAtMs / 1_000),
+    groupRef: lease.communityRef,
+    channelRef: lease.channelRef,
+    presenceLeaseRef: lease.leaseRef,
+    roomEpochDigest: sha256(`${lease.roomRef}\n${lease.roomEpoch}`),
+    sessionDigest: sha256(lease.sessionRef),
+    generation: lease.generation,
+    membershipRevision: lease.membershipRevision,
+    e2eeKeyRevision: lease.e2eeKeyRevision,
+    admissionDigest: lease.admissionDigest,
     authorityDigest,
-  }),
-});
+  });
 
 export const makeSarahLiveKitRoomSigner = (
   signingPort: SarahLiveKitRoomSigningPort,
@@ -204,21 +194,17 @@ export const makeSarahLiveKitRoomSigner = (
     if (!isDigest(expectedPubkey) || expectedPubkey !== lease.sarahPubkey) {
       throw new Error("Sarah room signer identity does not match the projection lease");
     }
-    const template: SarahNostrEventTemplate = {
-      kind: SARAH_LIVEKIT_ROOM_TEXT_PROJECTION_KIND,
-      created_at: Math.floor(createdAtMs / 1_000),
-      tags: [
-        ["h", lease.communityRef],
-        ["channel", lease.channelRef],
-        ["message", messageRef],
-        ["presence", lease.leaseRef],
-        ["principal", SARAH_LIVEKIT_ROOM_PRINCIPAL],
-        ["generation", String(lease.generation)],
-        ["authority", "projection_only"],
-        ["alt", "Sarah text projection; not command, audio, membership, or settlement authority"],
-      ],
+    const semanticTemplate: SarahSignerTemplate = {
+      type: "kind9_projection",
+      createdAt: Math.floor(createdAtMs / 1_000),
+      groupRef: lease.communityRef,
+      channelRef: lease.channelRef,
+      messageRef,
+      presenceLeaseRef: lease.leaseRef,
+      generation: lease.generation,
       content: text,
     };
+    const template = buildSarahSigningTemplate(semanticTemplate);
     const event = await signingPort.sign(template);
     if (!exactTemplate(event, template, expectedPubkey)) {
       throw new Error("Sarah room signer returned a changed or invalid text projection");

@@ -129,6 +129,34 @@ CPU and memory bounds, a three-to-four replica HPA, and a PDB that preserves two
 ready replicas. LiveKit Agents JS production health is probed on port `8081`;
 the endpoint is ready only while the worker has a live server WebSocket.
 
+### Private Nostr signer projection configuration
+
+Community-room Nostr projection uses the private Cloud Run signer and the
+owned relay. The worker obtains a Google identity token from the metadata
+server for the exact Cloud Run audience; it never receives
+`principal.sarah` key material.
+
+After `tofu apply` creates the signer, create the public runtime ConfigMap
+from the Terraform output and the admitted relay endpoint:
+
+```sh
+SIGNER_AUDIENCE="$(tofu -chdir=../livekit-production output -json sarah_nostr_signer | jq -r .audience)"
+kubectl --context=oa-livekit-prod -n livekit-system create configmap sarah-nostr-projection \
+  --from-literal=SARAH_NOSTR_SIGNER_URL="${SIGNER_AUDIENCE}" \
+  --from-literal=SARAH_NOSTR_SIGNER_AUDIENCE="${SIGNER_AUDIENCE}" \
+  --from-literal=SARAH_NOSTR_EXPECTED_PUBKEY="<principal.sarah lowercase hex pubkey>" \
+  --from-literal=SARAH_NOSTR_RELAY_URL="wss://relay.openagents.com" \
+  --dry-run=client -o yaml | kubectl --context=oa-livekit-prod apply -f -
+```
+
+Add `sarah-nostr-projection` to the worker Deployment's `envFrom` only when the
+community projection lane is enabled. Until then the signer can be deployed
+and verified independently without changing the running worker. A community
+job must fail closed if any of the four values is absent. The signer URL and
+audience must remain the exact HTTPS Cloud Run URI; the relay must use WSS.
+After enabling the reference, restart the Deployment and wait for rollout
+status before dispatching the acceptance room.
+
 ## Sarah worker image pin
 
 Source carries an explicit all-zero digest placeholder and

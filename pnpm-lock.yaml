@@ -1616,6 +1616,12 @@ importers:
       '@openagentsinc/audio-contract':
         specifier: workspace:*
         version: link:../../packages/audio-contract
+      '@openagentsinc/sarah':
+        specifier: workspace:*
+        version: link:../../packages/sarah
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
       ws:
         specifier: 8.21.1
         version: 8.21.1

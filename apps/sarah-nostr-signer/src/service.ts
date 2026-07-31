@@ -1,20 +1,29 @@
 import {
-  SARAH_NOSTR_PRINCIPAL,
   assertSarahNostrPublicSafe,
   createSealedSarahNostrSigner,
   parseSecretMaterial,
   publicKeyFromSecret,
-  type SarahNostrEventTemplate,
   type SarahNostrSigner,
 } from "@openagentsinc/sarah/nostr-identity"
+import {
+  SARAH_GROUP_TEXT_KIND,
+  SARAH_PRESENCE_KIND,
+  SARAH_SIGNING_REQUEST_SCHEMA,
+  SARAH_SIGNING_RESPONSE_SCHEMA,
+  SarahSignerTemplateSchema,
+  SarahSigningRequestSchema,
+  buildSarahSigningTemplate,
+  type SarahSignerTemplate,
+} from "@openagentsinc/sarah/nostr-signing-boundary"
 import { Effect, Schema as S } from "effect"
 
-export const SARAH_SIGNING_REQUEST_SCHEMA =
-  "openagents.sarah.nostr_signing_request.v1" as const
-export const SARAH_SIGNING_RESPONSE_SCHEMA =
-  "openagents.sarah.nostr_signing_response.v1" as const
-export const SARAH_PRESENCE_KIND = 30315
-export const SARAH_GROUP_TEXT_KIND = 9
+export {
+  SARAH_GROUP_TEXT_KIND,
+  SARAH_PRESENCE_KIND,
+  SARAH_SIGNING_REQUEST_SCHEMA,
+  buildSarahSigningTemplate as buildSigningTemplate,
+  type SarahSignerTemplate,
+}
 
 export const createStableSarahSigner = (input: Readonly<{
   secretMaterial: string
@@ -37,46 +46,6 @@ export const createStableSarahSigner = (input: Readonly<{
 const SafeSlug = S.String.check(
   S.isPattern(/^[a-z0-9][a-z0-9._-]{0,127}$/u),
 )
-const RoomEpochRef = S.String.check(
-  S.isPattern(/^room-epoch:[0-9a-f]{32,64}$/u),
-)
-const ParticipantRef = S.String.check(
-  S.isPattern(/^participant:[0-9a-f]{64}$/u),
-)
-const Timestamp = S.Number.check(S.isInt(), S.isGreaterThan(0))
-
-const PresenceTemplate = S.Struct({
-  type: S.Literal("presence"),
-  createdAt: Timestamp,
-  expiresAt: Timestamp,
-  groupRef: SafeSlug,
-  channelRef: SafeSlug,
-  roomEpochRef: RoomEpochRef,
-  participantRef: ParticipantRef,
-})
-
-const Kind9ProjectionTemplate = S.Struct({
-  type: S.Literal("kind9_projection"),
-  createdAt: Timestamp,
-  groupRef: SafeSlug,
-  channelRef: SafeSlug,
-  content: S.String.check(S.isMinLength(1), S.isMaxLength(2_000)),
-})
-
-export const SarahSignerTemplateSchema = S.Union([
-  PresenceTemplate,
-  Kind9ProjectionTemplate,
-])
-export type SarahSignerTemplate = S.Schema.Type<
-  typeof SarahSignerTemplateSchema
->
-
-export const SarahSigningRequest = S.Struct({
-  schemaVersion: S.Literal(SARAH_SIGNING_REQUEST_SCHEMA),
-  template: SarahSignerTemplateSchema,
-})
-export interface SarahSigningRequest
-  extends S.Schema.Type<typeof SarahSigningRequest> {}
 
 const CommunityAllowlistEntry = S.Struct({
   groupRef: SafeSlug,
@@ -157,43 +126,6 @@ const allowedCommunity = (
       entry.channelRefs.includes(template.channelRef),
   )
 
-export const buildSigningTemplate = (
-  template: SarahSignerTemplate,
-): SarahNostrEventTemplate => {
-  if (template.type === "presence") {
-    return {
-      kind: SARAH_PRESENCE_KIND,
-      created_at: template.createdAt,
-      tags: [
-        ["d", `${template.roomEpochRef}:${template.participantRef}`],
-        ["h", template.groupRef],
-        ["channel", template.channelRef],
-        ["principal", SARAH_NOSTR_PRINCIPAL],
-        ["room_epoch", template.roomEpochRef],
-        ["participant", template.participantRef],
-        ["expiration", String(template.expiresAt)],
-        ["status", "active"],
-        ["authority", "presence-only"],
-        ["alt", "OpenAgents Sarah room presence binding"],
-      ],
-      content: "",
-    }
-  }
-  return {
-    kind: SARAH_GROUP_TEXT_KIND,
-    created_at: template.createdAt,
-    tags: [
-      ["h", template.groupRef],
-      ["channel", template.channelRef],
-      ["principal", SARAH_NOSTR_PRINCIPAL],
-      ["openagents-projection", "sarah-text-v1"],
-      ["authority", "projection-only"],
-      ["alt", "Sarah group text projection"],
-    ],
-    content: template.content,
-  }
-}
-
 const noStoreJson = (value: unknown, status: number): Response =>
   Response.json(value, {
     status,
@@ -257,15 +189,30 @@ export const makeSarahNostrSignerHandler = (options: Readonly<{
               "expiresAt",
               "groupRef",
               "channelRef",
-              "roomEpochRef",
-              "participantRef",
+              "presenceLeaseRef",
+              "roomEpochDigest",
+              "sessionDigest",
+              "generation",
+              "membershipRevision",
+              "e2eeKeyRevision",
+              "admissionDigest",
+              "authorityDigest",
             ]
-          : ["type", "createdAt", "groupRef", "channelRef", "content"],
+          : [
+              "type",
+              "createdAt",
+              "groupRef",
+              "channelRef",
+              "messageRef",
+              "presenceLeaseRef",
+              "generation",
+              "content",
+            ],
       )
     ) {
       return noStoreJson({ error: "invalid_request" }, 400)
     }
-    const decoded = yield* S.decodeUnknownEffect(SarahSigningRequest)(body).pipe(
+    const decoded = yield* S.decodeUnknownEffect(SarahSigningRequestSchema)(body).pipe(
       Effect.option,
     )
     if (decoded._tag === "None") {
@@ -302,7 +249,7 @@ export const makeSarahNostrSignerHandler = (options: Readonly<{
     }
 
     const signed = yield* Effect.sync(() =>
-      options.signer.signEvent(buildSigningTemplate(template)),
+      options.signer.signEvent(buildSarahSigningTemplate(template)),
     )
     return noStoreJson(
       {

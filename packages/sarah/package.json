@@ -11,6 +11,7 @@
     ".": "./src/index.ts",
     "./mobile-principal": "./src/mobile-principal.ts",
     "./nostr-identity": "./src/nostr-identity/index.ts",
+    "./nostr-signing-boundary": "./src/nostr-signing-boundary.ts",
     "./nostr-turn": "./src/nostr-turn/index.ts",
     "./nostr-migration": "./src/nostr-migration/index.ts",
     "./nostr-journey": "./src/nostr-journey/index.ts",

@@ -42,8 +42,14 @@ const presence = (): Extract<SarahSignerTemplate, { type: "presence" }> => ({
   expiresAt: now + 120,
   groupRef: "openagents-public",
   channelRef: "agent-chat",
-  roomEpochRef: `room-epoch:${"a".repeat(32)}`,
-  participantRef: `participant:${"b".repeat(64)}`,
+  presenceLeaseRef: "presence:one",
+  roomEpochDigest: "a".repeat(64),
+  sessionDigest: "b".repeat(64),
+  generation: 1,
+  membershipRevision: "c".repeat(64),
+  e2eeKeyRevision: "d".repeat(64),
+  admissionDigest: "e".repeat(64),
+  authorityDigest: "f".repeat(64),
 })
 
 const signedEvent = async (
@@ -105,13 +111,12 @@ describe("Sarah Nostr signing service", () => {
       "schemaVersion",
       "signature",
     ])
-    expect(JSON.stringify(body)).not.toContain("room-epoch")
-    expect(JSON.stringify(body)).not.toContain("participant:")
+    expect(JSON.stringify(body)).not.toContain("presence:one")
 
     const event = await signedEvent(response, template)
     expect(event.kind).toBe(SARAH_PRESENCE_KIND)
     expect(event.tags).toContainEqual(["principal", "principal.sarah"])
-    expect(event.tags).toContainEqual(["authority", "presence-only"])
+    expect(event.tags).toContainEqual(["participant", "principal.sarah"])
     expect(verifySignedEvent(event)).toBe(true)
   })
 
@@ -126,6 +131,9 @@ describe("Sarah Nostr signing service", () => {
       createdAt: now,
       groupRef: "openagents-public",
       channelRef: "agent-chat",
+      messageRef: "message:one",
+      presenceLeaseRef: "presence:one",
+      generation: 1,
       content: "A public-safe Sarah room projection.",
     }
     const response = await handle(request(template))
@@ -133,7 +141,7 @@ describe("Sarah Nostr signing service", () => {
     const event = await signedEvent(response, template)
     expect(event.kind).toBe(SARAH_GROUP_TEXT_KIND)
     expect(event.tags).toContainEqual(["h", "openagents-public"])
-    expect(event.tags).toContainEqual(["authority", "projection-only"])
+    expect(event.tags).toContainEqual(["authority", "projection_only"])
     expect(verifySignedEvent(event)).toBe(true)
   })
 
@@ -177,6 +185,9 @@ describe("Sarah Nostr signing service", () => {
             createdAt: now,
             groupRef: "openagents-public",
             channelRef: "agent-chat",
+            messageRef: "message:one",
+            presenceLeaseRef: "presence:one",
+            generation: 1,
             content: "Authorization: Bearer a-secret-value-that-must-not-sign",
           }),
         )
@@ -190,6 +201,9 @@ describe("Sarah Nostr signing service", () => {
             createdAt: now,
             groupRef: "openagents-public",
             channelRef: "agent-chat",
+            messageRef: "message:one",
+            presenceLeaseRef: "presence:one",
+            generation: 1,
             content: `sk-${"a".repeat(32)}`,
           }),
         )
@@ -213,10 +227,7 @@ describe("Sarah Nostr signing service", () => {
     expect(
       (
         await handle(
-          request({
-            ...presence(),
-            participantRef: "participant:raw-livekit-identity",
-          }),
+          request({ ...presence(), roomEpochDigest: "not-a-digest" }),
         )
       ).status,
     ).toBe(400)
@@ -260,6 +271,9 @@ describe("Sarah Nostr signing service", () => {
             createdAt: now,
             groupRef: "openagents-public",
             channelRef: "agent-chat",
+            messageRef: "message:one",
+            presenceLeaseRef: "presence:one",
+            generation: 1,
             content: "x".repeat(17_000),
           },
         }),
