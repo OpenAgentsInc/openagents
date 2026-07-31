@@ -1,4 +1,5 @@
 import {
+  SARAH_LIVEKIT_AGENT_NAME,
   SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
   type SarahLiveKitJobEvent,
   decodeSarahLiveKitJobClaimResponse,
@@ -10,8 +11,25 @@ import {
   handleSarahLiveKitWorkerClaim,
   handleSarahLiveKitWorkerEvent,
 } from "./sarah-livekit-worker-routes";
+import { deriveSarahLiveKitControlToken } from "./sarah-livekit-room-broker";
 
-const token = `oa_sarah_lk_${"A".repeat(43)}`;
+const controlRoot = "A".repeat(64);
+const claimDispatch = {
+  sessionRef: "session:one",
+  generation: 1,
+  roomRef: "room:one",
+  roomEpoch: 1,
+  participantRef: "owner:one",
+  sarahParticipantRef: "principal.sarah",
+  sarahPresenceLeaseRef: "presence:one",
+  capabilityProfile: "omega_editor",
+  roomContext: { kind: "private" },
+} as const;
+const token = deriveSarahLiveKitControlToken(controlRoot, {
+  schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+  agentName: SARAH_LIVEKIT_AGENT_NAME,
+  ...claimDispatch,
+});
 const claimLiveKitWorkerJob = vi.fn(async () => ({
   sessionRef: "session:one",
   generation: 1,
@@ -30,6 +48,7 @@ const store = {
 } as unknown as SarahRealtimeVoiceStore;
 const cleanup = vi.fn(async () => undefined);
 const dependencies = {
+  controlRoot: () => controlRoot,
   creditMsatPerMillionTokens: () => 100_000,
   now: () => 2_000_000_000_000,
   openStore: async () => ({ store, close: async () => undefined }),
@@ -56,17 +75,7 @@ describe("Sarah LiveKit worker routes", () => {
         jobRef: "job:one",
         dispatchRef: "dispatch:one",
         roomSid: "RM_one",
-        dispatch: {
-          sessionRef: "session:one",
-          generation: 1,
-          roomRef: "room:one",
-          roomEpoch: 1,
-          participantRef: "owner:one",
-          sarahParticipantRef: "principal.sarah",
-          sarahPresenceLeaseRef: "presence:one",
-          capabilityProfile: "omega_editor",
-          roomContext: { kind: "private" },
-        },
+        dispatch: claimDispatch,
       }),
       {},
     );
@@ -159,5 +168,41 @@ describe("Sarah LiveKit worker routes", () => {
         generation: 1,
       },
     );
+  });
+
+  test("fails closed before storage for a wrong token or malformed control root", async () => {
+    const openStore = vi.fn(dependencies.openStore);
+    const claimBody = {
+      schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+      workerRef: "worker:one",
+      jobRef: "job:one",
+      dispatchRef: "dispatch:one",
+      roomSid: "RM_one",
+      dispatch: claimDispatch,
+    } as const;
+    const wrongTokenResponse = await handleSarahLiveKitWorkerClaim(
+      { ...dependencies, openStore },
+      new Request("https://openagents.com/api/internal/sarah/livekit/job/claim", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer oa_sarah_lk_${"Z".repeat(43)}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(claimBody),
+      }),
+      {},
+    );
+    expect(wrongTokenResponse.status).toBe(401);
+    const badRootResponse = await handleSarahLiveKitWorkerClaim(
+      {
+        ...dependencies,
+        controlRoot: () => ` ${controlRoot}`,
+        openStore,
+      },
+      authorizedRequest("/api/internal/sarah/livekit/job/claim", claimBody),
+      {},
+    );
+    expect(badRootResponse.status).toBe(401);
+    expect(openStore).not.toHaveBeenCalled();
   });
 });

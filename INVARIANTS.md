@@ -1659,6 +1659,11 @@ come from the Freerange teardown
   authority. Only typed actions and durable outcome refs carry that truth.
 - Raw media never enters Runtime Gateway projections, Khala Sync, logs,
   analytics, traces, or support bundles.
+- Sarah LiveKit dispatch and job metadata contains no bearer credential. The
+  API and worker independently derive one generation-bound control token from
+  a high-entropy Secret Manager HMAC root and the canonical immutable dispatch
+  fields. Durable state stores only its digest, and missing or malformed HMAC
+  configuration fails authentication closed.
 - Rust may own native capture/playback and the bounded media envelope only. It
   owns no transcript, command, Sync, storage, retention-policy, or outcome
   schema, the Effect audio contract is canonical.

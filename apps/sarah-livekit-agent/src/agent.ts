@@ -11,7 +11,6 @@ import {
   type JobContext,
 } from "@livekit/agents";
 import * as openai from "@livekit/agents-plugin-openai";
-import { TrackSource } from "@livekit/protocol";
 import {
   SARAH_LIVEKIT_AGENT_NAME,
   SARAH_LIVEKIT_MODEL,
@@ -173,6 +172,7 @@ const entry = async (ctx: JobContext): Promise<void> => {
   const controller = makeSarahLiveKitControlClient({
     baseUrl: requiredEnvironment("OPENAGENTS_CONTROL_URL"),
     workerRef: requiredEnvironment("SARAH_LIVEKIT_WORKER_REF"),
+    controlRoot: process.env.SARAH_LIVEKIT_CONTROL_ROOT ?? "",
   });
   let claim;
   for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -207,7 +207,7 @@ const entry = async (ctx: JobContext): Promise<void> => {
     if (!fence.accepts(event)) return;
     const operation = eventChain
       .then(async () => {
-        const result = await controller.event(dispatch.controlToken, event);
+        const result = await controller.event(dispatch, event);
         if (result.stopReason !== undefined && fence.settle(result.stopReason)) {
           await session?.close();
         }
@@ -281,11 +281,11 @@ const entry = async (ctx: JobContext): Promise<void> => {
     await session?.close();
     fence.seal();
     await fence.drain();
-    await controller.event(dispatch.controlToken, closeEvent(identity, fence.closeReason));
+    await controller.event(dispatch, closeEvent(identity, fence.closeReason));
   });
 
   await ctx.connect(undefined, AutoSubscribe.AUDIO_ONLY);
-  await controller.event(dispatch.controlToken, {
+  await controller.event(dispatch, {
     schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
     _tag: "worker_connected",
     ...identity,
@@ -332,7 +332,10 @@ cli.runApp(
       await request.accept("Sarah", dispatch.sarahParticipantRef);
     },
     maxRetry: 0,
-    permissions: new WorkerPermissions(true, true, true, false, [TrackSource.MICROPHONE], false),
+    // Agents JS 1.6.0 does not send canPublishSources during worker
+    // registration. This is the least grant that it enforces: disclosed,
+    // audio-capable publish/subscribe with data and metadata mutation disabled.
+    permissions: new WorkerPermissions(true, true, false, false, [], false),
     production: true,
     drainTimeout: 30_000,
     shutdownProcessTimeout: 35_000,

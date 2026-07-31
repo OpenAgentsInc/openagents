@@ -3,12 +3,12 @@ import {
   SARAH_LIVEKIT_AGENT_NAME,
   SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
 } from "@openagentsinc/audio-contract";
-import { makeSarahLiveKitControlClient } from "./control-client.js";
+import { deriveSarahLiveKitControlToken, makeSarahLiveKitControlClient } from "./control-client.js";
 
+const controlRoot = "A".repeat(64);
 const dispatch = {
   schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
   agentName: SARAH_LIVEKIT_AGENT_NAME,
-  controlToken: `oa_sarah_lk_${"A".repeat(43)}`,
   sessionRef: "session:one",
   generation: 1,
   roomRef: "room:one",
@@ -21,12 +21,13 @@ const dispatch = {
 } as const;
 
 describe("Sarah LiveKit control client", () => {
-  test("binds a claim to the exact dispatch and sends the token only as bearer auth", async () => {
+  test("derives a claim credential outside the loggable job and sends it only as bearer auth", async () => {
+    const controlToken = deriveSarahLiveKitControlToken(controlRoot, dispatch);
     const fetcher = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       expect(init?.headers).toMatchObject({
-        authorization: `Bearer ${dispatch.controlToken}`,
+        authorization: `Bearer ${controlToken}`,
       });
-      expect(String(init?.body)).not.toContain(dispatch.controlToken);
+      expect(String(init?.body)).not.toContain(controlToken);
       return Response.json({
         schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
         admitted: true,
@@ -53,6 +54,7 @@ describe("Sarah LiveKit control client", () => {
       {
         baseUrl: "https://openagents.com",
         workerRef: "worker:one",
+        controlRoot,
       },
       fetcher as typeof fetch,
     );
@@ -70,6 +72,7 @@ describe("Sarah LiveKit control client", () => {
       {
         baseUrl: "https://openagents.com",
         workerRef: "worker:one",
+        controlRoot,
       },
       vi.fn(async () =>
         Response.json({
@@ -114,11 +117,12 @@ describe("Sarah LiveKit control client", () => {
       {
         baseUrl: "https://openagents.com",
         workerRef: "worker:one",
+        controlRoot,
       },
       fetcher,
     );
     await expect(
-      client.event(dispatch.controlToken, {
+      client.event(dispatch, {
         schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
         _tag: "lease_check",
         sessionRef: dispatch.sessionRef,
@@ -128,5 +132,47 @@ describe("Sarah LiveKit control client", () => {
       }),
     ).resolves.toEqual({ accepted: true });
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  test("derives stable credentials separated by generation and room", () => {
+    const token = deriveSarahLiveKitControlToken(controlRoot, dispatch);
+    expect(token).toBe("oa_sarah_lk_-zUjl0WEcpWVL65Y8bZ_CIVrygCu8tu3R0RWhrINfu0");
+    expect(deriveSarahLiveKitControlToken(controlRoot, { ...dispatch })).toBe(token);
+    expect(
+      deriveSarahLiveKitControlToken(controlRoot, {
+        ...dispatch,
+        generation: 2,
+      }),
+    ).not.toBe(token);
+    expect(
+      deriveSarahLiveKitControlToken(controlRoot, {
+        ...dispatch,
+        roomRef: "room:two",
+      }),
+    ).not.toBe(token);
+    expect(JSON.stringify({ job: { metadata: JSON.stringify(dispatch) } })).not.toContain(token);
+  });
+
+  test("fails closed before network I/O when the HMAC root is missing or malformed", () => {
+    const fetcher = vi.fn<typeof fetch>();
+    for (const root of [
+      "",
+      "A".repeat(63),
+      "A".repeat(129),
+      `${controlRoot}=`,
+      ` ${controlRoot}`,
+    ]) {
+      expect(() =>
+        makeSarahLiveKitControlClient(
+          {
+            baseUrl: "https://openagents.com",
+            workerRef: "worker:one",
+            controlRoot: root,
+          },
+          fetcher,
+        ),
+      ).toThrow("control root is invalid");
+    }
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });

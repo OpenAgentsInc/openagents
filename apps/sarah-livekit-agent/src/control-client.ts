@@ -2,15 +2,18 @@ import {
   SARAH_LIVEKIT_JOB_CLAIM_PATH,
   SARAH_LIVEKIT_JOB_EVENT_PATH,
   SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+  canonicalSarahLiveKitDispatchAuthority,
   decodeSarahLiveKitJobClaimResponse,
   type SarahLiveKitDispatchMetadata,
   type SarahLiveKitJobClaimResponse,
   type SarahLiveKitJobEvent,
 } from "@openagentsinc/audio-contract";
+import { createHmac } from "node:crypto";
 
 export type SarahLiveKitControlConfig = Readonly<{
   baseUrl: string;
   workerRef: string;
+  controlRoot: string;
 }>;
 
 export type SarahLiveKitClaimInput = Readonly<{
@@ -46,6 +49,21 @@ const noStoreHeaders = (token: string) => ({
   "content-type": "application/json",
 });
 
+const parseControlRoot = (value: string): Buffer => {
+  if (!/^[A-Za-z0-9_-]{64,128}$/u.test(value)) {
+    throw new Error("The Sarah LiveKit control root is invalid");
+  }
+  return Buffer.from(value, "utf8");
+};
+
+export const deriveSarahLiveKitControlToken = (
+  controlRoot: string,
+  dispatch: SarahLiveKitDispatchMetadata,
+): string =>
+  `oa_sarah_lk_${createHmac("sha256", parseControlRoot(controlRoot))
+    .update(canonicalSarahLiveKitDispatchAuthority(dispatch))
+    .digest("base64url")}`;
+
 const boundedBody = async (response: Response): Promise<unknown> => {
   const contentLength = Number(response.headers.get("content-length") ?? "0");
   if (Number.isFinite(contentLength) && contentLength > 16_384) {
@@ -63,11 +81,16 @@ export const makeSarahLiveKitControlClient = (
   fetcher: typeof fetch = fetch,
 ) => {
   const baseUrl = normalizedBaseUrl(config.baseUrl);
+  const controlRoot = parseControlRoot(config.controlRoot);
+  const controlToken = (dispatch: SarahLiveKitDispatchMetadata): string =>
+    `oa_sarah_lk_${createHmac("sha256", controlRoot)
+      .update(canonicalSarahLiveKitDispatchAuthority(dispatch))
+      .digest("base64url")}`;
 
   const claim = async (input: SarahLiveKitClaimInput): Promise<SarahLiveKitJobClaimResponse> => {
     const response = await fetcher(`${baseUrl}${SARAH_LIVEKIT_JOB_CLAIM_PATH}`, {
       method: "POST",
-      headers: noStoreHeaders(input.dispatch.controlToken),
+      headers: noStoreHeaders(controlToken(input.dispatch)),
       body: JSON.stringify({
         schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
         workerRef: config.workerRef,
@@ -103,7 +126,7 @@ export const makeSarahLiveKitControlClient = (
   };
 
   const event = async (
-    token: string,
+    dispatch: SarahLiveKitDispatchMetadata,
     value: SarahLiveKitJobEvent,
   ): Promise<SarahLiveKitEventResult> => {
     let response: Response | undefined;
@@ -112,7 +135,7 @@ export const makeSarahLiveKitControlClient = (
         // eslint-disable-next-line no-await-in-loop
         response = await fetcher(`${baseUrl}${SARAH_LIVEKIT_JOB_EVENT_PATH}`, {
           method: "POST",
-          headers: noStoreHeaders(token),
+          headers: noStoreHeaders(controlToken(dispatch)),
           body: JSON.stringify(value),
           redirect: "error",
           signal: AbortSignal.timeout(5_000),

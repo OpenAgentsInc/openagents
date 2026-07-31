@@ -303,6 +303,7 @@ describe('managed Sarah Realtime voice session route', () => {
       },
     } as const
     const broker = {
+      workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
       provision: vi.fn(async () => provision),
       cleanup: vi.fn(async () => undefined),
       cleanupByIdempotencyKey: vi.fn(async () => undefined),
@@ -392,6 +393,7 @@ describe('managed Sarah Realtime voice session route', () => {
   test('blocks new LiveKit dispatches when the emergency admission seam is disabled', async () => {
     const fixture = makeDependencies()
     const broker = {
+      workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
       provision: vi.fn(),
       cleanup: vi.fn(),
       cleanupByIdempotencyKey: vi.fn(),
@@ -447,6 +449,7 @@ describe('managed Sarah Realtime voice session route', () => {
   test('uses authoritative community membership and publish policy', async () => {
     const fixture = makeDependencies()
     const broker = {
+      workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
       provision: vi.fn(
         async () =>
           ({
@@ -628,6 +631,7 @@ describe('managed Sarah Realtime voice session route', () => {
       },
     } as const
     const broker = {
+      workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
       provision: vi.fn(async () => provision),
       cleanup: vi.fn(async () => undefined),
       cleanupByIdempotencyKey: vi.fn(async () => undefined),
@@ -694,6 +698,7 @@ describe('managed Sarah Realtime voice session route', () => {
       settleLiveKitProvisioningIntent,
     } as unknown as SarahRealtimeVoiceStore
     const broker = {
+      workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
       provision: vi.fn(),
       cleanup: vi.fn(),
       cleanupByIdempotencyKey: vi.fn(async () => undefined),

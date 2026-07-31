@@ -96,8 +96,16 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // Self-hosted LiveKit server endpoint and server credentials. These values
   // stay in the Cloud Run API and are never returned to a client or worker.
   SARAH_LIVEKIT_URL?: string | undefined
+  // Exact JSON projection of oa-livekit-prod-server-keys with
+  // {api_key,api_secret,keys_yaml}. Do not combine it with the compatibility
+  // fields below.
+  SARAH_LIVEKIT_SERVER_KEYS_JSON?: string | undefined
   SARAH_LIVEKIT_API_KEY?: string | undefined
   SARAH_LIVEKIT_API_SECRET?: string | undefined
+  // Untrimmed 64..128-character base64url HMAC root. The API and Sarah worker
+  // receive the same Secret Manager value and derive generation credentials
+  // without placing them in LiveKit job metadata.
+  SARAH_LIVEKIT_CONTROL_ROOT?: string | undefined
   // Emergency rollback seam. Unset or exact true/1/on permits new LiveKit
   // admissions; false or malformed values block admission and dispatch while
   // existing worker generations retain their usage and close paths.

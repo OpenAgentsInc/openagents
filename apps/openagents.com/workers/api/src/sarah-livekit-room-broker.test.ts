@@ -7,10 +7,13 @@ import { describe, expect, test, vi } from "vitest";
 
 import {
   type SarahLiveKitRoomBrokerClients,
+  deriveSarahLiveKitControlToken,
   makeSarahLiveKitRoomBroker,
   parseSarahLiveKitRoomBrokerConfig,
 } from "./sarah-livekit-room-broker";
 import { ServerError } from "livekit-server-sdk";
+
+const controlRoot = "A".repeat(64);
 
 describe("Sarah LiveKit room broker configuration", () => {
   test("accepts only exact WSS and server credential shapes", () => {
@@ -19,17 +22,20 @@ describe("Sarah LiveKit room broker configuration", () => {
         SARAH_LIVEKIT_URL: "wss://livekit.openagents.com",
         SARAH_LIVEKIT_API_KEY: `API${"A".repeat(12)}`,
         SARAH_LIVEKIT_API_SECRET: "b".repeat(48),
+        SARAH_LIVEKIT_CONTROL_ROOT: controlRoot,
       }),
     ).toEqual({
       livekitUrl: "wss://livekit.openagents.com",
       apiKey: `API${"A".repeat(12)}`,
       apiSecret: "b".repeat(48),
+      controlRoot,
     });
     expect(
       parseSarahLiveKitRoomBrokerConfig({
         SARAH_LIVEKIT_URL: "https://livekit.openagents.com",
         SARAH_LIVEKIT_API_KEY: `API${"A".repeat(12)}`,
         SARAH_LIVEKIT_API_SECRET: "b".repeat(48),
+        SARAH_LIVEKIT_CONTROL_ROOT: controlRoot,
       }),
     ).toBeUndefined();
   });
@@ -40,11 +46,101 @@ describe("Sarah LiveKit room broker configuration", () => {
         SARAH_LIVEKIT_URL: "wss://secret@livekit.openagents.com",
         SARAH_LIVEKIT_API_KEY: `API${"A".repeat(12)}`,
         SARAH_LIVEKIT_API_SECRET: "b".repeat(48),
+        SARAH_LIVEKIT_CONTROL_ROOT: controlRoot,
       }),
     ).toBeUndefined();
   });
 
-  test("creates an explicit no-restart dispatch and a microphone-only client grant", async () => {
+  test("accepts the exact whole Secret Manager server-key projection", () => {
+    const apiKey = `API${"A".repeat(12)}`;
+    const apiSecret = "b".repeat(48);
+    expect(
+      parseSarahLiveKitRoomBrokerConfig({
+        SARAH_LIVEKIT_URL: "wss://livekit.openagents.com",
+        SARAH_LIVEKIT_SERVER_KEYS_JSON: JSON.stringify({
+          api_key: apiKey,
+          api_secret: apiSecret,
+          keys_yaml: `${apiKey}: ${apiSecret}\n`,
+        }),
+        SARAH_LIVEKIT_CONTROL_ROOT: controlRoot,
+      }),
+    ).toEqual({
+      livekitUrl: "wss://livekit.openagents.com",
+      apiKey,
+      apiSecret,
+      controlRoot,
+    });
+  });
+
+  test("fails closed for malformed, conflicting, or widened server-key JSON", () => {
+    const apiKey = `API${"A".repeat(12)}`;
+    const apiSecret = "b".repeat(48);
+    const base = {
+      SARAH_LIVEKIT_URL: "wss://livekit.openagents.com",
+      SARAH_LIVEKIT_CONTROL_ROOT: controlRoot,
+    };
+    for (const serverKeysJson of [
+      "",
+      "null",
+      '{"api_key":',
+      JSON.stringify({ api_key: apiKey, api_secret: apiSecret }),
+      JSON.stringify({
+        api_key: apiKey,
+        api_secret: apiSecret,
+        keys_yaml: `${apiKey}: ${apiSecret}`,
+        extra: true,
+      }),
+      JSON.stringify({
+        api_key: apiKey,
+        api_secret: apiSecret,
+        keys_yaml: `${apiKey}: ${"c".repeat(48)}`,
+      }),
+    ]) {
+      expect(
+        parseSarahLiveKitRoomBrokerConfig({
+          ...base,
+          SARAH_LIVEKIT_SERVER_KEYS_JSON: serverKeysJson,
+        }),
+      ).toBeUndefined();
+    }
+    expect(
+      parseSarahLiveKitRoomBrokerConfig({
+        ...base,
+        SARAH_LIVEKIT_SERVER_KEYS_JSON: JSON.stringify({
+          api_key: apiKey,
+          api_secret: apiSecret,
+          keys_yaml: `${apiKey}: ${apiSecret}`,
+        }),
+        SARAH_LIVEKIT_API_KEY: apiKey,
+        SARAH_LIVEKIT_API_SECRET: apiSecret,
+      }),
+    ).toBeUndefined();
+  });
+
+  test("fails closed for missing, short, padded, or whitespace-normalized HMAC roots", () => {
+    const base = {
+      SARAH_LIVEKIT_URL: "wss://livekit.openagents.com",
+      SARAH_LIVEKIT_API_KEY: `API${"A".repeat(12)}`,
+      SARAH_LIVEKIT_API_SECRET: "b".repeat(48),
+    };
+    for (const root of [
+      undefined,
+      "A".repeat(63),
+      "A".repeat(129),
+      `${controlRoot}=`,
+      ` ${controlRoot}`,
+      `${controlRoot}\n`,
+    ]) {
+      expect(
+        parseSarahLiveKitRoomBrokerConfig({
+          ...base,
+          SARAH_LIVEKIT_CONTROL_ROOT: root,
+        }),
+      ).toBeUndefined();
+    }
+  });
+
+  test("creates a credential-free no-restart dispatch and a microphone-only client grant", async () => {
     const createRoom = vi.fn(async () => undefined);
     const deleteRoom = vi.fn(async () => undefined);
     let dispatchOptions: Parameters<SarahLiveKitRoomBrokerClients["createDispatch"]>[2] | undefined;
@@ -65,6 +161,7 @@ describe("Sarah LiveKit room broker configuration", () => {
         livekitUrl: "wss://livekit.openagents.com",
         apiKey: `API${"A".repeat(12)}`,
         apiSecret: "b".repeat(48),
+        controlRoot,
       },
       () => 2_000_000_000_000,
       {
@@ -75,9 +172,8 @@ describe("Sarah LiveKit room broker configuration", () => {
         deleteDispatch,
       },
     );
-    const provision = await broker.provision({
+    const provisionInput = {
       idempotencyKey: "sarah-livekit:session:one:1",
-      workerControlToken: `oa_sarah_lk_${"C".repeat(43)}`,
       ownerUserId: "owner:one",
       deviceRef: "device:one",
       threadRef: "thread:one",
@@ -90,7 +186,9 @@ describe("Sarah LiveKit room broker configuration", () => {
       publishAllowed: true,
       subscribeAllowed: true,
       expiresAtMs: 2_000_000_600_000,
-    });
+    } as const;
+    const digest = broker.workerControlTokenDigest(provisionInput);
+    const provision = await broker.provision(provisionInput);
 
     expect(createRoom).toHaveBeenCalledWith(expect.objectContaining({ maxParticipants: 2 }));
     expect(createDispatch).toHaveBeenCalledWith(
@@ -109,8 +207,26 @@ describe("Sarah LiveKit room broker configuration", () => {
       sessionRef: "session:one",
       generation: 1,
       sarahParticipantRef: "principal.sarah",
-      controlToken: `oa_sarah_lk_${"C".repeat(43)}`,
     });
+    const token = deriveSarahLiveKitControlToken(controlRoot, dispatch);
+    expect(digest).toMatch(/^[a-f0-9]{64}$/u);
+    expect(JSON.stringify(dispatch)).not.toContain(token);
+    expect(JSON.stringify({ job: { metadata: dispatchOptions.metadata } })).not.toMatch(
+      /bearer|credential|controlToken/iu,
+    );
+    expect(broker.workerControlTokenDigest(provisionInput)).toBe(digest);
+    expect(
+      broker.workerControlTokenDigest({
+        ...provisionInput,
+        generation: 2,
+      }),
+    ).not.toBe(digest);
+    expect(
+      broker.workerControlTokenDigest({
+        ...provisionInput,
+        idempotencyKey: "sarah-livekit:session:other-room:1",
+      }),
+    ).not.toBe(digest);
     expect(provision.grantClaims).toEqual(
       expect.objectContaining({
         roomJoin: true,
@@ -134,6 +250,7 @@ describe("Sarah LiveKit room broker configuration", () => {
         livekitUrl: "wss://livekit.openagents.com",
         apiKey: `API${"A".repeat(12)}`,
         apiSecret: "b".repeat(48),
+        controlRoot,
       },
       () => 2_000_000_000_000,
       {

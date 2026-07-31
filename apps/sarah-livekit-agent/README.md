@@ -12,13 +12,24 @@ The worker requires:
 - `OPENAI_API_KEY` for `gpt-realtime-2.1`.
 - `OPENAGENTS_CONTROL_URL`, an HTTPS OpenAgents API origin.
 - `SARAH_LIVEKIT_WORKER_REF`, a stable non-secret deployment identity.
-- `SARAH_LIVEKIT_CONTROL_ROOT`, the high-entropy root used to authenticate
-  deterministic generation control credentials.
+- `SARAH_LIVEKIT_CONTROL_ROOT`, an untrimmed 64–128-character base64url root
+  injected from the same Secret Manager version as the API.
 
-The API supplies the generation-bound control token only inside explicit
-dispatch metadata. The worker sends it only as a bearer credential to the
-claim/event routes. It does not record media, retain transcripts, or log raw
-OpenAI events.
+Explicit dispatch metadata contains no credential. The API and worker
+independently derive the same generation-bound bearer token from the HMAC root
+and the canonical immutable dispatch fields. Only its SHA-256 digest is stored.
+The raw token exists only while constructing an authorization header for the
+claim/event routes. It is never added to a job, body, receipt, or log. The
+worker does not record media, retain transcripts, or log raw OpenAI events.
+
+Agents JS 1.6.0 enforces publish, subscribe, publish-data, metadata-update, and
+hidden permissions during worker registration, but it does not send its
+`canPublishSources` field to LiveKit. Sarah therefore uses the least grant that
+this pinned release can enforce: publish and subscribe enabled for voice,
+publish-data and metadata updates disabled, and a visible participant. The
+session itself enables audio output only and disables video and text output;
+that media-source restriction is behavioral, not a server-enforced worker
+permission in this SDK release.
 
 The OpenAI plugin is pinned and patched to attach the generation's hashed owner
 identifier as `OpenAI-Safety-Identifier`. Response usage comes only from

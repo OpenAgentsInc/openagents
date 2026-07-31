@@ -1,4 +1,5 @@
 import {
+  SARAH_LIVEKIT_AGENT_NAME,
   SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
   decodeSarahLiveKitJobClaimResponse,
 } from "@openagentsinc/audio-contract";
@@ -21,8 +22,25 @@ import {
   handleSarahLiveKitWorkerClaim,
   handleSarahLiveKitWorkerEvent,
 } from "./sarah-livekit-worker-routes";
+import { deriveSarahLiveKitControlToken } from "./sarah-livekit-room-broker";
 
-const token = `oa_sarah_lk_${"R".repeat(43)}`;
+const controlRoot = "R".repeat(64);
+const claimDispatch = {
+  sessionRef: "voice-livekit-route-1",
+  generation: 1,
+  roomRef: "room-livekit-route-1",
+  roomEpoch: 1,
+  participantRef: "participant-owner-livekit-route-1",
+  sarahParticipantRef: "principal.sarah",
+  sarahPresenceLeaseRef: "presence-livekit-route-1",
+  capabilityProfile: "omega_editor",
+  roomContext: { kind: "private" },
+} as const;
+const token = deriveSarahLiveKitControlToken(controlRoot, {
+  schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+  agentName: SARAH_LIVEKIT_AGENT_NAME,
+  ...claimDispatch,
+});
 const tokenDigest = createHash("sha256").update(token).digest("hex");
 
 const authorizedRequest = (path: string, body: unknown) =>
@@ -167,6 +185,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
 
   test("connects, meters, leases, and closes idempotently without the legacy ticket path", async () => {
     const dependencies = {
+      controlRoot: () => controlRoot,
       creditMsatPerMillionTokens: () => 1_000_000,
       now: () => nowMs,
       openStore: async () => ({
@@ -183,17 +202,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
         jobRef: "job:route-one",
         dispatchRef: "dispatch-livekit-route-1",
         roomSid: "RM_livekit_route_1",
-        dispatch: {
-          sessionRef: "voice-livekit-route-1",
-          generation: 1,
-          roomRef: "room-livekit-route-1",
-          roomEpoch: 1,
-          participantRef: "participant-owner-livekit-route-1",
-          sarahParticipantRef: "principal.sarah",
-          sarahPresenceLeaseRef: "presence-livekit-route-1",
-          capabilityProfile: "omega_editor",
-          roomContext: { kind: "private" },
-        },
+        dispatch: claimDispatch,
       }),
       {},
     );

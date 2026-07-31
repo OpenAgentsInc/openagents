@@ -3778,6 +3778,8 @@ const sarahRealtimeVoiceDependenciesForEnv = (workerEnv: Env) => ({
 })
 
 const sarahLiveKitWorkerRouteDependencies = {
+  controlRoot: (workerEnv: Env) =>
+    parseSarahLiveKitRoomBrokerConfig(workerEnv)?.controlRoot,
   creditMsatPerMillionTokens: (workerEnv: Env) =>
     sarahRealtimeVoiceConfigForEnv(workerEnv)?.creditMsatPerMillionTokens,
   openStore: openSarahRealtimeVoiceStore,

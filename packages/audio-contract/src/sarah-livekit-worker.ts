@@ -11,7 +11,6 @@ export const SARAH_LIVEKIT_JOB_EVENT_PATH = "/api/internal/sarah/livekit/job/eve
 const Ref = S.Trim.check(S.isMinLength(1), S.isMaxLength(256));
 const Digest = S.String.check(S.isPattern(/^[a-f0-9]{64}$/u));
 const Seq = S.Int.check(S.isGreaterThanOrEqualTo(0), S.isLessThanOrEqualTo(9_007_199_254_740_991));
-const ControlToken = S.String.check(S.isPattern(/^oa_sarah_lk_[A-Za-z0-9_-]{43,256}$/u));
 
 export const SarahLiveKitRoomContextSchema = S.Union([
   S.Struct({ kind: S.Literal("private") }),
@@ -57,7 +56,6 @@ export type SarahLiveKitCapabilityProfile = typeof SarahLiveKitCapabilityProfile
 export const SarahLiveKitDispatchMetadataSchema = S.Struct({
   schema: S.Literal(SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION),
   agentName: S.Literal(SARAH_LIVEKIT_AGENT_NAME),
-  controlToken: ControlToken,
   sessionRef: Ref,
   generation: Seq,
   roomRef: Ref,
@@ -175,6 +173,35 @@ export const decodeSarahLiveKitDispatchMetadata = (value: unknown) =>
   S.decodeUnknownSync(SarahLiveKitDispatchMetadataSchema)(value, {
     onExcessProperty: "error",
   });
+
+export const canonicalSarahLiveKitDispatchAuthority = (
+  value: SarahLiveKitDispatchMetadata,
+): string => {
+  const dispatch = decodeSarahLiveKitDispatchMetadata(value);
+  const roomContext =
+    dispatch.roomContext.kind === "private"
+      ? ["private"]
+      : [
+          "community",
+          dispatch.roomContext.communityRef,
+          dispatch.roomContext.channelRef,
+          dispatch.roomContext.membershipRevision,
+        ];
+  return JSON.stringify([
+    "openagents.sarah.livekit-control-hmac.v1",
+    dispatch.schema,
+    dispatch.agentName,
+    dispatch.sessionRef,
+    dispatch.generation,
+    dispatch.roomRef,
+    dispatch.roomEpoch,
+    dispatch.participantRef,
+    dispatch.sarahParticipantRef,
+    dispatch.sarahPresenceLeaseRef,
+    dispatch.capabilityProfile,
+    roomContext,
+  ]);
+};
 
 export const decodeSarahLiveKitJobClaimRequest = (value: unknown) =>
   S.decodeUnknownSync(SarahLiveKitJobClaimRequestSchema)(value, {

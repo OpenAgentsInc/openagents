@@ -1,4 +1,5 @@
 import {
+  SARAH_LIVEKIT_AGENT_NAME,
   SARAH_LIVEKIT_JOB_CLAIM_PATH,
   SARAH_LIVEKIT_JOB_EVENT_PATH,
   SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
@@ -6,12 +7,18 @@ import {
   decodeSarahLiveKitJobEvent,
 } from "@openagentsinc/audio-contract";
 import type { SarahRealtimeVoiceStore } from "@openagentsinc/khala-sync-server";
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
+
+import {
+  deriveSarahLiveKitControlToken,
+  parseSarahLiveKitControlRoot,
+} from "./sarah-livekit-room-broker";
 
 export const SARAH_LIVEKIT_WORKER_CLAIM_PATH = SARAH_LIVEKIT_JOB_CLAIM_PATH;
 export const SARAH_LIVEKIT_WORKER_EVENT_PATH = SARAH_LIVEKIT_JOB_EVENT_PATH;
 
 export type SarahLiveKitWorkerRouteDependencies<Bindings> = Readonly<{
+  controlRoot: (env: Bindings) => string | undefined;
   creditMsatPerMillionTokens: (env: Bindings) => number | undefined;
   now?: (() => number) | undefined;
   openStore: (
@@ -45,6 +52,12 @@ const tokenFromRequest = (request: Request): string | undefined => {
 };
 
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
+
+const tokensMatch = (left: string, right: string): boolean => {
+  const leftBytes = Buffer.from(left);
+  const rightBytes = Buffer.from(right);
+  return leftBytes.length === rightBytes.length && timingSafeEqual(leftBytes, rightBytes);
+};
 
 const canonicalJson = (value: unknown): string => {
   if (value === null || typeof value !== "object") {
@@ -148,6 +161,23 @@ export const handleSarahLiveKitWorkerClaim = async <Bindings>(
   if (body === undefined) {
     return noStoreJson({ error: "invalid_sarah_livekit_worker_claim" }, 400);
   }
+  const controlRoot = parseSarahLiveKitControlRoot(dependencies.controlRoot(env));
+  if (controlRoot === undefined) {
+    return noStoreJson({ error: "unauthorized" }, 401);
+  }
+  let expectedToken: string;
+  try {
+    expectedToken = deriveSarahLiveKitControlToken(controlRoot, {
+      schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+      agentName: SARAH_LIVEKIT_AGENT_NAME,
+      ...body.dispatch,
+    });
+  } catch {
+    return noStoreJson({ error: "unauthorized" }, 401);
+  }
+  if (!tokensMatch(token, expectedToken)) {
+    return noStoreJson({ error: "unauthorized" }, 401);
+  }
   let opened: Readonly<{ store: SarahRealtimeVoiceStore; close: () => Promise<void> }> | undefined;
   try {
     opened = await dependencies.openStore(env);
@@ -209,6 +239,9 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
   }
   const token = tokenFromRequest(request);
   if (token === undefined) return noStoreJson({ error: "unauthorized" }, 401);
+  if (parseSarahLiveKitControlRoot(dependencies.controlRoot(env)) === undefined) {
+    return noStoreJson({ error: "unauthorized" }, 401);
+  }
   const body = await parseBody(request, decodeSarahLiveKitJobEvent);
   if (body === undefined) {
     return noStoreJson({ error: "invalid_sarah_livekit_worker_event" }, 400);

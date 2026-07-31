@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   SARAH_LIVEKIT_AGENT_NAME,
   SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+  canonicalSarahLiveKitDispatchAuthority,
   decodeSarahLiveKitDispatchMetadata,
   decodeSarahLiveKitJobClaimResponse,
   decodeSarahLiveKitJobEvent,
@@ -10,7 +11,6 @@ import {
 const dispatch = {
   schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
   agentName: SARAH_LIVEKIT_AGENT_NAME,
-  controlToken: `oa_sarah_lk_${"A".repeat(43)}`,
   sessionRef: "session:one",
   generation: 1,
   roomRef: "room:one",
@@ -38,6 +38,30 @@ describe("Sarah LiveKit worker contract", () => {
         untrustedClientMetadata: "ignored",
       }),
     ).toThrow();
+    expect(() =>
+      decodeSarahLiveKitDispatchMetadata({
+        ...dispatch,
+        controlToken: `oa_sarah_lk_${"A".repeat(43)}`,
+      }),
+    ).toThrow();
+    expect(JSON.stringify(dispatch)).not.toMatch(/bearer|credential|token/iu);
+  });
+
+  test("canonicalizes immutable dispatch fields with generation and room separation", () => {
+    const canonical = canonicalSarahLiveKitDispatchAuthority(dispatch);
+    expect(canonicalSarahLiveKitDispatchAuthority({ ...dispatch })).toBe(canonical);
+    expect(
+      canonicalSarahLiveKitDispatchAuthority({
+        ...dispatch,
+        generation: dispatch.generation + 1,
+      }),
+    ).not.toBe(canonical);
+    expect(
+      canonicalSarahLiveKitDispatchAuthority({
+        ...dispatch,
+        roomRef: "room:two",
+      }),
+    ).not.toBe(canonical);
   });
 
   test("makes private and community capabilities structurally different", () => {

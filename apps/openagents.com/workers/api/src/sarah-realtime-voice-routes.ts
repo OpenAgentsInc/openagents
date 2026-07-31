@@ -127,26 +127,28 @@ export type SarahVoiceLiveKitProvision = Readonly<{
   }>
 }>
 
+export type SarahVoiceLiveKitProvisionInput = Readonly<{
+  idempotencyKey: string
+  ownerUserId: string
+  deviceRef: string
+  threadRef: string
+  sessionRef: string
+  generation: number
+  capabilityProfile: string
+  admissionRef: string
+  admissionDigest: string
+  roomContext:
+    | Readonly<{ kind: 'private' }>
+    | (SarahVoiceLiveKitCommunityAccess & Readonly<{ kind: 'community' }>)
+  publishAllowed: boolean
+  subscribeAllowed: boolean
+  expiresAtMs: number
+}>
+
 export type SarahVoiceLiveKitRoomBroker = Readonly<{
+  workerControlTokenDigest: (input: SarahVoiceLiveKitProvisionInput) => string
   provision: (
-    input: Readonly<{
-      idempotencyKey: string
-      workerControlToken: string
-      ownerUserId: string
-      deviceRef: string
-      threadRef: string
-      sessionRef: string
-      generation: number
-      capabilityProfile: string
-      admissionRef: string
-      admissionDigest: string
-      roomContext:
-        | Readonly<{ kind: 'private' }>
-        | (SarahVoiceLiveKitCommunityAccess & Readonly<{ kind: 'community' }>)
-      publishAllowed: boolean
-      subscribeAllowed: boolean
-      expiresAtMs: number
-    }>,
+    input: SarahVoiceLiveKitProvisionInput,
   ) => Promise<SarahVoiceLiveKitProvision>
   cleanup: (provision: SarahVoiceLiveKitProvision) => Promise<void>
   cleanupByIdempotencyKey: (idempotencyKey: string) => Promise<void>
@@ -1350,12 +1352,6 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
         )
       }
       const liveKitIdempotencyKey = `sarah-livekit:${body.identity.sessionRef}:${body.identity.generation}`
-      const liveKitWorkerControlToken = `oa_sarah_lk_${base64Url(
-        crypto.getRandomValues(new Uint8Array(32)),
-      )}`
-      const liveKitWorkerControlTokenDigest = await sha256Hex(
-        liveKitWorkerControlToken,
-      )
       try {
         const publishAllowed =
           liveKitRoomContext.kind === 'private'
@@ -1365,6 +1361,23 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
           liveKitRoomContext.kind === 'private'
             ? true
             : liveKitRoomContext.subscribeAllowed
+        const provisionInput = {
+          idempotencyKey: liveKitIdempotencyKey,
+          ownerUserId: userId,
+          deviceRef: body.identity.deviceRef,
+          threadRef: body.identity.threadRef,
+          sessionRef: body.identity.sessionRef,
+          generation: body.identity.generation,
+          capabilityProfile: clientProfile,
+          admissionRef,
+          admissionDigest: currentAdmissionDigest,
+          roomContext: liveKitRoomContext,
+          publishAllowed,
+          subscribeAllowed,
+          expiresAtMs: sessionExpiresAtMs,
+        } as const
+        const liveKitWorkerControlTokenDigest =
+          broker.workerControlTokenDigest(provisionInput)
         await opened.store.prepareLiveKitProvisioningIntent({
           sessionRef: body.identity.sessionRef,
           ownerUserId: userId,
@@ -1379,22 +1392,7 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
           roomContext: liveKitRoomContext,
           nowIso,
         })
-        liveKitProvision = await broker.provision({
-          idempotencyKey: liveKitIdempotencyKey,
-          workerControlToken: liveKitWorkerControlToken,
-          ownerUserId: userId,
-          deviceRef: body.identity.deviceRef,
-          threadRef: body.identity.threadRef,
-          sessionRef: body.identity.sessionRef,
-          generation: body.identity.generation,
-          capabilityProfile: clientProfile,
-          admissionRef,
-          admissionDigest: currentAdmissionDigest,
-          roomContext: liveKitRoomContext,
-          publishAllowed,
-          subscribeAllowed,
-          expiresAtMs: sessionExpiresAtMs,
-        })
+        liveKitProvision = await broker.provision(provisionInput)
         if (
           !validLiveKitProvision(liveKitProvision, {
             nowMs,

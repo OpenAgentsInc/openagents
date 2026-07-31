@@ -2,6 +2,7 @@ import { JobRestartPolicy, TrackSource } from "@livekit/protocol";
 import {
   SARAH_LIVEKIT_AGENT_NAME,
   SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+  canonicalSarahLiveKitDispatchAuthority,
   type SarahLiveKitDispatchMetadata,
 } from "@openagentsinc/audio-contract";
 import {
@@ -10,10 +11,11 @@ import {
   RoomServiceClient,
   ServerError,
 } from "livekit-server-sdk";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 
 import type {
   SarahVoiceLiveKitProvision,
+  SarahVoiceLiveKitProvisionInput,
   SarahVoiceLiveKitRoomBroker,
 } from "./sarah-realtime-voice-routes";
 
@@ -21,6 +23,7 @@ export type SarahLiveKitRoomBrokerConfig = Readonly<{
   livekitUrl: string;
   apiKey: string;
   apiSecret: string;
+  controlRoot: string;
 }>;
 
 export type SarahLiveKitRoomBrokerClients = Readonly<{
@@ -42,6 +45,60 @@ export type SarahLiveKitRoomBrokerClients = Readonly<{
 }>;
 
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
+
+export const parseSarahLiveKitControlRoot = (value: string | undefined): string | undefined => {
+  if (value === undefined || !/^[A-Za-z0-9_-]{64,128}$/u.test(value)) {
+    return undefined;
+  }
+  return value;
+};
+
+const parseServerKeysJson = (
+  value: string,
+): Readonly<{ apiKey: string; apiSecret: string }> | undefined => {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return undefined;
+    }
+    const record = parsed as Record<string, unknown>;
+    const keys = Object.keys(record);
+    if (
+      keys.length !== 3 ||
+      !["api_key", "api_secret", "keys_yaml"].every((key) =>
+        Object.prototype.hasOwnProperty.call(record, key),
+      ) ||
+      typeof record.api_key !== "string" ||
+      typeof record.api_secret !== "string" ||
+      typeof record.keys_yaml !== "string"
+    ) {
+      return undefined;
+    }
+    const exactMapping = `${record.api_key}: ${record.api_secret}`;
+    if (record.keys_yaml !== exactMapping && record.keys_yaml !== `${exactMapping}\n`) {
+      return undefined;
+    }
+    return {
+      apiKey: record.api_key,
+      apiSecret: record.api_secret,
+    };
+  } catch {
+    return undefined;
+  }
+};
+
+export const deriveSarahLiveKitControlToken = (
+  controlRoot: string,
+  dispatch: SarahLiveKitDispatchMetadata,
+): string => {
+  const parsedRoot = parseSarahLiveKitControlRoot(controlRoot);
+  if (parsedRoot === undefined) {
+    throw new Error("The Sarah LiveKit control root is invalid");
+  }
+  return `oa_sarah_lk_${createHmac("sha256", Buffer.from(parsedRoot, "utf8"))
+    .update(canonicalSarahLiveKitDispatchAuthority(dispatch))
+    .digest("base64url")}`;
+};
 
 const controlOrigin = (livekitUrl: string): string => {
   const url = new URL(livekitUrl);
@@ -74,6 +131,30 @@ const isSarahClientCapabilityProfile = (
   value: string,
 ): value is SarahLiveKitDispatchMetadata["capabilityProfile"] =>
   value === "omega_editor" || value === "mobile_voice_only" || value === "mobile_command_center";
+
+const dispatchMetadataForProvision = (
+  input: SarahVoiceLiveKitProvisionInput,
+): SarahLiveKitDispatchMetadata => {
+  if (!isSarahClientCapabilityProfile(input.capabilityProfile)) {
+    throw new Error("The Sarah LiveKit capability profile is unsupported");
+  }
+  const roomRef = `oa-sarah-${sha256(input.idempotencyKey).slice(0, 40)}`;
+  return {
+    schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+    agentName: SARAH_LIVEKIT_AGENT_NAME,
+    sessionRef: input.sessionRef,
+    generation: input.generation,
+    roomRef,
+    roomEpoch: 1,
+    participantRef: `owner-${sha256(input.ownerUserId).slice(0, 40)}`,
+    sarahParticipantRef: "principal.sarah",
+    sarahPresenceLeaseRef: `sarah-presence-${sha256(
+      `${input.idempotencyKey}:presence`,
+    ).slice(0, 40)}`,
+    capabilityProfile: input.capabilityProfile,
+    roomContext: roomContextForDispatch(input.roomContext),
+  };
+};
 
 const cleanAll = async (operations: ReadonlyArray<Promise<unknown>>): Promise<void> => {
   const outcomes = await Promise.allSettled(operations);
@@ -109,15 +190,8 @@ export const makeSarahLiveKitRoomBroker = (
   };
 
   const provision: SarahVoiceLiveKitRoomBroker["provision"] = async (input) => {
-    if (!isSarahClientCapabilityProfile(input.capabilityProfile)) {
-      throw new Error("The Sarah LiveKit capability profile is unsupported");
-    }
-    const roomRef = `oa-sarah-${sha256(input.idempotencyKey).slice(0, 40)}`;
-    const participantRef = `owner-${sha256(input.ownerUserId).slice(0, 40)}`;
-    const sarahParticipantRef = "principal.sarah";
-    const sarahPresenceLeaseRef = `sarah-presence-${sha256(
-      `${input.idempotencyKey}:presence`,
-    ).slice(0, 40)}`;
+    const metadata = dispatchMetadataForProvision(input);
+    const { roomRef, participantRef, sarahParticipantRef, sarahPresenceLeaseRef } = metadata;
     const joinExpiresAtMs = Math.min(input.expiresAtMs, now() + 60_000);
     const joinTtlSeconds = Math.max(1, Math.floor((joinExpiresAtMs - now()) / 1_000));
     if (joinTtlSeconds < 1) {
@@ -153,20 +227,6 @@ export const makeSarahLiveKitRoomBroker = (
     });
     const participantGrant = await participantToken.toJwt();
 
-    const metadata: SarahLiveKitDispatchMetadata = {
-      schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
-      agentName: SARAH_LIVEKIT_AGENT_NAME,
-      controlToken: input.workerControlToken,
-      sessionRef: input.sessionRef,
-      generation: input.generation,
-      roomRef,
-      roomEpoch: 1,
-      participantRef,
-      sarahParticipantRef,
-      sarahPresenceLeaseRef,
-      capabilityProfile: input.capabilityProfile,
-      roomContext: roomContextForDispatch(input.roomContext),
-    };
     const dispatch = await clients.createDispatch(roomRef, SARAH_LIVEKIT_AGENT_NAME, {
       metadata: JSON.stringify(metadata),
       restartPolicy: JobRestartPolicy.JRP_NEVER,
@@ -213,6 +273,10 @@ export const makeSarahLiveKitRoomBroker = (
     ]);
 
   return {
+    workerControlTokenDigest: (input) =>
+      sha256(
+        deriveSarahLiveKitControlToken(config.controlRoot, dispatchMetadataForProvision(input)),
+      ),
     provision,
     cleanup: (provisioned) =>
       cleanupRoom({
@@ -238,17 +302,34 @@ export const makeSarahLiveKitRoomBroker = (
 export const parseSarahLiveKitRoomBrokerConfig = (
   env: Readonly<{
     SARAH_LIVEKIT_URL?: string | undefined;
+    SARAH_LIVEKIT_SERVER_KEYS_JSON?: string | undefined;
     SARAH_LIVEKIT_API_KEY?: string | undefined;
     SARAH_LIVEKIT_API_SECRET?: string | undefined;
+    SARAH_LIVEKIT_CONTROL_ROOT?: string | undefined;
   }>,
 ): SarahLiveKitRoomBrokerConfig | undefined => {
   const livekitUrl = env.SARAH_LIVEKIT_URL?.trim();
-  const apiKey = env.SARAH_LIVEKIT_API_KEY?.trim();
-  const apiSecret = env.SARAH_LIVEKIT_API_SECRET?.trim();
+  const serverKeysJson = env.SARAH_LIVEKIT_SERVER_KEYS_JSON;
+  const hasSeparateServerKey =
+    env.SARAH_LIVEKIT_API_KEY !== undefined || env.SARAH_LIVEKIT_API_SECRET !== undefined;
+  if (serverKeysJson !== undefined && hasSeparateServerKey) {
+    return undefined;
+  }
+  const serverKeys =
+    serverKeysJson === undefined
+      ? {
+          apiKey: env.SARAH_LIVEKIT_API_KEY?.trim(),
+          apiSecret: env.SARAH_LIVEKIT_API_SECRET?.trim(),
+        }
+      : parseServerKeysJson(serverKeysJson);
+  const apiKey = serverKeys?.apiKey;
+  const apiSecret = serverKeys?.apiSecret;
+  const controlRoot = parseSarahLiveKitControlRoot(env.SARAH_LIVEKIT_CONTROL_ROOT);
   if (
     livekitUrl === undefined ||
     apiKey === undefined ||
     apiSecret === undefined ||
+    controlRoot === undefined ||
     !/^API[23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{12}$/u.test(apiKey) ||
     !/^[A-Za-z0-9]{43,52}$/u.test(apiSecret)
   ) {
@@ -259,5 +340,5 @@ export const parseSarahLiveKitRoomBrokerConfig = (
   } catch {
     return undefined;
   }
-  return { livekitUrl, apiKey, apiSecret };
+  return { livekitUrl, apiKey, apiSecret, controlRoot };
 };
