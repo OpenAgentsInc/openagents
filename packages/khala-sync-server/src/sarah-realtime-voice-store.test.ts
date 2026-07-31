@@ -1284,6 +1284,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         eventPayloadDigest: "7".repeat(64),
         eventKind: "close",
         closeReason: "livekit_worker_completed",
+        accountingStatus: "exact",
         nowIso: "2026-07-28T13:01:01.000Z",
       }),
     ).resolves.toMatchObject({ replayed: false });

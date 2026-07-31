@@ -4,6 +4,7 @@ import {
   decodeSarahLiveKitJobClaimResponse,
 } from "@openagentsinc/audio-contract";
 import {
+  SarahVoiceSessionRejectedError,
   type SarahRealtimeVoiceStore,
   type SyncSql,
   makeSarahRealtimeVoiceStore,
@@ -245,6 +246,21 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       {},
     );
     expect(connectedReplay.status).toBe(200);
+    nowMs = Date.parse("2026-07-28T13:00:28.000Z");
+    const startupLease = await handleSarahLiveKitWorkerEvent(
+      dependencies,
+      authorizedRequest("/api/internal/sarah/livekit/job/event", {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "lease_check",
+        sessionRef: "voice-livekit-route-1",
+        generation: 1,
+        jobRef: "job:route-one",
+        eventRef: "lease:job:route-one:startup",
+      }),
+      {},
+    );
+    expect(startupLease.status).toBe(200);
+    expect(await startupLease.json()).toEqual({ accepted: true });
     nowMs = Date.parse("2026-07-28T13:00:30.250Z");
     const providerAdmitted = await handleSarahLiveKitWorkerEvent(
       dependencies,
@@ -465,8 +481,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
     `;
     expect(draining).toMatchObject({ state: "connected" });
     expect(Number(draining?.charged_msat)).toBe(175);
-    expect(await store.sweepExpired("2026-07-28T13:02:14.999Z")).toBe(0);
-    expect(await store.sweepExpired("2026-07-28T13:02:15.000Z")).toBe(1);
+    expect(await store.sweepExpired("2026-07-28T13:02:15.000Z")).toBe(0);
 
     const closeEvent = {
       schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
@@ -476,6 +491,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       jobRef: "job:route-one",
       eventRef: "close:job:route-one",
       reason: "completed",
+      accountingStatus: "exact",
     } as const;
     nowMs = Date.parse("2026-07-28T13:02:16.000Z");
     expect(
@@ -517,7 +533,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
         FROM sarah_livekit_worker_events
         WHERE session_ref = 'voice-livekit-route-1'
       `;
-    expect(Number(eventCount?.count)).toBe(6);
+    expect(Number(eventCount?.count)).toBe(7);
     const eventObservations = await sql`
         SELECT event_ref, observed_at
         FROM sarah_livekit_worker_events
@@ -538,6 +554,10 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
         observed_at: "2026-07-28T13:01:31.000Z",
       },
       {
+        event_ref: "lease:job:route-one:startup",
+        observed_at: "2026-07-28T13:00:28.000Z",
+      },
+      {
         event_ref: `provider:${"a".repeat(64)}`,
         observed_at: "2026-07-28T13:00:30.250Z",
       },
@@ -551,5 +571,97 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       },
     ]);
     expect(cleanup).toHaveBeenCalledTimes(2);
+  });
+
+  test("preserves the hold when an admitted provider outlives a crashed worker", async () => {
+    await sql`
+      UPDATE agent_balances
+      SET held_msat = held_msat + 1000
+      WHERE actor_ref = 'agent:user-livekit-route'
+    `;
+    await sql`
+      INSERT INTO sarah_realtime_voice_sessions
+      SELECT populated.*
+      FROM sarah_realtime_voice_sessions AS source
+      CROSS JOIN LATERAL jsonb_populate_record(
+        NULL::sarah_realtime_voice_sessions,
+        to_jsonb(source) || jsonb_build_object(
+          'session_ref', 'voice-livekit-crash-1',
+          'reservation_ref', 'voice-livekit-crash-reservation-1',
+          'ticket_digest', '9ca5f1b82e52fc82e91cfa88c0973217f5db8f42b13e38f5d5b14e273b857745',
+          'state', 'connected',
+          'reserved_msat', 1000,
+          'charged_msat', 175,
+          'session_expires_at', '2026-07-28T13:10:00.000Z',
+          'settled_at', NULL,
+          'close_reason', NULL,
+          'settlement_receipt_ref', NULL
+        )
+      ) AS populated
+      WHERE source.session_ref = 'voice-livekit-route-1'
+    `;
+    await sql`
+      INSERT INTO sarah_livekit_room_bindings
+      SELECT populated.*
+      FROM sarah_livekit_room_bindings AS source
+      CROSS JOIN LATERAL jsonb_populate_record(
+        NULL::sarah_livekit_room_bindings,
+        to_jsonb(source) || jsonb_build_object(
+          'session_ref', 'voice-livekit-crash-1',
+          'room_ref', 'room-livekit-crash-1',
+          'participant_ref', 'participant-owner-livekit-crash-1',
+          'sarah_participant_ref', 'participant-sarah-livekit-crash-1',
+          'dispatch_ref', 'dispatch-livekit-crash-1',
+          'sarah_presence_lease_ref', 'presence-livekit-crash-1',
+          'worker_control_token_digest', 'c03955f3567fe7d0ebcf9f72bca35e3e8c4ea7f129e321b04729aa3264246e95',
+          'worker_job_ref', 'job:crashed',
+          'state', 'active',
+          'worker_closed_at', NULL,
+          'worker_close_reason', NULL,
+          'worker_stop_reason', NULL,
+          'worker_stop_close_reason', NULL,
+          'worker_stop_requested_at', NULL,
+          'worker_stop_deadline_at', NULL,
+          'cleanup_attempted_at', NULL,
+          'cleaned_at', NULL,
+          'provider_accounting_status', 'pending',
+          'provider_accounting_terminal_at', NULL,
+          'provider_accounting_uncertain_at', NULL,
+          'provider_accounting_uncertain_reason', NULL
+        )
+      ) AS populated
+      WHERE source.session_ref = 'voice-livekit-route-1'
+    `;
+
+    expect(await store.sweepExpired("2026-07-28T13:10:00.000Z")).toBe(1);
+    expect(await store.sweepExpired("2026-07-28T13:12:29.999Z")).toBe(0);
+    expect(await store.sweepExpired("2026-07-28T13:12:30.000Z")).toBe(1);
+
+    const settlement = await store.readSettlement({
+      sessionRef: "voice-livekit-crash-1",
+      ownerUserId: "user-livekit-route",
+    });
+    expect(settlement).toEqual({
+      sessionRef: "voice-livekit-crash-1",
+      state: "accounting_uncertain",
+      creditMode: "metered",
+      recordedChargeMsat: 175,
+      reservedMsat: 1_000,
+      holdPreserved: true,
+      reason: "session_expired",
+    });
+    const [balance] = await sql`
+      SELECT held_msat
+      FROM agent_balances
+      WHERE actor_ref = 'agent:user-livekit-route'
+    `;
+    expect(Number(balance?.held_msat)).toBe(1_000);
+    await expect(
+      store.settle({
+        sessionRef: "voice-livekit-crash-1",
+        closeReason: "fabricated_crash_settlement",
+        nowIso: "2026-07-28T13:12:31.000Z",
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
   });
 });

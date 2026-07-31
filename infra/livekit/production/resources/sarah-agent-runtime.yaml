@@ -35,7 +35,7 @@ spec:
       automountServiceAccountToken: false
       priorityClassName: livekit-media-critical
       enableServiceLinks: false
-      terminationGracePeriodSeconds: 90
+      terminationGracePeriodSeconds: 120
       securityContext:
         runAsNonRoot: true
         seccompProfile:

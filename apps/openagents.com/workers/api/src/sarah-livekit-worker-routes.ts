@@ -354,6 +354,7 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
                   ...common,
                   eventKind: body._tag,
                   closeReason: `livekit_worker_${body.reason}`,
+                  accountingStatus: body.accountingStatus,
                 })
               : await (async () => {
                   const rate = dependencies.creditMsatPerMillionTokens(env);
@@ -394,7 +395,7 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
     if (result === undefined) {
       return noStoreJson({ error: "sarah_livekit_usage_rate_invalid" }, 503);
     }
-    if (body._tag === "close") {
+    if (body._tag === "close" && body.accountingStatus === "exact") {
       await dependencies.cleanup(env, {
         sessionRef: body.sessionRef,
         generation: body.generation,

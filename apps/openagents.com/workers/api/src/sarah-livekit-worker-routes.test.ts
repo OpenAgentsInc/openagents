@@ -190,6 +190,7 @@ describe("Sarah LiveKit worker routes", () => {
         jobRef: "job:one",
         eventRef: "close:job:one",
         reason: "provider_disconnect",
+        accountingStatus: "exact",
       }),
       {},
     );
@@ -199,6 +200,7 @@ describe("Sarah LiveKit worker routes", () => {
         eventRef: "close:job:one",
         eventKind: "close",
         closeReason: "livekit_worker_provider_disconnect",
+        accountingStatus: "exact",
       }),
     );
     expect(cleanup).toHaveBeenCalledWith(
@@ -208,6 +210,32 @@ describe("Sarah LiveKit worker routes", () => {
         generation: 1,
       },
     );
+  });
+
+  test("preserves cleanup when worker accounting is uncertain", async () => {
+    const cleanupCalls = cleanup.mock.calls.length;
+    const response = await handleSarahLiveKitWorkerEvent(
+      dependencies,
+      authorizedRequest("/api/internal/sarah/livekit/job/event", {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "close",
+        sessionRef: "session:one",
+        generation: 1,
+        jobRef: "job:one",
+        eventRef: "close:job:uncertain",
+        reason: "provider_disconnect",
+        accountingStatus: "uncertain",
+      }),
+      {},
+    );
+    expect(response.status).toBe(200);
+    expect(applyLiveKitWorkerEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventKind: "close",
+        accountingStatus: "uncertain",
+      }),
+    );
+    expect(cleanup).toHaveBeenCalledTimes(cleanupCalls);
   });
 
   test("requests a drain when a community membership revision changes", async () => {

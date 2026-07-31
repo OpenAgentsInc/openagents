@@ -1048,6 +1048,21 @@ export const handleSarahRealtimeVoiceSettlementRequest = async <User, Bindings>(
     if (settlement === undefined) {
       return noStoreJson({ error: 'sarah_voice_settlement_not_found' }, 404)
     }
+    if (settlement.state === 'accounting_uncertain') {
+      return noStoreJson(
+        {
+          error: 'sarah_voice_accounting_uncertain',
+          sessionRef: settlement.sessionRef,
+          state: settlement.state,
+          creditMode: settlement.creditMode,
+          recordedChargeMsat: settlement.recordedChargeMsat,
+          reservedCreditMsat: settlement.reservedMsat,
+          holdPreserved: settlement.holdPreserved,
+          reason: settlement.reason,
+        },
+        409,
+      )
+    }
     return noStoreJson(
       {
         schema: SARAH_VOICE_SETTLEMENT_PROTOCOL_VERSION,

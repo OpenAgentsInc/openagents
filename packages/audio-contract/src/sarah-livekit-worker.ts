@@ -181,6 +181,7 @@ export const SarahLiveKitJobEventSchema = S.Union([
       "worker_shutdown",
       "worker_error",
     ]),
+    accountingStatus: S.Literals(["exact", "uncertain"]),
   }),
 ]);
 export type SarahLiveKitJobEvent = typeof SarahLiveKitJobEventSchema.Type;

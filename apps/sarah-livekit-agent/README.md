@@ -36,8 +36,11 @@ identifier as `OpenAI-Safety-Identifier`. Response usage comes only from
 `response.done.response.usage`; input-transcription usage is recorded
 separately from the transcription-completed event. A response is not terminal
 until its status and usage are durable. Shutdown cancels an in-flight response,
-waits for its terminal provider event, and only then closes the provider.
-Provider disconnect is recorded as a distinct terminal path.
+waits for its terminal provider event, and only then closes the provider. If a
+provider disconnect or worker crash prevents that terminal receipt, the session
+enters `accounting_uncertain`: the recorded charge is not presented as final,
+the full credit hold remains reserved, and room cleanup waits for explicit
+provider reconciliation.
 
 The control plane does not advertise the session as ready when the worker merely
 joins LiveKit. It waits for the owner participant, a completed `AgentSession`

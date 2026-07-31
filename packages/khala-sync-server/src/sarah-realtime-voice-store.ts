@@ -6,7 +6,13 @@ import {
 } from "@openagentsinc/audio-contract";
 import type { SyncSql, SyncTransactionSql } from "./sql.js";
 
-export type SarahVoiceSessionState = "reserved" | "connected" | "settled" | "released" | "failed";
+export type SarahVoiceSessionState =
+  | "reserved"
+  | "connected"
+  | "accounting_uncertain"
+  | "settled"
+  | "released"
+  | "failed";
 export type SarahVoiceClientProfile =
   | "omega_editor"
   | "mobile_voice_only"
@@ -32,14 +38,24 @@ export type SarahVoiceAdmissionRecord = Readonly<{
   admissionExpiresAt: string;
 }>;
 
-export type SarahVoiceSettlementProjection = Readonly<{
-  sessionRef: string;
-  state: "settled" | "released";
-  creditMode: SarahVoiceCreditMode;
-  finalChargeMsat: number;
-  spendableRemainingCreditMsat: number | null;
-  settlementReceiptRef: string;
-}>;
+export type SarahVoiceSettlementProjection =
+  | Readonly<{
+      sessionRef: string;
+      state: "settled" | "released";
+      creditMode: SarahVoiceCreditMode;
+      finalChargeMsat: number;
+      spendableRemainingCreditMsat: number | null;
+      settlementReceiptRef: string;
+    }>
+  | Readonly<{
+      sessionRef: string;
+      state: "accounting_uncertain";
+      creditMode: SarahVoiceCreditMode;
+      recordedChargeMsat: number;
+      reservedMsat: number;
+      holdPreserved: true;
+      reason: string;
+    }>;
 
 export type SarahVoiceSessionRecord = Readonly<{
   sessionRef: string;
@@ -129,6 +145,7 @@ export type SarahVoiceLiveKitWorkerEvent =
       Readonly<{
         eventKind: "close";
         closeReason: string;
+        accountingStatus: "exact" | "uncertain";
       }>);
 
 export type SarahVoiceLiveKitWorkerEventResult = Readonly<{
@@ -203,7 +220,9 @@ export type SarahVoiceLiveKitMembershipLease = Readonly<{
   roomContext: SarahVoiceLiveKitRoomContext;
 }>;
 
-export const SARAH_LIVEKIT_WORKER_DRAIN_TIMEOUT_MS = 15_000;
+// Stop expiry must outlive the 30s worker drain, 45s child shutdown, 10s
+// provider terminal wait, and one worst-case 25.8s durable control delivery.
+export const SARAH_LIVEKIT_WORKER_DRAIN_TIMEOUT_MS = 150_000;
 
 export class SarahVoiceInsufficientCreditError extends Error {
   override readonly name = "SarahVoiceInsufficientCreditError";
@@ -1842,7 +1861,12 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       throw new SarahVoiceSessionRejectedError("The LiveKit room generation is not active");
     }
     const session = toRecord(row);
-    if (session.state === "settled" || session.state === "released" || session.state === "failed") {
+    if (
+      session.state === "accounting_uncertain" ||
+      session.state === "settled" ||
+      session.state === "released" ||
+      session.state === "failed"
+    ) {
       return session;
     }
     const bindings = (await tx`
@@ -2086,6 +2110,90 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }
   };
 
+  const markLiveKitAccountingUncertainInTransaction = async (
+    tx: SyncTransactionSql,
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+      reason: string;
+      nowIso: string;
+    }>,
+  ): Promise<SarahVoiceSessionRecord> => {
+    const rows = (await tx`
+      SELECT session_ref, owner_user_id, owner_actor_ref, device_ref,
+        thread_ref, generation, disclosure_ref, client_profile,
+        transport_kind, credit_mode, entitlement_ref, admission_cohort_ref,
+        state, reserved_msat, charged_msat, ticket_expires_at,
+        session_expires_at, settlement_receipt_ref
+      FROM sarah_realtime_voice_sessions
+      WHERE session_ref = ${input.sessionRef}
+        AND generation = ${input.generation}
+      FOR UPDATE
+    `) as ReadonlyArray<SessionRow>;
+    const row = first(rows);
+    if (row === undefined) {
+      throw new SarahVoiceSessionRejectedError("The voice session does not exist");
+    }
+    const current = toRecord(row);
+    if (current.state === "accounting_uncertain") return current;
+    if (current.state === "settled" || current.state === "released" || current.state === "failed") {
+      throw new SarahVoiceSessionRejectedError(
+        "Terminal Sarah voice accounting cannot become uncertain",
+      );
+    }
+    const bindings = (await tx`
+      SELECT provider_admitted_at, provider_accounting_status
+      FROM sarah_livekit_room_bindings
+      WHERE session_ref = ${input.sessionRef}
+        AND generation = ${input.generation}
+      FOR UPDATE
+    `) as ReadonlyArray<{
+      provider_admitted_at: string | null;
+      provider_accounting_status: "pending" | "exact" | "uncertain";
+    }>;
+    const binding = first(bindings);
+    if (binding === undefined || binding.provider_admitted_at === null) {
+      throw new SarahVoiceSessionRejectedError(
+        "Uncertain accounting requires an admitted LiveKit provider",
+      );
+    }
+    if (binding.provider_accounting_status === "exact") {
+      throw new SarahVoiceSessionRejectedError("Exact provider accounting cannot become uncertain");
+    }
+    await tx`
+      UPDATE sarah_livekit_room_bindings
+      SET provider_accounting_status = 'uncertain',
+          provider_accounting_terminal_at = NULL,
+          provider_accounting_uncertain_at =
+            COALESCE(provider_accounting_uncertain_at, ${input.nowIso}),
+          provider_accounting_uncertain_reason =
+            COALESCE(provider_accounting_uncertain_reason, ${input.reason.slice(0, 256)}),
+          updated_at = ${input.nowIso}
+      WHERE session_ref = ${input.sessionRef}
+        AND generation = ${input.generation}
+    `;
+    const uncertainRows = (await tx`
+      UPDATE sarah_realtime_voice_sessions
+      SET state = 'accounting_uncertain',
+          ticket_digest = NULL,
+          close_reason = ${input.reason.slice(0, 256)},
+          updated_at = ${input.nowIso}
+      WHERE session_ref = ${input.sessionRef}
+        AND generation = ${input.generation}
+        AND state IN ('reserved', 'connected')
+      RETURNING session_ref, owner_user_id, owner_actor_ref, device_ref,
+        thread_ref, generation, disclosure_ref, client_profile,
+        transport_kind, credit_mode, entitlement_ref, admission_cohort_ref,
+        state, reserved_msat, charged_msat, ticket_expires_at,
+        session_expires_at, settlement_receipt_ref
+    `) as ReadonlyArray<SessionRow>;
+    const uncertain = first(uncertainRows);
+    if (uncertain === undefined) {
+      throw new SarahVoiceStorageError("The uncertain accounting state was not persisted", null);
+    }
+    return toRecord(uncertain);
+  };
+
   const settleInTransaction = async (
     tx: SyncTransactionSql,
     input: Readonly<{
@@ -2110,8 +2218,35 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       throw new SarahVoiceSessionRejectedError("The voice session does not exist");
     }
     const current = toRecord(row);
+    if (current.state === "accounting_uncertain") {
+      throw new SarahVoiceSessionRejectedError(
+        "Sarah voice accounting is uncertain and its hold must be preserved",
+      );
+    }
     if (current.state === "settled" || current.state === "released" || current.state === "failed") {
       return current;
+    }
+    if (current.transportKind === "livekit_room_v1") {
+      const bindings = (await tx`
+        SELECT provider_admitted_at, provider_accounting_status
+        FROM sarah_livekit_room_bindings
+        WHERE session_ref = ${current.sessionRef}
+          AND generation = ${current.generation}
+        FOR UPDATE
+      `) as ReadonlyArray<{
+        provider_admitted_at: string | null;
+        provider_accounting_status: "pending" | "exact" | "uncertain";
+      }>;
+      const binding = first(bindings);
+      if (
+        binding?.provider_admitted_at !== null &&
+        binding?.provider_admitted_at !== undefined &&
+        binding.provider_accounting_status !== "exact"
+      ) {
+        throw new SarahVoiceSessionRejectedError(
+          "An admitted LiveKit provider requires exact terminal accounting before settlement",
+        );
+      }
     }
 
     const receiptRef = `sarah_voice_settlement:${current.sessionRef}`;
@@ -2223,7 +2358,9 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     try {
       const rows = (await sql`
         SELECT session.session_ref, session.state, session.credit_mode,
-          session.charged_msat, session.settlement_receipt_ref,
+          session.charged_msat, session.reserved_msat,
+          session.settlement_receipt_ref,
+          binding.provider_accounting_uncertain_reason,
           CASE
             WHEN session.credit_mode = 'metered'
               THEN COALESCE(
@@ -2235,20 +2372,37 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         FROM sarah_realtime_voice_sessions AS session
         LEFT JOIN agent_balances AS balance
           ON balance.actor_ref = session.owner_actor_ref
+        LEFT JOIN sarah_livekit_room_bindings AS binding
+          ON binding.session_ref = session.session_ref
         WHERE session.session_ref = ${input.sessionRef}
           AND session.owner_user_id = ${input.ownerUserId}
-          AND session.state IN ('settled', 'released')
-          AND session.settlement_receipt_ref IS NOT NULL
+          AND session.state IN ('accounting_uncertain', 'settled', 'released')
       `) as ReadonlyArray<{
         session_ref: string;
-        state: "settled" | "released";
+        state: "accounting_uncertain" | "settled" | "released";
         credit_mode: SarahVoiceCreditMode;
         charged_msat: number | string;
-        settlement_receipt_ref: string;
+        reserved_msat: number | string;
+        settlement_receipt_ref: string | null;
+        provider_accounting_uncertain_reason: string | null;
         spendable_remaining_credit_msat: number | string | null;
       }>;
       const row = first(rows);
       if (row === undefined) return undefined;
+      if (row.state === "accounting_uncertain") {
+        return {
+          sessionRef: row.session_ref,
+          state: row.state,
+          creditMode: row.credit_mode,
+          recordedChargeMsat: toSafeInteger(row.charged_msat, "charged_msat"),
+          reservedMsat: toSafeInteger(row.reserved_msat, "reserved_msat"),
+          holdPreserved: true,
+          reason: row.provider_accounting_uncertain_reason ?? "provider_accounting_uncertain",
+        };
+      }
+      if (row.settlement_receipt_ref === null) {
+        throw new SarahVoiceStorageError("Terminal settlement receipt is missing", null);
+      }
       return {
         sessionRef: row.session_ref,
         state: row.state,
@@ -2481,7 +2635,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             binding.worker_stop_reason, binding.worker_stop_close_reason,
             binding.provider_session_ref_digest,
             binding.provider_configuration_digest,
-            binding.provider_admitted_at
+            binding.provider_admitted_at, binding.provider_accounting_status
           FROM sarah_livekit_room_bindings AS binding
           WHERE binding.worker_control_token_digest =
               ${input.workerControlTokenDigest}
@@ -2506,6 +2660,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           provider_session_ref_digest: string | null;
           provider_configuration_digest: string | null;
           provider_admitted_at: string | null;
+          provider_accounting_status: "pending" | "exact" | "uncertain";
         }>;
         const binding = first(bindings);
         if (binding === undefined) {
@@ -2564,6 +2719,23 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         if (
           input.eventKind !== "close" &&
           workerStopReason === null &&
+          input.eventKind === "lease_check" &&
+          binding.sarah_joined_at === null &&
+          binding.join_expires_at <= input.nowIso
+        ) {
+          workerStopReason = "session_expired";
+          workerStopCloseReason = "provider_admission_expired";
+          await setLiveKitWorkerStopInTransaction(tx, {
+            sessionRef: input.sessionRef,
+            generation: input.generation,
+            stopReason: workerStopReason,
+            closeReason: workerStopCloseReason,
+            nowIso: input.nowIso,
+          });
+        }
+        if (
+          input.eventKind !== "close" &&
+          workerStopReason === null &&
           session.state === "connected" &&
           session.session_expires_at <= input.nowIso
         ) {
@@ -2592,10 +2764,33 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             SET worker_closed_at = ${receipt.observedAt},
                 worker_close_reason = ${closeReason.slice(0, 256)},
                 worker_last_seen_at = ${receipt.observedAt},
+                provider_accounting_status = ${input.accountingStatus},
+                provider_accounting_terminal_at = CASE
+                  WHEN ${input.accountingStatus} = 'exact' THEN ${receipt.observedAt}
+                  ELSE NULL
+                END,
+                provider_accounting_uncertain_at = CASE
+                  WHEN ${input.accountingStatus} = 'uncertain' THEN ${receipt.observedAt}
+                  ELSE NULL
+                END,
+                provider_accounting_uncertain_reason = CASE
+                  WHEN ${input.accountingStatus} = 'uncertain'
+                    THEN ${closeReason.slice(0, 256)}
+                  ELSE NULL
+                END,
                 updated_at = ${receipt.observedAt}
             WHERE session_ref = ${input.sessionRef}
               AND generation = ${input.generation}
           `;
+          if (input.accountingStatus === "uncertain") {
+            await markLiveKitAccountingUncertainInTransaction(tx, {
+              sessionRef: input.sessionRef,
+              generation: input.generation,
+              reason: closeReason,
+              nowIso: receipt.observedAt,
+            });
+            return receipt;
+          }
           await settleInTransaction(tx, {
             sessionRef: input.sessionRef,
             closeReason,
@@ -2605,7 +2800,9 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         }
 
         if (
-          (input.eventKind === "worker_connected" || input.eventKind === "provider_admitted") &&
+          (input.eventKind === "worker_connected" ||
+            input.eventKind === "provider_admitted" ||
+            input.eventKind === "lease_check") &&
           workerStopReason !== null
         ) {
           const receipt = await insertWorkerEventReceipt(tx, input);
@@ -2619,9 +2816,13 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             ? (binding.binding_state === "prepared" || binding.binding_state === "active") &&
               binding.sarah_joined_at === null &&
               binding.join_expires_at > input.nowIso
-            : binding.binding_state === "active" &&
-              binding.sarah_joined_at !== null &&
-              session.state === "connected";
+            : input.eventKind === "lease_check" &&
+                binding.binding_state === "prepared" &&
+                binding.sarah_joined_at === null
+              ? binding.join_expires_at > input.nowIso && session.state === "reserved"
+              : binding.binding_state === "active" &&
+                binding.sarah_joined_at !== null &&
+                session.state === "connected";
         const active =
           bindingAdmitted &&
           (session.state === "reserved" || session.state === "connected") &&
@@ -3264,7 +3465,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     const rows = (await sql`
       SELECT session.session_ref, session.generation, session.state,
         session.transport_kind, binding.worker_stop_reason,
-        binding.worker_stop_close_reason, binding.worker_stop_deadline_at
+        binding.worker_stop_close_reason, binding.worker_stop_deadline_at,
+        binding.provider_admitted_at, binding.provider_accounting_status
       FROM sarah_realtime_voice_sessions AS session
       LEFT JOIN sarah_livekit_room_bindings AS binding
         ON binding.session_ref = session.session_ref
@@ -3295,6 +3497,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       worker_stop_reason: SarahVoiceLiveKitWorkerStopReason | null;
       worker_stop_close_reason: string | null;
       worker_stop_deadline_at: string | null;
+      provider_admitted_at: string | null;
+      provider_accounting_status: "pending" | "exact" | "uncertain" | null;
     }>;
     let processed = 0;
     for (const row of rows) {
@@ -3321,6 +3525,27 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         row.transport_kind === "livekit_room_v1" &&
         (row.worker_stop_deadline_at === null || row.worker_stop_deadline_at > nowIso)
       ) {
+        continue;
+      }
+      if (
+        row.state === "connected" &&
+        row.transport_kind === "livekit_room_v1" &&
+        row.provider_admitted_at !== null &&
+        row.provider_accounting_status !== "exact"
+      ) {
+        // A dead worker cannot attest that every billable provider response
+        // reached response.done. Keep the full hold until an operator
+        // reconciles provider truth instead of settling a partial ledger.
+        // eslint-disable-next-line no-await-in-loop
+        await sql.begin((tx) =>
+          markLiveKitAccountingUncertainInTransaction(tx, {
+            sessionRef: row.session_ref,
+            generation: toSafeInteger(row.generation, "generation"),
+            reason: row.worker_stop_close_reason ?? "livekit_worker_accounting_unavailable",
+            nowIso,
+          }),
+        );
+        processed += 1;
         continue;
       }
       // Run one settlement at a time to protect the shared database pool.

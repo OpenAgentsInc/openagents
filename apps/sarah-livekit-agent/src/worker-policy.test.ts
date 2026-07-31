@@ -39,8 +39,8 @@ describe("Sarah LiveKit worker policy", () => {
       "utf8",
     );
     expect(source).toContain("drainTimeout: 30_000");
-    expect(source).toContain("shutdownProcessTimeout: 35_000");
-    expect(manifest).toContain("terminationGracePeriodSeconds: 90");
+    expect(source).toContain("shutdownProcessTimeout: 45_000");
+    expect(manifest).toContain("terminationGracePeriodSeconds: 120");
   });
 
   test("fails a provider mismatch before deferring a valid admission until session start", async () => {

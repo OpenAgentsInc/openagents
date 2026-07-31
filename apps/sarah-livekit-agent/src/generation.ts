@@ -503,15 +503,15 @@ export const closeAfterProviderAccounting = async (
   accounting: SarahProviderAccounting,
   requestProviderDrain: () => Promise<void>,
   closeProvider: () => Promise<void>,
-  closeGeneration: () => Promise<void>,
+  closeGeneration: (accountingStatus: "exact" | "uncertain") => Promise<void>,
   waitForIdle?: () => Promise<void>,
 ): Promise<void> => {
   await requestProviderDrain();
   const terminal = await accounting.waitForTerminalResponses(10_000);
-  if (!terminal && !accounting.disconnected) {
+  if (!terminal) {
     fence.failAccounting();
   }
   await closeProvider();
   await fence.quiesce(waitForIdle);
-  await closeGeneration();
+  await closeGeneration(terminal ? "exact" : "uncertain");
 };

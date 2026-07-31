@@ -1754,6 +1754,41 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
     })
   })
 
+  test('reports uncertain provider accounting without fabricating settlement', async () => {
+    const fixture = makeDependencies()
+    vi.mocked(fixture.store.readSettlement).mockResolvedValue({
+      sessionRef: identity.sessionRef,
+      state: 'accounting_uncertain',
+      creditMode: 'metered',
+      recordedChargeMsat: 175,
+      reservedMsat: 1_000,
+      holdPreserved: true,
+      reason: 'livekit_worker_provider_disconnect',
+    })
+    const response = await handleSarahRealtimeVoiceSettlementRequest(
+      fixture.dependencies,
+      new Request('https://openagents.com/api/omega/sarah/voice/settlement', {
+        headers: {
+          authorization: 'Bearer test',
+          [SARAH_REALTIME_VOICE_SESSION_HEADER]: identity.sessionRef,
+        },
+      }),
+      {},
+      ctx,
+    )
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({
+      error: 'sarah_voice_accounting_uncertain',
+      sessionRef: identity.sessionRef,
+      state: 'accounting_uncertain',
+      creditMode: 'metered',
+      recordedChargeMsat: 175,
+      reservedCreditMsat: 1_000,
+      holdPreserved: true,
+      reason: 'livekit_worker_provider_disconnect',
+    })
+  })
+
   test('lets an operator revoke only the fixed alpha cohort', async () => {
     const fixture = makeDependencies()
     vi.mocked(fixture.store.revokeAlphaCohort).mockResolvedValue(1)

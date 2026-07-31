@@ -319,12 +319,14 @@ const closeEvent = (
     jobRef: string;
   }>,
   reason: Extract<SarahLiveKitJobEvent, { _tag: "close" }>["reason"],
+  accountingStatus: Extract<SarahLiveKitJobEvent, { _tag: "close" }>["accountingStatus"],
 ): Extract<SarahLiveKitJobEvent, { _tag: "close" }> => ({
   schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
   _tag: "close",
   ...identity,
   eventRef: `close:${identity.jobRef}`,
   reason,
+  accountingStatus,
 });
 
 const entry = async (ctx: JobContext): Promise<void> => {
@@ -521,8 +523,10 @@ const entry = async (ctx: JobContext): Promise<void> => {
       async () => {
         await session?.close();
       },
-      () =>
-        controller.event(dispatch, closeEvent(identity, fence.closeReason)).then(() => undefined),
+      (accountingStatus) =>
+        controller
+          .event(dispatch, closeEvent(identity, fence.closeReason, accountingStatus))
+          .then(() => undefined),
     );
   });
 
@@ -612,6 +616,6 @@ cli.runApp(
     permissions: new WorkerPermissions(true, true, true, false, [TrackSource.MICROPHONE], false),
     production: true,
     drainTimeout: 30_000,
-    shutdownProcessTimeout: 35_000,
+    shutdownProcessTimeout: 45_000,
   }),
 );

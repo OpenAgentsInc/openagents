@@ -339,8 +339,8 @@ describe("Sarah LiveKit generation fence", () => {
       async () => {
         order.push("provider_closed");
       },
-      async () => {
-        order.push("terminal_event");
+      async (accountingStatus) => {
+        order.push(`terminal_event:${accountingStatus}`);
       },
       async () => {
         idleChecks += 1;
@@ -357,7 +357,7 @@ describe("Sarah LiveKit generation fence", () => {
       "provider_drain_requested",
       "provider_closed",
       "final_usage",
-      "terminal_event",
+      "terminal_event:exact",
     ]);
     expect(fence.accepts(closeEventForTest)).toBe(false);
   });
@@ -413,8 +413,8 @@ describe("Sarah LiveKit generation fence", () => {
       async () => {
         order.push("provider_closed");
       },
-      async () => {
-        order.push("generation_closed");
+      async (accountingStatus) => {
+        order.push(`generation_closed:${accountingStatus}`);
       },
       async () => undefined,
     );
@@ -422,8 +422,30 @@ describe("Sarah LiveKit generation fence", () => {
       "cancel_sent",
       "terminal_usage",
       "provider_closed",
-      "generation_closed",
+      "generation_closed:exact",
     ]);
+  });
+
+  test("marks a disconnected response without response.done as uncertain", async () => {
+    const fence = new SarahGenerationFence();
+    const accounting = new SarahProviderAccounting();
+    accounting.observe({ type: "response.created", response: { id: "resp_lost" } }, false);
+    accounting.disconnect();
+    let accountingStatus: "exact" | "uncertain" | undefined;
+
+    await closeAfterProviderAccounting(
+      fence,
+      accounting,
+      async () => undefined,
+      async () => undefined,
+      async (status) => {
+        accountingStatus = status;
+      },
+      async () => undefined,
+    );
+
+    expect(accountingStatus).toBe("uncertain");
+    expect(fence.closeReason).toBe("worker_error");
   });
 
   test("bounds participant admission by both expiry and worker shutdown", async () => {
@@ -496,4 +518,5 @@ const closeEventForTest = {
   ...identity,
   eventRef: "close:job:one",
   reason: "provider_disconnect",
+  accountingStatus: "uncertain",
 } as const;
