@@ -22,6 +22,11 @@ workroom, selected by the owner as the Zed-fork destination surface (see the
 the [App for All Work thesis](../allwork/README.md)). This report does not
 re-open the retired Electron desktop path.
 
+UI pixels and the input bar are covered in the companion
+[Comet vs Omega UI deep dive](./2026-07-31-comet-omega-ui-deep-dive.md). That
+report's product judgment: **Comet's composer is the better agent input bar**;
+Omega should match its density while keeping MessageEditor and disposition law.
+
 ## Executive decision
 
 **Comet is the strongest open multi-device agent-controller reference in the
