@@ -1078,7 +1078,50 @@ tool rather than reusing a stale file.
 Keep the bearer tokens in environment variables and keep the two 24 kHz mono
 signed-16-bit PCM prompts outside Git. The prompts must contain an innocuous
 spoken request followed by enough silence for the admitted semantic VAD to
-finish the turn. Run:
+finish the turn.
+
+#### Producing the two PCM prompts
+
+The prompts are deliberately not in Git, so a fresh machine has none and every
+`--apply` run refuses before its first network call. That absence blocked the
+whole failure-drill lane once (EP263-LK, 2026-07-31). Regenerate them locally in
+about ten seconds; the harness never sends the trailing silence it appends
+itself, so a short natural utterance is enough.
+
+```sh
+mkdir -p ~/work/.secrets/livekit-acceptance-prompts
+cd ~/work/.secrets/livekit-acceptance-prompts
+
+say -v Samantha -o private.aiff \
+  "Hi Sarah, this is the private acceptance drill. Please tell me briefly what you are working on right now."
+say -v Samantha -o community.aiff \
+  "Hi Sarah, this is the community acceptance drill. Please give the channel a short status update."
+
+for n in private community; do
+  afconvert -f WAVE -d LEI16@24000 -c 1 "$n.aiff" "$n.wav"
+  # Strip the 44-byte WAVE header: the harness reads headerless little-endian s16.
+  python3 -c "import wave,sys;n=sys.argv[1];w=wave.open(n+'.wav','rb');open(n+'.pcm','wb').write(w.readframes(w.getnframes()))" "$n"
+  rm -f "$n.aiff" "$n.wav"
+done
+```
+
+Verify before use. The harness reads the file as headerless little-endian s16 at
+24 kHz mono and will happily play noise if the format is wrong, so check the
+byte count rather than trusting the converter:
+
+```sh
+for n in private community; do
+  python3 -c "import os,sys;n=sys.argv[1];b=os.path.getsize(n+'.pcm');print(f'{n}: {b} bytes, {b//2} samples, {b/2/24000:.2f}s, even={b%2==0}')" "$n"
+done
+# A WAVE header would leave an odd remainder or a 22-sample offset; both show up here.
+ffprobe -f s16le -ar 24000 -ac 1 -i private.pcm      # optional second opinion
+```
+
+Store them outside the repository — `acceptance-cli.ts` refuses a PCM path under
+the working tree — and never commit them. The pinned location above keeps them
+next to the other machine-local operator secrets.
+
+Then run:
 
 ```sh
 OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
@@ -1137,6 +1180,24 @@ node scripts/cloud/livekit-acceptance.mjs \
 Do not infer many-small-room capacity from LiveKit's large-room benchmark.
 
 ### Failure drills
+
+> **Known blocker, 2026-07-31: there is no single-session driver, so no drill
+> that needs a live session can be executed yet.** The only session driver,
+> `runSarahLiveKitAcceptance`, requires *both* a private and a community
+> scenario, runs them concurrently, hard-asserts `concurrentOverlapObserved`,
+> and returns only after both settle. Two consequences follow, and neither is a
+> permission or a credential:
+>
+> - Nothing can hold one session live while a fault is injected into it, which
+>   `planned_worker_crash`, `sfu_loss`, `provider_disconnect`, `timeout`,
+>   `hold_exhaustion`, and `reconnect` all require.
+> - `sfu_loss` additionally requires `concurrentBillableSessionCount: 1`, which
+>   this driver can never produce, because it always runs two billable sessions.
+>
+> Closing this needs a driver that admits one scenario, completes a turn, and
+> then holds the session open until the operator injects the fault and releases
+> it. Until it exists, record the affected observations `not_observed` with that
+> reason. Do not synthesize a row from unit-test output or expectations.
 
 Run every drill from the exact pinned candidate:
 
@@ -1294,12 +1355,68 @@ Steps:
 
 **Permissions.** Step 2 needs `pods/exec` and step 3 needs `delete pods` in
 `livekit-system`. Check before scheduling a window, because the fault instant is
-a poor time to discover a missing role:
+a poor time to discover a missing role.
+
+> **`kubectl auth can-i` is not sufficient evidence here, and its false `yes`
+> already cost this lane a wrong conclusion (2026-07-31).** On GKE the check is
+> answered optimistically for subresources: `auth can-i get pods/log` returned
+> `yes` for the automation identity at a moment when the real
+> `kubectl logs` call returned `Forbidden`. **Verify every permission with a real
+> API call**, using `--dry-run=server` for the destructive one so the check
+> proves authorization without deleting anything:
+>
+> ```sh
+> export CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config
+> POD=$(kubectl -n livekit-system get pods -o name | head -1); POD=${POD#pod/}
+> kubectl -n livekit-system logs "$POD" --tail=1                 # pods/log
+> kubectl -n livekit-system delete pod "$POD" --dry-run=server   # delete pods
+> ```
+>
+> **Also clear the shared credential cache before trusting any result.** The
+> `gke-gcloud-auth-plugin` caches its token in `~/.kube/gke_gcloud_auth_plugin_cache`,
+> which is **outside** `CLOUDSDK_CONFIG`. Running one `kubectl` as the
+> interactive owner account poisons that cache, and every later command that
+> *sets* `CLOUDSDK_CONFIG` still authenticates as the owner. That makes a
+> namespace-scoped grant look far broader than it is. Run
+> `rm -f ~/.kube/gke_gcloud_auth_plugin_cache` after any identity switch and
+> confirm with `kubectl auth whoami` before recording a permission finding.
+
+**The granted authority (2026-07-31).** The automation identity holds
+namespace-scoped RBAC in `livekit-system` only, under owner authority, so the
+pod-deleting drills and the privacy scan's `pods` scope stop being blocked:
+
+| Object | Grant |
+| --- | --- |
+| `Role/sarah-livekit-drill-automation` (ns `livekit-system`) | `pods: delete`; `pods/log: get, list` |
+| `RoleBinding/sarah-livekit-drill-automation` | the above to user `oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com` |
+
+Deliberately excluded, and verified `Forbidden` by real calls: `pods/exec` (it
+is arbitrary command execution inside production pods), `pods: create`, and
+anything at all in another namespace. A namespace `Role` was chosen over a
+project-level custom IAM role because IAM conditions cannot scope a GKE
+permission to one namespace, so the IAM route would have granted pod deletion
+across every cluster in the project.
+
+**Step 2 without `pods/exec`.** Because exec is not granted, read the same gauge
+from Managed Prometheus instead — `pod-monitoring.yaml` already exports
+`livekit_room_total` with `pod` and `node` labels:
 
 ```sh
-kubectl -n livekit-system auth can-i create pods/exec
-kubectl -n livekit-system auth can-i delete pods
+export CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config
+curl -sG https://monitoring.googleapis.com/v3/projects/openagentsgemini/timeSeries \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  --data-urlencode 'filter=metric.type="prometheus.googleapis.com/livekit_room_total/gauge"' \
+  --data-urlencode "interval.startTime=$(date -u -v-10M +%Y-%m-%dT%H:%M:%SZ)" \
+  --data-urlencode "interval.endTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ```
+
+**This substitution is sound for verification and not yet sufficient for the
+drill.** The `PodMonitoring` scrape interval is 30 s, while an acceptance
+session lives about 21 s, so the gauge cannot identify the hosting pod inside
+the session it is meant to target. Until either the drill runs against a
+held-open session or the scrape interval is lowered for the window, step 2 needs
+`pods/exec` after all. Do not record `sfu_loss_bounded` from a pod guessed
+without a nonzero gauge reading.
 
 ### Secret, log, and retention scan
 
@@ -1672,9 +1789,13 @@ public receipt projection only. Keep the private input outside the repository.
 The public receipt is mode 0600 and contains no room, owner, job, provider,
 hold, usage, or settlement identifier.
 
-The private input has exactly seven scenario rows in this order: `success`,
-`cancellation`, `timeout`, `planned_worker_crash`, `provider_disconnect`,
-`hold_exhaustion`, and `reconnect`. Each row must include:
+The private input has exactly eight scenario rows in this order: `success`,
+`cancellation`, `timeout`, `planned_worker_crash`, `sfu_loss`,
+`provider_disconnect`, `hold_exhaustion`, and `reconnect`. `sfu_loss` was
+inserted after `planned_worker_crash` by openagents `af65458919`; this paragraph
+said seven until 2026-07-31, so an input written from it failed validation with
+"failure matrix must contain every scenario exactly once". Each row must
+include:
 
 - the exact scenario-specific fault action and terminal reason;
 - distinct SHA-256 projections for job, provider session, generation, hold,
