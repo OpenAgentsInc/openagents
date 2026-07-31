@@ -107,6 +107,12 @@ export type SarahLiveKitDrillFaultContext = Readonly<{
   participantRef: string;
   sessionRef: string;
   ownerRef: string;
+  /**
+   * When this session started. Bounds any log scan the injector runs: the
+   * participant ref is stable per owner, so an unbounded window can match an
+   * earlier generation by the same owner on a different instance.
+   */
+  sessionStartedAtMs: number;
   /** Close the packaged control channel, for client-side faults. */
   requestClientCancel: () => Promise<void>;
 }>;
@@ -324,6 +330,7 @@ export const runSarahLiveKitDrill = async (
       faultAction,
       roomRef: session.roomRef,
       participantRef: session.participantRef,
+      sessionStartedAtMs: session.timings.startedAtMs,
       sessionRef: input.session.sessionRef,
       ownerRef: input.session.ownerRef,
       requestClientCancel: () => session.control.close(),

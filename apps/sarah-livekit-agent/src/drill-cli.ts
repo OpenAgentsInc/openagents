@@ -157,6 +157,17 @@ const drillScenario = (value: string | undefined): SarahLiveKitDrillScenario => 
 };
 
 /**
+ * The worker log window: this session's own lifetime, plus a small margin.
+ *
+ * The participant ref identifies an owner rather than a generation, so a wider
+ * window can match an abandoned earlier attempt by the same owner running on a
+ * different instance, and the selector would then refuse a good drill as though
+ * one generation had been handled twice.
+ */
+const workerLogWindowSeconds = (sessionStartedAtMs: number): number =>
+  Math.max(30, Math.ceil((Date.now() - sessionStartedAtMs) / 1_000) + 10);
+
+/**
  * Build the fault this scenario's evidence is only valid for.
  *
  * Discovery happens at the fault instant, inside the injector, because neither
@@ -170,6 +181,7 @@ const buildInjector = (
   scenario: SarahLiveKitDrillScenario,
 ): ((context: {
   participantRef: string;
+  sessionStartedAtMs: number;
   requestClientCancel: () => Promise<void>;
 }) => Promise<SarahLiveKitDrillFaultResult>) => {
   const faultAction = EXPECTED_FAULT_ACTION[scenario];
@@ -177,7 +189,7 @@ const buildInjector = (
     return async (context) => {
       const sfu = selectSoleSfuPodHostingARoom(await readLiveKitSfuGauges());
       const workerPod = selectSoleWorkerPodForGeneration(
-        await readSarahWorkerLogs(),
+        await readSarahWorkerLogs(workerLogWindowSeconds(context.sessionStartedAtMs)),
         context.participantRef,
       );
       if (sfu.podName === workerPod) {
@@ -200,7 +212,7 @@ const buildInjector = (
   if (faultAction === "delete_exact_worker_pod") {
     return async (context) => {
       const workerPod = selectSoleWorkerPodForGeneration(
-        await readSarahWorkerLogs(),
+        await readSarahWorkerLogs(workerLogWindowSeconds(context.sessionStartedAtMs)),
         context.participantRef,
       );
       const injectedAtMs = Date.now();

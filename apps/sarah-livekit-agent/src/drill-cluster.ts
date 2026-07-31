@@ -104,11 +104,15 @@ export const countLiveRooms = (gauges: readonly LiveKitSfuGauge[]): number =>
  * log carries `jobId`, `agentName`, and `participantValue`, and it never prints
  * the room name — verified against the live production workers on 2026-07-31 —
  * so a room-ref scan matches nothing and would make every worker-targeting drill
- * unrunnable for a reason that looks like "the job was not accepted".
+ * unrunnable for a reason that reads as "the job was not accepted".
  *
- * The participant ref is minted per admitted generation, so it appears in
- * exactly the accepting worker's log. Two matches would mean one generation was
- * handled twice, which the failure matrix already forbids
+ * The participant ref is `owner-<sha256(ownerUserId) truncated>`, so it is
+ * stable per OWNER and not per generation. That makes the log WINDOW
+ * load-bearing: the caller must read only logs since this session started, or an
+ * earlier generation by the same owner — an abandoned attempt minutes ago, say —
+ * matches on a different pod and this selector refuses a perfectly good drill as
+ * "handled twice". Within a correct window, two matches really would mean one
+ * generation was handled twice, which the failure matrix already forbids
  * (`maximumWorkerGenerationCount: 1`) and which no drill should paper over.
  */
 export const selectSoleWorkerPodForGeneration = (
