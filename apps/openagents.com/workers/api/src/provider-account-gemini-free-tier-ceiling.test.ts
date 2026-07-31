@@ -195,7 +195,15 @@ describe('hosted Gemini free-tier daily token ceiling', () => {
     }
   })
 
-  test('leaves github / email / agent identities exactly as they were', async () => {
+  // 2026-07-31 P0. This block previously asserted the OPPOSITE — that a
+  // github / email / agent identity was served with NO ledger read at all.
+  // That was the vulnerability, not a feature: `POST /api/agents/register` is
+  // unauthenticated public self-service, so a stranger could mint an
+  // `oa_agent_` token and draw the owner's `GEMINI_API_KEY` without any
+  // ceiling. Verified live before the fix: a freshly minted, never-
+  // authenticated token returned HTTP 200 and ledgered a real owner-funded
+  // draw. The identity classes are now bounded unless explicitly admitted.
+  test('bounds a non-admitted agent identity that has spent its allowance', async () => {
     for (const actorUserId of [
       'github:1',
       'email:someone@example.com',
@@ -205,25 +213,127 @@ describe('hosted Gemini free-tier daily token ceiling', () => {
       const upstream = upstreamOk()
 
       try {
-        // A ledger that would REFUSE if it were consulted.
-        const ledger = makeLedgerDb(999_999_999)
+        const ledger = makeLedgerDb(1_000_000)
         const { ctx } = makeExecutionContext()
         const response = await handlersForActor(actorUserId)(
           { GEMINI_API_KEY: 'test-gemini-key', OPENAGENTS_DB: ledger.db },
           ctx,
         )
 
+        expect(response.status).toBe(429)
+        expect(await response.json()).toMatchObject({
+          dailyTokenCeiling: 1_000_000,
+          error: 'free_tier_daily_token_ceiling_reached',
+          tokensServedToday: 1_000_000,
+        })
+        // The owner's key was never spent.
+        expect(upstream).not.toHaveBeenCalled()
+      } finally {
+        upstream.mockRestore()
+      }
+    }
+  })
+
+  test('serves a non-admitted agent identity that is still under the ceiling', async () => {
+    const upstream = upstreamOk()
+
+    try {
+      const ledger = makeLedgerDb(10)
+      const { ctx } = makeExecutionContext()
+      const response = await handlersForActor('user_abcdef')(
+        { GEMINI_API_KEY: 'test-gemini-key', OPENAGENTS_DB: ledger.db },
+        ctx,
+      )
+
+      expect(response.status).toBe(200)
+      expect(upstream).toHaveBeenCalledTimes(1)
+      expect(
+        ledger.queries.some(query => query.includes('SUM(total_tokens)')),
+      ).toBe(true)
+    } finally {
+      upstream.mockRestore()
+    }
+  })
+
+  // The admitted cohort is how the owner's own Pylon/Khala tooling keeps its
+  // unbounded draw. It reuses the EXISTING `INFERENCE_INTERNAL_ACCOUNT_REFS`
+  // allowlist rather than a second admission mechanism, and it short-circuits
+  // BEFORE the ledger read so no owner workflow gains latency.
+  test('exempts an admitted actor without a ledger read', async () => {
+    for (const [actorUserId, admittedRef] of [
+      ['user_abcdef', 'agent:user_abcdef'],
+      ['user_abcdef', 'user_abcdef'],
+      ['github:1', 'openauth:github:1'],
+    ] as const) {
+      const upstream = upstreamOk()
+
+      try {
+        // A ledger that would REFUSE if it were consulted.
+        const ledger = makeLedgerDb(999_999_999)
+        const { ctx } = makeExecutionContext()
+        const response = await handlersForActor(actorUserId)(
+          {
+            GEMINI_API_KEY: 'test-gemini-key',
+            INFERENCE_INTERNAL_ACCOUNT_REFS: `other:ref, ${admittedRef}`,
+            OPENAGENTS_DB: ledger.db,
+          },
+          ctx,
+        )
+
         expect(response.status).toBe(200)
         expect(upstream).toHaveBeenCalledTimes(1)
-        // No pre-flight ledger read at all for these classes: the narrow scope
-        // is deliberate, and it is also why this change adds no latency to the
-        // owner's existing runners.
         expect(
           ledger.queries.some(query => query.includes('SUM(total_tokens)')),
         ).toBe(false)
       } finally {
         upstream.mockRestore()
       }
+    }
+  })
+
+  test('honours an owner-configured ceiling for non-admitted actors', async () => {
+    const upstream = upstreamOk()
+
+    try {
+      const ledger = makeLedgerDb(60_000)
+      const { ctx } = makeExecutionContext()
+      const response = await handlersForActor('user_abcdef')(
+        {
+          GEMINI_API_KEY: 'test-gemini-key',
+          HOSTED_COMPUTE_DAILY_TOKEN_CEILING: '50000',
+          OPENAGENTS_DB: ledger.db,
+        },
+        ctx,
+      )
+
+      expect(response.status).toBe(429)
+      expect(await response.json()).toMatchObject({ dailyTokenCeiling: 50_000 })
+      expect(upstream).not.toHaveBeenCalled()
+    } finally {
+      upstream.mockRestore()
+    }
+  })
+
+  // FAIL-CLOSED. A spend path must not fall open during a database outage.
+  test('refuses a non-admitted actor when the ledger read throws', async () => {
+    const upstream = upstreamOk()
+
+    try {
+      const { ctx } = makeExecutionContext()
+      const throwingDb = {
+        prepare: () => {
+          throw new Error('ledger unavailable')
+        },
+      } as unknown as D1Database
+      const response = await handlersForActor('user_abcdef')(
+        { GEMINI_API_KEY: 'test-gemini-key', OPENAGENTS_DB: throwingDb },
+        ctx,
+      )
+
+      expect(response.status).toBe(429)
+      expect(upstream).not.toHaveBeenCalled()
+    } finally {
+      upstream.mockRestore()
     }
   })
 })

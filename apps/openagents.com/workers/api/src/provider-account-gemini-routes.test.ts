@@ -5,11 +5,6 @@ import { makeProviderAccountServiceHandlers } from './provider-account-service-r
 
 type TokenUsageRow = Record<string, string | number | null>
 
-const env = {
-  AUTH_STORAGE: {} as KVNamespace,
-  GEMINI_API_KEY: 'test-gemini-key',
-  OPENAGENTS_DB: {} as D1Database,
-}
 
 const makeExecutionContext = (): Readonly<{
   ctx: ExecutionContext
@@ -149,6 +144,19 @@ const makeTokenUsageDb = (): Readonly<{
   } satisfies D1Database
 
   return { db, rows }
+}
+
+// The hosted-compute daily ceiling (P0 2026-07-31) now reads the
+// `token_usage_events` ledger for every NON-admitted actor, and it is
+// deliberately fail-closed: a ledger read that throws refuses the request. The
+// bare `{} as D1Database` stub these routes used to get by with therefore
+// reads as an outage and 429s. Give the shared env a real ledger double so
+// these brokering tests exercise what they are about; the ceiling itself is
+// pinned in provider-account-gemini-free-tier-ceiling.test.ts.
+const env = {
+  AUTH_STORAGE: {} as KVNamespace,
+  GEMINI_API_KEY: 'test-gemini-key',
+  OPENAGENTS_DB: makeTokenUsageDb().db,
 }
 
 const typedHandlers = makeProviderAccountServiceHandlers({

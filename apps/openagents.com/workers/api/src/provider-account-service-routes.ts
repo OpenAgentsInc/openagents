@@ -19,6 +19,11 @@ import {
   streamHttpResult,
 } from './http/responses'
 import { postgresIdentityAuthStoreForEnv } from './identity-auth-domain-store'
+import {
+  hostedComputeDailyTokenCeiling,
+  makeHostedComputeDailyCeilingGate,
+} from './inference/hosted-compute-daily-ceiling'
+import { parseInternalAccountRefs } from './inference/inference-internal-account'
 import { inferenceEntitlementsMirrorForEnv } from './inference-entitlements-store'
 import {
   optionalBoolean,
@@ -54,6 +59,13 @@ type ProviderAccountServiceEnv = Readonly<{
   AUTH_KV?: AuthKvStore | undefined
   KHALA_SYNC_DB?: Readonly<{ connectionString: string }> | undefined
   GEMINI_API_KEY?: string
+  // Admitted-cohort allowlist (comma-separated account refs). An actor named
+  // here draws owner-funded hosted compute without a daily ceiling; everyone
+  // else is bounded. Same env var the chat-completions route already reads.
+  INFERENCE_INTERNAL_ACCOUNT_REFS?: string | undefined
+  // Owner-tunable daily served-token ceiling for a NON-admitted actor on the
+  // hosted-compute proxy. Absent => the compiled default (1,000,000).
+  HOSTED_COMPUTE_DAILY_TOKEN_CEILING?: string | undefined
   OPENAGENTS_DB: D1Database
   PROVIDER_TOKEN_CUSTODY_AES_KEY_B64?: string | undefined
   PROVIDER_TOKEN_CUSTODY_AES_KEY_ID?: string | undefined
@@ -310,41 +322,60 @@ const geminiTokensServedToday = async <
 }
 
 /**
- * Omega self-provisioning (2026-07-28): enforce the free-tier daily token
- * ceiling for SELF-PROVISIONED
- * (`nostr:`) identities on the hosted-Gemini proxy.
+ * Enforce the daily served-token ceiling on the hosted-Gemini proxy.
  *
- * Scope is deliberately narrow. `dailyTokenCeiling` has always been advertised
- * by the builtin grant and enforced by nothing; making it binding for EVERY
- * actor would silently cut off the owner's own Pylon runners and existing
- * github:/email:/agent callers mid-flight. Self-provisioned installs are a NEW
- * identity class with no existing workflow to break, and they are the only
- * class this change lets a stranger create — so they are the only class bounded
- * here. The wider gap is written up for the owner in
- * `docs/audits/2026-07-28-omega-nostr-self-provisioning-abuse-bounds.md`.
+ * HISTORY. Between 2026-07-28 and 2026-07-31 this gate inspected ONLY
+ * self-provisioned (`nostr:`) identities and returned "proceed" for every
+ * agent, GitHub, and email actor. The stated reason was that making it binding
+ * for EVERY actor would cut off the owner's own Pylon runners mid-flight.
+ *
+ * That left a live hole: `POST /api/agents/register` is unauthenticated public
+ * self-service (deliberately — it is the documented Forum/registered-agent
+ * door), it mints an `oa_agent_` token, `requireHostedComputeActor` accepts any
+ * such token, and this route then calls Google with the owner's shared
+ * `GEMINI_API_KEY`. So a stranger could mint an identity and draw owner-funded
+ * inference with no ceiling at all. Verified live on 2026-07-31: a freshly
+ * minted, never-authenticated token returned HTTP 200 and ledgered a real draw
+ * against `provider-account_google_gemini_worker_secret`.
+ *
+ * FIX. Bound EVERY actor, and preserve the original safety property by
+ * exempting an explicitly ADMITTED actor instead of an entire identity class.
+ * Admission reuses the existing `INFERENCE_INTERNAL_ACCOUNT_REFS` allowlist —
+ * the same set the chat-completions route already uses to exempt internal
+ * platform capacity — rather than inventing a second mechanism. A
+ * self-provisioned identity keeps its own (separately tunable) ceiling so the
+ * two classes stay independently steerable.
  */
-const selfProvisionedTokenCeilingRefusal = async <
+const hostedComputeTokenCeilingRefusal = async <
   RouteEnv extends ProviderAccountServiceEnv,
 >(
   env: RouteEnv,
   actorUserId: string,
 ): Promise<JsonHttpResult | undefined> => {
-  if (!isOmegaNostrSelfProvisionedUserId(actorUserId)) {
-    return undefined
-  }
+  const gate = makeHostedComputeDailyCeilingGate({
+    admittedAccountRefs: parseInternalAccountRefs(
+      env.INFERENCE_INTERNAL_ACCOUNT_REFS,
+    ),
+    servedTokensToday: id => geminiTokensServedToday(env, id),
+    tokensPerDay: id =>
+      isOmegaNostrSelfProvisionedUserId(id)
+        ? omegaNostrSelfProvisionDailyTokenCeiling(env)
+        : hostedComputeDailyTokenCeiling(
+            env.HOSTED_COMPUTE_DAILY_TOKEN_CEILING,
+          ),
+  })
 
-  const ceiling = omegaNostrSelfProvisionDailyTokenCeiling(env)
-  const served = await geminiTokensServedToday(env, actorUserId)
+  const refusal = await gate(actorUserId)
 
-  return served < ceiling
+  return refusal === undefined
     ? undefined
     : noStoreJsonResult(
         {
-          dailyTokenCeiling: ceiling,
-          error: 'free_tier_daily_token_ceiling_reached',
+          dailyTokenCeiling: refusal.dailyTokenCeiling,
+          error: refusal.error,
           message:
             'The free hosted-compute allowance for this install is used up for today.',
-          tokensServedToday: served,
+          tokensServedToday: refusal.tokensServedToday,
         },
         { status: 429 },
       )
@@ -934,7 +965,7 @@ export const makeProviderAccountServiceHandlers = <
       return noStoreJsonResult({ error: 'unauthorized' }, { status: 401 })
     }
 
-    const ceilingRefusal = await selfProvisionedTokenCeilingRefusal(
+    const ceilingRefusal = await hostedComputeTokenCeilingRefusal(
       env,
       actor.user.id,
     )

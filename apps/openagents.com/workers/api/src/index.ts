@@ -16011,15 +16011,30 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         // allowances by alternating routes. Never inspects a non-`nostr:`
         // caller.
         checkSelfProvisionedDailyCeiling: makeSelfProvisionedDailyCeilingGate({
+          // LEDGER KEY. The two routes this ceiling must cover write the
+          // identity into DIFFERENT columns:
+          //   - the google-gemini proxy binds `actor_user_id` (= `nostr:<pk>`),
+          //   - this chat-completions route's served-tokens recorder passes
+          //     ONLY `accountRef`, so its rows land with `actor_user_id` NULL
+          //     and `account_ref = 'openauth:nostr:<pk>'`.
+          // Matching `actor_user_id` alone therefore summed to ZERO for every
+          // row this route writes, which made the ceiling a no-op on the very
+          // lane it was added to bound (including the gpt-5.6-luna OpenAI
+          // passthrough). Matching both key forms makes it real. A row can
+          // satisfy only one branch, so nothing is double counted.
           servedTokensToday: async userId => {
             const row = await openAgentsDatabase(env)
               .prepare(
                 `SELECT COALESCE(SUM(total_tokens), 0) AS total
                    FROM token_usage_events
-                  WHERE actor_user_id = ?
+                  WHERE (actor_user_id = ? OR account_ref = ?)
                     AND observed_at >= ?`,
               )
-              .bind(userId, utcStartOfDayIsoTimestamp(currentIsoTimestamp()))
+              .bind(
+                userId,
+                `openauth:${userId}`,
+                utcStartOfDayIsoTimestamp(currentIsoTimestamp()),
+              )
               .first<{ total: number | null }>()
             return typeof row?.total === 'number' && Number.isFinite(row.total)
               ? row.total
