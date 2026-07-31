@@ -184,6 +184,10 @@ const productionProviders = await readFile(
   resolve(repositoryRoot, "infra/livekit-production/providers.tf"),
   "utf8",
 );
+const productionSecretIdentity = await readFile(
+  resolve(directory, "production/resources/secret-identity.yaml"),
+  "utf8",
+);
 const observabilityInfrastructure = await readFile(
   resolve(repositoryRoot, "infra/modules/livekit-observability/main.tf"),
   "utf8",
@@ -345,6 +349,21 @@ requireIncludes(
   productionInfrastructure,
   'redis_name           = "oa-livekit-redis"',
   "production Redis instance name",
+);
+requireIncludes(
+  productionInfrastructure,
+  'secret_reader_service_account_id       = "livekit-secret-reader"',
+  "production Secret Manager reader identity",
+);
+requireIncludes(
+  productionSecretIdentity,
+  "iam.gke.io/gcp-service-account: livekit-secret-reader@openagentsgemini.iam.gserviceaccount.com",
+  "production Secret Manager reader workload identity annotation",
+);
+requireExcludes(
+  productionSecretIdentity,
+  "oa-livekit-secret-reader@openagentsgemini.iam.gserviceaccount.com",
+  "nonexistent production Secret Manager reader identity",
 );
 requireIncludes(
   productionProviders,

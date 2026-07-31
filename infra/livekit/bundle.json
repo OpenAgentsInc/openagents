@@ -22,7 +22,7 @@
     "sourceCommit": "0b3fd288e3ef3263ec475ba0d78cf3ad77459981"
   },
   "configurationDigest": "sha256:b0bf0f0cb801943b789906c615d3277629a8f73bd6d06b52a60aaf2c86eb8a7d",
-  "renderedManifestDigest": "sha256:45bd75cb71c980d41576883a68454e517ef2b57f4fc43c249269a213ceff86df",
+  "renderedManifestDigest": "sha256:7ad79d279c739d85ea95a2a88b0559be12862b7d0548128c74e085b01be5e7e6",
   "resources": {
     "cluster": "oa-livekit-prod",
     "sfuNodePool": "oa-livekit-prod-sfu",
@@ -129,7 +129,7 @@
     },
     {
       "path": "infra/livekit/production/resources/secret-identity.yaml",
-      "sha256": "sha256:8d8670bec856ad7e93ec61c6f75129787c0285d31b7942e30b5822bbd5337c3f"
+      "sha256": "sha256:a9e57b609dde9a6e4af2abd0e77a38a3d6e608753744919712f2d02872e6cc43"
     },
     {
       "path": "infra/livekit/production/resources/signaling-certificate.yaml",
