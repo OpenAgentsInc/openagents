@@ -1636,7 +1636,6 @@ const validateUserSpecifiedBuildIdentityRequired = () => {
       captureCommand(
         "gcloud",
         [
-          "resource-manager",
           "org-policies",
           "describe",
           constraint,

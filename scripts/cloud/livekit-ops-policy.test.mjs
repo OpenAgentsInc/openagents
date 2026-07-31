@@ -905,6 +905,7 @@ test("deployment control Terraform fixes identity, source, route, and substituti
   assert.match(runner, /fleet",\s+"memberships",\s+"get-credentials"/u);
   assert.match(runner, /policy-troubleshoot/u);
   assert.match(runner, /org-policies/u);
+  assert.doesNotMatch(runner, /"resource-manager",\s+"org-policies"/u);
   assert.doesNotMatch(runner, /"cloudbuild\.builds\.create"/u);
   assert.match(runner, /DEFAULT_COMPUTE_SERVICE_ACCOUNT/u);
   assert.match(runner, /observed access was not conclusively NOT_GRANTED/u);
