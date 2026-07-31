@@ -137,6 +137,7 @@ SARAH_NOSTR_OWNER_PUBKEY: "bcf86577b45042c960c99fe4ac1380a3ef0565ccbdd5c81e3f20f
 # API revision is ready and all Sarah workers are registered, the operator arms
 # this exact revision with the second-phase command in the LiveKit runbook.
 SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED: "false"
+SARAH_LIVEKIT_COMMUNITY_AUTHORITY_JSON: '{"schema":"openagents.sarah.livekit.community-authority.v1","communities":[{"communityRef":"openagents-public","channelRefs":["agent-chat"],"relayUrl":"wss://relay.openagents.com","adminPubkeys":["e841147f262799821bbaa2930fcca982a575458f0e043e064a26ed8aba2046ed"]}]}'
 SARAH_LIVEKIT_URL: "wss://livekit.openagents.com"
 # Managed Sarah Realtime voice (#9272). Matches staging credit hold + rate so
 # mobile/desktop clients can reserve sessions; off-by-default until this flip.
