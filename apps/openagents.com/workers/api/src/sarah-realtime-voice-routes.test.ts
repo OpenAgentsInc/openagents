@@ -1028,6 +1028,64 @@ describe('managed Sarah Realtime voice session route', () => {
     )
   })
 
+  test('reconciles a provision-before-bind crash by deterministic broker key', async () => {
+    const provisioningOwnerRef = 'sarah-livekit-reconciler:test'
+    const intent = {
+      sessionRef: 'voice-crashed-after-provision',
+      generation: 7,
+      idempotencyKey: 'sarah-livekit:voice-crashed-after-provision:7',
+      provisioningOwnerRef,
+    }
+    const settleLiveKitProvisioningIntent = vi.fn(async () => undefined)
+    const markLiveKitProvisioningIntent = vi.fn(async () => undefined)
+    const store = {
+      claimLiveKitProvisioningIntents: vi.fn(async () => [intent]),
+      settleLiveKitProvisioningIntent,
+      markLiveKitProvisioningIntent,
+    } as unknown as SarahRealtimeVoiceStore
+    const cleanupByIdempotencyKey = vi.fn(async () => undefined)
+    const cleanupRoom = vi.fn(async () => undefined)
+    const close = vi.fn(async () => undefined)
+    const dependencies = {
+      broker: {
+        workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
+        sessionTicket: vi.fn(() => 'livekit-session-ticket'),
+        provision: vi.fn(),
+        cleanup: vi.fn(),
+        cleanupByIdempotencyKey,
+        cleanupRoom,
+      },
+      creditMsatPerMillionTokens: 2_000_000,
+      now: () => Date.UTC(2026, 6, 28, 12, 0, 0),
+      openStore: async () => ({ store, close }),
+    }
+
+    await expect(
+      reconcileSarahLiveKitProvisioningIntents(dependencies, {}),
+    ).resolves.toEqual({ cleaned: 1, failed: 0 })
+
+    expect(settleLiveKitProvisioningIntent).toHaveBeenCalledWith({
+      sessionRef: intent.sessionRef,
+      generation: intent.generation,
+      provisioningOwnerRef,
+      closeReason: 'livekit_provisioning_reconcile',
+      nowIso: '2026-07-28T12:00:00.000Z',
+    })
+    expect(cleanupByIdempotencyKey).toHaveBeenCalledWith(intent.idempotencyKey)
+    expect(cleanupRoom).not.toHaveBeenCalled()
+    expect(
+      settleLiveKitProvisioningIntent.mock.invocationCallOrder[0],
+    ).toBeLessThan(cleanupByIdempotencyKey.mock.invocationCallOrder[0] ?? 0)
+    expect(markLiveKitProvisioningIntent).toHaveBeenCalledWith({
+      sessionRef: intent.sessionRef,
+      generation: intent.generation,
+      provisioningOwnerRef,
+      state: 'cleaned',
+      nowIso: '2026-07-28T12:00:00.000Z',
+    })
+    expect(close).toHaveBeenCalledOnce()
+  })
+
   test('persists and echoes the voice-only mobile profile', async () => {
     const fixture = makeDependencies()
     const response = await handleSarahRealtimeVoiceSessionRequest(

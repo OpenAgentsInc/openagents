@@ -22,16 +22,17 @@ import { createHash } from 'node:crypto'
 import worker from '../index'
 import { defaultMakeKhalaSyncSqlClient } from '../khala-sync-push-routes'
 import {
-  SARAH_REALTIME_VOICE_SESSION_HEADER,
-  SARAH_REALTIME_VOICE_TICKET_HEADER,
-  parseSarahRealtimeVoiceRouteConfig,
-  reconcileSarahLiveKitTerminalRooms,
-  sha256Hex,
-} from '../sarah-realtime-voice-routes'
-import {
   makeSarahLiveKitRoomBroker,
   parseSarahLiveKitRoomBrokerConfig,
 } from '../sarah-livekit-room-broker'
+import {
+  SARAH_REALTIME_VOICE_SESSION_HEADER,
+  SARAH_REALTIME_VOICE_TICKET_HEADER,
+  parseSarahRealtimeVoiceRouteConfig,
+  reconcileSarahLiveKitProvisioningIntents,
+  reconcileSarahLiveKitTerminalRooms,
+  sha256Hex,
+} from '../sarah-realtime-voice-routes'
 import { assertAssetsDirExists } from './assets'
 import {
   isBindingUnavailableError,
@@ -56,6 +57,7 @@ import {
   makeSarahRealtimeBridgeData,
   makeSarahRealtimeWebSocketHandlers,
 } from './sarah-realtime-bridge'
+import { runSarahVoiceScheduledMaintenance } from './sarah-voice-maintenance'
 import {
   assertStartUiArtifactsExist,
   handleStartUiRequest,
@@ -102,7 +104,7 @@ const main = async (): Promise<void> => {
   // (CFG-7): it leases oa_infra_jobs and POSTs to this app's
   // /api/internal/queue/deliver route — no in-process consumer here.
 
-  const sweepExpiredSarahVoiceSessions = async (): Promise<void> => {
+  const runSarahVoiceMaintenance = async (): Promise<void> => {
     const voiceConfig = parseSarahRealtimeVoiceRouteConfig(runtime.env)
     const connectionString = runtime.env.KHALA_SYNC_DB?.connectionString?.trim()
     if (
@@ -112,36 +114,56 @@ const main = async (): Promise<void> => {
     ) {
       return
     }
-    if (voiceConfig.enabled) {
-      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
-      try {
-        const swept = await makeSarahRealtimeVoiceStore(client.sql).sweepExpired(
-          new Date().toISOString(),
-        )
-        if (swept > 0) log('sarah_voice_expired_sessions_processed', { swept })
-      } finally {
-        await client.end()
-      }
-    }
     const liveKitConfig = parseSarahLiveKitRoomBrokerConfig(runtime.env)
-    if (liveKitConfig === undefined) return
-    const cleanup = await reconcileSarahLiveKitTerminalRooms(
+    const makeLifecycleDependencies =
+      liveKitConfig === undefined
+        ? undefined
+        : () => ({
+            broker: makeSarahLiveKitRoomBroker(liveKitConfig),
+            creditMsatPerMillionTokens: voiceConfig.creditMsatPerMillionTokens,
+            openStore: async () => {
+              const opened =
+                await defaultMakeKhalaSyncSqlClient(connectionString)
+              return {
+                store: makeSarahRealtimeVoiceStore(opened.sql),
+                close: () => opened.end(),
+              }
+            },
+          })
+    await runSarahVoiceScheduledMaintenance(
       {
-        broker: makeSarahLiveKitRoomBroker(liveKitConfig),
-        creditMsatPerMillionTokens: voiceConfig.creditMsatPerMillionTokens,
-        openStore: async () => {
-          const opened = await defaultMakeKhalaSyncSqlClient(connectionString)
-          return {
-            store: makeSarahRealtimeVoiceStore(opened.sql),
-            close: () => opened.end(),
-          }
-        },
+        sweepExpired: voiceConfig.enabled
+          ? async () => {
+              const client =
+                await defaultMakeKhalaSyncSqlClient(connectionString)
+              try {
+                return await makeSarahRealtimeVoiceStore(
+                  client.sql,
+                ).sweepExpired(new Date().toISOString())
+              } finally {
+                await client.end()
+              }
+            }
+          : undefined,
+        reconcileProvisioning:
+          makeLifecycleDependencies === undefined
+            ? undefined
+            : () =>
+                reconcileSarahLiveKitProvisioningIntents(
+                  makeLifecycleDependencies(),
+                  runtime.env,
+                ),
+        reconcileTerminalRooms:
+          makeLifecycleDependencies === undefined
+            ? undefined
+            : () =>
+                reconcileSarahLiveKitTerminalRooms(
+                  makeLifecycleDependencies(),
+                  runtime.env,
+                ),
       },
-      runtime.env,
+      log,
     )
-    if (cleanup.cleaned > 0 || cleanup.failed > 0) {
-      log('sarah_livekit_terminal_rooms_reconciled', cleanup)
-    }
   }
 
   const runScheduled = async (source: string): Promise<void> => {
@@ -153,9 +175,9 @@ const main = async (): Promise<void> => {
     } as ScheduledController
     log('scheduled_tick_start', { source })
     try {
-      await sweepExpiredSarahVoiceSessions()
+      await runSarahVoiceMaintenance()
     } catch (error) {
-      log('sarah_voice_expiry_sweep_failed', {
+      log('sarah_voice_scheduled_maintenance_failed', {
         error: error instanceof Error ? error.message : String(error),
       })
     }
