@@ -128,3 +128,66 @@ describe('makeHostedComputeDailyCeilingGate', () => {
     expect(await gate('user_ops')).toBeUndefined()
   })
 })
+
+// The same regression guard as on the chat-completions gate. The 2026-07-31
+// owner lockout hit BOTH routes — `openagents/gpt-5.6-luna` on
+// chat-completions AND the `gemini-3.6-flash` fallback on this proxy — because
+// both key on the `nostr:` prefix, which an operator-admitted alpha member
+// shares with a self-provisioned install.
+describe('admitted identities are not free tier', () => {
+  const ADMITTED_ID = `nostr:${'e'.repeat(64)}`
+  const STRANGER_ID = `nostr:${'a'.repeat(64)}`
+
+  const gateWith = (admitted: ReadonlySet<string>) =>
+    makeHostedComputeDailyCeilingGate({
+      admittedAccountRefs: new Set<string>(),
+      isAdmittedIdentity: async id => admitted.has(id),
+      servedTokensToday: async () => 10_410_253,
+      tokensPerDay: () => 1_000_000,
+    })
+
+  test('an ADMITTED nostr actor is exempt even far over the ceiling', async () => {
+    await expect(
+      gateWith(new Set([ADMITTED_ID]))(ADMITTED_ID),
+    ).resolves.toBeUndefined()
+  })
+
+  test('a SELF-PROVISIONED nostr actor is still bounded', async () => {
+    await expect(
+      gateWith(new Set([ADMITTED_ID]))(STRANGER_ID),
+    ).resolves.toMatchObject({
+      dailyTokenCeiling: 1_000_000,
+      error: HOSTED_COMPUTE_CEILING_ERROR,
+      tokensServedToday: 10_410_253,
+    })
+  })
+
+  test('the membership check runs BEFORE the ledger read', async () => {
+    let ledgerReads = 0
+    const gate = makeHostedComputeDailyCeilingGate({
+      admittedAccountRefs: new Set<string>(),
+      isAdmittedIdentity: async () => true,
+      servedTokensToday: async () => {
+        ledgerReads += 1
+        return 0
+      },
+      tokensPerDay: () => 1_000_000,
+    })
+
+    await expect(gate(ADMITTED_ID)).resolves.toBeUndefined()
+    expect(ledgerReads).toBe(0)
+  })
+
+  test('a FAILING membership read falls through to the ceiling, never past it', async () => {
+    const gate = makeHostedComputeDailyCeilingGate({
+      admittedAccountRefs: new Set<string>(),
+      isAdmittedIdentity: async () => false,
+      servedTokensToday: async () => 10_410_253,
+      tokensPerDay: () => 1_000_000,
+    })
+
+    await expect(gate(ADMITTED_ID)).resolves.toMatchObject({
+      error: HOSTED_COMPUTE_CEILING_ERROR,
+    })
+  })
+})

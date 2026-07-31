@@ -162,20 +162,31 @@ OPENAUTH_ISSUER_URL: "https://auth.openagents.com"
 # module default and caps the aggregate stranger exposure at 10M/day rather
 # than the 50M the previous ceiling would have allowed.
 #
-# COHORT NOTE — READ BEFORE RAISING OR LOWERING THIS. The ceiling keys on the
-# `nostr:` id prefix, and the operator-admitted Sarah voice alpha cohort
-# (sarah_voice_alpha_memberships, admitted by scripts/admit-sarah-voice-npub.ts)
-# uses that SAME id form, so it is bounded by this number too. That is not
-# hypothetical: on 2026-07-31 the cohort's top member had drawn 10,410,253
-# tokens that UTC day and 165,657,539 all-time (140,649,583 of it on 07-29
-# alone), because the ledger read behind BOTH ceilings was a silent no-op until
-# 460e7eb80f. Arming at 200000 therefore does not only bound strangers — it cuts
-# that live alpha member's observed daily draw by ~52x, and would have bounded
-# it at 1000000 in any case. Splitting the admitted cohort onto its own limit is
-# still an open decision; until it is made, an admitted member who needs more
-# than 200000/day has to be added to INFERENCE_INTERNAL_ACCOUNT_REFS as
-# `openauth:nostr:<pubkey>` (which exempts them from BOTH ceilings entirely —
-# an unbounded grant, so it is an owner call, not an operator convenience).
+# WHO THIS NUMBER APPLIES TO. FREE-TIER identities only — that is, `nostr:`
+# identities with NO active row in `sarah_voice_alpha_memberships`. An
+# operator-admitted alpha member is exempt, by membership lookup, on both the
+# chat-completions gate and the google-gemini proxy gate
+# (workers/api/src/inference/admitted-identity.ts).
+#
+# That distinction is not cosmetic and must not be removed. This ceiling keys on
+# the `nostr:` id prefix, and scripts/admit-sarah-voice-npub.ts gives an admitted
+# member the SAME id form a self-provisioned install gets, so prefix alone
+# conflates "stranger who downloaded the DMG" with "identity the owner
+# deliberately admitted". The conflation was invisible for three days because
+# the ledger read behind both ceilings returned 0 unconditionally; when
+# 460e7eb80f made the read real, the owner's own admitted identity was refused
+# `free_tier_daily_token_ceiling_reached` on EVERY turn in his own app
+# (10,410,253 served against a 1,000,000 ceiling he was never the subject of),
+# across gpt-5.6-luna, the gemini-3.6-flash fallback, and thread titles.
+# Regression coverage lives beside both gates.
+#
+# So this number bounds strangers, not the alpha cohort. Lowering it does not
+# touch an admitted member; raising it does not widen their (separate, credit-
+# bounded) allowance. An admitted member who somehow still needs an env-level
+# exemption can be added to INFERENCE_INTERNAL_ACCOUNT_REFS as
+# `openauth:nostr:<pubkey>`, but that is the BROADER grant — it also confers
+# internal demand classification and internal-neutral lane access — so it is an
+# owner call, not an operator convenience.
 #
 # Ref: docs/audits/2026-07-28-omega-nostr-self-provisioning-abuse-bounds.md
 OMEGA_NOSTR_SELF_PROVISION_ENABLED: "1"

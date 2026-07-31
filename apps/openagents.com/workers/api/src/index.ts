@@ -609,6 +609,7 @@ import {
   handlePublicKhalaHeadToHeadApi,
 } from './inference/benchmark/head-to-head-routes'
 import { makeD1KhalaHeadToHeadStore } from './inference/benchmark/head-to-head-store'
+import { makeAdmittedIdentityLookup } from './inference/admitted-identity'
 import { makeSelfProvisionedDailyCeilingGate } from './inference/self-provisioned-daily-ceiling'
 import {
   handleChatCompletions,
@@ -16011,6 +16012,13 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         // allowances by alternating routes. Never inspects a non-`nostr:`
         // caller.
         checkSelfProvisionedDailyCeiling: makeSelfProvisionedDailyCeilingGate({
+          // ADMITTED != FREE TIER. The `nostr:` prefix this gate keys on is
+          // shared by operator-admitted alpha members, so without this lookup
+          // the ceiling meters the owner's own admitted identity as a stranger.
+          // It did exactly that on 2026-07-31. See `./inference/admitted-identity`.
+          isAdmittedIdentity: makeAdmittedIdentityLookup(
+            openAgentsDatabase(env),
+          ),
           // LEDGER KEY. The two routes this ceiling must cover write the
           // identity into DIFFERENT columns:
           //   - the google-gemini proxy binds `actor_user_id` (= `nostr:<pk>`),

@@ -75,6 +75,22 @@ This is the invariant ledger for `openagents`.
   identity on platform capacity has to consult the ceiling too. The ledger read
   fails closed. Other identity classes keep their previous unbounded behavior,
   and a change to that scope is a separate owner decision.
+- The free-tier ceiling applies to FREE-TIER identities only. An identity with
+  an active, unrevoked `sarah_voice_alpha_memberships` row is operator-admitted
+  and must never be metered as free tier, on either gate. The discriminator is
+  MEMBERSHIP, never the `nostr:` prefix: `scripts/admit-sarah-voice-npub.ts`
+  gives an admitted member the same id form a self-provisioned install gets, so
+  a prefix test conflates the two. That conflation locked the owner out of every
+  turn in his own app on 2026-07-31, the moment `460e7eb80f` made the ledger
+  read real — 10,410,253 served against a 1,000,000 ceiling he was never the
+  subject of. The membership lookup runs BEFORE the ledger read and resolves
+  `false` on failure, so a database problem meters an admitted member like free
+  tier rather than serving a stranger unbounded. Regression coverage:
+  `workers/api/src/inference/admitted-identity.test.ts` plus the
+  "admitted identities are not free tier" blocks beside both gates, which pin
+  that an admitted `nostr:` identity is exempt while a self-provisioned one at
+  the same overage is still refused. Arming
+  `OMEGA_NOSTR_SELF_PROVISION_ENABLED` must not re-capture the cohort.
 - The hosted-lane branch on `POST /api/v1/chat/completions` grants platform
   capacity with a hardcoded no-spend metering hook and bypasses the funding
   gate. That is deliberate for known accounts. It must never be reachable by an

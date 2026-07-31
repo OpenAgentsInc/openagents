@@ -114,6 +114,16 @@ export type HostedComputeDailyCeilingDeps = Readonly<{
   /** The ceiling for this actor (self-provisioned actors keep their own). */
   tokensPerDay: (actorUserId: string) => number
   admittedAccountRefs: ReadonlySet<string>
+  /**
+   * Is this `nostr:` actor OPERATOR-ADMITTED rather than free tier?
+   *
+   * `admittedAccountRefs` above is the env allowlist, which is a broader grant
+   * (internal demand classification, internal-neutral lane). This is the narrow
+   * one: cohort membership, which says only "not a stranger". Both are needed
+   * because the `nostr:` prefix conflates an admitted alpha member with a
+   * self-provisioned install — see `./admitted-identity`.
+   */
+  isAdmittedIdentity?: ((actorUserId: string) => Promise<boolean>) | undefined
 }>
 
 /**
@@ -124,6 +134,15 @@ export type HostedComputeDailyCeilingDeps = Readonly<{
 export const makeHostedComputeDailyCeilingGate = (deps: HostedComputeDailyCeilingDeps) => {
   return async (actorUserId: string): Promise<HostedComputeCeilingRefusal | undefined> => {
     if (isAdmittedHostedComputeActor(actorUserId, deps.admittedAccountRefs)) {
+      return undefined
+    }
+    // Cohort membership, checked before the ledger read for the same reasons as
+    // on the chat-completions gate. Resolves `false` on failure, so a database
+    // problem falls THROUGH to the ceiling rather than past it.
+    if (
+      deps.isAdmittedIdentity !== undefined &&
+      (await deps.isAdmittedIdentity(actorUserId))
+    ) {
       return undefined
     }
     const tokensPerDay = deps.tokensPerDay(actorUserId)

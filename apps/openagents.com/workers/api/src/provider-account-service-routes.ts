@@ -23,6 +23,7 @@ import {
   hostedComputeDailyTokenCeiling,
   makeHostedComputeDailyCeilingGate,
 } from './inference/hosted-compute-daily-ceiling'
+import { makeAdmittedIdentityLookup } from './inference/admitted-identity'
 import { parseInternalAccountRefs } from './inference/inference-internal-account'
 import {
   type MeteredExecutionAttempt,
@@ -386,6 +387,10 @@ const hostedComputeTokenCeilingRefusal = async <
     admittedAccountRefs: parseInternalAccountRefs(
       env.INFERENCE_INTERNAL_ACCOUNT_REFS,
     ),
+    // ADMITTED != FREE TIER, on this route for the same reason as on
+    // chat-completions: an operator-admitted alpha member carries a `nostr:`
+    // id and would otherwise be metered as a self-provisioned stranger.
+    isAdmittedIdentity: makeAdmittedIdentityLookup(openAgentsDatabase(env)),
     servedTokensToday: id => geminiTokensServedToday(env, id),
     tokensPerDay: id =>
       isOmegaNostrSelfProvisionedUserId(id)

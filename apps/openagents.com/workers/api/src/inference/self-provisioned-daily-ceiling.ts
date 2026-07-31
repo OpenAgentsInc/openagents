@@ -99,6 +99,17 @@ export type SelfProvisionedDailyCeilingDeps = Readonly<{
   servedTokensToday: (userId: string) => Promise<number>
   tokensPerDay: () => number
   nowMs?: (() => number) | undefined
+  /**
+   * Is this `nostr:` identity OPERATOR-ADMITTED rather than free tier?
+   *
+   * The `nostr:` prefix alone cannot answer that: `admit-sarah-voice-npub.ts`
+   * gives an admitted alpha member the same id form a self-provisioned install
+   * gets. Without this, an admitted identity is metered as a stranger — which
+   * on 2026-07-31 locked the owner out of every turn in his own app. See
+   * `./admitted-identity`. Absent => every `nostr:` identity is treated as free
+   * tier, which is the pre-existing (conflating) behavior.
+   */
+  isAdmittedIdentity?: ((userId: string) => Promise<boolean>) | undefined
 }>
 
 /**
@@ -119,6 +130,17 @@ export const makeSelfProvisionedDailyCeilingGate = (
   ): Promise<SelfProvisionedCeilingRefusal | undefined> => {
     const userId = selfProvisionedUserIdFromAccountRef(accountRef)
     if (userId === undefined) return undefined
+    // An operator-admitted identity is not free tier and must not be metered as
+    // free tier. Checked BEFORE the ledger read, so an admitted member costs
+    // one indexed membership lookup instead of a ledger scan. The lookup
+    // resolves `false` on failure, so a database problem falls THROUGH to the
+    // ceiling rather than past it.
+    if (
+      deps.isAdmittedIdentity !== undefined &&
+      (await deps.isAdmittedIdentity(userId))
+    ) {
+      return undefined
+    }
     const tokensPerDay = deps.tokensPerDay()
     let servedToday: number
     try {

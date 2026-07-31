@@ -147,3 +147,88 @@ describe('makeSelfProvisionedDailyCeilingGate', () => {
     await expect(gate('openauth:github:12345')).resolves.toBeUndefined()
   })
 })
+
+// The regression guard for the 2026-07-31 owner lockout.
+//
+// The gate keys on the `nostr:` prefix, which an OPERATOR-ADMITTED alpha member
+// shares with a self-provisioned install (`admit-sarah-voice-npub.ts` writes
+// exactly the same id form). Once the ledger read started counting, that
+// conflation refused the owner's own identity
+// `free_tier_daily_token_ceiling_reached` on every turn in his own app, at
+// 10,410,253 served against a 1,000,000 ceiling he was never the subject of.
+//
+// Membership — not prefix — is the discriminator. These tests must both hold,
+// and must keep holding when self-provisioning is armed.
+describe('admitted identities are not free tier', () => {
+  const ADMITTED_REF = `openauth:nostr:${'e'.repeat(64)}`
+
+  const gateWith = (
+    admitted: ReadonlySet<string>,
+    servedToday = 10_410_253,
+  ) =>
+    makeSelfProvisionedDailyCeilingGate({
+      isAdmittedIdentity: async userId => admitted.has(userId),
+      nowMs: () => nowMs,
+      servedTokensToday: async () => servedToday,
+      tokensPerDay: () => 1_000_000,
+    })
+
+  test('an ADMITTED nostr identity is exempt even far over the ceiling', async () => {
+    const gate = gateWith(new Set([`nostr:${'e'.repeat(64)}`]))
+    await expect(gate(ADMITTED_REF)).resolves.toBeUndefined()
+  })
+
+  test('a SELF-PROVISIONED nostr identity is still bounded', async () => {
+    // Same gate, same ceiling, same overage — only membership differs.
+    const gate = gateWith(new Set([`nostr:${'e'.repeat(64)}`]))
+    await expect(gate(SELF_PROVISIONED_REF)).resolves.toMatchObject({
+      error: SELF_PROVISIONED_CEILING_ERROR,
+      servedToday: 10_410_253,
+      tokensPerDay: 1_000_000,
+    })
+  })
+
+  test('the membership check runs BEFORE the ledger read', async () => {
+    // An admitted member must cost one indexed lookup, not a ledger scan.
+    let ledgerReads = 0
+    const gate = makeSelfProvisionedDailyCeilingGate({
+      isAdmittedIdentity: async () => true,
+      nowMs: () => nowMs,
+      servedTokensToday: async () => {
+        ledgerReads += 1
+        return 0
+      },
+      tokensPerDay: () => 1_000_000,
+    })
+
+    await expect(gate(ADMITTED_REF)).resolves.toBeUndefined()
+    expect(ledgerReads).toBe(0)
+  })
+
+  test('a FAILING membership read falls through to the ceiling, never past it', async () => {
+    // Fail-closed: the cost of a database problem is that an admitted member is
+    // briefly metered like free tier — never that a stranger is served unbounded.
+    const gate = makeSelfProvisionedDailyCeilingGate({
+      isAdmittedIdentity: async () => false,
+      nowMs: () => nowMs,
+      servedTokensToday: async () => 10_410_253,
+      tokensPerDay: () => 1_000_000,
+    })
+
+    await expect(gate(ADMITTED_REF)).resolves.toMatchObject({
+      error: SELF_PROVISIONED_CEILING_ERROR,
+    })
+  })
+
+  test('without the lookup the gate keeps its previous (conflating) behavior', async () => {
+    const gate = makeSelfProvisionedDailyCeilingGate({
+      nowMs: () => nowMs,
+      servedTokensToday: async () => 10_410_253,
+      tokensPerDay: () => 1_000_000,
+    })
+
+    await expect(gate(ADMITTED_REF)).resolves.toMatchObject({
+      error: SELF_PROVISIONED_CEILING_ERROR,
+    })
+  })
+})
