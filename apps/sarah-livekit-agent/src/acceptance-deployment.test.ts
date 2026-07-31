@@ -1,5 +1,8 @@
 import { describe, expect, test, vi } from "vite-plus/test";
-import { resolveDeployedSarahRevision } from "./acceptance-deployment.js";
+import {
+  mintProductionSubscriberGrant,
+  resolveDeployedSarahRevision,
+} from "./acceptance-deployment.js";
 
 describe("Sarah LiveKit deployed revision resolver", () => {
   test("binds the source revision tag to the converged deployment digest", async () => {
@@ -56,5 +59,54 @@ describe("Sarah LiveKit deployed revision resolver", () => {
       return "[]";
     });
     await expect(resolveDeployedSarahRevision(command)).rejects.toThrow("not fully converged");
+  });
+});
+
+describe("Sarah LiveKit acceptance subscriber grant", () => {
+  test("mints a short-lived subscribe-only token after the exact room is known", async () => {
+    const apiKey = "APIacceptance123";
+    const apiSecret = "s".repeat(48);
+    const command = vi.fn(async () =>
+      JSON.stringify({
+        api_key: apiKey,
+        api_secret: apiSecret,
+        keys_yaml: `${apiKey}: ${apiSecret}`,
+      }),
+    );
+    const roomRef = `oa-sarah-${"a".repeat(40)}`;
+    const subscriberRef = "acceptance-private-subscriber-123e4567-e89b-42d3-a456-426614174000";
+
+    const grant = await mintProductionSubscriberGrant(roomRef, subscriberRef, command);
+    const payloadPart = grant.split(".")[1];
+    expect(payloadPart).toBeDefined();
+    const payload = JSON.parse(Buffer.from(payloadPart ?? "", "base64url").toString("utf8"));
+    expect(payload.sub).toBe(subscriberRef);
+    expect(payload.video).toEqual({
+      room: roomRef,
+      roomJoin: true,
+      canPublish: false,
+      canSubscribe: true,
+      canPublishData: false,
+      canUpdateOwnMetadata: false,
+      roomAdmin: false,
+      roomCreate: false,
+      roomList: false,
+    });
+    expect(command).toHaveBeenCalledWith("gcloud", [
+      "secrets",
+      "versions",
+      "access",
+      "latest",
+      "--secret",
+      "oa-livekit-prod-server-keys",
+      "--project",
+      "openagentsgemini",
+    ]);
+  });
+
+  test("rejects a subscriber token outside the exact production room namespace", async () => {
+    await expect(
+      mintProductionSubscriberGrant("other-room", "subscriber", vi.fn()),
+    ).rejects.toThrow("outside the Sarah production namespace");
   });
 });

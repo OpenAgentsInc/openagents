@@ -5,7 +5,7 @@ export const SARAH_LIVEKIT_ACCEPTANCE_SCHEMA = "openagents.sarah.livekit-accepta
 export type SarahLiveKitAcceptanceScenario = Readonly<{
   kind: "private" | "community";
   bearer: string;
-  subscriberGrant: string;
+  subscriberGrant?: string;
   subscriberRef: string;
   ownerRef: string;
   deviceRef: string;
@@ -126,12 +126,12 @@ const assertScenarioInput = (scenario: SarahLiveKitAcceptanceScenario): void => 
     throw new Error("acceptance bearer is missing or invalid");
   }
   if (
-    scenario.subscriberGrant.trim() === "" ||
-    scenario.subscriberGrant.length > 4_096 ||
+    (scenario.subscriberGrant !== undefined &&
+      (scenario.subscriberGrant.trim() === "" || scenario.subscriberGrant.length > 4_096)) ||
     scenario.subscriberRef.trim() === "" ||
     scenario.subscriberRef.length > 256
   ) {
-    throw new Error("acceptance secondary subscriber grant is missing or invalid");
+    throw new Error("acceptance secondary subscriber identity or supplied grant is invalid");
   }
   if (
     scenario.pcm.byteLength < 24_000 ||

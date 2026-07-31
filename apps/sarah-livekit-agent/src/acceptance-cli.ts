@@ -34,12 +34,8 @@ https://openagents.com and wss://livekit.openagents.com. It requires:
   OA_LIVEKIT_OWNER_GATE=${OWNER_GATE}
   OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_BEARER
   OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_OWNER_REF
-  OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_SUBSCRIBER_GRANT
-  OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_SUBSCRIBER_REF
   OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_BEARER
   OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_OWNER_REF
-  OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_SUBSCRIBER_GRANT
-  OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_SUBSCRIBER_REF
 
 The two owner refs must differ because production accounting admits one active
 Sarah voice generation per owner. PCM and transcript content are consumed in
@@ -155,10 +151,7 @@ const run = async () => {
       privateScenario: {
         kind: "private",
         bearer: requiredEnvironment("OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_BEARER"),
-        subscriberGrant: requiredEnvironment(
-          "OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_SUBSCRIBER_GRANT",
-        ),
-        subscriberRef: requiredEnvironment("OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_SUBSCRIBER_REF"),
+        subscriberRef: `acceptance-private-subscriber-${runRef}`,
         ownerRef: privateOwnerRef,
         deviceRef: `acceptance-private-${runRef}`,
         threadRef: `acceptance-private-${runRef}`,
@@ -170,10 +163,7 @@ const run = async () => {
       communityScenario: {
         kind: "community",
         bearer: requiredEnvironment("OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_BEARER"),
-        subscriberGrant: requiredEnvironment(
-          "OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_SUBSCRIBER_GRANT",
-        ),
-        subscriberRef: requiredEnvironment("OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_SUBSCRIBER_REF"),
+        subscriberRef: `acceptance-community-subscriber-${runRef}`,
         ownerRef: communityOwnerRef,
         deviceRef: `acceptance-community-${runRef}`,
         threadRef: `acceptance-community-${runRef}`,

@@ -27,6 +27,7 @@ import {
   type SarahLiveKitAcceptanceScenario,
   type SarahLiveKitScenarioObservation,
 } from "./acceptance-harness.js";
+import { mintProductionSubscriberGrant } from "./acceptance-deployment.js";
 
 const API_ORIGIN = "https://openagents.com";
 const LIVEKIT_ORIGIN = "wss://livekit.openagents.com";
@@ -44,6 +45,7 @@ type Http = (input: string | URL, init?: RequestInit) => Promise<Response>;
 export type SarahLiveKitLiveDependencies = Readonly<{
   clock?: Clock;
   fetch?: Http;
+  mintSubscriberGrant?: (roomRef: string, subscriberRef: string) => Promise<string>;
 }>;
 
 const responseError = async (response: Response, operation: string): Promise<Error> => {
@@ -368,6 +370,7 @@ export const runLiveSarahLiveKitScenario = async (
       sleep: (durationMs) => new Promise((resolve) => setTimeout(resolve, durationMs)),
     } satisfies Clock);
   const http = dependencies.fetch ?? fetch;
+  const mintSubscriberGrant = dependencies.mintSubscriberGrant ?? mintProductionSubscriberGrant;
   const startedAtMs = clock.now();
   const identity = {
     ownerRef: scenario.ownerRef,
@@ -443,8 +446,11 @@ export const runLiveSarahLiveKitScenario = async (
     ) {
       throw new Error(`${scenario.kind} LiveKit room identity did not match the server grant`);
     }
+    const subscriberGrant =
+      scenario.subscriberGrant ??
+      (await mintSubscriberGrant(session.transport.roomRef, scenario.subscriberRef));
     await timeout(
-      subscriberRoom.connect(session.transport.livekitUrl, scenario.subscriberGrant, {
+      subscriberRoom.connect(session.transport.livekitUrl, subscriberGrant, {
         autoSubscribe: true,
         dynacast: false,
       }),
