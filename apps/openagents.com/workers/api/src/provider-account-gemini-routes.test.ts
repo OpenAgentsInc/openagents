@@ -390,7 +390,19 @@ describe('google gemini provider account routes', () => {
     }
   })
 
-  test('records Gemini usageMetadata from brokered successful responses idempotently', async () => {
+  // REGRESSION (P0 2026-07-31). This test previously asserted the DEFECT: it
+  // issued two requests with the same `Idempotency-Key`, asserted the upstream
+  // provider was called TWICE (`toHaveBeenCalledTimes(index + 1)`), and then
+  // asserted ONE ledger row. Two executions drew real owner-funded Gemini
+  // tokens and only one was metered, so every ceiling reading this ledger
+  // under-counted by the replay factor. Measured live, seven identical requests
+  // produced one row.
+  //
+  // The route always executes upstream (no response cache), so every request
+  // must meter. A caller-supplied idempotency key is correlation only. The
+  // exactly-once property that survives is per EXECUTION, pinned by the
+  // "metering the same execution twice writes one row" test below.
+  test('meters EVERY upstream execution, even byte-identical repeats sharing one idempotency key', async () => {
     const upstream = vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
       Promise.resolve(
         new Response(
@@ -415,8 +427,10 @@ describe('google gemini provider account routes', () => {
       OPENAGENTS_DB: store.db,
     }
 
+    const executions = 7
+
     try {
-      for (const index of [0, 1]) {
+      for (const index of Array.from({ length: executions }, (_, i) => i)) {
         const { ctx, promises } = makeExecutionContext()
         const response = await handlers.handleGoogleGeminiGenerateContentApi(
           new Request(
@@ -443,7 +457,20 @@ describe('google gemini provider account routes', () => {
         expect(upstream).toHaveBeenCalledTimes(index + 1)
       }
 
-      expect(store.rows).toHaveLength(1)
+      // N executions => N rows. This is the whole fix: the ledger the ceilings
+      // read now moves once per real provider draw.
+      expect(store.rows).toHaveLength(executions)
+      expect(new Set(store.rows.map(row => row.idempotency_key)).size).toBe(
+        executions,
+      )
+      expect(new Set(store.rows.map(row => row.id)).size).toBe(executions)
+      expect(
+        store.rows.reduce((sum, row) => sum + Number(row.total_tokens), 0),
+      ).toBe(165 * executions)
+      // The caller's key is retained as correlation, never as a suppressor.
+      expect(
+        JSON.parse(String(store.rows[0]?.safe_metadata_json)),
+      ).toMatchObject({ clientIdempotencyRef: 'gemini-route-success-1' })
       expect(store.rows[0]).toMatchObject({
         account_ref: 'provider-account_google_gemini_worker_secret',
         actor_user_id: 'agent:test',
@@ -522,6 +549,7 @@ describe('google gemini provider account routes', () => {
         total_tokens: 12,
       })
       expect(JSON.parse(String(store.rows[0]?.safe_metadata_json))).toEqual({
+        clientIdempotencyRef: 'gemini-route-failure-1',
         providerHttpStatus: 429,
         providerRequestStatus: 'failed',
       })

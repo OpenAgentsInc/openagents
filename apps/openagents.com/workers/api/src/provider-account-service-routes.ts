@@ -24,6 +24,11 @@ import {
   makeHostedComputeDailyCeilingGate,
 } from './inference/hosted-compute-daily-ceiling'
 import { parseInternalAccountRefs } from './inference/inference-internal-account'
+import {
+  type MeteredExecutionAttempt,
+  meteredExecutionKeyInput,
+  newMeteredExecutionAttempt,
+} from './inference/metered-execution-attempt'
 import { inferenceEntitlementsMirrorForEnv } from './inference-entitlements-store'
 import {
   optionalBoolean,
@@ -411,7 +416,7 @@ const insertGeminiTokenUsageEvent = async <
 >(
   input: Readonly<{
     actor: ProviderServiceActor
-    bodyHash: string
+    attempt: MeteredExecutionAttempt
     env: RouteEnv
     model: string
     request: Request
@@ -419,17 +424,30 @@ const insertGeminiTokenUsageEvent = async <
     usage: AutopilotTokenUsage
   }>,
 ): Promise<void> => {
-  const requestIdempotencyKey =
-    input.request.headers.get('idempotency-key')?.trim() ||
-    input.request.headers.get('x-openagents-idempotency-key')?.trim() ||
-    `body:${input.bodyHash}`
+  // Identity is the EXECUTION ATTEMPT, minted before the upstream call — never
+  // the request body and never a caller-chosen header. See
+  // `inference/metered-execution-attempt.ts` for why the body hash was there
+  // and why it under-counted every ceiling built on this ledger.
   const eventHash = await sha256Hex(
-    `omega:google_gemini:${input.actor.user.id}:${input.model}:${requestIdempotencyKey}`,
+    meteredExecutionKeyInput({
+      actorUserId: input.actor.user.id,
+      attempt: input.attempt,
+      model: input.model,
+      scope: 'omega:google_gemini',
+    }),
   )
   const eventId = `token_event_omega_gemini_${eventHash.slice(0, 32)}`
   const idempotencyKey = `omega:google_gemini:${eventHash}`
   const observedAt = currentIsoTimestamp()
+  // A caller's `Idempotency-Key` is CORRELATION ONLY: it groups one client's
+  // retries for an operator, and it must never decide whether a row is written.
+  const clientIdempotencyRef =
+    optionalSafeRefHeader(input.request, 'idempotency-key') ??
+    optionalSafeRefHeader(input.request, 'x-openagents-idempotency-key')
   const safeMetadataJson = JSON.stringify({
+    ...(clientIdempotencyRef === undefined
+      ? {}
+      : { clientIdempotencyRef }),
     providerHttpStatus: input.response.status,
     providerRequestStatus: responseStatusLabel(input.response),
   })
@@ -513,7 +531,7 @@ const recordGoogleGeminiTokenUsage = async <
 >(
   input: Readonly<{
     actor: ProviderServiceActor
-    body: string
+    attempt: MeteredExecutionAttempt
     env: RouteEnv
     model: string
     request: Request
@@ -529,7 +547,7 @@ const recordGoogleGeminiTokenUsage = async <
 
   await insertGeminiTokenUsageEvent({
     actor: input.actor,
-    bodyHash: await sha256Hex(input.body),
+    attempt: input.attempt,
     env: input.env,
     model: input.model,
     request: input.request,
@@ -1012,6 +1030,10 @@ export const makeProviderAccountServiceHandlers = <
     }
 
     const body = await request.text()
+    // Mint the metering identity BEFORE the provider call, so exactly one
+    // ledger row exists per upstream execution even if the metering write is
+    // retried, and so two identical requests can never collapse into one row.
+    const attempt = newMeteredExecutionAttempt()
     const response = await fetch(googleGeminiEndpoint(model), {
       method: 'POST',
       headers: {
@@ -1025,7 +1047,7 @@ export const makeProviderAccountServiceHandlers = <
       ctx,
       recordGoogleGeminiTokenUsage({
         actor,
-        body,
+        attempt,
         env,
         model,
         request,
