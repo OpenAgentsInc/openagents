@@ -1753,7 +1753,9 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             ${input.workerRoomSid ?? null}::text IS NULL
             OR binding.worker_room_sid = ${input.workerRoomSid ?? null}
           )
-          AND binding.state IN ('prepared', 'active')
+          AND binding.state IN (
+            'prepared', 'active', 'cleanup_ready', 'cleanup_failed', 'cleaned'
+          )
           AND binding.join_expires_at > ${input.nowIso}
           AND session.session_ref = binding.session_ref
           AND session.state IN ('reserved', 'connected')
