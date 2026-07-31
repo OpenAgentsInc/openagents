@@ -3787,8 +3787,6 @@ const sarahRealtimeVoiceDependenciesForEnv = (workerEnv: Env) => ({
 const sarahLiveKitWorkerRouteDependencies = {
   controlRoot: (workerEnv: Env) =>
     parseSarahLiveKitControlRoot(workerEnv.SARAH_LIVEKIT_CONTROL_ROOT),
-  creditMsatPerMillionTokens: (workerEnv: Env) =>
-    sarahRealtimeVoiceConfigForEnv(workerEnv)?.creditMsatPerMillionTokens,
   openStore: openSarahRealtimeVoiceStore,
   cleanup: async (
     workerEnv: Env,
@@ -14062,9 +14060,6 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       Effect.promise(() =>
         handleSarahRealtimeVoiceAccountingReconciliationRequest(
           {
-            creditMsatPerMillionTokens: operatorEnv =>
-              parseSarahRealtimeVoiceRouteConfig(operatorEnv)
-                ?.creditMsatPerMillionTokens,
             openStore: openSarahRealtimeVoiceStore,
             requireOperator: async (
               operatorRequest,

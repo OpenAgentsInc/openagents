@@ -63,7 +63,6 @@ const store = {
 const cleanup = vi.fn(async () => undefined);
 const dependencies = {
   controlRoot: () => controlRoot,
-  creditMsatPerMillionTokens: () => 100_000,
   now: () => 2_000_000_000_000,
   openStore: async () => ({ store, close: async () => undefined }),
   cleanup,

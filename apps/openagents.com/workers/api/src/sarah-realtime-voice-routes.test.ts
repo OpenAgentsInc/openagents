@@ -300,6 +300,7 @@ describe('managed Sarah Realtime voice session route', () => {
         ticketDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
         admissionBinding: {
           admissionRef: 'sarah_voice_admission:test',
+          creditRateMsatPerMillionTokens: 100_000,
           spendableRemainingCreditMsat: 100_000,
           termsDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
         },
@@ -2006,7 +2007,6 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
         {
           openStore: fixture.dependencies.openStore,
           requireOperator: async () => undefined,
-          creditMsatPerMillionTokens: () => 100_000,
         },
         new Request(
           'https://openagents.com/api/operator/omega/sarah/voice/accounting/reconcile',
@@ -2017,6 +2017,7 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
               reconciliationRef: 'reconciliation-1',
               sessionRef: identity.sessionRef,
               generation: identity.generation,
+              providerSessionRefDigest: 'a'.repeat(64),
               providerEvidenceRefs: ['provider-export-1'],
               usage: [],
               reason: 'Verified against provider export',
@@ -2038,7 +2039,6 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
         {
           openStore: fixture.dependencies.openStore,
           requireOperator: async () => ({ actorRef: 'operator:user-admin' }),
-          creditMsatPerMillionTokens: () => 100_000,
           now: fixture.dependencies.now,
         },
         new Request(
@@ -2051,6 +2051,7 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
               reconciliationRef: 'reconciliation-1',
               sessionRef: identity.sessionRef,
               generation: identity.generation,
+              providerSessionRefDigest: 'a'.repeat(64),
               providerEvidenceRefs: ['provider-export-1'],
               usage: [
                 {
@@ -2087,10 +2088,10 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
       reconciliationPayloadDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
       sessionRef: identity.sessionRef,
       generation: identity.generation,
+      providerSessionRefDigest: 'a'.repeat(64),
       operatorActorRef: 'operator:user-admin',
       reason: 'Verified against provider export',
       providerEvidenceRefs: ['provider-export-1'],
-      creditRateMsatPerMillionTokens: 100_000,
       usage: [
         {
           usageKind: 'response',
@@ -2134,7 +2135,6 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
         {
           openStore: fixture.dependencies.openStore,
           requireOperator: async () => ({ actorRef: 'operator:user-admin' }),
-          creditMsatPerMillionTokens: () => 100_000,
         },
         new Request(
           'https://openagents.com/api/operator/omega/sarah/voice/accounting/reconcile',
@@ -2145,6 +2145,7 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
               reconciliationRef: 'reconciliation-1',
               sessionRef: identity.sessionRef,
               generation: identity.generation,
+              providerSessionRefDigest: 'b'.repeat(64),
               providerEvidenceRefs: ['provider-export-changed'],
               usage: [],
               reason: 'Changed evidence',

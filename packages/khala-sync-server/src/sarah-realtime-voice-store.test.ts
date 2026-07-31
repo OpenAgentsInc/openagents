@@ -106,6 +106,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       creditMode: "metered",
       entitlementRef: null,
       admissionCohortRef: "sarah_voice_cohort:alpha_v1",
+      creditRateMsatPerMillionTokens: 100_000,
       reservedMsat: 1_000,
       ticketExpiresAt: "2026-07-28T12:01:00.000Z",
       sessionExpiresAt: "2026-07-28T12:10:00.000Z",
@@ -161,7 +162,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
     expect(settled).toMatchObject({
       state: "settled",
       clientProfile: "mobile_voice_only",
-      chargedMsat: 250,
+      chargedMsat: 15,
       reservedMsat: 1_000,
     });
 
@@ -170,14 +171,14 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         FROM agent_balances
         WHERE actor_ref = 'agent:user-sarah-voice'
       `;
-    expect(Number(balance?.balance_msat)).toBe(9_750);
+    expect(Number(balance?.balance_msat)).toBe(9_985);
     expect(Number(balance?.held_msat)).toBe(0);
     const [receipt] = await sql`
         SELECT cost_msat, state
         FROM pay_ins
         WHERE idempotency_key = 'sarah:voice:settle:voice-session-1'
       `;
-    expect(Number(receipt?.cost_msat)).toBe(250);
+    expect(Number(receipt?.cost_msat)).toBe(15);
     expect(receipt?.state).toBe("paid");
 
     await store.settle({
@@ -190,7 +191,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         FROM agent_balances
         WHERE actor_ref = 'agent:user-sarah-voice'
       `;
-    expect(Number(afterReplay?.balance_msat)).toBe(9_750);
+    expect(Number(afterReplay?.balance_msat)).toBe(9_985);
     expect(Number(afterReplay?.held_msat)).toBe(0);
     expect(
       await store.readSettlement({
@@ -198,8 +199,8 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         ownerUserId: "user-sarah-voice",
       }),
     ).toMatchObject({
-      finalChargeMsat: 250,
-      spendableRemainingCreditMsat: 9_750,
+      finalChargeMsat: 15,
+      spendableRemainingCreditMsat: 9_985,
       settlementReceiptRef: "sarah_voice_settlement:voice-session-1",
     });
   });
@@ -220,6 +221,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       creditMode: "metered",
       entitlementRef: null,
       admissionCohortRef: "sarah_voice_cohort:alpha_v1",
+      creditRateMsatPerMillionTokens: 100_000,
       reservedMsat: 1_000,
       ticketExpiresAt: "2026-07-28T12:01:00.000Z",
       sessionExpiresAt: "2026-07-28T12:10:00.000Z",
@@ -284,6 +286,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       creditMode: "staging_owner_entitlement",
       entitlementRef: entitlement?.entitlementRef ?? null,
       admissionCohortRef: "sarah_voice_cohort:staging_owner_v1",
+      creditRateMsatPerMillionTokens: 100_000,
       reservedMsat: 0,
       ticketExpiresAt: "2026-07-28T12:01:00.000Z",
       sessionExpiresAt: "2026-07-28T12:05:00.000Z",
@@ -309,7 +312,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       },
     });
     expect(usage).toEqual({
-      chargedMsat: 500,
+      chargedMsat: 15,
       reservedMsat: 0,
       creditLimitReached: false,
     });
@@ -322,7 +325,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       state: "settled",
       creditMode: "staging_owner_entitlement",
       reservedMsat: 0,
-      chargedMsat: 500,
+      chargedMsat: 15,
     });
     const [payment] = await sql`
       SELECT id FROM pay_ins
@@ -362,6 +365,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         creditMode: "metered",
         entitlementRef: null,
         admissionCohortRef: "sarah_voice_cohort:alpha_v1",
+        creditRateMsatPerMillionTokens: 100_000,
         reservedMsat: 1,
         ticketExpiresAt: "2026-07-28T12:05:00.000Z",
         sessionExpiresAt: "2026-07-28T12:09:00.000Z",
@@ -399,6 +403,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       creditMode: "metered",
       entitlementRef: null,
       admissionCohortRef: "sarah_voice_cohort:alpha_v1",
+      creditRateMsatPerMillionTokens: 100_000,
       reservedMsat: 1_000,
       ticketExpiresAt: "2026-07-28T12:01:00.000Z",
       sessionExpiresAt: "2026-07-28T12:10:00.000Z",
@@ -414,6 +419,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       disclosureRef: common.disclosureRef,
       clientProfile: common.clientProfile,
       admissionCohortRef: common.admissionCohortRef,
+      creditRateMsatPerMillionTokens: 100_000,
       creditMode: common.creditMode,
       termsDigest: "a".repeat(64),
       spendableRemainingCreditMsat: spendableMsat,
@@ -424,8 +430,22 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
     await expect(
       store.reserve({
         ...common,
+        creditRateMsatPerMillionTokens: 200_000,
         admissionBinding: {
           admissionRef: "sarah_voice_admission:bound-1",
+          creditRateMsatPerMillionTokens: 200_000,
+          termsDigest: "a".repeat(64),
+          spendableRemainingCreditMsat: spendableMsat,
+        },
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceAdmissionRejectedError);
+
+    await expect(
+      store.reserve({
+        ...common,
+        admissionBinding: {
+          admissionRef: "sarah_voice_admission:bound-1",
+          creditRateMsatPerMillionTokens: 100_000,
           termsDigest: "b".repeat(64),
           spendableRemainingCreditMsat: spendableMsat,
         },
@@ -436,6 +456,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       ...common,
       admissionBinding: {
         admissionRef: "sarah_voice_admission:bound-1",
+        creditRateMsatPerMillionTokens: 100_000,
         termsDigest: "a".repeat(64),
         spendableRemainingCreditMsat: spendableMsat,
       },
@@ -448,6 +469,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         ticketDigest: "2".repeat(64),
         admissionBinding: {
           admissionRef: "sarah_voice_admission:bound-1",
+          creditRateMsatPerMillionTokens: 100_000,
           termsDigest: "a".repeat(64),
           spendableRemainingCreditMsat: spendableMsat,
         },
@@ -465,6 +487,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       disclosureRef: common.disclosureRef,
       clientProfile: common.clientProfile,
       admissionCohortRef: common.admissionCohortRef,
+      creditRateMsatPerMillionTokens: 100_000,
       creditMode: common.creditMode,
       termsDigest: "c".repeat(64),
       spendableRemainingCreditMsat: spendableMsat,
@@ -486,6 +509,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         nowIso: "2026-07-28T12:03:00.000Z",
         admissionBinding: {
           admissionRef: "sarah_voice_admission:balance-change",
+          creditRateMsatPerMillionTokens: 100_000,
           termsDigest: "c".repeat(64),
           spendableRemainingCreditMsat: spendableMsat,
         },
@@ -537,6 +561,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         creditMode: "metered",
         entitlementRef: null,
         admissionCohortRef: "sarah_voice_cohort:alpha_v1",
+        creditRateMsatPerMillionTokens: 100_000,
         reservedMsat: 1,
         ticketExpiresAt: "2026-07-28T12:07:00.000Z",
         sessionExpiresAt: "2026-07-28T12:10:00.000Z",
@@ -585,6 +610,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       creditMode: "metered",
       entitlementRef: null,
       admissionCohortRef: "sarah_voice_cohort:alpha_v1",
+      creditRateMsatPerMillionTokens: 100_000,
       reservedMsat: 1_000,
       nowIso: "2026-07-28T13:00:00.000Z",
     } as const;
@@ -598,6 +624,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       disclosureRef: reservation.disclosureRef,
       clientProfile: reservation.clientProfile,
       admissionCohortRef: reservation.admissionCohortRef,
+      creditRateMsatPerMillionTokens: 100_000,
       creditMode: reservation.creditMode,
       termsDigest: "8".repeat(64),
       spendableRemainingCreditMsat: 10_000,
@@ -615,6 +642,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       sessionExpiresAt: "2026-07-28T13:10:00.000Z",
       admissionBinding: {
         admissionRef: "sarah_voice_admission:livekit-1",
+        creditRateMsatPerMillionTokens: 100_000,
         termsDigest: "8".repeat(64),
         spendableRemainingCreditMsat: 10_000,
       },
@@ -636,6 +664,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         nowIso: "2026-07-28T13:00:01.000Z",
         admissionBinding: {
           admissionRef: "sarah_voice_admission:livekit-1",
+          creditRateMsatPerMillionTokens: 100_000,
           termsDigest: "9".repeat(64),
           spendableRemainingCreditMsat: 9_000,
         },
@@ -1099,13 +1128,13 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       store.recordUsage({
         sessionRef: binding.sessionRef,
         generation: 1,
-        usage: { ...usage, chargeMsat: usage.chargeMsat + 1 },
+        usage: { ...usage, inputTokens: usage.inputTokens + 1 },
       }),
     ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
     await store.recordUsage({
       sessionRef: binding.sessionRef,
       generation: 1,
-      usage,
+      usage: { ...usage, chargeMsat: 999_999 },
     });
     const applicationDatabaseUrl = (applicationName: string): string => {
       const databaseUrl = new URL(pg.urlFor("khala_sync_sarah_voice"));
@@ -1263,7 +1292,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       WHERE session_ref = ${binding.sessionRef}
     `;
     expect(draining?.state).toBe("connected");
-    expect(Number(draining?.charged_msat)).toBe(250);
+    expect(Number(draining?.charged_msat)).toBe(15);
     const [stopRequested] = await sql`
       SELECT worker_stop_reason, worker_stop_close_reason
       FROM sarah_livekit_room_bindings
@@ -1283,7 +1312,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       }),
     ).resolves.toMatchObject({
       state: "connected",
-      chargedMsat: 250,
+      chargedMsat: 15,
     });
     await expect(
       store.applyLiveKitWorkerEvent({
@@ -1302,7 +1331,6 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
           cachedInputTokens: 0,
           audioInputTokens: 40,
           audioOutputTokens: 10,
-          chargeMsat: 100,
         },
         nowIso: "2026-07-28T13:01:00.500Z",
       }),
@@ -1339,7 +1367,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         reason: "operator_kill",
         nowIso: "2026-07-28T13:01:02.000Z",
       }),
-    ).toMatchObject({ state: "settled", chargedMsat: 350 });
+    ).toMatchObject({ state: "settled", chargedMsat: 20 });
     const [revokedSession] = await sql`
       SELECT close_reason
       FROM sarah_realtime_voice_sessions
@@ -1476,7 +1504,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         device_ref, thread_ref, generation, disclosure_ref, state,
         reserved_msat, charged_msat, ticket_expires_at, session_expires_at,
         created_at, updated_at, connected_at, client_profile, credit_mode,
-        transport_kind
+        transport_kind, credit_rate_msat_per_million_tokens
       ) VALUES (
         'voice-livekit-reconciliation',
         'voice-livekit-reconciliation-reservation',
@@ -1486,7 +1514,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         1000, 15, '2026-07-28T13:31:00.000Z',
         '2026-07-28T13:40:00.000Z', '2026-07-28T13:30:00.000Z',
         '2026-07-28T13:31:00.000Z', '2026-07-28T13:30:30.000Z',
-        'omega_editor', 'metered', 'livekit_room_v1'
+        'omega_editor', 'metered', 'livekit_room_v1', 100000
       )
     `;
     await sql`
@@ -1532,10 +1560,10 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       reconciliationPayloadDigest: "e".repeat(64),
       sessionRef: "voice-livekit-reconciliation",
       generation: 1,
+      providerSessionRefDigest: "c".repeat(64),
       operatorActorRef: "operator:reconciliation-test",
       reason: "Verified against provider usage export",
       providerEvidenceRefs: ["provider-export:2026-07-28:voice-livekit-reconciliation"],
-      creditRateMsatPerMillionTokens: 100_000,
       usage: [
         {
           usageKind: "response" as const,
@@ -1559,6 +1587,20 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       ],
       nowIso: "2026-07-28T13:32:00.000Z",
     } as const;
+    await expect(
+      store.reconcileLiveKitAccounting({
+        ...reconciliation,
+        reconciliationRef: "operator-reconciliation-wrong-provider-session",
+        reconciliationPayloadDigest: "9".repeat(64),
+        providerSessionRefDigest: "f".repeat(64),
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
+    const [stillUncertain] = await sql`
+      SELECT state
+      FROM sarah_realtime_voice_sessions
+      WHERE session_ref = ${reconciliation.sessionRef}
+    `;
+    expect(stillUncertain?.state).toBe("accounting_uncertain");
     const firstReconciliation = await store.reconcileLiveKitAccounting(reconciliation);
     expect(firstReconciliation).toMatchObject({
       reconciliationRef: reconciliation.reconciliationRef,
@@ -1644,7 +1686,8 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         session_ref, reservation_ref, owner_user_id, owner_actor_ref,
         device_ref, thread_ref, generation, disclosure_ref, state,
         reserved_msat, charged_msat, ticket_expires_at, session_expires_at,
-        created_at, updated_at, client_profile, credit_mode, transport_kind
+        created_at, updated_at, client_profile, credit_mode, transport_kind,
+        credit_rate_msat_per_million_tokens
       ) VALUES (
         'voice-after-reconciliation', 'reservation-after-reconciliation',
         'user-sarah-reconciliation', 'agent:user-sarah-reconciliation',
@@ -1652,7 +1695,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         'disclosure-after-reconciliation', 'reserved', 1000, 0,
         '2026-07-28T13:36:00.000Z', '2026-07-28T13:45:00.000Z',
         '2026-07-28T13:35:00.000Z', '2026-07-28T13:35:00.000Z',
-        'omega_editor', 'metered', 'livekit_room_v1'
+        'omega_editor', 'metered', 'livekit_room_v1', 100000
       )
     `).resolves.toBeDefined();
   });
@@ -1665,7 +1708,8 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
           session_ref, reservation_ref, owner_user_id, owner_actor_ref,
           device_ref, thread_ref, generation, disclosure_ref, state,
           reserved_msat, charged_msat, ticket_expires_at, session_expires_at,
-          created_at, updated_at, client_profile, credit_mode, transport_kind
+          created_at, updated_at, client_profile, credit_mode, transport_kind,
+          credit_rate_msat_per_million_tokens
         )
         SELECT
           'capacity-session-' || slot,
@@ -1685,7 +1729,8 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
           '2026-07-28T14:00:00.000Z',
           'omega_editor',
           'metered',
-          'livekit_room_v1'
+          'livekit_room_v1',
+          100000
         FROM generate_series(1, 21) AS slot
       `;
       await sql`
@@ -1716,14 +1761,15 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         INSERT INTO sarah_voice_admissions (
           admission_ref, owner_user_id, device_ref, thread_ref, session_ref,
           generation, disclosure_ref, client_profile, admission_cohort_ref,
-          credit_mode, terms_digest, spendable_remaining_credit_msat, state,
+          credit_mode, credit_rate_msat_per_million_tokens, terms_digest,
+          spendable_remaining_credit_msat, state,
           issued_at, expires_at, consumed_at
         ) VALUES (
           'capacity-admission-21', 'capacity-owner-21',
           'capacity-device-21', 'capacity-thread-21',
           'capacity-session-21', 1, 'capacity-disclosure-21',
           'omega_editor', 'sarah_voice_cohort:alpha_v1', 'metered',
-          ${"e".repeat(64)}, 1000, 'consumed',
+          100000, ${"e".repeat(64)}, 1000, 'consumed',
           '2026-07-28T14:00:00.000Z', '2026-07-28T14:02:00.000Z',
           '2026-07-28T14:00:00.000Z'
         )

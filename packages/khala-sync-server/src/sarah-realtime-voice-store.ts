@@ -98,6 +98,9 @@ export type SarahVoiceUsage = Readonly<{
   observedAt: string;
 }>;
 
+type SarahVoiceProviderUsage = Omit<SarahVoiceUsage, "chargeMsat"> &
+  Readonly<{ chargeMsat?: number }>;
+
 export type SarahVoiceLiveKitWorkerStopReason =
   | "hold_exhausted"
   | "membership_revoked"
@@ -133,13 +136,13 @@ export type SarahVoiceLiveKitWorkerEvent =
   | (SarahVoiceLiveKitWorkerEventCommon &
       Readonly<{
         eventKind: "response_usage";
-        usage: Omit<SarahVoiceUsage, "observedAt"> &
+        usage: Omit<SarahVoiceUsage, "observedAt" | "chargeMsat"> &
           Required<Pick<SarahVoiceUsage, "providerStatus">>;
       }>)
   | (SarahVoiceLiveKitWorkerEventCommon &
       Readonly<{
         eventKind: "transcription_usage";
-        usage: Omit<SarahVoiceUsage, "observedAt">;
+        usage: Omit<SarahVoiceUsage, "observedAt" | "chargeMsat">;
       }>)
   | (SarahVoiceLiveKitWorkerEventCommon &
       Readonly<{
@@ -358,6 +361,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       clientProfile: SarahVoiceClientProfile;
       admissionCohortRef: string;
       creditMode: SarahVoiceCreditMode;
+      creditRateMsatPerMillionTokens: number;
       termsDigest: string;
       spendableRemainingCreditMsat: number | null;
       nowIso: string;
@@ -365,17 +369,27 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }>,
   ): Promise<SarahVoiceAdmissionRecord> => {
     try {
+      if (
+        !Number.isSafeInteger(input.creditRateMsatPerMillionTokens) ||
+        input.creditRateMsatPerMillionTokens <= 0
+      ) {
+        throw new SarahVoiceAdmissionRejectedError(
+          "The Sarah voice admission credit rate is invalid",
+        );
+      }
       const rows = (await sql`
         INSERT INTO sarah_voice_admissions (
           admission_ref, owner_user_id, device_ref, thread_ref, session_ref,
           generation, disclosure_ref, client_profile, admission_cohort_ref,
-          credit_mode, terms_digest, spendable_remaining_credit_msat, state,
+          credit_mode, credit_rate_msat_per_million_tokens, terms_digest,
+          spendable_remaining_credit_msat, state,
           issued_at, expires_at, consumed_at
         ) VALUES (
           ${input.admissionRef}, ${input.ownerUserId}, ${input.deviceRef},
           ${input.threadRef}, ${input.sessionRef}, ${input.generation},
           ${input.disclosureRef}, ${input.clientProfile},
           ${input.admissionCohortRef}, ${input.creditMode},
+          ${input.creditRateMsatPerMillionTokens},
           ${input.termsDigest}, ${input.spendableRemainingCreditMsat}, 'active',
           ${input.nowIso}, ${input.expiresAt}, NULL
         )
@@ -578,6 +592,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       creditMode: SarahVoiceCreditMode;
       entitlementRef: string | null;
       admissionCohortRef: string;
+      creditRateMsatPerMillionTokens: number;
       reservedMsat: number;
       ticketExpiresAt: string;
       sessionExpiresAt: string;
@@ -585,11 +600,23 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       admissionBinding?: Readonly<{
         admissionRef: string;
         termsDigest: string;
+        creditRateMsatPerMillionTokens: number;
         spendableRemainingCreditMsat: number | null;
       }>;
     }>,
   ): Promise<SarahVoiceReservationRecord> => {
     try {
+      if (
+        !Number.isSafeInteger(input.creditRateMsatPerMillionTokens) ||
+        input.creditRateMsatPerMillionTokens <= 0 ||
+        (input.admissionBinding !== undefined &&
+          input.admissionBinding.creditRateMsatPerMillionTokens !==
+            input.creditRateMsatPerMillionTokens)
+      ) {
+        throw new SarahVoiceAdmissionRejectedError(
+          "The Sarah voice reservation credit rate does not match admission",
+        );
+      }
       return await sql.begin(async (tx) => {
         let admissionExpiresAt: string | undefined;
         const users = (await tx`
@@ -611,6 +638,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             session.client_profile, session.transport_kind,
             session.credit_mode, session.entitlement_ref,
             session.admission_cohort_ref, session.state,
+            session.credit_rate_msat_per_million_tokens,
             session.reserved_msat, session.charged_msat,
             session.ticket_expires_at, session.session_expires_at,
             session.settlement_receipt_ref,
@@ -635,6 +663,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             AND session.credit_mode = ${input.creditMode}
             AND session.entitlement_ref IS NOT DISTINCT FROM ${input.entitlementRef}
             AND session.admission_cohort_ref = ${input.admissionCohortRef}
+            AND session.credit_rate_msat_per_million_tokens =
+              ${input.creditRateMsatPerMillionTokens}
             AND session.reserved_msat = ${input.reservedMsat}
             AND session.state = 'reserved'
             AND session.ticket_expires_at > ${input.nowIso}
@@ -675,6 +705,10 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
               AND client_profile = ${input.clientProfile}
               AND admission_cohort_ref = ${input.admissionCohortRef}
               AND credit_mode = ${input.creditMode}
+              AND credit_rate_msat_per_million_tokens =
+                ${input.admissionBinding.creditRateMsatPerMillionTokens}
+              AND credit_rate_msat_per_million_tokens =
+                ${input.creditRateMsatPerMillionTokens}
               AND terms_digest = ${input.admissionBinding.termsDigest}
               AND spendable_remaining_credit_msat IS NOT DISTINCT FROM
                 ${input.admissionBinding.spendableRemainingCreditMsat}
@@ -810,7 +844,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             session_ref, reservation_ref, owner_user_id, owner_actor_ref,
             device_ref, thread_ref, generation, ticket_digest, disclosure_ref,
             client_profile, transport_kind, credit_mode, entitlement_ref, state, reserved_msat,
-            admission_cohort_ref, charged_msat, ticket_expires_at,
+            admission_cohort_ref, credit_rate_msat_per_million_tokens,
+            charged_msat, ticket_expires_at,
             session_expires_at, created_at, updated_at
           ) VALUES (
             ${input.sessionRef}, ${input.reservationRef}, ${input.ownerUserId},
@@ -818,7 +853,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             ${input.generation}, ${input.ticketDigest}, ${input.disclosureRef},
             ${input.clientProfile}, ${input.transportKind ?? "custom_wss_v1"},
             ${input.creditMode}, ${input.entitlementRef},
-            'reserved', ${input.reservedMsat}, ${input.admissionCohortRef}, 0,
+            'reserved', ${input.reservedMsat}, ${input.admissionCohortRef},
+            ${input.creditRateMsatPerMillionTokens}, 0,
             ${input.ticketExpiresAt},
             ${input.sessionExpiresAt}, ${input.nowIso}, ${input.nowIso}
           )
@@ -2046,7 +2082,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     input: Readonly<{
       sessionRef: string;
       generation: number;
-      usage: SarahVoiceUsage;
+      usage: SarahVoiceProviderUsage;
     }>,
   ): Promise<
     Readonly<{
@@ -2056,13 +2092,14 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }>
   > => {
     const sessions = (await tx`
-      SELECT generation, state
+      SELECT generation, state, credit_rate_msat_per_million_tokens
       FROM sarah_realtime_voice_sessions
       WHERE session_ref = ${input.sessionRef}
       FOR UPDATE
     `) as ReadonlyArray<{
       generation: number | string;
       state: SarahVoiceSessionState;
+      credit_rate_msat_per_million_tokens: number | string | null;
     }>;
     const session = first(sessions);
     if (
@@ -2074,6 +2111,31 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         "The provider usage does not match the active Sarah voice generation",
       );
     }
+    if (session.credit_rate_msat_per_million_tokens === null) {
+      throw new SarahVoiceSessionRejectedError(
+        "The provider usage does not have a frozen admitted credit rate",
+      );
+    }
+    const creditRateMsatPerMillionTokens = toSafeInteger(
+      session.credit_rate_msat_per_million_tokens,
+      "credit_rate_msat_per_million_tokens",
+    );
+    if (creditRateMsatPerMillionTokens <= 0) {
+      throw new SarahVoiceSessionRejectedError(
+        "The provider usage has an invalid frozen admitted credit rate",
+      );
+    }
+    const chargeNumerator =
+      (BigInt(input.usage.inputTokens) + BigInt(input.usage.outputTokens)) *
+      BigInt(creditRateMsatPerMillionTokens);
+    const chargeMsatBigInt = (chargeNumerator + 999_999n) / 1_000_000n;
+    if (chargeMsatBigInt > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new SarahVoiceSessionRejectedError("The provider usage charge is too large");
+    }
+    const usage = {
+      ...input.usage,
+      chargeMsat: Number(chargeMsatBigInt),
+    };
 
     const inserted = (await tx`
       INSERT INTO sarah_realtime_voice_usage (
@@ -2081,12 +2143,12 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         cached_input_tokens, audio_input_tokens, audio_output_tokens,
         charge_msat, observed_at, usage_kind, provider_status
       ) VALUES (
-        ${input.sessionRef}, ${input.usage.providerResponseRef},
-        ${input.usage.inputTokens}, ${input.usage.outputTokens},
-        ${input.usage.cachedInputTokens}, ${input.usage.audioInputTokens},
-        ${input.usage.audioOutputTokens}, ${input.usage.chargeMsat},
-        ${input.usage.observedAt}, ${input.usage.usageKind ?? "response"},
-        ${input.usage.providerStatus ?? null}
+        ${input.sessionRef}, ${usage.providerResponseRef},
+        ${usage.inputTokens}, ${usage.outputTokens},
+        ${usage.cachedInputTokens}, ${usage.audioInputTokens},
+        ${usage.audioOutputTokens}, ${usage.chargeMsat},
+        ${usage.observedAt}, ${usage.usageKind ?? "response"},
+        ${usage.providerStatus ?? null}
       )
       ON CONFLICT (session_ref, provider_response_ref) DO NOTHING
       RETURNING session_ref
@@ -2099,7 +2161,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           usage_kind, provider_status
         FROM sarah_realtime_voice_usage
         WHERE session_ref = ${input.sessionRef}
-          AND provider_response_ref = ${input.usage.providerResponseRef}
+          AND provider_response_ref = ${usage.providerResponseRef}
         FOR SHARE
       `) as ReadonlyArray<{
         input_tokens: number | string;
@@ -2115,18 +2177,18 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       const replay = first(replayed);
       if (
         replay === undefined ||
-        toSafeInteger(replay.input_tokens, "input_tokens") !== input.usage.inputTokens ||
-        toSafeInteger(replay.output_tokens, "output_tokens") !== input.usage.outputTokens ||
+        toSafeInteger(replay.input_tokens, "input_tokens") !== usage.inputTokens ||
+        toSafeInteger(replay.output_tokens, "output_tokens") !== usage.outputTokens ||
         toSafeInteger(replay.cached_input_tokens, "cached_input_tokens") !==
-          input.usage.cachedInputTokens ||
+          usage.cachedInputTokens ||
         toSafeInteger(replay.audio_input_tokens, "audio_input_tokens") !==
-          input.usage.audioInputTokens ||
+          usage.audioInputTokens ||
         toSafeInteger(replay.audio_output_tokens, "audio_output_tokens") !==
-          input.usage.audioOutputTokens ||
-        toSafeInteger(replay.charge_msat, "charge_msat") !== input.usage.chargeMsat ||
-        replay.observed_at !== input.usage.observedAt ||
-        replay.usage_kind !== (input.usage.usageKind ?? "response") ||
-        replay.provider_status !== (input.usage.providerStatus ?? null)
+          usage.audioOutputTokens ||
+        toSafeInteger(replay.charge_msat, "charge_msat") !== usage.chargeMsat ||
+        replay.observed_at !== usage.observedAt ||
+        replay.usage_kind !== (usage.usageKind ?? "response") ||
+        replay.provider_status !== (usage.providerStatus ?? null)
       ) {
         throw new SarahVoiceSessionRejectedError(
           "The provider response reference was replayed with changed usage",
@@ -2135,22 +2197,22 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     } else {
       await tx`
         UPDATE sarah_realtime_voice_sessions
-        SET input_tokens = input_tokens + ${input.usage.inputTokens},
-            output_tokens = output_tokens + ${input.usage.outputTokens},
+        SET input_tokens = input_tokens + ${usage.inputTokens},
+            output_tokens = output_tokens + ${usage.outputTokens},
             cached_input_tokens =
-              cached_input_tokens + ${input.usage.cachedInputTokens},
+              cached_input_tokens + ${usage.cachedInputTokens},
             audio_input_tokens =
-              audio_input_tokens + ${input.usage.audioInputTokens},
+              audio_input_tokens + ${usage.audioInputTokens},
             audio_output_tokens =
-              audio_output_tokens + ${input.usage.audioOutputTokens},
+              audio_output_tokens + ${usage.audioOutputTokens},
             charged_msat = CASE
               WHEN credit_mode = 'metered' THEN LEAST(
                 reserved_msat,
-                charged_msat + ${input.usage.chargeMsat}
+                charged_msat + ${usage.chargeMsat}
               )
-              ELSE charged_msat + ${input.usage.chargeMsat}
+              ELSE charged_msat + ${usage.chargeMsat}
             END,
-            updated_at = ${input.usage.observedAt}
+            updated_at = ${usage.observedAt}
         WHERE session_ref = ${input.sessionRef}
           AND generation = ${input.generation}
           AND state = 'connected'
@@ -2184,7 +2246,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     input: Readonly<{
       sessionRef: string;
       generation: number;
-      usage: SarahVoiceUsage;
+      usage: SarahVoiceProviderUsage;
     }>,
   ): Promise<
     Readonly<{
@@ -2449,10 +2511,10 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       reconciliationPayloadDigest: string;
       sessionRef: string;
       generation: number;
+      providerSessionRefDigest: string;
       operatorActorRef: string;
       reason: string;
       providerEvidenceRefs: ReadonlyArray<string>;
-      creditRateMsatPerMillionTokens: number;
       usage: ReadonlyArray<SarahVoiceAccountingReconciliationUsage>;
       nowIso: string;
     }>,
@@ -2460,8 +2522,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     try {
       if (
         !/^[0-9a-f]{64}$/u.test(input.reconciliationPayloadDigest) ||
-        !Number.isSafeInteger(input.creditRateMsatPerMillionTokens) ||
-        input.creditRateMsatPerMillionTokens <= 0 ||
+        !/^[0-9a-f]{64}$/u.test(input.providerSessionRefDigest) ||
         input.providerEvidenceRefs.length < 1 ||
         input.providerEvidenceRefs.length > 16 ||
         new Set(input.providerEvidenceRefs).size !== input.providerEvidenceRefs.length ||
@@ -2475,7 +2536,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       return await sql.begin(async (tx) => {
         const sessions = (await tx`
           SELECT session_ref, generation, state, transport_kind, credit_mode,
-            reserved_msat, settlement_receipt_ref
+            reserved_msat, settlement_receipt_ref,
+            credit_rate_msat_per_million_tokens
           FROM sarah_realtime_voice_sessions
           WHERE session_ref = ${input.sessionRef}
           FOR UPDATE
@@ -2487,6 +2549,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           credit_mode: SarahVoiceCreditMode;
           reserved_msat: number | string;
           settlement_receipt_ref: string | null;
+          credit_rate_msat_per_million_tokens: number | string | null;
         }>;
         const session = first(sessions);
         if (
@@ -2497,12 +2560,27 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             "The Sarah voice accounting reconciliation generation does not exist",
           );
         }
+        if (session.credit_rate_msat_per_million_tokens === null) {
+          throw new SarahVoiceSessionRejectedError(
+            "The Sarah voice accounting reconciliation has no frozen admitted credit rate",
+          );
+        }
+        const creditRateMsatPerMillionTokens = toSafeInteger(
+          session.credit_rate_msat_per_million_tokens,
+          "credit_rate_msat_per_million_tokens",
+        );
+        if (creditRateMsatPerMillionTokens <= 0) {
+          throw new SarahVoiceSessionRejectedError(
+            "The Sarah voice accounting reconciliation credit rate is invalid",
+          );
+        }
 
         const priorRows = (await tx`
           SELECT reconciliation_ref, reconciliation_receipt_ref, session_ref,
             generation, reconciliation_payload_digest, operator_actor_ref,
             reconciliation_reason, provider_evidence_refs_json,
-            credit_rate_msat_per_million_tokens
+            credit_rate_msat_per_million_tokens,
+            provider_session_ref_digest
           FROM sarah_livekit_accounting_reconciliations
           WHERE reconciliation_ref = ${input.reconciliationRef}
             OR session_ref = ${input.sessionRef}
@@ -2517,6 +2595,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           reconciliation_reason: string;
           provider_evidence_refs_json: unknown;
           credit_rate_msat_per_million_tokens: number | string;
+          provider_session_ref_digest: string | null;
         }>;
         const prior = first(priorRows);
         if (prior !== undefined) {
@@ -2530,12 +2609,13 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             prior.reconciliation_payload_digest !== input.reconciliationPayloadDigest ||
             prior.operator_actor_ref !== input.operatorActorRef ||
             prior.reconciliation_reason !== input.reason ||
+            prior.provider_session_ref_digest !== input.providerSessionRefDigest ||
             !Array.isArray(priorEvidence) ||
             JSON.stringify(priorEvidence) !== JSON.stringify(input.providerEvidenceRefs) ||
             toSafeInteger(
               prior.credit_rate_msat_per_million_tokens,
               "credit_rate_msat_per_million_tokens",
-            ) !== input.creditRateMsatPerMillionTokens ||
+            ) !== creditRateMsatPerMillionTokens ||
             (session.state !== "settled" && session.state !== "released") ||
             session.settlement_receipt_ref === null
           ) {
@@ -2574,7 +2654,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           );
         }
         const bindings = (await tx`
-          SELECT provider_admitted_at, provider_accounting_status
+          SELECT provider_admitted_at, provider_accounting_status,
+            provider_session_ref_digest
           FROM sarah_livekit_room_bindings
           WHERE session_ref = ${input.sessionRef}
             AND generation = ${input.generation}
@@ -2582,12 +2663,14 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         `) as ReadonlyArray<{
           provider_admitted_at: string | null;
           provider_accounting_status: "pending" | "exact" | "uncertain";
+          provider_session_ref_digest: string | null;
         }>;
         const binding = first(bindings);
         if (
           binding === undefined ||
           binding.provider_admitted_at === null ||
-          binding.provider_accounting_status !== "uncertain"
+          binding.provider_accounting_status !== "uncertain" ||
+          binding.provider_session_ref_digest !== input.providerSessionRefDigest
         ) {
           throw new SarahVoiceSessionRejectedError(
             "The LiveKit provider accounting state is not reconcilable",
@@ -2619,7 +2702,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           }
           const chargeNumerator =
             (BigInt(usage.inputTokens) + BigInt(usage.outputTokens)) *
-            BigInt(input.creditRateMsatPerMillionTokens);
+            BigInt(creditRateMsatPerMillionTokens);
           const chargeMsatBigInt = (chargeNumerator + 999_999n) / 1_000_000n;
           if (
             chargeMsatBigInt > BigInt(Number.MAX_SAFE_INTEGER) ||
@@ -2726,14 +2809,16 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             reconciliation_ref, reconciliation_receipt_ref, session_ref,
             generation, reconciliation_payload_digest, operator_actor_ref,
             reconciliation_reason, provider_evidence_refs_json,
-            credit_rate_msat_per_million_tokens, created_at
+            credit_rate_msat_per_million_tokens,
+            provider_session_ref_digest, created_at
           ) VALUES (
             ${input.reconciliationRef}, ${reconciliationReceiptRef},
             ${input.sessionRef}, ${input.generation},
             ${input.reconciliationPayloadDigest}, ${input.operatorActorRef},
             ${input.reason},
             ${JSON.stringify(input.providerEvidenceRefs)}::text::jsonb,
-            ${input.creditRateMsatPerMillionTokens}, ${input.nowIso}
+            ${creditRateMsatPerMillionTokens},
+            ${input.providerSessionRefDigest}, ${input.nowIso}
           )
         `;
         await tx`

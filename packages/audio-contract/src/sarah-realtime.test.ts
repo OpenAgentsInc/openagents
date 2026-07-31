@@ -212,6 +212,7 @@ describe("Sarah Realtime voice contract", () => {
       reconciliationRef: "reconciliation-1",
       sessionRef: identity.sessionRef,
       generation: identity.generation,
+      providerSessionRefDigest: "a".repeat(64),
       providerEvidenceRefs: ["provider-export-1"],
       usage: [
         {

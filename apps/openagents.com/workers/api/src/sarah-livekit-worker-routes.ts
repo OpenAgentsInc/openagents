@@ -27,7 +27,6 @@ export const SARAH_LIVEKIT_WORKER_TOOL_STATE_PATH = SARAH_LIVEKIT_TOOL_STATE_PAT
 
 export type SarahLiveKitWorkerRouteDependencies<Bindings> = Readonly<{
   controlRoot: (env: Bindings) => string | undefined;
-  creditMsatPerMillionTokens: (env: Bindings) => number | undefined;
   now?: (() => number) | undefined;
   openStore: (
     env: Bindings,
@@ -357,19 +356,12 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
                   accountingStatus: body.accountingStatus,
                 })
               : await (async () => {
-                  const rate = dependencies.creditMsatPerMillionTokens(env);
-                  if (rate === undefined || !Number.isSafeInteger(rate) || rate <= 0) {
-                    return undefined;
-                  }
                   const usage = {
                     inputTokens: body.inputTokens,
                     outputTokens: body.outputTokens,
                     cachedInputTokens: body.cachedInputTokens,
                     audioInputTokens: body.audioInputTokens,
                     audioOutputTokens: body.audioOutputTokens,
-                    chargeMsat: Math.ceil(
-                      ((body.inputTokens + body.outputTokens) * rate) / 1_000_000,
-                    ),
                   } as const;
                   return body._tag === "response_usage"
                     ? opened.store.applyLiveKitWorkerEvent({

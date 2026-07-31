@@ -50,6 +50,7 @@ const Ref = S.Trim.check(S.isMinLength(1), S.isMaxLength(256));
 const Text = S.String.check(S.isMaxLength(16_384));
 const SmallText = S.String.check(S.isMaxLength(2_048));
 const Seq = S.Int.check(S.isGreaterThanOrEqualTo(0), S.isLessThanOrEqualTo(9_007_199_254_740_991));
+const Digest = S.String.check(S.isPattern(/^[0-9a-f]{64}$/u));
 
 export const SarahVoiceSessionRequestSchema = S.Struct({
   schema: S.Literal(SARAH_VOICE_PROTOCOL_VERSION),
@@ -195,6 +196,7 @@ export const SarahVoiceAccountingReconciliationRequestSchema = S.Struct({
   reconciliationRef: Ref,
   sessionRef: Ref,
   generation: S.Int.check(S.isGreaterThanOrEqualTo(1)),
+  providerSessionRefDigest: Digest,
   providerEvidenceRefs: S.Array(Ref).check(S.isMinLength(1), S.isMaxLength(16)),
   usage: S.Array(SarahVoiceAccountingUsageSchema).check(S.isMaxLength(1_024)),
   reason: S.Trim.check(S.isMinLength(1), S.isMaxLength(256)),

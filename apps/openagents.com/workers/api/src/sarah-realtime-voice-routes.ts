@@ -369,8 +369,6 @@ export const reconcileSarahLiveKitProvisioningIntents = async <Bindings>(
 }
 
 export type SarahRealtimeVoiceOperatorRouteDependencies<Bindings> = Readonly<{
-  creditMsatPerMillionTokens?:
-    ((env: Bindings) => number | undefined) | undefined
   now?: (() => number) | undefined
   openStore: (
     env: Bindings,
@@ -923,6 +921,7 @@ export const handleSarahRealtimeVoiceAdmissionRequest = async <User, Bindings>(
         clientProfile,
         admissionCohortRef: terms.admissionCohortRef,
         creditMode: terms.creditMode,
+        creditRateMsatPerMillionTokens: terms.creditRateMsatPerMillionTokens,
         termsDigest: await admissionTermsDigest({
           ...terms,
           transportKind: requestedTransport,
@@ -996,6 +995,7 @@ export const handleSarahRealtimeVoiceAdmissionRequest = async <User, Bindings>(
         clientProfile,
         admissionCohortRef: terms.admissionCohortRef,
         creditMode: terms.creditMode,
+        creditRateMsatPerMillionTokens: terms.creditRateMsatPerMillionTokens,
         termsDigest: await admissionTermsDigest({
           ...terms,
           transportKind: requestedTransport,
@@ -1142,18 +1142,6 @@ export const handleSarahRealtimeVoiceAccountingReconciliationRequest = async <
       400,
     )
   }
-  const creditRateMsatPerMillionTokens =
-    dependencies.creditMsatPerMillionTokens?.(env)
-  if (
-    creditRateMsatPerMillionTokens === undefined ||
-    !Number.isSafeInteger(creditRateMsatPerMillionTokens) ||
-    creditRateMsatPerMillionTokens <= 0
-  ) {
-    return noStoreJson(
-      { error: 'sarah_voice_accounting_rate_unavailable' },
-      503,
-    )
-  }
   const providerEvidenceRefs = [...body.providerEvidenceRefs].sort()
   if (new Set(providerEvidenceRefs).size !== providerEvidenceRefs.length) {
     return noStoreJson(
@@ -1201,10 +1189,10 @@ export const handleSarahRealtimeVoiceAccountingReconciliationRequest = async <
       reconciliationRef: body.reconciliationRef,
       sessionRef: body.sessionRef,
       generation: body.generation,
+      providerSessionRefDigest: body.providerSessionRefDigest,
       providerEvidenceRefs,
       usage,
       reason: body.reason,
-      creditRateMsatPerMillionTokens,
     }),
   )
   let opened:
@@ -1217,10 +1205,10 @@ export const handleSarahRealtimeVoiceAccountingReconciliationRequest = async <
       reconciliationPayloadDigest,
       sessionRef: body.sessionRef,
       generation: body.generation,
+      providerSessionRefDigest: body.providerSessionRefDigest,
       operatorActorRef: operator.actorRef,
       reason: body.reason,
       providerEvidenceRefs,
-      creditRateMsatPerMillionTokens,
       usage,
       nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
     })
@@ -1562,6 +1550,8 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
         ? {
             admissionRef,
             termsDigest: currentAdmissionDigest,
+            creditRateMsatPerMillionTokens:
+              currentTerms.creditRateMsatPerMillionTokens,
             spendableRemainingCreditMsat,
           }
         : undefined
@@ -1613,6 +1603,8 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
       creditMode,
       entitlementRef: entitlement?.entitlementRef ?? null,
       admissionCohortRef,
+      creditRateMsatPerMillionTokens:
+        currentTerms.creditRateMsatPerMillionTokens,
       reservedMsat,
       sessionExpiresAt: new Date(sessionExpiresAtMs).toISOString(),
       sessionRef: body.identity.sessionRef,

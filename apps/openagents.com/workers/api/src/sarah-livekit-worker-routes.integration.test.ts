@@ -111,6 +111,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       disclosureRef: "disclosure-livekit-route",
       clientProfile: "omega_editor",
       admissionCohortRef: "sarah_voice_cohort:alpha_v1",
+      creditRateMsatPerMillionTokens: 100_000,
       creditMode: "metered",
       termsDigest: "8".repeat(64),
       spendableRemainingCreditMsat: 10_000,
@@ -132,12 +133,14 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       creditMode: "metered",
       entitlementRef: null,
       admissionCohortRef: "sarah_voice_cohort:alpha_v1",
+      creditRateMsatPerMillionTokens: 100_000,
       reservedMsat: 1_000,
       ticketExpiresAt: "2026-07-28T13:01:00.000Z",
       sessionExpiresAt: "2026-07-28T13:02:00.000Z",
       nowIso: "2026-07-28T13:00:00.000Z",
       admissionBinding: {
         admissionRef: "sarah_voice_admission:route-1",
+        creditRateMsatPerMillionTokens: 100_000,
         termsDigest: "8".repeat(64),
         spendableRemainingCreditMsat: 10_000,
       },
@@ -197,7 +200,6 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
   test("connects, meters, leases, and closes idempotently without the legacy ticket path", async () => {
     const dependencies = {
       controlRoot: () => controlRoot,
-      creditMsatPerMillionTokens: () => 1_000_000,
       now: () => nowMs,
       openStore: async () => ({
         store,
@@ -393,7 +395,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
     }).toEqual({
       inputTokens: 100,
       outputTokens: 50,
-      chargeMsat: 150,
+      chargeMsat: 15,
       observedAt: "2026-07-28T13:01:40.000Z",
       providerStatus: "completed",
     });
@@ -480,7 +482,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       WHERE session_ref = 'voice-livekit-route-1'
     `;
     expect(draining).toMatchObject({ state: "connected" });
-    expect(Number(draining?.charged_msat)).toBe(175);
+    expect(Number(draining?.charged_msat)).toBe(18);
     expect(await store.sweepExpired("2026-07-28T13:02:15.000Z")).toBe(0);
 
     const closeEvent = {
@@ -525,7 +527,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       closeReason: settled?.close_reason,
     }).toEqual({
       state: "settled",
-      chargedMsat: 175,
+      chargedMsat: 18,
       closeReason: "session_expired",
     });
     const [eventCount] = await sql`
