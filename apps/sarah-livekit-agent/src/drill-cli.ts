@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 
 import { randomUUID } from "node:crypto";
-import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { dispose } from "@livekit/rtc-node";
 import {
@@ -17,12 +15,20 @@ import {
   type SarahLiveKitDrillScenario,
 } from "./drill-driver.js";
 import { EXPECTED_FAULT_ACTION, SARAH_LIVEKIT_SFU_LOSS_BOUND_MS } from "./failure-matrix.js";
+import {
+  LIVEKIT_NAMESPACE,
+  countLiveRooms,
+  deleteExactPod,
+  podIsRunning,
+  readLiveKitSfuGauges,
+  readSarahWorkerLogs,
+  selectSoleSfuPodHostingARoom,
+  selectSoleWorkerPodForRoom,
+} from "./drill-cluster.js";
 
 const OWNER_GATE = "I_ACCEPT_EP263_SARAH_LIVEKIT_DRILL";
-const LIVEKIT_NAMESPACE = "livekit-system";
 const repositoryRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const receiptRoot = resolve(repositoryRoot, "docs/ops/receipts/livekit");
-const run_ = promisify(execFile);
 
 type Arguments = Readonly<{
   apply: boolean;
@@ -34,9 +40,6 @@ type Arguments = Readonly<{
   holdMs?: string;
   communityRef?: string;
   channelRef?: string;
-  faultPod?: string;
-  workerPod?: string;
-  billableSessions?: string;
   receipt?: string;
 }>;
 
@@ -49,9 +52,6 @@ const FIELDS = new Map<string, keyof Omit<Arguments, "apply">>([
   ["--hold-ms", "holdMs"],
   ["--community-ref", "communityRef"],
   ["--channel-ref", "channelRef"],
-  ["--fault-pod", "faultPod"],
-  ["--worker-pod", "workerPod"],
-  ["--billable-sessions", "billableSessions"],
   ["--receipt", "receipt"],
 ]);
 
@@ -64,8 +64,6 @@ const usage = () => {
     --bound-ms <bound measured from the fault> \\
     [--observation-window-ms <window, default 2x the bound>] \\
     [--hold-ms <live hold before the fault, default ${SARAH_LIVEKIT_DRILL_DEFAULT_HOLD_MS}>] \\
-    [--fault-pod <pod the operator already identified> --worker-pod <Sarah worker pod>] \\
-    --billable-sessions <billable Sarah sessions live in the cluster right now> \\
     --receipt docs/ops/receipts/livekit/<name>.json --apply
 
 One session, brought live through the production acceptance path, held open, and
@@ -77,10 +75,18 @@ sfu_loss pins its bound to the ${SARAH_LIVEKIT_SFU_LOSS_BOUND_MS} ms the failure
 matrix defines and refuses any other value, so a run cannot satisfy this command
 and then fail the receipt validator.
 
-TARGET SELECTION IS THE OPERATOR'S. This command never searches for a pod to
-destroy. --fault-pod and --worker-pod name pods the operator already identified
-with the runbook procedure, in namespace ${LIVEKIT_NAMESPACE}. Both are recorded
-only as digests. A pod-deleting fault refuses to run when the two names are equal.
+TARGETS ARE DISCOVERED AT THE FAULT INSTANT, in namespace ${LIVEKIT_NAMESPACE},
+and never earlier: the cluster picks which SFU instance carries a room when the
+room is created, and dispatch picks which Sarah worker accepts the job. The SFU
+target is the one instance reporting a nonzero livekit_room_total and the worker
+is the one that logged this room. Two candidates or none is a refusal, never a
+guess, and both are recorded only as digests. sfu_loss refuses outright if the
+two resolve to the same instance.
+
+The same gauge sweep measures how many rooms are live cluster-wide, which is the
+conservative billable-session count sfu_loss requires to be one: a room can exist
+without being a billable Sarah generation, so the measurement over-counts, and
+over-counting is the direction that fails closed.
 
 Dry-run is the default and performs no network request, no fault, and no write.
 A live run requires:
@@ -149,49 +155,49 @@ const drillScenario = (value: string | undefined): SarahLiveKitDrillScenario => 
   return found;
 };
 
-const POD_NAME = /^[a-z0-9]([a-z0-9-]{0,251}[a-z0-9])?$/u;
-
 /**
- * Delete exactly one named pod, and nothing else.
+ * Build the fault this scenario's evidence is only valid for.
  *
- * `execFile` with an argument array, not a shell, so no operator-supplied string
- * can widen the action. The name is checked against the Kubernetes object-name
- * grammar first, and a fault aimed at the Sarah worker pod is refused before the
- * call rather than recorded as a contradiction afterwards: destroying the worker
- * makes the observation indistinguishable from planned_worker_crash, so there is
- * no useful evidence to keep.
+ * Discovery happens at the fault instant, inside the injector, because neither
+ * target is knowable earlier: the cluster picks which SFU instance carries a
+ * room when the room is created, and LiveKit dispatch picks which Sarah worker
+ * accepts the job. The selectors in `drill-cluster` refuse ambiguity rather
+ * than choosing, so a fault is either aimed at exactly one identified instance
+ * or not injected at all.
  */
-const deleteExactPod = async (podName: string): Promise<void> => {
-  if (!POD_NAME.test(podName)) throw new Error("pod name is not a Kubernetes object name");
-  await run_("kubectl", [
-    "delete",
-    "pod",
-    "--namespace",
-    LIVEKIT_NAMESPACE,
-    podName,
-    "--wait=false",
-  ]);
-};
-
 const buildInjector = (
   scenario: SarahLiveKitDrillScenario,
-  args: Arguments,
 ): ((context: {
+  roomRef: string;
   requestClientCancel: () => Promise<void>;
 }) => Promise<SarahLiveKitDrillFaultResult>) => {
   const faultAction = EXPECTED_FAULT_ACTION[scenario];
-  if (faultAction === "delete_exact_sfu_pod" || faultAction === "delete_exact_worker_pod") {
-    const faultPod = requiredArgument(args.faultPod, "--fault-pod");
-    const workerPod = requiredArgument(args.workerPod, "--worker-pod");
-    if (faultAction === "delete_exact_sfu_pod" && faultPod === workerPod) {
-      throw new Error("sfu_loss must not destroy the Sarah worker pod");
-    }
-    return async () => {
-      await deleteExactPod(faultPod);
+  if (faultAction === "delete_exact_sfu_pod") {
+    return async (context) => {
+      const sfu = selectSoleSfuPodHostingARoom(await readLiveKitSfuGauges());
+      const workerPod = selectSoleWorkerPodForRoom(await readSarahWorkerLogs(), context.roomRef);
+      if (sfu.podName === workerPod) {
+        // Refused before the call, not recorded as a contradiction afterwards:
+        // destroying the worker makes the result indistinguishable from
+        // planned_worker_crash, so there would be no evidence worth keeping.
+        throw new Error("sfu_loss must not destroy the Sarah worker instance");
+      }
+      await deleteExactPod(sfu.podName);
       return {
-        targetInstanceDigest: digestDrillInstance(faultPod),
+        targetInstanceDigest: digestDrillInstance(sfu.podName),
         workerInstanceDigest: digestDrillInstance(workerPod),
-        workerInstanceSurvived: await podExists(workerPod),
+        workerInstanceSurvived: await podIsRunning(workerPod),
+      };
+    };
+  }
+  if (faultAction === "delete_exact_worker_pod") {
+    return async (context) => {
+      const workerPod = selectSoleWorkerPodForRoom(await readSarahWorkerLogs(), context.roomRef);
+      await deleteExactPod(workerPod);
+      return {
+        targetInstanceDigest: digestDrillInstance(workerPod),
+        workerInstanceDigest: digestDrillInstance(workerPod),
+        workerInstanceSurvived: await podIsRunning(workerPod),
       };
     };
   }
@@ -203,32 +209,14 @@ const buildInjector = (
   }
   if (faultAction === "bounded_deadline") {
     // The timeout drill's fault is the passage of time. There is nothing to
-    // execute; the instant the driver stamps is the instant the clock started
-    // being the only thing that could end this session.
+    // execute; the instant the driver stamps is the instant the deadline became
+    // the only thing that could end this session.
     return () => Promise.resolve({});
   }
   throw new Error(
     `${scenario} needs a fault this command cannot execute (${faultAction}); ` +
       "run it through the runbook procedure and record the result separately",
   );
-};
-
-const podExists = async (podName: string): Promise<boolean> => {
-  if (!POD_NAME.test(podName)) throw new Error("pod name is not a Kubernetes object name");
-  try {
-    await run_("kubectl", [
-      "get",
-      "pod",
-      "--namespace",
-      LIVEKIT_NAMESPACE,
-      podName,
-      "--output",
-      "name",
-    ]);
-    return true;
-  } catch {
-    return false;
-  }
 };
 
 const run = async () => {
@@ -248,13 +236,14 @@ const run = async () => {
         ),
         pinnedBounds: { sfu_loss: SARAH_LIVEKIT_SFU_LOSS_BOUND_MS },
         namespace: LIVEKIT_NAMESPACE,
+        targetDiscovery: "sole_nonzero_livekit_room_total_and_sole_worker_logging_the_room",
         guarantees: [
           "exactly one billable Sarah session for the whole drill window",
           "fault instant recorded separately from the session start",
           "bound measured from the fault, never from the session duration",
           "settlement read over HTTP, so it survives the loss of the transport",
           "a failed drill is recorded as contradicted rather than discarded",
-          "pod targets are operator-named, never searched for, and recorded as digests",
+          "fault targets are identified unambiguously or the fault is not injected",
         ],
       })}\n`,
     );
@@ -279,11 +268,6 @@ const run = async () => {
     args.holdMs === undefined
       ? SARAH_LIVEKIT_DRILL_DEFAULT_HOLD_MS
       : wholeMs(args.holdMs, "--hold-ms");
-  const billableSessions = Number(requiredArgument(args.billableSessions, "--billable-sessions"));
-  if (!Number.isSafeInteger(billableSessions) || billableSessions < 1) {
-    throw new Error("--billable-sessions must be at least one: this drill's own session is live");
-  }
-
   const pcmPath = resolve(requiredArgument(args.pcm, "--pcm"));
   if (pcmPath.startsWith(`${repositoryRoot}/`)) {
     throw new Error("drill PCM prompts must remain outside the repository");
@@ -293,7 +277,7 @@ const run = async () => {
     throw new Error("receipt path must be under docs/ops/receipts/livekit");
   }
 
-  const injectFault = buildInjector(scenario, args);
+  const injectFault = buildInjector(scenario);
   const suffix = roomKind === "private" ? "PRIVATE" : "COMMUNITY";
   const runRef = randomUUID();
   const pcm = await readFile(pcmPath);
@@ -305,11 +289,11 @@ const run = async () => {
       observationWindowMs,
       holdMs,
       injectFault,
-      // Read at the fault instant. Operator-declared, for the same reason the
-      // acceptance receipt's forced-transport profile is: nothing inside one
-      // session can see how many other billable sessions the cluster is
-      // carrying. The declaration is recorded and travels with the limitation.
-      countBillableSessions: () => billableSessions,
+      // Measured at the fault instant from the same gauge sweep that names the
+      // fault target, so the sfu_loss precondition is observed rather than
+      // attested. Rooms over-count billable Sarah generations, which is the
+      // direction that fails closed.
+      countBillableSessions: async () => countLiveRooms(await readLiveKitSfuGauges()),
       session: {
         kind: roomKind,
         bearer: requiredEnvironment(`OA_SARAH_LIVEKIT_ACCEPTANCE_${suffix}_BEARER`),
