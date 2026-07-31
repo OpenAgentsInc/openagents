@@ -95,17 +95,37 @@ const remoteMainRevision = () => {
 };
 
 export const validateBuildDescription = (build, buildId, expectedRevision) => {
+  const resolvedRevision = resolvedBuildRevision(build);
   if (
     build.id !== buildId ||
     build.serviceAccount !== DEPLOYER_SERVICE_ACCOUNT ||
     typeof build.buildTriggerId !== "string" ||
     build.buildTriggerId.length === 0 ||
-    (expectedRevision !== undefined &&
-      build.sourceProvenance?.resolvedRepoSource?.commitSha !== expectedRevision)
+    (expectedRevision !== undefined && resolvedRevision !== expectedRevision)
   ) {
     fail("Cloud Build returned a build outside the production deployment boundary");
   }
   return build;
+};
+
+export const resolvedBuildRevision = (build) =>
+  build.sourceProvenance?.resolvedGitSource?.revision ??
+  build.sourceProvenance?.resolvedRepoSource?.commitSha;
+
+export const parseTriggeredBuildId = (value, expectedRevision) => {
+  let operation;
+  try {
+    operation = JSON.parse(value);
+  } catch {
+    fail("trigger did not return readable Cloud Build operation JSON");
+  }
+  const build = operation?.metadata?.build;
+  const buildId = build?.id;
+  if (!BUILD_ID.test(buildId ?? "")) {
+    fail("trigger did not return a canonical Cloud Build id");
+  }
+  validateBuildDescription(build, buildId, expectedRevision);
+  return buildId;
 };
 
 const describeBuild = (buildId, expectedRevision) => {
@@ -119,7 +139,7 @@ const describeBuild = (buildId, expectedRevision) => {
       PROJECT,
       "--region",
       REGION,
-      "--format=json(id,status,buildTriggerId,serviceAccount,sourceProvenance.resolvedRepoSource.commitSha)",
+      "--format=json(id,status,buildTriggerId,serviceAccount,sourceProvenance.resolvedGitSource.revision,sourceProvenance.resolvedRepoSource.commitSha)",
     ],
     "describe production deployment build",
   );
@@ -162,7 +182,7 @@ export const triggerRunArguments = (revision) => {
     REGION,
     "--sha",
     revision,
-    "--format=value(id)",
+    "--format=json",
   ];
 };
 
@@ -177,11 +197,8 @@ export const receiptPath = (path) => {
 const retrieveReceipt = (buildId, path) => {
   const build = describeBuild(buildId);
   if (build.status !== "SUCCESS") fail("receipt retrieval requires a successful build");
-  if (
-    !/^[0-9a-f]{40}$/u.test(
-      build.sourceProvenance?.resolvedRepoSource?.commitSha ?? "",
-    )
-  ) {
+  const sourceRevision = resolvedBuildRevision(build);
+  if (!/^[0-9a-f]{40}$/u.test(sourceRevision ?? "")) {
     fail("successful build does not match the production deployment identity");
   }
   const target = receiptPath(path);
@@ -210,8 +227,7 @@ const retrieveReceipt = (buildId, path) => {
         "gcp-service-account-ref://openagentsgemini/oa-livekit-prod-deployer" ||
       receipt?.execution?.triggerRef !==
         "gcp-cloud-build-trigger-ref://openagentsgemini/us-central1/oa-livekit-prod-runtime" ||
-      receipt.execution.sourceRevision !==
-        build.sourceProvenance.resolvedRepoSource.commitSha
+      receipt.execution.sourceRevision !== sourceRevision
     ) {
       fail("receipt provenance does not match the fixed production deployment boundary");
     }
@@ -237,12 +253,12 @@ const main = () => {
   if (args.command === "start") {
     const revision = remoteMainRevision();
     expectedRevision = revision;
-    buildId = run(
+    const operation = run(
       "gcloud",
       triggerRunArguments(revision),
       "start fixed production deployment trigger",
     );
-    if (!BUILD_ID.test(buildId)) fail("trigger did not return a canonical Cloud Build id");
+    buildId = parseTriggeredBuildId(operation, revision);
     process.stdout.write(`Cloud Build id: ${buildId}\n`);
   }
   waitForBuild(buildId, args.timeoutSeconds, expectedRevision);

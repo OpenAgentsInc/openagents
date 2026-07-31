@@ -5,7 +5,9 @@ import { resolve } from "node:path";
 import test from "node:test";
 import {
   parseArgs,
+  parseTriggeredBuildId,
   receiptPath,
+  resolvedBuildRevision,
   triggerRunArguments,
   validateBuildDescription,
 } from "./livekit-production-deploy.mjs";
@@ -65,7 +67,7 @@ test("launcher uses the current synchronous trigger result shape", () => {
     "utf8",
   );
   assert.doesNotMatch(source, /"--async"/u);
-  assert.match(source, /"--format=value\(id\)"/u);
+  assert.match(source, /"--format=json"/u);
 });
 
 test("launcher starts the fixed trigger at the exact observed main commit", () => {
@@ -80,7 +82,7 @@ test("launcher starts the fixed trigger at the exact observed main commit", () =
     "us-central1",
     "--sha",
     revision,
-    "--format=value(id)",
+    "--format=json",
   ]);
   assert.throws(() => triggerRunArguments("refs/heads/main"), /full lowercase Git commit/u);
 });
@@ -96,6 +98,25 @@ test("launcher rejects a build that resolves away from the requested commit", ()
   assert.equal(validateBuildDescription(build, buildId, revision), build);
   assert.throws(
     () => validateBuildDescription(build, buildId, "2".repeat(40)),
+    /outside the production deployment boundary/u,
+  );
+});
+
+test("launcher accepts the Cloud Build v2 resolved Git source and operation envelope", () => {
+  const build = {
+    id: buildId,
+    buildTriggerId: "trigger-id",
+    serviceAccount:
+      "projects/openagentsgemini/serviceAccounts/oa-livekit-prod-deployer@openagentsgemini.iam.gserviceaccount.com",
+    sourceProvenance: { resolvedGitSource: { revision } },
+  };
+  assert.equal(resolvedBuildRevision(build), revision);
+  assert.equal(
+    parseTriggeredBuildId(JSON.stringify({ metadata: { build } }), revision),
+    buildId,
+  );
+  assert.throws(
+    () => parseTriggeredBuildId(JSON.stringify({ metadata: { build } }), "2".repeat(40)),
     /outside the production deployment boundary/u,
   );
 });

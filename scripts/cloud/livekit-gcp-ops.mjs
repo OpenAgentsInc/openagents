@@ -1515,7 +1515,7 @@ const validateCloudBuildProvenance = () => {
         LIVEKIT_OPS.project,
         "--region",
         LIVEKIT_OPS.region,
-        "--format=json(id,status,buildTriggerId,serviceAccount,sourceProvenance.resolvedRepoSource.commitSha)",
+        "--format=json(id,status,buildTriggerId,serviceAccount,sourceProvenance.resolvedGitSource.revision,sourceProvenance.resolvedRepoSource.commitSha)",
       ],
       "attest production deployment build",
     ),
@@ -1525,7 +1525,8 @@ const validateCloudBuildProvenance = () => {
     build.status !== "WORKING" ||
     build.serviceAccount !==
       `projects/${LIVEKIT_OPS.project}/serviceAccounts/${PRODUCTION_DEPLOYER_SERVICE_ACCOUNT}` ||
-    build.sourceProvenance?.resolvedRepoSource?.commitSha !== revision ||
+    (build.sourceProvenance?.resolvedGitSource?.revision ??
+      build.sourceProvenance?.resolvedRepoSource?.commitSha) !== revision ||
     typeof build.buildTriggerId !== "string" ||
     build.buildTriggerId.length === 0
   ) {
