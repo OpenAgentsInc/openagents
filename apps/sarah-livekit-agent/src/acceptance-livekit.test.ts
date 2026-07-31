@@ -2,11 +2,63 @@ import { SARAH_VOICE_PROTOCOL_VERSION, type VoiceIdentity } from "@openagentsinc
 import { describe, expect, test, vi } from "vite-plus/test";
 import type { ClientOptions, RawData } from "ws";
 import {
+  acquireSarahLiveKitCommunityFloor,
   measureSarahInterruptAudioTail,
   openSarahLiveKitAcceptanceControlChannel,
   type SarahLiveKitAcceptanceControlSocket,
   type SarahLiveKitAcceptanceControlSocketFactory,
 } from "./acceptance-livekit.js";
+
+describe("Sarah LiveKit community floor acceptance", () => {
+  test("joins the admitted room and acquires the local participant floor", async () => {
+    const requests: Array<Readonly<{ url: string; body: Readonly<Record<string, unknown>> }>> = [];
+    const fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      requests.push({
+        url: String(input),
+        body: JSON.parse(String(init?.body)) as Readonly<Record<string, unknown>>,
+      });
+      return requests.length === 1
+        ? Response.json({
+            roomRef: "room-community",
+            participantRef: "member-local",
+            presenceLeaseRef: "presence-community",
+            authority: { revision: 4 },
+          })
+        : Response.json({ revision: 5 });
+    });
+
+    await expect(
+      acquireSarahLiveKitCommunityFloor({
+        fetch,
+        bearer: "acceptance-bearer",
+        deviceRef: "device-community",
+        communityRef: "openagents-public",
+        channelRef: "agent-chat",
+        roomRef: "room-community",
+        participantRef: "member-local",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(requests).toHaveLength(2);
+    expect(requests[0]).toEqual({
+      url: "https://openagents.com/api/sarah/livekit/room/join",
+      body: {
+        communityRef: "openagents-public",
+        channelRef: "agent-chat",
+      },
+    });
+    expect(requests[1]?.url).toBe(
+      "https://openagents.com/api/sarah/livekit/room/floor/member",
+    );
+    expect(requests[1]?.body).toMatchObject({
+      action: "acquire",
+      presenceLeaseRef: "presence-community",
+      expectedRevision: 4,
+      requestedLeaseMs: 30_000,
+    });
+    expect(requests[1]?.body.nonce).toMatch(/^[A-Za-z0-9_-]{32,256}$/u);
+  });
+});
 
 const interruptTailClock = (tailMs: number) => {
   let now = 0;

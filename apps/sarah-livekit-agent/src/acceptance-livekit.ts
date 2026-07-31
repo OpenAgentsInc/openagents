@@ -40,6 +40,8 @@ const TRANSCRIPTION_TOPIC = "lk.transcription";
 const SCENARIO_TIMEOUT_MS = 60_000;
 const SETTLEMENT_TIMEOUT_MS = 45_000;
 const INTERRUPT_AUDIO_QUIET_WINDOW_MS = 250;
+const COMMUNITY_ROOM_JOIN_PATH = "/api/sarah/livekit/room/join";
+const COMMUNITY_ROOM_MEMBER_FLOOR_PATH = "/api/sarah/livekit/room/floor/member";
 
 type Clock = Readonly<{
   now: () => number;
@@ -151,6 +153,67 @@ const postJson = async (
   });
   if (!response.ok) throw await responseError(response, path);
   return response.json();
+};
+
+const record = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Readonly<Record<string, unknown>>)
+    : undefined;
+
+export const acquireSarahLiveKitCommunityFloor = async (input: Readonly<{
+  fetch: Http;
+  bearer: string;
+  deviceRef: string;
+  communityRef: string;
+  channelRef: string;
+  roomRef: string;
+  participantRef: string;
+}>): Promise<void> => {
+  const joined = record(
+    await postJson(
+      input.fetch,
+      COMMUNITY_ROOM_JOIN_PATH,
+      input.bearer,
+      input.deviceRef,
+      {
+        communityRef: input.communityRef,
+        channelRef: input.channelRef,
+      },
+    ),
+  );
+  const authority = record(joined?.authority);
+  const presenceLeaseRef = joined?.presenceLeaseRef;
+  const revision = authority?.revision;
+  if (
+    joined?.roomRef !== input.roomRef ||
+    joined.participantRef !== input.participantRef ||
+    typeof presenceLeaseRef !== "string" ||
+    presenceLeaseRef.trim() !== presenceLeaseRef ||
+    presenceLeaseRef.length < 1 ||
+    presenceLeaseRef.length > 256 ||
+    !Number.isSafeInteger(revision) ||
+    (revision as number) < 1
+  ) {
+    throw new Error("community Sarah room join authority did not match the admitted session");
+  }
+  const floor = record(
+    await postJson(
+      input.fetch,
+      COMMUNITY_ROOM_MEMBER_FLOOR_PATH,
+      input.bearer,
+      input.deviceRef,
+      {
+        action: "acquire",
+        presenceLeaseRef,
+        expectedRevision: revision,
+        nonce: crypto.randomUUID().replaceAll("-", ""),
+        requestedLeaseMs: 30_000,
+      },
+    ),
+  );
+  if (!Number.isSafeInteger(floor?.revision) || (floor?.revision as number) <= (revision as number)) {
+    throw new Error("community Sarah speaking floor was not acquired");
+  }
 };
 
 const timeout = async <T>(operation: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
@@ -683,6 +746,17 @@ export const runLiveSarahLiveKitScenario = async (
     session.transport.sarahParticipantRef !== "principal.sarah"
   ) {
     throw new Error(`${scenario.kind} Sarah session did not return the production LiveKit grant`);
+  }
+  if (scenario.roomContext.kind === "community") {
+    await acquireSarahLiveKitCommunityFloor({
+      fetch: http,
+      bearer: scenario.bearer,
+      deviceRef: scenario.deviceRef,
+      communityRef: scenario.roomContext.communityRef,
+      channelRef: scenario.roomContext.channelRef,
+      roomRef: session.transport.roomRef,
+      participantRef: session.transport.participantRef,
+    });
   }
 
   const control = openSarahLiveKitAcceptanceControlChannel(
