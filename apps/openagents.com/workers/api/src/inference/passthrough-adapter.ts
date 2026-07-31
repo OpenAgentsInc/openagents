@@ -22,7 +22,7 @@
 // 429/5xx partner responses surface as a typed retryable InferenceAdapterError
 // so routing can fail over to another adapter rather than 500-ing the request.
 
-import { Effect, Redacted } from 'effect'
+import { Effect, Redacted } from "effect";
 
 import {
   InferenceAdapterError,
@@ -31,57 +31,51 @@ import {
   type InferenceResult,
   type InferenceStreamChunk,
   type InferenceUsage,
-} from './provider-adapter'
+} from "./provider-adapter";
 import {
   inferenceToolCallsFromUnknown,
   openAiWireMessageFromInferenceMessage,
-} from './openai-chat-compat'
+} from "./openai-chat-compat";
 
 // Partner HTTP response. Aliased so the adapter's transport types stay distinct
 // from the Worker's own Response-returning route surfaces (those are budgeted by
 // the zero-debt architecture check; this is a partner client, not a route).
-type PartnerResponse = Response
+type PartnerResponse = Response;
 
 // Injected fetch so tests can pass a mock without a real network. Matches the
 // Worker global `fetch` signature closely enough for our POST-only use.
-export type PassthroughFetch = (
-  input: string,
-  init: RequestInit,
-) => Promise<PartnerResponse>
+export type PassthroughFetch = (input: string, init: RequestInit) => Promise<PartnerResponse>;
 
 // Partner wire format the adapter speaks.
-export type PassthroughWireFormat = 'anthropic' | 'openai'
+export type PassthroughWireFormat = "anthropic" | "openai";
 
 export type PassthroughAdapterConfig = Readonly<{
   // Stable adapter id, e.g. "passthrough-anthropic" / "passthrough-openai".
-  id: string
-  wireFormat: PassthroughWireFormat
+  id: string;
+  wireFormat: PassthroughWireFormat;
   // Partner API key from a Worker secret, kept Redacted so it can't be logged.
-  apiKey: Redacted.Redacted<string>
+  apiKey: Redacted.Redacted<string>;
   // Partner API origin (no trailing slash), e.g. "https://api.anthropic.com"
   // or "https://api.openai.com". The wire-format-specific path is appended.
-  baseUrl: string
+  baseUrl: string;
   // Injected fetcher; defaults to the Worker global `fetch`.
-  fetch?: PassthroughFetch | undefined
+  fetch?: PassthroughFetch | undefined;
   // Request timeout in ms. Defaults to 60s.
-  timeoutMs?: number | undefined
+  timeoutMs?: number | undefined;
   // Anthropic Messages requires an explicit max_tokens; OpenAI treats it as
   // optional. Used as the default when the caller does not pass `max_tokens`
   // in passthroughParams. Defaults to 1024.
-  defaultMaxTokens?: number | undefined
+  defaultMaxTokens?: number | undefined;
   // Anthropic API version header value. Defaults to a known-good date.
-  anthropicVersion?: string | undefined
-}>
+  anthropicVersion?: string | undefined;
+}>;
 
-const DEFAULT_TIMEOUT_MS = 60_000
-const DEFAULT_MAX_TOKENS = 1_024
-const DEFAULT_ANTHROPIC_VERSION = '2023-06-01'
+const DEFAULT_TIMEOUT_MS = 60_000;
+const DEFAULT_MAX_TOKENS = 1_024;
+const DEFAULT_ANTHROPIC_VERSION = "2023-06-01";
 
-const fail = (
-  id: string,
-  reason: string,
-): Effect.Effect<never, InferenceAdapterError> =>
-  Effect.fail(new InferenceAdapterError({ adapterId: id, reason }))
+const fail = (id: string, reason: string): Effect.Effect<never, InferenceAdapterError> =>
+  Effect.fail(new InferenceAdapterError({ adapterId: id, reason }));
 
 // Build a retryable reason for 429/5xx so callers (routing/overflow) can tell a
 // transient partner problem from a permanent one. The reason string is the
@@ -89,132 +83,193 @@ const fail = (
 // key material or prompt content.
 const transportFailureReason = (status: number): string =>
   status === 429
-    ? 'retryable: partner rate limited (429)'
-    : `retryable: partner server error (${status})`
+    ? "retryable: partner rate limited (429)"
+    : `retryable: partner server error (${status})`;
 
-const isRetryableStatus = (status: number): boolean =>
-  status === 429 || status >= 500
+const isRetryableStatus = (status: number): boolean => status === 429 || status >= 500;
 
 // Pull a numeric passthrough param (max_tokens, etc.) when present and sane.
 const numberParam = (
   params: Readonly<Record<string, unknown>>,
   key: string,
 ): number | undefined => {
-  const value = params[key]
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
-}
+  const value = params[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+};
 
 // Sampling params we forward verbatim when present. We copy only a known,
 // bounded allow-list rather than spreading arbitrary keys, so an unexpected
 // field can't change auth/routing/streaming behavior.
 const OPENAI_FORWARDED_PARAMS = [
-  'temperature',
-  'top_p',
-  'frequency_penalty',
-  'presence_penalty',
-  'stop',
-  'seed',
-  'tools',
-  'tool_choice',
-  'parallel_tool_calls',
-] as const
+  "temperature",
+  "top_p",
+  "frequency_penalty",
+  "presence_penalty",
+  "stop",
+  "seed",
+  "tools",
+  "tool_choice",
+  "parallel_tool_calls",
+] as const;
 
-const ANTHROPIC_FORWARDED_PARAMS = [
-  'temperature',
-  'top_p',
-  'top_k',
-  'stop_sequences',
-] as const
+// OpenAI's reasoning-model family served over Chat Completions REJECTS several
+// of the legacy sampling/limit fields above with a hard, non-retryable 400
+// instead of ignoring them. Verified upstream against `gpt-5.6-luna`
+// (2026-07-31), each of these returns HTTP 400:
+//   max_tokens          -> "Unsupported parameter: 'max_tokens' is not
+//                           supported with this model. Use
+//                           'max_completion_tokens' instead."
+//   temperature (!= 1)  -> "Unsupported value: 'temperature' does not support
+//                           0.7 with this model. Only the default (1) value is
+//                           supported."
+//   top_p (!= 1)        -> "Unsupported parameter: 'top_p' is not supported
+//                           with this model."
+//   frequency_penalty   -> unsupported parameter
+//   presence_penalty    -> unsupported parameter
+//   stop                -> unsupported parameter
+// This is what dead-ended every hosted Omega Luna turn: the body ALWAYS carried
+// `max_tokens`, so the very first upstream call 400-ed, and a 400 is (rightly)
+// not retryable, so routing had no other lane to fall to.
+//
+// Bounded EXACT-ID set, deliberately not a `gpt-5*` prefix classifier — the same
+// discipline the model router uses for this lane. A model only joins this
+// profile after its rejection behavior is verified upstream.
+const OPENAI_RESTRICTED_REASONING_MODELS: ReadonlySet<string> = new Set(["gpt-5.6-luna"]);
+
+const isRestrictedReasoningModel = (model: string): boolean =>
+  OPENAI_RESTRICTED_REASONING_MODELS.has(model.trim().toLowerCase());
+
+// The subset of the OpenAI allow-list the restricted reasoning profile still
+// accepts verbatim. Sampling knobs are dropped rather than clamped: sending
+// `temperature: 1` is accepted upstream, but silently rewriting a caller's 0.2
+// to 1 would misreport what was served. Dropping is the honest normalization.
+const OPENAI_REASONING_FORWARDED_PARAMS = [
+  "seed",
+  "tools",
+  "tool_choice",
+  "parallel_tool_calls",
+  "reasoning_effort",
+] as const;
+
+// Function tools on this family require `reasoning_effort: 'none'` over Chat
+// Completions; upstream otherwise returns 400 "Function tools with
+// reasoning_effort are not supported for <model> in /v1/chat/completions. To use
+// function tools, use /v1/responses or set reasoning_effort to 'none'."
+// A caller-supplied reasoning_effort still wins — we only supply the default
+// that keeps a tool-carrying request from dead-ending.
+const REASONING_EFFORT_FOR_TOOLS = "none";
+
+const ANTHROPIC_FORWARDED_PARAMS = ["temperature", "top_p", "top_k", "stop_sequences"] as const;
 
 const forwardParams = (
   params: Readonly<Record<string, unknown>>,
   allow: ReadonlyArray<string>,
 ): Record<string, unknown> => {
-  const out: Record<string, unknown> = {}
+  const out: Record<string, unknown> = {};
   for (const key of allow) {
     if (params[key] !== undefined) {
-      out[key] = params[key]
+      out[key] = params[key];
     }
   }
-  return out
-}
+  return out;
+};
 
 // ---- OpenAI Chat Completions mapping ------------------------------------
 
 type OpenAiUsage = Readonly<{
-  prompt_tokens?: number
-  completion_tokens?: number
-  total_tokens?: number
-  prompt_tokens_details?: Readonly<{ cached_tokens?: number }>
-}>
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  prompt_tokens_details?: Readonly<{ cached_tokens?: number }>;
+}>;
 
 type OpenAiResponse = Readonly<{
-  model?: string
+  model?: string;
   choices?: ReadonlyArray<
     Readonly<{
-      finish_reason?: string | null
+      finish_reason?: string | null;
       message?: Readonly<{
-        content?: string | null
-        tool_calls?: unknown
-      }>
+        content?: string | null;
+        tool_calls?: unknown;
+      }>;
     }>
-  >
-  usage?: OpenAiUsage
-}>
+  >;
+  usage?: OpenAiUsage;
+}>;
 
 const openAiBody = (
   request: InferenceRequest,
   defaultMaxTokens: number,
-): Record<string, unknown> => ({
-  model: request.model,
-  messages: request.messages.map(openAiWireMessageFromInferenceMessage),
-  max_tokens:
-    numberParam(request.passthroughParams, 'max_tokens') ?? defaultMaxTokens,
-  stream: request.stream,
-  ...forwardParams(request.passthroughParams, OPENAI_FORWARDED_PARAMS),
-})
+): Record<string, unknown> => {
+  const base = {
+    model: request.model,
+    messages: request.messages.map(openAiWireMessageFromInferenceMessage),
+    stream: request.stream,
+  };
+  const outputTokenBudget =
+    numberParam(request.passthroughParams, "max_tokens") ?? defaultMaxTokens;
+
+  if (!isRestrictedReasoningModel(request.model)) {
+    return {
+      ...base,
+      max_tokens: outputTokenBudget,
+      ...forwardParams(request.passthroughParams, OPENAI_FORWARDED_PARAMS),
+    };
+  }
+
+  const forwarded = forwardParams(request.passthroughParams, OPENAI_REASONING_FORWARDED_PARAMS);
+  const needsToolReasoningEffort =
+    forwarded["tools"] !== undefined && forwarded["reasoning_effort"] === undefined;
+  return {
+    ...base,
+    // A caller's `max_completion_tokens` wins; otherwise carry their
+    // `max_tokens` budget over to the field this family actually accepts, so
+    // the caller's intended output cap is preserved rather than dropped.
+    max_completion_tokens:
+      numberParam(request.passthroughParams, "max_completion_tokens") ?? outputTokenBudget,
+    ...forwarded,
+    ...(needsToolReasoningEffort ? { reasoning_effort: REASONING_EFFORT_FOR_TOOLS } : {}),
+  };
+};
 
 const openAiUsage = (usage: OpenAiUsage | undefined): InferenceUsage => {
-  const promptTokens = usage?.prompt_tokens ?? 0
-  const completionTokens = usage?.completion_tokens ?? 0
-  const cached = usage?.prompt_tokens_details?.cached_tokens
+  const promptTokens = usage?.prompt_tokens ?? 0;
+  const completionTokens = usage?.completion_tokens ?? 0;
+  const cached = usage?.prompt_tokens_details?.cached_tokens;
   return {
     promptTokens,
     completionTokens,
     totalTokens: usage?.total_tokens ?? promptTokens + completionTokens,
-    ...(typeof cached === 'number' ? { cachedPromptTokens: cached } : {}),
-  }
-}
+    ...(typeof cached === "number" ? { cachedPromptTokens: cached } : {}),
+  };
+};
 
-const openAiResult = (
-  request: InferenceRequest,
-  payload: OpenAiResponse,
-): InferenceResult => {
-  const choice = payload.choices?.[0]
-  const toolCalls = inferenceToolCallsFromUnknown(choice?.message?.tool_calls)
+const openAiResult = (request: InferenceRequest, payload: OpenAiResponse): InferenceResult => {
+  const choice = payload.choices?.[0];
+  const toolCalls = inferenceToolCallsFromUnknown(choice?.message?.tool_calls);
   return {
-    content: choice?.message?.content ?? '',
-    finishReason: choice?.finish_reason ?? 'stop',
+    content: choice?.message?.content ?? "",
+    finishReason: choice?.finish_reason ?? "stop",
     servedModel: payload.model ?? request.model,
     ...(toolCalls === undefined || toolCalls.length === 0 ? {} : { toolCalls }),
     usage: openAiUsage(payload.usage),
-  }
-}
+  };
+};
 
 // ---- Anthropic Messages mapping -----------------------------------------
 
 type AnthropicUsage = Readonly<{
-  input_tokens?: number
-  output_tokens?: number
-  cache_read_input_tokens?: number
-}>
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+}>;
 
 type AnthropicResponse = Readonly<{
-  model?: string
-  stop_reason?: string | null
-  content?: ReadonlyArray<Readonly<{ type?: string; text?: string }>>
-  usage?: AnthropicUsage
-}>
+  model?: string;
+  stop_reason?: string | null;
+  content?: ReadonlyArray<Readonly<{ type?: string; text?: string }>>;
+  usage?: AnthropicUsage;
+}>;
 
 // Anthropic Messages keeps the `system` prompt out of `messages`; split any
 // system turns out so the request maps cleanly.
@@ -222,67 +277,62 @@ const anthropicBody = (
   request: InferenceRequest,
   defaultMaxTokens: number,
 ): Record<string, unknown> => {
-  const systemParts: Array<string> = []
-  const turns: Array<{ role: string; content: string }> = []
+  const systemParts: Array<string> = [];
+  const turns: Array<{ role: string; content: string }> = [];
   for (const message of request.messages) {
-    if (message.role === 'system') {
-      systemParts.push(message.content)
+    if (message.role === "system") {
+      systemParts.push(message.content);
     } else {
       // Anthropic accepts only "user" / "assistant" roles.
       turns.push({
         content: message.content,
-        role: message.role === 'assistant' ? 'assistant' : 'user',
-      })
+        role: message.role === "assistant" ? "assistant" : "user",
+      });
     }
   }
   return {
     model: request.model,
-    max_tokens:
-      numberParam(request.passthroughParams, 'max_tokens') ?? defaultMaxTokens,
+    max_tokens: numberParam(request.passthroughParams, "max_tokens") ?? defaultMaxTokens,
     messages: turns,
     stream: request.stream,
-    ...(systemParts.length > 0 ? { system: systemParts.join('\n\n') } : {}),
+    ...(systemParts.length > 0 ? { system: systemParts.join("\n\n") } : {}),
     ...forwardParams(request.passthroughParams, ANTHROPIC_FORWARDED_PARAMS),
-  }
-}
+  };
+};
 
 // Map Anthropic's stop_reason to the OpenAI-style finish_reason our envelope
 // uses, so downstream consumers see one vocabulary.
-const anthropicFinishReason = (
-  stopReason: string | null | undefined,
-): string => {
+const anthropicFinishReason = (stopReason: string | null | undefined): string => {
   switch (stopReason) {
-    case 'max_tokens':
-      return 'length'
-    case 'tool_use':
-      return 'tool_calls'
-    case 'end_turn':
-    case 'stop_sequence':
-      return 'stop'
+    case "max_tokens":
+      return "length";
+    case "tool_use":
+      return "tool_calls";
+    case "end_turn":
+    case "stop_sequence":
+      return "stop";
     default:
-      return stopReason ?? 'stop'
+      return stopReason ?? "stop";
   }
-}
+};
 
 const anthropicUsage = (usage: AnthropicUsage | undefined): InferenceUsage => {
-  const promptTokens = usage?.input_tokens ?? 0
-  const completionTokens = usage?.output_tokens ?? 0
-  const cached = usage?.cache_read_input_tokens
+  const promptTokens = usage?.input_tokens ?? 0;
+  const completionTokens = usage?.output_tokens ?? 0;
+  const cached = usage?.cache_read_input_tokens;
   return {
     promptTokens,
     completionTokens,
     totalTokens: promptTokens + completionTokens,
-    ...(typeof cached === 'number' ? { cachedPromptTokens: cached } : {}),
-  }
-}
+    ...(typeof cached === "number" ? { cachedPromptTokens: cached } : {}),
+  };
+};
 
-const anthropicText = (
-  content: AnthropicResponse['content'] | undefined,
-): string =>
+const anthropicText = (content: AnthropicResponse["content"] | undefined): string =>
   (content ?? [])
-    .filter(block => block.type === 'text' && typeof block.text === 'string')
-    .map(block => block.text ?? '')
-    .join('')
+    .filter((block) => block.type === "text" && typeof block.text === "string")
+    .map((block) => block.text ?? "")
+    .join("");
 
 const anthropicResult = (
   request: InferenceRequest,
@@ -292,65 +342,63 @@ const anthropicResult = (
   finishReason: anthropicFinishReason(payload.stop_reason),
   servedModel: payload.model ?? request.model,
   usage: anthropicUsage(payload.usage),
-})
+});
 
 // ---- HTTP plumbing -------------------------------------------------------
 
 const requestPath = (wireFormat: PassthroughWireFormat): string =>
-  wireFormat === 'anthropic' ? '/v1/messages' : '/v1/chat/completions'
+  wireFormat === "anthropic" ? "/v1/messages" : "/v1/chat/completions";
 
 // Read the Redacted secret to a string at the network boundary only. The value
 // is placed on an outbound header and never logged or returned.
-const requestHeaders = (
-  config: PassthroughAdapterConfig,
-): Record<string, string> => {
-  const key = Redacted.value(config.apiKey)
-  if (config.wireFormat === 'anthropic') {
+const requestHeaders = (config: PassthroughAdapterConfig): Record<string, string> => {
+  const key = Redacted.value(config.apiKey);
+  if (config.wireFormat === "anthropic") {
     return {
-      accept: 'application/json',
-      'anthropic-version': config.anthropicVersion ?? DEFAULT_ANTHROPIC_VERSION,
-      'content-type': 'application/json',
-      'x-api-key': key,
-    }
+      accept: "application/json",
+      "anthropic-version": config.anthropicVersion ?? DEFAULT_ANTHROPIC_VERSION,
+      "content-type": "application/json",
+      "x-api-key": key,
+    };
   }
   return {
-    accept: 'application/json',
+    accept: "application/json",
     authorization: `Bearer ${key}`,
-    'content-type': 'application/json',
-  }
-}
+    "content-type": "application/json",
+  };
+};
 
 const safeSignal = (timeoutMs: number): AbortSignal | undefined => {
   try {
-    return AbortSignal.timeout(timeoutMs)
+    return AbortSignal.timeout(timeoutMs);
   } catch {
-    return undefined
+    return undefined;
   }
-}
+};
 
 const postToPartner = (
   config: PassthroughAdapterConfig,
   body: unknown,
 ): Effect.Effect<PartnerResponse, InferenceAdapterError> =>
   Effect.tryPromise({
-    catch: error =>
+    catch: (error) =>
       new InferenceAdapterError({
         adapterId: config.id,
         reason: `retryable: partner transport error (${
-          error instanceof Error ? error.name : 'unknown'
+          error instanceof Error ? error.name : "unknown"
         })`,
       }),
     try: () => {
-      const fetcher = config.fetch ?? (globalThis.fetch as PassthroughFetch)
-      const signal = safeSignal(config.timeoutMs ?? DEFAULT_TIMEOUT_MS)
+      const fetcher = config.fetch ?? (globalThis.fetch as PassthroughFetch);
+      const signal = safeSignal(config.timeoutMs ?? DEFAULT_TIMEOUT_MS);
       return fetcher(`${config.baseUrl}${requestPath(config.wireFormat)}`, {
         body: JSON.stringify(body),
         headers: requestHeaders(config),
-        method: 'POST',
+        method: "POST",
         ...(signal === undefined ? {} : { signal }),
-      })
+      });
     },
-  })
+  });
 
 const parseJson = (
   config: PassthroughAdapterConfig,
@@ -360,10 +408,36 @@ const parseJson = (
     catch: () =>
       new InferenceAdapterError({
         adapterId: config.id,
-        reason: 'partner returned a non-JSON response',
+        reason: "partner returned a non-JSON response",
       }),
     try: () => response.json(),
-  })
+  });
+
+// Bounded upstream-rejection detail for a NON-retryable partner response.
+//
+// Without this, every partner 4xx collapsed to the same opaque
+// "partner rejected request (400)" and the actual cause — an unsupported
+// request field — was invisible in logs and to the caller. Diagnosing one such
+// 400 cost three sessions. We surface only the partner's own bounded
+// `error.message` / `error.code` (parameter-shape diagnostics), never headers,
+// never key material, and never the request body or prompt.
+const MAX_PARTNER_ERROR_DETAIL = 200;
+
+const partnerErrorDetail = (payload: unknown): string | undefined => {
+  if (typeof payload !== "object" || payload === null) {
+    return undefined;
+  }
+  const error = (payload as { error?: unknown }).error;
+  if (typeof error !== "object" || error === null) {
+    return undefined;
+  }
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  const text = typeof message === "string" && message !== "" ? message : undefined;
+  const codeText = typeof code === "string" && code !== "" ? code : undefined;
+  const detail =
+    text === undefined ? codeText : codeText === undefined ? text : `${codeText}: ${text}`;
+  return detail === undefined ? undefined : detail.slice(0, MAX_PARTNER_ERROR_DETAIL);
+};
 
 // ---- Adapter factory -----------------------------------------------------
 
@@ -371,20 +445,20 @@ const buildBody = (
   config: PassthroughAdapterConfig,
   request: InferenceRequest,
 ): Record<string, unknown> => {
-  const defaultMaxTokens = config.defaultMaxTokens ?? DEFAULT_MAX_TOKENS
-  return config.wireFormat === 'anthropic'
+  const defaultMaxTokens = config.defaultMaxTokens ?? DEFAULT_MAX_TOKENS;
+  return config.wireFormat === "anthropic"
     ? anthropicBody(request, defaultMaxTokens)
-    : openAiBody(request, defaultMaxTokens)
-}
+    : openAiBody(request, defaultMaxTokens);
+};
 
 const toResult = (
   config: PassthroughAdapterConfig,
   request: InferenceRequest,
   payload: unknown,
 ): InferenceResult =>
-  config.wireFormat === 'anthropic'
+  config.wireFormat === "anthropic"
     ? anthropicResult(request, payload as AnthropicResponse)
-    : openAiResult(request, payload as OpenAiResponse)
+    : openAiResult(request, payload as OpenAiResponse);
 
 // Shared request → response path for both complete and (collected) stream.
 const runCompletion = (
@@ -392,23 +466,26 @@ const runCompletion = (
   request: InferenceRequest,
 ): Effect.Effect<InferenceResult, InferenceAdapterError> =>
   Effect.gen(function* () {
-    const response = yield* postToPartner(config, buildBody(config, request))
+    const response = yield* postToPartner(config, buildBody(config, request));
 
     if (isRetryableStatus(response.status)) {
-      return yield* fail(config.id, transportFailureReason(response.status))
+      return yield* fail(config.id, transportFailureReason(response.status));
     }
 
-    const payload = yield* parseJson(config, response)
+    const payload = yield* parseJson(config, response);
 
     if (!response.ok) {
+      const detail = partnerErrorDetail(payload);
       return yield* fail(
         config.id,
-        `partner rejected request (${response.status})`,
-      )
+        detail === undefined
+          ? `partner rejected request (${response.status})`
+          : `partner rejected request (${response.status}): ${detail}`,
+      );
     }
 
-    return toResult(config, request, payload)
-  })
+    return toResult(config, request, payload);
+  });
 
 // Build a passthrough adapter for one partner. Each registered partner gets one
 // adapter id. The adapter is pure data + Effects; it touches the network only
@@ -430,14 +507,14 @@ export const makePassthroughAdapter = (
       Effect.map((result): ReadonlyArray<InferenceStreamChunk> => {
         const contentChunk: InferenceStreamChunk = {
           contentDelta: result.content,
-        }
+        };
         const terminalChunk: InferenceStreamChunk = {
-          contentDelta: '',
+          contentDelta: "",
           finishReason: result.finishReason,
           servedModel: result.servedModel,
           usage: result.usage,
-        }
-        return [contentChunk, terminalChunk]
+        };
+        return [contentChunk, terminalChunk];
       }),
     ),
-})
+});
