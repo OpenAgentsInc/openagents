@@ -315,7 +315,10 @@ describe('Sarah Realtime bridge metering', () => {
       creditMsatPerMillionTokens: 1_000,
       store: {
         readLiveKitProviderAdmission: async () => ({ state: 'closed' }),
-        settle: async () => undefined,
+        revokeLiveKitRoom: async () => ({
+          state: 'connected',
+          chargedMsat: 0,
+        }),
       } as never,
       closeStore: async () => undefined,
       tasks: {
@@ -348,7 +351,7 @@ describe('Sarah Realtime bridge metering', () => {
     const settle = vi.fn(async () => {
       throw new Error('LiveKit control disconnect must not settle accounting')
     })
-    const pending: Promise<void>[] = []
+    const pending: Promise<unknown>[] = []
     const data = makeSarahRealtimeBridgeData({
       session: {
         sessionRef: 'session-drain',
@@ -376,7 +379,9 @@ describe('Sarah Realtime bridge metering', () => {
       store: { revokeLiveKitRoom, settle } as never,
       closeStore: async () => undefined,
       tasks: {
-        add: (task: Promise<void>) => pending.push(task),
+        add: (task: Promise<unknown>) => {
+          pending.push(task)
+        },
         size: () => pending.length,
         drain: async () => Promise.all(pending).then(() => undefined),
       },
