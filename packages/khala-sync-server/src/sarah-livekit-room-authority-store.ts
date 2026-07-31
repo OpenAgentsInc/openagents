@@ -514,7 +514,7 @@ export class PostgresSarahLiveKitRoomAuthorityStore implements SarahLiveKitRoomA
         WHERE binding.sarah_presence_lease_ref=${input.presenceLeaseRef}
           AND binding.owner_user_id=${input.ownerUserId}
           AND binding.room_context_kind='community'
-          AND binding.state='active'
+          AND binding.state IN ('prepared', 'active')
           AND binding.worker_stop_reason IS NULL
           AND binding.worker_closed_at IS NULL
           AND session.state IN ('reserved', 'connected')

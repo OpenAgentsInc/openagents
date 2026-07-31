@@ -99,10 +99,14 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit room authority store", () =>
     if (postgres !== undefined) await postgres.stop();
   });
 
-  test("reads a community binding while its worker connection is pending", async () => {
+  test("reads a prepared community room while its worker connection is pending", async () => {
     await sql`
       UPDATE sarah_realtime_voice_sessions
       SET state='reserved',updated_at=${now}
+      WHERE session_ref=${snapshot.presence.sessionRef}`;
+    await sql`
+      UPDATE sarah_livekit_room_bindings
+      SET state='prepared',owner_joined_at=NULL,sarah_joined_at=NULL,updated_at=${now}
       WHERE session_ref=${snapshot.presence.sessionRef}`;
     try {
       await expect(
@@ -122,6 +126,10 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit room authority store", () =>
       await sql`
         UPDATE sarah_realtime_voice_sessions
         SET state='connected',updated_at=${now}
+        WHERE session_ref=${snapshot.presence.sessionRef}`;
+      await sql`
+        UPDATE sarah_livekit_room_bindings
+        SET state='active',owner_joined_at=${now},sarah_joined_at=${now},updated_at=${now}
         WHERE session_ref=${snapshot.presence.sessionRef}`;
     }
   });
