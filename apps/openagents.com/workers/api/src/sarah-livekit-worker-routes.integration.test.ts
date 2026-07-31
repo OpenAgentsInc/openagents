@@ -155,12 +155,20 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       roomContext: { kind: "private" },
       nowIso: "2026-07-28T13:00:00.000Z",
     });
+    await store.claimLiveKitProvisioningIntent({
+      sessionRef: "voice-livekit-route-1",
+      generation: 1,
+      provisioningOwnerRef: "issuer:livekit-route-1",
+      staleBeforeIso: "2026-07-28T12:59:30.000Z",
+      nowIso: "2026-07-28T13:00:00.000Z",
+    });
     await store.bindLiveKitRoom({
       sessionRef: "voice-livekit-route-1",
       ownerUserId: "user-livekit-route",
       deviceRef: "omega-livekit-route",
       threadRef: "thread-livekit-route",
       generation: 1,
+      provisioningOwnerRef: "issuer:livekit-route-1",
       capabilityProfile: "omega_editor",
       admissionRef: "sarah_voice_admission:route-1",
       admissionDigest: "8".repeat(64),

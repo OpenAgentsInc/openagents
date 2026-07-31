@@ -25,6 +25,7 @@ export type SarahLiveKitRoomBrokerConfig = Readonly<{
   apiKey: string;
   apiSecret: string;
   controlRoot: string;
+  sessionTicketSecret: string;
 }>;
 
 export type SarahLiveKitRoomBrokerClients = Readonly<{
@@ -66,6 +67,11 @@ export const parseSarahLiveKitControlRoot = (value: string | undefined): string 
   }
   return value;
 };
+
+const parseSarahLiveKitSessionTicketSecret = (
+  value: string | undefined,
+): string | undefined =>
+  value !== undefined && /^[A-Za-z0-9_-]{64}$/u.test(value) ? value : undefined;
 
 const parseServerKeysJson = (
   value: string,
@@ -202,8 +208,11 @@ export const makeSarahLiveKitRoomBroker = (
     listDispatch: (roomRef) => dispatchService.listDispatch(roomRef),
     deleteDispatch: (dispatchRef, roomRef) => dispatchService.deleteDispatch(dispatchRef, roomRef),
   };
+  const inFlightProvisions = new Map<string, Promise<SarahVoiceLiveKitProvision>>();
 
-  const provision: SarahVoiceLiveKitRoomBroker["provision"] = async (input) => {
+  const provisionOnce = async (
+    input: SarahVoiceLiveKitProvisionInput,
+  ): Promise<SarahVoiceLiveKitProvision> => {
     const metadata = dispatchMetadataForProvision(input);
     const { roomRef, participantRef, sarahParticipantRef, sarahPresenceLeaseRef } = metadata;
     const joinExpiresAtMs = Math.min(input.expiresAtMs, now() + 60_000);
@@ -305,6 +314,18 @@ export const makeSarahLiveKitRoomBroker = (
       grantClaims,
     } satisfies SarahVoiceLiveKitProvision;
   };
+  const provision: SarahVoiceLiveKitRoomBroker["provision"] = (input) => {
+    const existing = inFlightProvisions.get(input.idempotencyKey);
+    if (existing !== undefined) return existing;
+    let pending: Promise<SarahVoiceLiveKitProvision>;
+    pending = provisionOnce(input).finally(() => {
+      if (inFlightProvisions.get(input.idempotencyKey) === pending) {
+        inFlightProvisions.delete(input.idempotencyKey);
+      }
+    });
+    inFlightProvisions.set(input.idempotencyKey, pending);
+    return pending;
+  };
 
   const cleanupRoom = async (
     room: Parameters<SarahVoiceLiveKitRoomBroker["cleanupRoom"]>[0],
@@ -320,7 +341,7 @@ export const makeSarahLiveKitRoomBroker = (
         deriveSarahLiveKitControlToken(config.controlRoot, dispatchMetadataForProvision(input)),
       ),
     sessionTicket: (input) =>
-      createHmac("sha256", Buffer.from(config.controlRoot, "utf8"))
+      createHmac("sha256", Buffer.from(config.sessionTicketSecret, "utf8"))
         .update("openagents.sarah.livekit.session-ticket.v1\0")
         .update(canonicalSarahLiveKitDispatchAuthority(dispatchMetadataForProvision(input)))
         .digest("base64url"),
@@ -353,6 +374,7 @@ export const parseSarahLiveKitRoomBrokerConfig = (
     SARAH_LIVEKIT_API_KEY?: string | undefined;
     SARAH_LIVEKIT_API_SECRET?: string | undefined;
     SARAH_LIVEKIT_CONTROL_ROOT?: string | undefined;
+    OPENAGENTS_AUDIO_TOKEN_SECRET?: string | undefined;
   }>,
 ): SarahLiveKitRoomBrokerConfig | undefined => {
   const livekitUrl = env.SARAH_LIVEKIT_URL?.trim();
@@ -372,11 +394,15 @@ export const parseSarahLiveKitRoomBrokerConfig = (
   const apiKey = serverKeys?.apiKey;
   const apiSecret = serverKeys?.apiSecret;
   const controlRoot = parseSarahLiveKitControlRoot(env.SARAH_LIVEKIT_CONTROL_ROOT);
+  const sessionTicketSecret = parseSarahLiveKitSessionTicketSecret(
+    env.OPENAGENTS_AUDIO_TOKEN_SECRET,
+  );
   if (
     livekitUrl === undefined ||
     apiKey === undefined ||
     apiSecret === undefined ||
     controlRoot === undefined ||
+    sessionTicketSecret === undefined ||
     !/^API[23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{12}$/u.test(apiKey) ||
     !/^[A-Za-z0-9]{43,52}$/u.test(apiSecret)
   ) {
@@ -387,5 +413,5 @@ export const parseSarahLiveKitRoomBrokerConfig = (
   } catch {
     return undefined;
   }
-  return { livekitUrl, apiKey, apiSecret, controlRoot };
+  return { livekitUrl, apiKey, apiSecret, controlRoot, sessionTicketSecret };
 };

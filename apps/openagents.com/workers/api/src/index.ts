@@ -1300,6 +1300,7 @@ import {
 } from './sarah-harness-service'
 import {
   makeSarahLiveKitRoomBroker,
+  parseSarahLiveKitControlRoot,
   parseSarahLiveKitRoomBrokerConfig,
 } from './sarah-livekit-room-broker'
 import {
@@ -3783,7 +3784,7 @@ const sarahRealtimeVoiceDependenciesForEnv = (workerEnv: Env) => ({
 
 const sarahLiveKitWorkerRouteDependencies = {
   controlRoot: (workerEnv: Env) =>
-    parseSarahLiveKitRoomBrokerConfig(workerEnv)?.controlRoot,
+    parseSarahLiveKitControlRoot(workerEnv.SARAH_LIVEKIT_CONTROL_ROOT),
   creditMsatPerMillionTokens: (workerEnv: Env) =>
     sarahRealtimeVoiceConfigForEnv(workerEnv)?.creditMsatPerMillionTokens,
   openStore: openSarahRealtimeVoiceStore,

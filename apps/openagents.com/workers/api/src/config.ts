@@ -73,9 +73,10 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // Optional interval override for the autonomous tick, in whole minutes. Unset
   // keeps the 15-minute default; parsed values are clamped to [5, 240].
   SARAH_AUTONOMOUS_TICK_INTERVAL_MINUTES?: string | undefined
-  // Shared HMAC secret for host-only AUDIO-2 grants. This is a Worker secret,
-  // never a public var or response field, and must match the private audio
-  // gateway's OPENAGENTS_AUDIO_TOKEN_SECRET. Missing/weak values fail closed.
+  // API-only HMAC secret for host-only AUDIO-2 grants and replayable Desktop
+  // LiveKit session tickets. It is never shared with the Sarah LiveKit worker,
+  // exposed as a public var, or returned in a response. Missing/weak values
+  // fail closed.
   OPENAGENTS_AUDIO_TOKEN_SECRET?: string | undefined
   // Private AUDIO-2 WebSocket address returned to the Desktop host only after
   // auth. Must be the exact wss:// service origin plus /v1/stream, with no
@@ -102,9 +103,9 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   SARAH_LIVEKIT_SERVER_KEYS_JSON?: string | undefined
   SARAH_LIVEKIT_API_KEY?: string | undefined
   SARAH_LIVEKIT_API_SECRET?: string | undefined
-  // Untrimmed 64..128-character base64url HMAC root. The API and Sarah worker
-  // receive the same Secret Manager value and derive generation credentials
-  // without placing them in LiveKit job metadata.
+  // Untrimmed 64..128-character base64url HMAC root shared only by the API and
+  // Sarah worker to derive generation control credentials. Desktop session
+  // tickets use the API-only OPENAGENTS_AUDIO_TOKEN_SECRET instead.
   SARAH_LIVEKIT_CONTROL_ROOT?: string | undefined
   // Default-off rollout and emergency rollback seam. Only exact true/1/on
   // permits new LiveKit admissions; unset, false, or malformed values block

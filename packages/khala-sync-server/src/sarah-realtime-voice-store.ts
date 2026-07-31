@@ -186,6 +186,7 @@ export type SarahVoiceLiveKitProvisioningIntent = Readonly<{
   sessionRef: string;
   generation: number;
   idempotencyKey: string;
+  provisioningOwnerRef: string;
 }>;
 
 export type SarahVoiceLiveKitWorkerClaim = Readonly<{
@@ -985,23 +986,66 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }
   };
 
+  const claimLiveKitProvisioningIntent = async (
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+      provisioningOwnerRef: string;
+      staleBeforeIso: string;
+      nowIso: string;
+    }>,
+  ): Promise<boolean> => {
+    try {
+      const rows = (await sql`
+        UPDATE sarah_livekit_provisioning_intents
+        SET provisioning_owner_ref = ${input.provisioningOwnerRef},
+            provisioning_claimed_at = ${input.nowIso},
+            updated_at = ${input.nowIso}
+        WHERE session_ref = ${input.sessionRef}
+          AND generation = ${input.generation}
+          AND state IN ('pending', 'bound')
+          AND (
+            provisioning_owner_ref IS NULL
+            OR provisioning_owner_ref = ${input.provisioningOwnerRef}
+            OR provisioning_claimed_at <= ${input.staleBeforeIso}
+          )
+        RETURNING session_ref
+      `) as ReadonlyArray<{ session_ref: string }>;
+      return first(rows) !== undefined;
+    } catch (error) {
+      throw new SarahVoiceStorageError("Sarah LiveKit provisioning claim failed", error);
+    }
+  };
+
   const markLiveKitProvisioningIntent = async (
     input: Readonly<{
       sessionRef: string;
       generation: number;
+      provisioningOwnerRef: string;
       state: "cleanup_failed" | "cleaned";
       nowIso: string;
     }>,
   ): Promise<void> => {
     try {
-      await sql`
+      const rows = (await sql`
         UPDATE sarah_livekit_provisioning_intents
-        SET state = ${input.state}, updated_at = ${input.nowIso}
+        SET state = ${input.state},
+            provisioning_owner_ref = NULL,
+            provisioning_claimed_at = NULL,
+            updated_at = ${input.nowIso}
         WHERE session_ref = ${input.sessionRef}
           AND generation = ${input.generation}
+          AND provisioning_owner_ref = ${input.provisioningOwnerRef}
           AND state IN ('pending', 'reconciling', 'cleanup_failed', 'cleaned')
-      `;
+        RETURNING session_ref
+      `) as ReadonlyArray<{ session_ref: string }>;
+      if (first(rows) === undefined) {
+        throw new SarahVoiceSessionRejectedError(
+          "The LiveKit provisioning intent is owned by another issuer",
+        );
+      }
     } catch (error) {
+      if (error instanceof SarahVoiceSessionRejectedError) throw error;
       throw new SarahVoiceStorageError("Sarah LiveKit provisioning intent update failed", error);
     }
   };
@@ -1010,6 +1054,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     input: Readonly<{
       staleBeforeIso: string;
       nowIso: string;
+      provisioningOwnerRef: string;
       limit?: number;
     }>,
   ): Promise<ReadonlyArray<SarahVoiceLiveKitProvisioningIntent>> => {
@@ -1023,26 +1068,35 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             FROM sarah_livekit_provisioning_intents
             WHERE state IN ('pending', 'reconciling', 'cleanup_failed')
               AND updated_at <= ${input.staleBeforeIso}
+              AND (
+                provisioning_owner_ref IS NULL
+                OR provisioning_claimed_at <= ${input.staleBeforeIso}
+              )
             ORDER BY created_at
             LIMIT ${boundedLimit}
             FOR UPDATE SKIP LOCKED
           )
           UPDATE sarah_livekit_provisioning_intents AS intent
-          SET state = 'reconciling', updated_at = ${input.nowIso}
+          SET state = 'reconciling',
+              provisioning_owner_ref = ${input.provisioningOwnerRef},
+              provisioning_claimed_at = ${input.nowIso},
+              updated_at = ${input.nowIso}
           FROM candidates
           WHERE intent.session_ref = candidates.session_ref
           RETURNING intent.session_ref, intent.generation,
-            intent.idempotency_key
+            intent.idempotency_key, intent.provisioning_owner_ref
         `) as ReadonlyArray<{
             session_ref: string;
             generation: number | string;
             idempotency_key: string;
+            provisioning_owner_ref: string;
           }>,
       );
       return rows.map((row) => ({
         sessionRef: row.session_ref,
         generation: toSafeInteger(row.generation, "generation"),
         idempotencyKey: row.idempotency_key,
+        provisioningOwnerRef: row.provisioning_owner_ref,
       }));
     } catch (error) {
       throw new SarahVoiceStorageError("Sarah LiveKit provisioning intent claim failed", error);
@@ -1056,6 +1110,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       deviceRef: string;
       threadRef: string;
       generation: number;
+      provisioningOwnerRef: string;
       capabilityProfile: SarahVoiceClientProfile;
       admissionRef: string;
       admissionDigest: string;
@@ -1099,6 +1154,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             }
             AND state IN ('pending', 'bound')
             AND worker_control_token_digest = ${input.workerControlTokenDigest}
+            AND provisioning_owner_ref = ${input.provisioningOwnerRef}
           FOR UPDATE
         `) as ReadonlyArray<{ session_ref: string }>;
         if (first(intents) === undefined) {
@@ -1209,10 +1265,14 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         }
         await tx`
           UPDATE sarah_livekit_provisioning_intents
-          SET state = 'bound', updated_at = ${input.nowIso}
+          SET state = 'bound',
+              provisioning_owner_ref = NULL,
+              provisioning_claimed_at = NULL,
+              updated_at = ${input.nowIso}
           WHERE session_ref = ${input.sessionRef}
             AND generation = ${input.generation}
             AND state IN ('pending', 'bound')
+            AND provisioning_owner_ref = ${input.provisioningOwnerRef}
         `;
       });
     } catch (error) {
@@ -1828,6 +1888,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     input: Readonly<{
       sessionRef: string;
       generation: number;
+      provisioningOwnerRef: string;
       closeReason: string;
       nowIso: string;
     }>,
@@ -1839,6 +1900,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           FROM sarah_livekit_provisioning_intents
           WHERE session_ref = ${input.sessionRef}
             AND generation = ${input.generation}
+            AND provisioning_owner_ref = ${input.provisioningOwnerRef}
             AND state IN (
               'pending',
               'reconciling',
@@ -3279,6 +3341,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     applyLiveKitWorkerEvent,
     authorizeLiveKitWorkerEvent,
     bindLiveKitRoom,
+    claimLiveKitProvisioningIntent,
     claimLiveKitCleanups,
     claimLiveKitWorkerJob,
     closeLiveKitWorkerJob,

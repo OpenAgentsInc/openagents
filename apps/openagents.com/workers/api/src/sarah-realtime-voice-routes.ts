@@ -308,11 +308,13 @@ export const reconcileSarahLiveKitProvisioningIntents = async <Bindings>(
   let failed = 0
   try {
     const nowMs = (dependencies.now ?? Date.now)()
+    const provisioningOwnerRef = `sarah-livekit-reconciler:${crypto.randomUUID()}`
     const intents = await opened.store.claimLiveKitProvisioningIntents({
       staleBeforeIso: new Date(
         nowMs - SARAH_VOICE_ADMISSION_LIFETIME_MS,
       ).toISOString(),
       nowIso: new Date(nowMs).toISOString(),
+      provisioningOwnerRef,
       limit: 100,
     })
     for (const intent of intents) {
@@ -322,6 +324,7 @@ export const reconcileSarahLiveKitProvisioningIntents = async <Bindings>(
         await opened.store.settleLiveKitProvisioningIntent({
           sessionRef: intent.sessionRef,
           generation: intent.generation,
+          provisioningOwnerRef: intent.provisioningOwnerRef,
           closeReason: 'livekit_provisioning_reconcile',
           nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
         })
@@ -331,6 +334,7 @@ export const reconcileSarahLiveKitProvisioningIntents = async <Bindings>(
         await opened.store.markLiveKitProvisioningIntent({
           sessionRef: intent.sessionRef,
           generation: intent.generation,
+          provisioningOwnerRef: intent.provisioningOwnerRef,
           state: 'cleanup_failed',
           nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
         })
@@ -348,6 +352,7 @@ export const reconcileSarahLiveKitProvisioningIntents = async <Bindings>(
       await opened.store.markLiveKitProvisioningIntent({
         sessionRef: intent.sessionRef,
         generation: intent.generation,
+        provisioningOwnerRef: intent.provisioningOwnerRef,
         state,
         nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
       })
@@ -447,6 +452,7 @@ const makeTicket = (): string =>
   base64Url(crypto.getRandomValues(new Uint8Array(32)))
 
 const SARAH_VOICE_ADMISSION_LIFETIME_MS = 120_000
+const SARAH_LIVEKIT_PROVISIONING_LEASE_MS = 30_000
 
 const makeAdmissionRef = (): string =>
   `sarah_voice_admission:${base64Url(crypto.getRandomValues(new Uint8Array(32)))}`
@@ -1490,6 +1496,7 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
         )
       }
       const liveKitIdempotencyKey = `sarah-livekit:${body.identity.sessionRef}:${body.identity.generation}`
+      const provisioningOwnerRef = `sarah-livekit-issuer:${crypto.randomUUID()}`
       try {
         const provisionInput = liveKitProvisionInput
         const publishAllowed = provisionInput.publishAllowed
@@ -1510,6 +1517,23 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
           roomContext: liveKitRoomContext,
           nowIso,
         })
+        const claimedProvisioning = await opened.store.claimLiveKitProvisioningIntent(
+          {
+            sessionRef: body.identity.sessionRef,
+            generation: body.identity.generation,
+            provisioningOwnerRef,
+            staleBeforeIso: new Date(
+              nowMs - SARAH_LIVEKIT_PROVISIONING_LEASE_MS,
+            ).toISOString(),
+            nowIso,
+          },
+        )
+        if (!claimedProvisioning) {
+          return noStoreJson(
+            { error: 'sarah_voice_livekit_issuance_in_progress' },
+            503,
+          )
+        }
         liveKitProvision = await broker.provision(provisionInput)
         if (
           !validLiveKitProvision(liveKitProvision, {
@@ -1530,6 +1554,7 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
           deviceRef: body.identity.deviceRef,
           threadRef: body.identity.threadRef,
           generation: body.identity.generation,
+          provisioningOwnerRef,
           capabilityProfile: clientProfile,
           admissionRef,
           admissionDigest: provisionInput.admissionDigest,
@@ -1554,8 +1579,10 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
       } catch {
         let accountingTerminal = false
         try {
-          await opened.store.settle({
+          await opened.store.settleLiveKitProvisioningIntent({
             sessionRef: body.identity.sessionRef,
+            generation: body.identity.generation,
+            provisioningOwnerRef,
             closeReason: 'livekit_provision_failed',
             nowIso,
           })
@@ -1581,6 +1608,7 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
           await opened.store.markLiveKitProvisioningIntent({
             sessionRef: body.identity.sessionRef,
             generation: body.identity.generation,
+            provisioningOwnerRef,
             state: cleanupState,
             nowIso,
           })

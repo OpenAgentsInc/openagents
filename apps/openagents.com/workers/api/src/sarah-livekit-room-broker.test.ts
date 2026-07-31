@@ -14,6 +14,7 @@ import {
 import { ServerError } from "livekit-server-sdk";
 
 const controlRoot = "A".repeat(64);
+const sessionTicketSecret = "S".repeat(64);
 const privateProvisionInput = {
   idempotencyKey: "sarah-livekit:session:one:1",
   ownerUserId: "owner:one",
@@ -38,12 +39,14 @@ describe("Sarah LiveKit room broker configuration", () => {
         SARAH_LIVEKIT_API_KEY: `API${"A".repeat(12)}`,
         SARAH_LIVEKIT_API_SECRET: "b".repeat(48),
         SARAH_LIVEKIT_CONTROL_ROOT: controlRoot,
+        OPENAGENTS_AUDIO_TOKEN_SECRET: sessionTicketSecret,
       }),
     ).toEqual({
       livekitUrl: "wss://livekit.openagents.com",
       apiKey: `API${"A".repeat(12)}`,
       apiSecret: "b".repeat(48),
       controlRoot,
+      sessionTicketSecret,
     });
     expect(
       parseSarahLiveKitRoomBrokerConfig({
@@ -51,6 +54,7 @@ describe("Sarah LiveKit room broker configuration", () => {
         SARAH_LIVEKIT_API_KEY: `API${"A".repeat(12)}`,
         SARAH_LIVEKIT_API_SECRET: "b".repeat(48),
         SARAH_LIVEKIT_CONTROL_ROOT: controlRoot,
+        OPENAGENTS_AUDIO_TOKEN_SECRET: sessionTicketSecret,
       }),
     ).toBeUndefined();
   });
@@ -62,6 +66,7 @@ describe("Sarah LiveKit room broker configuration", () => {
         SARAH_LIVEKIT_API_KEY: `API${"A".repeat(12)}`,
         SARAH_LIVEKIT_API_SECRET: "b".repeat(48),
         SARAH_LIVEKIT_CONTROL_ROOT: controlRoot,
+        OPENAGENTS_AUDIO_TOKEN_SECRET: sessionTicketSecret,
       }),
     ).toBeUndefined();
   });
@@ -78,12 +83,14 @@ describe("Sarah LiveKit room broker configuration", () => {
           keys_yaml: `${apiKey}: ${apiSecret}\n`,
         }),
         SARAH_LIVEKIT_CONTROL_ROOT: controlRoot,
+        OPENAGENTS_AUDIO_TOKEN_SECRET: sessionTicketSecret,
       }),
     ).toEqual({
       livekitUrl: "wss://livekit.openagents.com",
       apiKey,
       apiSecret,
       controlRoot,
+      sessionTicketSecret,
     });
   });
 
@@ -93,6 +100,7 @@ describe("Sarah LiveKit room broker configuration", () => {
     const base = {
       SARAH_LIVEKIT_URL: "wss://livekit.openagents.com",
       SARAH_LIVEKIT_CONTROL_ROOT: controlRoot,
+      OPENAGENTS_AUDIO_TOKEN_SECRET: sessionTicketSecret,
     };
     for (const serverKeysJson of [
       "",
@@ -137,6 +145,7 @@ describe("Sarah LiveKit room broker configuration", () => {
       SARAH_LIVEKIT_URL: "wss://livekit.openagents.com",
       SARAH_LIVEKIT_API_KEY: `API${"A".repeat(12)}`,
       SARAH_LIVEKIT_API_SECRET: "b".repeat(48),
+      OPENAGENTS_AUDIO_TOKEN_SECRET: sessionTicketSecret,
     };
     for (const root of [
       undefined,
@@ -150,6 +159,30 @@ describe("Sarah LiveKit room broker configuration", () => {
         parseSarahLiveKitRoomBrokerConfig({
           ...base,
           SARAH_LIVEKIT_CONTROL_ROOT: root,
+        }),
+      ).toBeUndefined();
+    }
+  });
+
+  test("fails closed for missing, weak, padded, or normalized API-only ticket secrets", () => {
+    const base = {
+      SARAH_LIVEKIT_URL: "wss://livekit.openagents.com",
+      SARAH_LIVEKIT_API_KEY: `API${"A".repeat(12)}`,
+      SARAH_LIVEKIT_API_SECRET: "b".repeat(48),
+      SARAH_LIVEKIT_CONTROL_ROOT: controlRoot,
+    };
+    for (const secret of [
+      undefined,
+      "S".repeat(63),
+      "S".repeat(65),
+      `${sessionTicketSecret}=`,
+      ` ${sessionTicketSecret}`,
+      `${sessionTicketSecret}\n`,
+    ]) {
+      expect(
+        parseSarahLiveKitRoomBrokerConfig({
+          ...base,
+          OPENAGENTS_AUDIO_TOKEN_SECRET: secret,
         }),
       ).toBeUndefined();
     }
@@ -177,6 +210,7 @@ describe("Sarah LiveKit room broker configuration", () => {
         apiKey: `API${"A".repeat(12)}`,
         apiSecret: "b".repeat(48),
         controlRoot,
+        sessionTicketSecret,
       },
       () => 2_000_000_000_000,
       {
@@ -219,6 +253,70 @@ describe("Sarah LiveKit room broker configuration", () => {
     expect(broker.sessionTicket(privateProvisionInput)).toBe(
       broker.sessionTicket({ ...privateProvisionInput }),
     );
+    const differentControlRootBroker = makeSarahLiveKitRoomBroker(
+      {
+        livekitUrl: "wss://livekit.openagents.com",
+        apiKey: `API${"A".repeat(12)}`,
+        apiSecret: "b".repeat(48),
+        controlRoot: "C".repeat(64),
+        sessionTicketSecret,
+      },
+      () => 2_000_000_000_000,
+      {
+        createRoom,
+        deleteRoom,
+        createDispatch,
+        listDispatch,
+        deleteDispatch,
+      },
+    );
+    expect(differentControlRootBroker.sessionTicket(privateProvisionInput)).toBe(
+      broker.sessionTicket(privateProvisionInput),
+    );
+    expect(differentControlRootBroker.workerControlTokenDigest(privateProvisionInput)).not.toBe(
+      digest,
+    );
+    const workerControlRootOnlyBroker = makeSarahLiveKitRoomBroker(
+      {
+        livekitUrl: "wss://livekit.openagents.com",
+        apiKey: `API${"A".repeat(12)}`,
+        apiSecret: "b".repeat(48),
+        controlRoot,
+        sessionTicketSecret: controlRoot,
+      },
+      () => 2_000_000_000_000,
+      {
+        createRoom,
+        deleteRoom,
+        createDispatch,
+        listDispatch,
+        deleteDispatch,
+      },
+    );
+    expect(workerControlRootOnlyBroker.sessionTicket(privateProvisionInput)).not.toBe(
+      broker.sessionTicket(privateProvisionInput),
+    );
+    const differentApiSecretBroker = makeSarahLiveKitRoomBroker(
+      {
+        livekitUrl: "wss://livekit.openagents.com",
+        apiKey: `API${"A".repeat(12)}`,
+        apiSecret: "b".repeat(48),
+        controlRoot,
+        sessionTicketSecret: "T".repeat(64),
+      },
+      () => 2_000_000_000_000,
+      {
+        createRoom,
+        deleteRoom,
+        createDispatch,
+        listDispatch,
+        deleteDispatch,
+      },
+    );
+    expect(differentApiSecretBroker.sessionTicket(privateProvisionInput)).not.toBe(
+      broker.sessionTicket(privateProvisionInput),
+    );
+    expect(differentApiSecretBroker.workerControlTokenDigest(privateProvisionInput)).toBe(digest);
     expect(
       broker.workerControlTokenDigest({
         ...privateProvisionInput,
@@ -289,12 +387,17 @@ describe("Sarah LiveKit room broker configuration", () => {
         apiKey: `API${"A".repeat(12)}`,
         apiSecret: "b".repeat(48),
         controlRoot,
+        sessionTicketSecret,
       },
       () => 2_000_000_000_000,
       clients,
     );
 
-    const first = await broker.provision(privateProvisionInput);
+    const [first, concurrentReplay] = await Promise.all([
+      broker.provision(privateProvisionInput),
+      broker.provision({ ...privateProvisionInput }),
+    ]);
+    expect(concurrentReplay.dispatchRef).toBe(first.dispatchRef);
     const replay = await broker.provision(privateProvisionInput);
     expect(replay.dispatchRef).toBe(first.dispatchRef);
     expect(createDispatch).toHaveBeenCalledTimes(1);
@@ -337,6 +440,7 @@ describe("Sarah LiveKit room broker configuration", () => {
           apiKey: `API${"A".repeat(12)}`,
           apiSecret: "b".repeat(48),
           controlRoot,
+          sessionTicketSecret,
         },
         () => 2_000_000_000_000,
         clients,
@@ -347,6 +451,7 @@ describe("Sarah LiveKit room broker configuration", () => {
           apiKey: `API${"A".repeat(12)}`,
           apiSecret: "b".repeat(48),
           controlRoot,
+          sessionTicketSecret,
         },
         () => 2_000_000_000_000,
         {
@@ -374,6 +479,7 @@ describe("Sarah LiveKit room broker configuration", () => {
         apiKey: `API${"A".repeat(12)}`,
         apiSecret: "b".repeat(48),
         controlRoot,
+        sessionTicketSecret,
       },
       () => 2_000_000_000_000,
       {

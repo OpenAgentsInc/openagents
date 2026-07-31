@@ -696,45 +696,122 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       roomContext: binding.roomContext,
       nowIso: binding.nowIso,
     });
+    const concurrentClaims = await Promise.all([
+      store.claimLiveKitProvisioningIntent({
+        sessionRef: binding.sessionRef,
+        generation: binding.generation,
+        provisioningOwnerRef: "issuer:one",
+        staleBeforeIso: "2026-07-28T12:59:30.000Z",
+        nowIso: "2026-07-28T13:00:00.500Z",
+      }),
+      store.claimLiveKitProvisioningIntent({
+        sessionRef: binding.sessionRef,
+        generation: binding.generation,
+        provisioningOwnerRef: "issuer:two",
+        staleBeforeIso: "2026-07-28T12:59:30.000Z",
+        nowIso: "2026-07-28T13:00:00.500Z",
+      }),
+    ]);
+    expect([...concurrentClaims].sort()).toEqual([false, true]);
+    const [claimedIntent] = await sql`
+      SELECT provisioning_owner_ref
+      FROM sarah_livekit_provisioning_intents
+      WHERE session_ref = ${binding.sessionRef}
+    `;
+    const losingOwnerRef =
+      claimedIntent?.provisioning_owner_ref === "issuer:one"
+        ? "issuer:two"
+        : "issuer:one";
+    await expect(
+      store.bindLiveKitRoom({
+        ...binding,
+        provisioningOwnerRef: losingOwnerRef,
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
+    await expect(
+      store.settleLiveKitProvisioningIntent({
+        sessionRef: binding.sessionRef,
+        generation: binding.generation,
+        provisioningOwnerRef: losingOwnerRef,
+        closeReason: "loser_must_not_settle",
+        nowIso: "2026-07-28T13:00:00.750Z",
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
     expect(
       await store.claimLiveKitProvisioningIntents({
         staleBeforeIso: "2026-07-28T12:59:00.000Z",
         nowIso: "2026-07-28T13:00:01.000Z",
+        provisioningOwnerRef: "reconciler:not-stale",
       }),
     ).toEqual([]);
     await sql`
       UPDATE sarah_livekit_provisioning_intents
-      SET state = 'reconciling', updated_at = '2026-07-28T12:58:00.000Z'
+      SET state = 'reconciling',
+          provisioning_owner_ref = NULL,
+          provisioning_claimed_at = NULL,
+          updated_at = '2026-07-28T12:58:00.000Z'
       WHERE session_ref = 'voice-livekit-1'
     `;
     expect(
       await store.claimLiveKitProvisioningIntents({
         staleBeforeIso: "2026-07-28T12:59:00.000Z",
         nowIso: "2026-07-28T13:00:02.000Z",
+        provisioningOwnerRef: "reconciler:one",
       }),
     ).toEqual([
       {
         sessionRef: "voice-livekit-1",
         generation: 1,
         idempotencyKey: "sarah-livekit:voice-livekit-1:1",
+        provisioningOwnerRef: "reconciler:one",
       },
     ]);
     await sql`
       UPDATE sarah_livekit_provisioning_intents
-      SET state = 'pending', updated_at = '2026-07-28T13:00:00.000Z'
+      SET state = 'pending',
+          provisioning_owner_ref = NULL,
+          provisioning_claimed_at = NULL,
+          updated_at = '2026-07-28T13:00:00.000Z'
       WHERE session_ref = 'voice-livekit-1'
     `;
+    expect(
+      await store.claimLiveKitProvisioningIntent({
+        sessionRef: binding.sessionRef,
+        generation: binding.generation,
+        provisioningOwnerRef: "issuer:binding",
+        staleBeforeIso: "2026-07-28T12:59:30.000Z",
+        nowIso: binding.nowIso,
+      }),
+    ).toBe(true);
     await expect(
       store.bindLiveKitRoom({
         ...binding,
+        provisioningOwnerRef: "issuer:binding",
         roomContext: {
           ...binding.roomContext,
           membershipRevision: "membership-revision-8",
         },
       }),
     ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
-    await store.bindLiveKitRoom(binding);
-    await expect(store.bindLiveKitRoom(binding)).resolves.toBeUndefined();
+    await store.bindLiveKitRoom({
+      ...binding,
+      provisioningOwnerRef: "issuer:binding",
+    });
+    expect(
+      await store.claimLiveKitProvisioningIntent({
+        sessionRef: binding.sessionRef,
+        generation: binding.generation,
+        provisioningOwnerRef: "issuer:binding-replay",
+        staleBeforeIso: "2026-07-28T12:59:30.000Z",
+        nowIso: binding.nowIso,
+      }),
+    ).toBe(true);
+    await expect(
+      store.bindLiveKitRoom({
+        ...binding,
+        provisioningOwnerRef: "issuer:binding-replay",
+      }),
+    ).resolves.toBeUndefined();
     expect(
       await store.readLiveKitCleanup({
         sessionRef: binding.sessionRef,
@@ -790,9 +867,19 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         nowIso: "2026-07-28T13:00:10.500Z",
       }),
     ).resolves.toBeUndefined();
+    expect(
+      await store.claimLiveKitProvisioningIntent({
+        sessionRef: binding.sessionRef,
+        generation: binding.generation,
+        provisioningOwnerRef: "issuer:active-replay",
+        staleBeforeIso: "2026-07-28T12:59:40.000Z",
+        nowIso: "2026-07-28T13:00:10.500Z",
+      }),
+    ).toBe(true);
     await expect(
       store.bindLiveKitRoom({
         ...binding,
+        provisioningOwnerRef: "issuer:active-replay",
         participantGrantDigest: "6".repeat(64),
         joinExpiresAt: "2026-07-28T13:01:30.000Z",
         nowIso: "2026-07-28T13:00:10.500Z",

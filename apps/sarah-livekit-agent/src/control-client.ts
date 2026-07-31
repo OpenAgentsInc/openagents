@@ -103,28 +103,39 @@ const boundedBody = async (response: Response): Promise<unknown> => {
 const retryableControlStatus = (status: number): boolean =>
   [409, 429, 502, 503, 504].includes(status);
 
-const postControlWithRetry = async (
+const postControlWithRetry = async <Result>(
   fetcher: typeof fetch,
   url: string,
   token: string,
   body: string,
-): Promise<Response> => {
-  let response: Response | undefined;
+  refused: (status: number) => Error,
+  decode: (body: unknown) => Result,
+): Promise<Result> => {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
       // Every retried body carries the same durable event/proposal identity.
       // eslint-disable-next-line no-await-in-loop
-      response = await fetcher(url, {
+      const response = await fetcher(url, {
         method: "POST",
         headers: noStoreHeaders(token),
         body,
         redirect: "error",
         signal: AbortSignal.timeout(5_000),
       });
-      if (!retryableControlStatus(response.status)) {
-        return response;
+      if (!response.ok) {
+        if (!retryableControlStatus(response.status)) {
+          throw refused(response.status);
+        }
+      } else {
+        // Body reads and decodes are part of the retryable operation: a reset
+        // after 200 headers is still an unknown durable delivery outcome.
+        // eslint-disable-next-line no-await-in-loop
+        return decode(await boundedBody(response));
       }
     } catch (error) {
+      if (error instanceof Error && error.name === "SarahControlRefusedError") {
+        throw error;
+      }
       if (attempt === 4) throw error;
     }
     if (attempt < 4) {
@@ -132,10 +143,13 @@ const postControlWithRetry = async (
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
-  if (response === undefined) {
-    throw new Error("Sarah LiveKit control delivery failed");
-  }
-  return response;
+  throw new Error("Sarah LiveKit control delivery failed");
+};
+
+const refusedControlResponse = (message: string, status: number): Error => {
+  const error = new Error(`${message} (${status})`);
+  error.name = "SarahControlRefusedError";
+  return error;
 };
 
 export const makeSarahLiveKitControlClient = (
@@ -245,7 +259,7 @@ export const makeSarahLiveKitControlClient = (
     dispatch: SarahLiveKitDispatchMetadata,
     input: SarahLiveKitToolProposalInput,
   ): Promise<SarahLiveKitToolProposal> => {
-    const response = await postControlWithRetry(
+    return postControlWithRetry(
       fetcher,
       `${baseUrl}${SARAH_LIVEKIT_TOOL_PROPOSAL_PATH}`,
       controlToken(dispatch),
@@ -253,18 +267,16 @@ export const makeSarahLiveKitControlClient = (
         schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
         ...input,
       }),
+      (status) => refusedControlResponse("Sarah LiveKit tool proposal refused", status),
+      (responseBody) => decodeSarahLiveKitToolProposalResponse(responseBody).proposal,
     );
-    if (!response.ok) {
-      throw new Error(`Sarah LiveKit tool proposal refused (${response.status})`);
-    }
-    return decodeSarahLiveKitToolProposalResponse(await boundedBody(response)).proposal;
   };
 
   const readToolState = async (
     dispatch: SarahLiveKitDispatchMetadata,
     input: SarahLiveKitToolStateInput,
   ): Promise<SarahLiveKitToolStateResponse> => {
-    const response = await postControlWithRetry(
+    return postControlWithRetry(
       fetcher,
       `${baseUrl}${SARAH_LIVEKIT_TOOL_STATE_PATH}`,
       controlToken(dispatch),
@@ -272,11 +284,9 @@ export const makeSarahLiveKitControlClient = (
         schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
         ...input,
       }),
+      (status) => refusedControlResponse("Sarah LiveKit tool state refused", status),
+      decodeSarahLiveKitToolStateResponse,
     );
-    if (!response.ok) {
-      throw new Error(`Sarah LiveKit tool state refused (${response.status})`);
-    }
-    return decodeSarahLiveKitToolStateResponse(await boundedBody(response));
   };
 
   return { claim, event, proposeTool, readToolState } as const;

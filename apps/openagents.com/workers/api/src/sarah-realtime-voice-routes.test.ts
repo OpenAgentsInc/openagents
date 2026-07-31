@@ -94,6 +94,7 @@ const makeDependencies = (
   const close = vi.fn(async () => undefined)
   const bindLiveKitRoom = vi.fn(async () => undefined)
   const prepareLiveKitProvisioningIntent = vi.fn(async () => undefined)
+  const claimLiveKitProvisioningIntent = vi.fn(async () => true)
   const markLiveKitProvisioningIntent = vi.fn(async () => undefined)
   const settle = vi.fn(async () => undefined)
   const issueAdmission = vi.fn(
@@ -106,6 +107,7 @@ const makeDependencies = (
   )
   const store = {
     bindLiveKitRoom,
+    claimLiveKitProvisioningIntent,
     prepareLiveKitProvisioningIntent,
     markLiveKitProvisioningIntent,
     reserve,
@@ -122,6 +124,7 @@ const makeDependencies = (
     readSpendableCredit: vi.fn(async () => 100_000),
     revokeAlphaCohort: vi.fn(),
     settle,
+    settleLiveKitProvisioningIntent: settle,
     sweepExpired: vi.fn(),
   } as unknown as SarahRealtimeVoiceStore
   return {
@@ -145,6 +148,7 @@ const makeDependencies = (
     reserve,
     readActiveStagingOwnerEntitlement,
     bindLiveKitRoom,
+    claimLiveKitProvisioningIntent,
     prepareLiveKitProvisioningIntent,
     markLiveKitProvisioningIntent,
     issueAdmission,
@@ -1058,6 +1062,89 @@ describe('managed Sarah Realtime voice session route', () => {
     )
     expect(broker.provision).toHaveBeenCalledTimes(2)
     expect(fixture.settle).not.toHaveBeenCalled()
+  })
+
+  test('lets only the durable provisioning owner call the broker or clean up', async () => {
+    const fixture = makeDependencies()
+    let claimed = false
+    fixture.claimLiveKitProvisioningIntent.mockImplementation(async () => {
+      if (claimed) return false
+      claimed = true
+      return true
+    })
+    let releaseProvision: (() => void) | undefined
+    const provisionStarted = new Promise<void>(resolve => {
+      releaseProvision = resolve
+    })
+    let finishProvision: (() => void) | undefined
+    const provisionBlocked = new Promise<void>(resolve => {
+      finishProvision = resolve
+    })
+    const provision = {
+      livekitUrl: 'wss://livekit.openagents.test',
+      roomRef: 'sarah-room:voice-1:g1',
+      roomEpoch: 1,
+      participantRef: 'participant:user-1:voice-1:g1',
+      sarahParticipantRef: 'participant:sarah:voice-1:g1',
+      participantGrant: 'opaque-livekit-participant-grant',
+      joinExpiresAtMs: Date.UTC(2026, 6, 28, 12, 1, 0),
+      dispatchRef: 'dispatch:voice-1:g1',
+      sarahPresenceLeaseRef: 'sarah-presence:voice-1:g1',
+      grantClaims: {
+        roomRef: 'sarah-room:voice-1:g1',
+        participantRef: 'participant:user-1:voice-1:g1',
+        expiresAtMs: Date.UTC(2026, 6, 28, 12, 1, 0),
+        roomJoin: true,
+        canPublish: true,
+        canSubscribe: true,
+        canPublishData: false,
+        canUpdateOwnMetadata: false,
+        canPublishSources: ['microphone'],
+        roomAdmin: false,
+        roomCreate: false,
+        roomList: false,
+      },
+    } as const
+    const broker = {
+      workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
+      sessionTicket: vi.fn(() => 'stable-livekit-session-ticket'),
+      provision: vi.fn(async () => {
+        releaseProvision?.()
+        await provisionBlocked
+        return provision
+      }),
+      cleanup: vi.fn(async () => undefined),
+      cleanupByIdempotencyKey: vi.fn(async () => undefined),
+      cleanupRoom: vi.fn(async () => undefined),
+    }
+    const issue = () =>
+      handleSarahRealtimeVoiceSessionRequest(
+        { ...fixture.dependencies, liveKitRoomBroker: broker },
+        request({
+          schema: SARAH_VOICE_PROTOCOL_VERSION,
+          identity,
+          disclosureRef: 'disclosure-1',
+          requestedTransport: 'livekit_room_v1',
+          roomContext: { kind: 'private' },
+        }),
+        {},
+        ctx,
+      )
+
+    const winner = issue()
+    await provisionStarted
+    const loser = await issue()
+    expect(loser.status).toBe(503)
+    expect(await loser.json()).toEqual({
+      error: 'sarah_voice_livekit_issuance_in_progress',
+    })
+    expect(broker.provision).toHaveBeenCalledTimes(1)
+    expect(fixture.settle).not.toHaveBeenCalled()
+    expect(broker.cleanup).not.toHaveBeenCalled()
+    expect(broker.cleanupByIdempotencyKey).not.toHaveBeenCalled()
+    finishProvision?.()
+    expect((await winner).status).toBe(201)
+    expect(fixture.bindLiveKitRoom).toHaveBeenCalledTimes(1)
   })
 
   test('rejects a revoked alpha member before reserving credit', async () => {
