@@ -76,10 +76,18 @@ const canonicalJson = (value: unknown): string => {
 };
 
 const canonicalProviderTransportConfiguration = {
+  sessionType: "realtime",
   model: SARAH_LIVEKIT_MODEL,
   outputModalities: ["audio"],
+  include: [],
+  maxOutputTokens: "inf",
+  prompt: null,
+  tracing: null,
+  truncation: "auto",
+  reasoning: null,
   inputAudio: {
     format: { type: "audio/pcm", rate: 24_000 },
+    noiseReduction: null,
     transcription: { model: SARAH_LIVEKIT_TRANSCRIPTION_MODEL },
     turnDetection: {
       type: "semantic_vad",
@@ -90,6 +98,7 @@ const canonicalProviderTransportConfiguration = {
   },
   outputAudio: {
     format: { type: "audio/pcm", rate: 24_000 },
+    speed: 1,
     voice: SARAH_LIVEKIT_VOICE,
   },
 } as const;
@@ -168,6 +177,51 @@ const exactTurnDetection = (value: unknown): boolean => {
   );
 };
 
+const exactInputAudio = (value: unknown): boolean => {
+  const inputAudio = record(value);
+  return (
+    inputAudio !== undefined &&
+    exactKeys(inputAudio, ["format", "noise_reduction", "transcription", "turn_detection"]) &&
+    exactAudioFormat(inputAudio.format) &&
+    (inputAudio.noise_reduction === undefined || inputAudio.noise_reduction === null) &&
+    exactTranscription(inputAudio.transcription) &&
+    exactTurnDetection(inputAudio.turn_detection)
+  );
+};
+
+const exactOutputAudio = (value: unknown): boolean => {
+  const outputAudio = record(value);
+  return (
+    outputAudio !== undefined &&
+    exactKeys(outputAudio, ["format", "speed", "voice"]) &&
+    exactAudioFormat(outputAudio.format) &&
+    outputAudio.speed === 1 &&
+    outputAudio.voice === SARAH_LIVEKIT_VOICE
+  );
+};
+
+const nullish = (value: unknown): boolean => value === undefined || value === null;
+
+const exactProviderPolicy = (session: Readonly<Record<string, unknown>>): boolean =>
+  session.type === "realtime" &&
+  session.max_output_tokens === "inf" &&
+  nullish(session.prompt) &&
+  nullish(session.tracing) &&
+  nullish(session.reasoning) &&
+  (session.truncation === undefined || session.truncation === "auto") &&
+  (session.include === undefined ||
+    session.include === null ||
+    (Array.isArray(session.include) && session.include.length === 0)) &&
+  session.temperature === undefined &&
+  session.modalities === undefined &&
+  session.voice === undefined &&
+  session.input_audio_format === undefined &&
+  session.output_audio_format === undefined &&
+  session.input_audio_transcription === undefined &&
+  session.turn_detection === undefined &&
+  session.max_response_output_tokens === undefined &&
+  session.speed === undefined;
+
 const providerTool = (value: unknown): SarahRealtimeProviderTool | undefined => {
   const tool = record(value);
   if (
@@ -188,28 +242,32 @@ const providerTool = (value: unknown): SarahRealtimeProviderTool | undefined => 
   };
 };
 
-const exactProviderProfile = (
+const providerProfileMatch = (
   session: Readonly<Record<string, unknown>>,
   expected: SarahRealtimeProviderProfile,
-): boolean => {
+  allowToolLoadingTransition: boolean,
+): "exact" | "loading_tools" | "mismatch" => {
   if (
     session.instructions !== expected.instructions ||
     session.tool_choice !== expected.toolChoice ||
     !Array.isArray(session.tools)
   ) {
-    return false;
+    return "mismatch";
   }
   const tools = session.tools.map(providerTool);
-  if (tools.some((tool) => tool === undefined)) return false;
+  if (tools.some((tool) => tool === undefined)) return "mismatch";
   const observed = sortedProviderTools(tools as ReadonlyArray<SarahRealtimeProviderTool>);
   const expectedTools = sortedProviderTools(expected.tools);
+  if (allowToolLoadingTransition && observed.length === 0 && expectedTools.length > 0) {
+    return "loading_tools";
+  }
   if (
     new Set(observed.map((tool) => tool.name)).size !== observed.length ||
     new Set(expectedTools.map((tool) => tool.name)).size !== expectedTools.length
   ) {
-    return false;
+    return "mismatch";
   }
-  return canonicalJson(observed) === canonicalJson(expectedTools);
+  return canonicalJson(observed) === canonicalJson(expectedTools) ? "exact" : "mismatch";
 };
 
 export type AdmittedRealtimeProvider = Readonly<{
@@ -221,21 +279,14 @@ export const admittedRealtimeProvider = (
   event: unknown,
   expectedProviderSessionRefDigest: string | undefined,
   expectedProfile: SarahRealtimeProviderProfile,
+  allowToolLoadingTransition = true,
 ): AdmittedRealtimeProvider | false | undefined => {
   const envelope = record(event);
   if (envelope?.type !== "session.updated") return undefined;
   const session = record(envelope.session);
   const audio = record(session?.audio);
-  const inputAudio = record(audio?.input);
-  const outputAudio = record(audio?.output);
   const sessionRef = providerSessionRef(event);
-  if (
-    session === undefined ||
-    audio === undefined ||
-    inputAudio === undefined ||
-    outputAudio === undefined ||
-    sessionRef === undefined
-  ) {
+  if (session === undefined || audio === undefined || sessionRef === undefined) {
     return false;
   }
   const providerSessionRefDigest = digest(sessionRef);
@@ -246,21 +297,70 @@ export const admittedRealtimeProvider = (
     !Array.isArray(session.output_modalities) ||
     session.output_modalities.length !== 1 ||
     session.output_modalities[0] !== "audio" ||
-    !exactAudioFormat(inputAudio.format) ||
-    (inputAudio.noise_reduction !== undefined && inputAudio.noise_reduction !== null) ||
-    !exactTranscription(inputAudio.transcription) ||
-    !exactTurnDetection(inputAudio.turn_detection) ||
-    !exactAudioFormat(outputAudio.format) ||
-    outputAudio.voice !== SARAH_LIVEKIT_VOICE
+    !exactKeys(audio, ["input", "output"]) ||
+    !exactInputAudio(audio.input) ||
+    !exactOutputAudio(audio.output) ||
+    !exactProviderPolicy(session)
   ) {
     return false;
   }
-  if (!exactProviderProfile(session, expectedProfile)) return undefined;
+  const profileMatch = providerProfileMatch(session, expectedProfile, allowToolLoadingTransition);
+  if (profileMatch === "loading_tools") return undefined;
+  if (profileMatch === "mismatch") return false;
   return {
     providerSessionRefDigest,
     providerConfigurationDigest: sarahProviderConfigurationDigest(expectedProfile),
   };
 };
+
+const sameAdmission = (left: AdmittedRealtimeProvider, right: AdmittedRealtimeProvider): boolean =>
+  left.providerSessionRefDigest === right.providerSessionRefDigest &&
+  left.providerConfigurationDigest === right.providerConfigurationDigest;
+
+export type SarahProviderAttestationObservation =
+  | Readonly<{ state: "pending" }>
+  | Readonly<{ state: "candidate"; admission: AdmittedRealtimeProvider }>
+  | Readonly<{ state: "confirmed"; admission: AdmittedRealtimeProvider }>
+  | Readonly<{ state: "mismatch" }>
+  | Readonly<{ state: "drift" }>;
+
+export class SarahProviderAttestation {
+  #candidate: AdmittedRealtimeProvider | undefined;
+  #durable: AdmittedRealtimeProvider | undefined;
+
+  observe(
+    event: unknown,
+    expectedProviderSessionRefDigest: string | undefined,
+    expectedProfile: SarahRealtimeProviderProfile,
+  ): SarahProviderAttestationObservation {
+    const observed = admittedRealtimeProvider(
+      event,
+      expectedProviderSessionRefDigest,
+      expectedProfile,
+      this.#candidate === undefined && this.#durable === undefined,
+    );
+    if (observed === undefined) return { state: "pending" };
+    if (observed === false) {
+      this.#candidate = undefined;
+      return { state: this.#durable === undefined ? "mismatch" : "drift" };
+    }
+    if (this.#durable !== undefined) {
+      return sameAdmission(this.#durable, observed)
+        ? { state: "confirmed", admission: observed }
+        : { state: "drift" };
+    }
+    this.#candidate = observed;
+    return { state: "candidate", admission: observed };
+  }
+
+  markDurable(admission: AdmittedRealtimeProvider): boolean {
+    if (this.#candidate === undefined || !sameAdmission(this.#candidate, admission)) {
+      return false;
+    }
+    this.#durable = admission;
+    return true;
+  }
+}
 
 export class SarahProviderAccounting {
   readonly #activeResponseRefs = new Set<string>();

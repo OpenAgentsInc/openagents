@@ -14,6 +14,13 @@ import {
 import * as openai from "@livekit/agents-plugin-openai";
 import { TrackSource } from "@livekit/protocol";
 import {
+  RoomEvent,
+  TrackKind,
+  TrackSource as RtcTrackSource,
+  type RemoteParticipant,
+  type RemoteTrackPublication,
+} from "@livekit/rtc-node";
+import {
   SARAH_LIVEKIT_AGENT_NAME,
   SARAH_LIVEKIT_MODEL,
   SARAH_LIVEKIT_TRANSCRIPTION_MODEL,
@@ -30,8 +37,8 @@ import { z } from "zod";
 import { makeSarahLiveKitControlClient } from "./control-client.js";
 import {
   SarahProviderAccounting,
+  SarahProviderAttestation,
   SarahGenerationFence,
-  admittedRealtimeProvider,
   closeAfterProviderAccounting,
   responseUsageEvent,
   type SarahRealtimeProviderProfile,
@@ -282,6 +289,8 @@ class ObservedRealtimeModel extends openai.realtime.RealtimeModel {
     super({
       model: SARAH_LIVEKIT_MODEL,
       voice: SARAH_LIVEKIT_VOICE,
+      speed: 1,
+      tracing: null,
       modalities: ["audio"],
       inputAudioTranscription: {
         model: SARAH_LIVEKIT_TRANSCRIPTION_MODEL,
@@ -379,6 +388,7 @@ const entry = async (ctx: JobContext): Promise<void> => {
   const accounting = new SarahProviderAccounting();
   const participantAdmission = new AbortController();
   let session: AgentSession | undefined;
+  let disableParticipantMedia: (() => void) | undefined;
   let eventChain = Promise.resolve();
   const sendEvent = (event: SarahLiveKitJobEvent): Promise<void> | undefined => {
     if (!fence.accepts(event)) return undefined;
@@ -406,23 +416,27 @@ const entry = async (ctx: JobContext): Promise<void> => {
     resolveProviderAdmission = resolve;
     rejectProviderAdmission = reject;
   });
-  let providerAdmissionObserved = false;
+  const providerAttestation = new SarahProviderAttestation();
+  let providerAdmissionPersisting = false;
   let sessionStarted = false;
   let expectedProviderProfile: SarahRealtimeProviderProfile | undefined;
-  let pendingProviderAdmission: ReturnType<typeof admittedRealtimeProvider> | undefined;
-  const persistProviderAdmission = (
-    admitted: Exclude<ReturnType<typeof admittedRealtimeProvider>, undefined>,
-  ) => {
-    if (providerAdmissionObserved) return;
-    providerAdmissionObserved = true;
-    if (admitted === false) {
-      const error = new Error("OpenAI Realtime confirmed a mismatched Sarah session");
-      rejectProviderAdmission?.(error);
-      if (fence.settle("provider_mismatch")) {
-        ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
-      }
-      return;
+  let pendingProviderAdmission:
+    | Extract<ReturnType<SarahProviderAttestation["observe"]>, { state: "candidate" }>["admission"]
+    | undefined;
+  const rejectProviderMismatch = () => {
+    pendingProviderAdmission = undefined;
+    disableParticipantMedia?.();
+    const error = new Error("OpenAI Realtime confirmed a mismatched Sarah session");
+    rejectProviderAdmission?.(error);
+    if (fence.settle("provider_mismatch")) {
+      ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
     }
+  };
+  const persistProviderAdmission = (
+    admitted: Exclude<typeof pendingProviderAdmission, undefined>,
+  ) => {
+    if (providerAdmissionPersisting) return;
+    providerAdmissionPersisting = true;
     const operation = sendEvent({
       schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
       _tag: "provider_admitted",
@@ -435,28 +449,34 @@ const entry = async (ctx: JobContext): Promise<void> => {
       rejectProviderAdmission?.(new Error("Sarah LiveKit provider admission was fenced"));
       return;
     }
-    void operation.then(resolveProviderAdmission, rejectProviderAdmission);
+    void operation.then(() => {
+      if (!providerAttestation.markDurable(admitted)) {
+        rejectProviderMismatch();
+        return;
+      }
+      resolveProviderAdmission?.();
+    }, rejectProviderAdmission);
   };
   const model = new ObservedRealtimeModel(claim.safetyIdentifier, (event) => {
     fence.observeProviderEvent();
     const usage = responseUsageEvent(event, identity) ?? transcriptionUsageEvent(event, identity);
     accounting.observe(event, usage?._tag === "response_usage");
     if (usage !== undefined) sendEvent(usage);
-    const admitted =
+    const observation =
       expectedProviderProfile === undefined
-        ? undefined
-        : admittedRealtimeProvider(
+        ? ({ state: "pending" } as const)
+        : providerAttestation.observe(
             event,
             accounting.providerSessionRefDigest,
             expectedProviderProfile,
           );
-    if (admitted === undefined || providerAdmissionObserved) return;
-    if (admitted === false) {
-      persistProviderAdmission(admitted);
+    if (observation.state === "pending" || observation.state === "confirmed") return;
+    if (observation.state === "mismatch" || observation.state === "drift") {
+      rejectProviderMismatch();
       return;
     }
-    pendingProviderAdmission = admitted;
-    if (sessionStarted) persistProviderAdmission(admitted);
+    pendingProviderAdmission = observation.admission;
+    if (sessionStarted) persistProviderAdmission(observation.admission);
   });
   session = new AgentSession({
     llm: model,
@@ -506,6 +526,7 @@ const entry = async (ctx: JobContext): Promise<void> => {
 
   ctx.addShutdownCallback(async () => {
     participantAdmission.abort();
+    disableParticipantMedia?.();
     clearInterval(leaseInterval);
     clearTimeout(expiryTimer);
     if (!fence.settled) fence.settle("worker_shutdown");
@@ -530,7 +551,7 @@ const entry = async (ctx: JobContext): Promise<void> => {
     );
   });
 
-  await ctx.connect(undefined, AutoSubscribe.AUDIO_ONLY);
+  await ctx.connect(undefined, AutoSubscribe.SUBSCRIBE_NONE);
   const connected = await controller.event(dispatch, {
     schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
     _tag: "worker_connected",
@@ -586,6 +607,36 @@ const entry = async (ctx: JobContext): Promise<void> => {
       () => providerAdmission,
       Math.min(claim.sessionExpiresAtMs, Date.now() + 10_000),
       participantAdmission.signal,
+    );
+    if (fence.settled) return;
+    const subscribeMicrophone = (
+      publication: RemoteTrackPublication,
+      remoteParticipant: RemoteParticipant,
+    ) => {
+      if (
+        remoteParticipant.identity === dispatch.participantRef &&
+        publication.kind === TrackKind.KIND_AUDIO &&
+        publication.source === RtcTrackSource.SOURCE_MICROPHONE
+      ) {
+        publication.setSubscribed(true);
+      }
+    };
+    const unsubscribeParticipant = () => {
+      ctx.room.off(RoomEvent.TrackPublished, subscribeMicrophone);
+      const admittedParticipant = ctx.room.remoteParticipants.get(dispatch.participantRef);
+      admittedParticipant?.trackPublications.forEach((publication) => {
+        if (
+          publication.kind === TrackKind.KIND_AUDIO &&
+          publication.source === RtcTrackSource.SOURCE_MICROPHONE
+        ) {
+          publication.setSubscribed(false);
+        }
+      });
+    };
+    disableParticipantMedia = unsubscribeParticipant;
+    ctx.room.on(RoomEvent.TrackPublished, subscribeMicrophone);
+    participant.trackPublications.forEach((publication) =>
+      subscribeMicrophone(publication, participant),
     );
   } catch {
     if (!fence.settled) fence.settle("provider_mismatch");

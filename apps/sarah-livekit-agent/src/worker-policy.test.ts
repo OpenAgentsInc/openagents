@@ -45,10 +45,15 @@ describe("Sarah LiveKit worker policy", () => {
 
   test("fails a provider mismatch before deferring a valid admission until session start", async () => {
     const source = await readFile(new URL("./agent.ts", import.meta.url), "utf8");
-    const rejectMismatch = source.indexOf("if (admitted === false)");
+    const rejectMismatch = source.indexOf(
+      'observation.state === "mismatch" || observation.state === "drift"',
+    );
     const deferAdmission = source.indexOf("pendingProviderAdmission = admitted");
     expect(rejectMismatch).toBeGreaterThan(-1);
-    expect(deferAdmission).toBeGreaterThan(rejectMismatch);
+    expect(source.indexOf("pendingProviderAdmission = observation.admission")).toBeGreaterThan(
+      rejectMismatch,
+    );
+    expect(deferAdmission).toBe(-1);
   });
 
   test("attests the server-confirmed prompt and exact serialized tool profile", async () => {
@@ -59,10 +64,29 @@ describe("Sarah LiveKit worker policy", () => {
     expect(agentSource).toContain('toolChoice: "auto"');
     expect(agentSource).toContain("expectedProviderProfile");
     expect(agentSource).toContain("Date.now() + 10_000");
+    expect(agentSource).toContain("speed: 1");
+    expect(agentSource).toContain("tracing: null");
     expect(generationSource).toContain("session.instructions !== expected.instructions");
     expect(generationSource).toContain("session.tool_choice !== expected.toolChoice");
+    expect(generationSource).toContain('session.max_output_tokens === "inf"');
+    expect(generationSource).toContain("nullish(session.prompt)");
+    expect(generationSource).toContain("nullish(session.tracing)");
+    expect(generationSource).toContain("outputAudio.speed === 1");
     expect(generationSource).toContain("instructions: profile.instructions");
     expect(generationSource).toContain("canonicalJson(observed) === canonicalJson(expectedTools)");
+  });
+
+  test("keeps participant media unsubscribed until provider admission is durable", async () => {
+    const source = await readFile(new URL("./agent.ts", import.meta.url), "utf8");
+    const connectWithoutMedia = source.indexOf("AutoSubscribe.SUBSCRIBE_NONE");
+    const awaitProviderAdmission = source.indexOf("() => providerAdmission");
+    const subscribeParticipant = source.indexOf("publication.setSubscribed(true)");
+    expect(connectWithoutMedia).toBeGreaterThan(-1);
+    expect(awaitProviderAdmission).toBeGreaterThan(connectWithoutMedia);
+    expect(subscribeParticipant).toBeGreaterThan(awaitProviderAdmission);
+    expect(source).toContain("providerAttestation.markDurable(admitted)");
+    expect(source).toContain("publication.setSubscribed(false)");
+    expect(source).toContain('observation.state === "drift"');
   });
 
   test("does not enable recording or log raw provider events", async () => {

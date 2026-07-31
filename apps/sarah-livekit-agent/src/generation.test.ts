@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
   SarahProviderAccounting,
+  SarahProviderAttestation,
   SarahGenerationFence,
   admittedRealtimeProvider,
   closeAfterProviderAccounting,
@@ -141,7 +142,6 @@ describe("Sarah LiveKit generation fence", () => {
           },
         ],
       },
-      { ...privateEvent.session, tools: [] },
       { ...privateEvent.session, tool_choice: "none" },
     ]) {
       expect(
@@ -150,11 +150,98 @@ describe("Sarah LiveKit generation fence", () => {
           sessionDigest,
           privateProviderProfile,
         ),
-      ).toBeUndefined();
+      ).toBe(false);
     }
+    expect(admittedRealtimeProvider(privateEvent, sessionDigest, communityProviderProfile)).toBe(
+      false,
+    );
     expect(
-      admittedRealtimeProvider(privateEvent, sessionDigest, communityProviderProfile),
+      admittedRealtimeProvider(
+        { ...privateEvent, session: { ...privateEvent.session, tools: [] } },
+        sessionDigest,
+        privateProviderProfile,
+      ),
     ).toBeUndefined();
+    expect(
+      admittedRealtimeProvider(
+        { ...privateEvent, session: { ...privateEvent.session, tools: [] } },
+        sessionDigest,
+        privateProviderProfile,
+        false,
+      ),
+    ).toBe(false);
+  });
+
+  test("rejects privacy, media, and cost policy mutations", () => {
+    const sessionDigest = createProviderSessionDigest();
+    const event = providerUpdatedEvent(communityProviderProfile);
+    const mutations = [
+      { ...event.session, type: "transcription" },
+      { ...event.session, max_output_tokens: 1 },
+      { ...event.session, tracing: "auto" },
+      { ...event.session, prompt: { id: "pmpt_untrusted" } },
+      { ...event.session, truncation: "disabled" },
+      { ...event.session, reasoning: { effort: "high" } },
+      { ...event.session, include: ["item.input_audio_transcription.logprobs"] },
+      { ...event.session, temperature: 1.2 },
+      {
+        ...event.session,
+        audio: {
+          ...event.session.audio,
+          output: { ...event.session.audio.output, speed: 1.5 },
+        },
+      },
+      {
+        ...event.session,
+        audio: {
+          ...event.session.audio,
+          input: {
+            ...event.session.audio.input,
+            noise_reduction: { type: "far_field" },
+          },
+        },
+      },
+    ];
+    for (const session of mutations) {
+      expect(
+        admittedRealtimeProvider({ ...event, session }, sessionDigest, communityProviderProfile),
+      ).toBe(false);
+    }
+  });
+
+  test("invalidates stale startup evidence and rejects post-admission drift", () => {
+    const sessionDigest = createProviderSessionDigest();
+    const attestation = new SarahProviderAttestation();
+    const loadingTools = providerUpdatedEvent(privateProviderProfile);
+    loadingTools.session.tools = [];
+    expect(attestation.observe(loadingTools, sessionDigest, privateProviderProfile)).toEqual({
+      state: "pending",
+    });
+
+    const matching = providerUpdatedEvent(privateProviderProfile);
+    const candidate = attestation.observe(matching, sessionDigest, privateProviderProfile);
+    expect(candidate.state).toBe("candidate");
+    if (candidate.state !== "candidate") {
+      throw new Error("The provider candidate was unavailable");
+    }
+
+    const changedInstructions = {
+      ...matching,
+      session: { ...matching.session, instructions: "Hostile replacement" },
+    };
+    expect(attestation.observe(changedInstructions, sessionDigest, privateProviderProfile)).toEqual(
+      { state: "mismatch" },
+    );
+    expect(attestation.markDurable(candidate.admission)).toBe(false);
+
+    const replacement = attestation.observe(matching, sessionDigest, privateProviderProfile);
+    if (replacement.state !== "candidate") {
+      throw new Error("The replacement provider candidate was unavailable");
+    }
+    expect(attestation.markDurable(replacement.admission)).toBe(true);
+    expect(attestation.observe(changedInstructions, sessionDigest, privateProviderProfile)).toEqual(
+      { state: "drift" },
+    );
   });
 
   test("extracts exact response.done token details without transcript content", () => {
@@ -488,11 +575,19 @@ const providerUpdatedEvent = (profile: SarahRealtimeProviderProfile = privatePro
   type: "session.updated",
   session: {
     id: "sess_one",
+    type: "realtime",
     model: "gpt-realtime-2.1",
     output_modalities: ["audio"],
+    include: [],
+    max_output_tokens: "inf",
+    prompt: null,
+    tracing: null,
+    truncation: "auto",
+    reasoning: null,
     audio: {
       input: {
         format: { type: "audio/pcm", rate: 24_000 },
+        noise_reduction: null,
         transcription: { model: "gpt-4o-mini-transcribe" },
         turn_detection: {
           type: "semantic_vad",
@@ -503,6 +598,7 @@ const providerUpdatedEvent = (profile: SarahRealtimeProviderProfile = privatePro
       },
       output: {
         format: { type: "audio/pcm", rate: 24_000 },
+        speed: 1,
         voice: "marin",
       },
     },
