@@ -543,6 +543,26 @@ export class SarahProviderAttestation {
               );
       if (observed === false || observed === undefined) {
         if (
+          transition === "startup_base" &&
+          this.#expectedProviderTransitions[1] === "startup_instructions" &&
+          this.#expectedProviderTransitions[2] === "startup_tools"
+        ) {
+          const coalesced = admittedRealtimeProvider(
+            event,
+            expectedProviderSessionRefDigest,
+            expectedProfile,
+            false,
+          );
+          if (coalesced !== false && coalesced !== undefined) {
+            this.#expectedProviderTransitions.shift();
+            this.#expectedProviderTransitions.shift();
+            this.#expectedProviderTransitions.shift();
+            this.#mismatchPhase = undefined;
+            this.#candidate = coalesced;
+            return { state: "candidate", admission: coalesced };
+          }
+        }
+        if (
           transition === "startup_instructions" &&
           this.#expectedProviderTransitions[1] === "startup_tools"
         ) {
@@ -555,6 +575,7 @@ export class SarahProviderAttestation {
           if (coalesced !== false && coalesced !== undefined) {
             this.#expectedProviderTransitions.shift();
             this.#expectedProviderTransitions.shift();
+            this.#mismatchPhase = undefined;
             this.#candidate = coalesced;
             return { state: "candidate", admission: coalesced };
           }

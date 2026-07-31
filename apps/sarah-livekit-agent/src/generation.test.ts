@@ -379,6 +379,39 @@ describe("Sarah LiveKit generation fence", () => {
     expect(attestation.markDurable(candidate.admission)).toBe(true);
   });
 
+  test("accepts an exact provider snapshot that coalesces the full startup", () => {
+    const sessionDigest = createProviderSessionDigest();
+    const attestation = new SarahProviderAttestation();
+
+    expect(attestation.observeClientEvent(startupBaseClientEvent(), privateProviderProfile)).toBe(
+      true,
+    );
+    expect(
+      attestation.observeClientEvent(
+        startupInstructionsClientEvent(privateProviderProfile),
+        privateProviderProfile,
+      ),
+    ).toBe(true);
+    expect(
+      attestation.observeClientEvent(
+        startupToolsClientEvent(privateProviderProfile),
+        privateProviderProfile,
+      ),
+    ).toBe(true);
+
+    const candidate = attestation.observe(
+      providerUpdatedEvent(privateProviderProfile),
+      sessionDigest,
+      privateProviderProfile,
+    );
+    expect(candidate.state).toBe("candidate");
+    if (candidate.state !== "candidate") {
+      throw new Error("The fully coalesced provider candidate was unavailable");
+    }
+    expect(attestation.mismatchPhase).toBeUndefined();
+    expect(attestation.markDurable(candidate.admission)).toBe(true);
+  });
+
   test("permits only correlated tool-free follow-up and exact restoration", () => {
     const sessionDigest = createProviderSessionDigest();
     const attestation = admittedAttestation(sessionDigest, privateProviderProfile);
