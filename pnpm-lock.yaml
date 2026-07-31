@@ -1616,10 +1616,16 @@ importers:
       '@openagentsinc/audio-contract':
         specifier: workspace:*
         version: link:../../packages/audio-contract
+      ws:
+        specifier: 8.21.1
+        version: 8.21.1
       zod:
         specifier: 4.1.8
         version: 4.1.8
     devDependencies:
+      '@types/ws':
+        specifier: 8.18.1
+        version: 8.18.1
       livekit-server-sdk:
         specifier: 2.17.0
         version: 2.17.0

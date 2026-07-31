@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
-export const SARAH_LIVEKIT_ACCEPTANCE_SCHEMA = "openagents.sarah.livekit-acceptance.v2" as const;
+export const SARAH_LIVEKIT_ACCEPTANCE_SCHEMA = "openagents.sarah.livekit-acceptance.v3" as const;
+export const MAX_ACCEPTANCE_INTERRUPT_AUDIO_TAIL_MS = 750;
 
 export type SarahLiveKitAcceptanceScenario = Readonly<{
   kind: "private" | "community";
@@ -34,6 +35,8 @@ export type SarahLiveKitScenarioObservation = Readonly<{
   microphonePublishLatencyMs: number;
   firstSarahAudioLatencyMs: number;
   firstSarahTranscriptionLatencyMs: number;
+  interruptAckLatencyMs: number;
+  postInterruptAudioTailMs: number;
   selectedIcePathObserved: boolean;
   publisherIceStatsObserved: boolean;
   subscriberIceStatsObserved: boolean;
@@ -41,6 +44,9 @@ export type SarahLiveKitScenarioObservation = Readonly<{
   sarahAudioObserved: true;
   sarahTranscriptionObserved: true;
   principalSarahObserved: true;
+  controlChannelReady: true;
+  interruptAckObserved: true;
+  interruptedLifecycleObserved: true;
   identityDigests: Readonly<{
     job: string;
     providerSession: string;
@@ -60,6 +66,7 @@ export type SarahLiveKitScenarioObservation = Readonly<{
     chargeMsat: number;
     responseCount: number;
     transcriptionCount: number;
+    cancelledResponseCount: number;
   }>;
   identityIsolationObserved: true;
   exactProviderUsageObserved: true;
@@ -83,6 +90,7 @@ export type SarahLiveKitPublicScenarioObservation = Readonly<
   > & {
     durationMs: number;
     activeRoomDurationMs: number;
+    cancelledResponseCount: number;
   }
 >;
 
@@ -153,6 +161,8 @@ const assertObservation = (
     observation.microphonePublishLatencyMs,
     observation.firstSarahAudioLatencyMs,
     observation.firstSarahTranscriptionLatencyMs,
+    observation.interruptAckLatencyMs,
+    observation.postInterruptAudioTailMs,
   ];
   if (
     observation.kind !== expectedKind ||
@@ -171,8 +181,12 @@ const assertObservation = (
     !observation.sarahAudioObserved ||
     !observation.sarahTranscriptionObserved ||
     !observation.principalSarahObserved ||
+    !observation.controlChannelReady ||
+    !observation.interruptAckObserved ||
+    !observation.interruptedLifecycleObserved ||
     !observation.identityIsolationObserved ||
     !observation.exactProviderUsageObserved ||
+    observation.postInterruptAudioTailMs > MAX_ACCEPTANCE_INTERRUPT_AUDIO_TAIL_MS ||
     observation.subscriberFanoutCount < 2 ||
     !observation.audibleFanoutObserved ||
     !/^sha256:[0-9a-f]{64}$/u.test(observation.settlementReceiptDigest)
@@ -193,7 +207,9 @@ const assertObservation = (
     providerUsageTotal <= 0 ||
     observation.providerUsage.chargeMsat !== observation.finalChargeMsat ||
     observation.providerUsage.responseCount < 1 ||
-    observation.providerUsage.transcriptionCount < 1
+    observation.providerUsage.transcriptionCount < 1 ||
+    observation.providerUsage.cancelledResponseCount < 1 ||
+    observation.providerUsage.cancelledResponseCount > observation.providerUsage.responseCount
   ) {
     throw new Error(`${expectedKind} LiveKit acceptance identity or usage evidence is incomplete`);
   }
@@ -209,6 +225,8 @@ const publicObservation = (
   microphonePublishLatencyMs: observation.microphonePublishLatencyMs,
   firstSarahAudioLatencyMs: observation.firstSarahAudioLatencyMs,
   firstSarahTranscriptionLatencyMs: observation.firstSarahTranscriptionLatencyMs,
+  interruptAckLatencyMs: observation.interruptAckLatencyMs,
+  postInterruptAudioTailMs: observation.postInterruptAudioTailMs,
   selectedIcePathObserved: observation.selectedIcePathObserved,
   publisherIceStatsObserved: observation.publisherIceStatsObserved,
   subscriberIceStatsObserved: observation.subscriberIceStatsObserved,
@@ -216,6 +234,9 @@ const publicObservation = (
   sarahAudioObserved: observation.sarahAudioObserved,
   sarahTranscriptionObserved: observation.sarahTranscriptionObserved,
   principalSarahObserved: observation.principalSarahObserved,
+  controlChannelReady: observation.controlChannelReady,
+  interruptAckObserved: observation.interruptAckObserved,
+  interruptedLifecycleObserved: observation.interruptedLifecycleObserved,
   identityIsolationObserved: observation.identityIsolationObserved,
   exactProviderUsageObserved: observation.exactProviderUsageObserved,
   subscriberFanoutCount: observation.subscriberFanoutCount,
@@ -226,6 +247,7 @@ const publicObservation = (
   settlementReceiptDigest: observation.settlementReceiptDigest,
   durationMs: observation.endedAtMs - observation.startedAtMs,
   activeRoomDurationMs: observation.activeRoomEndedAtMs - observation.activeRoomStartedAtMs,
+  cancelledResponseCount: observation.providerUsage.cancelledResponseCount,
 });
 
 export const assertPublicSafeSarahLiveKitReceipt = (
@@ -236,6 +258,8 @@ export const assertPublicSafeSarahLiveKitReceipt = (
     "authorization",
     "bearer",
     "participantgrant",
+    "ticket",
+    "gatewayurl",
     "transcriptcontent",
     "pcm",
     "audiocontent",

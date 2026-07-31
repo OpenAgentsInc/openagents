@@ -105,8 +105,12 @@ const run = async () => {
         requiredObservations: [
           "authenticated admission and livekit_room_v1 session",
           "room-scoped participant grant",
+          "ticketed gateway control-channel readiness",
           "microphone publication",
           "Sarah audio and ephemeral transcription",
+          "explicit interrupt acknowledgement and interrupted lifecycle",
+          "bounded post-interrupt Sarah audio tail",
+          "at least one exactly accounted cancelled provider response",
           "literal principal.sarah and distinct authority identity digests",
           "nonzero exact provider usage equal to terminal settlement",
           "audible Sarah output for owner and secondary subscriber",

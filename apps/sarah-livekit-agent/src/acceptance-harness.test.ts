@@ -45,6 +45,8 @@ const observation = (
   microphonePublishLatencyMs: 40,
   firstSarahAudioLatencyMs: 50,
   firstSarahTranscriptionLatencyMs: 60,
+  interruptAckLatencyMs: 70,
+  postInterruptAudioTailMs: 80,
   selectedIcePathObserved: true,
   publisherIceStatsObserved: true,
   subscriberIceStatsObserved: true,
@@ -52,6 +54,9 @@ const observation = (
   sarahAudioObserved: true,
   sarahTranscriptionObserved: true,
   principalSarahObserved: true,
+  controlChannelReady: true,
+  interruptAckObserved: true,
+  interruptedLifecycleObserved: true,
   identityDigests: Object.fromEntries(
     [
       "job",
@@ -73,6 +78,7 @@ const observation = (
     chargeMsat: 17,
     responseCount: 1,
     transcriptionCount: 1,
+    cancelledResponseCount: 1,
   },
   identityIsolationObserved: true,
   exactProviderUsageObserved: true,
@@ -123,7 +129,20 @@ describe("Sarah LiveKit production acceptance harness", () => {
     expect(serialized).not.toContain("community-secret");
     expect(serialized).not.toContain("channel-secret");
     expect(serialized).not.toContain("oa_omega_");
+    expect(receipt.schema).toBe("openagents.sarah.livekit-acceptance.v3");
+    expect(receipt.scenarios[0]).toMatchObject({
+      controlChannelReady: true,
+      interruptAckObserved: true,
+      interruptedLifecycleObserved: true,
+      cancelledResponseCount: 1,
+    });
     expect(() => assertPublicSafeSarahLiveKitReceipt(receipt)).not.toThrow();
+    expect(() =>
+      assertPublicSafeSarahLiveKitReceipt({
+        ...receipt,
+        ticket: "private-ticket-material",
+      } as typeof receipt),
+    ).toThrow("contains private material");
   });
 
   test("refuses a same-owner matrix before starting either live scenario", async () => {
@@ -173,6 +192,65 @@ describe("Sarah LiveKit production acceptance harness", () => {
           runScenario: async (input) => ({
             ...observation(input.kind, 1_000, 2_000),
             selectedIcePathObserved: input.kind !== "community",
+          }),
+        },
+      ),
+    ).rejects.toThrow("community LiveKit acceptance observation is incomplete");
+
+    await expect(
+      runSarahLiveKitAcceptance(
+        {
+          sourceRevision: "e".repeat(40),
+          privateScenario,
+          communityScenario,
+        },
+        {
+          now: () => 0,
+          runScenario: async (input) => ({
+            ...observation(input.kind, 1_000, 2_000),
+            providerUsage: {
+              ...observation(input.kind, 1_000, 2_000).providerUsage,
+              cancelledResponseCount: input.kind === "private" ? 0 : 2,
+            },
+          }),
+        },
+      ),
+    ).rejects.toThrow("private LiveKit acceptance identity or usage evidence is incomplete");
+  });
+
+  test("refuses missing control evidence and an unbounded audio tail", async () => {
+    const privateScenario = scenario("private", "owner-private");
+    const communityScenario = scenario("community", "owner-community");
+    await expect(
+      runSarahLiveKitAcceptance(
+        {
+          sourceRevision: "f".repeat(40),
+          privateScenario,
+          communityScenario,
+        },
+        {
+          now: () => 0,
+          runScenario: async (input) =>
+            ({
+              ...observation(input.kind, 1_000, 2_000),
+              interruptAckObserved: input.kind !== "private",
+            }) as SarahLiveKitScenarioObservation,
+        },
+      ),
+    ).rejects.toThrow("private LiveKit acceptance observation is incomplete");
+
+    await expect(
+      runSarahLiveKitAcceptance(
+        {
+          sourceRevision: "1".repeat(40),
+          privateScenario,
+          communityScenario,
+        },
+        {
+          now: () => 0,
+          runScenario: async (input) => ({
+            ...observation(input.kind, 1_000, 2_000),
+            postInterruptAudioTailMs: input.kind === "community" ? 751 : 80,
           }),
         },
       ),

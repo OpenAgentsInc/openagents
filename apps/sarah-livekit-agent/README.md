@@ -119,10 +119,12 @@ converged Kubernetes Deployment image digest and the image's unique
 revision. Its session-scoped settlement evidence requires literal
 `principal.sarah`, distinct job/provider/configuration/context/capability/hold/
 usage/settlement digests, one worker and provider session, nonzero exact usage,
-and a settlement charge equal to recorded provider usage. The receipt retains
-only booleans, counts, timings, totals, and digests. Failure injection, fanout,
-reconnect, and packaged-client privacy collection remain separate live operator
-actions projected through the `sarah_matrix` phase in the production runbook.
+an explicit ticketed control-channel interrupt with an audio tail no longer
+than 750 ms, at least one exactly accounted cancelled response, and a settlement
+charge equal to recorded provider usage. The receipt retains only booleans,
+counts, timings, totals, and digests. Failure injection, reconnect, and
+packaged-client privacy collection remain separate live operator actions
+projected through the `sarah_matrix` phase in the production runbook.
 
 Both Docker stages pin the Linux AMD64 manifest digest for the official
 `node:24.13.1-bookworm-slim` image. To refresh it, inspect the authoritative

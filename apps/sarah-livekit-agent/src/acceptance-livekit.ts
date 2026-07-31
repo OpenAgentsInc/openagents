@@ -15,14 +15,19 @@ import {
 import {
   SARAH_VOICE_ADMISSION_PATH,
   SARAH_VOICE_ADMISSION_PROTOCOL_VERSION,
+  SARAH_VOICE_CONNECT_PATH,
   SARAH_VOICE_PROTOCOL_VERSION,
   SARAH_VOICE_SESSION_PATH,
   SARAH_VOICE_SETTLEMENT_PATH,
   decodeSarahVoiceAdmissionResponse,
+  decodeSarahVoiceServerControl,
   decodeSarahVoiceSessionResponse,
   decodeSarahVoiceSettlementResponse,
+  type VoiceIdentity,
 } from "@openagentsinc/audio-contract";
+import WebSocket, { type ClientOptions, type RawData } from "ws";
 import {
+  MAX_ACCEPTANCE_INTERRUPT_AUDIO_TAIL_MS,
   digestSettlementReceipt,
   type SarahLiveKitAcceptanceScenario,
   type SarahLiveKitScenarioObservation,
@@ -34,6 +39,7 @@ const LIVEKIT_ORIGIN = "wss://livekit.openagents.com";
 const TRANSCRIPTION_TOPIC = "lk.transcription";
 const SCENARIO_TIMEOUT_MS = 60_000;
 const SETTLEMENT_TIMEOUT_MS = 45_000;
+const INTERRUPT_AUDIO_QUIET_WINDOW_MS = 250;
 
 type Clock = Readonly<{
   now: () => number;
@@ -42,11 +48,50 @@ type Clock = Readonly<{
 
 type Http = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
+export type SarahLiveKitAcceptanceControlSocket = Readonly<{
+  onOpen: (listener: () => void) => void;
+  onMessage: (listener: (data: RawData, isBinary: boolean) => void) => void;
+  onError: (listener: () => void) => void;
+  onClose: (listener: () => void) => void;
+  send: (message: string) => void;
+  terminate: () => void;
+}>;
+
+export type SarahLiveKitAcceptanceControlSocketFactory = (
+  url: string,
+  options: ClientOptions,
+) => SarahLiveKitAcceptanceControlSocket;
+
 export type SarahLiveKitLiveDependencies = Readonly<{
   clock?: Clock;
   fetch?: Http;
   mintSubscriberGrant?: (roomRef: string, subscriberRef: string) => Promise<string>;
+  controlSocketFactory?: SarahLiveKitAcceptanceControlSocketFactory;
 }>;
+
+const defaultControlSocketFactory: SarahLiveKitAcceptanceControlSocketFactory = (url, options) => {
+  const socket = new WebSocket(url, options);
+  return {
+    onOpen: (listener) => {
+      socket.on("open", listener);
+    },
+    onMessage: (listener) => {
+      socket.on("message", listener);
+    },
+    onError: (listener) => {
+      socket.on("error", listener);
+    },
+    onClose: (listener) => {
+      socket.on("close", listener);
+    },
+    send: (message) => {
+      socket.send(message);
+    },
+    terminate: () => {
+      socket.terminate();
+    },
+  };
+};
 
 const responseError = async (response: Response, operation: string): Promise<Error> => {
   let code = "unknown";
@@ -111,6 +156,200 @@ const deferred = <T>() => {
     promise,
     resolve: (value: T) => resolve?.(value),
     reject: (error: Error) => reject?.(error),
+  };
+};
+
+const sameVoiceIdentity = (left: VoiceIdentity, right: VoiceIdentity): boolean =>
+  left.ownerRef === right.ownerRef &&
+  left.deviceRef === right.deviceRef &&
+  left.threadRef === right.threadRef &&
+  left.sessionRef === right.sessionRef &&
+  left.generation === right.generation;
+
+const controlText = (data: RawData): string => {
+  if (Buffer.isBuffer(data)) return data.toString("utf8");
+  if (Array.isArray(data)) return Buffer.concat(data).toString("utf8");
+  return Buffer.from(data).toString("utf8");
+};
+
+const validGatewayUrl = (value: string): boolean => {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "wss:" &&
+      url.hostname === "openagents.com" &&
+      url.port === "" &&
+      url.username === "" &&
+      url.password === "" &&
+      url.pathname === SARAH_VOICE_CONNECT_PATH &&
+      url.search === "" &&
+      url.hash === ""
+    );
+  } catch {
+    return false;
+  }
+};
+
+export type SarahLiveKitAcceptanceControlChannel = Readonly<{
+  ready: Promise<number>;
+  interrupt: () => Promise<Readonly<{ acknowledgedAtMs: number; interruptedAtMs: number }>>;
+  close: () => Promise<void>;
+  dispose: () => void;
+}>;
+
+export const openSarahLiveKitAcceptanceControlChannel = (
+  input: Readonly<{
+    gatewayUrl: string;
+    ticket: string;
+    identity: VoiceIdentity;
+    disclosureRef: string;
+  }>,
+  now: () => number,
+  socketFactory: SarahLiveKitAcceptanceControlSocketFactory = defaultControlSocketFactory,
+): SarahLiveKitAcceptanceControlChannel => {
+  if (!validGatewayUrl(input.gatewayUrl) || !/^[A-Za-z0-9_-]{32,256}$/u.test(input.ticket)) {
+    throw new Error("Sarah LiveKit acceptance control grant is invalid");
+  }
+  const socket = socketFactory(input.gatewayUrl, {
+    headers: {
+      "x-openagents-sarah-voice-session": input.identity.sessionRef,
+      "x-openagents-sarah-voice-ticket": input.ticket,
+    },
+    handshakeTimeout: 10_000,
+    maxPayload: 32_768,
+  });
+  const ready = deferred<number>();
+  let interrupt:
+    | ReturnType<typeof deferred<Readonly<{ acknowledgedAtMs: number; interruptedAtMs: number }>>>
+    | undefined;
+  let close: ReturnType<typeof deferred<void>> | undefined;
+  let expectedServerSequence = 0;
+  let clientSequence = 0;
+  let readyObserved = false;
+  let interruptAcknowledgedAtMs: number | undefined;
+  let interruptedAtMs: number | undefined;
+  let closeRequested = false;
+  let closed = false;
+  let failed = false;
+
+  const fail = (message: string): void => {
+    if (failed || closed) return;
+    failed = true;
+    const error = new Error(message);
+    ready.reject(error);
+    interrupt?.reject(error);
+    close?.reject(error);
+    socket.terminate();
+  };
+  const sendControl = (control: Readonly<Record<string, unknown>>): void => {
+    if (failed || closed) {
+      throw new Error("Sarah LiveKit acceptance control channel is unavailable");
+    }
+    try {
+      socket.send(
+        JSON.stringify({
+          schema: SARAH_VOICE_PROTOCOL_VERSION,
+          identity: input.identity,
+          sequence: clientSequence,
+          ...control,
+        }),
+      );
+      clientSequence += 1;
+    } catch {
+      fail("Sarah LiveKit acceptance control send failed");
+      throw new Error("Sarah LiveKit acceptance control send failed");
+    }
+  };
+  const resolveInterrupt = (): void => {
+    if (
+      interrupt !== undefined &&
+      interruptAcknowledgedAtMs !== undefined &&
+      interruptedAtMs !== undefined
+    ) {
+      interrupt.resolve({
+        acknowledgedAtMs: interruptAcknowledgedAtMs,
+        interruptedAtMs,
+      });
+    }
+  };
+
+  socket.onOpen(() => {
+    try {
+      sendControl({
+        _tag: "session_hello",
+        disclosureRef: input.disclosureRef,
+      });
+    } catch {
+      // sendControl already failed the channel with a public-safe error.
+    }
+  });
+  socket.onMessage((data, isBinary) => {
+    if (isBinary) {
+      fail("Sarah LiveKit acceptance control channel received binary media");
+      return;
+    }
+    try {
+      const control = decodeSarahVoiceServerControl(JSON.parse(controlText(data)) as unknown);
+      if (
+        !sameVoiceIdentity(control.identity, input.identity) ||
+        control.sequence !== expectedServerSequence
+      ) {
+        fail("Sarah LiveKit acceptance control authority or sequence disagreed");
+        return;
+      }
+      expectedServerSequence += 1;
+      if (control["_tag"] === "error") {
+        fail(`Sarah LiveKit acceptance control returned ${control.code}`);
+      } else if (control["_tag"] === "session_ready") {
+        readyObserved = true;
+        ready.resolve(now());
+      } else if (control["_tag"] === "interrupt_ack") {
+        interruptAcknowledgedAtMs = now();
+        resolveInterrupt();
+      } else if (control["_tag"] === "lifecycle" && control.state === "interrupted") {
+        interruptedAtMs = now();
+        resolveInterrupt();
+      }
+    } catch {
+      fail("Sarah LiveKit acceptance control frame was invalid");
+    }
+  });
+  socket.onError(() => {
+    fail("Sarah LiveKit acceptance control transport failed");
+  });
+  socket.onClose(() => {
+    if (closeRequested) {
+      closed = true;
+      close?.resolve();
+      return;
+    }
+    fail("Sarah LiveKit acceptance control channel closed early");
+  });
+
+  return {
+    ready: ready.promise,
+    interrupt: () => {
+      if (!readyObserved || interrupt !== undefined) {
+        return Promise.reject(
+          new Error("Sarah LiveKit acceptance control interrupt is not available"),
+        );
+      }
+      interrupt = deferred();
+      sendControl({ _tag: "interrupt" });
+      return interrupt.promise;
+    },
+    close: () => {
+      if (close !== undefined) return close.promise;
+      close = deferred();
+      closeRequested = true;
+      sendControl({ _tag: "close", reason: "user_stop" });
+      return close.promise;
+    },
+    dispose: () => {
+      if (closed) return;
+      closed = true;
+      socket.terminate();
+    },
   };
 };
 
@@ -187,10 +426,12 @@ const decodeSettlement = (value: unknown) => {
   }
 };
 
-const observeSarahOutputs = (room: Room, sarahParticipantRef: string, now: () => number) => {
+const observeSarahOutputs = (room: Room, sarahParticipantRef: string, clock: Clock) => {
   const audio = deferred<number>();
   const transcription = deferred<number>();
   let audioAttached = false;
+  let cancelAudio: (() => Promise<void>) | undefined;
+  let lastAudibleAtMs: number | undefined;
 
   const attachAudio = (
     track: RemoteTrack,
@@ -208,6 +449,9 @@ const observeSarahOutputs = (room: Room, sarahParticipantRef: string, now: () =>
     const stream = new AudioStream(track, { sampleRate: 24_000, numChannels: 1 });
     void (async () => {
       const reader = stream.getReader();
+      cancelAudio = async () => {
+        await reader.cancel();
+      };
       try {
         while (true) {
           // Audibility depends on the next frame from this one ordered stream.
@@ -222,11 +466,8 @@ const observeSarahOutputs = (room: Room, sarahParticipantRef: string, now: () =>
             }
           }
           if (audible) {
-            audio.resolve(now());
-            // Cancel only after the first audible frame has been consumed.
-            // eslint-disable-next-line no-await-in-loop
-            await reader.cancel();
-            return;
+            lastAudibleAtMs = clock.now();
+            audio.resolve(lastAudibleAtMs);
           }
         }
       } catch (error) {
@@ -246,7 +487,7 @@ const observeSarahOutputs = (room: Room, sarahParticipantRef: string, now: () =>
           observedBytes += Buffer.byteLength(chunk, "utf8");
         }
         if (participant.identity === sarahParticipantRef && observedBytes > 0) {
-          transcription.resolve(now());
+          transcription.resolve(clock.now());
         }
       } catch (error) {
         if (participant.identity === sarahParticipantRef) {
@@ -271,9 +512,22 @@ const observeSarahOutputs = (room: Room, sarahParticipantRef: string, now: () =>
     audio: audio.promise,
     transcription: transcription.promise,
     attachExisting,
-    close: () => {
+    measureInterruptTail: async (acknowledgedAtMs: number) => {
+      const deadline = acknowledgedAtMs + MAX_ACCEPTANCE_INTERRUPT_AUDIO_TAIL_MS;
+      while (clock.now() <= deadline) {
+        const lastAudible = Math.max(lastAudibleAtMs ?? acknowledgedAtMs, acknowledgedAtMs);
+        if (clock.now() - lastAudible >= INTERRUPT_AUDIO_QUIET_WINDOW_MS) {
+          return Math.max(0, lastAudible - acknowledgedAtMs);
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await clock.sleep(50);
+      }
+      throw new Error("Sarah audio did not become quiet after the explicit interrupt");
+    },
+    close: async () => {
       room.off(RoomEvent.TrackSubscribed, attachAudio);
       room.unregisterTextStreamHandler(TRANSCRIPTION_TOPIC);
+      await cancelAudio?.().catch(() => {});
     },
   };
 };
@@ -371,6 +625,7 @@ export const runLiveSarahLiveKitScenario = async (
     } satisfies Clock);
   const http = dependencies.fetch ?? fetch;
   const mintSubscriberGrant = dependencies.mintSubscriberGrant ?? mintProductionSubscriberGrant;
+  const controlSocketFactory = dependencies.controlSocketFactory ?? defaultControlSocketFactory;
   const startedAtMs = clock.now();
   const identity = {
     ownerRef: scenario.ownerRef,
@@ -420,13 +675,23 @@ export const runLiveSarahLiveKitScenario = async (
     throw new Error(`${scenario.kind} Sarah session did not return the production LiveKit grant`);
   }
 
+  const control = openSarahLiveKitAcceptanceControlChannel(
+    {
+      gatewayUrl: session.gatewayUrl,
+      ticket: session.ticket,
+      identity,
+      disclosureRef: requestBase.disclosureRef,
+    },
+    clock.now,
+    controlSocketFactory,
+  );
   const room = new Room();
-  const output = observeSarahOutputs(room, session.transport.sarahParticipantRef, clock.now);
+  const output = observeSarahOutputs(room, session.transport.sarahParticipantRef, clock);
   const subscriberRoom = new Room();
   const subscriberOutput = observeSarahOutputs(
     subscriberRoom,
     session.transport.sarahParticipantRef,
-    clock.now,
+    clock,
   );
   let microphone: Awaited<ReturnType<typeof publishMicrophone>> | undefined;
   try {
@@ -446,6 +711,7 @@ export const runLiveSarahLiveKitScenario = async (
     ) {
       throw new Error(`${scenario.kind} LiveKit room identity did not match the server grant`);
     }
+    await timeout(control.ready, SCENARIO_TIMEOUT_MS, `${scenario.kind} Sarah control readiness`);
     const subscriberGrant =
       scenario.subscriberGrant ??
       (await mintSubscriberGrant(session.transport.roomRef, scenario.subscriberRef));
@@ -473,12 +739,27 @@ export const runLiveSarahLiveKitScenario = async (
       `${scenario.kind} microphone publication`,
     );
     const microphonePublishedAtMs = clock.now();
-    const [firstSarahAudioAtMs, firstSarahTranscriptionAtMs] = await timeout(
-      Promise.all([output.audio, output.transcription, subscriberOutput.audio]).then(
-        ([audioAtMs, transcriptionAtMs]) => [audioAtMs, transcriptionAtMs] as const,
-      ),
+    const [firstSarahAudioAtMs] = await timeout(
+      Promise.all([output.audio, subscriberOutput.audio]),
       SCENARIO_TIMEOUT_MS,
-      `${scenario.kind} Sarah audio and transcription`,
+      `${scenario.kind} Sarah audible fanout`,
+    );
+    const interruptStartedAtMs = clock.now();
+    const interruption = await timeout(
+      control.interrupt(),
+      SCENARIO_TIMEOUT_MS,
+      `${scenario.kind} Sarah explicit interrupt`,
+    );
+    const postInterruptAudioTailMs = Math.max(
+      ...(await Promise.all([
+        output.measureInterruptTail(interruption.acknowledgedAtMs),
+        subscriberOutput.measureInterruptTail(interruption.acknowledgedAtMs),
+      ])),
+    );
+    const firstSarahTranscriptionAtMs = await timeout(
+      output.transcription,
+      SCENARIO_TIMEOUT_MS,
+      `${scenario.kind} Sarah transcription`,
     );
     const rtcStats = (await room.getRtcStats()) as unknown as Readonly<{
       publisherStats: readonly RtcStat[];
@@ -489,6 +770,7 @@ export const runLiveSarahLiveKitScenario = async (
       throw new Error(`${scenario.kind} selected ICE path was not observable`);
     }
 
+    await timeout(control.close(), SCENARIO_TIMEOUT_MS, `${scenario.kind} Sarah control close`);
     const activeRoomEndedAtMs = clock.now();
     await room.localParticipant?.unpublishTrack(microphone.publicationSid, true);
     microphone = undefined;
@@ -513,7 +795,9 @@ export const runLiveSarahLiveKitScenario = async (
       evidence.principal !== "principal.sarah" ||
       evidence.providerAccountingStatus !== "exact" ||
       evidence.workerJobCount !== 1 ||
-      evidence.providerSessionCount !== 1
+      evidence.providerSessionCount !== 1 ||
+      evidence.usage.cancelledResponseCount < 1 ||
+      evidence.usage.cancelledResponseCount > evidence.usage.responseCount
     ) {
       throw new Error(`${scenario.kind} terminal LiveKit acceptance evidence was incomplete`);
     }
@@ -530,11 +814,16 @@ export const runLiveSarahLiveKitScenario = async (
       microphonePublishLatencyMs: microphonePublishedAtMs - microphonePublishStartedAtMs,
       firstSarahAudioLatencyMs: firstSarahAudioAtMs - startedAtMs,
       firstSarahTranscriptionLatencyMs: firstSarahTranscriptionAtMs - startedAtMs,
+      interruptAckLatencyMs: interruption.acknowledgedAtMs - interruptStartedAtMs,
+      postInterruptAudioTailMs,
       ...ice,
       microphonePublished: true,
       sarahAudioObserved: true,
       sarahTranscriptionObserved: true,
       principalSarahObserved: true,
+      controlChannelReady: true,
+      interruptAckObserved: true,
+      interruptedLifecycleObserved: true,
       identityDigests: evidence.identityDigests,
       providerUsage: {
         inputTokens: evidence.usage.inputTokens,
@@ -545,6 +834,7 @@ export const runLiveSarahLiveKitScenario = async (
         chargeMsat: evidence.usage.chargeMsat,
         responseCount: evidence.usage.responseCount,
         transcriptionCount: evidence.usage.transcriptionCount,
+        cancelledResponseCount: evidence.usage.cancelledResponseCount,
       },
       identityIsolationObserved: true,
       exactProviderUsageObserved: true,
@@ -556,8 +846,9 @@ export const runLiveSarahLiveKitScenario = async (
       settlementReceiptDigest: digestSettlementReceipt(settlement.receiptRef),
     };
   } finally {
-    output.close();
-    subscriberOutput.close();
+    control.dispose();
+    await output.close();
+    await subscriberOutput.close();
     if (room.isConnected) await room.disconnect();
     if (subscriberRoom.isConnected) await subscriberRoom.disconnect();
     await microphone?.track.close();

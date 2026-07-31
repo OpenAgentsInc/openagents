@@ -110,9 +110,10 @@ const parseProductionServerKeys = (
     typeof record.keys_yaml !== "string" ||
     !/^[A-Za-z0-9_-]{12,128}$/u.test(record.api_key) ||
     !/^[A-Za-z0-9_-]{32,256}$/u.test(record.api_secret) ||
-    ![`${record.api_key}: ${record.api_secret}`, `${record.api_key}: ${record.api_secret}\n`].includes(
-      record.keys_yaml,
-    )
+    ![
+      `${record.api_key}: ${record.api_secret}`,
+      `${record.api_key}: ${record.api_secret}\n`,
+    ].includes(record.keys_yaml)
   ) {
     throw new Error("production LiveKit server keys have an invalid shape");
   }
