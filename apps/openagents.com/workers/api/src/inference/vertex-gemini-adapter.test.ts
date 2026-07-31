@@ -5,6 +5,7 @@ import { AUTOPILOT_CONCIERGE_MODEL_ID, KHALA_MINI_MODEL_ID } from './pricing'
 import {
   InferenceAdapterError,
   type InferenceRequest,
+  type InferenceUsage,
 } from './provider-adapter'
 import {
   DEFAULT_GEMINI_MODEL_ID,
@@ -829,5 +830,261 @@ describe('vertex gemini adapter budget truncation', () => {
       generationConfig: { maxOutputTokens: number }
     }
     expect(body.generationConfig.maxOutputTokens).toBe(16)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Reasoning-token attribution (thoughtsTokenCount -> usage.reasoningTokens).
+//
+// These fixtures are VERBATIM live captures taken 2026-07-31 against
+// `projects/openagentsgemini/locations/global/publishers/google/models/
+// gemini-3.6-flash` (`:generateContent` and `:streamGenerateContent?alt=sse`,
+// both HTTP 200, thinkingLevel "medium"). They are not hand-authored guesses at
+// the wire shape — the whole point of the defect they pin is that the adapter
+// read a shape nobody had checked against the provider.
+//
+// The defect: Gemini bills thinking tokens INTO `totalTokenCount` but reports
+// them ONLY in `thoughtsTokenCount`. Spend enforcement was therefore correct
+// while attribution was not: 180 of the 198 billed tokens below were invisible
+// as reasoning, and `token_usage_events.reasoning_tokens` stored 0 for them.
+// ---------------------------------------------------------------------------
+
+// Live capture, `:generateContent`. Trimmed only of the long `thoughtSignature`
+// blob on the text part; every `usageMetadata` field is byte-for-byte upstream.
+const liveGeminiThinkingResponse = {
+  candidates: [
+    {
+      content: { parts: [{ text: '391' }], role: 'model' },
+      finishReason: 'STOP',
+    },
+  ],
+  createTime: '2026-07-31T19:21:17.631405Z',
+  modelVersion: 'gemini-3.6-flash',
+  responseId: 'rfVsau3EJuGprb8P7bzv6AI',
+  usageMetadata: {
+    candidatesTokenCount: 3,
+    candidatesTokensDetails: [{ modality: 'TEXT', tokenCount: 3 }],
+    promptTokenCount: 15,
+    promptTokensDetails: [{ modality: 'TEXT', tokenCount: 15 }],
+    thoughtsTokenCount: 180,
+    totalTokenCount: 198,
+    trafficType: 'ON_DEMAND',
+  },
+}
+
+// Live capture, `:streamGenerateContent?alt=sse` — the FULL two-fragment body.
+// Note fragment 0: `usageMetadata` is PRESENT but carries only `trafficType`
+// and no token counts. That is why the streaming fold must carry prior values
+// forward; reading `thoughtsTokenCount` per-fragment without carry-forward
+// would zero it on any frame that is not the terminal one.
+const liveGeminiThinkingSseFragments = [
+  {
+    candidates: [{ content: { parts: [{ text: '391' }], role: 'model' } }],
+    createTime: '2026-07-31T19:21:30.146877Z',
+    modelVersion: 'gemini-3.6-flash',
+    responseId: 'uvVsar37CKvPu-gPvs6b-A8',
+    usageMetadata: { trafficType: 'ON_DEMAND' },
+  },
+  {
+    candidates: [
+      {
+        content: { parts: [{ text: '' }], role: 'model' },
+        finishReason: 'STOP',
+      },
+    ],
+    modelVersion: 'gemini-3.6-flash',
+    responseId: 'uvVsar37CKvPu-gPvs6b-A8',
+    usageMetadata: {
+      candidatesTokenCount: 3,
+      candidatesTokensDetails: [{ modality: 'TEXT', tokenCount: 3 }],
+      promptTokenCount: 15,
+      promptTokensDetails: [{ modality: 'TEXT', tokenCount: 15 }],
+      thoughtsTokenCount: 207,
+      totalTokenCount: 225,
+      trafficType: 'ON_DEMAND',
+    },
+  },
+]
+
+describe('vertex gemini adapter reasoning-token attribution', () => {
+  // Guard the fixtures themselves. `reasoning_tokens` is an INTEGER column and
+  // the parse guard is `typeof value === 'number'`, so a string-encoded count
+  // would be silently dropped to 0 rather than failing loudly — exactly the
+  // always-false-guard failure mode. The live capture sends unquoted JSON
+  // numbers; if upstream ever switches to Google's string-encoded int64 form,
+  // this assertion fails first and names the reason.
+  test('upstream reports every usage count as a JSON number, not a string', () => {
+    const nonStreaming = liveGeminiThinkingResponse.usageMetadata
+    const streaming = liveGeminiThinkingSseFragments[1]!.usageMetadata
+    for (const usage of [nonStreaming, streaming]) {
+      for (const field of [
+        'promptTokenCount',
+        'candidatesTokenCount',
+        'totalTokenCount',
+        'thoughtsTokenCount',
+      ] as const) {
+        expect(typeof (usage as Record<string, unknown>)[field]).toBe('number')
+      }
+    }
+  })
+
+  test('complete() maps thoughtsTokenCount onto usage.reasoningTokens', async () => {
+    const { fetchImpl } = recordingFetch(okJson(liveGeminiThinkingResponse))
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    const result = await run(
+      adapter.complete(
+        baseRequest({
+          model: 'gemini-3.6-flash',
+          passthroughParams: { max_tokens: 256 },
+        }),
+      ),
+    )
+
+    // The whole defect in one assertion: without the mapping this is
+    // `undefined` and 180 billed tokens have no cause.
+    expect(result.usage.reasoningTokens).toBe(180)
+
+    // Attribution now closes: prompt + completion + reasoning accounts for the
+    // provider total with nothing left in the opaque remainder.
+    expect(result.usage.promptTokens).toBe(15)
+    expect(result.usage.completionTokens).toBe(3)
+    expect(result.usage.totalTokens).toBe(198)
+    expect(
+      result.usage.promptTokens +
+        result.usage.completionTokens +
+        (result.usage.reasoningTokens ?? 0),
+    ).toBe(result.usage.totalTokens)
+  })
+
+  test('streamSse() maps thoughtsTokenCount onto the terminal usage', async () => {
+    const { fetchImpl } = recordingFetch(
+      sseStreamResponse(liveGeminiThinkingSseFragments),
+    )
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    const source = await run(
+      adapter.streamSse!(
+        baseRequest({
+          model: 'gemini-3.6-flash',
+          passthroughParams: { max_tokens: 256 },
+          stream: true,
+        }),
+      ),
+    )
+    await drainFrames(source.frames)
+
+    const terminal = source.terminal()
+    expect(terminal.usage?.reasoningTokens).toBe(207)
+    expect(terminal.usage?.promptTokens).toBe(15)
+    expect(terminal.usage?.completionTokens).toBe(3)
+    expect(terminal.usage?.totalTokens).toBe(225)
+  })
+
+  test('buffered stream() maps thoughtsTokenCount onto the terminal chunk', async () => {
+    const { fetchImpl } = recordingFetch(
+      sseStreamResponse(liveGeminiThinkingSseFragments),
+    )
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    const chunks = await run(
+      adapter.stream(
+        baseRequest({
+          model: 'gemini-3.6-flash',
+          passthroughParams: { max_tokens: 256 },
+          stream: true,
+        }),
+      ),
+    )
+
+    const reportedUsages = chunks
+      .map(chunk => chunk.usage)
+      .filter((usage): usage is InferenceUsage => usage !== undefined)
+    const usage = reportedUsages[reportedUsages.length - 1]
+    expect(usage?.reasoningTokens).toBe(207)
+    expect(usage?.totalTokens).toBe(225)
+  })
+
+  test('a mid-stream fragment without token counts does not zero the carried reasoning count', async () => {
+    // Terminal fragment reports the counts, then a trailing fragment arrives
+    // carrying a bare `usageMetadata` (the shape fragment 0 of the live capture
+    // has). Without carry-forward the last fold wins and reasoning drops to 0.
+    const { fetchImpl } = recordingFetch(
+      sseStreamResponse([
+        ...liveGeminiThinkingSseFragments,
+        {
+          candidates: [{ content: { parts: [{ text: '' }], role: 'model' } }],
+          usageMetadata: { trafficType: 'ON_DEMAND' },
+        },
+      ]),
+    )
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    const source = await run(
+      adapter.streamSse!(
+        baseRequest({ model: 'gemini-3.6-flash', stream: true }),
+      ),
+    )
+    await drainFrames(source.frames)
+
+    expect(source.terminal().usage?.reasoningTokens).toBe(207)
+  })
+
+  test('reasoning is a breakdown dimension, never an addend to a reported total', async () => {
+    // Gemini's own totals happen to equal prompt+candidates+thoughts, so this
+    // uses a total that does NOT (tool-use tokens land in the total too). The
+    // provider's total must win; adding reasoning on top would over-bill.
+    const { fetchImpl } = recordingFetch(
+      okJson({
+        ...liveGeminiThinkingResponse,
+        usageMetadata: {
+          candidatesTokenCount: 3,
+          promptTokenCount: 15,
+          thoughtsTokenCount: 180,
+          totalTokenCount: 250,
+        },
+      }),
+    )
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    const result = await run(
+      adapter.complete(baseRequest({ model: 'gemini-3.6-flash' })),
+    )
+    expect(result.usage.totalTokens).toBe(250)
+    expect(result.usage.reasoningTokens).toBe(180)
+  })
+
+  test('a model that reports no thoughts leaves reasoningTokens undefined', async () => {
+    const { fetchImpl } = recordingFetch(okJson(geminiResponse))
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    const result = await run(adapter.complete(baseRequest()))
+    // Exact-only: absent, never a synthesized zero-ish estimate.
+    expect(result.usage.reasoningTokens).toBeUndefined()
+    expect(result.usage.totalTokens).toBe(12)
   })
 })

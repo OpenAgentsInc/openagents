@@ -16,6 +16,7 @@ import {
   servedTokensEventId,
   servedTokensIdempotencyKey,
 } from './served-tokens-recorder'
+import { makeVertexGeminiAdapter } from './vertex-gemini-adapter'
 
 // ---------------------------------------------------------------------------
 // Minimal in-memory D1 fake for the EXACT SQL the real `makeD1TokenUsageLedger`
@@ -853,5 +854,115 @@ describe('served-tokens-recorder', () => {
       expect(rows[0]!.id).toBe(servedTokensEventId('chatcmpl-artanis-1'))
       expect(await readServed(ledger)).toBe(42)
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// End-to-end attribution: provider wire bytes -> adapter -> ledger -> COLUMN.
+//
+// A populated `usage.reasoningTokens` that is dropped anywhere between the
+// adapter and the INSERT is worth nothing, so this drives the REAL Vertex
+// Gemini adapter over a verbatim live capture and then asserts the value that
+// actually lands in the `reasoning_tokens` bind position of the real ledger's
+// INSERT — not the adapter's return value, and not a stubbed projection.
+// ---------------------------------------------------------------------------
+
+// Verbatim `usageMetadata` from a live `gemini-3.6-flash:generateContent` call
+// (2026-07-31, HTTP 200, thinkingLevel "medium"): 180 of the 198 billed tokens
+// are thinking tokens.
+const liveGeminiThinkingResponse = {
+  candidates: [
+    {
+      content: { parts: [{ text: '391' }], role: 'model' },
+      finishReason: 'STOP',
+    },
+  ],
+  modelVersion: 'gemini-3.6-flash',
+  usageMetadata: {
+    candidatesTokenCount: 3,
+    promptTokenCount: 15,
+    thoughtsTokenCount: 180,
+    totalTokenCount: 198,
+    trafficType: 'ON_DEMAND',
+  },
+}
+
+describe('served-tokens-recorder — reasoning attribution reaches the column', () => {
+  test('vertex gemini thinking tokens persist to token_usage_events.reasoning_tokens', async () => {
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl: (async () =>
+        new Response(JSON.stringify(liveGeminiThinkingResponse), {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        })) as unknown as typeof fetch,
+      project: 'openagentsgemini',
+      tokenProvider: () => Effect.succeed('test-access-token'),
+    })
+
+    const result = await Effect.runPromise(
+      adapter.complete({
+        messages: [{ content: 'What is 17*23?', role: 'user' }],
+        model: 'gemini-3.6-flash',
+        passthroughParams: { max_tokens: 256 },
+        stream: false,
+      }),
+    )
+
+    const rows: Array<Row> = []
+    const db = makeFakeDb(rows)
+    const ledger = makeD1TokenUsageLedger(db)
+    const recorder = makeServedTokensRecorder({ ledger, nowIso: fixedNow })
+
+    await runRecorder(recorder, {
+      accountRef: 'agent:gemini-thinking-1',
+      adapterId: 'vertex-gemini',
+      requestId: 'chatcmpl-gemini-thinking-1',
+      requestedModel: 'openagents/khala-mini',
+      servedModel: 'gemini-3.6-flash',
+      streamed: false,
+      // The adapter's own parsed usage, not a hand-built object.
+      usage: result.usage,
+    })
+
+    expect(rows).toHaveLength(1)
+
+    // THE PROOF: the persisted column, read back off the INSERT bindings.
+    expect(rows[0]!.reasoning_tokens).toBe(180)
+    // An INTEGER column: a string here would mean the value was coerced
+    // somewhere on the way in and every SUM over it would concatenate.
+    expect(typeof rows[0]!.reasoning_tokens).toBe('number')
+
+    // The other dimensions stay exact, and the provider's total is preserved
+    // rather than re-derived — reasoning is a breakdown, never an addend.
+    expect(rows[0]!.input_tokens).toBe(15)
+    expect(rows[0]!.output_tokens).toBe(3)
+    expect(rows[0]!.total_tokens).toBe(198)
+    expect(rows[0]!.usage_truth).toBe('exact')
+
+    // Attribution now closes against the billed total.
+    expect(
+      Number(rows[0]!.input_tokens) +
+        Number(rows[0]!.output_tokens) +
+        Number(rows[0]!.reasoning_tokens),
+    ).toBe(Number(rows[0]!.total_tokens))
+  })
+
+  test('a lane that reports no thinking tokens still persists an exact zero', async () => {
+    const rows: Array<Row> = []
+    const db = makeFakeDb(rows)
+    const ledger = makeD1TokenUsageLedger(db)
+    const recorder = makeServedTokensRecorder({ ledger, nowIso: fixedNow })
+
+    await runRecorder(recorder, {
+      accountRef: 'agent:no-thinking-1',
+      adapterId: 'hydralisk',
+      requestId: 'chatcmpl-no-thinking-1',
+      requestedModel: 'openagents/khala',
+      servedModel: 'openagents/khala',
+      streamed: false,
+      usage: { completionTokens: 30, promptTokens: 12, totalTokens: 42 },
+    })
+
+    expect(rows[0]!.reasoning_tokens).toBe(0)
   })
 })

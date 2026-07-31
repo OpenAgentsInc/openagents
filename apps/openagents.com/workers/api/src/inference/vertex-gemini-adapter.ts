@@ -34,7 +34,9 @@
 //     `user` / `model` (NOT `assistant`); we map our normalized roles.
 //   - Response: `candidates[].content.parts[].text`, `candidates[].finishReason`,
 //     and `usageMetadata.{promptTokenCount, candidatesTokenCount,
-//     totalTokenCount, cachedContentTokenCount}`.
+//     totalTokenCount, cachedContentTokenCount, thoughtsTokenCount}`. All are
+//     JSON numbers on the wire (verified against a live capture 2026-07-31),
+//     not the string-encoded int64s some Google APIs emit.
 //
 // AUTH NOTE: identical to the Anthropic lane — a Cloudflare Worker cannot use
 // gcloud ADC, so we mint a short-lived GCP access token from VERTEX_SA_KEY via
@@ -425,6 +427,15 @@ const buildGeminiBody = (
 // prompt+candidates, so we trust the provider's totalTokenCount when present
 // rather than recomputing (prompt + candidates would under-count thinking
 // tokens we are still billed for).
+//
+// `thoughtsTokenCount` -> `reasoningTokens` (exact, only when the field is a
+// real finite number). Gemini bills thinking tokens INTO `totalTokenCount`, so
+// omitting this mapping still charges correctly but leaves the thinking spend
+// unattributable: a 256-budget turn reporting total 198 against prompt 15 +
+// candidates 3 hides 180 tokens in the opaque remainder, and the
+// `token_usage_events.reasoning_tokens` column silently stores 0. This is a
+// breakdown dimension, never an addend to a provider-reported total; it only
+// joins the component sum when the provider reported no total at all.
 const parseUsage = (raw: unknown): InferenceUsage => {
   const usage =
     typeof raw === 'object' && raw !== null
@@ -434,14 +445,18 @@ const parseUsage = (raw: unknown): InferenceUsage => {
     typeof value === 'number' && Number.isFinite(value) ? value : 0
   const promptTokens = num(usage['promptTokenCount'])
   const completionTokens = num(usage['candidatesTokenCount'])
+  const reasoningTokens = num(usage['thoughtsTokenCount'])
   const reportedTotal = num(usage['totalTokenCount'])
   const totalTokens =
-    reportedTotal > 0 ? reportedTotal : promptTokens + completionTokens
+    reportedTotal > 0
+      ? reportedTotal
+      : promptTokens + completionTokens + reasoningTokens
   const cached = usage['cachedContentTokenCount']
   return {
     completionTokens,
     promptTokens,
     totalTokens,
+    ...(reasoningTokens > 0 ? { reasoningTokens } : {}),
     ...(typeof cached === 'number' && Number.isFinite(cached) && cached > 0
       ? { cachedPromptTokens: cached }
       : {}),
@@ -782,6 +797,14 @@ const num = (value: unknown): number | undefined =>
 // the running cumulative usage. Gemini reports usage CUMULATIVELY across the
 // stream — each later fragment supersedes the earlier one — so we carry the prior
 // values forward and only overwrite the fields this fragment actually reports.
+//
+// The carry-forward is load-bearing for `thoughtsTokenCount`: verified against a
+// live `:streamGenerateContent?alt=sse` capture, the intermediate fragments send
+// a PRESENT `usageMetadata` object that holds only `trafficType` and no token
+// counts, and only the terminal fragment carries the counts. Reading the field
+// without carrying prior forward would therefore zero it on any later frame.
+// Same contract as the non-streaming `parseUsage`: a breakdown dimension that
+// joins the component sum only when the provider reported no total.
 const foldGeminiUsage = (
   fragment: Record<string, unknown>,
   prior: InferenceUsage | undefined,
@@ -794,13 +817,18 @@ const foldGeminiUsage = (
   const promptTokens = num(u['promptTokenCount']) ?? prior?.promptTokens ?? 0
   const completionTokens =
     num(u['candidatesTokenCount']) ?? prior?.completionTokens ?? 0
+  const reasoningTokens =
+    num(u['thoughtsTokenCount']) ?? prior?.reasoningTokens ?? 0
   const reportedTotal = num(u['totalTokenCount']) ?? prior?.totalTokens ?? 0
   const cached = num(u['cachedContentTokenCount']) ?? prior?.cachedPromptTokens
   return {
     completionTokens,
     promptTokens,
     totalTokens:
-      reportedTotal > 0 ? reportedTotal : promptTokens + completionTokens,
+      reportedTotal > 0
+        ? reportedTotal
+        : promptTokens + completionTokens + reasoningTokens,
+    ...(reasoningTokens > 0 ? { reasoningTokens } : {}),
     ...(cached === undefined || cached <= 0
       ? {}
       : { cachedPromptTokens: cached }),
