@@ -29,6 +29,20 @@ describe("Sarah LiveKit worker policy", () => {
     expect(patch).toContain(`safetyIdentifier`);
   });
 
+  test("keeps Kubernetes termination above both worker shutdown bounds", async () => {
+    const source = await readFile(new URL("./agent.ts", import.meta.url), "utf8");
+    const manifest = await readFile(
+      new URL(
+        "../../../infra/livekit/production/resources/sarah-agent-runtime.yaml",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    expect(source).toContain("drainTimeout: 30_000");
+    expect(source).toContain("shutdownProcessTimeout: 35_000");
+    expect(manifest).toContain("terminationGracePeriodSeconds: 90");
+  });
+
   test("does not enable recording or log raw provider events", async () => {
     const source = await readFile(new URL("./agent.ts", import.meta.url), "utf8");
     expect(source).toContain("record: false");
@@ -39,9 +53,13 @@ describe("Sarah LiveKit worker policy", () => {
   test("grants data publish only for ephemeral LiveKit transcription output", async () => {
     const source = await readFile(new URL("./agent.ts", import.meta.url), "utf8");
     expect(source).toMatch(
-      /new WorkerPermissions\(\s*true,\s*true,\s*true,\s*false,\s*\[\],\s*false,?\s*\)/u,
+      /new WorkerPermissions\(\s*true,\s*true,\s*true,\s*false,\s*\[TrackSource\.MICROPHONE\],\s*false,?\s*\)/u,
     );
-    expect(source).not.toContain("TrackSource.MICROPHONE");
+    const patch = await readFile(
+      new URL("../../../patches/@livekit__agents@1.6.0.patch", import.meta.url),
+      "utf8",
+    );
+    expect(patch).toContain("canPublishSources: this.#opts.permissions.canPublishSources");
     expect(source).toContain("publishTranscription");
     expect(source).not.toContain(".publishData(");
     expect(source).toContain("stores no transcript");

@@ -337,31 +337,30 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
             eventKind: body._tag,
             workerRoomSid: body.roomSid,
           })
-        : body._tag === "lease_check"
+        : body._tag === "provider_admitted"
           ? await opened.store.applyLiveKitWorkerEvent({
               ...common,
               eventKind: body._tag,
+              providerSessionRefDigest: body.providerSessionRefDigest,
+              providerConfigurationDigest: body.providerConfigurationDigest,
             })
-          : body._tag === "close"
+          : body._tag === "lease_check"
             ? await opened.store.applyLiveKitWorkerEvent({
                 ...common,
                 eventKind: body._tag,
-                closeReason: `livekit_worker_${body.reason}`,
               })
-            : await (async () => {
-                const rate = dependencies.creditMsatPerMillionTokens(env);
-                if (rate === undefined || !Number.isSafeInteger(rate) || rate <= 0) {
-                  return undefined;
-                }
-                return opened.store.applyLiveKitWorkerEvent({
+            : body._tag === "close"
+              ? await opened.store.applyLiveKitWorkerEvent({
                   ...common,
                   eventKind: body._tag,
-                  usage: {
-                    usageKind: body._tag === "response_usage" ? "response" : "transcription",
-                    providerResponseRef:
-                      body._tag === "response_usage"
-                        ? `response:${body.providerResponseRef}`
-                        : `transcription:${body.providerTranscriptionRef}`,
+                  closeReason: `livekit_worker_${body.reason}`,
+                })
+              : await (async () => {
+                  const rate = dependencies.creditMsatPerMillionTokens(env);
+                  if (rate === undefined || !Number.isSafeInteger(rate) || rate <= 0) {
+                    return undefined;
+                  }
+                  const usage = {
                     inputTokens: body.inputTokens,
                     outputTokens: body.outputTokens,
                     cachedInputTokens: body.cachedInputTokens,
@@ -370,9 +369,28 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
                     chargeMsat: Math.ceil(
                       ((body.inputTokens + body.outputTokens) * rate) / 1_000_000,
                     ),
-                  },
-                });
-              })();
+                  } as const;
+                  return body._tag === "response_usage"
+                    ? opened.store.applyLiveKitWorkerEvent({
+                        ...common,
+                        eventKind: body._tag,
+                        usage: {
+                          ...usage,
+                          usageKind: "response",
+                          providerResponseRef: `response:${body.providerResponseRef}`,
+                          providerStatus: body.status,
+                        },
+                      })
+                    : opened.store.applyLiveKitWorkerEvent({
+                        ...common,
+                        eventKind: body._tag,
+                        usage: {
+                          ...usage,
+                          usageKind: "transcription",
+                          providerResponseRef: `transcription:${body.providerTranscriptionRef}`,
+                        },
+                      });
+                })();
     if (result === undefined) {
       return noStoreJson({ error: "sarah_livekit_usage_rate_invalid" }, 503);
     }

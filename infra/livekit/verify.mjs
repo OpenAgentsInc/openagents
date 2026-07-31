@@ -693,7 +693,7 @@ requireIncludes(rendered, "containerPort: 8081", "Sarah worker production health
 requireIncludes(rendered, "startupProbe:", "Sarah worker startup probe");
 requireIncludes(rendered, "readinessProbe:", "Sarah worker readiness probe");
 requireIncludes(rendered, "livenessProbe:", "Sarah worker liveness probe");
-requireIncludes(rendered, "terminationGracePeriodSeconds: 60", "Sarah worker drain allowance");
+requireIncludes(rendered, "terminationGracePeriodSeconds: 90", "Sarah worker drain allowance");
 requireIncludes(rendered, "readOnlyRootFilesystem: true", "Sarah worker read-only root");
 requireIncludes(rendered, "kind: HorizontalPodAutoscaler", "Sarah worker autoscaling");
 requireIncludes(sarahAgentRuntime, "minReplicas: 3", "Sarah worker HPA floor");

@@ -905,6 +905,33 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       observedAt: "2026-07-28T13:00:22.000Z",
       replayed: true,
     });
+    const providerAdmittedEvent = {
+      workerControlTokenDigest: binding.workerControlTokenDigest,
+      workerJobRef: workerClaim.workerJobRef,
+      sessionRef: binding.sessionRef,
+      generation: 1,
+      eventRef: `provider:${"a".repeat(64)}`,
+      eventPayloadDigest: "6".repeat(64),
+      eventKind: "provider_admitted",
+      providerSessionRefDigest: "a".repeat(64),
+      providerConfigurationDigest: "b".repeat(64),
+      nowIso: "2026-07-28T13:00:23.000Z",
+    } as const;
+    await expect(store.applyLiveKitWorkerEvent(providerAdmittedEvent)).resolves.toEqual({
+      observedAt: "2026-07-28T13:00:23.000Z",
+      replayed: false,
+    });
+    await expect(
+      store.readLiveKitProviderAdmission({
+        sessionRef: binding.sessionRef,
+        generation: 1,
+      }),
+    ).resolves.toEqual({
+      state: "admitted",
+      providerSessionRefDigest: "a".repeat(64),
+      providerConfigurationDigest: "b".repeat(64),
+      admittedAt: "2026-07-28T13:00:23.000Z",
+    });
     await store.sweepExpired("2026-07-28T13:01:30.000Z");
     const [connectedSession] = await sql`
       SELECT state, ticket_digest, connected_at
@@ -1139,6 +1166,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         eventKind: "response_usage",
         usage: {
           providerResponseRef: "response:after-membership-removal",
+          providerStatus: "cancelled",
           inputTokens: 40,
           outputTokens: 10,
           cachedInputTokens: 0,
@@ -1152,6 +1180,13 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       replayed: false,
       stopReason: "membership_revoked",
     });
+    const [terminalUsage] = await sql`
+      SELECT provider_status
+      FROM sarah_realtime_voice_usage
+      WHERE session_ref = ${binding.sessionRef}
+        AND provider_response_ref = 'response:after-membership-removal'
+    `;
+    expect(terminalUsage?.provider_status).toBe("cancelled");
     await expect(
       store.applyLiveKitWorkerEvent({
         workerControlTokenDigest: binding.workerControlTokenDigest,

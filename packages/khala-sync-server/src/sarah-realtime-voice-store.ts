@@ -72,6 +72,7 @@ export type SarahVoiceReservationRecord = SarahVoiceSessionRecord &
 export type SarahVoiceUsage = Readonly<{
   usageKind?: "response" | "transcription";
   providerResponseRef: string;
+  providerStatus?: "completed" | "cancelled" | "failed" | "incomplete";
   inputTokens: number;
   outputTokens: number;
   cachedInputTokens: number;
@@ -105,11 +106,23 @@ export type SarahVoiceLiveKitWorkerEvent =
       }>)
   | (SarahVoiceLiveKitWorkerEventCommon &
       Readonly<{
+        eventKind: "provider_admitted";
+        providerSessionRefDigest: string;
+        providerConfigurationDigest: string;
+      }>)
+  | (SarahVoiceLiveKitWorkerEventCommon &
+      Readonly<{
         eventKind: "lease_check";
       }>)
   | (SarahVoiceLiveKitWorkerEventCommon &
       Readonly<{
-        eventKind: "response_usage" | "transcription_usage";
+        eventKind: "response_usage";
+        usage: Omit<SarahVoiceUsage, "observedAt"> &
+          Required<Pick<SarahVoiceUsage, "providerStatus">>;
+      }>)
+  | (SarahVoiceLiveKitWorkerEventCommon &
+      Readonly<{
+        eventKind: "transcription_usage";
         usage: Omit<SarahVoiceUsage, "observedAt">;
       }>)
   | (SarahVoiceLiveKitWorkerEventCommon &
@@ -1889,13 +1902,14 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       INSERT INTO sarah_realtime_voice_usage (
         session_ref, provider_response_ref, input_tokens, output_tokens,
         cached_input_tokens, audio_input_tokens, audio_output_tokens,
-        charge_msat, observed_at, usage_kind
+        charge_msat, observed_at, usage_kind, provider_status
       ) VALUES (
         ${input.sessionRef}, ${input.usage.providerResponseRef},
         ${input.usage.inputTokens}, ${input.usage.outputTokens},
         ${input.usage.cachedInputTokens}, ${input.usage.audioInputTokens},
         ${input.usage.audioOutputTokens}, ${input.usage.chargeMsat},
-        ${input.usage.observedAt}, ${input.usage.usageKind ?? "response"}
+        ${input.usage.observedAt}, ${input.usage.usageKind ?? "response"},
+        ${input.usage.providerStatus ?? null}
       )
       ON CONFLICT (session_ref, provider_response_ref) DO NOTHING
       RETURNING session_ref
@@ -1905,7 +1919,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       const replayed = (await tx`
         SELECT input_tokens, output_tokens, cached_input_tokens,
           audio_input_tokens, audio_output_tokens, charge_msat, observed_at,
-          usage_kind
+          usage_kind, provider_status
         FROM sarah_realtime_voice_usage
         WHERE session_ref = ${input.sessionRef}
           AND provider_response_ref = ${input.usage.providerResponseRef}
@@ -1919,6 +1933,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         charge_msat: number | string;
         observed_at: string;
         usage_kind: "response" | "transcription";
+        provider_status: "completed" | "cancelled" | "failed" | "incomplete" | null;
       }>;
       const replay = first(replayed);
       if (
@@ -1933,7 +1948,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           input.usage.audioOutputTokens ||
         toSafeInteger(replay.charge_msat, "charge_msat") !== input.usage.chargeMsat ||
         replay.observed_at !== input.usage.observedAt ||
-        replay.usage_kind !== (input.usage.usageKind ?? "response")
+        replay.usage_kind !== (input.usage.usageKind ?? "response") ||
+        replay.provider_status !== (input.usage.providerStatus ?? null)
       ) {
         throw new SarahVoiceSessionRejectedError(
           "The provider response reference was replayed with changed usage",
@@ -2400,7 +2416,10 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           SELECT binding.room_ref, binding.sarah_participant_ref,
             binding.state AS binding_state, binding.join_expires_at,
             binding.sarah_joined_at, binding.worker_closed_at,
-            binding.worker_stop_reason, binding.worker_stop_close_reason
+            binding.worker_stop_reason, binding.worker_stop_close_reason,
+            binding.provider_session_ref_digest,
+            binding.provider_configuration_digest,
+            binding.provider_admitted_at
           FROM sarah_livekit_room_bindings AS binding
           WHERE binding.worker_control_token_digest =
               ${input.workerControlTokenDigest}
@@ -2422,6 +2441,9 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           worker_closed_at: string | null;
           worker_stop_reason: SarahVoiceLiveKitWorkerStopReason | null;
           worker_stop_close_reason: string | null;
+          provider_session_ref_digest: string | null;
+          provider_configuration_digest: string | null;
+          provider_admitted_at: string | null;
         }>;
         const binding = first(bindings);
         if (binding === undefined) {
@@ -2520,7 +2542,10 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           return receipt;
         }
 
-        if (input.eventKind === "worker_connected" && workerStopReason !== null) {
+        if (
+          (input.eventKind === "worker_connected" || input.eventKind === "provider_admitted") &&
+          workerStopReason !== null
+        ) {
           const receipt = await insertWorkerEventReceipt(tx, input);
           if (receipt.replayed) return receipt;
           await setWorkerEventStopReason(tx, input, workerStopReason);
@@ -2528,7 +2553,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         }
 
         const bindingAdmitted =
-          input.eventKind === "worker_connected"
+          input.eventKind === "worker_connected" || input.eventKind === "provider_admitted"
             ? (binding.binding_state === "prepared" || binding.binding_state === "active") &&
               binding.sarah_joined_at === null &&
               binding.join_expires_at > input.nowIso
@@ -2559,6 +2584,26 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
               "The Sarah LiveKit worker connected event conflicts with the joined participant",
             );
           }
+          await tx`
+            UPDATE sarah_livekit_room_bindings
+            SET worker_last_seen_at = ${receipt.observedAt},
+                updated_at = ${receipt.observedAt}
+            WHERE session_ref = ${input.sessionRef}
+              AND generation = ${input.generation}
+          `;
+          return receipt;
+        }
+
+        if (input.eventKind === "provider_admitted") {
+          if (
+            binding.provider_admitted_at !== null ||
+            binding.provider_session_ref_digest !== null ||
+            binding.provider_configuration_digest !== null
+          ) {
+            throw new SarahVoiceSessionRejectedError(
+              "The Sarah LiveKit provider emitted a second admission",
+            );
+          }
           const sessions = (await tx`
             UPDATE sarah_realtime_voice_sessions
             SET state = 'connected',
@@ -2579,6 +2624,9 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           const joined = (await tx`
             UPDATE sarah_livekit_room_bindings
             SET sarah_joined_at = ${receipt.observedAt},
+                provider_session_ref_digest = ${input.providerSessionRefDigest},
+                provider_configuration_digest = ${input.providerConfigurationDigest},
+                provider_admitted_at = ${receipt.observedAt},
                 state = 'active',
                 worker_last_seen_at = ${receipt.observedAt},
                 updated_at = ${receipt.observedAt}
@@ -2641,6 +2689,67 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     } catch (error) {
       if (error instanceof SarahVoiceSessionRejectedError) throw error;
       throw new SarahVoiceStorageError("Sarah LiveKit worker event apply failed", error);
+    }
+  };
+
+  const readLiveKitProviderAdmission = async (
+    input: Readonly<{ sessionRef: string; generation: number }>,
+  ): Promise<
+    | Readonly<{ state: "waiting" | "closed" }>
+    | Readonly<{
+        state: "admitted";
+        providerSessionRefDigest: string;
+        providerConfigurationDigest: string;
+        admittedAt: string;
+      }>
+  > => {
+    try {
+      const rows = (await sql`
+        SELECT provider_session_ref_digest, provider_configuration_digest,
+          provider_admitted_at, binding.state AS binding_state,
+          binding.worker_closed_at, binding.worker_stop_reason,
+          session.state AS session_state
+        FROM sarah_livekit_room_bindings AS binding
+        INNER JOIN sarah_realtime_voice_sessions AS session
+          ON session.session_ref = binding.session_ref
+        WHERE binding.session_ref = ${input.sessionRef}
+          AND binding.generation = ${input.generation}
+      `) as ReadonlyArray<{
+        provider_session_ref_digest: string | null;
+        provider_configuration_digest: string | null;
+        provider_admitted_at: string | null;
+        binding_state: "prepared" | "active" | "cleanup_ready" | "cleanup_failed" | "cleaned";
+        worker_closed_at: string | null;
+        worker_stop_reason: SarahVoiceLiveKitWorkerStopReason | null;
+        session_state: SarahVoiceSessionState;
+      }>;
+      const row = first(rows);
+      if (
+        row === undefined ||
+        row.worker_closed_at !== null ||
+        row.worker_stop_reason !== null ||
+        ["settled", "released", "failed"].includes(row.session_state) ||
+        ["cleanup_ready", "cleanup_failed", "cleaned"].includes(row.binding_state)
+      ) {
+        return { state: "closed" };
+      }
+      if (
+        row.provider_session_ref_digest !== null &&
+        row.provider_configuration_digest !== null &&
+        row.provider_admitted_at !== null &&
+        row.binding_state === "active" &&
+        row.session_state === "connected"
+      ) {
+        return {
+          state: "admitted",
+          providerSessionRefDigest: row.provider_session_ref_digest,
+          providerConfigurationDigest: row.provider_configuration_digest,
+          admittedAt: row.provider_admitted_at,
+        };
+      }
+      return { state: "waiting" };
+    } catch (error) {
+      throw new SarahVoiceStorageError("Sarah LiveKit provider admission read failed", error);
     }
   };
 
@@ -3183,6 +3292,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     readActiveStagingOwnerEntitlement,
     readLiveKitCleanup,
     readLiveKitMembershipLease,
+    readLiveKitProviderAdmission,
     readLiveKitToolProposals,
     readLiveKitToolState,
     claimLiveKitProvisioningIntents,

@@ -49,7 +49,9 @@ export type SarahRealtimeBridgeData = {
   toolControlTail: Promise<void>
   expiryTimer: ReturnType<typeof setTimeout> | undefined
   providerHeartbeatTimer: ReturnType<typeof setInterval> | undefined
+  liveKitAdmissionPollTimer: ReturnType<typeof setInterval> | undefined
   liveKitToolPollTimer: ReturnType<typeof setInterval> | undefined
+  liveKitProviderReady: boolean
 }
 
 type ToolProposal = Readonly<{
@@ -155,6 +157,9 @@ const cleanup = (ws: Socket, closeReason: string): Promise<void> => {
   if (ws.data.liveKitToolPollTimer !== undefined) {
     clearInterval(ws.data.liveKitToolPollTimer)
   }
+  if (ws.data.liveKitAdmissionPollTimer !== undefined) {
+    clearInterval(ws.data.liveKitAdmissionPollTimer)
+  }
   safeProviderClose(ws.data.upstream)
   return Promise.all([ws.data.meteringTail, ws.data.toolControlTail])
     .then(() => {
@@ -233,6 +238,48 @@ export const pollSarahLiveKitToolControl = async (
       })
     }
   }
+}
+
+const startSarahLiveKitToolPolling = (ws: Socket): void => {
+  queueLiveKitToolControl(ws, () => pollSarahLiveKitToolControl(ws))
+  ws.data.liveKitToolPollTimer = setInterval(() => {
+    queueLiveKitToolControl(ws, () => pollSarahLiveKitToolControl(ws))
+  }, 250)
+  ws.data.liveKitToolPollTimer.unref()
+}
+
+export const pollSarahLiveKitProviderAdmission = async (
+  ws: Socket,
+): Promise<void> => {
+  if (
+    ws.data.session.transportKind !== 'livekit_room_v1' ||
+    ws.data.liveKitProviderReady
+  ) {
+    return
+  }
+  const admission = await ws.data.store.readLiveKitProviderAdmission({
+    sessionRef: ws.data.session.sessionRef,
+    generation: ws.data.session.generation,
+  })
+  if (ws.data.liveKitProviderReady || admission.state === 'waiting') return
+  if (admission.state === 'closed') {
+    closeClient(ws, 'provider_error', 1011)
+    ws.data.tasks.add(cleanup(ws, 'livekit_provider_unavailable'))
+    return
+  }
+  ws.data.liveKitProviderReady = true
+  if (ws.data.liveKitAdmissionPollTimer !== undefined) {
+    clearInterval(ws.data.liveKitAdmissionPollTimer)
+    ws.data.liveKitAdmissionPollTimer = undefined
+  }
+  sendControl(ws, {
+    _tag: 'session_ready',
+    model: SARAH_VOICE_MODEL,
+    expiresAtMs: Date.parse(ws.data.session.sessionExpiresAt),
+    reservedCreditMsat: ws.data.session.reservedMsat,
+  })
+  sendControl(ws, { _tag: 'lifecycle', state: 'listening' })
+  startSarahLiveKitToolPolling(ws)
 }
 
 export const flushSarahLiveKitToolControl = (ws: Socket): Promise<void> =>
@@ -1041,18 +1088,11 @@ export const makeSarahRealtimeWebSocketHandlers = () => ({
       ws.data.tasks.add(cleanup(ws, 'session_expired'))
     }, expiryDelay)
     if (ws.data.session.transportKind === 'livekit_room_v1') {
-      sendControl(ws, {
-        _tag: 'session_ready',
-        model: SARAH_VOICE_MODEL,
-        expiresAtMs: Date.parse(ws.data.session.sessionExpiresAt),
-        reservedCreditMsat: ws.data.session.reservedMsat,
-      })
-      sendControl(ws, { _tag: 'lifecycle', state: 'listening' })
-      queueLiveKitToolControl(ws, () => pollSarahLiveKitToolControl(ws))
-      ws.data.liveKitToolPollTimer = setInterval(() => {
-        queueLiveKitToolControl(ws, () => pollSarahLiveKitToolControl(ws))
+      queueLiveKitToolControl(ws, () => pollSarahLiveKitProviderAdmission(ws))
+      ws.data.liveKitAdmissionPollTimer = setInterval(() => {
+        queueLiveKitToolControl(ws, () => pollSarahLiveKitProviderAdmission(ws))
       }, 250)
-      ws.data.liveKitToolPollTimer.unref()
+      ws.data.liveKitAdmissionPollTimer.unref()
       return
     }
     const upstream = new WebSocket(realtimeUrl, {
@@ -1219,7 +1259,9 @@ export const makeSarahRealtimeBridgeData = (
   toolControlTail: Promise.resolve(),
   expiryTimer: undefined,
   providerHeartbeatTimer: undefined,
+  liveKitAdmissionPollTimer: undefined,
   liveKitToolPollTimer: undefined,
+  liveKitProviderReady: false,
 })
 
 export const parseSarahRealtimeBridgeCreditRate = (

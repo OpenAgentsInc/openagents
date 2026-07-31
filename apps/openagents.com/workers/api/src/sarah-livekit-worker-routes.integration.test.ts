@@ -4,27 +4,27 @@ import {
   decodeSarahLiveKitJobClaimResponse,
 } from "@openagentsinc/audio-contract";
 import {
-  makeSarahRealtimeVoiceStore,
   type SarahRealtimeVoiceStore,
   type SyncSql,
+  makeSarahRealtimeVoiceStore,
 } from "@openagentsinc/khala-sync-server";
 import { runMigrations } from "@openagentsinc/khala-sync-server/migrate";
 import {
+  type LocalPostgres,
   hasLocalPostgres,
   startLocalPostgres,
-  type LocalPostgres,
 } from "@openagentsinc/khala-sync-server/test/local-postgres";
 import { createHash } from "node:crypto";
 import postgres, { type Sql } from "postgres";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 
+import { deriveSarahLiveKitControlToken } from "./sarah-livekit-room-broker";
 import {
   handleSarahLiveKitWorkerClaim,
   handleSarahLiveKitWorkerEvent,
   handleSarahLiveKitWorkerToolProposal,
   handleSarahLiveKitWorkerToolState,
 } from "./sarah-livekit-worker-routes";
-import { deriveSarahLiveKitControlToken } from "./sarah-livekit-room-broker";
 
 const controlRoot = "R".repeat(64);
 const claimDispatch = {
@@ -237,6 +237,22 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       {},
     );
     expect(connectedReplay.status).toBe(200);
+    nowMs = Date.parse("2026-07-28T13:00:30.250Z");
+    const providerAdmitted = await handleSarahLiveKitWorkerEvent(
+      dependencies,
+      authorizedRequest("/api/internal/sarah/livekit/job/event", {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "provider_admitted",
+        sessionRef: "voice-livekit-route-1",
+        generation: 1,
+        jobRef: "job:route-one",
+        eventRef: `provider:${"a".repeat(64)}`,
+        providerSessionRefDigest: "a".repeat(64),
+        providerConfigurationDigest: "b".repeat(64),
+      }),
+      {},
+    );
+    expect(providerAdmitted.status).toBe(200);
 
     const [activeSession] = await sql`
         SELECT state, ticket_digest, connected_at
@@ -246,7 +262,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
     expect(activeSession).toMatchObject({
       state: "connected",
       ticket_digest: "4".repeat(64),
-      connected_at: "2026-07-28T13:00:22.000Z",
+      connected_at: "2026-07-28T13:00:30.250Z",
     });
     await expect(
       store.connect({
@@ -339,7 +355,8 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
     expect(changedUsage.status).toBe(409);
 
     const [usage] = await sql`
-        SELECT input_tokens, output_tokens, charge_msat, observed_at
+        SELECT input_tokens, output_tokens, charge_msat, observed_at,
+          provider_status
         FROM sarah_realtime_voice_usage
         WHERE session_ref = 'voice-livekit-route-1'
       `;
@@ -348,11 +365,13 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       outputTokens: Number(usage?.output_tokens),
       chargeMsat: Number(usage?.charge_msat),
       observedAt: usage?.observed_at,
+      providerStatus: usage?.provider_status,
     }).toEqual({
       inputTokens: 100,
       outputTokens: 50,
       chargeMsat: 150,
       observedAt: "2026-07-28T13:01:40.000Z",
+      providerStatus: "completed",
     });
 
     nowMs = Date.parse("2026-07-28T13:01:46.000Z");
@@ -490,7 +509,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
         FROM sarah_livekit_worker_events
         WHERE session_ref = 'voice-livekit-route-1'
       `;
-    expect(Number(eventCount?.count)).toBe(5);
+    expect(Number(eventCount?.count)).toBe(6);
     const eventObservations = await sql`
         SELECT event_ref, observed_at
         FROM sarah_livekit_worker_events
@@ -509,6 +528,10 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       {
         event_ref: "lease:job:route-one:1",
         observed_at: "2026-07-28T13:01:31.000Z",
+      },
+      {
+        event_ref: `provider:${"a".repeat(64)}`,
+        observed_at: "2026-07-28T13:00:30.250Z",
       },
       {
         event_ref: "response:resp_route_final",

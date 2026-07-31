@@ -1,10 +1,12 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
+  SarahProviderAccounting,
   SarahGenerationFence,
+  admittedRealtimeProvider,
   closeAfterProviderAccounting,
-  isAdmittedRealtimeSessionCreated,
   responseUsageEvent,
   transcriptionUsageEvent,
+  waitForAdmissionUntil,
 } from "./generation.js";
 
 const identity = {
@@ -14,29 +16,59 @@ const identity = {
 } as const;
 
 describe("Sarah LiveKit generation fence", () => {
-  test("admits only session.created for the exact configured Realtime model", () => {
-    expect(
-      isAdmittedRealtimeSessionCreated({
+  test("admits only the exact server-confirmed Realtime configuration", () => {
+    const accounting = new SarahProviderAccounting();
+    accounting.observe(
+      {
         type: "session.created",
         session: { id: "sess_one", model: "gpt-realtime-2.1" },
-      }),
-    ).toBe(true);
+      },
+      false,
+    );
+    const event = providerUpdatedEvent();
+    const admitted = admittedRealtimeProvider(event, accounting.providerSessionRefDigest);
+    expect(admitted).toMatchObject({
+      providerSessionRefDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      providerConfigurationDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    });
     expect(
-      isAdmittedRealtimeSessionCreated({
-        type: "session.created",
-        session: { id: "sess_one", model: "gpt-realtime" },
-      }),
+      admittedRealtimeProvider(
+        {
+          ...event,
+          session: {
+            ...event.session,
+            audio: {
+              ...event.session.audio,
+              output: { ...event.session.audio.output, voice: "alloy" },
+            },
+          },
+        },
+        accounting.providerSessionRefDigest,
+      ),
     ).toBe(false);
     expect(
-      isAdmittedRealtimeSessionCreated({
-        type: "session.created",
-        session: { id: "sess_one" },
-      }),
+      admittedRealtimeProvider(
+        {
+          ...event,
+          session: {
+            ...event.session,
+            audio: {
+              ...event.session.audio,
+              input: {
+                ...event.session.audio.input,
+                turn_detection: {
+                  ...event.session.audio.input.turn_detection,
+                  interrupt_response: false,
+                },
+              },
+            },
+          },
+        },
+        accounting.providerSessionRefDigest,
+      ),
     ).toBe(false);
     expect(
-      isAdmittedRealtimeSessionCreated({
-        type: "response.created",
-      }),
+      admittedRealtimeProvider({ type: "response.created" }, accounting.providerSessionRefDigest),
     ).toBeUndefined();
   });
 
@@ -208,12 +240,17 @@ describe("Sarah LiveKit generation fence", () => {
 
   test("waits for a late provider accounting event before the terminal event", async () => {
     const fence = new SarahGenerationFence();
+    const accounting = new SarahProviderAccounting();
     const order: string[] = [];
     let idleChecks = 0;
     fence.settle("provider_disconnect");
 
     await closeAfterProviderAccounting(
       fence,
+      accounting,
+      async () => {
+        order.push("provider_drain_requested");
+      },
       async () => {
         order.push("provider_closed");
       },
@@ -231,9 +268,122 @@ describe("Sarah LiveKit generation fence", () => {
       },
     );
 
-    expect(order).toEqual(["provider_closed", "final_usage", "terminal_event"]);
+    expect(order).toEqual([
+      "provider_drain_requested",
+      "provider_closed",
+      "final_usage",
+      "terminal_event",
+    ]);
     expect(fence.accepts(closeEventForTest)).toBe(false);
   });
+
+  test("does not finish cancellation accounting until response.done usage arrives", async () => {
+    const accounting = new SarahProviderAccounting();
+    accounting.observe({ type: "response.created", response: { id: "resp_cancelled" } }, false);
+    let releaseTimeout: (() => void) | undefined;
+    const waiting = accounting.waitForTerminalResponses(
+      10_000,
+      () =>
+        new Promise<void>((resolve) => {
+          releaseTimeout = resolve;
+        }),
+    );
+    expect(await Promise.race([waiting, Promise.resolve("pending")])).toBe("pending");
+    const done = {
+      type: "response.done",
+      response: {
+        id: "resp_cancelled",
+        status: "cancelled",
+        usage: { input_tokens: 4, output_tokens: 1 },
+      },
+    };
+    accounting.observe(done, responseUsageEvent(done, identity) !== undefined);
+    expect(await waiting).toBe(true);
+    releaseTimeout?.();
+  });
+
+  test("keeps the provider open for response.done later than the old idle probe", async () => {
+    const fence = new SarahGenerationFence();
+    const accounting = new SarahProviderAccounting();
+    const order: string[] = [];
+    accounting.observe({ type: "response.created", response: { id: "resp_late" } }, false);
+    await closeAfterProviderAccounting(
+      fence,
+      accounting,
+      async () => {
+        order.push("cancel_sent");
+        setTimeout(() => {
+          const done = {
+            type: "response.done",
+            response: {
+              id: "resp_late",
+              status: "cancelled",
+              usage: { input_tokens: 9, output_tokens: 2 },
+            },
+          };
+          accounting.observe(done, responseUsageEvent(done, identity) !== undefined);
+          order.push("terminal_usage");
+        }, 75);
+      },
+      async () => {
+        order.push("provider_closed");
+      },
+      async () => {
+        order.push("generation_closed");
+      },
+      async () => undefined,
+    );
+    expect(order).toEqual([
+      "cancel_sent",
+      "terminal_usage",
+      "provider_closed",
+      "generation_closed",
+    ]);
+  });
+
+  test("bounds participant admission by both expiry and worker shutdown", async () => {
+    await expect(
+      waitForAdmissionUntil(
+        () => new Promise(() => {}),
+        99,
+        new AbortController().signal,
+        () => 100,
+      ),
+    ).rejects.toThrow("expired");
+    const controller = new AbortController();
+    const waiting = waitForAdmissionUntil(
+      () => new Promise(() => {}),
+      Date.now() + 60_000,
+      controller.signal,
+    );
+    controller.abort();
+    await expect(waiting).rejects.toThrow("aborted");
+  });
+});
+
+const providerUpdatedEvent = () => ({
+  type: "session.updated",
+  session: {
+    id: "sess_one",
+    model: "gpt-realtime-2.1",
+    output_modalities: ["audio"],
+    audio: {
+      input: {
+        format: { type: "audio/pcm", rate: 24_000 },
+        transcription: { model: "gpt-4o-mini-transcribe" },
+        turn_detection: {
+          type: "semantic_vad",
+          eagerness: "high",
+          create_response: true,
+          interrupt_response: true,
+        },
+      },
+      output: {
+        format: { type: "audio/pcm", rate: 24_000 },
+        voice: "marin",
+      },
+    },
+  },
 });
 
 const closeEventForTest = {

@@ -10,11 +10,11 @@ import type {
 } from "@openagentsinc/khala-sync-server";
 import { describe, expect, test, vi } from "vitest";
 
+import { deriveSarahLiveKitControlToken } from "./sarah-livekit-room-broker";
 import {
   handleSarahLiveKitWorkerClaim,
   handleSarahLiveKitWorkerEvent,
 } from "./sarah-livekit-worker-routes";
-import { deriveSarahLiveKitControlToken } from "./sarah-livekit-room-broker";
 
 const controlRoot = "A".repeat(64);
 const claimDispatch = {
@@ -147,10 +147,36 @@ describe("Sarah LiveKit worker routes", () => {
             usageKind: event._tag === "response_usage" ? "response" : "transcription",
             providerResponseRef:
               event._tag === "response_usage" ? "response:resp_1" : "transcription:item_1",
+            ...(event._tag === "response_usage" ? { providerStatus: "completed" } : {}),
           }),
         }),
       );
     }
+  });
+
+  test("persists the provider admission digests before readiness", async () => {
+    const response = await handleSarahLiveKitWorkerEvent(
+      dependencies,
+      authorizedRequest("/api/internal/sarah/livekit/job/event", {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "provider_admitted",
+        sessionRef: "session:one",
+        generation: 1,
+        jobRef: "job:one",
+        eventRef: "provider:one",
+        providerSessionRefDigest: "a".repeat(64),
+        providerConfigurationDigest: "b".repeat(64),
+      }),
+      {},
+    );
+    expect(response.status).toBe(200);
+    expect(applyLiveKitWorkerEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventKind: "provider_admitted",
+        providerSessionRefDigest: "a".repeat(64),
+        providerConfigurationDigest: "b".repeat(64),
+      }),
+    );
   });
 
   test("settles and cleans the room exactly once on worker close", async () => {

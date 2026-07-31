@@ -1,8 +1,11 @@
 import {
   SARAH_LIVEKIT_MODEL,
+  SARAH_LIVEKIT_TRANSCRIPTION_MODEL,
+  SARAH_LIVEKIT_VOICE,
   SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
   type SarahLiveKitJobEvent,
 } from "@openagentsinc/audio-contract";
+import { createHash } from "node:crypto";
 
 type UsageNumbers = Readonly<{
   inputTokens: number;
@@ -17,6 +20,9 @@ const safeCount = (value: unknown): number | undefined =>
 
 const record = (value: unknown): Record<string, unknown> | undefined =>
   typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined;
+
+const exactKeys = (value: Record<string, unknown>, keys: ReadonlyArray<string>): boolean =>
+  Object.keys(value).every((key) => keys.includes(key));
 
 const parseUsage = (value: unknown): UsageNumbers | undefined => {
   const usage = record(value);
@@ -47,10 +53,222 @@ const boundedProviderRef = (value: unknown, eventPrefix: string): string | undef
     ? value
     : undefined;
 
-export const isAdmittedRealtimeSessionCreated = (event: unknown): boolean | undefined => {
+const providerSessionRef = (event: unknown): string | undefined => {
   const envelope = record(event);
-  if (envelope?.type !== "session.created") return undefined;
-  return record(envelope.session)?.model === SARAH_LIVEKIT_MODEL;
+  const session = record(envelope?.session);
+  return boundedProviderRef(session?.id, "");
+};
+
+const digest = (value: string): string => createHash("sha256").update(value).digest("hex");
+
+const canonicalProviderConfiguration = {
+  model: SARAH_LIVEKIT_MODEL,
+  outputModalities: ["audio"],
+  inputAudio: {
+    format: { type: "audio/pcm", rate: 24_000 },
+    transcription: { model: SARAH_LIVEKIT_TRANSCRIPTION_MODEL },
+    turnDetection: {
+      type: "semantic_vad",
+      eagerness: "high",
+      create_response: true,
+      interrupt_response: true,
+    },
+  },
+  outputAudio: {
+    format: { type: "audio/pcm", rate: 24_000 },
+    voice: SARAH_LIVEKIT_VOICE,
+  },
+} as const;
+
+export const SARAH_LIVEKIT_PROVIDER_CONFIGURATION_DIGEST = digest(
+  JSON.stringify(canonicalProviderConfiguration),
+);
+
+const exactAudioFormat = (value: unknown): boolean => {
+  const format = record(value);
+  return (
+    format !== undefined &&
+    exactKeys(format, ["type", "rate"]) &&
+    format.type === "audio/pcm" &&
+    format.rate === 24_000
+  );
+};
+
+const exactTranscription = (value: unknown): boolean => {
+  const transcription = record(value);
+  return (
+    transcription !== undefined &&
+    exactKeys(transcription, ["model", "language", "prompt"]) &&
+    transcription.model === SARAH_LIVEKIT_TRANSCRIPTION_MODEL &&
+    transcription.language === undefined &&
+    transcription.prompt === undefined
+  );
+};
+
+const exactTurnDetection = (value: unknown): boolean => {
+  const turnDetection = record(value);
+  return (
+    turnDetection !== undefined &&
+    exactKeys(turnDetection, [
+      "type",
+      "eagerness",
+      "create_response",
+      "interrupt_response",
+      "threshold",
+      "prefix_padding_ms",
+      "silence_duration_ms",
+    ]) &&
+    turnDetection.type === "semantic_vad" &&
+    turnDetection.eagerness === "high" &&
+    turnDetection.create_response === true &&
+    turnDetection.interrupt_response === true &&
+    turnDetection.threshold === undefined &&
+    turnDetection.prefix_padding_ms === undefined &&
+    turnDetection.silence_duration_ms === undefined
+  );
+};
+
+export type AdmittedRealtimeProvider = Readonly<{
+  providerSessionRefDigest: string;
+  providerConfigurationDigest: string;
+}>;
+
+export const admittedRealtimeProvider = (
+  event: unknown,
+  expectedProviderSessionRefDigest: string | undefined,
+): AdmittedRealtimeProvider | false | undefined => {
+  const envelope = record(event);
+  if (envelope?.type !== "session.updated") return undefined;
+  const session = record(envelope.session);
+  const audio = record(session?.audio);
+  const inputAudio = record(audio?.input);
+  const outputAudio = record(audio?.output);
+  const sessionRef = providerSessionRef(event);
+  if (
+    session === undefined ||
+    audio === undefined ||
+    inputAudio === undefined ||
+    outputAudio === undefined ||
+    sessionRef === undefined
+  ) {
+    return false;
+  }
+  const providerSessionRefDigest = digest(sessionRef);
+  if (
+    expectedProviderSessionRefDigest === undefined ||
+    providerSessionRefDigest !== expectedProviderSessionRefDigest ||
+    session.model !== SARAH_LIVEKIT_MODEL ||
+    !Array.isArray(session.output_modalities) ||
+    session.output_modalities.length !== 1 ||
+    session.output_modalities[0] !== "audio" ||
+    !exactAudioFormat(inputAudio.format) ||
+    (inputAudio.noise_reduction !== undefined && inputAudio.noise_reduction !== null) ||
+    !exactTranscription(inputAudio.transcription) ||
+    !exactTurnDetection(inputAudio.turn_detection) ||
+    !exactAudioFormat(outputAudio.format) ||
+    outputAudio.voice !== SARAH_LIVEKIT_VOICE
+  ) {
+    return false;
+  }
+  return {
+    providerSessionRefDigest,
+    providerConfigurationDigest: SARAH_LIVEKIT_PROVIDER_CONFIGURATION_DIGEST,
+  };
+};
+
+export class SarahProviderAccounting {
+  readonly #activeResponseRefs = new Set<string>();
+  readonly #waiters = new Set<() => void>();
+  #providerSessionRefDigest: string | undefined;
+  #disconnected = false;
+
+  get providerSessionRefDigest(): string | undefined {
+    return this.#providerSessionRefDigest;
+  }
+
+  get disconnected(): boolean {
+    return this.#disconnected;
+  }
+
+  observe(event: unknown, terminalUsageObserved: boolean): void {
+    const envelope = record(event);
+    if (envelope?.type === "session.created") {
+      const sessionRef = providerSessionRef(event);
+      if (sessionRef !== undefined) this.#providerSessionRefDigest = digest(sessionRef);
+      return;
+    }
+    const response = record(envelope?.response);
+    const responseRef = boundedProviderRef(response?.id, "");
+    if (envelope?.type === "response.created" && responseRef !== undefined) {
+      this.#activeResponseRefs.add(responseRef);
+      return;
+    }
+    if (envelope?.type === "response.done" && responseRef !== undefined && terminalUsageObserved) {
+      this.#activeResponseRefs.delete(responseRef);
+      this.#notifyIfTerminal();
+    }
+  }
+
+  disconnect(): void {
+    this.#disconnected = true;
+    for (const resolve of this.#waiters) resolve();
+    this.#waiters.clear();
+  }
+
+  async waitForTerminalResponses(
+    timeoutMs: number,
+    wait: (timeoutMs: number) => Promise<void> = (delayMs) =>
+      new Promise((resolve) => {
+        setTimeout(resolve, delayMs);
+      }),
+  ): Promise<boolean> {
+    if (this.#activeResponseRefs.size === 0) return true;
+    if (this.#disconnected) return false;
+    let notify: (() => void) | undefined;
+    const terminal = new Promise<void>((resolve) => {
+      notify = resolve;
+      this.#waiters.add(resolve);
+    });
+    await Promise.race([terminal, wait(timeoutMs)]);
+    if (notify !== undefined) this.#waiters.delete(notify);
+    return this.#activeResponseRefs.size === 0;
+  }
+
+  #notifyIfTerminal(): void {
+    if (this.#activeResponseRefs.size !== 0) return;
+    for (const resolve of this.#waiters) resolve();
+    this.#waiters.clear();
+  }
+}
+
+export const waitForAdmissionUntil = async <Value>(
+  waitForAdmission: () => Promise<Value>,
+  expiresAtMs: number,
+  abortSignal: AbortSignal,
+  now: () => number = Date.now,
+): Promise<Value> => {
+  const remainingMs = expiresAtMs - now();
+  if (remainingMs <= 0) throw new Error("Sarah LiveKit admission expired");
+  return new Promise<Value>((resolve, reject) => {
+    let settled = false;
+    const settle = (operation: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      abortSignal.removeEventListener("abort", onAbort);
+      operation();
+    };
+    const onAbort = () => settle(() => reject(new Error("Sarah LiveKit admission was aborted")));
+    const timeout = setTimeout(
+      () => settle(() => reject(new Error("Sarah LiveKit admission expired"))),
+      remainingMs,
+    );
+    abortSignal.addEventListener("abort", onAbort, { once: true });
+    waitForAdmission().then(
+      (value) => settle(() => resolve(value)),
+      (error) => settle(() => reject(error)),
+    );
+  });
 };
 
 export const responseUsageEvent = (
@@ -130,6 +348,12 @@ export class SarahGenerationFence {
     return true;
   }
 
+  failAccounting(): void {
+    if (this.#sealed) return;
+    this.#settled = true;
+    this.#closeReason = "worker_error";
+  }
+
   get closeReason() {
     return this.#closeReason;
   }
@@ -190,10 +414,17 @@ export class SarahGenerationFence {
 
 export const closeAfterProviderAccounting = async (
   fence: SarahGenerationFence,
+  accounting: SarahProviderAccounting,
+  requestProviderDrain: () => Promise<void>,
   closeProvider: () => Promise<void>,
   closeGeneration: () => Promise<void>,
   waitForIdle?: () => Promise<void>,
 ): Promise<void> => {
+  await requestProviderDrain();
+  const terminal = await accounting.waitForTerminalResponses(10_000);
+  if (!terminal && !accounting.disconnected) {
+    fence.failAccounting();
+  }
   await closeProvider();
   await fence.quiesce(waitForIdle);
   await closeGeneration();

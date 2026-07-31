@@ -144,6 +144,21 @@ describe("Sarah LiveKit worker contract", () => {
     ).toBe("transcription_usage");
   });
 
+  test("requires a bounded durable provider admission receipt", () => {
+    expect(
+      decodeSarahLiveKitJobEvent({
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "provider_admitted",
+        sessionRef: "session:one",
+        generation: 1,
+        jobRef: "job:one",
+        eventRef: "provider:one",
+        providerSessionRefDigest: "a".repeat(64),
+        providerConfigurationDigest: "b".repeat(64),
+      })._tag,
+    ).toBe("provider_admitted");
+  });
+
   test("admits the generation-bound bounded editor command contract", () => {
     const proposal = decodeSarahLiveKitToolProposalRequest({
       schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,

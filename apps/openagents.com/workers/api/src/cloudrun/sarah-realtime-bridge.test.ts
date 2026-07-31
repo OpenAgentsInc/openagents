@@ -11,6 +11,7 @@ import {
   makeSarahRealtimeBridgeData,
   makeSarahRealtimeWebSocketHandlers,
   parseSarahRealtimeBridgeCreditRate,
+  pollSarahLiveKitProviderAdmission,
   pollSarahLiveKitToolControl,
   sarahEditorCommandRequiresConfirmation,
   sessionUpdateForSarahClientProfile,
@@ -234,7 +235,15 @@ describe('Sarah Realtime bridge metering', () => {
       apiKey: 'must-not-be-used',
       safetyIdentifier: 'test-safety',
       creditMsatPerMillionTokens: 1_000,
-      store: {} as never,
+      store: {
+        readLiveKitProviderAdmission: async () => ({
+          state: 'admitted',
+          providerSessionRefDigest: 'a'.repeat(64),
+          providerConfigurationDigest: 'b'.repeat(64),
+          admittedAt: new Date(nowMs).toISOString(),
+        }),
+        readLiveKitToolProposals: async () => [],
+      } as never,
       closeStore: async () => undefined,
       tasks: {
         add: () => undefined,
@@ -253,20 +262,81 @@ describe('Sarah Realtime bridge metering', () => {
 
     handlers.open(socket as never)
     expect(data.upstream).toBeUndefined()
-    expect(sent.map(message => JSON.parse(message)._tag)).toEqual([
-      'lifecycle',
-      'session_ready',
-      'lifecycle',
-    ])
+    expect(sent.map(message => JSON.parse(message)._tag)).toEqual(['lifecycle'])
+    return pollSarahLiveKitProviderAdmission(socket as never).then(() => {
+      expect(sent.map(message => JSON.parse(message)._tag)).toEqual([
+        'lifecycle',
+        'session_ready',
+        'lifecycle',
+      ])
 
-    handlers.message(socket as never, clientAudioFrame(0))
-    expect(JSON.parse(sent.at(-1) ?? '{}')).toMatchObject({
-      _tag: 'error',
-      code: 'invalid_frame',
-      retryable: false,
+      handlers.message(socket as never, clientAudioFrame(0))
+      expect(JSON.parse(sent.at(-1) ?? '{}')).toMatchObject({
+        _tag: 'error',
+        code: 'invalid_frame',
+        retryable: false,
+      })
+      expect(data.expectedAudioSequence).toBe(0)
+      if (data.expiryTimer !== undefined) clearTimeout(data.expiryTimer)
+      if (data.liveKitAdmissionPollTimer !== undefined) {
+        clearTimeout(data.liveKitAdmissionPollTimer)
+      }
+      if (data.liveKitToolPollTimer !== undefined) {
+        clearTimeout(data.liveKitToolPollTimer)
+      }
     })
-    expect(data.expectedAudioSequence).toBe(0)
-    if (data.expiryTimer !== undefined) clearTimeout(data.expiryTimer)
+  })
+
+  test('closes promptly when a LiveKit generation terminates before provider admission', async () => {
+    const tasks: Array<Promise<unknown>> = []
+    const data = makeSarahRealtimeBridgeData({
+      session: {
+        sessionRef: 'session-closed',
+        ownerUserId: 'user-1',
+        ownerActorRef: 'agent:user-1',
+        deviceRef: 'device-1',
+        threadRef: 'thread-1',
+        generation: 1,
+        disclosureRef: 'disclosure-1',
+        clientProfile: 'omega_editor',
+        transportKind: 'livekit_room_v1',
+        creditMode: 'metered',
+        entitlementRef: null,
+        admissionCohortRef: 'sarah_voice_cohort:alpha_v1',
+        state: 'connected',
+        reservedMsat: 1_000,
+        chargedMsat: 0,
+        ticketExpiresAt: new Date(Date.now() + 30_000).toISOString(),
+        sessionExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+        settlementReceiptRef: null,
+      },
+      apiKey: 'unused',
+      safetyIdentifier: 'test-safety',
+      creditMsatPerMillionTokens: 1_000,
+      store: {
+        readLiveKitProviderAdmission: async () => ({ state: 'closed' }),
+        settle: async () => undefined,
+      } as never,
+      closeStore: async () => undefined,
+      tasks: {
+        add: (task: Promise<unknown>) => tasks.push(task),
+      } as never,
+    })
+    const sent: Array<Record<string, unknown>> = []
+    const closes: Array<{ code: number; reason: string }> = []
+    const socket = {
+      data,
+      send: (message: string) =>
+        sent.push(JSON.parse(message) as Record<string, unknown>),
+      close: (code: number, reason: string) => closes.push({ code, reason }),
+    }
+    await pollSarahLiveKitProviderAdmission(socket as never)
+    expect(sent.at(-1)).toMatchObject({
+      _tag: 'closing',
+      reason: 'provider_error',
+    })
+    expect(closes).toEqual([{ code: 1011, reason: 'provider_error' }])
+    await Promise.all(tasks)
   })
 
   test('drains a LiveKit worker on control disconnect without settling before final usage', async () => {

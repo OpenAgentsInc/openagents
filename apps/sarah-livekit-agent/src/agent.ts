@@ -11,6 +11,7 @@ import {
   type JobContext,
 } from "@livekit/agents";
 import * as openai from "@livekit/agents-plugin-openai";
+import { TrackSource } from "@livekit/protocol";
 import {
   SARAH_LIVEKIT_AGENT_NAME,
   SARAH_LIVEKIT_MODEL,
@@ -27,11 +28,13 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { makeSarahLiveKitControlClient } from "./control-client.js";
 import {
+  SarahProviderAccounting,
   SarahGenerationFence,
+  admittedRealtimeProvider,
   closeAfterProviderAccounting,
-  isAdmittedRealtimeSessionCreated,
   responseUsageEvent,
   transcriptionUsageEvent,
+  waitForAdmissionUntil,
 } from "./generation.js";
 
 const PRIVATE_INSTRUCTIONS = [
@@ -352,36 +355,77 @@ const entry = async (ctx: JobContext): Promise<void> => {
     jobRef: ctx.job.id,
   } as const;
   const fence = new SarahGenerationFence();
+  const accounting = new SarahProviderAccounting();
+  const participantAdmission = new AbortController();
   let session: AgentSession | undefined;
   let eventChain = Promise.resolve();
-  const sendEvent = (event: SarahLiveKitJobEvent): void => {
-    if (!fence.accepts(event)) return;
+  const sendEvent = (event: SarahLiveKitJobEvent): Promise<void> | undefined => {
+    if (!fence.accepts(event)) return undefined;
     const operation = eventChain
       .then(async () => {
         const result = await controller.event(dispatch, event);
         if (result.stopReason !== undefined && fence.settle(result.stopReason)) {
-          await session?.close();
+          ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
         }
       })
-      .catch(async (error) => {
+      .catch((error) => {
         if (fence.settle("worker_error")) {
-          await session?.close();
+          ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
         }
         throw error;
       });
     eventChain = operation.catch(() => {});
     fence.track(operation);
+    return operation;
   };
 
-  const model = new ObservedRealtimeModel(claim.safetyIdentifier, (event) => {
-    fence.observeProviderEvent();
-    const admittedSession = isAdmittedRealtimeSessionCreated(event);
-    if (admittedSession === false) {
-      if (fence.settle("provider_mismatch")) void session?.close();
+  let resolveProviderAdmission: (() => void) | undefined;
+  let rejectProviderAdmission: ((error: Error) => void) | undefined;
+  const providerAdmission = new Promise<void>((resolve, reject) => {
+    resolveProviderAdmission = resolve;
+    rejectProviderAdmission = reject;
+  });
+  let providerAdmissionObserved = false;
+  let sessionStarted = false;
+  let pendingProviderAdmission:
+    | ReturnType<typeof admittedRealtimeProvider>
+    | undefined;
+  const persistProviderAdmission = (
+    admitted: Exclude<ReturnType<typeof admittedRealtimeProvider>, undefined>,
+  ) => {
+    if (providerAdmissionObserved) return;
+    providerAdmissionObserved = true;
+    if (admitted === false) {
+      const error = new Error("OpenAI Realtime confirmed a mismatched Sarah session");
+      rejectProviderAdmission?.(error);
+      if (fence.settle("provider_mismatch")) {
+        ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
+      }
       return;
     }
+    const operation = sendEvent({
+      schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+      _tag: "provider_admitted",
+      ...identity,
+      eventRef: `provider:${admitted.providerSessionRefDigest}`,
+      providerSessionRefDigest: admitted.providerSessionRefDigest,
+      providerConfigurationDigest: admitted.providerConfigurationDigest,
+    });
+    if (operation === undefined) {
+      rejectProviderAdmission?.(new Error("Sarah LiveKit provider admission was fenced"));
+      return;
+    }
+    void operation.then(resolveProviderAdmission, rejectProviderAdmission);
+  };
+  const model = new ObservedRealtimeModel(claim.safetyIdentifier, (event) => {
+    fence.observeProviderEvent();
     const usage = responseUsageEvent(event, identity) ?? transcriptionUsageEvent(event, identity);
+    accounting.observe(event, usage?._tag === "response_usage");
     if (usage !== undefined) sendEvent(usage);
+    const admitted = admittedRealtimeProvider(event, accounting.providerSessionRefDigest);
+    if (admitted === undefined || providerAdmissionObserved) return;
+    pendingProviderAdmission = admitted;
+    if (sessionStarted) persistProviderAdmission(admitted);
   });
   session = new AgentSession({
     llm: model,
@@ -399,8 +443,9 @@ const entry = async (ctx: JobContext): Promise<void> => {
   });
 
   session.on(AgentSessionEventTypes.Error, () => {
+    accounting.disconnect();
     if (fence.settle("provider_disconnect")) {
-      void session?.close();
+      ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
     }
   });
   session.on(AgentSessionEventTypes.Close, (event) => {
@@ -422,16 +467,28 @@ const entry = async (ctx: JobContext): Promise<void> => {
 
   const expiryDelay = Math.max(0, claim.sessionExpiresAtMs - Date.now());
   const expiryTimer = setTimeout(() => {
-    if (fence.settle("session_expired")) void session?.close();
+    if (fence.settle("session_expired")) {
+      ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
+    }
   }, expiryDelay);
   expiryTimer.unref();
 
   ctx.addShutdownCallback(async () => {
+    participantAdmission.abort();
     clearInterval(leaseInterval);
     clearTimeout(expiryTimer);
     if (!fence.settled) fence.settle("worker_shutdown");
     await closeAfterProviderAccounting(
       fence,
+      accounting,
+      async () => {
+        if (accounting.disconnected || session === undefined) return;
+        try {
+          await session.interrupt({ force: true }).await;
+        } catch {
+          if (!fence.settled) fence.settle("worker_error");
+        }
+      },
       async () => {
         await session?.close();
       },
@@ -453,7 +510,18 @@ const entry = async (ctx: JobContext): Promise<void> => {
     ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
     return;
   }
-  const participant = await ctx.waitForParticipant(dispatch.participantRef);
+  let participant;
+  try {
+    participant = await waitForAdmissionUntil(
+      () => ctx.waitForParticipant(dispatch.participantRef),
+      claim.sessionExpiresAtMs,
+      participantAdmission.signal,
+    );
+  } catch {
+    fence.settle("session_expired");
+    ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
+    return;
+  }
   if (participant.identity !== dispatch.participantRef) {
     throw new Error("The admitted Sarah room participant was not present");
   }
@@ -474,6 +542,20 @@ const entry = async (ctx: JobContext): Promise<void> => {
     },
     record: false,
   });
+  sessionStarted = true;
+  if (pendingProviderAdmission !== undefined) {
+    persistProviderAdmission(pendingProviderAdmission);
+  }
+  try {
+    await waitForAdmissionUntil(
+      () => providerAdmission,
+      claim.sessionExpiresAtMs,
+      participantAdmission.signal,
+    );
+  } catch {
+    if (!fence.settled) fence.settle("provider_mismatch");
+    ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
+  }
 };
 
 export default defineAgent({ entry });
@@ -496,7 +578,7 @@ cli.runApp(
     // Agents JS publishes disclosed session transcriptions with
     // localParticipant.publishTranscription, which requires data publish.
     // This worker has no generic data-publish call and stores no transcript.
-    permissions: new WorkerPermissions(true, true, true, false, [], false),
+    permissions: new WorkerPermissions(true, true, true, false, [TrackSource.MICROPHONE], false),
     production: true,
     drainTimeout: 30_000,
     shutdownProcessTimeout: 35_000,

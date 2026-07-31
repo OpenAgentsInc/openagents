@@ -23,7 +23,7 @@
     "pinState": "build_required"
   },
   "configurationDigest": "sha256:b0bf0f0cb801943b789906c615d3277629a8f73bd6d06b52a60aaf2c86eb8a7d",
-  "renderedManifestDigest": "sha256:03f34bb8d0b1f6dbb21413e55522a72e2175c8911cb87633135080ae6790c1e1",
+  "renderedManifestDigest": "sha256:78da8d4b488372b0654e830285658c2d5336a56c754ff896f63ee8738878dd26",
   "resources": {
     "cluster": "oa-livekit-prod",
     "sfuNodePool": "oa-livekit-prod-sfu",
@@ -137,7 +137,7 @@
     },
     {
       "path": "infra/livekit/production/resources/sarah-agent-runtime.yaml",
-      "sha256": "sha256:ca1f780e5087495a3a1f8ad3f7f60431c0c67c489b722fb3920b703badf01960"
+      "sha256": "sha256:3159a15b480c98c91567a9b4a696bb36f3ff37098609a2053c6cf3a7543668ad"
     },
     {
       "path": "infra/livekit/production/resources/secret-identity.yaml",

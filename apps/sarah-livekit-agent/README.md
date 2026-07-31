@@ -23,19 +23,28 @@ claim/event routes. It is never added to a job, body, receipt, or log. The
 worker does not record media, retain transcripts, or log raw OpenAI events.
 
 Agents JS 1.6.0 enforces publish, subscribe, publish-data, metadata-update, and
-hidden permissions during worker registration, but it does not send its
-`canPublishSources` field to LiveKit. Sarah enables publish and subscribe for
-voice and enables publish-data only because the pinned SDK implements disclosed
-session transcription with `localParticipant.publishTranscription`. The worker
-has no generic data-publish call, does not store transcripts, disables metadata
-updates, and remains visible. The session enables audio and ephemeral
-transcription output only; its media-source restriction is behavioral, not a
-server-enforced worker permission in this SDK release.
+hidden permissions during worker registration. The pinned SDK patch also
+serializes `canPublishSources`, and Sarah registers microphone as its only
+publishable media source. Sarah enables publish-data only because the pinned SDK
+implements disclosed session transcription with
+`localParticipant.publishTranscription`. The worker has no generic data-publish
+call, does not store transcripts, disables metadata updates, and remains
+visible.
 
 The OpenAI plugin is pinned and patched to attach the generation's hashed owner
 identifier as `OpenAI-Safety-Identifier`. Response usage comes only from
 `response.done.response.usage`; input-transcription usage is recorded
-separately from the transcription-completed event.
+separately from the transcription-completed event. A response is not terminal
+until its status and usage are durable. Shutdown cancels an in-flight response,
+waits for its terminal provider event, and only then closes the provider.
+Provider disconnect is recorded as a distinct terminal path.
+
+The control plane does not advertise the session as ready when the worker merely
+joins LiveKit. It waits for the owner participant, a completed `AgentSession`
+start, and a server-confirmed OpenAI configuration with the exact model, audio
+modality and formats, transcription model, voice, and semantic-VAD response and
+interruption policy. It persists only bounded SHA-256 provider session and
+configuration references before the control socket emits `session_ready`.
 
 Private and community jobs instantiate separate capability profiles. Community
 jobs are structurally tool-free and receive no owner memory, workspace, editor
@@ -103,5 +112,6 @@ with a mutable tag.
 
 Production deploys three replicas on the dedicated GKE application pool.
 External Secrets injects all credentials at runtime, the pod UID supplies a
-unique `SARAH_LIVEKIT_WORKER_REF`, and the 60-second pod termination allowance
-covers the process's 30-second worker drain and 35-second child shutdown bound.
+unique `SARAH_LIVEKIT_WORKER_REF`, and the 90-second pod termination allowance
+covers the process's 30-second worker drain and 35-second child shutdown bound
+with additional time for final provider accounting and the durable close event.

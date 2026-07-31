@@ -125,6 +125,16 @@ export const SarahLiveKitJobEventSchema = S.Union([
   }),
   S.Struct({
     schema: S.Literal(SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION),
+    _tag: S.Literal("provider_admitted"),
+    sessionRef: Ref,
+    generation: Seq,
+    jobRef: Ref,
+    eventRef: Ref,
+    providerSessionRefDigest: Digest,
+    providerConfigurationDigest: Digest,
+  }),
+  S.Struct({
+    schema: S.Literal(SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION),
     _tag: S.Literal("lease_check"),
     sessionRef: Ref,
     generation: Seq,
