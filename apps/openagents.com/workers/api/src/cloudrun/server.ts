@@ -20,6 +20,7 @@ import { createHash } from 'node:crypto'
  */
 
 import worker from '../index'
+import { acquireSharedPostgresClient } from '../khala-sync-postgres-pool'
 import { defaultMakeKhalaSyncSqlClient } from '../khala-sync-push-routes'
 import {
   makeSarahLiveKitRoomBroker,
@@ -40,6 +41,7 @@ import {
 } from './binding-unavailable'
 import { buildCloudRunRuntime } from './env'
 import { makeBackgroundTasks, makeExecutionContext } from './execution-context'
+import { awaitPostgresReady } from './postgres-readiness'
 import { gateForgeDocumentRequest } from './forge-ui-gate'
 // #8634/#8635 scope 5: retained /forum* serves the Effect Native conversion.
 import { handleForumUiRequest } from './forum-ui'
@@ -201,6 +203,62 @@ const main = async (): Promise<void> => {
 
   const syncWebSocketHandlers = makeSyncBridgeWebSocketHandlers()
   const sarahWebSocketHandlers = makeSarahRealtimeWebSocketHandlers()
+
+  // Withhold traffic until Postgres actually answers on this instance.
+  // Cloud Run treats "the port is open" as "ready", and the Cloud SQL Auth
+  // Proxy sidecar needs 10-70s after a new revision starts before
+  // `/cloudsql/<instance>/.s.PGSQL.5432` accepts a connection. Opening the
+  // port first is what let a cold instance answer authenticated requests with
+  // a 30-second 503 (incident 2026-07-31). See ./postgres-readiness.ts for the
+  // budget and why the gate is fail-open.
+  const readinessConnectionString =
+    runtime.env.KHALA_SYNC_DB?.connectionString?.trim()
+  if (
+    readinessConnectionString !== undefined &&
+    readinessConnectionString !== ''
+  ) {
+    const outcome = await awaitPostgresReady(
+      async () => {
+        // The SAME pool the auth path uses ('sync'), so a successful probe
+        // also leaves a warm connection behind for the first real request.
+        const { sql } = await acquireSharedPostgresClient<{
+          unsafe: (
+            text: string,
+            params: ReadonlyArray<string>,
+          ) => Promise<ReadonlyArray<Record<string, unknown>>>
+          end: (options?: { timeout?: number }) => Promise<void>
+        }>({
+          connectionString: readinessConnectionString,
+          options: { connect_timeout: 10, prepare: false },
+          variant: 'sync',
+        })
+        await sql.unsafe('select 1', [])
+      },
+      {
+        onAttemptFailed: info => {
+          log('postgres_readiness_attempt_failed', {
+            attempt: info.attempt,
+            elapsedMs: info.elapsedMs,
+            error:
+              info.error instanceof Error
+                ? info.error.message
+                : String(info.error),
+          })
+        },
+      },
+    )
+    log(
+      outcome.ready
+        ? 'postgres_readiness_ready'
+        : 'postgres_readiness_budget_exhausted',
+      {
+        attempts: outcome.attempts,
+        elapsedMs: outcome.elapsedMs,
+        ready: outcome.ready,
+        severity: outcome.ready ? 'INFO' : 'ERROR',
+      },
+    )
+  }
 
   const server = Runtime.serve<CloudRunWebSocketData>({
     fetch: async (incoming, bunServer): Promise<Response | undefined> => {

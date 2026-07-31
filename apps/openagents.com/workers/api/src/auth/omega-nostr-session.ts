@@ -6,6 +6,12 @@ import {
   verifyHttpAuthEvent,
 } from 'nostr-effect/nip98'
 
+import {
+  type PostgresFailureClass,
+  postgresFailureClass,
+  postgresFailureCode,
+  retryTransientPostgres,
+} from '../postgres-transient-failure'
 import type { AuthKvStore } from './auth-kv'
 import { clientIpFromRequest } from './kv-window-rate-limit'
 import type { OmegaNostrSelfProvisionReservation } from './omega-nostr-self-provision'
@@ -55,6 +61,74 @@ const noStoreJson = (body: unknown, status = 200): Response =>
     status,
   })
 
+/**
+ * The step that failed. Carried in the log and in the 503 body so an operator
+ * never has to guess WHICH storage read or write went down.
+ */
+export type OmegaNostrStoragePhase =
+  | 'resolve_linked'
+  | 'consume_proof'
+  | 'authenticate'
+  | 'mint_session'
+
+/**
+ * The typed 503 codes for an auth-storage failure, one per named cause.
+ *
+ * INCIDENT 2026-07-31 (P0). All four of these used to be the single string
+ * `omega_nostr_auth_storage_unavailable`, emitted from four different `catch {}`
+ * blocks that discarded the error entirely. The owner saw a red banner and the
+ * server logs carried nothing but a pubkey digest — the failure was
+ * undiagnosable by construction. A code that collapses several causes into one
+ * string is part of the defect, so each cause now has its own code:
+ *
+ * - `..._unreachable` — the connection was never established (the Cloud SQL
+ *   Auth Proxy on a cold Cloud Run instance). Transient, self-healing.
+ * - `..._connection_lost` — an established connection went away mid-operation.
+ * - `..._rejected` — Postgres answered and refused. NOT self-healing; this one
+ *   means a real defect (missing relation, permission, constraint).
+ * - `..._unavailable` — retained as the fallback for an unclassified cause, so
+ *   already-shipped clients keep the code they were written against.
+ *
+ * Every one of them is a 503 and every one is retryable EXCEPT `_rejected`,
+ * which is reported honestly rather than inviting a client to hammer it.
+ */
+export const omegaNostrStorageErrorCode = (
+  failureClass: PostgresFailureClass,
+): string => {
+  switch (failureClass) {
+    case 'connect_unavailable':
+      return 'omega_nostr_auth_storage_unreachable'
+    case 'connection_lost':
+      return 'omega_nostr_auth_storage_connection_lost'
+    case 'server_error':
+      return 'omega_nostr_auth_storage_rejected'
+    case 'unknown':
+      return 'omega_nostr_auth_storage_unavailable'
+  }
+}
+
+const STORAGE_RETRY_AFTER_SECONDS = 2
+
+const storageUnavailableResponse = (error: unknown): Response => {
+  const failureClass = postgresFailureClass(error)
+  const retryable = failureClass !== 'server_error'
+  const body = {
+    cause: failureClass,
+    error: omegaNostrStorageErrorCode(failureClass),
+    retryable,
+  }
+  return new Response(JSON.stringify(body), {
+    headers: {
+      'cache-control': 'no-store',
+      'content-type': 'application/json; charset=utf-8',
+      ...(retryable
+        ? { 'retry-after': String(STORAGE_RETRY_AFTER_SECONDS) }
+        : {}),
+    },
+    status: 503,
+  })
+}
+
 export const readOmegaNostrSession = async <User>(
   store: AuthKvStore,
   token: string,
@@ -94,6 +168,7 @@ export type OmegaNostrSessionAuditEvent =
   | 'proof_rejected'
   | 'proof_replayed'
   | 'session_issued'
+  | 'storage_retry'
   | 'storage_unavailable'
 
 export type OmegaNostrSessionIssue<User> =
@@ -155,6 +230,29 @@ const exactRequiredTags = (
 export const makeOmegaNostrSessionService = <User, Env>(
   dependencies: OmegaNostrSessionDependencies<User, Env>,
 ) => {
+  /**
+   * Name the storage failure in the audit log AND in the response.
+   *
+   * Replaces four separate `catch {}` blocks that threw the error away. The
+   * fields are all public-safe: a failure class, postgres.js's own connection
+   * code, the error's class name, and which step failed — never a message,
+   * never a row value, never a key.
+   */
+  const storageFailure = (
+    phase: OmegaNostrStoragePhase,
+    error: unknown,
+    fields: Readonly<Record<string, string | boolean>> = {},
+  ): Readonly<{ _tag: 'Rejected'; response: Response }> => {
+    audit(dependencies, 'storage_unavailable', {
+      ...fields,
+      errorName: error instanceof Error ? error.name : typeof error,
+      failureClass: postgresFailureClass(error),
+      failureCode: postgresFailureCode(error),
+      phase,
+    })
+    return { _tag: 'Rejected', response: storageUnavailableResponse(error) }
+  }
+
   const verifyProof = async (
     request: Request,
     env: Env,
@@ -270,18 +368,30 @@ export const makeOmegaNostrSessionService = <User, Env>(
 
     let linked: User | undefined
     try {
-      linked = await dependencies.resolveLinked?.(env, verified.pubkey)
-    } catch {
-      audit(dependencies, 'storage_unavailable', {
+      // A pure read of the identity binding. It does NOT go through the auth
+      // KV store, so it needs its own transient-connect retry: on a cold Cloud
+      // Run instance this is the FIRST statement a sign-in attempts, and it is
+      // the one that met the not-yet-ready Cloud SQL proxy on 2026-07-31.
+      linked = await retryTransientPostgres(
+        async () => dependencies.resolveLinked?.(env, verified.pubkey),
+        {
+          onRetry: info => {
+            audit(dependencies, 'storage_retry', {
+              attempt: String(info.attempt),
+              delayMs: String(info.delayMs),
+              failureClass: info.failureClass,
+              failureCode: info.failureCode,
+              phase: 'resolve_linked',
+              pubkeyDigest: verified.pubkeyDigest,
+            })
+          },
+          scope: 'connection',
+        },
+      )
+    } catch (error) {
+      return storageFailure('resolve_linked', error, {
         pubkeyDigest: verified.pubkeyDigest,
       })
-      return {
-        _tag: 'Rejected',
-        response: noStoreJson(
-          { error: 'omega_nostr_auth_storage_unavailable' },
-          503,
-        ),
-      }
     }
     if (!verified.isOwner && linked === undefined && !selfProvisionArmed) {
       audit(dependencies, 'proof_rejected', {
@@ -317,17 +427,10 @@ export const makeOmegaNostrSessionService = <User, Env>(
         }
       }
       return { _tag: 'Consumed' }
-    } catch {
-      audit(dependencies, 'storage_unavailable', {
+    } catch (error) {
+      return storageFailure('consume_proof', error, {
         pubkeyDigest: verified.pubkeyDigest,
       })
-      return {
-        _tag: 'Rejected',
-        response: noStoreJson(
-          { error: 'omega_nostr_auth_storage_unavailable' },
-          503,
-        ),
-      }
     }
   }
 
@@ -430,15 +533,8 @@ export const makeOmegaNostrSessionService = <User, Env>(
 
       audit(dependencies, 'proof_accepted', { isOwner, pubkeyDigest })
       return { _tag: 'Authenticated', pubkey, user: user as User }
-    } catch {
-      audit(dependencies, 'storage_unavailable', { pubkeyDigest })
-      return {
-        _tag: 'Rejected',
-        response: noStoreJson(
-          { error: 'omega_nostr_auth_storage_unavailable' },
-          503,
-        ),
-      }
+    } catch (error) {
+      return storageFailure('authenticate', error, { pubkeyDigest })
     }
   }
 
@@ -479,15 +575,8 @@ export const makeOmegaNostrSessionService = <User, Env>(
         pubkey: authenticated.pubkey,
         user: authenticated.user,
       }
-    } catch {
-      audit(dependencies, 'storage_unavailable', { pubkeyDigest })
-      return {
-        _tag: 'Rejected',
-        response: noStoreJson(
-          { error: 'omega_nostr_auth_storage_unavailable' },
-          503,
-        ),
-      }
+    } catch (error) {
+      return storageFailure('mint_session', error, { pubkeyDigest })
     }
   }
 

@@ -29,6 +29,11 @@ import {
   type MakeKhalaSyncPushSqlClient,
   defaultMakeKhalaSyncSqlClient,
 } from '../khala-sync-push-routes'
+import { logWorkerRouteWarning } from '../observability'
+import {
+  type PostgresRetryScope,
+  retryTransientPostgres,
+} from '../postgres-transient-failure'
 
 // The ONE named Effect->Promise bridge in this module (zero-debt budget 1):
 // oa-infra's KvStore surface is Effect-typed; every route consumer of the
@@ -90,10 +95,45 @@ export class AuthKvUnavailableError extends Error {
   }
 }
 
+/**
+ * Ride out a Cloud SQL connection that is not accepting YET.
+ *
+ * Incident 2026-07-31 (P0): every new Cloud Run revision serves traffic for
+ * ~10-70s before its Cloud SQL Auth Proxy sidecar finishes its first instance
+ * refresh, so auth storage operations on a cold instance fail with
+ * `CONNECT_TIMEOUT` on `/cloudsql/<instance>/.s.PGSQL.5432` and the omega
+ * sign-in route answered 503. A connect that never established sent no
+ * statement, so retrying it cannot change any operation's meaning.
+ *
+ * SCOPE IS NOT UNIFORM ON PURPOSE. Reads may also retry a connection that was
+ * lost mid-flight; writes may not, because a retried `putIfAbsent` whose first
+ * attempt actually inserted would report `false` and reject a legitimate
+ * single-use proof. Writes therefore retry ONLY `connect_unavailable`.
+ */
+const withAuthKvRetry = <A>(
+  operation: string,
+  scope: PostgresRetryScope,
+  run_: () => Promise<A>,
+): Promise<A> =>
+  retryTransientPostgres(run_, {
+    onRetry: info => {
+      logWorkerRouteWarning('auth_kv_transient_storage_retry', {
+        attempt: info.attempt,
+        delayMs: info.delayMs,
+        failureClass: info.failureClass,
+        failureCode: info.failureCode,
+        operation,
+      })
+    },
+    scope,
+  })
+
 /** Promise facade over an oa-infra KvStore (Effect) implementation. */
 export const makeAuthKvStore = (kv: KvStoreShape): AuthKvStore => {
   const get = (async (key: string, type?: 'text' | 'json') => {
-    const raw = await run(kv.get(key))
+    const raw = await withAuthKvRetry('get', 'connection', () =>
+      run(kv.get(key)),
+    )
     if (raw === null) {
       return null
     }
@@ -104,32 +144,41 @@ export const makeAuthKvStore = (kv: KvStoreShape): AuthKvStore => {
     get,
     put: async (key, value, options) => {
       const expirationTtl = options?.expirationTtl
-      await run(
-        kv.put(
-          key,
-          value,
-          expirationTtl === undefined
-            ? undefined
-            : { ttlMs: expirationTtl * 1000 },
+      await withAuthKvRetry('put', 'connect-only', () =>
+        run(
+          kv.put(
+            key,
+            value,
+            expirationTtl === undefined
+              ? undefined
+              : { ttlMs: expirationTtl * 1000 },
+          ),
         ),
       )
     },
     putIfAbsent: async (key, value, options) => {
       const expirationTtl = options?.expirationTtl
-      return run(
-        kv.putIfAbsent(
-          key,
-          value,
-          expirationTtl === undefined
-            ? undefined
-            : { ttlMs: expirationTtl * 1000 },
+      return withAuthKvRetry('putIfAbsent', 'connect-only', () =>
+        run(
+          kv.putIfAbsent(
+            key,
+            value,
+            expirationTtl === undefined
+              ? undefined
+              : { ttlMs: expirationTtl * 1000 },
+          ),
         ),
       )
     },
     delete: async key => {
-      await run(kv.delete(key))
+      await withAuthKvRetry('delete', 'connect-only', () =>
+        run(kv.delete(key)),
+      )
     },
-    listPrefix: prefix => run(kv.listPrefix(prefix)),
+    listPrefix: prefix =>
+      withAuthKvRetry('listPrefix', 'connection', () =>
+        run(kv.listPrefix(prefix)),
+      ),
   }
 }
 

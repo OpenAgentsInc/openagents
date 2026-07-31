@@ -610,3 +610,161 @@ describe('Omega Nostr per-install self-provisioning', () => {
     })
   })
 })
+
+/**
+ * Regression cover for the 2026-07-31 P0.
+ *
+ * `POST /api/omega/auth/session` answered a Cloud SQL Auth Proxy cold start —
+ * a transient window of 10-70s after every new Cloud Run revision — with the
+ * single code `omega_nostr_auth_storage_unavailable`, emitted from four
+ * `catch {}` blocks that discarded the error. The owner saw a red banner and
+ * the logs carried nothing but a pubkey digest.
+ */
+describe('Omega Nostr session storage failures are named, not collapsed', () => {
+  const connectTimeout = (): Error =>
+    Object.assign(
+      new Error(
+        'write CONNECT_TIMEOUT /cloudsql/openagentsgemini:us-central1:khala-sync-pg/.s.PGSQL.5432',
+      ),
+      { code: 'CONNECT_TIMEOUT' },
+    )
+
+  const postgresRefusal = (): Error => {
+    const error = new Error('relation "oa_infra_kv" does not exist')
+    error.name = 'PostgresError'
+    return Object.assign(error, { code: '42P01' })
+  }
+
+  const post = async (
+    handler: ReturnType<typeof makeOmegaNostrSessionHandler>,
+    auth: string,
+  ): Promise<Response> =>
+    handler(
+      new Request(url, { headers: { authorization: auth }, method: 'POST' }),
+      {},
+    )
+
+  test('names a cold-start connect timeout as unreachable and retryable', async () => {
+    const secret = generateSecretKey()
+    const audits: Array<Readonly<Record<string, unknown>>> = []
+    const handler = makeOmegaNostrSessionHandler({
+      audit: (event, fields) => audits.push({ event, ...fields }),
+      authStore: () => makeMemoryAuthKvStore(),
+      expectedOwnerPubkey: () => getPublicKey(secret),
+      now: () => now,
+      resolveLinked: async () => {
+        throw connectTimeout()
+      },
+      resolveOwner: async () => ({ userId: 'github:owner' }),
+    })
+
+    const response = await post(handler, authorization(secret))
+
+    expect(response.status).toBe(503)
+    expect(response.headers.get('retry-after')).toBe('2')
+    expect(await response.json()).toEqual({
+      cause: 'connect_unavailable',
+      error: 'omega_nostr_auth_storage_unreachable',
+      retryable: true,
+    })
+    // The log must name the cause and the step, not just the identity.
+    const failure = audits.find(entry => entry['event'] === 'storage_unavailable')
+    expect(failure).toMatchObject({
+      failureClass: 'connect_unavailable',
+      failureCode: 'CONNECT_TIMEOUT',
+      phase: 'resolve_linked',
+    })
+  })
+
+  test('a Postgres refusal is a distinct, honestly non-retryable code', async () => {
+    const secret = generateSecretKey()
+    const handler = makeOmegaNostrSessionHandler({
+      authStore: () => makeMemoryAuthKvStore(),
+      expectedOwnerPubkey: () => getPublicKey(secret),
+      now: () => now,
+      resolveLinked: async () => {
+        throw postgresRefusal()
+      },
+      resolveOwner: async () => ({ userId: 'github:owner' }),
+    })
+
+    const response = await post(handler, authorization(secret))
+
+    expect(response.status).toBe(503)
+    expect(response.headers.get('retry-after')).toBeNull()
+    expect(await response.json()).toEqual({
+      cause: 'server_error',
+      error: 'omega_nostr_auth_storage_rejected',
+      retryable: false,
+    })
+  })
+
+  test('an unrecognized failure keeps the code shipped clients were written against', async () => {
+    const secret = generateSecretKey()
+    const handler = makeOmegaNostrSessionHandler({
+      authStore: () => makeMemoryAuthKvStore(),
+      expectedOwnerPubkey: () => getPublicKey(secret),
+      now: () => now,
+      resolveLinked: async () => {
+        throw new Error('something nobody classified')
+      },
+      resolveOwner: async () => ({ userId: 'github:owner' }),
+    })
+
+    expect(await (await post(handler, authorization(secret))).json()).toEqual({
+      cause: 'unknown',
+      error: 'omega_nostr_auth_storage_unavailable',
+      retryable: true,
+    })
+  })
+
+  test('rides out a proxy cold start instead of showing the owner a 503', async () => {
+    const secret = generateSecretKey()
+    const owner = { userId: 'github:owner' }
+    let attempts = 0
+    const audits: Array<string> = []
+    const handler = makeOmegaNostrSessionHandler({
+      audit: event => audits.push(event),
+      authStore: () => makeMemoryAuthKvStore(),
+      expectedOwnerPubkey: () => getPublicKey(secret),
+      now: () => now,
+      resolveLinked: async () => {
+        attempts += 1
+        if (attempts < 3) throw connectTimeout()
+        return undefined
+      },
+      resolveOwner: async () => owner,
+    })
+
+    const response = await post(handler, authorization(secret))
+
+    expect(response.status).toBe(200)
+    expect(attempts).toBe(3)
+    expect(audits.filter(event => event === 'storage_retry')).toHaveLength(2)
+  })
+
+  test('a failing session mint names the mint step, not the identity lookup', async () => {
+    const secret = generateSecretKey()
+    const store = makeMemoryAuthKvStore()
+    const audits: Array<Readonly<Record<string, unknown>>> = []
+    const handler = makeOmegaNostrSessionHandler({
+      audit: (event, fields) => audits.push({ event, ...fields }),
+      authStore: () => ({
+        ...store,
+        put: async () => {
+          throw connectTimeout()
+        },
+      }),
+      expectedOwnerPubkey: () => getPublicKey(secret),
+      now: () => now,
+      resolveOwner: async () => ({ userId: 'github:owner' }),
+    })
+
+    const response = await post(handler, authorization(secret))
+
+    expect(response.status).toBe(503)
+    expect(
+      audits.find(entry => entry['event'] === 'storage_unavailable'),
+    ).toMatchObject({ phase: 'mint_session' })
+  })
+})
