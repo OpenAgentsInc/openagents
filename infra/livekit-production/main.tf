@@ -32,7 +32,7 @@ resource "google_org_policy_policy" "cloudbuild_use_compute_service_account" {
 
 data "google_service_account" "default_compute" {
   project    = var.project_id
-  account_id = "${var.project_number}-compute"
+  account_id = "${var.project_number}-compute@developer.gserviceaccount.com"
 }
 
 resource "google_tags_tag_key" "privileged_service_account" {
