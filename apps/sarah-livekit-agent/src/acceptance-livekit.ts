@@ -749,10 +749,11 @@ export const runLiveSarahLiveKitScenario = async (
       `${scenario.kind} microphone publication`,
     );
     const microphonePublishedAtMs = clock.now();
-    const [firstSarahAudioAtMs] = await timeout(
-      Promise.all([output.audio, subscriberOutput.audio]),
+    const fanoutAudio = Promise.all([output.audio, subscriberOutput.audio]);
+    const firstSarahAudioAtMs = await timeout(
+      Promise.race([output.audio, subscriberOutput.audio]),
       SCENARIO_TIMEOUT_MS,
-      `${scenario.kind} Sarah audible fanout`,
+      `${scenario.kind} first Sarah audio`,
     );
     const interruptStartedAtMs = clock.now();
     const interruption = await timeout(
@@ -760,6 +761,7 @@ export const runLiveSarahLiveKitScenario = async (
       SCENARIO_TIMEOUT_MS,
       `${scenario.kind} Sarah explicit interrupt`,
     );
+    await timeout(fanoutAudio, SCENARIO_TIMEOUT_MS, `${scenario.kind} Sarah audible fanout`);
     const postInterruptAudioTailMs = Math.max(
       ...(await Promise.all([
         output.measureInterruptTail(interruption.acknowledgedAtMs),
@@ -781,12 +783,12 @@ export const runLiveSarahLiveKitScenario = async (
     }
 
     await timeout(control.close(), SCENARIO_TIMEOUT_MS, `${scenario.kind} Sarah control close`);
-    const activeRoomEndedAtMs = clock.now();
     await room.localParticipant?.unpublishTrack(microphone.publicationSid, true);
     microphone = undefined;
+    const settlement = await readSettlement(http, clock, scenario);
     await room.disconnect();
     await subscriberRoom.disconnect();
-    const settlement = await readSettlement(http, clock, scenario);
+    const activeRoomEndedAtMs = clock.now();
     const evidence = (
       settlement as typeof settlement & {
         acceptanceEvidence?: Readonly<{
