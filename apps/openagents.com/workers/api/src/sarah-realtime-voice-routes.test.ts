@@ -642,6 +642,10 @@ describe('managed Sarah Realtime voice session route', () => {
       {},
       expect.objectContaining({
         ownerUserId: 'user-1',
+        // The shared-room authority requires the device this request already
+        // authenticated. Dropping it here is what made every community session
+        // 503 with `device_ref_required`.
+        deviceRef: identity.deviceRef,
         presenceLeaseRef: 'sarah-presence:channel-7:g1',
         communityAccess: {
           communityRef: 'community-7',

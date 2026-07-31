@@ -271,7 +271,7 @@ const decodeJoinRoomRequest = async (
 const sharedParticipantRef = (presenceLeaseRef: string, ownerUserId: string): string =>
   `member-${digest(`sarah-livekit-room-member\n${presenceLeaseRef}\n${ownerUserId}`).slice(0, 40)}`;
 
-const SARAH_ROOM_DEVICE_REF_HEADER = "x-openagents-omega-device-ref";
+export const SARAH_ROOM_DEVICE_REF_HEADER = "x-openagents-omega-device-ref";
 
 /**
  * The client that holds one room seat.

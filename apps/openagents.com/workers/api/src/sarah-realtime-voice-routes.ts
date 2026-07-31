@@ -471,10 +471,24 @@ export type SarahRealtimeVoiceRouteDependencies<User, Bindings> = Readonly<{
       channelRef: string
     }>,
   ) => Promise<SarahVoiceLiveKitCommunityAccess | undefined>
+  /**
+   * Opens the durable shared-room authority for a community session.
+   *
+   * `deviceRef` is the client device this request already authenticated
+   * (`SARAH_REALTIME_VOICE_DEVICE_HEADER`, checked against
+   * `body.identity.deviceRef` before this point). The shared-room authority
+   * requires it: the participant ref is deterministic per (room, member), so
+   * the device ref is the only thing separating this member's client resuming
+   * its seat from a second client claiming the same identity. Passing the real
+   * one is not optional politeness — a bootstrap that bound the seat under any
+   * other value would make the member's own later join a
+   * `duplicate_participant`.
+   */
   bootstrapLiveKitCommunityRoom?: (
     env: Bindings,
     input: Readonly<{
       ownerUserId: string
+      deviceRef: string
       presenceLeaseRef: string
       communityAccess: SarahVoiceLiveKitCommunityAccess
     }>,
@@ -1851,6 +1865,7 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
           }
           await bootstrap(env, {
             ownerUserId: userId,
+            deviceRef: body.identity.deviceRef,
             presenceLeaseRef: liveKitProvision.sarahPresenceLeaseRef,
             communityAccess: {
               communityRef: liveKitRoomContext.communityRef,
