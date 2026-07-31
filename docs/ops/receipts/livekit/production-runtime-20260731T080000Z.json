@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "openagents.livekit_ops_receipt.v1",
+  "receiptRef": "livekit-ops-receipt-ref://sha256/b736fff16b219e1100075f163a2452065ebb2473236c1d5ce622d7989174ebf0",
+  "issueRef": "github-issue-ref://OpenAgentsInc/openagents/9284",
+  "stage": "production",
+  "phase": "deployment",
+  "sourceBaseRevision": "c10a0ba1c13edb2e599140ea29b054b893ffbccf",
+  "deployedRevision": "236d043c911cee64c7a405de34c4afda50db2f6d",
+  "bundleDigest": "sha256:8603994c787ad3c4b52fb80b9bc031670a7e5bcca122749d3465a21e64d80c2c",
+  "configurationDigest": "sha256:b0bf0f0cb801943b789906c615d3277629a8f73bd6d06b52a60aaf2c86eb8a7d",
+  "resourceRefs": [
+    "gcp-resource-ref://livekit/production",
+    "gcp-preflight-ref://livekit/production/secrets-dns",
+    "helm-chart-ref://cert-manager/v1.21.1/sha256/c27101f3f3e2349fb4a9e704316105bf7b52ad73b8c8257d3498ef7f2f6a4adc",
+    "helm-chart-ref://external-secrets/2.8.0/sha256/251e4615013c6d2f9ade5cedf1cd8615613f286bfc381e44fb005f197e611ecd",
+    "oci-image-ref://cert-manager/controller/sha256/416a2d76870d996460e62bd7f521bf14fa017be9e3e904aab92163a331fcb61a",
+    "oci-image-ref://cert-manager/cainjector/sha256/ccf6b919ec0500745a47a910118f834f9636d0aac1ff221245cd2557ed8c7c98",
+    "oci-image-ref://cert-manager/webhook/sha256/d8b3961b51c8c7320633f8208dc46bf88aa13804d0f7cbe48a096b2c523cee42",
+    "oci-image-ref://cert-manager/acmeSolver/sha256/dbc7cc1354f603918e7c5af7f55a0a620537394452c93a565bde75c6f48e8837",
+    "oci-image-ref://cert-manager/startupApiCheck/sha256/d8ab6416e6e7303a86fa0a8daa82c94a8001f21c9d78eb2e7db20534e5d07ae8",
+    "oci-image-ref://external-secrets/controller/sha256/24c0dd3699e0988520afd2218612758cd97d1f702757b5b4fcf89adaa33ef679"
+  ],
+  "startedAt": "2026-07-31T08:01:25.559Z",
+  "settledAt": "2026-07-31T08:01:25.559Z",
+  "outcome": "passed",
+  "evidenceTier": "live_observed",
+  "liveProof": true,
+  "resultDigest": "sha256:b736fff16b219e1100075f163a2452065ebb2473236c1d5ce622d7989174ebf0",
+  "limitations": [
+    "This operation receipt proves only the scoped deployment lifecycle step.",
+    "Connectivity, load, drills, scans, cost, and rollback acceptance require separate receipts."
+  ],
+  "execution": {
+    "buildRef": "gcp-cloud-build-ref://openagentsgemini/us-central1/75767c7d-a6eb-4f0b-b259-a122de6a33cb",
+    "triggerRef": "gcp-cloud-build-trigger-ref://openagentsgemini/us-central1/oa-livekit-prod-runtime",
+    "serviceAccountRef": "gcp-service-account-ref://openagentsgemini/oa-livekit-prod-deployer",
+    "sourceRevision": "236d043c911cee64c7a405de34c4afda50db2f6d",
+    "configurationDigest": "sha256:010a1f95a38734e6bd6e3d892e5c2c7a81c607d5901508c277767022dd940c3e"
+  }
+}
