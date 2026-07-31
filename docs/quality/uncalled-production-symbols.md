@@ -1,7 +1,11 @@
 # Code that ships, passes its tests, and is never called
 
-`scripts/uncalled-production-symbol-guard.mjs` fails the build when code is proven
-real by a test and called by nothing in production. It runs in `check:fast`.
+Two guards, both in `check:fast`:
+
+- `scripts/uncalled-production-symbol-guard.mjs` fails the build when code is
+  proven real by a test and called by nothing in production.
+- `scripts/cli-invocability-guard.mjs` fails the build when the entry point
+  itself cannot run — a package-script CLI that rejects the `--` pnpm forwards.
 
 ## Why this rule exists
 
@@ -124,6 +128,45 @@ git worktree add --detach /tmp/proof c5b595a42037ee6fa8f44e5a7632962ff5ffde11
 node scripts/uncalled-production-symbol-guard.mjs /tmp/proof --list | grep recordSarahLiveKitParticipantJoin
 ```
 
+## The sibling guard: an entry point that cannot run
+
+`gate-observation-cli.ts` was tested, documented, and had never once been
+invocable by its documented command. pnpm forwards the `--` separator into argv
+verbatim — verified against pnpm 11:
+
+```
+$ pnpm run echoargs -- --row x
+["--", "--row", "x"]
+```
+
+Its parser threw `unsupported or incomplete argument --` before doing any work,
+which is why the receipts directory it writes to did not exist. `acceptance-cli.ts`
+had the same hole; `failure-matrix-cli.ts` had always skipped the token.
+
+`scripts/cli-invocability-guard.mjs` requires every **package-script** CLI that
+rejects an unrecognized argument to skip a bare `--`. The scope is deliberately
+narrow — only files a `package.json` script actually executes, because an Electron
+main process or a library that reads argv for its own reasons is never reached
+through `pnpm run`. The fix is always one line:
+
+```ts
+if (value === "--") continue
+```
+
+It carries 14 inherited findings and the same ledger mechanics.
+
+Writing this guard demonstrated why the historical proof is not optional. Its
+first draft **did not flag the defect it was written for**, twice: the rejection
+pattern matched only "unknown argument" and missed "unsupported or incomplete
+argument", and the tolerance pattern read `next.startsWith("--")` as evidence the
+token was handled, when that line proves the opposite. Both were found by running
+the guard against `c1a54c919d` and watching it pass. A guard is only worth what it
+fails on.
+
+| Defect | Broken at | Guard | Fixed at | Guard |
+| --- | --- | --- | --- | --- |
+| `gate-observation-cli.ts`, `acceptance-cli.ts` | `c1a54c919d` | flags both | `bf837d2808` | clean |
+
 ## What it deliberately does not catch
 
 - **Transitively dead code.** The guard is leaf-level. When
@@ -137,6 +180,12 @@ node scripts/uncalled-production-symbol-guard.mjs /tmp/proof --list | grep recor
 - **Class and object-literal methods generally.** Only members declared on an
   exported `interface` are covered.
 - **Types.** A type with no runtime caller cannot ship a silent behavioral hole.
+- **Documented commands that name a script nobody defines.** Measured: 6 real
+  cases, buried in ~180 candidate matches that were mostly English prose after
+  the word `pnpm`, third-party documentation vendored under `docs/reference/`, and
+  commands written relative to their own package rather than the root. Making it
+  precise needs code-fence extraction and package-relative resolution. Left
+  unbuilt rather than shipped noisy.
 - **Non-TypeScript surfaces.** The Rust instances (the empty delegate-tool
   description, the empty hang traces) are outside its reach; `cargo`'s `dead_code`
   lint does not catch them either, because their tests reference them.

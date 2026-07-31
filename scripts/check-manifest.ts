@@ -31,6 +31,10 @@ export const rootTestTargets: readonly CheckTarget[] = [
     command: ["node", "--test", "scripts/uncalled-production-symbol-guard.test.mjs"],
   },
   {
+    name: "cli-invocability-guard",
+    command: ["node", "--test", "scripts/cli-invocability-guard.test.mjs"],
+  },
+  {
     name: "sol-docs",
     command: ["pnpm", "exec", "vp", "test", "--run", "scripts/check-sol-docs.test.ts"],
   },
@@ -120,6 +124,10 @@ export const fastPolicyTargets: readonly CheckTarget[] = [
   {
     name: "uncalled-production-symbol",
     command: ["node", "scripts/uncalled-production-symbol-guard.mjs", "."],
+  },
+  {
+    name: "cli-invocability",
+    command: ["node", "scripts/cli-invocability-guard.mjs", "."],
   },
 ];
 
