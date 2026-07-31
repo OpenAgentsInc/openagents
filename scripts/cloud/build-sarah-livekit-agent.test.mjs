@@ -54,6 +54,8 @@ test("Sarah worker Cloud Build stays on the existing digest-pinned production la
     2,
   );
   assert.match(dockerfile, /pnpm install --frozen-lockfile --ignore-scripts/u);
+  assert.match(dockerfile, /useradd --system --uid 10001 --gid 10001/u);
+  assert.match(dockerfile, /USER 10001:10001/u);
   assert.match(
     dockerfile,
     /deploy\s+\\\n\s+--legacy --prod --ignore-scripts --config\.allowUnusedPatches=true/u,

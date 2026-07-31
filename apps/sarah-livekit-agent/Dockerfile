@@ -22,13 +22,13 @@ LABEL org.opencontainers.image.revision="${IMAGE_REVISION}"
 RUN apt-get update \
   && apt-get install --yes --no-install-recommends ca-certificates \
   && rm -rf /var/lib/apt/lists/* \
-  && groupadd --system sarah \
-  && useradd --system --gid sarah --create-home sarah
+  && groupadd --system --gid 10001 sarah \
+  && useradd --system --uid 10001 --gid 10001 --create-home sarah
 WORKDIR /app
 COPY --from=build --chown=sarah:sarah \
   /workspace/apps/sarah-livekit-agent/dist ./dist
 COPY --from=build --chown=sarah:sarah /runtime/node_modules ./node_modules
-USER sarah
+USER 10001:10001
 
 ENTRYPOINT ["node", "dist/agent.mjs"]
 CMD ["start"]
