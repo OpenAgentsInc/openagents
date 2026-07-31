@@ -38,7 +38,7 @@ fi
 
 image_tag="${region}-docker.pkg.dev/${project}/${repository}/${image_name}:source-${revision}"
 configuration="${repository_root}/docker/cloud/cloudbuild-sarah-livekit-agent.yaml"
-ignore_file="${repository_root}/apps/sarah-livekit-agent/Dockerfile.dockerignore"
+ignore_file="${repository_root}/.gcloudignore.sarah-livekit-agent"
 substitutions="_IMAGE=${image_tag},_REVISION=${revision}"
 
 if [[ "${apply}" != "true" ]]; then

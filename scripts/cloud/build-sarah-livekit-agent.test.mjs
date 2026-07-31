@@ -7,13 +7,10 @@ import { fileURLToPath } from "node:url";
 const repositoryRoot = resolve(fileURLToPath(new URL(".", import.meta.url)), "../..");
 
 test("Sarah worker Cloud Build stays on the existing digest-pinned production lane", async () => {
-  const [configuration, dockerfile, dockerIgnore, buildScript] = await Promise.all([
+  const [configuration, dockerfile, cloudBuildIgnore, buildScript] = await Promise.all([
     readFile(resolve(repositoryRoot, "docker/cloud/cloudbuild-sarah-livekit-agent.yaml"), "utf8"),
     readFile(resolve(repositoryRoot, "apps/sarah-livekit-agent/Dockerfile"), "utf8"),
-    readFile(
-      resolve(repositoryRoot, "apps/sarah-livekit-agent/Dockerfile.dockerignore"),
-      "utf8",
-    ),
+    readFile(resolve(repositoryRoot, ".gcloudignore.sarah-livekit-agent"), "utf8"),
     readFile(resolve(repositoryRoot, "scripts/cloud/build-sarah-livekit-agent.sh"), "utf8"),
   ]);
 
@@ -32,10 +29,12 @@ test("Sarah worker Cloud Build stays on the existing digest-pinned production la
   );
   assert.doesNotMatch(dockerfile, /^FROM node:24\.13\.1-bookworm-slim$/mu);
   assert.match(buildScript, /status --porcelain --untracked-files=normal/u);
+  assert.match(buildScript, /\.gcloudignore\.sarah-livekit-agent/u);
   assert.match(buildScript, /--ignore-file "\$\{ignore_file\}"/u);
-  assert.match(dockerIgnore, /^!apps\/sarah-livekit-agent\/\*\*$/mu);
-  assert.match(dockerIgnore, /^!packages\/audio-contract\/\*\*$/mu);
-  assert.doesNotMatch(dockerIgnore, /oa-updates|openagents-desktop|openagents-mobile/u);
+  assert.match(cloudBuildIgnore, /^\*\*$/mu);
+  assert.match(cloudBuildIgnore, /^!apps\/sarah-livekit-agent\/\*\*$/mu);
+  assert.match(cloudBuildIgnore, /^!packages\/audio-contract\/\*\*$/mu);
+  assert.doesNotMatch(cloudBuildIgnore, /oa-updates|openagents-desktop|openagents-mobile/u);
   assert.match(buildScript, /--async/u);
   assert.match(buildScript, /image_summary\.digest/u);
   assert.match(buildScript, /SARAH_LIVEKIT_AGENT_IMAGE=/u);
