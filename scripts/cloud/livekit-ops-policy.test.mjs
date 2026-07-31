@@ -998,6 +998,7 @@ test("deployment control Terraform fixes identity, source, route, and substituti
   assert.match(runner, /trigger\.sourceToBuild\?\.repository !== PRODUCTION_SOURCE_REPOSITORY_RESOURCE/u);
   assert.match(runner, /sourceRepository\.remoteUri !== PRODUCTION_SOURCE_REMOTE_URI/u);
   assert.match(rbac, /kind: Role\nmetadata:\n  name: oa-livekit-prod-runtime-deployer/u);
+  assert.match(rbac, /- cert-manager\.io/u);
   assert.doesNotMatch(rbac, /cluster-admin/u);
   assert.doesNotMatch(rbac, /resources: \["clusterroles"\]/u);
 });

@@ -43,6 +43,7 @@ rules:
   - apiGroups:
       - apps
       - autoscaling
+      - cert-manager.io
       - cloud.google.com
       - external-secrets.io
       - monitoring.googleapis.com
