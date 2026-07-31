@@ -48,6 +48,26 @@ type Clock = Readonly<{
 
 type Http = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
+export const measureSarahInterruptAudioTail = async (
+  acknowledgedAtMs: number,
+  lastAudibleAt: () => number | undefined,
+  clock: Clock,
+): Promise<number> => {
+  const deadline =
+    acknowledgedAtMs + MAX_ACCEPTANCE_INTERRUPT_AUDIO_TAIL_MS + INTERRUPT_AUDIO_QUIET_WINDOW_MS;
+  while (clock.now() <= deadline) {
+    const lastAudible = Math.max(lastAudibleAt() ?? acknowledgedAtMs, acknowledgedAtMs);
+    if (clock.now() - lastAudible >= INTERRUPT_AUDIO_QUIET_WINDOW_MS) {
+      const tailMs = Math.max(0, lastAudible - acknowledgedAtMs);
+      if (tailMs <= MAX_ACCEPTANCE_INTERRUPT_AUDIO_TAIL_MS) return tailMs;
+      break;
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await clock.sleep(50);
+  }
+  throw new Error("Sarah audio did not become quiet after the explicit interrupt");
+};
+
 export type SarahLiveKitAcceptanceControlSocket = Readonly<{
   onOpen: (listener: () => void) => void;
   onMessage: (listener: (data: RawData, isBinary: boolean) => void) => void;
@@ -512,18 +532,8 @@ const observeSarahOutputs = (room: Room, sarahParticipantRef: string, clock: Clo
     audio: audio.promise,
     transcription: transcription.promise,
     attachExisting,
-    measureInterruptTail: async (acknowledgedAtMs: number) => {
-      const deadline = acknowledgedAtMs + MAX_ACCEPTANCE_INTERRUPT_AUDIO_TAIL_MS;
-      while (clock.now() <= deadline) {
-        const lastAudible = Math.max(lastAudibleAtMs ?? acknowledgedAtMs, acknowledgedAtMs);
-        if (clock.now() - lastAudible >= INTERRUPT_AUDIO_QUIET_WINDOW_MS) {
-          return Math.max(0, lastAudible - acknowledgedAtMs);
-        }
-        // eslint-disable-next-line no-await-in-loop
-        await clock.sleep(50);
-      }
-      throw new Error("Sarah audio did not become quiet after the explicit interrupt");
-    },
+    measureInterruptTail: (acknowledgedAtMs: number) =>
+      measureSarahInterruptAudioTail(acknowledgedAtMs, () => lastAudibleAtMs, clock),
     close: async () => {
       room.off(RoomEvent.TrackSubscribed, attachAudio);
       room.unregisterTextStreamHandler(TRANSCRIPTION_TOPIC);

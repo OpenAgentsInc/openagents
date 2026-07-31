@@ -2,10 +2,40 @@ import { SARAH_VOICE_PROTOCOL_VERSION, type VoiceIdentity } from "@openagentsinc
 import { describe, expect, test, vi } from "vite-plus/test";
 import type { ClientOptions, RawData } from "ws";
 import {
+  measureSarahInterruptAudioTail,
   openSarahLiveKitAcceptanceControlChannel,
   type SarahLiveKitAcceptanceControlSocket,
   type SarahLiveKitAcceptanceControlSocketFactory,
 } from "./acceptance-livekit.js";
+
+const interruptTailClock = (tailMs: number) => {
+  let now = 0;
+  return {
+    clock: {
+      now: () => now,
+      sleep: async (durationMs: number) => {
+        now += durationMs;
+      },
+    },
+    lastAudibleAt: () => (now < tailMs ? now : tailMs),
+  };
+};
+
+describe("Sarah LiveKit interrupt audio tail", () => {
+  test("accepts the 750ms boundary after observing the full quiet window", async () => {
+    const fixture = interruptTailClock(750);
+    await expect(
+      measureSarahInterruptAudioTail(0, fixture.lastAudibleAt, fixture.clock),
+    ).resolves.toBe(750);
+  });
+
+  test("rejects audio beyond the 750ms boundary", async () => {
+    const fixture = interruptTailClock(751);
+    await expect(
+      measureSarahInterruptAudioTail(0, fixture.lastAudibleAt, fixture.clock),
+    ).rejects.toThrow("did not become quiet");
+  });
+});
 
 const identity: VoiceIdentity = {
   ownerRef: "owner-private",
