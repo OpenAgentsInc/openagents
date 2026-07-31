@@ -566,8 +566,15 @@ export class SarahProviderAttestation {
   }
 }
 
+export type SarahProviderUsageRef = Readonly<{
+  kind: "response" | "transcription";
+  providerRef: string;
+}>;
+
 export class SarahProviderAccounting {
   readonly #activeResponseRefs = new Set<string>();
+  readonly #activeTranscriptionRefs = new Set<string>();
+  readonly #acknowledgedTranscriptionRefs = new Set<string>();
   readonly #waiters = new Set<() => void>();
   #providerSessionRefDigest: string | undefined;
   #disconnected = false;
@@ -582,14 +589,52 @@ export class SarahProviderAccounting {
   }
 
   get exact(): boolean {
-    return !this.#disconnected && !this.#deliveryUncertain && this.#activeResponseRefs.size === 0;
+    return (
+      !this.#disconnected &&
+      !this.#deliveryUncertain &&
+      this.#activeResponseRefs.size === 0 &&
+      this.#activeTranscriptionRefs.size === 0
+    );
   }
 
-  observe(event: unknown, terminalUsageObserved: boolean): string | undefined {
+  observe(
+    event: unknown,
+    terminalUsageObserved: boolean | "response_usage" | "transcription_usage",
+  ): SarahProviderUsageRef | undefined {
     const envelope = record(event);
     if (envelope?.type === "session.created") {
       const sessionRef = providerSessionRef(event);
       if (sessionRef !== undefined) this.#providerSessionRefDigest = digest(sessionRef);
+      return undefined;
+    }
+    if (envelope?.type === "input_audio_buffer.committed") {
+      const transcriptionRef = boundedProviderRef(envelope.item_id, "transcription:");
+      if (transcriptionRef === undefined) {
+        this.failTerminalUsageDelivery();
+      } else if (!this.#acknowledgedTranscriptionRefs.has(transcriptionRef)) {
+        this.#activeTranscriptionRefs.add(transcriptionRef);
+      }
+      return undefined;
+    }
+    if (
+      envelope?.type === "conversation.item.input_audio_transcription.completed" ||
+      envelope?.type === "conversation.item.input_audio_transcription.failed"
+    ) {
+      const transcriptionRef = boundedProviderRef(envelope.item_id, "transcription:");
+      if (transcriptionRef === undefined) {
+        this.failTerminalUsageDelivery();
+        return undefined;
+      }
+      if (!this.#acknowledgedTranscriptionRefs.has(transcriptionRef)) {
+        this.#activeTranscriptionRefs.add(transcriptionRef);
+      }
+      if (
+        envelope.type === "conversation.item.input_audio_transcription.completed" &&
+        terminalUsageObserved === "transcription_usage"
+      ) {
+        return { kind: "transcription", providerRef: transcriptionRef };
+      }
+      this.failTerminalUsageDelivery();
       return undefined;
     }
     const response = record(envelope?.response);
@@ -600,14 +645,21 @@ export class SarahProviderAccounting {
     }
     if (envelope?.type === "response.done" && responseRef !== undefined) {
       this.#activeResponseRefs.add(responseRef);
-      if (terminalUsageObserved) return responseRef;
+      if (terminalUsageObserved === true || terminalUsageObserved === "response_usage") {
+        return { kind: "response", providerRef: responseRef };
+      }
       this.failTerminalUsageDelivery();
     }
     return undefined;
   }
 
-  acknowledgeTerminalUsage(responseRef: string): void {
-    this.#activeResponseRefs.delete(responseRef);
+  acknowledgeTerminalUsage(usageRef: SarahProviderUsageRef): void {
+    if (usageRef.kind === "response") {
+      this.#activeResponseRefs.delete(usageRef.providerRef);
+    } else {
+      this.#activeTranscriptionRefs.delete(usageRef.providerRef);
+      this.#acknowledgedTranscriptionRefs.add(usageRef.providerRef);
+    }
     this.#notifyIfTerminal();
   }
 
@@ -630,8 +682,19 @@ export class SarahProviderAccounting {
         setTimeout(resolve, delayMs);
       }),
   ): Promise<boolean> {
+    return this.waitForTerminalUsage(timeoutMs, wait);
+  }
+
+  async waitForTerminalUsage(
+    timeoutMs: number,
+    wait: (timeoutMs: number) => Promise<void> = (delayMs) =>
+      new Promise((resolve) => {
+        setTimeout(resolve, delayMs);
+      }),
+  ): Promise<boolean> {
     if (this.#disconnected || this.#deliveryUncertain) return false;
-    if (this.#activeResponseRefs.size === 0) return true;
+    if (this.#activeResponseRefs.size === 0 && this.#activeTranscriptionRefs.size === 0)
+      return true;
     let notify: (() => void) | undefined;
     const terminal = new Promise<void>((resolve) => {
       notify = resolve;
@@ -639,11 +702,11 @@ export class SarahProviderAccounting {
     });
     await Promise.race([terminal, wait(timeoutMs)]);
     if (notify !== undefined) this.#waiters.delete(notify);
-    return !this.#disconnected && !this.#deliveryUncertain && this.#activeResponseRefs.size === 0;
+    return this.exact;
   }
 
   #notifyIfTerminal(): void {
-    if (this.#activeResponseRefs.size !== 0) return;
+    if (this.#activeResponseRefs.size !== 0 || this.#activeTranscriptionRefs.size !== 0) return;
     for (const resolve of this.#waiters) resolve();
     this.#waiters.clear();
   }
@@ -853,7 +916,7 @@ export const closeAfterProviderAccounting = async (
   waitForIdle?: () => Promise<void>,
 ): Promise<void> => {
   await requestProviderDrain();
-  const terminal = await accounting.waitForTerminalResponses(10_000);
+  const terminal = await accounting.waitForTerminalUsage(10_000);
   if (!terminal) {
     fence.failAccounting();
   }

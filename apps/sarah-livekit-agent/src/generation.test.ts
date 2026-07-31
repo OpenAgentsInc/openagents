@@ -676,6 +676,85 @@ describe("Sarah LiveKit generation fence", () => {
     await expect(waiting).resolves.toBe(true);
   });
 
+  test("waits for committed transcriptions completed out of order and durably delivered", async () => {
+    const accounting = new SarahProviderAccounting();
+    accounting.observe({ type: "input_audio_buffer.committed", item_id: "item_first" }, false);
+    accounting.observe({ type: "input_audio_buffer.committed", item_id: "item_second" }, false);
+
+    const secondCompleted = {
+      type: "conversation.item.input_audio_transcription.completed",
+      item_id: "item_second",
+      usage: { input_tokens: 6, output_tokens: 2 },
+    };
+    const secondRef = accounting.observe(secondCompleted, "transcription_usage");
+    if (secondRef === undefined) throw new Error("The second transcription was not tracked");
+    accounting.acknowledgeTerminalUsage(secondRef);
+
+    const waiting = accounting.waitForTerminalUsage(10_000, () => new Promise<void>(() => {}));
+    expect(await Promise.race([waiting, Promise.resolve("pending")])).toBe("pending");
+
+    const firstCompleted = {
+      type: "conversation.item.input_audio_transcription.completed",
+      item_id: "item_first",
+      usage: { input_tokens: 7, output_tokens: 3 },
+    };
+    const firstRef = accounting.observe(firstCompleted, "transcription_usage");
+    if (firstRef === undefined) throw new Error("The first transcription was not tracked");
+    expect(await Promise.race([waiting, Promise.resolve("pending")])).toBe("pending");
+    accounting.acknowledgeTerminalUsage(firstRef);
+
+    await expect(waiting).resolves.toBe(true);
+    expect(accounting.exact).toBe(true);
+  });
+
+  test("keeps transcription accounting pending through delivery retries", async () => {
+    const accounting = new SarahProviderAccounting();
+    accounting.observe({ type: "input_audio_buffer.committed", item_id: "item_retry" }, false);
+    const completed = {
+      type: "conversation.item.input_audio_transcription.completed",
+      item_id: "item_retry",
+      usage: { input_tokens: 5, output_tokens: 1 },
+    };
+    const firstDelivery = accounting.observe(completed, "transcription_usage");
+    const retriedDelivery = accounting.observe(completed, "transcription_usage");
+    if (firstDelivery === undefined || retriedDelivery === undefined) {
+      throw new Error("The transcription retry was not tracked");
+    }
+
+    expect(accounting.exact).toBe(false);
+    accounting.acknowledgeTerminalUsage(retriedDelivery);
+    expect(accounting.exact).toBe(true);
+
+    accounting.observe({ type: "input_audio_buffer.committed", item_id: "item_retry" }, false);
+    expect(accounting.exact).toBe(true);
+  });
+
+  test("marks transcription failure, timeout, and disconnect uncertain", async () => {
+    const failed = new SarahProviderAccounting();
+    failed.observe({ type: "input_audio_buffer.committed", item_id: "item_failed" }, false);
+    failed.observe(
+      {
+        type: "conversation.item.input_audio_transcription.failed",
+        item_id: "item_failed",
+        error: { type: "server_error" },
+      },
+      false,
+    );
+    await expect(failed.waitForTerminalUsage(10_000)).resolves.toBe(false);
+
+    const timedOut = new SarahProviderAccounting();
+    timedOut.observe({ type: "input_audio_buffer.committed", item_id: "item_timed_out" }, false);
+    await expect(timedOut.waitForTerminalUsage(1, async () => undefined)).resolves.toBe(false);
+
+    const disconnected = new SarahProviderAccounting();
+    disconnected.observe(
+      { type: "input_audio_buffer.committed", item_id: "item_disconnected" },
+      false,
+    );
+    disconnected.disconnect();
+    await expect(disconnected.waitForTerminalUsage(10_000)).resolves.toBe(false);
+  });
+
   test("marks failed or disconnected control delivery as uncertain after usage", async () => {
     const failedDelivery = new SarahProviderAccounting();
     const done = {

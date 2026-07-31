@@ -384,19 +384,56 @@ const entry = async (ctx: JobContext): Promise<void> => {
   const participantAdmission = new AbortController();
   let session: AgentSession | undefined;
   let disableParticipantMedia: (() => void) | undefined;
+  let clearWorkerTimers: (() => void) | undefined;
+  let shutdownOperation: Promise<void> | undefined;
+  let sarahCloseInProgress = false;
   let eventChain = Promise.resolve();
+  const finishShutdown = (requestContextShutdown: boolean): Promise<void> => {
+    if (shutdownOperation !== undefined) return shutdownOperation;
+    participantAdmission.abort();
+    disableParticipantMedia?.();
+    clearWorkerTimers?.();
+    sarahCloseInProgress = true;
+    shutdownOperation = closeAfterProviderAccounting(
+      fence,
+      accounting,
+      async () => {
+        if (accounting.disconnected || session === undefined) return;
+        try {
+          await session.interrupt({ force: true }).await;
+        } catch {
+          if (!fence.settled) fence.settle("worker_error");
+        }
+      },
+      async () => {
+        await session?.close();
+      },
+      (accountingStatus) =>
+        controller
+          .event(dispatch, closeEvent(identity, fence.closeReason, accountingStatus))
+          .then(() => undefined),
+    ).finally(() => {
+      if (requestContextShutdown) {
+        ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
+      }
+    });
+    return shutdownOperation;
+  };
+  const requestShutdown = (): void => {
+    void finishShutdown(true).catch(() => {});
+  };
   const sendEvent = (event: SarahLiveKitJobEvent): Promise<void> | undefined => {
     if (!fence.accepts(event)) return undefined;
     const operation = eventChain
       .then(async () => {
         const result = await controller.event(dispatch, event);
         if (result.stopReason !== undefined && fence.settle(result.stopReason)) {
-          ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
+          requestShutdown();
         }
       })
       .catch((error) => {
         if (fence.settle("worker_error")) {
-          ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
+          requestShutdown();
         }
         throw error;
       });
@@ -424,7 +461,7 @@ const entry = async (ctx: JobContext): Promise<void> => {
     const error = new Error("OpenAI Realtime confirmed a mismatched Sarah session");
     rejectProviderAdmission?.(error);
     if (fence.settle("provider_mismatch")) {
-      ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
+      requestShutdown();
     }
   };
   const persistProviderAdmission = (
@@ -457,14 +494,19 @@ const entry = async (ctx: JobContext): Promise<void> => {
     (event) => {
       fence.observeProviderEvent();
       const usage = responseUsageEvent(event, identity) ?? transcriptionUsageEvent(event, identity);
-      const terminalResponseRef = accounting.observe(event, usage?._tag === "response_usage");
+      const terminalUsageRef = accounting.observe(
+        event,
+        usage?._tag === "response_usage" || usage?._tag === "transcription_usage"
+          ? usage._tag
+          : false,
+      );
       if (usage !== undefined) {
         const delivery = sendEvent(usage);
         if (delivery === undefined) {
           accounting.failTerminalUsageDelivery();
-        } else if (terminalResponseRef !== undefined) {
+        } else if (terminalUsageRef !== undefined) {
           void delivery.then(
-            () => accounting.acknowledgeTerminalUsage(terminalResponseRef),
+            () => accounting.acknowledgeTerminalUsage(terminalUsageRef),
             () => accounting.failTerminalUsageDelivery(),
           );
         } else {
@@ -514,14 +556,16 @@ const entry = async (ctx: JobContext): Promise<void> => {
   session.on(AgentSessionEventTypes.Error, () => {
     accounting.disconnect();
     if (fence.settle("provider_disconnect")) {
-      ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
+      requestShutdown();
     }
   });
   session.on(AgentSessionEventTypes.Close, (event) => {
+    if (sarahCloseInProgress) return;
+    accounting.disconnect();
     if (!fence.settled) {
       fence.settle(event.reason === "participant_disconnected" ? "participant_left" : "completed");
     }
-    ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
+    requestShutdown();
   });
 
   const leaseInterval = setInterval(() => {
@@ -537,36 +581,19 @@ const entry = async (ctx: JobContext): Promise<void> => {
   const expiryDelay = Math.max(0, claim.sessionExpiresAtMs - Date.now());
   const expiryTimer = setTimeout(() => {
     if (fence.settle("session_expired")) {
-      ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
+      requestShutdown();
     }
   }, expiryDelay);
   expiryTimer.unref();
-
-  ctx.addShutdownCallback(async () => {
-    participantAdmission.abort();
-    disableParticipantMedia?.();
+  clearWorkerTimers = () => {
     clearInterval(leaseInterval);
     clearTimeout(expiryTimer);
+  };
+
+  ctx.addShutdownCallback(async () => {
     if (!fence.settled) fence.settle("worker_shutdown");
-    await closeAfterProviderAccounting(
-      fence,
-      accounting,
-      async () => {
-        if (accounting.disconnected || session === undefined) return;
-        try {
-          await session.interrupt({ force: true }).await;
-        } catch {
-          if (!fence.settled) fence.settle("worker_error");
-        }
-      },
-      async () => {
-        await session?.close();
-      },
-      (accountingStatus) =>
-        controller
-          .event(dispatch, closeEvent(identity, fence.closeReason, accountingStatus))
-          .then(() => undefined),
-    );
+    if (shutdownOperation === undefined) accounting.disconnect();
+    await finishShutdown(false);
   });
 
   await ctx.connect(undefined, AutoSubscribe.SUBSCRIBE_NONE);
@@ -579,7 +606,7 @@ const entry = async (ctx: JobContext): Promise<void> => {
   });
   if (connected.stopReason !== undefined) {
     fence.settle(connected.stopReason);
-    ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
+    requestShutdown();
     return;
   }
   let participant;
@@ -591,7 +618,7 @@ const entry = async (ctx: JobContext): Promise<void> => {
     );
   } catch {
     fence.settle("session_expired");
-    ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
+    requestShutdown();
     return;
   }
   if (participant.identity !== dispatch.participantRef) {
@@ -658,7 +685,7 @@ const entry = async (ctx: JobContext): Promise<void> => {
     );
   } catch {
     if (!fence.settled) fence.settle("provider_mismatch");
-    ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
+    requestShutdown();
   }
 };
 

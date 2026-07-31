@@ -43,6 +43,33 @@ describe("Sarah LiveKit worker policy", () => {
     expect(manifest).toContain("terminationGracePeriodSeconds: 120");
   });
 
+  test("drains provider accounting before Sarah-initiated operator shutdown", async () => {
+    const source = await readFile(new URL("./agent.ts", import.meta.url), "utf8");
+    const coordinator = source.indexOf("shutdownOperation = closeAfterProviderAccounting(");
+    const contextShutdown = source.indexOf("ctx.shutdown(", coordinator);
+    const operatorStop = source.indexOf("result.stopReason !== undefined");
+    const operatorRequest = source.indexOf("requestShutdown();", operatorStop);
+    expect(coordinator).toBeGreaterThan(-1);
+    expect(contextShutdown).toBeGreaterThan(coordinator);
+    expect(operatorStop).toBeGreaterThan(-1);
+    expect(operatorRequest).toBeGreaterThan(operatorStop);
+  });
+
+  test("forces participant leave and SDK-close-first accounting uncertain", async () => {
+    const source = await readFile(new URL("./agent.ts", import.meta.url), "utf8");
+    const closeListener = source.indexOf("session.on(AgentSessionEventTypes.Close");
+    const expectedCloseGuard = source.indexOf("if (sarahCloseInProgress) return;", closeListener);
+    const disconnect = source.indexOf("accounting.disconnect();", expectedCloseGuard);
+    const participantLeft = source.indexOf('"participant_left"', disconnect);
+    const shutdownRequest = source.indexOf("requestShutdown();", participantLeft);
+    expect(closeListener).toBeGreaterThan(-1);
+    expect(expectedCloseGuard).toBeGreaterThan(closeListener);
+    expect(disconnect).toBeGreaterThan(expectedCloseGuard);
+    expect(participantLeft).toBeGreaterThan(disconnect);
+    expect(shutdownRequest).toBeGreaterThan(participantLeft);
+    expect(source).toContain("if (shutdownOperation === undefined) accounting.disconnect();");
+  });
+
   test("fails a provider mismatch before deferring a valid admission until session start", async () => {
     const source = await readFile(new URL("./agent.ts", import.meta.url), "utf8");
     const rejectMismatch = source.indexOf(
