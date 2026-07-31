@@ -167,6 +167,35 @@ fails on.
 | --- | --- | --- | --- | --- |
 | `gate-observation-cli.ts`, `acceptance-cli.ts` | `c1a54c919d` | flags both | `bf837d2808` | clean |
 
+## The Rust side: assessed, recommended against for now
+
+Two of the ten defects were Rust, in `omega`. `cargo`'s `dead_code` lint does not
+catch this class and cannot be made to: in a library crate a `pub` item **is** the
+API, so it is never dead by that lint's definition, and a `#[cfg(test)]` reference
+suppresses the warning for everything else. That is exactly how
+`gpui::set_trace_enabled` survived. It still has no caller outside `profiler.rs`
+today, in a workspace carrying 88 explicit `allow(dead_code)` suppressions.
+
+So the rule is needed there. Porting it repo-wide is still the wrong trade:
+
+- `omega` is a Zed fork. 199 of its 225 crates are inherited upstream, and of
+  14,741 `pub fn` in the workspace, the overwhelming majority are upstream API
+  with no in-fork caller by design. A repo-wide rule would measure the fork, not
+  our defects.
+- Scoped to the 26 OpenAgents-owned `omega_*` crates it is plausible but not
+  cheap: 1035 `pub fn`, of which roughly 223 have no caller outside their own
+  file. Rust puts its unit tests in an inline `#[cfg(test)] mod` in the same file,
+  so separating a test reference from a production one needs real brace matching
+  rather than the path check the TypeScript guard gets for free — and that
+  imprecision is part of why the 223 is an over-estimate.
+
+Recommendation: do not port this guard yet. Take the cheaper half of the value
+first by applying the named-authority pattern — `sarah-participant-join-authority-guard.mjs`,
+a short explicit list of functions that must keep a caller — to omega's recording
+and authority functions, starting with `set_trace_enabled`. Revisit the general
+`omega_*` guard when someone is willing to own a ~200-entry ledger, and build the
+`#[cfg(test)]` stripping properly when they do.
+
 ## What it deliberately does not catch
 
 - **Transitively dead code.** The guard is leaf-level. When
