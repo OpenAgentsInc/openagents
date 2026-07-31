@@ -38,14 +38,15 @@ fi
 
 image_tag="${region}-docker.pkg.dev/${project}/${repository}/${image_name}:source-${revision}"
 configuration="${repository_root}/docker/cloud/cloudbuild-sarah-livekit-agent.yaml"
+ignore_file="${repository_root}/apps/sarah-livekit-agent/Dockerfile.dockerignore"
 substitutions="_IMAGE=${image_tag},_REVISION=${revision}"
 
 if [[ "${apply}" != "true" ]]; then
   printf 'Cloud Build dry run; no cloud state changed.\n'
   printf 'source revision: %s\n' "${revision}"
   printf 'mutable build tag: %s\n' "${image_tag}"
-  printf 'command: gcloud builds submit . --project %s --region %s --config %s --substitutions %s\n' \
-    "${project}" "${region}" "${configuration}" "${substitutions}"
+  printf 'command: gcloud builds submit . --project %s --region %s --config %s --ignore-file %s --substitutions %s\n' \
+    "${project}" "${region}" "${configuration}" "${ignore_file}" "${substitutions}"
   printf 'rerun with --apply to publish and resolve the immutable digest\n'
   exit 0
 fi
@@ -60,6 +61,7 @@ build_id="$(
     --async \
     --format='value(id)' \
     --config "${configuration}" \
+    --ignore-file "${ignore_file}" \
     --substitutions "${substitutions}"
 )"
 if [[ -z "${build_id}" ]]; then
