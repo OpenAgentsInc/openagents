@@ -51,6 +51,7 @@ describe('OpenAgentsWorkerConfig', () => {
       webhookBindingRef: null,
       webhookSource: 'dashboard_standard_webhooks',
     })
+    expect(config.sarahLiveKit.communityAuthorityJson).toBeUndefined()
   })
 
   test('decodes full env values and redacts secrets', async () => {
@@ -78,6 +79,8 @@ describe('OpenAgentsWorkerConfig', () => {
         RESEND_REPLY_TO_EMAIL: 'support@openagents.com',
         CRM_RESEND_FROM_EMAIL: 'Sarah <sarah@openagents.com>',
         CRM_RESEND_REPLY_TO_EMAIL: 'sarah@openagents.com',
+        SARAH_LIVEKIT_COMMUNITY_AUTHORITY_JSON:
+          '{"schema":"openagents.sarah.livekit.community-authority.v1"}',
       }),
     )
 
@@ -116,6 +119,9 @@ describe('OpenAgentsWorkerConfig', () => {
     expect(config.mdk.checkout.webhookSecret).toBeUndefined()
     expect(config.mdk.mnemonic).toBeUndefined()
     expect(config.mdk.walletMnemonic).toBeUndefined()
+    expect(config.sarahLiveKit.communityAuthorityJson).toBe(
+      '{"schema":"openagents.sarah.livekit.community-authority.v1"}',
+    )
   })
 
   test('fails when required config is missing', async () => {

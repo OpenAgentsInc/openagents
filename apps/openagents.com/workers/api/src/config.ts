@@ -112,6 +112,11 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // admission and dispatch while existing worker generations retain their
   // usage and close paths.
   SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED?: string | undefined
+  // Public authority projection for LiveKit community rooms. The JSON binds
+  // each admitted community and channel to a wss:// NIP-29 relay and an exact
+  // out-of-band admin-key set. Missing or malformed configuration keeps all
+  // community admissions closed.
+  SARAH_LIVEKIT_COMMUNITY_AUTHORITY_JSON?: string | undefined
   // Staging-only owner access. The composition root also requires the exact
   // staging service origin and the canonical primary owner account. The first
   // admitted request creates one expiring, revocable database entitlement.
@@ -698,6 +703,9 @@ export type OpenAgentsWorkerConfigShape = Readonly<{
     issuerUrl: OpenAuthIssuerUrl
     mobileClientId: OpenAuthClientId
   }>
+  sarahLiveKit: Readonly<{
+    communityAuthorityJson?: string | undefined
+  }>
 }>
 
 export class OpenAgentsWorkerConfigError extends S.TaggedErrorClass<OpenAgentsWorkerConfigError>()(
@@ -1132,6 +1140,12 @@ export const decodeOpenAgentsWorkerConfig = (
           env.OPENAUTH_MOBILE_CLIENT_ID?.trim() === ''
             ? 'openagents-khala-mobile'
             : (env.OPENAUTH_MOBILE_CLIENT_ID ?? 'openagents-khala-mobile'),
+        ),
+      },
+      sarahLiveKit: {
+        communityAuthorityJson: optionalString(
+          env,
+          'SARAH_LIVEKIT_COMMUNITY_AUTHORITY_JSON',
         ),
       },
     }

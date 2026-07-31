@@ -1298,6 +1298,7 @@ import {
   readSarahHarnessStatus,
   reviewSarahHarnessHistory,
 } from './sarah-harness-service'
+import { makeSarahLiveKitCommunityAccessResolver } from './sarah-livekit-community-access'
 import {
   makeSarahLiveKitRoomBroker,
   parseSarahLiveKitControlRoot,
@@ -2367,6 +2368,30 @@ const linkOmegaNostrIdentity = async (
     ownerRef,
     pubkey,
   })
+
+const resolveNostrPubkeysForUser = async (
+  env: Env,
+  userId: string,
+): Promise<ReadonlyArray<string>> => {
+  const rows = await identityDbForEnv(env).query(
+    `SELECT auth_identities.provider_subject
+       FROM auth_identities
+       JOIN users ON users.id = auth_identities.user_id
+      WHERE auth_identities.user_id = ?
+        AND auth_identities.provider = 'nostr'
+        AND auth_identities.deleted_at IS NULL
+        AND users.status = 'active'
+        AND users.deleted_at IS NULL
+      ORDER BY auth_identities.provider_subject ASC`,
+    [userId],
+  )
+  return rows.flatMap(row => {
+    const pubkey = String(row.provider_subject ?? '')
+      .trim()
+      .toLowerCase()
+    return /^[0-9a-f]{64}$/u.test(pubkey) ? [pubkey] : []
+  })
+}
 
 // Persist a session subject regardless of provider (session refresh paths can
 // carry either a GitHub or an email user).
@@ -3752,6 +3777,13 @@ const sarahStagingOwnerEntitlementEnabled = (workerEnv: Env): boolean => {
   }
 }
 
+const resolveSarahLiveKitCommunityAccess =
+  makeSarahLiveKitCommunityAccessResolver<Env>({
+    authorityConfig: workerEnv =>
+      getOpenAgentsWorkerConfig(workerEnv).sarahLiveKit.communityAuthorityJson,
+    resolveOwnerPubkeys: resolveNostrPubkeysForUser,
+  })
+
 const sarahRealtimeVoiceRouteDependencies = {
   audit: (event: string, fields: Readonly<Record<string, string>>) =>
     logWorkerRouteInfo(`sarah_voice_${event}`, fields),
@@ -3760,6 +3792,7 @@ const sarahRealtimeVoiceRouteDependencies = {
   consumeNostrChallenge: sarahVoiceNostrChallengeService.consume,
   mintNostrSession: omegaNostrSessionService.mint,
   openStore: openSarahRealtimeVoiceStore,
+  resolveLiveKitCommunityAccess: resolveSarahLiveKitCommunityAccess,
   stagingOwnerEntitlementEnabled: sarahStagingOwnerEntitlementEnabled,
   requireUserBearerSession,
   userIdFromSession: (session: Readonly<{ user: UserSubject }>) =>
@@ -3788,6 +3821,7 @@ const sarahLiveKitWorkerRouteDependencies = {
   controlRoot: (workerEnv: Env) =>
     parseSarahLiveKitControlRoot(workerEnv.SARAH_LIVEKIT_CONTROL_ROOT),
   openStore: openSarahRealtimeVoiceStore,
+  resolveCommunityAccess: resolveSarahLiveKitCommunityAccess,
   cleanup: async (
     workerEnv: Env,
     input: {
