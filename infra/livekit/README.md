@@ -69,6 +69,21 @@ emits a public receipt only after `livekit-ops-policy.mjs` accepts the complete
 phase. Failure drills and rollback require a separate controlled-mutation
 interlock in addition to the owner cost gate.
 
+Use `scripts/cloud/livekit-production-plan.mjs` and
+`scripts/cloud/livekit-acceptance-probe.mjs` for the non-destructive
+connectivity, load, secret-scan, and cost phases. The plan generator refuses
+drill and rollback phases. The probe adapter derives acceptance aggregates
+from revision-bound packaged-client captures, session/telemetry samples, the
+existing eight-scope privacy scanner output, and categorized gross billing
+exports plus active budget policy. It does not query production by itself or
+accept precomputed load/cost pass values.
+
+`scripts/cloud/livekit-connectivity-inventory.mjs` is the narrow live
+exception: with the owner gate it performs only read-only Kubernetes
+inventory, public DNS resolution, and TLS authorization checks. It combines
+those observations with a private packaged-Omega signature/launch attestation
+and emits a topology-redacted private preflight capture outside the repository.
+
 ## Required cluster dependencies
 
 Before applying the rendered manifest:

@@ -842,6 +842,108 @@ commands, provider diagnostics, topology, secrets, media, or transcripts. A
 failed command, invalid timestamp, malformed probe result, or failed policy
 condition writes neither observation nor receipt.
 
+#### Non-destructive probe adapters
+
+Collect the preflight inventory directly from the live read-only Kubernetes
+API, public DNS, and TLS handshakes. First write a private packaged-candidate
+attestation after independently verifying the installed release signature and
+launch:
+
+```json
+{
+  "schemaVersion": "openagents.omega_packaged_attestation.v1",
+  "observedAt": "<RFC3339>",
+  "releaseSigned": true,
+  "launchSucceeded": true,
+  "artifactDigest": "sha256:<64 lowercase hex>"
+}
+```
+
+Then run:
+
+```sh
+OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
+node scripts/cloud/livekit-connectivity-inventory.mjs \
+  --bundle infra/livekit/bundle.json \
+  --deployed-revision <exact-deployed-40-hex-revision> \
+  --packaged-omega-attestation <private-packaged-attestation.json> \
+  --output <private-inventory.json> \
+  --apply
+```
+
+The collector reads only the LiveKit server and Sarah worker Deployments,
+server ConfigMap, SFU Nodes, signaling Ingress, TURN Service, and signaling/TURN
+certificate status. It resolves the two public names and performs authorized
+TLS handshakes. It does not read Secrets, logs, media, transcripts, bearer
+tokens, or provider credentials. The output contains no address, hostname,
+certificate body, workload environment, or secret: only readiness counts,
+digest-pin/config booleans, address-equality booleans, and certificate
+authorization/expiry booleans. Keep the exclusive mode-0600 output outside the
+repository.
+
+`scripts/cloud/livekit-production-plan.mjs` creates the exact collector plan
+for `connectivity`, `load`, `secret_scan`, or `cost`. It refuses drill and
+rollback plans. Give it one private capture per ordered step:
+
+```sh
+node scripts/cloud/livekit-production-plan.mjs \
+  --phase connectivity \
+  --bundle infra/livekit/bundle.json \
+  --deployed-revision <exact-deployed-40-hex-revision> \
+  --resource-ref gke-cluster-ref://openagentsgemini/us-central1/oa-livekit-prod \
+  --input production_preflight=<private-inventory.json> \
+  --input direct_udp=<private-direct-udp.json> \
+  --input tcp_fallback=<private-tcp-fallback.json> \
+  --input turn_tls=<private-turn-tls.json> \
+  --output <private-plan.json>
+```
+
+The exclusive mode-0600 plan invokes
+`scripts/cloud/livekit-acceptance-probe.mjs`. That adapter makes no network
+request and mutates no provider state. It converts only the following closed,
+revision-bound captures:
+
+- `openagents.livekit_connectivity_inventory.v1`: release-signature and launch
+  status for the installed Omega artifact; desired and ready server/worker
+  replicas; digest pinning; host networking; `use_external_ip`; count of SFU
+  node external addresses; provisioned signaling/TURN addresses; DNS equality;
+  and independently trusted, unexpired signaling and TURN certificates.
+- `openagents.livekit_connectivity_capture.v1`: one forced network mode and 3
+  through 100 packaged-Omega sessions. Every sample records only selected path,
+  join/publication/subscription/settlement booleans, join latency, and first
+  audio latency. Direct UDP requires UDP available; TCP fallback requires UDP
+  blocked; TURN/TLS requires UDP and non-TLS TCP blocked.
+- `openagents.livekit_load_capture.v1`: opaque session refs with start/end,
+  terminal status, and first-audio latency; the timestamped exact cap-plus-one
+  refusal; and at least three bounded telemetry samples containing
+  active/capacity rooms, SFU/worker CPU, and packet loss. Cap and telemetry
+  timestamps must fall inside the session window, and the capture must be
+  sealed within five minutes of the last settlement. The adapter derives peak
+  overlap, p95, settlement counts, minimum spare capacity, and maxima. It does
+  not accept those aggregate pass values from the operator.
+- `openagents.sarah.livekit_privacy_scan.v1`: the output written by
+  `livekit-privacy-scan.mjs`. The adapter requires a passing, source-bound
+  eight-scope scan and projects only the six runtime scopes required by the
+  standalone secret-scan receipt.
+- `openagents.livekit_cost_capture.v1`: categorized gross Google billing-export
+  rows and credits, current gross monthly forecast, fixed planning floor, and
+  the normalized active budget policy. The six required categories are GKE
+  control plane, SFU compute, worker compute, Redis, load
+  balancing/networking, and observability. The budget must retain the
+  50%/80%-current and 100%-forecast thresholds, at least one notification
+  channel, project filter, and `service=livekit` filter. The adapter computes
+  gross daily cost and never subtracts credits or folds OpenAI into Google
+  cost.
+
+Every capture includes the bundle source revision, exact deployed revision
+(except the existing privacy scan, whose source binding is preserved), and a
+real observation timestamp. Capture files stay outside Git and must be regular
+mode-0600-or-stricter files, never symlinks. The adapters fail on missing
+categories/scopes, duplicate load sessions, non-overlapping load, incorrect
+forced-path controls, stale revision identities, nonterminal sessions, or
+policy limits. They emit only the aggregate probe JSON consumed by the
+collector.
+
 ### Connectivity matrix
 
 Repeat the canary matrix against production with the packaged Omega candidate.
