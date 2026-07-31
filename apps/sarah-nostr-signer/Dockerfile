@@ -4,6 +4,9 @@ ARG IMAGE_REVISION=unknown
 LABEL org.opencontainers.image.revision="${IMAGE_REVISION}"
 
 WORKDIR /workspace
+RUN apt-get update \
+  && apt-get install --yes --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@11.10.0 --activate
 COPY . .
 RUN pnpm install --frozen-lockfile --ignore-scripts
@@ -16,7 +19,10 @@ FROM node:24.13.1-bookworm-slim@sha256:85a395c77b811fa7f5b5e4aa69cd6eb4c3b80c7f1
 ARG IMAGE_REVISION=unknown
 LABEL org.opencontainers.image.revision="${IMAGE_REVISION}"
 
-RUN groupadd --system --gid 10001 sarah \
+RUN apt-get update \
+  && apt-get install --yes --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && groupadd --system --gid 10001 sarah \
   && useradd --system --uid 10001 --gid 10001 --create-home sarah
 WORKDIR /app
 COPY --from=build --chown=sarah:sarah \
