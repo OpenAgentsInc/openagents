@@ -1181,23 +1181,56 @@ Do not infer many-small-room capacity from LiveKit's large-room benchmark.
 
 ### Failure drills
 
-> **Known blocker, 2026-07-31: there is no single-session driver, so no drill
-> that needs a live session can be executed yet.** The only session driver,
-> `runSarahLiveKitAcceptance`, requires *both* a private and a community
-> scenario, runs them concurrently, hard-asserts `concurrentOverlapObserved`,
-> and returns only after both settle. Two consequences follow, and neither is a
-> permission or a credential:
+> **Closed 2026-07-31: the single-session driver exists.**
+> `apps/sarah-livekit-agent/src/drill-driver.ts` (`runSarahLiveKitDrill`) admits
+> one scenario, completes a turn, holds the session open, injects the fault at a
+> recorded instant, and watches settlement over HTTP so the reading survives the
+> loss of the transport. `drill-cli.ts` is the operator surface and is dry-run by
+> default. The earlier blocker — that `runSarahLiveKitAcceptance` requires both a
+> private and a community scenario, asserts their overlap, and can therefore
+> never produce `concurrentBillableSessionCount: 1` — is no longer the reason any
+> observation is unobserved.
 >
-> - Nothing can hold one session live while a fault is injected into it, which
->   `planned_worker_crash`, `sfu_loss`, `provider_disconnect`, `timeout`,
->   `hold_exhaustion`, and `reconnect` all require.
-> - `sfu_loss` additionally requires `concurrentBillableSessionCount: 1`, which
->   this driver can never produce, because it always runs two billable sessions.
+> **Two live blockers replaced it, and both are recorded from real API calls.**
 >
-> Closing this needs a driver that admits one scenario, completes a turn, and
-> then holds the session open until the operator injects the fault and releases
-> it. Until it exists, record the affected observations `not_observed` with that
-> reason. Do not synthesize a row from unit-test output or expectations.
+> - **`pods/exec` is Forbidden for the drill automation identity.** The granted
+>   `Role/sarah-livekit-drill-automation` carries `pods: delete` and
+>   `pods/log: get, list` and nothing else, exactly as the permissions table
+>   below states. A 2026-07-31 receipt recorded exec as "granted in practice";
+>   that reading came through a `gke-gcloud-auth-plugin` cache poisoned by the
+>   owner identity, and a real `kubectl exec` after clearing the cache returns
+>   `Forbidden`. Do not run a drill as the owner identity to route around this:
+>   the narrow namespace Role is what keeps a pod deletion scoped, and the owner
+>   identity discards that scoping for the destructive step as well as the read.
+>   Use `--gauge-source managed_prometheus`, which is the substitution this
+>   runbook already names. Its stated insufficiency — a 30 s scrape against a
+>   ~21 s session — is resolved by the held-open session, not by new authority,
+>   so that source requires `--hold-ms` of at least 90 s.
+> - **The private acceptance owner can be held indefinitely by
+>   `accounting_uncertain`.** `sarah_realtime_voice_owner_active_idx` refuses a
+>   second session while a row is `reserved`, `connected`, **or**
+>   `accounting_uncertain`, but `sweepExpired` selects only `reserved` and
+>   `connected`. An abandoned generation therefore parks in
+>   `accounting_uncertain` forever, every later session for that owner is refused
+>   `sarah_voice_concurrency_limit`, and the per-minute sweep reports healthy the
+>   whole time. Clearing it needs the accounting-reconciliation procedure and its
+>   provider usage export. Never guess the usage to unblock a drill, and never
+>   raise or bypass the concurrency limit: both corrupt the accounting the drill
+>   exists to check.
+
+> **Community rooms cannot bring up a session at all, 2026-07-31.** A drill or
+> acceptance run that selects `--room community` fails with 503
+> `sarah_voice_livekit_unavailable`, and the proximate cause in the Cloud Run log
+> is `Sarah shared-room authority bootstrap failed (400):
+> {"error":"device_ref_required"}`. Commit `94d49d8bab` added a device-ref gate
+> to the room-authority handlers, which read
+> `SARAH_ROOM_DEVICE_REF_HEADER` off the request, but
+> `bootstrapLiveKitCommunityRoom` in
+> `apps/openagents.com/workers/api/src/index.ts` still synthesizes its internal
+> `summon` request with only a `content-type` header. Reproduced twice on
+> revision `openagents-monolith-00374-h4p`. Until the bootstrap threads a device
+> ref through, run drills against a private room and record community-room
+> observations as blocked on this defect rather than on credentials or capacity.
 
 Run every drill from the exact pinned candidate:
 
@@ -1410,13 +1443,31 @@ curl -sG https://monitoring.googleapis.com/v3/projects/openagentsgemini/timeSeri
   --data-urlencode "interval.endTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ```
 
-**This substitution is sound for verification and not yet sufficient for the
-drill.** The `PodMonitoring` scrape interval is 30 s, while an acceptance
-session lives about 21 s, so the gauge cannot identify the hosting pod inside
-the session it is meant to target. Until either the drill runs against a
-held-open session or the scrape interval is lowered for the window, step 2 needs
-`pods/exec` after all. Do not record `sfu_loss_bounded` from a pod guessed
-without a nonzero gauge reading.
+**This substitution became sufficient on 2026-07-31, by the held-open session
+rather than by new authority.** The `PodMonitoring` scrape interval is 30 s,
+which could not identify the hosting pod inside a ~21 s acceptance session — the
+condition this runbook set was "until either the drill runs against a held-open
+session or the scrape interval is lowered". The single-session driver holds the
+session open, so the first branch is now satisfied and the drill no longer needs
+`pods/exec`.
+
+Use `--gauge-source managed_prometheus`, which performs this read inside the
+drill and is the source the drill automation identity can actually reach. Two
+constraints come with it and are enforced in code:
+
+- `--hold-ms` must be at least 90 s. A sample is up to one 30 s scrape plus the
+  measured ~14 s ingestion latency old, so a shorter hold can read a gauge taken
+  before the drill's room existed.
+- Only the latest sample per instance is read, and a running instance with no
+  sample in the window is a refusal rather than a zero. A maximum over the window
+  would let a room that ended a minute ago keep naming its old host, and treating
+  an unread instance as idle is how the pod carrying the room gets skipped and a
+  healthy one gets destroyed.
+
+Do not record `sfu_loss_bounded` from a pod guessed without a nonzero gauge
+reading, and do not run the drill as the owner identity to obtain `pods/exec`:
+the namespace-scoped Role is what keeps the deletion bounded, and running as
+owner discards that scoping for the destructive step too.
 
 ### Secret, log, and retention scan
 
