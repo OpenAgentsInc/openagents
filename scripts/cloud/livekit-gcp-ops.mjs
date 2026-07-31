@@ -1955,7 +1955,7 @@ const run = () => {
         command("kubectl", [
           "apply",
           "--server-side",
-          "--field-manager=openagents-livekit-bootstrap",
+          "--field-manager=openagents-livekit-ops",
           "-f",
           priorityClass,
           "-f",

@@ -590,6 +590,31 @@ test("production runtime apply relies only on explicit manifest namespaces", () 
   assert.ok(rolloutTargets.includes("deployment/sarah-livekit-agent"));
 });
 
+test("addon bootstrap shares the runtime field manager for overlapping resources", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      resolve(import.meta.dirname, "livekit-gcp-ops.mjs"),
+      "--operation",
+      "production-addon-bootstrap",
+      "--bundle",
+      "infra/livekit/bundle.json",
+    ],
+    {
+      cwd: resolve(import.meta.dirname, "../.."),
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const plan = JSON.parse(result.stdout);
+  const applyCommand = plan.commands.find(
+    (command) => command.bin === "kubectl" && command.args[0] === "apply",
+  );
+  assert.ok(applyCommand);
+  assert.ok(applyCommand.args.includes("--field-manager=openagents-livekit-ops"));
+});
+
 test("connectivity requires packaged Omega and all three observed ICE paths", () => {
   const observation = envelope("connectivity", {
     packagedOmega: true,
