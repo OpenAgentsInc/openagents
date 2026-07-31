@@ -1,5 +1,16 @@
 # SCV: Space Construction Vehicle
 
+## Documents in this directory
+
+| Document | Type |
+| --- | --- |
+| This file | v0.1 design specification and the worker-to-repair-unit roadmap |
+| [`2026-07-31-omega-agent-scv-encoded-practice-analysis.md`](./2026-07-31-omega-agent-scv-encoded-practice-analysis.md) | Strategic-technical analysis: which of the measured costs in the 2026-07-31 Codex overnight-spend audit a runtime we own can refuse mechanically, what SCV should become, and a build order |
+
+Implementation note: the crate shipped as `crates/scv` in the `omega`
+repository, binary `scv`, not as the standalone `scv-acp` crate this
+specification describes. See §C.5 of the analysis above.
+
 ## Overview and vision
 
 SCV ("Space Construction Vehicle") is a hyper-lightweight, standalone Rust
