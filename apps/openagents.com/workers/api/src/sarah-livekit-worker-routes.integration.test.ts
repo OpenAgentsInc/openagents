@@ -266,7 +266,10 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       {},
     );
     expect(startupLease.status).toBe(200);
-    expect(await startupLease.json()).toEqual({ accepted: true });
+    expect(await startupLease.json()).toEqual({
+      accepted: true,
+      interruptSequence: 0,
+    });
     nowMs = Date.parse("2026-07-28T13:00:30.250Z");
     const providerAdmitted = await handleSarahLiveKitWorkerEvent(
       dependencies,
@@ -308,8 +311,6 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
         nowIso: "2026-07-28T13:00:30.600Z",
       }),
     ).rejects.toThrow("invalid or expired");
-    await store.sweepExpired("2026-07-28T13:01:30.000Z");
-
     const leaseEvent = {
       schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
       _tag: "lease_check",
@@ -318,6 +319,18 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       jobRef: "job:route-one",
       eventRef: "lease:job:route-one:1",
     } as const;
+    nowMs = Date.parse("2026-07-28T13:01:20.000Z");
+    expect(
+      (
+        await handleSarahLiveKitWorkerEvent(
+          dependencies,
+          authorizedRequest("/api/internal/sarah/livekit/job/event", leaseEvent),
+          {},
+        )
+      ).status,
+    ).toBe(200);
+    await store.sweepExpired("2026-07-28T13:01:30.000Z");
+
     nowMs = Date.parse("2026-07-28T13:01:31.000Z");
     expect(
       (
@@ -423,7 +436,10 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       authorizedRequest("/api/internal/sarah/livekit/tool/proposal", toolProposalRequest),
       {},
     );
-    expect(toolProposalResponse.status).toBe(200);
+    expect(
+      toolProposalResponse.status,
+      JSON.stringify(await toolProposalResponse.clone().json()),
+    ).toBe(200);
     const toolProposal = (await toolProposalResponse.json()) as {
       proposal: { proposalRef: string; proposalDigest: string };
     };
@@ -557,7 +573,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       },
       {
         event_ref: "lease:job:route-one:1",
-        observed_at: "2026-07-28T13:01:31.000Z",
+        observed_at: "2026-07-28T13:01:20.000Z",
       },
       {
         event_ref: "lease:job:route-one:startup",
@@ -654,7 +670,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       recordedChargeMsat: 175,
       reservedMsat: 1_000,
       holdPreserved: true,
-      reason: "session_expired",
+      reason: "livekit_worker_heartbeat_expired",
     });
     const [balance] = await sql`
       SELECT held_msat
