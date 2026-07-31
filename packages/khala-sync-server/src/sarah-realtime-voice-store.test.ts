@@ -1128,6 +1128,8 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         generation: 1,
         idempotencyKey: "sarah-livekit:voice-livekit-1:1",
         provisioningOwnerRef: "reconciler:one",
+        // The claim spends one of the bounded attempts (#9282 follow-up).
+        cleanupAttemptCount: 1,
       },
     ]);
     await sql`

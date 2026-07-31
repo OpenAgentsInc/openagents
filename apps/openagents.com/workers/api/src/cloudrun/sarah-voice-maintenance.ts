@@ -1,14 +1,13 @@
-export type SarahVoiceMaintenanceCounts = Readonly<{
-  cleaned: number
-  failed: number
-}>
-
 /**
- * EP263-LK H4 (#9282): `abandoned` counts rooms whose bounded cleanup attempts
- * are spent. Giving up is a real outcome and must be reported, never inferred
- * from a loop that quietly stops trying.
+ * EP263-LK H4 (#9282) and its provisioning-intent follow-up: `abandoned` counts
+ * rows whose bounded attempts are spent. Giving up is a real outcome and must
+ * be reported, never inferred from a loop that quietly stops trying.
+ *
+ * Both bounded reconcilers report this same shape. They fail for the same
+ * reason and give up on the same ladder, so one counter vocabulary covers both
+ * and an operator reading either event knows what the third number means.
  */
-export type SarahVoiceTerminalRoomCounts = Readonly<{
+export type SarahVoiceConvergenceCounts = Readonly<{
   cleaned: number
   failed: number
   abandoned: number
@@ -17,9 +16,9 @@ export type SarahVoiceTerminalRoomCounts = Readonly<{
 export type SarahVoiceScheduledMaintenanceOperations = Readonly<{
   sweepExpired?: (() => Promise<number>) | undefined
   reconcileProvisioning?:
-    (() => Promise<SarahVoiceMaintenanceCounts>) | undefined
+    (() => Promise<SarahVoiceConvergenceCounts>) | undefined
   reconcileTerminalRooms?:
-    (() => Promise<SarahVoiceTerminalRoomCounts>) | undefined
+    (() => Promise<SarahVoiceConvergenceCounts>) | undefined
   retireStaleRoomMembers?: (() => Promise<number>) | undefined
 }>
 
@@ -48,8 +47,16 @@ export const runSarahVoiceScheduledMaintenance = async (
   if (operations.reconcileProvisioning !== undefined) {
     try {
       const result = await operations.reconcileProvisioning()
-      if (result.cleaned > 0 || result.failed > 0) {
+      if (result.cleaned > 0 || result.failed > 0 || result.abandoned > 0) {
         report('sarah_livekit_provisioning_intents_reconciled', result)
+      }
+      // A separate event, for the same reason the terminal-room sweep has one:
+      // "we stopped trying to clean this intent" is an operator-visible
+      // decision, not a detail of a success counter.
+      if (result.abandoned > 0) {
+        report('sarah_livekit_provisioning_intents_abandoned', {
+          abandoned: result.abandoned,
+        })
       }
     } catch (error) {
       report(

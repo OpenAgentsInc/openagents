@@ -316,11 +316,33 @@ export type SarahVoiceLiveKitCleanupOutcome = Readonly<{
   cleanupAttemptCount: number;
 }>;
 
+export type SarahVoiceLiveKitProvisioningIntentState =
+  | "pending"
+  | "reconciling"
+  | "bound"
+  | "cleanup_failed"
+  | "cleanup_abandoned"
+  | "cleaned";
+
+/**
+ * EP263-LK H4 follow-up (#9282): the provisioning-intent reconciler is bounded
+ * on the same ladder as the room-binding cleanup above. The two loops fail for
+ * the same reason — a broker key that can never be cleaned — so they give up on
+ * the same schedule and an operator only has one number to remember.
+ */
+export const SARAH_LIVEKIT_MAX_PROVISIONING_ATTEMPTS = SARAH_LIVEKIT_MAX_CLEANUP_ATTEMPTS;
+
+export type SarahVoiceLiveKitProvisioningOutcome = Readonly<{
+  state: SarahVoiceLiveKitProvisioningIntentState;
+  cleanupAttemptCount: number;
+}>;
+
 export type SarahVoiceLiveKitProvisioningIntent = Readonly<{
   sessionRef: string;
   generation: number;
   idempotencyKey: string;
   provisioningOwnerRef: string;
+  cleanupAttemptCount: number;
 }>;
 
 export type SarahVoiceLiveKitWorkerClaim = Readonly<{
@@ -1219,25 +1241,69 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       state: "cleanup_failed" | "cleaned";
       nowIso: string;
     }>,
-  ): Promise<void> => {
+  ): Promise<SarahVoiceLiveKitProvisioningOutcome> => {
     try {
+      // A failed attempt either earns an exponentially later retry or, once the
+      // bounded attempts are spent, becomes `cleanup_abandoned`. The decision is
+      // made here in one statement so the request path and the scheduled
+      // reconciler cannot disagree about when to give up.
       const rows = (await sql`
-        UPDATE sarah_livekit_provisioning_intents
-        SET state = ${input.state},
+        UPDATE sarah_livekit_provisioning_intents AS intent
+        SET state = CASE
+              WHEN ${input.state} = 'cleaned' THEN 'cleaned'
+              WHEN intent.cleanup_attempt_count
+                >= ${SARAH_LIVEKIT_MAX_PROVISIONING_ATTEMPTS} THEN 'cleanup_abandoned'
+              ELSE 'cleanup_failed'
+            END,
+            cleanup_next_attempt_at = CASE
+              WHEN ${input.state} = 'cleaned' THEN NULL
+              WHEN intent.cleanup_attempt_count
+                >= ${SARAH_LIVEKIT_MAX_PROVISIONING_ATTEMPTS} THEN NULL
+              ELSE to_char(
+                (
+                  ${input.nowIso}::timestamptz
+                  + make_interval(secs => LEAST(
+                      ${SARAH_LIVEKIT_MAX_CLEANUP_BACKOFF_SECONDS}::double precision,
+                      ${SARAH_LIVEKIT_BASE_CLEANUP_BACKOFF_SECONDS}::double precision
+                        * power(
+                            2,
+                            GREATEST(intent.cleanup_attempt_count - 1, 0)
+                          )
+                    ))
+                ) AT TIME ZONE 'UTC',
+                'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+              )
+            END,
+            cleanup_abandoned_at = CASE
+              WHEN ${input.state} <> 'cleaned'
+                AND intent.cleanup_attempt_count
+                  >= ${SARAH_LIVEKIT_MAX_PROVISIONING_ATTEMPTS}
+                THEN COALESCE(intent.cleanup_abandoned_at, ${input.nowIso})
+              ELSE NULL
+            END,
             provisioning_owner_ref = NULL,
             provisioning_claimed_at = NULL,
             updated_at = ${input.nowIso}
-        WHERE session_ref = ${input.sessionRef}
-          AND generation = ${input.generation}
-          AND provisioning_owner_ref = ${input.provisioningOwnerRef}
-          AND state IN ('pending', 'reconciling', 'cleanup_failed', 'cleaned')
-        RETURNING session_ref
-      `) as ReadonlyArray<{ session_ref: string }>;
-      if (first(rows) === undefined) {
+        WHERE intent.session_ref = ${input.sessionRef}
+          AND intent.generation = ${input.generation}
+          AND intent.provisioning_owner_ref = ${input.provisioningOwnerRef}
+          AND intent.state IN ('pending', 'reconciling', 'cleanup_failed', 'cleaned')
+        RETURNING intent.session_ref, intent.state, intent.cleanup_attempt_count
+      `) as ReadonlyArray<{
+        session_ref: string;
+        state: SarahVoiceLiveKitProvisioningIntentState;
+        cleanup_attempt_count: number | string;
+      }>;
+      const row = first(rows);
+      if (row === undefined) {
         throw new SarahVoiceSessionRejectedError(
           "The LiveKit provisioning intent is owned by another issuer",
         );
       }
+      return {
+        state: row.state,
+        cleanupAttemptCount: toSafeInteger(row.cleanup_attempt_count, "cleanup_attempt_count"),
+      };
     } catch (error) {
       if (error instanceof SarahVoiceSessionRejectedError) throw error;
       throw new SarahVoiceStorageError("Sarah LiveKit provisioning intent update failed", error);
@@ -1254,9 +1320,25 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
   ): Promise<ReadonlyArray<SarahVoiceLiveKitProvisioningIntent>> => {
     try {
       const boundedLimit = Math.max(1, Math.min(100, Math.trunc(input.limit ?? 100)));
-      const rows = await sql.begin(
-        async (tx) =>
-          (await tx`
+      const rows = await sql.begin(async (tx) => {
+        // Lazily retire anything that reached the attempt cap without a
+        // terminal mark — an attempt whose process died between the claim and
+        // the mark would otherwise sit at the cap in a retryable state forever:
+        // no longer claimed, but never visibly given up on either. Same lazy
+        // dead-letter shape as the room-binding cleanup and the oa_infra_jobs
+        // queue.
+        await tx`
+          UPDATE sarah_livekit_provisioning_intents
+          SET state = 'cleanup_abandoned',
+              cleanup_abandoned_at = COALESCE(cleanup_abandoned_at, ${input.nowIso}),
+              cleanup_next_attempt_at = NULL,
+              provisioning_owner_ref = NULL,
+              provisioning_claimed_at = NULL,
+              updated_at = ${input.nowIso}
+          WHERE state IN ('pending', 'reconciling', 'cleanup_failed')
+            AND cleanup_attempt_count >= ${SARAH_LIVEKIT_MAX_PROVISIONING_ATTEMPTS}
+        `;
+        return (await tx`
           WITH candidates AS (
             SELECT session_ref
             FROM sarah_livekit_provisioning_intents
@@ -1266,6 +1348,11 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
                 provisioning_owner_ref IS NULL
                 OR provisioning_claimed_at <= ${input.staleBeforeIso}
               )
+              AND (
+                cleanup_next_attempt_at IS NULL
+                OR cleanup_next_attempt_at <= ${input.nowIso}
+              )
+              AND cleanup_attempt_count < ${SARAH_LIVEKIT_MAX_PROVISIONING_ATTEMPTS}
             ORDER BY created_at
             LIMIT ${boundedLimit}
             FOR UPDATE SKIP LOCKED
@@ -1274,23 +1361,27 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           SET state = 'reconciling',
               provisioning_owner_ref = ${input.provisioningOwnerRef},
               provisioning_claimed_at = ${input.nowIso},
+              cleanup_attempt_count = intent.cleanup_attempt_count + 1,
               updated_at = ${input.nowIso}
           FROM candidates
           WHERE intent.session_ref = candidates.session_ref
           RETURNING intent.session_ref, intent.generation,
-            intent.idempotency_key, intent.provisioning_owner_ref
+            intent.idempotency_key, intent.provisioning_owner_ref,
+            intent.cleanup_attempt_count
         `) as ReadonlyArray<{
-            session_ref: string;
-            generation: number | string;
-            idempotency_key: string;
-            provisioning_owner_ref: string;
-          }>,
-      );
+          session_ref: string;
+          generation: number | string;
+          idempotency_key: string;
+          provisioning_owner_ref: string;
+          cleanup_attempt_count: number | string;
+        }>;
+      });
       return rows.map((row) => ({
         sessionRef: row.session_ref,
         generation: toSafeInteger(row.generation, "generation"),
         idempotencyKey: row.idempotency_key,
         provisioningOwnerRef: row.provisioning_owner_ref,
+        cleanupAttemptCount: toSafeInteger(row.cleanup_attempt_count, "cleanup_attempt_count"),
       }));
     } catch (error) {
       throw new SarahVoiceStorageError("Sarah LiveKit provisioning intent claim failed", error);

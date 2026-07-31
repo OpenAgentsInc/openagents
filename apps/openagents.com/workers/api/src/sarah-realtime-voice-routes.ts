@@ -335,10 +335,13 @@ export const reconcileSarahLiveKitTerminalRooms = async <Bindings>(
 export const reconcileSarahLiveKitProvisioningIntents = async <Bindings>(
   dependencies: SarahVoiceLiveKitLifecycleDependencies<Bindings>,
   env: Bindings,
-): Promise<Readonly<{ cleaned: number; failed: number }>> => {
+): Promise<
+  Readonly<{ cleaned: number; failed: number; abandoned: number }>
+> => {
   const opened = await dependencies.openStore(env)
   let cleaned = 0
   let failed = 0
+  let abandoned = 0
   try {
     const nowMs = (dependencies.now ?? Date.now)()
     const provisioningOwnerRef = `sarah-livekit-reconciler:${crypto.randomUUID()}`
@@ -362,35 +365,38 @@ export const reconcileSarahLiveKitProvisioningIntents = async <Bindings>(
           nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
         })
       } catch {
-        failed += 1
         // eslint-disable-next-line no-await-in-loop
-        await opened.store.markLiveKitProvisioningIntent({
+        const outcome = await opened.store.markLiveKitProvisioningIntent({
           sessionRef: intent.sessionRef,
           generation: intent.generation,
           provisioningOwnerRef: intent.provisioningOwnerRef,
           state: 'cleanup_failed',
           nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
         })
+        // A spent attempt budget retires the intent instead of re-queueing it.
+        if (outcome.state === 'cleanup_abandoned') abandoned += 1
+        else failed += 1
         continue
       }
       try {
         // eslint-disable-next-line no-await-in-loop
         await dependencies.broker.cleanupByIdempotencyKey(intent.idempotencyKey)
-        cleaned += 1
       } catch {
         state = 'cleanup_failed'
-        failed += 1
       }
       // eslint-disable-next-line no-await-in-loop
-      await opened.store.markLiveKitProvisioningIntent({
+      const outcome = await opened.store.markLiveKitProvisioningIntent({
         sessionRef: intent.sessionRef,
         generation: intent.generation,
         provisioningOwnerRef: intent.provisioningOwnerRef,
         state,
         nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
       })
+      if (state === 'cleaned') cleaned += 1
+      else if (outcome.state === 'cleanup_abandoned') abandoned += 1
+      else failed += 1
     }
-    return { cleaned, failed }
+    return { cleaned, failed, abandoned }
   } finally {
     await opened.close()
   }

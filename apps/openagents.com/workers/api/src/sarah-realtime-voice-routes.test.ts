@@ -1017,6 +1017,7 @@ describe('managed Sarah Realtime voice session route', () => {
     ).toEqual({
       cleaned: 1,
       failed: 0,
+      abandoned: 0,
     })
     expect(await reconcileSarahLiveKitTerminalRooms(dependencies, {})).toEqual({
       cleaned: 1,
@@ -1093,7 +1094,7 @@ describe('managed Sarah Realtime voice session route', () => {
 
     await expect(
       reconcileSarahLiveKitProvisioningIntents(dependencies, {}),
-    ).resolves.toEqual({ cleaned: 1, failed: 0 })
+    ).resolves.toEqual({ cleaned: 1, failed: 0, abandoned: 0 })
 
     expect(settleLiveKitProvisioningIntent).toHaveBeenCalledWith({
       sessionRef: intent.sessionRef,
