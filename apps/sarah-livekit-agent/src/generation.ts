@@ -560,7 +560,7 @@ export class SarahProviderAttestation {
           }
         }
         this.#candidate = undefined;
-        this.#mismatchPhase = `provider_${transition}`;
+        this.#mismatchPhase ??= `provider_${transition}`;
         return { state: this.#durable === undefined ? "mismatch" : "drift" };
       }
       this.#expectedProviderTransitions.shift();
@@ -607,16 +607,47 @@ export class SarahProviderAttestation {
     expectedProviderSessionRefDigest: string | undefined,
     expectedProfile: SarahRealtimeProviderProfile,
   ): AdmittedRealtimeProvider | false {
-    if (expectedProviderSessionRefDigest === undefined) return false;
+    if (expectedProviderSessionRefDigest === undefined) {
+      this.#mismatchPhase = "provider_startup_base_session_ref_missing";
+      return false;
+    }
     const session = providerTransportMatch(event, expectedProviderSessionRefDigest);
-    if (
-      session === undefined ||
-      typeof session.instructions !== "string" ||
-      session.instructions.length === 0 ||
-      session.tool_choice !== "auto" ||
-      !Array.isArray(session.tools) ||
-      session.tools.length !== 0
-    ) {
+    if (session === undefined) {
+      const envelope = record(event);
+      const rawSession = record(envelope?.session);
+      const audio = record(rawSession?.audio);
+      const sessionRef = providerSessionRef(event);
+      if (rawSession === undefined || audio === undefined || sessionRef === undefined) {
+        this.#mismatchPhase = "provider_startup_base_envelope";
+      } else if (digest(sessionRef) !== expectedProviderSessionRefDigest) {
+        this.#mismatchPhase = "provider_startup_base_session_ref";
+      } else if (rawSession.model !== SARAH_LIVEKIT_MODEL) {
+        this.#mismatchPhase = "provider_startup_base_model";
+      } else if (
+        !Array.isArray(rawSession.output_modalities) ||
+        rawSession.output_modalities.length !== 1 ||
+        rawSession.output_modalities[0] !== "audio"
+      ) {
+        this.#mismatchPhase = "provider_startup_base_modalities";
+      } else if (!exactKeys(audio, ["input", "output"]) || !exactInputAudio(audio.input)) {
+        this.#mismatchPhase = "provider_startup_base_input_audio";
+      } else if (!exactOutputAudio(audio.output)) {
+        this.#mismatchPhase = "provider_startup_base_output_audio";
+      } else {
+        this.#mismatchPhase = "provider_startup_base_policy";
+      }
+      return false;
+    }
+    if (typeof session.instructions !== "string" || session.instructions.length === 0) {
+      this.#mismatchPhase = "provider_startup_base_instructions";
+      return false;
+    }
+    if (session.tool_choice !== "auto") {
+      this.#mismatchPhase = "provider_startup_base_tool_choice";
+      return false;
+    }
+    if (!Array.isArray(session.tools) || session.tools.length !== 0) {
+      this.#mismatchPhase = "provider_startup_base_tools";
       return false;
     }
     return {
