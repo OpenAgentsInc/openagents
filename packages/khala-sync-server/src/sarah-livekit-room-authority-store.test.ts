@@ -249,6 +249,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit room authority store", () =>
   test("rejects an authority identity change", async () => {
     const current = await store.read(snapshot.presence.leaseRef);
     expect(current).toBeDefined();
+    if (current === undefined) throw new Error("missing room authority");
     const changed = decodeSarahLiveKitRoomAuthoritySnapshot({
       ...current,
       revision: 3,
@@ -272,13 +273,14 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit room authority store", () =>
     ).rejects.toMatchObject({ reason: "authority_mismatch" });
   });
 
-  test("fails closed when the durable room binding is no longer active", async () => {
+  test("permits only terminal presence removal after the room enters cleanup", async () => {
     await sql`
       UPDATE sarah_livekit_room_bindings
       SET state='cleanup_ready',updated_at=${now}
       WHERE session_ref=${snapshot.presence.sessionRef}`;
     const current = await store.read(snapshot.presence.leaseRef);
     expect(current).toBeDefined();
+    if (current === undefined) throw new Error("missing room authority");
     const next = decodeSarahLiveKitRoomAuthoritySnapshot({
       ...current,
       revision: 3,
@@ -292,6 +294,29 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit room authority store", () =>
         now,
       }),
     ).rejects.toMatchObject({ reason: "authority_mismatch" });
+    const removed = decodeSarahLiveKitRoomAuthoritySnapshot({
+      ...current,
+      revision: 3,
+      presenceActive: false,
+      nextInterruptSequence: 2,
+      floor: {
+        state: "stopped",
+        presenceLeaseRef: snapshot.presence.leaseRef,
+        issuance:
+          current.floor.state === "held"
+            ? current.floor.lease.issuance
+            : current.floor.issuance,
+        reason: "sarah_removed",
+      },
+    });
+    await expect(
+      store.compareAndSwap({
+        presenceLeaseRef: snapshot.presence.leaseRef,
+        expectedRevision: 2,
+        snapshot: removed,
+        now,
+      }),
+    ).resolves.toEqual(removed);
     await expect(
       store.readParticipantBinding({
         presenceLeaseRef: snapshot.presence.leaseRef,

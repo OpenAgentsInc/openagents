@@ -92,7 +92,11 @@ const bindingMatches = (
   const presence = snapshot.presence;
   return (
     binding.room_context_kind === "community" &&
-    (binding.state === "prepared" || binding.state === "active") &&
+    (binding.state === "prepared" ||
+      binding.state === "active" ||
+      (["cleanup_ready", "cleanup_failed", "cleaned"].includes(binding.state) &&
+        !snapshot.presenceActive &&
+        snapshot.floor.state === "stopped")) &&
     binding.session_ref === presence.sessionRef &&
     Number(binding.generation) === presence.generation &&
     binding.community_ref === presence.communityRef &&
