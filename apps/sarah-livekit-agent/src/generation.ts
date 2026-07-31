@@ -524,6 +524,23 @@ export class SarahProviderAttestation {
                 false,
               );
       if (observed === false || observed === undefined) {
+        if (
+          transition === "startup_instructions" &&
+          this.#expectedProviderTransitions[1] === "startup_tools"
+        ) {
+          const coalesced = admittedRealtimeProvider(
+            event,
+            expectedProviderSessionRefDigest,
+            expectedProfile,
+            false,
+          );
+          if (coalesced !== false && coalesced !== undefined) {
+            this.#expectedProviderTransitions.shift();
+            this.#expectedProviderTransitions.shift();
+            this.#candidate = coalesced;
+            return { state: "candidate", admission: coalesced };
+          }
+        }
         this.#candidate = undefined;
         return { state: this.#durable === undefined ? "mismatch" : "drift" };
       }
