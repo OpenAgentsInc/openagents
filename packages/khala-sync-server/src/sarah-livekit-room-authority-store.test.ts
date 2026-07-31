@@ -99,6 +99,33 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit room authority store", () =>
     if (postgres !== undefined) await postgres.stop();
   });
 
+  test("reads a community binding while its worker connection is pending", async () => {
+    await sql`
+      UPDATE sarah_realtime_voice_sessions
+      SET state='reserved',updated_at=${now}
+      WHERE session_ref=${snapshot.presence.sessionRef}`;
+    try {
+      await expect(
+        store.readCommunityRoomBinding({
+          presenceLeaseRef: snapshot.presence.leaseRef,
+          ownerUserId: "owner.authority",
+          now,
+        }),
+      ).resolves.toMatchObject({
+        ownerUserId: "owner.authority",
+        sessionRef: snapshot.presence.sessionRef,
+        generation: snapshot.presence.generation,
+        roomRef: snapshot.presence.roomRef,
+        roomEpoch: snapshot.presence.roomEpoch,
+      });
+    } finally {
+      await sql`
+        UPDATE sarah_realtime_voice_sessions
+        SET state='connected',updated_at=${now}
+        WHERE session_ref=${snapshot.presence.sessionRef}`;
+    }
+  });
+
   test("creates from live binding and applies replay state with revision CAS", async () => {
     await expect(store.create(snapshot, now)).resolves.toEqual(snapshot);
     await store.bindParticipant({

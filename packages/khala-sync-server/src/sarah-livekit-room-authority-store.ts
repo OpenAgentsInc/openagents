@@ -517,7 +517,7 @@ export class PostgresSarahLiveKitRoomAuthorityStore implements SarahLiveKitRoomA
           AND binding.state='active'
           AND binding.worker_stop_reason IS NULL
           AND binding.worker_closed_at IS NULL
-          AND session.state='connected'
+          AND session.state IN ('reserved', 'connected')
           AND session.session_expires_at>${input.now}
         LIMIT 1`;
       const row = rows[0];
