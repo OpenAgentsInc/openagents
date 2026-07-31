@@ -39,8 +39,11 @@ const parseUsage = (value: unknown): UsageNumbers | undefined => {
   };
 };
 
-const boundedProviderRef = (value: unknown): string | undefined =>
-  typeof value === "string" && value.trim() === value && value.length > 0 && value.length <= 256
+const boundedProviderRef = (value: unknown, eventPrefix: string): string | undefined =>
+  typeof value === "string" &&
+  value.trim() === value &&
+  value.length > 0 &&
+  value.length <= 256 - eventPrefix.length
     ? value
     : undefined;
 
@@ -61,7 +64,7 @@ export const responseUsageEvent = (
   const envelope = record(event);
   if (envelope?.type !== "response.done") return undefined;
   const response = record(envelope.response);
-  const providerResponseRef = boundedProviderRef(response?.id);
+  const providerResponseRef = boundedProviderRef(response?.id, "response:");
   const status = response?.status;
   const usage = parseUsage(response?.usage);
   if (
@@ -94,7 +97,7 @@ export const transcriptionUsageEvent = (
   if (envelope?.type !== "conversation.item.input_audio_transcription.completed") {
     return undefined;
   }
-  const providerTranscriptionRef = boundedProviderRef(envelope.item_id);
+  const providerTranscriptionRef = boundedProviderRef(envelope.item_id, "transcription:");
   const usage = parseUsage(envelope.usage);
   if (providerTranscriptionRef === undefined || usage === undefined) {
     return undefined;
@@ -111,6 +114,7 @@ export const transcriptionUsageEvent = (
 
 export class SarahGenerationFence {
   readonly pending = new Set<Promise<void>>();
+  #providerEventRevision = 0;
   #settled = false;
   #sealed = false;
   #closeReason: Extract<SarahLiveKitJobEvent, { _tag: "close" }>["reason"] = "worker_error";
@@ -140,6 +144,10 @@ export class SarahGenerationFence {
     this.#sealed = true;
   }
 
+  observeProviderEvent(): void {
+    if (!this.#sealed) this.#providerEventRevision += 1;
+  }
+
   track(operation: Promise<void>): void {
     if (this.#sealed) return;
     this.pending.add(operation);
@@ -154,4 +162,39 @@ export class SarahGenerationFence {
       await Promise.allSettled(this.pending);
     }
   }
+
+  async quiesce(
+    waitForIdle: () => Promise<void> = () =>
+      new Promise((resolve) => {
+        setTimeout(resolve, 25);
+      }),
+    maximumIdleChecks = 4,
+  ): Promise<void> {
+    for (let check = 0; check < maximumIdleChecks; check += 1) {
+      const revision = this.#providerEventRevision;
+      // eslint-disable-next-line no-await-in-loop
+      await this.drain();
+      // eslint-disable-next-line no-await-in-loop
+      await waitForIdle();
+      // eslint-disable-next-line no-await-in-loop
+      await this.drain();
+      if (revision === this.#providerEventRevision) {
+        this.seal();
+        return;
+      }
+    }
+    this.seal();
+    await this.drain();
+  }
 }
+
+export const closeAfterProviderAccounting = async (
+  fence: SarahGenerationFence,
+  closeProvider: () => Promise<void>,
+  closeGeneration: () => Promise<void>,
+  waitForIdle?: () => Promise<void>,
+): Promise<void> => {
+  await closeProvider();
+  await fence.quiesce(waitForIdle);
+  await closeGeneration();
+};

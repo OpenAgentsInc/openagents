@@ -27,6 +27,7 @@ import { z } from "zod";
 import { makeSarahLiveKitControlClient } from "./control-client.js";
 import {
   SarahGenerationFence,
+  closeAfterProviderAccounting,
   isAdmittedRealtimeSessionCreated,
   responseUsageEvent,
   transcriptionUsageEvent,
@@ -223,6 +224,7 @@ const entry = async (ctx: JobContext): Promise<void> => {
   };
 
   const model = new ObservedRealtimeModel(claim.safetyIdentifier, (event) => {
+    fence.observeProviderEvent();
     const admittedSession = isAdmittedRealtimeSessionCreated(event);
     if (admittedSession === false) {
       if (fence.settle("provider_mismatch")) void session?.close();
@@ -278,20 +280,29 @@ const entry = async (ctx: JobContext): Promise<void> => {
     clearInterval(leaseInterval);
     clearTimeout(expiryTimer);
     if (!fence.settled) fence.settle("worker_shutdown");
-    await session?.close();
-    fence.seal();
-    await fence.drain();
-    await controller.event(dispatch, closeEvent(identity, fence.closeReason));
+    await closeAfterProviderAccounting(
+      fence,
+      async () => {
+        await session?.close();
+      },
+      () =>
+        controller.event(dispatch, closeEvent(identity, fence.closeReason)).then(() => undefined),
+    );
   });
 
   await ctx.connect(undefined, AutoSubscribe.AUDIO_ONLY);
-  await controller.event(dispatch, {
+  const connected = await controller.event(dispatch, {
     schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
     _tag: "worker_connected",
     ...identity,
     eventRef: `connected:${identity.jobRef}`,
     roomSid: ctx.job.room.sid,
   });
+  if (connected.stopReason !== undefined) {
+    fence.settle(connected.stopReason);
+    ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
+    return;
+  }
   const participant = await ctx.waitForParticipant(dispatch.participantRef);
   if (participant.identity !== dispatch.participantRef) {
     throw new Error("The admitted Sarah room participant was not present");

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
   SarahGenerationFence,
+  closeAfterProviderAccounting,
   isAdmittedRealtimeSessionCreated,
   responseUsageEvent,
   transcriptionUsageEvent,
@@ -116,6 +117,53 @@ describe("Sarah LiveKit generation fence", () => {
     ).toBeUndefined();
   });
 
+  test("keeps provider and event references inside the shared 256-character boundary", () => {
+    const responseAtLimit = "r".repeat(247);
+    const transcriptionAtLimit = "t".repeat(242);
+    const usage = {
+      input_tokens: 1,
+      output_tokens: 0,
+    };
+    expect(
+      responseUsageEvent(
+        {
+          type: "response.done",
+          response: { id: responseAtLimit, status: "completed", usage },
+        },
+        identity,
+      )?.eventRef,
+    ).toHaveLength(256);
+    expect(
+      responseUsageEvent(
+        {
+          type: "response.done",
+          response: { id: `${responseAtLimit}x`, status: "completed", usage },
+        },
+        identity,
+      ),
+    ).toBeUndefined();
+    expect(
+      transcriptionUsageEvent(
+        {
+          type: "conversation.item.input_audio_transcription.completed",
+          item_id: transcriptionAtLimit,
+          usage,
+        },
+        identity,
+      )?.eventRef,
+    ).toHaveLength(256);
+    expect(
+      transcriptionUsageEvent(
+        {
+          type: "conversation.item.input_audio_transcription.completed",
+          item_id: `${transcriptionAtLimit}x`,
+          usage,
+        },
+        identity,
+      ),
+    ).toBeUndefined();
+  });
+
   test("settles a generation once and drains tracked accounting", async () => {
     const fence = new SarahGenerationFence();
     let completedBeforeSettlement = false;
@@ -157,4 +205,41 @@ describe("Sarah LiveKit generation fence", () => {
     expect(completedAfterSettlement).toBe(true);
     expect(fence.closeReason).toBe("provider_disconnect");
   });
+
+  test("waits for a late provider accounting event before the terminal event", async () => {
+    const fence = new SarahGenerationFence();
+    const order: string[] = [];
+    let idleChecks = 0;
+    fence.settle("provider_disconnect");
+
+    await closeAfterProviderAccounting(
+      fence,
+      async () => {
+        order.push("provider_closed");
+      },
+      async () => {
+        order.push("terminal_event");
+      },
+      async () => {
+        idleChecks += 1;
+        if (idleChecks !== 1) return;
+        fence.observeProviderEvent();
+        const finalUsage = Promise.resolve().then(() => {
+          order.push("final_usage");
+        });
+        fence.track(finalUsage);
+      },
+    );
+
+    expect(order).toEqual(["provider_closed", "final_usage", "terminal_event"]);
+    expect(fence.accepts(closeEventForTest)).toBe(false);
+  });
 });
+
+const closeEventForTest = {
+  schema: "openagents.sarah.livekit-worker.v1",
+  _tag: "close",
+  ...identity,
+  eventRef: "close:job:one",
+  reason: "provider_disconnect",
+} as const;

@@ -254,6 +254,50 @@ export const finalizeSarahLiveKitRoom = async <Bindings>(
   }
 }
 
+export const reconcileSarahLiveKitTerminalRooms = async <Bindings>(
+  dependencies: SarahVoiceLiveKitLifecycleDependencies<Bindings>,
+  env: Bindings,
+): Promise<Readonly<{ cleaned: number; failed: number }>> => {
+  const opened = await dependencies.openStore(env)
+  let cleaned = 0
+  let failed = 0
+  try {
+    const nowMs = (dependencies.now ?? Date.now)()
+    const nowIso = new Date(nowMs).toISOString()
+    const cleanups = await opened.store.claimLiveKitCleanups({
+      staleBeforeIso: new Date(nowMs - 15_000).toISOString(),
+      nowIso,
+      limit: 100,
+    })
+    for (const cleanup of cleanups) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await dependencies.broker.cleanupRoom(cleanup)
+        // eslint-disable-next-line no-await-in-loop
+        await opened.store.markLiveKitCleanup({
+          sessionRef: cleanup.sessionRef,
+          generation: cleanup.generation,
+          state: 'cleaned',
+          nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
+        })
+        cleaned += 1
+      } catch {
+        failed += 1
+        // eslint-disable-next-line no-await-in-loop
+        await opened.store.markLiveKitCleanup({
+          sessionRef: cleanup.sessionRef,
+          generation: cleanup.generation,
+          state: 'cleanup_failed',
+          nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
+        })
+      }
+    }
+    return { cleaned, failed }
+  } finally {
+    await opened.close()
+  }
+}
+
 export const reconcileSarahLiveKitProvisioningIntents = async <Bindings>(
   dependencies: SarahVoiceLiveKitLifecycleDependencies<Bindings>,
   env: Bindings,

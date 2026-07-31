@@ -74,7 +74,8 @@ export type SarahVoiceUsage = Readonly<{
 export type SarahVoiceLiveKitWorkerStopReason =
   | "hold_exhausted"
   | "membership_revoked"
-  | "operator_stop";
+  | "operator_stop"
+  | "session_expired";
 
 type SarahVoiceLiveKitWorkerEventCommon = Readonly<{
   workerControlTokenDigest: string;
@@ -131,6 +132,9 @@ export type SarahVoiceLiveKitCleanup = Readonly<{
   sarahPresenceLeaseRef: string;
 }>;
 
+export type SarahVoiceLiveKitCleanupClaim = SarahVoiceLiveKitCleanup &
+  Readonly<{ cleanupAttemptedAt: string }>;
+
 export type SarahVoiceLiveKitProvisioningIntent = Readonly<{
   sessionRef: string;
   generation: number;
@@ -145,6 +149,8 @@ export type SarahVoiceLiveKitWorkerClaim = Readonly<{
   roomContext: SarahVoiceLiveKitRoomContext;
   sessionExpiresAt: string;
 }>;
+
+export const SARAH_LIVEKIT_WORKER_DRAIN_TIMEOUT_MS = 15_000;
 
 export class SarahVoiceInsufficientCreditError extends Error {
   override readonly name = "SarahVoiceInsufficientCreditError";
@@ -227,6 +233,14 @@ const toRecord = (row: SessionRow): SarahVoiceSessionRecord => ({
 });
 
 const first = <A>(rows: ReadonlyArray<A>): A | undefined => rows[0];
+
+const plusMillisecondsIso = (value: string, milliseconds: number): string => {
+  const epochMilliseconds = Date.parse(value);
+  if (!Number.isSafeInteger(epochMilliseconds)) {
+    throw new SarahVoiceSessionRejectedError("The Sarah voice event timestamp is invalid");
+  }
+  return new Date(epochMilliseconds + milliseconds).toISOString();
+};
 
 const isUniqueViolation = (error: unknown): boolean =>
   typeof error === "object" &&
@@ -1392,6 +1406,65 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }
   };
 
+  const claimLiveKitCleanups = async (input: {
+    staleBeforeIso: string;
+    nowIso: string;
+    limit?: number;
+  }): Promise<ReadonlyArray<SarahVoiceLiveKitCleanupClaim>> => {
+    try {
+      const boundedLimit = Math.max(1, Math.min(100, Math.trunc(input.limit ?? 100)));
+      type CleanupClaimRow = Readonly<{
+        session_ref: string;
+        generation: number | string;
+        room_ref: string;
+        room_epoch: number | string;
+        dispatch_ref: string;
+        sarah_presence_lease_ref: string;
+        cleanup_attempted_at: string;
+      }>;
+      const rows = await sql.begin(
+        async (tx) =>
+          (await tx`
+            WITH candidates AS (
+              SELECT binding.session_ref
+              FROM sarah_livekit_room_bindings AS binding
+              INNER JOIN sarah_realtime_voice_sessions AS session
+                ON session.session_ref = binding.session_ref
+              WHERE binding.state IN ('cleanup_ready', 'cleanup_failed')
+                AND (
+                  binding.cleanup_attempted_at IS NULL
+                  OR binding.cleanup_attempted_at <= ${input.staleBeforeIso}
+                )
+                AND session.state IN ('settled', 'released')
+                AND session.settlement_receipt_ref IS NOT NULL
+              ORDER BY binding.updated_at, binding.session_ref
+              LIMIT ${boundedLimit}
+              FOR UPDATE OF binding SKIP LOCKED
+            )
+            UPDATE sarah_livekit_room_bindings AS binding
+            SET cleanup_attempted_at = ${input.nowIso},
+                updated_at = ${input.nowIso}
+            FROM candidates
+            WHERE binding.session_ref = candidates.session_ref
+            RETURNING binding.session_ref, binding.generation,
+              binding.room_ref, binding.room_epoch, binding.dispatch_ref,
+              binding.sarah_presence_lease_ref, binding.cleanup_attempted_at
+          `) as ReadonlyArray<CleanupClaimRow>,
+      );
+      return rows.map((row) => ({
+        sessionRef: row.session_ref,
+        generation: toSafeInteger(row.generation, "generation"),
+        roomRef: row.room_ref,
+        roomEpoch: toSafeInteger(row.room_epoch, "room_epoch"),
+        dispatchRef: row.dispatch_ref,
+        sarahPresenceLeaseRef: row.sarah_presence_lease_ref,
+        cleanupAttemptedAt: row.cleanup_attempted_at,
+      }));
+    } catch (error) {
+      throw new SarahVoiceStorageError("Sarah LiveKit cleanup claim failed", error);
+    }
+  };
+
   const markLiveKitCleanup = async (
     input: Readonly<{
       sessionRef: string;
@@ -1434,35 +1507,95 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }
   };
 
+  const setLiveKitWorkerStopInTransaction = async (
+    tx: SyncTransactionSql,
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+      stopReason: SarahVoiceLiveKitWorkerStopReason;
+      closeReason: string;
+      nowIso: string;
+    }>,
+  ): Promise<void> => {
+    await tx`
+      UPDATE sarah_livekit_room_bindings
+      SET worker_stop_reason = COALESCE(worker_stop_reason, ${input.stopReason}),
+          worker_stop_close_reason =
+            COALESCE(worker_stop_close_reason, ${input.closeReason.slice(0, 256)}),
+          worker_stop_requested_at =
+            COALESCE(worker_stop_requested_at, ${input.nowIso}),
+          worker_stop_deadline_at = COALESCE(
+            worker_stop_deadline_at,
+            ${plusMillisecondsIso(input.nowIso, SARAH_LIVEKIT_WORKER_DRAIN_TIMEOUT_MS)}
+          ),
+          updated_at = ${input.nowIso}
+      WHERE session_ref = ${input.sessionRef}
+        AND generation = ${input.generation}
+    `;
+  };
+
+  const requestLiveKitWorkerStopInTransaction = async (
+    tx: SyncTransactionSql,
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+      stopReason: SarahVoiceLiveKitWorkerStopReason;
+      closeReason: string;
+      nowIso: string;
+    }>,
+  ): Promise<SarahVoiceSessionRecord> => {
+    const rows = (await tx`
+      SELECT session.session_ref, session.owner_user_id,
+        session.owner_actor_ref, session.device_ref, session.thread_ref,
+        session.generation, session.disclosure_ref, session.client_profile,
+        session.transport_kind, session.credit_mode, session.entitlement_ref,
+        session.admission_cohort_ref, session.state, session.reserved_msat,
+        session.charged_msat, session.ticket_expires_at,
+        session.session_expires_at, session.settlement_receipt_ref
+      FROM sarah_livekit_room_bindings AS binding
+      INNER JOIN sarah_realtime_voice_sessions AS session
+        ON session.session_ref = binding.session_ref
+      WHERE binding.session_ref = ${input.sessionRef}
+        AND binding.generation = ${input.generation}
+      FOR UPDATE OF session
+    `) as ReadonlyArray<SessionRow>;
+    const row = first(rows);
+    if (row === undefined) {
+      throw new SarahVoiceSessionRejectedError("The LiveKit room generation is not active");
+    }
+    const session = toRecord(row);
+    if (session.state === "settled" || session.state === "released" || session.state === "failed") {
+      return session;
+    }
+    const bindings = (await tx`
+      SELECT session_ref
+      FROM sarah_livekit_room_bindings
+      WHERE session_ref = ${input.sessionRef}
+        AND generation = ${input.generation}
+      FOR UPDATE
+    `) as ReadonlyArray<{ session_ref: string }>;
+    if (first(bindings) === undefined) {
+      throw new SarahVoiceSessionRejectedError("The LiveKit room generation is not active");
+    }
+    await setLiveKitWorkerStopInTransaction(tx, input);
+    return session;
+  };
+
   const revokeLiveKitRoom = async (
     input: Readonly<{
       sessionRef: string;
       generation: number;
+      stopReason: "membership_revoked" | "operator_stop";
       reason: string;
       nowIso: string;
     }>,
   ): Promise<SarahVoiceSessionRecord> => {
     try {
       return await sql.begin(async (tx) => {
-        const rows = (await tx`
-          SELECT session_ref
-          FROM sarah_livekit_room_bindings
-          WHERE session_ref = ${input.sessionRef}
-            AND generation = ${input.generation}
-            AND state IN (
-              'prepared',
-              'active',
-              'cleanup_ready',
-              'cleanup_failed',
-              'cleaned'
-            )
-          FOR UPDATE
-        `) as ReadonlyArray<{ session_ref: string }>;
-        if (first(rows) === undefined) {
-          throw new SarahVoiceSessionRejectedError("The LiveKit room generation is not active");
-        }
-        return settleInTransaction(tx, {
+        return requestLiveKitWorkerStopInTransaction(tx, {
           sessionRef: input.sessionRef,
+          generation: input.generation,
+          stopReason: input.stopReason,
           closeReason: input.reason,
           nowIso: input.nowIso,
         });
@@ -1984,14 +2117,11 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         const replay = await readWorkerEventReceipt(tx, input);
         if (replay !== undefined) return replay;
 
-        const bindings = (await tx`
-          SELECT binding.room_ref, binding.sarah_participant_ref,
-            binding.state AS binding_state, binding.join_expires_at,
-            binding.sarah_joined_at, binding.worker_closed_at,
-            session.state AS session_state, session.session_expires_at
-          FROM sarah_livekit_room_bindings AS binding
-          INNER JOIN sarah_realtime_voice_sessions AS session
-            ON session.session_ref = binding.session_ref
+        const sessions = (await tx`
+          SELECT session.state, session.session_expires_at
+          FROM sarah_realtime_voice_sessions AS session
+          INNER JOIN sarah_livekit_room_bindings AS binding
+            ON binding.session_ref = session.session_ref
           WHERE binding.worker_control_token_digest =
               ${input.workerControlTokenDigest}
             AND binding.worker_job_ref = ${input.workerJobRef}
@@ -2002,7 +2132,35 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
               OR binding.worker_room_sid =
                 ${input.eventKind === "worker_connected" ? input.workerRoomSid : null}
             )
-          FOR UPDATE OF binding, session
+          FOR UPDATE OF session
+        `) as ReadonlyArray<{
+          state: SarahVoiceSessionState;
+          session_expires_at: string;
+        }>;
+        const session = first(sessions);
+        if (session === undefined) {
+          throw new SarahVoiceSessionRejectedError(
+            "The Sarah LiveKit worker event does not match its claimed generation",
+          );
+        }
+
+        const bindings = (await tx`
+          SELECT binding.room_ref, binding.sarah_participant_ref,
+            binding.state AS binding_state, binding.join_expires_at,
+            binding.sarah_joined_at, binding.worker_closed_at,
+            binding.worker_stop_reason, binding.worker_stop_close_reason
+          FROM sarah_livekit_room_bindings AS binding
+          WHERE binding.worker_control_token_digest =
+              ${input.workerControlTokenDigest}
+            AND binding.worker_job_ref = ${input.workerJobRef}
+            AND binding.session_ref = ${input.sessionRef}
+            AND binding.generation = ${input.generation}
+            AND (
+              ${input.eventKind === "worker_connected" ? input.workerRoomSid : null}::text IS NULL
+              OR binding.worker_room_sid =
+                ${input.eventKind === "worker_connected" ? input.workerRoomSid : null}
+            )
+          FOR UPDATE
         `) as ReadonlyArray<{
           room_ref: string;
           sarah_participant_ref: string;
@@ -2010,14 +2168,33 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           join_expires_at: string;
           sarah_joined_at: string | null;
           worker_closed_at: string | null;
-          session_state: SarahVoiceSessionState;
-          session_expires_at: string;
+          worker_stop_reason: SarahVoiceLiveKitWorkerStopReason | null;
+          worker_stop_close_reason: string | null;
         }>;
         const binding = first(bindings);
         if (binding === undefined) {
           throw new SarahVoiceSessionRejectedError(
             "The Sarah LiveKit worker event does not match its claimed generation",
           );
+        }
+
+        let workerStopReason = binding.worker_stop_reason;
+        let workerStopCloseReason = binding.worker_stop_close_reason;
+        if (
+          input.eventKind !== "close" &&
+          workerStopReason === null &&
+          session.state === "connected" &&
+          session.session_expires_at <= input.nowIso
+        ) {
+          workerStopReason = "session_expired";
+          workerStopCloseReason = "session_expired";
+          await setLiveKitWorkerStopInTransaction(tx, {
+            sessionRef: input.sessionRef,
+            generation: input.generation,
+            stopReason: workerStopReason,
+            closeReason: workerStopCloseReason,
+            nowIso: input.nowIso,
+          });
         }
 
         if (input.eventKind === "close") {
@@ -2028,10 +2205,11 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
               "The Sarah LiveKit worker emitted a second terminal event",
             );
           }
+          const closeReason = workerStopCloseReason ?? input.closeReason;
           await tx`
             UPDATE sarah_livekit_room_bindings
             SET worker_closed_at = ${receipt.observedAt},
-                worker_close_reason = ${input.closeReason.slice(0, 256)},
+                worker_close_reason = ${closeReason.slice(0, 256)},
                 worker_last_seen_at = ${receipt.observedAt},
                 updated_at = ${receipt.observedAt}
             WHERE session_ref = ${input.sessionRef}
@@ -2039,10 +2217,17 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           `;
           await settleInTransaction(tx, {
             sessionRef: input.sessionRef,
-            closeReason: input.closeReason,
+            closeReason,
             nowIso: receipt.observedAt,
           });
           return receipt;
+        }
+
+        if (input.eventKind === "worker_connected" && workerStopReason !== null) {
+          const receipt = await insertWorkerEventReceipt(tx, input);
+          if (receipt.replayed) return receipt;
+          await setWorkerEventStopReason(tx, input, workerStopReason);
+          return { ...receipt, stopReason: workerStopReason };
         }
 
         const bindingAdmitted =
@@ -2050,11 +2235,13 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             ? (binding.binding_state === "prepared" || binding.binding_state === "active") &&
               binding.sarah_joined_at === null &&
               binding.join_expires_at > input.nowIso
-            : binding.binding_state === "active" && binding.sarah_joined_at !== null;
+            : binding.binding_state === "active" &&
+              binding.sarah_joined_at !== null &&
+              session.state === "connected";
         const active =
           bindingAdmitted &&
-          (binding.session_state === "reserved" || binding.session_state === "connected") &&
-          binding.session_expires_at > input.nowIso &&
+          (session.state === "reserved" || session.state === "connected") &&
+          (session.session_expires_at > input.nowIso || workerStopReason !== null) &&
           binding.worker_closed_at === null;
         if (!active) {
           const receipt = await insertWorkerEventReceipt(tx, input);
@@ -2123,7 +2310,11 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           WHERE session_ref = ${input.sessionRef}
             AND generation = ${input.generation}
         `;
-        if (input.eventKind === "lease_check") return receipt;
+        if (input.eventKind === "lease_check") {
+          if (workerStopReason === null) return receipt;
+          await setWorkerEventStopReason(tx, input, workerStopReason);
+          return { ...receipt, stopReason: workerStopReason };
+        }
 
         const usageResult = await recordUsageInTransaction(tx, {
           sessionRef: input.sessionRef,
@@ -2133,7 +2324,18 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             observedAt: receipt.observedAt,
           },
         });
+        if (workerStopReason !== null) {
+          await setWorkerEventStopReason(tx, input, workerStopReason);
+          return { ...receipt, stopReason: workerStopReason };
+        }
         if (!usageResult.creditLimitReached) return receipt;
+        await setLiveKitWorkerStopInTransaction(tx, {
+          sessionRef: input.sessionRef,
+          generation: input.generation,
+          stopReason: "hold_exhausted",
+          closeReason: "livekit_worker_hold_exhausted",
+          nowIso: receipt.observedAt,
+        });
         await setWorkerEventStopReason(tx, input, "hold_exhausted");
         return {
           ...receipt,
@@ -2154,37 +2356,86 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         AND expires_at <= ${nowIso}
     `;
     const rows = (await sql`
-      SELECT session_ref, state
-      FROM sarah_realtime_voice_sessions
-      WHERE (state = 'reserved' AND ticket_expires_at <= ${nowIso})
-         OR (state = 'connected' AND session_expires_at <= ${nowIso})
+      SELECT session.session_ref, session.generation, session.state,
+        session.transport_kind, binding.worker_stop_reason,
+        binding.worker_stop_close_reason, binding.worker_stop_deadline_at
+      FROM sarah_realtime_voice_sessions AS session
+      LEFT JOIN sarah_livekit_room_bindings AS binding
+        ON binding.session_ref = session.session_ref
+      WHERE (
+          session.state = 'reserved'
+          AND session.ticket_expires_at <= ${nowIso}
+        )
+        OR (
+          session.state = 'connected'
+          AND (
+            session.session_expires_at <= ${nowIso}
+            OR binding.worker_stop_deadline_at <= ${nowIso}
+          )
+        )
       ORDER BY CASE
-        WHEN state = 'reserved' THEN ticket_expires_at
-        ELSE session_expires_at
+        WHEN session.state = 'reserved' THEN session.ticket_expires_at
+        ELSE COALESCE(
+          binding.worker_stop_deadline_at,
+          session.session_expires_at
+        )
       END
       LIMIT 100
     `) as ReadonlyArray<{
       session_ref: string;
+      generation: number | string;
       state: "reserved" | "connected";
+      transport_kind: SarahVoiceTransportKind;
+      worker_stop_reason: SarahVoiceLiveKitWorkerStopReason | null;
+      worker_stop_close_reason: string | null;
+      worker_stop_deadline_at: string | null;
     }>;
-    let settled = 0;
+    let processed = 0;
     for (const row of rows) {
+      if (
+        row.state === "connected" &&
+        row.transport_kind === "livekit_room_v1" &&
+        row.worker_stop_reason === null
+      ) {
+        // eslint-disable-next-line no-await-in-loop
+        await sql.begin((tx) =>
+          requestLiveKitWorkerStopInTransaction(tx, {
+            sessionRef: row.session_ref,
+            generation: toSafeInteger(row.generation, "generation"),
+            stopReason: "session_expired",
+            closeReason: "session_expired",
+            nowIso,
+          }),
+        );
+        processed += 1;
+        continue;
+      }
+      if (
+        row.state === "connected" &&
+        row.transport_kind === "livekit_room_v1" &&
+        (row.worker_stop_deadline_at === null || row.worker_stop_deadline_at > nowIso)
+      ) {
+        continue;
+      }
       // Run one settlement at a time to protect the shared database pool.
       // eslint-disable-next-line no-await-in-loop
       await settle({
         sessionRef: row.session_ref,
-        closeReason: row.state === "reserved" ? "ticket_expired" : "session_expired",
+        closeReason:
+          row.worker_stop_close_reason ??
+          (row.state === "reserved" ? "ticket_expired" : "session_expired"),
         nowIso,
       });
-      settled += 1;
+      processed += 1;
     }
-    return settled;
+    return processed;
   };
 
   return {
     applyLiveKitWorkerEvent,
     authorizeLiveKitWorkerEvent,
     bindLiveKitRoom,
+    claimLiveKitCleanups,
     claimLiveKitWorkerJob,
     closeLiveKitWorkerJob,
     connect,

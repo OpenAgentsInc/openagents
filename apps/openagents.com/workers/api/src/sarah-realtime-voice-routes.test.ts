@@ -22,6 +22,7 @@ import {
   handleSarahRealtimeVoiceSessionRequest,
   handleSarahRealtimeVoiceSettlementRequest,
   reconcileSarahLiveKitProvisioningIntents,
+  reconcileSarahLiveKitTerminalRooms,
   recordSarahLiveKitParticipantJoin,
   recordSarahLiveKitProviderUsage,
 } from './sarah-realtime-voice-routes'
@@ -678,6 +679,17 @@ describe('managed Sarah Realtime voice session route', () => {
       sarahPresenceLeaseRef: 'presence-1',
     }))
     const markLiveKitCleanup = vi.fn(async () => undefined)
+    const claimLiveKitCleanups = vi.fn(async () => [
+      {
+        sessionRef: 'voice-terminal',
+        generation: 2,
+        roomRef: 'room-terminal',
+        roomEpoch: 1,
+        dispatchRef: 'dispatch-terminal',
+        sarahPresenceLeaseRef: 'presence-terminal',
+        cleanupAttemptedAt: '2026-07-28T12:00:00.000Z',
+      },
+    ])
     const claimLiveKitProvisioningIntents = vi.fn(async () => [
       {
         sessionRef: 'crashed-voice',
@@ -692,6 +704,7 @@ describe('managed Sarah Realtime voice session route', () => {
       recordLiveKitParticipantJoin,
       recordUsage,
       readLiveKitCleanup,
+      claimLiveKitCleanups,
       markLiveKitCleanup,
       claimLiveKitProvisioningIntents,
       markLiveKitProvisioningIntent,
@@ -754,6 +767,10 @@ describe('managed Sarah Realtime voice session route', () => {
       cleaned: 1,
       failed: 0,
     })
+    expect(await reconcileSarahLiveKitTerminalRooms(dependencies, {})).toEqual({
+      cleaned: 1,
+      failed: 0,
+    })
 
     expect(recordLiveKitParticipantJoin).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -770,7 +787,13 @@ describe('managed Sarah Realtime voice session route', () => {
         }),
       }),
     )
-    expect(broker.cleanupRoom).toHaveBeenCalledOnce()
+    expect(broker.cleanupRoom).toHaveBeenCalledTimes(2)
+    expect(markLiveKitCleanup).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionRef: 'voice-terminal',
+        state: 'cleaned',
+      }),
+    )
     expect(broker.cleanupByIdempotencyKey).toHaveBeenCalledWith(
       'sarah-livekit:crashed-voice:3',
     )

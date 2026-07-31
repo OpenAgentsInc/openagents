@@ -25,7 +25,7 @@ export type SarahLiveKitClaimInput = Readonly<{
 
 export type SarahLiveKitEventResult = Readonly<{
   accepted: true;
-  stopReason?: "hold_exhausted" | "membership_revoked" | "operator_stop";
+  stopReason?: "hold_exhausted" | "membership_revoked" | "operator_stop" | "session_expired";
 }>;
 
 const normalizedBaseUrl = (value: string): string => {
@@ -172,7 +172,8 @@ export const makeSarahLiveKitControlClient = (
       "stopReason" in body &&
       (body.stopReason === "hold_exhausted" ||
         body.stopReason === "membership_revoked" ||
-        body.stopReason === "operator_stop")
+        body.stopReason === "operator_stop" ||
+        body.stopReason === "session_expired")
         ? body.stopReason
         : undefined;
     return stopReason === undefined ? { accepted: true } : { accepted: true, stopReason };

@@ -825,25 +825,65 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       store.revokeLiveKitRoom({
         sessionRef: binding.sessionRef,
         generation: 2,
+        stopReason: "membership_revoked",
         reason: "operator_kill",
         nowIso: "2026-07-28T13:01:00.000Z",
       }),
     ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
-    const settled = await store.revokeLiveKitRoom({
+    const draining = await store.revokeLiveKitRoom({
       sessionRef: binding.sessionRef,
       generation: 1,
+      stopReason: "membership_revoked",
       reason: "membership_removed",
       nowIso: "2026-07-28T13:01:00.000Z",
     });
-    expect(settled).toMatchObject({ state: "settled", chargedMsat: 250 });
+    expect(draining).toMatchObject({ state: "connected", chargedMsat: 250 });
+    await expect(
+      store.applyLiveKitWorkerEvent({
+        workerControlTokenDigest: binding.workerControlTokenDigest,
+        workerJobRef: workerClaim.workerJobRef,
+        sessionRef: binding.sessionRef,
+        generation: 1,
+        eventRef: "response:after-membership-removal",
+        eventPayloadDigest: "8".repeat(64),
+        eventKind: "response_usage",
+        usage: {
+          providerResponseRef: "response:after-membership-removal",
+          inputTokens: 40,
+          outputTokens: 10,
+          cachedInputTokens: 0,
+          audioInputTokens: 40,
+          audioOutputTokens: 10,
+          chargeMsat: 100,
+        },
+        nowIso: "2026-07-28T13:01:00.500Z",
+      }),
+    ).resolves.toMatchObject({
+      replayed: false,
+      stopReason: "membership_revoked",
+    });
+    await expect(
+      store.applyLiveKitWorkerEvent({
+        workerControlTokenDigest: binding.workerControlTokenDigest,
+        workerJobRef: workerClaim.workerJobRef,
+        sessionRef: binding.sessionRef,
+        generation: 1,
+        eventRef: "close:job-livekit-1",
+        eventPayloadDigest: "7".repeat(64),
+        eventKind: "close",
+        closeReason: "livekit_worker_completed",
+        nowIso: "2026-07-28T13:01:01.000Z",
+      }),
+    ).resolves.toMatchObject({ replayed: false });
     expect(
       await store.revokeLiveKitRoom({
         sessionRef: binding.sessionRef,
         generation: 1,
+        stopReason: "operator_stop",
         reason: "operator_kill",
-        nowIso: "2026-07-28T13:01:01.000Z",
+        nowIso: "2026-07-28T13:01:02.000Z",
       }),
-    ).toMatchObject({ state: "settled", chargedMsat: 250 });
+    ).toMatchObject({ state: "settled", chargedMsat: 350 });
     const [revokedSession] = await sql`
       SELECT close_reason
       FROM sarah_realtime_voice_sessions
@@ -858,17 +898,46 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       roomRef: binding.roomRef,
       dispatchRef: binding.dispatchRef,
     });
+    const claimedCleanup = await store.claimLiveKitCleanups({
+      staleBeforeIso: "2026-07-28T13:01:01.000Z",
+      nowIso: "2026-07-28T13:01:10.000Z",
+    });
+    expect(claimedCleanup).toEqual([
+      expect.objectContaining({
+        sessionRef: binding.sessionRef,
+        roomRef: binding.roomRef,
+        cleanupAttemptedAt: "2026-07-28T13:01:10.000Z",
+      }),
+    ]);
+    expect(
+      await store.claimLiveKitCleanups({
+        staleBeforeIso: "2026-07-28T13:01:09.999Z",
+        nowIso: "2026-07-28T13:01:11.000Z",
+      }),
+    ).toEqual([]);
+    await store.markLiveKitCleanup({
+      sessionRef: binding.sessionRef,
+      generation: 1,
+      state: "cleanup_failed",
+      nowIso: "2026-07-28T13:01:11.000Z",
+    });
+    expect(
+      await store.claimLiveKitCleanups({
+        staleBeforeIso: "2026-07-28T13:01:11.000Z",
+        nowIso: "2026-07-28T13:01:12.000Z",
+      }),
+    ).toHaveLength(1);
     await store.markLiveKitCleanup({
       sessionRef: binding.sessionRef,
       generation: 1,
       state: "cleaned",
-      nowIso: "2026-07-28T13:01:10.000Z",
+      nowIso: "2026-07-28T13:01:13.000Z",
     });
     await store.markLiveKitCleanup({
       sessionRef: binding.sessionRef,
       generation: 1,
       state: "cleaned",
-      nowIso: "2026-07-28T13:01:11.000Z",
+      nowIso: "2026-07-28T13:01:14.000Z",
     });
     expect(
       await store.readLiveKitCleanup({
@@ -881,7 +950,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       FROM sarah_realtime_voice_usage
       WHERE session_ref = 'voice-livekit-1'
     `;
-    expect(Number(usageCount?.count)).toBe(1);
+    expect(Number(usageCount?.count)).toBe(2);
 
     await store.reserve({
       ...reservation,

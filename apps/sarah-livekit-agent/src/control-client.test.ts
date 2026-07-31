@@ -134,6 +134,29 @@ describe("Sarah LiveKit control client", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
+  test("accepts the authoritative session-expiry stop response", async () => {
+    const client = makeSarahLiveKitControlClient(
+      {
+        baseUrl: "https://openagents.com",
+        workerRef: "worker:one",
+        controlRoot,
+      },
+      vi.fn(async () =>
+        Response.json({ accepted: true, stopReason: "session_expired" }),
+      ) as typeof fetch,
+    );
+    await expect(
+      client.event(dispatch, {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "lease_check",
+        sessionRef: dispatch.sessionRef,
+        generation: dispatch.generation,
+        jobRef: "job:one",
+        eventRef: "lease:expired",
+      }),
+    ).resolves.toEqual({ accepted: true, stopReason: "session_expired" });
+  });
+
   test("derives stable credentials separated by generation and room", () => {
     const token = deriveSarahLiveKitControlToken(controlRoot, dispatch);
     expect(token).toBe("oa_sarah_lk_-zUjl0WEcpWVL65Y8bZ_CIVrygCu8tu3R0RWhrINfu0");

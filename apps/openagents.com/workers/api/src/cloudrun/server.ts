@@ -25,8 +25,13 @@ import {
   SARAH_REALTIME_VOICE_SESSION_HEADER,
   SARAH_REALTIME_VOICE_TICKET_HEADER,
   parseSarahRealtimeVoiceRouteConfig,
+  reconcileSarahLiveKitTerminalRooms,
   sha256Hex,
 } from '../sarah-realtime-voice-routes'
+import {
+  makeSarahLiveKitRoomBroker,
+  parseSarahLiveKitRoomBrokerConfig,
+} from '../sarah-livekit-room-broker'
 import { assertAssetsDirExists } from './assets'
 import {
   isBindingUnavailableError,
@@ -102,20 +107,40 @@ const main = async (): Promise<void> => {
     const connectionString = runtime.env.KHALA_SYNC_DB?.connectionString?.trim()
     if (
       voiceConfig === undefined ||
-      !voiceConfig.enabled ||
       connectionString === undefined ||
       connectionString === ''
     ) {
       return
     }
-    const client = await defaultMakeKhalaSyncSqlClient(connectionString)
-    try {
-      const swept = await makeSarahRealtimeVoiceStore(client.sql).sweepExpired(
-        new Date().toISOString(),
-      )
-      if (swept > 0) log('sarah_voice_expired_sessions_settled', { swept })
-    } finally {
-      await client.end()
+    if (voiceConfig.enabled) {
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        const swept = await makeSarahRealtimeVoiceStore(client.sql).sweepExpired(
+          new Date().toISOString(),
+        )
+        if (swept > 0) log('sarah_voice_expired_sessions_processed', { swept })
+      } finally {
+        await client.end()
+      }
+    }
+    const liveKitConfig = parseSarahLiveKitRoomBrokerConfig(runtime.env)
+    if (liveKitConfig === undefined) return
+    const cleanup = await reconcileSarahLiveKitTerminalRooms(
+      {
+        broker: makeSarahLiveKitRoomBroker(liveKitConfig),
+        creditMsatPerMillionTokens: voiceConfig.creditMsatPerMillionTokens,
+        openStore: async () => {
+          const opened = await defaultMakeKhalaSyncSqlClient(connectionString)
+          return {
+            store: makeSarahRealtimeVoiceStore(opened.sql),
+            close: () => opened.end(),
+          }
+        },
+      },
+      runtime.env,
+    )
+    if (cleanup.cleaned > 0 || cleanup.failed > 0) {
+      log('sarah_livekit_terminal_rooms_reconciled', cleanup)
     }
   }
 

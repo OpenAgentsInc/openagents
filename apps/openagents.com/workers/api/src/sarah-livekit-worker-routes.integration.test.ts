@@ -131,7 +131,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       admissionCohortRef: "sarah_voice_cohort:alpha_v1",
       reservedMsat: 1_000,
       ticketExpiresAt: "2026-07-28T13:01:00.000Z",
-      sessionExpiresAt: "2026-07-28T13:10:00.000Z",
+      sessionExpiresAt: "2026-07-28T13:02:00.000Z",
       nowIso: "2026-07-28T13:00:00.000Z",
       admissionBinding: {
         admissionRef: "sarah_voice_admission:route-1",
@@ -339,6 +339,41 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       observedAt: "2026-07-28T13:01:40.000Z",
     });
 
+    const finalUsageEvent = {
+      ...usageEvent,
+      eventRef: "response:resp_route_final",
+      providerResponseRef: "resp_route_final",
+      inputTokens: 20,
+      outputTokens: 5,
+      cachedInputTokens: 0,
+      audioInputTokens: 20,
+      audioOutputTokens: 5,
+    } as const;
+    nowMs = Date.parse("2026-07-28T13:02:00.000Z");
+    const [swept, finalUsageResponse] = await Promise.all([
+      store.sweepExpired("2026-07-28T13:02:00.000Z"),
+      handleSarahLiveKitWorkerEvent(
+        dependencies,
+        authorizedRequest("/api/internal/sarah/livekit/job/event", finalUsageEvent),
+        {},
+      ),
+    ]);
+    expect(swept).toBe(1);
+    expect(finalUsageResponse.status).toBe(200);
+    expect(await finalUsageResponse.json()).toEqual({
+      accepted: true,
+      stopReason: "session_expired",
+    });
+    const [draining] = await sql`
+      SELECT state, charged_msat
+      FROM sarah_realtime_voice_sessions
+      WHERE session_ref = 'voice-livekit-route-1'
+    `;
+    expect(draining).toMatchObject({ state: "connected" });
+    expect(Number(draining?.charged_msat)).toBe(175);
+    expect(await store.sweepExpired("2026-07-28T13:02:14.999Z")).toBe(0);
+    expect(await store.sweepExpired("2026-07-28T13:02:15.000Z")).toBe(1);
+
     const closeEvent = {
       schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
       _tag: "close",
@@ -348,7 +383,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       eventRef: "close:job:route-one",
       reason: "completed",
     } as const;
-    nowMs = Date.parse("2026-07-28T13:02:00.000Z");
+    nowMs = Date.parse("2026-07-28T13:02:16.000Z");
     expect(
       (
         await handleSarahLiveKitWorkerEvent(
@@ -358,7 +393,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
         )
       ).status,
     ).toBe(200);
-    nowMs = Date.parse("2026-07-28T13:02:05.000Z");
+    nowMs = Date.parse("2026-07-28T13:02:20.000Z");
     expect(
       (
         await handleSarahLiveKitWorkerEvent(
@@ -380,15 +415,15 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       closeReason: settled?.close_reason,
     }).toEqual({
       state: "settled",
-      chargedMsat: 150,
-      closeReason: "livekit_worker_completed",
+      chargedMsat: 175,
+      closeReason: "session_expired",
     });
     const [eventCount] = await sql`
         SELECT COUNT(*) AS count
         FROM sarah_livekit_worker_events
         WHERE session_ref = 'voice-livekit-route-1'
       `;
-    expect(Number(eventCount?.count)).toBe(4);
+    expect(Number(eventCount?.count)).toBe(5);
     const eventObservations = await sql`
         SELECT event_ref, observed_at
         FROM sarah_livekit_worker_events
@@ -398,7 +433,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
     expect(eventObservations).toEqual([
       {
         event_ref: "close:job:route-one",
-        observed_at: "2026-07-28T13:02:00.000Z",
+        observed_at: "2026-07-28T13:02:16.000Z",
       },
       {
         event_ref: "connected:job:route-one",
@@ -407,6 +442,10 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       {
         event_ref: "lease:job:route-one:1",
         observed_at: "2026-07-28T13:01:31.000Z",
+      },
+      {
+        event_ref: "response:resp_route_final",
+        observed_at: "2026-07-28T13:02:00.000Z",
       },
       {
         event_ref: "response:resp_route_one",
