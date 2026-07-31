@@ -60,6 +60,15 @@ the bundle may create only the `livekit-system` Namespace. The server-side
 apply does not supply a default namespace, so it cannot redirect a
 multi-namespace manifest.
 
+Production acceptance uses
+`scripts/cloud/livekit-production-acceptance.mjs`. Its dry-run validates a
+closed, ordered private probe plan without executing commands. Apply mode
+spawns exact argv without a shell, hashes private command evidence into opaque
+refs, writes the aggregate private observation outside the repository, and
+emits a public receipt only after `livekit-ops-policy.mjs` accepts the complete
+phase. Failure drills and rollback require a separate controlled-mutation
+interlock in addition to the owner cost gate.
+
 ## Required cluster dependencies
 
 Before applying the rendered manifest:

@@ -728,6 +728,120 @@ receipt. Never make signaling and TURN share an address/port collision.
 
 ## Acceptance
 
+### Executable evidence collection
+
+Do not assemble production acceptance observations by hand. Use
+`scripts/cloud/livekit-production-acceptance.mjs` to execute the probe commands
+and project their results through the same policy validators used by
+`livekit-acceptance.mjs`.
+
+The private plan has a closed schema:
+
+```json
+{
+  "schemaVersion": "openagents.livekit_production_acceptance_plan.v1",
+  "phase": "connectivity",
+  "stage": "production",
+  "sourceBaseRevision": "<bundle sourceBaseRevision>",
+  "deployedRevision": "<exact deployed 40-hex revision>",
+  "resourceRefs": ["gke-cluster-ref://openagentsgemini/us-central1/oa-livekit-prod"],
+  "steps": [
+    {
+      "id": "production_preflight",
+      "command": ["<probe executable>", "preflight"],
+      "timeoutSeconds": 300
+    },
+    {
+      "id": "direct_udp",
+      "command": ["<packaged Omega probe>", "direct_udp"],
+      "timeoutSeconds": 600
+    },
+    {
+      "id": "tcp_fallback",
+      "command": ["<packaged Omega probe>", "tcp_fallback"],
+      "timeoutSeconds": 600
+    },
+    {
+      "id": "turn_tls",
+      "command": ["<packaged Omega probe>", "turn_tls"],
+      "timeoutSeconds": 600
+    }
+  ]
+}
+```
+
+Keep the plan outside Git when its argv names private evidence paths. The
+runner rejects shells, reordered or missing steps, source drift, mutable
+revision identities, unknown fields, and command timeouts outside one second
+through one hour. Each command is spawned as exact argv without a shell and
+must emit exactly one JSON object on stdout:
+
+```json
+{
+  "schemaVersion": "openagents.livekit_probe_result.v1",
+  "phase": "connectivity",
+  "stepId": "direct_udp",
+  "observedAt": "2026-07-31T12:00:00.000Z",
+  "result": {
+    "roomJoined": true,
+    "microphonePublished": true,
+    "sarahAudioSubscribed": true,
+    "selectedPathObserved": true,
+    "sessionSettled": true,
+    "p95JoinMs": 500,
+    "p95FirstAudioMs": 900
+  }
+}
+```
+
+The phase determines the exact ordered steps:
+
+| Phase        | Ordered step IDs                                                                                                                                                                                                       |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| connectivity | `production_preflight`, `direct_udp`, `tcp_fallback`, `turn_tls`                                                                                                                                                       |
+| load         | `alpha_load`                                                                                                                                                                                                           |
+| drills       | `sfu_pod_drain`, `sfu_node_loss`, `zone_loss`, `redis_failover`, `signaling_backend_removal`, `certificate_renewal`, `turn_backend_loss`, `worker_crash`, `provider_disconnect`, `quota_exhaustion`, `server_rollback` |
+| secret scan  | `runtime_secret_scan`                                                                                                                                                                                                  |
+| cost         | `billing_reconciliation`                                                                                                                                                                                               |
+| rollback     | `scoped_rollback`                                                                                                                                                                                                      |
+
+The `result` for each step is the corresponding object documented below and
+enforced by `livekit-ops-policy.mjs`. A drill step emits one drill row including
+its matching `scenario`; the runner supplies the outer `drills` array. A
+connectivity mode omits `mode`; the runner binds it from the required step ID.
+The other phases emit their complete `results` object.
+
+Validate the plan without executing it:
+
+```sh
+node scripts/cloud/livekit-production-acceptance.mjs \
+  --plan <private-plan.json> \
+  --bundle infra/livekit/bundle.json
+```
+
+Execute read-only connectivity, load, secret-scan, or cost probes and write a
+mode-0600 private observation outside the repository plus the policy-valid
+public receipt:
+
+```sh
+OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
+node scripts/cloud/livekit-production-acceptance.mjs \
+  --plan <private-plan.json> \
+  --bundle infra/livekit/bundle.json \
+  --private-observation <outside-repository/private-observation.json> \
+  --receipt docs/ops/receipts/livekit/production-<phase>-<UTC>.json \
+  --apply
+```
+
+Drills and rollback require the additional
+`--allow-controlled-mutation` interlock. Dry-run never accepts that flag. The
+runner captures stdout and stderr in memory, does not echo them, and adds an
+opaque evidence ref hashing the step ID, exact argv, stdout, and stderr. The
+public receipt contains the evidence refs and aggregate result digest, not the
+commands, provider diagnostics, topology, secrets, media, or transcripts. A
+failed command, invalid timestamp, malformed probe result, or failed policy
+condition writes neither observation nor receipt.
+
 ### Connectivity matrix
 
 Repeat the canary matrix against production with the packaged Omega candidate.
