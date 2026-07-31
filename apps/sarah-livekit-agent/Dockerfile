@@ -12,7 +12,7 @@ COPY . .
 RUN pnpm install --frozen-lockfile --ignore-scripts
 RUN pnpm --dir apps/sarah-livekit-agent build \
   && pnpm --filter @openagentsinc/sarah-livekit-agent deploy \
-    --legacy --prod /runtime
+    --legacy --prod --ignore-scripts --config.allowUnusedPatches=true /runtime
 
 FROM node:24.13.1-bookworm-slim@sha256:85a395c77b811fa7f5b5e4aa69cd6eb4c3b80c7f1a8e34704dc0ce061e5b404e
 

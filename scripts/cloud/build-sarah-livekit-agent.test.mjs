@@ -38,6 +38,10 @@ test("Sarah worker Cloud Build stays on the existing digest-pinned production la
     2,
   );
   assert.match(dockerfile, /pnpm install --frozen-lockfile --ignore-scripts/u);
+  assert.match(
+    dockerfile,
+    /deploy\s+\\\n\s+--legacy --prod --ignore-scripts --config\.allowUnusedPatches=true/u,
+  );
   assert.match(buildScript, /status --porcelain --untracked-files=normal/u);
   assert.match(buildScript, /\.gcloudignore\.sarah-livekit-agent/u);
   assert.match(buildScript, /--ignore-file "\$\{ignore_file\}"/u);
