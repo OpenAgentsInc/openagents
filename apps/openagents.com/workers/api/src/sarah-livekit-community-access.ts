@@ -40,6 +40,8 @@ export type SarahLiveKitCommunityAccess = Readonly<{
   communityRef: string;
   channelRef: string;
   membershipRevision: string;
+  memberPubkey: string;
+  role: "member" | "moderator";
   publishAllowed: boolean;
   subscribeAllowed: boolean;
 }>;
@@ -329,10 +331,15 @@ export const makeSarahLiveKitCommunityAccessResolver =
       adminPubkeys: authority.adminPubkeys,
       events: verifiedEvents,
     });
-    const active = ownerPubkeys.some(
-      (pubkey) => communityRoleFor(fold, pubkey).status === "active",
-    );
-    if (!active) return undefined;
+    const activeRoles = ownerPubkeys
+      .map((pubkey) => ({ pubkey, state: communityRoleFor(fold, pubkey) }))
+      .filter(({ state }) => state.status === "active")
+      .sort((left, right) => {
+        const privilege = Number(right.state.isGroupAdmin) - Number(left.state.isGroupAdmin);
+        return privilege === 0 ? left.pubkey.localeCompare(right.pubkey) : privilege;
+      });
+    const selected = activeRoles[0];
+    if (selected === undefined) return undefined;
 
     return {
       communityRef: input.communityRef,
@@ -344,6 +351,8 @@ export const makeSarahLiveKitCommunityAccessResolver =
         fold,
         verifiedEvents,
       ),
+      memberPubkey: selected.pubkey,
+      role: selected.state.isGroupAdmin ? "moderator" : "member",
       publishAllowed: true,
       subscribeAllowed: true,
     };

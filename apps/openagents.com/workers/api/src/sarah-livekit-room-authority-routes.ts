@@ -53,7 +53,6 @@ const ModeratorRequestSchema = S.Struct({
 type AuthenticatedSarahRoomUser = Readonly<{
   userId: string;
   userRefDigest: string;
-  pubkey: string;
 }>;
 
 export type SarahLiveKitRoomAuthorityRouteDependencies<Environment> = Readonly<{
@@ -114,11 +113,7 @@ const authenticatedMember = async <Environment>(
     userId: identity.userId,
     presenceLeaseRef,
   });
-  if (
-    member === undefined ||
-    member.userRefDigest !== identity.userRefDigest ||
-    member.pubkey !== identity.pubkey
-  ) {
+  if (member === undefined || member.userRefDigest !== identity.userRefDigest) {
     return json(403, { error: "room_membership_required" });
   }
   return { identity, member };

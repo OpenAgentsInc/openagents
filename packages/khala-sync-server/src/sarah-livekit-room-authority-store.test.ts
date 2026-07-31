@@ -81,7 +81,8 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit room authority store", () =>
          admission_ref,admission_digest,room_context_kind,community_ref,channel_ref,
          membership_revision,room_ref,room_epoch,participant_ref,sarah_participant_ref,
          participant_grant_digest,join_expires_at,dispatch_ref,sarah_presence_lease_ref,
-         publish_allowed,subscribe_allowed,state,created_at,updated_at)
+         publish_allowed,subscribe_allowed,state,owner_joined_at,sarah_joined_at,
+         created_at,updated_at)
       VALUES (${snapshot.presence.sessionRef},'owner.authority','device.authority',
         'thread.authority',1,'community_member_v1','admission.authority',
         ${snapshot.presence.admissionDigest},'community',${snapshot.presence.communityRef},
@@ -89,7 +90,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit room authority store", () =>
         ${snapshot.presence.roomRef},1,'participant.owner',${snapshot.presence.sarahParticipantRef},
         ${digest("e")},${new Date(Date.parse(now) + 60_000).toISOString()},
         ${snapshot.presence.dispatchRef},${snapshot.presence.leaseRef},true,true,'active',
-        ${now},${now})`;
+        ${now},${now},${now},${now})`;
     store = new PostgresSarahLiveKitRoomAuthorityStore(sql as unknown as SyncSql);
   });
 
@@ -121,6 +122,28 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit room authority store", () =>
       }),
     ).resolves.toEqual(next);
     await expect(store.read(snapshot.presence.leaseRef)).resolves.toEqual(next);
+    await expect(
+      store.readParticipantBinding({
+        presenceLeaseRef: snapshot.presence.leaseRef,
+        ownerUserId: "owner.authority",
+        now,
+      }),
+    ).resolves.toEqual({
+      ownerUserId: "owner.authority",
+      participantRef: "participant.owner",
+      communityRef: snapshot.presence.communityRef,
+      channelRef: snapshot.presence.channelRef,
+      membershipRevision: snapshot.presence.membershipRevision,
+      roomRef: snapshot.presence.roomRef,
+      roomEpoch: snapshot.presence.roomEpoch,
+    });
+    await expect(
+      store.readParticipantBinding({
+        presenceLeaseRef: snapshot.presence.leaseRef,
+        ownerUserId: "owner.other",
+        now,
+      }),
+    ).resolves.toBeUndefined();
     await expect(
       store.compareAndSwap({
         presenceLeaseRef: snapshot.presence.leaseRef,
@@ -177,5 +200,12 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit room authority store", () =>
         now,
       }),
     ).rejects.toMatchObject({ reason: "authority_mismatch" });
+    await expect(
+      store.readParticipantBinding({
+        presenceLeaseRef: snapshot.presence.leaseRef,
+        ownerUserId: "owner.authority",
+        now,
+      }),
+    ).resolves.toBeUndefined();
   });
 });

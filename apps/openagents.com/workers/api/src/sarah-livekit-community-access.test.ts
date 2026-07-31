@@ -84,6 +84,8 @@ describe("Sarah LiveKit community access", () => {
       communityRef: COMMUNITY_REF,
       channelRef: CHANNEL_REF,
       membershipRevision: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      memberPubkey: member.pubkey,
+      role: "member",
       publishAllowed: true,
       subscribeAllowed: true,
     });
@@ -117,6 +119,29 @@ describe("Sarah LiveKit community access", () => {
         },
       ),
     ).resolves.toBeUndefined();
+  });
+
+  test("derives moderator role only from the configured signed-record admin", async () => {
+    const admin = party();
+    const resolve = makeSarahLiveKitCommunityAccessResolver({
+      authorityConfig: () => authorityJson(admin.pubkey),
+      readEvents: async () => [],
+      resolveOwnerPubkeys: async () => [admin.pubkey],
+    });
+
+    await expect(
+      resolve(
+        {},
+        {
+          ownerUserId: "owner-admin",
+          communityRef: COMMUNITY_REF,
+          channelRef: CHANNEL_REF,
+        },
+      ),
+    ).resolves.toMatchObject({
+      memberPubkey: admin.pubkey,
+      role: "moderator",
+    });
   });
 
   test("does not query the relay without an exact configured room and linked Nostr identity", async () => {

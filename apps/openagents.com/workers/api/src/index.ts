@@ -11,6 +11,7 @@ import {
   PostgresPortableOwnerLocalCapabilityOperationStore,
   PostgresPortablePhaseOperationStore,
   PostgresPortableTargetPylonBindingStore,
+  PostgresSarahLiveKitRoomAuthorityStore,
   RUNTIME_START_TURN_MUTATOR_NAME,
   makeFleetRunAuthorityRepository,
   makeFleetSteeringExchangeRepository,
@@ -1304,6 +1305,11 @@ import {
   parseSarahLiveKitControlRoot,
   parseSarahLiveKitRoomBrokerConfig,
 } from './sarah-livekit-room-broker'
+import {
+  SARAH_LIVEKIT_ROOM_MEMBER_FLOOR_PATH,
+  SARAH_LIVEKIT_ROOM_MODERATOR_FLOOR_PATH,
+  handleSarahLiveKitRoomAuthorityProductionRequest,
+} from './sarah-livekit-room-authority-production'
 import {
   SARAH_LIVEKIT_WORKER_CLAIM_PATH,
   SARAH_LIVEKIT_WORKER_EVENT_PATH,
@@ -3759,6 +3765,18 @@ const openSarahRealtimeVoiceStore = async (workerEnv: Env) => {
   const client = await defaultMakeKhalaSyncSqlClient(connectionString)
   return {
     store: makeSarahRealtimeVoiceStore(client.sql),
+    close: client.end,
+  }
+}
+
+const openSarahLiveKitRoomAuthorityStore = async (workerEnv: Env) => {
+  const connectionString = workerEnv.KHALA_SYNC_DB?.connectionString
+  if (connectionString === undefined) {
+    throw new Error('Sarah room authority storage is not configured')
+  }
+  const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+  return {
+    store: new PostgresSarahLiveKitRoomAuthorityStore(client.sql),
     close: client.end,
   }
 }
@@ -14053,6 +14071,58 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
           sarahLiveKitWorkerRouteDependencies,
           request,
           env,
+        ),
+      ),
+  },
+  {
+    path: SARAH_LIVEKIT_ROOM_MEMBER_FLOOR_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        handleSarahLiveKitRoomAuthorityProductionRequest(
+          {
+            openStore: openSarahLiveKitRoomAuthorityStore,
+            requireUser: async (userRequest, userEnv, userContext) => {
+              const session = await requireUserBearerSession(
+                userRequest,
+                userEnv,
+                userContext,
+              )
+              return session === undefined
+                ? undefined
+                : { userId: session.user.userId }
+            },
+            resolveCommunityAccess: resolveSarahLiveKitCommunityAccess,
+          },
+          'member',
+          request,
+          env,
+          ctx,
+        ),
+      ),
+  },
+  {
+    path: SARAH_LIVEKIT_ROOM_MODERATOR_FLOOR_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        handleSarahLiveKitRoomAuthorityProductionRequest(
+          {
+            openStore: openSarahLiveKitRoomAuthorityStore,
+            requireUser: async (userRequest, userEnv, userContext) => {
+              const session = await requireUserBearerSession(
+                userRequest,
+                userEnv,
+                userContext,
+              )
+              return session === undefined
+                ? undefined
+                : { userId: session.user.userId }
+            },
+            resolveCommunityAccess: resolveSarahLiveKitCommunityAccess,
+          },
+          'moderator',
+          request,
+          env,
+          ctx,
         ),
       ),
   },

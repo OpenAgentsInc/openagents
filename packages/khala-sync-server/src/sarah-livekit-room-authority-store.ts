@@ -120,6 +120,22 @@ export interface SarahLiveKitRoomAuthorityStore {
   readonly read: (
     presenceLeaseRef: string,
   ) => Promise<SarahLiveKitRoomAuthoritySnapshot | undefined>;
+  readonly readParticipantBinding: (input: {
+    readonly presenceLeaseRef: string;
+    readonly ownerUserId: string;
+    readonly now: string;
+  }) => Promise<
+    | Readonly<{
+        ownerUserId: string;
+        participantRef: string;
+        communityRef: string;
+        channelRef: string;
+        membershipRevision: string;
+        roomRef: string;
+        roomEpoch: number;
+      }>
+    | undefined
+  >;
   readonly compareAndSwap: (input: {
     readonly presenceLeaseRef: string;
     readonly expectedRevision: number;
@@ -179,6 +195,79 @@ export class PostgresSarahLiveKitRoomAuthorityStore implements SarahLiveKitRoomA
 
   async read(presenceLeaseRef: string): Promise<SarahLiveKitRoomAuthoritySnapshot | undefined> {
     return this.readWith(this.sql, presenceLeaseRef);
+  }
+
+  async readParticipantBinding(input: {
+    readonly presenceLeaseRef: string;
+    readonly ownerUserId: string;
+    readonly now: string;
+  }): Promise<
+    | Readonly<{
+        ownerUserId: string;
+        participantRef: string;
+        communityRef: string;
+        channelRef: string;
+        membershipRevision: string;
+        roomRef: string;
+        roomEpoch: number;
+      }>
+    | undefined
+  > {
+    if (!Number.isFinite(Date.parse(input.now))) {
+      throw new SarahLiveKitRoomAuthorityStoreError({ reason: "invalid" });
+    }
+    try {
+      const rows: Array<{
+        owner_user_id: string;
+        participant_ref: string;
+        community_ref: string;
+        channel_ref: string;
+        membership_revision: string;
+        room_ref: string;
+        room_epoch: string | number;
+      }> = await this.sql`
+        SELECT binding.owner_user_id,binding.participant_ref,binding.community_ref,
+          binding.channel_ref,binding.membership_revision,binding.room_ref,binding.room_epoch
+        FROM sarah_livekit_room_authorities AS authority
+        INNER JOIN sarah_livekit_room_bindings AS binding
+          ON binding.sarah_presence_lease_ref=authority.presence_lease_ref
+        INNER JOIN sarah_realtime_voice_sessions AS session
+          ON session.session_ref=binding.session_ref
+        WHERE authority.presence_lease_ref=${input.presenceLeaseRef}
+          AND binding.owner_user_id=${input.ownerUserId}
+          AND binding.room_context_kind='community'
+          AND binding.state='active'
+          AND binding.owner_joined_at IS NOT NULL
+          AND binding.sarah_joined_at IS NOT NULL
+          AND binding.worker_stop_reason IS NULL
+          AND binding.worker_closed_at IS NULL
+          AND session.state='connected'
+          AND session.session_expires_at>${input.now}
+          AND binding.community_ref=authority.community_ref
+          AND binding.channel_ref=authority.channel_ref
+          AND binding.membership_revision=authority.membership_revision
+          AND binding.room_ref=authority.room_ref
+          AND binding.room_epoch=authority.room_epoch
+        LIMIT 1`;
+      const row = rows[0];
+      if (row === undefined) return undefined;
+      const roomEpoch = Number(row.room_epoch);
+      if (!Number.isSafeInteger(roomEpoch) || roomEpoch < 1) {
+        throw new SarahLiveKitRoomAuthorityStoreError({ reason: "unavailable" });
+      }
+      return {
+        ownerUserId: row.owner_user_id,
+        participantRef: row.participant_ref,
+        communityRef: row.community_ref,
+        channelRef: row.channel_ref,
+        membershipRevision: row.membership_revision,
+        roomRef: row.room_ref,
+        roomEpoch,
+      };
+    } catch (error) {
+      if (error instanceof SarahLiveKitRoomAuthorityStoreError) throw error;
+      throw new SarahLiveKitRoomAuthorityStoreError({ reason: "unavailable" });
+    }
   }
 
   async compareAndSwap(input: {

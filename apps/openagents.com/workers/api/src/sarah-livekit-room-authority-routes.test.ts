@@ -74,6 +74,7 @@ const dependencies = (
   const store: SarahLiveKitRoomAuthorityStore = {
     create: vi.fn(),
     read: vi.fn(async () => snapshot),
+    readParticipantBinding: vi.fn(),
     compareAndSwap,
   };
   const value: SarahLiveKitRoomAuthorityRouteDependencies<Record<string, never>> = {
