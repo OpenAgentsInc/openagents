@@ -17,6 +17,11 @@ apps/sarah-livekit-agent/node_modules/
 !packages/audio-contract/
 !packages/audio-contract/**
 packages/audio-contract/node_modules/
+!packages/sarah/
+!packages/sarah/**
+packages/sarah/node_modules/
+!packages/authority/
+!packages/authority/package.json
 !packages/nip90/
 !packages/nip90/package.json
 !packages/runtime-platform/

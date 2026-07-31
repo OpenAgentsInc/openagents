@@ -77,9 +77,11 @@ test("Sarah worker Cloud Build stays on the existing digest-pinned production la
   assert.match(cloudBuildIgnore, /^\*\*$/mu);
   assert.match(cloudBuildIgnore, /^!apps\/sarah-livekit-agent\/\*\*$/mu);
   assert.match(cloudBuildIgnore, /^!packages\/audio-contract\/\*\*$/mu);
+  assert.match(cloudBuildIgnore, /^!packages\/sarah\/\*\*$/mu);
   assert.match(cloudBuildIgnore, /^!scripts\/node-test-suites\.mjs$/mu);
   assert.doesNotMatch(cloudBuildIgnore, /oa-updates|openagents-desktop|openagents-mobile/u);
   for (const workspaceManifest of [
+    "packages/authority/package.json",
     "packages/nip90/package.json",
     "packages/runtime-platform/package.json",
     "types/openagents-platform/package.json",
@@ -90,6 +92,7 @@ test("Sarah worker Cloud Build stays on the existing digest-pinned production la
   }
   assert.match(dockerIgnore, /^apps\/sarah-livekit-agent\/node_modules$/mu);
   assert.match(dockerIgnore, /^packages\/audio-contract\/node_modules$/mu);
+  assert.match(dockerIgnore, /^packages\/sarah\/node_modules$/mu);
   assert.match(buildScript, /--async/u);
   assert.match(buildScript, /image_summary\.digest/u);
   assert.match(buildScript, /SARAH_LIVEKIT_AGENT_IMAGE=/u);
