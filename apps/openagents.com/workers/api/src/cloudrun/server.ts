@@ -150,6 +150,24 @@ const main = async (): Promise<void> => {
               }
             }
           : undefined,
+        // A stuck accounting hold is invisible from every other counter here:
+        // it keeps the owner's concurrency slot while the sweep reports
+        // healthy. Reads only; never settles or expires a hold.
+        reportStuckAccountingHolds: voiceConfig.enabled
+          ? async () => {
+              const client =
+                await defaultMakeKhalaSyncSqlClient(connectionString)
+              try {
+                return await makeSarahRealtimeVoiceStore(
+                  client.sql,
+                ).readStuckAccountingUncertainHolds({
+                  nowIso: new Date().toISOString(),
+                })
+              } finally {
+                await client.end()
+              }
+            }
+          : undefined,
         reconcileProvisioning:
           makeLifecycleDependencies === undefined
             ? undefined

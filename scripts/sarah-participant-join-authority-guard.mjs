@@ -29,6 +29,22 @@ const guarded = [
     definedIn: "packages/khala-sync-server/src/sarah-livekit-room-authority-store.ts",
     records: "one community room seat under one client, refusing a duplicate",
   },
+  // Not a participant authority, but the same failure shape, which is what this
+  // guard actually protects against: code whose absence is silent. An alarm
+  // nothing calls is worse than no alarm, because it reads as coverage. This
+  // one reports `accounting_uncertain` holds that occupy an owner's voice
+  // concurrency slot — a condition that produced no signal anywhere and cost
+  // three lanes an hour to find.
+  //
+  // The general guard cannot see this: `scripts/uncalled-production-symbol-
+  // guard.mjs` reaches exported values and declared interface members, and this
+  // is a method on a store object whose type is inferred from `as const`.
+  // Removing the wiring in `cloudrun/server.ts` leaves that guard green.
+  {
+    symbol: "readStuckAccountingUncertainHolds",
+    definedIn: "packages/khala-sync-server/src/sarah-realtime-voice-store.ts",
+    records: "unreconciled voice accounting holds that are silently denying an owner voice",
+  },
 ];
 
 const isTestSource = (file) =>

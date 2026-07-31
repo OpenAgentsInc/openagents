@@ -13,8 +13,35 @@ export type SarahVoiceConvergenceCounts = Readonly<{
   abandoned: number
 }>
 
+/**
+ * A hold that has been waiting on provider reconciliation long enough to be
+ * worth a human. Counts only — no session, owner, provider, room, or job
+ * identifier rides in an operator log line.
+ */
+export type SarahVoiceStuckAccountingHolds = Readonly<{
+  stuck: number
+  owners: number
+  oldestAgeMs: number
+}>
+
 export type SarahVoiceScheduledMaintenanceOperations = Readonly<{
   sweepExpired?: (() => Promise<number>) | undefined
+  /**
+   * Reports `accounting_uncertain` holds that have gone stale.
+   *
+   * Additive and read-only. An unreconciled hold occupies its owner's single
+   * voice concurrency slot, and `sweepExpired` — the function that opens that
+   * state — has no branch that can close it, so the per-minute sweep reports
+   * healthy while every later session for that identity is refused
+   * `sarah_voice_concurrency_limit`. Every LiveKit lane shares the same two
+   * acceptance identities, so one stuck hold denies voice to all of them with
+   * no signal anywhere. This is that signal.
+   *
+   * It must never settle, expire, or escalate a hold. Bounding reconciliation
+   * changes a settlement invariant and is reserved for the owner.
+   */
+  reportStuckAccountingHolds?:
+    (() => Promise<SarahVoiceStuckAccountingHolds>) | undefined
   reconcileProvisioning?:
     (() => Promise<SarahVoiceConvergenceCounts>) | undefined
   reconcileTerminalRooms?:
@@ -41,6 +68,20 @@ export const runSarahVoiceScheduledMaintenance = async (
       if (swept > 0) report('sarah_voice_expired_sessions_processed', { swept })
     } catch (error) {
       report('sarah_voice_expiry_sweep_failed', errorDetail(error))
+    }
+  }
+
+  if (operations.reportStuckAccountingHolds !== undefined) {
+    try {
+      const holds = await operations.reportStuckAccountingHolds()
+      if (holds.stuck > 0) {
+        report('sarah_voice_accounting_uncertain_holds_stuck', holds)
+      }
+    } catch (error) {
+      report(
+        'sarah_voice_accounting_uncertain_scan_failed',
+        errorDetail(error),
+      )
     }
   }
 

@@ -125,4 +125,88 @@ describe('Sarah voice scheduled maintenance', () => {
       ],
     ])
   })
+
+  /**
+   * A stuck `accounting_uncertain` hold keeps its owner's single voice
+   * concurrency slot, and `sweepExpired` — the function that opens that state —
+   * cannot close it, so the per-minute sweep reports healthy while every later
+   * session for that identity is refused. Every LiveKit lane shares the same
+   * two acceptance identities, so one stuck hold denies voice to all of them.
+   * Diagnosing that cost three lanes about an hour, because nothing reported it.
+   */
+  test('reports stuck accounting-uncertain holds', async () => {
+    const report = vi.fn()
+
+    await runSarahVoiceScheduledMaintenance(
+      {
+        reportStuckAccountingHolds: async () => ({
+          stuck: 2,
+          owners: 1,
+          oldestAgeMs: 3_600_000,
+        }),
+      },
+      report,
+    )
+
+    expect(report.mock.calls).toEqual([
+      [
+        'sarah_voice_accounting_uncertain_holds_stuck',
+        { stuck: 2, owners: 1, oldestAgeMs: 3_600_000 },
+      ],
+    ])
+  })
+
+  test('stays quiet when no hold has gone stale', async () => {
+    const report = vi.fn()
+
+    await runSarahVoiceScheduledMaintenance(
+      {
+        reportStuckAccountingHolds: async () => ({
+          stuck: 0,
+          owners: 0,
+          oldestAgeMs: 0,
+        }),
+      },
+      report,
+    )
+
+    expect(report).not.toHaveBeenCalled()
+  })
+
+  // The scan is additive. A database it cannot reach must not take the sweep,
+  // the reconcilers, or the member retirement down with it.
+  test('a failed stuck-hold scan does not stop the rest of maintenance', async () => {
+    const order: string[] = []
+    const report = vi.fn()
+
+    await runSarahVoiceScheduledMaintenance(
+      {
+        sweepExpired: async () => {
+          order.push('expiry')
+          return 0
+        },
+        reportStuckAccountingHolds: async () => {
+          order.push('stuck')
+          throw new Error('scan unavailable')
+        },
+        reconcileTerminalRooms: async () => {
+          order.push('terminal')
+          return { cleaned: 1, failed: 0, abandoned: 0 }
+        },
+      },
+      report,
+    )
+
+    expect(order).toEqual(['expiry', 'stuck', 'terminal'])
+    expect(report.mock.calls).toEqual([
+      [
+        'sarah_voice_accounting_uncertain_scan_failed',
+        { error: 'scan unavailable' },
+      ],
+      [
+        'sarah_livekit_terminal_rooms_reconciled',
+        { cleaned: 1, failed: 0, abandoned: 0 },
+      ],
+    ])
+  })
 })

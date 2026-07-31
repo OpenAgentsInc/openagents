@@ -389,6 +389,24 @@ export type SarahVoiceLiveKitMembershipLease = Readonly<{
 export const SARAH_LIVEKIT_WORKER_DRAIN_TIMEOUT_MS = 150_000;
 export const SARAH_LIVEKIT_WORKER_HEARTBEAT_TIMEOUT_MS = 30_000;
 
+/**
+ * How long an `accounting_uncertain` hold may sit before it is worth an
+ * operator's attention.
+ *
+ * `sarah_realtime_voice_owner_active_idx` is per owner and covers
+ * `('reserved','connected','accounting_uncertain')`, so an unreconciled hold
+ * occupies that owner's single concurrency slot. Every later voice session for
+ * the same identity is then refused `sarah_voice_concurrency_limit`. Because
+ * every LiveKit lane shares the same two acceptance identities, one lane's
+ * stuck reconciliation silently denies voice to all of them, and the per-minute
+ * sweep reports healthy throughout.
+ *
+ * This bound only decides when to *report*. It is deliberately not a deadline
+ * that expires, escalates, or settles anything: bounding reconciliation is a
+ * settlement-invariant change reserved for the owner.
+ */
+export const SARAH_VOICE_ACCOUNTING_UNCERTAIN_STUCK_MS = 900_000;
+
 export class SarahVoiceInsufficientCreditError extends Error {
   override readonly name = "SarahVoiceInsufficientCreditError";
 }
@@ -4938,6 +4956,71 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }
   };
 
+  /**
+   * Counts `accounting_uncertain` holds that have outlived
+   * `SARAH_VOICE_ACCOUNTING_UNCERTAIN_STUCK_MS`.
+   *
+   * Reads only. It exists because nothing anywhere reported this state: an
+   * unreconciled hold occupies its owner's concurrency slot indefinitely, and
+   * `sweepExpired` — which is what *opens* the state — has no branch that can
+   * close it, so the per-minute sweep stays green while voice is denied. This
+   * makes that condition visible without changing it.
+   *
+   * The result carries no session, owner, provider, room, or job identifier.
+   * An operator who sees the alarm queries for the specific rows; an alarm that
+   * ships identifiers into every log line to save that one query is not worth
+   * the exposure.
+   */
+  const readStuckAccountingUncertainHolds = async (input: {
+    readonly nowIso: string;
+    readonly stuckAfterMs?: number | undefined;
+  }): Promise<
+    Readonly<{ stuck: number; owners: number; oldestAgeMs: number }>
+  > => {
+    const nowMs = Date.parse(input.nowIso);
+    if (!Number.isFinite(nowMs)) {
+      throw new SarahVoiceSessionRejectedError("A stuck-hold scan needs a valid instant");
+    }
+    const stuckAfterMs = input.stuckAfterMs ?? SARAH_VOICE_ACCOUNTING_UNCERTAIN_STUCK_MS;
+    if (!Number.isFinite(stuckAfterMs) || stuckAfterMs < 0) {
+      throw new SarahVoiceSessionRejectedError("A stuck-hold scan needs a non-negative bound");
+    }
+    const stuckBeforeIso = new Date(nowMs - stuckAfterMs).toISOString();
+    const rows = (await sql`
+      SELECT COUNT(*) AS stuck,
+        COUNT(DISTINCT session.owner_user_id) AS owners,
+        MIN(COALESCE(binding.provider_accounting_uncertain_at, session.updated_at))
+          AS oldest_uncertain_at
+      FROM sarah_realtime_voice_sessions AS session
+      LEFT JOIN sarah_livekit_room_bindings AS binding
+        ON binding.session_ref = session.session_ref
+        AND binding.generation = session.generation
+      WHERE session.state = 'accounting_uncertain'
+        AND COALESCE(binding.provider_accounting_uncertain_at, session.updated_at)
+            <= ${stuckBeforeIso}
+    `) as ReadonlyArray<{
+      stuck: number | string;
+      owners: number | string;
+      oldest_uncertain_at: string | null;
+    }>;
+    const row = first(rows);
+    // `COALESCE(SUM(...),0)` and friends come back as strings from a bigint
+    // aggregate. A `typeof === "number"` guard on one of these is exactly how
+    // the free-tier spend ceiling read zero forever while looking healthy.
+    const stuck = row === undefined ? 0 : Number(row.stuck);
+    const owners = row === undefined ? 0 : Number(row.owners);
+    const oldestMs =
+      row?.oldest_uncertain_at === null || row?.oldest_uncertain_at === undefined
+        ? undefined
+        : Date.parse(row.oldest_uncertain_at);
+    return {
+      stuck: Number.isFinite(stuck) ? stuck : 0,
+      owners: Number.isFinite(owners) ? owners : 0,
+      oldestAgeMs:
+        oldestMs === undefined || !Number.isFinite(oldestMs) ? 0 : Math.max(0, nowMs - oldestMs),
+    };
+  };
+
   const sweepExpired = async (nowIso: string): Promise<number> => {
     const workerHeartbeatExpiredBeforeIso = new Date(
       Date.parse(nowIso) - SARAH_LIVEKIT_WORKER_HEARTBEAT_TIMEOUT_MS,
@@ -5116,6 +5199,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     readLiveKitWorkerReadiness,
     claimLiveKitProvisioningIntents,
     readSettlement,
+    readStuckAccountingUncertainHolds,
     readSpendableCredit,
     recordLiveKitParticipantJoin,
     recordUsage,
