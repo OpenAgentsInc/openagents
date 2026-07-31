@@ -44,8 +44,7 @@ const SECRETISH_VALUE =
   /(-----BEGIN [A-Z ]*PRIVATE KEY-----|(?:sk|sess|pat|ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_-]{12,}|bearer\s+[A-Za-z0-9._~+/=-]{12,}|wss?:\/\/|https?:\/\/|\b(?:\d{1,3}\.){3}\d{1,3}\b)/iu;
 const COMMAND_OUTPUT_SECRETISH_LINE =
   /(address|authorization|cookie|credential|email|endpoint|password|private.?key|secret|token|transcript|audio|prompt)/iu;
-const COMMAND_OUTPUT_NETWORK_VALUE =
-  /(?:https?|wss?):\/\/|\b(?:\d{1,3}\.){3}\d{1,3}\b/iu;
+const COMMAND_OUTPUT_NETWORK_VALUE = /(?:https?|wss?):\/\/|\b(?:\d{1,3}\.){3}\d{1,3}\b/iu;
 const CERT_MANAGER_IMAGES = Object.freeze({
   controller:
     "quay.io/jetstack/cert-manager-controller:v1.21.1@sha256:416a2d76870d996460e62bd7f521bf14fa017be9e3e904aab92163a331fcb61a",
@@ -69,6 +68,7 @@ const RUNTIME_RESOURCE_NAMESPACES = new Map([
   ["external-secrets.io/v1/ExternalSecret", Object.freeze(["cert-manager", "livekit-system"])],
   ["external-secrets.io/v1/SecretStore", Object.freeze(["cert-manager", "livekit-system"])],
   ["monitoring.googleapis.com/v1/PodMonitoring", Object.freeze(["cert-manager", "livekit-system"])],
+  ["networking.k8s.io/v1/NetworkPolicy", Object.freeze(["livekit-system"])],
   ["networking.gke.io/v1/ManagedCertificate", Object.freeze(["livekit-system"])],
   ["networking.k8s.io/v1/Ingress", Object.freeze(["livekit-system"])],
   ["policy/v1/PodDisruptionBudget", Object.freeze(["livekit-system"])],
@@ -421,6 +421,7 @@ function validateDeploymentBundleInternal(value, historical) {
       "sourceBaseRevision",
       "chart",
       "serverImage",
+      "workerImage",
       "configurationDigest",
       "renderedManifestDigest",
       "resources",
@@ -493,7 +494,10 @@ function validateDeploymentBundleInternal(value, historical) {
     "bundle server image reference is not an immutable LiveKit server image",
   );
   if (!historical) {
-    assert(imageReference === LIVEKIT_OPS.serverImage, "bundle server image reference is not pinned");
+    assert(
+      imageReference === LIVEKIT_OPS.serverImage,
+      "bundle server image reference is not pinned",
+    );
   }
   assertDigest(value.serverImage.digest, "bundle.serverImage.digest");
   assert(
@@ -512,6 +516,38 @@ function validateDeploymentBundleInternal(value, historical) {
     );
   }
 
+  assertExactKeys(value.workerImage, ["reference", "digest", "pinState"], [], "bundle.workerImage");
+  const workerImageReference = assertString(
+    value.workerImage.reference,
+    "bundle.workerImage.reference",
+  );
+  assert(
+    /^us-central1-docker\.pkg\.dev\/openagentsgemini\/livekit\/sarah-livekit-agent@sha256:[0-9a-f]{64}$/u.test(
+      workerImageReference,
+    ),
+    "bundle worker image reference is outside the admitted Artifact Registry repository",
+  );
+  assertDigest(value.workerImage.digest, "bundle.workerImage.digest");
+  assert(
+    workerImageReference.endsWith(`@${value.workerImage.digest}`),
+    "bundle worker image reference and digest do not agree",
+  );
+  assert(
+    value.workerImage.pinState === "build_required" || value.workerImage.pinState === "pinned",
+    "bundle worker image pin state is unsupported",
+  );
+  if (value.workerImage.pinState === "build_required") {
+    assert(
+      value.workerImage.digest === `sha256:${"0".repeat(64)}`,
+      "a build-required worker image must use the explicit zero-digest placeholder",
+    );
+  } else {
+    assert(
+      value.workerImage.digest !== `sha256:${"0".repeat(64)}`,
+      "a pinned worker image cannot use the placeholder digest",
+    );
+  }
+
   const expectedResources = {
     cluster: "oa-livekit-prod",
     sfuNodePool: "oa-livekit-prod-sfu",
@@ -523,6 +559,10 @@ function validateDeploymentBundleInternal(value, historical) {
     turnService: "livekit-server-turn",
     serverKsa: "livekit-server",
     serverGsa: `oa-livekit-server@${LIVEKIT_OPS.project}.iam.gserviceaccount.com`,
+    agentKsa: "sarah-agent",
+    agentGsa: `oa-livekit-agent@${LIVEKIT_OPS.project}.iam.gserviceaccount.com`,
+    sarahSecretReaderKsa: "oa-livekit-sarah-secret-reader",
+    sarahSecretReaderGsa: `oa-livekit-sarah-secret-reader@${LIVEKIT_OPS.project}.iam.gserviceaccount.com`,
   };
   const resourceKeys = Object.keys(expectedResources);
   assertExactKeys(value.resources, resourceKeys, [], "bundle.resources");
@@ -536,14 +576,15 @@ function validateDeploymentBundleInternal(value, historical) {
 
   assert(
     Array.isArray(value.secrets) &&
-      value.secrets.length === 4 &&
+      value.secrets.length === 5 &&
       [
         "livekit-server-keys",
         "livekit-redis-auth",
         "livekit-turn-tls",
         "cloudflare-dns-token",
+        "sarah-livekit-agent",
       ].every((name, index) => value.secrets[index] === name),
-    "bundle secrets must contain the four exact ordered Kubernetes secret references",
+    "bundle secrets must contain the five exact ordered Kubernetes secret references",
   );
   value.secrets.forEach((name, index) => {
     assertString(name, `bundle.secrets[${index}]`);
@@ -553,6 +594,7 @@ function validateDeploymentBundleInternal(value, historical) {
         "livekit-redis-auth",
         "livekit-turn-tls",
         "cloudflare-dns-token",
+        "sarah-livekit-agent",
       ].includes(name),
       `bundle.secrets[${index}] is outside the exact secret-ref set`,
     );
@@ -562,12 +604,13 @@ function validateDeploymentBundleInternal(value, historical) {
     "oa-livekit-prod-redis-auth",
     "oa-livekit-prod-cloudflare-dns",
     "oa-livekit-prod-openai-api-key",
+    "oa-livekit-prod-sarah-control-root",
   ];
   assert(
     Array.isArray(value.googleSecretContainers) &&
       value.googleSecretContainers.length === expectedGoogleSecrets.length &&
       expectedGoogleSecrets.every((name, index) => value.googleSecretContainers[index] === name),
-    "bundle googleSecretContainers must contain the four exact ordered metadata-only refs",
+    "bundle googleSecretContainers must contain the five exact ordered metadata-only refs",
   );
 
   assert(
@@ -691,7 +734,7 @@ export function validateAddonLock(value) {
     "addon lock managedPrometheus",
   );
   assert(
-      value.managedPrometheus.delivery === "gke-managed-collection" &&
+    value.managedPrometheus.delivery === "gke-managed-collection" &&
       value.managedPrometheus.resourceApiVersion === "monitoring.googleapis.com/v1" &&
       value.managedPrometheus.binaryVersionAuthority === "gke-stable-release-channel",
     "managed Prometheus addon authority is not admitted",
@@ -1144,9 +1187,7 @@ export function validatePrerequisiteReceipt(value) {
     assert(
       Array.isArray(value.resourceRefs) &&
         value.resourceRefs.length === LIVEKIT_PREREQUISITE_SERVICE_REFS.length &&
-        LIVEKIT_PREREQUISITE_SERVICE_REFS.every(
-          (ref, index) => value.resourceRefs[index] === ref,
-        ),
+        LIVEKIT_PREREQUISITE_SERVICE_REFS.every((ref, index) => value.resourceRefs[index] === ref),
       "prerequisite service refs are outside the exact LiveKit API set",
     );
     value.resourceRefs.forEach((ref, index) =>

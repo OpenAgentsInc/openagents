@@ -420,7 +420,7 @@ resource "google_service_account" "sarah_secret_reader" {
   project      = var.project_id
   account_id   = var.sarah_secret_reader_service_account_id
   display_name = "${var.cluster_name} Sarah secret reader"
-  description  = "External Secrets identity limited to Sarah's LiveKit server keys and OpenAI API key."
+  description  = "External Secrets identity limited to Sarah's LiveKit server keys, OpenAI API key, and control root."
 }
 
 resource "google_service_account_iam_member" "server_workload_identity" {
@@ -495,6 +495,22 @@ resource "google_secret_manager_secret" "openai_api_key" {
   labels = local.resource_labels
 }
 
+resource "google_secret_manager_secret" "sarah_control_root" {
+  project             = var.project_id
+  secret_id           = "${var.cluster_name}-sarah-control-root"
+  deletion_protection = var.secret_deletion_protection
+
+  replication {
+    user_managed {
+      replicas {
+        location = var.region
+      }
+    }
+  }
+
+  labels = local.resource_labels
+}
+
 resource "google_secret_manager_secret" "redis_auth" {
   project             = var.project_id
   secret_id           = "${var.cluster_name}-redis-auth"
@@ -548,8 +564,9 @@ resource "google_secret_manager_secret_iam_member" "dns_secret_reader" {
 
 resource "google_secret_manager_secret_iam_member" "sarah_secret_reader" {
   for_each = {
-    server_keys    = google_secret_manager_secret.server_keys.secret_id
-    openai_api_key = google_secret_manager_secret.openai_api_key.secret_id
+    server_keys        = google_secret_manager_secret.server_keys.secret_id
+    openai_api_key     = google_secret_manager_secret.openai_api_key.secret_id
+    sarah_control_root = google_secret_manager_secret.sarah_control_root.secret_id
   }
 
   project   = var.project_id

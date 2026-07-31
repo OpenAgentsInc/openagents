@@ -4,7 +4,9 @@ resources:
   - namespace.yaml
   - priority-class.yaml
   - secret-identity.yaml
+  - sarah-agent-identity.yaml
   - external-secrets.yaml
+  - sarah-agent-runtime.yaml
   - turn-certificate.yaml
   - signaling-certificate.yaml
   - disruption-budget.yaml

@@ -92,9 +92,9 @@ test("canary boot invokes Caddy, opens exact host ports, and grants only log-wri
   }
   assert.match(startup, /iptables --wait --check INPUT/u);
   assert.match(startup, /iptables --wait --insert INPUT 1/u);
-  const hostFirewallRules = [...startup.matchAll(/^\s*allow_host_port (tcp|udp) "([^"]+)"$/gmu)].map(
-    (match) => `${match[1]}:${match[2]}`,
-  );
+  const hostFirewallRules = [
+    ...startup.matchAll(/^\s*allow_host_port (tcp|udp) "([^"]+)"$/gmu),
+  ].map((match) => `${match[1]}:${match[2]}`);
   assert.deepEqual(hostFirewallRules, [
     "tcp:443",
     "tcp:${tcp_fallback_port}",
@@ -123,10 +123,7 @@ test("production TURN reserves a premium external address without an internal-on
     "utf8",
   );
   const resourceStart = module.indexOf('resource "google_compute_address" "turn"');
-  const resourceEnd = module.indexOf(
-    'resource "google_redis_instance" "livekit"',
-    resourceStart,
-  );
+  const resourceEnd = module.indexOf('resource "google_redis_instance" "livekit"', resourceStart);
   assert.notEqual(resourceStart, -1);
   assert.notEqual(resourceEnd, -1);
   const turnAddress = module.slice(resourceStart, resourceEnd);
@@ -158,7 +155,11 @@ test("server key projection binds token minting and runtime authentication", () 
     /api_secret/u,
   );
   assert.throws(
-    () => validateServerKeyProjection({ ...projection, keys_yaml: `${apiKey}: ${apiSecret}\nextra: key\n` }),
+    () =>
+      validateServerKeyProjection({
+        ...projection,
+        keys_yaml: `${apiKey}: ${apiSecret}\nextra: key\n`,
+      }),
     /exact admitted mapping/u,
   );
   assert.throws(
@@ -288,6 +289,11 @@ const bundle = {
     digest: LIVEKIT_OPS.serverImageDigest,
     sourceCommit: LIVEKIT_OPS.serverImageSourceCommit,
   },
+  workerImage: {
+    reference: `us-central1-docker.pkg.dev/openagentsgemini/livekit/sarah-livekit-agent@sha256:${"0".repeat(64)}`,
+    digest: `sha256:${"0".repeat(64)}`,
+    pinState: "build_required",
+  },
   configurationDigest: digest("4"),
   renderedManifestDigest: digest("6"),
   resources: {
@@ -301,18 +307,24 @@ const bundle = {
     turnService: "livekit-server-turn",
     serverKsa: "livekit-server",
     serverGsa: "oa-livekit-server@openagentsgemini.iam.gserviceaccount.com",
+    agentKsa: "sarah-agent",
+    agentGsa: "oa-livekit-agent@openagentsgemini.iam.gserviceaccount.com",
+    sarahSecretReaderKsa: "oa-livekit-sarah-secret-reader",
+    sarahSecretReaderGsa: "oa-livekit-sarah-secret-reader@openagentsgemini.iam.gserviceaccount.com",
   },
   secrets: [
     "livekit-server-keys",
     "livekit-redis-auth",
     "livekit-turn-tls",
     "cloudflare-dns-token",
+    "sarah-livekit-agent",
   ],
   googleSecretContainers: [
     "oa-livekit-prod-server-keys",
     "oa-livekit-prod-redis-auth",
     "oa-livekit-prod-cloudflare-dns",
     "oa-livekit-prod-openai-api-key",
+    "oa-livekit-prod-sarah-control-root",
   ],
   manifests: [{ path: "infra/livekit/production/resources/server.yaml", sha256: digest("5") }],
   limits: {
@@ -397,6 +409,29 @@ test("deployment bundle pins the exact project, region, resources, and caps", ()
         resources: { ...bundle.resources, cluster: "unrelated-cluster" },
       }),
     /cluster must be oa-livekit-prod/u,
+  );
+  assert.throws(
+    () =>
+      validateDeploymentBundle({
+        ...bundle,
+        workerImage: {
+          ...bundle.workerImage,
+          reference:
+            "docker.io/openagents/sarah-livekit-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        },
+      }),
+    /Artifact Registry/u,
+  );
+  assert.throws(
+    () =>
+      validateDeploymentBundle({
+        ...bundle,
+        workerImage: {
+          ...bundle.workerImage,
+          pinState: "pinned",
+        },
+      }),
+    /placeholder digest/u,
   );
 });
 
@@ -485,10 +520,17 @@ test("runtime inventory requires exact scopes and explicit admitted namespaces",
       namespace: "livekit-system",
       name: "livekit-server",
     },
+    {
+      apiVersion: "networking.k8s.io/v1",
+      kind: "NetworkPolicy",
+      namespace: "livekit-system",
+      name: "sarah-livekit-agent-deny-ingress",
+    },
   ];
   assert.deepEqual(validateRuntimeManifestInventory(inventory, "runtime manifest"), [
     inventory[3],
     inventory[1],
+    inventory[4],
     inventory[2],
     inventory[0],
   ]);
@@ -541,6 +583,11 @@ test("production runtime apply relies only on explicit manifest namespaces", () 
     "-f",
   ]);
   assert.ok(!applyCommands[0].args.includes("--namespace"));
+  const rolloutTargets = plan.commands
+    .filter((command) => command.bin === "kubectl" && command.args.includes("rollout"))
+    .map((command) => command.args.find((argument) => argument.startsWith("deployment/")));
+  assert.ok(rolloutTargets.includes("deployment/livekit-server"));
+  assert.ok(rolloutTargets.includes("deployment/sarah-livekit-agent"));
 });
 
 test("connectivity requires packaged Omega and all three observed ICE paths", () => {

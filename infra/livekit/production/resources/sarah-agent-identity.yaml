@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sarah-agent
+  namespace: livekit-system
+  annotations:
+    iam.gke.io/gcp-service-account: oa-livekit-agent@openagentsgemini.iam.gserviceaccount.com
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: oa-livekit-sarah-secret-reader
+  namespace: livekit-system
+  annotations:
+    iam.gke.io/gcp-service-account: oa-livekit-sarah-secret-reader@openagentsgemini.iam.gserviceaccount.com
+automountServiceAccountToken: false
+---
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: sarah-google-secret-manager
+  namespace: livekit-system
+spec:
+  provider:
+    gcpsm:
+      projectID: openagentsgemini
+      auth:
+        workloadIdentity:
+          clusterProjectID: openagentsgemini
+          clusterLocation: us-central1
+          clusterName: oa-livekit-prod
+          serviceAccountRef:
+            name: oa-livekit-sarah-secret-reader
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: sarah-livekit-agent
+  namespace: livekit-system
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: sarah-google-secret-manager
+    kind: SecretStore
+  target:
+    name: sarah-livekit-agent
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    template:
+      type: Opaque
+  data:
+    - secretKey: livekit-api-key
+      remoteRef:
+        key: oa-livekit-prod-server-keys
+        property: api_key
+        conversionStrategy: Default
+        decodingStrategy: None
+        metadataPolicy: None
+    - secretKey: livekit-api-secret
+      remoteRef:
+        key: oa-livekit-prod-server-keys
+        property: api_secret
+        conversionStrategy: Default
+        decodingStrategy: None
+        metadataPolicy: None
+    - secretKey: openai-api-key
+      remoteRef:
+        key: oa-livekit-prod-openai-api-key
+        conversionStrategy: Default
+        decodingStrategy: None
+        metadataPolicy: None
+    - secretKey: control-root
+      remoteRef:
+        key: oa-livekit-prod-sarah-control-root
+        conversionStrategy: Default
+        decodingStrategy: None
+        metadataPolicy: None

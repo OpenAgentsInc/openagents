@@ -42,6 +42,8 @@ It does not proxy signaling, WebSocket, TCP, UDP, or TURN traffic.
 | LiveKit chart        | `1.11.0`, source commit `8f0ad0809c2be8cbed375a6f8bef10625e5e8a2b`                                                 |
 | Server image         | `docker.io/livekit/livekit-server:v1.13.4@sha256:189f7c81b704a36642bc5c7e2d3e1ae83744627c11978a23a251bf19fbec64e0` |
 | Server source        | `0b3fd288e3ef3263ec475ba0d78cf3ad77459981`                                                                         |
+| Sarah workers        | three replicas on distinct `oa-livekit-prod-app` nodes; HPA range three through four                               |
+| Worker health        | LiveKit Agents JS production endpoint on pod port `8081`                                                           |
 | Alpha room cap       | 20 concurrent Sarah rooms                                                                                          |
 | Private cap          | one owner-private generation                                                                                       |
 | Community cap        | two Sarah rooms per community                                                                                      |
@@ -130,9 +132,9 @@ current owner authority.
 6. Confirm the production infrastructure phase is the only owner of the exact
    Secret Manager containers
    `oa-livekit-prod-server-keys`, `oa-livekit-prod-redis-auth`,
-   `oa-livekit-prod-cloudflare-dns`, and
-   `oa-livekit-prod-openai-api-key`. Operators create versions only after that
-   phase. The runtime materializes only the named Kubernetes secret refs.
+   `oa-livekit-prod-cloudflare-dns`, `oa-livekit-prod-openai-api-key`, and
+   `oa-livekit-prod-sarah-control-root`. Operators create versions only after
+   that phase. The runtime materializes only the named Kubernetes secret refs.
    Public automation output may inspect container metadata and IAM, never
    secret payloads.
 7. Confirm the two public addresses before changing DNS. Cloudflare records
@@ -419,10 +421,14 @@ After the infrastructure receipt passes:
    `sarah-openai-api-key` used by Cloud Run revision `sarah-00003-jq8` into
    `oa-livekit-prod-openai-api-key`. Do not rotate Sarah by inventing a second
    value for this rollout.
-5. Make every target's `latest` version enabled. Copy values through a
+5. Generate `oa-livekit-prod-sarah-control-root` with at least 384 bits of
+   randomness encoded as 64-128 base64url characters. The OpenAgents API and
+   Sarah worker receive that same root through their separate runtime secret
+   mounts; it never enters Terraform, a command argument, or Git.
+6. Make every target's `latest` version enabled. Copy values through a
    secret-safe pipe or operator UI; never through argv, a checked-in file,
    Terraform, or terminal output.
-6. Publish DNS-only A records for `livekit.openagents.com` and
+7. Publish DNS-only A records for `livekit.openagents.com` and
    `turn.livekit.openagents.com` to their separate exact reserved addresses.
 
 ### Phase 2: preflight, install addons, and apply the runtime
@@ -473,6 +479,25 @@ acquire a namespace. The final server-side apply therefore has no default
 namespace flag and preserves each admitted object's explicit scope. It never
 prints a Secret, a credential-bearing ConfigMap payload, an external IP, or a
 provider response.
+
+The worker image must be built from
+`apps/sarah-livekit-agent/Dockerfile` with the repository root as its context
+and published to the admitted Artifact Registry repository. Replace the
+source-only zero-digest placeholder with the observed digest in both the
+worker manifest and `bundle.json`, set `workerImage.pinState=pinned`, refresh
+the manifest and rendered-manifest digests, and run `infra/livekit/verify.sh`.
+The runtime runner refuses a mutable tag, an image outside the admitted
+repository, mismatched bundle/manifests, or the zero-digest placeholder.
+
+The applied worker runs three replicas across distinct application-pool nodes
+and zones. Its startup, readiness, and liveness probes use the Agents JS
+production health endpoint on `8081`, which returns healthy only after the
+worker WebSocket is connected to LiveKit. The PDB preserves two replicas,
+the HPA scales from three through four, and the pod termination allowance is
+longer than the worker drain and child-process shutdown bounds. The pod has no
+Service and a deny-all ingress policy; its outbound LiveKit, OpenAI, and
+OpenAgents control connections remain hostname-based and cannot be represented
+honestly by a static Kubernetes CIDR allow-list.
 
 Do not enable `livekit_room_v1` admission yet. First wait for SFU readiness,
 Redis health, signaling and TURN load-balancer health, certificates, worker

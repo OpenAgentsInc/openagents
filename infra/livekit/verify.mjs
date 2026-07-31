@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,7 +13,9 @@ const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const readJson = async (path) => JSON.parse(await readFile(path, "utf8"));
 const requireEqual = (actual, expected, label) => {
   if (actual !== expected) {
-    throw new Error(`${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+    throw new Error(
+      `${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+    );
   }
 };
 const requireIncludes = (source, expected, label) => {
@@ -35,6 +38,63 @@ const bundle = await readJson(bundlePath);
 const pins = await readJson(resolve(directory, "pins.lock.json"));
 const addons = await readJson(resolve(directory, "addons.lock.json"));
 const rendered = await readFile(renderedPath, "utf8");
+const inventoryExpression =
+  '[. | select(. != null) | {"apiVersion": .apiVersion, "kind": .kind, "namespace": (.metadata.namespace // null), "name": .metadata.name}]';
+const inventoryResult = spawnSync(
+  "yq",
+  ["eval-all", "-o=json", "-I=0", inventoryExpression, renderedPath],
+  {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  },
+);
+if (inventoryResult.status !== 0) {
+  throw new Error("rendered runtime inventory could not be read");
+}
+const observedInventory = JSON.parse(inventoryResult.stdout)
+  .map(
+    (resource) =>
+      `${resource.apiVersion}/${resource.kind}/${resource.namespace ?? "<cluster>"}/${resource.name}`,
+  )
+  .sort();
+const expectedInventory = [
+  "apps/v1/Deployment/livekit-system/livekit-server",
+  "apps/v1/Deployment/livekit-system/sarah-livekit-agent",
+  "autoscaling/v2/HorizontalPodAutoscaler/livekit-system/livekit-server",
+  "autoscaling/v2/HorizontalPodAutoscaler/livekit-system/sarah-livekit-agent",
+  "cert-manager.io/v1/Certificate/livekit-system/livekit-turn",
+  "cert-manager.io/v1/ClusterIssuer/<cluster>/livekit-public-dns01",
+  "cloud.google.com/v1/BackendConfig/livekit-system/livekit-server",
+  "external-secrets.io/v1/ExternalSecret/cert-manager/cloudflare-dns-token",
+  "external-secrets.io/v1/ExternalSecret/livekit-system/livekit-redis-auth",
+  "external-secrets.io/v1/ExternalSecret/livekit-system/livekit-server-keys",
+  "external-secrets.io/v1/ExternalSecret/livekit-system/sarah-livekit-agent",
+  "external-secrets.io/v1/SecretStore/cert-manager/livekit-google-secret-manager",
+  "external-secrets.io/v1/SecretStore/livekit-system/google-secret-manager",
+  "external-secrets.io/v1/SecretStore/livekit-system/sarah-google-secret-manager",
+  "monitoring.googleapis.com/v1/PodMonitoring/cert-manager/livekit-cert-manager",
+  "monitoring.googleapis.com/v1/PodMonitoring/livekit-system/livekit-server",
+  "networking.gke.io/v1/ManagedCertificate/livekit-system/livekit-signal",
+  "networking.k8s.io/v1/Ingress/livekit-system/livekit-server",
+  "networking.k8s.io/v1/NetworkPolicy/livekit-system/sarah-livekit-agent-deny-ingress",
+  "policy/v1/PodDisruptionBudget/livekit-system/livekit-server",
+  "policy/v1/PodDisruptionBudget/livekit-system/sarah-livekit-agent",
+  "scheduling.k8s.io/v1/PriorityClass/<cluster>/livekit-media-critical",
+  "v1/ConfigMap/livekit-system/livekit-server",
+  "v1/Namespace/<cluster>/livekit-system",
+  "v1/Service/livekit-system/livekit-server",
+  "v1/Service/livekit-system/livekit-server-turn",
+  "v1/ServiceAccount/cert-manager/livekit-cert-manager-secret-reader",
+  "v1/ServiceAccount/livekit-system/livekit-secret-reader",
+  "v1/ServiceAccount/livekit-system/livekit-server",
+  "v1/ServiceAccount/livekit-system/oa-livekit-sarah-secret-reader",
+  "v1/ServiceAccount/livekit-system/sarah-agent",
+];
+requireEqual(
+  JSON.stringify(observedInventory),
+  JSON.stringify(expectedInventory),
+  "exact rendered runtime inventory",
+);
 
 requireKnownKeys(
   bundle,
@@ -49,6 +109,7 @@ requireKnownKeys(
     "sourceBaseRevision",
     "chart",
     "serverImage",
+    "workerImage",
     "configurationDigest",
     "renderedManifestDigest",
     "resources",
@@ -64,7 +125,11 @@ requireEqual(bundle.schemaVersion, "openagents.livekit_deployment_bundle.v1", "b
 requireEqual(bundle.sourceState, "source_only", "bundle source state");
 requireEqual(bundle.project, "openagentsgemini", "project");
 requireEqual(bundle.region, "us-central1", "region");
-requireEqual(JSON.stringify(bundle.zones), JSON.stringify(["us-central1-a", "us-central1-b", "us-central1-c"]), "zones");
+requireEqual(
+  JSON.stringify(bundle.zones),
+  JSON.stringify(["us-central1-a", "us-central1-b", "us-central1-c"]),
+  "zones",
+);
 requireEqual(bundle.release, "livekit-server", "release");
 requireEqual(bundle.namespace, "livekit-system", "namespace");
 if (!/^[0-9a-f]{40}$/.test(bundle.sourceBaseRevision)) {
@@ -79,12 +144,38 @@ requireEqual(bundle.chart.archiveSha256, pins.helm.archiveSha256, "chart archive
 requireKnownKeys(bundle.serverImage, ["reference", "digest", "sourceCommit"], "serverImage");
 requireEqual(bundle.serverImage.reference, pins.serverImage.reference, "server image reference");
 requireEqual(bundle.serverImage.digest, pins.serverImage.ociIndexDigest, "server image digest");
-requireEqual(bundle.serverImage.sourceCommit, pins.serverImage.upstreamSourceCommit, "server image source commit");
+requireEqual(
+  bundle.serverImage.sourceCommit,
+  pins.serverImage.upstreamSourceCommit,
+  "server image source commit",
+);
 requireEqual(
   pins.serverImage.auditedAnalysisSourceCommit,
   "ced94b8645829263a1a9ef6c8101936897252d6b",
   "later audited analysis source",
 );
+
+requireKnownKeys(bundle.workerImage, ["reference", "digest", "pinState"], "workerImage");
+requireEqual(
+  bundle.workerImage.reference,
+  `us-central1-docker.pkg.dev/openagentsgemini/livekit/sarah-livekit-agent@${bundle.workerImage.digest}`,
+  "worker image reference",
+);
+if (!/^sha256:[0-9a-f]{64}$/u.test(bundle.workerImage.digest)) {
+  throw new Error("worker image digest must be immutable");
+}
+if (bundle.workerImage.pinState === "build_required") {
+  requireEqual(
+    bundle.workerImage.digest,
+    `sha256:${"0".repeat(64)}`,
+    "build-required worker image placeholder",
+  );
+} else {
+  requireEqual(bundle.workerImage.pinState, "pinned", "worker image pin state");
+  if (bundle.workerImage.digest === `sha256:${"0".repeat(64)}`) {
+    throw new Error("pinned worker image still uses the placeholder digest");
+  }
+}
 
 requireKnownKeys(
   bundle.resources,
@@ -99,6 +190,10 @@ requireKnownKeys(
     "turnService",
     "serverKsa",
     "serverGsa",
+    "agentKsa",
+    "agentGsa",
+    "sarahSecretReaderKsa",
+    "sarahSecretReaderGsa",
   ],
   "resources",
 );
@@ -115,6 +210,22 @@ requireEqual(
   bundle.resources.serverGsa,
   "oa-livekit-server@openagentsgemini.iam.gserviceaccount.com",
   "server GSA",
+);
+requireEqual(bundle.resources.agentKsa, "sarah-agent", "worker KSA");
+requireEqual(
+  bundle.resources.agentGsa,
+  "oa-livekit-agent@openagentsgemini.iam.gserviceaccount.com",
+  "worker GSA",
+);
+requireEqual(
+  bundle.resources.sarahSecretReaderKsa,
+  "oa-livekit-sarah-secret-reader",
+  "worker secret reader KSA",
+);
+requireEqual(
+  bundle.resources.sarahSecretReaderGsa,
+  "oa-livekit-sarah-secret-reader@openagentsgemini.iam.gserviceaccount.com",
+  "worker secret reader GSA",
 );
 
 requireKnownKeys(
@@ -139,8 +250,13 @@ const expectedSecrets = [
   "livekit-redis-auth",
   "livekit-turn-tls",
   "cloudflare-dns-token",
+  "sarah-livekit-agent",
 ];
-requireEqual(JSON.stringify(bundle.secrets), JSON.stringify(expectedSecrets), "Kubernetes secret refs");
+requireEqual(
+  JSON.stringify(bundle.secrets),
+  JSON.stringify(expectedSecrets),
+  "Kubernetes secret refs",
+);
 requireEqual(
   JSON.stringify(bundle.googleSecretContainers),
   JSON.stringify([
@@ -148,6 +264,7 @@ requireEqual(
     "oa-livekit-prod-redis-auth",
     "oa-livekit-prod-cloudflare-dns",
     "oa-livekit-prod-openai-api-key",
+    "oa-livekit-prod-sarah-control-root",
   ]),
   "Google Secret Manager containers",
 );
@@ -188,16 +305,72 @@ const productionSecretIdentity = await readFile(
   resolve(directory, "production/resources/secret-identity.yaml"),
   "utf8",
 );
+const sarahAgentIdentity = await readFile(
+  resolve(directory, "production/resources/sarah-agent-identity.yaml"),
+  "utf8",
+);
+const sarahAgentRuntime = await readFile(
+  resolve(directory, "production/resources/sarah-agent-runtime.yaml"),
+  "utf8",
+);
 const observabilityInfrastructure = await readFile(
   resolve(repositoryRoot, "infra/modules/livekit-observability/main.tf"),
   "utf8",
 );
-requireEqual(bundle.configurationDigest, `sha256:${sha256(configurationBytes)}`, "configuration digest");
-requireEqual(bundle.renderedManifestDigest, `sha256:${sha256(rendered)}`, "rendered manifest digest");
+const workerDockerIgnore = await readFile(
+  resolve(repositoryRoot, "apps/sarah-livekit-agent/Dockerfile.dockerignore"),
+  "utf8",
+);
+requireEqual(
+  bundle.configurationDigest,
+  `sha256:${sha256(configurationBytes)}`,
+  "configuration digest",
+);
+requireEqual(
+  bundle.renderedManifestDigest,
+  `sha256:${sha256(rendered)}`,
+  "rendered manifest digest",
+);
 requireIncludes(
   canaryConfiguration,
   "domain: turn-livekit-staging.openagents.com",
   "canary TURN certificate domain",
+);
+requireIncludes(workerDockerIgnore, "!apps/sarah-livekit-agent/**", "worker Docker source");
+requireIncludes(workerDockerIgnore, "!packages/audio-contract/**", "worker contract source");
+requireExcludes(workerDockerIgnore, "!docs", "worker Docker documentation context");
+for (const identity of [
+  "oa-livekit-agent@openagentsgemini.iam.gserviceaccount.com",
+  "oa-livekit-sarah-secret-reader@openagentsgemini.iam.gserviceaccount.com",
+]) {
+  requireIncludes(sarahAgentIdentity, identity, "Sarah workload identity");
+}
+for (const secretContainer of [
+  "oa-livekit-prod-server-keys",
+  "oa-livekit-prod-openai-api-key",
+  "oa-livekit-prod-sarah-control-root",
+]) {
+  requireIncludes(sarahAgentIdentity, secretContainer, "Sarah External Secret source");
+}
+for (const secretKey of [
+  "livekit-api-key",
+  "livekit-api-secret",
+  "openai-api-key",
+  "control-root",
+]) {
+  requireIncludes(sarahAgentIdentity, `secretKey: ${secretKey}`, "Sarah Kubernetes secret key");
+}
+requireExcludes(sarahAgentIdentity, "sk-", "raw OpenAI secret");
+requireExcludes(sarahAgentIdentity, "stringData:", "raw Kubernetes secret data");
+requireIncludes(
+  gkeInfrastructure,
+  'resource "google_secret_manager_secret" "sarah_control_root"',
+  "Sarah control-root Secret Manager container",
+);
+requireIncludes(
+  gkeInfrastructure,
+  "sarah_control_root = google_secret_manager_secret.sarah_control_root.secret_id",
+  "Sarah control-root least-privilege reader",
 );
 requireExcludes(canaryConfiguration, "udp_port:", "canary TURN/UDP");
 requireIncludes(
@@ -280,12 +453,12 @@ requireExcludes(
   '"${reverse_proxy_image}" \\\n  run --config /run/livekit/Caddyfile',
   "canary Caddy image command override without executable",
 );
-requireExcludes(canaryStartup, 'cat >"$runtime_dir/livekit.yaml"', "synthesized canary configuration");
-for (const infrastructureSource of [
-  gkeInfrastructure,
-  gkeVariables,
-  productionInfrastructure,
-]) {
+requireExcludes(
+  canaryStartup,
+  'cat >"$runtime_dir/livekit.yaml"',
+  "synthesized canary configuration",
+);
+for (const infrastructureSource of [gkeInfrastructure, gkeVariables, productionInfrastructure]) {
   requireExcludes(
     infrastructureSource,
     "master_ipv4_cidr_block",
@@ -397,9 +570,7 @@ requireEqual(
 for (const bindingName of expectedWorkloadIdentityBindings) {
   const binding = workloadIdentityBindings.get(bindingName);
   requireEqual(
-    JSON.stringify([
-      ...binding.matchAll(/^\s*role\s*=\s*"([^"]+)"$/gm),
-    ].map((match) => match[1])),
+    JSON.stringify([...binding.matchAll(/^\s*role\s*=\s*"([^"]+)"$/gm)].map((match) => match[1])),
     JSON.stringify(["roles/iam.workloadIdentityUser"]),
     `${bindingName} least-privilege role`,
   );
@@ -447,13 +618,18 @@ requireExcludes(
 
 for (const entry of bundle.manifests) {
   requireKnownKeys(entry, ["path", "sha256"], `manifest ${entry.path ?? "<missing>"}`);
-  if (!entry.path.startsWith("infra/livekit/")) throw new Error(`manifest outside bundle: ${entry.path}`);
+  if (!entry.path.startsWith("infra/livekit/"))
+    throw new Error(`manifest outside bundle: ${entry.path}`);
   const bytes = await readFile(resolve(repositoryRoot, entry.path));
   requireEqual(entry.sha256, `sha256:${sha256(bytes)}`, `manifest digest ${entry.path}`);
 }
 
 requireIncludes(rendered, "hostNetwork: true", "host networking");
-requireIncludes(rendered, "cloud.google.com/gke-nodepool: oa-livekit-prod-sfu", "node-pool placement");
+requireIncludes(
+  rendered,
+  "cloud.google.com/gke-nodepool: oa-livekit-prod-sfu",
+  "node-pool placement",
+);
 requireIncludes(rendered, "openagents.com/livekit-workload: sfu", "semantic node label");
 requireIncludes(rendered, "topologyKey: kubernetes.io/hostname", "one-pod-per-node anti-affinity");
 requireIncludes(rendered, "topologyKey: topology.kubernetes.io/zone", "zone spread");
@@ -469,6 +645,26 @@ requireIncludes(rendered, "ca_cert_file: /etc/livekit/redis/ca.crt", "Redis CA r
 requireIncludes(rendered, "insecure: false", "Redis TLS verification");
 requireIncludes(rendered, "name: REDIS_HOST", "private Redis host reference");
 requireIncludes(rendered, "name: livekit-server-keys", "LiveKit key-file secret reference");
+requireIncludes(rendered, "name: sarah-livekit-agent", "Sarah worker Deployment");
+requireIncludes(rendered, "replicas: 3", "Sarah worker replica floor");
+requireIncludes(
+  rendered,
+  "cloud.google.com/gke-nodepool: oa-livekit-prod-app",
+  "Sarah worker app-node placement",
+);
+requireIncludes(rendered, "serviceAccountName: sarah-agent", "Sarah worker KSA");
+requireIncludes(rendered, "containerPort: 8081", "Sarah worker production health port");
+requireIncludes(rendered, "startupProbe:", "Sarah worker startup probe");
+requireIncludes(rendered, "readinessProbe:", "Sarah worker readiness probe");
+requireIncludes(rendered, "livenessProbe:", "Sarah worker liveness probe");
+requireIncludes(rendered, "terminationGracePeriodSeconds: 60", "Sarah worker drain allowance");
+requireIncludes(rendered, "readOnlyRootFilesystem: true", "Sarah worker read-only root");
+requireIncludes(rendered, "kind: HorizontalPodAutoscaler", "Sarah worker autoscaling");
+requireIncludes(sarahAgentRuntime, "minReplicas: 3", "Sarah worker HPA floor");
+requireIncludes(sarahAgentRuntime, "maxReplicas: 4", "Sarah worker HPA ceiling");
+requireIncludes(rendered, "kind: NetworkPolicy", "Sarah worker ingress isolation");
+requireIncludes(rendered, bundle.workerImage.reference, "Sarah worker image pin");
+requireIncludes(sarahAgentRuntime, bundle.workerImage.reference, "Sarah worker source image pin");
 requireIncludes(rendered, "key_file: /etc/livekit/keys.yaml", "absolute LiveKit key-file path");
 requireIncludes(rendered, "mountPath: /etc/livekit/keys.yaml", "absolute key-file mount");
 requireIncludes(rendered, "kind: ClusterIssuer", "TURN certificate issuer");
@@ -477,8 +673,16 @@ requireIncludes(rendered, "kind: PodMonitoring", "managed Prometheus scrape");
 requireExcludes(rendered, "kind: Rules", "unrouted in-cluster alert rules");
 requireIncludes(rendered, "kind: Ingress", "signaling ingress");
 requireIncludes(rendered, "cloud.google.com/neg: '{\"ingress\": true}'", "signaling NEG");
-requireIncludes(rendered, "kubernetes.io/ingress.global-static-ip-name: oa-livekit-prod-signal", "signaling address pin");
-requireIncludes(rendered, "networking.gke.io/managed-certificates: livekit-signal", "signaling certificate pin");
+requireIncludes(
+  rendered,
+  "kubernetes.io/ingress.global-static-ip-name: oa-livekit-prod-signal",
+  "signaling address pin",
+);
+requireIncludes(
+  rendered,
+  "networking.gke.io/managed-certificates: livekit-signal",
+  "signaling certificate pin",
+);
 requireIncludes(rendered, "host: livekit.openagents.com", "signaling hostname");
 requireIncludes(rendered, "name: livekit-server-turn", "TURN service");
 requireIncludes(rendered, "port: 443", "public TURN/TLS port");
@@ -495,7 +699,15 @@ requireExcludes(rendered, "kind: Secret\n", "raw Kubernetes Secret");
 requireExcludes(rendered, "sk-", "provider secret marker");
 
 requireEqual(addons.certManager.resourceApiVersion, "cert-manager.io/v1", "cert-manager API");
-requireEqual(addons.externalSecrets.resourceApiVersion, "external-secrets.io/v1", "External Secrets API");
-requireEqual(addons.managedPrometheus.resourceApiVersion, "monitoring.googleapis.com/v1", "managed Prometheus API");
+requireEqual(
+  addons.externalSecrets.resourceApiVersion,
+  "external-secrets.io/v1",
+  "External Secrets API",
+);
+requireEqual(
+  addons.managedPrometheus.resourceApiVersion,
+  "monitoring.googleapis.com/v1",
+  "managed Prometheus API",
+);
 
 process.stdout.write(`verified ${renderedPath}\n`);

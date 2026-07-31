@@ -5,6 +5,11 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/openagents-livekit-verify.XXXXXX")"
 
+if ! command -v yq >/dev/null 2>&1; then
+  printf 'required command is unavailable: yq\n' >&2
+  exit 1
+fi
+
 cleanup() {
   case "${temporary_root}" in
     "${TMPDIR:-/tmp}"/openagents-livekit-verify.*)

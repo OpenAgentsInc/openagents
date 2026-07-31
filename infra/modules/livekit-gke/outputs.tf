@@ -61,9 +61,10 @@ output "secret_reader_service_account_emails" {
 output "secret_ids" {
   description = "Secret Manager container IDs. Versions are created out of band; Redis material contains only host and CA certificate."
   value = {
-    server_keys    = google_secret_manager_secret.server_keys.secret_id
-    redis_auth     = google_secret_manager_secret.redis_auth.secret_id
-    openai_api_key = google_secret_manager_secret.openai_api_key.secret_id
-    cloudflare_dns = google_secret_manager_secret.cloudflare_dns.secret_id
+    server_keys        = google_secret_manager_secret.server_keys.secret_id
+    redis_auth         = google_secret_manager_secret.redis_auth.secret_id
+    openai_api_key     = google_secret_manager_secret.openai_api_key.secret_id
+    sarah_control_root = google_secret_manager_secret.sarah_control_root.secret_id
+    cloudflare_dns     = google_secret_manager_secret.cloudflare_dns.secret_id
   }
 }

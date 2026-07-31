@@ -55,6 +55,7 @@ const PRODUCTION_SECRET_IDS = Object.freeze([
   "oa-livekit-prod-redis-auth",
   "oa-livekit-prod-cloudflare-dns",
   "oa-livekit-prod-openai-api-key",
+  "oa-livekit-prod-sarah-control-root",
 ]);
 const SARAH_OPENAI_SOURCE_SECRET = "sarah-openai-api-key";
 
@@ -128,13 +129,9 @@ const parseArgs = (args) => {
     throw new Error("--operation is missing or unsupported");
   }
   if (!parsed.bundle) throw new Error("--bundle is required");
-  const planOperation = parsed.operation === "canary-plan" || parsed.operation === "production-plan";
-  if (
-    parsed.apply &&
-    parsed.operation !== "validate-source" &&
-    !planOperation &&
-    !parsed.receipt
-  ) {
+  const planOperation =
+    parsed.operation === "canary-plan" || parsed.operation === "production-plan";
+  if (parsed.apply && parsed.operation !== "validate-source" && !planOperation && !parsed.receipt) {
     throw new Error("a live operation requires --receipt");
   }
   if (planOperation && parsed.receipt) {
@@ -227,6 +224,7 @@ const validateRenderedManifest = (path, expectedDigest) => {
     "livekit-redis-auth",
     "livekit-turn-tls",
     "cloudflare-dns-token",
+    "sarah-livekit-agent",
   ]) {
     if (!text.includes(requirement)) {
       throw new Error(`rendered production manifest is missing ${requirement}`);
@@ -967,13 +965,7 @@ const verifyCanaryDestroyed = () => {
   const canarySecretIds = new Set(CANARY_SECRET_IDS);
   const remainingCanarySecrets = captureCommand(
     "gcloud",
-    [
-      "secrets",
-      "list",
-      "--project",
-      LIVEKIT_OPS.project,
-      "--format=value(name)",
-    ],
+    ["secrets", "list", "--project", LIVEKIT_OPS.project, "--format=value(name)"],
     "inspect canary secret container absence",
   )
     .split(/\s+/u)
@@ -1049,6 +1041,10 @@ const validateProductionPreflight = () => {
   const liveKitOpenAiKey = accessLatestSecret("oa-livekit-prod-openai-api-key").trim();
   if (sourceOpenAiKey === "" || sourceOpenAiKey !== liveKitOpenAiKey) {
     throw new Error("the LiveKit Sarah OpenAI key is not the current copied Sarah key");
+  }
+  const controlRoot = accessLatestSecret("oa-livekit-prod-sarah-control-root").trim();
+  if (!/^[A-Za-z0-9_-]{64,128}$/u.test(controlRoot)) {
+    throw new Error("the Sarah LiveKit control root must be 64-128 base64url characters");
   }
   const signalAddress = reservedAddress("oa-livekit-prod-signal", "global");
   const turnAddress = reservedAddress("oa-livekit-prod-turn", LIVEKIT_OPS.region);
@@ -1186,9 +1182,8 @@ const validateRenderedAddonImages = (addonLock, temporaryDirectory) => {
     .split("\n")
     .filter(
       (line) =>
-        /(?:image:|solver-image=).*(?:quay\.io\/jetstack|ghcr\.io\/external-secrets)/u.test(
-          line,
-        ) && !line.includes("@sha256:"),
+        /(?:image:|solver-image=).*(?:quay\.io\/jetstack|ghcr\.io\/external-secrets)/u.test(line) &&
+        !line.includes("@sha256:"),
     );
   if (mutableExecutionLines.length !== 0) {
     throw new Error("addon render contains a mutable execution image");
@@ -1538,6 +1533,15 @@ const run = () => {
         ...productionInfrastructureValidationCommands(),
       ];
     } else if (args.operation === "production-runtime-apply") {
+      if (
+        args.apply &&
+        (bundle.workerImage.pinState !== "pinned" ||
+          bundle.workerImage.digest === `sha256:${"0".repeat(64)}`)
+      ) {
+        throw new Error(
+          "production runtime apply requires a Cloud Build worker image pinned by digest",
+        );
+      }
       commands = [
         ...productionInfrastructureValidationCommands(),
         productionCredentialsCommand(kubeconfig),
@@ -1551,6 +1555,14 @@ const run = () => {
           "rollout",
           "status",
           `deployment/${LIVEKIT_OPS.release}`,
+          "--timeout=20m",
+        ]),
+        command("kubectl", [
+          "--namespace",
+          LIVEKIT_OPS.namespace,
+          "rollout",
+          "status",
+          "deployment/sarah-livekit-agent",
           "--timeout=20m",
         ]),
       ];
@@ -1570,7 +1582,8 @@ const run = () => {
       if (
         rollbackTargetBundle.renderedManifestDigest === bundle.renderedManifestDigest &&
         rollbackTargetBundle.configurationDigest === bundle.configurationDigest &&
-        rollbackTargetBundle.serverImage.digest === bundle.serverImage.digest
+        rollbackTargetBundle.serverImage.digest === bundle.serverImage.digest &&
+        rollbackTargetBundle.workerImage.digest === bundle.workerImage.digest
       ) {
         throw new Error("rollback previous bundle does not change the pinned deployment");
       }

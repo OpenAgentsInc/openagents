@@ -1,9 +1,9 @@
 # OpenAgents LiveKit runtime bundle
 
 This directory is the pinned Kubernetes runtime source for the first
-self-hosted Sarah voice cohort. It renders one production manifest for the
-regional GKE Standard cluster. It does not deploy Sarah workers, recording,
-egress, ingress, SIP, or TURN/UDP.
+self-hosted Sarah voice cohort. It renders the LiveKit server and Sarah agent
+worker into one production manifest for the regional GKE Standard cluster. It
+does not deploy recording, egress, ingress workers, SIP, or TURN/UDP.
 
 The bundle has three authority boundaries:
 
@@ -69,11 +69,12 @@ Before applying the rendered manifest:
 2. install the pinned cert-manager and External Secrets charts from
    `addons.lock.json`;
 3. enable Google Managed Service for Prometheus managed collection;
-4. grant the two bundle service accounts only their documented Google Secret
-   Manager containers;
+4. grant the three bundle secret-reader service accounts only their documented
+   Google Secret Manager containers;
 5. add current secret versions to `oa-livekit-prod-server-keys`,
-   `oa-livekit-prod-redis-auth`, and `oa-livekit-prod-cloudflare-dns` in Google
-   Secret Manager; and
+   `oa-livekit-prod-redis-auth`, `oa-livekit-prod-cloudflare-dns`,
+   `oa-livekit-prod-openai-api-key`, and
+   `oa-livekit-prod-sarah-control-root` in Google Secret Manager; and
 6. map DNS-only Cloudflare records to the Google addresses after their
    corresponding Google load balancers are healthy.
 
@@ -93,7 +94,10 @@ equivalent to application-layer authentication.
 zone-scoped DNS-01 token. External Secrets materializes
 `livekit-server-keys`, `livekit-redis-auth`, and `cloudflare-dns-token`.
 The media and certificate secret readers use disjoint Workload Identity
-service accounts.
+service accounts. The Sarah reader can access only the server key container,
+the copied OpenAI key container, and the Sarah control-root container. The
+worker KSA maps to its own otherwise unprivileged GSA and has no database,
+storage, signing, or Secret Manager IAM role.
 
 The `livekit-public-dns01` ClusterIssuer uses that DNS-only token. The TURN
 `Certificate` writes `livekit-turn-tls`. LiveKit terminates TURN/TLS on `5349`;
@@ -116,8 +120,37 @@ Kubernetes NetworkPolicy is not used for the SFU pod. GKE does not provide a
 portable NetworkPolicy boundary for `hostNetwork` media, and an apparent
 deny-list would be misleading because RTC and TURN need arbitrary client
 addresses. The dedicated node pool, GCP firewall targets, load-balancer
-backends, and service-account boundaries are the applicable controls. No
-non-host-network application pod is part of this bundle.
+backends, and service-account boundaries are the applicable controls.
+
+The Sarah worker is a non-host-network application pod. It runs three replicas
+on distinct `oa-livekit-prod-app` nodes across three zones. It has deny-all
+pod ingress, no Service, digest-only execution, a read-only root filesystem,
+CPU and memory bounds, a three-to-four replica HPA, and a PDB that preserves two
+ready replicas. LiveKit Agents JS production health is probed on port `8081`;
+the endpoint is ready only while the worker has a live server WebSocket.
+
+## Sarah worker image pin
+
+Source carries an explicit all-zero digest placeholder and
+`workerImage.pinState=build_required`. Dry-run validation accepts that state so
+infrastructure can create the new secret container. A live runtime apply
+refuses it.
+
+After Cloud Build publishes the Dockerfile from the repository root:
+
+1. read the immutable Artifact Registry digest without pulling secret data;
+2. replace the exact image in
+   `production/resources/sarah-agent-runtime.yaml`;
+3. set the same reference and digest in `bundle.json.workerImage`, then set
+   `pinState` to `pinned`;
+4. update the changed manifest digests in `bundle.json`;
+5. render once and update `bundle.json.renderedManifestDigest`; and
+6. run `infra/livekit/verify.sh` and the LiveKit policy tests before the
+   production runtime apply.
+
+The admitted repository is
+`us-central1-docker.pkg.dev/openagentsgemini/livekit/sarah-livekit-agent`.
+No mutable tag is accepted.
 
 ## Capacity limits
 

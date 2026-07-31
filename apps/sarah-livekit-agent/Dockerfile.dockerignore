@@ -1,0 +1,14 @@
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.json
+!vite.config.ts
+!patches
+!patches/**
+!apps
+!apps/sarah-livekit-agent
+!apps/sarah-livekit-agent/**
+!packages
+!packages/audio-contract
+!packages/audio-contract/**

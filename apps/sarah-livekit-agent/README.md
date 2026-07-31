@@ -12,6 +12,8 @@ The worker requires:
 - `OPENAI_API_KEY` for `gpt-realtime-2.1`.
 - `OPENAGENTS_CONTROL_URL`, an HTTPS OpenAgents API origin.
 - `SARAH_LIVEKIT_WORKER_REF`, a stable non-secret deployment identity.
+- `SARAH_LIVEKIT_CONTROL_ROOT`, the high-entropy root used to authenticate
+  deterministic generation control credentials.
 
 The API supplies the generation-bound control token only inside explicit
 dispatch metadata. The worker sends it only as a bearer credential to the
@@ -42,6 +44,7 @@ pnpm --dir apps/sarah-livekit-agent build
 docker build -f apps/sarah-livekit-agent/Dockerfile -t sarah-livekit-agent .
 ```
 
-Deploy at least two replicas behind LiveKit's agent-worker connection. Inject
-all secrets at runtime, use a unique `SARAH_LIVEKIT_WORKER_REF` per pod, and
-allow the process's 30-second drain window before termination.
+Production deploys three replicas on the dedicated GKE application pool.
+External Secrets injects all credentials at runtime, the pod UID supplies a
+unique `SARAH_LIVEKIT_WORKER_REF`, and the 60-second pod termination allowance
+covers the process's 30-second worker drain and 35-second child shutdown bound.
