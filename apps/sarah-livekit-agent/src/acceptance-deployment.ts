@@ -128,7 +128,12 @@ export const mintProductionSubscriberGrant = async (
   if (!/^oa-sarah-[0-9a-f]{40}$/u.test(roomRef)) {
     throw new Error("acceptance subscriber room is outside the Sarah production namespace");
   }
-  if (!/^acceptance-(private|community)-subscriber-[0-9a-f-]{36}$/u.test(subscriberRef)) {
+  // `drill-` is admitted beside `acceptance-` because the single-session
+  // failure drills need the same secondary subscriber, minted the same way,
+  // against the same Sarah production room namespace. The bound is unchanged:
+  // one of two literal prefixes, one of two room kinds, and a UUID. Widening it
+  // to an arbitrary identity is what this check exists to prevent.
+  if (!/^(acceptance|drill)-(private|community)-subscriber-[0-9a-f-]{36}$/u.test(subscriberRef)) {
     throw new Error("acceptance subscriber identity is invalid");
   }
   const keys = parseProductionServerKeys(

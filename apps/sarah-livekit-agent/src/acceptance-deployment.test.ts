@@ -110,3 +110,39 @@ describe("Sarah LiveKit acceptance subscriber grant", () => {
     ).rejects.toThrow("outside the Sarah production namespace");
   });
 });
+
+describe("production subscriber grant identity bound", () => {
+  const roomRef = `oa-sarah-${"a".repeat(40)}`;
+  const uuid = "123e4567-e89b-42d3-a456-426614174000";
+  const reject = () => Promise.reject(new Error("no secret read should be reached"));
+
+  test("admits the drill subscriber beside the acceptance one", async () => {
+    for (const ref of [
+      `acceptance-private-subscriber-${uuid}`,
+      `acceptance-community-subscriber-${uuid}`,
+      `drill-private-subscriber-${uuid}`,
+      `drill-community-subscriber-${uuid}`,
+    ]) {
+      // Reaching the secret read proves the identity passed the bound; the
+      // rejection after it is this test refusing to touch Secret Manager.
+      // eslint-disable-next-line no-await-in-loop
+      await expect(mintProductionSubscriberGrant(roomRef, ref, reject)).rejects.toThrow(
+        "no secret read should be reached",
+      );
+    }
+  });
+
+  test("still refuses an identity outside the two bounded prefixes", async () => {
+    for (const ref of [
+      `operator-private-subscriber-${uuid}`,
+      `drill-private-subscriber-not-a-uuid`,
+      `drill-owner-subscriber-${uuid}`,
+      "principal.sarah",
+    ]) {
+      // eslint-disable-next-line no-await-in-loop
+      await expect(mintProductionSubscriberGrant(roomRef, ref, reject)).rejects.toThrow(
+        "acceptance subscriber identity is invalid",
+      );
+    }
+  });
+});

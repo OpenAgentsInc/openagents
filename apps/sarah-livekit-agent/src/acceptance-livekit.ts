@@ -547,6 +547,15 @@ const decodeSettlement = (value: unknown) => {
 const observeSarahOutputs = (room: Room, sarahParticipantRef: string, clock: Clock) => {
   const audio = deferred<number>();
   const transcription = deferred<number>();
+  // These reject from listeners that run on their own, not from an awaited
+  // call, and there is a long window with no awaiter: `publishMicrophone`
+  // captures the whole prompt plus trailing silence before anything reads
+  // `audio`. A rejection in that window was an unhandled rejection, which under
+  // Node's default policy kills the process before the harness can release the
+  // session or report a reason. Attaching an inert handler at creation only
+  // suppresses that report — every real awaiter still sees the rejection.
+  audio.promise.catch(() => {});
+  transcription.promise.catch(() => {});
   let audioAttached = false;
   let cancelAudio: (() => Promise<void>) | undefined;
   let lastAudibleAtMs: number | undefined;
