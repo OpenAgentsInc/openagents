@@ -568,15 +568,18 @@ describe('managed Sarah Realtime voice session route', () => {
       communityRef: 'community-7',
       channelRef: 'channel-7',
       membershipRevision: 'membership-revision-42',
+      memberPubkey: 'a'.repeat(64),
+      role: 'member' as const,
       publishAllowed: false,
       subscribeAllowed: true,
     }))
+    const bootstrapLiveKitCommunityRoom = vi.fn(async () => undefined)
     const response = await handleSarahRealtimeVoiceSessionRequest(
       {
         ...fixture.dependencies,
         liveKitRoomBroker: broker,
         resolveLiveKitCommunityAccess,
-        bootstrapLiveKitCommunityRoom: vi.fn(async () => undefined),
+        bootstrapLiveKitCommunityRoom,
       },
       request({
         schema: SARAH_VOICE_PROTOCOL_VERSION,
@@ -616,6 +619,8 @@ describe('managed Sarah Realtime voice session route', () => {
           communityRef: 'community-7',
           channelRef: 'channel-7',
           membershipRevision: 'membership-revision-42',
+          memberPubkey: 'a'.repeat(64),
+          role: 'member',
           publishAllowed: false,
           subscribeAllowed: true,
         },
@@ -630,6 +635,22 @@ describe('managed Sarah Realtime voice session route', () => {
         publishAllowed: false,
       }),
     )
+    expect(bootstrapLiveKitCommunityRoom).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({
+        ownerUserId: 'user-1',
+        presenceLeaseRef: 'sarah-presence:channel-7:g1',
+        communityAccess: {
+          communityRef: 'community-7',
+          channelRef: 'channel-7',
+          membershipRevision: 'membership-revision-42',
+          memberPubkey: 'a'.repeat(64),
+          role: 'member',
+          publishAllowed: false,
+          subscribeAllowed: true,
+        },
+      }),
+    )
   })
 
   test('binds a LiveKit admission digest to the current community membership revision', async () => {
@@ -641,6 +662,8 @@ describe('managed Sarah Realtime voice session route', () => {
         communityRef: 'community-7',
         channelRef: 'channel-7',
         membershipRevision,
+        memberPubkey: 'a'.repeat(64),
+        role: 'member' as const,
         publishAllowed: false,
         subscribeAllowed: true,
       })),

@@ -104,6 +104,8 @@ export type SarahVoiceLiveKitCommunityAccess = Readonly<{
   communityRef: string
   channelRef: string
   membershipRevision: string
+  memberPubkey: string
+  role: 'member' | 'moderator'
   publishAllowed: boolean
   subscribeAllowed: boolean
 }>
@@ -443,6 +445,7 @@ export type SarahRealtimeVoiceRouteDependencies<User, Bindings> = Readonly<{
     input: Readonly<{
       ownerUserId: string
       presenceLeaseRef: string
+      communityAccess: SarahVoiceLiveKitCommunityAccess
     }>,
   ) => Promise<void>
   requireUserBearerSession: UserBearerSessionBoundary<User, Bindings>
@@ -1803,6 +1806,15 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
           await bootstrap(env, {
             ownerUserId: userId,
             presenceLeaseRef: liveKitProvision.sarahPresenceLeaseRef,
+            communityAccess: {
+              communityRef: liveKitRoomContext.communityRef,
+              channelRef: liveKitRoomContext.channelRef,
+              membershipRevision: liveKitRoomContext.membershipRevision,
+              memberPubkey: liveKitRoomContext.memberPubkey,
+              role: liveKitRoomContext.role,
+              publishAllowed: liveKitRoomContext.publishAllowed,
+              subscribeAllowed: liveKitRoomContext.subscribeAllowed,
+            },
           })
         }
         const workerClaimed = await (

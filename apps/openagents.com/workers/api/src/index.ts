@@ -1299,7 +1299,10 @@ import {
   readSarahHarnessStatus,
   reviewSarahHarnessHistory,
 } from './sarah-harness-service'
-import { makeSarahLiveKitCommunityAccessResolver } from './sarah-livekit-community-access'
+import {
+  makeSarahLiveKitCommunityAccessResolver,
+  type SarahLiveKitCommunityAccess,
+} from './sarah-livekit-community-access'
 import {
   makeSarahLiveKitRoomBroker,
   parseSarahLiveKitControlRoot,
@@ -3856,12 +3859,29 @@ const sarahRealtimeVoiceDependenciesForEnv = (workerEnv: Env) => ({
   liveKitNewAdmissionsEnabled: sarahLiveKitNewAdmissionsEnabled,
   bootstrapLiveKitCommunityRoom: async (
     bootstrapEnv: Env,
-    input: Readonly<{ ownerUserId: string; presenceLeaseRef: string }>,
+    input: Readonly<{
+      ownerUserId: string
+      presenceLeaseRef: string
+      communityAccess: SarahLiveKitCommunityAccess
+    }>,
   ) => {
     const response = await handleSarahLiveKitSharedRoomProductionRequest(
       {
         ...sarahLiveKitSharedRoomDependencies,
         requireUser: async () => ({ userId: input.ownerUserId }),
+        resolveCommunityAccess: async (
+          _environment: Env,
+          requested: Readonly<{
+            ownerUserId: string
+            communityRef: string
+            channelRef: string
+          }>,
+        ) =>
+          requested.ownerUserId === input.ownerUserId &&
+          requested.communityRef === input.communityAccess.communityRef &&
+          requested.channelRef === input.communityAccess.channelRef
+            ? input.communityAccess
+            : undefined,
       },
       'summon',
       new Request('https://api.openagents.com/api/sarah/livekit/room/summon', {
