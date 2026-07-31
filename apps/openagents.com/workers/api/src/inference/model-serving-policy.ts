@@ -23,6 +23,7 @@ import type { ModelCatalogEntry } from './model-catalog'
 import { DEFAULT_GLM_52_REAP_504B_OWNED_COST_PROFILE_REF } from './owned-inference-cost'
 import {
   GEMINI_FLASH_MODEL_ID,
+  GPT_56_LUNA_MODEL_ID,
   HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   HYDRALISK_GPT_OSS_120B_MODEL_ID,
@@ -63,6 +64,11 @@ export type SupplyLaneArming = Readonly<
     // lane only. Real Worker env arming supplies this map so one Hydralisk
     // model cannot accidentally advertise another.
     hydraliskModels?: HydraliskModelArming
+    // Partner passthrough-openai arming (presence of OPENAI_API_KEY). Not a
+    // `SupplyLane` — it exists ONLY so the exact hosted Omega lane model
+    // (gpt-5.6-luna, owner direction 2026-07-30) can be gated on the same
+    // presence-derived arming as every other hosted lane. Absent = unarmed.
+    passthroughOpenAi?: boolean | undefined
   }
 >
 
@@ -78,6 +84,7 @@ export const ALL_LANES_UNARMED: SupplyLaneArming = {
   hydralisk: false,
   khalaBacking: KHALA_BACKING_HYDRALISK_GPT_OSS,
   openrouter: false,
+  passthroughOpenAi: false,
   'openagents-network': false,
   'vertex-anthropic': false,
   'vertex-gemini': false,
@@ -97,7 +104,7 @@ export const isPublicModelId = (modelId: string): boolean =>
   normalizeKhalaModelId(modelId) === KHALA_MODEL_ID
 
 export const isHostedLaneModelId = (modelId: string): boolean =>
-  [GEMINI_FLASH_MODEL_ID, KIMI_K3_MODEL_ID].includes(
+  [GEMINI_FLASH_MODEL_ID, KIMI_K3_MODEL_ID, GPT_56_LUNA_MODEL_ID].includes(
     normalizePricingModelId(modelId),
   )
 
@@ -109,6 +116,11 @@ export type SupplyLaneCredentialEnv = Readonly<{
   VERTEX_SA_KEY?: string | undefined
   // Fireworks open-model lane key. See config.ts.
   FIREWORKS_API_KEY?: string | undefined
+  // Partner passthrough-openai key (the same Worker secret the passthrough
+  // adapter registration reads). PRESENCE-ONLY here: it arms the exact
+  // gpt-5.6-luna hosted Omega lane; the value is never read, returned, or
+  // logged by this policy.
+  OPENAI_API_KEY?: string | undefined
   // OpenRouter hidden Khala lane. Presence-only: the Worker secret arms this
   // supply lane; the upstream model is fixed in code to
   // `ibm-granite/granite-4.1-8b` at adapter registration so env cannot silently
@@ -681,6 +693,7 @@ export const resolveSupplyLaneArming = (
     hydraliskModels,
     khalaBacking,
     openrouter: isPresent(env.OPENROUTER_API_KEY),
+    passthroughOpenAi: isPresent(env.OPENAI_API_KEY),
     'openagents-network': openAgentsNetwork.armed,
     'vertex-anthropic': vertex,
     'vertex-gemini': vertex,
@@ -805,6 +818,13 @@ export const resolveHostedLaneModelServability = (
 ): boolean => {
   if (!isHostedLaneModelId(modelId)) {
     return false
+  }
+  // gpt-5.6-luna has NO pricing-table entry (deliberate — see pricing.ts): it
+  // serves over the partner passthrough-openai adapter, so its arming is the
+  // presence of OPENAI_API_KEY rather than a `SupplyLane`. Optional field
+  // absent = unarmed (ALL_LANES_UNARMED semantics).
+  if (normalizePricingModelId(modelId) === GPT_56_LUNA_MODEL_ID) {
+    return arming.passthroughOpenAi === true
   }
   const entry = lookupModel(modelId)
   return entry !== undefined && isLaneArmed(arming, entry.lane)

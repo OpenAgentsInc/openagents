@@ -9,11 +9,13 @@ import {
 } from './chat-completions-routes'
 import {
   FIREWORKS_ADAPTER_ID,
+  PASSTHROUGH_OPENAI_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
   selectAdapterPlan,
 } from './model-router'
 import {
   GEMINI_FLASH_MODEL_ID,
+  GPT_56_LUNA_MODEL_ID,
   KHALA_MODEL_ID,
   KIMI_K3_FIREWORKS_MODEL_ID,
 } from './pricing'
@@ -329,6 +331,79 @@ describe('chat completions no-spend admission', () => {
 
     expect(response.status).toBe(200)
     expect(calls).toEqual([VERTEX_GEMINI_ADAPTER_ID])
+  })
+
+  test('allows an OpenAuth session to select gpt-5.6-luna over passthrough-openai', async () => {
+    const calls: Array<{ adapterId: string; request: InferenceRequest }> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: inferenceRequest => {
+        calls.push({
+          adapterId: PASSTHROUGH_OPENAI_ADAPTER_ID,
+          request: inferenceRequest,
+        })
+        return Effect.succeed({
+          content: 'served by passthrough-openai',
+          finishReason: 'stop',
+          servedModel: inferenceRequest.model,
+          usage: { completionTokens: 2, promptTokens: 3, totalTokens: 5 },
+        })
+      },
+      id: PASSTHROUGH_OPENAI_ADAPTER_ID,
+      stream: inferenceRequest =>
+        Effect.succeed([
+          {
+            contentDelta: 'served by passthrough-openai',
+            finishReason: 'stop',
+            servedModel: inferenceRequest.model,
+            usage: { completionTokens: 2, promptTokens: 3, totalTokens: 5 },
+          },
+        ]),
+    })
+
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        hostedRequest(GPT_56_LUNA_MODEL_ID),
+        deps({
+          authenticate: async () => ({
+            accountRef: 'openauth:omega-desktop-user',
+          }),
+          laneArming: { ...hostedLaneArming, passthroughOpenAi: true },
+          lanePlan: selectAdapterPlan,
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.adapterId).toBe(PASSTHROUGH_OPENAI_ADAPTER_ID)
+    expect(calls[0]?.request.model).toBe(GPT_56_LUNA_MODEL_ID)
+  })
+
+  test('fails closed for gpt-5.6-luna when the passthrough-openai arming is absent', async () => {
+    const { calls, registry } = makeHostedRegistry()
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        hostedRequest(GPT_56_LUNA_MODEL_ID),
+        deps({
+          authenticate: async () => ({
+            accountRef: 'openauth:omega-desktop-user',
+          }),
+          // No `passthroughOpenAi` field: absent must mean unarmed.
+          laneArming: hostedLaneArming,
+          lanePlan: selectAdapterPlan,
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({
+      error: 'model_unavailable',
+      model: GPT_56_LUNA_MODEL_ID,
+    })
+    expect(calls).toHaveLength(0)
   })
 
   test('denies hosted lanes to a non-internal agent account', async () => {

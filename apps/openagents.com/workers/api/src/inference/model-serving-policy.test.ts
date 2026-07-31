@@ -7,6 +7,7 @@ import {
   KHALA_FIREWORKS_DEEPSEEK_V4_FLASH_PRICE_MODEL,
   type SupplyLaneArming,
   filterServableCatalog,
+  isHostedLaneModelId,
   isKhalaBackingArmed,
   isLaneArmed,
   isModelServable,
@@ -24,6 +25,7 @@ import {
 } from './model-serving-policy'
 import {
   GEMINI_FLASH_MODEL_ID,
+  GPT_56_LUNA_MODEL_ID,
   HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   HYDRALISK_GPT_OSS_120B_MODEL_ID,
@@ -594,6 +596,43 @@ describe('resolveNamedModelServability', () => {
     expect(
       resolveNamedModelServability(KIMI_K3_FIREWORKS_MODEL_ID, fireworks),
     ).toBe(false)
+  })
+
+  it('classifies the hosted lane ids (including gpt-5.6-luna) and nothing else', () => {
+    expect(isHostedLaneModelId(GEMINI_FLASH_MODEL_ID)).toBe(true)
+    expect(isHostedLaneModelId(KIMI_K3_MODEL_ID)).toBe(true)
+    expect(isHostedLaneModelId(KIMI_K3_FIREWORKS_MODEL_ID)).toBe(true)
+    expect(isHostedLaneModelId(GPT_56_LUNA_MODEL_ID)).toBe(true)
+    expect(isHostedLaneModelId('GPT-5.6-Luna')).toBe(true)
+    expect(isHostedLaneModelId(KHALA_MODEL_ID)).toBe(false)
+    expect(isHostedLaneModelId('openai/gpt-5.6-luna')).toBe(false)
+  })
+
+  it('arms gpt-5.6-luna hosted servability from OPENAI_API_KEY presence only', () => {
+    const armed = resolveSupplyLaneArming({ OPENAI_API_KEY: 'sk-test' })
+    expect(armed.passthroughOpenAi).toBe(true)
+    expect(resolveHostedLaneModelServability(GPT_56_LUNA_MODEL_ID, armed)).toBe(
+      true,
+    )
+    // Blank/absent key => unarmed.
+    expect(
+      resolveSupplyLaneArming({ OPENAI_API_KEY: '  ' }).passthroughOpenAi,
+    ).toBe(false)
+    expect(resolveSupplyLaneArming({}).passthroughOpenAi).toBe(false)
+    expect(
+      resolveHostedLaneModelServability(
+        GPT_56_LUNA_MODEL_ID,
+        ALL_LANES_UNARMED,
+      ),
+    ).toBe(false)
+    // Optional field absent (legacy lane-only arming literals) => unarmed.
+    expect(
+      resolveHostedLaneModelServability(GPT_56_LUNA_MODEL_ID, ALL_ARMED),
+    ).toBe(false)
+    // The id never becomes publicly servable.
+    expect(resolveNamedModelServability(GPT_56_LUNA_MODEL_ID, armed)).toBe(
+      false,
+    )
   })
 
   it('resolves internal hosted Gemini Flash and Kimi K3 lane servability', () => {

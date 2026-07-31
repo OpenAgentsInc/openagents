@@ -43,6 +43,7 @@ import {
   type KhalaBackingModel,
 } from './model-serving-policy'
 import {
+  GPT_56_LUNA_MODEL_ID,
   HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   HYDRALISK_GPT_OSS_120B_MODEL_ID,
@@ -531,6 +532,15 @@ export const selectAdapterPlan = (model: string): ReadonlyArray<string> => {
   }
   if (normalizedModel === KHALA_PYLON_MINI_MODEL_ID) {
     return [OPENAGENTS_NETWORK_ADAPTER_ID]
+  }
+  // Exact-id hosted Omega lane (owner direction 2026-07-30): gpt-5.6-luna is
+  // served by the partner passthrough-openai adapter ONLY. Deliberately ahead
+  // of the class-based plan so the unknown-class anthropic-first passthrough
+  // ordering never applies — a future ANTHROPIC_API_KEY must not make this
+  // OpenAI model hit Anthropic's API first and fail non-retryably. Bounded
+  // exact-id match, not a prefix classifier.
+  if (normalizedModel === GPT_56_LUNA_MODEL_ID) {
+    return [PASSTHROUGH_OPENAI_ADAPTER_ID]
   }
   const plan = LANE_PLAN_BY_CLASS[classifyModel(normalizedModel)]
   return plan.flatMap(lane => LANE_ADAPTER_IDS[lane])

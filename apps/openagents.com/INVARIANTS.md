@@ -708,17 +708,26 @@ This is the invariant ledger for `openagents`.
 - This module is separate from the general public model gate in
   `chat-completions-routes.ts`. External API accounts can select only the Khala
   virtual model. Accounts in `INFERENCE_INTERNAL_ACCOUNT_REFS` can also select
-  the exact `gemini-3.6-flash`, `kimi-k3`, or
-  `accounts/fireworks/models/kimi-k3` hosted lane. The internal selection uses
-  the same lane-arming checks as the provider registry. It does not publish
-  these backing models in `/v1/models`, and it does not grant an external
-  account access to platform capacity. Owner direction on 2026-07-27 approved
-  this bounded internal gateway selection.
+  the exact `gemini-3.6-flash`, `kimi-k3`,
+  `accounts/fireworks/models/kimi-k3`, or `gpt-5.6-luna` hosted lane. The
+  internal selection uses the same lane-arming checks as the provider registry.
+  It does not publish these backing models in `/v1/models`, and it does not
+  grant an external account access to platform capacity. Owner direction on
+  2026-07-27 approved this bounded internal gateway selection.
 - Omega zero-base Flash/Pro (owner direction 2026-07-28 follow-up): a verified
   OpenAuth user bearer session (`accountRef` `openauth:{userId}`) may also
   select those exact hosted lanes on `POST /api/v1/chat/completions`, using the
   same lane-arming checks. Public Khala and other models stay closed to that
   session class. Agent-token auth remains the primary programmatic path.
+- Omega hosted `gpt-5.6-luna` (owner direction 2026-07-30): the core Omega
+  Agent defaults to OpenAI's `gpt-5.6-luna` through this gateway. The id is a
+  hosted-lane model in `isHostedLaneModelId`, has NO pricing-table entry (so
+  it never appears in the priced catalog/quote surface), routes to exactly
+  `[passthrough-openai]` in `selectAdapterPlan` (bounded exact-id match — the
+  unknown-class anthropic-first passthrough ordering must never apply to it),
+  and is servable only when `SupplyLaneArming.passthroughOpenAi` is armed by
+  the presence of `OPENAI_API_KEY` (presence-only; the value is never read by
+  the policy). Hosted-lane metering stays no-spend.
 - Per-user model choice outside those exact hosted lanes remains a privileged
   mobile or coding-turn capability. Thread it through the Agent Computer
   executor path (#8473/#8474/#8503). A future change that adds more general

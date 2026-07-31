@@ -41,6 +41,7 @@ import {
 import { openAgentsNetworkAdapter } from './openagents-network-adapter'
 import {
   AUTOPILOT_CONCIERGE_MODEL_ID,
+  GPT_56_LUNA_MODEL_ID,
   HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   HYDRALISK_GPT_OSS_120B_MODEL_ID,
@@ -380,6 +381,21 @@ describe('model classification', () => {
       PASSTHROUGH_ANTHROPIC_ADAPTER_ID,
       PASSTHROUGH_OPENAI_ADAPTER_ID,
     ])
+  })
+
+  test('routes the hosted gpt-5.6-luna Omega lane to passthrough-openai only', () => {
+    // Owner direction 2026-07-30: the exact hosted Omega lane id never takes the
+    // unknown-class anthropic-first passthrough ordering — a future
+    // ANTHROPIC_API_KEY must not put Anthropic ahead of OpenAI for this model.
+    expect(selectAdapterPlan(GPT_56_LUNA_MODEL_ID)).toEqual([
+      PASSTHROUGH_OPENAI_ADAPTER_ID,
+    ])
+    expect(selectAdapterPlan(' GPT-5.6-Luna ')).toEqual([
+      PASSTHROUGH_OPENAI_ADAPTER_ID,
+    ])
+    expect(selectPrimaryAdapterId(GPT_56_LUNA_MODEL_ID)).toBe(
+      PASSTHROUGH_OPENAI_ADAPTER_ID,
+    )
   })
 })
 
