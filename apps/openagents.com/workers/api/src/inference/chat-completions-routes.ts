@@ -191,6 +191,7 @@ import {
   type ServedTokensRequestAttribution,
   type ServedTokensRequestMetrics,
 } from './served-tokens-recorder'
+import type { SelfProvisionedCeilingRefusal } from './self-provisioned-daily-ceiling'
 import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
 import { DEFAULT_GEMINI_MODEL_ID } from './vertex-gemini-adapter'
 
@@ -675,6 +676,23 @@ export type ChatCompletionsDeps = Readonly<{
   // bounded counters. Checked AFTER auth (so it is keyed to the account) and
   // BEFORE provider dispatch (so a starve-attempt never reaches a provider).
   checkFairShare?: (accountRef: string) => Promise<FairShareDecision>
+  // SELF-PROVISIONED DAILY TOKEN CEILING for the hosted Omega lanes.
+  //
+  // `openAuthHostedLaneCapacity` (below) grants PLATFORM capacity — a hardcoded
+  // `metered: false, paymentMode: 'no-spend'` hook, no balance read, no receipt
+  // — to ANY `openauth:` session that asks for `gpt-5.6-luna`,
+  // `gemini-3.6-flash`, or `kimi-k3`. Keypairs are free to generate, so for a
+  // self-provisioned `nostr:` identity that was an UNBOUNDED draw on
+  // owner-funded inference, including the OpenAI passthrough lane. The
+  // equivalent ceiling already existed on the google-gemini provider-accounts
+  // proxy but covered neither this route nor the other two lanes.
+  //
+  // Returns the refusal decision for a self-provisioned identity that has spent
+  // its day's allowance, or `undefined` when the request may proceed (including
+  // for every non-`nostr:` identity, which this gate never inspects).
+  checkSelfProvisionedDailyCeiling?: (
+    accountRef: string,
+  ) => Promise<SelfProvisionedCeilingRefusal | undefined>
   // DEFAULT-ON caller-owned Pylon delegation for typed coding workflows (#6278).
   // When wired, a request classified by `classifyCodingWorkflow` is routed to
   // the caller's linked, heartbeat-fresh Codex Pylon capacity before normal
@@ -2650,6 +2668,35 @@ export const handleChatCompletions = (
       isHostedLaneModelId(requestedModel)
     const hostedLanePlatformCapacity =
       internalPlatformCapacity || openAuthHostedLaneCapacity
+    // Bound the platform-capacity draw for self-provisioned identities. Checked
+    // AFTER auth (so it keys to the identity) and BEFORE any provider dispatch
+    // (so an exhausted identity never spends the owner's provider credit).
+    // `internalPlatformCapacity` accounts are deliberately exempt: they are
+    // owner-controlled internal lanes, not strangers.
+    if (
+      openAuthHostedLaneCapacity &&
+      !internalPlatformCapacity &&
+      deps.checkSelfProvisionedDailyCeiling !== undefined
+    ) {
+      const refusal = yield* Effect.promise(() =>
+        deps.checkSelfProvisionedDailyCeiling!(session.accountRef),
+      )
+      if (refusal !== undefined) {
+        return noStoreJsonResponse(
+          {
+            error: refusal.error,
+            servedToday: refusal.servedToday,
+            tokensPerDay: refusal.tokensPerDay,
+          },
+          {
+            headers: new Headers({
+              'retry-after': String(refusal.retryAfterSeconds),
+            }),
+            status: 429,
+          },
+        )
+      }
+    }
     if (
       internalNeutralRequest &&
       !(deps.internalAccountRefs ?? new Set<string>()).has(session.accountRef)

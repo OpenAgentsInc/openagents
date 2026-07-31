@@ -19,6 +19,7 @@ import {
   GPT_56_LUNA_MODEL_ID,
   KHALA_MODEL_ID,
   KIMI_K3_FIREWORKS_MODEL_ID,
+  KIMI_K3_MODEL_ID,
 } from './pricing'
 import {
   type InferenceProviderAdapter,
@@ -613,4 +614,96 @@ describe('chat completions no-spend admission', () => {
       expect(calls).toHaveLength(0)
     },
   )
+})
+
+// ---------------------------------------------------------------------------
+// Self-provisioned daily ceiling on the hosted Omega lanes.
+//
+// The hosted-lane branch grants PLATFORM capacity with a hardcoded no-spend
+// metering hook and no funding gate. For a self-provisioned `nostr:` identity —
+// and Nostr keypairs are free to generate — that was an unbounded draw on
+// owner-funded inference, including the `gpt-5.6-luna` OpenAI passthrough.
+// ---------------------------------------------------------------------------
+
+describe('self-provisioned daily ceiling', () => {
+  const selfProvisionedRef = `openauth:nostr:${'a'.repeat(64)}`
+
+  test.each([GEMINI_FLASH_MODEL_ID, KIMI_K3_MODEL_ID, GPT_56_LUNA_MODEL_ID])(
+    'refuses %s for an exhausted self-provisioned identity before any provider call',
+    async model => {
+      const { calls, registry } = makeHostedRegistry()
+      const response = await Effect.runPromise(
+        handleChatCompletions(
+          hostedRequest(model),
+          deps({
+            authenticate: async () => ({ accountRef: selfProvisionedRef }),
+            checkSelfProvisionedDailyCeiling: async () => ({
+              error: 'free_tier_daily_token_ceiling_reached' as const,
+              retryAfterSeconds: 3_600,
+              servedToday: 1_500,
+              tokensPerDay: 1_000,
+            }),
+            laneArming: hostedLaneArming,
+            lanePlan: selectAdapterPlan,
+            registry,
+          }),
+        ),
+      )
+
+      expect(response.status).toBe(429)
+      expect(await response.json()).toMatchObject({
+        error: 'free_tier_daily_token_ceiling_reached',
+        servedToday: 1_500,
+        tokensPerDay: 1_000,
+      })
+      expect(response.headers.get('retry-after')).toBe('3600')
+      // The owner's provider credit was never spent.
+      expect(calls).toHaveLength(0)
+    },
+  )
+
+  test('serves a self-provisioned identity that is under its allowance', async () => {
+    const { calls, registry } = makeHostedRegistry()
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        hostedRequest(GEMINI_FLASH_MODEL_ID),
+        deps({
+          authenticate: async () => ({ accountRef: selfProvisionedRef }),
+          checkSelfProvisionedDailyCeiling: async () => undefined,
+          laneArming: hostedLaneArming,
+          lanePlan: selectAdapterPlan,
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(calls).toEqual([VERTEX_GEMINI_ADAPTER_ID])
+  })
+
+  test('never consults the ceiling for an internal platform account', async () => {
+    // Internal lanes are owner-controlled, not strangers; ceilinging them would
+    // cut off live internal work.
+    const { registry } = makeHostedRegistry()
+    let consulted = false
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        hostedRequest(GEMINI_FLASH_MODEL_ID),
+        deps({
+          authenticate: async () => ({ accountRef: 'openauth:internal-user' }),
+          checkSelfProvisionedDailyCeiling: async () => {
+            consulted = true
+            return undefined
+          },
+          internalAccountRefs: new Set(['openauth:internal-user']),
+          laneArming: hostedLaneArming,
+          lanePlan: selectAdapterPlan,
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(consulted).toBe(false)
+  })
 })

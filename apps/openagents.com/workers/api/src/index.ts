@@ -260,8 +260,12 @@ import {
 } from './auth/omega-nostr-identity-link-store'
 import {
   omegaNostrDisplayName,
+  omegaNostrSelfProvisionDailyTokenCeiling,
+  omegaNostrSelfProvisionEnabled,
+  omegaNostrSelfProvisionPolicy,
   omegaNostrSyntheticEmail,
   omegaNostrUserId,
+  reserveOmegaNostrSelfProvision,
 } from './auth/omega-nostr-self-provision'
 import {
   OMEGA_NOSTR_SESSION_PATH,
@@ -605,6 +609,7 @@ import {
   handlePublicKhalaHeadToHeadApi,
 } from './inference/benchmark/head-to-head-routes'
 import { makeD1KhalaHeadToHeadStore } from './inference/benchmark/head-to-head-store'
+import { makeSelfProvisionedDailyCeilingGate } from './inference/self-provisioned-daily-ceiling'
 import {
   handleChatCompletions,
   isInferenceDurableStreamEnabled,
@@ -1272,6 +1277,7 @@ import {
   epochMillisToIsoTimestamp,
   isoTimestampAfterIso,
   randomUuid,
+  utcStartOfDayIsoTimestamp,
 } from './runtime-primitives'
 import {
   SarahAgentRuntimeError,
@@ -2414,6 +2420,38 @@ const resolveNostrPubkeysForUser = async (
       .toLowerCase()
     return /^[0-9a-f]{64}$/u.test(pubkey) ? [pubkey] : []
   })
+}
+
+// TRUE when the pubkey already owns a `users` row, INDEPENDENT of whether that
+// row is currently active or soft-deleted. The self-provision reservation uses
+// this to decide whether a mint spends the (deliberately tight) ACCOUNT
+// CREATION budget or only the mint budget. Reading it without the
+// `status`/`deleted_at` filters that `resolveNostrLinkedUser` applies is
+// deliberate: a returning install whose row was deactivated must not be able to
+// recharge the creation budget by reactivating itself in a loop.
+const omegaNostrUserRowExists = async (
+  env: Env,
+  pubkey: string,
+): Promise<boolean> => {
+  const rows = await identityDbForEnv(env).query(
+    `SELECT 1 AS present FROM users WHERE id = ? LIMIT 1`,
+    [omegaNostrUserId(pubkey)],
+  )
+  return rows[0] !== undefined
+}
+
+// Create (or reactivate) the self-provisioned subject for a pubkey that just
+// presented a valid NIP-98 proof. The subject is derived ENTIRELY from that
+// pubkey — see `nostrPubkeyToSubject` — so this can never return the owner or
+// any other pre-existing account.
+const provisionOmegaNostrUser = async (
+  env: Env,
+  pubkey: string,
+): Promise<UserSubject | undefined> => {
+  const user = nostrPubkeyToSubject(pubkey)
+  if (user === undefined) return undefined
+  await upsertNostrUser(identityDbForEnv(env), user)
+  return user
 }
 
 // Persist a session subject regardless of provider (session refresh paths can
@@ -3705,8 +3743,17 @@ const { requireUserBearerSession } = makeUserBearerSessionBoundary<
     verifyOpenAuthUserTokens(accessToken, refreshToken, env, ctx),
 })
 
-// A Nostr proof can mint a session only after an operator or authenticated
-// account-link flow creates the canonical `auth_identities` binding.
+// A Nostr proof mints a session when EITHER an operator/authenticated
+// account-link flow already created the canonical `auth_identities` binding, OR
+// self-provisioning is armed and the proof passes the creation/mint budgets.
+//
+// The self-provision hooks below were written and unit-tested on 2026-07-28 but
+// were never passed to this service, which left
+// `OMEGA_NOSTR_SELF_PROVISION_ENABLED` inert: every unlinked install received a
+// permanent 401 no matter how the environment was set. Wiring them is what makes
+// the documented kill switch actually a switch. Read
+// `docs/audits/2026-07-28-omega-nostr-self-provisioning-abuse-bounds.md` before
+// changing any bound.
 const omegaNostrSessionService = makeOmegaNostrSessionService<UserSubject, Env>(
   {
     audit: (event, fields) => {
@@ -3720,6 +3767,18 @@ const omegaNostrSessionService = makeOmegaNostrSessionService<UserSubject, Env>(
     expectedOwnerPubkey: () => undefined,
     resolveLinked: resolveNostrLinkedUser,
     resolveOwner: async () => undefined,
+    selfProvision: {
+      enabled: omegaNostrSelfProvisionEnabled,
+      provision: provisionOmegaNostrUser,
+      reserve: (env, input) =>
+        reserveOmegaNostrSelfProvision(
+          authKvStoreForEnv(env),
+          input,
+          workerRuntime.nowMs(),
+          omegaNostrSelfProvisionPolicy(env),
+        ),
+      userExists: omegaNostrUserRowExists,
+    },
   },
 )
 const handleOmegaNostrSessionApi = omegaNostrSessionService.handle
@@ -15943,6 +16002,31 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         // `demand_kind=internal` (header-independent), keeping our own dogfood
         // out of the external trace corpus + demand ledger. Empty => no-op.
         internalAccountRefs,
+        // SELF-PROVISIONED DAILY CEILING. The hosted-lane platform-capacity
+        // branch below serves gpt-5.6-luna / gemini-3.6-flash / kimi-k3 with a
+        // hardcoded no-spend metering hook, which for a self-provisioned
+        // `nostr:` identity was an unbounded draw on owner-funded inference.
+        // Reads the SAME `token_usage_events` ledger and UTC-day window as the
+        // google-gemini proxy ceiling, so one identity cannot get two separate
+        // allowances by alternating routes. Never inspects a non-`nostr:`
+        // caller.
+        checkSelfProvisionedDailyCeiling: makeSelfProvisionedDailyCeilingGate({
+          servedTokensToday: async userId => {
+            const row = await openAgentsDatabase(env)
+              .prepare(
+                `SELECT COALESCE(SUM(total_tokens), 0) AS total
+                   FROM token_usage_events
+                  WHERE actor_user_id = ?
+                    AND observed_at >= ?`,
+              )
+              .bind(userId, utcStartOfDayIsoTimestamp(currentIsoTimestamp()))
+              .first<{ total: number | null }>()
+            return typeof row?.total === 'number' && Number.isFinite(row.total)
+              ? row.total
+              : 0
+          },
+          tokensPerDay: () => omegaNostrSelfProvisionDailyTokenCeiling(env),
+        }),
         resolveAccountByok: async accountRef => {
           const agentUserId = accountRef.startsWith('agent:')
             ? accountRef.slice('agent:'.length)
