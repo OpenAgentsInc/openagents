@@ -482,7 +482,10 @@ provider response.
 
 The worker image must be built from
 `apps/sarah-livekit-agent/Dockerfile` with the repository root as its context
-and published to the admitted Artifact Registry repository. Replace the
+by `scripts/cloud/build-sarah-livekit-agent.sh --apply` and published to the
+existing
+`us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/sarah-livekit-agent`
+Artifact Registry path. Replace the
 source-only zero-digest placeholder with the observed digest in both the
 worker manifest and `bundle.json`, set `workerImage.pinState=pinned`, refresh
 the manifest and rendered-manifest digests, and run `infra/livekit/verify.sh`.

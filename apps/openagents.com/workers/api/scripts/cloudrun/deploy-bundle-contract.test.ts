@@ -105,6 +105,48 @@ describe('Cloud Run Vite Plus bundle contract', () => {
     )
   })
 
+  test('enables and authenticates Sarah LiveKit only in production', () => {
+    const deployScript = readFileSync(
+      fileURLToPath(new URL('../deploy-cloudrun.sh', import.meta.url)),
+      'utf8',
+    )
+    const productionEnvironment = readFileSync(
+      fileURLToPath(new URL('env-production.yaml', import.meta.url)),
+      'utf8',
+    )
+    const stagingEnvironment = readFileSync(
+      fileURLToPath(new URL('env-staging.yaml', import.meta.url)),
+      'utf8',
+    )
+    const productionSecrets =
+      /if \[\[ "\$TARGET" == "production" \]\]; then\s+SET_SECRETS\+=\(\s+([\s\S]*?)\n  \)/u.exec(
+        deployScript,
+      )?.[1]
+
+    expect(productionEnvironment).toContain(
+      'SARAH_LIVEKIT_URL: "wss://livekit.openagents.com"',
+    )
+    expect(productionEnvironment).toContain(
+      'SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED: "true"',
+    )
+    expect(stagingEnvironment).not.toContain('SARAH_LIVEKIT_URL:')
+    expect(stagingEnvironment).not.toContain(
+      'SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED:',
+    )
+    expect(productionSecrets).toContain(
+      'SARAH_LIVEKIT_SERVER_KEYS_JSON=oa-livekit-prod-server-keys:latest',
+    )
+    expect(productionSecrets).toContain(
+      'SARAH_LIVEKIT_CONTROL_ROOT=oa-livekit-prod-sarah-control-root:latest',
+    )
+    expect(deployScript.match(/SARAH_LIVEKIT_SERVER_KEYS_JSON=/gu)).toHaveLength(
+      1,
+    )
+    expect(deployScript.match(/SARAH_LIVEKIT_CONTROL_ROOT=/gu)).toHaveLength(1)
+    expect(deployScript).not.toContain('SARAH_LIVEKIT_API_KEY=')
+    expect(deployScript).not.toContain('SARAH_LIVEKIT_API_SECRET=')
+  })
+
   test('ships Vite Plus split chunks beside the server entry', () => {
     const dockerfile = readFileSync(
       fileURLToPath(new URL('../../Dockerfile', import.meta.url)),

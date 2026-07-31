@@ -522,7 +522,7 @@ function validateDeploymentBundleInternal(value, historical) {
     "bundle.workerImage.reference",
   );
   assert(
-    /^us-central1-docker\.pkg\.dev\/openagentsgemini\/livekit\/sarah-livekit-agent@sha256:[0-9a-f]{64}$/u.test(
+    /^us-central1-docker\.pkg\.dev\/openagentsgemini\/oa-cloud\/sarah-livekit-agent@sha256:[0-9a-f]{64}$/u.test(
       workerImageReference,
     ),
     "bundle worker image reference is outside the admitted Artifact Registry repository",

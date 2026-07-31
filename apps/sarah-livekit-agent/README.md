@@ -55,6 +55,34 @@ pnpm --dir apps/sarah-livekit-agent build
 docker build -f apps/sarah-livekit-agent/Dockerfile -t sarah-livekit-agent .
 ```
 
+The production image is built by Cloud Build and published only to the existing
+`us-central1-docker.pkg.dev/openagentsgemini/oa-cloud` repository:
+
+```sh
+bash scripts/cloud/build-sarah-livekit-agent.sh
+bash scripts/cloud/build-sarah-livekit-agent.sh --apply
+```
+
+The first command prints the immutable source-tag build plan without changing
+cloud state. The second requires a clean Git worktree, submits the repository
+root with the committed Cloud Build configuration, waits for success, and
+prints the resulting digest-only image reference. It does not deploy the image.
+Use that reference in the LiveKit manifest and deployment bundle by following
+`infra/livekit/README.md`.
+
+Both Docker stages pin the Linux AMD64 manifest digest for the official
+`node:24.13.1-bookworm-slim` image. To refresh it, inspect the authoritative
+Docker Hub manifest index with:
+
+```sh
+docker buildx imagetools inspect node:24.13.1-bookworm-slim \
+  --format '{{json .Manifest}}'
+```
+
+Select the `linux/amd64` child manifest digest, update both `FROM` lines, and
+rerun the worker image policy test before publishing. Do not replace the digest
+with a mutable tag.
+
 Production deploys three replicas on the dedicated GKE application pool.
 External Secrets injects all credentials at runtime, the pod UID supplies a
 unique `SARAH_LIVEKIT_WORKER_REF`, and the 60-second pod termination allowance

@@ -290,7 +290,7 @@ const bundle = {
     sourceCommit: LIVEKIT_OPS.serverImageSourceCommit,
   },
   workerImage: {
-    reference: `us-central1-docker.pkg.dev/openagentsgemini/livekit/sarah-livekit-agent@sha256:${"0".repeat(64)}`,
+    reference: `us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/sarah-livekit-agent@sha256:${"0".repeat(64)}`,
     digest: `sha256:${"0".repeat(64)}`,
     pinState: "build_required",
   },

@@ -149,7 +149,7 @@ After Cloud Build publishes the Dockerfile from the repository root:
    production runtime apply.
 
 The admitted repository is
-`us-central1-docker.pkg.dev/openagentsgemini/livekit/sarah-livekit-agent`.
+`us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/sarah-livekit-agent`.
 No mutable tag is accepted.
 
 ## Capacity limits

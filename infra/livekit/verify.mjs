@@ -158,7 +158,7 @@ requireEqual(
 requireKnownKeys(bundle.workerImage, ["reference", "digest", "pinState"], "workerImage");
 requireEqual(
   bundle.workerImage.reference,
-  `us-central1-docker.pkg.dev/openagentsgemini/livekit/sarah-livekit-agent@${bundle.workerImage.digest}`,
+  `us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/sarah-livekit-agent@${bundle.workerImage.digest}`,
   "worker image reference",
 );
 if (!/^sha256:[0-9a-f]{64}$/u.test(bundle.workerImage.digest)) {
@@ -321,6 +321,18 @@ const workerDockerIgnore = await readFile(
   resolve(repositoryRoot, "apps/sarah-livekit-agent/Dockerfile.dockerignore"),
   "utf8",
 );
+const workerDockerfile = await readFile(
+  resolve(repositoryRoot, "apps/sarah-livekit-agent/Dockerfile"),
+  "utf8",
+);
+const workerCloudBuild = await readFile(
+  resolve(repositoryRoot, "docker/cloud/cloudbuild-sarah-livekit-agent.yaml"),
+  "utf8",
+);
+const workerBuildScript = await readFile(
+  resolve(repositoryRoot, "scripts/cloud/build-sarah-livekit-agent.sh"),
+  "utf8",
+);
 requireEqual(
   bundle.configurationDigest,
   `sha256:${sha256(configurationBytes)}`,
@@ -339,6 +351,30 @@ requireIncludes(
 requireIncludes(workerDockerIgnore, "!apps/sarah-livekit-agent/**", "worker Docker source");
 requireIncludes(workerDockerIgnore, "!packages/audio-contract/**", "worker contract source");
 requireExcludes(workerDockerIgnore, "!docs", "worker Docker documentation context");
+const workerNodeImage =
+  "node:24.13.1-bookworm-slim@sha256:85a395c77b811fa7f5b5e4aa69cd6eb4c3b80c7f1a8e34704dc0ce061e5b404e";
+requireEqual(
+  workerDockerfile.split(workerNodeImage).length - 1,
+  2,
+  "worker build and runtime Node image pins",
+);
+requireIncludes(
+  workerCloudBuild,
+  "us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/sarah-livekit-agent:source-only",
+  "worker Cloud Build Artifact Registry repository",
+);
+requireIncludes(workerCloudBuild, "linux/amd64", "worker Cloud Build platform");
+requireExcludes(
+  workerCloudBuild,
+  "openagentsgemini/livekit/sarah-livekit-agent",
+  "nonexistent worker Artifact Registry repository",
+);
+requireIncludes(
+  workerBuildScript,
+  "status --porcelain --untracked-files=normal",
+  "worker clean-source publication gate",
+);
+requireIncludes(workerBuildScript, "image_summary.digest", "worker immutable image resolution");
 for (const identity of [
   "oa-livekit-agent@openagentsgemini.iam.gserviceaccount.com",
   "oa-livekit-sarah-secret-reader@openagentsgemini.iam.gserviceaccount.com",

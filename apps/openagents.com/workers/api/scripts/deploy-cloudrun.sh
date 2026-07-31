@@ -28,6 +28,8 @@ set -euo pipefail
 #   openagents-resend-api-key / openagents-vertex-sa-key
 #   autopilot-voice-openai-api-key           owner-private Sarah TTS
 #   openagents-github-client-secret          GitHub OAuth client secret
+#   oa-livekit-prod-server-keys              structured production API keys
+#   oa-livekit-prod-sarah-control-root       generation credential HMAC root
 #
 # Cloud Scheduler: pass --with-scheduler to (re)create the per-minute
 # /internal/cron job for the target env after deploy.
@@ -202,6 +204,13 @@ if [[ "$TARGET" == "production" ]]; then
   SET_SECRETS+=(
     "OA_MANAGED_SANDBOX_CONTROL_TOKEN=oa-managed-sandbox-control-token:latest"
     "OA_MANAGED_SANDBOX_BROKER_SIGNING_KEY=oa-managed-sandbox-broker-signing-key:latest"
+    # The broker parses the complete structured object and rejects incomplete
+    # or mixed structured/legacy key configuration.
+    "SARAH_LIVEKIT_SERVER_KEYS_JSON=oa-livekit-prod-server-keys:latest"
+    # The API and GKE worker derive the same generation-bound control bearer.
+    # Staging mounts neither production LiveKit secret and therefore fails
+    # closed even if a route is invoked there.
+    "SARAH_LIVEKIT_CONTROL_ROOT=oa-livekit-prod-sarah-control-root:latest"
   )
   SET_SECRETS+=(
     # OPENROUTER_API_KEY was dropped here (owner decision 2026-07-09) — OpenRouter

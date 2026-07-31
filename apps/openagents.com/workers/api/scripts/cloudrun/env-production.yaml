@@ -133,6 +133,11 @@ OPENAUTH_CLIENT_ID: "openagents-web"
 OPENAUTH_ISSUER_URL: "https://auth.openagents.com"
 PUBLIC_NOSTR_CHAT_RELAY_SELF_PUBKEY: "e841147f262799821bbaa2930fcca982a575458f0e043e064a26ed8aba2046ed"
 SARAH_NOSTR_OWNER_PUBKEY: "bcf86577b45042c960c99fe4ac1380a3ef0565ccbdd5c81e3f20f0919fe4fd14"
+# Self-hosted Sarah LiveKit admission is production-only. Staging intentionally
+# has neither this endpoint nor the production credentials mounted by the
+# deploy script.
+SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED: "true"
+SARAH_LIVEKIT_URL: "wss://livekit.openagents.com"
 # Managed Sarah Realtime voice (#9272). Matches staging credit hold + rate so
 # mobile/desktop clients can reserve sessions; off-by-default until this flip.
 SARAH_REALTIME_CREDIT_MSAT_PER_MILLION_TOKENS: "64000000"
