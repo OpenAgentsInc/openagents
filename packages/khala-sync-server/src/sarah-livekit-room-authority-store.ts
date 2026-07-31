@@ -302,6 +302,22 @@ export class PostgresSarahLiveKitRoomAuthorityStore implements SarahLiveKitRoomA
     }
   }
 
+  /**
+   * Resolve the live community room a member should join.
+   *
+   * This admits the bounded pre-admission window (`prepared` binding,
+   * `reserved` accounting session) on purpose. The Sarah worker only emits
+   * `provider_admitted` — which connects the accounting session and activates
+   * the binding — after the dispatched member participant appears in the
+   * LiveKit room, and that participant can only appear after this read mints
+   * their grant. Demanding `connected` here deadlocks the first canonical
+   * community join (`404 community_room_not_active`, EP263-LK).
+   *
+   * Everything terminal stays undiscoverable: a retired or expired
+   * rendezvous, a stopped or closed worker, a binding in cleanup, a released
+   * or expired accounting session, and any epoch- or membership-stale
+   * rendezvous. See `sarah-livekit-community-room-first-join.test.ts`.
+   */
   async readActiveCommunityRoomRendezvous(input: {
     readonly communityRef: string;
     readonly channelRef: string;
@@ -347,10 +363,10 @@ export class PostgresSarahLiveKitRoomAuthorityStore implements SarahLiveKitRoomA
           AND rendezvous.channel_ref=${input.channelRef}
           AND rendezvous.state='active'
           AND rendezvous.expires_at>${input.now}
-          AND binding.state='active'
+          AND binding.state IN ('prepared', 'active')
           AND binding.worker_stop_reason IS NULL
           AND binding.worker_closed_at IS NULL
-          AND session.state='connected'
+          AND session.state IN ('reserved', 'connected')
           AND session.session_expires_at>${input.now}
           AND authority.community_ref=rendezvous.community_ref
           AND authority.channel_ref=rendezvous.channel_ref
