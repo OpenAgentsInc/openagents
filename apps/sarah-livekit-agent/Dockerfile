@@ -6,7 +6,7 @@ LABEL org.opencontainers.image.revision="${IMAGE_REVISION}"
 WORKDIR /workspace
 RUN corepack enable && corepack prepare pnpm@11.10.0 --activate
 COPY . .
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --ignore-scripts
 RUN pnpm --dir apps/sarah-livekit-agent build \
   && pnpm --filter @openagentsinc/sarah-livekit-agent deploy \
     --legacy --prod /runtime
