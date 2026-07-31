@@ -180,6 +180,11 @@ export type SarahVoiceLiveKitWorkerClaim = Readonly<{
   sessionExpiresAt: string;
 }>;
 
+export type SarahVoiceLiveKitMembershipLease = Readonly<{
+  ownerUserId: string;
+  roomContext: SarahVoiceLiveKitRoomContext;
+}>;
+
 export const SARAH_LIVEKIT_WORKER_DRAIN_TIMEOUT_MS = 15_000;
 
 export class SarahVoiceInsufficientCreditError extends Error {
@@ -1350,6 +1355,66 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }
   };
 
+  const readLiveKitMembershipLease = async (
+    input: Readonly<{
+      workerControlTokenDigest: string;
+      workerJobRef: string;
+      sessionRef: string;
+      generation: number;
+    }>,
+  ): Promise<SarahVoiceLiveKitMembershipLease | undefined> => {
+    try {
+      const rows = (await sql`
+        SELECT binding.owner_user_id, binding.room_context_kind,
+          binding.community_ref, binding.channel_ref,
+          binding.membership_revision
+        FROM sarah_livekit_room_bindings AS binding
+        WHERE binding.worker_control_token_digest =
+            ${input.workerControlTokenDigest}
+          AND binding.worker_job_ref = ${input.workerJobRef}
+          AND binding.session_ref = ${input.sessionRef}
+          AND binding.generation = ${input.generation}
+          AND binding.state IN ('prepared', 'active')
+      `) as ReadonlyArray<{
+        owner_user_id: string;
+        room_context_kind: "private" | "community";
+        community_ref: string | null;
+        channel_ref: string | null;
+        membership_revision: string | null;
+      }>;
+      const row = first(rows);
+      if (row === undefined) return undefined;
+      if (row.room_context_kind === "private") {
+        return {
+          ownerUserId: row.owner_user_id,
+          roomContext: { kind: "private" },
+        };
+      }
+      if (
+        row.community_ref === null ||
+        row.channel_ref === null ||
+        row.membership_revision === null
+      ) {
+        throw new SarahVoiceStorageError(
+          "The Sarah LiveKit community membership lease is incomplete",
+          null,
+        );
+      }
+      return {
+        ownerUserId: row.owner_user_id,
+        roomContext: {
+          kind: "community",
+          communityRef: row.community_ref,
+          channelRef: row.channel_ref,
+          membershipRevision: row.membership_revision,
+        },
+      };
+    } catch (error) {
+      if (error instanceof SarahVoiceStorageError) throw error;
+      throw new SarahVoiceStorageError("Sarah LiveKit membership lease lookup failed", error);
+    }
+  };
+
   const closeLiveKitWorkerJob = async (
     input: Readonly<{
       workerControlTokenDigest: string;
@@ -2051,6 +2116,28 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             ON CONFLICT (event_ref) DO NOTHING
           `;
         }
+        await tx`
+          UPDATE sarah_livekit_room_bindings AS binding
+          SET worker_stop_reason =
+                COALESCE(binding.worker_stop_reason, 'membership_revoked'),
+              worker_stop_close_reason = COALESCE(
+                binding.worker_stop_close_reason,
+                ${input.reason.slice(0, 256)}
+              ),
+              worker_stop_requested_at =
+                COALESCE(binding.worker_stop_requested_at, ${input.nowIso}),
+              worker_stop_deadline_at = COALESCE(
+                binding.worker_stop_deadline_at,
+                ${plusMillisecondsIso(input.nowIso, SARAH_LIVEKIT_WORKER_DRAIN_TIMEOUT_MS)}
+              ),
+              updated_at = ${input.nowIso}
+          FROM sarah_realtime_voice_sessions AS session
+          WHERE session.session_ref = binding.session_ref
+            AND session.admission_cohort_ref = ${input.cohortRef}
+            AND session.state IN ('reserved', 'connected')
+            AND binding.state IN ('prepared', 'active')
+            AND binding.worker_stop_reason IS NULL
+        `;
         return rows.length;
       });
     } catch (error) {
@@ -2151,7 +2238,9 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         if (replay !== undefined) return replay;
 
         const sessions = (await tx`
-          SELECT session.state, session.session_expires_at
+          SELECT session.state, session.session_expires_at,
+            session.owner_user_id, session.credit_mode,
+            session.entitlement_ref, session.admission_cohort_ref
           FROM sarah_realtime_voice_sessions AS session
           INNER JOIN sarah_livekit_room_bindings AS binding
             ON binding.session_ref = session.session_ref
@@ -2169,6 +2258,10 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         `) as ReadonlyArray<{
           state: SarahVoiceSessionState;
           session_expires_at: string;
+          owner_user_id: string;
+          credit_mode: SarahVoiceCreditMode;
+          entitlement_ref: string | null;
+          admission_cohort_ref: string | null;
         }>;
         const session = first(sessions);
         if (session === undefined) {
@@ -2213,6 +2306,51 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
 
         let workerStopReason = binding.worker_stop_reason;
         let workerStopCloseReason = binding.worker_stop_close_reason;
+        if (input.eventKind !== "close" && workerStopReason === null) {
+          const currentMembership =
+            session.credit_mode === "metered"
+              ? ((await tx`
+                  SELECT membership.membership_ref AS lease_ref
+                  FROM sarah_voice_alpha_memberships AS membership
+                  INNER JOIN users
+                    ON users.id = membership.owner_user_id
+                  WHERE membership.owner_user_id = ${session.owner_user_id}
+                    AND membership.cohort_ref =
+                      ${session.admission_cohort_ref}
+                    AND membership.state = 'active'
+                    AND membership.admitted_at <= ${input.nowIso}
+                    AND users.status = 'active'
+                    AND users.deleted_at IS NULL
+                  FOR SHARE OF membership, users
+                `) as ReadonlyArray<{ lease_ref: string }>)
+              : ((await tx`
+                  SELECT entitlement.entitlement_ref AS lease_ref
+                  FROM sarah_voice_credit_entitlements AS entitlement
+                  INNER JOIN users
+                    ON users.id = entitlement.owner_user_id
+                  WHERE entitlement.owner_user_id = ${session.owner_user_id}
+                    AND entitlement.entitlement_ref =
+                      ${session.entitlement_ref}
+                    AND entitlement.environment = 'staging'
+                    AND entitlement.state = 'active'
+                    AND entitlement.activated_at <= ${input.nowIso}
+                    AND entitlement.expires_at > ${input.nowIso}
+                    AND users.status = 'active'
+                    AND users.deleted_at IS NULL
+                  FOR SHARE OF entitlement, users
+                `) as ReadonlyArray<{ lease_ref: string }>);
+          if (first(currentMembership) === undefined) {
+            workerStopReason = "membership_revoked";
+            workerStopCloseReason = "membership_revoked";
+            await setLiveKitWorkerStopInTransaction(tx, {
+              sessionRef: input.sessionRef,
+              generation: input.generation,
+              stopReason: workerStopReason,
+              closeReason: workerStopCloseReason,
+              nowIso: input.nowIso,
+            });
+          }
+        }
         if (
           input.eventKind !== "close" &&
           workerStopReason === null &&
@@ -2918,6 +3056,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     readActiveAlphaMembership,
     readActiveStagingOwnerEntitlement,
     readLiveKitCleanup,
+    readLiveKitMembershipLease,
     readLiveKitToolProposals,
     readLiveKitToolState,
     claimLiveKitProvisioningIntents,

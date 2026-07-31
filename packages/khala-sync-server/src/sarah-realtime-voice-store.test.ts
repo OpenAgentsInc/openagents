@@ -723,6 +723,17 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       roomRef: binding.roomRef,
       sarahParticipantRef: binding.sarahParticipantRef,
     });
+    await expect(
+      store.readLiveKitMembershipLease({
+        workerControlTokenDigest: binding.workerControlTokenDigest,
+        workerJobRef: workerClaim.workerJobRef,
+        sessionRef: binding.sessionRef,
+        generation: 1,
+      }),
+    ).resolves.toEqual({
+      ownerUserId: binding.ownerUserId,
+      roomContext: binding.roomContext,
+    });
 
     await store.recordLiveKitParticipantJoin({
       sessionRef: binding.sessionRef,
@@ -844,14 +855,85 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         nowIso: "2026-07-28T13:01:00.000Z",
       }),
     ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
-    const draining = await store.revokeLiveKitRoom({
-      sessionRef: binding.sessionRef,
-      generation: 1,
+    await sql`
+      UPDATE sarah_voice_alpha_memberships
+      SET state = 'revoked', revoked_at = '2026-07-28T13:00:59.000Z',
+        revocation_actor_ref = 'operator:test',
+        revocation_reason = 'Direct membership revocation',
+        updated_at = '2026-07-28T13:00:59.000Z'
+      WHERE membership_ref = 'sarah_voice_alpha:user-sarah-livekit'
+    `;
+    await expect(
+      store.applyLiveKitWorkerEvent({
+        workerControlTokenDigest: binding.workerControlTokenDigest,
+        workerJobRef: workerClaim.workerJobRef,
+        sessionRef: binding.sessionRef,
+        generation: 1,
+        eventRef: "lease:membership-revoked",
+        eventPayloadDigest: "6".repeat(64),
+        eventKind: "lease_check",
+        nowIso: "2026-07-28T13:00:59.500Z",
+      }),
+    ).resolves.toMatchObject({
+      replayed: false,
       stopReason: "membership_revoked",
-      reason: "membership_removed",
-      nowIso: "2026-07-28T13:01:00.000Z",
     });
-    expect(draining).toMatchObject({ state: "connected", chargedMsat: 250 });
+    await sql`
+      UPDATE sarah_voice_alpha_memberships
+      SET state = 'active', revoked_at = NULL, revocation_actor_ref = NULL,
+        revocation_reason = NULL, updated_at = '2026-07-28T13:00:59.750Z'
+      WHERE membership_ref = 'sarah_voice_alpha:user-sarah-livekit'
+    `;
+    await sql`
+      UPDATE sarah_livekit_room_bindings
+      SET worker_stop_reason = NULL, worker_stop_close_reason = NULL,
+        worker_stop_requested_at = NULL, worker_stop_deadline_at = NULL
+      WHERE session_ref = ${binding.sessionRef}
+    `;
+    expect(
+      await store.revokeAlphaCohort({
+        cohortRef: reservation.admissionCohortRef,
+        actorRef: "operator:test",
+        reason: "membership_removed",
+        nowIso: "2026-07-28T13:01:00.000Z",
+      }),
+    ).toBe(1);
+    expect(
+      await store.revokeAlphaCohort({
+        cohortRef: reservation.admissionCohortRef,
+        actorRef: "operator:test",
+        reason: "duplicate_membership_removal",
+        nowIso: "2026-07-28T13:01:00.250Z",
+      }),
+    ).toBe(0);
+    const [draining] = await sql`
+      SELECT state, charged_msat
+      FROM sarah_realtime_voice_sessions
+      WHERE session_ref = ${binding.sessionRef}
+    `;
+    expect(draining?.state).toBe("connected");
+    expect(Number(draining?.charged_msat)).toBe(250);
+    const [stopRequested] = await sql`
+      SELECT worker_stop_reason, worker_stop_close_reason
+      FROM sarah_livekit_room_bindings
+      WHERE session_ref = ${binding.sessionRef}
+    `;
+    expect(stopRequested).toMatchObject({
+      worker_stop_reason: "membership_revoked",
+      worker_stop_close_reason: "membership_removed",
+    });
+    await expect(
+      store.revokeLiveKitRoom({
+        sessionRef: binding.sessionRef,
+        generation: 1,
+        stopReason: "membership_revoked",
+        reason: "membership_removed",
+        nowIso: "2026-07-28T13:01:00.000Z",
+      }),
+    ).resolves.toMatchObject({
+      state: "connected",
+      chargedMsat: 250,
+    });
     await expect(
       store.applyLiveKitWorkerEvent({
         workerControlTokenDigest: binding.workerControlTokenDigest,
@@ -966,6 +1048,12 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
     `;
     expect(Number(usageCount?.count)).toBe(2);
 
+    await sql`
+      UPDATE sarah_voice_alpha_memberships
+      SET state = 'active', revoked_at = NULL, revocation_actor_ref = NULL,
+        revocation_reason = NULL, updated_at = '2026-07-28T13:01:59.000Z'
+      WHERE membership_ref = 'sarah_voice_alpha:user-sarah-livekit'
+    `;
     await store.reserve({
       ...reservation,
       sessionRef: "voice-livekit-2",

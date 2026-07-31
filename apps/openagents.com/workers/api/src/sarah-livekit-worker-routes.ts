@@ -36,6 +36,22 @@ export type SarahLiveKitWorkerRouteDependencies<Bindings> = Readonly<{
     env: Bindings,
     input: Readonly<{ sessionRef: string; generation: number }>,
   ) => Promise<void>;
+  resolveCommunityAccess?: (
+    env: Bindings,
+    input: Readonly<{
+      ownerUserId: string;
+      communityRef: string;
+      channelRef: string;
+    }>,
+  ) => Promise<
+    | Readonly<{
+        communityRef: string;
+        channelRef: string;
+        membershipRevision: string;
+        subscribeAllowed: boolean;
+      }>
+    | undefined
+  >;
 }>;
 
 const noStoreJson = (body: unknown, status: number): Response =>
@@ -272,6 +288,48 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
       eventPayloadDigest: sha256(canonicalJson(body)),
       nowIso,
     } as const;
+    if (body._tag === "worker_connected" || body._tag === "lease_check") {
+      const membershipLease = await opened.store.readLiveKitMembershipLease({
+        workerControlTokenDigest: sha256(token),
+        workerJobRef: body.jobRef,
+        sessionRef: body.sessionRef,
+        generation: body.generation,
+      });
+      if (membershipLease?.roomContext.kind === "community") {
+        let currentAccess:
+          | Readonly<{
+              communityRef: string;
+              channelRef: string;
+              membershipRevision: string;
+              subscribeAllowed: boolean;
+            }>
+          | undefined;
+        try {
+          currentAccess = await dependencies.resolveCommunityAccess?.(env, {
+            ownerUserId: membershipLease.ownerUserId,
+            communityRef: membershipLease.roomContext.communityRef,
+            channelRef: membershipLease.roomContext.channelRef,
+          });
+        } catch {
+          currentAccess = undefined;
+        }
+        if (
+          currentAccess === undefined ||
+          !currentAccess.subscribeAllowed ||
+          currentAccess.communityRef !== membershipLease.roomContext.communityRef ||
+          currentAccess.channelRef !== membershipLease.roomContext.channelRef ||
+          currentAccess.membershipRevision !== membershipLease.roomContext.membershipRevision
+        ) {
+          await opened.store.revokeLiveKitRoom({
+            sessionRef: body.sessionRef,
+            generation: body.generation,
+            stopReason: "membership_revoked",
+            reason: "community_membership_changed",
+            nowIso,
+          });
+        }
+      }
+    }
     const result =
       body._tag === "worker_connected"
         ? await opened.store.applyLiveKitWorkerEvent({

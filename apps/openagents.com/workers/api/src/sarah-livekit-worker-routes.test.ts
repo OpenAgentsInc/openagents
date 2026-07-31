@@ -4,7 +4,10 @@ import {
   type SarahLiveKitJobEvent,
   decodeSarahLiveKitJobClaimResponse,
 } from "@openagentsinc/audio-contract";
-import type { SarahRealtimeVoiceStore } from "@openagentsinc/khala-sync-server";
+import type {
+  SarahRealtimeVoiceStore,
+  SarahVoiceLiveKitMembershipLease,
+} from "@openagentsinc/khala-sync-server";
 import { describe, expect, test, vi } from "vitest";
 
 import {
@@ -42,9 +45,20 @@ const applyLiveKitWorkerEvent = vi.fn(async () => ({
   observedAt: "2033-05-18T03:33:20.000Z",
   replayed: false,
 }));
+const readLiveKitMembershipLease = vi.fn(
+  async (): Promise<SarahVoiceLiveKitMembershipLease> => ({
+    ownerUserId: "owner:one",
+    roomContext: { kind: "private" },
+  }),
+);
+const revokeLiveKitRoom = vi.fn(async () => ({
+  state: "connected" as const,
+}));
 const store = {
   applyLiveKitWorkerEvent,
   claimLiveKitWorkerJob,
+  readLiveKitMembershipLease,
+  revokeLiveKitRoom,
 } as unknown as SarahRealtimeVoiceStore;
 const cleanup = vi.fn(async () => undefined);
 const dependencies = {
@@ -168,6 +182,52 @@ describe("Sarah LiveKit worker routes", () => {
         generation: 1,
       },
     );
+  });
+
+  test("requests a drain when a community membership revision changes", async () => {
+    readLiveKitMembershipLease.mockResolvedValueOnce({
+      ownerUserId: "owner:one",
+      roomContext: {
+        kind: "community",
+        communityRef: "community:one",
+        channelRef: "channel:one",
+        membershipRevision: "revision:one",
+      },
+    });
+    revokeLiveKitRoom.mockClear();
+    applyLiveKitWorkerEvent.mockClear();
+    const response = await handleSarahLiveKitWorkerEvent(
+      {
+        ...dependencies,
+        resolveCommunityAccess: async () => ({
+          communityRef: "community:one",
+          channelRef: "channel:one",
+          membershipRevision: "revision:two",
+          subscribeAllowed: true,
+        }),
+      },
+      authorizedRequest("/api/internal/sarah/livekit/job/event", {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "lease_check",
+        sessionRef: "session:one",
+        generation: 1,
+        jobRef: "job:one",
+        eventRef: "lease:changed-membership",
+      }),
+      {},
+    );
+
+    expect(response.status).toBe(200);
+    expect(revokeLiveKitRoom).toHaveBeenCalledTimes(1);
+    expect(revokeLiveKitRoom).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionRef: "session:one",
+        generation: 1,
+        stopReason: "membership_revoked",
+        reason: "community_membership_changed",
+      }),
+    );
+    expect(applyLiveKitWorkerEvent).toHaveBeenCalledTimes(1);
   });
 
   test("fails closed before storage for a wrong token or malformed control root", async () => {

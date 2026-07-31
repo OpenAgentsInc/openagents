@@ -157,13 +157,22 @@ const cleanup = (ws: Socket, closeReason: string): Promise<void> => {
   }
   safeProviderClose(ws.data.upstream)
   return Promise.all([ws.data.meteringTail, ws.data.toolControlTail])
-    .then(() =>
-      ws.data.store.settle({
-        sessionRef: ws.data.session.sessionRef,
-        closeReason,
-        nowIso: new Date().toISOString(),
-      }),
-    )
+    .then(() => {
+      const nowIso = new Date().toISOString()
+      return ws.data.session.transportKind === 'livekit_room_v1'
+        ? ws.data.store.revokeLiveKitRoom({
+            sessionRef: ws.data.session.sessionRef,
+            generation: ws.data.session.generation,
+            stopReason: 'operator_stop',
+            reason: closeReason,
+            nowIso,
+          })
+        : ws.data.store.settle({
+            sessionRef: ws.data.session.sessionRef,
+            closeReason,
+            nowIso,
+          })
+    })
     .then(
       () => ws.data.closeStore(),
       async () => {

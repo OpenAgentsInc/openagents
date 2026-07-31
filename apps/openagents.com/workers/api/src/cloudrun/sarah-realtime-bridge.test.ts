@@ -3,7 +3,7 @@ import {
   AUDIO_PROTOCOL_VERSION,
 } from '@openagentsinc/audio-contract'
 import { createHash } from 'node:crypto'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import {
   flushSarahLiveKitToolControl,
@@ -267,6 +267,71 @@ describe('Sarah Realtime bridge metering', () => {
     })
     expect(data.expectedAudioSequence).toBe(0)
     if (data.expiryTimer !== undefined) clearTimeout(data.expiryTimer)
+  })
+
+  test('drains a LiveKit worker on control disconnect without settling before final usage', async () => {
+    const nowMs = Date.now()
+    const revokeLiveKitRoom = vi.fn(async () => ({
+      state: 'connected',
+      chargedMsat: 0,
+    }))
+    const settle = vi.fn(async () => {
+      throw new Error('LiveKit control disconnect must not settle accounting')
+    })
+    const pending: Promise<void>[] = []
+    const data = makeSarahRealtimeBridgeData({
+      session: {
+        sessionRef: 'session-drain',
+        ownerUserId: 'user-1',
+        ownerActorRef: 'agent:user-1',
+        deviceRef: 'device-1',
+        threadRef: 'thread-1',
+        generation: 4,
+        disclosureRef: 'disclosure-1',
+        clientProfile: 'omega_editor',
+        transportKind: 'livekit_room_v1',
+        creditMode: 'metered',
+        entitlementRef: null,
+        admissionCohortRef: 'sarah_voice_cohort:alpha_v1',
+        state: 'connected',
+        reservedMsat: 1_000,
+        chargedMsat: 0,
+        ticketExpiresAt: new Date(nowMs + 30_000).toISOString(),
+        sessionExpiresAt: new Date(nowMs + 60_000).toISOString(),
+        settlementReceiptRef: null,
+      },
+      apiKey: 'unused',
+      safetyIdentifier: 'test-safety',
+      creditMsatPerMillionTokens: 1_000,
+      store: { revokeLiveKitRoom, settle } as never,
+      closeStore: async () => undefined,
+      tasks: {
+        add: (task: Promise<void>) => pending.push(task),
+        size: () => pending.length,
+        drain: async () => Promise.all(pending).then(() => undefined),
+      },
+    })
+    const socket = {
+      data,
+      send: () => undefined,
+      close: () => undefined,
+    }
+    const handlers = makeSarahRealtimeWebSocketHandlers()
+
+    handlers.close(socket as never, 1000, 'editor_disconnected')
+    handlers.close(socket as never, 1000, 'duplicate_close')
+    await Promise.all(pending)
+
+    expect(revokeLiveKitRoom).toHaveBeenCalledTimes(1)
+    expect(revokeLiveKitRoom).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionRef: 'session-drain',
+        generation: 4,
+        stopReason: 'operator_stop',
+        reason: 'editor_disconnected',
+      }),
+    )
+    expect(settle).not.toHaveBeenCalled()
   })
 
   test('advances audio sequence while upstream is still connecting', () => {
