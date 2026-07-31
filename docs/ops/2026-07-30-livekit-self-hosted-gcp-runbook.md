@@ -1420,6 +1420,44 @@ without a nonzero gauge reading.
 
 ### Secret, log, and retention scan
 
+#### Retention canaries: injected 2026-07-31
+
+The collector requires at least one retention canary, and **a canary generated
+at scan time is worthless**: material that was never introduced into the system
+can never be found, so that axis would report clean while having tested nothing.
+The other five axes (OpenAI key, Sarah identity, PEM material, raw media,
+transcripts) are meaningful without injection; the retention axis is not.
+
+These canaries were spoken into real production Sarah sessions through the
+normal media path, so they genuinely entered audio, transcription, and anything
+downstream that retains either. They are deliberately non-secret and are
+published here so the scan can search for them.
+
+| Journey | Spoken canary phrase |
+| --- | --- |
+| private | `marmalade obelisk seven three one nine` |
+| community | `juniper caravan four eight two six` |
+
+**Injection window: `2026-07-31T18:41:26Z` to `2026-07-31T18:41:51Z`.** Evidence:
+`docs/ops/receipts/livekit/production-sarah-canary-20260731T184800Z.json`,
+outcome `passed`, with `sarahTranscriptionObserved: true` on both journeys, which
+is what proves the phrases reached the transcription path rather than only the
+wire.
+
+Search for the distinctive two-word head first — `marmalade obelisk` and
+`juniper caravan` — because those bigrams will never occur naturally in this
+system and, unlike the digits, are rendered consistently. Then search the digit
+tails in both word and numeral form (`seven three one nine` and `7319`,
+`four eight two six` and `4826`), because a transcriber may emit either.
+
+Two honest limits on what a clean result proves. The public-safe acceptance
+receipt contains no transcript text by design, so the exact rendering the
+transcriber produced is not verifiable from it; search the phonetic variants, not
+one canonical string. And these canaries are bounded by the retention horizon of
+whatever they entered — a scan run long after the window may find nothing because
+the material aged out rather than because nothing retained it. Record the scan
+time against the window above.
+
 > **This scan is executable.** All four blockers are cleared and the three
 > prose-only scopes — `packaged_clients`, `object_storage`, and `traces` — are
 > defined, with the read-only Redis path built and proven, in
