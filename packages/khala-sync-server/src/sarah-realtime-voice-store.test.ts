@@ -12,6 +12,38 @@ import {
 import type { SyncSql } from "./sql.js";
 import { hasLocalPostgres, startLocalPostgres, type LocalPostgres } from "./test/local-postgres.js";
 
+const waitForBlockedApplication = async (sql: SQL, applicationName: string): Promise<void> => {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const rows = (await sql`
+      SELECT wait_event_type
+      FROM pg_stat_activity
+      WHERE application_name = ${applicationName}
+        AND wait_event_type = 'Lock'
+    `) as ReadonlyArray<{ wait_event_type: string }>;
+    if (rows.length > 0) return;
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 10);
+    });
+  }
+  throw new Error(`${applicationName} did not block on the expected row lock`);
+};
+
+const completeWithin = <A>(promise: Promise<A>, timeoutMs: number, message: string): Promise<A> =>
+  new Promise<A>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+
 describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", () => {
   let pg: LocalPostgres;
   let sql: SQL;
@@ -846,6 +878,96 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       generation: 1,
       usage,
     });
+    const applicationDatabaseUrl = (applicationName: string): string => {
+      const databaseUrl = new URL(pg.urlFor("khala_sync_sarah_voice"));
+      databaseUrl.searchParams.set("application_name", applicationName);
+      return databaseUrl.toString();
+    };
+    const blockerSql = SQL({
+      url: applicationDatabaseUrl("sarah-lock-blocker"),
+      max: 1,
+    });
+    const eventSql = SQL({
+      url: applicationDatabaseUrl("sarah-lock-event"),
+      max: 1,
+    });
+    const revocationSql = SQL({
+      url: applicationDatabaseUrl("sarah-lock-revocation"),
+      max: 1,
+    });
+    let releaseBindingLock: (() => void) | undefined;
+    let bindingLockReady: (() => void) | undefined;
+    const bindingLockReleased = new Promise<void>((resolve) => {
+      releaseBindingLock = resolve;
+    });
+    const bindingLocked = new Promise<void>((resolve) => {
+      bindingLockReady = resolve;
+    });
+    const blocker = blockerSql.begin(async (tx) => {
+      await tx`
+        SELECT session_ref
+        FROM sarah_livekit_room_bindings
+        WHERE session_ref = ${binding.sessionRef}
+          AND generation = ${binding.generation}
+        FOR UPDATE
+      `;
+      bindingLockReady?.();
+      await bindingLockReleased;
+    });
+    try {
+      await bindingLocked;
+      const eventStore = makeSarahRealtimeVoiceStore(eventSql as unknown as SyncSql);
+      const event = eventStore.applyLiveKitWorkerEvent({
+        workerControlTokenDigest: binding.workerControlTokenDigest,
+        workerJobRef: workerClaim.workerJobRef,
+        sessionRef: binding.sessionRef,
+        generation: 1,
+        eventRef: "lease:concurrent-cohort-revocation",
+        eventPayloadDigest: "0".repeat(64),
+        eventKind: "lease_check",
+        nowIso: "2026-07-28T13:00:58.000Z",
+      });
+      await waitForBlockedApplication(sql, "sarah-lock-event");
+
+      const revocationStore = makeSarahRealtimeVoiceStore(revocationSql as unknown as SyncSql);
+      const revocation = revocationStore.revokeAlphaCohort({
+        cohortRef: reservation.admissionCohortRef,
+        actorRef: "operator:test-lock-order",
+        reason: "Concurrent lock-order regression",
+        nowIso: "2026-07-28T13:00:58.500Z",
+      });
+      await waitForBlockedApplication(sql, "sarah-lock-revocation");
+      releaseBindingLock?.();
+
+      const completed = await completeWithin(
+        Promise.all([event, revocation]),
+        2_000,
+        "Concurrent voice revocation did not complete",
+      );
+      expect(completed).toEqual([
+        {
+          observedAt: "2026-07-28T13:00:58.000Z",
+          replayed: false,
+        },
+        1,
+      ]);
+    } finally {
+      releaseBindingLock?.();
+      await blocker;
+      await Promise.all([blockerSql.end(), eventSql.end(), revocationSql.end()]);
+    }
+    await sql`
+      UPDATE sarah_voice_alpha_memberships
+      SET state = 'active', revoked_at = NULL, revocation_actor_ref = NULL,
+        revocation_reason = NULL, updated_at = '2026-07-28T13:00:58.750Z'
+      WHERE membership_ref = 'sarah_voice_alpha:user-sarah-livekit'
+    `;
+    await sql`
+      UPDATE sarah_livekit_room_bindings
+      SET worker_stop_reason = NULL, worker_stop_close_reason = NULL,
+        worker_stop_requested_at = NULL, worker_stop_deadline_at = NULL
+      WHERE session_ref = ${binding.sessionRef}
+    `;
     await expect(
       store.revokeLiveKitRoom({
         sessionRef: binding.sessionRef,

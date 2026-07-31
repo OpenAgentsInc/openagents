@@ -2090,6 +2090,25 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
   ): Promise<number> => {
     try {
       return await sql.begin(async (tx) => {
+        await tx`
+          SELECT session.session_ref
+          FROM sarah_realtime_voice_sessions AS session
+          WHERE session.admission_cohort_ref = ${input.cohortRef}
+            AND session.state IN ('reserved', 'connected')
+          ORDER BY session.session_ref
+          FOR UPDATE OF session
+        `;
+        await tx`
+          SELECT binding.session_ref, binding.generation
+          FROM sarah_livekit_room_bindings AS binding
+          INNER JOIN sarah_realtime_voice_sessions AS session
+            ON session.session_ref = binding.session_ref
+          WHERE session.admission_cohort_ref = ${input.cohortRef}
+            AND session.state IN ('reserved', 'connected')
+            AND binding.state IN ('prepared', 'active')
+          ORDER BY binding.session_ref, binding.generation
+          FOR UPDATE OF binding
+        `;
         const rows = (await tx`
           UPDATE sarah_voice_alpha_memberships
           SET state = 'revoked',
