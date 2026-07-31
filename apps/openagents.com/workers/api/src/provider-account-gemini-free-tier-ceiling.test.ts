@@ -34,7 +34,7 @@ const d1Meta = (): D1Meta & Record<string, unknown> => ({
  * was asked, so a test can assert the ledger read did (or did not) happen.
  */
 const makeLedgerDb = (
-  tokensServedToday: number,
+  tokensServedToday: number | string,
 ): Readonly<{ db: D1Database; queries: Array<string> }> => {
   const queries: Array<string> = []
   const prepare = (query: string): D1PreparedStatement => {
@@ -308,6 +308,55 @@ describe('hosted Gemini free-tier daily token ceiling', () => {
 
       expect(response.status).toBe(429)
       expect(await response.json()).toMatchObject({ dailyTokenCeiling: 50_000 })
+      expect(upstream).not.toHaveBeenCalled()
+    } finally {
+      upstream.mockRestore()
+    }
+  })
+
+  // PRODUCTION CELL SHAPE. `total_tokens` is bigint, so Postgres types
+  // `SUM(...)` as numeric and the D1-shaped Cloud SQL adapter (int8 parser
+  // only) returns it as a STRING. The previous `typeof === 'number'` guard was
+  // therefore always false on Cloud Run and the read always returned 0, which
+  // silently made this ceiling — and the chat-completions one — no-ops in
+  // production. Verified live 2026-07-31: a refusal reported
+  // `tokensServedToday: 0` against a ledger holding 215. Every other test here
+  // uses a JS number, which is exactly why none of them caught it.
+  test('binds when the ledger cell is numeric-as-string, as Postgres returns it', async () => {
+    const upstream = upstreamOk()
+
+    try {
+      const ledger = makeLedgerDb('1000000')
+      const { ctx } = makeExecutionContext()
+      const response = await handlersForActor('user_abcdef')(
+        { GEMINI_API_KEY: 'test-gemini-key', OPENAGENTS_DB: ledger.db },
+        ctx,
+      )
+
+      expect(response.status).toBe(429)
+      expect(await response.json()).toMatchObject({
+        tokensServedToday: 1_000_000,
+      })
+      expect(upstream).not.toHaveBeenCalled()
+    } finally {
+      upstream.mockRestore()
+    }
+  })
+
+  // A PRESENT but unparseable cell is a broken read, not "no usage": it must
+  // refuse via the fail-closed path rather than serve on a bad number.
+  test('refuses when the ledger cell is present but unparseable', async () => {
+    const upstream = upstreamOk()
+
+    try {
+      const ledger = makeLedgerDb('not-a-number')
+      const { ctx } = makeExecutionContext()
+      const response = await handlersForActor('user_abcdef')(
+        { GEMINI_API_KEY: 'test-gemini-key', OPENAGENTS_DB: ledger.db },
+        ctx,
+      )
+
+      expect(response.status).toBe(429)
       expect(upstream).not.toHaveBeenCalled()
     } finally {
       upstream.mockRestore()

@@ -288,7 +288,7 @@ const googleGeminiTokenUsageFromText = (
     )
     .find((usage): usage is AutopilotTokenUsage => usage !== undefined)
 
-type GeminiDailyTokenSumRow = Readonly<{ total: number | null }>
+type GeminiDailyTokenSumRow = Readonly<{ total: unknown }>
 
 /**
  * Exact served tokens already recorded for this actor in the current UTC day.
@@ -316,9 +316,34 @@ const geminiTokensServedToday = async <
     .bind(actorUserId, utcStartOfDayIsoTimestamp(currentIsoTimestamp()))
     .first<GeminiDailyTokenSumRow>()
 
-  return typeof row?.total === 'number' && Number.isFinite(row.total)
-    ? row.total
-    : 0
+  return dailyTokenSum(row?.total)
+}
+
+/**
+ * Coerce a `COALESCE(SUM(total_tokens), 0)` cell to a number.
+ *
+ * WHY THIS IS NOT A `typeof === 'number'` TEST. `total_tokens` is `bigint`, so
+ * Postgres types `SUM(...)` as `numeric` (oid 1700). The D1-shaped Cloud SQL
+ * adapter parses oid 20 (int8) to a JS number but leaves numeric as a STRING,
+ * so the previous `typeof row?.total === 'number'` guard was ALWAYS false in
+ * production and this function ALWAYS returned 0. That silently made both this
+ * ceiling and the chat-completions one no-ops on Cloud Run — verified live on
+ * 2026-07-31, where a refusal reported `tokensServedToday: 0` against a ledger
+ * holding 215.
+ *
+ * A missing row means genuinely no usage today, which is 0. A row that is
+ * PRESENT but unparseable is a broken read, so it THROWS and lets the caller's
+ * fail-closed handler refuse rather than serving on a bad number.
+ */
+const dailyTokenSum = (value: unknown): number => {
+  if (value === undefined || value === null) {
+    return 0
+  }
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) {
+    throw new Error('daily_token_sum_unparseable')
+  }
+  return parsed
 }
 
 /**

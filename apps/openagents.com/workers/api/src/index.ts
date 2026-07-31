@@ -16035,10 +16035,22 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
                 `openauth:${userId}`,
                 utcStartOfDayIsoTimestamp(currentIsoTimestamp()),
               )
-              .first<{ total: number | null }>()
-            return typeof row?.total === 'number' && Number.isFinite(row.total)
-              ? row.total
-              : 0
+              .first<{ total: unknown }>()
+            // `total_tokens` is bigint, so Postgres types SUM(...) as numeric
+            // and the D1-shaped Cloud SQL adapter (int8 parser only) hands it
+            // back as a STRING. A `typeof === 'number'` guard was therefore
+            // always false in production and this read always returned 0,
+            // making the ceiling a no-op on Cloud Run. Coerce instead; a
+            // present-but-unparseable cell throws so the gate's fail-closed
+            // path refuses rather than serving on a bad number.
+            if (row?.total === undefined || row.total === null) {
+              return 0
+            }
+            const total = Number(row.total)
+            if (!Number.isFinite(total)) {
+              throw new Error('daily_token_sum_unparseable')
+            }
+            return total
           },
           tokensPerDay: () => omegaNostrSelfProvisionDailyTokenCeiling(env),
         }),
