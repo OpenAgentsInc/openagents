@@ -75,6 +75,11 @@ const parseArguments = (values: readonly string[]): Arguments => {
   ] as const);
   for (let index = 0; index < values.length; index += 1) {
     const value = values[index];
+    // `pnpm --dir apps/sarah-livekit-agent acceptance -- ...`, the invocation
+    // this repository's runbook documents, forwards the `--` separator itself.
+    // Rejecting it made the documented command fail before any argument was
+    // read. `failure-matrix-cli.ts` has always skipped it; this one did not.
+    if (value === "--") continue;
     if (value === "--apply") {
       parsed.apply = true;
       continue;

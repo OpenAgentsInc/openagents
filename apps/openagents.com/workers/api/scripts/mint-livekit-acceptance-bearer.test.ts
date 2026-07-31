@@ -43,7 +43,7 @@ const credential = (
 ): MintedCredential => ({
   role,
   userId,
-  ownerRef: `agent:${userId}`,
+  ownerRef: userId,
   bearer: FAKE_BEARER,
   expiresInSeconds: 900,
 })
@@ -262,10 +262,30 @@ describe('mint-livekit-acceptance-bearer parseSessionResponse', () => {
     expect(parseSessionResponse('private', sessionBody())).toEqual({
       role: 'private',
       userId: PRIVATE_USER_ID,
-      ownerRef: `agent:${PRIVATE_USER_ID}`,
+      ownerRef: PRIVATE_USER_ID,
       bearer: FAKE_BEARER,
       expiresInSeconds: 900,
     })
+  })
+
+  /**
+   * Pins the owner ref to the production authorization contract rather than to
+   * whatever this tool happens to emit.
+   *
+   * `POST /api/omega/sarah/voice/admission` compares `identity.ownerRef`
+   * against `userIdFromSession(session)` by strict equality and answers 403
+   * `sarah_voice_identity_mismatch` otherwise. This tool once emitted
+   * `agent:${userId}`, and the tests asserted that same decorated form, so the
+   * suite was green while every minted bearer was refused at admission before a
+   * room existed. Assert the undecorated identity, and assert the absence of a
+   * prefix explicitly, so a future decoration cannot pass by agreeing with
+   * itself again.
+   */
+  test('derives an owner ref the admission route will accept, undecorated', () => {
+    const minted = parseSessionResponse('private', sessionBody())
+    expect(minted.ownerRef).toBe(minted.userId)
+    expect(minted.ownerRef.startsWith('agent:')).toBe(false)
+    expect(minted.ownerRef).toMatch(/^nostr:/u)
   })
 
   test('rejects a response that is not an object', () => {
@@ -381,9 +401,9 @@ describe('mint-livekit-acceptance-bearer renderEnvFile', () => {
       '# Short-lived Sarah LiveKit acceptance bearers. Mode 0600, outside the',
       '# repository, expires in minutes. Do not commit, paste, or forward.',
       `OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_BEARER=${FAKE_BEARER}`,
-      `OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_OWNER_REF=agent:${PRIVATE_USER_ID}`,
+      `OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_OWNER_REF=${PRIVATE_USER_ID}`,
       `OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_BEARER=${FAKE_BEARER}`,
-      `OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_OWNER_REF=agent:${COMMUNITY_USER_ID}`,
+      `OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_OWNER_REF=${COMMUNITY_USER_ID}`,
       '',
     ])
     // `set -a; . file` must see the raw values, so no quoting of any kind.
@@ -410,7 +430,7 @@ describe('mint-livekit-acceptance-bearer public-safe summaries', () => {
     expect(summary).toEqual({
       role: 'private',
       userId: PRIVATE_USER_ID,
-      ownerRef: `agent:${PRIVATE_USER_ID}`,
+      ownerRef: PRIVATE_USER_ID,
       bearerDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
       expiresInSeconds: 900,
       expiresAt: '2026-07-31T12:15:00.000Z',

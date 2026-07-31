@@ -91,6 +91,13 @@ const parseArguments = (values: readonly string[]): Arguments => {
   ] as const);
   for (let index = 0; index < values.length; index += 1) {
     const value = values[index];
+    // `pnpm --dir apps/sarah-livekit-agent gate-observation -- ...`, the
+    // invocation this file's own usage block and the runbook both document,
+    // forwards the `--` separator. Rejecting it meant the recorder could not be
+    // reached by its documented command at all — which is why
+    // docs/ops/receipts/livekit/gate/ never existed. `failure-matrix-cli.ts`
+    // has always skipped it; this one and `acceptance-cli.ts` did not.
+    if (value === "--") continue;
     if (value === "--apply") {
       parsed.apply = true;
       continue;

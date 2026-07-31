@@ -219,7 +219,17 @@ export const parseSessionResponse = (
   return {
     role,
     userId,
-    ownerRef: `agent:${userId}`,
+    /**
+     * The owner ref IS the session user id, with no prefix.
+     *
+     * `POST /api/omega/sarah/voice/admission` authorizes by comparing the
+     * request's `identity.ownerRef` against `userIdFromSession(session)` and
+     * answers 403 `sarah_voice_identity_mismatch` on any difference. An earlier
+     * `agent:${userId}` form was decorative: nothing in the Sarah voice path
+     * ever strips that prefix, so every bearer this tool minted was refused at
+     * admission before a room was ever created (EP263-LK, 2026-07-31).
+     */
+    ownerRef: userId,
     bearer,
     expiresInSeconds: expiresIn,
   }
