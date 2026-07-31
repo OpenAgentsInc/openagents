@@ -565,9 +565,10 @@
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md",
         "docs/teardowns/2026-07-17-t3-code-openagents-mobile-controller-gap-analysis.md",
+        "docs/teardowns/2026-07-31-comet-teardown.md",
         "docs/teardowns/README.md"
       ],
-      "inboundSourceCount": 7,
+      "inboundSourceCount": 8,
       "issueLinks": [
         8547,
         8566,

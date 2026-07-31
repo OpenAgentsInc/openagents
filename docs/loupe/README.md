@@ -300,3 +300,25 @@ proceeds, the honest starting points are:
    disclosure. Any finding produced against a third-party project is subject to
    that, and to `AUTHORITY.md` — publishing a vulnerability claim is a public
    claim, and unsupported public claims are reserved.
+
+---
+
+## 8. Related documents in this folder
+
+Read in this order:
+
+1. **This file** — what Loupe is, read from source at `c94aac5`.
+2. [`2026-07-31-omega-first-scan-preliminary.md`](2026-07-31-omega-first-scan-preliminary.md)
+   — the first run against our own code. The empirical ground under everything
+   else here.
+3. [`2026-07-31-omega-first-class-pentester-speculation.md`](2026-07-31-omega-first-class-pentester-speculation.md)
+   — the technical architecture: where Loupe stops, the eight layers L0–L7, the
+   evidence ladder T0–T5, and what a campaign looks like end to end.
+4. [`2026-07-31-fix-as-a-service-company-thesis.md`](2026-07-31-fix-as-a-service-company-thesis.md)
+   — the commercial thesis: proof-carrying **fixes** rather than findings,
+   remediation as the scarce resource, ecosystem-scale variant multiplication,
+   attested absence as a product, the corpus-and-trust moat, and the failure
+   modes.
+
+Documents 3 and 4 are speculation and authorize nothing. Documents 1 and 2 are
+factual records — of source read, and of a scan run.
