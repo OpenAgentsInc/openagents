@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { dispose } from "@livekit/rtc-node";
 import { runSarahLiveKitAcceptance } from "./acceptance-harness.js";
 import { runLiveSarahLiveKitScenario } from "./acceptance-livekit.js";
 import { resolveDeployedSarahRevision } from "./acceptance-deployment.js";
@@ -202,4 +203,6 @@ try {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   usage();
   process.exitCode = 1;
+} finally {
+  await dispose();
 }
