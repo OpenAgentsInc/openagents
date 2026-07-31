@@ -458,8 +458,18 @@ const entry = async (ctx: JobContext): Promise<void> => {
         return;
       }
       const appliedSequence = observedInterruptSequence;
-      await session.interrupt({ force: true }).await;
+      await session.interrupt().await;
+      const result = await controller.event(dispatch, {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "interrupt_applied",
+        ...identity,
+        eventRef: `interrupt:${identity.jobRef}:${appliedSequence}`,
+        interruptSequence: appliedSequence,
+      });
       appliedInterruptSequence = appliedSequence;
+      if (result.stopReason !== undefined && fence.settle(closeReasonForStop(result.stopReason))) {
+        requestShutdown();
+      }
     });
     return interruptOperation;
   };

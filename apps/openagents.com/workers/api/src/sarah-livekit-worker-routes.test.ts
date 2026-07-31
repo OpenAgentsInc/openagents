@@ -153,6 +153,30 @@ describe("Sarah LiveKit worker routes", () => {
     }
   });
 
+  test("records the durable sequence after the worker applies an interrupt", async () => {
+    applyLiveKitWorkerEvent.mockClear();
+    const response = await handleSarahLiveKitWorkerEvent(
+      dependencies,
+      authorizedRequest("/api/internal/sarah/livekit/job/event", {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "interrupt_applied",
+        sessionRef: "session:one",
+        generation: 1,
+        jobRef: "job:one",
+        eventRef: "interrupt:job:one:3",
+        interruptSequence: 3,
+      }),
+      {},
+    );
+    expect(response.status).toBe(200);
+    expect(applyLiveKitWorkerEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventKind: "interrupt_applied",
+        interruptSequence: 3,
+      }),
+    );
+  });
+
   test("persists the provider admission digests before readiness", async () => {
     const response = await handleSarahLiveKitWorkerEvent(
       dependencies,

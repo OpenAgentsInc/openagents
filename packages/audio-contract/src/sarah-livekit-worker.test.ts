@@ -159,6 +159,31 @@ describe("Sarah LiveKit worker contract", () => {
     ).toBe("provider_admitted");
   });
 
+  test("requires a generation-bound applied interrupt sequence", () => {
+    expect(
+      decodeSarahLiveKitJobEvent({
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "interrupt_applied",
+        sessionRef: "session:one",
+        generation: 1,
+        jobRef: "job:one",
+        eventRef: "interrupt:job:one:3",
+        interruptSequence: 3,
+      })._tag,
+    ).toBe("interrupt_applied");
+    expect(() =>
+      decodeSarahLiveKitJobEvent({
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "interrupt_applied",
+        sessionRef: "session:one",
+        generation: 1,
+        jobRef: "job:one",
+        eventRef: "interrupt:job:one:0",
+        interruptSequence: 0,
+      }),
+    ).toThrow();
+  });
+
   test("admits the generation-bound bounded editor command contract", () => {
     const proposal = decodeSarahLiveKitToolProposalRequest({
       schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,

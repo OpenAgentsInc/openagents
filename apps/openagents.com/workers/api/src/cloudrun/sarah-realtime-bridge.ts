@@ -80,6 +80,8 @@ const realtimeUrl =
   `wss://api.openai.com/v1/realtime?model=${SARAH_VOICE_MODEL}` as const
 const MAX_CONTROL_BYTES = 32_768
 const MAX_PROVIDER_FRAME_BYTES = 1_048_576
+const LIVEKIT_INTERRUPT_APPLIED_TIMEOUT_MS = 5_000
+const LIVEKIT_INTERRUPT_APPLIED_POLL_MS = 25
 const PROVIDER_HEARTBEAT_INTERVAL_MS = 15_000
 
 const safeTokenCount = (value: unknown): number =>
@@ -210,6 +212,27 @@ const queueLiveKitToolControl = (
         retryable: false,
       })
     })
+}
+
+const waitForLiveKitInterruptApplied = async (
+  ws: Socket,
+  interruptSequence: number,
+): Promise<void> => {
+  const deadline = Date.now() + LIVEKIT_INTERRUPT_APPLIED_TIMEOUT_MS
+  while (true) {
+    const appliedSequence =
+      await ws.data.store.readLiveKitWorkerInterruptApplied({
+        sessionRef: ws.data.session.sessionRef,
+        generation: ws.data.session.generation,
+      })
+    if (appliedSequence >= interruptSequence) return
+    if (Date.now() >= deadline) {
+      throw new Error('Sarah LiveKit worker did not apply the interrupt')
+    }
+    await new Promise<void>(resolve => {
+      setTimeout(resolve, LIVEKIT_INTERRUPT_APPLIED_POLL_MS)
+    })
+  }
 }
 
 export const pollSarahLiveKitToolControl = async (
@@ -970,6 +993,10 @@ const handleControl = (ws: Socket, raw: string): void => {
               ...interrupt,
             })
             sendControl(ws, { _tag: 'interrupt_ack' })
+            await waitForLiveKitInterruptApplied(
+              ws,
+              interrupt.interruptSequence,
+            )
             sendControl(ws, { _tag: 'lifecycle', state: 'interrupted' })
           })
           break

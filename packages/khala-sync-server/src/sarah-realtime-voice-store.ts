@@ -198,6 +198,11 @@ export type SarahVoiceLiveKitWorkerEvent =
       }>)
   | (SarahVoiceLiveKitWorkerEventCommon &
       Readonly<{
+        eventKind: "interrupt_applied";
+        interruptSequence: number;
+      }>)
+  | (SarahVoiceLiveKitWorkerEventCommon &
+      Readonly<{
         eventKind: "response_usage";
         usage: Omit<SarahVoiceUsage, "observedAt" | "chargeMsat"> &
           Required<Pick<SarahVoiceUsage, "providerStatus">>;
@@ -2163,6 +2168,45 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }
   };
 
+  const readLiveKitWorkerInterruptApplied = async (
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+    }>,
+  ): Promise<number> => {
+    try {
+      const rows = (await sql`
+        SELECT binding.worker_interrupt_applied_sequence
+        FROM sarah_livekit_room_bindings AS binding
+        INNER JOIN sarah_realtime_voice_sessions AS session
+          ON session.session_ref = binding.session_ref
+          AND session.generation = binding.generation
+        WHERE binding.session_ref = ${input.sessionRef}
+          AND binding.generation = ${input.generation}
+          AND binding.state = 'active'
+          AND binding.worker_job_ref IS NOT NULL
+          AND binding.worker_closed_at IS NULL
+          AND session.transport_kind = 'livekit_room_v1'
+          AND session.state = 'connected'
+      `) as ReadonlyArray<{
+        worker_interrupt_applied_sequence: number | string;
+      }>;
+      const row = first(rows);
+      if (row === undefined) {
+        throw new SarahVoiceSessionRejectedError(
+          "The Sarah LiveKit generation has no active interrupt worker",
+        );
+      }
+      return toSafeInteger(
+        row.worker_interrupt_applied_sequence,
+        "worker interrupt applied sequence",
+      );
+    } catch (error) {
+      if (error instanceof SarahVoiceSessionRejectedError) throw error;
+      throw new SarahVoiceStorageError("Sarah LiveKit interrupt receipt read failed", error);
+    }
+  };
+
   const settleLiveKitProvisioningIntent = async (
     input: Readonly<{
       sessionRef: string;
@@ -3516,7 +3560,9 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             binding.worker_stop_reason, binding.worker_stop_close_reason,
             binding.provider_session_ref_digest,
             binding.provider_configuration_digest,
-            binding.provider_admitted_at, binding.provider_accounting_status
+            binding.provider_admitted_at, binding.provider_accounting_status,
+            binding.worker_interrupt_sequence,
+            binding.worker_interrupt_applied_sequence
           FROM sarah_livekit_room_bindings AS binding
           WHERE binding.worker_control_token_digest =
               ${input.workerControlTokenDigest}
@@ -3542,6 +3588,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           provider_configuration_digest: string | null;
           provider_admitted_at: string | null;
           provider_accounting_status: "pending" | "exact" | "uncertain";
+          worker_interrupt_sequence: number | string;
+          worker_interrupt_applied_sequence: number | string;
         }>;
         const binding = first(bindings);
         if (binding === undefined) {
@@ -3788,6 +3836,35 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
               "The Sarah LiveKit worker participant cannot join this generation",
             );
           }
+          return receipt;
+        }
+
+        if (input.eventKind === "interrupt_applied") {
+          const requestedSequence = toSafeInteger(
+            binding.worker_interrupt_sequence,
+            "worker interrupt sequence",
+          );
+          const appliedSequence = toSafeInteger(
+            binding.worker_interrupt_applied_sequence,
+            "worker interrupt applied sequence",
+          );
+          if (
+            input.interruptSequence <= appliedSequence ||
+            input.interruptSequence > requestedSequence
+          ) {
+            throw new SarahVoiceSessionRejectedError(
+              "The Sarah LiveKit worker interrupt receipt is out of sequence",
+            );
+          }
+          await tx`
+            UPDATE sarah_livekit_room_bindings
+            SET worker_interrupt_applied_sequence = ${input.interruptSequence},
+                worker_interrupt_applied_at = ${receipt.observedAt},
+                worker_last_seen_at = ${receipt.observedAt},
+                updated_at = ${receipt.observedAt}
+            WHERE session_ref = ${input.sessionRef}
+              AND generation = ${input.generation}
+          `;
           return receipt;
         }
 
@@ -4522,6 +4599,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     revokeAlphaCohort,
     revokeLiveKitRoom,
     requestLiveKitWorkerInterrupt,
+    readLiveKitWorkerInterruptApplied,
     decideLiveKitTool,
     proposeLiveKitTool,
     settle,

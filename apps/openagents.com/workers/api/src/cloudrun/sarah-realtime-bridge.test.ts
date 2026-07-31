@@ -218,6 +218,13 @@ describe('Sarah Realtime bridge metering', () => {
       sarahParticipantRef: 'principal.sarah',
     }))
     const interruptLiveKit = vi.fn(async () => undefined)
+    let resolveApplied: ((sequence: number) => void) | undefined
+    const readLiveKitWorkerInterruptApplied = vi.fn(
+      () =>
+        new Promise<number>(resolve => {
+          resolveApplied = resolve
+        }),
+    )
     const data = makeSarahRealtimeBridgeData({
       session: {
         sessionRef: 'session-interrupt',
@@ -242,7 +249,10 @@ describe('Sarah Realtime bridge metering', () => {
       apiKey: 'unused',
       safetyIdentifier: 'test-safety',
       creditMsatPerMillionTokens: 1_000,
-      store: { requestLiveKitWorkerInterrupt } as never,
+      store: {
+        requestLiveKitWorkerInterrupt,
+        readLiveKitWorkerInterruptApplied,
+      } as never,
       interruptLiveKit,
       closeStore: async () => undefined,
       tasks: {} as never,
@@ -270,6 +280,14 @@ describe('Sarah Realtime bridge metering', () => {
         sequence: 0,
       }),
     )
+    await vi.waitFor(() => {
+      expect(sent.map(frame => frame._tag)).toEqual(['interrupt_ack'])
+    })
+    expect(readLiveKitWorkerInterruptApplied).toHaveBeenCalledWith({
+      sessionRef: 'session-interrupt',
+      generation: 2,
+    })
+    resolveApplied?.(3)
     await flushSarahLiveKitToolControl(socket as never)
 
     expect(requestLiveKitWorkerInterrupt).toHaveBeenCalledWith(

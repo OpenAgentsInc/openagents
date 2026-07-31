@@ -16,6 +16,10 @@ export const SARAH_LIVEKIT_CONTROL_TOPIC = "openagents.sarah.control.v1" as cons
 const Ref = S.Trim.check(S.isMinLength(1), S.isMaxLength(256));
 const Digest = S.String.check(S.isPattern(/^[a-f0-9]{64}$/u));
 const Seq = S.Int.check(S.isGreaterThanOrEqualTo(0), S.isLessThanOrEqualTo(9_007_199_254_740_991));
+const AppliedInterruptSequence = S.Int.check(
+  S.isGreaterThanOrEqualTo(1),
+  S.isLessThanOrEqualTo(9_007_199_254_740_991),
+);
 
 export const SarahLiveKitRoomContextSchema = S.Union([
   S.Struct({ kind: S.Literal("private") }),
@@ -141,6 +145,15 @@ export const SarahLiveKitJobEventSchema = S.Union([
     generation: Seq,
     jobRef: Ref,
     eventRef: Ref,
+  }),
+  S.Struct({
+    schema: S.Literal(SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION),
+    _tag: S.Literal("interrupt_applied"),
+    sessionRef: Ref,
+    generation: Seq,
+    jobRef: Ref,
+    eventRef: Ref,
+    interruptSequence: AppliedInterruptSequence,
   }),
   S.Struct({
     schema: S.Literal(SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION),

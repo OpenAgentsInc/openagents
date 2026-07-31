@@ -1409,6 +1409,46 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       roomEpoch: binding.roomEpoch,
       sarahParticipantRef: binding.sarahParticipantRef,
     });
+    await expect(
+      store.readLiveKitWorkerInterruptApplied({
+        sessionRef: binding.sessionRef,
+        generation: 1,
+      }),
+    ).resolves.toBe(0);
+    const interruptApplied = {
+      workerControlTokenDigest: binding.workerControlTokenDigest,
+      workerJobRef: workerClaim.workerJobRef,
+      sessionRef: binding.sessionRef,
+      generation: 1,
+      eventRef: "interrupt:applied:1",
+      eventPayloadDigest: "2".repeat(64),
+      eventKind: "interrupt_applied",
+      interruptSequence: 1,
+      nowIso: "2026-07-28T13:00:23.750Z",
+    } as const;
+    await expect(store.applyLiveKitWorkerEvent(interruptApplied)).resolves.toEqual({
+      observedAt: "2026-07-28T13:00:23.750Z",
+      replayed: false,
+    });
+    await expect(store.applyLiveKitWorkerEvent(interruptApplied)).resolves.toEqual({
+      observedAt: "2026-07-28T13:00:23.750Z",
+      replayed: true,
+    });
+    await expect(
+      store.readLiveKitWorkerInterruptApplied({
+        sessionRef: binding.sessionRef,
+        generation: 1,
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      store.applyLiveKitWorkerEvent({
+        ...interruptApplied,
+        eventRef: "interrupt:applied:2",
+        eventPayloadDigest: "3".repeat(64),
+        interruptSequence: 2,
+        nowIso: "2026-07-28T13:00:23.875Z",
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
     const interruptLease = {
       workerControlTokenDigest: binding.workerControlTokenDigest,
       workerJobRef: workerClaim.workerJobRef,

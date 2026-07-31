@@ -356,6 +356,13 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
                   accountingStatus: body.accountingStatus,
                 })
               : await (async () => {
+                  if (body._tag === "interrupt_applied") {
+                    return opened.store.applyLiveKitWorkerEvent({
+                      ...common,
+                      eventKind: body._tag,
+                      interruptSequence: body.interruptSequence,
+                    });
+                  }
                   const usage = {
                     inputTokens: body.inputTokens,
                     outputTokens: body.outputTokens,
