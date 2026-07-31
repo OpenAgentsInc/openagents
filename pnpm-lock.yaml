@@ -2271,6 +2271,9 @@ importers:
 
   packages/khala-sync-server:
     dependencies:
+      '@openagentsinc/audio-contract':
+        specifier: workspace:*
+        version: link:../audio-contract
       '@openagentsinc/khala-fleet-intents':
         specifier: workspace:*
         version: link:../khala-fleet-intents

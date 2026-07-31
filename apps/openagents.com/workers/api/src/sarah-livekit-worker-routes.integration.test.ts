@@ -238,7 +238,6 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
     );
     expect(connectedReplay.status).toBe(200);
 
-    await store.sweepExpired("2026-07-28T13:01:30.000Z");
     const [activeSession] = await sql`
         SELECT state, ticket_digest, connected_at
         FROM sarah_realtime_voice_sessions
@@ -246,9 +245,24 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       `;
     expect(activeSession).toMatchObject({
       state: "connected",
-      ticket_digest: null,
+      ticket_digest: "4".repeat(64),
       connected_at: "2026-07-28T13:00:22.000Z",
     });
+    await expect(
+      store.connect({
+        sessionRef: "voice-livekit-route-1",
+        ticketDigest: "4".repeat(64),
+        nowIso: "2026-07-28T13:00:30.500Z",
+      }),
+    ).resolves.toMatchObject({ state: "connected" });
+    await expect(
+      store.connect({
+        sessionRef: "voice-livekit-route-1",
+        ticketDigest: "4".repeat(64),
+        nowIso: "2026-07-28T13:00:30.600Z",
+      }),
+    ).rejects.toThrow("invalid or expired");
+    await store.sweepExpired("2026-07-28T13:01:30.000Z");
 
     const leaseEvent = {
       schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,

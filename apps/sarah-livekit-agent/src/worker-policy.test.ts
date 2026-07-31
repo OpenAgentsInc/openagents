@@ -46,4 +46,21 @@ describe("Sarah LiveKit worker policy", () => {
     expect(source).not.toContain(".publishData(");
     expect(source).toContain("stores no transcript");
   });
+
+  test("keeps community tool-free and exposes only the bounded private command set", async () => {
+    const source = await readFile(new URL("./agent.ts", import.meta.url), "utf8");
+    for (const toolName of [
+      "editor_context_read",
+      "editor_reveal_range",
+      "editor_replace_selection",
+      "editor_save_document",
+      "start_agent_thread",
+    ]) {
+      expect(source).toContain(`name: "${toolName}"`);
+    }
+    expect(source).not.toContain(`name: "editor_open_path"`);
+    expect(source).toContain(`profile.kind === "private_owner_v1"`);
+    expect(source).toContain(`: []`);
+    expect(source).toContain("no workspace discovery authority");
+  });
 });

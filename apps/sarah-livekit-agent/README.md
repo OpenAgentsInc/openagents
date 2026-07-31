@@ -40,10 +40,13 @@ separately from the transcription-completed event.
 Private and community jobs instantiate separate capability profiles. Community
 jobs are structurally tool-free and receive no owner memory, workspace, editor
 proposal, payment, administration, shell, Git, or credential capability. A
-private Omega job has one tool: `start_agent_thread`. The tool creates a
-generation-bound proposal and waits. It returns success to OpenAI only after
-Omega confirms the proposal, receives the bounded command, and returns a typed
-outcome.
+private Omega job has the existing bounded editor command set:
+`editor_context_read`, `editor_reveal_range`, `editor_replace_selection`,
+`editor_save_document`, and `start_agent_thread`. Targets must already be exact;
+the worker cannot discover workspaces or paths. Read and reveal commands execute
+without a confirmation prompt, while replace, save, and agent-thread commands
+require confirmation. Every tool waits for a typed Omega outcome before it can
+return success to OpenAI.
 
 For the Omega client, LiveKit remains the audio transport. The session's
 ticketed `gatewayUrl` remains the authoritative control channel. The client

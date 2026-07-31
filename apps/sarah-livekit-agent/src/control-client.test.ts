@@ -37,8 +37,8 @@ describe("Sarah LiveKit control client", () => {
         safetyIdentifier: "a".repeat(64),
         capabilityProfile: {
           kind: "private_owner_v1",
-          contextRead: false,
-          editorProposals: false,
+          contextRead: true,
+          editorProposals: true,
           agentThreadProposals: true,
           ownerMemory: false,
           workspace: false,

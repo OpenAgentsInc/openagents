@@ -9,6 +9,8 @@ import {
   decodeSarahLiveKitJobEvent,
   decodeSarahLiveKitToolProposalRequest,
   decodeSarahLiveKitToolStateRequest,
+  sarahEditorCommandRequiresConfirmation,
+  validateSarahEditorCommandTarget,
 } from "@openagentsinc/audio-contract";
 import type { SarahRealtimeVoiceStore } from "@openagentsinc/khala-sync-server";
 import { createHash, timingSafeEqual } from "node:crypto";
@@ -101,8 +103,8 @@ const capabilityProfile = (
 ):
   | Readonly<{
       kind: "private_owner_v1";
-      contextRead: false;
-      editorProposals: false;
+      contextRead: true;
+      editorProposals: true;
       agentThreadProposals: true;
       ownerMemory: false;
       workspace: false;
@@ -130,8 +132,8 @@ const capabilityProfile = (
   kind === "private"
     ? {
         kind: "private_owner_v1",
-        contextRead: false,
-        editorProposals: false,
+        contextRead: true,
+        editorProposals: true,
         agentThreadProposals: true,
         ownerMemory: false,
         workspace: false,
@@ -356,13 +358,20 @@ export const handleSarahLiveKitWorkerToolProposal = async <Bindings>(
   if (body === undefined) {
     return noStoreJson({ error: "invalid_sarah_livekit_tool_proposal" }, 400);
   }
+  if (body.command._tag === "open_path") {
+    return noStoreJson({ error: "invalid_sarah_livekit_tool_proposal" }, 400);
+  }
   let opened: Readonly<{ store: SarahRealtimeVoiceStore; close: () => Promise<void> }> | undefined;
   try {
+    const command = validateSarahEditorCommandTarget(body.command);
+    if (command._tag === "open_path") {
+      throw new Error("editor_open_path_not_allowed");
+    }
     opened = await dependencies.openStore(env);
     const now = (dependencies.now ?? Date.now)();
     const nowIso = new Date(now).toISOString();
     const expiresAt = new Date(now + 60_000).toISOString();
-    const commandPayload = canonicalJson(body.command);
+    const commandPayload = canonicalJson(command);
     const proposalRef = `sarah_lk_tool_${sha256(
       canonicalJson([body.sessionRef, body.generation, body.eventRef]),
     ).slice(0, 40)}`;
@@ -372,7 +381,7 @@ export const handleSarahLiveKitWorkerToolProposal = async <Bindings>(
         sessionRef: body.sessionRef,
         generation: body.generation,
         proposalRef,
-        command: body.command,
+        command,
         expiresAt,
       }),
     );
@@ -386,7 +395,8 @@ export const handleSarahLiveKitWorkerToolProposal = async <Bindings>(
       commandPayloadDigest: sha256(commandPayload),
       proposalRef,
       proposalDigest,
-      command: body.command,
+      command,
+      confirmationRequired: sarahEditorCommandRequiresConfirmation(command),
       nowIso,
       expiresAt,
     });

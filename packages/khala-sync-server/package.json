@@ -29,6 +29,7 @@
     "test:pending-migrations-guard": "vp test --run scripts/check-pending-migrations.test.ts"
   },
   "dependencies": {
+    "@openagentsinc/audio-contract": "workspace:*",
     "@openagentsinc/khala-fleet-intents": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/managed-sandbox-contract": "workspace:*",

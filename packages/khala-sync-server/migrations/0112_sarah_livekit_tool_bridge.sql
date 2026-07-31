@@ -24,8 +24,15 @@ CREATE TABLE IF NOT EXISTS sarah_livekit_tool_proposals (
     command_payload_digest ~ '^[0-9a-f]{64}$'
   ),
   command                     jsonb NOT NULL CHECK (
-    command->>'_tag' = 'start_agent_thread'
+    command->>'_tag' IN (
+      'context_read',
+      'reveal_range',
+      'replace_selection',
+      'save_document',
+      'start_agent_thread'
+    )
   ),
+  confirmation_required       boolean NOT NULL,
   state                       text NOT NULL CHECK (
     state IN ('proposed', 'declined', 'execute_sent', 'outcome')
   ),
@@ -38,6 +45,15 @@ CREATE TABLE IF NOT EXISTS sarah_livekit_tool_proposals (
   outcome_at                  text,
   PRIMARY KEY (session_ref, generation, proposal_ref),
   UNIQUE (session_ref, generation, worker_event_ref),
+  CHECK (
+    confirmation_required = (
+      command->>'_tag' IN (
+        'replace_selection',
+        'save_document',
+        'start_agent_thread'
+      )
+    )
+  ),
   CHECK (
     (
       state = 'outcome'

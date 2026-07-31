@@ -1,3 +1,9 @@
+import {
+  decodeSarahEditorCommand,
+  sarahEditorCommandRequiresConfirmation,
+  type SarahEditorCommand,
+  validateSarahEditorCommandTarget,
+} from "@openagentsinc/audio-contract";
 import type { SyncSql, SyncTransactionSql } from "./sql.js";
 
 export type SarahVoiceSessionState = "reserved" | "connected" | "settled" | "released" | "failed";
@@ -114,17 +120,16 @@ export type SarahVoiceLiveKitWorkerEventResult = Readonly<{
   stopReason?: SarahVoiceLiveKitWorkerStopReason;
 }>;
 
-export type SarahVoiceLiveKitAgentThreadCommand = Readonly<{
-  _tag: "start_agent_thread";
-  message: string;
-  presentation: "foreground" | "background";
-}>;
+export type SarahVoiceLiveKitEditorCommand = Exclude<
+  SarahEditorCommand,
+  Readonly<{ _tag: "open_path" }>
+>;
 
 export type SarahVoiceLiveKitToolProposal = Readonly<{
   proposalRef: string;
   proposalDigest: string;
-  command: SarahVoiceLiveKitAgentThreadCommand;
-  confirmationRequired: true;
+  command: SarahVoiceLiveKitEditorCommand;
+  confirmationRequired: boolean;
   expiresAtMs: number;
 }>;
 
@@ -739,11 +744,14 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           UPDATE sarah_realtime_voice_sessions
           SET state = 'connected',
               ticket_digest = NULL,
-              connected_at = ${input.nowIso},
+              connected_at = COALESCE(connected_at, ${input.nowIso}),
               updated_at = ${input.nowIso}
           WHERE session_ref = ${input.sessionRef}
             AND ticket_digest = ${input.ticketDigest}
-            AND state = 'reserved'
+            AND (
+              state = 'reserved'
+              OR (state = 'connected' AND transport_kind = 'livekit_room_v1')
+            )
             AND ticket_expires_at > ${input.nowIso}
             AND session_expires_at > ${input.nowIso}
           RETURNING session_ref, owner_user_id, owner_actor_ref, device_ref,
@@ -2290,7 +2298,6 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           const sessions = (await tx`
             UPDATE sarah_realtime_voice_sessions
             SET state = 'connected',
-                ticket_digest = NULL,
                 connected_at = COALESCE(connected_at, ${receipt.observedAt}),
                 updated_at = ${receipt.observedAt}
             WHERE session_ref = ${input.sessionRef}
@@ -2382,6 +2389,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     provider_call_ref: string;
     command_payload_digest: string;
     command: unknown;
+    confirmation_required: boolean;
     state: "proposed" | "declined" | "execute_sent" | "outcome";
     outcome_ref: string | null;
     outcome_ok: boolean | null;
@@ -2389,30 +2397,16 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     expires_at: string;
   }>;
 
-  const decodeStoredLiveKitAgentThreadCommand = (
-    value: unknown,
-  ): SarahVoiceLiveKitAgentThreadCommand => {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      throw new SarahVoiceStorageError("The Sarah LiveKit tool command is invalid", value);
+  const decodeStoredLiveKitEditorCommand = (value: unknown): SarahVoiceLiveKitEditorCommand => {
+    try {
+      const command = validateSarahEditorCommandTarget(decodeSarahEditorCommand(value));
+      if (command._tag === "open_path") {
+        throw new Error("editor_open_path_not_allowed");
+      }
+      return command;
+    } catch (error) {
+      throw new SarahVoiceStorageError("The Sarah LiveKit tool command is invalid", error);
     }
-    const command = value as Record<string, unknown>;
-    const commandKeys = Object.keys(command);
-    if (
-      commandKeys.length !== 3 ||
-      commandKeys.some((key) => key !== "_tag" && key !== "message" && key !== "presentation") ||
-      command._tag !== "start_agent_thread" ||
-      typeof command.message !== "string" ||
-      command.message.length < 1 ||
-      new TextEncoder().encode(command.message).byteLength > 16_384 ||
-      (command.presentation !== "foreground" && command.presentation !== "background")
-    ) {
-      throw new SarahVoiceStorageError("The Sarah LiveKit tool command is invalid", value);
-    }
-    return {
-      _tag: "start_agent_thread",
-      message: command.message,
-      presentation: command.presentation,
-    };
   };
 
   const toLiveKitToolProposal = (row: LiveKitToolProposalRow): SarahVoiceLiveKitToolProposal => {
@@ -2426,8 +2420,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     return {
       proposalRef: row.proposal_ref,
       proposalDigest: row.proposal_digest,
-      command: decodeStoredLiveKitAgentThreadCommand(row.command),
-      confirmationRequired: true,
+      command: decodeStoredLiveKitEditorCommand(row.command),
+      confirmationRequired: row.confirmation_required,
       expiresAtMs,
     };
   };
@@ -2443,17 +2437,24 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       commandPayloadDigest: string;
       proposalRef: string;
       proposalDigest: string;
-      command: SarahVoiceLiveKitAgentThreadCommand;
+      command: SarahVoiceLiveKitEditorCommand;
+      confirmationRequired: boolean;
       nowIso: string;
       expiresAt: string;
     }>,
   ): Promise<SarahVoiceLiveKitToolProposal> => {
     try {
+      if (input.confirmationRequired !== sarahEditorCommandRequiresConfirmation(input.command)) {
+        throw new SarahVoiceSessionRejectedError(
+          "The Sarah LiveKit tool confirmation law is invalid",
+        );
+      }
       return await sql.begin(async (tx) => {
         const existingRows = (await tx`
           SELECT proposal_ref, proposal_digest, worker_job_ref,
             worker_control_token_digest, worker_event_ref, provider_call_ref,
-            command_payload_digest, command, state, outcome_ref, outcome_ok,
+            command_payload_digest, command, confirmation_required, state,
+            outcome_ref, outcome_ok,
             outcome_summary, expires_at
           FROM sarah_livekit_tool_proposals
           WHERE session_ref = ${input.sessionRef}
@@ -2467,7 +2468,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             existing.worker_job_ref !== input.workerJobRef ||
             existing.worker_control_token_digest !== input.workerControlTokenDigest ||
             existing.provider_call_ref !== input.providerCallRef ||
-            existing.command_payload_digest !== input.commandPayloadDigest
+            existing.command_payload_digest !== input.commandPayloadDigest ||
+            existing.confirmation_required !== input.confirmationRequired
           ) {
             throw new SarahVoiceSessionRejectedError(
               "The Sarah LiveKit tool event was replayed with changed facts",
@@ -2508,7 +2510,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           INSERT INTO sarah_livekit_tool_proposals (
             session_ref, generation, proposal_ref, proposal_digest,
             worker_job_ref, worker_control_token_digest, worker_event_ref,
-            provider_call_ref, command_payload_digest, command, state,
+            provider_call_ref, command_payload_digest, command,
+            confirmation_required, state,
             outcome_ref, outcome_ok, outcome_summary, created_at, expires_at,
             decision_at, outcome_at
           ) VALUES (
@@ -2516,12 +2519,16 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             ${input.proposalDigest}, ${input.workerJobRef},
             ${input.workerControlTokenDigest}, ${input.workerEventRef},
             ${input.providerCallRef}, ${input.commandPayloadDigest},
-            ${JSON.stringify(input.command)}::text::jsonb, 'proposed', NULL, NULL,
-            NULL, ${input.nowIso}, ${input.expiresAt}, NULL, NULL
+            ${JSON.stringify(input.command)}::text::jsonb,
+            ${input.confirmationRequired},
+            ${input.confirmationRequired ? "proposed" : "execute_sent"},
+            NULL, NULL, NULL, ${input.nowIso}, ${input.expiresAt},
+            ${input.confirmationRequired ? null : input.nowIso}, NULL
           )
           RETURNING proposal_ref, proposal_digest, worker_job_ref,
             worker_control_token_digest, worker_event_ref, provider_call_ref,
-            command_payload_digest, command, state, outcome_ref, outcome_ok,
+            command_payload_digest, command, confirmation_required, state,
+            outcome_ref, outcome_ok,
             outcome_summary, expires_at
         `) as ReadonlyArray<LiveKitToolProposalRow>;
         const row = first(inserted);
@@ -2552,7 +2559,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         SELECT proposal.proposal_ref, proposal.proposal_digest,
           proposal.worker_job_ref, proposal.worker_control_token_digest,
           proposal.worker_event_ref, proposal.provider_call_ref,
-          proposal.command_payload_digest, proposal.command, proposal.state,
+          proposal.command_payload_digest, proposal.command,
+          proposal.confirmation_required, proposal.state,
           proposal.outcome_ref, proposal.outcome_ok, proposal.outcome_summary,
           proposal.expires_at
         FROM sarah_livekit_tool_proposals AS proposal
@@ -2563,7 +2571,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           ON session.session_ref = proposal.session_ref
         WHERE proposal.session_ref = ${input.sessionRef}
           AND proposal.generation = ${input.generation}
-          AND proposal.state = 'proposed'
+          AND proposal.state IN ('proposed', 'execute_sent')
           AND proposal.expires_at > ${input.nowIso}
           AND binding.room_context_kind = 'private'
           AND binding.capability_profile = 'omega_editor'
@@ -2599,7 +2607,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           SELECT proposal.proposal_ref, proposal.proposal_digest,
             proposal.worker_job_ref, proposal.worker_control_token_digest,
             proposal.worker_event_ref, proposal.provider_call_ref,
-            proposal.command_payload_digest, proposal.command, proposal.state,
+            proposal.command_payload_digest, proposal.command,
+            proposal.confirmation_required, proposal.state,
             proposal.outcome_ref, proposal.outcome_ok,
             proposal.outcome_summary, proposal.expires_at
           FROM sarah_livekit_tool_proposals AS proposal
@@ -2626,6 +2635,11 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         if (row === undefined || row.expires_at <= input.nowIso) {
           throw new SarahVoiceSessionRejectedError(
             "The Sarah LiveKit tool decision is invalid or expired",
+          );
+        }
+        if (!row.confirmation_required) {
+          throw new SarahVoiceSessionRejectedError(
+            "The Sarah LiveKit tool does not accept a confirmation decision",
           );
         }
         if (
@@ -2673,7 +2687,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         const rows = (await tx`
           SELECT proposal_ref, proposal_digest, worker_job_ref,
             worker_control_token_digest, worker_event_ref, provider_call_ref,
-            command_payload_digest, command, state, outcome_ref, outcome_ok,
+            command_payload_digest, command, confirmation_required, state,
+            outcome_ref, outcome_ok,
             outcome_summary, expires_at
           FROM sarah_livekit_tool_proposals
           WHERE session_ref = ${input.sessionRef}
@@ -2765,7 +2780,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         const rows = (await tx`
           SELECT proposal_ref, proposal_digest, worker_job_ref,
             worker_control_token_digest, worker_event_ref, provider_call_ref,
-            command_payload_digest, command, state, outcome_ref, outcome_ok,
+            command_payload_digest, command, confirmation_required, state,
+            outcome_ref, outcome_ok,
             outcome_summary, expires_at
           FROM sarah_livekit_tool_proposals
           WHERE session_ref = ${input.sessionRef}

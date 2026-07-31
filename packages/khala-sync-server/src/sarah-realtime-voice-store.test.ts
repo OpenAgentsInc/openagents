@@ -763,6 +763,20 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       workerRoomSid: workerClaim.workerRoomSid,
       nowIso: "2026-07-28T13:00:22.000Z",
     } as const;
+    await expect(
+      store.connect({
+        sessionRef: binding.sessionRef,
+        ticketDigest: "4".repeat(64),
+        nowIso: "2026-07-28T13:00:21.500Z",
+      }),
+    ).resolves.toMatchObject({ state: "connected" });
+    await expect(
+      store.connect({
+        sessionRef: binding.sessionRef,
+        ticketDigest: "4".repeat(64),
+        nowIso: "2026-07-28T13:00:21.600Z",
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
     await expect(store.applyLiveKitWorkerEvent(connectedEvent)).resolves.toEqual({
       observedAt: "2026-07-28T13:00:22.000Z",
       replayed: false,
@@ -785,7 +799,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
     expect(connectedSession).toMatchObject({
       state: "connected",
       ticket_digest: null,
-      connected_at: "2026-07-28T13:00:22.000Z",
+      connected_at: "2026-07-28T13:00:21.500Z",
     });
     const usage = {
       providerResponseRef: "livekit-provider-response-1",

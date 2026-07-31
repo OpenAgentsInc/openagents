@@ -8,6 +8,8 @@ import {
   type SarahEditorCommand,
   type SarahVoiceServerControl,
   type VoiceIdentity,
+  sarahEditorCommandRequiresConfirmation as contractSarahEditorCommandRequiresConfirmation,
+  validateSarahEditorCommandTarget as contractValidateSarahEditorCommandTarget,
   decodeMediaHeader,
   decodeSarahEditorCommand,
   decodeSarahVoiceClientControl,
@@ -210,9 +212,17 @@ export const pollSarahLiveKitToolControl = async (
       proposalRef: proposal.proposalRef,
       proposalDigest: proposal.proposalDigest,
       command: proposal.command,
-      confirmationRequired: true,
+      confirmationRequired: proposal.confirmationRequired,
       expiresAtMs: proposal.expiresAtMs,
     })
+    if (!proposal.confirmationRequired) {
+      sendControl(ws, {
+        _tag: 'tool_execute',
+        proposalRef: proposal.proposalRef,
+        proposalDigest: proposal.proposalDigest,
+        command: proposal.command,
+      })
+    }
   }
 }
 
@@ -450,39 +460,11 @@ const commandTagForTool = (
 
 export const sarahEditorCommandRequiresConfirmation = (
   command: SarahEditorCommand,
-): boolean =>
-  command._tag === 'replace_selection' ||
-  command._tag === 'save_document' ||
-  command._tag === 'start_agent_thread'
+): boolean => contractSarahEditorCommandRequiresConfirmation(command)
 
 export const validateSarahEditorCommandTarget = (
   command: SarahEditorCommand,
-): SarahEditorCommand => {
-  if (command._tag === 'start_agent_thread') {
-    if (new TextEncoder().encode(command.message).byteLength > 16_384) {
-      throw new Error('agent_thread_message_not_allowed')
-    }
-    return command
-  }
-  const path = command.target.path
-  const segments = path.split(/[\\/]/u)
-  if (
-    path.startsWith('/') ||
-    /^[A-Za-z]:[\\/]/u.test(path) ||
-    path.includes('\u0000') ||
-    segments.includes('..')
-  ) {
-    throw new Error('editor_path_not_allowed')
-  }
-  if (
-    (command._tag === 'context_read' || command._tag === 'reveal_range') &&
-    (command.endLine < command.startLine ||
-      command.endLine - command.startLine > 500)
-  ) {
-    throw new Error('editor_range_not_allowed')
-  }
-  return command
-}
+): SarahEditorCommand => contractValidateSarahEditorCommandTarget(command)
 
 const proposalDigest = (
   session: SarahVoiceSessionRecord,

@@ -1,4 +1,5 @@
 import { Schema as S } from "effect";
+import { SarahEditorCommandSchema, type SarahEditorCommand } from "./sarah-realtime.js";
 
 export const SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION = "openagents.sarah.livekit-worker.v1" as const;
 export const SARAH_LIVEKIT_AGENT_NAME = "sarah-room-v1" as const;
@@ -29,8 +30,8 @@ export type SarahLiveKitRoomContext = typeof SarahLiveKitRoomContextSchema.Type;
 export const SarahLiveKitCapabilityProfileSchema = S.Union([
   S.Struct({
     kind: S.Literal("private_owner_v1"),
-    contextRead: S.Literal(false),
-    editorProposals: S.Literal(false),
+    contextRead: S.Literal(true),
+    editorProposals: S.Literal(true),
     agentThreadProposals: S.Literal(true),
     ownerMemory: S.Literal(false),
     workspace: S.Literal(false),
@@ -174,13 +175,6 @@ export const SarahLiveKitJobEventSchema = S.Union([
 ]);
 export type SarahLiveKitJobEvent = typeof SarahLiveKitJobEventSchema.Type;
 
-export const SarahLiveKitAgentThreadCommandSchema = S.Struct({
-  _tag: S.Literal("start_agent_thread"),
-  message: S.String.check(S.isMinLength(1), S.isMaxLength(16_384)),
-  presentation: S.Literals(["foreground", "background"]),
-});
-export type SarahLiveKitAgentThreadCommand = typeof SarahLiveKitAgentThreadCommandSchema.Type;
-
 export const SarahLiveKitToolProposalRequestSchema = S.Struct({
   schema: S.Literal(SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION),
   sessionRef: Ref,
@@ -188,15 +182,15 @@ export const SarahLiveKitToolProposalRequestSchema = S.Struct({
   jobRef: Ref,
   eventRef: Ref,
   providerCallRef: Ref,
-  command: SarahLiveKitAgentThreadCommandSchema,
+  command: SarahEditorCommandSchema,
 });
 export type SarahLiveKitToolProposalRequest = typeof SarahLiveKitToolProposalRequestSchema.Type;
 
 export const SarahLiveKitToolProposalSchema = S.Struct({
   proposalRef: Ref,
   proposalDigest: Digest,
-  command: SarahLiveKitAgentThreadCommandSchema,
-  confirmationRequired: S.Literal(true),
+  command: SarahEditorCommandSchema,
+  confirmationRequired: S.Boolean,
   expiresAtMs: Seq,
 });
 export type SarahLiveKitToolProposal = typeof SarahLiveKitToolProposalSchema.Type;
@@ -240,6 +234,11 @@ export const SarahLiveKitToolStateResponseSchema = S.Union([
   }),
 ]);
 export type SarahLiveKitToolStateResponse = typeof SarahLiveKitToolStateResponseSchema.Type;
+
+export type SarahLiveKitEditorCommand = Exclude<
+  SarahEditorCommand,
+  Readonly<{ _tag: "open_path" }>
+>;
 
 export const decodeSarahLiveKitDispatchMetadata = (value: unknown) =>
   S.decodeUnknownSync(SarahLiveKitDispatchMetadataSchema)(value, {

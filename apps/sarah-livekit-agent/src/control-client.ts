@@ -8,8 +8,8 @@ import {
   decodeSarahLiveKitJobClaimResponse,
   decodeSarahLiveKitToolProposalResponse,
   decodeSarahLiveKitToolStateResponse,
-  type SarahLiveKitAgentThreadCommand,
   type SarahLiveKitDispatchMetadata,
+  type SarahLiveKitEditorCommand,
   type SarahLiveKitJobClaimResponse,
   type SarahLiveKitJobEvent,
   type SarahLiveKitToolProposal,
@@ -41,7 +41,7 @@ export type SarahLiveKitToolProposalInput = Readonly<{
   jobRef: string;
   eventRef: string;
   providerCallRef: string;
-  command: SarahLiveKitAgentThreadCommand;
+  command: SarahLiveKitEditorCommand;
 }>;
 
 export type SarahLiveKitToolStateInput = Readonly<{

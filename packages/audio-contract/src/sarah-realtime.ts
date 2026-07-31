@@ -326,6 +326,39 @@ export const SarahEditorCommandSchema = S.Union([
 ]);
 export type SarahEditorCommand = typeof SarahEditorCommandSchema.Type;
 
+export const sarahEditorCommandRequiresConfirmation = (command: SarahEditorCommand): boolean =>
+  command._tag === "replace_selection" ||
+  command._tag === "save_document" ||
+  command._tag === "start_agent_thread";
+
+export const validateSarahEditorCommandTarget = (
+  command: SarahEditorCommand,
+): SarahEditorCommand => {
+  if (command._tag === "start_agent_thread") {
+    if (new TextEncoder().encode(command.message).byteLength > 16_384) {
+      throw new Error("agent_thread_message_not_allowed");
+    }
+    return command;
+  }
+  const path = command.target.path;
+  const segments = path.split(/[\\/]/u);
+  if (
+    path.startsWith("/") ||
+    /^[A-Za-z]:[\\/]/u.test(path) ||
+    path.includes("\u0000") ||
+    segments.includes("..")
+  ) {
+    throw new Error("editor_path_not_allowed");
+  }
+  if (
+    (command._tag === "context_read" || command._tag === "reveal_range") &&
+    (command.endLine < command.startLine || command.endLine - command.startLine > 500)
+  ) {
+    throw new Error("editor_range_not_allowed");
+  }
+  return command;
+};
+
 const BaseClient = {
   schema: S.Literal(SARAH_VOICE_PROTOCOL_VERSION),
   identity: VoiceIdentitySchema,

@@ -56,6 +56,7 @@ describe('Sarah LiveKit private tool bridge', () => {
         proposalRef: string
         proposalDigest: string
         command: SarahLiveKitToolProposal['command']
+        confirmationRequired: boolean
         expiresAt: string
       }) => {
         proposalAttempts.push({
@@ -67,13 +68,17 @@ describe('Sarah LiveKit private tool bridge', () => {
           proposalRef: input.proposalRef,
           proposalDigest: input.proposalDigest,
           command: input.command,
-          confirmationRequired: true,
+          confirmationRequired: input.confirmationRequired,
           expiresAtMs: Date.parse(input.expiresAt),
         }
+        state = input.confirmationRequired
+          ? { state: 'waiting_decision' }
+          : { state: 'execute_sent' }
         return proposal
       },
       readLiveKitToolProposals: async () =>
-        proposal !== undefined && state.state === 'waiting_decision'
+        proposal !== undefined &&
+        (state.state === 'waiting_decision' || state.state === 'execute_sent')
           ? [proposal]
           : [],
       decideLiveKitTool: async (input: { decision: 'confirm' | 'decline' }) => {
@@ -274,6 +279,137 @@ describe('Sarah LiveKit private tool bridge', () => {
       outcomeRef: 'outcome:one',
       ok: true,
       summary: 'Omega accepted the new agent thread.',
+    })
+
+    proposal = undefined
+    state = { state: 'waiting_decision' }
+    const editorProposal = await worker.proposeTool(dispatch, {
+      sessionRef: dispatch.sessionRef,
+      generation: dispatch.generation,
+      jobRef: 'job:one',
+      eventRef: 'tool:event:replace-selection',
+      providerCallRef: 'call:replace-selection',
+      command: {
+        _tag: 'replace_selection',
+        target: {
+          workspaceRef: 'workspace:one',
+          path: 'src/app.ts',
+          documentVersion: 'version:one',
+        },
+        replacement: 'const ready = true',
+      },
+    })
+    await pollSarahLiveKitToolControl(socket as never)
+    expect(controls.at(-1)).toMatchObject({
+      _tag: 'tool_proposal',
+      confirmationRequired: true,
+      command: {
+        _tag: 'replace_selection',
+        target: { path: 'src/app.ts' },
+      },
+    })
+    handlers.message(
+      socket as never,
+      JSON.stringify({
+        schema: 'openagents.sarah.voice.v1',
+        _tag: 'tool_decision',
+        identity,
+        sequence: 2,
+        proposalRef: editorProposal.proposalRef,
+        proposalDigest: editorProposal.proposalDigest,
+        decision: 'confirm',
+      }),
+    )
+    await flushSarahLiveKitToolControl(socket as never)
+    expect(controls.at(-1)).toMatchObject({
+      _tag: 'tool_execute',
+      command: { _tag: 'replace_selection' },
+    })
+    handlers.message(
+      socket as never,
+      JSON.stringify({
+        schema: 'openagents.sarah.voice.v1',
+        _tag: 'tool_outcome',
+        identity,
+        sequence: 3,
+        proposalRef: editorProposal.proposalRef,
+        proposalDigest: editorProposal.proposalDigest,
+        outcomeRef: 'outcome:replace-selection',
+        ok: true,
+        summary: 'Omega replaced the selection.',
+      }),
+    )
+    await flushSarahLiveKitToolControl(socket as never)
+    expect(
+      await worker.readToolState(dispatch, {
+        sessionRef: dispatch.sessionRef,
+        generation: dispatch.generation,
+        jobRef: 'job:one',
+        proposalRef: editorProposal.proposalRef,
+        proposalDigest: editorProposal.proposalDigest,
+      }),
+    ).toMatchObject({
+      state: 'outcome',
+      outcomeRef: 'outcome:replace-selection',
+      ok: true,
+    })
+
+    proposal = undefined
+    const contextProposal = await worker.proposeTool(dispatch, {
+      sessionRef: dispatch.sessionRef,
+      generation: dispatch.generation,
+      jobRef: 'job:one',
+      eventRef: 'tool:event:context-read',
+      providerCallRef: 'call:context-read',
+      command: {
+        _tag: 'context_read',
+        target: {
+          workspaceRef: 'workspace:one',
+          path: 'src/app.ts',
+        },
+        startLine: 1,
+        endLine: 20,
+      },
+    })
+    await pollSarahLiveKitToolControl(socket as never)
+    expect(controls.slice(-2)).toMatchObject([
+      {
+        _tag: 'tool_proposal',
+        confirmationRequired: false,
+        command: { _tag: 'context_read' },
+      },
+      {
+        _tag: 'tool_execute',
+        command: { _tag: 'context_read' },
+      },
+    ])
+    handlers.message(
+      socket as never,
+      JSON.stringify({
+        schema: 'openagents.sarah.voice.v1',
+        _tag: 'tool_outcome',
+        identity,
+        sequence: 4,
+        proposalRef: contextProposal.proposalRef,
+        proposalDigest: contextProposal.proposalDigest,
+        outcomeRef: 'outcome:context-read',
+        ok: true,
+        summary: 'Omega returned the requested line range.',
+      }),
+    )
+    await flushSarahLiveKitToolControl(socket as never)
+    expect(
+      await worker.readToolState(dispatch, {
+        sessionRef: dispatch.sessionRef,
+        generation: dispatch.generation,
+        jobRef: 'job:one',
+        proposalRef: contextProposal.proposalRef,
+        proposalDigest: contextProposal.proposalDigest,
+      }),
+    ).toMatchObject({
+      state: 'outcome',
+      outcomeRef: 'outcome:context-read',
+      ok: true,
     })
     expect(JSON.stringify({ proposal, state })).not.toMatch(
       /transcript|audio/iu,

@@ -79,8 +79,8 @@ describe("Sarah LiveKit worker contract", () => {
       ...base,
       capabilityProfile: {
         kind: "private_owner_v1",
-        contextRead: false,
-        editorProposals: false,
+        contextRead: true,
+        editorProposals: true,
         agentThreadProposals: true,
         ownerMemory: false,
         workspace: false,
@@ -144,7 +144,7 @@ describe("Sarah LiveKit worker contract", () => {
     ).toBe("transcription_usage");
   });
 
-  test("admits only the generation-bound start-agent-thread tool contract", () => {
+  test("admits the generation-bound bounded editor command contract", () => {
     const proposal = decodeSarahLiveKitToolProposalRequest({
       schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
       sessionRef: "session:one",
@@ -159,15 +159,20 @@ describe("Sarah LiveKit worker contract", () => {
       },
     });
     expect(proposal.command._tag).toBe("start_agent_thread");
-    expect(() =>
+    expect(
       decodeSarahLiveKitToolProposalRequest({
         ...proposal,
         command: {
           _tag: "context_read",
-          path: "src/app.ts",
+          target: {
+            workspaceRef: "workspace:one",
+            path: "src/app.ts",
+          },
+          startLine: 1,
+          endLine: 20,
         },
-      }),
-    ).toThrow();
+      }).command._tag,
+    ).toBe("context_read");
     expect(
       decodeSarahLiveKitToolStateResponse({
         schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
