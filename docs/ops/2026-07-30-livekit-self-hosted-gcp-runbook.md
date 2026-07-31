@@ -1303,12 +1303,17 @@ kubectl -n livekit-system auth can-i delete pods
 
 ### Secret, log, and retention scan
 
-> **This scan cannot be executed today.** Four independent blockers, each
-> verified against the live production deployment, are recorded per scope in
-> [`2026-07-31-sarah-livekit-privacy-scan-executability.md`](2026-07-31-sarah-livekit-privacy-scan-executability.md).
-> Three are outside what a repository change can fix. Read that finding before
-> attempting a run, because the all-eight-scopes, one-window requirement means
-> a partial remediation buys nothing.
+> **This scan is executable.** All four blockers are cleared and the three
+> prose-only scopes — `packaged_clients`, `object_storage`, and `traces` — are
+> defined, with the read-only Redis path built and proven, in
+> [`2026-07-31-sarah-livekit-privacy-scan-scope-definitions.md`](2026-07-31-sarah-livekit-privacy-scan-scope-definitions.md).
+> Read it before attempting a run. It carries the exact in-scope artifact and
+> bucket sets, the measured per-scope collection cost for planning the two-hour
+> window, and one integrity requirement: the retention canaries must be injected
+> through a live session before collection, or that axis reports clean while
+> having tested nothing.
+> [`2026-07-31-sarah-livekit-privacy-scan-executability.md`](2026-07-31-sarah-livekit-privacy-scan-executability.md)
+> is the superseded finding, retained for its sequencing argument.
 
 Seal each completed read-only export with the executable manifest builder.
 Use the real collection start/end timestamps for that scope:

@@ -1,5 +1,18 @@
 # Sarah LiveKit eight-scope privacy scan: executability against rc29
 
+> **Superseded later the same day.** Every blocker below is cleared and every
+> undefined scope is defined in
+> [`2026-07-31-sarah-livekit-privacy-scan-scope-definitions.md`](2026-07-31-sarah-livekit-privacy-scan-scope-definitions.md).
+> The scan is now executable. This document is retained because its reasoning
+> was correct when written and because the "partial remediation buys nothing"
+> argument still governs how the run must be sequenced. Do not cite the verdict
+> below as current state.
+>
+> One correction worth carrying forward: `kubectl auth can-i` is not evidence on
+> this cluster. It returned `yes` for `pods/log` while the real call was still
+> `Forbidden`. The instinct recorded below — to verify with a real API call
+> against a named resource — was right, and it should stay the standard.
+
 **Date:** 2026-07-31. **Verdict: the scan cannot be executed today.** Four
 independent blockers, each verified by a read-only command whose output is
 quoted below. Three of the four are outside what any repository change can fix.
