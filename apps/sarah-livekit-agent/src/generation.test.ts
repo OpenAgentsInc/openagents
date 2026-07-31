@@ -173,6 +173,47 @@ describe("Sarah LiveKit generation fence", () => {
     ).toBe(false);
   });
 
+  test("accepts only OpenAI's top-level Draft-07 marker normalization", () => {
+    const sessionDigest = createProviderSessionDigest();
+    const profile = {
+      ...privateProviderProfile,
+      tools: privateProviderProfile.tools.map((providerTool) => ({
+        ...providerTool,
+        parameters: {
+          $schema: "http://json-schema.org/draft-07/schema#",
+          ...providerTool.parameters,
+        },
+      })),
+    };
+    const event = providerUpdatedEvent(profile);
+    event.session.tools = event.session.tools.map((providerTool) => {
+      const parameters = providerTool.parameters as Record<string, unknown>;
+      const { $schema: _schema, ...normalizedParameters } = parameters;
+      return { ...providerTool, parameters: normalizedParameters };
+    });
+
+    expect(admittedRealtimeProvider(event, sessionDigest, profile)).not.toBe(false);
+    expect(
+      admittedRealtimeProvider(
+        {
+          ...event,
+          session: {
+            ...event.session,
+            tools: event.session.tools.map((providerTool) => ({
+              ...providerTool,
+              parameters: {
+                ...(providerTool.parameters as Record<string, unknown>),
+                $schema: "https://json-schema.org/draft/2020-12/schema",
+              },
+            })),
+          },
+        },
+        sessionDigest,
+        profile,
+      ),
+    ).toBe(false);
+  });
+
   test("rejects privacy, media, and cost policy mutations", () => {
     const sessionDigest = createProviderSessionDigest();
     const event = providerUpdatedEvent(communityProviderProfile);

@@ -242,6 +242,21 @@ const providerTool = (value: unknown): SarahRealtimeProviderTool | undefined => 
   };
 };
 
+const normalizedProviderTool = (
+  tool: SarahRealtimeProviderTool,
+): SarahRealtimeProviderTool | undefined => {
+  const parameters = record(tool.parameters);
+  if (parameters === undefined) return undefined;
+  const { $schema, ...normalizedParameters } = parameters;
+  if ($schema !== undefined && $schema !== "http://json-schema.org/draft-07/schema#") {
+    return undefined;
+  }
+  return {
+    ...tool,
+    parameters: normalizedParameters,
+  };
+};
+
 const providerProfileMatch = (
   session: Readonly<Record<string, unknown>>,
   expected: SarahRealtimeProviderProfile,
@@ -256,14 +271,22 @@ const providerProfileMatch = (
   }
   const tools = session.tools.map(providerTool);
   if (tools.some((tool) => tool === undefined)) return "mismatch";
-  const observed = sortedProviderTools(tools as ReadonlyArray<SarahRealtimeProviderTool>);
-  const expectedTools = sortedProviderTools(expected.tools);
+  const observed = sortedProviderTools(tools as ReadonlyArray<SarahRealtimeProviderTool>).map(
+    normalizedProviderTool,
+  );
+  const expectedTools = sortedProviderTools(expected.tools).map(normalizedProviderTool);
+  if (
+    observed.some((tool) => tool === undefined) ||
+    expectedTools.some((tool) => tool === undefined)
+  ) {
+    return "mismatch";
+  }
   if (allowToolLoadingTransition && observed.length === 0 && expectedTools.length > 0) {
     return "loading_tools";
   }
   if (
-    new Set(observed.map((tool) => tool.name)).size !== observed.length ||
-    new Set(expectedTools.map((tool) => tool.name)).size !== expectedTools.length
+    new Set(observed.map((tool) => tool?.name)).size !== observed.length ||
+    new Set(expectedTools.map((tool) => tool?.name)).size !== expectedTools.length
   ) {
     return "mismatch";
   }
