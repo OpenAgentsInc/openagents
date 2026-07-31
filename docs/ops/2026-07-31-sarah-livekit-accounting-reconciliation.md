@@ -64,6 +64,36 @@ reference or session returns a conflict.
 Never guess missing usage or release the hold manually. If provider evidence is
 incomplete, leave the session uncertain and escalate the incident.
 
+## Legacy rate-authority quarantine
+
+Migration `0117_sarah_voice_frozen_accounting_authority.sql` does not assign the
+current price to a session admitted before rate freezing existed. It marks those
+rows with `accounting_rate_authority = 'legacy_unresolved'`, expires any
+unconsumed legacy admission, and prevents any connected legacy session from
+settling. An expired reservation that never connected can safely release its
+zero-charge hold. A connected session moves to `accounting_uncertain` and keeps
+its full hold. A LiveKit binding also receives an `operator_stop` request so its
+worker drains before that quarantine transition.
+
+Do not copy the current configured rate into a legacy row and do not use the
+normal reconciliation endpoint: neither proves the rate that the owner
+accepted. Resolve these rows only through an audited incident procedure that
+establishes the original admission terms and complete provider usage. If either
+cannot be established, preserve the hold and escalate rather than fabricating a
+charge or release.
+
+```sql
+SELECT session_ref, owner_actor_ref, transport_kind, state, reserved_msat,
+       charged_msat, close_reason, accounting_rate_authority
+FROM sarah_realtime_voice_sessions
+WHERE accounting_rate_authority = 'legacy_unresolved'
+ORDER BY created_at;
+```
+
+The expiry sweep isolates failures per session. A quarantined or corrupt legacy
+row can therefore never prevent later admitted-rate sessions from expiring and
+settling.
+
 ## Verification
 
 ```sql

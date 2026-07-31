@@ -2181,8 +2181,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         toSafeInteger(replay.output_tokens, "output_tokens") !== usage.outputTokens ||
         toSafeInteger(replay.cached_input_tokens, "cached_input_tokens") !==
           usage.cachedInputTokens ||
-        toSafeInteger(replay.audio_input_tokens, "audio_input_tokens") !==
-          usage.audioInputTokens ||
+        toSafeInteger(replay.audio_input_tokens, "audio_input_tokens") !== usage.audioInputTokens ||
         toSafeInteger(replay.audio_output_tokens, "audio_output_tokens") !==
           usage.audioOutputTokens ||
         toSafeInteger(replay.charge_msat, "charge_msat") !== usage.chargeMsat ||
@@ -2361,11 +2360,13 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         transport_kind, credit_mode,
         entitlement_ref, admission_cohort_ref, state, reserved_msat,
         charged_msat, ticket_expires_at, session_expires_at,
-        settlement_receipt_ref
+        settlement_receipt_ref, credit_rate_msat_per_million_tokens
       FROM sarah_realtime_voice_sessions
       WHERE session_ref = ${input.sessionRef}
       FOR UPDATE
-    `) as ReadonlyArray<SessionRow>;
+    `) as ReadonlyArray<
+      SessionRow & Readonly<{ credit_rate_msat_per_million_tokens: number | string | null }>
+    >;
     const row = first(rows);
     if (row === undefined) {
       throw new SarahVoiceSessionRejectedError("The voice session does not exist");
@@ -2374,6 +2375,11 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     if (current.state === "accounting_uncertain") {
       throw new SarahVoiceSessionRejectedError(
         "Sarah voice accounting is uncertain and its hold must be preserved",
+      );
+    }
+    if (current.state === "connected" && row.credit_rate_msat_per_million_tokens === null) {
+      throw new SarahVoiceSessionRejectedError(
+        "Sarah voice accounting has no frozen admitted credit rate",
       );
     }
     if (current.state === "settled" || current.state === "released" || current.state === "failed") {
@@ -3994,7 +4000,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       SELECT session.session_ref, session.generation, session.state,
         session.transport_kind, binding.worker_stop_reason,
         binding.worker_stop_close_reason, binding.worker_stop_deadline_at,
-        binding.provider_admitted_at, binding.provider_accounting_status
+        binding.provider_admitted_at, binding.provider_accounting_status,
+        session.credit_rate_msat_per_million_tokens
       FROM sarah_realtime_voice_sessions AS session
       LEFT JOIN sarah_livekit_room_bindings AS binding
         ON binding.session_ref = session.session_ref
@@ -4027,65 +4034,93 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       worker_stop_deadline_at: string | null;
       provider_admitted_at: string | null;
       provider_accounting_status: "pending" | "exact" | "uncertain" | null;
+      credit_rate_msat_per_million_tokens: number | string | null;
     }>;
     let processed = 0;
+    const failures: unknown[] = [];
     for (const row of rows) {
-      if (
-        row.state === "connected" &&
-        row.transport_kind === "livekit_room_v1" &&
-        row.worker_stop_reason === null
-      ) {
+      try {
+        if (
+          row.state === "connected" &&
+          row.transport_kind === "livekit_room_v1" &&
+          row.worker_stop_reason === null
+        ) {
+          // eslint-disable-next-line no-await-in-loop
+          await sql.begin((tx) =>
+            requestLiveKitWorkerStopInTransaction(tx, {
+              sessionRef: row.session_ref,
+              generation: toSafeInteger(row.generation, "generation"),
+              stopReason: "session_expired",
+              closeReason: "session_expired",
+              nowIso,
+            }),
+          );
+          processed += 1;
+          continue;
+        }
+        if (
+          row.state === "connected" &&
+          row.transport_kind === "livekit_room_v1" &&
+          (row.worker_stop_deadline_at === null || row.worker_stop_deadline_at > nowIso)
+        ) {
+          continue;
+        }
+        if (
+          row.state === "connected" &&
+          row.transport_kind === "livekit_room_v1" &&
+          row.provider_admitted_at !== null &&
+          row.provider_accounting_status !== "exact"
+        ) {
+          // A dead worker cannot attest that every billable provider response
+          // reached response.done. Keep the full hold until an operator
+          // reconciles provider truth instead of settling a partial ledger.
+          // eslint-disable-next-line no-await-in-loop
+          await sql.begin((tx) =>
+            markLiveKitAccountingUncertainInTransaction(tx, {
+              sessionRef: row.session_ref,
+              generation: toSafeInteger(row.generation, "generation"),
+              reason: row.worker_stop_close_reason ?? "livekit_worker_accounting_unavailable",
+              nowIso,
+            }),
+          );
+          processed += 1;
+          continue;
+        }
+        if (row.state === "connected" && row.credit_rate_msat_per_million_tokens === null) {
+          // eslint-disable-next-line no-await-in-loop
+          await sql`
+            UPDATE sarah_realtime_voice_sessions
+            SET state = 'accounting_uncertain',
+                ticket_digest = NULL,
+                close_reason = 'legacy_accounting_authority_unavailable',
+                updated_at = ${nowIso}
+            WHERE session_ref = ${row.session_ref}
+              AND generation = ${row.generation}
+              AND state = 'connected'
+              AND credit_rate_msat_per_million_tokens IS NULL
+          `;
+          processed += 1;
+          continue;
+        }
+        // Run one settlement at a time to protect the shared database pool.
         // eslint-disable-next-line no-await-in-loop
-        await sql.begin((tx) =>
-          requestLiveKitWorkerStopInTransaction(tx, {
-            sessionRef: row.session_ref,
-            generation: toSafeInteger(row.generation, "generation"),
-            stopReason: "session_expired",
-            closeReason: "session_expired",
-            nowIso,
-          }),
-        );
+        await settle({
+          sessionRef: row.session_ref,
+          closeReason:
+            row.worker_stop_close_reason ??
+            (row.state === "reserved" ? "ticket_expired" : "session_expired"),
+          nowIso,
+        });
         processed += 1;
-        continue;
+      } catch (error) {
+        failures.push(error);
       }
-      if (
-        row.state === "connected" &&
-        row.transport_kind === "livekit_room_v1" &&
-        (row.worker_stop_deadline_at === null || row.worker_stop_deadline_at > nowIso)
-      ) {
-        continue;
-      }
-      if (
-        row.state === "connected" &&
-        row.transport_kind === "livekit_room_v1" &&
-        row.provider_admitted_at !== null &&
-        row.provider_accounting_status !== "exact"
-      ) {
-        // A dead worker cannot attest that every billable provider response
-        // reached response.done. Keep the full hold until an operator
-        // reconciles provider truth instead of settling a partial ledger.
-        // eslint-disable-next-line no-await-in-loop
-        await sql.begin((tx) =>
-          markLiveKitAccountingUncertainInTransaction(tx, {
-            sessionRef: row.session_ref,
-            generation: toSafeInteger(row.generation, "generation"),
-            reason: row.worker_stop_close_reason ?? "livekit_worker_accounting_unavailable",
-            nowIso,
-          }),
-        );
-        processed += 1;
-        continue;
-      }
-      // Run one settlement at a time to protect the shared database pool.
-      // eslint-disable-next-line no-await-in-loop
-      await settle({
-        sessionRef: row.session_ref,
-        closeReason:
-          row.worker_stop_close_reason ??
-          (row.state === "reserved" ? "ticket_expired" : "session_expired"),
-        nowIso,
-      });
-      processed += 1;
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures,
+        `Sarah voice expiry processed ${processed} row(s) and failed ${failures.length}`,
+      );
     }
     return processed;
   };

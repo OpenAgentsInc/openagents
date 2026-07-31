@@ -1,4 +1,7 @@
 import { SQL } from "@openagentsinc/postgres-runtime";
+import { copyFile, mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test";
 
 import { runMigrations } from "./migrate.js";
@@ -242,6 +245,306 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       WHERE actor_ref = 'agent:user-sarah-voice'
     `;
     expect(Number(balance?.held_msat)).toBe(0);
+  });
+
+  test("continues an expiry batch before surfacing an isolated row failure", async () => {
+    const store = makeSarahRealtimeVoiceStore(sql as unknown as SyncSql);
+    await sql`
+      INSERT INTO users (
+        id, kind, display_name, status, created_at, updated_at
+      ) VALUES
+        (
+          'user-sarah-expiry-bad', 'human', 'Bad Expiry', 'active',
+          '2026-07-28T12:00:00.000Z', '2026-07-28T12:00:00.000Z'
+        ),
+        (
+          'user-sarah-expiry-good', 'human', 'Good Expiry', 'active',
+          '2026-07-28T12:00:00.000Z', '2026-07-28T12:00:00.000Z'
+        )
+    `;
+    await sql`
+      INSERT INTO agent_balances (
+        actor_ref, balance_msat, held_msat, usd_credit_msat,
+        created_at, updated_at
+      ) VALUES
+        (
+          'agent:user-sarah-expiry-bad', 1000, 0, 0,
+          '2026-07-28T12:00:00.000Z', '2026-07-28T12:00:00.000Z'
+        ),
+        (
+          'agent:user-sarah-expiry-good', 1000, 0, 0,
+          '2026-07-28T12:00:00.000Z', '2026-07-28T12:00:00.000Z'
+        )
+    `;
+    await sql`
+      INSERT INTO sarah_voice_alpha_memberships (
+        membership_ref, cohort_ref, owner_user_id, state, admitted_at,
+        admission_actor_ref, admission_reason, updated_at
+      ) VALUES
+        (
+          'sarah_voice_alpha:user-sarah-expiry-bad',
+          'sarah_voice_cohort:alpha_v1', 'user-sarah-expiry-bad',
+          'active', '2026-07-28T12:00:00.000Z', 'operator:test',
+          'Test admission', '2026-07-28T12:00:00.000Z'
+        ),
+        (
+          'sarah_voice_alpha:user-sarah-expiry-good',
+          'sarah_voice_cohort:alpha_v1', 'user-sarah-expiry-good',
+          'active', '2026-07-28T12:00:00.000Z', 'operator:test',
+          'Test admission', '2026-07-28T12:00:00.000Z'
+        )
+    `;
+    const reservation = {
+      deviceRef: "omega-expiry",
+      threadRef: "thread-expiry",
+      generation: 1,
+      disclosureRef: "disclosure-expiry",
+      clientProfile: "mobile_voice_only",
+      creditMode: "metered",
+      entitlementRef: null,
+      admissionCohortRef: "sarah_voice_cohort:alpha_v1",
+      creditRateMsatPerMillionTokens: 100_000,
+      reservedMsat: 100,
+      sessionExpiresAt: "2026-07-28T12:10:00.000Z",
+      nowIso: "2026-07-28T12:00:00.000Z",
+    } as const;
+    await store.reserve({
+      ...reservation,
+      sessionRef: "voice-expiry-bad",
+      reservationRef: "voice-expiry-bad-reservation",
+      ownerUserId: "user-sarah-expiry-bad",
+      ownerActorRef: "agent:user-sarah-expiry-bad",
+      ticketDigest: "8".repeat(64),
+      ticketExpiresAt: "2026-07-28T12:01:00.000Z",
+    });
+    await store.reserve({
+      ...reservation,
+      sessionRef: "voice-expiry-good",
+      reservationRef: "voice-expiry-good-reservation",
+      ownerUserId: "user-sarah-expiry-good",
+      ownerActorRef: "agent:user-sarah-expiry-good",
+      ticketDigest: "9".repeat(64),
+      ticketExpiresAt: "2026-07-28T12:01:01.000Z",
+    });
+    await sql`
+      UPDATE agent_balances
+      SET held_msat = 0
+      WHERE actor_ref = 'agent:user-sarah-expiry-bad'
+    `;
+
+    await expect(store.sweepExpired("2026-07-28T12:02:00.000Z")).rejects.toBeInstanceOf(
+      AggregateError,
+    );
+    const sessions = await sql`
+      SELECT session_ref, state
+      FROM sarah_realtime_voice_sessions
+      WHERE session_ref IN ('voice-expiry-bad', 'voice-expiry-good')
+      ORDER BY session_ref
+    `;
+    expect(sessions).toMatchObject([
+      { session_ref: "voice-expiry-bad", state: "reserved" },
+      { session_ref: "voice-expiry-good", state: "released" },
+    ]);
+    await sql`
+      UPDATE sarah_realtime_voice_sessions
+      SET state = 'failed', ticket_digest = NULL,
+          close_reason = 'test_isolated_failure'
+      WHERE session_ref = 'voice-expiry-bad'
+    `;
+    await sql`
+      DELETE FROM sarah_voice_alpha_memberships
+      WHERE owner_user_id IN (
+        'user-sarah-expiry-bad',
+        'user-sarah-expiry-good'
+      )
+    `;
+  });
+
+  test("quarantines pre-rate active rows while enforcing frozen authority for new rows", async () => {
+    const migrationsDir = path.join(import.meta.dirname, "..", "migrations");
+    const stagedMigrationsDir = await mkdtemp(path.join(tmpdir(), "sarah-frozen-rate-migrations-"));
+    const databaseName = "khala_sync_sarah_voice_legacy_rate";
+    let legacySql: SQL | undefined;
+    try {
+      for (const filename of await readdir(migrationsDir)) {
+        if (
+          filename.endsWith(".sql") &&
+          filename.localeCompare("0117_sarah_voice_frozen_accounting_authority.sql") < 0
+        ) {
+          await copyFile(
+            path.join(migrationsDir, filename),
+            path.join(stagedMigrationsDir, filename),
+          );
+        }
+      }
+      const admin = SQL({ url: pg.url, max: 1 });
+      await admin.unsafe(`CREATE DATABASE ${databaseName}`);
+      await admin.end();
+      const databaseUrl = pg.urlFor(databaseName);
+      await runMigrations({ databaseUrl, migrationsDir: stagedMigrationsDir });
+      legacySql = SQL({ url: databaseUrl, max: 2 });
+      await legacySql`
+        INSERT INTO agent_balances (
+          actor_ref, balance_msat, held_msat, usd_credit_msat,
+          created_at, updated_at
+        ) VALUES
+          (
+            'agent:legacy-reserved', 1000, 100, 0,
+            '2026-07-28T12:00:00.000Z', '2026-07-28T12:00:00.000Z'
+          ),
+          (
+            'agent:legacy-connected', 1000, 100, 0,
+            '2026-07-28T12:00:00.000Z', '2026-07-28T12:00:00.000Z'
+          )
+      `;
+      await legacySql`
+        INSERT INTO sarah_realtime_voice_sessions (
+          session_ref, reservation_ref, owner_user_id, owner_actor_ref,
+          device_ref, thread_ref, generation, ticket_digest, disclosure_ref,
+          client_profile, transport_kind, credit_mode, entitlement_ref,
+          admission_cohort_ref, state, reserved_msat, charged_msat,
+          ticket_expires_at, session_expires_at, created_at, updated_at,
+          connected_at
+        ) VALUES
+          (
+            'legacy-reserved', 'legacy-reserved-reservation',
+            'legacy-reserved', 'agent:legacy-reserved', 'legacy-device',
+            'legacy-thread', 1, ${"a".repeat(64)}, 'legacy-disclosure',
+            'omega_editor', 'custom_wss_v1', 'metered', NULL,
+            'sarah_voice_cohort:alpha_v1', 'reserved', 100, 0,
+            '2026-07-28T12:01:00.000Z', '2026-07-28T12:10:00.000Z',
+            '2026-07-28T12:00:00.000Z', '2026-07-28T12:00:00.000Z', NULL
+          ),
+          (
+            'legacy-connected', 'legacy-connected-reservation',
+            'legacy-connected', 'agent:legacy-connected', 'legacy-device',
+            'legacy-thread', 1, ${"b".repeat(64)}, 'legacy-disclosure',
+            'omega_editor', 'custom_wss_v1', 'metered', NULL,
+            'sarah_voice_cohort:alpha_v1', 'connected', 100, 25,
+            '2026-07-28T12:01:00.000Z', '2026-07-28T12:10:00.000Z',
+            '2026-07-28T12:00:00.000Z', '2026-07-28T12:00:00.000Z',
+            '2026-07-28T12:00:30.000Z'
+          )
+      `;
+      await legacySql`
+        INSERT INTO sarah_voice_admissions (
+          admission_ref, owner_user_id, device_ref, thread_ref, session_ref,
+          generation, disclosure_ref, client_profile, admission_cohort_ref,
+          credit_mode, terms_digest, spendable_remaining_credit_msat, state,
+          issued_at, expires_at, consumed_at
+        ) VALUES (
+          'legacy-admission', 'legacy-reserved', 'legacy-device',
+          'legacy-thread', 'legacy-reserved', 1, 'legacy-disclosure',
+          'omega_editor', 'sarah_voice_cohort:alpha_v1', 'metered',
+          ${"c".repeat(64)}, 900, 'active', '2026-07-28T12:00:00.000Z',
+          '2026-07-28T12:02:00.000Z', NULL
+        )
+      `;
+      await legacySql.end();
+      legacySql = undefined;
+      await copyFile(
+        path.join(migrationsDir, "0117_sarah_voice_frozen_accounting_authority.sql"),
+        path.join(stagedMigrationsDir, "0117_sarah_voice_frozen_accounting_authority.sql"),
+      );
+      await runMigrations({ databaseUrl, migrationsDir: stagedMigrationsDir });
+      legacySql = SQL({ url: databaseUrl, max: 2 });
+
+      const sessions = await legacySql`
+        SELECT session_ref, state, ticket_digest, close_reason,
+          credit_rate_msat_per_million_tokens, accounting_rate_authority
+        FROM sarah_realtime_voice_sessions
+        ORDER BY session_ref
+      `;
+      expect(sessions).toMatchObject([
+        {
+          session_ref: "legacy-connected",
+          state: "connected",
+          credit_rate_msat_per_million_tokens: null,
+          accounting_rate_authority: "legacy_unresolved",
+        },
+        {
+          session_ref: "legacy-reserved",
+          state: "reserved",
+          credit_rate_msat_per_million_tokens: null,
+          accounting_rate_authority: "legacy_unresolved",
+        },
+      ]);
+      const legacyStore = makeSarahRealtimeVoiceStore(legacySql as unknown as SyncSql);
+      expect(await legacyStore.sweepExpired("2026-07-28T12:20:00.000Z")).toBe(2);
+      const terminalSessions = await legacySql`
+        SELECT session_ref, state, ticket_digest, close_reason,
+          credit_rate_msat_per_million_tokens, accounting_rate_authority
+        FROM sarah_realtime_voice_sessions
+        ORDER BY session_ref
+      `;
+      expect(terminalSessions).toMatchObject([
+        {
+          session_ref: "legacy-connected",
+          state: "accounting_uncertain",
+          ticket_digest: null,
+          close_reason: "legacy_accounting_authority_unavailable",
+          credit_rate_msat_per_million_tokens: null,
+          accounting_rate_authority: "legacy_unresolved",
+        },
+        {
+          session_ref: "legacy-reserved",
+          state: "released",
+          ticket_digest: null,
+          close_reason: "ticket_expired",
+          credit_rate_msat_per_million_tokens: null,
+          accounting_rate_authority: "legacy_unresolved",
+        },
+      ]);
+      await expect(
+        legacyStore.settle({
+          sessionRef: "legacy-connected",
+          closeReason: "must_not_release",
+          nowIso: "2026-07-28T12:20:00.000Z",
+        }),
+      ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
+      const balances = await legacySql`
+        SELECT actor_ref, held_msat
+        FROM agent_balances
+        ORDER BY actor_ref
+      `;
+      expect(balances).toMatchObject([
+        { actor_ref: "agent:legacy-connected", held_msat: "100" },
+        { actor_ref: "agent:legacy-reserved", held_msat: "0" },
+      ]);
+      const [admission] = await legacySql`
+        SELECT state, accounting_rate_authority,
+          credit_rate_msat_per_million_tokens
+        FROM sarah_voice_admissions
+        WHERE admission_ref = 'legacy-admission'
+      `;
+      expect(admission).toMatchObject({
+        state: "expired",
+        accounting_rate_authority: "legacy_unresolved",
+        credit_rate_msat_per_million_tokens: null,
+      });
+      await expect(
+        legacySql`
+          INSERT INTO sarah_realtime_voice_sessions (
+            session_ref, reservation_ref, owner_user_id, owner_actor_ref,
+            device_ref, thread_ref, generation, ticket_digest, disclosure_ref,
+            client_profile, transport_kind, credit_mode, entitlement_ref,
+            admission_cohort_ref, state, reserved_msat, charged_msat,
+            ticket_expires_at, session_expires_at, created_at, updated_at
+          ) VALUES (
+            'new-missing-rate', 'new-missing-rate-reservation',
+            'new-missing-rate', 'agent:new-missing-rate', 'new-device',
+            'new-thread', 1, ${"d".repeat(64)}, 'new-disclosure',
+            'omega_editor', 'custom_wss_v1', 'metered', NULL,
+            'sarah_voice_cohort:alpha_v1', 'reserved', 100, 0,
+            '2026-07-28T12:06:00.000Z', '2026-07-28T12:10:00.000Z',
+            '2026-07-28T12:05:00.000Z', '2026-07-28T12:05:00.000Z'
+          )
+        `,
+      ).rejects.toThrow();
+    } finally {
+      await legacySql?.end();
+      await rm(stagedMigrationsDir, { recursive: true, force: true });
+    }
   });
 
   test("records entitled usage without a credit hold or debit", async () => {
@@ -748,13 +1051,9 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       WHERE session_ref = ${binding.sessionRef}
     `;
     const losingOwnerRef =
-      claimedIntent?.provisioning_owner_ref === "issuer:one"
-        ? "issuer:two"
-        : "issuer:one";
+      claimedIntent?.provisioning_owner_ref === "issuer:one" ? "issuer:two" : "issuer:one";
     const winningOwnerRef =
-      claimedIntent?.provisioning_owner_ref === "issuer:one"
-        ? "issuer:one"
-        : "issuer:two";
+      claimedIntent?.provisioning_owner_ref === "issuer:one" ? "issuer:one" : "issuer:two";
     await expect(
       store.bindLiveKitRoom({
         ...binding,
