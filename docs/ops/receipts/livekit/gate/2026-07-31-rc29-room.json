@@ -1,0 +1,74 @@
+{
+  "schema": "openagents.sarah.livekit-gate-observation.v1",
+  "observedAt": "2026-07-31T18:44:44.887Z",
+  "environment": "production",
+  "row": "sarah-livekit-room",
+  "outcome": "incomplete",
+  "binding": {
+    "omegaReleaseTag": "v0.2.0-rc29",
+    "omegaPackageSha256": "116ae5ae542d4d0faed14a59e98ebeac2402ab022927738ed132e6c231e10c34",
+    "openagentsSourceRevision": "fdd0db9bab10568a97d1ea2d3ddc0f936ea6df66",
+    "livekitConfigRevision": "sha256:b0bf0f0cb801943b789906c615d3277629a8f73bd6d06b52a60aaf2c86eb8a7d",
+    "sarahWorkerImageDigest": "sha256:41b06de908c45642d4635d5cc3b168e69d08f08c3621f8ea39aecdeeed190227"
+  },
+  "operatorRefDigest": "19a35aa0ce3a831cbcbc89757416b9e4f666f5d82ba2f45548cb6dc00798581f",
+  "observations": [
+    {
+      "key": "authenticated_desktop_count",
+      "finding": "not_observed",
+      "reason": "Three packaged rc29 desktops ran concurrently on one host with three distinct self-provisioned Nostr identities, but none reached an authenticated room join. Sarah voice requires an active alpha-cohort row written only by the owner-run admit-sarah-voice-npub script, and room access requires NIP-29 kind-9000 admission signed by the group admin key. Both are owner-only and out of band, so no participant reached POST /api/sarah/livekit/room/join.",
+      "observedAtMs": 1785523200000
+    },
+    {
+      "key": "floor_acquired",
+      "finding": "not_observed",
+      "reason": "No member joined the room, so no server-issued floor lease exists. POST /api/sarah/livekit/room/floor/member is unreachable until admission clears.",
+      "observedAtMs": 1785523200000
+    },
+    {
+      "key": "floor_transfer_completed",
+      "finding": "not_observed",
+      "reason": "Blocked behind floor acquisition: no lease was ever issued, so no transfer between two distinct holders could be attempted.",
+      "observedAtMs": 1785523200000
+    },
+    {
+      "key": "moderator_stop_completed",
+      "finding": "not_observed",
+      "reason": "Moderator stop requires a NIP-29 group admin identity holding a live presence lease. No identity was admitted to the group, so the moderator floor route was never exercised.",
+      "observedAtMs": 1785523200000
+    },
+    {
+      "key": "non_floor_refused",
+      "finding": "not_observed",
+      "reason": "Requires at least two admitted members in one live room. Admission never cleared, so the non-holder attempt was never made.",
+      "observedAtMs": 1785523200000
+    },
+    {
+      "key": "removed_member_refused",
+      "finding": "not_observed",
+      "reason": "Not reachable, and additionally not satisfiable with the expected code on this backend: removeSarahLiveKitRoomMember, the only producer of member_removed, has no non-test caller. Production resolveMember returns undefined for a removed member, which the routes map to 403 room_membership_required.",
+      "observedAtMs": 1785523200000
+    },
+    {
+      "key": "replayed_floor_grant_refused",
+      "finding": "not_observed",
+      "reason": "Nonce replay refusal (nonce_replayed, 409) is implemented on both floor routes, but it requires a previously accepted grant. No grant was ever issued, so no nonce could be replayed.",
+      "observedAtMs": 1785523200000
+    },
+    {
+      "key": "shared_answer_heard_by_all",
+      "finding": "not_observed",
+      "reason": "Sarah was never summoned into a community room, so no shared answer was published and no participant could confirm audible output.",
+      "observedAtMs": 1785523200000
+    },
+    {
+      "key": "stale_floor_grant_refused",
+      "finding": "not_observed",
+      "reason": "Same implementation gap as removed_member_refused: membership_changed is produced only by removeSarahLiveKitRoomMember, which no production path calls. A membership change instead invalidates the binding and yields 403 room_membership_required.",
+      "observedAtMs": 1785523200000
+    }
+  ],
+  "note": "This receipt preserves what one operator observed for one Sarah LiveKit release-gate row against the named binding. It is not a release-gate admission: an outcome of observed_pass means the observations were preserved, not that the row is green.",
+  "receiptRef": "receipt.sarah_livekit_gate_observation.sha256_343e7cd9061dd266abf323f6e19248a3245469259ded1632a0a2cdb5e7cea8cf",
+  "resultDigest": "sha256:343e7cd9061dd266abf323f6e19248a3245469259ded1632a0a2cdb5e7cea8cf"
+}
