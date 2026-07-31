@@ -276,7 +276,9 @@ describe("the room journey", () => {
     );
     const receipt = record("sarah-livekit-room", observations);
     expect(
-      receipt.observations.filter((entry) => entry.finding === "satisfied").map((entry) => entry.key),
+      receipt.observations
+        .filter((entry) => entry.finding === "satisfied")
+        .map((entry) => entry.key),
     ).toEqual([
       "non_floor_refused",
       "removed_member_refused",
@@ -535,9 +537,9 @@ describe("failure drills", () => {
       }),
     );
     expect(receipt.outcome).toBe("incomplete");
-    expect(receipt.observations.find((entry) => entry.key === "worker_crash_bounded")?.finding).toBe(
-      "satisfied",
-    );
+    expect(
+      receipt.observations.find((entry) => entry.key === "worker_crash_bounded")?.finding,
+    ).toBe("satisfied");
   });
 
   test("holds the SFU-loss drill to the failure matrix's fault and bound", () => {

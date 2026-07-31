@@ -23,7 +23,7 @@ import {
   readLiveKitSfuGauges,
   readSarahWorkerLogs,
   selectSoleSfuPodHostingARoom,
-  selectSoleWorkerPodForRoom,
+  selectSoleWorkerPodForGeneration,
 } from "./drill-cluster.js";
 
 const OWNER_GATE = "I_ACCEPT_EP263_SARAH_LIVEKIT_DRILL";
@@ -79,8 +79,9 @@ TARGETS ARE DISCOVERED AT THE FAULT INSTANT, in namespace ${LIVEKIT_NAMESPACE},
 and never earlier: the cluster picks which SFU instance carries a room when the
 room is created, and dispatch picks which Sarah worker accepts the job. The SFU
 target is the one instance reporting a nonzero livekit_room_total and the worker
-is the one that logged this room. Two candidates or none is a refusal, never a
-guess, and both are recorded only as digests. sfu_loss refuses outright if the
+is the one that logged this generation's participant ref, because the worker log
+carries no room name. Two candidates or none is a refusal, never a guess, and
+both are recorded only as digests. sfu_loss refuses outright if the
 two resolve to the same instance.
 
 The same gauge sweep measures how many rooms are live cluster-wide, which is the
@@ -168,14 +169,17 @@ const drillScenario = (value: string | undefined): SarahLiveKitDrillScenario => 
 const buildInjector = (
   scenario: SarahLiveKitDrillScenario,
 ): ((context: {
-  roomRef: string;
+  participantRef: string;
   requestClientCancel: () => Promise<void>;
 }) => Promise<SarahLiveKitDrillFaultResult>) => {
   const faultAction = EXPECTED_FAULT_ACTION[scenario];
   if (faultAction === "delete_exact_sfu_pod") {
     return async (context) => {
       const sfu = selectSoleSfuPodHostingARoom(await readLiveKitSfuGauges());
-      const workerPod = selectSoleWorkerPodForRoom(await readSarahWorkerLogs(), context.roomRef);
+      const workerPod = selectSoleWorkerPodForGeneration(
+        await readSarahWorkerLogs(),
+        context.participantRef,
+      );
       if (sfu.podName === workerPod) {
         // Refused before the call, not recorded as a contradiction afterwards:
         // destroying the worker makes the result indistinguishable from
@@ -192,7 +196,10 @@ const buildInjector = (
   }
   if (faultAction === "delete_exact_worker_pod") {
     return async (context) => {
-      const workerPod = selectSoleWorkerPodForRoom(await readSarahWorkerLogs(), context.roomRef);
+      const workerPod = selectSoleWorkerPodForGeneration(
+        await readSarahWorkerLogs(),
+        context.participantRef,
+      );
       await deleteExactPod(workerPod);
       return {
         targetInstanceDigest: digestDrillInstance(workerPod),
@@ -236,7 +243,7 @@ const run = async () => {
         ),
         pinnedBounds: { sfu_loss: SARAH_LIVEKIT_SFU_LOSS_BOUND_MS },
         namespace: LIVEKIT_NAMESPACE,
-        targetDiscovery: "sole_nonzero_livekit_room_total_and_sole_worker_logging_the_room",
+        targetDiscovery: "sole_nonzero_livekit_room_total_and_sole_worker_logging_the_participant",
         guarantees: [
           "exactly one billable Sarah session for the whole drill window",
           "fault instant recorded separately from the session start",

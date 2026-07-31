@@ -343,9 +343,7 @@ const publicObservation = (
   interruptedLifecycleObserved: observation.interruptedLifecycleObserved,
   identityIsolationObserved:
     observation.identityIsolationObserved &&
-    GENERATION_BEARING_IDENTITY_DIGEST_KEYS.every(
-      (key) => crossScenarioIdentityDistinctness[key],
-    ),
+    GENERATION_BEARING_IDENTITY_DIGEST_KEYS.every((key) => crossScenarioIdentityDistinctness[key]),
   comparableIdentityDigests: comparableIdentityDigests(observation.identityDigests, receiptSalt),
   exactProviderUsageObserved: observation.exactProviderUsageObserved,
   subscriberFanoutCount: observation.subscriberFanoutCount,

@@ -182,7 +182,7 @@ const run = async () => {
           requiredObservations: REQUIRED_OBSERVATIONS[row],
           note:
             "Every observation listed must be recorded explicitly. One that was not made must " +
-            "carry finding \"not_observed\" and a reason; it cannot simply be omitted.",
+            'carry finding "not_observed" and a reason; it cannot simply be omitted.',
         },
         null,
         2,

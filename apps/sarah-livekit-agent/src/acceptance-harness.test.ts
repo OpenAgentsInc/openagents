@@ -428,9 +428,7 @@ describe("Sarah LiveKit production acceptance harness", () => {
     expect(privateScenarioObservation).toBeDefined();
     expect(communityScenarioObservation).toBeDefined();
     for (const key of IDENTITY_DIGEST_KEYS) {
-      expect(privateScenarioObservation?.comparableIdentityDigests[key]).toMatch(
-        /^[0-9a-f]{64}$/u,
-      );
+      expect(privateScenarioObservation?.comparableIdentityDigests[key]).toMatch(/^[0-9a-f]{64}$/u);
       // Equal after salting exactly when the raw digests were equal.
       expect(
         privateScenarioObservation?.comparableIdentityDigests[key] ===
@@ -451,9 +449,7 @@ describe("Sarah LiveKit production acceptance harness", () => {
     expect(serialized).not.toContain(Buffer.from(receiptSalt()).toString("hex"));
     expect(serialized).not.toContain(sharedAccountingDigest);
     for (const key of IDENTITY_DIGEST_KEYS) {
-      expect(serialized).not.toContain(
-        observation("private", 1_000, 2_000).identityDigests[key],
-      );
+      expect(serialized).not.toContain(observation("private", 1_000, 2_000).identityDigests[key]);
     }
   });
 

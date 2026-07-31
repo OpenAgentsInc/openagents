@@ -8,7 +8,10 @@ import {
 } from "./ice-classification.js";
 
 const transport = (selectedCandidatePairId: string): RtcStatsEntry => ({
-  stats: { case: "transport", value: { rtc: { id: "t1" }, transport: { selectedCandidatePairId } } },
+  stats: {
+    case: "transport",
+    value: { rtc: { id: "t1" }, transport: { selectedCandidatePairId } },
+  },
 });
 
 const pair = (
@@ -121,7 +124,11 @@ describe("classifySelectedIcePath", () => {
   });
 
   test.each([
-    ["no selected pair", [pair(), candidate("localCandidate", "lc1", 0, "udp")], "no_selected_candidate_pair"],
+    [
+      "no selected pair",
+      [pair(), candidate("localCandidate", "lc1", 0, "udp")],
+      "no_selected_candidate_pair",
+    ],
     [
       "an unnominated pair",
       [transport("p1"), pair({ nominated: false })],

@@ -254,9 +254,7 @@ describe("Sarah LiveKit terminal failure matrix", () => {
       workerInstanceSurvived: true,
       concurrentBillableSessionCount: 1,
     });
-    expect(
-      receipt.scenarios.filter((scenario) => scenario.sfuLoss !== null),
-    ).toHaveLength(1);
+    expect(receipt.scenarios.filter((scenario) => scenario.sfuLoss !== null)).toHaveLength(1);
 
     expect(() =>
       validateSarahLiveKitFailureMatrixObservation(

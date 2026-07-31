@@ -98,25 +98,34 @@ export const countLiveRooms = (gauges: readonly LiveKitSfuGauge[]): number =>
   gauges.reduce((total, gauge) => total + gauge.roomTotal, 0);
 
 /**
- * The single Sarah worker that accepted the drill's job.
+ * The single Sarah worker that accepted the drill's generation.
  *
- * The room ref appears in the accepting worker's log and nowhere else, so a
- * scan across the worker pods names one instance. Two matches would mean one
- * generation was handled twice, which the failure matrix already forbids
+ * The discriminator is the owner PARTICIPANT ref, not the room ref. The worker
+ * log carries `jobId`, `agentName`, and `participantValue`, and it never prints
+ * the room name — verified against the live production workers on 2026-07-31 —
+ * so a room-ref scan matches nothing and would make every worker-targeting drill
+ * unrunnable for a reason that looks like "the job was not accepted".
+ *
+ * The participant ref is minted per admitted generation, so it appears in
+ * exactly the accepting worker's log. Two matches would mean one generation was
+ * handled twice, which the failure matrix already forbids
  * (`maximumWorkerGenerationCount: 1`) and which no drill should paper over.
  */
-export const selectSoleWorkerPodForRoom = (
+export const selectSoleWorkerPodForGeneration = (
   logs: readonly Readonly<{ podName: string; log: string }>[],
-  roomRef: string,
+  participantRef: string,
 ): string => {
-  if (roomRef.trim() === "") throw new Error("worker discovery needs the drill room ref");
-  const matches = logs.filter((entry) => entry.log.includes(roomRef));
+  if (participantRef.trim() === "") {
+    throw new Error("worker discovery needs the drill participant ref");
+  }
+  const matches = logs.filter((entry) => entry.log.includes(participantRef));
   if (matches.length === 0) {
-    throw new Error("no Sarah worker logged the drill room: the job was not accepted");
+    throw new Error("no Sarah worker logged the drill participant: the job was not accepted");
   }
   if (matches.length > 1) {
     throw new Error(
-      `${matches.length} Sarah workers logged the drill room, so one generation was handled twice`,
+      `${matches.length} Sarah workers logged the drill participant, so one generation was ` +
+        "handled twice",
     );
   }
   return (matches[0] as { podName: string }).podName;

@@ -110,13 +110,15 @@ const responseText = async (response: Response): Promise<string> => {
   return text;
 };
 
-export const makeSarahNostrProjectionClient = (options: Readonly<{
-  config: SarahNostrProjectionConfig;
-  fetch?: Fetch;
-  WebSocketImpl?: WebSocketConstructor;
-  nowMs?: () => number;
-  receiptTimeoutMs?: number;
-}>) => {
+export const makeSarahNostrProjectionClient = (
+  options: Readonly<{
+    config: SarahNostrProjectionConfig;
+    fetch?: Fetch;
+    WebSocketImpl?: WebSocketConstructor;
+    nowMs?: () => number;
+    receiptTimeoutMs?: number;
+  }>,
+) => {
   const fetchImpl = options.fetch ?? fetch;
   const WebSocketImpl = options.WebSocketImpl ?? WebSocket;
   const nowMs = options.nowMs ?? Date.now;
@@ -173,11 +175,7 @@ export const makeSarahNostrProjectionClient = (options: Readonly<{
     const signature = S.decodeUnknownSync(SarahSigningResponseSchema)(decoded, {
       onExcessProperty: "error",
     });
-    return reconstructSarahSignedEvent(
-      template,
-      signature,
-      options.config.expectedPubkey,
-    );
+    return reconstructSarahSignedEvent(template, signature, options.config.expectedPubkey);
   };
 
   const publish = async (event: Awaited<ReturnType<typeof sign>>): Promise<void> =>
@@ -214,20 +212,13 @@ export const makeSarahNostrProjectionClient = (options: Readonly<{
             createdAt: Math.floor(nowMs() / 1_000),
             relayUrl,
             challenge: frame[1],
-          }).then(
-            (authEvent) => {
-              authEventId = authEvent.id;
-              socket.send(JSON.stringify(["AUTH", authEvent]));
-            },
-            fail,
-          );
+          }).then((authEvent) => {
+            authEventId = authEvent.id;
+            socket.send(JSON.stringify(["AUTH", authEvent]));
+          }, fail);
           return;
         }
-        if (
-          !Array.isArray(frame) ||
-          frame[0] !== "OK" ||
-          typeof frame[2] !== "boolean"
-        ) {
+        if (!Array.isArray(frame) || frame[0] !== "OK" || typeof frame[2] !== "boolean") {
           return;
         }
         if (frame[1] === authEventId) {

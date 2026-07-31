@@ -165,8 +165,12 @@ describe("Sarah worker Nostr projection client", () => {
     expect(first.id).toBe(second.id);
     expect(first.content).toBe(template.content);
     expect(first.tags).toContainEqual(["authority", "projection_only"]);
-    expect(requests.filter((request) => request.url.includes("metadata.google.internal"))).toHaveLength(1);
-    expect(requests.filter((request) => request.authorization === `Bearer ${token}`)).toHaveLength(3);
+    expect(
+      requests.filter((request) => request.url.includes("metadata.google.internal")),
+    ).toHaveLength(1);
+    expect(requests.filter((request) => request.authorization === `Bearer ${token}`)).toHaveLength(
+      3,
+    );
     expect(requests.map((request) => request.body ?? "").join("")).not.toContain(token);
   });
 

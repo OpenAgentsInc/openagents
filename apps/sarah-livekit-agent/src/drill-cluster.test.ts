@@ -3,7 +3,7 @@ import {
   countLiveRooms,
   parseLiveKitSfuGauges,
   selectSoleSfuPodHostingARoom,
-  selectSoleWorkerPodForRoom,
+  selectSoleWorkerPodForGeneration,
   type LiveKitSfuGauge,
 } from "./drill-cluster.js";
 
@@ -82,39 +82,42 @@ describe("Sarah worker fault target selection", () => {
   const logs = (...entries: readonly (readonly [string, string])[]) =>
     entries.map(([podName, log]) => ({ podName, log }));
 
-  test("names the single worker that logged the drill room", () => {
+  test("names the single worker that logged the drill participant", () => {
     expect(
-      selectSoleWorkerPodForRoom(
+      selectSoleWorkerPodForGeneration(
         logs(
-          ["sarah-a", "job accepted room=other-room"],
-          ["sarah-b", "job accepted room=drill-room-42 generation=1"],
+          ["sarah-a", '{"participantValue":"owner-000000"}'],
+          ["sarah-b", '{"participantValue":"owner-2f9ab1"}'],
           ["sarah-c", "idle"],
         ),
-        "drill-room-42",
+        "owner-2f9ab1",
       ),
     ).toBe("sarah-b");
   });
 
   test("refuses when the job was never accepted", () => {
-    expect(() => selectSoleWorkerPodForRoom(logs(["sarah-a", "idle"]), "drill-room-42")).toThrow(
-      "the job was not accepted",
-    );
+    expect(() =>
+      selectSoleWorkerPodForGeneration(logs(["sarah-a", "idle"]), "owner-2f9ab1"),
+    ).toThrow("the job was not accepted");
   });
 
-  test("refuses when two workers logged one room", () => {
+  test("refuses when two workers logged one generation", () => {
     // The failure matrix already forbids overlapping worker generations, so a
     // second match is a finding, not an ambiguity to resolve by picking one.
     expect(() =>
-      selectSoleWorkerPodForRoom(
-        logs(["sarah-a", "room=drill-room-42"], ["sarah-b", "room=drill-room-42"]),
-        "drill-room-42",
+      selectSoleWorkerPodForGeneration(
+        logs(
+          ["sarah-a", '{"participantValue":"owner-2f9ab1"}'],
+          ["sarah-b", '{"participantValue":"owner-2f9ab1"}'],
+        ),
+        "owner-2f9ab1",
       ),
     ).toThrow("handled twice");
   });
 
-  test("refuses a blank room ref, which would match every log", () => {
-    expect(() => selectSoleWorkerPodForRoom(logs(["sarah-a", "anything"]), "  ")).toThrow(
-      "needs the drill room ref",
+  test("refuses a blank participant ref, which would match every log", () => {
+    expect(() => selectSoleWorkerPodForGeneration(logs(["sarah-a", "anything"]), "  ")).toThrow(
+      "needs the drill participant ref",
     );
   });
 });

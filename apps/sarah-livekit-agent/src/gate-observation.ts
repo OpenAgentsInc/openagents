@@ -450,7 +450,10 @@ const assertEvidence = (key: string, evidence: GateEvidence): void => {
       return;
     }
     case "scan": {
-      if (evidence.scopes.length === 0 || new Set(evidence.scopes).size !== evidence.scopes.length) {
+      if (
+        evidence.scopes.length === 0 ||
+        new Set(evidence.scopes).size !== evidence.scopes.length
+      ) {
         throw new Error(`${key} scan scopes must be a non-empty set of distinct scopes`);
       }
       for (const scope of evidence.scopes) assertSafeText(scope, `${key} scan scope`);
@@ -476,7 +479,8 @@ const assertSatisfiesKey = (observation: GateObservation, evidence: GateEvidence
   if (key === "authenticated_desktop_count") {
     if (evidence.kind !== "participants") throw new Error(`${key} requires participant evidence`);
     const desktops = evidence.participants.filter(
-      (participant) => participant.authenticated && participant.clientKind === "packaged_omega_desktop",
+      (participant) =>
+        participant.authenticated && participant.clientKind === "packaged_omega_desktop",
     );
     if (desktops.length < 3) {
       throw new Error(`${key} requires at least three authenticated packaged desktops`);
@@ -607,7 +611,7 @@ const assertObservations = (row: GateRowId, observations: readonly GateObservati
   if (missing.length > 0) {
     throw new Error(
       `${row} is missing required observations: ${missing.join(", ")}. ` +
-        "Record each one explicitly, using finding \"not_observed\" with a reason if the journey did not reach it.",
+        'Record each one explicitly, using finding "not_observed" with a reason if the journey did not reach it.',
     );
   }
   const unknown = [...seen].filter((key) => !required.includes(key));

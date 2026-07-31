@@ -8,10 +8,7 @@ import { dispose } from "@livekit/rtc-node";
 import { runSarahLiveKitAcceptance } from "./acceptance-harness.js";
 import { runLiveSarahLiveKitScenario } from "./acceptance-livekit.js";
 import { resolveDeployedSarahRevision } from "./acceptance-deployment.js";
-import {
-  FORCED_TRANSPORT_PROFILES,
-  type ForcedTransportProfile,
-} from "./ice-classification.js";
+import { FORCED_TRANSPORT_PROFILES, type ForcedTransportProfile } from "./ice-classification.js";
 
 const OWNER_GATE = "I_ACCEPT_EP263_LIVEKIT_GCP_COST";
 const repositoryRoot = fileURLToPath(new URL("../../..", import.meta.url));

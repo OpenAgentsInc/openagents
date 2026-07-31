@@ -459,17 +459,10 @@ const entry = async (ctx: JobContext): Promise<void> => {
       },
       (accountingStatus) =>
         (async () => {
-          if (
-            communityProjection !== undefined &&
-            presencePublished &&
-            !presenceExpired
-          ) {
+          if (communityProjection !== undefined && presencePublished && !presenceExpired) {
             try {
               await communityProjection.client.signAndPublish(
-                sarahPresenceTemplateFromLease(
-                  communityProjection.lease,
-                  "inactive",
-                ),
+                sarahPresenceTemplateFromLease(communityProjection.lease, "inactive"),
               );
               presenceExpired = true;
             } catch (error) {
@@ -851,10 +844,7 @@ const entry = async (ctx: JobContext): Promise<void> => {
     requestShutdown();
     return;
   }
-  if (
-    dispatch.roomContext.kind === "community" &&
-    connected.authorityRevision !== undefined
-  ) {
+  if (dispatch.roomContext.kind === "community" && connected.authorityRevision !== undefined) {
     if (connected.presenceActive !== true) {
       fence.settle(closeReasonForStop("membership_revoked"));
       requestShutdown();

@@ -103,6 +103,8 @@ export type SarahLiveKitDrillFaultContext = Readonly<{
   scenario: SarahLiveKitDrillScenario;
   faultAction: (typeof EXPECTED_FAULT_ACTION)[SarahLiveKitDrillScenario];
   roomRef: string;
+  /** The owner participant identity for this generation, minted per admission. */
+  participantRef: string;
   sessionRef: string;
   ownerRef: string;
   /** Close the packaged control channel, for client-side faults. */
@@ -304,6 +306,7 @@ export const runSarahLiveKitDrill = async (
       scenario: input.scenario,
       faultAction,
       roomRef: session.roomRef,
+      participantRef: session.participantRef,
       sessionRef: input.session.sessionRef,
       ownerRef: input.session.ownerRef,
       requestClientCancel: () => session.control.close(),
