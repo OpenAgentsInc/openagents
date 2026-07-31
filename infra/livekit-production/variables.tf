@@ -111,3 +111,33 @@ variable "deployment_executor_image" {
     error_message = "The deployment executor must use the exact production repository and an immutable digest."
   }
 }
+
+variable "deployment_source_github_app_installation_id" {
+  description = "Cloud Build GitHub App installation that authorizes the fixed production source connection."
+  type        = number
+  default     = null
+  nullable    = true
+
+  validation {
+    condition = var.deployment_source_github_app_installation_id == null ? true : (
+      floor(var.deployment_source_github_app_installation_id) == var.deployment_source_github_app_installation_id &&
+      var.deployment_source_github_app_installation_id > 0
+    )
+    error_message = "The Cloud Build GitHub App installation ID must be a positive integer."
+  }
+}
+
+variable "deployment_source_github_authorizer_secret_version" {
+  description = "Immutable Secret Manager version containing the OAuth token for the Cloud Build GitHub App connection."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition = var.deployment_source_github_authorizer_secret_version == null ? true : can(regex(
+      "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]{1,255}/versions/[1-9][0-9]*$",
+      var.deployment_source_github_authorizer_secret_version,
+    ))
+    error_message = "The GitHub authorizer token must use an immutable numbered Secret Manager version."
+  }
+}

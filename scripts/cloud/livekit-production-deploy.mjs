@@ -16,6 +16,8 @@ const PROJECT = "openagentsgemini";
 const REGION = "us-central1";
 const TRIGGER = "oa-livekit-prod-runtime";
 const RECEIPT_BUCKET = "openagentsgemini-livekit-deployment-receipts";
+const DEPLOYER_SERVICE_ACCOUNT =
+  "projects/openagentsgemini/serviceAccounts/oa-livekit-prod-deployer@openagentsgemini.iam.gserviceaccount.com";
 const TERMINAL = new Set(["SUCCESS", "FAILURE", "INTERNAL_ERROR", "TIMEOUT", "CANCELLED", "EXPIRED"]);
 const BUILD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
@@ -92,7 +94,21 @@ const remoteMainRevision = () => {
   return revision;
 };
 
-const describeBuild = (buildId) => {
+export const validateBuildDescription = (build, buildId, expectedRevision) => {
+  if (
+    build.id !== buildId ||
+    build.serviceAccount !== DEPLOYER_SERVICE_ACCOUNT ||
+    typeof build.buildTriggerId !== "string" ||
+    build.buildTriggerId.length === 0 ||
+    (expectedRevision !== undefined &&
+      build.sourceProvenance?.resolvedRepoSource?.commitSha !== expectedRevision)
+  ) {
+    fail("Cloud Build returned a build outside the production deployment boundary");
+  }
+  return build;
+};
+
+const describeBuild = (buildId, expectedRevision) => {
   const value = run(
     "gcloud",
     [
@@ -108,22 +124,13 @@ const describeBuild = (buildId) => {
     "describe production deployment build",
   );
   const build = JSON.parse(value);
-  if (
-    build.id !== buildId ||
-    build.serviceAccount !==
-      "projects/openagentsgemini/serviceAccounts/oa-livekit-prod-deployer@openagentsgemini.iam.gserviceaccount.com" ||
-    typeof build.buildTriggerId !== "string" ||
-    build.buildTriggerId.length === 0
-  ) {
-    fail("Cloud Build returned a build outside the production deployment boundary");
-  }
-  return build;
+  return validateBuildDescription(build, buildId, expectedRevision);
 };
 
-const waitForBuild = (buildId, timeoutSeconds) => {
+const waitForBuild = (buildId, timeoutSeconds, expectedRevision) => {
   const deadline = Date.now() + timeoutSeconds * 1000;
   while (true) {
-    const build = describeBuild(buildId);
+    const build = describeBuild(buildId, expectedRevision);
     if (TERMINAL.has(build.status)) {
       process.stdout.write(`${JSON.stringify(build)}\n`);
       if (build.status !== "SUCCESS") fail(`deployment build settled as ${build.status}`);
@@ -138,6 +145,25 @@ const waitForBuild = (buildId, timeoutSeconds) => {
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5000);
   }
+};
+
+export const triggerRunArguments = (revision) => {
+  if (!/^[0-9a-f]{40}$/u.test(revision)) {
+    fail("trigger revision must be a full lowercase Git commit");
+  }
+  return [
+    "builds",
+    "triggers",
+    "run",
+    TRIGGER,
+    "--project",
+    PROJECT,
+    "--region",
+    REGION,
+    "--sha",
+    revision,
+    "--format=value(id)",
+  ];
 };
 
 export const receiptPath = (path) => {
@@ -207,29 +233,19 @@ const main = () => {
     return;
   }
   let buildId = args.buildId;
+  let expectedRevision;
   if (args.command === "start") {
     const revision = remoteMainRevision();
+    expectedRevision = revision;
     buildId = run(
       "gcloud",
-      [
-        "builds",
-        "triggers",
-        "run",
-        TRIGGER,
-        "--project",
-        PROJECT,
-        "--region",
-        REGION,
-        "--sha",
-        revision,
-        "--format=value(id)",
-      ],
+      triggerRunArguments(revision),
       "start fixed production deployment trigger",
     );
     if (!BUILD_ID.test(buildId)) fail("trigger did not return a canonical Cloud Build id");
     process.stdout.write(`Cloud Build id: ${buildId}\n`);
   }
-  waitForBuild(buildId, args.timeoutSeconds);
+  waitForBuild(buildId, args.timeoutSeconds, expectedRevision);
 };
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

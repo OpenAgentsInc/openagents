@@ -454,8 +454,10 @@ Production runtime mutation is admitted only through the server-side
 `livekit-gcp-ops.mjs` as an arbitrary local Cloud Build config and do not run
 its production runtime operation directly. The trigger is Terraform-managed,
 uses the dedicated `oa-livekit-prod-deployer` service account, fixes its source
-at `refs/heads/main`, accepts no caller substitutions, and runs an executor image
-that must be pinned by digest. The trigger's source, service account, inline
+at `refs/heads/main` through the regional Cloud Build v2 connection
+`oa-livekit-github` and repository `openagents`, accepts no
+caller substitutions, and runs an executor image that must be pinned by digest.
+The trigger's source, service account, inline
 build, receipt bucket, 90-minute worst-case timeout, and Connect Gateway
 membership are part of the reviewed execution boundary.
 
@@ -491,10 +493,20 @@ Bootstrap the boundary in this order:
    all source-pinned, while the deployed trigger accepts only the final
    immutable executor digest.
 4. Set the printed executor image and enable deployment control by rerunning
-   the gated infrastructure apply:
+   the gated infrastructure apply. Before the apply, install the Google Cloud
+   Build GitHub App on `OpenAgentsInc/openagents`, authorize the regional v2
+   connection with an OAuth token tied to that app, and place the token in a
+   dedicated Secret Manager secret without writing it to argv, Terraform, Git,
+   or terminal output. Record the positive GitHub App installation ID and one
+   immutable numbered secret version; `latest` is refused. Terraform grants
+   only the Cloud Build service agent access to that secret, creates the
+   deletion-protected connection and repository, and binds the manual trigger
+   to the repository resource rather than a raw GitHub URI.
 
    ```sh
    export TF_VAR_deployment_executor_image='us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/livekit-production-deployer@sha256:<digest>'
+   export TF_VAR_deployment_source_github_app_installation_id='<positive-installation-id>'
+   export TF_VAR_deployment_source_github_authorizer_secret_version='projects/openagentsgemini/secrets/<cloud-build-github-authorizer-secret>/versions/<number>'
    export TF_VAR_enable_deployment_control=true
    OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
    node scripts/cloud/livekit-gcp-ops.mjs \
@@ -504,8 +516,8 @@ Bootstrap the boundary in this order:
      --apply
    ```
 
-   This creates the dedicated deployer, fixed trigger, fleet membership,
-   and retention-locked receipt bucket. The root attaches the
+   This creates the dedicated deployer, v2 source connection and repository,
+   fixed trigger, fleet membership, and retention-locked receipt bucket. The
    `livekit-privileged-identity=protected` resource tag to the default Compute,
    LiveKit node, runtime, secret-reader, and production deployer service
    accounts. A conditioned project IAM deny blocks only
@@ -573,7 +585,10 @@ node scripts/cloud/livekit-production-deploy.mjs retrieve \
 
 Before Kubernetes mutation, the build preflights an exclusive local receipt
 path, writes and reads a no-clobber build-scoped object in the retention-locked
-receipt bucket, and attests the live build and trigger. The tiny preflight
+receipt bucket, and attests the live build, trigger, v2 repository resource,
+exact GitHub remote, fixed `refs/heads/main` source ref, and resolved commit.
+The launcher supplies the exact commit observed at remote `main` with `--sha`;
+the build and receipt must resolve to that same commit. The tiny preflight
 object remains under the same 30-day retention policy. The receipt binds the canonical build
 ref, trigger ref, dedicated service-account ref, resolved source revision, and
 reviewed execution-boundary digest. Retrieval refuses a non-successful build,

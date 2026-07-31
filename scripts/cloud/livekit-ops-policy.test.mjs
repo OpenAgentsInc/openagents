@@ -944,8 +944,16 @@ test("deployment control Terraform fixes identity, source, route, and substituti
   assert.match(module, /account_id\s+=\s+local\.service_account_id/u);
   assert.match(module, /name\s+=\s+local\.trigger_name/u);
   assert.match(module, /service_account\s+=\s+google_service_account\.deployer\.id/u);
+  assert.match(module, /google_cloudbuildv2_connection" "source/u);
+  assert.match(module, /app_installation_id\s+=\s+var\.github_app_installation_id/u);
+  assert.match(module, /oauth_token_secret_version\s+=\s+var\.github_authorizer_token_secret_version/u);
+  assert.match(module, /google_cloudbuildv2_repository" "source/u);
+  assert.match(module, /parent_connection\s+=\s+google_cloudbuildv2_connection\.source\.name/u);
+  assert.match(module, /roles\/cloudbuild\.connectionViewer/u);
+  assert.match(module, /connection_authorizer_reader/u);
   assert.match(module, /source_to_build\s*\{/u);
   assert.match(module, /https:\/\/github\.com\/OpenAgentsInc\/openagents\.git/u);
+  assert.match(module, /repository\s+=\s+google_cloudbuildv2_repository\.source\.id/u);
   assert.match(module, /ref\s+=\s+"refs\/heads\/main"/u);
   assert.doesNotMatch(module, /\bsubstitutions\s*=/u);
   assert.match(module, /roles\/gkehub\.gatewayAdmin/u);
@@ -979,6 +987,9 @@ test("deployment control Terraform fixes identity, source, route, and substituti
   assert.match(runner, /DEFAULT_COMPUTE_SERVICE_ACCOUNT/u);
   assert.match(runner, /observed access was not conclusively NOT_GRANTED/u);
   assert.match(runner, /preflight deployment receipt artifact write/u);
+  assert.match(runner, /"repositories",\s+"describe"/u);
+  assert.match(runner, /trigger\.sourceToBuild\?\.repository !== PRODUCTION_SOURCE_REPOSITORY_RESOURCE/u);
+  assert.match(runner, /sourceRepository\.remoteUri !== PRODUCTION_SOURCE_REMOTE_URI/u);
   assert.match(rbac, /kind: Role\nmetadata:\n  name: oa-livekit-prod-runtime-deployer/u);
   assert.doesNotMatch(rbac, /cluster-admin/u);
   assert.doesNotMatch(rbac, /resources: \["clusterroles"\]/u);

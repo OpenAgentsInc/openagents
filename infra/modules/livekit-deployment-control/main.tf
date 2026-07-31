@@ -3,6 +3,12 @@ locals {
   trigger_name       = "oa-livekit-prod-runtime"
   membership_name    = "oa-livekit-prod"
   receipt_bucket     = "${var.project_id}-livekit-deployment-receipts"
+  connection_name    = "oa-livekit-github"
+  repository_name    = "openagents"
+  authorizer_secret_parts = regex(
+    "^projects/([^/]+)/secrets/([^/]+)/versions/([1-9][0-9]*)$",
+    var.github_authorizer_token_secret_version,
+  )
   boundary_digest = filesha256(
     "${path.root}/deployment-control-boundary.json"
   )
@@ -26,6 +32,7 @@ resource "google_project_iam_member" "gateway_roles" {
     "roles/gkehub.gatewayAdmin",
     "roles/gkehub.viewer",
     "roles/cloudbuild.builds.viewer",
+    "roles/cloudbuild.connectionViewer",
     "roles/container.clusterViewer",
     "roles/compute.viewer",
     "roles/iam.securityReviewer",
@@ -109,6 +116,45 @@ resource "google_gke_hub_membership" "production" {
   }
 }
 
+resource "google_secret_manager_secret_iam_member" "connection_authorizer_reader" {
+  project   = local.authorizer_secret_parts[0]
+  secret_id = local.authorizer_secret_parts[1]
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:service-${var.project_number}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
+}
+
+resource "google_cloudbuildv2_connection" "source" {
+  project  = var.project_id
+  location = var.region
+  name     = local.connection_name
+
+  github_config {
+    app_installation_id = var.github_app_installation_id
+
+    authorizer_credential {
+      oauth_token_secret_version = var.github_authorizer_token_secret_version
+    }
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+
+  depends_on = [google_secret_manager_secret_iam_member.connection_authorizer_reader]
+}
+
+resource "google_cloudbuildv2_repository" "source" {
+  project           = var.project_id
+  location          = var.region
+  name              = local.repository_name
+  parent_connection = google_cloudbuildv2_connection.source.name
+  remote_uri        = "https://github.com/OpenAgentsInc/openagents.git"
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 resource "google_cloudbuild_trigger" "production_runtime" {
   project         = var.project_id
   location        = var.region
@@ -117,9 +163,9 @@ resource "google_cloudbuild_trigger" "production_runtime" {
   service_account = google_service_account.deployer.id
 
   source_to_build {
-    uri       = "https://github.com/OpenAgentsInc/openagents.git"
-    ref       = "refs/heads/main"
-    repo_type = "GITHUB"
+    repository = google_cloudbuildv2_repository.source.id
+    ref        = "refs/heads/main"
+    repo_type  = "GITHUB"
   }
 
   build {
@@ -167,5 +213,6 @@ resource "google_cloudbuild_trigger" "production_runtime" {
     google_secret_manager_secret_iam_member.preflight_reader,
     google_secret_manager_secret_iam_member.source_preflight_reader,
     google_storage_bucket_iam_member.receipt_writer,
+    google_cloudbuildv2_repository.source,
   ]
 }

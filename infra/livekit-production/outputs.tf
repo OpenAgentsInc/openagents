@@ -83,6 +83,8 @@ output "deployment_control" {
   value = var.enable_deployment_control ? {
     service_account = module.deployment_control[0].service_account_email
     trigger_name    = module.deployment_control[0].trigger_name
+    connection_name = module.deployment_control[0].connection_name
+    repository_id   = module.deployment_control[0].repository_id
     membership_name = module.deployment_control[0].membership_name
     receipt_bucket  = module.deployment_control[0].receipt_bucket
   } : null

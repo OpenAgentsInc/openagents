@@ -71,6 +71,12 @@ const DEPLOYMENT_CONTROL_BOUNDARY =
 const PRODUCTION_DEPLOYER_SERVICE_ACCOUNT =
   "oa-livekit-prod-deployer@openagentsgemini.iam.gserviceaccount.com";
 const PRODUCTION_DEPLOY_TRIGGER = "oa-livekit-prod-runtime";
+const PRODUCTION_SOURCE_CONNECTION = "oa-livekit-github";
+const PRODUCTION_SOURCE_REPOSITORY = "openagents";
+const PRODUCTION_SOURCE_REPOSITORY_RESOURCE =
+  "projects/openagentsgemini/locations/us-central1/connections/oa-livekit-github/repositories/openagents";
+const PRODUCTION_SOURCE_REMOTE_URI =
+  "https://github.com/OpenAgentsInc/openagents.git";
 const PRODUCTION_RECEIPT_BUCKET =
   "openagentsgemini-livekit-deployment-receipts";
 const LEGACY_AUTOMATION_SERVICE_ACCOUNT =
@@ -1542,6 +1548,25 @@ const validateCloudBuildProvenance = () => {
       "attest production deployment trigger",
     ),
   );
+  const sourceRepository = JSON.parse(
+    captureCommand(
+      "gcloud",
+      [
+        "builds",
+        "repositories",
+        "describe",
+        PRODUCTION_SOURCE_REPOSITORY,
+        "--connection",
+        PRODUCTION_SOURCE_CONNECTION,
+        "--project",
+        LIVEKIT_OPS.project,
+        "--region",
+        LIVEKIT_OPS.region,
+        "--format=json(name,remoteUri)",
+      ],
+      "attest production deployment source repository",
+    ),
+  );
   const step = trigger.build?.steps?.[0];
   const expectedEnvironment = new Set([
     "BUILD_ID=$BUILD_ID",
@@ -1562,8 +1587,11 @@ const validateCloudBuildProvenance = () => {
     trigger.serviceAccount !==
       `projects/${LIVEKIT_OPS.project}/serviceAccounts/${PRODUCTION_DEPLOYER_SERVICE_ACCOUNT}` ||
     trigger.sourceToBuild?.ref !== "refs/heads/main" ||
-    trigger.sourceToBuild?.uri !== "https://github.com/OpenAgentsInc/openagents.git" ||
+    trigger.sourceToBuild?.repository !== PRODUCTION_SOURCE_REPOSITORY_RESOURCE ||
+    trigger.sourceToBuild?.uri !== undefined ||
     trigger.sourceToBuild?.repoType !== "GITHUB" ||
+    sourceRepository.name !== PRODUCTION_SOURCE_REPOSITORY_RESOURCE ||
+    sourceRepository.remoteUri !== PRODUCTION_SOURCE_REMOTE_URI ||
     Object.keys(trigger.substitutions ?? {}).length !== 0 ||
     !step ||
     trigger.build.steps.length !== 1 ||

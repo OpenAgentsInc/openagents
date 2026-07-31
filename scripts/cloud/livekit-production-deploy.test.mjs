@@ -3,9 +3,15 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
-import { parseArgs, receiptPath } from "./livekit-production-deploy.mjs";
+import {
+  parseArgs,
+  receiptPath,
+  triggerRunArguments,
+  validateBuildDescription,
+} from "./livekit-production-deploy.mjs";
 
 const buildId = "123e4567-e89b-42d3-a456-426614174000";
+const revision = "1".repeat(40);
 
 test("launcher accepts only fixed start, resumable status, and receipt retrieval", () => {
   assert.deepEqual(parseArgs(["start"]), {
@@ -60,6 +66,38 @@ test("launcher uses the current synchronous trigger result shape", () => {
   );
   assert.doesNotMatch(source, /"--async"/u);
   assert.match(source, /"--format=value\(id\)"/u);
+});
+
+test("launcher starts the fixed trigger at the exact observed main commit", () => {
+  assert.deepEqual(triggerRunArguments(revision), [
+    "builds",
+    "triggers",
+    "run",
+    "oa-livekit-prod-runtime",
+    "--project",
+    "openagentsgemini",
+    "--region",
+    "us-central1",
+    "--sha",
+    revision,
+    "--format=value(id)",
+  ]);
+  assert.throws(() => triggerRunArguments("refs/heads/main"), /full lowercase Git commit/u);
+});
+
+test("launcher rejects a build that resolves away from the requested commit", () => {
+  const build = {
+    id: buildId,
+    buildTriggerId: "trigger-id",
+    serviceAccount:
+      "projects/openagentsgemini/serviceAccounts/oa-livekit-prod-deployer@openagentsgemini.iam.gserviceaccount.com",
+    sourceProvenance: { resolvedRepoSource: { commitSha: revision } },
+  };
+  assert.equal(validateBuildDescription(build, buildId, revision), build);
+  assert.throws(
+    () => validateBuildDescription(build, buildId, "2".repeat(40)),
+    /outside the production deployment boundary/u,
+  );
 });
 
 test("receipt retrieval path is exclusive and repository scoped", () => {

@@ -190,6 +190,25 @@ module "observability" {
   labels                   = local.labels
 }
 
+resource "terraform_data" "deployment_control_configuration" {
+  count = var.enable_deployment_control ? 1 : 0
+
+  input = {
+    github_app_installation_id       = var.deployment_source_github_app_installation_id
+    github_authorizer_secret_version = var.deployment_source_github_authorizer_secret_version
+  }
+
+  lifecycle {
+    precondition {
+      condition = (
+        var.deployment_source_github_app_installation_id != null &&
+        var.deployment_source_github_authorizer_secret_version != null
+      )
+      error_message = "Deployment control requires the Cloud Build GitHub App installation ID and immutable authorizer token secret version."
+    }
+  }
+}
+
 module "deployment_control" {
   count  = var.enable_deployment_control ? 1 : 0
   source = "../modules/livekit-deployment-control"
@@ -200,9 +219,17 @@ module "deployment_control" {
   cluster_id                = module.platform.cluster_id
   managed_secret_ids        = module.platform.secret_ids
   deployment_executor_image = var.deployment_executor_image
-  labels                    = local.labels
+  github_app_installation_id = coalesce(
+    var.deployment_source_github_app_installation_id,
+    1,
+  )
+  github_authorizer_token_secret_version = coalesce(
+    var.deployment_source_github_authorizer_secret_version,
+    "projects/${var.project_id}/secrets/disabled/versions/1",
+  )
+  labels = local.labels
 
-  depends_on = [module.platform]
+  depends_on = [module.platform, terraform_data.deployment_control_configuration]
 }
 
 locals {

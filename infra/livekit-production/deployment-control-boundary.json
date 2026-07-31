@@ -4,6 +4,9 @@
   "region": "us-central1",
   "trigger": "oa-livekit-prod-runtime",
   "serviceAccount": "oa-livekit-prod-deployer",
+  "sourceConnection": "oa-livekit-github",
+  "sourceRepository": "projects/openagentsgemini/locations/us-central1/connections/oa-livekit-github/repositories/openagents",
+  "sourceRemoteUri": "https://github.com/OpenAgentsInc/openagents.git",
   "legacyAutomation": "oa-mvp-automation",
   "legacyDefaultComputeServiceAccount": "157437760789-compute",
   "requiredBuildIdentityPolicies": [
