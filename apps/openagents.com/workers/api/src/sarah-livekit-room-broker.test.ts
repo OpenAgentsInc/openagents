@@ -466,7 +466,7 @@ describe("Sarah LiveKit room broker configuration", () => {
             agentName: "",
             room: roomRef,
             metadata: "",
-            restartPolicy: JobRestartPolicy.JRP_NEVER,
+            restartPolicy: JobRestartPolicy.JRP_ON_FAILURE,
             deployment: "",
           },
         ]),
@@ -524,7 +524,14 @@ describe("Sarah LiveKit room broker configuration", () => {
   });
 
   test("rejects a single existing dispatch with mismatched authority", async () => {
-    const mismatchKinds = ["agent", "room", "metadata", "restart", "deployment"] as const;
+    const mismatchKinds = [
+      "agent",
+      "automatic-restart",
+      "room",
+      "metadata",
+      "restart",
+      "deployment",
+    ] as const;
     for (const mismatch of mismatchKinds) {
       const createDispatch = vi.fn(async () => ({ id: "dispatch:new" }));
       let expectedRoom = "";
@@ -538,10 +545,19 @@ describe("Sarah LiveKit room broker configuration", () => {
         listDispatch: vi.fn(async () => [
           {
             id: "dispatch:foreign",
-            agentName: mismatch === "agent" ? "another-agent" : SARAH_LIVEKIT_AGENT_NAME,
+            agentName:
+              mismatch === "agent"
+                ? "another-agent"
+                : mismatch === "automatic-restart"
+                  ? ""
+                  : SARAH_LIVEKIT_AGENT_NAME,
             room: mismatch === "room" ? "another-room" : expectedRoom,
             metadata:
-              mismatch === "metadata" ? JSON.stringify({ schema: "foreign" }) : expectedMetadata,
+              mismatch === "metadata"
+                ? JSON.stringify({ schema: "foreign" })
+                : mismatch === "automatic-restart"
+                  ? ""
+                  : expectedMetadata,
             restartPolicy:
               mismatch === "restart" ? JobRestartPolicy.JRP_ON_FAILURE : JobRestartPolicy.JRP_NEVER,
             deployment: mismatch === "deployment" ? "another-deployment" : "",

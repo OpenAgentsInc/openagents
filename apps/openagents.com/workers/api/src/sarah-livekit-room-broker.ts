@@ -79,7 +79,7 @@ const isAutomaticRoomDispatch = (dispatch: SarahLiveKitDispatch, roomRef: string
   dispatch.agentName === "" &&
   dispatch.room === roomRef &&
   dispatch.metadata === "" &&
-  dispatch.restartPolicy === JobRestartPolicy.JRP_NEVER &&
+  dispatch.restartPolicy === JobRestartPolicy.JRP_ON_FAILURE &&
   dispatch.deployment === "";
 
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
