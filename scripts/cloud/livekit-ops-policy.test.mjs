@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -21,6 +22,7 @@ import {
   validatePrerequisiteReceipt,
   validateProductionRedisProjection,
   validateRollbackObservation,
+  validateRuntimeManifestInventory,
   validateSecretScanObservation,
   validateServerKeyProjection,
   validateSourceOnlyReceipt,
@@ -445,6 +447,90 @@ test("addon lock pins controllers, API versions, and chart archive digests", () 
       }),
     /External Secrets addon coordinates are not admitted/u,
   );
+});
+
+test("runtime inventory requires exact scopes and explicit admitted namespaces", () => {
+  const inventory = [
+    {
+      apiVersion: "v1",
+      kind: "ServiceAccount",
+      namespace: "cert-manager",
+      name: "cloudflare-dns01-solver",
+    },
+    {
+      apiVersion: "cert-manager.io/v1",
+      kind: "ClusterIssuer",
+      namespace: null,
+      name: "letsencrypt-production",
+    },
+    {
+      apiVersion: "v1",
+      kind: "Namespace",
+      namespace: null,
+      name: "livekit-system",
+    },
+    {
+      apiVersion: "apps/v1",
+      kind: "Deployment",
+      namespace: "livekit-system",
+      name: "livekit-server",
+    },
+  ];
+  assert.deepEqual(validateRuntimeManifestInventory(inventory, "runtime manifest"), [
+    inventory[3],
+    inventory[1],
+    inventory[2],
+    inventory[0],
+  ]);
+
+  for (const invalidResource of [
+    { ...inventory[3], namespace: null },
+    { ...inventory[3], namespace: "default" },
+    { ...inventory[1], namespace: "livekit-system" },
+    { ...inventory[2], name: "unexpected-system" },
+    { ...inventory[3], apiVersion: "batch/v1", kind: "Deployment" },
+    { ...inventory[3], apiVersion: "apps/v1", kind: "Namespace", namespace: null },
+  ]) {
+    assert.throws(
+      () => validateRuntimeManifestInventory([invalidResource], "runtime manifest"),
+      /admitted explicit namespace|cluster-scoped resource|unsupported namespace|runtime kind/u,
+    );
+  }
+  assert.throws(
+    () => validateRuntimeManifestInventory([inventory[3], inventory[3]], "runtime manifest"),
+    /duplicate resource/u,
+  );
+});
+
+test("production runtime apply relies only on explicit manifest namespaces", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      resolve(import.meta.dirname, "livekit-gcp-ops.mjs"),
+      "--operation",
+      "production-runtime-apply",
+      "--bundle",
+      "infra/livekit/bundle.json",
+    ],
+    {
+      cwd: resolve(import.meta.dirname, "../.."),
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const plan = JSON.parse(result.stdout);
+  const applyCommands = plan.commands.filter(
+    (command) => command.bin === "kubectl" && command.args[0] === "apply",
+  );
+  assert.equal(applyCommands.length, 1);
+  assert.deepEqual(applyCommands[0].args.slice(0, 4), [
+    "apply",
+    "--server-side",
+    "--field-manager=openagents-livekit-ops",
+    "-f",
+  ]);
+  assert.ok(!applyCommands[0].args.includes("--namespace"));
 });
 
 test("connectivity requires packaged Omega and all three observed ICE paths", () => {

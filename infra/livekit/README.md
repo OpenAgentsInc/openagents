@@ -52,6 +52,14 @@ The second command writes only
 Git archive, verifies its SHA-256 digest, renders chart `1.11.0`, applies the
 post-render policy, and appends the first-party resources.
 
+The production runner validates the rendered inventory before it installs
+addons or applies the runtime. Namespaced resources must declare an admitted
+`cert-manager` or `livekit-system` namespace for their exact API version and
+kind; admitted cluster-scoped resources must omit `metadata.namespace`, and
+the bundle may create only the `livekit-system` Namespace. The server-side
+apply does not supply a default namespace, so it cannot redirect a
+multi-namespace manifest.
+
 ## Required cluster dependencies
 
 Before applying the rendered manifest:

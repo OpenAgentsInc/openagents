@@ -8,12 +8,14 @@ import {
   LIVEKIT_OPS,
   assertPublicSafe,
   publicSafeCommandFailure,
+  runtimeInventoryKey,
   sha256,
   validateAddonLock,
   validateBillingAccountId,
   validateDeploymentBundle,
   validateHistoricalDeploymentBundle,
   validateProductionRedisProjection,
+  validateRuntimeManifestInventory,
   validateServerKeyProjection,
   validateSourceOnlyReceipt,
 } from "./livekit-ops-policy.mjs";
@@ -233,63 +235,6 @@ const validateRenderedManifest = (path, expectedDigest) => {
   return observedDigest;
 };
 
-const ADMITTED_RUNTIME_KINDS = new Set([
-  "apps/v1/Deployment",
-  "autoscaling/v2/HorizontalPodAutoscaler",
-  "cert-manager.io/v1/Certificate",
-  "cert-manager.io/v1/ClusterIssuer",
-  "cloud.google.com/v1/BackendConfig",
-  "external-secrets.io/v1/ExternalSecret",
-  "external-secrets.io/v1/SecretStore",
-  "monitoring.googleapis.com/v1/PodMonitoring",
-  "networking.gke.io/v1/ManagedCertificate",
-  "networking.k8s.io/v1/Ingress",
-  "policy/v1/PodDisruptionBudget",
-  "scheduling.k8s.io/v1/PriorityClass",
-  "v1/ConfigMap",
-  "v1/Namespace",
-  "v1/Service",
-  "v1/ServiceAccount",
-]);
-const ADMITTED_CLUSTER_SCOPED_KINDS = new Set(["ClusterIssuer", "Namespace", "PriorityClass"]);
-
-const inventoryKey = ({ apiVersion, kind, namespace, name }) =>
-  `${apiVersion}/${kind}/${namespace ?? "<cluster>"}/${name}`;
-
-const validateManifestInventory = (value, label) => {
-  if (!Array.isArray(value) || value.length === 0) {
-    throw new Error(`${label} must contain at least one Kubernetes resource`);
-  }
-  const keys = new Set();
-  for (const [index, resource] of value.entries()) {
-    requireExactKeys(
-      resource,
-      ["apiVersion", "kind", "namespace", "name"],
-      `${label}[${index}]`,
-    );
-    if (
-      typeof resource.apiVersion !== "string" ||
-      typeof resource.kind !== "string" ||
-      typeof resource.name !== "string" ||
-      resource.name === "" ||
-      !ADMITTED_RUNTIME_KINDS.has(`${resource.apiVersion}/${resource.kind}`)
-    ) {
-      throw new Error(`${label}[${index}] is outside the admitted runtime kind set`);
-    }
-    if (ADMITTED_CLUSTER_SCOPED_KINDS.has(resource.kind)) {
-      if (resource.namespace !== null) {
-        throw new Error(`${label}[${index}] cluster-scoped resource has a namespace`);
-      }
-    } else if (!["livekit-system", "cert-manager"].includes(resource.namespace)) {
-      throw new Error(`${label}[${index}] has an unsupported namespace`);
-    }
-    const key = inventoryKey(resource);
-    if (keys.has(key)) throw new Error(`${label} contains duplicate resource ${key}`);
-    keys.add(key);
-  }
-  return [...value].sort((left, right) => inventoryKey(left).localeCompare(inventoryKey(right)));
-};
-
 const manifestInventory = (path, label) => {
   const expression =
     '[. | select(. != null) | {"apiVersion": .apiVersion, "kind": .kind, "namespace": (.metadata.namespace // null), "name": .metadata.name}]';
@@ -305,7 +250,7 @@ const manifestInventory = (path, label) => {
   } catch (error) {
     throw new Error(`${label} inventory is not readable JSON`, { cause: error });
   }
-  return validateManifestInventory(inventory, label);
+  return validateRuntimeManifestInventory(inventory, label);
 };
 
 const writePruneInventory = (path, inventory) => {
@@ -398,6 +343,15 @@ const command = (bin, args, options = {}) => ({
   cwd: options.cwd,
   label: options.label ?? `${bin} ${args[0] ?? ""}`,
 });
+
+const runtimeManifestApplyCommand = (manifestPath) =>
+  command("kubectl", [
+    "apply",
+    "--server-side",
+    "--field-manager=openagents-livekit-ops",
+    "-f",
+    manifestPath,
+  ]);
 
 const terraformCommands = (root, action, extraArguments = []) => {
   requireRepositoryPath(root, root);
@@ -501,10 +455,9 @@ const renderProduction = (bundle, temporaryDirectory, execute) => {
   ];
   if (execute) {
     executeCommands(plan, process.env);
-    validateRenderedManifest(
-      resolve(temporaryDirectory, RENDERED_MANIFEST),
-      bundle.renderedManifestDigest,
-    );
+    const renderedManifest = resolve(temporaryDirectory, RENDERED_MANIFEST);
+    validateRenderedManifest(renderedManifest, bundle.renderedManifestDigest);
+    manifestInventory(renderedManifest, "rendered production runtime manifest");
   }
   return plan;
 };
@@ -569,7 +522,7 @@ const captureCommandWithEnvironment = (bin, args, label, environment) => {
 
 const inventoryFromKubernetesList = (value, label) => {
   const items = value?.kind === "List" && Array.isArray(value.items) ? value.items : [value];
-  return validateManifestInventory(
+  return validateRuntimeManifestInventory(
     items.map((item) => ({
       apiVersion: item.apiVersion,
       kind: item.kind,
@@ -607,8 +560,8 @@ const verifyRollbackRuntime = ({
     "restored runtime inventory",
   );
   if (
-    JSON.stringify(observedInventory.map(inventoryKey)) !==
-    JSON.stringify(targetInventory.map(inventoryKey))
+    JSON.stringify(observedInventory.map(runtimeInventoryKey)) !==
+    JSON.stringify(targetInventory.map(runtimeInventoryKey))
   ) {
     throw new Error("restored runtime inventory does not equal the target manifest");
   }
@@ -1591,15 +1544,7 @@ const run = () => {
         ...renderProduction(bundle, temporaryDirectory, false),
         ...addonDownloadCommands(addonLock, temporaryDirectory),
         ...addonInstallCommands(addonLock, temporaryDirectory),
-        command("kubectl", [
-          "--namespace",
-          LIVEKIT_OPS.namespace,
-          "apply",
-          "--server-side",
-          "--field-manager=openagents-livekit-ops",
-          "-f",
-          resolve(temporaryDirectory, RENDERED_MANIFEST),
-        ]),
+        runtimeManifestApplyCommand(resolve(temporaryDirectory, RENDERED_MANIFEST)),
         command("kubectl", [
           "--namespace",
           LIVEKIT_OPS.namespace,
@@ -1641,24 +1586,16 @@ const run = () => {
         rollbackPreviousManifest,
         "rollback target manifest",
       );
-      const targetKeys = new Set(rollbackTargetInventory.map(inventoryKey));
+      const targetKeys = new Set(rollbackTargetInventory.map(runtimeInventoryKey));
       rollbackPrunedInventory = currentInventory.filter(
-        (resource) => !targetKeys.has(inventoryKey(resource)),
+        (resource) => !targetKeys.has(runtimeInventoryKey(resource)),
       );
       rollbackPruneManifest = resolve(temporaryDirectory, "rollback-prune-list.json");
       writePruneInventory(rollbackPruneManifest, rollbackPrunedInventory);
       commands = [
         ...productionInfrastructureValidationCommands(),
         productionCredentialsCommand(kubeconfig),
-        command("kubectl", [
-          "--namespace",
-          LIVEKIT_OPS.namespace,
-          "apply",
-          "--server-side",
-          "--field-manager=openagents-livekit-ops",
-          "-f",
-          rollbackPreviousManifest,
-        ]),
+        runtimeManifestApplyCommand(rollbackPreviousManifest),
         ...(rollbackPrunedInventory.length === 0
           ? []
           : [
@@ -1725,6 +1662,10 @@ const run = () => {
       validateRenderedManifest(
         resolve(temporaryDirectory, RENDERED_MANIFEST),
         bundle.renderedManifestDigest,
+      );
+      manifestInventory(
+        resolve(temporaryDirectory, RENDERED_MANIFEST),
+        "rendered production runtime manifest",
       );
       executeCommands(commands.slice(firstPullIndex, firstPullIndex + 2), kubectlEnv(kubeconfig));
       validateDownloadedAddonCharts(addonLock, temporaryDirectory);

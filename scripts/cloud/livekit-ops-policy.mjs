@@ -60,6 +60,24 @@ const CERT_MANAGER_IMAGES = Object.freeze({
 });
 const EXTERNAL_SECRETS_IMAGE =
   "ghcr.io/external-secrets/external-secrets:v2.8.0@sha256:24c0dd3699e0988520afd2218612758cd97d1f702757b5b4fcf89adaa33ef679";
+const RUNTIME_RESOURCE_NAMESPACES = new Map([
+  ["apps/v1/Deployment", Object.freeze(["livekit-system"])],
+  ["autoscaling/v2/HorizontalPodAutoscaler", Object.freeze(["livekit-system"])],
+  ["cert-manager.io/v1/Certificate", Object.freeze(["livekit-system"])],
+  ["cert-manager.io/v1/ClusterIssuer", null],
+  ["cloud.google.com/v1/BackendConfig", Object.freeze(["livekit-system"])],
+  ["external-secrets.io/v1/ExternalSecret", Object.freeze(["cert-manager", "livekit-system"])],
+  ["external-secrets.io/v1/SecretStore", Object.freeze(["cert-manager", "livekit-system"])],
+  ["monitoring.googleapis.com/v1/PodMonitoring", Object.freeze(["cert-manager", "livekit-system"])],
+  ["networking.gke.io/v1/ManagedCertificate", Object.freeze(["livekit-system"])],
+  ["networking.k8s.io/v1/Ingress", Object.freeze(["livekit-system"])],
+  ["policy/v1/PodDisruptionBudget", Object.freeze(["livekit-system"])],
+  ["scheduling.k8s.io/v1/PriorityClass", null],
+  ["v1/ConfigMap", Object.freeze(["livekit-system"])],
+  ["v1/Namespace", null],
+  ["v1/Service", Object.freeze(["livekit-system"])],
+  ["v1/ServiceAccount", Object.freeze(["cert-manager", "livekit-system"])],
+]);
 
 const isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -98,6 +116,47 @@ const assertExactKeys = (value, required, optional, label) => {
 const assertString = (value, label) => {
   assert(typeof value === "string" && value.length > 0, `${label} must be a non-empty string`);
   return value;
+};
+
+export const runtimeInventoryKey = ({ apiVersion, kind, namespace, name }) =>
+  `${apiVersion}/${kind}/${namespace ?? "<cluster>"}/${name}`;
+
+export const validateRuntimeManifestInventory = (value, label) => {
+  assert(Array.isArray(value) && value.length > 0, `${label} must contain Kubernetes resources`);
+  const keys = new Set();
+  for (const [index, resource] of value.entries()) {
+    const resourceLabel = `${label}[${index}]`;
+    assertExactKeys(resource, ["apiVersion", "kind", "namespace", "name"], [], resourceLabel);
+    const apiVersion = assertString(resource.apiVersion, `${resourceLabel}.apiVersion`);
+    const kind = assertString(resource.kind, `${resourceLabel}.kind`);
+    const name = assertString(resource.name, `${resourceLabel}.name`);
+    const resourceType = `${apiVersion}/${kind}`;
+    assert(
+      RUNTIME_RESOURCE_NAMESPACES.has(resourceType),
+      `${resourceLabel} is outside the admitted runtime kind set`,
+    );
+    const admittedNamespaces = RUNTIME_RESOURCE_NAMESPACES.get(resourceType);
+    if (admittedNamespaces === null) {
+      assert(
+        resource.namespace === null,
+        `${resourceLabel} cluster-scoped resource has a namespace`,
+      );
+      if (resourceType === "v1/Namespace") {
+        assert(name === LIVEKIT_OPS.namespace, `${resourceLabel} creates an unsupported namespace`);
+      }
+    } else {
+      assert(
+        typeof resource.namespace === "string" && admittedNamespaces.includes(resource.namespace),
+        `${resourceLabel} must declare an admitted explicit namespace`,
+      );
+    }
+    const key = runtimeInventoryKey(resource);
+    assert(!keys.has(key), `${label} contains duplicate resource ${key}`);
+    keys.add(key);
+  }
+  return [...value].sort((left, right) =>
+    runtimeInventoryKey(left).localeCompare(runtimeInventoryKey(right)),
+  );
 };
 
 export const validateBillingAccountId = (value) => {

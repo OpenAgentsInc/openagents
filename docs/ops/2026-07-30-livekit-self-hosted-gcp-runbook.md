@@ -464,7 +464,13 @@ versions, and digests.
 The runner uses a temporary `KUBECONFIG`, validates the exact cluster, node
 pools, Redis tier, addresses, Kubernetes namespace, Workload Identity
 annotation, and named secret metadata, renders the pinned bundle, verifies
-manifest digests, then applies only the `livekit-system` resource set. It never
+manifest digests, and inventories every rendered object before addon or runtime
+mutation. Every namespaced object must carry an explicit namespace, and its
+exact API version and kind must admit that namespace. The closed policy permits
+only the expected `cert-manager` and `livekit-system` objects, permits only the
+`livekit-system` Namespace object, and rejects cluster-scoped resources that
+acquire a namespace. The final server-side apply therefore has no default
+namespace flag and preserves each admitted object's explicit scope. It never
 prints a Secret, a credential-bearing ConfigMap payload, an external IP, or a
 provider response.
 
