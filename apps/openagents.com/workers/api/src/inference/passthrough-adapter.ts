@@ -30,6 +30,7 @@ import {
   type InferenceRequest,
   type InferenceResult,
   type InferenceStreamChunk,
+  type InferenceToolCallDelta,
   type InferenceUsage,
 } from "./provider-adapter";
 import {
@@ -451,6 +452,30 @@ const buildBody = (
     : openAiBody(request, defaultMaxTokens);
 };
 
+// Project a buffered assistant message's tool calls onto the incremental
+// tool-call delta shape the streamed contract uses.
+//
+// A buffered completion holds each tool call WHOLE, so one delta per call is
+// the accurate encoding: it carries the id, the type and the complete argument
+// JSON at its own index. That is exactly what an OpenAI streaming client
+// accumulates by index, so a consumer cannot tell this from a partner stream
+// that split the same call across many frames — it only ever sees one frame
+// arrive with everything already in it.
+const toolCallDeltasFromResult = (
+  toolCalls: InferenceResult["toolCalls"],
+): ReadonlyArray<InferenceToolCallDelta> | undefined =>
+  toolCalls === undefined || toolCalls.length === 0
+    ? undefined
+    : toolCalls.map((toolCall, index) => ({
+        function: {
+          arguments: toolCall.function.arguments,
+          name: toolCall.function.name,
+        },
+        id: toolCall.id,
+        index,
+        type: "function" as const,
+      }));
+
 const toResult = (
   config: PassthroughAdapterConfig,
   request: InferenceRequest,
@@ -502,11 +527,25 @@ export const makePassthroughAdapter = (
   // we always settle metering from the partner's real, receipt-first usage
   // rather than reconstructing counts from SSE deltas. A future revision can
   // upgrade this to true partner SSE passthrough without changing the contract.
+  //
+  // The content frame carries the assistant's tool calls as well as its text.
+  // Dropping them is what made the hosted Omega Luna lane produce NOTHING: a
+  // coding client always sends tools, an assistant turn that calls one has
+  // `content: null` and its whole answer in `tool_calls`, so a content-only
+  // frame reduced the entire turn to two empty deltas. The request succeeded,
+  // the usage was real, no error was raised anywhere — and the client rendered
+  // a spinner, then nothing. `complete` mapped tool calls from the first day
+  // (`openAiResult`); only this streamed projection of the same result lost
+  // them, which is why the non-streaming path looked healthy while every
+  // streamed turn dead-ended. See `InferenceStreamChunk.toolCallDeltas`, which
+  // the route already serializes into `delta.tool_calls`.
   stream: (request: InferenceRequest) =>
     runCompletion(config, { ...request, stream: false }).pipe(
       Effect.map((result): ReadonlyArray<InferenceStreamChunk> => {
+        const toolCallDeltas = toolCallDeltasFromResult(result.toolCalls);
         const contentChunk: InferenceStreamChunk = {
           contentDelta: result.content,
+          ...(toolCallDeltas === undefined ? {} : { toolCallDeltas }),
         };
         const terminalChunk: InferenceStreamChunk = {
           contentDelta: "",

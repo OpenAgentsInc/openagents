@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Effect, Redacted } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -13,6 +13,7 @@ import {
   VERTEX_GEMINI_ADAPTER_ID,
   selectAdapterPlan,
 } from './model-router'
+import { makePassthroughAdapter } from './passthrough-adapter'
 import {
   GEMINI_FLASH_MODEL_ID,
   GPT_56_LUNA_MODEL_ID,
@@ -379,6 +380,104 @@ describe('chat completions no-spend admission', () => {
     expect(calls).toHaveLength(1)
     expect(calls[0]?.adapterId).toBe(PASSTHROUGH_OPENAI_ADAPTER_ID)
     expect(calls[0]?.request.model).toBe(GPT_56_LUNA_MODEL_ID)
+  })
+
+  // REGRESSION — omega#160. The hosted Luna lane rendered NOTHING in Omega:
+  // the turn was accepted, the upstream succeeded, no error was raised, and the
+  // client showed a spinner and then an empty message. A coding client always
+  // sends tools, `gpt-5.6-luna` answers such a turn with `content: null` and
+  // the whole answer in `tool_calls`, and the streamed projection of the
+  // partner result carried content only — so the SSE body had no payload at
+  // all. This exercises the REAL passthrough adapter (not a stub) end to end
+  // through the route, because the seam that broke was between the two.
+  test('streams a gpt-5.6-luna tool call to the client instead of an empty body', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register(
+      makePassthroughAdapter({
+        apiKey: Redacted.make('sk-openai-test'),
+        baseUrl: 'https://api.openai.com',
+        fetch: async () =>
+          new Response(
+            JSON.stringify({
+              choices: [
+                {
+                  finish_reason: 'tool_calls',
+                  index: 0,
+                  message: {
+                    content: null,
+                    role: 'assistant',
+                    tool_calls: [
+                      {
+                        function: {
+                          arguments: '{"path":"src/main.rs"}',
+                          name: 'read_file',
+                        },
+                        id: 'call_luna_1',
+                        type: 'function',
+                      },
+                    ],
+                  },
+                },
+              ],
+              model: GPT_56_LUNA_MODEL_ID,
+              usage: {
+                completion_tokens: 18,
+                prompt_tokens: 141,
+                total_tokens: 159,
+              },
+            }),
+            { headers: { 'content-type': 'application/json' }, status: 200 },
+          ),
+        id: PASSTHROUGH_OPENAI_ADAPTER_ID,
+        wireFormat: 'openai',
+      }),
+    )
+
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        new Request('https://openagents.com/v1/chat/completions', {
+          body: JSON.stringify({
+            max_completion_tokens: 128_000,
+            messages: [{ content: 'what is in src/main.rs?', role: 'user' }],
+            model: GPT_56_LUNA_MODEL_ID,
+            stream: true,
+            tools: [
+              {
+                function: {
+                  description: 'Read a file from the project',
+                  name: 'read_file',
+                  parameters: {
+                    properties: { path: { type: 'string' } },
+                    required: ['path'],
+                    type: 'object',
+                  },
+                },
+                type: 'function',
+              },
+            ],
+          }),
+          method: 'POST',
+        }),
+        deps({
+          authenticate: async () => ({
+            accountRef: 'openauth:omega-desktop-user',
+          }),
+          laneArming: { ...hostedLaneArming, passthroughOpenAi: true },
+          lanePlan: selectAdapterPlan,
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = await response.text()
+    // The tool call the model actually made reaches the client, whole.
+    expect(body).toContain('"tool_calls"')
+    expect(body).toContain('call_luna_1')
+    expect(body).toContain('read_file')
+    expect(body).toContain('{\\"path\\":\\"src/main.rs\\"}')
+    expect(body).toContain('"finish_reason":"tool_calls"')
+    expect(body).toContain('data: [DONE]')
   })
 
   test('fails closed for gpt-5.6-luna when the passthrough-openai arming is absent', async () => {

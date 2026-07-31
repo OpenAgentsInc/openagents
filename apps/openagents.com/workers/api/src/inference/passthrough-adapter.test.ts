@@ -98,6 +98,88 @@ const openAiPayload = {
   },
 };
 
+const readFileTool = {
+  function: {
+    description: "Read a file from the project",
+    name: "read_file",
+    parameters: {
+      properties: { path: { type: "string" } },
+      required: ["path"],
+      type: "object",
+    },
+  },
+  type: "function",
+};
+
+// The exact upstream shape `gpt-5.6-luna` returns for a tool-calling turn:
+// `content: null`, the answer entirely in `tool_calls`, `finish_reason:
+// "tool_calls"` (captured against api.openai.com, 2026-07-31).
+const openAiToolCallPayload = {
+  choices: [
+    {
+      finish_reason: "tool_calls",
+      index: 0,
+      message: {
+        content: null,
+        role: "assistant",
+        tool_calls: [
+          {
+            function: { arguments: '{"path":"src/main.rs"}', name: "read_file" },
+            id: "call_luna_1",
+            type: "function",
+          },
+        ],
+      },
+    },
+  ],
+  model: "gpt-5.6-luna",
+  usage: { completion_tokens: 18, prompt_tokens: 141, total_tokens: 159 },
+};
+
+const openAiTwoToolCallsPayload = {
+  choices: [
+    {
+      finish_reason: "tool_calls",
+      index: 0,
+      message: {
+        content: null,
+        role: "assistant",
+        tool_calls: [
+          {
+            function: { arguments: '{"path":"a.rs"}', name: "read_file" },
+            id: "call_luna_1",
+            type: "function",
+          },
+          {
+            function: { arguments: '{"path":"src"}', name: "list_directory" },
+            id: "call_luna_2",
+            type: "function",
+          },
+        ],
+      },
+    },
+  ],
+  model: "gpt-5.6-luna",
+  usage: { completion_tokens: 32, prompt_tokens: 141, total_tokens: 173 },
+};
+
+const openAiReasoningPayload = {
+  choices: [
+    {
+      finish_reason: "stop",
+      index: 0,
+      message: { content: "391", role: "assistant" },
+    },
+  ],
+  model: "gpt-5.6-luna",
+  usage: {
+    completion_tokens: 96,
+    completion_tokens_details: { reasoning_tokens: 92 },
+    prompt_tokens: 20,
+    total_tokens: 116,
+  },
+};
+
 const anthropicPayload = {
   content: [
     { text: "hi ", type: "text" },
@@ -567,5 +649,97 @@ describe("passthrough adapter — streaming", () => {
     const adapter = makePassthroughAdapter(openAiConfig(fetchReturning(500, { error: "boom" })));
     const exit = await run(adapter.stream(request({ stream: true })));
     expect(Exit.isFailure(exit)).toBe(true);
+  });
+
+  // REGRESSION — the hosted GPT-5.6 Luna lane rendered NOTHING (omega#160).
+  //
+  // A coding client always sends tools. `gpt-5.6-luna` answers such a turn with
+  // `content: null` and the whole answer in `tool_calls` (verified upstream,
+  // 2026-07-31). The streamed projection emitted content only, so the entire
+  // turn became two empty deltas: HTTP 200, real usage, no error anywhere, and
+  // a client that showed a spinner and then nothing. A stream that carries a
+  // tool call must say so.
+  test("carries the assistant's tool calls through the streamed frames", async () => {
+    const adapter = makePassthroughAdapter(
+      openAiConfig(fetchReturning(200, openAiToolCallPayload)),
+    );
+
+    const chunks = successValue(
+      await run(
+        adapter.stream(
+          request({
+            model: "gpt-5.6-luna",
+            passthroughParams: { tools: [readFileTool] },
+            stream: true,
+          }),
+        ),
+      ),
+    );
+
+    // The whole answer IS the tool call, so the turn must not be silent.
+    expect(chunks[0]?.toolCallDeltas).toEqual([
+      {
+        function: { arguments: '{"path":"src/main.rs"}', name: "read_file" },
+        id: "call_luna_1",
+        index: 0,
+        type: "function",
+      },
+    ]);
+    expect(chunks[0]?.contentDelta).toBe("");
+    expect(chunks[1]?.finishReason).toBe("tool_calls");
+    // The streamed frames and the non-streamed result agree about what the
+    // assistant asked for; they are two projections of one partner response.
+    const completed = successValue(
+      await run(
+        adapter.complete(
+          request({ model: "gpt-5.6-luna", passthroughParams: { tools: [readFileTool] } }),
+        ),
+      ),
+    );
+    expect(completed.toolCalls?.[0]?.id).toBe("call_luna_1");
+  });
+
+  test("indexes several tool calls so an accumulating client keeps them apart", async () => {
+    const adapter = makePassthroughAdapter(
+      openAiConfig(fetchReturning(200, openAiTwoToolCallsPayload)),
+    );
+
+    const chunks = successValue(await run(adapter.stream(request({ stream: true }))));
+
+    expect(chunks[0]?.toolCallDeltas?.map(delta => delta.index)).toEqual([0, 1]);
+    expect(chunks[0]?.toolCallDeltas?.map(delta => delta.function?.name)).toEqual([
+      "read_file",
+      "list_directory",
+    ]);
+  });
+
+  // A reasoning model still answers in `content` over Chat Completions
+  // (verified upstream against `gpt-5.6-luna`, 2026-07-31: the visible answer
+  // is in `message.content` and `reasoning_tokens` is reported separately in
+  // usage). Visible assistant text must survive the streamed projection with
+  // the reasoning accounting intact.
+  test("a reasoning-model turn yields visible assistant text", async () => {
+    const adapter = makePassthroughAdapter(
+      openAiConfig(fetchReturning(200, openAiReasoningPayload)),
+    );
+
+    const chunks = successValue(
+      await run(adapter.stream(request({ model: "gpt-5.6-luna", stream: true }))),
+    );
+
+    expect(chunks[0]?.contentDelta).toBe("391");
+    expect(chunks[0]?.toolCallDeltas).toBeUndefined();
+    expect(chunks[1]?.finishReason).toBe("stop");
+    expect(chunks[1]?.usage?.completionTokens).toBe(96);
+  });
+
+  test("a text-only turn carries no tool-call deltas at all", async () => {
+    const adapter = makePassthroughAdapter(openAiConfig(fetchReturning(200, openAiPayload)));
+
+    const chunks = successValue(await run(adapter.stream(request({ stream: true }))));
+
+    expect(chunks[0]?.contentDelta).toBe("hi there");
+    expect(chunks[0]?.toolCallDeltas).toBeUndefined();
+    expect(chunks[1]?.toolCallDeltas).toBeUndefined();
   });
 });
