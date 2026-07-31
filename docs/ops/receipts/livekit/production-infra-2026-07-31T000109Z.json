@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "openagents.livekit_ops_receipt.v1",
+  "receiptRef": "livekit-ops-receipt-ref://sha256/4db3efe02be0afdd93914144a6e3d3fcd82e8219f0bf80005a6188c9a6b98e7a",
+  "issueRef": "github-issue-ref://OpenAgentsInc/openagents/9284",
+  "stage": "production",
+  "phase": "deployment",
+  "sourceBaseRevision": "c10a0ba1c13edb2e599140ea29b054b893ffbccf",
+  "deployedRevision": "989ca274507e354b49f1f93ee6f49f6f24c6d64c",
+  "bundleDigest": "sha256:3ad3638a7884fb37a6c159f114a9b2e50a255be43e28b0f8a061dd990936fac2",
+  "configurationDigest": "sha256:b0bf0f0cb801943b789906c615d3277629a8f73bd6d06b52a60aaf2c86eb8a7d",
+  "resourceRefs": [
+    "gcp-resource-ref://livekit/production"
+  ],
+  "startedAt": "2026-07-31T00:01:34.274Z",
+  "settledAt": "2026-07-31T00:01:34.274Z",
+  "outcome": "passed",
+  "evidenceTier": "live_observed",
+  "liveProof": true,
+  "resultDigest": "sha256:4db3efe02be0afdd93914144a6e3d3fcd82e8219f0bf80005a6188c9a6b98e7a",
+  "limitations": [
+    "This operation receipt proves only the scoped deployment lifecycle step.",
+    "Connectivity, load, drills, scans, cost, and rollback acceptance require separate receipts."
+  ]
+}
