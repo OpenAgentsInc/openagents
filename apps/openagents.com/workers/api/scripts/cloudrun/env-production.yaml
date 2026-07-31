@@ -151,16 +151,45 @@ OPENAUTH_ISSUER_URL: "https://auth.openagents.com"
 # friction only: the x-forwarded-for first hop is client-prependable, so
 # GLOBAL_DAILY_LIMIT is the real bound.
 #
+# WHAT IP_HOURLY_LIMIT ACTUALLY IS. It is an ACCOUNT-CREATION budget: at most N
+# brand-new `nostr:` identities per hour per source IP. It is NOT a token
+# limiter, and no per-IP token limiter exists on any serving path. The "tokens
+# per hour from one IP" figure below is a DERIVED product, not an enforced gate
+# (`omegaNostrSelfProvisionAbuseBound.tokensPerHourSingleIp`). A returning
+# install charges only the mint budget, so this number bounds onboarding rate,
+# not usage.
+#
 # ARITHMETIC AT THESE VALUES (this replaces the pre-arming note, which computed
 # the same product from the old 1000000 ceiling):
 #   worst case/day  = GLOBAL_DAILY_LIMIT x DAILY_TOKEN_CEILING
 #                   = 50 x 200000 = 10,000,000 served tokens/day
 #                     across ALL self-provisioned identities combined
-#   worst case/hour = IP_HOURLY_LIMIT x DAILY_TOKEN_CEILING
-#                   = 3 x 200000 = 600,000 tokens from one source IP
+#   derived/hour    = IP_HOURLY_LIMIT x DAILY_TOKEN_CEILING
+#                   = 30 x 200000 = 6,000,000 tokens from one source IP
 # 200000 is the number the owner approved when arming; it is 5x lower than the
 # module default and caps the aggregate stranger exposure at 10M/day rather
 # than the 50M the previous ceiling would have allowed.
+#
+# WHICH BOUND ACTUALLY BINDS (owner raise 3 -> 30, 2026-07-31). Raising
+# IP_HOURLY_LIMIT 10x does NOT raise total spend exposure: the aggregate stays
+# GLOBAL_DAILY_LIMIT x DAILY_TOKEN_CEILING = 10,000,000 tokens/day, because a
+# source IP cannot mint accounts the global 50/day budget has already spent. At
+# 30/hour one NAT can exhaust the whole deployment's daily account budget in
+# under two hours, so GLOBAL_DAILY_LIMIT is now the first bound for any
+# multi-tester IP, and the 6,000,000/hour derivation is unreachable in practice
+# (it would need 30 identities each burning a full day's allowance inside one
+# hour, and 24 such hours would be 144M/day against a 10M/day aggregate).
+#   - ONE tester on one IP: bound by DAILY_TOKEN_CEILING (200000/day). They
+#     create exactly one identity, so IP_HOURLY_LIMIT never applied to them at
+#     3 and does not apply at 30. This raise is cosmetic for that case; only
+#     DAILY_TOKEN_CEILING moves it, and that multiplies aggregate exposure.
+#   - MANY testers behind one NAT: this raise is real. The observed
+#     `creation_ip` refusal of a fourth simultaneous onboarding is exactly what
+#     3/hour produced; 30/hour removes it, up to the global 50/day.
+# Do not treat the per-IP bucket as spend protection. The x-forwarded-for first
+# hop is client-prependable, so an attacker bypasses it outright.
+# GLOBAL_DAILY_LIMIT x DAILY_TOKEN_CEILING is the only bound that actually
+# protects owner-funded credit.
 #
 # WHO THIS NUMBER APPLIES TO. FREE-TIER identities only — that is, `nostr:`
 # identities with NO active row in `sarah_voice_alpha_memberships`. An
@@ -191,7 +220,7 @@ OPENAUTH_ISSUER_URL: "https://auth.openagents.com"
 # Ref: docs/audits/2026-07-28-omega-nostr-self-provisioning-abuse-bounds.md
 OMEGA_NOSTR_SELF_PROVISION_ENABLED: "1"
 OMEGA_NOSTR_SELF_PROVISION_GLOBAL_DAILY_LIMIT: "50"
-OMEGA_NOSTR_SELF_PROVISION_IP_HOURLY_LIMIT: "3"
+OMEGA_NOSTR_SELF_PROVISION_IP_HOURLY_LIMIT: "30"
 OMEGA_NOSTR_SELF_PROVISION_DAILY_TOKEN_CEILING: "200000"
 PUBLIC_NOSTR_CHAT_RELAY_SELF_PUBKEY: "e841147f262799821bbaa2930fcca982a575458f0e043e064a26ed8aba2046ed"
 SARAH_NOSTR_OWNER_PUBKEY: "bcf86577b45042c960c99fe4ac1380a3ef0565ccbdd5c81e3f20f0919fe4fd14"
