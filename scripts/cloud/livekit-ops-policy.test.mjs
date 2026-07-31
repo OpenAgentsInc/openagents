@@ -954,6 +954,7 @@ test("deployment control Terraform fixes identity, source, route, and substituti
   assert.match(module, /roles\/iam\.denyReviewer/u);
   assert.match(module, /roles\/resourcemanager\.tagViewer/u);
   assert.match(module, /roles\/artifactregistry\.reader/u);
+  assert.match(module, /roles\/secretmanager\.viewer/u);
   assert.match(module, /repository\s*=\s*"oa-cloud"/u);
   assert.match(module, /boundary_digest\s*=\s*"sha256:\$\{filesha256\(/u);
   assert.match(module, /connection_authorizer_reader/u);

@@ -70,6 +70,15 @@ resource "google_secret_manager_secret_iam_member" "preflight_reader" {
   member    = "serviceAccount:${google_service_account.deployer.email}"
 }
 
+resource "google_secret_manager_secret_iam_member" "preflight_metadata_reader" {
+  for_each = var.managed_secret_ids
+
+  project   = var.project_id
+  secret_id = each.value
+  role      = "roles/secretmanager.viewer"
+  member    = "serviceAccount:${google_service_account.deployer.email}"
+}
+
 data "google_secret_manager_secret" "sarah_openai_source" {
   project   = var.project_id
   secret_id = "sarah-openai-api-key"
