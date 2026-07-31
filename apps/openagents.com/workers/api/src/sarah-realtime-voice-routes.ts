@@ -286,10 +286,13 @@ export const finalizeSarahLiveKitRoom = async <Bindings>(
 export const reconcileSarahLiveKitTerminalRooms = async <Bindings>(
   dependencies: SarahVoiceLiveKitLifecycleDependencies<Bindings>,
   env: Bindings,
-): Promise<Readonly<{ cleaned: number; failed: number }>> => {
+): Promise<
+  Readonly<{ cleaned: number; failed: number; abandoned: number }>
+> => {
   const opened = await dependencies.openStore(env)
   let cleaned = 0
   let failed = 0
+  let abandoned = 0
   try {
     const nowMs = (dependencies.now ?? Date.now)()
     const nowIso = new Date(nowMs).toISOString()
@@ -311,17 +314,19 @@ export const reconcileSarahLiveKitTerminalRooms = async <Bindings>(
         })
         cleaned += 1
       } catch {
-        failed += 1
         // eslint-disable-next-line no-await-in-loop
-        await opened.store.markLiveKitCleanup({
+        const outcome = await opened.store.markLiveKitCleanup({
           sessionRef: cleanup.sessionRef,
           generation: cleanup.generation,
           state: 'cleanup_failed',
           nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
         })
+        // A spent attempt budget retires the row instead of re-queueing it.
+        if (outcome.state === 'cleanup_abandoned') abandoned += 1
+        else failed += 1
       }
     }
-    return { cleaned, failed }
+    return { cleaned, failed, abandoned }
   } finally {
     await opened.close()
   }

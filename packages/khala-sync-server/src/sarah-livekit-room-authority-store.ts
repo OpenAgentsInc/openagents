@@ -94,7 +94,16 @@ const bindingMatches = (
     binding.room_context_kind === "community" &&
     (binding.state === "prepared" ||
       binding.state === "active" ||
-      (["cleanup_ready", "cleanup_failed", "cleaned"].includes(binding.state) &&
+      // EP263-LK H4 (#9282): `cleanup_abandoned` is a cleanup state like the
+      // three beside it. Omitting it here would refuse the terminal
+      // presence-removal path for a binding we gave up deleting, which is
+      // exactly the row that most needs its presence retired.
+      ([
+        "cleanup_ready",
+        "cleanup_failed",
+        "cleanup_abandoned",
+        "cleaned",
+      ].includes(binding.state) &&
         !snapshot.presenceActive &&
         snapshot.floor.state === "stopped")) &&
     binding.session_ref === presence.sessionRef &&
@@ -229,6 +238,25 @@ export interface SarahLiveKitRoomAuthorityStore {
     readonly userRefDigest: string;
     readonly now: string;
   }) => Promise<boolean>;
+  /**
+   * EP263-LK H5 (#9282): retire every remaining active member of one room.
+   * The worker-close handler retired the community rendezvous beside these
+   * rows but never the rows themselves, so members accumulated `active` with a
+   * null `removed_at` forever. Call this wherever the rendezvous is retired.
+   */
+  readonly retireRoomMembers: (input: {
+    readonly presenceLeaseRef: string;
+    readonly now: string;
+  }) => Promise<number>;
+  /**
+   * Backstop sweep for members whose join window already closed. Rooms that
+   * died before this path existed have no close event left to fire, so
+   * retirement has to be able to converge on its own.
+   */
+  readonly retireExpiredRoomMembers: (input: {
+    readonly now: string;
+    readonly limit?: number;
+  }) => Promise<number>;
   readonly compareAndSwap: (input: {
     readonly presenceLeaseRef: string;
     readonly expectedRevision: number;
@@ -823,6 +851,57 @@ export class PostgresSarahLiveKitRoomAuthorityStore implements SarahLiveKitRoomA
           AND state='active'
         RETURNING user_ref_digest`;
       return rows[0]?.user_ref_digest === input.userRefDigest;
+    } catch {
+      throw new SarahLiveKitRoomAuthorityStoreError({ reason: "unavailable" });
+    }
+  }
+
+  async retireRoomMembers(input: {
+    readonly presenceLeaseRef: string;
+    readonly now: string;
+  }): Promise<number> {
+    if (input.presenceLeaseRef.trim() === "" || !Number.isFinite(Date.parse(input.now))) {
+      throw new SarahLiveKitRoomAuthorityStoreError({ reason: "invalid" });
+    }
+    try {
+      const rows: Array<{ user_ref_digest: string }> = await this.sql`
+        UPDATE sarah_livekit_room_members
+        SET state='removed',removed_at=${input.now},updated_at=${input.now}
+        WHERE presence_lease_ref=${input.presenceLeaseRef}
+          AND state='active'
+        RETURNING user_ref_digest`;
+      return rows.length;
+    } catch {
+      throw new SarahLiveKitRoomAuthorityStoreError({ reason: "unavailable" });
+    }
+  }
+
+  async retireExpiredRoomMembers(input: {
+    readonly now: string;
+    readonly limit?: number;
+  }): Promise<number> {
+    if (!Number.isFinite(Date.parse(input.now))) {
+      throw new SarahLiveKitRoomAuthorityStoreError({ reason: "invalid" });
+    }
+    const boundedLimit = Math.max(1, Math.min(500, Math.trunc(input.limit ?? 500)));
+    try {
+      const rows: Array<{ user_ref_digest: string }> = await this.sql`
+        WITH expired AS (
+          SELECT presence_lease_ref, owner_user_id
+          FROM sarah_livekit_room_members
+          WHERE state='active'
+            AND join_expires_at<=${input.now}
+          ORDER BY join_expires_at
+          LIMIT ${boundedLimit}
+          FOR UPDATE SKIP LOCKED
+        )
+        UPDATE sarah_livekit_room_members AS member
+        SET state='removed',removed_at=${input.now},updated_at=${input.now}
+        FROM expired
+        WHERE member.presence_lease_ref=expired.presence_lease_ref
+          AND member.owner_user_id=expired.owner_user_id
+        RETURNING member.user_ref_digest`;
+      return rows.length;
     } catch {
       throw new SarahLiveKitRoomAuthorityStoreError({ reason: "unavailable" });
     }

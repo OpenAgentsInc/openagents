@@ -289,7 +289,32 @@ export type SarahVoiceLiveKitCleanup = Readonly<{
 }>;
 
 export type SarahVoiceLiveKitCleanupClaim = SarahVoiceLiveKitCleanup &
-  Readonly<{ cleanupAttemptedAt: string }>;
+  Readonly<{ cleanupAttemptedAt: string; cleanupAttemptCount: number }>;
+
+export type SarahVoiceLiveKitBindingState =
+  | "prepared"
+  | "active"
+  | "cleanup_ready"
+  | "cleanup_failed"
+  | "cleanup_abandoned"
+  | "cleaned";
+
+/**
+ * EP263-LK H4 (#9282): how many times the reconciler will try to delete one
+ * room before it stops. Eight attempts over the backoff ladder below spans
+ * roughly half an hour, which is long enough to ride out a transient broker or
+ * SFU fault and short enough that an unreachable room stops burning the loop.
+ */
+export const SARAH_LIVEKIT_MAX_CLEANUP_ATTEMPTS = 8;
+
+export const SARAH_LIVEKIT_BASE_CLEANUP_BACKOFF_SECONDS = 15;
+
+export const SARAH_LIVEKIT_MAX_CLEANUP_BACKOFF_SECONDS = 900;
+
+export type SarahVoiceLiveKitCleanupOutcome = Readonly<{
+  state: SarahVoiceLiveKitBindingState;
+  cleanupAttemptCount: number;
+}>;
 
 export type SarahVoiceLiveKitProvisioningIntent = Readonly<{
   sessionRef: string;
@@ -1699,7 +1724,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           AND binding.generation = ${input.generation}
       `) as ReadonlyArray<{
         session_state: SarahVoiceSessionState;
-        binding_state: "prepared" | "active" | "cleanup_ready" | "cleanup_failed" | "cleaned";
+        binding_state: SarahVoiceLiveKitBindingState;
         worker_job_ref: string | null;
         worker_claimed_at: string | null;
         worker_closed_at: string | null;
@@ -1754,7 +1779,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             OR binding.worker_room_sid = ${input.workerRoomSid ?? null}
           )
           AND binding.state IN (
-            'prepared', 'active', 'cleanup_ready', 'cleanup_failed', 'cleaned'
+            'prepared', 'active', 'cleanup_ready', 'cleanup_failed',
+            'cleanup_abandoned', 'cleaned'
           )
           AND binding.join_expires_at > ${input.nowIso}
           AND session.session_ref = binding.session_ref
@@ -1800,7 +1826,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           AND binding.session_ref = ${input.sessionRef}
           AND binding.generation = ${input.generation}
           AND binding.state IN (
-            'prepared', 'active', 'cleanup_ready', 'cleanup_failed', 'cleaned'
+            'prepared', 'active', 'cleanup_ready', 'cleanup_failed',
+            'cleanup_abandoned', 'cleaned'
           )
       `) as ReadonlyArray<{
         owner_user_id: string;
@@ -1949,10 +1976,24 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         dispatch_ref: string;
         sarah_presence_lease_ref: string;
         cleanup_attempted_at: string;
+        cleanup_attempt_count: number | string;
       }>;
-      const rows = await sql.begin(
-        async (tx) =>
-          (await tx`
+      const rows = await sql.begin(async (tx) => {
+        // Lazily retire anything that reached the attempt cap without a
+        // terminal mark — an attempt whose process died between the claim and
+        // the mark would otherwise sit at the cap in a retryable state
+        // forever: no longer claimed, but never visibly given up on either.
+        // Same lazy dead-letter shape as the oa_infra_jobs queue.
+        await tx`
+          UPDATE sarah_livekit_room_bindings
+          SET state = 'cleanup_abandoned',
+              cleanup_abandoned_at = COALESCE(cleanup_abandoned_at, ${input.nowIso}),
+              cleanup_next_attempt_at = NULL,
+              updated_at = ${input.nowIso}
+          WHERE state IN ('cleanup_ready', 'cleanup_failed')
+            AND cleanup_attempt_count >= ${SARAH_LIVEKIT_MAX_CLEANUP_ATTEMPTS}
+        `;
+        return (await tx`
             WITH candidates AS (
               SELECT binding.session_ref
               FROM sarah_livekit_room_bindings AS binding
@@ -1963,6 +2004,12 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
                   binding.cleanup_attempted_at IS NULL
                   OR binding.cleanup_attempted_at <= ${input.staleBeforeIso}
                 )
+                AND (
+                  binding.cleanup_next_attempt_at IS NULL
+                  OR binding.cleanup_next_attempt_at <= ${input.nowIso}
+                )
+                AND binding.cleanup_attempt_count
+                  < ${SARAH_LIVEKIT_MAX_CLEANUP_ATTEMPTS}
                 AND session.state IN ('settled', 'released')
                 AND session.settlement_receipt_ref IS NOT NULL
               ORDER BY binding.updated_at, binding.session_ref
@@ -1971,14 +2018,16 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             )
             UPDATE sarah_livekit_room_bindings AS binding
             SET cleanup_attempted_at = ${input.nowIso},
+                cleanup_attempt_count = binding.cleanup_attempt_count + 1,
                 updated_at = ${input.nowIso}
             FROM candidates
             WHERE binding.session_ref = candidates.session_ref
             RETURNING binding.session_ref, binding.generation,
               binding.room_ref, binding.room_epoch, binding.dispatch_ref,
-              binding.sarah_presence_lease_ref, binding.cleanup_attempted_at
-          `) as ReadonlyArray<CleanupClaimRow>,
-      );
+              binding.sarah_presence_lease_ref, binding.cleanup_attempted_at,
+              binding.cleanup_attempt_count
+          `) as ReadonlyArray<CleanupClaimRow>;
+      });
       return rows.map((row) => ({
         sessionRef: row.session_ref,
         generation: toSafeInteger(row.generation, "generation"),
@@ -1987,6 +2036,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         dispatchRef: row.dispatch_ref,
         sarahPresenceLeaseRef: row.sarah_presence_lease_ref,
         cleanupAttemptedAt: row.cleanup_attempted_at,
+        cleanupAttemptCount: toSafeInteger(row.cleanup_attempt_count, "cleanup_attempt_count"),
       }));
     } catch (error) {
       throw new SarahVoiceStorageError("Sarah LiveKit cleanup claim failed", error);
@@ -2000,12 +2050,47 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       state: "cleaned" | "cleanup_failed";
       nowIso: string;
     }>,
-  ): Promise<void> => {
+  ): Promise<SarahVoiceLiveKitCleanupOutcome> => {
     try {
+      // A failed attempt either earns an exponentially later retry or, once the
+      // bounded attempts are spent, becomes `cleanup_abandoned`. The decision
+      // is made here in one statement so the one-shot worker-close path and the
+      // scheduled reconciler cannot disagree about when to give up.
       const rows = (await sql`
         UPDATE sarah_livekit_room_bindings AS binding
-        SET state = ${input.state},
+        SET state = CASE
+              WHEN ${input.state} = 'cleaned' THEN 'cleaned'
+              WHEN binding.cleanup_attempt_count
+                >= ${SARAH_LIVEKIT_MAX_CLEANUP_ATTEMPTS} THEN 'cleanup_abandoned'
+              ELSE 'cleanup_failed'
+            END,
             cleanup_attempted_at = ${input.nowIso},
+            cleanup_next_attempt_at = CASE
+              WHEN ${input.state} = 'cleaned' THEN NULL
+              WHEN binding.cleanup_attempt_count
+                >= ${SARAH_LIVEKIT_MAX_CLEANUP_ATTEMPTS} THEN NULL
+              ELSE to_char(
+                (
+                  ${input.nowIso}::timestamptz
+                  + make_interval(secs => LEAST(
+                      ${SARAH_LIVEKIT_MAX_CLEANUP_BACKOFF_SECONDS}::double precision,
+                      ${SARAH_LIVEKIT_BASE_CLEANUP_BACKOFF_SECONDS}::double precision
+                        * power(
+                            2,
+                            GREATEST(binding.cleanup_attempt_count - 1, 0)
+                          )
+                    ))
+                ) AT TIME ZONE 'UTC',
+                'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+              )
+            END,
+            cleanup_abandoned_at = CASE
+              WHEN ${input.state} <> 'cleaned'
+                AND binding.cleanup_attempt_count
+                  >= ${SARAH_LIVEKIT_MAX_CLEANUP_ATTEMPTS}
+                THEN COALESCE(binding.cleanup_abandoned_at, ${input.nowIso})
+              ELSE NULL
+            END,
             cleaned_at = CASE
               WHEN ${input.state} = 'cleaned'
                 THEN COALESCE(binding.cleaned_at, ${input.nowIso})
@@ -2022,13 +2107,22 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             binding.state IN ('cleanup_ready', 'cleanup_failed')
             OR (${input.state} = 'cleaned' AND binding.state = 'cleaned')
           )
-        RETURNING binding.session_ref
-      `) as ReadonlyArray<{ session_ref: string }>;
-      if (first(rows) === undefined) {
+        RETURNING binding.session_ref, binding.state, binding.cleanup_attempt_count
+      `) as ReadonlyArray<{
+        session_ref: string;
+        state: SarahVoiceLiveKitBindingState;
+        cleanup_attempt_count: number | string;
+      }>;
+      const row = first(rows);
+      if (row === undefined) {
         throw new SarahVoiceSessionRejectedError(
           "LiveKit cleanup is not eligible before terminal accounting",
         );
       }
+      return {
+        state: row.state,
+        cleanupAttemptCount: toSafeInteger(row.cleanup_attempt_count, "cleanup_attempt_count"),
+      };
     } catch (error) {
       if (error instanceof SarahVoiceSessionRejectedError) throw error;
       throw new SarahVoiceStorageError("Sarah LiveKit cleanup update failed", error);
@@ -2694,6 +2788,9 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     await tx`
       UPDATE sarah_livekit_room_bindings
       SET state = 'cleanup_ready',
+          cleanup_attempt_count = 0,
+          cleanup_next_attempt_at = NULL,
+          cleanup_abandoned_at = NULL,
           updated_at = ${input.nowIso}
       WHERE session_ref = ${current.sessionRef}
         AND state IN ('prepared', 'active', 'cleanup_failed')
@@ -3777,7 +3874,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         `) as ReadonlyArray<{
           room_ref: string;
           sarah_participant_ref: string;
-          binding_state: "prepared" | "active" | "cleanup_ready" | "cleanup_failed" | "cleaned";
+          binding_state: SarahVoiceLiveKitBindingState;
           join_expires_at: string;
           sarah_joined_at: string | null;
           worker_closed_at: string | null;
@@ -4166,7 +4263,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         provider_session_ref_digest: string | null;
         provider_configuration_digest: string | null;
         provider_admitted_at: string | null;
-        binding_state: "prepared" | "active" | "cleanup_ready" | "cleanup_failed" | "cleaned";
+        binding_state: SarahVoiceLiveKitBindingState;
         worker_closed_at: string | null;
         worker_stop_reason: SarahVoiceLiveKitWorkerStopReason | null;
         session_state: SarahVoiceSessionState;
@@ -4177,7 +4274,9 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         row.worker_closed_at !== null ||
         row.worker_stop_reason !== null ||
         ["settled", "released", "failed"].includes(row.session_state) ||
-        ["cleanup_ready", "cleanup_failed", "cleaned"].includes(row.binding_state)
+        ["cleanup_ready", "cleanup_failed", "cleanup_abandoned", "cleaned"].includes(
+          row.binding_state,
+        )
       ) {
         return { state: "closed" };
       }

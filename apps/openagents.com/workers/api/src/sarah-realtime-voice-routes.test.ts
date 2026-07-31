@@ -924,7 +924,10 @@ describe('managed Sarah Realtime voice session route', () => {
       dispatchRef: 'dispatch-1',
       sarahPresenceLeaseRef: 'presence-1',
     }))
-    const markLiveKitCleanup = vi.fn(async () => undefined)
+    const markLiveKitCleanup = vi.fn(async () => ({
+      state: 'cleaned' as const,
+      cleanupAttemptCount: 1,
+    }))
     const claimLiveKitCleanups = vi.fn(async () => [
       {
         sessionRef: 'voice-terminal',
@@ -934,6 +937,7 @@ describe('managed Sarah Realtime voice session route', () => {
         dispatchRef: 'dispatch-terminal',
         sarahPresenceLeaseRef: 'presence-terminal',
         cleanupAttemptedAt: '2026-07-28T12:00:00.000Z',
+        cleanupAttemptCount: 1,
       },
     ])
     const claimLiveKitProvisioningIntents = vi.fn(async () => [
@@ -1017,6 +1021,7 @@ describe('managed Sarah Realtime voice session route', () => {
     expect(await reconcileSarahLiveKitTerminalRooms(dependencies, {})).toEqual({
       cleaned: 1,
       failed: 0,
+      abandoned: 0,
     })
 
     expect(recordLiveKitParticipantJoin).toHaveBeenCalledWith(

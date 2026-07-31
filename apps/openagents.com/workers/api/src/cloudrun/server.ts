@@ -1,4 +1,7 @@
-import { makeSarahRealtimeVoiceStore } from '@openagentsinc/khala-sync-server'
+import {
+  PostgresSarahLiveKitRoomAuthorityStore,
+  makeSarahRealtimeVoiceStore,
+} from '@openagentsinc/khala-sync-server'
 import { Runtime } from '@openagentsinc/runtime-platform'
 import { createHash } from 'node:crypto'
 
@@ -163,6 +166,22 @@ const main = async (): Promise<void> => {
                   makeLifecycleDependencies(),
                   runtime.env,
                 ),
+        // EP263-LK H5 (#9282): rooms that died before member retirement
+        // existed have no close event left to fire, so the sweep is the only
+        // path by which those rows can converge.
+        retireStaleRoomMembers: voiceConfig.enabled
+          ? async () => {
+              const client =
+                await defaultMakeKhalaSyncSqlClient(connectionString)
+              try {
+                return await new PostgresSarahLiveKitRoomAuthorityStore(
+                  client.sql,
+                ).retireExpiredRoomMembers({ now: new Date().toISOString() })
+              } finally {
+                await client.end()
+              }
+            }
+          : undefined,
       },
       log,
     )

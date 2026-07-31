@@ -1025,6 +1025,30 @@ provider or projection error, must stop the corresponding Sarah authority and
 retire its community-room rendezvous **and its room members** so the next
 admitted generation is not blocked by a stale active room.
 
+Room cleanup is bounded (EP263-LK H4, #9282). The terminal-room reconciler
+retries a failed `sarah_livekit_room_bindings` cleanup at most
+`SARAH_LIVEKIT_MAX_CLEANUP_ATTEMPTS` (8) times, backing off exponentially from
+15 seconds to a 900 second cap, then moves the row to the terminal
+`cleanup_abandoned` state with `cleanup_abandoned_at` set. Giving up is
+reported as its own `sarah_livekit_terminal_rooms_abandoned` scheduled-tick
+event and counted in `sarah_livekit_terminal_rooms_reconciled`. A row that
+reaches the cap without a terminal mark — a process that died between the claim
+and the mark — is dead-lettered lazily on the next claim, so no row can sit at
+or above the cap in a retryable state. `cleanup_abandoned` is excluded from the
+`binding.state IN ('prepared','active')` authority predicates exactly as
+`cleanup_failed` already was; this bounds resource use and does not widen
+authority. To inspect what was abandoned:
+
+```sql
+SELECT session_ref, room_ref, cleanup_attempt_count, cleanup_abandoned_at
+  FROM sarah_livekit_room_bindings
+ WHERE state = 'cleanup_abandoned'
+ ORDER BY cleanup_abandoned_at DESC;
+```
+
+An abandoned row means the broker could not delete that room. Confirm the room
+is genuinely gone at the SFU before dismissing it.
+
 Mint the two acceptance bearers with the checked-in operator tool. Do not
 hand-build a one-shot minting helper for a run and delete it afterwards: that
 made every acceptance a slightly different, unreviewable procedure, and a

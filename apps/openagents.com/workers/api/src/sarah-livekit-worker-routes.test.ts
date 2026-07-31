@@ -85,6 +85,8 @@ const authorityStore = {
   read: vi.fn(async () => undefined),
   compareAndSwap: vi.fn(async (input) => input.snapshot),
   retireCommunityRoomRendezvous: vi.fn(async () => true),
+  retireRoomMembers: vi.fn(async () => 2),
+  retireExpiredRoomMembers: vi.fn(async () => 0),
 } as unknown as SarahLiveKitRoomAuthorityStore;
 const cleanup = vi.fn(async () => undefined);
 const dependencies = {
@@ -405,7 +407,7 @@ describe("Sarah LiveKit worker routes", () => {
     expect(cleanup).toHaveBeenCalledTimes(cleanupCalls);
   });
 
-  test("retires community authority and rendezvous on worker close", async () => {
+  test("retires community authority, rendezvous, and members on worker close", async () => {
     const presenceLeaseRef = "presence:community-close";
     readLiveKitMembershipLease.mockResolvedValueOnce({
       ownerUserId: "owner:one",
@@ -440,6 +442,7 @@ describe("Sarah LiveKit worker routes", () => {
     vi.mocked(authorityStore.read).mockResolvedValueOnce(authority);
     vi.mocked(authorityStore.compareAndSwap).mockClear();
     vi.mocked(authorityStore.retireCommunityRoomRendezvous).mockClear();
+    vi.mocked(authorityStore.retireRoomMembers).mockClear();
 
     const response = await handleSarahLiveKitWorkerEvent(
       dependencies,
@@ -465,6 +468,13 @@ describe("Sarah LiveKit worker routes", () => {
       }),
     );
     expect(authorityStore.retireCommunityRoomRendezvous).toHaveBeenCalledWith({
+      presenceLeaseRef,
+      now: "2033-05-18T03:33:20.000Z",
+    });
+    // EP263-LK H5 (#9282): the members die with the rendezvous. This handler
+    // used to retire only the rendezvous, so every member row stayed 'active'
+    // with a null removed_at forever.
+    expect(authorityStore.retireRoomMembers).toHaveBeenCalledWith({
       presenceLeaseRef,
       now: "2033-05-18T03:33:20.000Z",
     });

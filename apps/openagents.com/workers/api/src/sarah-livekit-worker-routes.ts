@@ -542,6 +542,13 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
         presenceLeaseRef: communityPresenceLeaseRef,
         now: nowIso,
       });
+      // EP263-LK H5 (#9282): the rendezvous and its members die together. This
+      // handler used to retire only the rendezvous, so every member row stayed
+      // `active` with a null `removed_at` for the life of the database.
+      await opened.authorityStore.retireRoomMembers({
+        presenceLeaseRef: communityPresenceLeaseRef,
+        now: nowIso,
+      });
     }
     if (body._tag === "close" && body.accountingStatus === "exact") {
       await dependencies.cleanup(env, {

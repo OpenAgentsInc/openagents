@@ -442,10 +442,24 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       `;
       await legacySql.end();
       legacySql = undefined;
-      await copyFile(
-        path.join(migrationsDir, "0117_sarah_voice_frozen_accounting_authority.sql"),
-        path.join(stagedMigrationsDir, "0117_sarah_voice_frozen_accounting_authority.sql"),
-      );
+      // Stage the rest of the migration set, not only 0117. The rows above are
+      // what a pre-0117 deployment left behind, but the store exercised below
+      // is the current one, and a real deployment runs it against the current
+      // schema. Stopping the fixture at 0117 made every later column the store
+      // writes (most recently the EP263-LK cleanup convergence columns in 0125)
+      // fail here for a reason that has nothing to do with frozen rate
+      // authority.
+      for (const filename of await readdir(migrationsDir)) {
+        if (
+          filename.endsWith(".sql") &&
+          filename.localeCompare("0117_sarah_voice_frozen_accounting_authority.sql") >= 0
+        ) {
+          await copyFile(
+            path.join(migrationsDir, filename),
+            path.join(stagedMigrationsDir, filename),
+          );
+        }
+      }
       await runMigrations({ databaseUrl, migrationsDir: stagedMigrationsDir });
       legacySql = SQL({ url: databaseUrl, max: 2 });
 
@@ -1946,16 +1960,29 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         nowIso: "2026-07-28T13:01:11.000Z",
       }),
     ).toEqual([]);
-    await store.markLiveKitCleanup({
-      sessionRef: binding.sessionRef,
-      generation: 1,
-      state: "cleanup_failed",
-      nowIso: "2026-07-28T13:01:11.000Z",
-    });
+    // EP263-LK H4 (#9282): a failed cleanup earns a bounded, exponentially
+    // later retry rather than an immediate re-claim. The first failure is
+    // attempt one, so the next attempt is due 15 seconds later; a reconciler
+    // pass before that must claim nothing, which is what stops the loop from
+    // spinning on a room the broker will never delete.
+    expect(
+      await store.markLiveKitCleanup({
+        sessionRef: binding.sessionRef,
+        generation: 1,
+        state: "cleanup_failed",
+        nowIso: "2026-07-28T13:01:11.000Z",
+      }),
+    ).toEqual({ state: "cleanup_failed", cleanupAttemptCount: 1 });
     expect(
       await store.claimLiveKitCleanups({
         staleBeforeIso: "2026-07-28T13:01:11.000Z",
         nowIso: "2026-07-28T13:01:12.000Z",
+      }),
+    ).toEqual([]);
+    expect(
+      await store.claimLiveKitCleanups({
+        staleBeforeIso: "2026-07-28T13:01:11.000Z",
+        nowIso: "2026-07-28T13:01:26.000Z",
       }),
     ).toHaveLength(1);
     await store.markLiveKitCleanup({

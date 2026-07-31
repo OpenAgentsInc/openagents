@@ -309,6 +309,11 @@ export const handleSarahLiveKitCommunityRoomJoinRequest = async <Environment, Co
           presenceLeaseRef: rendezvous.presenceLeaseRef,
           now,
         });
+        // EP263-LK H5 (#9282): the members die with the rendezvous.
+        await opened.store.retireRoomMembers({
+          presenceLeaseRef: rendezvous.presenceLeaseRef,
+          now,
+        });
         await dependencies.stopWorker(environment, {
           sessionRef: staleSnapshot.presence.sessionRef,
           generation: staleSnapshot.presence.generation,
@@ -316,6 +321,11 @@ export const handleSarahLiveKitCommunityRoomJoinRequest = async <Environment, Co
         });
       } else {
         await opened.store.retireCommunityRoomRendezvous({
+          presenceLeaseRef: rendezvous.presenceLeaseRef,
+          now,
+        });
+        // EP263-LK H5 (#9282): the members die with the rendezvous.
+        await opened.store.retireRoomMembers({
           presenceLeaseRef: rendezvous.presenceLeaseRef,
           now,
         });
@@ -527,6 +537,12 @@ export const handleSarahLiveKitSharedRoomProductionRequest = async <Environment,
         now,
       });
       await opened.store.retireCommunityRoomRendezvous({
+        presenceLeaseRef: body.presenceLeaseRef,
+        now,
+      });
+      // EP263-LK H5 (#9282): a moderator removal must retire the member rows
+      // too, not only the rendezvous they were joined through.
+      await opened.store.retireRoomMembers({
         presenceLeaseRef: body.presenceLeaseRef,
         now,
       });

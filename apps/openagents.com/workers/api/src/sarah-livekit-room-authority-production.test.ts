@@ -138,6 +138,8 @@ const setup = (
     readParticipantBinding,
     bindParticipant: vi.fn(),
     removeParticipant: vi.fn(),
+    retireRoomMembers: vi.fn(async () => 0),
+    retireExpiredRoomMembers: vi.fn(async () => 0),
     compareAndSwap,
   };
   const openStore = vi.fn(async () => {
@@ -418,6 +420,8 @@ describe("Sarah LiveKit shared-room production wiring", () => {
         readParticipantBinding: vi.fn(),
         bindParticipant,
         removeParticipant: vi.fn(),
+        retireRoomMembers: vi.fn(async () => 0),
+        retireExpiredRoomMembers: vi.fn(async () => 0),
         compareAndSwap: vi.fn(),
       };
       const dependencies: SarahLiveKitSharedRoomProductionDependencies<
@@ -483,6 +487,7 @@ describe("Sarah LiveKit shared-room production wiring", () => {
   test("retires the rendezvous and stops the worker when membership authority changes", async () => {
     const snapshot = initialSarahLiveKitRoomAuthoritySnapshot(presence);
     const retireCommunityRoomRendezvous = vi.fn(async () => true);
+    const retireRoomMembers = vi.fn(async () => 1);
     const compareAndSwap = vi.fn(async (input) => input.snapshot);
     const stopWorker = vi.fn(async () => undefined);
     const store: SarahLiveKitRoomAuthorityStore = {
@@ -503,6 +508,8 @@ describe("Sarah LiveKit shared-room production wiring", () => {
       readParticipantBinding: vi.fn(),
       bindParticipant: vi.fn(),
       removeParticipant: vi.fn(),
+      retireRoomMembers,
+      retireExpiredRoomMembers: vi.fn(async () => 0),
       compareAndSwap,
     };
     const response = await handleSarahLiveKitCommunityRoomJoinRequest(
@@ -545,6 +552,13 @@ describe("Sarah LiveKit shared-room production wiring", () => {
       }),
     );
     expect(retireCommunityRoomRendezvous).toHaveBeenCalledWith({
+      presenceLeaseRef: presence.leaseRef,
+      now: new Date(nowMs).toISOString(),
+    });
+    // EP263-LK H5 (#9282): members die with the rendezvous they joined
+    // through. Retiring one without the other left member rows 'active' with
+    // a null removed_at for the life of the database.
+    expect(retireRoomMembers).toHaveBeenCalledWith({
       presenceLeaseRef: presence.leaseRef,
       now: new Date(nowMs).toISOString(),
     });
@@ -607,6 +621,8 @@ describe("Sarah LiveKit shared-room production wiring", () => {
       })),
       bindParticipant,
       removeParticipant: vi.fn(),
+      retireRoomMembers: vi.fn(async () => 0),
+      retireExpiredRoomMembers: vi.fn(async () => 0),
       compareAndSwap: vi.fn(),
     };
     const close = vi.fn(async () => undefined);
@@ -693,6 +709,8 @@ describe("Sarah LiveKit shared-room production wiring", () => {
       readParticipantBinding: vi.fn(),
       bindParticipant: vi.fn(),
       removeParticipant: vi.fn(),
+      retireRoomMembers: vi.fn(async () => 0),
+      retireExpiredRoomMembers: vi.fn(async () => 0),
       compareAndSwap: vi.fn(),
     };
     const response = await handleSarahLiveKitSharedRoomProductionRequest(
@@ -740,6 +758,8 @@ describe("Sarah LiveKit shared-room production wiring", () => {
       readParticipantBinding: vi.fn(),
       bindParticipant: vi.fn(),
       removeParticipant: vi.fn(),
+      retireRoomMembers: vi.fn(async () => 0),
+      retireExpiredRoomMembers: vi.fn(async () => 0),
       compareAndSwap,
     };
     const stopWorker = vi.fn(async () => undefined);
@@ -803,5 +823,10 @@ describe("Sarah LiveKit shared-room production wiring", () => {
         presenceActive: false,
       }),
     );
+    // EP263-LK H5 (#9282): a moderator removal retires the member rows too.
+    expect(store.retireRoomMembers).toHaveBeenCalledWith({
+      presenceLeaseRef: presence.leaseRef,
+      now: new Date(nowMs + 1_000).toISOString(),
+    });
   });
 });

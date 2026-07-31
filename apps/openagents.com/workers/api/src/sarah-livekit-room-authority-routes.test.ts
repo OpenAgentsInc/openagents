@@ -83,6 +83,8 @@ const dependencies = (
     readParticipantBinding: vi.fn(),
     bindParticipant: vi.fn(),
     removeParticipant: vi.fn(),
+    retireRoomMembers: vi.fn(async () => 0),
+    retireExpiredRoomMembers: vi.fn(async () => 0),
     compareAndSwap,
   };
   const value: SarahLiveKitRoomAuthorityRouteDependencies<Record<string, never>> = {
