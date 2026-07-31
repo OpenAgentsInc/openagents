@@ -126,6 +126,20 @@ export type SarahLiveKitDrillFaultResult = Readonly<{
   workerInstanceDigest?: string;
   /** Whether the worker instance was still present after the fault. */
   workerInstanceSurvived?: boolean;
+  /**
+   * The instant the destructive action was issued, when the injector had to do
+   * read-only work first.
+   *
+   * Target discovery is not part of the fault: reading three instances' gauges
+   * and three workers' logs takes seconds, and charging that to a thirty second
+   * bound would manufacture contradictions out of the drill's own preparation.
+   *
+   * This stays ungameable because the driver brackets the whole call and refuses
+   * any value outside `[before, after]`. An injector can exclude its own
+   * read-only preamble and nothing else — it cannot claim an instant earlier
+   * than the driver saw it start or later than the driver saw it return.
+   */
+  injectedAtMs?: number;
 }>;
 
 export type SarahLiveKitDrillSettlement = Readonly<{
@@ -150,12 +164,13 @@ export type SarahLiveKitDrillObservation = Readonly<{
   sessionLiveAtMs: number;
   holdMs: number;
   /**
-   * When the fault was requested, stamped immediately before the injector ran.
+   * When the destructive action was issued.
    *
-   * Deliberately not the injector's own report of when the instance died.
-   * Stamping before means the measured interval can only overstate how long the
-   * authority took, so a run recorded within bound really was within bound, and
-   * an injector cannot shrink its own interval.
+   * The driver stamps immediately before and immediately after the injector and
+   * accepts the injector's own instant only inside that bracket, defaulting to
+   * the leading stamp. So the value can exclude read-only target discovery and
+   * nothing else: it can never be earlier than the driver saw the call start,
+   * nor later than it saw the call return.
    */
   faultInjectedAtMs: number;
   mediaLossObservedAtMs: number | null;
@@ -174,6 +189,8 @@ export type SarahLiveKitDrillObservation = Readonly<{
   faultTargetDigest: string | null;
   workerInstanceDigest: string | null;
   workerInstanceSurvived: boolean | null;
+  /** How long the injector's read-only target discovery took. */
+  faultDiscoveryMs: number;
   observationWindowMs: number;
   settlementPollIntervalMs: number;
   limitations: readonly [
@@ -301,7 +318,7 @@ export const runSarahLiveKitDrill = async (
       throw new Error("drill billable session count is invalid");
     }
 
-    const faultInjectedAtMs = clock.now();
+    const faultRequestedAtMs = clock.now();
     const fault = await input.injectFault({
       scenario: input.scenario,
       faultAction,
@@ -311,8 +328,19 @@ export const runSarahLiveKitDrill = async (
       ownerRef: input.session.ownerRef,
       requestClientCancel: () => session.control.close(),
     });
+    const faultReturnedAtMs = clock.now();
     assertDigest(fault.targetInstanceDigest, "drill fault target digest");
     assertDigest(fault.workerInstanceDigest, "drill worker instance digest");
+    const reported = fault.injectedAtMs;
+    if (
+      reported !== undefined &&
+      (!Number.isSafeInteger(reported) ||
+        reported < faultRequestedAtMs ||
+        reported > faultReturnedAtMs)
+    ) {
+      throw new Error("drill fault instant is outside the interval the driver bracketed");
+    }
+    const faultInjectedAtMs = reported ?? faultRequestedAtMs;
 
     const reading = await pollSarahLiveKitSettlement(http, clock, input.session, {
       windowMs: observationWindowMs,
@@ -391,6 +419,7 @@ export const runSarahLiveKitDrill = async (
       faultTargetDigest: fault.targetInstanceDigest ?? null,
       workerInstanceDigest: fault.workerInstanceDigest ?? null,
       workerInstanceSurvived: fault.workerInstanceSurvived ?? null,
+      faultDiscoveryMs: faultInjectedAtMs - faultRequestedAtMs,
       observationWindowMs,
       settlementPollIntervalMs: SARAH_LIVEKIT_SETTLEMENT_POLL_INTERVAL_MS,
       limitations: [

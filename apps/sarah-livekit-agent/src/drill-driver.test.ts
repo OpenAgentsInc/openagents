@@ -332,6 +332,49 @@ describe("Sarah LiveKit single-session drill driver", () => {
     expect(observation.mediaLossDetectedWithinMs).toBe(-750);
   });
 
+  test("excludes read-only target discovery from the bound", async () => {
+    const built = harness({ settleAfterMs: 4_000 });
+    const observation = await run({
+      ...built,
+      input: {
+        ...built.input,
+        injectFault: async (context) => {
+          // Stand in for reading three instances' gauges and three workers' logs.
+          built.clock.advance(9_000);
+          const injectedAtMs = built.clock.now();
+          const result = await built.input.injectFault(context);
+          built.room.emit("disconnected");
+          return { ...result, injectedAtMs };
+        },
+      },
+    });
+
+    // Nine seconds of preparation charged to a thirty second bound would
+    // manufacture a contradiction out of the drill's own setup.
+    expect(observation.faultDiscoveryMs).toBe(9_000);
+    expect(observation.outcome).toBe("passed");
+    expect(observation.faultToTerminalMs).toBeLessThanOrEqual(SARAH_LIVEKIT_SFU_LOSS_BOUND_MS);
+  });
+
+  test("refuses a fault instant outside the interval the driver bracketed", async () => {
+    const built = harness({ settleAfterMs: 4_000 });
+    await expect(
+      run({
+        ...built,
+        input: {
+          ...built.input,
+          injectFault: async (context) => {
+            const result = await built.input.injectFault(context);
+            // An injector cannot claim the fault landed before the driver saw
+            // the call start; that is how a bound would be talked down.
+            return { ...result, injectedAtMs: built.clock.now() - 60_000 };
+          },
+        },
+      }),
+    ).rejects.toThrow("outside the interval the driver bracketed");
+    expect(built.released()).toBe(1);
+  });
+
   test("preserves the control channel's own terminal reason", async () => {
     const built = withMediaLoss(harness({ settleAfterMs: 4_000 }));
     built.resolveControlTerminal({ atMs: 2_500, kind: "closing", reason: "transport_error" });

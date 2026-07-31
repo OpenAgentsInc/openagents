@@ -186,8 +186,11 @@ const buildInjector = (
         // planned_worker_crash, so there would be no evidence worth keeping.
         throw new Error("sfu_loss must not destroy the Sarah worker instance");
       }
+      // Everything above is read-only discovery. The bound starts here.
+      const injectedAtMs = Date.now();
       await deleteExactPod(sfu.podName);
       return {
+        injectedAtMs,
         targetInstanceDigest: digestDrillInstance(sfu.podName),
         workerInstanceDigest: digestDrillInstance(workerPod),
         workerInstanceSurvived: await podIsRunning(workerPod),
@@ -200,8 +203,10 @@ const buildInjector = (
         await readSarahWorkerLogs(),
         context.participantRef,
       );
+      const injectedAtMs = Date.now();
       await deleteExactPod(workerPod);
       return {
+        injectedAtMs,
         targetInstanceDigest: digestDrillInstance(workerPod),
         workerInstanceDigest: digestDrillInstance(workerPod),
         workerInstanceSurvived: await podIsRunning(workerPod),
