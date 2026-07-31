@@ -35,9 +35,30 @@ monolith cutover.
 
 ## Secrets (names only — NEVER echo values)
 
-All Khala Sync database secrets live in the gitignored workspace file
-`~/work/.secrets/khala-sync-cloudsql.env` on the owner machine (mirrored per
-the `docs/DEPLOYMENT.md` secrets convention). Keys present:
+**GCP Secret Manager is the authority for the database passwords. The local
+file is a convenience mirror and is allowed to lag.** Rotations are performed
+against Cloud SQL and stored in Secret Manager; nothing writes them back to the
+workspace file. On 2026-07-29 the `khala_migrate` password was rotated to
+Secret Manager version 2 while the local file kept its 2026-07-08 value, so
+every documented migration attempt that sourced the local file failed
+authentication (`28P01`) against a database whose credential was fine. Read the
+password with the same env → local-file → Secret Manager ladder the release
+signer uses, and when the two disagree, Secret Manager wins:
+
+```sh
+CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config \
+  gcloud secrets versions access latest \
+  --secret=khala-sync-migrate-password --project=openagentsgemini
+```
+
+| Role | Secret Manager secret |
+| --- | --- |
+| `khala_migrate` | `khala-sync-migrate-password` |
+| `khala_capture` | `khala-sync-capture-password` |
+
+The gitignored workspace file `~/work/.secrets/khala-sync-cloudsql.env` on the
+owner machine still carries the full key set for local convenience (mirrored
+per the `docs/DEPLOYMENT.md` secrets convention). Keys present:
 
 `KHALA_SYNC_CLOUDSQL_INSTANCE`, `KHALA_SYNC_CLOUDSQL_PROJECT`,
 `KHALA_SYNC_CLOUDSQL_REGION`, `KHALA_SYNC_CLOUDSQL_ROOT_USER`,
@@ -95,16 +116,38 @@ Ordered `NNNN_*.sql` files, one transaction per file plus its
 `khala_sync_migrations` ledger insert, session advisory lock against
 concurrent runners, idempotent reruns.
 
-Procedure (always staging first, always dry-run first):
+Procedure (always staging first, always dry-run first). The `khala_migrate`
+password comes from Secret Manager, not from the local secrets file — see
+"Secrets" above for why:
 
 ```sh
-# 1. Staging plan (no writes at all):
-bun run --cwd packages/khala-sync-server migrate -- --dry-run \
-  --database-url "<direct staging URL as khala_migrate>"
-# 2. Staging apply, then run the khala-sync test suites / staging smoke.
-# 3. Prod plan, then prod apply — same commands against khala_sync_prod.
-# 4. Record the run (applied files list) on the owning KS issue.
+# 0. Open the proxy. Direct public-IP access no longer works (docs/DEPLOYMENT.md).
+export CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config
+cloud-sql-proxy openagentsgemini:us-central1:khala-sync-pg --port 55432 \
+  --token "$(gcloud auth print-access-token)" &
+
+# 1. Load the credential. The password contains URL-reserved characters, so it
+#    MUST be percent-encoded before it goes into a DSN.
+PW="$(gcloud secrets versions access latest \
+  --secret=khala-sync-migrate-password --project=openagentsgemini)"
+PWENC="$(python3 -c "import os,urllib.parse;print(urllib.parse.quote(os.environ['PW'],safe=''))")"
+DB=khala_sync_staging   # then khala_sync_prod
+URL="postgresql://khala_migrate:${PWENC}@127.0.0.1:55432/${DB}?sslmode=disable"
+
+# 2. Plan (no writes at all), then apply. Pipe through a redactor: the runner
+#    echoes the DSN on a connection error.
+node --import tsx packages/khala-sync-server/scripts/migrate.ts --dry-run \
+  --database-url "$URL" 2>&1 | python3 -c "
+import sys,os
+for line in sys.stdin: print(line.rstrip('\n').replace(os.environ['PW'],'<REDACTED>').replace(os.environ['PWENC'],'<REDACTED>'))"
+# 3. Staging apply, then run the khala-sync test suites / staging smoke.
+# 4. Prod plan, then prod apply — same commands against khala_sync_prod.
+# 5. Record the run (applied files list) on the owning KS issue.
 ```
+
+`sslmode=disable` is correct **through the proxy**: the proxy already provides
+the encrypted tunnel. The `sslmode=require` in the historical note further down
+this file applies to the retired direct-public-IP path only.
 
 PORT-01 migration `0066_portable_session_authority.sql` follows this exact
 procedure. After apply, verify all nine `khala_sync_portable_*` relations,
@@ -5318,7 +5361,10 @@ failed with "no database URL" because `KHALA_SYNC_DATABASE_URL` was not set in
 the deploying shell. Because `deploy:safe` chains its steps with `&&`, this
 silently aborted the whole script **before** the final production
 `wrangler deploy`, even though nothing in the visible output screamed
-"deploy failed" — the script just stopped. Recovery: sourced
+"deploy failed" — the script just stopped. Recovery (**historical — do NOT copy
+this DSN today: the direct public IP was retired at CFG-14 and the local
+`KHALA_SYNC_MIGRATE_PASSWORD` went stale on 2026-07-29. Use the proxy plus
+Secret Manager procedure in "Migration runner" above**): sourced
 `~/work/.secrets/khala-sync-cloudsql.env`, built
 `postgres://$KHALA_SYNC_MIGRATE_USER:$KHALA_SYNC_MIGRATE_PASSWORD@$KHALA_SYNC_CLOUDSQL_IP:5432/$KHALA_SYNC_DB_PROD?sslmode=require`
 (note: `sslmode=require` is mandatory — the Cloud SQL instance's `pg_hba.conf`

@@ -86,8 +86,12 @@ pnpm --filter @openagentsinc/khala-sync-server capture
 ```
 
 Migration, compaction, and capture commands require a direct Cloud SQL
-connection. See `docs/khala-sync/RUNBOOK.md` for the approved proxy, role, and
-Secret Manager procedure.
+connection through the Cloud SQL Auth Proxy; direct public-IP access is
+retired. The role passwords are authoritative in GCP Secret Manager
+(`khala-sync-migrate-password`, `khala-sync-capture-password`), not in the
+local workspace secrets file, which is allowed to lag a rotation. See
+`docs/khala-sync/RUNBOOK.md` sections "Secrets" and "Migration runner" for the
+exact proxy, credential, and redaction procedure.
 
 ## Retired migration code
 
