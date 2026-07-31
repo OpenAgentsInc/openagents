@@ -9,9 +9,9 @@ locals {
     "^projects/([^/]+)/secrets/([^/]+)/versions/([1-9][0-9]*)$",
     var.github_authorizer_token_secret_version,
   )
-  boundary_digest = filesha256(
+  boundary_digest = "sha256:${filesha256(
     "${path.root}/deployment-control-boundary.json"
-  )
+  )}"
 }
 
 resource "google_service_account" "deployer" {
