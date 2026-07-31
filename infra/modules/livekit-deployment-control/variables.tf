@@ -6,6 +6,10 @@ variable "project_number" {
   type = string
 }
 
+variable "organization_id" {
+  type = string
+}
+
 variable "region" {
   type = string
 }

@@ -215,6 +215,7 @@ module "deployment_control" {
 
   project_id                = var.project_id
   project_number            = var.project_number
+  organization_id           = var.organization_id
   region                    = var.region
   cluster_id                = module.platform.cluster_id
   managed_secret_ids        = module.platform.secret_ids

@@ -15,6 +15,12 @@ variable "project_number" {
   default     = "157437760789"
 }
 
+variable "organization_id" {
+  description = "Numeric Google Cloud organization ID."
+  type        = string
+  default     = "831063912314"
+}
+
 variable "region" {
   description = "Google Cloud region."
   type        = string

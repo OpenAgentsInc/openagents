@@ -35,7 +35,6 @@ resource "google_project_iam_member" "gateway_roles" {
     "roles/cloudbuild.connectionViewer",
     "roles/container.clusterViewer",
     "roles/compute.viewer",
-    "roles/iam.denyReviewer",
     "roles/iam.securityReviewer",
     "roles/orgpolicy.policyViewer",
     "roles/redis.viewer",
@@ -46,6 +45,12 @@ resource "google_project_iam_member" "gateway_roles" {
   project = var.project_id
   role    = each.value
   member  = "serviceAccount:${google_service_account.deployer.email}"
+}
+
+resource "google_organization_iam_member" "deny_reviewer" {
+  org_id = var.organization_id
+  role   = "roles/iam.denyReviewer"
+  member = "serviceAccount:${google_service_account.deployer.email}"
 }
 
 resource "google_artifact_registry_repository_iam_member" "deployer_image_reader" {
