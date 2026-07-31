@@ -560,6 +560,67 @@ All three paths must pass:
 
 An endpoint responding to HTTPS is not media acceptance.
 
+### Headless Sarah worker proof
+
+The production-gated Node harness supplements the packaged Omega matrix with a
+repeatable worker-level proof. Its dry-run mode is the default and performs no
+network request:
+
+```sh
+pnpm --dir apps/sarah-livekit-agent acceptance
+```
+
+A live run uses the production API and `@livekit/rtc-node` to perform the real
+bearer-authenticated admission and session requests with
+`requestedTransport=livekit_room_v1`. It joins with the returned participant
+grant, publishes a microphone track, observes non-silent Sarah audio and the
+ephemeral `lk.transcription` stream, samples the selected publisher and
+subscriber ICE paths, disconnects, and waits for the terminal settlement. The
+private and community scenarios start concurrently and must overlap.
+
+Production accounting allows one active Sarah voice generation per owner.
+Consequently, the concurrent matrix requires two distinct authenticated owners:
+one active Sarah alpha or owner-entitled identity for the private scenario and
+one active member of the named community/channel for the community scenario.
+Using one owner twice is a harness preflight error, not a reason to weaken the
+ledger invariant.
+
+Keep the bearer tokens in environment variables and keep the two 24 kHz mono
+signed-16-bit PCM prompts outside Git. The prompts must contain an innocuous
+spoken request followed by enough silence for the admitted semantic VAD to
+finish the turn. Run:
+
+```sh
+OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
+OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_BEARER='<private bearer>' \
+OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_OWNER_REF='<private owner ref>' \
+OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_BEARER='<community bearer>' \
+OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_OWNER_REF='<community owner ref>' \
+pnpm --dir apps/sarah-livekit-agent acceptance -- \
+  --source-revision <exact-deployed-40-hex-revision> \
+  --private-pcm <private-prompt.pcm> \
+  --community-pcm <community-prompt.pcm> \
+  --community-ref <community-ref> \
+  --channel-ref <channel-ref> \
+  --receipt docs/ops/receipts/livekit/production-sarah-headless-<UTC>.json \
+  --apply
+```
+
+The harness writes no receipt unless both scenarios pass. The public receipt
+contains timing, boolean media/transcription/ICE observations, exact charge,
+and digests of settlement refs. It never contains bearer tokens, grants,
+owner/device/room/community refs, PCM, media, or transcript text. The supplied
+source revision is labeled as operator-supplied; bind it independently to the
+deployment receipt before using the headless receipt for closeout.
+`retainedMedia=false` and `retainedTranscript=false` describe only the harness
+process and public receipt. They do not prove privacy in the cluster, provider,
+Redis, object storage, traces, crash artifacts, or logs; the separate production
+secret and raw-media/transcript scan receipt remains mandatory.
+
+This one naturally selected ICE path per scenario does not replace the forced
+direct-UDP, TCP-fallback, and TURN/TLS packaged Omega matrix. It also does not
+prove UI behavior or uninterrupted media through SFU failure.
+
 ### Load
 
 Drive at least 20 simultaneous two-participant rooms with one Sarah worker job
@@ -826,6 +887,8 @@ Do not close #9284 until all are linked from #9282:
   destroy;
 - production deployment and DNS/certificate observations;
 - production direct UDP, TCP fallback, and TURN/TLS connectivity;
+- overlapping private/community headless Sarah audio, transcription, ICE, and
+  settlement receipt bound to the deployment revision;
 - 20-room load with spare capacity and enforced caps;
 - all eleven bounded failure drills;
 - secret/log/raw-media/transcript scan;

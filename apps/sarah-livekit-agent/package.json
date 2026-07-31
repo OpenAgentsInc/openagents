@@ -5,6 +5,7 @@
   "description": "Explicit-dispatch LiveKit Agents worker for admitted Sarah voice generations.",
   "type": "module",
   "scripts": {
+    "acceptance": "node --import tsx src/acceptance-cli.ts",
     "build": "vp pack src/agent.ts --format esm --platform node --target node24 --out-dir dist",
     "start": "node dist/agent.mjs start",
     "test": "vp test --run apps/sarah-livekit-agent/src",
