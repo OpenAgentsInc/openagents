@@ -1,7 +1,7 @@
 import type { AutopilotTokenUsage } from '@openagentsinc/sync-schema'
 import { Schema as S } from 'effect'
 
-import type { AuthKvStore } from './auth/auth-kv'
+import { type AuthKvStore, authKvStoreForEnv } from './auth/auth-kv'
 import {
   type OmegaNostrSelfProvisionEnv,
   isOmegaNostrSelfProvisionedUserId,
@@ -21,9 +21,15 @@ import {
 import { postgresIdentityAuthStoreForEnv } from './identity-auth-domain-store'
 import {
   hostedComputeDailyTokenCeiling,
+  isAdmittedHostedComputeActor,
   makeHostedComputeDailyCeilingGate,
 } from './inference/hosted-compute-daily-ceiling'
 import { makeAdmittedIdentityLookup } from './inference/admitted-identity'
+import {
+  type HostedComputeReservation,
+  hostedComputeReservedTokens,
+  reserveHostedComputeTokens,
+} from './inference/hosted-compute-token-reservation'
 import { parseInternalAccountRefs } from './inference/inference-internal-account'
 import {
   type MeteredExecutionAttempt,
@@ -72,6 +78,11 @@ type ProviderAccountServiceEnv = Readonly<{
   // Owner-tunable daily served-token ceiling for a NON-admitted actor on the
   // hosted-compute proxy. Absent => the compiled default (1,000,000).
   HOSTED_COMPUTE_DAILY_TOKEN_CEILING?: string | undefined
+  // Owner-tunable provisional charge held per IN-FLIGHT execution while the
+  // real usage is still unknown. Absent => the compiled default (320,000,
+  // above the largest draw ever observed on this route). This is what bounds a
+  // concurrent burst; see `inference/hosted-compute-token-reservation.ts`.
+  HOSTED_COMPUTE_RESERVED_TOKENS?: string | undefined
   OPENAGENTS_DB: D1Database
   PROVIDER_TOKEN_CUSTODY_AES_KEY_B64?: string | undefined
   PROVIDER_TOKEN_CUSTODY_AES_KEY_ID?: string | undefined
@@ -382,6 +393,8 @@ const hostedComputeTokenCeilingRefusal = async <
 >(
   env: RouteEnv,
   actorUserId: string,
+  reservation: HostedComputeReservation | undefined,
+  isAdmittedIdentity: (actorUserId: string) => Promise<boolean>,
 ): Promise<JsonHttpResult | undefined> => {
   const gate = makeHostedComputeDailyCeilingGate({
     admittedAccountRefs: parseInternalAccountRefs(
@@ -390,7 +403,13 @@ const hostedComputeTokenCeilingRefusal = async <
     // ADMITTED != FREE TIER, on this route for the same reason as on
     // chat-completions: an operator-admitted alpha member carries a `nostr:`
     // id and would otherwise be metered as a self-provisioned stranger.
-    isAdmittedIdentity: makeAdmittedIdentityLookup(openAgentsDatabase(env)),
+    isAdmittedIdentity,
+    ...(reservation === undefined
+      ? {}
+      : {
+          reservedTokensByOthers: () =>
+            Promise.resolve(reservation.reservedByOthers),
+        }),
     servedTokensToday: id => geminiTokensServedToday(env, id),
     tokensPerDay: id =>
       isOmegaNostrSelfProvisionedUserId(id)
@@ -414,6 +433,70 @@ const hostedComputeTokenCeilingRefusal = async <
         },
         { status: 429 },
       )
+}
+
+/**
+ * A per-request memoized cohort lookup.
+ *
+ * The gate and the reservation must agree on who is admitted, and the lookup is
+ * a database read, so it runs at most once per request and both consult the
+ * same answer.
+ */
+const memoizedAdmittedIdentity = (
+  lookup: (actorUserId: string) => Promise<boolean>,
+): ((actorUserId: string) => Promise<boolean>) => {
+  let pending: Promise<boolean> | undefined
+
+  return actorUserId => {
+    pending ??= lookup(actorUserId)
+
+    return pending
+  }
+}
+
+/**
+ * Take the in-flight reservation for a NON-admitted actor.
+ *
+ * Returns `undefined` when no reservation applies. That covers BOTH admission
+ * paths — the env allowlist and operator cohort membership — because an actor
+ * the gate will short-circuit must not be able to be refused by a reservation
+ * store failure it was never subject to.
+ *
+ * A store failure PROPAGATES for everyone else, so the caller's fail-closed
+ * handler refuses rather than serving unbounded.
+ */
+const hostedComputeReservationForActor = async <
+  RouteEnv extends ProviderAccountServiceEnv,
+>(
+  env: RouteEnv,
+  actorUserId: string,
+  attempt: MeteredExecutionAttempt,
+  isAdmittedIdentity: (actorUserId: string) => Promise<boolean>,
+): Promise<HostedComputeReservation | undefined> => {
+  if (
+    isAdmittedHostedComputeActor(
+      actorUserId,
+      parseInternalAccountRefs(env.INFERENCE_INTERNAL_ACCOUNT_REFS),
+    ) ||
+    (await isAdmittedIdentity(actorUserId))
+  ) {
+    return undefined
+  }
+
+  return reserveHostedComputeTokens({
+    // Fixed-length digest: keeps actor ids out of KV keys AND stops one
+    // actor's key prefix from matching another's (see the module header).
+    actorDigest: (await sha256Hex(`hosted-compute:${actorUserId}`)).slice(0, 32),
+    attemptId: attempt.attemptId,
+    onReleaseError: error =>
+      logWorkerRouteError('hosted_compute_reservation_release_failed', error, {
+        actorId: actorUserId,
+      }),
+    reservedTokens: hostedComputeReservedTokens(
+      env.HOSTED_COMPUTE_RESERVED_TOKENS,
+    ),
+    store: authKvStoreForEnv(env),
+  })
 }
 
 const insertGeminiTokenUsageEvent = async <
@@ -1013,15 +1096,6 @@ export const makeProviderAccountServiceHandlers = <
       return noStoreJsonResult({ error: 'unauthorized' }, { status: 401 })
     }
 
-    const ceilingRefusal = await hostedComputeTokenCeilingRefusal(
-      env,
-      actor.user.id,
-    )
-
-    if (ceilingRefusal !== undefined) {
-      return ceilingRefusal
-    }
-
     const apiKey = env.GEMINI_API_KEY
 
     if (apiKey === undefined || apiKey.trim() === '') {
@@ -1034,19 +1108,69 @@ export const makeProviderAccountServiceHandlers = <
       )
     }
 
-    const body = await request.text()
     // Mint the metering identity BEFORE the provider call, so exactly one
     // ledger row exists per upstream execution even if the metering write is
     // retried, and so two identical requests can never collapse into one row.
     const attempt = newMeteredExecutionAttempt()
-    const response = await fetch(googleGeminiEndpoint(model), {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body,
-    })
+    // Reserve BEFORE reading the ceiling, so a concurrent burst is visible to
+    // every later reader instead of every request racing one stale total. A
+    // store failure is caught by the gate's fail-closed handler below.
+    const isAdmittedIdentity = memoizedAdmittedIdentity(
+      makeAdmittedIdentityLookup(openAgentsDatabase(env)),
+    )
+    let reservation: HostedComputeReservation | undefined
+    try {
+      reservation = await hostedComputeReservationForActor(
+        env,
+        actor.user.id,
+        attempt,
+        isAdmittedIdentity,
+      )
+    } catch (error) {
+      logWorkerRouteError('hosted_compute_reservation_failed', error, {
+        actorId: actor.user.id,
+      })
+
+      return noStoreJsonResult(
+        {
+          error: 'free_tier_daily_token_ceiling_reached',
+          message:
+            'The free hosted-compute allowance for this install is unavailable right now.',
+        },
+        { status: 429 },
+      )
+    }
+
+    const ceilingRefusal = await hostedComputeTokenCeilingRefusal(
+      env,
+      actor.user.id,
+      reservation,
+      isAdmittedIdentity,
+    )
+
+    if (ceilingRefusal !== undefined) {
+      await reservation?.release()
+
+      return ceilingRefusal
+    }
+
+    const body = await request.text()
+    let response: Response
+    try {
+      response = await fetch(googleGeminiEndpoint(model), {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body,
+      })
+    } catch (error) {
+      // No upstream execution happened, so the hold must not outlive it.
+      await reservation?.release()
+
+      throw error
+    }
     const responseForUsage = response.clone()
     scheduleBackgroundWork(
       ctx,
@@ -1057,12 +1181,20 @@ export const makeProviderAccountServiceHandlers = <
         model,
         request,
         response: responseForUsage,
-      }).catch(error =>
-        logWorkerRouteError('google_gemini_token_usage_record_failed', error, {
-          actorId: actor.user.id,
-          model,
-        }),
-      ),
+      })
+        .catch(error =>
+          logWorkerRouteError(
+            'google_gemini_token_usage_record_failed',
+            error,
+            {
+              actorId: actor.user.id,
+              model,
+            },
+          ),
+        )
+        // Release only AFTER the exact row is settled, so the reservation and
+        // the ledger row are never both invisible at the same instant.
+        .finally(() => reservation?.release()),
     )
     return streamHttpResult(response.body, {
       headers: {

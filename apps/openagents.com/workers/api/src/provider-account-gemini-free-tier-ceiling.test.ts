@@ -10,6 +10,7 @@
 
 import { describe, expect, test, vi } from 'vitest'
 
+import type { AuthKvStore } from './auth/auth-kv'
 import { materializeHttpResult } from './http/responses'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
 
@@ -35,6 +36,7 @@ const d1Meta = (): D1Meta & Record<string, unknown> => ({
  */
 const makeLedgerDb = (
   tokensServedToday: number | string,
+  options: Readonly<{ admittedIdentity?: boolean }> = {},
 ): Readonly<{ db: D1Database; queries: Array<string> }> => {
   const queries: Array<string> = []
   const prepare = (query: string): D1PreparedStatement => {
@@ -47,7 +49,10 @@ const makeLedgerDb = (
         Promise.resolve(
           query.includes('SUM(total_tokens)')
             ? { total: tokensServedToday }
-            : null,
+            : query.includes('sarah_voice_alpha_memberships') &&
+                options.admittedIdentity === true
+              ? { admitted: 1 }
+              : null,
         ),
       raw: () => Promise.resolve([]),
       run: () =>
@@ -105,11 +110,48 @@ const handlersForActor = (actorUserId: string) => {
           headers: { 'content-type': 'application/json' },
           method: 'POST',
         }),
-        env as never,
+        // The gate takes an in-flight RESERVATION before reading the ceiling
+        // (2026-07-31), so a store is part of the route's environment now.
+        // Production always has one, built over `KHALA_SYNC_DB`. Tests that
+        // want the missing-store case set `AUTH_KV` explicitly.
+        ({ AUTH_KV: makeMemoryAuthKv(), ...env }) as never,
         ctx,
         model,
       ),
     )
+}
+
+/**
+ * In-memory stand-in for the Postgres-backed reservation store.
+ *
+ * Reservation behaviour and its overshoot bound are pinned in
+ * inference/hosted-compute-token-reservation.test.ts; here it only needs to
+ * exist so these ceiling tests exercise the ceiling.
+ */
+function makeMemoryAuthKv(): AuthKvStore {
+  const entries = new Map<string, string>()
+
+  return {
+    delete: async key => {
+      entries.delete(key)
+    },
+    get: (async (key: string) => entries.get(key) ?? null) as AuthKvStore['get'],
+    listPrefix: async prefix =>
+      [...entries.entries()]
+        .filter(([key]) => key.startsWith(prefix))
+        .map(([key, value]) => ({ key, value })),
+    put: async (key, value) => {
+      entries.set(key, value)
+    },
+    putIfAbsent: async (key, value) => {
+      if (entries.has(key)) {
+        return false
+      }
+      entries.set(key, value)
+
+      return true
+    },
+  }
 }
 
 const upstreamOk = () =>
@@ -381,6 +423,96 @@ describe('hosted Gemini free-tier daily token ceiling', () => {
 
       expect(response.status).toBe(429)
       expect(upstream).not.toHaveBeenCalled()
+    } finally {
+      upstream.mockRestore()
+    }
+  })
+
+  // THE RESERVATION (2026-07-31). The ceiling is no longer a bare read: a
+  // marker is taken BEFORE the ledger is read, so a concurrent burst is
+  // visible instead of every request racing one stale total. The bound this
+  // yields, and its residual, live in
+  // inference/hosted-compute-token-reservation.test.ts.
+  test('refuses a non-admitted actor when the reservation store is unavailable', async () => {
+    const upstream = upstreamOk()
+
+    try {
+      const ledger = makeLedgerDb(0)
+      const { ctx } = makeExecutionContext()
+      const response = await handlersForActor('user_abcdef')(
+        {
+          // No `AUTH_KV` and no `KHALA_SYNC_DB` => the fail-closed store.
+          AUTH_KV: undefined,
+          GEMINI_API_KEY: 'test-gemini-key',
+          OPENAGENTS_DB: ledger.db,
+        },
+        ctx,
+      )
+
+      expect(response.status).toBe(429)
+      // The owner's key was never spent on an unbounded request.
+      expect(upstream).not.toHaveBeenCalled()
+    } finally {
+      upstream.mockRestore()
+    }
+  })
+
+  // BOTH admission paths must skip the reservation, not just the env
+  // allowlist. An operator-admitted cohort member is exempt from the ceiling,
+  // so it must not become refusable by a reservation store it was never
+  // subject to — that would turn a KV blip into an outage for the owner's own
+  // admitted identity, which is exactly the failure the cohort check exists to
+  // prevent.
+  test('an operator-admitted cohort member takes no reservation', async () => {
+    const upstream = upstreamOk()
+
+    try {
+      const ledger = makeLedgerDb(1_000_000, { admittedIdentity: true })
+      const { ctx } = makeExecutionContext()
+      const response = await handlersForActor(selfProvisionedActor)(
+        {
+          // No reservation store at all: an exempt actor must still be served.
+          AUTH_KV: undefined,
+          GEMINI_API_KEY: 'test-gemini-key',
+          OPENAGENTS_DB: ledger.db,
+        },
+        ctx,
+      )
+
+      expect(response.status).toBe(200)
+      expect(upstream).toHaveBeenCalledTimes(1)
+      expect(
+        ledger.queries.some(query => query.includes('SUM(total_tokens)')),
+      ).toBe(false)
+    } finally {
+      upstream.mockRestore()
+    }
+  })
+
+  // An ADMITTED actor keeps its zero-cost path: no ledger read AND no
+  // reservation round-trip, so no owner workflow gains latency or a new
+  // dependency.
+  test('an admitted actor takes no reservation and reads no ledger', async () => {
+    const upstream = upstreamOk()
+
+    try {
+      const ledger = makeLedgerDb(1_000_000)
+      const { ctx } = makeExecutionContext()
+      const response = await handlersForActor('user_owner')(
+        {
+          AUTH_KV: undefined,
+          GEMINI_API_KEY: 'test-gemini-key',
+          INFERENCE_INTERNAL_ACCOUNT_REFS: 'agent:user_owner',
+          OPENAGENTS_DB: ledger.db,
+        },
+        ctx,
+      )
+
+      expect(response.status).toBe(200)
+      expect(upstream).toHaveBeenCalledTimes(1)
+      expect(
+        ledger.queries.some(query => query.includes('SUM(total_tokens)')),
+      ).toBe(false)
     } finally {
       upstream.mockRestore()
     }

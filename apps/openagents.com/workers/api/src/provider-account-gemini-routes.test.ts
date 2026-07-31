@@ -1,9 +1,42 @@
 import { describe, expect, test, vi } from 'vitest'
 
+import type { AuthKvStore } from './auth/auth-kv'
 import { materializeHttpResult } from './http/responses'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
 
 type TokenUsageRow = Record<string, string | number | null>
+
+// The hosted-compute gate now takes an in-flight RESERVATION before it reads
+// the ceiling, and is fail-closed: with no reservation store the route 429s
+// rather than serving unbounded. Production always has one (the Cloud Run env
+// builds it over `KHALA_SYNC_DB`), so these brokering tests inject the
+// in-memory equivalent. The reservation's own behaviour is pinned in
+// inference/hosted-compute-token-reservation.test.ts.
+const makeMemoryAuthKv = (): AuthKvStore => {
+  const entries = new Map<string, string>()
+
+  return {
+    delete: async key => {
+      entries.delete(key)
+    },
+    get: (async (key: string) => entries.get(key) ?? null) as AuthKvStore['get'],
+    listPrefix: async prefix =>
+      [...entries.entries()]
+        .filter(([key]) => key.startsWith(prefix))
+        .map(([key, value]) => ({ key, value })),
+    put: async (key, value) => {
+      entries.set(key, value)
+    },
+    putIfAbsent: async (key, value) => {
+      if (entries.has(key)) {
+        return false
+      }
+      entries.set(key, value)
+
+      return true
+    },
+  }
+}
 
 
 const makeExecutionContext = (): Readonly<{
@@ -154,6 +187,7 @@ const makeTokenUsageDb = (): Readonly<{
 // these brokering tests exercise what they are about; the ceiling itself is
 // pinned in provider-account-gemini-free-tier-ceiling.test.ts.
 const env = {
+  AUTH_KV: makeMemoryAuthKv(),
   AUTH_STORAGE: {} as KVNamespace,
   GEMINI_API_KEY: 'test-gemini-key',
   OPENAGENTS_DB: makeTokenUsageDb().db,

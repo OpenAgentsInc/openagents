@@ -99,6 +99,40 @@ This is the invariant ledger for `openagents`.
 - The stated abuse bound, the two larger pre-existing gaps, and the owner
   decisions are recorded in
   `docs/audits/2026-07-28-omega-nostr-self-provisioning-abuse-bounds.md`.
+- **Every upstream execution is metered; only what was NOT executed may be
+  suppressed.** A ledger row's idempotency key must identify one EXECUTION
+  ATTEMPT, minted before the provider call. It must never be derived from
+  request content, and a caller-supplied `Idempotency-Key` must never decide
+  whether a row is written — a route that always calls the provider must always
+  meter, or every ceiling reading that ledger under-counts by a replay factor
+  the caller chooses. Until 2026-07-31 the hosted-Gemini proxy hashed the
+  request BODY into its key, and seven identical live requests produced one
+  row. The retry-safety property that survives is per execution: re-running the
+  METERING write reuses one attempt id, so `INSERT OR IGNORE` still collapses it
+  to one row. Suppressing a duplicate EXECUTION requires replaying a stored
+  response, which would mean persisting completions and is forbidden here.
+  Pinned by `workers/api/src/inference/metered-execution-attempt.test.ts` and
+  `workers/api/src/provider-account-gemini-routes.test.ts` ("meters EVERY
+  upstream execution, even byte-identical repeats sharing one idempotency key").
+- **A daily spend ceiling takes an in-flight reservation before it reads.**
+  Metering settles after the upstream response, so a ceiling that only reads
+  settled rows admits an unbounded concurrent burst against one stale total. A
+  non-admitted actor therefore writes a per-execution marker to the reservation
+  store BEFORE the ceiling read and releases it after the exact row settles;
+  the ceiling compares settled tokens plus the markers held by that actor's
+  OTHER in-flight executions. Reserving before reading is what makes a burst
+  visible, and excluding one's own marker is what keeps a serial caller's
+  advertised allowance unchanged. The bound achieved is **overshoot of at most
+  one reservation** where it was previously unbounded; the residual (a single
+  execution drawing more than the reservation, and a leaked marker holding
+  until its TTL — both fail-closed) is stated exactly in
+  `workers/api/src/inference/hosted-compute-token-reservation.ts`. The
+  reservation store must be atomic per key; the non-atomic
+  `auth/kv-window-rate-limit.ts` buckets must not be used for a spend bound.
+  A reservation must not be written into `token_usage_events`, which stays
+  exact-only because the public tokens-served projection keys every increment
+  to one exact row. Pinned by
+  `workers/api/src/inference/hosted-compute-token-reservation.test.ts`.
 
 ## 2026-07-21 public AI SDK surface (/aisdk)
 

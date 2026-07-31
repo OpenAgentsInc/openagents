@@ -93,14 +93,24 @@ export const isAdmittedHostedComputeActor = (
  *
  * The comparison is `>=`, so a ceiling of 0 refuses every request and a
  * ceiling reached exactly is refused rather than allowed to tip over.
+ *
+ * `reservedByOthers` is the provisional charge held by this actor's OTHER
+ * currently in-flight executions (see `hosted-compute-token-reservation.ts`).
+ * It is zero for a serial caller, so the allowance a serial caller sees is
+ * exactly what it was before reservations existed. Under concurrency it is what
+ * turns an unbounded overshoot into an overshoot of at most one reservation.
+ *
+ * `tokensServedToday` reports the EXACT settled figure only, so an operator
+ * reading a refusal never mistakes a provisional hold for real recorded usage.
  */
 export const decideHostedComputeDailyCeiling = (
   input: Readonly<{
     servedToday: number
     tokensPerDay: number
+    reservedByOthers?: number | undefined
   }>,
 ): HostedComputeCeilingRefusal | undefined =>
-  input.servedToday >= input.tokensPerDay
+  input.servedToday + (input.reservedByOthers ?? 0) >= input.tokensPerDay
     ? {
         error: HOSTED_COMPUTE_CEILING_ERROR,
         tokensServedToday: input.servedToday,
@@ -124,12 +134,23 @@ export type HostedComputeDailyCeilingDeps = Readonly<{
    * self-provisioned install — see `./admitted-identity`.
    */
   isAdmittedIdentity?: ((actorUserId: string) => Promise<boolean>) | undefined
+  /**
+   * Provisional tokens held by this actor's OTHER in-flight executions.
+   *
+   * Absent => no reservation is in force and the gate degrades to the exact
+   * settled read, i.e. the pre-reservation behaviour with its unbounded burst
+   * overshoot. Throwing is treated exactly like a failed ledger read: refuse.
+   */
+  reservedTokensByOthers?:
+    | ((actorUserId: string) => Promise<number>)
+    | undefined
 }>
 
 /**
- * Build the route gate. An admitted actor short-circuits WITHOUT a ledger read.
+ * Build the route gate. An admitted actor short-circuits WITHOUT a ledger read
+ * and without taking a reservation, so no owner workflow gains cost or latency.
  *
- * FAIL-CLOSED: a ledger read that throws refuses the actor.
+ * FAIL-CLOSED: a ledger or reservation read that throws refuses the actor.
  */
 export const makeHostedComputeDailyCeilingGate = (deps: HostedComputeDailyCeilingDeps) => {
   return async (actorUserId: string): Promise<HostedComputeCeilingRefusal | undefined> => {
@@ -147,8 +168,13 @@ export const makeHostedComputeDailyCeilingGate = (deps: HostedComputeDailyCeilin
     }
     const tokensPerDay = deps.tokensPerDay(actorUserId)
     let servedToday: number
+    let reservedByOthers: number
     try {
       servedToday = await deps.servedTokensToday(actorUserId)
+      reservedByOthers =
+        deps.reservedTokensByOthers === undefined
+          ? 0
+          : await deps.reservedTokensByOthers(actorUserId)
     } catch {
       return {
         error: HOSTED_COMPUTE_CEILING_ERROR,
@@ -156,6 +182,10 @@ export const makeHostedComputeDailyCeilingGate = (deps: HostedComputeDailyCeilin
         dailyTokenCeiling: tokensPerDay,
       }
     }
-    return decideHostedComputeDailyCeiling({ servedToday, tokensPerDay })
+    return decideHostedComputeDailyCeiling({
+      reservedByOthers,
+      servedToday,
+      tokensPerDay,
+    })
   }
 }
