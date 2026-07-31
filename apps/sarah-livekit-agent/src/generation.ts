@@ -454,33 +454,50 @@ const toolChoiceClientUpdate = (event: unknown, toolChoice: "auto" | "none"): bo
 export class SarahProviderAttestation {
   #candidate: AdmittedRealtimeProvider | undefined;
   #durable: AdmittedRealtimeProvider | undefined;
+  #mismatchPhase: string | undefined;
   readonly #expectedProviderTransitions: SarahProviderTransition[] = [];
   #clientPhase: "startup_base" | "startup_instructions" | "startup_tools" | "steady" =
     "startup_base";
   #commandedToolChoice: "auto" | "none" = "auto";
 
+  get mismatchPhase(): string | undefined {
+    return this.#mismatchPhase;
+  }
+
   observeClientEvent(event: unknown, expectedProfile: SarahRealtimeProviderProfile): boolean {
     const envelope = record(event);
     if (envelope?.type !== "session.update") return true;
     if (this.#clientPhase === "startup_base") {
-      if (!startupBaseClientUpdate(event)) return false;
+      if (!startupBaseClientUpdate(event)) {
+        this.#mismatchPhase = "client_startup_base";
+        return false;
+      }
       this.#expectedProviderTransitions.push("startup_base");
       this.#clientPhase = "startup_instructions";
       return true;
     }
     if (this.#clientPhase === "startup_instructions") {
-      if (!startupInstructionsClientUpdate(event, expectedProfile)) return false;
+      if (!startupInstructionsClientUpdate(event, expectedProfile)) {
+        this.#mismatchPhase = "client_startup_instructions";
+        return false;
+      }
       this.#expectedProviderTransitions.push("startup_instructions");
       this.#clientPhase = "startup_tools";
       return true;
     }
     if (this.#clientPhase === "startup_tools") {
-      if (!startupToolsClientUpdate(event, expectedProfile)) return false;
+      if (!startupToolsClientUpdate(event, expectedProfile)) {
+        this.#mismatchPhase = "client_startup_tools";
+        return false;
+      }
       this.#expectedProviderTransitions.push("startup_tools");
       this.#clientPhase = "steady";
       return true;
     }
-    if (this.#durable === undefined) return false;
+    if (this.#durable === undefined) {
+      this.#mismatchPhase = "client_before_durable_admission";
+      return false;
+    }
     if (this.#commandedToolChoice === "auto" && toolChoiceClientUpdate(event, "none")) {
       this.#expectedProviderTransitions.push("tool_choice_none");
       this.#commandedToolChoice = "none";
@@ -491,6 +508,7 @@ export class SarahProviderAttestation {
       this.#commandedToolChoice = "auto";
       return true;
     }
+    this.#mismatchPhase = "client_uncommanded_update";
     return false;
   }
 
@@ -542,6 +560,7 @@ export class SarahProviderAttestation {
           }
         }
         this.#candidate = undefined;
+        this.#mismatchPhase = `provider_${transition}`;
         return { state: this.#durable === undefined ? "mismatch" : "drift" };
       }
       this.#expectedProviderTransitions.shift();
@@ -563,6 +582,7 @@ export class SarahProviderAttestation {
     if (observed === undefined) return { state: "pending" };
     if (observed === false) {
       this.#candidate = undefined;
+      this.#mismatchPhase = "provider_steady";
       return { state: this.#durable === undefined ? "mismatch" : "drift" };
     }
     if (this.#durable !== undefined) {

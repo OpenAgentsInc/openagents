@@ -8,6 +8,7 @@ import {
   cli,
   defineAgent,
   llm,
+  log,
   tool,
   type JobContext,
 } from "@livekit/agents";
@@ -493,8 +494,13 @@ const entry = async (ctx: JobContext): Promise<void> => {
     | Extract<ReturnType<SarahProviderAttestation["observe"]>, { state: "candidate" }>["admission"]
     | undefined;
   const rejectProviderMismatch = () => {
+    if (fence.settled) return;
     pendingProviderAdmission = undefined;
     disableParticipantMedia?.();
+    log().warn(
+      { mismatchPhase: providerAttestation.mismatchPhase ?? "unclassified" },
+      "Sarah provider attestation rejected the Realtime session",
+    );
     const error = new Error("OpenAI Realtime confirmed a mismatched Sarah session");
     rejectProviderAdmission?.(error);
     if (fence.settle("provider_mismatch")) {
