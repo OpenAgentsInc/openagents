@@ -1799,7 +1799,9 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           AND binding.worker_job_ref = ${input.workerJobRef}
           AND binding.session_ref = ${input.sessionRef}
           AND binding.generation = ${input.generation}
-          AND binding.state IN ('prepared', 'active')
+          AND binding.state IN (
+            'prepared', 'active', 'cleanup_ready', 'cleanup_failed', 'cleaned'
+          )
       `) as ReadonlyArray<{
         owner_user_id: string;
         room_context_kind: "private" | "community";

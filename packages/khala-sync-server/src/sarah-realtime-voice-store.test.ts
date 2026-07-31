@@ -1870,6 +1870,18 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         nowIso: "2026-07-28T13:01:01.000Z",
       }),
     ).resolves.toMatchObject({ replayed: false });
+    await expect(
+      store.readLiveKitMembershipLease({
+        workerControlTokenDigest: binding.workerControlTokenDigest,
+        workerJobRef: workerClaim.workerJobRef,
+        sessionRef: binding.sessionRef,
+        generation: 1,
+      }),
+    ).resolves.toEqual({
+      ownerUserId: binding.ownerUserId,
+      sarahPresenceLeaseRef: binding.sarahPresenceLeaseRef,
+      roomContext: binding.roomContext,
+    });
     expect(
       await store.revokeLiveKitRoom({
         sessionRef: binding.sessionRef,
@@ -1957,6 +1969,18 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       generation: 1,
       state: "cleaned",
       nowIso: "2026-07-28T13:01:14.000Z",
+    });
+    await expect(
+      store.readLiveKitMembershipLease({
+        workerControlTokenDigest: binding.workerControlTokenDigest,
+        workerJobRef: workerClaim.workerJobRef,
+        sessionRef: binding.sessionRef,
+        generation: 1,
+      }),
+    ).resolves.toEqual({
+      ownerUserId: binding.ownerUserId,
+      sarahPresenceLeaseRef: binding.sarahPresenceLeaseRef,
+      roomContext: binding.roomContext,
     });
     expect(
       await store.readLiveKitCleanup({
