@@ -137,7 +137,11 @@ SARAH_NOSTR_OWNER_PUBKEY: "bcf86577b45042c960c99fe4ac1380a3ef0565ccbdd5c81e3f20f
 # API revision is ready and all Sarah workers are registered, the operator arms
 # this exact revision with the second-phase command in the LiveKit runbook.
 SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED: "false"
-SARAH_LIVEKIT_COMMUNITY_AUTHORITY_JSON: '{"schema":"openagents.sarah.livekit.community-authority.v1","communities":[{"communityRef":"openagents-public","channelRefs":["agent-chat"],"relayUrl":"wss://relay.openagents.com","adminPubkeys":["e841147f262799821bbaa2930fcca982a575458f0e043e064a26ed8aba2046ed"]}]}'
+SARAH_LIVEKIT_COMMUNITY_AUTHORITY_JSON: '{"schema":"openagents.sarah.livekit.community-authority.v1","communities":[{"communityRef":"openagents-public","channelRefs":["agent-chat","alpha-feedback"],"relayUrl":"wss://relay.openagents.com","adminPubkeys":["e841147f262799821bbaa2930fcca982a575458f0e043e064a26ed8aba2046ed"]}]}'
+# 0.2.0 admits no client-distributed LiveKit E2EE key bytes. This public
+# revision binds that explicit policy; a membership change invalidates the
+# room authority and requires a newly provisioned room before Sarah can hear.
+SARAH_LIVEKIT_E2EE_KEY_REVISION: "a4b0c1ca91d556815f39dfe192105cbe5201db24fa94e5bfd6f5bea3e68b0669"
 SARAH_LIVEKIT_URL: "wss://livekit.openagents.com"
 # Managed Sarah Realtime voice (#9272). Matches staging credit hold + rate so
 # mobile/desktop clients can reserve sessions; off-by-default until this flip.

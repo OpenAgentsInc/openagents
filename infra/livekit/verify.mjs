@@ -81,6 +81,7 @@ const expectedInventory = [
   "policy/v1/PodDisruptionBudget/livekit-system/sarah-livekit-agent",
   "scheduling.k8s.io/v1/PriorityClass/<cluster>/livekit-media-critical",
   "v1/ConfigMap/livekit-system/livekit-server",
+  "v1/ConfigMap/livekit-system/sarah-nostr-projection",
   "v1/Namespace/<cluster>/livekit-system",
   "v1/Service/livekit-system/livekit-server",
   "v1/Service/livekit-system/livekit-server-turn",
@@ -692,6 +693,10 @@ requireIncludes(rendered, "serviceAccountName: sarah-agent", "Sarah worker KSA")
 requireIncludes(
   sarahAgentRuntime,
   "name: sarah-nostr-projection",
+  "SARAH_NOSTR_SIGNER_URL: https://oa-sarah-nostr-signer-ezxz4mgdsq-uc.a.run.app",
+  "SARAH_NOSTR_SIGNER_AUDIENCE: https://oa-sarah-nostr-signer-ezxz4mgdsq-uc.a.run.app",
+  "SARAH_NOSTR_EXPECTED_PUBKEY: f7824ac493cb820171a72dd4085880d1bdcc4ba1176ba84e93afddc176ec971d",
+  "SARAH_NOSTR_RELAY_URL: wss://relay.openagents.com",
   "Sarah Nostr projection ConfigMap",
 );
 requireIncludes(

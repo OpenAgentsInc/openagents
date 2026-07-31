@@ -1,3 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sarah-nostr-projection
+  namespace: livekit-system
+data:
+  SARAH_NOSTR_SIGNER_URL: https://oa-sarah-nostr-signer-ezxz4mgdsq-uc.a.run.app
+  SARAH_NOSTR_SIGNER_AUDIENCE: https://oa-sarah-nostr-signer-ezxz4mgdsq-uc.a.run.app
+  SARAH_NOSTR_EXPECTED_PUBKEY: f7824ac493cb820171a72dd4085880d1bdcc4ba1176ba84e93afddc176ec971d
+  SARAH_NOSTR_RELAY_URL: wss://relay.openagents.com
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
