@@ -133,6 +133,7 @@ OPENAUTH_CLIENT_ID: "openagents-web"
 OPENAUTH_ISSUER_URL: "https://auth.openagents.com"
 PUBLIC_NOSTR_CHAT_RELAY_SELF_PUBKEY: "e841147f262799821bbaa2930fcca982a575458f0e043e064a26ed8aba2046ed"
 SARAH_NOSTR_OWNER_PUBKEY: "bcf86577b45042c960c99fe4ac1380a3ef0565ccbdd5c81e3f20f0919fe4fd14"
+SARAH_NOSTR_EXPECTED_PUBKEY: "f7824ac493cb820171a72dd4085880d1bdcc4ba1176ba84e93afddc176ec971d"
 # Every canonical production deploy begins with admission disabled. After the
 # API revision is ready and all Sarah workers are registered, the operator arms
 # this exact revision with the second-phase command in the LiveKit runbook.
