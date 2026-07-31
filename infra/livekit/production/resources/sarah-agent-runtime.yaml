@@ -75,7 +75,7 @@ spec:
               app.kubernetes.io/instance: sarah-livekit-agent
       containers:
         - name: sarah-livekit-agent
-          image: us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/sarah-livekit-agent@sha256:07e7be7fad9150e93ab49c47dc8c935a3bc02e103ba82d10b3a81ad9f01a304c
+          image: us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/sarah-livekit-agent@sha256:41b06de908c45642d4635d5cc3b168e69d08f08c3621f8ea39aecdeeed190227
           imagePullPolicy: IfNotPresent
           ports:
             - name: health
