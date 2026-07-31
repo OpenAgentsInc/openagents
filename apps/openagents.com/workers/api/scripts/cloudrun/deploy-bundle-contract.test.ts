@@ -4,6 +4,11 @@ import { describe, expect, test } from 'vitest'
 
 import { shouldBundleCloudRunDependency } from '../../vite.config'
 import { externalRuntimeSpecifiers } from './assert-self-contained-bundle.mjs'
+import {
+  LIVEKIT_ADMISSION_KEYS,
+  admissionDrift,
+  parseCommittedAdmissionState,
+} from './check-livekit-admission-drift.mjs'
 
 describe('Cloud Run Vite Plus bundle contract', () => {
   test.each(['env-production.yaml', 'env-staging.yaml'])(
@@ -126,9 +131,16 @@ describe('Cloud Run Vite Plus bundle contract', () => {
     expect(productionEnvironment).toContain(
       'SARAH_LIVEKIT_URL: "wss://livekit.openagents.com"',
     )
+    // EP263-LK H3 (#9282): the committed value is the alpha's intended steady
+    // state and must equal what production serves. It was "false" while
+    // production served "true", so `main` described a closed alpha that was
+    // open. check-livekit-admission-drift.mjs is the live half of this pin.
     expect(productionEnvironment).toContain(
-      'SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED: "false"',
+      'SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED: "true"',
     )
+    // The bounded provider-disconnect acceptance boundary stays committed-
+    // closed. Arming is a deploy-time override for one approved window, never
+    // a committed "true".
     expect(productionEnvironment).toContain(
       'SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE_ENABLED: "false"',
     )
@@ -151,6 +163,72 @@ describe('Cloud Run Vite Plus bundle contract', () => {
     expect(deployScript.match(/SARAH_LIVEKIT_CONTROL_ROOT=/gu)).toHaveLength(1)
     expect(deployScript).not.toContain('SARAH_LIVEKIT_API_KEY=')
     expect(deployScript).not.toContain('SARAH_LIVEKIT_API_SECRET=')
+  })
+
+  test('carries the LiveKit admission state atomically in one revision', () => {
+    const deployScript = readFileSync(
+      fileURLToPath(new URL('../deploy-cloudrun.sh', import.meta.url)),
+      'utf8',
+    )
+
+    // EP263-LK H2 (#9282). The deploy must ship the intended admission state
+    // with the revision it builds and smokes. Before this, every deploy
+    // restored the committed value and an operator spent a second revision
+    // re-arming admissions — the drift in H3 is what that habit produced.
+    expect(deployScript).toContain('RENDERED_ENV_FILE')
+    expect(deployScript).toContain('--env-vars-file "$RENDERED_ENV_FILE"')
+    expect(deployScript).not.toContain('--env-vars-file "$ENV_FILE"')
+
+    // Bounded operator intent is expressed as an explicit on/off override that
+    // is applied BEFORE `gcloud run deploy`, not as a follow-up service update.
+    expect(deployScript).toContain('SARAH_LIVEKIT_ADMISSIONS')
+    expect(deployScript).toContain(
+      'SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE',
+    )
+    expect(deployScript).toContain('apply_env_override')
+    expect(deployScript).not.toContain('--update-env-vars')
+
+    // The rendered copy is temporary; the committed file is never rewritten.
+    expect(deployScript).toContain('cp "$ENV_FILE" "$RENDERED_ENV_FILE"')
+  })
+
+  test('detects committed-versus-serving LiveKit admission drift', () => {
+    const committed = readFileSync(
+      fileURLToPath(new URL('env-production.yaml', import.meta.url)),
+      'utf8',
+    )
+
+    expect(LIVEKIT_ADMISSION_KEYS).toEqual([
+      'SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED',
+      'SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE_ENABLED',
+    ])
+
+    const parsed = parseCommittedAdmissionState(committed)
+    expect(parsed).toEqual({
+      SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED: 'true',
+      SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE_ENABLED: 'false',
+    })
+
+    // Agreement is silence.
+    expect(admissionDrift(parsed, parsed)).toEqual([])
+
+    // The exact 2026-07-31 production divergence must be reported, not ignored.
+    expect(
+      admissionDrift(parsed, {
+        SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED: 'false',
+        SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE_ENABLED: 'false',
+      }),
+    ).toEqual([
+      {
+        key: 'SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED',
+        committed: 'true',
+        serving: 'false',
+      },
+    ])
+
+    // A key missing from the serving revision is drift, not agreement: an
+    // absent value is runtime-disabled and must never read as enabled.
+    expect(admissionDrift(parsed, {})).toHaveLength(2)
   })
 
   test('ships Vite Plus split chunks beside the server entry', () => {

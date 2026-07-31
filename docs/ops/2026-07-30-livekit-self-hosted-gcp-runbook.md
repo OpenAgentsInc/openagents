@@ -670,9 +670,11 @@ Service and a deny-all ingress policy; its outbound LiveKit, OpenAI, and
 OpenAgents control connections remain hostname-based and cannot be represented
 honestly by a static Kubernetes CIDR allow-list.
 
-Every canonical API deployment commits
-`SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED=false`; an absent or malformed value is
-also disabled. This makes rollout two explicit phases:
+The runtime is fail-closed on this key: an absent or malformed
+`SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED` is disabled. Since 2026-07-31 the
+committed production value is the alpha's intended **steady state**, and a
+fail-closed first bring-up is expressed by the deploy rather than by a stale
+committed value. This makes a fresh cluster rollout two explicit phases:
 
 The monolith deploy script also passes the full
 `oa-cloud-run-source-builder` resource through `--build-service-account`.
@@ -687,25 +689,50 @@ runtime identities remain different; neither builder receives Secret Manager,
 Cloud Run deploy, GKE, or runtime service-account impersonation grants from
 this change.
 
-1. deploy the API revision with admission disabled, then wait for SFU
-   readiness, Redis health, signaling and TURN load-balancer health,
+1. deploy the API revision with admission explicitly disabled, then wait for
+   SFU readiness, Redis health, signaling and TURN load-balancer health,
    certificates, all three Sarah worker replicas Ready and registered,
-   dashboards, alerts, and the emergency dispatch disable;
-2. arm only after preserving those observations by creating the admission
-   revision:
+   dashboards, alerts, and the emergency dispatch disable:
 
    ```bash
-   gcloud run services update openagents-monolith \
-     --project openagentsgemini \
-     --region us-central1 \
-     --update-env-vars SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED=true
+   SARAH_LIVEKIT_ADMISSIONS=off \
+     scripts/deploy-cloudrun.sh production
    ```
 
-Confirm the new revision is Ready and serving 100 percent of traffic before
-issuing a private-room acceptance request. A normal subsequent deployment
-returns the service to disabled and requires this readiness gate again. The
-immediate rollback command is the same update with `=false`; it stops new rooms
-without removing worker close, usage, or cleanup routes.
+2. arm only after preserving those observations, by deploying the same
+   candidate with the committed steady state:
+
+   ```bash
+   scripts/deploy-cloudrun.sh production
+   ```
+
+`SARAH_LIVEKIT_ADMISSIONS` accepts exactly `on` or `off`. It rewrites a
+temporary rendered copy of the committed environment before
+`gcloud run deploy`, so the deployed revision is the revision the script smokes
+and reports. Do not patch these keys with a follow-up
+`gcloud run services update`: that costs a second revision on every deployment
+and is exactly how production came to serve `true` while `main` committed
+`false` (EP263-LK H2/H3, #9282).
+
+Confirm the revision is Ready and serving 100 percent of traffic before issuing
+a private-room acceptance request. A routine subsequent deployment now
+preserves the committed steady state in one revision instead of closing
+admissions and requiring a re-arm. The immediate emergency stop is a deploy
+with `SARAH_LIVEKIT_ADMISSIONS=off`; it stops new rooms without removing worker
+close, usage, or cleanup routes.
+
+**After any out-of-band change to these keys, reconcile before you walk away.**
+The committed environment and the serving revision must agree, or `main`
+describes a production state that does not exist:
+
+```bash
+CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config \
+  node scripts/cloudrun/check-livekit-admission-drift.mjs
+```
+
+It exits non-zero on divergence and prints only booleans and revision names.
+If it reports drift, either commit the intended state and redeploy, or withdraw
+the override — never leave the two disagreeing.
 
 The 0.2.0 gate admits only `clientProfile=omega_editor` to
 `livekit_room_v1`. Mobile profiles are rejected before reservation or
@@ -1490,6 +1517,22 @@ production-unavailable-by-default acceptance boundary for
 route returns `404` before authentication or request parsing. Arming it requires
 a separately approved, bounded acceptance revision with the value exactly
 `true`. Arming is not evidence that the drill passed.
+
+Arm and withdraw the window with the deploy, so the armed value belongs to a
+revision that was built and smoked as a unit:
+
+```bash
+# Arm for one approved window.
+SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE=on \
+  scripts/deploy-cloudrun.sh production
+
+# Withdraw. The committed value is "false", so a plain deploy closes it again.
+scripts/deploy-cloudrun.sh production
+```
+
+Never commit `true` for this key. After withdrawing, run
+`check-livekit-admission-drift.mjs` and confirm the serving revision reports
+`false` again.
 
 Run the provider-disconnect row as follows:
 

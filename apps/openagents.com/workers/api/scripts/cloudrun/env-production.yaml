@@ -134,10 +134,23 @@ OPENAUTH_ISSUER_URL: "https://auth.openagents.com"
 PUBLIC_NOSTR_CHAT_RELAY_SELF_PUBKEY: "e841147f262799821bbaa2930fcca982a575458f0e043e064a26ed8aba2046ed"
 SARAH_NOSTR_OWNER_PUBKEY: "bcf86577b45042c960c99fe4ac1380a3ef0565ccbdd5c81e3f20f0919fe4fd14"
 SARAH_NOSTR_EXPECTED_PUBKEY: "f7824ac493cb820171a72dd4085880d1bdcc4ba1176ba84e93afddc176ec971d"
-# Every canonical production deploy begins with admission disabled. After the
-# API revision is ready and all Sarah workers are registered, the operator arms
-# this exact revision with the second-phase command in the LiveKit runbook.
-SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED: "false"
+# Intended steady state for the 0.2.0 LiveKit alpha, reconciled with the
+# serving revision on 2026-07-31 (EP263-LK H3, #9282). Production had been
+# armed out of band while this file still said "false", so `main` described a
+# closed alpha that was in fact open, and every redeploy silently closed
+# admissions until a second revision re-armed them.
+#
+# The two-phase fail-closed rollout is NOT removed — it is now carried by the
+# deploy instead of by a stale committed value. A fresh cluster bring-up
+# deploys with `SARAH_LIVEKIT_ADMISSIONS=off`, observes SFU/Redis/TURN/worker
+# readiness, then redeploys (or arms) once. Routine redeploys of an already
+# live alpha carry this state atomically in one revision. The runtime default
+# stays fail-closed: an absent or malformed value is disabled.
+SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED: "true"
+# The provider-disconnect acceptance boundary stays committed-closed. Arming it
+# requires a separately approved, bounded acceptance window, carried atomically
+# by `SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE=on` on one deploy and
+# withdrawn by the next. Never commit "true" here.
 SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE_ENABLED: "false"
 SARAH_LIVEKIT_COMMUNITY_AUTHORITY_JSON: '{"schema":"openagents.sarah.livekit.community-authority.v1","communities":[{"communityRef":"openagents-public","channelRefs":["agent-chat","alpha-feedback"],"relayUrl":"wss://relay.openagents.com","adminPubkeys":["e841147f262799821bbaa2930fcca982a575458f0e043e064a26ed8aba2046ed"]}]}'
 # 0.2.0 admits no client-distributed LiveKit E2EE key bytes. This public

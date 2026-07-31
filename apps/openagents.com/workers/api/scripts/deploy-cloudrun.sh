@@ -139,6 +139,57 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
+# Atomic LiveKit admission state (EP263-LK H2, #9282).
+#
+# The committed env file carries the intended steady state. Bounded operator
+# intent — a fail-closed cluster bring-up, or an approved provider-disconnect
+# acceptance window — is applied to a RENDERED copy so the deployed revision is
+# the revision that was smoked. Previously this state was applied by a follow-up
+# `gcloud run services update` env-var patch issued AFTER the deploy, which cost
+# a second revision on every single deployment and let the serving state drift
+# away from `main` silently. Do not reintroduce a post-deploy env patch here.
+RENDERED_ENV_FILE="$(mktemp -t oa-cloudrun-env.XXXXXX)"
+trap 'rm -rf "$RUNTIME_DEPLOY_DIR" "${START_RUNTIME_DEPLOY_DIR:-}" "${RENDERED_ENV_FILE:-}"' EXIT
+cp "$ENV_FILE" "$RENDERED_ENV_FILE"
+
+# apply_env_override <yaml key> <"on"|"off"|""> <operator variable name>
+apply_env_override() {
+  local key="$1" intent="$2" variable="$3" value
+  if [[ -z "$intent" ]]; then
+    return 0
+  fi
+  case "$intent" in
+    on) value="true" ;;
+    off) value="false" ;;
+    *)
+      echo "FATAL: $variable must be exactly 'on' or 'off' (got '$intent')" >&2
+      exit 2
+      ;;
+  esac
+  if ! grep -q "^${key}: " "$RENDERED_ENV_FILE"; then
+    echo "FATAL: $variable was set but $ENV_FILE declares no ${key}" >&2
+    exit 2
+  fi
+  # The committed values are always quoted booleans, never multi-line.
+  sed -i.bak "s|^${key}: .*$|${key}: \"${value}\"|" "$RENDERED_ENV_FILE"
+  rm -f "$RENDERED_ENV_FILE.bak"
+  echo "==> Override: ${key}=\"${value}\" (from ${variable}=${intent})"
+}
+
+apply_env_override SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED \
+  "${SARAH_LIVEKIT_ADMISSIONS:-}" SARAH_LIVEKIT_ADMISSIONS
+apply_env_override SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE_ENABLED \
+  "${SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE:-}" \
+  SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE
+
+# Record the effective LiveKit admission state this revision will serve. These
+# are booleans, never secrets.
+if grep -q '^SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED: ' "$RENDERED_ENV_FILE"; then
+  echo "==> Effective LiveKit admission state for this revision:"
+  grep '^SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED: \|^SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE_ENABLED: ' \
+    "$RENDERED_ENV_FILE" | sed 's/^/      /'
+fi
+
 SET_SECRETS=(
   "KHALA_SYNC_DATABASE_URL=openagents-monolith-database-url-${ENV_SUFFIX}:latest"
   "CLOUD_RUN_CRON_TOKEN=openagents-monolith-cron-token-${ENV_SUFFIX}:latest"
@@ -278,7 +329,7 @@ gcloud run deploy "$SERVICE" \
   --network "$NETWORK" \
   --subnet "$SUBNETWORK" \
   --vpc-egress all-traffic \
-  --env-vars-file "$ENV_FILE" \
+  --env-vars-file "$RENDERED_ENV_FILE" \
   --set-secrets "$SECRET_FLAG" \
   --add-cloudsql-instances "openagentsgemini:us-central1:khala-sync-pg"
 

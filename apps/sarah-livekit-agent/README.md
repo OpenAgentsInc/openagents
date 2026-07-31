@@ -87,7 +87,10 @@ or media.
 New room admission is serialized in Postgres and refuses room 21. Operators can
 set `SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED=false` on the API to stop all new
 LiveKit admissions and dispatches without preventing existing generations from
-reporting usage and closing.
+reporting usage and closing. Apply it with the deploy
+(`SARAH_LIVEKIT_ADMISSIONS=off scripts/deploy-cloudrun.sh production`) so the
+state belongs to one revision, and reconcile afterwards with
+`scripts/cloudrun/check-livekit-admission-drift.mjs`.
 
 Build and test from the repository root:
 
