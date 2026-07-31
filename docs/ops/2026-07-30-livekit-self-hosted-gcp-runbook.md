@@ -857,7 +857,24 @@ node scripts/cloud/livekit-acceptance.mjs \
 
 ### Secret, log, and retention scan
 
-The executable collector is `scripts/cloud/livekit-privacy-scan.mjs`. It scans
+Seal each completed read-only export with the executable manifest builder.
+Use the real collection start/end timestamps for that scope:
+
+```bash
+OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
+node scripts/cloud/livekit-privacy-export.mjs \
+  --scope logs \
+  --source-base-revision "$(git rev-parse HEAD)" \
+  --started-at <ISO-8601> \
+  --completed-at <ISO-8601> \
+  --input <private-logs-export-directory> \
+  --apply
+```
+
+Repeat for every required scope. The builder refuses incomplete evidence
+shapes and emits only aggregate counts; it never prints object names or
+contents. The executable collector is
+`scripts/cloud/livekit-privacy-scan.mjs`. It scans
 eight exact scopes: packaged Omega, every other packaged client, Sarah worker
 pods, logs, Redis, object storage, traces, and crash artifacts. It compares the
 real production OpenAI key against every scope except the server-side pod
