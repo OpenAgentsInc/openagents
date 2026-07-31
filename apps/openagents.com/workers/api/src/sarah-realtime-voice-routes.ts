@@ -1821,7 +1821,15 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
           provisioningOwnerRef,
           nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
         })
-      } catch {
+      } catch (error) {
+        console.error('Sarah LiveKit provisioning failed', {
+          sessionRef: body.identity.sessionRef,
+          generation: body.identity.generation,
+          reason:
+            error instanceof Error
+              ? error.message.slice(0, 256)
+              : 'unknown_error',
+        })
         let accountingTerminal = false
         try {
           await opened.store.settleLiveKitProvisioningIntent({

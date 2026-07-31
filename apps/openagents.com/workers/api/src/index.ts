@@ -3873,7 +3873,10 @@ const sarahRealtimeVoiceDependenciesForEnv = (workerEnv: Env) => ({
       undefined,
     )
     if (!response.ok) {
-      throw new Error(`Sarah shared-room authority bootstrap failed (${response.status})`)
+      const body = (await response.text()).slice(0, 256)
+      throw new Error(
+        `Sarah shared-room authority bootstrap failed (${response.status}): ${body}`,
+      )
     }
   },
 })
