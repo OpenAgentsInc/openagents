@@ -1303,6 +1303,13 @@ kubectl -n livekit-system auth can-i delete pods
 
 ### Secret, log, and retention scan
 
+> **This scan cannot be executed today.** Four independent blockers, each
+> verified against the live production deployment, are recorded per scope in
+> [`2026-07-31-sarah-livekit-privacy-scan-executability.md`](2026-07-31-sarah-livekit-privacy-scan-executability.md).
+> Three are outside what a repository change can fix. Read that finding before
+> attempting a run, because the all-eight-scopes, one-window requirement means
+> a partial remediation buys nothing.
+
 Seal each completed read-only export with the executable manifest builder.
 Use the real collection start/end timestamps for that scope:
 
