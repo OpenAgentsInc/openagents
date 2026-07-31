@@ -149,8 +149,8 @@ const exactTranscription = (value: unknown): boolean => {
     transcription !== undefined &&
     exactKeys(transcription, ["model", "language", "prompt"]) &&
     transcription.model === SARAH_LIVEKIT_TRANSCRIPTION_MODEL &&
-    transcription.language === undefined &&
-    transcription.prompt === undefined
+    nullish(transcription.language) &&
+    nullish(transcription.prompt)
   );
 };
 

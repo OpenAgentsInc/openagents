@@ -867,7 +867,11 @@ const providerUpdatedEvent = (profile: SarahRealtimeProviderProfile = privatePro
       input: {
         format: { type: "audio/pcm", rate: 24_000 },
         noise_reduction: null,
-        transcription: { model: "gpt-4o-mini-transcribe" },
+        transcription: {
+          model: "gpt-4o-mini-transcribe",
+          language: null,
+          prompt: null,
+        },
         turn_detection: {
           type: "semantic_vad",
           eagerness: "high",
