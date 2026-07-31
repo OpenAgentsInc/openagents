@@ -604,7 +604,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       nowIso: reservation.nowIso,
       expiresAt: "2026-07-28T13:02:00.000Z",
     });
-    await store.reserve({
+    const firstReservation = await store.reserve({
       ...reservation,
       sessionRef: "voice-livekit-1",
       reservationRef: "voice-livekit-reservation-1",
@@ -619,6 +619,41 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         spendableRemainingCreditMsat: 10_000,
       },
     });
+    expect(firstReservation).toMatchObject({
+      replayed: false,
+      admissionTermsDigest: "8".repeat(64),
+    });
+    await expect(
+      store.reserve({
+        ...reservation,
+        sessionRef: "voice-livekit-1",
+        reservationRef: "voice-livekit-reservation-1",
+        generation: 1,
+        transportKind: "livekit_room_v1",
+        ticketDigest: "4".repeat(64),
+        ticketExpiresAt: "2026-07-28T13:01:30.000Z",
+        sessionExpiresAt: "2026-07-28T13:11:00.000Z",
+        nowIso: "2026-07-28T13:00:01.000Z",
+        admissionBinding: {
+          admissionRef: "sarah_voice_admission:livekit-1",
+          termsDigest: "9".repeat(64),
+          spendableRemainingCreditMsat: 9_000,
+        },
+      }),
+    ).resolves.toMatchObject({
+      sessionRef: "voice-livekit-1",
+      ticketExpiresAt: "2026-07-28T13:01:00.000Z",
+      sessionExpiresAt: "2026-07-28T13:10:00.000Z",
+      admissionExpiresAt: "2026-07-28T13:02:00.000Z",
+      admissionTermsDigest: "8".repeat(64),
+      replayed: true,
+    });
+    const [balanceAfterReplay] = await sql`
+      SELECT held_msat
+      FROM agent_balances
+      WHERE actor_ref = 'agent:user-sarah-livekit'
+    `;
+    expect(Number(balanceAfterReplay?.held_msat)).toBe(1_000);
     const binding = {
       sessionRef: "voice-livekit-1",
       ownerUserId: reservation.ownerUserId,
@@ -699,9 +734,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       }),
     ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
     await store.bindLiveKitRoom(binding);
-    await expect(store.bindLiveKitRoom(binding)).rejects.toBeInstanceOf(
-      SarahVoiceSessionRejectedError,
-    );
+    await expect(store.bindLiveKitRoom(binding)).resolves.toBeUndefined();
     expect(
       await store.readLiveKitCleanup({
         sessionRef: binding.sessionRef,
@@ -735,6 +768,45 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
     await expect(store.claimLiveKitWorkerJob(workerClaim)).resolves.toMatchObject({
       sessionRef: binding.sessionRef,
       generation: 1,
+    });
+    await sql`
+      UPDATE sarah_livekit_room_bindings
+      SET state = 'active', updated_at = '2026-07-28T13:00:10.250Z'
+      WHERE session_ref = ${binding.sessionRef}
+    `;
+    await expect(
+      store.prepareLiveKitProvisioningIntent({
+        sessionRef: binding.sessionRef,
+        ownerUserId: binding.ownerUserId,
+        deviceRef: binding.deviceRef,
+        threadRef: binding.threadRef,
+        generation: binding.generation,
+        capabilityProfile: binding.capabilityProfile,
+        admissionRef: binding.admissionRef,
+        admissionDigest: binding.admissionDigest,
+        idempotencyKey: "sarah-livekit:voice-livekit-1:1",
+        workerControlTokenDigest: binding.workerControlTokenDigest,
+        roomContext: binding.roomContext,
+        nowIso: "2026-07-28T13:00:10.500Z",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      store.bindLiveKitRoom({
+        ...binding,
+        participantGrantDigest: "6".repeat(64),
+        joinExpiresAt: "2026-07-28T13:01:30.000Z",
+        nowIso: "2026-07-28T13:00:10.500Z",
+      }),
+    ).resolves.toBeUndefined();
+    const [activeReplayBinding] = await sql`
+      SELECT state, participant_grant_digest, join_expires_at
+      FROM sarah_livekit_room_bindings
+      WHERE session_ref = ${binding.sessionRef}
+    `;
+    expect(activeReplayBinding).toMatchObject({
+      state: "active",
+      participant_grant_digest: "6".repeat(64),
+      join_expires_at: "2026-07-28T13:01:30.000Z",
     });
     await expect(
       store.claimLiveKitWorkerJob({

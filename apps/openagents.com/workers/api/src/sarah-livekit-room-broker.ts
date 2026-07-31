@@ -3,6 +3,7 @@ import {
   SARAH_LIVEKIT_AGENT_NAME,
   SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
   canonicalSarahLiveKitDispatchAuthority,
+  decodeSarahLiveKitDispatchMetadata,
   type SarahLiveKitDispatchMetadata,
 } from "@openagentsinc/audio-contract";
 import {
@@ -40,7 +41,20 @@ export type SarahLiveKitRoomBrokerClients = Readonly<{
     agentName: string,
     options: Readonly<{ metadata: string; restartPolicy: JobRestartPolicy }>,
   ) => Promise<Readonly<{ id: string }>>;
-  listDispatch: (roomRef: string) => Promise<ReadonlyArray<Readonly<{ id: string }>>>;
+  listDispatch: (
+    roomRef: string,
+  ) => Promise<
+    ReadonlyArray<
+      Readonly<{
+        id: string;
+        agentName: string;
+        room: string;
+        metadata: string;
+        restartPolicy: JobRestartPolicy;
+        deployment: string;
+      }>
+    >
+  >;
   deleteDispatch: (dispatchRef: string, roomRef: string) => Promise<unknown>;
 }>;
 
@@ -130,7 +144,7 @@ const roomContextForDispatch = (
 const isSarahClientCapabilityProfile = (
   value: string,
 ): value is SarahLiveKitDispatchMetadata["capabilityProfile"] =>
-  value === "omega_editor" || value === "mobile_voice_only" || value === "mobile_command_center";
+  value === "omega_editor";
 
 const dispatchMetadataForProvision = (
   input: SarahVoiceLiveKitProvisionInput,
@@ -227,10 +241,38 @@ export const makeSarahLiveKitRoomBroker = (
     });
     const participantGrant = await participantToken.toJwt();
 
-    const dispatch = await clients.createDispatch(roomRef, SARAH_LIVEKIT_AGENT_NAME, {
-      metadata: JSON.stringify(metadata),
-      restartPolicy: JobRestartPolicy.JRP_NEVER,
-    });
+    const existingDispatches = await clients.listDispatch(roomRef);
+    if (existingDispatches.length > 1) {
+      throw new Error("The Sarah LiveKit room has conflicting dispatches");
+    }
+    const existingDispatch = existingDispatches[0];
+    if (existingDispatch !== undefined) {
+      let decodedExisting: SarahLiveKitDispatchMetadata;
+      try {
+        decodedExisting = decodeSarahLiveKitDispatchMetadata(
+          JSON.parse(existingDispatch.metadata) as unknown,
+        );
+      } catch {
+        throw new Error("The existing Sarah LiveKit dispatch metadata is invalid");
+      }
+      if (
+        existingDispatch.agentName !== SARAH_LIVEKIT_AGENT_NAME ||
+        existingDispatch.room !== roomRef ||
+        existingDispatch.restartPolicy !== JobRestartPolicy.JRP_NEVER ||
+        existingDispatch.deployment !== "" ||
+        existingDispatch.metadata !== JSON.stringify(metadata) ||
+        canonicalSarahLiveKitDispatchAuthority(decodedExisting) !==
+          canonicalSarahLiveKitDispatchAuthority(metadata)
+      ) {
+        throw new Error("The existing Sarah LiveKit dispatch authority conflicts");
+      }
+    }
+    const dispatch =
+      existingDispatch ??
+      (await clients.createDispatch(roomRef, SARAH_LIVEKIT_AGENT_NAME, {
+        metadata: JSON.stringify(metadata),
+        restartPolicy: JobRestartPolicy.JRP_NEVER,
+      }));
     if (dispatch.id.trim() === "") {
       await clients.deleteRoom(roomRef);
       throw new Error("LiveKit returned an empty Sarah dispatch reference");
@@ -277,6 +319,11 @@ export const makeSarahLiveKitRoomBroker = (
       sha256(
         deriveSarahLiveKitControlToken(config.controlRoot, dispatchMetadataForProvision(input)),
       ),
+    sessionTicket: (input) =>
+      createHmac("sha256", Buffer.from(config.controlRoot, "utf8"))
+        .update("openagents.sarah.livekit.session-ticket.v1\0")
+        .update(canonicalSarahLiveKitDispatchAuthority(dispatchMetadataForProvision(input)))
+        .digest("base64url"),
     provision,
     cleanup: (provisioned) =>
       cleanupRoom({

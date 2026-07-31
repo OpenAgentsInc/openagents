@@ -159,6 +159,81 @@ describe("Sarah LiveKit control client", () => {
     ).resolves.toEqual({ accepted: true, stopReason: "session_expired" });
   });
 
+  test("retries an idempotent tool proposal after an unknown delivery outcome", async () => {
+    const proposal = {
+      proposalRef: "proposal:one",
+      proposalDigest: "b".repeat(64),
+      command: {
+        _tag: "context_read" as const,
+        target: { workspaceRef: "workspace:one", path: "src/main.ts" },
+        startLine: 1,
+        endLine: 20,
+      },
+      confirmationRequired: false,
+      expiresAtMs: 2_000_000_000_000,
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockRejectedValueOnce(new TypeError("response lost"))
+      .mockResolvedValueOnce(
+        Response.json({
+          schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+          accepted: true,
+          proposal,
+        }),
+      );
+    const client = makeSarahLiveKitControlClient(
+      {
+        baseUrl: "https://openagents.com",
+        workerRef: "worker:one",
+        controlRoot,
+      },
+      fetcher,
+    );
+    await expect(
+      client.proposeTool(dispatch, {
+        sessionRef: dispatch.sessionRef,
+        generation: dispatch.generation,
+        jobRef: "job:one",
+        eventRef: "tool:event:one",
+        providerCallRef: "provider:call:one",
+        command: proposal.command,
+      }),
+    ).resolves.toEqual(proposal);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0]?.[1]?.body).toBe(fetcher.mock.calls[1]?.[1]?.body);
+  });
+
+  test("retries a tool-state read across a transient control response", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ error: "unavailable" }, { status: 503 }))
+      .mockResolvedValueOnce(
+        Response.json({
+          schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+          state: "waiting_decision",
+        }),
+      );
+    const client = makeSarahLiveKitControlClient(
+      {
+        baseUrl: "https://openagents.com",
+        workerRef: "worker:one",
+        controlRoot,
+      },
+      fetcher,
+    );
+    await expect(
+      client.readToolState(dispatch, {
+        sessionRef: dispatch.sessionRef,
+        generation: dispatch.generation,
+        jobRef: "job:one",
+        proposalRef: "proposal:one",
+        proposalDigest: "b".repeat(64),
+      }),
+    ).resolves.toMatchObject({ state: "waiting_decision" });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   test("derives stable credentials separated by generation and room", () => {
     const token = deriveSarahLiveKitControlToken(controlRoot, dispatch);
     expect(token).toBe("oa_sarah_lk_-zUjl0WEcpWVL65Y8bZ_CIVrygCu8tu3R0RWhrINfu0");

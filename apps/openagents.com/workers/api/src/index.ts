@@ -3772,7 +3772,7 @@ const sarahLiveKitRoomBrokerForEnv = (workerEnv: Env) => {
 const sarahLiveKitNewAdmissionsEnabled = (workerEnv: Env): boolean => {
   const value =
     workerEnv.SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED?.trim().toLowerCase()
-  return value === undefined || ['true', '1', 'on'].includes(value)
+  return value !== undefined && ['true', '1', 'on'].includes(value)
 }
 
 const sarahRealtimeVoiceDependenciesForEnv = (workerEnv: Env) => ({

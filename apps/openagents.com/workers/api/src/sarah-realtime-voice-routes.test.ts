@@ -84,6 +84,8 @@ const makeDependencies = (
       input.admissionBinding === undefined
         ? undefined
         : '2026-07-28T12:02:00.000Z',
+    admissionTermsDigest: input.admissionBinding?.termsDigest,
+    replayed: false,
   })),
   readActiveStagingOwnerEntitlement: SarahRealtimeVoiceStore['readActiveStagingOwnerEntitlement'] = vi.fn(
     async () => undefined,
@@ -137,6 +139,7 @@ const makeDependencies = (
       }),
       userIdFromSession: (session: { user: { userId: string } }) =>
         session.user.userId,
+      liveKitNewAdmissionsEnabled: () => true,
       now: () => Date.UTC(2026, 6, 28, 12, 0, 0),
     },
     reserve,
@@ -305,6 +308,7 @@ describe('managed Sarah Realtime voice session route', () => {
     } as const
     const broker = {
       workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
+      sessionTicket: vi.fn(() => 'livekit-session-ticket'),
       provision: vi.fn(async () => provision),
       cleanup: vi.fn(async () => undefined),
       cleanupByIdempotencyKey: vi.fn(async () => undefined),
@@ -395,6 +399,7 @@ describe('managed Sarah Realtime voice session route', () => {
     const fixture = makeDependencies()
     const broker = {
       workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
+      sessionTicket: vi.fn(() => 'livekit-session-ticket'),
       provision: vi.fn(),
       cleanup: vi.fn(),
       cleanupByIdempotencyKey: vi.fn(),
@@ -425,7 +430,45 @@ describe('managed Sarah Realtime voice session route', () => {
     expect(broker.provision).not.toHaveBeenCalled()
   })
 
-  test('requires one-use admission for every LiveKit client profile', async () => {
+  test('keeps new LiveKit admissions disabled when the rollout seam is absent', async () => {
+    const fixture = makeDependencies()
+    const broker = {
+      workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
+      sessionTicket: vi.fn(() => 'livekit-session-ticket'),
+      provision: vi.fn(),
+      cleanup: vi.fn(),
+      cleanupByIdempotencyKey: vi.fn(),
+      cleanupRoom: vi.fn(),
+    }
+    const {
+      liveKitNewAdmissionsEnabled: _liveKitNewAdmissionsEnabled,
+      ...defaultOffDependencies
+    } = fixture.dependencies
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      {
+        ...defaultOffDependencies,
+        liveKitRoomBroker: broker,
+      },
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'disclosure-1',
+        requestedTransport: 'livekit_room_v1',
+        roomContext: { kind: 'private' },
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({
+      error: 'sarah_voice_livekit_admissions_disabled',
+    })
+    expect(fixture.reserve).not.toHaveBeenCalled()
+    expect(broker.provision).not.toHaveBeenCalled()
+  })
+
+  test('rejects deferred mobile profiles before LiveKit admission', async () => {
     const fixture = makeDependencies()
     const response = await handleSarahRealtimeVoiceSessionRequest(
       fixture.dependencies,
@@ -440,9 +483,9 @@ describe('managed Sarah Realtime voice session route', () => {
       ctx,
     )
 
-    expect(response.status).toBe(409)
+    expect(response.status).toBe(400)
     expect(await response.json()).toEqual({
-      error: 'sarah_voice_admission_required',
+      error: 'sarah_voice_livekit_client_profile_not_supported',
     })
     expect(fixture.reserve).not.toHaveBeenCalled()
   })
@@ -451,6 +494,7 @@ describe('managed Sarah Realtime voice session route', () => {
     const fixture = makeDependencies()
     const broker = {
       workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
+      sessionTicket: vi.fn(() => 'livekit-session-ticket'),
       provision: vi.fn(
         async () =>
           ({
@@ -633,6 +677,7 @@ describe('managed Sarah Realtime voice session route', () => {
     } as const
     const broker = {
       workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
+      sessionTicket: vi.fn(() => 'livekit-session-ticket'),
       provision: vi.fn(async () => provision),
       cleanup: vi.fn(async () => undefined),
       cleanupByIdempotencyKey: vi.fn(async () => undefined),
@@ -712,6 +757,7 @@ describe('managed Sarah Realtime voice session route', () => {
     } as unknown as SarahRealtimeVoiceStore
     const broker = {
       workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
+      sessionTicket: vi.fn(() => 'livekit-session-ticket'),
       provision: vi.fn(),
       cleanup: vi.fn(),
       cleanupByIdempotencyKey: vi.fn(async () => undefined),
@@ -888,6 +934,112 @@ describe('managed Sarah Realtime voice session route', () => {
     expect(response.status).toBe(402)
     expect(await response.json()).toEqual({ error: 'insufficient_credit' })
     expect(fixture.close).toHaveBeenCalledOnce()
+  })
+
+  test('replays the same unconsumed LiveKit ticket after a lost issuance response', async () => {
+    let firstReservation:
+      | Awaited<ReturnType<SarahRealtimeVoiceStore['reserve']>>
+      | undefined
+    const reserve = vi.fn<SarahRealtimeVoiceStore['reserve']>(async input => {
+      if (firstReservation === undefined) {
+        firstReservation = {
+          sessionRef: input.sessionRef,
+          ownerUserId: input.ownerUserId,
+          ownerActorRef: input.ownerActorRef,
+          deviceRef: input.deviceRef,
+          threadRef: input.threadRef,
+          generation: input.generation,
+          disclosureRef: input.disclosureRef,
+          clientProfile: input.clientProfile,
+          transportKind: input.transportKind ?? 'custom_wss_v1',
+          creditMode: input.creditMode,
+          entitlementRef: input.entitlementRef,
+          admissionCohortRef: input.admissionCohortRef,
+          state: 'reserved',
+          reservedMsat: input.reservedMsat,
+          chargedMsat: 0,
+          ticketExpiresAt: input.ticketExpiresAt,
+          sessionExpiresAt: input.sessionExpiresAt,
+          settlementReceiptRef: null,
+          admissionExpiresAt: '2026-07-28T12:02:00.000Z',
+          admissionTermsDigest: input.admissionBinding?.termsDigest,
+          replayed: false,
+        }
+        return firstReservation
+      }
+      return { ...firstReservation, replayed: true }
+    })
+    const fixture = makeDependencies(reserve)
+    const provision = {
+      livekitUrl: 'wss://livekit.openagents.test',
+      roomRef: 'sarah-room:voice-1:g1',
+      roomEpoch: 1,
+      participantRef: 'participant:user-1:voice-1:g1',
+      sarahParticipantRef: 'participant:sarah:voice-1:g1',
+      participantGrant: 'opaque-livekit-participant-grant',
+      joinExpiresAtMs: Date.UTC(2026, 6, 28, 12, 1, 0),
+      dispatchRef: 'dispatch:voice-1:g1',
+      sarahPresenceLeaseRef: 'sarah-presence:voice-1:g1',
+      grantClaims: {
+        roomRef: 'sarah-room:voice-1:g1',
+        participantRef: 'participant:user-1:voice-1:g1',
+        expiresAtMs: Date.UTC(2026, 6, 28, 12, 1, 0),
+        roomJoin: true,
+        canPublish: true,
+        canSubscribe: true,
+        canPublishData: false,
+        canUpdateOwnMetadata: false,
+        canPublishSources: ['microphone'],
+        roomAdmin: false,
+        roomCreate: false,
+        roomList: false,
+      },
+    } as const
+    const broker = {
+      workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
+      sessionTicket: vi.fn(() => 'stable-livekit-session-ticket'),
+      provision: vi.fn(async () => provision),
+      cleanup: vi.fn(async () => undefined),
+      cleanupByIdempotencyKey: vi.fn(async () => undefined),
+      cleanupRoom: vi.fn(async () => undefined),
+    }
+    const issue = () =>
+      handleSarahRealtimeVoiceSessionRequest(
+        { ...fixture.dependencies, liveKitRoomBroker: broker },
+        request({
+          schema: SARAH_VOICE_PROTOCOL_VERSION,
+          identity,
+          disclosureRef: 'disclosure-1',
+          requestedTransport: 'livekit_room_v1',
+          roomContext: { kind: 'private' },
+        }),
+        {},
+        ctx,
+      )
+
+    const firstResponse = await issue()
+    const replayResponse = await issue()
+    expect(firstResponse.status).toBe(201)
+    expect(replayResponse.status).toBe(201)
+    const firstBody = (await firstResponse.json()) as {
+      ticket: string
+      ticketExpiresAtMs: number
+      sessionExpiresAtMs: number
+    }
+    const replayBody = (await replayResponse.json()) as typeof firstBody
+    expect(replayBody).toEqual(
+      expect.objectContaining({
+        ticket: firstBody.ticket,
+        ticketExpiresAtMs: firstBody.ticketExpiresAtMs,
+        sessionExpiresAtMs: firstBody.sessionExpiresAtMs,
+      }),
+    )
+    expect(reserve).toHaveBeenCalledTimes(2)
+    expect(reserve.mock.calls[0]?.[0].ticketDigest).toBe(
+      reserve.mock.calls[1]?.[0].ticketDigest,
+    )
+    expect(broker.provision).toHaveBeenCalledTimes(2)
+    expect(fixture.settle).not.toHaveBeenCalled()
   })
 
   test('rejects a revoked alpha member before reserving credit', async () => {

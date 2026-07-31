@@ -136,7 +136,7 @@ export const makePrivateEditorTools = (
   tool({
     name: "editor_context_read",
     description:
-      "Read up to 500 lines from an exact workspace-relative target already supplied by Omega. This cannot discover files.",
+      "Ask Omega to read a bounded range from an exact workspace-relative target already supplied by Omega. The result is a short outcome summary, not the file contents, and this cannot discover files.",
     parameters: z
       .object({
         target: targetSchema,

@@ -147,6 +147,7 @@ export type SarahVoiceLiveKitProvisionInput = Readonly<{
 
 export type SarahVoiceLiveKitRoomBroker = Readonly<{
   workerControlTokenDigest: (input: SarahVoiceLiveKitProvisionInput) => string
+  sessionTicket: (input: SarahVoiceLiveKitProvisionInput) => string
   provision: (
     input: SarahVoiceLiveKitProvisionInput,
   ) => Promise<SarahVoiceLiveKitProvision>
@@ -790,7 +791,16 @@ export const handleSarahRealtimeVoiceAdmissionRequest = async <User, Bindings>(
   const requestedRoomContext = body.roomContext ?? { kind: 'private' as const }
   if (
     requestedTransport === 'livekit_room_v1' &&
-    dependencies.liveKitNewAdmissionsEnabled?.(env) === false
+    clientProfile !== 'omega_editor'
+  ) {
+    return noStoreJson(
+      { error: 'sarah_voice_livekit_client_profile_not_supported' },
+      400,
+    )
+  }
+  if (
+    requestedTransport === 'livekit_room_v1' &&
+    dependencies.liveKitNewAdmissionsEnabled?.(env) !== true
   ) {
     return noStoreJson(
       { error: 'sarah_voice_livekit_admissions_disabled' },
@@ -1178,7 +1188,16 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
   const requestedRoomContext = body.roomContext ?? { kind: 'private' as const }
   if (
     requestedTransport === 'livekit_room_v1' &&
-    dependencies.liveKitNewAdmissionsEnabled?.(env) === false
+    clientProfile !== 'omega_editor'
+  ) {
+    return noStoreJson(
+      { error: 'sarah_voice_livekit_client_profile_not_supported' },
+      400,
+    )
+  }
+  if (
+    requestedTransport === 'livekit_room_v1' &&
+    dependencies.liveKitNewAdmissionsEnabled?.(env) !== true
   ) {
     return noStoreJson(
       { error: 'sarah_voice_livekit_admissions_disabled' },
@@ -1228,10 +1247,10 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
 
   const nowMs = (dependencies.now ?? Date.now)()
   const nowIso = new Date(nowMs).toISOString()
-  const ticketExpiresAtMs =
+  let ticketExpiresAtMs =
     nowMs + Math.min(60_000, config.maxSessionSeconds * 1_000)
-  const sessionExpiresAtMs = nowMs + config.maxSessionSeconds * 1_000
-  const ticket = makeTicket()
+  let sessionExpiresAtMs = nowMs + config.maxSessionSeconds * 1_000
+  let ticket = makeTicket()
   let opened:
     | Readonly<{ store: SarahRealtimeVoiceStore; close: () => Promise<void> }>
     | undefined
@@ -1345,6 +1364,41 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
             spendableRemainingCreditMsat,
           }
         : undefined
+    let liveKitProvisionInput: SarahVoiceLiveKitProvisionInput | undefined
+    if (
+      requestedTransport === 'livekit_room_v1' &&
+      admissionRef !== undefined &&
+      currentAdmissionDigest !== null
+    ) {
+      const broker = dependencies.liveKitRoomBroker
+      if (broker === undefined) {
+        throw new SarahVoiceAdmissionRejectedError(
+          'The LiveKit voice broker is unavailable',
+        )
+      }
+      liveKitProvisionInput = {
+        idempotencyKey: `sarah-livekit:${body.identity.sessionRef}:${body.identity.generation}`,
+        ownerUserId: userId,
+        deviceRef: body.identity.deviceRef,
+        threadRef: body.identity.threadRef,
+        sessionRef: body.identity.sessionRef,
+        generation: body.identity.generation,
+        capabilityProfile: clientProfile,
+        admissionRef,
+        admissionDigest: currentAdmissionDigest,
+        roomContext: liveKitRoomContext,
+        publishAllowed:
+          liveKitRoomContext.kind === 'private'
+            ? true
+            : liveKitRoomContext.publishAllowed,
+        subscribeAllowed:
+          liveKitRoomContext.kind === 'private'
+            ? true
+            : liveKitRoomContext.subscribeAllowed,
+        expiresAtMs: sessionExpiresAtMs,
+      }
+      ticket = broker.sessionTicket(liveKitProvisionInput)
+    }
     const reserved = await opened.store.reserve({
       deviceRef: body.identity.deviceRef,
       disclosureRef: body.disclosureRef,
@@ -1368,6 +1422,33 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
         ? { admissionBinding: exactAdmissionBinding }
         : {}),
     })
+    ticketExpiresAtMs = Date.parse(reserved.ticketExpiresAt)
+    sessionExpiresAtMs = Date.parse(reserved.sessionExpiresAt)
+    if (
+      !Number.isSafeInteger(ticketExpiresAtMs) ||
+      !Number.isSafeInteger(sessionExpiresAtMs) ||
+      ticketExpiresAtMs <= nowMs ||
+      sessionExpiresAtMs <= nowMs
+    ) {
+      throw new SarahVoiceSessionRejectedError(
+        'The Sarah voice replay expiry was invalid',
+      )
+    }
+    if (
+      liveKitProvisionInput !== undefined &&
+      reserved.admissionTermsDigest !== undefined
+    ) {
+      liveKitProvisionInput = {
+        ...liveKitProvisionInput,
+        admissionDigest: reserved.admissionTermsDigest,
+        expiresAtMs: sessionExpiresAtMs,
+      }
+    } else if (liveKitProvisionInput !== undefined) {
+      liveKitProvisionInput = {
+        ...liveKitProvisionInput,
+        expiresAtMs: sessionExpiresAtMs,
+      }
+    }
     const admissionExpiresAtMs =
       requiresAdmission && reserved.admissionExpiresAt !== undefined
         ? Date.parse(reserved.admissionExpiresAt)
@@ -1388,8 +1469,8 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
       if (
         broker === undefined ||
         admissionRef === undefined ||
-        currentAdmissionDigest === null ||
-        admissionExpiresAtMs === undefined
+        admissionExpiresAtMs === undefined ||
+        liveKitProvisionInput === undefined
       ) {
         throw new SarahVoiceAdmissionRejectedError(
           'The LiveKit voice admission binding is incomplete',
@@ -1397,29 +1478,9 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
       }
       const liveKitIdempotencyKey = `sarah-livekit:${body.identity.sessionRef}:${body.identity.generation}`
       try {
-        const publishAllowed =
-          liveKitRoomContext.kind === 'private'
-            ? true
-            : liveKitRoomContext.publishAllowed
-        const subscribeAllowed =
-          liveKitRoomContext.kind === 'private'
-            ? true
-            : liveKitRoomContext.subscribeAllowed
-        const provisionInput = {
-          idempotencyKey: liveKitIdempotencyKey,
-          ownerUserId: userId,
-          deviceRef: body.identity.deviceRef,
-          threadRef: body.identity.threadRef,
-          sessionRef: body.identity.sessionRef,
-          generation: body.identity.generation,
-          capabilityProfile: clientProfile,
-          admissionRef,
-          admissionDigest: currentAdmissionDigest,
-          roomContext: liveKitRoomContext,
-          publishAllowed,
-          subscribeAllowed,
-          expiresAtMs: sessionExpiresAtMs,
-        } as const
+        const provisionInput = liveKitProvisionInput
+        const publishAllowed = provisionInput.publishAllowed
+        const subscribeAllowed = provisionInput.subscribeAllowed
         const liveKitWorkerControlTokenDigest =
           broker.workerControlTokenDigest(provisionInput)
         await opened.store.prepareLiveKitProvisioningIntent({
@@ -1430,7 +1491,7 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
           generation: body.identity.generation,
           capabilityProfile: clientProfile,
           admissionRef,
-          admissionDigest: currentAdmissionDigest,
+          admissionDigest: provisionInput.admissionDigest,
           idempotencyKey: liveKitIdempotencyKey,
           workerControlTokenDigest: liveKitWorkerControlTokenDigest,
           roomContext: liveKitRoomContext,
@@ -1458,7 +1519,7 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
           generation: body.identity.generation,
           capabilityProfile: clientProfile,
           admissionRef,
-          admissionDigest: currentAdmissionDigest,
+          admissionDigest: provisionInput.admissionDigest,
           roomContext: liveKitRoomContext,
           roomRef: liveKitProvision.roomRef,
           roomEpoch: liveKitProvision.roomEpoch,

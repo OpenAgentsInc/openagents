@@ -63,7 +63,11 @@ export type SarahVoiceSessionRecord = Readonly<{
 }>;
 
 export type SarahVoiceReservationRecord = SarahVoiceSessionRecord &
-  Readonly<{ admissionExpiresAt: string | undefined }>;
+  Readonly<{
+    admissionExpiresAt: string | undefined;
+    admissionTermsDigest: string | undefined;
+    replayed: boolean;
+  }>;
 
 export type SarahVoiceUsage = Readonly<{
   usageKind?: "response" | "transcription";
@@ -544,6 +548,67 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           throw new SarahVoiceSessionRejectedError("The user is not active");
         }
 
+        const replayRows = (await tx`
+          SELECT session.session_ref, session.owner_user_id,
+            session.owner_actor_ref, session.device_ref, session.thread_ref,
+            session.generation, session.disclosure_ref,
+            session.client_profile, session.transport_kind,
+            session.credit_mode, session.entitlement_ref,
+            session.admission_cohort_ref, session.state,
+            session.reserved_msat, session.charged_msat,
+            session.ticket_expires_at, session.session_expires_at,
+            session.settlement_receipt_ref,
+            admission.expires_at AS admission_expires_at,
+            admission.terms_digest AS admission_terms_digest
+          FROM sarah_realtime_voice_sessions AS session
+          LEFT JOIN sarah_voice_admissions AS admission
+            ON admission.session_ref = session.session_ref
+            AND admission.admission_ref = ${
+              input.admissionBinding?.admissionRef ?? null
+            }
+            AND admission.state = 'consumed'
+          WHERE session.session_ref = ${input.sessionRef}
+            AND session.reservation_ref = ${input.reservationRef}
+            AND session.owner_user_id = ${input.ownerUserId}
+            AND session.owner_actor_ref = ${input.ownerActorRef}
+            AND session.device_ref = ${input.deviceRef}
+            AND session.thread_ref = ${input.threadRef}
+            AND session.generation = ${input.generation}
+            AND session.ticket_digest = ${input.ticketDigest}
+            AND session.disclosure_ref = ${input.disclosureRef}
+            AND session.client_profile = ${input.clientProfile}
+            AND session.transport_kind = ${input.transportKind ?? "custom_wss_v1"}
+            AND session.credit_mode = ${input.creditMode}
+            AND session.entitlement_ref IS NOT DISTINCT FROM ${input.entitlementRef}
+            AND session.admission_cohort_ref = ${input.admissionCohortRef}
+            AND session.reserved_msat = ${input.reservedMsat}
+            AND session.state = 'reserved'
+            AND session.ticket_expires_at > ${input.nowIso}
+            AND session.session_expires_at > ${input.nowIso}
+            AND (
+              ${
+                input.admissionBinding === undefined
+              }
+              OR admission.admission_ref IS NOT NULL
+            )
+          FOR UPDATE OF session
+        `) as ReadonlyArray<
+          SessionRow &
+            Readonly<{
+              admission_expires_at: string | null;
+              admission_terms_digest: string | null;
+            }>
+        >;
+        const replay = first(replayRows);
+        if (replay !== undefined) {
+          return {
+            ...toRecord(replay),
+            admissionExpiresAt: replay.admission_expires_at ?? undefined,
+            admissionTermsDigest: replay.admission_terms_digest ?? undefined,
+            replayed: true,
+          };
+        }
+
         if (input.admissionBinding !== undefined) {
           const admissions = (await tx`
             SELECT admission_ref, expires_at
@@ -716,7 +781,12 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         if (row === undefined) {
           throw new SarahVoiceStorageError("The reservation did not return a row", null);
         }
-        return { ...toRecord(row), admissionExpiresAt };
+        return {
+          ...toRecord(row),
+          admissionExpiresAt,
+          admissionTermsDigest: input.admissionBinding?.termsDigest,
+          replayed: false,
+        };
       });
     } catch (error) {
       if (
@@ -1014,7 +1084,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             AND membership_revision IS NOT DISTINCT FROM ${
               input.roomContext.kind === "community" ? input.roomContext.membershipRevision : null
             }
-            AND state = 'pending'
+            AND state IN ('pending', 'bound')
             AND worker_control_token_digest = ${input.workerControlTokenDigest}
           FOR UPDATE
         `) as ReadonlyArray<{ session_ref: string }>;
@@ -1062,7 +1132,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           );
         }
 
-        await tx`
+        const bindings = (await tx`
           INSERT INTO sarah_livekit_room_bindings (
             session_ref, owner_user_id, device_ref, thread_ref, generation,
             capability_profile, admission_ref, admission_digest,
@@ -1086,13 +1156,50 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             ${input.subscribeAllowed}, ${input.workerControlTokenDigest},
             'prepared', ${input.nowIso}, ${input.nowIso}
           )
-        `;
+          ON CONFLICT (session_ref) DO UPDATE
+          SET participant_grant_digest = EXCLUDED.participant_grant_digest,
+              join_expires_at = EXCLUDED.join_expires_at,
+              updated_at = EXCLUDED.updated_at
+          WHERE sarah_livekit_room_bindings.owner_user_id = EXCLUDED.owner_user_id
+            AND sarah_livekit_room_bindings.device_ref = EXCLUDED.device_ref
+            AND sarah_livekit_room_bindings.thread_ref = EXCLUDED.thread_ref
+            AND sarah_livekit_room_bindings.generation = EXCLUDED.generation
+            AND sarah_livekit_room_bindings.capability_profile = EXCLUDED.capability_profile
+            AND sarah_livekit_room_bindings.admission_ref = EXCLUDED.admission_ref
+            AND sarah_livekit_room_bindings.admission_digest = EXCLUDED.admission_digest
+            AND sarah_livekit_room_bindings.room_context_kind = EXCLUDED.room_context_kind
+            AND sarah_livekit_room_bindings.community_ref IS NOT DISTINCT FROM
+              EXCLUDED.community_ref
+            AND sarah_livekit_room_bindings.channel_ref IS NOT DISTINCT FROM
+              EXCLUDED.channel_ref
+            AND sarah_livekit_room_bindings.membership_revision IS NOT DISTINCT FROM
+              EXCLUDED.membership_revision
+            AND sarah_livekit_room_bindings.room_ref = EXCLUDED.room_ref
+            AND sarah_livekit_room_bindings.room_epoch = EXCLUDED.room_epoch
+            AND sarah_livekit_room_bindings.participant_ref = EXCLUDED.participant_ref
+            AND sarah_livekit_room_bindings.sarah_participant_ref =
+              EXCLUDED.sarah_participant_ref
+            AND sarah_livekit_room_bindings.dispatch_ref = EXCLUDED.dispatch_ref
+            AND sarah_livekit_room_bindings.sarah_presence_lease_ref =
+              EXCLUDED.sarah_presence_lease_ref
+            AND sarah_livekit_room_bindings.publish_allowed = EXCLUDED.publish_allowed
+            AND sarah_livekit_room_bindings.subscribe_allowed = EXCLUDED.subscribe_allowed
+            AND sarah_livekit_room_bindings.worker_control_token_digest =
+              EXCLUDED.worker_control_token_digest
+            AND sarah_livekit_room_bindings.state IN ('prepared', 'active')
+          RETURNING session_ref
+        `) as ReadonlyArray<{ session_ref: string }>;
+        if (first(bindings) === undefined) {
+          throw new SarahVoiceSessionRejectedError(
+            "The LiveKit room replay conflicts with the bound generation",
+          );
+        }
         await tx`
           UPDATE sarah_livekit_provisioning_intents
           SET state = 'bound', updated_at = ${input.nowIso}
           WHERE session_ref = ${input.sessionRef}
             AND generation = ${input.generation}
-            AND state = 'pending'
+            AND state IN ('pending', 'bound')
         `;
       });
     } catch (error) {

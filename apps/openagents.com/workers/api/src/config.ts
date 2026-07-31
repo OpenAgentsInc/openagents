@@ -106,9 +106,10 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // receive the same Secret Manager value and derive generation credentials
   // without placing them in LiveKit job metadata.
   SARAH_LIVEKIT_CONTROL_ROOT?: string | undefined
-  // Emergency rollback seam. Unset or exact true/1/on permits new LiveKit
-  // admissions; false or malformed values block admission and dispatch while
-  // existing worker generations retain their usage and close paths.
+  // Default-off rollout and emergency rollback seam. Only exact true/1/on
+  // permits new LiveKit admissions; unset, false, or malformed values block
+  // admission and dispatch while existing worker generations retain their
+  // usage and close paths.
   SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED?: string | undefined
   // Staging-only owner access. The composition root also requires the exact
   // staging service origin and the canonical primary owner account. The first

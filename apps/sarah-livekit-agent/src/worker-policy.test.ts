@@ -62,5 +62,7 @@ describe("Sarah LiveKit worker policy", () => {
     expect(source).toContain(`profile.kind === "private_owner_v1"`);
     expect(source).toContain(`: []`);
     expect(source).toContain("no workspace discovery authority");
+    expect(source).toContain("short outcome summary, not the file contents");
+    expect(source).not.toContain("Read up to 500 lines");
   });
 });

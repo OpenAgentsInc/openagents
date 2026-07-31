@@ -100,6 +100,44 @@ const boundedBody = async (response: Response): Promise<unknown> => {
   return JSON.parse(text) as unknown;
 };
 
+const retryableControlStatus = (status: number): boolean =>
+  [409, 429, 502, 503, 504].includes(status);
+
+const postControlWithRetry = async (
+  fetcher: typeof fetch,
+  url: string,
+  token: string,
+  body: string,
+): Promise<Response> => {
+  let response: Response | undefined;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      // Every retried body carries the same durable event/proposal identity.
+      // eslint-disable-next-line no-await-in-loop
+      response = await fetcher(url, {
+        method: "POST",
+        headers: noStoreHeaders(token),
+        body,
+        redirect: "error",
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!retryableControlStatus(response.status)) {
+        return response;
+      }
+    } catch (error) {
+      if (attempt === 4) throw error;
+    }
+    if (attempt < 4) {
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+  if (response === undefined) {
+    throw new Error("Sarah LiveKit control delivery failed");
+  }
+  return response;
+};
+
 export const makeSarahLiveKitControlClient = (
   config: SarahLiveKitControlConfig,
   fetcher: typeof fetch = fetch,
@@ -207,16 +245,15 @@ export const makeSarahLiveKitControlClient = (
     dispatch: SarahLiveKitDispatchMetadata,
     input: SarahLiveKitToolProposalInput,
   ): Promise<SarahLiveKitToolProposal> => {
-    const response = await fetcher(`${baseUrl}${SARAH_LIVEKIT_TOOL_PROPOSAL_PATH}`, {
-      method: "POST",
-      headers: noStoreHeaders(controlToken(dispatch)),
-      body: JSON.stringify({
+    const response = await postControlWithRetry(
+      fetcher,
+      `${baseUrl}${SARAH_LIVEKIT_TOOL_PROPOSAL_PATH}`,
+      controlToken(dispatch),
+      JSON.stringify({
         schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
         ...input,
       }),
-      redirect: "error",
-      signal: AbortSignal.timeout(5_000),
-    });
+    );
     if (!response.ok) {
       throw new Error(`Sarah LiveKit tool proposal refused (${response.status})`);
     }
@@ -227,16 +264,15 @@ export const makeSarahLiveKitControlClient = (
     dispatch: SarahLiveKitDispatchMetadata,
     input: SarahLiveKitToolStateInput,
   ): Promise<SarahLiveKitToolStateResponse> => {
-    const response = await fetcher(`${baseUrl}${SARAH_LIVEKIT_TOOL_STATE_PATH}`, {
-      method: "POST",
-      headers: noStoreHeaders(controlToken(dispatch)),
-      body: JSON.stringify({
+    const response = await postControlWithRetry(
+      fetcher,
+      `${baseUrl}${SARAH_LIVEKIT_TOOL_STATE_PATH}`,
+      controlToken(dispatch),
+      JSON.stringify({
         schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
         ...input,
       }),
-      redirect: "error",
-      signal: AbortSignal.timeout(5_000),
-    });
+    );
     if (!response.ok) {
       throw new Error(`Sarah LiveKit tool state refused (${response.status})`);
     }

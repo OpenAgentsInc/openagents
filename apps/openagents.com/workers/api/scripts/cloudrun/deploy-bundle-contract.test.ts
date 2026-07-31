@@ -127,7 +127,7 @@ describe('Cloud Run Vite Plus bundle contract', () => {
       'SARAH_LIVEKIT_URL: "wss://livekit.openagents.com"',
     )
     expect(productionEnvironment).toContain(
-      'SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED: "true"',
+      'SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED: "false"',
     )
     expect(stagingEnvironment).not.toContain('SARAH_LIVEKIT_URL:')
     expect(stagingEnvironment).not.toContain(

@@ -502,9 +502,34 @@ Service and a deny-all ingress policy; its outbound LiveKit, OpenAI, and
 OpenAgents control connections remain hostname-based and cannot be represented
 honestly by a static Kubernetes CIDR allow-list.
 
-Do not enable `livekit_room_v1` admission yet. First wait for SFU readiness,
-Redis health, signaling and TURN load-balancer health, certificates, worker
-registration, dashboards, alerts, and the emergency dispatch disable.
+Every canonical API deployment commits
+`SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED=false`; an absent or malformed value is
+also disabled. This makes rollout two explicit phases:
+
+1. deploy the API revision with admission disabled, then wait for SFU
+   readiness, Redis health, signaling and TURN load-balancer health,
+   certificates, all three Sarah worker replicas Ready and registered,
+   dashboards, alerts, and the emergency dispatch disable;
+2. arm only after preserving those observations by creating the admission
+   revision:
+
+   ```bash
+   gcloud run services update openagents-monolith \
+     --project openagentsgemini \
+     --region us-central1 \
+     --update-env-vars SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED=true
+   ```
+
+Confirm the new revision is Ready and serving 100 percent of traffic before
+issuing a private-room acceptance request. A normal subsequent deployment
+returns the service to disabled and requires this readiness gate again. The
+immediate rollback command is the same update with `=false`; it stops new rooms
+without removing worker close, usage, or cleanup routes.
+
+The 0.2.0 gate admits only `clientProfile=omega_editor` to
+`livekit_room_v1`. Mobile profiles are rejected before reservation or
+dispatch; mobile remains deferred rather than inheriting editor tools from a
+private-room mapping.
 
 ### DNS and certificate observation
 

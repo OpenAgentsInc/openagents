@@ -14,6 +14,21 @@ import {
 import { ServerError } from "livekit-server-sdk";
 
 const controlRoot = "A".repeat(64);
+const privateProvisionInput = {
+  idempotencyKey: "sarah-livekit:session:one:1",
+  ownerUserId: "owner:one",
+  deviceRef: "device:one",
+  threadRef: "thread:one",
+  sessionRef: "session:one",
+  generation: 1,
+  capabilityProfile: "omega_editor",
+  admissionRef: "admission:one",
+  admissionDigest: "d".repeat(64),
+  roomContext: { kind: "private" },
+  publishAllowed: true,
+  subscribeAllowed: true,
+  expiresAtMs: 2_000_000_600_000,
+} as const;
 
 describe("Sarah LiveKit room broker configuration", () => {
   test("accepts only exact WSS and server credential shapes", () => {
@@ -172,23 +187,8 @@ describe("Sarah LiveKit room broker configuration", () => {
         deleteDispatch,
       },
     );
-    const provisionInput = {
-      idempotencyKey: "sarah-livekit:session:one:1",
-      ownerUserId: "owner:one",
-      deviceRef: "device:one",
-      threadRef: "thread:one",
-      sessionRef: "session:one",
-      generation: 1,
-      capabilityProfile: "omega_editor",
-      admissionRef: "admission:one",
-      admissionDigest: "d".repeat(64),
-      roomContext: { kind: "private" },
-      publishAllowed: true,
-      subscribeAllowed: true,
-      expiresAtMs: 2_000_000_600_000,
-    } as const;
-    const digest = broker.workerControlTokenDigest(provisionInput);
-    const provision = await broker.provision(provisionInput);
+    const digest = broker.workerControlTokenDigest(privateProvisionInput);
+    const provision = await broker.provision(privateProvisionInput);
 
     expect(createRoom).toHaveBeenCalledWith(expect.objectContaining({ maxParticipants: 2 }));
     expect(createDispatch).toHaveBeenCalledWith(
@@ -214,19 +214,29 @@ describe("Sarah LiveKit room broker configuration", () => {
     expect(JSON.stringify({ job: { metadata: dispatchOptions.metadata } })).not.toMatch(
       /bearer|credential|controlToken/iu,
     );
-    expect(broker.workerControlTokenDigest(provisionInput)).toBe(digest);
+    expect(broker.workerControlTokenDigest(privateProvisionInput)).toBe(digest);
+    expect(broker.sessionTicket(privateProvisionInput)).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+    expect(broker.sessionTicket(privateProvisionInput)).toBe(
+      broker.sessionTicket({ ...privateProvisionInput }),
+    );
     expect(
       broker.workerControlTokenDigest({
-        ...provisionInput,
+        ...privateProvisionInput,
         generation: 2,
       }),
     ).not.toBe(digest);
     expect(
       broker.workerControlTokenDigest({
-        ...provisionInput,
+        ...privateProvisionInput,
         idempotencyKey: "sarah-livekit:session:other-room:1",
       }),
     ).not.toBe(digest);
+    expect(() =>
+      broker.sessionTicket({
+        ...privateProvisionInput,
+        capabilityProfile: "mobile_voice_only",
+      }),
+    ).toThrow("capability profile is unsupported");
     expect(provision.grantClaims).toEqual(
       expect.objectContaining({
         roomJoin: true,
@@ -241,6 +251,119 @@ describe("Sarah LiveKit room broker configuration", () => {
     await broker.cleanup(provision);
     expect(deleteDispatch).toHaveBeenCalledWith(provision.dispatchRef, provision.roomRef);
     expect(deleteRoom).toHaveBeenCalledWith(provision.roomRef);
+  });
+
+  test("reuses only the exact existing no-restart Sarah dispatch", async () => {
+    let firstDispatchMetadata = "";
+    let existing:
+      | Awaited<ReturnType<SarahLiveKitRoomBrokerClients["listDispatch"]>>[number]
+      | undefined;
+    const createDispatch = vi.fn(
+      async (
+        room: string,
+        agentName: string,
+        options: Parameters<SarahLiveKitRoomBrokerClients["createDispatch"]>[2],
+      ) => {
+        firstDispatchMetadata = options.metadata;
+        existing = {
+          id: "dispatch:stable",
+          agentName,
+          room,
+          metadata: options.metadata,
+          restartPolicy: options.restartPolicy,
+          deployment: "",
+        };
+        return { id: "dispatch:stable" };
+      },
+    );
+    const clients: SarahLiveKitRoomBrokerClients = {
+      createRoom: vi.fn(async () => undefined),
+      deleteRoom: vi.fn(async () => undefined),
+      createDispatch,
+      listDispatch: vi.fn(async () => (existing === undefined ? [] : [existing])),
+      deleteDispatch: vi.fn(async () => undefined),
+    };
+    const broker = makeSarahLiveKitRoomBroker(
+      {
+        livekitUrl: "wss://livekit.openagents.com",
+        apiKey: `API${"A".repeat(12)}`,
+        apiSecret: "b".repeat(48),
+        controlRoot,
+      },
+      () => 2_000_000_000_000,
+      clients,
+    );
+
+    const first = await broker.provision(privateProvisionInput);
+    const replay = await broker.provision(privateProvisionInput);
+    expect(replay.dispatchRef).toBe(first.dispatchRef);
+    expect(createDispatch).toHaveBeenCalledTimes(1);
+    expect(firstDispatchMetadata).not.toBe("");
+  });
+
+  test("rejects a single existing dispatch with mismatched authority", async () => {
+    const mismatchKinds = ["agent", "room", "metadata", "restart", "deployment"] as const;
+    for (const mismatch of mismatchKinds) {
+      const createDispatch = vi.fn(async () => ({ id: "dispatch:new" }));
+      let expectedRoom = "";
+      let expectedMetadata = "";
+      const clients: SarahLiveKitRoomBrokerClients = {
+        createRoom: vi.fn(async (input) => {
+          expectedRoom = input.name;
+        }),
+        deleteRoom: vi.fn(async () => undefined),
+        createDispatch,
+        listDispatch: vi.fn(async () => [
+          {
+            id: "dispatch:foreign",
+            agentName: mismatch === "agent" ? "another-agent" : SARAH_LIVEKIT_AGENT_NAME,
+            room: mismatch === "room" ? "another-room" : expectedRoom,
+            metadata:
+              mismatch === "metadata"
+                ? JSON.stringify({ schema: "foreign" })
+                : expectedMetadata,
+            restartPolicy:
+              mismatch === "restart"
+                ? JobRestartPolicy.JRP_ON_FAILURE
+                : JobRestartPolicy.JRP_NEVER,
+            deployment: mismatch === "deployment" ? "another-deployment" : "",
+          },
+        ]),
+        deleteDispatch: vi.fn(async () => undefined),
+      };
+      const broker = makeSarahLiveKitRoomBroker(
+        {
+          livekitUrl: "wss://livekit.openagents.com",
+          apiKey: `API${"A".repeat(12)}`,
+          apiSecret: "b".repeat(48),
+          controlRoot,
+        },
+        () => 2_000_000_000_000,
+        clients,
+      );
+      const derivedBroker = makeSarahLiveKitRoomBroker(
+        {
+          livekitUrl: "wss://livekit.openagents.com",
+          apiKey: `API${"A".repeat(12)}`,
+          apiSecret: "b".repeat(48),
+          controlRoot,
+        },
+        () => 2_000_000_000_000,
+        {
+          ...clients,
+          listDispatch: vi.fn(async () => []),
+          createDispatch: vi.fn(async (_room, _agent, options) => {
+            expectedMetadata = options.metadata;
+            return { id: "derive-only" };
+          }),
+        },
+      );
+      await derivedBroker.provision(privateProvisionInput);
+      await expect(broker.provision(privateProvisionInput)).rejects.toThrow(
+        /dispatch (authority conflicts|metadata is invalid)/u,
+      );
+      expect(createDispatch).not.toHaveBeenCalled();
+    }
   });
 
   test("treats already-absent dispatches and rooms as idempotent cleanup", async () => {
