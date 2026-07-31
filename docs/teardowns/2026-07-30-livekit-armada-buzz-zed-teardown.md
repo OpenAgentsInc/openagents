@@ -1780,6 +1780,31 @@ private/editor context into rooms, merge unrelated room histories, make
 speaker-level safety attribution ambiguous, and turn a provider disconnect
 into a system-wide failure. [inferred]
 
+The production community-room rendezvous is now durable. The first admitted
+community Sarah session creates its ordinary LiveKit room, worker dispatch,
+provider generation, authority snapshot, and accounting owner, then claims one
+active rendezvous row under `(communityRef, channelRef)`. The claim is a
+database compare-and-swap through a partial unique index. A simultaneous
+losing provision cannot become a second active room.
+
+Later authenticated desktops call
+`POST /api/sarah/livekit/room/join` with the community and channel refs. The
+server rechecks the caller's current signed membership, reads the winning
+rendezvous, reuses the caller's current verified participant identity or
+allocates one, mints a short-lived grant for that exact room, writes the
+Nostr-user-to-LiveKit-participant binding, and returns the grant and current
+authority snapshot together. The response includes the complete active
+verified participant roster. A client therefore never has to infer a room
+from a display name, discover a presence lease out of band, or join media
+before it has identity/floor authority.
+
+A membership-revision mismatch retires the rendezvous, closes Sarah presence,
+and stops the winning worker generation. Moderator removal does the same.
+Subsequent admission creates a new room reference and rendezvous, so an old
+grant cannot address the replacement even when both room-local epochs begin at
+one. Private editor sessions keep their existing per-`sessionRef:generation`
+isolation; only the community join path reuses a room. [source]
+
 The closest safe composition is:
 
 ```text

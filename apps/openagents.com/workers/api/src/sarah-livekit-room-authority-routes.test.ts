@@ -73,6 +73,10 @@ const dependencies = (
 ) => {
   const compareAndSwap = vi.fn(async (input) => input.snapshot);
   const store: SarahLiveKitRoomAuthorityStore = {
+    claimCommunityRoomRendezvous: vi.fn(),
+    readActiveCommunityRoomRendezvous: vi.fn(),
+    retireCommunityRoomRendezvous: vi.fn(),
+    listActiveCommunityRoomParticipants: vi.fn(),
     readCommunityRoomBinding: vi.fn(),
     create: vi.fn(),
     read: vi.fn(async () => snapshot),

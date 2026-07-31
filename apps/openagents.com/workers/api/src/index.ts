@@ -1310,11 +1310,13 @@ import {
   type SarahLiveKitRoomAuthoritySnapshot,
 } from './sarah-livekit-room-authority'
 import {
+  SARAH_LIVEKIT_ROOM_JOIN_PATH,
   SARAH_LIVEKIT_ROOM_MEMBER_FLOOR_PATH,
   SARAH_LIVEKIT_ROOM_MODERATOR_FLOOR_PATH,
   SARAH_LIVEKIT_ROOM_REMOVE_PATH,
   SARAH_LIVEKIT_ROOM_SNAPSHOT_PATH,
   SARAH_LIVEKIT_ROOM_SUMMON_PATH,
+  handleSarahLiveKitCommunityRoomJoinRequest,
   handleSarahLiveKitRoomAuthorityProductionRequest,
   handleSarahLiveKitSharedRoomProductionRequest,
 } from './sarah-livekit-room-authority-production'
@@ -14249,6 +14251,18 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         handleSarahLiveKitRoomAuthorityProductionRequest(
           sarahLiveKitSharedRoomDependencies,
           'snapshot',
+          request,
+          env,
+          ctx,
+        ),
+      ),
+  },
+  {
+    path: SARAH_LIVEKIT_ROOM_JOIN_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        handleSarahLiveKitCommunityRoomJoinRequest(
+          sarahLiveKitSharedRoomDependencies,
           request,
           env,
           ctx,

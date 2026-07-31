@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, test, vi } from "vitest";
 
 import {
+  handleSarahLiveKitCommunityRoomJoinRequest,
   handleSarahLiveKitRoomAuthorityProductionRequest,
   handleSarahLiveKitSharedRoomProductionRequest,
   type SarahLiveKitRoomAuthorityProductionDependencies,
@@ -127,6 +128,10 @@ const setup = (
         };
   });
   const store: SarahLiveKitRoomAuthorityStore = {
+    claimCommunityRoomRendezvous: vi.fn(),
+    readActiveCommunityRoomRendezvous: vi.fn(),
+    retireCommunityRoomRendezvous: vi.fn(),
+    listActiveCommunityRoomParticipants: vi.fn(),
     readCommunityRoomBinding: vi.fn(),
     create: vi.fn(),
     read: vi.fn(async () => snapshot),
@@ -372,6 +377,183 @@ const sharedBroker = (
 });
 
 describe("Sarah LiveKit shared-room production wiring", () => {
+  test("joins a second authenticated member through the stable community rendezvous", async () => {
+    const snapshot = initialSarahLiveKitRoomAuthoritySnapshot(presence);
+    const bindParticipant = vi.fn(async () => undefined);
+    const grantParticipant = vi.fn<NonNullable<SarahVoiceLiveKitRoomBroker["grantParticipant"]>>(
+      async () => ({
+        participantGrant: "second-member-livekit-grant",
+        joinExpiresAtMs: nowMs + 50_000,
+      }),
+    );
+    const secondUser = {
+      ownerUserId: "user.second",
+      userRefDigest: userDigest("user.second"),
+      memberPubkey: digest("6"),
+      participantRef: `member-${createHash("sha256")
+        .update(`sarah-livekit-room-member\n${presence.leaseRef}\nuser.second`)
+        .digest("hex")
+        .slice(0, 40)}`,
+      membershipRevision: presence.membershipRevision,
+      roomRef: presence.roomRef,
+      roomEpoch: presence.roomEpoch,
+    };
+    const store: SarahLiveKitRoomAuthorityStore = {
+      claimCommunityRoomRendezvous: vi.fn(),
+      readActiveCommunityRoomRendezvous: vi.fn(async () => ({
+        presenceLeaseRef: presence.leaseRef,
+        membershipRevision: presence.membershipRevision,
+        roomRef: presence.roomRef,
+        roomEpoch: presence.roomEpoch,
+        sessionRef: presence.sessionRef,
+        generation: presence.generation,
+      })),
+      retireCommunityRoomRendezvous: vi.fn(),
+      listActiveCommunityRoomParticipants: vi.fn(async () => [secondUser]),
+      readCommunityRoomBinding: vi.fn(),
+      create: vi.fn(),
+      read: vi.fn(async () => snapshot),
+      readParticipantBinding: vi.fn(),
+      bindParticipant,
+      removeParticipant: vi.fn(),
+      compareAndSwap: vi.fn(),
+    };
+    const dependencies: SarahLiveKitSharedRoomProductionDependencies<
+      Record<string, never>,
+      Record<string, never>
+    > = {
+      openStore: vi.fn(async () => ({ store, close: async () => undefined })),
+      requireUser: vi.fn(async () => ({ userId: "user.second" })),
+      resolveCommunityAccess: vi.fn(async () => ({
+        communityRef: presence.communityRef,
+        channelRef: presence.channelRef,
+        membershipRevision: presence.membershipRevision,
+        memberPubkey: digest("6"),
+        role: "member" as const,
+        publishAllowed: true,
+        subscribeAllowed: true,
+      })),
+      broker: () => sharedBroker(grantParticipant),
+      liveKitUrl: () => "wss://livekit.example.com",
+      sarahPubkey: () => digest("a"),
+      e2eeKeyRevision: () => digest("c"),
+      stopWorker: vi.fn(),
+      now: () => nowMs,
+    };
+    const response = await handleSarahLiveKitCommunityRoomJoinRequest(
+      dependencies,
+      new Request("https://api.openagents.com/api/sarah/livekit/room/join", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer verified",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          communityRef: presence.communityRef,
+          channelRef: presence.channelRef,
+        }),
+      }),
+      {},
+      {},
+    );
+    expect(response.status).toBe(200);
+    expect(bindParticipant).toHaveBeenCalledWith(
+      expect.objectContaining({
+        presenceLeaseRef: presence.leaseRef,
+        ownerUserId: "user.second",
+        roomRef: presence.roomRef,
+      }),
+    );
+    expect(await response.json()).toMatchObject({
+      roomRef: presence.roomRef,
+      presenceLeaseRef: presence.leaseRef,
+      participantGrant: "second-member-livekit-grant",
+      authority: {
+        revision: 1,
+        verifiedParticipants: [secondUser],
+        localParticipant: secondUser,
+      },
+    });
+  });
+
+  test("retires the rendezvous and stops the worker when membership authority changes", async () => {
+    const snapshot = initialSarahLiveKitRoomAuthoritySnapshot(presence);
+    const retireCommunityRoomRendezvous = vi.fn(async () => true);
+    const compareAndSwap = vi.fn(async (input) => input.snapshot);
+    const stopWorker = vi.fn(async () => undefined);
+    const store: SarahLiveKitRoomAuthorityStore = {
+      claimCommunityRoomRendezvous: vi.fn(),
+      readActiveCommunityRoomRendezvous: vi.fn(async () => ({
+        presenceLeaseRef: presence.leaseRef,
+        membershipRevision: presence.membershipRevision,
+        roomRef: presence.roomRef,
+        roomEpoch: presence.roomEpoch,
+        sessionRef: presence.sessionRef,
+        generation: presence.generation,
+      })),
+      retireCommunityRoomRendezvous,
+      listActiveCommunityRoomParticipants: vi.fn(),
+      readCommunityRoomBinding: vi.fn(),
+      create: vi.fn(),
+      read: vi.fn(async () => snapshot),
+      readParticipantBinding: vi.fn(),
+      bindParticipant: vi.fn(),
+      removeParticipant: vi.fn(),
+      compareAndSwap,
+    };
+    const response = await handleSarahLiveKitCommunityRoomJoinRequest(
+      {
+        openStore: vi.fn(async () => ({ store, close: async () => undefined })),
+        requireUser: vi.fn(async () => ({ userId: "user.second" })),
+        resolveCommunityAccess: vi.fn(async () => ({
+          communityRef: presence.communityRef,
+          channelRef: presence.channelRef,
+          membershipRevision: digest("9"),
+          memberPubkey: digest("6"),
+          role: "member" as const,
+          publishAllowed: true,
+          subscribeAllowed: true,
+        })),
+        broker: () => undefined,
+        liveKitUrl: () => undefined,
+        sarahPubkey: () => digest("a"),
+        e2eeKeyRevision: () => digest("c"),
+        stopWorker,
+        now: () => nowMs,
+      },
+      new Request("https://api.openagents.com/api/sarah/livekit/room/join", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          communityRef: presence.communityRef,
+          channelRef: presence.channelRef,
+        }),
+      }),
+      {},
+      {},
+    );
+    expect(response.status).toBe(409);
+    expect(compareAndSwap).toHaveBeenCalledWith(
+      expect.objectContaining({
+        presenceLeaseRef: presence.leaseRef,
+        expectedRevision: 1,
+        snapshot: expect.objectContaining({ presenceActive: false }),
+      }),
+    );
+    expect(retireCommunityRoomRendezvous).toHaveBeenCalledWith({
+      presenceLeaseRef: presence.leaseRef,
+      now: new Date(nowMs).toISOString(),
+    });
+    expect(stopWorker).toHaveBeenCalledWith(
+      {},
+      {
+        sessionRef: presence.sessionRef,
+        generation: presence.generation,
+        reason: "operator_stop",
+      },
+    );
+  });
+
   test("bootstraps the durable authority and grants the authenticated member the same room", async () => {
     const create = vi.fn(async (snapshot) => snapshot);
     const bindParticipant = vi.fn(async () => undefined);
@@ -382,6 +564,13 @@ describe("Sarah LiveKit shared-room production wiring", () => {
       }),
     );
     const store: SarahLiveKitRoomAuthorityStore = {
+      claimCommunityRoomRendezvous: vi.fn(async () => ({
+        claimed: true,
+        presenceLeaseRef: presence.leaseRef,
+      })),
+      readActiveCommunityRoomRendezvous: vi.fn(),
+      retireCommunityRoomRendezvous: vi.fn(),
+      listActiveCommunityRoomParticipants: vi.fn(),
       readCommunityRoomBinding: vi.fn(async () => ({
         ownerUserId: "user.production",
         sessionRef: presence.sessionRef,
@@ -467,10 +656,79 @@ describe("Sarah LiveKit shared-room production wiring", () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
+  test("rejects a losing first-room claim before issuing another member grant", async () => {
+    const grantParticipant = vi.fn<NonNullable<SarahVoiceLiveKitRoomBroker["grantParticipant"]>>();
+    const store: SarahLiveKitRoomAuthorityStore = {
+      claimCommunityRoomRendezvous: vi.fn(async () => ({
+        claimed: false,
+        presenceLeaseRef: "presence:production:winner",
+      })),
+      readActiveCommunityRoomRendezvous: vi.fn(),
+      retireCommunityRoomRendezvous: vi.fn(),
+      listActiveCommunityRoomParticipants: vi.fn(),
+      readCommunityRoomBinding: vi.fn(async () => ({
+        ownerUserId: "user.production",
+        sessionRef: presence.sessionRef,
+        generation: presence.generation,
+        admissionDigest: presence.admissionDigest,
+        communityRef: presence.communityRef,
+        channelRef: presence.channelRef,
+        membershipRevision: presence.membershipRevision,
+        roomRef: presence.roomRef,
+        roomEpoch: presence.roomEpoch,
+        participantRef: "owner-participant-production",
+        sarahParticipantRef: presence.sarahParticipantRef,
+        dispatchRef: presence.dispatchRef,
+        participantGrantDigest: digest("5"),
+        joinExpiresAt: new Date(nowMs + 50_000).toISOString(),
+        sessionExpiresAt: new Date(nowMs + 60_000).toISOString(),
+      })),
+      create: vi.fn(async (snapshot) => snapshot),
+      read: vi.fn(async () => undefined),
+      readParticipantBinding: vi.fn(),
+      bindParticipant: vi.fn(),
+      removeParticipant: vi.fn(),
+      compareAndSwap: vi.fn(),
+    };
+    const response = await handleSarahLiveKitSharedRoomProductionRequest(
+      {
+        openStore: vi.fn(async () => ({ store, close: async () => undefined })),
+        requireUser: vi.fn(async () => ({ userId: "user.production" })),
+        resolveCommunityAccess: vi.fn(async () => ({
+          communityRef: presence.communityRef,
+          channelRef: presence.channelRef,
+          membershipRevision: presence.membershipRevision,
+          memberPubkey: digest("1"),
+          role: "member" as const,
+          publishAllowed: true,
+          subscribeAllowed: true,
+        })),
+        broker: () => sharedBroker(grantParticipant),
+        liveKitUrl: () => "wss://livekit.example.com",
+        sarahPubkey: () => digest("a"),
+        e2eeKeyRevision: () => digest("c"),
+        stopWorker: vi.fn(),
+        now: () => nowMs,
+      },
+      "summon",
+      sharedRequest(),
+      {},
+      {},
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "community_room_already_active" });
+    expect(grantParticipant).not.toHaveBeenCalled();
+    expect(store.bindParticipant).not.toHaveBeenCalled();
+  });
+
   test("requires moderator authority and stops the worker after durable removal", async () => {
     const snapshot = initialSarahLiveKitRoomAuthoritySnapshot(presence);
     const compareAndSwap = vi.fn(async (input) => input.snapshot);
     const store: SarahLiveKitRoomAuthorityStore = {
+      claimCommunityRoomRendezvous: vi.fn(),
+      readActiveCommunityRoomRendezvous: vi.fn(),
+      retireCommunityRoomRendezvous: vi.fn(async () => true),
+      listActiveCommunityRoomParticipants: vi.fn(),
       readCommunityRoomBinding: vi.fn(),
       create: vi.fn(),
       read: vi.fn(async () => snapshot),

@@ -21,6 +21,7 @@ export const SARAH_LIVEKIT_ROOM_MEMBER_FLOOR_PATH = "/api/sarah/livekit/room/flo
 export const SARAH_LIVEKIT_ROOM_MODERATOR_FLOOR_PATH =
   "/api/sarah/livekit/room/floor/moderator" as const;
 export const SARAH_LIVEKIT_ROOM_SNAPSHOT_PATH = "/api/sarah/livekit/room/snapshot" as const;
+export const SARAH_LIVEKIT_ROOM_JOIN_PATH = "/api/sarah/livekit/room/join" as const;
 export const SARAH_LIVEKIT_ROOM_SUMMON_PATH = "/api/sarah/livekit/room/summon" as const;
 export const SARAH_LIVEKIT_ROOM_REMOVE_PATH = "/api/sarah/livekit/room/remove" as const;
 
@@ -56,6 +57,10 @@ const digest = (value: string): string => createHash("sha256").update(value).dig
 const SharedRoomRequest = S.Struct({
   presenceLeaseRef: S.Trim.check(S.isMinLength(1), S.isMaxLength(256)),
   expectedRevision: S.optional(S.Int.check(S.isGreaterThanOrEqualTo(1))),
+});
+const JoinRoomRequest = S.Struct({
+  communityRef: S.Trim.check(S.isMinLength(1), S.isMaxLength(256)),
+  channelRef: S.Trim.check(S.isMinLength(1), S.isMaxLength(256)),
 });
 
 const noStoreJson = (status: number, error: string): Response =>
@@ -106,9 +111,7 @@ export const handleSarahLiveKitRoomAuthorityProductionRequest = async <Environme
           targetUserRefDigest?: string;
         }>,
       ): Promise<SarahLiveKitRoomMemberAccess | undefined> => {
-        if (
-          input.userId !== authenticated.userId
-        ) {
+        if (input.userId !== authenticated.userId) {
           return undefined;
         }
         const binding = await authorityStore.readParticipantBinding({
@@ -163,7 +166,11 @@ export const handleSarahLiveKitRoomAuthorityProductionRequest = async <Environme
           }),
     } as const;
     if (mode === "member") {
-      return await handleSarahLiveKitRoomMemberFloorRequest(request, environment, routeDependencies);
+      return await handleSarahLiveKitRoomMemberFloorRequest(
+        request,
+        environment,
+        routeDependencies,
+      );
     }
     if (mode === "moderator") {
       return await handleSarahLiveKitRoomModeratorFloorRequest(
@@ -217,8 +224,185 @@ const decodeSharedRoomRequest = async (
   }
 };
 
+const decodeJoinRoomRequest = async (
+  request: Request,
+): Promise<typeof JoinRoomRequest.Type | undefined> => {
+  const declaredLength = Number(request.headers.get("content-length") ?? "0");
+  if (!Number.isFinite(declaredLength) || declaredLength > 4_096) return undefined;
+  try {
+    const text = await request.text();
+    if (new TextEncoder().encode(text).byteLength > 4_096) return undefined;
+    return S.decodeUnknownSync(JoinRoomRequest)(JSON.parse(text), {
+      onExcessProperty: "error",
+    });
+  } catch {
+    return undefined;
+  }
+};
+
 const sharedParticipantRef = (presenceLeaseRef: string, ownerUserId: string): string =>
   `member-${digest(`sarah-livekit-room-member\n${presenceLeaseRef}\n${ownerUserId}`).slice(0, 40)}`;
+
+const floorProjection = (snapshot: SarahLiveKitRoomAuthoritySnapshot, nowMs: number) =>
+  snapshot.floor.state === "held" && snapshot.floor.lease.expiresAtMs <= nowMs
+    ? {
+        state: "stopped" as const,
+        presenceLeaseRef: snapshot.presence.leaseRef,
+        issuance: snapshot.floor.lease.issuance,
+        reason: "timeout" as const,
+      }
+    : snapshot.floor;
+
+export const handleSarahLiveKitCommunityRoomJoinRequest = async <Environment, Context>(
+  dependencies: SarahLiveKitSharedRoomProductionDependencies<Environment, Context>,
+  request: Request,
+  environment: Environment,
+  context: Context,
+): Promise<Response> => {
+  if (request.method !== "POST") return noStoreJson(405, "method_not_allowed");
+  let authenticated: Readonly<{ userId: string }> | undefined;
+  try {
+    authenticated = await dependencies.requireUser(request, environment, context);
+  } catch {
+    return noStoreJson(503, "authentication_unavailable");
+  }
+  if (authenticated === undefined) return noStoreJson(401, "authentication_required");
+  const body = await decodeJoinRoomRequest(request);
+  if (body === undefined) return noStoreJson(400, "invalid_request");
+
+  let opened: OpenedAuthorityStore | undefined;
+  try {
+    opened = await dependencies.openStore(environment);
+    const nowMs = (dependencies.now ?? Date.now)();
+    const now = new Date(nowMs).toISOString();
+    const access = await dependencies.resolveCommunityAccess(environment, {
+      ownerUserId: authenticated.userId,
+      communityRef: body.communityRef,
+      channelRef: body.channelRef,
+    });
+    if (
+      access === undefined ||
+      access.communityRef !== body.communityRef ||
+      access.channelRef !== body.channelRef ||
+      !access.publishAllowed ||
+      !access.subscribeAllowed
+    ) {
+      return noStoreJson(403, "community_membership_required");
+    }
+    const rendezvous = await opened.store.readActiveCommunityRoomRendezvous({
+      communityRef: body.communityRef,
+      channelRef: body.channelRef,
+      now,
+    });
+    if (rendezvous === undefined) return noStoreJson(404, "community_room_not_active");
+    if (rendezvous.membershipRevision !== access.membershipRevision) {
+      const staleSnapshot = await opened.store.read(rendezvous.presenceLeaseRef);
+      if (staleSnapshot !== undefined && staleSnapshot.presenceActive) {
+        const removed = removeSarahLiveKitRoomPresence(staleSnapshot);
+        await opened.store.compareAndSwap({
+          presenceLeaseRef: rendezvous.presenceLeaseRef,
+          expectedRevision: staleSnapshot.revision,
+          snapshot: removed,
+          now,
+        });
+        await opened.store.retireCommunityRoomRendezvous({
+          presenceLeaseRef: rendezvous.presenceLeaseRef,
+          now,
+        });
+        await dependencies.stopWorker(environment, {
+          sessionRef: staleSnapshot.presence.sessionRef,
+          generation: staleSnapshot.presence.generation,
+          reason: "operator_stop",
+        });
+      } else {
+        await opened.store.retireCommunityRoomRendezvous({
+          presenceLeaseRef: rendezvous.presenceLeaseRef,
+          now,
+        });
+      }
+      return noStoreJson(409, "community_membership_changed");
+    }
+    const snapshot = await opened.store.read(rendezvous.presenceLeaseRef);
+    if (
+      snapshot === undefined ||
+      !snapshot.presenceActive ||
+      snapshot.presence.expiresAtMs <= nowMs
+    ) {
+      return noStoreJson(410, "sarah_presence_inactive");
+    }
+    const broker = dependencies.broker(environment);
+    const livekitUrl = dependencies.liveKitUrl(environment);
+    if (broker?.grantParticipant === undefined || livekitUrl === undefined) {
+      return noStoreJson(503, "shared_room_grant_unavailable");
+    }
+    const existing = await opened.store.readParticipantBinding({
+      presenceLeaseRef: rendezvous.presenceLeaseRef,
+      ownerUserId: authenticated.userId,
+      now,
+    });
+    const participantRef =
+      existing?.participantRef ??
+      sharedParticipantRef(rendezvous.presenceLeaseRef, authenticated.userId);
+    const grant = await broker.grantParticipant({
+      roomRef: snapshot.presence.roomRef,
+      participantRef,
+      expiresAtMs: snapshot.presence.expiresAtMs,
+      publishAllowed: access.publishAllowed,
+      subscribeAllowed: access.subscribeAllowed,
+    });
+    await opened.store.bindParticipant({
+      presenceLeaseRef: rendezvous.presenceLeaseRef,
+      ownerUserId: authenticated.userId,
+      userRefDigest: digest(`sarah-livekit-room-user\n${authenticated.userId}`),
+      memberPubkey: access.memberPubkey,
+      participantRef,
+      membershipRevision: access.membershipRevision,
+      roomRef: snapshot.presence.roomRef,
+      roomEpoch: snapshot.presence.roomEpoch,
+      participantGrantDigest: digest(grant.participantGrant),
+      joinExpiresAt: new Date(grant.joinExpiresAtMs).toISOString(),
+      now,
+    });
+    const participants = await opened.store.listActiveCommunityRoomParticipants({
+      presenceLeaseRef: rendezvous.presenceLeaseRef,
+      now,
+    });
+    const localParticipant = participants.find(
+      (participant) => participant.ownerUserId === authenticated.userId,
+    );
+    if (localParticipant === undefined) return noStoreJson(503, "participant_binding_unavailable");
+    return Response.json(
+      {
+        schema: snapshot.presence.schema,
+        livekitUrl,
+        roomRef: snapshot.presence.roomRef,
+        roomEpoch: snapshot.presence.roomEpoch,
+        participantRef,
+        sarahParticipantRef: snapshot.presence.sarahParticipantRef,
+        participantGrant: grant.participantGrant,
+        joinExpiresAtMs: grant.joinExpiresAtMs,
+        presenceLeaseRef: snapshot.presence.leaseRef,
+        authority: {
+          ...snapshot.presence,
+          revision: snapshot.revision,
+          presenceActive: snapshot.presenceActive,
+          localParticipant,
+          verifiedParticipants: participants,
+          floor: floorProjection(snapshot, nowMs),
+        },
+      },
+      { status: 200, headers: { "cache-control": "no-store" } },
+    );
+  } catch {
+    return noStoreJson(503, "authority_unavailable");
+  } finally {
+    try {
+      await opened?.close();
+    } catch (error) {
+      console.error("Sarah shared-room join store close failed", error);
+    }
+  }
+};
 
 export const handleSarahLiveKitSharedRoomProductionRequest = async <Environment, Context>(
   dependencies: SarahLiveKitSharedRoomProductionDependencies<Environment, Context>,
@@ -292,6 +476,10 @@ export const handleSarahLiveKitSharedRoomProductionRequest = async <Environment,
         sessionExpiresAtMs: Date.parse(binding.sessionExpiresAt),
       });
       snapshot = await opened.store.create(initialSarahLiveKitRoomAuthoritySnapshot(presence), now);
+      const rendezvous = await opened.store.claimCommunityRoomRendezvous(snapshot, now);
+      if (!rendezvous.claimed || rendezvous.presenceLeaseRef !== body.presenceLeaseRef) {
+        return noStoreJson(409, "community_room_already_active");
+      }
       await opened.store.bindParticipant({
         presenceLeaseRef: body.presenceLeaseRef,
         ownerUserId: authenticated.userId,
@@ -335,6 +523,10 @@ export const handleSarahLiveKitSharedRoomProductionRequest = async <Environment,
         presenceLeaseRef: body.presenceLeaseRef,
         expectedRevision: snapshot.revision,
         snapshot: removed,
+        now,
+      });
+      await opened.store.retireCommunityRoomRendezvous({
+        presenceLeaseRef: body.presenceLeaseRef,
         now,
       });
       await Promise.all([

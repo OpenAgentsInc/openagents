@@ -114,6 +114,44 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit room authority store", () =>
       joinExpiresAt: new Date(Date.parse(now) + 60_000).toISOString(),
       now,
     });
+    await expect(store.claimCommunityRoomRendezvous(snapshot, now)).resolves.toEqual({
+      claimed: true,
+      presenceLeaseRef: snapshot.presence.leaseRef,
+    });
+    await expect(store.claimCommunityRoomRendezvous(snapshot, now)).resolves.toEqual({
+      claimed: true,
+      presenceLeaseRef: snapshot.presence.leaseRef,
+    });
+    await expect(
+      store.readActiveCommunityRoomRendezvous({
+        communityRef: snapshot.presence.communityRef,
+        channelRef: snapshot.presence.channelRef,
+        now,
+      }),
+    ).resolves.toEqual({
+      presenceLeaseRef: snapshot.presence.leaseRef,
+      membershipRevision: snapshot.presence.membershipRevision,
+      roomRef: snapshot.presence.roomRef,
+      roomEpoch: snapshot.presence.roomEpoch,
+      sessionRef: snapshot.presence.sessionRef,
+      generation: snapshot.presence.generation,
+    });
+    await expect(
+      store.listActiveCommunityRoomParticipants({
+        presenceLeaseRef: snapshot.presence.leaseRef,
+        now,
+      }),
+    ).resolves.toEqual([
+      {
+        ownerUserId: "owner.authority",
+        userRefDigest: digest("1"),
+        memberPubkey: digest("2"),
+        participantRef: "participant.owner",
+        membershipRevision: snapshot.presence.membershipRevision,
+        roomRef: snapshot.presence.roomRef,
+        roomEpoch: snapshot.presence.roomEpoch,
+      },
+    ]);
     const next = decodeSarahLiveKitRoomAuthoritySnapshot({
       ...snapshot,
       revision: 2,
@@ -222,5 +260,11 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit room authority store", () =>
         now,
       }),
     ).resolves.toBeUndefined();
+    await expect(
+      store.retireCommunityRoomRendezvous({
+        presenceLeaseRef: snapshot.presence.leaseRef,
+        now,
+      }),
+    ).resolves.toBe(true);
   });
 });
