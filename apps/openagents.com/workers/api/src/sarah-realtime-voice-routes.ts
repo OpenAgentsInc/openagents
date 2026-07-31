@@ -180,6 +180,15 @@ export type SarahVoiceLiveKitRoomBroker = Readonly<{
       interruptSequence: number
     }>,
   ) => Promise<void>
+  grantParticipant?: (
+    input: Readonly<{
+      roomRef: string
+      participantRef: string
+      expiresAtMs: number
+      publishAllowed: boolean
+      subscribeAllowed: boolean
+    }>,
+  ) => Promise<Readonly<{ participantGrant: string; joinExpiresAtMs: number }>>
 }>
 
 export type SarahVoiceLiveKitLifecycleDependencies<Bindings> = Readonly<{
@@ -429,6 +438,13 @@ export type SarahRealtimeVoiceRouteDependencies<User, Bindings> = Readonly<{
       channelRef: string
     }>,
   ) => Promise<SarahVoiceLiveKitCommunityAccess | undefined>
+  bootstrapLiveKitCommunityRoom?: (
+    env: Bindings,
+    input: Readonly<{
+      ownerUserId: string
+      presenceLeaseRef: string
+    }>,
+  ) => Promise<void>
   requireUserBearerSession: UserBearerSessionBoundary<User, Bindings>
   stagingOwnerEntitlementEnabled?: (env: Bindings) => boolean
   liveKitNewAdmissionsEnabled?: (env: Bindings) => boolean
@@ -1779,6 +1795,16 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
           subscribeAllowed,
           nowIso,
         })
+        if (liveKitRoomContext.kind === 'community') {
+          const bootstrap = dependencies.bootstrapLiveKitCommunityRoom
+          if (bootstrap === undefined) {
+            throw new Error('livekit_community_authority_unavailable')
+          }
+          await bootstrap(env, {
+            ownerUserId: userId,
+            presenceLeaseRef: liveKitProvision.sarahPresenceLeaseRef,
+          })
+        }
         const workerClaimed = await (
           dependencies.waitForLiveKitWorkerClaim ??
           waitForSarahLiveKitWorkerClaim

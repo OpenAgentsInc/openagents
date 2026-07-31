@@ -1294,6 +1294,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       }),
     ).resolves.toEqual({
       ownerUserId: binding.ownerUserId,
+      sarahPresenceLeaseRef: binding.sarahPresenceLeaseRef,
       roomContext: binding.roomContext,
     });
 

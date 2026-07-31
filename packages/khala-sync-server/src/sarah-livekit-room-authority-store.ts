@@ -113,6 +113,30 @@ const samePresence = (
 ): boolean => JSON.stringify(left.presence) === JSON.stringify(right.presence);
 
 export interface SarahLiveKitRoomAuthorityStore {
+  readonly readCommunityRoomBinding: (input: {
+    readonly presenceLeaseRef: string;
+    readonly ownerUserId: string;
+    readonly now: string;
+  }) => Promise<
+    | Readonly<{
+        ownerUserId: string;
+        sessionRef: string;
+        generation: number;
+        admissionDigest: string;
+        communityRef: string;
+        channelRef: string;
+        membershipRevision: string;
+        roomRef: string;
+        roomEpoch: number;
+        participantRef: string;
+        sarahParticipantRef: string;
+        dispatchRef: string;
+        participantGrantDigest: string;
+        joinExpiresAt: string;
+        sessionExpiresAt: string;
+      }>
+    | undefined
+  >;
   readonly create: (
     snapshot: SarahLiveKitRoomAuthoritySnapshot,
     now: string,
@@ -122,11 +146,14 @@ export interface SarahLiveKitRoomAuthorityStore {
   ) => Promise<SarahLiveKitRoomAuthoritySnapshot | undefined>;
   readonly readParticipantBinding: (input: {
     readonly presenceLeaseRef: string;
-    readonly ownerUserId: string;
+    readonly ownerUserId?: string;
+    readonly userRefDigest?: string;
     readonly now: string;
   }) => Promise<
     | Readonly<{
         ownerUserId: string;
+        userRefDigest: string;
+        memberPubkey: string;
         participantRef: string;
         communityRef: string;
         channelRef: string;
@@ -136,6 +163,24 @@ export interface SarahLiveKitRoomAuthorityStore {
       }>
     | undefined
   >;
+  readonly bindParticipant: (input: {
+    readonly presenceLeaseRef: string;
+    readonly ownerUserId: string;
+    readonly userRefDigest: string;
+    readonly memberPubkey: string;
+    readonly participantRef: string;
+    readonly membershipRevision: string;
+    readonly roomRef: string;
+    readonly roomEpoch: number;
+    readonly participantGrantDigest: string;
+    readonly joinExpiresAt: string;
+    readonly now: string;
+  }) => Promise<void>;
+  readonly removeParticipant: (input: {
+    readonly presenceLeaseRef: string;
+    readonly userRefDigest: string;
+    readonly now: string;
+  }) => Promise<boolean>;
   readonly compareAndSwap: (input: {
     readonly presenceLeaseRef: string;
     readonly expectedRevision: number;
@@ -146,6 +191,104 @@ export interface SarahLiveKitRoomAuthorityStore {
 
 export class PostgresSarahLiveKitRoomAuthorityStore implements SarahLiveKitRoomAuthorityStore {
   constructor(private readonly sql: SyncSql) {}
+
+  async readCommunityRoomBinding(input: {
+    readonly presenceLeaseRef: string;
+    readonly ownerUserId: string;
+    readonly now: string;
+  }): Promise<
+    | Readonly<{
+        ownerUserId: string;
+        sessionRef: string;
+        generation: number;
+        admissionDigest: string;
+        communityRef: string;
+        channelRef: string;
+        membershipRevision: string;
+        roomRef: string;
+        roomEpoch: number;
+        participantRef: string;
+        sarahParticipantRef: string;
+        dispatchRef: string;
+        participantGrantDigest: string;
+        joinExpiresAt: string;
+        sessionExpiresAt: string;
+      }>
+    | undefined
+  > {
+    if (!Number.isFinite(Date.parse(input.now))) {
+      throw new SarahLiveKitRoomAuthorityStoreError({ reason: "invalid" });
+    }
+    try {
+      const rows: Array<{
+        owner_user_id: string;
+        session_ref: string;
+        generation: string | number;
+        admission_digest: string;
+        community_ref: string;
+        channel_ref: string;
+        membership_revision: string;
+        room_ref: string;
+        room_epoch: string | number;
+        participant_ref: string;
+        sarah_participant_ref: string;
+        dispatch_ref: string;
+        participant_grant_digest: string;
+        join_expires_at: string;
+        session_expires_at: string;
+      }> = await this.sql`
+        SELECT binding.owner_user_id,binding.session_ref,binding.generation,
+          binding.admission_digest,binding.community_ref,binding.channel_ref,
+          binding.membership_revision,binding.room_ref,binding.room_epoch,
+          binding.participant_ref,binding.sarah_participant_ref,binding.dispatch_ref,
+          binding.participant_grant_digest,binding.join_expires_at,
+          session.session_expires_at
+        FROM sarah_livekit_room_bindings AS binding
+        INNER JOIN sarah_realtime_voice_sessions AS session
+          ON session.session_ref=binding.session_ref
+        WHERE binding.sarah_presence_lease_ref=${input.presenceLeaseRef}
+          AND binding.owner_user_id=${input.ownerUserId}
+          AND binding.room_context_kind='community'
+          AND binding.state='active'
+          AND binding.worker_stop_reason IS NULL
+          AND binding.worker_closed_at IS NULL
+          AND session.state='connected'
+          AND session.session_expires_at>${input.now}
+        LIMIT 1`;
+      const row = rows[0];
+      if (row === undefined) return undefined;
+      const generation = Number(row.generation);
+      const roomEpoch = Number(row.room_epoch);
+      if (
+        !Number.isSafeInteger(generation) ||
+        generation < 1 ||
+        !Number.isSafeInteger(roomEpoch) ||
+        roomEpoch < 1
+      ) {
+        throw new SarahLiveKitRoomAuthorityStoreError({ reason: "unavailable" });
+      }
+      return {
+        ownerUserId: row.owner_user_id,
+        sessionRef: row.session_ref,
+        generation,
+        admissionDigest: row.admission_digest,
+        communityRef: row.community_ref,
+        channelRef: row.channel_ref,
+        membershipRevision: row.membership_revision,
+        roomRef: row.room_ref,
+        roomEpoch,
+        participantRef: row.participant_ref,
+        sarahParticipantRef: row.sarah_participant_ref,
+        dispatchRef: row.dispatch_ref,
+        participantGrantDigest: row.participant_grant_digest,
+        joinExpiresAt: row.join_expires_at,
+        sessionExpiresAt: row.session_expires_at,
+      };
+    } catch (error) {
+      if (error instanceof SarahLiveKitRoomAuthorityStoreError) throw error;
+      throw new SarahLiveKitRoomAuthorityStoreError({ reason: "unavailable" });
+    }
+  }
 
   async create(
     value: SarahLiveKitRoomAuthoritySnapshot,
@@ -199,11 +342,14 @@ export class PostgresSarahLiveKitRoomAuthorityStore implements SarahLiveKitRoomA
 
   async readParticipantBinding(input: {
     readonly presenceLeaseRef: string;
-    readonly ownerUserId: string;
+    readonly ownerUserId?: string;
+    readonly userRefDigest?: string;
     readonly now: string;
   }): Promise<
     | Readonly<{
         ownerUserId: string;
+        userRefDigest: string;
+        memberPubkey: string;
         participantRef: string;
         communityRef: string;
         channelRef: string;
@@ -213,12 +359,17 @@ export class PostgresSarahLiveKitRoomAuthorityStore implements SarahLiveKitRoomA
       }>
     | undefined
   > {
-    if (!Number.isFinite(Date.parse(input.now))) {
+    if (
+      !Number.isFinite(Date.parse(input.now)) ||
+      (input.ownerUserId === undefined) === (input.userRefDigest === undefined)
+    ) {
       throw new SarahLiveKitRoomAuthorityStoreError({ reason: "invalid" });
     }
     try {
       const rows: Array<{
         owner_user_id: string;
+        user_ref_digest: string;
+        member_pubkey: string;
         participant_ref: string;
         community_ref: string;
         channel_ref: string;
@@ -226,18 +377,25 @@ export class PostgresSarahLiveKitRoomAuthorityStore implements SarahLiveKitRoomA
         room_ref: string;
         room_epoch: string | number;
       }> = await this.sql`
-        SELECT binding.owner_user_id,binding.participant_ref,binding.community_ref,
-          binding.channel_ref,binding.membership_revision,binding.room_ref,binding.room_epoch
+        SELECT member.owner_user_id,member.user_ref_digest,member.member_pubkey,
+          member.participant_ref,binding.community_ref,binding.channel_ref,
+          member.membership_revision,member.room_ref,member.room_epoch
         FROM sarah_livekit_room_authorities AS authority
         INNER JOIN sarah_livekit_room_bindings AS binding
           ON binding.sarah_presence_lease_ref=authority.presence_lease_ref
+        INNER JOIN sarah_livekit_room_members AS member
+          ON member.presence_lease_ref=authority.presence_lease_ref
         INNER JOIN sarah_realtime_voice_sessions AS session
           ON session.session_ref=binding.session_ref
         WHERE authority.presence_lease_ref=${input.presenceLeaseRef}
-          AND binding.owner_user_id=${input.ownerUserId}
+          AND (${input.ownerUserId ?? null}::text IS NULL
+            OR member.owner_user_id=${input.ownerUserId ?? null})
+          AND (${input.userRefDigest ?? null}::text IS NULL
+            OR member.user_ref_digest=${input.userRefDigest ?? null})
           AND binding.room_context_kind='community'
           AND binding.state='active'
-          AND binding.owner_joined_at IS NOT NULL
+          AND member.state='active'
+          AND member.join_expires_at>${input.now}
           AND binding.sarah_joined_at IS NOT NULL
           AND binding.worker_stop_reason IS NULL
           AND binding.worker_closed_at IS NULL
@@ -248,6 +406,9 @@ export class PostgresSarahLiveKitRoomAuthorityStore implements SarahLiveKitRoomA
           AND binding.membership_revision=authority.membership_revision
           AND binding.room_ref=authority.room_ref
           AND binding.room_epoch=authority.room_epoch
+          AND member.membership_revision=authority.membership_revision
+          AND member.room_ref=authority.room_ref
+          AND member.room_epoch=authority.room_epoch
         LIMIT 1`;
       const row = rows[0];
       if (row === undefined) return undefined;
@@ -257,6 +418,8 @@ export class PostgresSarahLiveKitRoomAuthorityStore implements SarahLiveKitRoomA
       }
       return {
         ownerUserId: row.owner_user_id,
+        userRefDigest: row.user_ref_digest,
+        memberPubkey: row.member_pubkey,
         participantRef: row.participant_ref,
         communityRef: row.community_ref,
         channelRef: row.channel_ref,
@@ -266,6 +429,100 @@ export class PostgresSarahLiveKitRoomAuthorityStore implements SarahLiveKitRoomA
       };
     } catch (error) {
       if (error instanceof SarahLiveKitRoomAuthorityStoreError) throw error;
+      throw new SarahLiveKitRoomAuthorityStoreError({ reason: "unavailable" });
+    }
+  }
+
+  async bindParticipant(input: {
+    readonly presenceLeaseRef: string;
+    readonly ownerUserId: string;
+    readonly userRefDigest: string;
+    readonly memberPubkey: string;
+    readonly participantRef: string;
+    readonly membershipRevision: string;
+    readonly roomRef: string;
+    readonly roomEpoch: number;
+    readonly participantGrantDigest: string;
+    readonly joinExpiresAt: string;
+    readonly now: string;
+  }): Promise<void> {
+    if (
+      !/^[a-f0-9]{64}$/u.test(input.userRefDigest) ||
+      !/^[a-f0-9]{64}$/u.test(input.memberPubkey) ||
+      !/^[a-f0-9]{64}$/u.test(input.membershipRevision) ||
+      !/^[a-f0-9]{64}$/u.test(input.participantGrantDigest) ||
+      !Number.isSafeInteger(input.roomEpoch) ||
+      input.roomEpoch < 1 ||
+      Date.parse(input.joinExpiresAt) <= Date.parse(input.now)
+    ) {
+      throw new SarahLiveKitRoomAuthorityStoreError({ reason: "invalid" });
+    }
+    try {
+      await this.sql.begin(async (transaction) => {
+        const authorities: AuthorityRow[] = await transaction`
+          SELECT presence_lease_ref,revision,snapshot_json
+          FROM sarah_livekit_room_authorities
+          WHERE presence_lease_ref=${input.presenceLeaseRef}
+          FOR UPDATE`;
+        const authority = authorities[0];
+        if (authority === undefined) {
+          throw new SarahLiveKitRoomAuthorityStoreError({ reason: "not_found" });
+        }
+        const snapshot = decodeStoredSnapshot(authority);
+        if (
+          !snapshot.presenceActive ||
+          snapshot.presence.membershipRevision !== input.membershipRevision ||
+          snapshot.presence.roomRef !== input.roomRef ||
+          snapshot.presence.roomEpoch !== input.roomEpoch
+        ) {
+          throw new SarahLiveKitRoomAuthorityStoreError({ reason: "authority_mismatch" });
+        }
+        await transaction`
+          INSERT INTO sarah_livekit_room_members
+            (presence_lease_ref,owner_user_id,user_ref_digest,member_pubkey,
+             participant_ref,membership_revision,room_ref,room_epoch,
+             participant_grant_digest,join_expires_at,state,created_at,updated_at)
+          VALUES (${input.presenceLeaseRef},${input.ownerUserId},${input.userRefDigest},
+            ${input.memberPubkey},${input.participantRef},${input.membershipRevision},
+            ${input.roomRef},${input.roomEpoch},${input.participantGrantDigest},
+            ${input.joinExpiresAt},'active',${input.now},${input.now})
+          ON CONFLICT (presence_lease_ref,owner_user_id) DO UPDATE SET
+            user_ref_digest=EXCLUDED.user_ref_digest,
+            member_pubkey=EXCLUDED.member_pubkey,
+            participant_ref=EXCLUDED.participant_ref,
+            membership_revision=EXCLUDED.membership_revision,
+            room_ref=EXCLUDED.room_ref,
+            room_epoch=EXCLUDED.room_epoch,
+            participant_grant_digest=EXCLUDED.participant_grant_digest,
+            join_expires_at=EXCLUDED.join_expires_at,
+            state='active',
+            removed_at=NULL,
+            updated_at=EXCLUDED.updated_at`;
+      });
+    } catch (error) {
+      if (error instanceof SarahLiveKitRoomAuthorityStoreError) throw error;
+      throw new SarahLiveKitRoomAuthorityStoreError({ reason: "unavailable" });
+    }
+  }
+
+  async removeParticipant(input: {
+    readonly presenceLeaseRef: string;
+    readonly userRefDigest: string;
+    readonly now: string;
+  }): Promise<boolean> {
+    if (!/^[a-f0-9]{64}$/u.test(input.userRefDigest) || !Number.isFinite(Date.parse(input.now))) {
+      throw new SarahLiveKitRoomAuthorityStoreError({ reason: "invalid" });
+    }
+    try {
+      const rows: Array<{ user_ref_digest: string }> = await this.sql`
+        UPDATE sarah_livekit_room_members
+        SET state='removed',removed_at=${input.now},updated_at=${input.now}
+        WHERE presence_lease_ref=${input.presenceLeaseRef}
+          AND user_ref_digest=${input.userRefDigest}
+          AND state='active'
+        RETURNING user_ref_digest`;
+      return rows[0]?.user_ref_digest === input.userRefDigest;
+    } catch {
       throw new SarahLiveKitRoomAuthorityStoreError({ reason: "unavailable" });
     }
   }

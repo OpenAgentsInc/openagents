@@ -101,6 +101,19 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit room authority store", () =>
 
   test("creates from live binding and applies replay state with revision CAS", async () => {
     await expect(store.create(snapshot, now)).resolves.toEqual(snapshot);
+    await store.bindParticipant({
+      presenceLeaseRef: snapshot.presence.leaseRef,
+      ownerUserId: "owner.authority",
+      userRefDigest: digest("1"),
+      memberPubkey: digest("2"),
+      participantRef: "participant.owner",
+      membershipRevision: snapshot.presence.membershipRevision,
+      roomRef: snapshot.presence.roomRef,
+      roomEpoch: snapshot.presence.roomEpoch,
+      participantGrantDigest: digest("e"),
+      joinExpiresAt: new Date(Date.parse(now) + 60_000).toISOString(),
+      now,
+    });
     const next = decodeSarahLiveKitRoomAuthoritySnapshot({
       ...snapshot,
       revision: 2,
@@ -130,6 +143,8 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit room authority store", () =>
       }),
     ).resolves.toEqual({
       ownerUserId: "owner.authority",
+      userRefDigest: digest("1"),
+      memberPubkey: digest("2"),
       participantRef: "participant.owner",
       communityRef: snapshot.presence.communityRef,
       channelRef: snapshot.presence.channelRef,
@@ -140,7 +155,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit room authority store", () =>
     await expect(
       store.readParticipantBinding({
         presenceLeaseRef: snapshot.presence.leaseRef,
-        ownerUserId: "owner.other",
+        userRefDigest: digest("9"),
         now,
       }),
     ).resolves.toBeUndefined();

@@ -120,6 +120,25 @@ describe("Sarah LiveKit worker policy", () => {
     expect(source).toContain('observation.state === "drift"');
   });
 
+  test("feeds only the authoritative floor holder and interrupts before a floor switch", async () => {
+    const source = await readFile(new URL("./agent.ts", import.meta.url), "utf8");
+    const eventInterrupt = source.indexOf("await applyInterruptSequence(result.interruptSequence)");
+    const floorUpdate = source.indexOf(
+      "floorParticipantRef = result.floorParticipantRef ?? null",
+      eventInterrupt,
+    );
+    expect(eventInterrupt).toBeGreaterThan(-1);
+    expect(floorUpdate).toBeGreaterThan(eventInterrupt);
+    expect(source).toContain(
+      'dispatch.roomContext.kind === "community" ? null : dispatch.participantRef',
+    );
+    expect(source).toContain("session?._roomIO?.setParticipant(participantRef)");
+    expect(source).toContain(
+      "participantRef !== null && remoteParticipant.identity === participantRef",
+    );
+    expect(source).toContain("publication.setSubscribed(false)");
+  });
+
   test("publishes verified community presence before listening and expires it after projections", async () => {
     const source = await readFile(new URL("./agent.ts", import.meta.url), "utf8");
     const awaitProviderAdmission = source.indexOf("() => providerAdmission");
@@ -128,15 +147,13 @@ describe("Sarah LiveKit worker policy", () => {
       awaitProviderAdmission,
     );
     const subscribeParticipant = source.indexOf("publication.setSubscribed(true)");
-    const projectAssistant = source.indexOf(
-      "AgentSessionEventTypes.ConversationItemAdded",
-    );
+    const projectAssistant = source.indexOf("AgentSessionEventTypes.ConversationItemAdded");
     const expirePresence = source.indexOf('"inactive"');
     expect(publishPresence).toBeGreaterThan(awaitProviderAdmission);
     expect(subscribeParticipant).toBeGreaterThan(publishPresence);
     expect(projectAssistant).toBeGreaterThan(-1);
     expect(source).toContain('event.item.role !== "assistant"');
-    expect(source).toContain("if (fence.settle(\"worker_error\")) requestShutdown();");
+    expect(source).toContain('if (fence.settle("worker_error")) requestShutdown();');
     expect(expirePresence).toBeGreaterThan(-1);
     expect(source).toContain("() => projectionChain");
   });

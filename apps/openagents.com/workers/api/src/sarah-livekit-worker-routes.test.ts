@@ -12,6 +12,10 @@ import type {
 } from "@openagentsinc/khala-sync-server";
 import { describe, expect, test, vi } from "vitest";
 
+import {
+  initialSarahLiveKitRoomAuthoritySnapshot,
+  issueSarahLiveKitRoomPresenceLease,
+} from "./sarah-livekit-room-authority";
 import { deriveSarahLiveKitControlToken } from "./sarah-livekit-room-broker";
 import {
   handleSarahLiveKitWorkerClaim,
@@ -35,22 +39,31 @@ const token = deriveSarahLiveKitControlToken(controlRoot, {
   agentName: SARAH_LIVEKIT_AGENT_NAME,
   ...claimDispatch,
 });
-const claimLiveKitWorkerJob = vi.fn(async (): Promise<SarahVoiceLiveKitWorkerClaim> => ({
-  sessionRef: "session:one",
-  generation: 1,
-  ownerUserId: "owner:one",
-  capabilityProfile: "omega_editor" as const,
-  roomContext: { kind: "private" as const },
-  admissionDigest: "d".repeat(64),
-  sessionExpiresAt: "2033-05-18T03:34:20.000Z",
-}));
-const applyLiveKitWorkerEvent = vi.fn(async () => ({
-  observedAt: "2033-05-18T03:33:20.000Z",
-  replayed: false,
-}));
+const claimLiveKitWorkerJob = vi.fn(
+  async (): Promise<SarahVoiceLiveKitWorkerClaim> => ({
+    sessionRef: "session:one",
+    generation: 1,
+    ownerUserId: "owner:one",
+    capabilityProfile: "omega_editor" as const,
+    roomContext: { kind: "private" as const },
+    admissionDigest: "d".repeat(64),
+    sessionExpiresAt: "2033-05-18T03:34:20.000Z",
+  }),
+);
+const applyLiveKitWorkerEvent = vi.fn(
+  async (): Promise<{
+    observedAt: string;
+    replayed: boolean;
+    interruptSequence?: number;
+  }> => ({
+    observedAt: "2033-05-18T03:33:20.000Z",
+    replayed: false,
+  }),
+);
 const readLiveKitMembershipLease = vi.fn(
   async (): Promise<SarahVoiceLiveKitMembershipLease> => ({
     ownerUserId: "owner:one",
+    sarahPresenceLeaseRef: claimDispatch.sarahPresenceLeaseRef,
     roomContext: { kind: "private" },
   }),
 );
@@ -72,7 +85,11 @@ const cleanup = vi.fn(async () => undefined);
 const dependencies = {
   controlRoot: () => controlRoot,
   now: () => 2_000_000_000_000,
-  openStore: async () => ({ store, authorityStore, close: async () => undefined }),
+  openStore: async () => ({
+    store,
+    authorityStore,
+    close: async () => undefined,
+  }),
   sarahNostrPublicKey: () => "a".repeat(64),
   e2eeKeyRevision: () => "e".repeat(64),
   cleanup,
@@ -116,7 +133,7 @@ describe("Sarah LiveKit worker routes", () => {
     );
   });
 
-  test("persists and returns one canonical community presence lease", async () => {
+  test("returns the canonical pre-established community presence lease", async () => {
     const communityDispatch = {
       ...claimDispatch,
       roomContext: {
@@ -140,8 +157,39 @@ describe("Sarah LiveKit worker routes", () => {
       agentName: SARAH_LIVEKIT_AGENT_NAME,
       ...communityDispatch,
     });
+    const existingAuthority = initialSarahLiveKitRoomAuthoritySnapshot(
+      issueSarahLiveKitRoomPresenceLease({
+        sarahPubkey: "a".repeat(64),
+        presenceLeaseRef: communityDispatch.sarahPresenceLeaseRef,
+        communityRef: communityDispatch.roomContext.communityRef,
+        channelRef: communityDispatch.roomContext.channelRef,
+        membershipRevision: communityDispatch.roomContext.membershipRevision,
+        currentMembershipRevision: communityDispatch.roomContext.membershipRevision,
+        e2eeKeyRevision: "e".repeat(64),
+        roomRef: communityDispatch.roomRef,
+        roomEpoch: communityDispatch.roomEpoch,
+        sarahParticipantRef: communityDispatch.sarahParticipantRef,
+        dispatchRef: "dispatch:one",
+        sessionRef: communityDispatch.sessionRef,
+        generation: communityDispatch.generation,
+        admissionDigest: "d".repeat(64),
+        issuedAtMs: 2_000_000_000_000,
+        sessionExpiresAtMs: Date.parse("2033-05-18T03:34:20.000Z"),
+      }),
+    );
+    vi.mocked(authorityStore.read).mockResolvedValueOnce(existingAuthority);
+    vi.mocked(authorityStore.create).mockClear();
     const response = await handleSarahLiveKitWorkerClaim(
-      dependencies,
+      {
+        ...dependencies,
+        resolveRoomFloor: async () => ({
+          authorityRevision: 1,
+          interruptSequence: 0,
+          participantRef: null,
+          expiresAtMs: null,
+          presenceActive: true,
+        }),
+      },
       new Request("https://openagents.com/api/internal/sarah/livekit/job/claim", {
         method: "POST",
         headers: {
@@ -168,7 +216,7 @@ describe("Sarah LiveKit worker routes", () => {
       communityRef: "openagents-public",
       channelRef: "agent-chat",
     });
-    expect(authorityStore.create).toHaveBeenCalledTimes(1);
+    expect(authorityStore.create).not.toHaveBeenCalled();
   });
 
   test("records response and transcription usage under different idempotency refs", async () => {
@@ -330,6 +378,7 @@ describe("Sarah LiveKit worker routes", () => {
   test("requests a drain when a community membership revision changes", async () => {
     readLiveKitMembershipLease.mockResolvedValueOnce({
       ownerUserId: "owner:one",
+      sarahPresenceLeaseRef: claimDispatch.sarahPresenceLeaseRef,
       roomContext: {
         kind: "community",
         communityRef: "community:one",
@@ -371,6 +420,60 @@ describe("Sarah LiveKit worker routes", () => {
       }),
     );
     expect(applyLiveKitWorkerEvent).toHaveBeenCalledTimes(1);
+  });
+
+  test("returns the current room floor and interrupt sequence on a community lease check", async () => {
+    readLiveKitMembershipLease.mockResolvedValueOnce({
+      ownerUserId: "owner:one",
+      sarahPresenceLeaseRef: claimDispatch.sarahPresenceLeaseRef,
+      roomContext: {
+        kind: "community",
+        communityRef: "community:one",
+        channelRef: "channel:one",
+        membershipRevision: "revision:one",
+      },
+    });
+    applyLiveKitWorkerEvent.mockResolvedValueOnce({
+      observedAt: "2033-05-18T03:33:20.000Z",
+      replayed: false,
+      interruptSequence: 2,
+    });
+    const response = await handleSarahLiveKitWorkerEvent(
+      {
+        ...dependencies,
+        resolveCommunityAccess: async () => ({
+          communityRef: "community:one",
+          channelRef: "channel:one",
+          membershipRevision: "revision:one",
+          subscribeAllowed: true,
+        }),
+        resolveRoomFloor: async () => ({
+          authorityRevision: 4,
+          interruptSequence: 3,
+          participantRef: "member-current-floor",
+          expiresAtMs: 2_000_000_010_000,
+          presenceActive: true,
+        }),
+      },
+      authorizedRequest("/api/internal/sarah/livekit/job/event", {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "lease_check",
+        sessionRef: "session:one",
+        generation: 1,
+        jobRef: "job:one",
+        eventRef: "lease:room-floor",
+      }),
+      {},
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      accepted: true,
+      interruptSequence: 3,
+      authorityRevision: 4,
+      floorParticipantRef: "member-current-floor",
+      floorExpiresAtMs: 2_000_000_010_000,
+      presenceActive: true,
+    });
   });
 
   test("fails closed before storage for a wrong token or malformed control root", async () => {

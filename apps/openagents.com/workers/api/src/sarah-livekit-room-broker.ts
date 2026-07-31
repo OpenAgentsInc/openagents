@@ -459,6 +459,37 @@ export const makeSarahLiveKitRoomBroker = (
         [input.sarahParticipantRef],
       );
     },
+    grantParticipant: async (input) => {
+      const joinExpiresAtMs = Math.min(input.expiresAtMs, now() + 60_000);
+      const joinTtlSeconds = Math.floor((joinExpiresAtMs - now()) / 1_000);
+      if (
+        joinTtlSeconds < 1 ||
+        input.roomRef.trim() === "" ||
+        input.participantRef.trim() === ""
+      ) {
+        throw new Error("The Sarah shared-room participant grant is invalid");
+      }
+      const token = new AccessToken(config.apiKey, config.apiSecret, {
+        identity: input.participantRef,
+        ttl: joinTtlSeconds,
+      });
+      token.addGrant({
+        room: input.roomRef,
+        roomJoin: true,
+        canPublish: input.publishAllowed,
+        canSubscribe: input.subscribeAllowed,
+        canPublishData: false,
+        canUpdateOwnMetadata: false,
+        canPublishSources: [TrackSource.MICROPHONE],
+        roomAdmin: false,
+        roomCreate: false,
+        roomList: false,
+      });
+      return {
+        participantGrant: await token.toJwt(),
+        joinExpiresAtMs,
+      };
+    },
   };
 };
 

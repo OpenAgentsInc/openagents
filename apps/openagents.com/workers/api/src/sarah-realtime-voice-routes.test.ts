@@ -576,6 +576,7 @@ describe('managed Sarah Realtime voice session route', () => {
         ...fixture.dependencies,
         liveKitRoomBroker: broker,
         resolveLiveKitCommunityAccess,
+        bootstrapLiveKitCommunityRoom: vi.fn(async () => undefined),
       },
       request({
         schema: SARAH_VOICE_PROTOCOL_VERSION,

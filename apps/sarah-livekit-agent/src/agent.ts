@@ -391,7 +391,6 @@ const entry = async (ctx: JobContext): Promise<void> => {
       roomSid: workerRoomSid,
     }),
   );
-
   const identity = {
     sessionRef: dispatch.sessionRef,
     generation: dispatch.generation,
@@ -413,7 +412,11 @@ const entry = async (ctx: JobContext): Promise<void> => {
   let providerReady = false;
   let observedInterruptSequence = 0;
   let appliedInterruptSequence = 0;
+  let authorityRevision = 0;
+  let floorParticipantRef: string | null =
+    dispatch.roomContext.kind === "community" ? null : dispatch.participantRef;
   let interruptOperation = Promise.resolve();
+  let applyFloorParticipant: ((participantRef: string | null) => void) | undefined;
   let disableParticipantMedia: (() => void) | undefined;
   let disableControlData: (() => void) | undefined;
   let clearWorkerTimers: (() => void) | undefined;
@@ -540,6 +543,19 @@ const entry = async (ctx: JobContext): Promise<void> => {
         }
         if (result.interruptSequence !== undefined) {
           await applyInterruptSequence(result.interruptSequence);
+        }
+        if (
+          dispatch.roomContext.kind === "community" &&
+          result.authorityRevision !== undefined &&
+          result.authorityRevision >= authorityRevision
+        ) {
+          if (result.presenceActive !== true) {
+            if (fence.settle(closeReasonForStop("membership_revoked"))) requestShutdown();
+            return;
+          }
+          authorityRevision = result.authorityRevision;
+          floorParticipantRef = result.floorParticipantRef ?? null;
+          applyFloorParticipant?.(floorParticipantRef);
         }
       })
       .catch((error) => {
@@ -725,7 +741,6 @@ const entry = async (ctx: JobContext): Promise<void> => {
     });
   }, 5_000);
   leaseInterval.unref();
-
   const expiryDelay = Math.max(0, claim.sessionExpiresAtMs - Date.now());
   const expiryTimer = setTimeout(() => {
     if (fence.settle("session_expired")) {
@@ -785,6 +800,21 @@ const entry = async (ctx: JobContext): Promise<void> => {
     requestShutdown();
     return;
   }
+  if (
+    dispatch.roomContext.kind === "community" &&
+    connected.authorityRevision !== undefined
+  ) {
+    if (connected.presenceActive !== true) {
+      fence.settle(closeReasonForStop("membership_revoked"));
+      requestShutdown();
+      return;
+    }
+    authorityRevision = connected.authorityRevision;
+    floorParticipantRef = connected.floorParticipantRef ?? null;
+    if (connected.interruptSequence !== undefined) {
+      await applyInterruptSequence(connected.interruptSequence);
+    }
+  }
   let participant;
   try {
     participant = await waitForAdmissionUntil(
@@ -819,6 +849,9 @@ const entry = async (ctx: JobContext): Promise<void> => {
     },
     record: false,
   });
+  if (dispatch.roomContext.kind === "community") {
+    session._roomIO?.setParticipant(floorParticipantRef);
+  }
   sessionStarted = true;
   if (pendingProviderAdmission !== undefined) {
     persistProviderAdmission(pendingProviderAdmission);
@@ -854,30 +887,46 @@ const entry = async (ctx: JobContext): Promise<void> => {
       remoteParticipant: RemoteParticipant,
     ) => {
       if (
-        remoteParticipant.identity === dispatch.participantRef &&
+        remoteParticipant.identity === floorParticipantRef &&
         publication.kind === TrackKind.KIND_AUDIO &&
         publication.source === RtcTrackSource.SOURCE_MICROPHONE
       ) {
         publication.setSubscribed(true);
       }
     };
+    applyFloorParticipant = (participantRef) => {
+      floorParticipantRef = participantRef;
+      session?._roomIO?.setParticipant(participantRef);
+      for (const remoteParticipant of ctx.room.remoteParticipants.values()) {
+        remoteParticipant.trackPublications.forEach((publication) => {
+          if (
+            publication.kind === TrackKind.KIND_AUDIO &&
+            publication.source === RtcTrackSource.SOURCE_MICROPHONE
+          ) {
+            publication.setSubscribed(
+              participantRef !== null && remoteParticipant.identity === participantRef,
+            );
+          }
+        });
+      }
+    };
     const unsubscribeParticipant = () => {
       ctx.room.off(RoomEvent.TrackPublished, subscribeMicrophone);
-      const admittedParticipant = ctx.room.remoteParticipants.get(dispatch.participantRef);
-      admittedParticipant?.trackPublications.forEach((publication) => {
-        if (
-          publication.kind === TrackKind.KIND_AUDIO &&
-          publication.source === RtcTrackSource.SOURCE_MICROPHONE
-        ) {
-          publication.setSubscribed(false);
-        }
-      });
+      applyFloorParticipant = undefined;
+      for (const remoteParticipant of ctx.room.remoteParticipants.values()) {
+        remoteParticipant.trackPublications.forEach((publication) => {
+          if (
+            publication.kind === TrackKind.KIND_AUDIO &&
+            publication.source === RtcTrackSource.SOURCE_MICROPHONE
+          ) {
+            publication.setSubscribed(false);
+          }
+        });
+      }
     };
     disableParticipantMedia = unsubscribeParticipant;
     ctx.room.on(RoomEvent.TrackPublished, subscribeMicrophone);
-    participant.trackPublications.forEach((publication) =>
-      subscribeMicrophone(publication, participant),
-    );
+    applyFloorParticipant(floorParticipantRef);
   } catch {
     if (!fence.settled) fence.settle("provider_mismatch");
     requestShutdown();

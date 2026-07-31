@@ -287,6 +287,70 @@ describe("Sarah LiveKit control client", () => {
     ).resolves.toEqual({ accepted: true, interruptSequence: 4 });
   });
 
+  test("accepts only a complete authoritative room-floor receipt", async () => {
+    const client = makeSarahLiveKitControlClient(
+      {
+        baseUrl: "https://openagents.com",
+        workerRef: "worker:one",
+        controlRoot,
+      },
+      vi.fn(async () =>
+        Response.json({
+          accepted: true,
+          interruptSequence: 5,
+          authorityRevision: 3,
+          floorParticipantRef: "member-floor-holder",
+          floorExpiresAtMs: 2_000_000_001_000,
+          presenceActive: true,
+        }),
+      ) as typeof fetch,
+    );
+    await expect(
+      client.event(dispatch, {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "lease_check",
+        sessionRef: dispatch.sessionRef,
+        generation: dispatch.generation,
+        jobRef: "job:one",
+        eventRef: "lease:floor",
+      }),
+    ).resolves.toEqual({
+      accepted: true,
+      interruptSequence: 5,
+      authorityRevision: 3,
+      floorParticipantRef: "member-floor-holder",
+      floorExpiresAtMs: 2_000_000_001_000,
+      presenceActive: true,
+    });
+  });
+
+  test("rejects a partial room-floor receipt", async () => {
+    const client = makeSarahLiveKitControlClient(
+      {
+        baseUrl: "https://openagents.com",
+        workerRef: "worker:one",
+        controlRoot,
+      },
+      vi.fn(async () =>
+        Response.json({
+          accepted: true,
+          authorityRevision: 3,
+          floorParticipantRef: null,
+        }),
+      ) as typeof fetch,
+    );
+    await expect(
+      client.event(dispatch, {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "lease_check",
+        sessionRef: dispatch.sessionRef,
+        generation: dispatch.generation,
+        jobRef: "job:one",
+        eventRef: "lease:partial-floor",
+      }),
+    ).rejects.toThrow("floor authority receipt");
+  });
+
   test("retries an idempotent tool proposal after an unknown delivery outcome", async () => {
     const proposal = {
       proposalRef: "proposal:one",

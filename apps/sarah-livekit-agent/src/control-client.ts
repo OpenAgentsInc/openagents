@@ -35,6 +35,10 @@ export type SarahLiveKitClaimInput = Readonly<{
 export type SarahLiveKitEventResult = Readonly<{
   accepted: true;
   interruptSequence?: number;
+  authorityRevision?: number;
+  floorParticipantRef?: string | null;
+  floorExpiresAtMs?: number | null;
+  presenceActive?: boolean;
   stopReason?:
     | "hold_exhausted"
     | "membership_revoked"
@@ -226,10 +230,58 @@ const decodeSarahLiveKitEventResult = (body: unknown): SarahLiveKitEventResult =
   if ("interruptSequence" in body && interruptSequence === undefined) {
     throw new Error("The Sarah LiveKit interrupt sequence was invalid");
   }
+  const hasFloorAuthority =
+    "authorityRevision" in body ||
+    "floorParticipantRef" in body ||
+    "floorExpiresAtMs" in body ||
+    "presenceActive" in body;
+  const authorityRevision =
+    "authorityRevision" in body &&
+    Number.isSafeInteger(body.authorityRevision) &&
+    Number(body.authorityRevision) >= 1
+      ? Number(body.authorityRevision)
+      : undefined;
+  const floorParticipantRef =
+    "floorParticipantRef" in body &&
+    (body.floorParticipantRef === null ||
+      (typeof body.floorParticipantRef === "string" &&
+        body.floorParticipantRef.trim() === body.floorParticipantRef &&
+        body.floorParticipantRef.length > 0 &&
+        body.floorParticipantRef.length <= 256))
+      ? body.floorParticipantRef
+      : undefined;
+  const floorExpiresAtMs =
+    "floorExpiresAtMs" in body &&
+    (body.floorExpiresAtMs === null ||
+      (Number.isSafeInteger(body.floorExpiresAtMs) && Number(body.floorExpiresAtMs) > 0))
+      ? (body.floorExpiresAtMs as number | null)
+      : undefined;
+  const presenceActive =
+    "presenceActive" in body && typeof body.presenceActive === "boolean"
+      ? body.presenceActive
+      : undefined;
+  if (
+    hasFloorAuthority &&
+    (authorityRevision === undefined ||
+      floorParticipantRef === undefined ||
+      floorExpiresAtMs === undefined ||
+      presenceActive === undefined ||
+      (floorParticipantRef === null) !== (floorExpiresAtMs === null))
+  ) {
+    throw new Error("The Sarah LiveKit floor authority receipt was invalid");
+  }
   return {
     accepted: true,
     ...(interruptSequence === undefined ? {} : { interruptSequence }),
     ...(stopReason === undefined ? {} : { stopReason }),
+    ...(authorityRevision === undefined
+      ? {}
+      : {
+          authorityRevision,
+          floorParticipantRef: floorParticipantRef as string | null,
+          floorExpiresAtMs: floorExpiresAtMs as number | null,
+          presenceActive: presenceActive as boolean,
+        }),
   };
 };
 

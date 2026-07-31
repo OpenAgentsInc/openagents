@@ -19,13 +19,13 @@ import {
 import { createHash, timingSafeEqual } from "node:crypto";
 
 import {
-  deriveSarahLiveKitControlToken,
-  parseSarahLiveKitControlRoot,
-} from "./sarah-livekit-room-broker";
-import {
   initialSarahLiveKitRoomAuthoritySnapshot,
   issueSarahLiveKitRoomPresenceLease,
 } from "./sarah-livekit-room-authority";
+import {
+  deriveSarahLiveKitControlToken,
+  parseSarahLiveKitControlRoot,
+} from "./sarah-livekit-room-broker";
 
 export const SARAH_LIVEKIT_WORKER_CLAIM_PATH = SARAH_LIVEKIT_JOB_CLAIM_PATH;
 export const SARAH_LIVEKIT_WORKER_EVENT_PATH = SARAH_LIVEKIT_JOB_EVENT_PATH;
@@ -35,9 +35,7 @@ export const SARAH_LIVEKIT_WORKER_TOOL_STATE_PATH = SARAH_LIVEKIT_TOOL_STATE_PAT
 export type SarahLiveKitWorkerRouteDependencies<Bindings> = Readonly<{
   controlRoot: (env: Bindings) => string | undefined;
   now?: (() => number) | undefined;
-  openStore: (
-    env: Bindings,
-  ) => Promise<
+  openStore: (env: Bindings) => Promise<
     Readonly<{
       store: SarahRealtimeVoiceStore;
       authorityStore?: SarahLiveKitRoomAuthorityStore | undefined;
@@ -63,6 +61,22 @@ export type SarahLiveKitWorkerRouteDependencies<Bindings> = Readonly<{
         channelRef: string;
         membershipRevision: string;
         subscribeAllowed: boolean;
+      }>
+    | undefined
+  >;
+  resolveRoomFloor?: (
+    env: Bindings,
+    input: Readonly<{
+      presenceLeaseRef: string;
+      nowMs: number;
+    }>,
+  ) => Promise<
+    | Readonly<{
+        authorityRevision: number;
+        interruptSequence: number;
+        participantRef: string | null;
+        expiresAtMs: number | null;
+        presenceActive: boolean;
       }>
     | undefined
   >;
@@ -230,8 +244,18 @@ export const handleSarahLiveKitWorkerClaim = async <Bindings>(
       }>
     | undefined;
   try {
+    const nowMs = (dependencies.now ?? Date.now)();
+    if (body.dispatch.roomContext.kind === "community") {
+      const authority = await dependencies.resolveRoomFloor?.(env, {
+        presenceLeaseRef: body.dispatch.sarahPresenceLeaseRef,
+        nowMs,
+      });
+      if (authority === undefined || !authority.presenceActive) {
+        return noStoreJson({ error: "sarah_livekit_room_authority_unavailable" }, 409);
+      }
+    }
     opened = await dependencies.openStore(env);
-    const nowIso = new Date((dependencies.now ?? Date.now)()).toISOString();
+    const nowIso = new Date(nowMs).toISOString();
     const claimed = await opened.store.claimLiveKitWorkerJob({
       workerControlTokenDigest: sha256(token),
       workerRefDigest: sha256(body.workerRef),
@@ -369,6 +393,8 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
       eventPayloadDigest: sha256(canonicalJson(body)),
       nowIso,
     } as const;
+    let communityPresenceLeaseRef: string | undefined;
+    let membershipRevoked = false;
     if (body._tag === "worker_connected" || body._tag === "lease_check") {
       const membershipLease = await opened.store.readLiveKitMembershipLease({
         workerControlTokenDigest: sha256(token),
@@ -377,6 +403,7 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
         generation: body.generation,
       });
       if (membershipLease?.roomContext.kind === "community") {
+        communityPresenceLeaseRef = membershipLease.sarahPresenceLeaseRef;
         let currentAccess:
           | Readonly<{
               communityRef: string;
@@ -408,6 +435,7 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
             reason: "community_membership_changed",
             nowIso,
           });
+          membershipRevoked = true;
         }
       }
     }
@@ -482,6 +510,35 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
         generation: body.generation,
       });
     }
+    if (membershipRevoked) {
+      return noStoreJson(
+        {
+          accepted: true,
+          stopReason: "membership_revoked",
+          ...(result.interruptSequence === undefined
+            ? {}
+            : { interruptSequence: result.interruptSequence }),
+        },
+        200,
+      );
+    }
+    const roomFloor =
+      communityPresenceLeaseRef === undefined
+        ? undefined
+        : await dependencies.resolveRoomFloor?.(env, {
+            presenceLeaseRef: communityPresenceLeaseRef,
+            nowMs: now,
+          });
+    if (communityPresenceLeaseRef !== undefined && roomFloor === undefined) {
+      await opened.store.revokeLiveKitRoom({
+        sessionRef: body.sessionRef,
+        generation: body.generation,
+        stopReason: "membership_revoked",
+        reason: "community_room_authority_unavailable",
+        nowIso,
+      });
+      return noStoreJson({ accepted: true, stopReason: "membership_revoked" }, 200);
+    }
     return noStoreJson(
       {
         accepted: true,
@@ -489,6 +546,18 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
           ? {}
           : { interruptSequence: result.interruptSequence }),
         ...(result.stopReason === undefined ? {} : { stopReason: result.stopReason }),
+        ...(roomFloor === undefined
+          ? {}
+          : {
+              authorityRevision: roomFloor.authorityRevision,
+              floorParticipantRef: roomFloor.participantRef,
+              floorExpiresAtMs: roomFloor.expiresAtMs,
+              presenceActive: roomFloor.presenceActive,
+              interruptSequence: Math.max(
+                result.interruptSequence ?? 0,
+                roomFloor.interruptSequence,
+              ),
+            }),
       },
       200,
     );

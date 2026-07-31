@@ -9,6 +9,7 @@ import {
   stopSarahLiveKitFloor,
   transferSarahLiveKitFloor,
   type SarahLiveKitFloorDecision,
+  type SarahLiveKitRoomAuthoritySnapshot,
   type SarahLiveKitRoomMemberAccess,
 } from "./sarah-livekit-room-authority.js";
 
@@ -70,6 +71,10 @@ export type SarahLiveKitRoomAuthorityRouteDependencies<Environment> = Readonly<{
     }>,
   ) => Promise<SarahLiveKitRoomMemberAccess | undefined>;
   now: () => Date;
+  onAuthorityChanged?: (
+    previous: SarahLiveKitRoomAuthoritySnapshot,
+    current: SarahLiveKitRoomAuthoritySnapshot,
+  ) => Promise<void>;
 }>;
 
 const json = (status: number, body: unknown): Response =>
@@ -123,6 +128,7 @@ const persistDecision = async <Environment>(
   dependencies: SarahLiveKitRoomAuthorityRouteDependencies<Environment>,
   presenceLeaseRef: string,
   expectedRevision: number,
+  previous: SarahLiveKitRoomAuthoritySnapshot,
   decision: SarahLiveKitFloorDecision<unknown>,
 ): Promise<Response> => {
   if (!decision.accepted) {
@@ -144,6 +150,14 @@ const persistDecision = async <Environment>(
       snapshot: decision.snapshot,
       now: dependencies.now().toISOString(),
     });
+    try {
+      await dependencies.onAuthorityChanged?.(previous, snapshot);
+    } catch {
+      return json(503, {
+        error: "worker_control_unavailable",
+        revision: snapshot.revision,
+      });
+    }
     return json(200, { value: decision.value, revision: snapshot.revision });
   } catch (error) {
     if (error instanceof SarahLiveKitRoomAuthorityStoreError) {
@@ -193,6 +207,7 @@ export const handleSarahLiveKitRoomMemberFloorRequest = async <Environment>(
       dependencies,
       body.presenceLeaseRef,
       body.expectedRevision,
+      snapshot,
       requestSarahLiveKitFloor(snapshot, {
         member: resolved.member,
         nonce: body.nonce,
@@ -206,6 +221,7 @@ export const handleSarahLiveKitRoomMemberFloorRequest = async <Environment>(
       dependencies,
       body.presenceLeaseRef,
       body.expectedRevision,
+      snapshot,
       bargeInSarahLiveKitFloor(snapshot, {
         member: resolved.member,
         nonce: body.nonce,
@@ -225,6 +241,7 @@ export const handleSarahLiveKitRoomMemberFloorRequest = async <Environment>(
     dependencies,
     body.presenceLeaseRef,
     body.expectedRevision,
+    snapshot,
     transferSarahLiveKitFloor(snapshot, {
       actor: resolved.member,
       target,
@@ -261,10 +278,70 @@ export const handleSarahLiveKitRoomModeratorFloorRequest = async <Environment>(
     dependencies,
     body.presenceLeaseRef,
     body.expectedRevision,
+    snapshot,
     stopSarahLiveKitFloor(snapshot, {
       moderator: resolved.member,
       nonce: body.nonce,
       nowMs: dependencies.now().getTime(),
     }),
   );
+};
+
+export const handleSarahLiveKitRoomSnapshotRequest = async <Environment>(
+  request: Request,
+  environment: Environment,
+  dependencies: SarahLiveKitRoomAuthorityRouteDependencies<Environment>,
+): Promise<Response> => {
+  if (request.method !== "GET") return json(405, { error: "method_not_allowed" });
+  const url = new URL(request.url);
+  const presenceLeaseRef = url.searchParams.get("presenceLeaseRef");
+  if (
+    presenceLeaseRef === null ||
+    url.searchParams.size !== 1 ||
+    presenceLeaseRef.trim() !== presenceLeaseRef ||
+    presenceLeaseRef.length < 1 ||
+    presenceLeaseRef.length > 256
+  ) {
+    return json(400, { error: "invalid_request" });
+  }
+  const resolved = await authenticatedMember(
+    request,
+    environment,
+    dependencies,
+    presenceLeaseRef,
+  );
+  if (resolved instanceof Response) return resolved;
+  const snapshot = await readSnapshot(dependencies.store, presenceLeaseRef);
+  if (snapshot instanceof Response) return snapshot;
+  const nowMs = dependencies.now().getTime();
+  const floor =
+    snapshot.presenceActive &&
+    snapshot.presence.expiresAtMs > nowMs &&
+    snapshot.floor.state === "held" &&
+    snapshot.floor.lease.expiresAtMs > nowMs
+      ? {
+          state: "held" as const,
+          holderUserRefDigest: snapshot.floor.lease.holderUserRefDigest,
+          holderParticipantRef: snapshot.floor.lease.holderParticipantRef,
+          expiresAtMs: snapshot.floor.lease.expiresAtMs,
+        }
+      : {
+          state: snapshot.presenceActive ? ("available" as const) : ("removed" as const),
+        };
+  return json(200, {
+    schema: snapshot.presence.schema,
+    presenceLeaseRef,
+    revision: snapshot.revision,
+    presenceActive: snapshot.presenceActive && snapshot.presence.expiresAtMs > nowMs,
+    communityRef: snapshot.presence.communityRef,
+    channelRef: snapshot.presence.channelRef,
+    membershipRevision: snapshot.presence.membershipRevision,
+    e2eeKeyRevision: snapshot.presence.e2eeKeyRevision,
+    roomRef: snapshot.presence.roomRef,
+    roomEpoch: snapshot.presence.roomEpoch,
+    sarahPubkey: snapshot.presence.sarahPubkey,
+    sarahParticipantRef: snapshot.presence.sarahParticipantRef,
+    processorDisclosure: snapshot.presence.processorDisclosure,
+    floor,
+  });
 };

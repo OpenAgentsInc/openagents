@@ -1306,9 +1306,17 @@ import {
   parseSarahLiveKitRoomBrokerConfig,
 } from './sarah-livekit-room-broker'
 import {
+  expireSarahLiveKitFloor,
+  type SarahLiveKitRoomAuthoritySnapshot,
+} from './sarah-livekit-room-authority'
+import {
   SARAH_LIVEKIT_ROOM_MEMBER_FLOOR_PATH,
   SARAH_LIVEKIT_ROOM_MODERATOR_FLOOR_PATH,
+  SARAH_LIVEKIT_ROOM_REMOVE_PATH,
+  SARAH_LIVEKIT_ROOM_SNAPSHOT_PATH,
+  SARAH_LIVEKIT_ROOM_SUMMON_PATH,
   handleSarahLiveKitRoomAuthorityProductionRequest,
+  handleSarahLiveKitSharedRoomProductionRequest,
 } from './sarah-livekit-room-authority-production'
 import {
   SARAH_LIVEKIT_WORKER_CLAIM_PATH,
@@ -3834,7 +3842,89 @@ const sarahRealtimeVoiceDependenciesForEnv = (workerEnv: Env) => ({
   ...sarahRealtimeVoiceRouteDependencies,
   liveKitRoomBroker: sarahLiveKitRoomBrokerForEnv(workerEnv),
   liveKitNewAdmissionsEnabled: sarahLiveKitNewAdmissionsEnabled,
+  bootstrapLiveKitCommunityRoom: async (
+    bootstrapEnv: Env,
+    input: Readonly<{ ownerUserId: string; presenceLeaseRef: string }>,
+  ) => {
+    const response = await handleSarahLiveKitSharedRoomProductionRequest(
+      {
+        ...sarahLiveKitSharedRoomDependencies,
+        requireUser: async () => ({ userId: input.ownerUserId }),
+      },
+      'summon',
+      new Request('https://api.openagents.com/api/sarah/livekit/room/summon', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ presenceLeaseRef: input.presenceLeaseRef }),
+      }),
+      bootstrapEnv,
+      undefined,
+    )
+    if (!response.ok) {
+      throw new Error(`Sarah shared-room authority bootstrap failed (${response.status})`)
+    }
+  },
 })
+
+const requireSarahRoomUser = async (
+  request: Request,
+  workerEnv: Env,
+  context: ExecutionContext,
+) => {
+  const session = await requireUserBearerSession(request, workerEnv, context)
+  return session === undefined ? undefined : { userId: session.user.userId }
+}
+
+const sarahLiveKitSharedRoomDependencies = {
+  openStore: openSarahLiveKitRoomAuthorityStore,
+  requireUser: requireSarahRoomUser,
+  resolveCommunityAccess: resolveSarahLiveKitCommunityAccess,
+  broker: sarahLiveKitRoomBrokerForEnv,
+  liveKitUrl: (workerEnv: Env) => parseSarahLiveKitRoomBrokerConfig(workerEnv)?.livekitUrl,
+  sarahPubkey: (workerEnv: Env) => workerEnv.SARAH_NOSTR_EXPECTED_PUBKEY,
+  e2eeKeyRevision: (workerEnv: Env) =>
+    workerEnv.SARAH_LIVEKIT_E2EE_KEY_REVISION,
+  onAuthorityChanged: async (
+    workerEnv: Env,
+    previous: SarahLiveKitRoomAuthoritySnapshot,
+    current: SarahLiveKitRoomAuthoritySnapshot,
+  ) => {
+    if (current.nextInterruptSequence === previous.nextInterruptSequence) return
+    const broker = sarahLiveKitRoomBrokerForEnv(workerEnv)
+    if (broker?.interrupt === undefined) {
+      throw new Error('Sarah shared-room worker control is unavailable')
+    }
+    await broker.interrupt({
+      sessionRef: current.presence.sessionRef,
+      generation: current.presence.generation,
+      roomRef: current.presence.roomRef,
+      roomEpoch: current.presence.roomEpoch,
+      sarahParticipantRef: current.presence.sarahParticipantRef,
+      interruptSequence: current.nextInterruptSequence - 1,
+    })
+  },
+  stopWorker: async (
+    workerEnv: Env,
+    input: Readonly<{
+      sessionRef: string
+      generation: number
+      reason: 'operator_stop'
+    }>,
+  ) => {
+    const opened = await openSarahRealtimeVoiceStore(workerEnv)
+    try {
+      await opened.store.revokeLiveKitRoom({
+        sessionRef: input.sessionRef,
+        generation: input.generation,
+        stopReason: input.reason,
+        reason: 'community_moderator_removed_sarah',
+        nowIso: new Date().toISOString(),
+      })
+    } finally {
+      await opened.close()
+    }
+  },
+}
 
 const sarahLiveKitWorkerRouteDependencies = {
   controlRoot: (workerEnv: Env) =>
@@ -3845,6 +3935,53 @@ const sarahLiveKitWorkerRouteDependencies = {
   e2eeKeyRevision: (workerEnv: Env) =>
     workerEnv.SARAH_LIVEKIT_E2EE_KEY_REVISION,
   resolveCommunityAccess: resolveSarahLiveKitCommunityAccess,
+  resolveRoomFloor: async (
+    workerEnv: Env,
+    input: Readonly<{ presenceLeaseRef: string; nowMs: number }>,
+  ) => {
+    const opened = await openSarahLiveKitRoomAuthorityStore(workerEnv)
+    try {
+      const current = await opened.store.read(input.presenceLeaseRef)
+      if (
+        current === undefined ||
+        !current.presenceActive ||
+        current.presence.expiresAtMs <= input.nowMs
+      ) {
+        return undefined
+      }
+      const expired = expireSarahLiveKitFloor(current, input.nowMs)
+      const snapshot =
+        expired === current
+          ? current
+          : await opened.store.compareAndSwap({
+              presenceLeaseRef: input.presenceLeaseRef,
+              expectedRevision: current.revision,
+              snapshot: expired,
+              now: new Date(input.nowMs).toISOString(),
+            })
+      if (snapshot !== current) {
+        await sarahLiveKitSharedRoomDependencies.onAuthorityChanged(
+          workerEnv,
+          current,
+          snapshot,
+        )
+      }
+      const floor =
+        snapshot.floor.state === 'held' &&
+        snapshot.floor.lease.expiresAtMs > input.nowMs
+          ? snapshot.floor.lease
+          : undefined
+      return {
+        authorityRevision: snapshot.revision,
+        interruptSequence: snapshot.nextInterruptSequence - 1,
+        participantRef: floor?.holderParticipantRef ?? null,
+        expiresAtMs: floor?.expiresAtMs ?? null,
+        presenceActive: true,
+      }
+    } finally {
+      await opened.close()
+    }
+  },
   cleanup: async (
     workerEnv: Env,
     input: {
@@ -14084,20 +14221,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env, ctx) =>
       Effect.promise(() =>
         handleSarahLiveKitRoomAuthorityProductionRequest(
-          {
-            openStore: openSarahLiveKitRoomAuthorityStore,
-            requireUser: async (userRequest, userEnv, userContext) => {
-              const session = await requireUserBearerSession(
-                userRequest,
-                userEnv,
-                userContext,
-              )
-              return session === undefined
-                ? undefined
-                : { userId: session.user.userId }
-            },
-            resolveCommunityAccess: resolveSarahLiveKitCommunityAccess,
-          },
+          sarahLiveKitSharedRoomDependencies,
           'member',
           request,
           env,
@@ -14110,21 +14234,47 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env, ctx) =>
       Effect.promise(() =>
         handleSarahLiveKitRoomAuthorityProductionRequest(
-          {
-            openStore: openSarahLiveKitRoomAuthorityStore,
-            requireUser: async (userRequest, userEnv, userContext) => {
-              const session = await requireUserBearerSession(
-                userRequest,
-                userEnv,
-                userContext,
-              )
-              return session === undefined
-                ? undefined
-                : { userId: session.user.userId }
-            },
-            resolveCommunityAccess: resolveSarahLiveKitCommunityAccess,
-          },
+          sarahLiveKitSharedRoomDependencies,
           'moderator',
+          request,
+          env,
+          ctx,
+        ),
+      ),
+  },
+  {
+    path: SARAH_LIVEKIT_ROOM_SNAPSHOT_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        handleSarahLiveKitRoomAuthorityProductionRequest(
+          sarahLiveKitSharedRoomDependencies,
+          'snapshot',
+          request,
+          env,
+          ctx,
+        ),
+      ),
+  },
+  {
+    path: SARAH_LIVEKIT_ROOM_SUMMON_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        handleSarahLiveKitSharedRoomProductionRequest(
+          sarahLiveKitSharedRoomDependencies,
+          'summon',
+          request,
+          env,
+          ctx,
+        ),
+      ),
+  },
+  {
+    path: SARAH_LIVEKIT_ROOM_REMOVE_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        handleSarahLiveKitSharedRoomProductionRequest(
+          sarahLiveKitSharedRoomDependencies,
+          'remove',
           request,
           env,
           ctx,

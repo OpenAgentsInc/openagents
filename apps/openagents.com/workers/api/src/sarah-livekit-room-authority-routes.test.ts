@@ -11,6 +11,7 @@ import { describe, expect, test, vi } from "vitest";
 import {
   handleSarahLiveKitRoomMemberFloorRequest,
   handleSarahLiveKitRoomModeratorFloorRequest,
+  handleSarahLiveKitRoomSnapshotRequest,
   type SarahLiveKitRoomAuthorityRouteDependencies,
 } from "./sarah-livekit-room-authority-routes.js";
 import {
@@ -72,9 +73,12 @@ const dependencies = (
 ) => {
   const compareAndSwap = vi.fn(async (input) => input.snapshot);
   const store: SarahLiveKitRoomAuthorityStore = {
+    readCommunityRoomBinding: vi.fn(),
     create: vi.fn(),
     read: vi.fn(async () => snapshot),
     readParticipantBinding: vi.fn(),
+    bindParticipant: vi.fn(),
+    removeParticipant: vi.fn(),
     compareAndSwap,
   };
   const value: SarahLiveKitRoomAuthorityRouteDependencies<Record<string, never>> = {
@@ -198,5 +202,41 @@ describe("Sarah LiveKit room authority routes", () => {
     );
     expect(response.status).toBe(409);
     expect(route.compareAndSwap).not.toHaveBeenCalled();
+  });
+
+  test("returns a public-safe snapshot only to the exact active room member", async () => {
+    const snapshot = initialSarahLiveKitRoomAuthoritySnapshot(presence);
+    const denied = dependencies(snapshot, undefined);
+    const deniedResponse = await handleSarahLiveKitRoomSnapshotRequest(
+      new Request(
+        `https://api.openagents.com/api/sarah/livekit/room/snapshot?presenceLeaseRef=${encodeURIComponent(presence.leaseRef)}`,
+        { headers: { authorization: "Bearer test" } },
+      ),
+      {},
+      denied.value,
+    );
+    expect(deniedResponse.status).toBe(403);
+
+    const allowed = dependencies(snapshot, member());
+    const response = await handleSarahLiveKitRoomSnapshotRequest(
+      new Request(
+        `https://api.openagents.com/api/sarah/livekit/room/snapshot?presenceLeaseRef=${encodeURIComponent(presence.leaseRef)}`,
+        { headers: { authorization: "Bearer test" } },
+      ),
+      {},
+      allowed.value,
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      presenceLeaseRef: presence.leaseRef,
+      revision: 1,
+      presenceActive: true,
+      roomRef: presence.roomRef,
+      floor: { state: "available" },
+    });
+    expect(JSON.stringify(body)).not.toContain("participantGrant");
+    expect(JSON.stringify(body)).not.toContain("sessionRef");
+    expect(JSON.stringify(body)).not.toContain("dispatchRef");
   });
 });

@@ -313,6 +313,7 @@ export type SarahVoiceAccountingReconciliationResult = Readonly<{
 
 export type SarahVoiceLiveKitMembershipLease = Readonly<{
   ownerUserId: string;
+  sarahPresenceLeaseRef: string;
   roomContext: SarahVoiceLiveKitRoomContext;
 }>;
 
@@ -1769,7 +1770,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       const rows = (await sql`
         SELECT binding.owner_user_id, binding.room_context_kind,
           binding.community_ref, binding.channel_ref,
-          binding.membership_revision
+          binding.membership_revision,binding.sarah_presence_lease_ref
         FROM sarah_livekit_room_bindings AS binding
         WHERE binding.worker_control_token_digest =
             ${input.workerControlTokenDigest}
@@ -1783,12 +1784,14 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         community_ref: string | null;
         channel_ref: string | null;
         membership_revision: string | null;
+        sarah_presence_lease_ref: string;
       }>;
       const row = first(rows);
       if (row === undefined) return undefined;
       if (row.room_context_kind === "private") {
         return {
           ownerUserId: row.owner_user_id,
+          sarahPresenceLeaseRef: row.sarah_presence_lease_ref,
           roomContext: { kind: "private" },
         };
       }
@@ -1804,6 +1807,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       }
       return {
         ownerUserId: row.owner_user_id,
+        sarahPresenceLeaseRef: row.sarah_presence_lease_ref,
         roomContext: {
           kind: "community",
           communityRef: row.community_ref,

@@ -490,6 +490,7 @@ export const transferSarahLiveKitFloor = (
       floor: { state: "held", lease },
       usedNonceDigests: consumed.usedNonceDigests,
       rateBuckets: consumed.rateBuckets,
+      nextInterruptSequence: snapshot.nextInterruptSequence + 1,
     },
   };
 };
@@ -561,6 +562,7 @@ export const stopSarahLiveKitFloor = (
       floor,
       usedNonceDigests: consumed.usedNonceDigests,
       rateBuckets: consumed.rateBuckets,
+      nextInterruptSequence: snapshot.nextInterruptSequence + 1,
     },
   };
 };
@@ -574,6 +576,7 @@ export const expireSarahLiveKitFloor = (
   return {
     ...snapshot,
     revision: snapshot.revision + 1,
+    nextInterruptSequence: snapshot.nextInterruptSequence + 1,
     floor: {
       state: "stopped",
       presenceLeaseRef: snapshot.presence.leaseRef,
@@ -605,6 +608,7 @@ export const removeSarahLiveKitRoomMember = (
     ...snapshot,
     revision: snapshot.revision + 1,
     presenceActive: false,
+    nextInterruptSequence: snapshot.nextInterruptSequence + 1,
     floor: {
       state: "stopped",
       presenceLeaseRef: snapshot.presence.leaseRef,
@@ -624,6 +628,7 @@ export const removeSarahLiveKitRoomPresence = (
   ...snapshot,
   revision: snapshot.revision + 1,
   presenceActive: false,
+  nextInterruptSequence: snapshot.nextInterruptSequence + 1,
   floor: {
     state: "stopped",
     presenceLeaseRef: snapshot.presence.leaseRef,
