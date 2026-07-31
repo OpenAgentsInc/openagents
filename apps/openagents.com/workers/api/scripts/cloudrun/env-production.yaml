@@ -143,20 +143,34 @@ OPENAUTH_ISSUER_URL: "https://auth.openagents.com"
 # policy rather than restoring an accident.
 #
 # The bounds below are declared even while the flag is off, so arming it is a
-# one-line change and never an unbounded one. Worst case when armed:
-#   GLOBAL_DAILY_LIMIT x DAILY_TOKEN_CEILING = 50 x 200000 = 10,000,000
-# served tokens/day across every self-provisioned identity combined. The
-# per-identity ceiling is enforced on BOTH the google-gemini provider-accounts
-# proxy and POST /api/v1/chat/completions (the route that serves Omega turns),
-# reading the same token_usage_events ledger, so alternating routes cannot
+# one-line change and never an unbounded one. The per-identity ceiling is
+# enforced on BOTH the google-gemini provider-accounts proxy and POST
+# /api/v1/chat/completions (the route that serves Omega turns), reading the same
+# token_usage_events ledger and UTC-day window, so alternating routes cannot
 # double an allowance. The per-IP limit is friction only: the x-forwarded-for
 # first hop is client-prependable, so GLOBAL_DAILY_LIMIT is the real bound.
+#
+# DAILY_TOKEN_CEILING is pinned to the module default (1000000) ON PURPOSE while
+# the flag is off. The ceiling keys on the `nostr:` id prefix, and the
+# operator-admitted Sarah voice cohort uses that SAME id form
+# (scripts/admit-sarah-voice-npub.ts). With self-provisioning off those admitted
+# identities are the only `nostr:` identities in production, so a lower number
+# here would not bound a stranger -- it would silently cut the live alpha
+# cohort's existing allowance. Keeping the default adds the missing
+# chat-completions bound without reducing anyone's current allowance.
+#
+# ARMING NOTE: flipping ENABLED to "1" at these values allows
+#   GLOBAL_DAILY_LIMIT x DAILY_TOKEN_CEILING = 50 x 1000000 = 50,000,000
+# served tokens/day across all self-provisioned identities combined, some of it
+# on gpt-5.6-luna. Lower DAILY_TOKEN_CEILING in the SAME change that arms the
+# flag (200000 gives a 10,000,000/day worst case), and decide then whether the
+# admitted cohort should be split onto its own limit.
 #
 # Ref: docs/audits/2026-07-28-omega-nostr-self-provisioning-abuse-bounds.md
 OMEGA_NOSTR_SELF_PROVISION_ENABLED: "0"
 OMEGA_NOSTR_SELF_PROVISION_GLOBAL_DAILY_LIMIT: "50"
 OMEGA_NOSTR_SELF_PROVISION_IP_HOURLY_LIMIT: "3"
-OMEGA_NOSTR_SELF_PROVISION_DAILY_TOKEN_CEILING: "200000"
+OMEGA_NOSTR_SELF_PROVISION_DAILY_TOKEN_CEILING: "1000000"
 PUBLIC_NOSTR_CHAT_RELAY_SELF_PUBKEY: "e841147f262799821bbaa2930fcca982a575458f0e043e064a26ed8aba2046ed"
 SARAH_NOSTR_OWNER_PUBKEY: "bcf86577b45042c960c99fe4ac1380a3ef0565ccbdd5c81e3f20f0919fe4fd14"
 SARAH_NOSTR_EXPECTED_PUBKEY: "f7824ac493cb820171a72dd4085880d1bdcc4ba1176ba84e93afddc176ec971d"

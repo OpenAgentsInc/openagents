@@ -43,6 +43,18 @@ OPENAGENTS_RUNTIME: "cloudrun-monolith"
 OPENAGENTS_TRUST_FORWARDED_HOST: "1"
 OPENAUTH_CLIENT_ID: "openagents-web"
 OPENAUTH_ISSUER_URL: "https://auth.openagents.com"
+# Omega hosted-identity self-provisioning. ARMED on staging only, so the
+# brand-new-install journey (NIP-98 proof -> session -> a completed turn) can be
+# acceptance-tested end to end without committing owner-funded production spend
+# to strangers. Production declares the same keys with ENABLED "0"; see the
+# longer note there for why arming it in production is an owner decision.
+#
+# The token ceiling is deliberately tiny here: staging exists to prove the gate
+# admits an identity and then bounds it, not to serve real work.
+OMEGA_NOSTR_SELF_PROVISION_ENABLED: "1"
+OMEGA_NOSTR_SELF_PROVISION_GLOBAL_DAILY_LIMIT: "25"
+OMEGA_NOSTR_SELF_PROVISION_IP_HOURLY_LIMIT: "5"
+OMEGA_NOSTR_SELF_PROVISION_DAILY_TOKEN_CEILING: "50000"
 SARAH_NOSTR_OWNER_PUBKEY: "bcf86577b45042c960c99fe4ac1380a3ef0565ccbdd5c81e3f20f0919fe4fd14"
 SARAH_REALTIME_CREDIT_MSAT_PER_MILLION_TOKENS: "64000000"
 SARAH_REALTIME_MAX_SESSION_SECONDS: "300"

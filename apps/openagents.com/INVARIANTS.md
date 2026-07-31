@@ -40,12 +40,24 @@ This is the invariant ledger for `openagents`.
   team membership, an entitlement, or a scope. The synthetic address stays on
   the reserved `.invalid` top-level domain, so it cannot receive a sign-in
   code and cannot match the administrator email allowlist.
-- The configured owner key keeps the previous behavior. It resolves the
-  administrator subject and it does not consume the self-provision buckets.
 - Self-provisioning is off unless `OMEGA_NOSTR_SELF_PROVISION_ENABLED` is
   truthy. The flag is read for each request, so the owner can disarm the
   behavior on a live revision without a new container image. With the flag
-  off, a non-owner key receives the previous 401 response.
+  off, an unlinked key receives the previous 401 response.
+- The flag must stay reachable. The hooks that the flag gates are supplied at
+  the `makeOmegaNostrSessionService` call site. When they are absent, the
+  handler refuses before it reads the flag, and the documented kill switch
+  silently becomes inert. This exact condition existed between 2026-07-29 and
+  2026-07-31 and locked every new install out of hosted Omega. Unit tests that
+  inject the hooks cannot detect it, so the guard is the wiring-level test
+  `apps/openagents.com/workers/api/src/omega-nostr-self-provision-wiring.test.ts`,
+  which drives the real route-table entry and asserts that the flag alone
+  changes the outcome. A change must keep that test meaningful.
+- The configured owner key is no longer resolved by this endpoint.
+  `expectedOwnerPubkey` returns `undefined` and `resolveOwner` returns
+  `undefined`, so no proof mints the administrator subject. An owner install
+  authenticates through the same linked-identity path as any other admitted
+  key.
 - Account creation is bounded, not only account usage. The durable buckets in
   `apps/openagents.com/workers/api/src/auth/omega-nostr-self-provision.ts`
   limit new accounts for each client address, new accounts for the whole
@@ -53,10 +65,21 @@ This is the invariant ledger for `openagents`.
   The rate limit runs after the full NIP-98 verification, so unsigned traffic
   cannot exhaust the shared global budget. A returning install charges the
   mint budget only.
-- The hosted Gemini proxy enforces a daily served-token ceiling for `nostr:`
-  identities. The ceiling reads the same `token_usage_events` ledger the proxy
-  writes. Other identity classes keep their previous unbounded behavior, and a
-  change to that scope is a separate owner decision.
+- A daily served-token ceiling bounds each `nostr:` identity on EVERY route
+  that spends owner-funded inference for it: the hosted Gemini proxy and the
+  hosted Omega lanes on `POST /api/v1/chat/completions`
+  (`gpt-5.6-luna`, `gemini-3.6-flash`, `kimi-k3`). Both read the same
+  `token_usage_events` ledger and the same UTC-day window, so one identity
+  cannot draw two allowances by alternating routes. The bound must follow the
+  identity, not the handler: a new route that serves a self-provisioned
+  identity on platform capacity has to consult the ceiling too. The ledger read
+  fails closed. Other identity classes keep their previous unbounded behavior,
+  and a change to that scope is a separate owner decision.
+- The hosted-lane branch on `POST /api/v1/chat/completions` grants platform
+  capacity with a hardcoded no-spend metering hook and bypasses the funding
+  gate. That is deliberate for known accounts. It must never be reachable by an
+  identity class that a stranger can mint without an owner-funded bound in
+  front of it.
 - The stated abuse bound, the two larger pre-existing gaps, and the owner
   decisions are recorded in
   `docs/audits/2026-07-28-omega-nostr-self-provisioning-abuse-bounds.md`.
