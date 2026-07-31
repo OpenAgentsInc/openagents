@@ -1562,7 +1562,7 @@ const validateCloudBuildProvenance = () => {
     trigger.serviceAccount !==
       `projects/${LIVEKIT_OPS.project}/serviceAccounts/${PRODUCTION_DEPLOYER_SERVICE_ACCOUNT}` ||
     trigger.sourceToBuild?.ref !== "refs/heads/main" ||
-    trigger.sourceToBuild?.uri !== "https://github.com/OpenAgentsInc/openagents" ||
+    trigger.sourceToBuild?.uri !== "https://github.com/OpenAgentsInc/openagents.git" ||
     trigger.sourceToBuild?.repoType !== "GITHUB" ||
     Object.keys(trigger.substitutions ?? {}).length !== 0 ||
     !step ||

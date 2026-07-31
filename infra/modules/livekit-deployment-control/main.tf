@@ -117,7 +117,7 @@ resource "google_cloudbuild_trigger" "production_runtime" {
   service_account = google_service_account.deployer.id
 
   source_to_build {
-    uri       = "https://github.com/OpenAgentsInc/openagents"
+    uri       = "https://github.com/OpenAgentsInc/openagents.git"
     ref       = "refs/heads/main"
     repo_type = "GITHUB"
   }

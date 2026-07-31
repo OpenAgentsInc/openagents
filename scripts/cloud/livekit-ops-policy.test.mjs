@@ -945,6 +945,7 @@ test("deployment control Terraform fixes identity, source, route, and substituti
   assert.match(module, /name\s+=\s+local\.trigger_name/u);
   assert.match(module, /service_account\s+=\s+google_service_account\.deployer\.id/u);
   assert.match(module, /source_to_build\s*\{/u);
+  assert.match(module, /https:\/\/github\.com\/OpenAgentsInc\/openagents\.git/u);
   assert.match(module, /ref\s+=\s+"refs\/heads\/main"/u);
   assert.doesNotMatch(module, /\bsubstitutions\s*=/u);
   assert.match(module, /roles\/gkehub\.gatewayAdmin/u);

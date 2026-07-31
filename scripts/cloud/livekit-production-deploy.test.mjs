@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -51,6 +51,15 @@ test("launcher accepts only fixed start, resumable status, and receipt retrieval
       ]),
     /does not accept --timeout-seconds/u,
   );
+});
+
+test("launcher uses the current synchronous trigger result shape", () => {
+  const source = readFileSync(
+    resolve(import.meta.dirname, "livekit-production-deploy.mjs"),
+    "utf8",
+  );
+  assert.doesNotMatch(source, /"--async"/u);
+  assert.match(source, /"--format=value\(id\)"/u);
 });
 
 test("receipt retrieval path is exclusive and repository scoped", () => {

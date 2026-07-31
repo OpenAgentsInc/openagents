@@ -222,8 +222,7 @@ const main = () => {
         REGION,
         "--sha",
         revision,
-        "--async",
-        "--format=value(metadata.build.id)",
+        "--format=value(id)",
       ],
       "start fixed production deployment trigger",
     );
