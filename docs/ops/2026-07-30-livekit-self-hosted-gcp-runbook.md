@@ -982,6 +982,22 @@ one active member of the named community/channel for the community scenario.
 Using one owner twice is a harness preflight error, not a reason to weaken the
 ledger invariant.
 
+Before a community run, verify that the monolith's
+`SARAH_NOSTR_EXPECTED_PUBKEY` equals the worker
+`sarah-nostr-projection` ConfigMap value and that the owned relay advertises
+kind `30382` in its exact NIP-29 group allowlist:
+
+```sh
+curl -fsS -H 'Accept: application/nostr+json' \
+  https://relay.openagents.com/ |
+  jq -e '.supported_kinds | index(30382) != null'
+```
+
+Do not replace the allowlist with a wildcard. A worker close, including a
+provider or projection error, must stop the corresponding Sarah authority and
+retire its community-room rendezvous so the next admitted generation is not
+blocked by a stale active room.
+
 Keep the bearer tokens in environment variables and keep the two 24 kHz mono
 signed-16-bit PCM prompts outside Git. The prompts must contain an innocuous
 spoken request followed by enough silence for the admitted semantic VAD to

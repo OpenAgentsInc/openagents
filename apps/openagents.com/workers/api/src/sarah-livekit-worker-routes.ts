@@ -21,6 +21,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import {
   initialSarahLiveKitRoomAuthoritySnapshot,
   issueSarahLiveKitRoomPresenceLease,
+  removeSarahLiveKitRoomPresence,
 } from "./sarah-livekit-room-authority";
 import {
   deriveSarahLiveKitControlToken,
@@ -379,7 +380,13 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
   if (body === undefined) {
     return noStoreJson({ error: "invalid_sarah_livekit_worker_event" }, 400);
   }
-  let opened: Readonly<{ store: SarahRealtimeVoiceStore; close: () => Promise<void> }> | undefined;
+  let opened:
+    | Readonly<{
+        store: SarahRealtimeVoiceStore;
+        authorityStore?: SarahLiveKitRoomAuthorityStore | undefined;
+        close: () => Promise<void>;
+      }>
+    | undefined;
   try {
     opened = await dependencies.openStore(env);
     const now = (dependencies.now ?? Date.now)();
@@ -395,7 +402,11 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
     } as const;
     let communityPresenceLeaseRef: string | undefined;
     let membershipRevoked = false;
-    if (body._tag === "worker_connected" || body._tag === "lease_check") {
+    if (
+      body._tag === "worker_connected" ||
+      body._tag === "lease_check" ||
+      body._tag === "close"
+    ) {
       const membershipLease = await opened.store.readLiveKitMembershipLease({
         workerControlTokenDigest: sha256(token),
         workerJobRef: body.jobRef,
@@ -404,38 +415,40 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
       });
       if (membershipLease?.roomContext.kind === "community") {
         communityPresenceLeaseRef = membershipLease.sarahPresenceLeaseRef;
-        let currentAccess:
-          | Readonly<{
-              communityRef: string;
-              channelRef: string;
-              membershipRevision: string;
-              subscribeAllowed: boolean;
-            }>
-          | undefined;
-        try {
-          currentAccess = await dependencies.resolveCommunityAccess?.(env, {
-            ownerUserId: membershipLease.ownerUserId,
-            communityRef: membershipLease.roomContext.communityRef,
-            channelRef: membershipLease.roomContext.channelRef,
-          });
-        } catch {
-          currentAccess = undefined;
-        }
-        if (
-          currentAccess === undefined ||
-          !currentAccess.subscribeAllowed ||
-          currentAccess.communityRef !== membershipLease.roomContext.communityRef ||
-          currentAccess.channelRef !== membershipLease.roomContext.channelRef ||
-          currentAccess.membershipRevision !== membershipLease.roomContext.membershipRevision
-        ) {
-          await opened.store.revokeLiveKitRoom({
-            sessionRef: body.sessionRef,
-            generation: body.generation,
-            stopReason: "membership_revoked",
-            reason: "community_membership_changed",
-            nowIso,
-          });
-          membershipRevoked = true;
+        if (body._tag === "worker_connected" || body._tag === "lease_check") {
+          let currentAccess:
+            | Readonly<{
+                communityRef: string;
+                channelRef: string;
+                membershipRevision: string;
+                subscribeAllowed: boolean;
+              }>
+            | undefined;
+          try {
+            currentAccess = await dependencies.resolveCommunityAccess?.(env, {
+              ownerUserId: membershipLease.ownerUserId,
+              communityRef: membershipLease.roomContext.communityRef,
+              channelRef: membershipLease.roomContext.channelRef,
+            });
+          } catch {
+            currentAccess = undefined;
+          }
+          if (
+            currentAccess === undefined ||
+            !currentAccess.subscribeAllowed ||
+            currentAccess.communityRef !== membershipLease.roomContext.communityRef ||
+            currentAccess.channelRef !== membershipLease.roomContext.channelRef ||
+            currentAccess.membershipRevision !== membershipLease.roomContext.membershipRevision
+          ) {
+            await opened.store.revokeLiveKitRoom({
+              sessionRef: body.sessionRef,
+              generation: body.generation,
+              stopReason: "membership_revoked",
+              reason: "community_membership_changed",
+              nowIso,
+            });
+            membershipRevoked = true;
+          }
         }
       }
     }
@@ -511,6 +524,24 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
                 })();
     if (result === undefined) {
       return noStoreJson({ error: "sarah_livekit_usage_rate_invalid" }, 503);
+    }
+    if (body._tag === "close" && communityPresenceLeaseRef !== undefined) {
+      if (opened.authorityStore === undefined) {
+        return noStoreJson({ error: "sarah_livekit_room_authority_unavailable" }, 503);
+      }
+      const authority = await opened.authorityStore.read(communityPresenceLeaseRef);
+      if (authority?.presenceActive) {
+        await opened.authorityStore.compareAndSwap({
+          presenceLeaseRef: communityPresenceLeaseRef,
+          expectedRevision: authority.revision,
+          snapshot: removeSarahLiveKitRoomPresence(authority),
+          now: nowIso,
+        });
+      }
+      await opened.authorityStore.retireCommunityRoomRendezvous({
+        presenceLeaseRef: communityPresenceLeaseRef,
+        now: nowIso,
+      });
     }
     if (body._tag === "close" && body.accountingStatus === "exact") {
       await dependencies.cleanup(env, {

@@ -83,7 +83,8 @@ const store = {
 const authorityStore = {
   create: vi.fn(async (snapshot) => snapshot),
   read: vi.fn(async () => undefined),
-  compareAndSwap: vi.fn(),
+  compareAndSwap: vi.fn(async (input) => input.snapshot),
+  retireCommunityRoomRendezvous: vi.fn(async () => true),
 } as unknown as SarahLiveKitRoomAuthorityStore;
 const cleanup = vi.fn(async () => undefined);
 const dependencies = {
@@ -402,6 +403,71 @@ describe("Sarah LiveKit worker routes", () => {
       }),
     );
     expect(cleanup).toHaveBeenCalledTimes(cleanupCalls);
+  });
+
+  test("retires community authority and rendezvous on worker close", async () => {
+    const presenceLeaseRef = "presence:community-close";
+    readLiveKitMembershipLease.mockResolvedValueOnce({
+      ownerUserId: "owner:one",
+      sarahPresenceLeaseRef: presenceLeaseRef,
+      roomContext: {
+        kind: "community",
+        communityRef: "community:one",
+        channelRef: "channel:one",
+        membershipRevision: "b".repeat(64),
+      },
+    });
+    const authority = initialSarahLiveKitRoomAuthoritySnapshot(
+      issueSarahLiveKitRoomPresenceLease({
+        sarahPubkey: "a".repeat(64),
+        presenceLeaseRef,
+        communityRef: "community:one",
+        channelRef: "channel:one",
+        membershipRevision: "b".repeat(64),
+        currentMembershipRevision: "b".repeat(64),
+        e2eeKeyRevision: "e".repeat(64),
+        roomRef: "room:one",
+        roomEpoch: 1,
+        sarahParticipantRef: claimDispatch.sarahParticipantRef,
+        dispatchRef: "dispatch:one",
+        sessionRef: "session:one",
+        generation: 1,
+        admissionDigest: "d".repeat(64),
+        issuedAtMs: 2_000_000_000_000,
+        sessionExpiresAtMs: 2_000_000_060_000,
+      }),
+    );
+    vi.mocked(authorityStore.read).mockResolvedValueOnce(authority);
+    vi.mocked(authorityStore.compareAndSwap).mockClear();
+    vi.mocked(authorityStore.retireCommunityRoomRendezvous).mockClear();
+
+    const response = await handleSarahLiveKitWorkerEvent(
+      dependencies,
+      authorizedRequest("/api/internal/sarah/livekit/job/event", {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "close",
+        sessionRef: "session:one",
+        generation: 1,
+        jobRef: "job:one",
+        eventRef: "close:community",
+        reason: "worker_error",
+        accountingStatus: "uncertain",
+      }),
+      {},
+    );
+
+    expect(response.status).toBe(200);
+    expect(authorityStore.compareAndSwap).toHaveBeenCalledWith(
+      expect.objectContaining({
+        presenceLeaseRef,
+        expectedRevision: authority.revision,
+        snapshot: expect.objectContaining({ presenceActive: false }),
+      }),
+    );
+    expect(authorityStore.retireCommunityRoomRendezvous).toHaveBeenCalledWith({
+      presenceLeaseRef,
+      now: "2033-05-18T03:33:20.000Z",
+    });
   });
 
   test("requests a drain when a community membership revision changes", async () => {
