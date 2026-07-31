@@ -254,7 +254,7 @@ SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED: "true"
 # by `SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE=on` on one deploy and
 # withdrawn by the next. Never commit "true" here.
 SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE_ENABLED: "false"
-SARAH_LIVEKIT_COMMUNITY_AUTHORITY_JSON: '{"schema":"openagents.sarah.livekit.community-authority.v1","communities":[{"communityRef":"openagents-public","channelRefs":["agent-chat","alpha-feedback"],"relayUrl":"wss://relay.openagents.com","adminPubkeys":["e841147f262799821bbaa2930fcca982a575458f0e043e064a26ed8aba2046ed"]}]}'
+SARAH_LIVEKIT_COMMUNITY_AUTHORITY_JSON: '{"schema":"openagents.sarah.livekit.community-authority.v1","communities":[{"communityRef":"openagents-public","channelRefs":["agent-chat","alpha-feedback"],"relayUrl":"wss://relay.openagents.com","adminPubkeys":["e841147f262799821bbaa2930fcca982a575458f0e043e064a26ed8aba2046ed","d4bb198b3422cba0583eca6b1a38f5533fffe15795c7dbd4fdb1dd2381505939"]}]}'
 # 0.2.0 admits no client-distributed LiveKit E2EE key bytes. This public
 # revision binds that explicit policy; a membership change invalidates the
 # room authority and requires a newly provisioned room before Sarah can hear.

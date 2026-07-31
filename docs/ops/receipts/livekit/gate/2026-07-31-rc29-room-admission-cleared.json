@@ -1,0 +1,74 @@
+{
+  "schema": "openagents.sarah.livekit-gate-observation.v1",
+  "observedAt": "2026-07-31T19:24:20.057Z",
+  "environment": "production",
+  "row": "sarah-livekit-room",
+  "outcome": "incomplete",
+  "binding": {
+    "omegaReleaseTag": "v0.2.0-rc29",
+    "omegaPackageSha256": "116ae5ae542d4d0faed14a59e98ebeac2402ab022927738ed132e6c231e10c34",
+    "openagentsSourceRevision": "742c5bb70611cd1c5fc3a99b7ed3cf8ee51179c8",
+    "livekitConfigRevision": "sha256:b0bf0f0cb801943b789906c615d3277629a8f73bd6d06b52a60aaf2c86eb8a7d",
+    "sarahWorkerImageDigest": "sha256:41b06de908c45642d4635d5cc3b168e69d08f08c3621f8ea39aecdeeed190227"
+  },
+  "operatorRefDigest": "4e898a26dc5e2ec75646195f2de0eb32cea8ee2f37a412fa2582fc3eee9890a0",
+  "observations": [
+    {
+      "key": "authenticated_desktop_count",
+      "finding": "not_observed",
+      "reason": "Admission is cleared and is no longer the blocker: all three journey identities hold active alpha cohort rows and are NIP-29 admitted to openagents-public. The packaged client blocks it. rc29 exposes Join, Summon, Talk and Stop only as GPUI on_click closures: not registered actions, no keymap, no CLI flag, no URL route; omega-effectd is a private stdio pipe to its parent and omega-device-bridge refuses command frames. No unattended driver exists.",
+      "observedAtMs": 1785525853453
+    },
+    {
+      "key": "floor_acquired",
+      "finding": "not_observed",
+      "reason": "Not reached: no packaged desktop joined, so no server-issued floor lease exists. Membership itself now resolves for every journey identity, proven by POST room/join answering community_room_not_active (404) rather than community_membership_required (403).",
+      "observedAtMs": 1785525853453
+    },
+    {
+      "key": "floor_transfer_completed",
+      "finding": "not_observed",
+      "reason": "Not reached: blocked behind floor acquisition, which is blocked behind the packaged-client driver gap. Two distinct admitted members now exist, so the distinct-holder precondition is satisfiable.",
+      "observedAtMs": 1785525853453
+    },
+    {
+      "key": "moderator_stop_completed",
+      "finding": "not_observed",
+      "reason": "Not reached, but the moderator identity now exists. The access resolver derives isGroupAdmin only from the authority config adminPubkeys, so a moderator required a config change. Cloud Run revision openagents-monolith-00374-h4p adds the owned admin pubkey d4bb198b beside the existing one. The role was not observed live, which requires an active room.",
+      "observedAtMs": 1785525853453
+    },
+    {
+      "key": "non_floor_refused",
+      "finding": "not_observed",
+      "reason": "Not reached: requires at least two admitted members in one live room. Admission is satisfied, but no live room was reached.",
+      "observedAtMs": 1785525853453
+    },
+    {
+      "key": "removed_member_refused",
+      "finding": "not_observed",
+      "reason": "Not reached, and still not satisfiable on the serving image. openagents de475872af gives member_removed a production emitter: a still-bound participant with no community access now resolves as an inactive member, refused as member_removed. The serving image predates that commit and would still answer 403 room_membership_required. That needs a source deploy.",
+      "observedAtMs": 1785525853453
+    },
+    {
+      "key": "replayed_floor_grant_refused",
+      "finding": "not_observed",
+      "reason": "Not reached: nonce_replayed (409) is implemented on both floor routes but requires a previously accepted grant, and no grant was issued.",
+      "observedAtMs": 1785525853453
+    },
+    {
+      "key": "shared_answer_heard_by_all",
+      "finding": "not_observed",
+      "reason": "Not reached: Sarah was never summoned into a community room, so no shared answer was published and no participant could confirm audible output.",
+      "observedAtMs": 1785525853453
+    },
+    {
+      "key": "stale_floor_grant_refused",
+      "finding": "not_observed",
+      "reason": "Not reached, and still not satisfiable on the serving image. The same commit gives membership_changed a production emitter by carrying the current membership revision instead of the one frozen into the participant binding. The serving image predates it.",
+      "observedAtMs": 1785525853453
+    }
+  ],
+  "note": "This receipt preserves what one operator observed for one Sarah LiveKit release-gate row against the named binding. It is not a release-gate admission: an outcome of observed_pass means the observations were preserved, not that the row is green.",
+  "receiptRef": "receipt.sarah_livekit_gate_observation.sha256_006af7ee4262d46e92db62d67c3653d6f728427c91aff43b25ad06c68042e5bc",
+  "resultDigest": "sha256:006af7ee4262d46e92db62d67c3653d6f728427c91aff43b25ad06c68042e5bc"
+}
