@@ -146,6 +146,50 @@ test("production TURN reserves a premium external address without an internal-on
   assert.doesNotMatch(turnAddress, /^\s*purpose\s*=/mu);
 });
 
+test("Sarah signer keeps key custody behind Workload Identity and private Cloud Run IAM", () => {
+  const productionRoot = readFileSync(
+    resolve(import.meta.dirname, "../../infra/livekit-production/main.tf"),
+    "utf8",
+  );
+  const variables = readFileSync(
+    resolve(import.meta.dirname, "../../infra/livekit-production/variables.tf"),
+    "utf8",
+  );
+  const signerStart = productionRoot.indexOf(
+    'resource "google_service_account" "sarah_nostr_signer"',
+  );
+  const deploymentControlStart = productionRoot.indexOf(
+    'resource "terraform_data" "deployment_control_configuration"',
+  );
+  assert.notEqual(signerStart, -1);
+  assert.notEqual(deploymentControlStart, -1);
+  const signer = productionRoot.slice(signerStart, deploymentControlStart);
+
+  assert.match(signer, /ingress\s*=\s*"INGRESS_TRAFFIC_INTERNAL_ONLY"/u);
+  assert.match(signer, /role\s*=\s*"roles\/secretmanager\.secretAccessor"/u);
+  assert.match(signer, /secret_id\s*=\s*"sarah-nostr-identity-secret"/u);
+  assert.match(signer, /name\s*=\s*"SARAH_NOSTR_EXPECTED_PUBKEY"/u);
+  assert.match(
+    signer,
+    /value\s*=\s*var\.sarah_nostr_signer_expected_pubkey/u,
+  );
+  assert.match(signer, /role\s*=\s*"roles\/run\.invoker"/u);
+  assert.match(
+    signer,
+    /member\s*=\s*"serviceAccount:\$\{module\.platform\.agent_service_account_email\}"/u,
+  );
+  assert.match(
+    signer,
+    /service_account\s*=\s*google_service_account\.sarah_nostr_signer\[0\]\.email/u,
+  );
+  assert.doesNotMatch(signer, /member\s*=\s*"allUsers"/u);
+  assert.doesNotMatch(signer, /module\.platform\.sarah_secret_reader/u);
+  assert.match(
+    variables,
+    /sarah-nostr-signer@sha256:\[0-9a-f\]\{64\}/u,
+  );
+});
+
 test("server key projection binds token minting and runtime authentication", () => {
   const apiKey = "API23456789ABCD";
   const apiSecret = "B".repeat(43);

@@ -190,6 +190,107 @@ module "observability" {
   labels                   = local.labels
 }
 
+resource "google_service_account" "sarah_nostr_signer" {
+  count = var.sarah_nostr_signer_image == null ? 0 : 1
+
+  project      = var.project_id
+  account_id   = "oa-sarah-nostr-signer"
+  display_name = "Sarah Nostr signing boundary"
+  description  = "Server-only principal.sarah signer; access is limited to the stable Nostr identity secret."
+}
+
+resource "google_secret_manager_secret_iam_member" "sarah_nostr_signer_identity" {
+  count = var.sarah_nostr_signer_image == null ? 0 : 1
+
+  project   = var.project_id
+  secret_id = "sarah-nostr-identity-secret"
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.sarah_nostr_signer[0].email}"
+}
+
+resource "google_cloud_run_v2_service" "sarah_nostr_signer" {
+  count = var.sarah_nostr_signer_image == null ? 0 : 1
+
+  project             = var.project_id
+  name                = "oa-sarah-nostr-signer"
+  location            = var.region
+  ingress             = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+  deletion_protection = true
+
+  template {
+    service_account                  = google_service_account.sarah_nostr_signer[0].email
+    execution_environment            = "EXECUTION_ENVIRONMENT_GEN2"
+    timeout                          = "15s"
+    max_instance_request_concurrency = 20
+
+    scaling {
+      min_instance_count = 1
+      max_instance_count = 2
+    }
+
+    containers {
+      image = var.sarah_nostr_signer_image
+
+      ports {
+        container_port = 8080
+      }
+
+      env {
+        name  = "SARAH_NOSTR_SIGNER_COMMUNITIES_JSON"
+        value = jsonencode(var.sarah_nostr_signer_communities)
+      }
+
+      env {
+        name  = "SARAH_NOSTR_EXPECTED_PUBKEY"
+        value = var.sarah_nostr_signer_expected_pubkey
+      }
+
+      env {
+        name = "SARAH_NOSTR_IDENTITY_SECRET"
+
+        value_source {
+          secret_key_ref {
+            secret  = "sarah-nostr-identity-secret"
+            version = "latest"
+          }
+        }
+      }
+
+      resources {
+        limits = {
+          cpu    = "1"
+          memory = "512Mi"
+        }
+      }
+
+      startup_probe {
+        initial_delay_seconds = 0
+        timeout_seconds       = 2
+        period_seconds        = 5
+        failure_threshold     = 12
+
+        http_get {
+          path = "/health"
+        }
+      }
+    }
+  }
+
+  labels = merge(local.labels, { service = "sarah-nostr-signer" })
+
+  depends_on = [google_secret_manager_secret_iam_member.sarah_nostr_signer_identity]
+}
+
+resource "google_cloud_run_v2_service_iam_member" "sarah_nostr_signer_agent_invoker" {
+  count = var.sarah_nostr_signer_image == null ? 0 : 1
+
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.sarah_nostr_signer[0].name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${module.platform.agent_service_account_email}"
+}
+
 resource "terraform_data" "deployment_control_configuration" {
   count = var.enable_deployment_control ? 1 : 0
 
@@ -242,6 +343,9 @@ locals {
     var.enable_deployment_control ? {
       production_deployer = module.deployment_control[0].service_account_unique_id
     } : {},
+    var.sarah_nostr_signer_image == null ? {} : {
+      sarah_nostr_signer = google_service_account.sarah_nostr_signer[0].unique_id
+    },
   )
 }
 

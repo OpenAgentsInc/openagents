@@ -13,6 +13,7 @@ export {
   buildArchiveRequestTemplate,
   buildAttestedAuthTemplate,
   generateSecretKeyBytes,
+  parseSecretMaterial,
   publicKeyFromSecret,
   signOwnerAuthTag,
   verifyOwnerAuthTag,

@@ -147,3 +147,76 @@ variable "deployment_source_github_authorizer_secret_version" {
     error_message = "The GitHub authorizer token must use an immutable numbered Secret Manager version."
   }
 }
+
+variable "sarah_nostr_signer_image" {
+  description = "Immutable Sarah Nostr signer image. Null keeps the independent signing boundary undeployed."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition = (
+      var.sarah_nostr_signer_image == null ||
+      can(regex(
+        "^us-central1-docker\\.pkg\\.dev/openagentsgemini/oa-cloud/sarah-nostr-signer@sha256:[0-9a-f]{64}$",
+        var.sarah_nostr_signer_image,
+      ))
+    )
+    error_message = "The Sarah signer must use the exact production repository and an immutable digest."
+  }
+}
+
+variable "sarah_nostr_signer_communities" {
+  description = "Exact NIP-29 group/channel pairs the signer may project into."
+  type = list(object({
+    groupRef    = string
+    channelRefs = list(string)
+  }))
+  default = [
+    {
+      groupRef    = "openagents-public"
+      channelRefs = ["agent-chat"]
+    },
+  ]
+
+  validation {
+    condition = (
+      length(var.sarah_nostr_signer_communities) > 0 &&
+      alltrue([
+        for community in var.sarah_nostr_signer_communities :
+        can(regex("^[a-z0-9][a-z0-9._-]{0,127}$", community.groupRef)) &&
+        length(community.channelRefs) > 0 &&
+        alltrue([
+          for channel in community.channelRefs :
+          can(regex("^[a-z0-9][a-z0-9._-]{0,127}$", channel))
+        ])
+      ])
+    )
+    error_message = "Sarah signer communities must use explicit public-safe group and channel slugs."
+  }
+}
+
+variable "sarah_nostr_signer_expected_pubkey" {
+  description = "Stable 64-hex public key that the mounted principal.sarah secret must derive."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition = (
+      var.sarah_nostr_signer_expected_pubkey == null ||
+      can(regex("^[0-9a-f]{64}$", var.sarah_nostr_signer_expected_pubkey))
+    )
+    error_message = "The expected Sarah public key must be lowercase 64-hex."
+  }
+}
+
+check "sarah_nostr_signer_identity" {
+  assert {
+    condition = (
+      var.sarah_nostr_signer_image == null ||
+      var.sarah_nostr_signer_expected_pubkey != null
+    )
+    error_message = "Deploying the Sarah signer requires its stable expected public key."
+  }
+}

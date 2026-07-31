@@ -99,3 +99,12 @@ output "image_build_source_bucket" {
   description = "Dedicated seven-day source staging bucket for explicit LiveKit image builds."
   value       = google_storage_bucket.image_build_source.name
 }
+
+output "sarah_nostr_signer" {
+  description = "Private Workload-Identity-authenticated Sarah signing service."
+  value = var.sarah_nostr_signer_image == null ? null : {
+    service_name = google_cloud_run_v2_service.sarah_nostr_signer[0].name
+    audience     = google_cloud_run_v2_service.sarah_nostr_signer[0].uri
+    invoker      = module.platform.agent_service_account_email
+  }
+}
