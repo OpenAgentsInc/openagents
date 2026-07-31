@@ -130,32 +130,57 @@ export const handleSarahLiveKitRoomAuthorityProductionRequest = async <Environme
           communityRef: binding.communityRef,
           channelRef: binding.channelRef,
         });
-        if (
-          access === undefined ||
-          access.communityRef !== binding.communityRef ||
-          access.channelRef !== binding.channelRef ||
-          access.membershipRevision !== binding.membershipRevision ||
-          access.memberPubkey !== binding.memberPubkey ||
-          !access.publishAllowed ||
-          !access.subscribeAllowed
-        ) {
-          return undefined;
-        }
-        return {
+        const base = {
           authenticated: true,
           allowlisted: true,
-          active: true,
-          role: access.role,
           userRefDigest: binding.userRefDigest,
           pubkey: binding.memberPubkey,
           participantRef: binding.participantRef,
           mappedParticipantRef: binding.participantRef,
-          membershipRevision: binding.membershipRevision,
           roomRef: binding.roomRef,
           roomEpoch: binding.roomEpoch,
           safetyIdentifier: digest(
             `sarah-livekit-room-safety\n${binding.roomRef}\n${binding.ownerUserId}`,
           ),
+        } as const;
+        // A member who was admitted to this room and has since been removed
+        // from the community, or whose membership ledger has rotated under
+        // them, is NOT the same thing as a caller who was never bound to this
+        // room. Collapsing both to `undefined` made the routes answer
+        // `403 room_membership_required` for every case, which named the
+        // symptom and hid the cause: `member_removed` and `membership_changed`
+        // existed in the refusal vocabulary with nothing in production able to
+        // emit them. Resolve the bound member and let `validateMember` say
+        // which of the two it is.
+        if (access === undefined) {
+          return {
+            ...base,
+            active: false,
+            role: "member",
+            membershipRevision: binding.membershipRevision,
+          };
+        }
+        if (
+          access.communityRef !== binding.communityRef ||
+          access.channelRef !== binding.channelRef ||
+          access.memberPubkey !== binding.memberPubkey ||
+          !access.publishAllowed ||
+          !access.subscribeAllowed
+        ) {
+          // The binding does not describe this caller's access to this
+          // community at all. That is a mismatched binding, not a removal, and
+          // it stays indistinguishable from "never joined" on purpose.
+          return undefined;
+        }
+        return {
+          ...base,
+          active: true,
+          role: access.role,
+          // Carry the CURRENT membership revision, not the one frozen into the
+          // binding. When the community ledger rotates, this is what lets
+          // `validateMember` refuse with `membership_changed` against the
+          // presence lease instead of silently matching itself.
+          membershipRevision: access.membershipRevision,
         };
       },
       now,

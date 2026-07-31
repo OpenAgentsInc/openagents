@@ -82,6 +82,8 @@ const setup = (
     role?: "member" | "moderator";
     authenticated?: boolean;
     membershipRevision?: string;
+    communityAccessRevoked?: boolean;
+    mismatchedCommunityBinding?: boolean;
     openFails?: boolean;
     participantBound?: boolean;
     snapshot?: SarahLiveKitRoomAuthoritySnapshot;
@@ -159,15 +161,24 @@ const setup = (
       requireUser: vi.fn(async () =>
         options.authenticated === false ? undefined : { userId: "user.production" },
       ),
-      resolveCommunityAccess: vi.fn(async (_environment, input) => ({
-        communityRef: presence.communityRef,
-        channelRef: presence.channelRef,
-        membershipRevision: options.membershipRevision ?? presence.membershipRevision,
-        memberPubkey: input.ownerUserId === "user.target" ? digest("2") : digest("1"),
-        role: options.role ?? "member",
-        publishAllowed: true,
-        subscribeAllowed: true,
-      })),
+      resolveCommunityAccess: vi.fn(async (_environment, input) =>
+        options.communityAccessRevoked === true
+          ? undefined
+          : {
+              communityRef: presence.communityRef,
+              channelRef: presence.channelRef,
+              membershipRevision: options.membershipRevision ?? presence.membershipRevision,
+              memberPubkey:
+                options.mismatchedCommunityBinding === true
+                  ? digest("7")
+                  : input.ownerUserId === "user.target"
+                    ? digest("2")
+                    : digest("1"),
+              role: options.role ?? "member",
+              publishAllowed: true,
+              subscribeAllowed: true,
+            },
+      ),
       now: () => nowMs + 1_000,
     },
   };
@@ -219,7 +230,7 @@ describe("Sarah LiveKit room authority production wiring", () => {
     expect(route.close).toHaveBeenCalledOnce();
   });
 
-  test("fails closed on a changed signed membership revision and closes SQL", async () => {
+  test("names a changed signed membership revision instead of a generic membership refusal", async () => {
     const route = setup({ membershipRevision: digest("9") });
     const response = await handleSarahLiveKitRoomAuthorityProductionRequest(
       route.dependencies,
@@ -229,8 +240,47 @@ describe("Sarah LiveKit room authority production wiring", () => {
       {},
     );
     expect(response.status).toBe(403);
+    // `membership_changed` had no production emitter: a rotated ledger
+    // resolved to `undefined` and the route answered
+    // `room_membership_required`, which is true of a caller who never joined
+    // and says nothing about a caller whose membership moved underneath them.
+    await expect(response.json()).resolves.toEqual({ error: "membership_changed" });
     expect(route.compareAndSwap).not.toHaveBeenCalled();
     expect(route.close).toHaveBeenCalledOnce();
+  });
+
+  test("names a removed member instead of a generic membership refusal", async () => {
+    const route = setup({ communityAccessRevoked: true });
+    const response = await handleSarahLiveKitRoomAuthorityProductionRequest(
+      route.dependencies,
+      "member",
+      request("member"),
+      {},
+      {},
+    );
+    expect(response.status).toBe(403);
+    // Same gap for `member_removed`: the member is still bound to this room,
+    // so "you are not a member of this room" is the wrong answer. They were,
+    // and the community removed them.
+    await expect(response.json()).resolves.toEqual({ error: "member_removed" });
+    expect(route.compareAndSwap).not.toHaveBeenCalled();
+    expect(route.close).toHaveBeenCalledOnce();
+  });
+
+  test("still refuses a binding that does not describe this community", async () => {
+    const route = setup({ mismatchedCommunityBinding: true });
+    const response = await handleSarahLiveKitRoomAuthorityProductionRequest(
+      route.dependencies,
+      "member",
+      request("member"),
+      {},
+      {},
+    );
+    expect(response.status).toBe(403);
+    // A binding for some other community is not a removal and must stay
+    // indistinguishable from "never joined".
+    await expect(response.json()).resolves.toEqual({ error: "room_membership_required" });
+    expect(route.compareAndSwap).not.toHaveBeenCalled();
   });
 
   test("fails closed without an exact durable participant binding", async () => {
