@@ -23,7 +23,7 @@
     "pinState": "pinned"
   },
   "configurationDigest": "sha256:b0bf0f0cb801943b789906c615d3277629a8f73bd6d06b52a60aaf2c86eb8a7d",
-  "renderedManifestDigest": "sha256:03c4ae2fad18d13a6bc662f1c4640bc325389cfd28134b60950da8da1f9303bf",
+  "renderedManifestDigest": "sha256:77cc6e41265e865b91fd69cfba2e4ef92388552df400eecab0de182aca1d1caa",
   "resources": {
     "cluster": "oa-livekit-prod",
     "sfuNodePool": "oa-livekit-prod-sfu",
