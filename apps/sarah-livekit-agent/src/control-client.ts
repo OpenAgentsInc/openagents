@@ -152,6 +152,26 @@ const refusedControlResponse = (message: string, status: number): Error => {
   return error;
 };
 
+const decodeSarahLiveKitEventResult = (body: unknown): SarahLiveKitEventResult => {
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("accepted" in body) ||
+    body.accepted !== true
+  ) {
+    throw new Error("The Sarah LiveKit event receipt was invalid");
+  }
+  const stopReason =
+    "stopReason" in body &&
+    (body.stopReason === "hold_exhausted" ||
+      body.stopReason === "membership_revoked" ||
+      body.stopReason === "operator_stop" ||
+      body.stopReason === "session_expired")
+      ? body.stopReason
+      : undefined;
+  return stopReason === undefined ? { accepted: true } : { accepted: true, stopReason };
+};
+
 export const makeSarahLiveKitControlClient = (
   config: SarahLiveKitControlConfig,
   fetcher: typeof fetch = fetch,
@@ -205,54 +225,15 @@ export const makeSarahLiveKitControlClient = (
     dispatch: SarahLiveKitDispatchMetadata,
     value: SarahLiveKitJobEvent,
   ): Promise<SarahLiveKitEventResult> => {
-    let response: Response | undefined;
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      try {
-        // eslint-disable-next-line no-await-in-loop
-        response = await fetcher(`${baseUrl}${SARAH_LIVEKIT_JOB_EVENT_PATH}`, {
-          method: "POST",
-          headers: noStoreHeaders(controlToken(dispatch)),
-          body: JSON.stringify(value),
-          redirect: "error",
-          signal: AbortSignal.timeout(5_000),
-        });
-      } catch (error) {
-        if (attempt === 4) throw error;
-      }
-      if (response !== undefined && ![409, 503].includes(response.status)) {
-        break;
-      }
-      if (attempt < 4) {
-        // A worker can observe provider usage immediately before the API's
-        // admission transaction becomes visible to another database session.
-        // eslint-disable-next-line no-await-in-loop
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
-    }
-    if (response === undefined) {
-      throw new Error("Sarah LiveKit event delivery failed");
-    }
-    if (!response.ok) {
-      throw new Error(`Sarah LiveKit event refused (${response.status})`);
-    }
-    const body = await boundedBody(response);
-    if (
-      typeof body !== "object" ||
-      body === null ||
-      !("accepted" in body) ||
-      body.accepted !== true
-    ) {
-      throw new Error("The Sarah LiveKit event receipt was invalid");
-    }
-    const stopReason =
-      "stopReason" in body &&
-      (body.stopReason === "hold_exhausted" ||
-        body.stopReason === "membership_revoked" ||
-        body.stopReason === "operator_stop" ||
-        body.stopReason === "session_expired")
-        ? body.stopReason
-        : undefined;
-    return stopReason === undefined ? { accepted: true } : { accepted: true, stopReason };
+    const body = JSON.stringify(value);
+    return postControlWithRetry(
+      fetcher,
+      `${baseUrl}${SARAH_LIVEKIT_JOB_EVENT_PATH}`,
+      controlToken(dispatch),
+      body,
+      (status) => refusedControlResponse("Sarah LiveKit event refused", status),
+      decodeSarahLiveKitEventResult,
+    );
   };
 
   const proposeTool = async (

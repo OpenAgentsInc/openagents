@@ -20,6 +20,11 @@ import type {
   SarahVoiceLiveKitRoomBroker,
 } from "./sarah-realtime-voice-routes";
 
+// Three sequential provisioning RPCs and one fail-closed delete remain below
+// this deadline, while the 30-second database lease retains cleanup headroom.
+export const SARAH_LIVEKIT_PROVISIONING_DEADLINE_MS = 20_000;
+const SARAH_LIVEKIT_RPC_TIMEOUT_SECONDS = 4;
+
 export type SarahLiveKitRoomBrokerConfig = Readonly<{
   livekitUrl: string;
   apiKey: string;
@@ -60,6 +65,23 @@ export type SarahLiveKitRoomBrokerClients = Readonly<{
 }>;
 
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
+
+const assertProvisioningDeadline = (deadlineAtMs: number, now: () => number): void => {
+  if (now() >= deadlineAtMs) {
+    throw new Error("The Sarah LiveKit provisioning deadline expired");
+  }
+};
+
+const runProvisioningSideEffect = async <Value>(
+  deadlineAtMs: number,
+  now: () => number,
+  operation: () => Promise<Value>,
+): Promise<Value> => {
+  assertProvisioningDeadline(deadlineAtMs, now);
+  const value = await operation();
+  assertProvisioningDeadline(deadlineAtMs, now);
+  return value;
+};
 
 export const parseSarahLiveKitControlRoot = (value: string | undefined): string | undefined => {
   if (value === undefined || !/^[A-Za-z0-9_-]{64,128}$/u.test(value)) {
@@ -198,8 +220,17 @@ export const makeSarahLiveKitRoomBroker = (
   suppliedClients?: SarahLiveKitRoomBrokerClients,
 ): SarahVoiceLiveKitRoomBroker => {
   const origin = controlOrigin(config.livekitUrl);
-  const roomService = new RoomServiceClient(origin, config.apiKey, config.apiSecret);
-  const dispatchService = new AgentDispatchClient(origin, config.apiKey, config.apiSecret);
+  const clientOptions = {
+    requestTimeout: SARAH_LIVEKIT_RPC_TIMEOUT_SECONDS,
+    failover: false,
+  } as const;
+  const roomService = new RoomServiceClient(origin, config.apiKey, config.apiSecret, clientOptions);
+  const dispatchService = new AgentDispatchClient(
+    origin,
+    config.apiKey,
+    config.apiSecret,
+    clientOptions,
+  );
   const clients: SarahLiveKitRoomBrokerClients = suppliedClients ?? {
     createRoom: (input) => roomService.createRoom(input),
     deleteRoom: (roomRef) => roomService.deleteRoom(roomRef),
@@ -213,6 +244,7 @@ export const makeSarahLiveKitRoomBroker = (
   const provisionOnce = async (
     input: SarahVoiceLiveKitProvisionInput,
   ): Promise<SarahVoiceLiveKitProvision> => {
+    const deadlineAtMs = now() + SARAH_LIVEKIT_PROVISIONING_DEADLINE_MS;
     const metadata = dispatchMetadataForProvision(input);
     const { roomRef, participantRef, sarahParticipantRef, sarahPresenceLeaseRef } = metadata;
     const joinExpiresAtMs = Math.min(input.expiresAtMs, now() + 60_000);
@@ -221,16 +253,18 @@ export const makeSarahLiveKitRoomBroker = (
       throw new Error("The Sarah LiveKit join grant has already expired");
     }
 
-    await clients.createRoom({
-      name: roomRef,
-      emptyTimeout: 60,
-      departureTimeout: 30,
-      maxParticipants: input.roomContext.kind === "private" ? 2 : 128,
-      metadata: JSON.stringify({
-        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
-        roomEpoch: 1,
+    await runProvisioningSideEffect(deadlineAtMs, now, () =>
+      clients.createRoom({
+        name: roomRef,
+        emptyTimeout: 60,
+        departureTimeout: 30,
+        maxParticipants: input.roomContext.kind === "private" ? 2 : 128,
+        metadata: JSON.stringify({
+          schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+          roomEpoch: 1,
+        }),
       }),
-    });
+    );
 
     const participantToken = new AccessToken(config.apiKey, config.apiSecret, {
       identity: participantRef,
@@ -249,8 +283,11 @@ export const makeSarahLiveKitRoomBroker = (
       roomList: false,
     });
     const participantGrant = await participantToken.toJwt();
+    assertProvisioningDeadline(deadlineAtMs, now);
 
-    const existingDispatches = await clients.listDispatch(roomRef);
+    const existingDispatches = await runProvisioningSideEffect(deadlineAtMs, now, () =>
+      clients.listDispatch(roomRef),
+    );
     if (existingDispatches.length > 1) {
       throw new Error("The Sarah LiveKit room has conflicting dispatches");
     }
@@ -278,12 +315,14 @@ export const makeSarahLiveKitRoomBroker = (
     }
     const dispatch =
       existingDispatch ??
-      (await clients.createDispatch(roomRef, SARAH_LIVEKIT_AGENT_NAME, {
-        metadata: JSON.stringify(metadata),
-        restartPolicy: JobRestartPolicy.JRP_NEVER,
-      }));
+      (await runProvisioningSideEffect(deadlineAtMs, now, () =>
+        clients.createDispatch(roomRef, SARAH_LIVEKIT_AGENT_NAME, {
+          metadata: JSON.stringify(metadata),
+          restartPolicy: JobRestartPolicy.JRP_NEVER,
+        }),
+      ));
     if (dispatch.id.trim() === "") {
-      await clients.deleteRoom(roomRef);
+      await runProvisioningSideEffect(deadlineAtMs, now, () => clients.deleteRoom(roomRef));
       throw new Error("LiveKit returned an empty Sarah dispatch reference");
     }
 

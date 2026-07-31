@@ -730,6 +730,45 @@ describe('managed Sarah Realtime voice session route', () => {
     )
   })
 
+  test('settles and cleans the owned room key when provisioning reaches its deadline', async () => {
+    const fixture = makeDependencies()
+    const broker = {
+      workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
+      sessionTicket: vi.fn(() => 'livekit-session-ticket'),
+      provision: vi.fn(async () => {
+        throw new Error('The Sarah LiveKit provisioning deadline expired')
+      }),
+      cleanup: vi.fn(async () => undefined),
+      cleanupByIdempotencyKey: vi.fn(async () => undefined),
+      cleanupRoom: vi.fn(async () => undefined),
+    }
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      { ...fixture.dependencies, liveKitRoomBroker: broker },
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'disclosure-1',
+        requestedTransport: 'livekit_room_v1',
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(503)
+    expect(fixture.settle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionRef: 'voice-1',
+        closeReason: 'livekit_provision_failed',
+      }),
+    )
+    expect(broker.cleanupByIdempotencyKey).toHaveBeenCalledWith(
+      'sarah-livekit:voice-1:1',
+    )
+    expect(fixture.settle.mock.invocationCallOrder[0]).toBeLessThan(
+      broker.cleanupByIdempotencyKey.mock.invocationCallOrder[0] ?? 0,
+    )
+  })
+
   test('exposes generation-bound worker lifecycle and crash reconciliation seams', async () => {
     const recordLiveKitParticipantJoin = vi.fn(async () => undefined)
     const recordUsage = vi.fn(async () => ({

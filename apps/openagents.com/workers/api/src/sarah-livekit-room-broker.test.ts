@@ -6,6 +6,7 @@ import {
 import { describe, expect, test, vi } from "vitest";
 
 import {
+  SARAH_LIVEKIT_PROVISIONING_DEADLINE_MS,
   type SarahLiveKitRoomBrokerClients,
   deriveSarahLiveKitControlToken,
   makeSarahLiveKitRoomBroker,
@@ -402,6 +403,40 @@ describe("Sarah LiveKit room broker configuration", () => {
     expect(replay.dispatchRef).toBe(first.dispatchRef);
     expect(createDispatch).toHaveBeenCalledTimes(1);
     expect(firstDispatchMetadata).not.toBe("");
+  });
+
+  test("stops external side effects when the end-to-end provisioning deadline expires", async () => {
+    let nowMs = 2_000_000_000_000;
+    const createRoom = vi.fn(async () => {
+      nowMs += SARAH_LIVEKIT_PROVISIONING_DEADLINE_MS;
+    });
+    const listDispatch = vi.fn(async () => []);
+    const createDispatch = vi.fn(async () => ({ id: "dispatch:late" }));
+    const broker = makeSarahLiveKitRoomBroker(
+      {
+        livekitUrl: "wss://livekit.openagents.com",
+        apiKey: `API${"A".repeat(12)}`,
+        apiSecret: "b".repeat(48),
+        controlRoot,
+        sessionTicketSecret,
+      },
+      () => nowMs,
+      {
+        createRoom,
+        deleteRoom: vi.fn(async () => undefined),
+        createDispatch,
+        listDispatch,
+        deleteDispatch: vi.fn(async () => undefined),
+      },
+    );
+
+    expect(SARAH_LIVEKIT_PROVISIONING_DEADLINE_MS).toBeLessThan(30_000);
+    await expect(broker.provision(privateProvisionInput)).rejects.toThrow(
+      "provisioning deadline expired",
+    );
+    expect(createRoom).toHaveBeenCalledOnce();
+    expect(listDispatch).not.toHaveBeenCalled();
+    expect(createDispatch).not.toHaveBeenCalled();
   });
 
   test("rejects a single existing dispatch with mismatched authority", async () => {

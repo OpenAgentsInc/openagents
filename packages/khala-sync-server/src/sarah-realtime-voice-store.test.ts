@@ -722,6 +722,10 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       claimedIntent?.provisioning_owner_ref === "issuer:one"
         ? "issuer:two"
         : "issuer:one";
+    const winningOwnerRef =
+      claimedIntent?.provisioning_owner_ref === "issuer:one"
+        ? "issuer:one"
+        : "issuer:two";
     await expect(
       store.bindLiveKitRoom({
         ...binding,
@@ -735,6 +739,24 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         provisioningOwnerRef: losingOwnerRef,
         closeReason: "loser_must_not_settle",
         nowIso: "2026-07-28T13:00:00.750Z",
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
+    expect(
+      await store.claimLiveKitProvisioningIntent({
+        sessionRef: binding.sessionRef,
+        generation: binding.generation,
+        provisioningOwnerRef: "issuer:takeover",
+        staleBeforeIso: "2026-07-28T13:00:01.000Z",
+        nowIso: "2026-07-28T13:00:31.000Z",
+      }),
+    ).toBe(true);
+    await expect(
+      store.settleLiveKitProvisioningIntent({
+        sessionRef: binding.sessionRef,
+        generation: binding.generation,
+        provisioningOwnerRef: winningOwnerRef,
+        closeReason: "superseded_owner_must_not_settle",
+        nowIso: "2026-07-28T13:00:31.250Z",
       }),
     ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
     expect(

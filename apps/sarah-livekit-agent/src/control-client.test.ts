@@ -149,6 +149,40 @@ describe("Sarah LiveKit control client", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
+  test("retries the exact durable event after 200 headers followed by a body reset", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(responseWithResetBody())
+      .mockResolvedValueOnce(Response.json({ accepted: true }));
+    const client = makeSarahLiveKitControlClient(
+      {
+        baseUrl: "https://openagents.com",
+        workerRef: "worker:one",
+        controlRoot,
+      },
+      fetcher,
+    );
+    await expect(
+      client.event(dispatch, {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "response_usage",
+        sessionRef: dispatch.sessionRef,
+        generation: dispatch.generation,
+        jobRef: "job:one",
+        eventRef: "response:body-reset",
+        providerResponseRef: "provider-response:body-reset",
+        status: "completed",
+        inputTokens: 2,
+        outputTokens: 3,
+        cachedInputTokens: 1,
+        audioInputTokens: 2,
+        audioOutputTokens: 3,
+      }),
+    ).resolves.toEqual({ accepted: true });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0]?.[1]?.body).toBe(fetcher.mock.calls[1]?.[1]?.body);
+  });
+
   test("accepts the authoritative session-expiry stop response", async () => {
     const client = makeSarahLiveKitControlClient(
       {
