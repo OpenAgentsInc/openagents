@@ -2,9 +2,11 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   countLiveRooms,
   parseLiveKitSfuGauges,
+  selectLatestManagedPrometheusGauges,
   selectSoleSfuPodHostingARoom,
   selectSoleWorkerPodForGeneration,
   type LiveKitSfuGauge,
+  type ManagedPrometheusSeries,
 } from "./drill-cluster.js";
 
 /** A trimmed copy of a real `livekit-server` exposition, gauges verbatim. */
@@ -119,5 +121,109 @@ describe("Sarah worker fault target selection", () => {
     expect(() => selectSoleWorkerPodForGeneration(logs(["sarah-a", "anything"]), "  ")).toThrow(
       "needs the drill participant ref",
     );
+  });
+});
+
+/**
+ * Managed Prometheus is the gauge source a drill actually runs with, because
+ * `pods/exec` is deliberately withheld from the drill automation identity. These
+ * cover the two mistakes that would point a pod deletion at the wrong instance.
+ */
+describe("selectLatestManagedPrometheusGauges", () => {
+  const series = (
+    podName: string,
+    points: readonly (readonly [string, number])[],
+  ): ManagedPrometheusSeries => ({
+    metric: { labels: { pod: podName } },
+    points: points.map(([endTime, value]) => ({
+      interval: { endTime },
+      value: { doubleValue: value },
+    })),
+  });
+
+  test("takes the latest sample per instance regardless of the order returned", () => {
+    const gauges = selectLatestManagedPrometheusGauges(
+      ["sfu-a", "sfu-b"],
+      [
+        // Deliberately out of order: the API does not promise ordering, and
+        // "last element wins" would be a silent dependence on it.
+        series("sfu-a", [
+          ["2026-07-31T19:26:00.000Z", 0],
+          ["2026-07-31T19:27:00.000Z", 1],
+          ["2026-07-31T19:25:00.000Z", 0],
+        ]),
+        series("sfu-b", [["2026-07-31T19:27:00.000Z", 0]]),
+      ],
+      [
+        series("sfu-a", [["2026-07-31T19:27:00.000Z", 2]]),
+        series("sfu-b", [["2026-07-31T19:27:00.000Z", 0]]),
+      ],
+    );
+    expect(gauges).toEqual([
+      { podName: "sfu-a", roomTotal: 1, participantTotal: 2 },
+      { podName: "sfu-b", roomTotal: 0, participantTotal: 0 },
+    ]);
+    expect(selectSoleSfuPodHostingARoom(gauges).podName).toBe("sfu-a");
+  });
+
+  test("a room that ended does not keep naming its old host as hosting", () => {
+    // The maximum over the window would report two hosting instances here and
+    // either refuse a good drill or aim the fault at an instance that no longer
+    // carries the room. Only the latest sample is allowed to speak.
+    const gauges = selectLatestManagedPrometheusGauges(
+      ["sfu-a", "sfu-b"],
+      [
+        series("sfu-a", [
+          ["2026-07-31T19:20:00.000Z", 1],
+          ["2026-07-31T19:27:00.000Z", 0],
+        ]),
+        series("sfu-b", [
+          ["2026-07-31T19:20:00.000Z", 0],
+          ["2026-07-31T19:27:00.000Z", 1],
+        ]),
+      ],
+      [
+        series("sfu-a", [["2026-07-31T19:27:00.000Z", 0]]),
+        series("sfu-b", [["2026-07-31T19:27:00.000Z", 2]]),
+      ],
+    );
+    expect(countLiveRooms(gauges)).toBe(1);
+    expect(selectSoleSfuPodHostingARoom(gauges).podName).toBe("sfu-b");
+  });
+
+  test("refuses a running instance with no sample instead of counting it as idle", () => {
+    // Counting an unread instance as hosting zero rooms is exactly how the one
+    // pod carrying the room gets skipped and a healthy one gets destroyed.
+    expect(() =>
+      selectLatestManagedPrometheusGauges(
+        ["sfu-a", "sfu-quiet"],
+        [series("sfu-a", [["2026-07-31T19:27:00.000Z", 1]])],
+        [series("sfu-a", [["2026-07-31T19:27:00.000Z", 2]])],
+      ),
+    ).toThrow("no recent gauge sample for livekit-server instance sfu-quiet");
+  });
+
+  test("refuses an instance missing only the participant gauge", () => {
+    expect(() =>
+      selectLatestManagedPrometheusGauges(
+        ["sfu-a"],
+        [series("sfu-a", [["2026-07-31T19:27:00.000Z", 1]])],
+        [],
+      ),
+    ).toThrow("cluster reading is incomplete");
+  });
+
+  test("ignores samples with an unparseable timestamp rather than ranking them", () => {
+    const gauges = selectLatestManagedPrometheusGauges(
+      ["sfu-a"],
+      [
+        series("sfu-a", [
+          ["2026-07-31T19:27:00.000Z", 1],
+          ["not-a-timestamp", 99],
+        ]),
+      ],
+      [series("sfu-a", [["2026-07-31T19:27:00.000Z", 2]])],
+    );
+    expect(gauges).toEqual([{ podName: "sfu-a", roomTotal: 1, participantTotal: 2 }]);
   });
 });

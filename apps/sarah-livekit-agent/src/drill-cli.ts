@@ -7,20 +7,24 @@ import { fileURLToPath } from "node:url";
 import { dispose } from "@livekit/rtc-node";
 import {
   SARAH_LIVEKIT_DRILL_DEFAULT_HOLD_MS,
+  SARAH_LIVEKIT_DRILL_INSTRUMENT_SOURCES,
   SARAH_LIVEKIT_DRILL_SCENARIOS,
   assertPublicSafeSarahLiveKitDrillObservation,
   digestDrillInstance,
   runSarahLiveKitDrill,
   type SarahLiveKitDrillFaultResult,
+  type SarahLiveKitDrillInstrumentSource,
   type SarahLiveKitDrillScenario,
 } from "./drill-driver.js";
 import { EXPECTED_FAULT_ACTION, SARAH_LIVEKIT_SFU_LOSS_BOUND_MS } from "./failure-matrix.js";
 import {
   LIVEKIT_NAMESPACE,
+  MANAGED_PROMETHEUS_MINIMUM_HOLD_MS,
   countLiveRooms,
   deleteExactPod,
   podIsRunning,
   readLiveKitSfuGauges,
+  readLiveKitSfuGaugesFromManagedPrometheus,
   readSarahWorkerLogs,
   selectSoleSfuPodHostingARoom,
   selectSoleWorkerPodForGeneration,
@@ -41,6 +45,7 @@ type Arguments = Readonly<{
   communityRef?: string;
   channelRef?: string;
   receipt?: string;
+  gaugeSource?: string;
 }>;
 
 const FIELDS = new Map<string, keyof Omit<Arguments, "apply">>([
@@ -53,6 +58,7 @@ const FIELDS = new Map<string, keyof Omit<Arguments, "apply">>([
   ["--community-ref", "communityRef"],
   ["--channel-ref", "channelRef"],
   ["--receipt", "receipt"],
+  ["--gauge-source", "gaugeSource"],
 ]);
 
 const usage = () => {
@@ -64,6 +70,7 @@ const usage = () => {
     --bound-ms <bound measured from the fault> \\
     [--observation-window-ms <window, default 2x the bound>] \\
     [--hold-ms <live hold before the fault, default ${SARAH_LIVEKIT_DRILL_DEFAULT_HOLD_MS}>] \\
+    [--gauge-source ${SARAH_LIVEKIT_DRILL_INSTRUMENT_SOURCES.join("|")}, default pod_exec] \\
     --receipt docs/ops/receipts/livekit/<name>.json --apply
 
 One session, brought live through the production acceptance path, held open, and
@@ -74,6 +81,15 @@ hold a single session through and which sfu_loss forbids outright.
 sfu_loss pins its bound to the ${SARAH_LIVEKIT_SFU_LOSS_BOUND_MS} ms the failure
 matrix defines and refuses any other value, so a run cannot satisfy this command
 and then fail the receipt validator.
+
+--gauge-source selects how the room and participant gauges are read. pod_exec is
+the runbook's verbatim procedure and needs pods/exec, which is deliberately NOT
+granted to the drill automation identity and returns Forbidden for it. Use
+managed_prometheus for that identity: it reads the same gauge out of Google
+Managed Prometheus, which the runbook already names as the substitution, and
+which becomes sufficient exactly once a drill holds its session open. Because
+those samples are up to one 30 s scrape plus ingestion latency old, that source
+requires --hold-ms of at least ${MANAGED_PROMETHEUS_MINIMUM_HOLD_MS}.
 
 TARGETS ARE DISCOVERED AT THE FAULT INSTANT, in namespace ${LIVEKIT_NAMESPACE},
 and never earlier: the cluster picks which SFU instance carries a room when the
@@ -156,6 +172,17 @@ const drillScenario = (value: string | undefined): SarahLiveKitDrillScenario => 
   return found;
 };
 
+const drillInstrumentSource = (value: string | undefined): SarahLiveKitDrillInstrumentSource => {
+  if (value === undefined || value.trim() === "") return "pod_exec";
+  const found = SARAH_LIVEKIT_DRILL_INSTRUMENT_SOURCES.find((known) => known === value.trim());
+  if (found === undefined) {
+    throw new Error(
+      `--gauge-source must be one of ${SARAH_LIVEKIT_DRILL_INSTRUMENT_SOURCES.join(", ")}`,
+    );
+  }
+  return found;
+};
+
 /**
  * The worker log window: this session's own lifetime, plus a small margin.
  *
@@ -179,6 +206,7 @@ const workerLogWindowSeconds = (sessionStartedAtMs: number): number =>
  */
 const buildInjector = (
   scenario: SarahLiveKitDrillScenario,
+  readGauges: typeof readLiveKitSfuGauges,
 ): ((context: {
   participantRef: string;
   sessionStartedAtMs: number;
@@ -187,7 +215,7 @@ const buildInjector = (
   const faultAction = EXPECTED_FAULT_ACTION[scenario];
   if (faultAction === "delete_exact_sfu_pod") {
     return async (context) => {
-      const sfu = selectSoleSfuPodHostingARoom(await readLiveKitSfuGauges());
+      const sfu = selectSoleSfuPodHostingARoom(await readGauges());
       const workerPod = selectSoleWorkerPodForGeneration(
         await readSarahWorkerLogs(workerLogWindowSeconds(context.sessionStartedAtMs)),
         context.participantRef,
@@ -260,6 +288,8 @@ const run = async () => {
         ),
         pinnedBounds: { sfu_loss: SARAH_LIVEKIT_SFU_LOSS_BOUND_MS },
         namespace: LIVEKIT_NAMESPACE,
+        instrumentSources: SARAH_LIVEKIT_DRILL_INSTRUMENT_SOURCES,
+        managedPrometheusMinimumHoldMs: MANAGED_PROMETHEUS_MINIMUM_HOLD_MS,
         targetDiscovery: "sole_nonzero_livekit_room_total_and_sole_worker_logging_the_participant",
         guarantees: [
           "exactly one billable Sarah session for the whole drill window",
@@ -301,7 +331,20 @@ const run = async () => {
     throw new Error("receipt path must be under docs/ops/receipts/livekit");
   }
 
-  const injectFault = buildInjector(scenario);
+  const instrumentSource = drillInstrumentSource(args.gaugeSource);
+  if (instrumentSource === "managed_prometheus" && holdMs < MANAGED_PROMETHEUS_MINIMUM_HOLD_MS) {
+    throw new Error(
+      `--gauge-source managed_prometheus requires --hold-ms of at least ` +
+        `${MANAGED_PROMETHEUS_MINIMUM_HOLD_MS}, because its samples are up to one scrape ` +
+        "interval plus ingestion latency old and a shorter hold can read a gauge taken before " +
+        "this drill's room existed",
+    );
+  }
+  const readGauges =
+    instrumentSource === "managed_prometheus"
+      ? readLiveKitSfuGaugesFromManagedPrometheus
+      : readLiveKitSfuGauges;
+  const injectFault = buildInjector(scenario, readGauges);
   const suffix = roomKind === "private" ? "PRIVATE" : "COMMUNITY";
   const runRef = randomUUID();
   const pcm = await readFile(pcmPath);
@@ -317,7 +360,8 @@ const run = async () => {
       // fault target, so the sfu_loss precondition is observed rather than
       // attested. Rooms over-count billable Sarah generations, which is the
       // direction that fails closed.
-      countBillableSessions: async () => countLiveRooms(await readLiveKitSfuGauges()),
+      countBillableSessions: async () => countLiveRooms(await readGauges()),
+      instrumentSource,
       session: {
         kind: roomKind,
         bearer: requiredEnvironment(`OA_SARAH_LIVEKIT_ACCEPTANCE_${suffix}_BEARER`),
@@ -352,6 +396,7 @@ const run = async () => {
     `${JSON.stringify({
       scenario: observation.scenario,
       faultAction: observation.faultAction,
+      instrumentSource: observation.instrumentSource,
       outcome: observation.outcome,
       contradictions: observation.contradictions,
       faultToTerminalMs: observation.faultToTerminalMs,

@@ -189,6 +189,179 @@ export const readLiveKitSfuGauges: ReadLiveKitSfuGauges = async () => {
   return gauges;
 };
 
+/**
+ * The Managed Prometheus substitution for the gauge sweep.
+ *
+ * `readLiveKitSfuGauges` is the runbook's verbatim procedure and needs
+ * `pods/exec`. That verb is deliberately NOT granted to the drill automation
+ * identity — the runbook records it as excluded on purpose, because exec is
+ * arbitrary command execution inside a production pod — and a real API call on
+ * 2026-07-31 confirmed `Forbidden` for `oa-mvp-automation@` once the shared
+ * `gke-gcloud-auth-plugin` cache was cleared. An earlier receipt claimed exec
+ * "is granted in practice"; that claim was read through a cache poisoned by the
+ * owner identity and is wrong for the identity a drill actually runs as.
+ *
+ * The runbook already names this substitution and states exactly what made it
+ * insufficient: the `PodMonitoring` scrape interval is 30 s while an acceptance
+ * session lived about 21 s, so the gauge could not identify the instance
+ * carrying a room inside the session it was meant to target — "until either the
+ * drill runs against a held-open session or the scrape interval is lowered".
+ * The single-session driver holds the session open, so that condition is now
+ * satisfied by the driver rather than by widening anyone's authority.
+ *
+ * Two properties keep this honest:
+ *
+ *   - Only the LATEST point per instance is read, never the maximum over the
+ *     window. A maximum would let a room that ended a minute ago name a second
+ *     "hosting" instance and turn a good drill into a false ambiguity refusal —
+ *     or worse, aim a fault at an instance that no longer carries the room.
+ *   - Every running instance must have produced at least one sample in the
+ *     window. A missing series is a read this function refuses to complete,
+ *     not an instance silently counted as hosting zero rooms.
+ *
+ * The cost is staleness: a sample is up to one scrape interval plus ingestion
+ * latency old (measured at about 44 s worst case). `MANAGED_PROMETHEUS_MINIMUM_HOLD_MS`
+ * is the hold this bounds, and the CLI refuses a shorter one.
+ */
+export const MANAGED_PROMETHEUS_PROJECT = "openagentsgemini";
+export const MANAGED_PROMETHEUS_LOOKBACK_MS = 300_000;
+/**
+ * The shortest hold that guarantees a scrape of the drill's own room has been
+ * ingested before the gauge is read: one 30 s scrape interval, plus the ~14 s
+ * ingestion latency measured on 2026-07-31, plus margin.
+ */
+export const MANAGED_PROMETHEUS_MINIMUM_HOLD_MS = 90_000;
+
+export type ManagedPrometheusPoint = Readonly<{
+  interval: Readonly<{ endTime: string }>;
+  value: Readonly<{ doubleValue?: number; int64Value?: string }>;
+}>;
+
+export type ManagedPrometheusSeries = Readonly<{
+  metric: Readonly<{ labels?: Readonly<{ pod?: string }> }>;
+  points?: readonly ManagedPrometheusPoint[];
+}>;
+
+const pointValue = (point: ManagedPrometheusPoint): number => {
+  const value = point.value.doubleValue ?? Number(point.value.int64Value);
+  if (!Number.isFinite(value)) {
+    throw new Error("managed prometheus returned a nonnumeric gauge sample");
+  }
+  return value;
+};
+
+/**
+ * The latest sample per instance for one gauge, keyed by pod name.
+ *
+ * Series are returned per instance, so "latest" is resolved within each series
+ * rather than across them.
+ */
+const latestByPod = (series: readonly ManagedPrometheusSeries[]): ReadonlyMap<string, number> => {
+  const latest = new Map<string, { atMs: number; value: number }>();
+  for (const entry of series) {
+    const podName = entry.metric.labels?.pod;
+    if (podName === undefined || podName === "") continue;
+    for (const point of entry.points ?? []) {
+      const atMs = Date.parse(point.interval.endTime);
+      if (!Number.isFinite(atMs)) continue;
+      const held = latest.get(podName);
+      if (held === undefined || atMs > held.atMs) {
+        latest.set(podName, { atMs, value: pointValue(point) });
+      }
+    }
+  }
+  return new Map([...latest].map(([podName, held]) => [podName, held.value]));
+};
+
+/**
+ * Project two Managed Prometheus responses onto the gauge shape the selectors
+ * consume.
+ *
+ * Separated from the network call because this is the part that decides which
+ * instance a fault is aimed at, and it must be checkable without a cluster.
+ * Two rules carry the weight, and both are about failing closed:
+ *
+ *   - The LATEST sample per instance wins, never the maximum over the window. A
+ *     maximum would let a room that ended a minute ago keep naming its old host
+ *     as "hosting", which either refuses a good drill for false ambiguity or
+ *     aims a deletion at an instance that no longer carries the room.
+ *   - A running instance with no sample in the window is a refusal, not a zero.
+ *     Treating an unread instance as hosting nothing is exactly how the one pod
+ *     that does carry the room gets skipped and a healthy one gets destroyed.
+ */
+export const selectLatestManagedPrometheusGauges = (
+  pods: readonly string[],
+  roomSeries: readonly ManagedPrometheusSeries[],
+  participantSeries: readonly ManagedPrometheusSeries[],
+): readonly LiveKitSfuGauge[] => {
+  const rooms = latestByPod(roomSeries);
+  const participants = latestByPod(participantSeries);
+  return pods.map((podName) => {
+    const roomTotal = rooms.get(podName);
+    const participantTotal = participants.get(podName);
+    if (roomTotal === undefined || participantTotal === undefined) {
+      throw new Error(
+        `managed prometheus has no recent gauge sample for livekit-server instance ${podName}, ` +
+          "so the cluster reading is incomplete",
+      );
+    }
+    return { podName, roomTotal, participantTotal };
+  });
+};
+
+const managedPrometheusGauge = async (
+  accessToken: string,
+  metricName: string,
+  startTime: string,
+  endTime: string,
+): Promise<readonly ManagedPrometheusSeries[]> => {
+  const url = new URL(
+    `https://monitoring.googleapis.com/v3/projects/${MANAGED_PROMETHEUS_PROJECT}/timeSeries`,
+  );
+  url.searchParams.set(
+    "filter",
+    `metric.type="prometheus.googleapis.com/${metricName}/gauge" AND ` +
+      `resource.labels.namespace="${LIVEKIT_NAMESPACE}"`,
+  );
+  url.searchParams.set("interval.startTime", startTime);
+  url.searchParams.set("interval.endTime", endTime);
+  const response = await fetch(url, { headers: { authorization: `Bearer ${accessToken}` } });
+  if (!response.ok) {
+    // The status, never the body: an error body from the monitoring API can
+    // echo the request, and the request carries a bearer token.
+    throw new Error(`managed prometheus read for ${metricName} failed with ${response.status}`);
+  }
+  const body = (await response.json()) as Readonly<{
+    timeSeries?: readonly ManagedPrometheusSeries[];
+  }>;
+  return body.timeSeries ?? [];
+};
+
+const managedPrometheusAccessToken = async (): Promise<string> => {
+  const { stdout } = await run_("gcloud", ["auth", "print-access-token"]);
+  const token = stdout.trim();
+  if (token === "")
+    throw new Error("gcloud produced no access token for the managed prometheus read");
+  return token;
+};
+
+export const readLiveKitSfuGaugesFromManagedPrometheus: ReadLiveKitSfuGauges = async () => {
+  const pods = await podNames(SFU_SELECTOR);
+  if (pods.length === 0) throw new Error("no running livekit-server instance to read gauges for");
+  const nowMs = Date.now();
+  const startTime = new Date(nowMs - MANAGED_PROMETHEUS_LOOKBACK_MS).toISOString();
+  const endTime = new Date(nowMs).toISOString();
+  const accessToken = await managedPrometheusAccessToken();
+  const rooms = await managedPrometheusGauge(accessToken, "livekit_room_total", startTime, endTime);
+  const participants = await managedPrometheusGauge(
+    accessToken,
+    "livekit_participant_total",
+    startTime,
+    endTime,
+  );
+  return selectLatestManagedPrometheusGauges(pods, rooms, participants);
+};
+
 export const readSarahWorkerLogs = async (
   sinceSeconds = 900,
 ): Promise<readonly Readonly<{ podName: string; log: string }>[]> => {

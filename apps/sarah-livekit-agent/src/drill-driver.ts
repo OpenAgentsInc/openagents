@@ -148,6 +148,19 @@ export type SarahLiveKitDrillFaultResult = Readonly<{
   injectedAtMs?: number;
 }>;
 
+/**
+ * How the cluster gauges were read.
+ *
+ * `pod_exec` is the runbook's verbatim procedure and reads the instant value
+ * off the instance's own metrics port. `managed_prometheus` reads the same
+ * gauge from Google Managed Prometheus, which the drill automation identity can
+ * reach without `pods/exec` — a verb deliberately withheld from it — at the cost
+ * of a sample up to one scrape interval plus ingestion latency old.
+ */
+export const SARAH_LIVEKIT_DRILL_INSTRUMENT_SOURCES = ["pod_exec", "managed_prometheus"] as const;
+export type SarahLiveKitDrillInstrumentSource =
+  (typeof SARAH_LIVEKIT_DRILL_INSTRUMENT_SOURCES)[number];
+
 export type SarahLiveKitDrillSettlement = Readonly<{
   state: "settled" | "released";
   creditMode: "metered" | "staging_owner_entitlement";
@@ -192,6 +205,8 @@ export type SarahLiveKitDrillObservation = Readonly<{
    * every room on that instance.
    */
   concurrentBillableSessionCount: number;
+  /** Which gauge source named the fault target and counted live sessions. */
+  instrumentSource: SarahLiveKitDrillInstrumentSource;
   faultTargetDigest: string | null;
   workerInstanceDigest: string | null;
   workerInstanceSurvived: boolean | null;
@@ -222,6 +237,13 @@ export type SarahLiveKitDrillInput = Readonly<{
   injectFault: (context: SarahLiveKitDrillFaultContext) => Promise<SarahLiveKitDrillFaultResult>;
   /** Read at the fault instant, which is the only instant the count is about. */
   countBillableSessions: () => Promise<number> | number;
+  /**
+   * How the cluster gauges behind target discovery and the billable-session
+   * count were read. Carried onto the observation because the two sources have
+   * materially different staleness, and a reader cannot judge a fault target
+   * without knowing which one named it.
+   */
+  instrumentSource?: SarahLiveKitDrillInstrumentSource;
 }>;
 
 export type SarahLiveKitDrillDependencies = SarahLiveKitLiveDependencies &
@@ -423,6 +445,7 @@ export const runSarahLiveKitDrill = async (
       mediaLossDetectedWithinMs,
       withinBound: faultToTerminalMs !== null && faultToTerminalMs <= input.boundMs,
       concurrentBillableSessionCount,
+      instrumentSource: input.instrumentSource ?? "pod_exec",
       faultTargetDigest: fault.targetInstanceDigest ?? null,
       workerInstanceDigest: fault.workerInstanceDigest ?? null,
       workerInstanceSurvived: fault.workerInstanceSurvived ?? null,
