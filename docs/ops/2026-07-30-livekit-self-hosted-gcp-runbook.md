@@ -892,7 +892,6 @@ OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_OWNER_REF='<private owner ref>' \
 OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_BEARER='<community bearer>' \
 OA_SARAH_LIVEKIT_ACCEPTANCE_COMMUNITY_OWNER_REF='<community owner ref>' \
 pnpm --dir apps/sarah-livekit-agent acceptance -- \
-  --source-revision <exact-deployed-40-hex-revision> \
   --private-pcm <private-prompt.pcm> \
   --community-pcm <community-prompt.pcm> \
   --community-ref <community-ref> \
@@ -1311,6 +1310,69 @@ protocol. Subscriber grants are minted by the scoped acceptance operator and
 remain outside the repository. Until those live actions and scans have
 completed, do not create a `sarah_matrix` receipt and do not claim this gate is
 green.
+
+Validate the terminal matrix with the narrower worker contract before
+projecting it into the aggregate `sarah_matrix` receipt:
+
+```sh
+pnpm --dir apps/sarah-livekit-agent failure-matrix
+
+OA_SARAH_LIVEKIT_FAILURE_MATRIX_OWNER_GATE=I_ACCEPT_EP263_SARAH_FAILURE_MATRIX \
+pnpm --dir apps/sarah-livekit-agent failure-matrix -- \
+  --input <private-terminal-matrix-observation.json> \
+  --receipt docs/ops/receipts/livekit/production-sarah-terminal-matrix-<UTC>.json \
+  --apply
+```
+
+The first command is the required preflight. It performs no network request,
+fault injection, pod mutation, provider disconnect, or receipt write. The
+second command is also non-mutating: the owner gate authorizes validation and
+public receipt projection only. Keep the private input outside the repository.
+The public receipt is mode 0600 and contains no room, owner, job, provider,
+hold, usage, or settlement identifier.
+
+The private input has exactly seven scenario rows in this order: `success`,
+`cancellation`, `timeout`, `planned_worker_crash`, `provider_disconnect`,
+`hold_exhaustion`, and `reconnect`. Each row must include:
+
+- the exact scenario-specific fault action and terminal reason;
+- distinct SHA-256 projections for job, provider session, generation, hold,
+  usage, and settlement authorities;
+- exact input, output, cached-input, audio-input, and audio-output token
+  counts, response/transcription/cancellation counts, and provider charge;
+- reserved, charged, and released hold amounts where
+  `reserved = charged + released`;
+- terminal settlement charge exactly equal to provider charge and hold charge;
+- one terminal event, maximum worker-generation count one, maximum provider
+  session count one, and fresh admission required;
+- SHA-256 accounting, fault, and privacy evidence projections; and
+- zero secret, raw-media, and transcript findings.
+
+The reconnect row additionally carries distinct previous/fresh generation
+digests, the previous terminal time, the later fresh-generation start time,
+and `settledGenerationRevived=false`. Identity projections must be distinct
+across the entire matrix, not only within one row.
+
+Do not use a broad worker deletion as a planned-crash drill. First disable new
+admissions, prove the target worker pod has only the named acceptance
+generation, record its immutable pod UID and generation evidence privately,
+and delete that exact pod. Re-enable admissions only after accounting becomes
+terminal and the replacement is Ready. The harness records
+`delete_exact_worker_pod`; it never runs `kubectl`.
+
+The current worker deliberately disables proactive provider reconnect, but it
+does not expose a production fault-injection endpoint. Do not emulate provider
+disconnect by changing a shared firewall, Secret, Deployment, or NetworkPolicy.
+Until a separately reviewed, generation-scoped provider-socket drill control
+exists, `close_exact_provider_socket` cannot be collected safely and the live
+matrix remains red. The same rule applies if any drill cannot identify its
+single session and rollback boundary before mutation.
+
+Cancellation uses the exact gateway generation. Timeout waits for its
+configured deadline. Hold exhaustion consumes only the target session's
+admitted hold. Reconnect happens only after the previous terminal boundary and
+uses a fresh admission. Never hand-author a passing row from expectations or
+unit-test output.
 
 ## Issue close gate
 

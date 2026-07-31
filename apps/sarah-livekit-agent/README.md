@@ -123,8 +123,26 @@ an explicit ticketed control-channel interrupt with an audio tail no longer
 than 750 ms, at least one exactly accounted cancelled response, and a settlement
 charge equal to recorded provider usage. The receipt retains only booleans,
 counts, timings, totals, and digests. Failure injection, reconnect, and
-packaged-client privacy collection remain separate live operator actions
-projected through the `sarah_matrix` phase in the production runbook.
+packaged-client privacy collection remain separate live operator actions.
+
+The terminal-failure matrix command is non-mutating by design:
+
+```sh
+pnpm --dir apps/sarah-livekit-agent failure-matrix
+```
+
+Its default mode prints the seven required scenarios and executes no network
+request. With `--apply`, a separate owner gate permits it to validate a private
+production observation that remains outside the repository and to write one
+public-safe receipt. It does not inject a fault. Each scenario must reconcile
+exact provider usage, the reserved/charged/released hold, and terminal
+settlement; show one terminal event; show at most one worker generation and one
+provider session; require fresh admission; and carry zero secret, raw-media,
+and transcript findings. Reconnect must begin after the previous terminal
+boundary with a different generation digest and must not revive the settled
+generation. The receipt contains only aggregate counts, amounts, durations,
+and SHA-256 evidence projections. See the production runbook before collecting
+or accepting live drill evidence.
 
 Both Docker stages pin the Linux AMD64 manifest digest for the official
 `node:24.13.1-bookworm-slim` image. To refresh it, inspect the authoritative
