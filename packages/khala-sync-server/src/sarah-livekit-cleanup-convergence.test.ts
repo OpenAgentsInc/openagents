@@ -193,6 +193,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit cleanup convergence", () => 
       ownerUserId: "owner.authority",
       userRefDigest: digest("1"),
       memberPubkey: digest("2"),
+      deviceRefDigest: digest("d"),
       participantRef: "participant.authority",
       membershipRevision: snapshot.presence.membershipRevision,
       roomRef: snapshot.presence.roomRef,

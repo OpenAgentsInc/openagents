@@ -4,11 +4,12 @@ import {
   type SarahLiveKitJobEvent,
   decodeSarahLiveKitJobClaimResponse,
 } from "@openagentsinc/audio-contract";
-import type {
-  SarahLiveKitRoomAuthorityStore,
-  SarahRealtimeVoiceStore,
-  SarahVoiceLiveKitMembershipLease,
-  SarahVoiceLiveKitWorkerClaim,
+import {
+  SarahVoiceDuplicateParticipantError,
+  type SarahLiveKitRoomAuthorityStore,
+  type SarahRealtimeVoiceStore,
+  type SarahVoiceLiveKitMembershipLease,
+  type SarahVoiceLiveKitWorkerClaim,
 } from "@openagentsinc/khala-sync-server";
 import { describe, expect, test, vi } from "vitest";
 
@@ -74,10 +75,12 @@ const readLiveKitMembershipLease = vi.fn(
 const revokeLiveKitRoom = vi.fn(async () => ({
   state: "connected" as const,
 }));
+const recordLiveKitParticipantJoin = vi.fn(async () => undefined);
 const store = {
   applyLiveKitWorkerEvent,
   claimLiveKitWorkerJob,
   readLiveKitMembershipLease,
+  recordLiveKitParticipantJoin,
   revokeLiveKitRoom,
 } as unknown as SarahRealtimeVoiceStore;
 const authorityStore = {
@@ -321,6 +324,65 @@ describe("Sarah LiveKit worker routes", () => {
         providerConfigurationDigest: "b".repeat(64),
       }),
     );
+    // The worker only reports provider admission once its dispatched
+    // participant is in the room, so this is where the owner seat is recorded.
+    // Nothing else in production calls this: without it `owner_joined_at` is
+    // never set and no duplicate can ever be detected.
+    expect(recordLiveKitParticipantJoin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workerJobRef: "job:one",
+        sessionRef: "session:one",
+        generation: 1,
+        role: "owner",
+      }),
+    );
+  });
+
+  test("refuses a second client claiming the admitted owner seat", async () => {
+    recordLiveKitParticipantJoin.mockImplementationOnce(async () => {
+      throw new SarahVoiceDuplicateParticipantError("already admitted");
+    });
+    const response = await handleSarahLiveKitWorkerEvent(
+      dependencies,
+      authorizedRequest("/api/internal/sarah/livekit/job/event", {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "provider_admitted",
+        sessionRef: "session:one",
+        generation: 1,
+        jobRef: "job:one",
+        eventRef: "provider:duplicate",
+        providerSessionRefDigest: "a".repeat(64),
+        providerConfigurationDigest: "b".repeat(64),
+      }),
+      {},
+    );
+    // The status has to be honest: a refusal filed as a 2xx is not a refusal.
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "duplicate_participant_refused" });
+  });
+
+  test("does not re-record the owner seat when the worker replays its event", async () => {
+    applyLiveKitWorkerEvent.mockImplementationOnce(async () => ({
+      observedAt: "2033-05-18T03:33:20.000Z",
+      replayed: true,
+    }));
+    recordLiveKitParticipantJoin.mockClear();
+    const response = await handleSarahLiveKitWorkerEvent(
+      dependencies,
+      authorizedRequest("/api/internal/sarah/livekit/job/event", {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "provider_admitted",
+        sessionRef: "session:one",
+        generation: 1,
+        jobRef: "job:one",
+        eventRef: "provider:one",
+        providerSessionRefDigest: "a".repeat(64),
+        providerConfigurationDigest: "b".repeat(64),
+      }),
+      {},
+    );
+    expect(response.status).toBe(200);
+    expect(recordLiveKitParticipantJoin).not.toHaveBeenCalled();
   });
 
   test("persists the exact provider-disconnect application receipt", async () => {

@@ -15,6 +15,7 @@ export class SarahLiveKitRoomAuthorityStoreError extends Schema.TaggedErrorClass
       "conflict",
       "stale_revision",
       "authority_mismatch",
+      "duplicate_participant",
       "unavailable",
     ]),
   },
@@ -220,11 +221,22 @@ export interface SarahLiveKitRoomAuthorityStore {
       }>
     | undefined
   >;
+  /**
+   * Admit one member into the room under one client.
+   *
+   * `deviceRefDigest` identifies the client that holds the seat. Re-binding
+   * from the same client is a resume and refreshes the grant. Binding from a
+   * different client while the recorded grant is still live is refused with
+   * `duplicate_participant`, because the participant ref is deterministic per
+   * (room, member): a second live grant would put two clients into one LiveKit
+   * identity, racing the same floor and session.
+   */
   readonly bindParticipant: (input: {
     readonly presenceLeaseRef: string;
     readonly ownerUserId: string;
     readonly userRefDigest: string;
     readonly memberPubkey: string;
+    readonly deviceRefDigest: string;
     readonly participantRef: string;
     readonly membershipRevision: string;
     readonly roomRef: string;
@@ -767,6 +779,7 @@ export class PostgresSarahLiveKitRoomAuthorityStore implements SarahLiveKitRoomA
     readonly ownerUserId: string;
     readonly userRefDigest: string;
     readonly memberPubkey: string;
+    readonly deviceRefDigest: string;
     readonly participantRef: string;
     readonly membershipRevision: string;
     readonly roomRef: string;
@@ -778,6 +791,7 @@ export class PostgresSarahLiveKitRoomAuthorityStore implements SarahLiveKitRoomA
     if (
       !/^[a-f0-9]{64}$/u.test(input.userRefDigest) ||
       !/^[a-f0-9]{64}$/u.test(input.memberPubkey) ||
+      !/^[a-f0-9]{64}$/u.test(input.deviceRefDigest) ||
       !/^[a-f0-9]{64}$/u.test(input.membershipRevision) ||
       !/^[a-f0-9]{64}$/u.test(input.participantGrantDigest) ||
       !Number.isSafeInteger(input.roomEpoch) ||
@@ -806,18 +820,39 @@ export class PostgresSarahLiveKitRoomAuthorityStore implements SarahLiveKitRoomA
         ) {
           throw new SarahLiveKitRoomAuthorityStoreError({ reason: "authority_mismatch" });
         }
+        const seats: Array<{ device_ref_digest: string | null }> = await transaction`
+          SELECT device_ref_digest
+          FROM sarah_livekit_room_members
+          WHERE presence_lease_ref=${input.presenceLeaseRef}
+            AND owner_user_id=${input.ownerUserId}
+            AND state='active'
+            AND join_expires_at>${input.now}
+          FOR UPDATE`;
+        const seat = seats[0];
+        if (
+          seat !== undefined &&
+          seat.device_ref_digest !== null &&
+          seat.device_ref_digest !== input.deviceRefDigest
+        ) {
+          throw new SarahLiveKitRoomAuthorityStoreError({
+            reason: "duplicate_participant",
+          });
+        }
         await transaction`
           INSERT INTO sarah_livekit_room_members
             (presence_lease_ref,owner_user_id,user_ref_digest,member_pubkey,
-             participant_ref,membership_revision,room_ref,room_epoch,
-             participant_grant_digest,join_expires_at,state,created_at,updated_at)
+             device_ref_digest,participant_ref,membership_revision,room_ref,
+             room_epoch,participant_grant_digest,join_expires_at,state,
+             created_at,updated_at)
           VALUES (${input.presenceLeaseRef},${input.ownerUserId},${input.userRefDigest},
-            ${input.memberPubkey},${input.participantRef},${input.membershipRevision},
-            ${input.roomRef},${input.roomEpoch},${input.participantGrantDigest},
-            ${input.joinExpiresAt},'active',${input.now},${input.now})
+            ${input.memberPubkey},${input.deviceRefDigest},${input.participantRef},
+            ${input.membershipRevision},${input.roomRef},${input.roomEpoch},
+            ${input.participantGrantDigest},${input.joinExpiresAt},'active',
+            ${input.now},${input.now})
           ON CONFLICT (presence_lease_ref,owner_user_id) DO UPDATE SET
             user_ref_digest=EXCLUDED.user_ref_digest,
             member_pubkey=EXCLUDED.member_pubkey,
+            device_ref_digest=EXCLUDED.device_ref_digest,
             participant_ref=EXCLUDED.participant_ref,
             membership_revision=EXCLUDED.membership_revision,
             room_ref=EXCLUDED.room_ref,

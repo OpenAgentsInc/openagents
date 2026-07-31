@@ -405,6 +405,19 @@ export class SarahVoiceAdmissionRejectedError extends Error {
   override readonly name = "SarahVoiceAdmissionRejectedError";
 }
 
+/**
+ * A second live client claimed one already-admitted participant identity.
+ *
+ * This is deliberately distinct from the generic rejection: a duplicate
+ * participant is not a stale, revoked, or expired join, it is two clients
+ * racing one room seat. Callers that only refuse cannot tell an operator which
+ * drill they just satisfied, so the class is separate and the routes map it to
+ * its own `duplicate_participant_refused` code.
+ */
+export class SarahVoiceDuplicateParticipantError extends Error {
+  override readonly name = "SarahVoiceDuplicateParticipantError";
+}
+
 export class SarahVoiceLiveKitCapacityError extends Error {
   override readonly name = "SarahVoiceLiveKitCapacityError";
 }
@@ -1486,6 +1499,27 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           );
         }
 
+        // A re-bind of a generation whose owner seat is already taken is a
+        // duplicate participant, not a replay. The participant ref is fixed for
+        // the generation, so refreshing the grant would hand a second client
+        // the identity that is already in the room. A re-bind before the
+        // participant arrives, or after its join window closed, is the ordinary
+        // same-generation reconnect and stays admitted.
+        const seats = (await tx`
+          SELECT owner_joined_at
+          FROM sarah_livekit_room_bindings
+          WHERE session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+            AND state IN ('prepared', 'active')
+            AND join_expires_at > ${input.nowIso}
+          FOR UPDATE
+        `) as ReadonlyArray<{ owner_joined_at: string | null }>;
+        const seat = first(seats);
+        if (seat !== undefined && seat.owner_joined_at !== null) {
+          throw new SarahVoiceDuplicateParticipantError(
+            "The LiveKit owner participant identity is already admitted for this generation",
+          );
+        }
         const bindings = (await tx`
           INSERT INTO sarah_livekit_room_bindings (
             session_ref, owner_user_id, device_ref, thread_ref, generation,
@@ -1561,7 +1595,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     } catch (error) {
       if (
         error instanceof SarahVoiceSessionRejectedError ||
-        error instanceof SarahVoiceAdmissionRejectedError
+        error instanceof SarahVoiceAdmissionRejectedError ||
+        error instanceof SarahVoiceDuplicateParticipantError
       ) {
         throw error;
       }
@@ -1571,6 +1606,36 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         );
       }
       throw new SarahVoiceStorageError("Sarah LiveKit room binding failed", error);
+    }
+  };
+
+  /**
+   * Is the owner seat of this generation already held by a live participant?
+   *
+   * The session route asks before it provisions, so a second client is refused
+   * without minting a grant or touching the room the first client is in.
+   * `bindLiveKitRoom` still refuses under the row lock, which is what settles a
+   * race between two simultaneous requests.
+   */
+  const readLiveKitOwnerParticipantAdmitted = async (
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+      nowIso: string;
+    }>,
+  ): Promise<boolean> => {
+    try {
+      const rows = (await sql`
+        SELECT owner_joined_at
+        FROM sarah_livekit_room_bindings
+        WHERE session_ref = ${input.sessionRef}
+          AND generation = ${input.generation}
+          AND state IN ('prepared', 'active')
+          AND join_expires_at > ${input.nowIso}
+      `) as ReadonlyArray<{ owner_joined_at: string | null }>;
+      return first(rows)?.owner_joined_at != null;
+    } catch (error) {
+      throw new SarahVoiceStorageError("Sarah LiveKit owner seat read failed", error);
     }
   };
 
@@ -1610,12 +1675,29 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }
   };
 
+  /**
+   * Record the first admission of one dispatched participant into a bound room.
+   *
+   * The claiming worker's control-token digest and job ref are the authority:
+   * only the worker that holds this generation can report that the participant
+   * it was dispatched for appeared in the room. The participant and room refs
+   * are read from that binding rather than accepted from the caller, because
+   * the binding is what minted them.
+   *
+   * `owner_joined_at IS NULL` makes the first admission final. A second
+   * admission of the same identity is a duplicate participant, not a resume:
+   * the participant grant is minted once per generation, so two live clients
+   * holding it collide on one LiveKit identity and race the same room, floor,
+   * and accounting session. A legitimate resume replays the SAME worker event
+   * ref, which the worker-event ledger settles as `replayed` before this is
+   * ever reached, and a legitimate reconnect takes a new generation.
+   */
   const recordLiveKitParticipantJoin = async (
     input: Readonly<{
+      workerControlTokenDigest: string;
+      workerJobRef: string;
       sessionRef: string;
       generation: number;
-      roomRef: string;
-      participantRef: string;
       role: "owner" | "sarah";
       nowIso: string;
     }>,
@@ -1628,10 +1710,10 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
               SET owner_joined_at = ${input.nowIso},
                   state = 'active',
                   updated_at = ${input.nowIso}
-              WHERE session_ref = ${input.sessionRef}
+              WHERE worker_control_token_digest = ${input.workerControlTokenDigest}
+                AND worker_job_ref = ${input.workerJobRef}
+                AND session_ref = ${input.sessionRef}
                 AND generation = ${input.generation}
-                AND room_ref = ${input.roomRef}
-                AND participant_ref = ${input.participantRef}
                 AND owner_joined_at IS NULL
                 AND state IN ('prepared', 'active')
                 AND join_expires_at > ${input.nowIso}
@@ -1642,22 +1724,48 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           SET sarah_joined_at = ${input.nowIso},
               state = 'active',
               updated_at = ${input.nowIso}
-          WHERE session_ref = ${input.sessionRef}
+          WHERE worker_control_token_digest = ${input.workerControlTokenDigest}
+            AND worker_job_ref = ${input.workerJobRef}
+            AND session_ref = ${input.sessionRef}
             AND generation = ${input.generation}
-            AND room_ref = ${input.roomRef}
-            AND sarah_participant_ref = ${input.participantRef}
             AND sarah_joined_at IS NULL
             AND state IN ('prepared', 'active')
             AND join_expires_at > ${input.nowIso}
           RETURNING session_ref
         `) as ReadonlyArray<{ session_ref: string }>);
       if (first(rows) === undefined) {
+        const admitted = (await sql`
+          SELECT owner_joined_at, sarah_joined_at
+          FROM sarah_livekit_room_bindings
+          WHERE worker_control_token_digest = ${input.workerControlTokenDigest}
+            AND worker_job_ref = ${input.workerJobRef}
+            AND session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+            AND state IN ('prepared', 'active')
+            AND join_expires_at > ${input.nowIso}
+        `) as ReadonlyArray<{
+          owner_joined_at: string | null;
+          sarah_joined_at: string | null;
+        }>;
+        const binding = first(admitted);
+        const joinedAt =
+          input.role === "owner" ? binding?.owner_joined_at : binding?.sarah_joined_at;
+        if (joinedAt !== null && joinedAt !== undefined) {
+          throw new SarahVoiceDuplicateParticipantError(
+            "The LiveKit participant identity is already admitted for this generation",
+          );
+        }
         throw new SarahVoiceSessionRejectedError(
-          "The LiveKit participant is unexpected, duplicated, revoked, or expired",
+          "The LiveKit participant is unexpected, revoked, or expired",
         );
       }
     } catch (error) {
-      if (error instanceof SarahVoiceSessionRejectedError) throw error;
+      if (
+        error instanceof SarahVoiceSessionRejectedError ||
+        error instanceof SarahVoiceDuplicateParticipantError
+      ) {
+        throw error;
+      }
       throw new SarahVoiceStorageError("Sarah LiveKit participant join failed", error);
     }
   };
@@ -5001,6 +5109,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     readActiveStagingOwnerEntitlement,
     readLiveKitCleanup,
     readLiveKitMembershipLease,
+    readLiveKitOwnerParticipantAdmitted,
     readLiveKitProviderAdmission,
     readLiveKitToolProposals,
     readLiveKitToolState,

@@ -13,6 +13,7 @@ import {
   validateSarahEditorCommandTarget,
 } from "@openagentsinc/audio-contract";
 import {
+  SarahVoiceDuplicateParticipantError,
   type SarahLiveKitRoomAuthorityStore,
   type SarahRealtimeVoiceStore,
 } from "@openagentsinc/khala-sync-server";
@@ -27,6 +28,7 @@ import {
   deriveSarahLiveKitControlToken,
   parseSarahLiveKitControlRoot,
 } from "./sarah-livekit-room-broker";
+import { recordSarahLiveKitParticipantJoin } from "./sarah-realtime-voice-routes";
 
 export const SARAH_LIVEKIT_WORKER_CLAIM_PATH = SARAH_LIVEKIT_JOB_CLAIM_PATH;
 export const SARAH_LIVEKIT_WORKER_EVENT_PATH = SARAH_LIVEKIT_JOB_EVENT_PATH;
@@ -524,6 +526,30 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
                 })();
     if (result === undefined) {
       return noStoreJson({ error: "sarah_livekit_usage_rate_invalid" }, 503);
+    }
+    // The agent only sends `provider_admitted` after the dispatched participant
+    // is present in the room, so this is the server's first proof that the
+    // owner seat was taken. A replayed event ref is the same admission
+    // delivered twice, not a second participant, so it never re-records.
+    if (
+      body._tag === "provider_admitted" &&
+      !result.replayed &&
+      result.stopReason === undefined
+    ) {
+      try {
+        await recordSarahLiveKitParticipantJoin(dependencies, env, {
+          workerControlTokenDigest: sha256(token),
+          workerJobRef: body.jobRef,
+          sessionRef: body.sessionRef,
+          generation: body.generation,
+          role: "owner",
+        });
+      } catch (error) {
+        if (error instanceof SarahVoiceDuplicateParticipantError) {
+          return noStoreJson({ error: "duplicate_participant_refused" }, 409);
+        }
+        throw error;
+      }
     }
     if (body._tag === "close" && communityPresenceLeaseRef !== undefined) {
       if (opened.authorityStore === undefined) {

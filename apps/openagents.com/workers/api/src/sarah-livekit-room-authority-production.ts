@@ -1,4 +1,7 @@
-import { type SarahLiveKitRoomAuthorityStore } from "@openagentsinc/khala-sync-server";
+import {
+  SarahLiveKitRoomAuthorityStoreError,
+  type SarahLiveKitRoomAuthorityStore,
+} from "@openagentsinc/khala-sync-server";
 import { Schema as S } from "effect";
 import { createHash } from "node:crypto";
 
@@ -243,6 +246,30 @@ const decodeJoinRoomRequest = async (
 const sharedParticipantRef = (presenceLeaseRef: string, ownerUserId: string): string =>
   `member-${digest(`sarah-livekit-room-member\n${presenceLeaseRef}\n${ownerUserId}`).slice(0, 40)}`;
 
+const SARAH_ROOM_DEVICE_REF_HEADER = "x-openagents-omega-device-ref";
+
+/**
+ * The client that holds one room seat.
+ *
+ * The participant ref is deterministic per (room, member), so the device ref is
+ * the only thing that distinguishes this member's client resuming its own seat
+ * from a second client claiming the same LiveKit identity. It is digested
+ * before storage: the room authority keeps no raw device identifiers.
+ */
+const roomDeviceRefDigest = (request: Request): string | undefined => {
+  const deviceRef = request.headers.get(SARAH_ROOM_DEVICE_REF_HEADER)?.trim();
+  if (deviceRef === undefined || deviceRef === "" || deviceRef.length > 256) {
+    return undefined;
+  }
+  return digest(`sarah-livekit-room-device\n${deviceRef}`);
+};
+
+const duplicateParticipantResponse = (error: unknown): Response | undefined =>
+  error instanceof SarahLiveKitRoomAuthorityStoreError &&
+  error.reason === "duplicate_participant"
+    ? noStoreJson(409, "duplicate_participant_refused")
+    : undefined;
+
 const floorProjection = (snapshot: SarahLiveKitRoomAuthoritySnapshot, nowMs: number) =>
   snapshot.floor.state === "held" && snapshot.floor.lease.expiresAtMs <= nowMs
     ? {
@@ -269,6 +296,8 @@ export const handleSarahLiveKitCommunityRoomJoinRequest = async <Environment, Co
   if (authenticated === undefined) return noStoreJson(401, "authentication_required");
   const body = await decodeJoinRoomRequest(request);
   if (body === undefined) return noStoreJson(400, "invalid_request");
+  const deviceRefDigest = roomDeviceRefDigest(request);
+  if (deviceRefDigest === undefined) return noStoreJson(400, "device_ref_required");
 
   let opened: OpenedAuthorityStore | undefined;
   try {
@@ -360,19 +389,29 @@ export const handleSarahLiveKitCommunityRoomJoinRequest = async <Environment, Co
       publishAllowed: access.publishAllowed,
       subscribeAllowed: access.subscribeAllowed,
     });
-    await opened.store.bindParticipant({
-      presenceLeaseRef: rendezvous.presenceLeaseRef,
-      ownerUserId: authenticated.userId,
-      userRefDigest: digest(`sarah-livekit-room-user\n${authenticated.userId}`),
-      memberPubkey: access.memberPubkey,
-      participantRef,
-      membershipRevision: access.membershipRevision,
-      roomRef: snapshot.presence.roomRef,
-      roomEpoch: snapshot.presence.roomEpoch,
-      participantGrantDigest: digest(grant.participantGrant),
-      joinExpiresAt: new Date(grant.joinExpiresAtMs).toISOString(),
-      now,
-    });
+    // The seat check is the store's, under the member row lock, so two
+    // simultaneous joins cannot both win. The grant is signed locally above and
+    // is never returned on a refusal.
+    try {
+      await opened.store.bindParticipant({
+        presenceLeaseRef: rendezvous.presenceLeaseRef,
+        ownerUserId: authenticated.userId,
+        userRefDigest: digest(`sarah-livekit-room-user\n${authenticated.userId}`),
+        memberPubkey: access.memberPubkey,
+        deviceRefDigest,
+        participantRef,
+        membershipRevision: access.membershipRevision,
+        roomRef: snapshot.presence.roomRef,
+        roomEpoch: snapshot.presence.roomEpoch,
+        participantGrantDigest: digest(grant.participantGrant),
+        joinExpiresAt: new Date(grant.joinExpiresAtMs).toISOString(),
+        now,
+      });
+    } catch (error) {
+      const refused = duplicateParticipantResponse(error);
+      if (refused !== undefined) return refused;
+      throw error;
+    }
     const participants = await opened.store.listActiveCommunityRoomParticipants({
       presenceLeaseRef: rendezvous.presenceLeaseRef,
       now,
@@ -432,6 +471,10 @@ export const handleSarahLiveKitSharedRoomProductionRequest = async <Environment,
   if (authenticated === undefined) return noStoreJson(401, "authentication_required");
   const body = await decodeSharedRoomRequest(request);
   if (body === undefined) return noStoreJson(400, "invalid_request");
+  const deviceRefDigest = roomDeviceRefDigest(request);
+  if (mode === "summon" && deviceRefDigest === undefined) {
+    return noStoreJson(400, "device_ref_required");
+  }
 
   let opened: OpenedAuthorityStore | undefined;
   try {
@@ -491,11 +534,13 @@ export const handleSarahLiveKitSharedRoomProductionRequest = async <Environment,
       if (!rendezvous.claimed || rendezvous.presenceLeaseRef !== body.presenceLeaseRef) {
         return noStoreJson(409, "community_room_already_active");
       }
+      if (deviceRefDigest === undefined) return noStoreJson(400, "device_ref_required");
       await opened.store.bindParticipant({
         presenceLeaseRef: body.presenceLeaseRef,
         ownerUserId: authenticated.userId,
         userRefDigest: digest(`sarah-livekit-room-user\n${authenticated.userId}`),
         memberPubkey: access.memberPubkey,
+        deviceRefDigest,
         participantRef: binding.participantRef,
         membershipRevision: binding.membershipRevision,
         roomRef: binding.roomRef,
@@ -579,19 +624,27 @@ export const handleSarahLiveKitSharedRoomProductionRequest = async <Environment,
       publishAllowed: access.publishAllowed,
       subscribeAllowed: access.subscribeAllowed,
     });
-    await opened.store.bindParticipant({
-      presenceLeaseRef: body.presenceLeaseRef,
-      ownerUserId: authenticated.userId,
-      userRefDigest: digest(`sarah-livekit-room-user\n${authenticated.userId}`),
-      memberPubkey: access.memberPubkey,
-      participantRef,
-      membershipRevision: access.membershipRevision,
-      roomRef: snapshot.presence.roomRef,
-      roomEpoch: snapshot.presence.roomEpoch,
-      participantGrantDigest: digest(grant.participantGrant),
-      joinExpiresAt: new Date(grant.joinExpiresAtMs).toISOString(),
-      now,
-    });
+    if (deviceRefDigest === undefined) return noStoreJson(400, "device_ref_required");
+    try {
+      await opened.store.bindParticipant({
+        presenceLeaseRef: body.presenceLeaseRef,
+        ownerUserId: authenticated.userId,
+        userRefDigest: digest(`sarah-livekit-room-user\n${authenticated.userId}`),
+        memberPubkey: access.memberPubkey,
+        deviceRefDigest,
+        participantRef,
+        membershipRevision: access.membershipRevision,
+        roomRef: snapshot.presence.roomRef,
+        roomEpoch: snapshot.presence.roomEpoch,
+        participantGrantDigest: digest(grant.participantGrant),
+        joinExpiresAt: new Date(grant.joinExpiresAtMs).toISOString(),
+        now,
+      });
+    } catch (error) {
+      const refused = duplicateParticipantResponse(error);
+      if (refused !== undefined) return refused;
+      throw error;
+    }
     return Response.json(
       {
         schema: snapshot.presence.schema,

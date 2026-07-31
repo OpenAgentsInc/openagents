@@ -8,6 +8,7 @@ import { runMigrations } from "./migrate.js";
 import {
   SarahVoiceAdmissionRejectedError,
   SarahVoiceConcurrentSessionError,
+  SarahVoiceDuplicateParticipantError,
   SarahVoiceLiveKitCapacityError,
   SarahVoiceSessionRejectedError,
   makeSarahRealtimeVoiceStore,
@@ -1314,34 +1315,43 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       roomContext: binding.roomContext,
     });
 
-    await store.recordLiveKitParticipantJoin({
+    const ownerJoin = {
+      workerControlTokenDigest: binding.workerControlTokenDigest,
+      workerJobRef: workerClaim.workerJobRef,
       sessionRef: binding.sessionRef,
       generation: 1,
-      roomRef: binding.roomRef,
-      participantRef: binding.participantRef,
       role: "owner",
+    } as const;
+    await store.recordLiveKitParticipantJoin({
+      ...ownerJoin,
       nowIso: "2026-07-28T13:00:20.000Z",
     });
+    const [ownerAdmitted] = await sql`
+      SELECT state, owner_joined_at
+      FROM sarah_livekit_room_bindings
+      WHERE session_ref = ${binding.sessionRef}
+    `;
+    expect(ownerAdmitted).toMatchObject({
+      state: "active",
+      owner_joined_at: "2026-07-28T13:00:20.000Z",
+    });
+    // A second admission of the admitted identity is a duplicate participant,
+    // not a resume: two live clients would hold one room seat.
     await expect(
       store.recordLiveKitParticipantJoin({
-        sessionRef: binding.sessionRef,
-        generation: 1,
-        roomRef: binding.roomRef,
-        participantRef: binding.participantRef,
-        role: "owner",
+        ...ownerJoin,
         nowIso: "2026-07-28T13:00:21.000Z",
       }),
-    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
-    await expect(
-      store.recordLiveKitParticipantJoin({
-        sessionRef: binding.sessionRef,
-        generation: 1,
-        roomRef: binding.roomRef,
-        participantRef: "participant-unexpected",
-        role: "sarah",
-        nowIso: "2026-07-28T13:00:21.000Z",
-      }),
-    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
+    ).rejects.toBeInstanceOf(SarahVoiceDuplicateParticipantError);
+    // A worker that never claimed this generation is refused, and is refused as
+    // an unknown participant rather than as a duplicate.
+    const foreignJoin = store.recordLiveKitParticipantJoin({
+      ...ownerJoin,
+      workerJobRef: "job-livekit-unclaimed",
+      nowIso: "2026-07-28T13:00:21.000Z",
+    });
+    await expect(foreignJoin).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
+    await expect(foreignJoin).rejects.not.toBeInstanceOf(SarahVoiceDuplicateParticipantError);
     const connectedEvent = {
       workerControlTokenDigest: binding.workerControlTokenDigest,
       workerJobRef: workerClaim.workerJobRef,

@@ -23,6 +23,7 @@ import {
   type SarahRealtimeVoiceStore,
   SarahVoiceAdmissionRejectedError,
   SarahVoiceConcurrentSessionError,
+  SarahVoiceDuplicateParticipantError,
   SarahVoiceInsufficientCreditError,
   SarahVoiceSessionRejectedError,
   type SarahVoiceUsage,
@@ -204,8 +205,27 @@ export type SarahVoiceLiveKitLifecycleDependencies<Bindings> = Readonly<{
   >
 }>
 
+/**
+ * Record the first admission of a dispatched participant into its bound room.
+ *
+ * Called from the worker event route the moment the worker reports the
+ * provider admitted its session, which the agent only sends after the
+ * dispatched participant is present in the LiveKit room. The store refuses a
+ * second admission of the same identity with
+ * `SarahVoiceDuplicateParticipantError`.
+ *
+ * It takes only the store seam, not the whole LiveKit lifecycle dependency, so
+ * the worker route can call it without holding a room broker.
+ */
 export const recordSarahLiveKitParticipantJoin = async <Bindings>(
-  dependencies: SarahVoiceLiveKitLifecycleDependencies<Bindings>,
+  dependencies: Readonly<{
+    now?: (() => number) | undefined
+    openStore: (
+      env: Bindings,
+    ) => Promise<
+      Readonly<{ store: SarahRealtimeVoiceStore; close: () => Promise<void> }>
+    >
+  }>,
   env: Bindings,
   input: Omit<
     Parameters<SarahRealtimeVoiceStore['recordLiveKitParticipantJoin']>[0],
@@ -1731,6 +1751,21 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
       }
       const liveKitIdempotencyKey = `sarah-livekit:${body.identity.sessionRef}:${body.identity.generation}`
       const provisioningOwnerRef = `sarah-livekit-issuer:${crypto.randomUUID()}`
+      // Re-requesting a generation whose participant is already in the room
+      // would mint a second grant for one participant identity, so two clients
+      // would race the same room and session. Refuse before provisioning:
+      // nothing here may disturb the room the admitted participant is in.
+      // Re-requesting before the participant arrives stays the ordinary
+      // same-generation reconnect.
+      if (
+        await opened.store.readLiveKitOwnerParticipantAdmitted({
+          sessionRef: body.identity.sessionRef,
+          generation: body.identity.generation,
+          nowIso,
+        })
+      ) {
+        return noStoreJson({ error: 'duplicate_participant_refused' }, 409)
+      }
       try {
         const provisionInput = liveKitProvisionInput
         const publishAllowed = provisionInput.publishAllowed
@@ -1845,6 +1880,23 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
           nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
         })
       } catch (error) {
+        if (error instanceof SarahVoiceDuplicateParticipantError) {
+          // Lost the race to a request that bound this generation first. The
+          // room and its accounting belong to the admitted participant, so this
+          // path must release its provisioning claim and touch nothing else —
+          // cleaning up here would evict a live participant.
+          try {
+            await opened.store.completeLiveKitProvisioningIntent({
+              sessionRef: body.identity.sessionRef,
+              generation: body.identity.generation,
+              provisioningOwnerRef,
+              nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
+            })
+          } catch {
+            // The stale-claim window releases it if this could not.
+          }
+          return noStoreJson({ error: 'duplicate_participant_refused' }, 409)
+        }
         console.error('Sarah LiveKit provisioning failed', {
           sessionRef: body.identity.sessionRef,
           generation: body.identity.generation,
@@ -1981,6 +2033,9 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
     }
     if (error instanceof SarahVoiceConcurrentSessionError) {
       return noStoreJson({ error: 'sarah_voice_concurrency_limit' }, 409)
+    }
+    if (error instanceof SarahVoiceDuplicateParticipantError) {
+      return noStoreJson({ error: 'duplicate_participant_refused' }, 409)
     }
     if (error instanceof SarahVoiceSessionRejectedError) {
       return noStoreJson({ error: 'sarah_voice_not_entitled' }, 403)

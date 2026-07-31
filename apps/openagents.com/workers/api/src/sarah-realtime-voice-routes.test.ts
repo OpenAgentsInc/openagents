@@ -102,6 +102,7 @@ const makeDependencies = (
   const prepareLiveKitProvisioningIntent = vi.fn(async () => undefined)
   const claimLiveKitProvisioningIntent = vi.fn(async () => true)
   const markLiveKitProvisioningIntent = vi.fn(async () => undefined)
+  const readLiveKitOwnerParticipantAdmitted = vi.fn(async () => false)
   const reconcileLiveKitAccounting = vi.fn(
     async (
       input: Parameters<
@@ -132,6 +133,7 @@ const makeDependencies = (
     claimLiveKitProvisioningIntent,
     prepareLiveKitProvisioningIntent,
     markLiveKitProvisioningIntent,
+    readLiveKitOwnerParticipantAdmitted,
     reserve,
     issueAdmission,
     connect: vi.fn(),
@@ -176,6 +178,7 @@ const makeDependencies = (
     claimLiveKitProvisioningIntent,
     prepareLiveKitProvisioningIntent,
     markLiveKitProvisioningIntent,
+    readLiveKitOwnerParticipantAdmitted,
     reconcileLiveKitAccounting,
     issueAdmission,
     settle,
@@ -979,10 +982,10 @@ describe('managed Sarah Realtime voice session route', () => {
       dependencies,
       {},
       {
+        workerControlTokenDigest: 'b'.repeat(64),
+        workerJobRef: 'job-1',
         sessionRef: 'voice-1',
         generation: 1,
-        roomRef: 'room-1',
-        participantRef: 'participant-1',
         role: 'owner',
       },
     )
@@ -1304,6 +1307,43 @@ describe('managed Sarah Realtime voice session route', () => {
     )
     expect(broker.provision).toHaveBeenCalledTimes(2)
     expect(fixture.settle).not.toHaveBeenCalled()
+  })
+
+  test('refuses a second client once the generation participant is in the room', async () => {
+    const fixture = makeDependencies()
+    fixture.readLiveKitOwnerParticipantAdmitted.mockImplementation(async () => true)
+    const broker = {
+      workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
+      sessionTicket: vi.fn(() => 'livekit-session-ticket'),
+      provision: vi.fn(),
+      cleanup: vi.fn(async () => undefined),
+      cleanupByIdempotencyKey: vi.fn(async () => undefined),
+      cleanupRoom: vi.fn(async () => undefined),
+    }
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      { ...fixture.dependencies, liveKitRoomBroker: broker },
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'disclosure-1',
+        requestedTransport: 'livekit_room_v1',
+        roomContext: { kind: 'private' },
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({
+      error: 'duplicate_participant_refused',
+    })
+    // The room belongs to the participant already in it: a refused second
+    // client must not provision over it, clean it up, or settle its accounting.
+    expect(broker.provision).not.toHaveBeenCalled()
+    expect(broker.cleanup).not.toHaveBeenCalled()
+    expect(broker.cleanupByIdempotencyKey).not.toHaveBeenCalled()
+    expect(fixture.settle).not.toHaveBeenCalled()
+    expect(fixture.bindLiveKitRoom).not.toHaveBeenCalled()
   })
 
   test('lets only the durable provisioning owner call the broker or clean up', async () => {

@@ -4,7 +4,10 @@ import {
   SARAH_LIVEKIT_ROOM_PROCESSOR_DISCLOSURE,
   decodeSarahLiveKitRoomPresenceLease,
 } from "@openagentsinc/audio-contract";
-import type { SarahLiveKitRoomAuthorityStore } from "@openagentsinc/khala-sync-server";
+import {
+  SarahLiveKitRoomAuthorityStoreError,
+  type SarahLiveKitRoomAuthorityStore,
+} from "@openagentsinc/khala-sync-server";
 import { createHash } from "node:crypto";
 import { describe, expect, test, vi } from "vitest";
 
@@ -359,6 +362,7 @@ const sharedRequest = (expectedRevision?: number): Request =>
     headers: {
       authorization: "Bearer verified",
       "content-type": "application/json",
+      "x-openagents-omega-device-ref": "device.summon",
     },
     body: JSON.stringify({
       presenceLeaseRef: presence.leaseRef,
@@ -453,6 +457,7 @@ describe("Sarah LiveKit shared-room production wiring", () => {
           headers: {
             authorization: "Bearer verified",
             "content-type": "application/json",
+            "x-openagents-omega-device-ref": "device.second",
           },
           body: JSON.stringify({
             communityRef: presence.communityRef,
@@ -483,6 +488,135 @@ describe("Sarah LiveKit shared-room production wiring", () => {
       });
     },
   );
+
+  const joinRequest = (deviceRef: string | undefined): Request =>
+    new Request("https://api.openagents.com/api/sarah/livekit/room/join", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer verified",
+        "content-type": "application/json",
+        ...(deviceRef === undefined ? {} : { "x-openagents-omega-device-ref": deviceRef }),
+      },
+      body: JSON.stringify({
+        communityRef: presence.communityRef,
+        channelRef: presence.channelRef,
+      }),
+    });
+
+  const joinDependencies = (
+    store: SarahLiveKitRoomAuthorityStore,
+  ): SarahLiveKitSharedRoomProductionDependencies<
+    Record<string, never>,
+    Record<string, never>
+  > => ({
+    openStore: vi.fn(async () => ({ store, close: async () => undefined })),
+    requireUser: vi.fn(async () => ({ userId: "user.second" })),
+    resolveCommunityAccess: vi.fn(async () => ({
+      communityRef: presence.communityRef,
+      channelRef: presence.channelRef,
+      membershipRevision: presence.membershipRevision,
+      memberPubkey: digest("6"),
+      role: "member" as const,
+      publishAllowed: true,
+      subscribeAllowed: true,
+    })),
+    broker: () =>
+      sharedBroker(
+        vi.fn(async () => ({
+          participantGrant: "second-member-livekit-grant",
+          joinExpiresAtMs: nowMs + 50_000,
+        })),
+      ),
+    liveKitUrl: () => "wss://livekit.example.com",
+    sarahPubkey: () => digest("a"),
+    e2eeKeyRevision: () => digest("c"),
+    stopWorker: vi.fn(),
+    now: () => nowMs,
+  });
+
+  const joinStore = (
+    bindParticipant: SarahLiveKitRoomAuthorityStore["bindParticipant"],
+  ): SarahLiveKitRoomAuthorityStore => ({
+    claimCommunityRoomRendezvous: vi.fn(),
+    readActiveCommunityRoomRendezvous: vi.fn(async () => ({
+      presenceLeaseRef: presence.leaseRef,
+      membershipRevision: presence.membershipRevision,
+      roomRef: presence.roomRef,
+      roomEpoch: presence.roomEpoch,
+      sessionRef: presence.sessionRef,
+      generation: presence.generation,
+    })),
+    retireCommunityRoomRendezvous: vi.fn(),
+    listActiveCommunityRoomParticipants: vi.fn(async () => [
+      {
+        ownerUserId: "user.second",
+        userRefDigest: userDigest("user.second"),
+        memberPubkey: digest("6"),
+        participantRef: "member-second",
+        membershipRevision: presence.membershipRevision,
+        roomRef: presence.roomRef,
+        roomEpoch: presence.roomEpoch,
+      },
+    ]),
+    readCommunityRoomBinding: vi.fn(),
+    create: vi.fn(),
+    read: vi.fn(async () => initialSarahLiveKitRoomAuthoritySnapshot(presence)),
+    readParticipantBinding: vi.fn(),
+    bindParticipant,
+    removeParticipant: vi.fn(),
+    retireRoomMembers: vi.fn(async () => 0),
+    retireExpiredRoomMembers: vi.fn(async () => 0),
+    compareAndSwap: vi.fn(),
+  });
+
+  test("refuses a second client of a member already holding the room seat", async () => {
+    const store = joinStore(
+      vi.fn(async () => {
+        throw new SarahLiveKitRoomAuthorityStoreError({ reason: "duplicate_participant" });
+      }),
+    );
+    const response = await handleSarahLiveKitCommunityRoomJoinRequest(
+      joinDependencies(store),
+      joinRequest("device.other"),
+      {},
+      {},
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "duplicate_participant_refused" });
+  });
+
+  test("readmits the client that already holds the seat, digesting its device ref", async () => {
+    const bindParticipant = vi.fn(async () => undefined);
+    const response = await handleSarahLiveKitCommunityRoomJoinRequest(
+      joinDependencies(joinStore(bindParticipant)),
+      joinRequest("device.second"),
+      {},
+      {},
+    );
+    expect(response.status).toBe(200);
+    expect(bindParticipant).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerUserId: "user.second",
+        deviceRefDigest: createHash("sha256")
+          .update("sarah-livekit-room-device\ndevice.second")
+          .digest("hex"),
+      }),
+    );
+    expect(JSON.stringify(await response.json())).not.toContain("device.second");
+  });
+
+  test("refuses a join that names no client", async () => {
+    const bindParticipant = vi.fn(async () => undefined);
+    const response = await handleSarahLiveKitCommunityRoomJoinRequest(
+      joinDependencies(joinStore(bindParticipant)),
+      joinRequest(undefined),
+      {},
+      {},
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "device_ref_required" });
+    expect(bindParticipant).not.toHaveBeenCalled();
+  });
 
   test("retires the rendezvous and stops the worker when membership authority changes", async () => {
     const snapshot = initialSarahLiveKitRoomAuthoritySnapshot(presence);
@@ -534,7 +668,10 @@ describe("Sarah LiveKit shared-room production wiring", () => {
       },
       new Request("https://api.openagents.com/api/sarah/livekit/room/join", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "x-openagents-omega-device-ref": "device.stale",
+        },
         body: JSON.stringify({
           communityRef: presence.communityRef,
           channelRef: presence.channelRef,

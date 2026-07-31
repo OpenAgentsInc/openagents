@@ -145,6 +145,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit room authority store", () =>
       ownerUserId: "owner.authority",
       userRefDigest: digest("1"),
       memberPubkey: digest("2"),
+      deviceRefDigest: digest("d"),
       participantRef: "participant.owner",
       membershipRevision: snapshot.presence.membershipRevision,
       roomRef: snapshot.presence.roomRef,
@@ -153,6 +154,65 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit room authority store", () =>
       joinExpiresAt: new Date(Date.parse(now) + 60_000).toISOString(),
       now,
     });
+    const seat = {
+      presenceLeaseRef: snapshot.presence.leaseRef,
+      ownerUserId: "owner.authority",
+      userRefDigest: digest("1"),
+      memberPubkey: digest("2"),
+      participantRef: "participant.owner",
+      membershipRevision: snapshot.presence.membershipRevision,
+      roomRef: snapshot.presence.roomRef,
+      roomEpoch: snapshot.presence.roomEpoch,
+      participantGrantDigest: digest("e"),
+      joinExpiresAt: new Date(Date.parse(now) + 60_000).toISOString(),
+    } as const;
+    try {
+      // The member's own client resuming its seat refreshes the grant.
+      await store.bindParticipant({
+        ...seat,
+        deviceRefDigest: digest("d"),
+        participantGrantDigest: digest("f"),
+        now: new Date(Date.parse(now) + 1_000).toISOString(),
+      });
+      const [resumed] = await sql`
+        SELECT participant_grant_digest, device_ref_digest
+        FROM sarah_livekit_room_members
+        WHERE presence_lease_ref=${snapshot.presence.leaseRef}`;
+      expect(resumed).toMatchObject({
+        participant_grant_digest: digest("f"),
+        device_ref_digest: digest("d"),
+      });
+      // A second client of the same member would share one LiveKit identity.
+      await expect(
+        store.bindParticipant({
+          ...seat,
+          deviceRefDigest: digest("c"),
+          now: new Date(Date.parse(now) + 2_000).toISOString(),
+        }),
+      ).rejects.toMatchObject({ reason: "duplicate_participant" });
+      // Once the seat's join window closes, the same member may be re-admitted
+      // from another client: that is a reconnect, not a duplicate.
+      const afterJoinWindow = new Date(Date.parse(seat.joinExpiresAt) + 1_000).toISOString();
+      await store.bindParticipant({
+        ...seat,
+        deviceRefDigest: digest("c"),
+        joinExpiresAt: new Date(Date.parse(afterJoinWindow) + 60_000).toISOString(),
+        now: afterJoinWindow,
+      });
+      const [reconnected] = await sql`
+        SELECT device_ref_digest
+        FROM sarah_livekit_room_members
+        WHERE presence_lease_ref=${snapshot.presence.leaseRef}`;
+      expect(reconnected).toMatchObject({ device_ref_digest: digest("c") });
+    } finally {
+      await sql`
+        UPDATE sarah_livekit_room_members
+        SET device_ref_digest=${digest("d")},
+            participant_grant_digest=${digest("e")},
+            join_expires_at=${seat.joinExpiresAt},
+            updated_at=${now}
+        WHERE presence_lease_ref=${snapshot.presence.leaseRef}`;
+    }
     await expect(store.claimCommunityRoomRendezvous(snapshot, now)).resolves.toEqual({
       claimed: true,
       presenceLeaseRef: snapshot.presence.leaseRef,

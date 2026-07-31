@@ -1674,6 +1674,24 @@ come from the Freerange teardown
   typed Omega outcome must return before the Realtime function result can
   report success. LiveKit room data, model prose, proposal delivery,
   confirmation, and command delivery are not execution outcomes.
+- One LiveKit participant identity admits one live client. The participant ref
+  is minted once per private generation and is deterministic per (community
+  room, member), so a second live grant for it would put two clients into one
+  identity, racing the same room, floor, and accounting session. The server
+  records the seat when the participant actually appears — the private seat when
+  the worker reports provider admission, the community seat when the member's
+  client joins — and refuses a second live claim with
+  `duplicate_participant_refused` (HTTP 409). A refusal never provisions over,
+  cleans up, or settles the room the admitted participant is in. Re-requesting
+  before the participant arrives, after the join window closes, or replaying the
+  same worker event ref is the ordinary reconnect and stays admitted. The
+  regressions are in `packages/khala-sync-server/src/sarah-realtime-voice-store.test.ts`,
+  `sarah-livekit-room-authority-store.test.ts`,
+  `apps/openagents.com/workers/api/src/sarah-livekit-worker-routes.test.ts`,
+  `sarah-realtime-voice-routes.test.ts`, and
+  `sarah-livekit-room-authority-production.test.ts`;
+  `scripts/sarah-participant-join-authority-guard.mjs` fails the build if the
+  recording authorities lose their last production caller.
 - Rust may own native capture/playback and the bounded media envelope only. It
   owns no transcript, command, Sync, storage, retention-policy, or outcome
   schema, the Effect audio contract is canonical.

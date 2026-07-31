@@ -205,6 +205,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit room member retirement", () 
         ownerUserId: member.ownerUserId,
         userRefDigest: member.userRefDigest,
         memberPubkey: member.userRefDigest,
+        deviceRefDigest: digest("d"),
         participantRef: member.participantRef,
         membershipRevision: member.snapshot.presence.membershipRevision,
         roomRef: member.snapshot.presence.roomRef,
