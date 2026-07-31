@@ -122,7 +122,11 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit room authority store", () =>
         roomRef: snapshot.presence.roomRef,
         roomEpoch: snapshot.presence.roomEpoch,
       });
+      await expect(store.create(snapshot, now)).resolves.toEqual(snapshot);
     } finally {
+      await sql`
+        DELETE FROM sarah_livekit_room_authorities
+        WHERE presence_lease_ref=${snapshot.presence.leaseRef}`;
       await sql`
         UPDATE sarah_realtime_voice_sessions
         SET state='connected',updated_at=${now}
