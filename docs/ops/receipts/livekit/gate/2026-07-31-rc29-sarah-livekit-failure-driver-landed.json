@@ -1,0 +1,80 @@
+{
+  "schema": "openagents.sarah.livekit-gate-observation.v1",
+  "observedAt": "2026-07-31T19:20:20.449Z",
+  "environment": "production",
+  "row": "sarah-livekit-failure",
+  "outcome": "incomplete",
+  "binding": {
+    "omegaReleaseTag": "v0.2.0-rc29",
+    "omegaPackageSha256": "116ae5ae542d4d0faed14a59e98ebeac2402ab022927738ed132e6c231e10c34",
+    "openagentsSourceRevision": "fdd0db9bab10568a97d1ea2d3ddc0f936ea6df66",
+    "livekitConfigRevision": "sha256:b0bf0f0cb801943b789906c615d3277629a8f73bd6d06b52a60aaf2c86eb8a7d",
+    "sarahWorkerImageDigest": "sha256:41b06de908c45642d4635d5cc3b168e69d08f08c3621f8ea39aecdeeed190227"
+  },
+  "operatorRefDigest": "74c10f962df66b54d4c6332c3e76074ec37dd43702c78e3cd3adebe93f7a2f89",
+  "observations": [
+    {
+      "key": "duplicate_participant_refused",
+      "finding": "not_observed",
+      "reason": "no production code path exists. The participant-join recorder is called from nothing but its own test, and the live join route is an upsert that does not refuse a re-join, so no credential or window can satisfy this gate. Another lane is implementing the refusal. This is a gap between the gate vocabulary and the implementation, not an access problem.",
+      "observedAtMs": 1785525612473
+    },
+    {
+      "key": "hold_exhaustion_bounded",
+      "finding": "not_observed",
+      "reason": "no drill driver and no operator credential path exist. The worker control bearer is an HMAC over the canonical dispatch authority keyed by the worker control root, and no checked-in tool derives or issues one. Hand-deriving it is the unreviewable one-shot practice EP263-LK H1 replaced with a durable tool. The runbook procedure for this scenario is one sentence.",
+      "observedAtMs": 1785525612473
+    },
+    {
+      "key": "media_key_rekey_proof",
+      "finding": "not_observed",
+      "reason": "no mid-session rekey was reached and no rekey proof exists. The checked-in static end-to-end encryption key revision is configuration, and this row explicitly refuses it as a rekey proof.",
+      "observedAtMs": 1785525612473
+    },
+    {
+      "key": "membership_revocation_bounded",
+      "finding": "not_observed",
+      "reason": "no operator path exists for a bounded single-member revocation. The only executable lever accepts one literal alpha cohort ref and revokes every active member of it, with no bulk re-admit: re-admission is one npub at a time. The per-member NIP-29 path needs a kind-9001 remove-user event signed by the configured community admin pubkey, for which this repository holds no key, no Secret Manager entry, and no signing tool.",
+      "observedAtMs": 1785525612473
+    },
+    {
+      "key": "openai_disconnect_bounded",
+      "finding": "not_observed",
+      "reason": "Driver blocker cleared 2026-07-31: a single held-open session now exists. The remaining blocker is unchanged: the provider-disconnect flag is committed false and the route answers 404 before authentication, so the acceptance window must be armed by a deploy. Arming was authorized for this lane but not performed, because one tested hypothesis per deployment was not spent here.",
+      "observedAtMs": 1785525612473
+    },
+    {
+      "key": "privacy_scope_count",
+      "finding": "not_observed",
+      "reason": "the eight-scope scan cannot produce a same-window complete export. One of its four blockers was cleared on 2026-07-31: the pods scope now has container log read through the granted namespace RBAC. Three remain and none is a repository change: Error Reporting is not enabled, Redis has no IAM and no read-only network path, and packaged clients, object storage, and traces have no defined target set. All eight scopes must land in one window, so clearing one buys nothing.",
+      "observedAtMs": 1785525612473
+    },
+    {
+      "key": "reconnect_no_overlap",
+      "finding": "not_observed",
+      "reason": "Partly cleared 2026-07-31: a single-session driver now exists, so a post-terminal boundary is reachable in principle. Still not observed: the driver runs one generation and has no second-generation step, so nothing yet proves a fresh admission after the previous terminal boundary without reviving a settled generation.",
+      "observedAtMs": 1785525612473
+    },
+    {
+      "key": "replayed_grant_refused",
+      "finding": "not_observed",
+      "reason": "no procedure defines which grant is replayed or what refusal code is expected. The term appears in this repository only as this observation key, and the LiveKit runbook has no replayed-grant section. Recording a pass from an invented replay would be hand-authoring a row from expectations, which the runbook forbids.",
+      "observedAtMs": 1785525612473
+    },
+    {
+      "key": "sfu_loss_bounded",
+      "finding": "not_observed",
+      "reason": "Three recorded blockers cleared 2026-07-31. The single-session driver exists and satisfies concurrentBillableSessionCount=1 by construction. Pod identification works: pods/exec is granted in practice and the runbook livekit_room_total read runs verbatim, so the 30 second Managed Prometheus scrape gap does not apply. Delete authority verified by server-side dry run. Remaining blocker: five live attempts were refused, three of them by the owner-scoped sarah_voice_concurrency_limit.",
+      "observedAtMs": 1785525612473
+    },
+    {
+      "key": "worker_crash_bounded",
+      "finding": "not_observed",
+      "reason": "Driver blocker cleared 2026-07-31: apps/sarah-livekit-agent/src/drill-driver.ts holds one billable session live and faults it at a bracketed instant. Permissions re-verified by real API calls rather than auth can-i: pods/log returns output and delete pods passes a server-side dry run. The worker target is discoverable from participantValue in worker logs, scoped to the session window. Still not observed: the drill was not executed, and the runbook requires disabling new admissions first.",
+      "observedAtMs": 1785525612473
+    }
+  ],
+  "note": "This receipt preserves what one operator observed for one Sarah LiveKit release-gate row against the named binding. It is not a release-gate admission: an outcome of observed_pass means the observations were preserved, not that the row is green.",
+  "receiptRef": "receipt.sarah_livekit_gate_observation.sha256_5a02fa5fc9b72a4201096e739e8492ddda149cc69807414a3da2b79bc13f2aee",
+  "resultDigest": "sha256:5a02fa5fc9b72a4201096e739e8492ddda149cc69807414a3da2b79bc13f2aee"
+}
