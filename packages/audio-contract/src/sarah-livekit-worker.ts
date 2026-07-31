@@ -12,6 +12,10 @@ export const SARAH_LIVEKIT_JOB_EVENT_PATH = "/api/internal/sarah/livekit/job/eve
 export const SARAH_LIVEKIT_TOOL_PROPOSAL_PATH =
   "/api/internal/sarah/livekit/tool/proposal" as const;
 export const SARAH_LIVEKIT_TOOL_STATE_PATH = "/api/internal/sarah/livekit/tool/state" as const;
+export const SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE_PATH =
+  "/api/operator/sarah/livekit/provider-disconnect" as const;
+export const SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE_PROTOCOL_VERSION =
+  "openagents.sarah.livekit-provider-disconnect-acceptance.v1" as const;
 export const SARAH_LIVEKIT_CONTROL_TOPIC = "openagents.sarah.control.v1" as const;
 
 const Ref = S.Trim.check(S.isMinLength(1), S.isMaxLength(256));
@@ -159,6 +163,16 @@ export const SarahLiveKitJobEventSchema = S.Union([
   }),
   S.Struct({
     schema: S.Literal(SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION),
+    _tag: S.Literal("provider_disconnect_fault_applied"),
+    sessionRef: Ref,
+    generation: Seq,
+    jobRef: Ref,
+    eventRef: Ref,
+    requestRef: Ref,
+    providerSessionRefDigest: Digest,
+  }),
+  S.Struct({
+    schema: S.Literal(SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION),
     _tag: S.Literal("response_usage"),
     sessionRef: Ref,
     generation: Seq,
@@ -213,6 +227,22 @@ export const SarahLiveKitInterruptControlSchema = S.Struct({
   signature: S.String.check(S.isPattern(/^[A-Za-z0-9_-]{43}$/u)),
 });
 export type SarahLiveKitInterruptControl = typeof SarahLiveKitInterruptControlSchema.Type;
+
+export const SarahLiveKitProviderDisconnectAcceptanceRequestSchema = S.Struct({
+  schema: S.Literal(SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE_PROTOCOL_VERSION),
+  requestRef: Ref,
+  sessionRef: Ref,
+  generation: AppliedInterruptSequence,
+  providerSessionRefDigest: Digest,
+  acknowledgement: S.Literal("disconnect_exact_provider_socket"),
+});
+export type SarahLiveKitProviderDisconnectAcceptanceRequest =
+  typeof SarahLiveKitProviderDisconnectAcceptanceRequestSchema.Type;
+
+export const decodeSarahLiveKitProviderDisconnectAcceptanceRequest = (value: unknown) =>
+  S.decodeUnknownSync(SarahLiveKitProviderDisconnectAcceptanceRequestSchema)(value, {
+    onExcessProperty: "error",
+  });
 
 export const SarahLiveKitToolProposalRequestSchema = S.Struct({
   schema: S.Literal(SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION),

@@ -683,6 +683,33 @@ export type SarahProviderUsageRef = Readonly<{
   providerRef: string;
 }>;
 
+export const validateSarahProviderDisconnectFaultTarget = (
+  fault: Readonly<{
+    requestRef: string;
+    providerSessionRefDigest: string;
+  }>,
+  state: Readonly<{
+    providerReady: boolean;
+    providerSessionRefDigest: string | undefined;
+    appliedRequestRef: string | undefined;
+    settled: boolean;
+  }>,
+): "apply" | "replay" => {
+  if (state.appliedRequestRef !== undefined) {
+    if (state.appliedRequestRef === fault.requestRef) return "replay";
+    throw new Error("A second Sarah provider-disconnect fault targeted one generation");
+  }
+  if (
+    state.settled ||
+    !state.providerReady ||
+    state.providerSessionRefDigest === undefined ||
+    state.providerSessionRefDigest !== fault.providerSessionRefDigest
+  ) {
+    throw new Error("The Sarah provider-disconnect fault disagreed with provider authority");
+  }
+  return "apply";
+};
+
 export class SarahProviderAccounting {
   readonly #activeResponseRefs = new Set<string>();
   readonly #activeTranscriptionRefs = new Set<string>();

@@ -1321,6 +1321,10 @@ import {
   handleSarahLiveKitSharedRoomProductionRequest,
 } from './sarah-livekit-room-authority-production'
 import {
+  SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE_PATH,
+  handleSarahLiveKitProviderDisconnectAcceptance,
+} from './sarah-livekit-provider-disconnect'
+import {
   SARAH_LIVEKIT_WORKER_CLAIM_PATH,
   SARAH_LIVEKIT_WORKER_EVENT_PATH,
   SARAH_LIVEKIT_WORKER_TOOL_PROPOSAL_PATH,
@@ -3839,6 +3843,12 @@ const sarahLiveKitNewAdmissionsEnabled = (workerEnv: Env): boolean => {
     workerEnv.SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED?.trim().toLowerCase()
   return value !== undefined && ['true', '1', 'on'].includes(value)
 }
+
+const sarahLiveKitProviderDisconnectAcceptanceEnabled = (
+  workerEnv: Env,
+): boolean =>
+  workerEnv.SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE_ENABLED?.trim().toLowerCase() ===
+  'true'
 
 const sarahRealtimeVoiceDependenciesForEnv = (workerEnv: Env) => ({
   ...sarahRealtimeVoiceRouteDependencies,
@@ -14168,6 +14178,25 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       Effect.promise(() =>
         handleSarahRealtimeVoiceSettlementRequest(
           sarahRealtimeVoiceRouteDependencies,
+          request,
+          env,
+          ctx,
+        ),
+      ),
+  },
+  {
+    path: SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        handleSarahLiveKitProviderDisconnectAcceptance(
+          {
+            enabled: sarahLiveKitProviderDisconnectAcceptanceEnabled,
+            openStore: openSarahRealtimeVoiceStore,
+            requireOperator: async (operatorRequest, operatorEnv) =>
+              (await requireAdminApiToken(operatorRequest, operatorEnv))
+                ? { actorRef: 'operator.sarah_livekit_acceptance' }
+                : undefined,
+          },
           request,
           env,
           ctx,

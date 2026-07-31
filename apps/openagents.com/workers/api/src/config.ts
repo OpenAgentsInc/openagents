@@ -112,6 +112,7 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // admission and dispatch while existing worker generations retain their
   // usage and close paths.
   SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED?: string | undefined
+  SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE_ENABLED?: string | undefined
   // Public authority projection for LiveKit community rooms. The JSON binds
   // each admitted community and channel to a wss:// NIP-29 relay and an exact
   // out-of-band admin-key set. Missing or malformed configuration keeps all

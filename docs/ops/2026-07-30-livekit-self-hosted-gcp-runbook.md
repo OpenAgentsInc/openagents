@@ -1064,6 +1064,11 @@ overlapping provider generation, terminal usage and hold settlement, and fresh
 admission before another billable generation. Never claim uninterrupted
 speech unless it was actually observed and the architecture supports it.
 
+The provider-disconnect drill uses the generation-scoped acceptance control
+documented under **Sarah production matrix evidence** below. Do not implement
+item 9 by changing shared egress, a firewall, NetworkPolicy, Secret, provider
+key, LiveKit configuration, or a Deployment during the drill.
+
 ```sh
 OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
 node scripts/cloud/livekit-acceptance.mjs \
@@ -1462,13 +1467,79 @@ and delete that exact pod. Re-enable admissions only after accounting becomes
 terminal and the replacement is Ready. The harness records
 `delete_exact_worker_pod`; it never runs `kubectl`.
 
-The current worker deliberately disables proactive provider reconnect, but it
-does not expose a production fault-injection endpoint. Do not emulate provider
-disconnect by changing a shared firewall, Secret, Deployment, or NetworkPolicy.
-Until a separately reviewed, generation-scoped provider-socket drill control
-exists, `close_exact_provider_socket` cannot be collected safely and the live
-matrix remains red. The same rule applies if any drill cannot identify its
-single session and rollback boundary before mutation.
+The worker deliberately disables proactive provider reconnect and exposes one
+production-unavailable-by-default acceptance boundary for
+`close_exact_provider_socket`. The checked-in production environment sets
+`SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE_ENABLED=false`; while false the
+route returns `404` before authentication or request parsing. Arming it requires
+a separately approved, bounded acceptance revision with the value exactly
+`true`. Arming is not evidence that the drill passed.
+
+Run the provider-disconnect row as follows:
+
+1. Confirm migration
+   `0124_sarah_livekit_provider_disconnect_acceptance.sql` is applied and the
+   API and Sarah worker run the exact candidate revision.
+2. Stop new unrelated Sarah acceptance admissions. Identify one connected
+   alpha-cohort session and record privately its exact `sessionRef`,
+   `generation`, worker job projection, and the 64-lowercase-hex
+   `providerSessionRefDigest` durably admitted for that generation. Do not use a
+   raw OpenAI provider session identifier.
+3. Prove the binding is active, the worker has neither stopped nor closed,
+   provider accounting is pending, and no provider-disconnect directive already
+   exists for the session and generation. Begin an audible response so the
+   observation exercises a live provider socket.
+4. With the route armed, send one administrator-authenticated request:
+
+   ```sh
+   curl --fail-with-body --silent --show-error \
+     -X POST "$OPENAGENTS_API_ORIGIN/api/operator/sarah/livekit/provider-disconnect" \
+     -H "authorization: Bearer $OPENAGENTS_ADMIN_BEARER" \
+     -H "content-type: application/json" \
+     -H "x-openagents-livekit-owner-gate: I_ACCEPT_EXACT_SARAH_PROVIDER_DISCONNECT" \
+     --data '{
+       "schema": "openagents.sarah.livekit-provider-disconnect-acceptance.v1",
+       "requestRef": "<unique-private-request-ref>",
+       "sessionRef": "<exact-session-ref>",
+       "generation": 1,
+       "providerSessionRefDigest": "<64-lowercase-hex-digest>",
+       "acknowledgement": "disconnect_exact_provider_socket"
+     }'
+   ```
+
+   Keep bearer tokens, refs, and the complete response outside Git. The
+   successful response must name the same request, session, generation, and
+   provider digest, report `state` as `requested` or `applied`, and report
+   `sharedInfrastructureMutated: false`. An exact retry is idempotent; changing
+   any authority under the request ref, or issuing a second request for the
+   generation, must conflict.
+5. Within the normal five-second worker lease interval, observe a durable
+   `provider_disconnect_fault_applied` event bound to the same request,
+   generation, worker job, and provider digest. The worker then fences the
+   generation with terminal reason `provider_disconnect`, drains available
+   response and transcription usage, closes the exact `AgentSession`, and
+   shuts down.
+6. Prove that the generation has at most one worker job and one provider
+   session, no provider retry occurred, and no old-generation activity appears
+   after the terminal boundary. Sarah's provider connection uses
+   `maxRetry: 0` and `retryIntervalMs: 0`; a subsequent voice session must be a
+   fresh admission with a different generation and provider projection.
+7. If all terminal provider usage was durably delivered, require exact usage,
+   charge, released hold, and settlement. Otherwise require
+   `accounting_uncertain` with the full hold preserved, bind a complete provider
+   export to the same provider-session digest, and follow the accounting
+   reconciliation runbook before treating the row as terminal.
+8. Remove the acceptance-only arming revision (return the effective environment
+   to `false`), re-enable normal admissions, and project only public-safe
+   digests, counts, amounts, and timings into the terminal matrix receipt.
+
+The endpoint persists a one-generation directive; it never edits a firewall,
+route, NetworkPolicy, Secret, LiveKit server, shared provider credential, or
+Deployment. Owner acknowledgement and administrator authentication do not
+relax target validation: the store accepts only the exact active alpha-cohort
+generation and exact admitted provider digest. The same fail-closed rule
+applies if any drill cannot identify its single session and terminal boundary
+before the action.
 
 Cancellation uses the exact gateway generation. Timeout waits for its
 configured deadline. Hold exhaustion consumes only the target session's

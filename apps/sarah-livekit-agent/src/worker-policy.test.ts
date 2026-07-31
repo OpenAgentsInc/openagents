@@ -15,6 +15,7 @@ describe("Sarah LiveKit worker policy", () => {
     expect(source).toContain(`type: "semantic_vad"`);
     expect(source).toContain(`eagerness: "high"`);
     expect(source.match(/maxRetry: 0/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(source).toContain("await model.disconnectCurrentProviderSession()");
     expect(SARAH_LIVEKIT_MODEL).toBe("gpt-realtime-2.1");
     expect(SARAH_LIVEKIT_VOICE).toBe("marin");
     expect(SARAH_LIVEKIT_TRANSCRIPTION_MODEL).toBe("gpt-4o-mini-transcribe");

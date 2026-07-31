@@ -473,6 +473,14 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
                       interruptSequence: body.interruptSequence,
                     });
                   }
+                  if (body._tag === "provider_disconnect_fault_applied") {
+                    return opened.store.applyLiveKitWorkerEvent({
+                      ...common,
+                      eventKind: body._tag,
+                      requestRef: body.requestRef,
+                      providerSessionRefDigest: body.providerSessionRefDigest,
+                    });
+                  }
                   const usage = {
                     inputTokens: body.inputTokens,
                     outputTokens: body.outputTokens,
@@ -545,6 +553,9 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
         ...(result.interruptSequence === undefined
           ? {}
           : { interruptSequence: result.interruptSequence }),
+        ...(result.providerDisconnectFault === undefined
+          ? {}
+          : { providerDisconnectFault: result.providerDisconnectFault }),
         ...(result.stopReason === undefined ? {} : { stopReason: result.stopReason }),
         ...(roomFloor === undefined
           ? {}

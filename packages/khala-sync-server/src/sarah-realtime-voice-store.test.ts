@@ -1392,6 +1392,117 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       admittedAt: "2026-07-28T13:00:23.000Z",
     });
     await expect(
+      store.requestLiveKitProviderDisconnectFault({
+        requestRef: "acceptance:provider-disconnect:wrong-generation",
+        sessionRef: binding.sessionRef,
+        generation: 2,
+        providerSessionRefDigest: "a".repeat(64),
+        operatorActorRef: "operator.sarah_livekit_acceptance",
+        nowIso: "2026-07-28T13:00:23.125Z",
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
+    await expect(
+      store.requestLiveKitProviderDisconnectFault({
+        requestRef: "acceptance:provider-disconnect:wrong-provider",
+        sessionRef: binding.sessionRef,
+        generation: 1,
+        providerSessionRefDigest: "c".repeat(64),
+        operatorActorRef: "operator.sarah_livekit_acceptance",
+        nowIso: "2026-07-28T13:00:23.125Z",
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
+    const providerDisconnectRequest = {
+      requestRef: "acceptance:provider-disconnect:one",
+      sessionRef: binding.sessionRef,
+      generation: 1,
+      providerSessionRefDigest: "a".repeat(64),
+      operatorActorRef: "operator.sarah_livekit_acceptance",
+      nowIso: "2026-07-28T13:00:23.125Z",
+    } as const;
+    await expect(
+      store.requestLiveKitProviderDisconnectFault(providerDisconnectRequest),
+    ).resolves.toEqual({
+      requestRef: providerDisconnectRequest.requestRef,
+      sessionRef: binding.sessionRef,
+      generation: 1,
+      providerSessionRefDigest: "a".repeat(64),
+      state: "requested",
+      replayed: false,
+    });
+    await expect(
+      store.requestLiveKitProviderDisconnectFault(providerDisconnectRequest),
+    ).resolves.toEqual({
+      requestRef: providerDisconnectRequest.requestRef,
+      sessionRef: binding.sessionRef,
+      generation: 1,
+      providerSessionRefDigest: "a".repeat(64),
+      state: "requested",
+      replayed: true,
+    });
+    await expect(
+      store.requestLiveKitProviderDisconnectFault({
+        ...providerDisconnectRequest,
+        requestRef: "acceptance:provider-disconnect:overlap",
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
+    const providerDisconnectLease = {
+      workerControlTokenDigest: binding.workerControlTokenDigest,
+      workerJobRef: workerClaim.workerJobRef,
+      sessionRef: binding.sessionRef,
+      generation: 1,
+      eventRef: "lease:provider-disconnect",
+      eventPayloadDigest: "7".repeat(64),
+      eventKind: "lease_check",
+      nowIso: "2026-07-28T13:00:23.250Z",
+    } as const;
+    await expect(store.applyLiveKitWorkerEvent(providerDisconnectLease)).resolves.toEqual({
+      observedAt: "2026-07-28T13:00:23.250Z",
+      replayed: false,
+      interruptSequence: 0,
+      providerDisconnectFault: {
+        requestRef: providerDisconnectRequest.requestRef,
+        providerSessionRefDigest: "a".repeat(64),
+      },
+    });
+    await expect(store.applyLiveKitWorkerEvent(providerDisconnectLease)).resolves.toEqual({
+      observedAt: "2026-07-28T13:00:23.250Z",
+      replayed: true,
+      interruptSequence: 0,
+      providerDisconnectFault: {
+        requestRef: providerDisconnectRequest.requestRef,
+        providerSessionRefDigest: "a".repeat(64),
+      },
+    });
+    const providerDisconnectApplied = {
+      workerControlTokenDigest: binding.workerControlTokenDigest,
+      workerJobRef: workerClaim.workerJobRef,
+      sessionRef: binding.sessionRef,
+      generation: 1,
+      eventRef: "provider-disconnect:applied",
+      eventPayloadDigest: "8".repeat(64),
+      eventKind: "provider_disconnect_fault_applied",
+      requestRef: providerDisconnectRequest.requestRef,
+      providerSessionRefDigest: "a".repeat(64),
+      nowIso: "2026-07-28T13:00:23.375Z",
+    } as const;
+    await expect(store.applyLiveKitWorkerEvent(providerDisconnectApplied)).resolves.toEqual({
+      observedAt: "2026-07-28T13:00:23.375Z",
+      replayed: false,
+    });
+    await expect(store.applyLiveKitWorkerEvent(providerDisconnectApplied)).resolves.toEqual({
+      observedAt: "2026-07-28T13:00:23.375Z",
+      replayed: true,
+    });
+    const [providerDisconnectRow] = await sql`
+      SELECT applied_at, worker_job_ref
+      FROM sarah_livekit_provider_disconnect_faults
+      WHERE request_ref = ${providerDisconnectRequest.requestRef}
+    `;
+    expect(providerDisconnectRow).toMatchObject({
+      applied_at: "2026-07-28T13:00:23.375Z",
+      worker_job_ref: workerClaim.workerJobRef,
+    });
+    await expect(
       store.requestLiveKitWorkerInterrupt({
         sessionRef: binding.sessionRef,
         generation: 2,

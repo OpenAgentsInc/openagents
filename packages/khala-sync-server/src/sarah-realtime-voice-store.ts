@@ -1,4 +1,5 @@
 import {
+  SARAH_VOICE_ALPHA_COHORT_REF,
   decodeSarahEditorCommand,
   sarahEditorCommandRequiresConfirmation,
   type SarahEditorCommand,
@@ -203,6 +204,12 @@ export type SarahVoiceLiveKitWorkerEvent =
       }>)
   | (SarahVoiceLiveKitWorkerEventCommon &
       Readonly<{
+        eventKind: "provider_disconnect_fault_applied";
+        requestRef: string;
+        providerSessionRefDigest: string;
+      }>)
+  | (SarahVoiceLiveKitWorkerEventCommon &
+      Readonly<{
         eventKind: "response_usage";
         usage: Omit<SarahVoiceUsage, "observedAt" | "chargeMsat"> &
           Required<Pick<SarahVoiceUsage, "providerStatus">>;
@@ -223,7 +230,20 @@ export type SarahVoiceLiveKitWorkerEventResult = Readonly<{
   observedAt: string;
   replayed: boolean;
   interruptSequence?: number;
+  providerDisconnectFault?: Readonly<{
+    requestRef: string;
+    providerSessionRefDigest: string;
+  }>;
   stopReason?: SarahVoiceLiveKitWorkerStopReason;
+}>;
+
+export type SarahVoiceLiveKitProviderDisconnectFaultResult = Readonly<{
+  requestRef: string;
+  sessionRef: string;
+  generation: number;
+  providerSessionRefDigest: string;
+  state: "requested" | "applied";
+  replayed: boolean;
 }>;
 
 export type SarahVoiceLiveKitEditorCommand = Exclude<
@@ -3406,6 +3426,128 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }
   };
 
+  const requestLiveKitProviderDisconnectFault = async (
+    input: Readonly<{
+      requestRef: string;
+      sessionRef: string;
+      generation: number;
+      providerSessionRefDigest: string;
+      operatorActorRef: string;
+      nowIso: string;
+    }>,
+  ): Promise<SarahVoiceLiveKitProviderDisconnectFaultResult> => {
+    try {
+      if (
+        input.requestRef.length < 1 ||
+        input.requestRef.length > 256 ||
+        input.sessionRef.length < 1 ||
+        input.sessionRef.length > 256 ||
+        !Number.isSafeInteger(input.generation) ||
+        input.generation < 1 ||
+        !/^[0-9a-f]{64}$/u.test(input.providerSessionRefDigest) ||
+        input.operatorActorRef.length < 1 ||
+        input.operatorActorRef.length > 256
+      ) {
+        throw new SarahVoiceSessionRejectedError(
+          "The Sarah provider-disconnect acceptance request is invalid",
+        );
+      }
+      return await sql.begin(async (tx) => {
+        const priorRows = (await tx`
+          SELECT request_ref, session_ref, generation,
+            provider_session_ref_digest, operator_actor_ref, applied_at
+          FROM sarah_livekit_provider_disconnect_faults
+          WHERE request_ref = ${input.requestRef}
+            OR (session_ref = ${input.sessionRef} AND generation = ${input.generation})
+          FOR UPDATE
+        `) as ReadonlyArray<{
+          request_ref: string;
+          session_ref: string;
+          generation: number | string;
+          provider_session_ref_digest: string;
+          operator_actor_ref: string;
+          applied_at: string | null;
+        }>;
+        const prior = first(priorRows);
+        if (prior !== undefined) {
+          if (
+            priorRows.length !== 1 ||
+            prior.request_ref !== input.requestRef ||
+            prior.session_ref !== input.sessionRef ||
+            toSafeInteger(prior.generation, "generation") !== input.generation ||
+            prior.provider_session_ref_digest !== input.providerSessionRefDigest ||
+            prior.operator_actor_ref !== input.operatorActorRef
+          ) {
+            throw new SarahVoiceSessionRejectedError(
+              "The Sarah provider-disconnect acceptance request conflicts with prior authority",
+            );
+          }
+          return {
+            requestRef: prior.request_ref,
+            sessionRef: prior.session_ref,
+            generation: input.generation,
+            providerSessionRefDigest: prior.provider_session_ref_digest,
+            state: prior.applied_at === null ? "requested" : "applied",
+            replayed: true,
+          };
+        }
+
+        const targets = (await tx`
+          SELECT session.session_ref, binding.provider_session_ref_digest
+          FROM sarah_realtime_voice_sessions AS session
+          INNER JOIN sarah_livekit_room_bindings AS binding
+            ON binding.session_ref = session.session_ref
+            AND binding.generation = session.generation
+          WHERE session.session_ref = ${input.sessionRef}
+            AND session.generation = ${input.generation}
+            AND session.transport_kind = 'livekit_room_v1'
+            AND session.admission_cohort_ref = ${SARAH_VOICE_ALPHA_COHORT_REF}
+            AND session.state = 'connected'
+            AND session.session_expires_at > ${input.nowIso}
+            AND binding.state = 'active'
+            AND binding.worker_job_ref IS NOT NULL
+            AND binding.worker_closed_at IS NULL
+            AND binding.worker_stop_reason IS NULL
+            AND binding.provider_admitted_at IS NOT NULL
+            AND binding.provider_accounting_status = 'pending'
+            AND binding.provider_session_ref_digest = ${input.providerSessionRefDigest}
+          FOR UPDATE OF session, binding
+        `) as ReadonlyArray<{
+          session_ref: string;
+          provider_session_ref_digest: string;
+        }>;
+        if (targets.length !== 1) {
+          throw new SarahVoiceSessionRejectedError(
+            "The Sarah provider-disconnect target is not one active accepted generation",
+          );
+        }
+        await tx`
+          INSERT INTO sarah_livekit_provider_disconnect_faults (
+            request_ref, session_ref, generation, provider_session_ref_digest,
+            operator_actor_ref, requested_at
+          ) VALUES (
+            ${input.requestRef}, ${input.sessionRef}, ${input.generation},
+            ${input.providerSessionRefDigest}, ${input.operatorActorRef}, ${input.nowIso}
+          )
+        `;
+        return {
+          requestRef: input.requestRef,
+          sessionRef: input.sessionRef,
+          generation: input.generation,
+          providerSessionRefDigest: input.providerSessionRefDigest,
+          state: "requested",
+          replayed: false,
+        };
+      });
+    } catch (error) {
+      if (error instanceof SarahVoiceSessionRejectedError) throw error;
+      throw new SarahVoiceStorageError(
+        "Sarah provider-disconnect acceptance request failed",
+        error,
+      );
+    }
+  };
+
   type WorkerEventReceiptRow = Readonly<{
     worker_job_ref: string;
     worker_control_token_digest: string;
@@ -3438,6 +3580,47 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     return toSafeInteger(row.worker_interrupt_sequence, "worker interrupt sequence");
   };
 
+  const readWorkerProviderDisconnectFault = async (
+    tx: SyncTransactionSql,
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+      eventKind: SarahVoiceLiveKitWorkerEvent["eventKind"];
+    }>,
+  ): Promise<
+    | Readonly<{
+        requestRef: string;
+        providerSessionRefDigest: string;
+      }>
+    | undefined
+  > => {
+    if (input.eventKind !== "lease_check") return undefined;
+    const rows = (await tx`
+      SELECT request_ref, provider_session_ref_digest
+      FROM sarah_livekit_provider_disconnect_faults
+      WHERE session_ref = ${input.sessionRef}
+        AND generation = ${input.generation}
+        AND applied_at IS NULL
+      FOR SHARE
+    `) as ReadonlyArray<{
+      request_ref: string;
+      provider_session_ref_digest: string;
+    }>;
+    if (rows.length > 1) {
+      throw new SarahVoiceStorageError(
+        "The Sarah provider-disconnect generation has overlapping directives",
+        null,
+      );
+    }
+    const row = first(rows);
+    return row === undefined
+      ? undefined
+      : {
+          requestRef: row.request_ref,
+          providerSessionRefDigest: row.provider_session_ref_digest,
+        };
+  };
+
   const readWorkerEventReceipt = async (
     tx: SyncTransactionSql,
     input: SarahVoiceLiveKitWorkerEvent,
@@ -3464,10 +3647,12 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       );
     }
     const interruptSequence = await readWorkerInterruptSequence(tx, input);
+    const providerDisconnectFault = await readWorkerProviderDisconnectFault(tx, input);
     return {
       observedAt: row.observed_at,
       replayed: true,
       ...(interruptSequence === undefined ? {} : { interruptSequence }),
+      ...(providerDisconnectFault === undefined ? {} : { providerDisconnectFault }),
       ...(row.stop_reason === null ? {} : { stopReason: row.stop_reason }),
     };
   };
@@ -3492,10 +3677,12 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     const row = first(inserted);
     if (row !== undefined) {
       const interruptSequence = await readWorkerInterruptSequence(tx, input);
+      const providerDisconnectFault = await readWorkerProviderDisconnectFault(tx, input);
       return {
         observedAt: row.observed_at,
         replayed: false,
         ...(interruptSequence === undefined ? {} : { interruptSequence }),
+        ...(providerDisconnectFault === undefined ? {} : { providerDisconnectFault }),
       };
     }
     const replay = await readWorkerEventReceipt(tx, input);
@@ -3873,6 +4060,34 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             WHERE session_ref = ${input.sessionRef}
               AND generation = ${input.generation}
           `;
+          return receipt;
+        }
+
+        if (input.eventKind === "provider_disconnect_fault_applied") {
+          if (
+            binding.provider_admitted_at === null ||
+            binding.provider_session_ref_digest !== input.providerSessionRefDigest
+          ) {
+            throw new SarahVoiceSessionRejectedError(
+              "The Sarah provider-disconnect receipt does not match provider authority",
+            );
+          }
+          const applied = (await tx`
+            UPDATE sarah_livekit_provider_disconnect_faults
+            SET applied_at = ${receipt.observedAt},
+                worker_job_ref = ${input.workerJobRef}
+            WHERE request_ref = ${input.requestRef}
+              AND session_ref = ${input.sessionRef}
+              AND generation = ${input.generation}
+              AND provider_session_ref_digest = ${input.providerSessionRefDigest}
+              AND applied_at IS NULL
+            RETURNING request_ref
+          `) as ReadonlyArray<{ request_ref: string }>;
+          if (first(applied) === undefined) {
+            throw new SarahVoiceSessionRejectedError(
+              "The Sarah provider-disconnect directive is absent or already applied",
+            );
+          }
           return receipt;
         }
 
@@ -4607,6 +4822,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     revokeAlphaCohort,
     revokeLiveKitRoom,
     requestLiveKitWorkerInterrupt,
+    requestLiveKitProviderDisconnectFault,
     readLiveKitWorkerInterruptApplied,
     decideLiveKitTool,
     proposeLiveKitTool,

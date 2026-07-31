@@ -10,6 +10,7 @@ import {
   sarahProviderConfigurationDigest,
   type SarahRealtimeProviderProfile,
   transcriptionUsageEvent,
+  validateSarahProviderDisconnectFaultTarget,
   waitForAdmissionUntil,
 } from "./generation.js";
 
@@ -1104,3 +1105,64 @@ const closeEventForTest = {
   reason: "provider_disconnect",
   accountingStatus: "uncertain",
 } as const;
+
+describe("Sarah provider-disconnect acceptance fence", () => {
+  const fault = {
+    requestRef: "acceptance:provider-disconnect:one",
+    providerSessionRefDigest: "a".repeat(64),
+  };
+
+  test("admits only the ready matching provider session and treats one exact replay as inert", () => {
+    expect(
+      validateSarahProviderDisconnectFaultTarget(fault, {
+        providerReady: true,
+        providerSessionRefDigest: "a".repeat(64),
+        appliedRequestRef: undefined,
+        settled: false,
+      }),
+    ).toBe("apply");
+    expect(
+      validateSarahProviderDisconnectFaultTarget(fault, {
+        providerReady: false,
+        providerSessionRefDigest: undefined,
+        appliedRequestRef: fault.requestRef,
+        settled: true,
+      }),
+    ).toBe("replay");
+  });
+
+  test("rejects pre-admission, provider disagreement, settled state, and a second request", () => {
+    for (const state of [
+      {
+        providerReady: false,
+        providerSessionRefDigest: "a".repeat(64),
+        appliedRequestRef: undefined,
+        settled: false,
+      },
+      {
+        providerReady: true,
+        providerSessionRefDigest: "b".repeat(64),
+        appliedRequestRef: undefined,
+        settled: false,
+      },
+      {
+        providerReady: true,
+        providerSessionRefDigest: "a".repeat(64),
+        appliedRequestRef: undefined,
+        settled: true,
+      },
+    ]) {
+      expect(() => validateSarahProviderDisconnectFaultTarget(fault, state)).toThrow(
+        "disagreed with provider authority",
+      );
+    }
+    expect(() =>
+      validateSarahProviderDisconnectFaultTarget(fault, {
+        providerReady: true,
+        providerSessionRefDigest: "a".repeat(64),
+        appliedRequestRef: "acceptance:provider-disconnect:other",
+        settled: false,
+      }),
+    ).toThrow("second");
+  });
+});

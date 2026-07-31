@@ -39,6 +39,10 @@ export type SarahLiveKitEventResult = Readonly<{
   floorParticipantRef?: string | null;
   floorExpiresAtMs?: number | null;
   presenceActive?: boolean;
+  providerDisconnectFault?: Readonly<{
+    requestRef: string;
+    providerSessionRefDigest: string;
+  }>;
   stopReason?:
     | "hold_exhausted"
     | "membership_revoked"
@@ -230,6 +234,26 @@ const decodeSarahLiveKitEventResult = (body: unknown): SarahLiveKitEventResult =
   if ("interruptSequence" in body && interruptSequence === undefined) {
     throw new Error("The Sarah LiveKit interrupt sequence was invalid");
   }
+  const providerDisconnectFault =
+    "providerDisconnectFault" in body &&
+    typeof body.providerDisconnectFault === "object" &&
+    body.providerDisconnectFault !== null &&
+    "requestRef" in body.providerDisconnectFault &&
+    typeof body.providerDisconnectFault.requestRef === "string" &&
+    body.providerDisconnectFault.requestRef.trim() === body.providerDisconnectFault.requestRef &&
+    body.providerDisconnectFault.requestRef.length > 0 &&
+    body.providerDisconnectFault.requestRef.length <= 256 &&
+    "providerSessionRefDigest" in body.providerDisconnectFault &&
+    typeof body.providerDisconnectFault.providerSessionRefDigest === "string" &&
+    /^[0-9a-f]{64}$/u.test(body.providerDisconnectFault.providerSessionRefDigest)
+      ? {
+          requestRef: body.providerDisconnectFault.requestRef,
+          providerSessionRefDigest: body.providerDisconnectFault.providerSessionRefDigest,
+        }
+      : undefined;
+  if ("providerDisconnectFault" in body && providerDisconnectFault === undefined) {
+    throw new Error("The Sarah provider-disconnect directive was invalid");
+  }
   const hasFloorAuthority =
     "authorityRevision" in body ||
     "floorParticipantRef" in body ||
@@ -273,6 +297,7 @@ const decodeSarahLiveKitEventResult = (body: unknown): SarahLiveKitEventResult =
   return {
     accepted: true,
     ...(interruptSequence === undefined ? {} : { interruptSequence }),
+    ...(providerDisconnectFault === undefined ? {} : { providerDisconnectFault }),
     ...(stopReason === undefined ? {} : { stopReason }),
     ...(authorityRevision === undefined
       ? {}

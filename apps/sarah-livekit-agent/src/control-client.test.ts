@@ -287,6 +287,53 @@ describe("Sarah LiveKit control client", () => {
     ).resolves.toEqual({ accepted: true, interruptSequence: 4 });
   });
 
+  test("accepts only a bounded digest-bound provider-disconnect directive", async () => {
+    const providerDisconnectFault = {
+      requestRef: "acceptance:provider-disconnect:one",
+      providerSessionRefDigest: "a".repeat(64),
+    };
+    const event = {
+      schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+      _tag: "lease_check" as const,
+      sessionRef: dispatch.sessionRef,
+      generation: dispatch.generation,
+      jobRef: "job:one",
+      eventRef: "lease:provider-disconnect",
+    };
+    const client = makeSarahLiveKitControlClient(
+      {
+        baseUrl: "https://openagents.com",
+        workerRef: "worker:one",
+        controlRoot,
+      },
+      vi.fn(async () => Response.json({ accepted: true, providerDisconnectFault })) as typeof fetch,
+    );
+    await expect(client.event(dispatch, event)).resolves.toEqual({
+      accepted: true,
+      providerDisconnectFault,
+    });
+
+    for (const invalid of [
+      { ...providerDisconnectFault, providerSessionRefDigest: "not-a-digest" },
+      { ...providerDisconnectFault, requestRef: "" },
+      { ...providerDisconnectFault, requestRef: "x".repeat(257) },
+    ]) {
+      const invalidClient = makeSarahLiveKitControlClient(
+        {
+          baseUrl: "https://openagents.com",
+          workerRef: "worker:one",
+          controlRoot,
+        },
+        vi.fn(async () =>
+          Response.json({ accepted: true, providerDisconnectFault: invalid }),
+        ) as typeof fetch,
+      );
+      await expect(invalidClient.event(dispatch, event)).rejects.toThrow(
+        "provider-disconnect directive",
+      );
+    }
+  });
+
   test("accepts only a complete authoritative room-floor receipt", async () => {
     const client = makeSarahLiveKitControlClient(
       {

@@ -1,11 +1,13 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
   SARAH_LIVEKIT_AGENT_NAME,
+  SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE_PROTOCOL_VERSION,
   SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
   canonicalSarahLiveKitDispatchAuthority,
   decodeSarahLiveKitDispatchMetadata,
   decodeSarahLiveKitJobClaimResponse,
   decodeSarahLiveKitJobEvent,
+  decodeSarahLiveKitProviderDisconnectAcceptanceRequest,
   decodeSarahLiveKitToolProposalRequest,
   decodeSarahLiveKitToolStateResponse,
 } from "./sarah-livekit-worker.js";
@@ -25,6 +27,30 @@ const dispatch = {
 } as const;
 
 describe("Sarah LiveKit worker contract", () => {
+  test("binds provider-disconnect acceptance to one request, generation, and provider digest", () => {
+    const request = {
+      schema: SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE_PROTOCOL_VERSION,
+      requestRef: "acceptance:provider-disconnect:one",
+      sessionRef: "session:one",
+      generation: 1,
+      providerSessionRefDigest: "a".repeat(64),
+      acknowledgement: "disconnect_exact_provider_socket",
+    } as const;
+    expect(decodeSarahLiveKitProviderDisconnectAcceptanceRequest(request)).toEqual(request);
+    expect(() =>
+      decodeSarahLiveKitProviderDisconnectAcceptanceRequest({
+        ...request,
+        acknowledgement: "disconnect_every_provider_socket",
+      }),
+    ).toThrow();
+    expect(() =>
+      decodeSarahLiveKitProviderDisconnectAcceptanceRequest({
+        ...request,
+        providerSessionRefDigest: "b".repeat(63),
+      }),
+    ).toThrow();
+  });
+
   test("requires exact explicit-dispatch authority fields", () => {
     expect(decodeSarahLiveKitDispatchMetadata(dispatch)).toEqual(dispatch);
     expect(() =>
@@ -180,6 +206,33 @@ describe("Sarah LiveKit worker contract", () => {
         providerConfigurationDigest: "b".repeat(64),
       })._tag,
     ).toBe("provider_admitted");
+  });
+
+  test("binds provider disconnect application to its durable request and provider digest", () => {
+    expect(
+      decodeSarahLiveKitJobEvent({
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "provider_disconnect_fault_applied",
+        sessionRef: "session:one",
+        generation: 1,
+        jobRef: "job:one",
+        eventRef: "provider-disconnect:one",
+        requestRef: "acceptance:provider-disconnect:one",
+        providerSessionRefDigest: "a".repeat(64),
+      })._tag,
+    ).toBe("provider_disconnect_fault_applied");
+    expect(() =>
+      decodeSarahLiveKitJobEvent({
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "provider_disconnect_fault_applied",
+        sessionRef: "session:one",
+        generation: 1,
+        jobRef: "job:one",
+        eventRef: "provider-disconnect:one",
+        requestRef: "acceptance:provider-disconnect:one",
+        providerSessionRefDigest: "a".repeat(63),
+      }),
+    ).toThrow();
   });
 
   test("requires a generation-bound applied interrupt sequence", () => {

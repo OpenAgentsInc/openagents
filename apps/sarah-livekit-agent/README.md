@@ -144,6 +144,37 @@ generation. The receipt contains only aggregate counts, amounts, durations,
 and SHA-256 evidence projections. See the production runbook before collecting
 or accepting live drill evidence.
 
+The provider-disconnect row has a separate, deliberately narrow live control at
+`POST /api/operator/sarah/livekit/provider-disconnect`. It is absent from the
+effective API surface unless
+`SARAH_LIVEKIT_PROVIDER_DISCONNECT_ACCEPTANCE_ENABLED=true`; the checked-in
+production environment keeps it `false`. When armed for a bounded acceptance
+window, the request still requires an authenticated administrator, the exact
+header
+`x-openagents-livekit-owner-gate: I_ACCEPT_EXACT_SARAH_PROVIDER_DISCONNECT`,
+and the body acknowledgement `disconnect_exact_provider_socket`.
+
+The body identifies one alpha-cohort `sessionRef`, its active `generation`, and
+the SHA-256 `providerSessionRefDigest` that the worker durably admitted. The
+control plane rejects a stale generation, a mismatched digest, a session that is
+not connected, a worker that is stopping or closed, and any second directive
+for the generation. It persists the directive before returning it only to that
+generation's authenticated worker lease. The worker durably acknowledges the
+same request and provider digest, fences the generation as
+`provider_disconnect`, drains available terminal usage, closes its
+`AgentSession`, and shuts down. Its provider connection has `maxRetry: 0` and
+`retryIntervalMs: 0`; the directive cannot reconnect or revive the settled
+generation. A later conversation requires a fresh admission and generation.
+
+This control never changes a firewall, route, NetworkPolicy, Secret, LiveKit
+server, or shared Deployment. If complete terminal response and transcription
+usage reaches the control plane during the bounded drain, normal exact
+settlement applies. If the socket closes before completeness can be proven, the
+session becomes `accounting_uncertain`, keeps its full hold, and requires the
+provider-export reconciliation procedure. The acceptance response is
+`Cache-Control: no-store`; keep its session and provider identifiers in the
+private drill record rather than a public receipt.
+
 Both Docker stages pin the Linux AMD64 manifest digest for the official
 `node:24.13.1-bookworm-slim` image. To refresh it, inspect the authoritative
 Docker Hub manifest index with:

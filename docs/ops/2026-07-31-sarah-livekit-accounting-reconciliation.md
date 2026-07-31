@@ -64,6 +64,36 @@ reference or session returns a conflict.
 Never guess missing usage or release the hold manually. If provider evidence is
 incomplete, leave the session uncertain and escalate the incident.
 
+## Provider-disconnect acceptance evidence
+
+The bounded provider-disconnect drill may finish with exact accounting or with
+durable uncertainty. Its operator route does not decide settlement. It stores
+one directive for the exact active generation and admitted
+`providerSessionRefDigest`; the worker acknowledges that same authority before
+fencing the generation, draining the usage it has already observed, and closing
+its zero-retry provider session.
+
+If every terminal response and transcription event was durably accepted before
+close, the normal worker close can mark provider accounting `exact`, charge only
+that recorded usage, release the remainder of the hold, and settle. Verify that
+path normally; do not submit a redundant reconciliation.
+
+If a response, transcription, or terminal usage delivery cannot be proven
+complete, the worker reports uncertain accounting. The control plane preserves
+the full hold and records the `provider_disconnect` terminal boundary. Obtain
+the complete provider usage export, bind its raw provider session identifier
+privately to the stored SHA-256 provider-session digest and the same generation,
+then submit the complete usage set through this reconciliation procedure. The
+fault request ref and applied-event receipt prove which socket the drill
+targeted, but neither proves that the partial recorded usage set is complete.
+
+The drill must not create evidence by rotating the OpenAI key, editing a shared
+Secret, blocking egress, or mutating a firewall, NetworkPolicy, LiveKit server,
+or shared Deployment. Those actions can affect unrelated sessions and destroy
+the one-generation accounting boundary. A fresh Sarah session is allowed only
+after the drilled generation is terminal; the old provider connection has no
+retry and must never be revived.
+
 ## Worker-loss evidence
 
 The worker sends a generation-bound lease every five seconds. If no durable

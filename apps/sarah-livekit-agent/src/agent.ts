@@ -55,6 +55,7 @@ import {
   retrySarahLiveKitWorkerClaim,
   type SarahRealtimeProviderProfile,
   transcriptionUsageEvent,
+  validateSarahProviderDisconnectFaultTarget,
   waitForAdmissionUntil,
 } from "./generation.js";
 
@@ -295,6 +296,8 @@ type RawRealtimeSession = ReturnType<openai.realtime.RealtimeModel["session"]> &
 };
 
 class ObservedRealtimeModel extends openai.realtime.RealtimeModel {
+  #currentSession: RawRealtimeSession | undefined;
+
   constructor(
     safetyIdentifier: string,
     private readonly observeServerEvent: (event: unknown) => void,
@@ -330,9 +333,18 @@ class ObservedRealtimeModel extends openai.realtime.RealtimeModel {
 
   override session() {
     const session = super.session() as RawRealtimeSession;
+    this.#currentSession = session;
     session.on("openai_server_event_received", this.observeServerEvent);
     session.on("openai_client_event_queued", this.observeClientEvent);
     return session;
+  }
+
+  async disconnectCurrentProviderSession(): Promise<void> {
+    const session = this.#currentSession;
+    if (session === undefined) {
+      throw new Error("The admitted OpenAI Realtime session is unavailable");
+    }
+    await session.close();
   }
 }
 
@@ -416,6 +428,7 @@ const entry = async (ctx: JobContext): Promise<void> => {
   let floorParticipantRef: string | null =
     dispatch.roomContext.kind === "community" ? null : dispatch.participantRef;
   let interruptOperation = Promise.resolve();
+  let providerDisconnectFaultAppliedRef: string | undefined;
   let applyFloorParticipant: ((participantRef: string | null) => void) | undefined;
   let disableParticipantMedia: (() => void) | undefined;
   let disableControlData: (() => void) | undefined;
@@ -529,6 +542,41 @@ const entry = async (ctx: JobContext): Promise<void> => {
     });
     return interruptOperation;
   };
+  const applyProviderDisconnectFault = async (
+    fault: Readonly<{
+      requestRef: string;
+      providerSessionRefDigest: string;
+    }>,
+  ): Promise<void> => {
+    const disposition = validateSarahProviderDisconnectFaultTarget(fault, {
+      providerReady,
+      providerSessionRefDigest: accounting.providerSessionRefDigest,
+      appliedRequestRef: providerDisconnectFaultAppliedRef,
+      settled: fence.settled,
+    });
+    if (disposition === "replay") return;
+    const result = await controller.event(dispatch, {
+      schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+      _tag: "provider_disconnect_fault_applied",
+      ...identity,
+      eventRef: `provider-disconnect-fault:${createHash("sha256")
+        .update(fault.requestRef)
+        .digest("hex")}`,
+      requestRef: fault.requestRef,
+      providerSessionRefDigest: fault.providerSessionRefDigest,
+    });
+    providerDisconnectFaultAppliedRef = fault.requestRef;
+    if (result.stopReason !== undefined) {
+      if (fence.settle(closeReasonForStop(result.stopReason))) requestShutdown();
+      return;
+    }
+    if (!fence.settle("provider_disconnect")) return;
+    try {
+      await model.disconnectCurrentProviderSession();
+    } finally {
+      requestShutdown();
+    }
+  };
   const sendEvent = (event: SarahLiveKitJobEvent): Promise<void> | undefined => {
     if (!fence.accepts(event)) return undefined;
     const operation = eventChain
@@ -543,6 +591,9 @@ const entry = async (ctx: JobContext): Promise<void> => {
         }
         if (result.interruptSequence !== undefined) {
           await applyInterruptSequence(result.interruptSequence);
+        }
+        if (result.providerDisconnectFault !== undefined) {
+          await applyProviderDisconnectFault(result.providerDisconnectFault);
         }
         if (
           dispatch.roomContext.kind === "community" &&

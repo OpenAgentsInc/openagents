@@ -55,6 +55,10 @@ const applyLiveKitWorkerEvent = vi.fn(
     observedAt: string;
     replayed: boolean;
     interruptSequence?: number;
+    providerDisconnectFault?: Readonly<{
+      requestRef: string;
+      providerSessionRefDigest: string;
+    }>;
   }> => ({
     observedAt: "2033-05-18T03:33:20.000Z",
     replayed: false,
@@ -316,6 +320,31 @@ describe("Sarah LiveKit worker routes", () => {
     );
   });
 
+  test("persists the exact provider-disconnect application receipt", async () => {
+    const response = await handleSarahLiveKitWorkerEvent(
+      dependencies,
+      authorizedRequest("/api/internal/sarah/livekit/job/event", {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "provider_disconnect_fault_applied",
+        sessionRef: "session:one",
+        generation: 1,
+        jobRef: "job:one",
+        eventRef: "provider-disconnect:one",
+        requestRef: "acceptance:provider-disconnect:one",
+        providerSessionRefDigest: "a".repeat(64),
+      }),
+      {},
+    );
+    expect(response.status).toBe(200);
+    expect(applyLiveKitWorkerEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventKind: "provider_disconnect_fault_applied",
+        requestRef: "acceptance:provider-disconnect:one",
+        providerSessionRefDigest: "a".repeat(64),
+      }),
+    );
+  });
+
   test("settles and cleans the room exactly once on worker close", async () => {
     const response = await handleSarahLiveKitWorkerEvent(
       dependencies,
@@ -473,6 +502,38 @@ describe("Sarah LiveKit worker routes", () => {
       floorParticipantRef: "member-current-floor",
       floorExpiresAtMs: 2_000_000_010_000,
       presenceActive: true,
+    });
+  });
+
+  test("returns a provider-disconnect directive only on its worker lease", async () => {
+    applyLiveKitWorkerEvent.mockResolvedValueOnce({
+      observedAt: "2033-05-18T03:33:20.000Z",
+      replayed: false,
+      providerDisconnectFault: {
+        requestRef: "acceptance:provider-disconnect:one",
+        providerSessionRefDigest: "a".repeat(64),
+      },
+    });
+    const response = await handleSarahLiveKitWorkerEvent(
+      dependencies,
+      authorizedRequest("/api/internal/sarah/livekit/job/event", {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "lease_check",
+        sessionRef: "session:one",
+        generation: 1,
+        jobRef: "job:one",
+        eventRef: "lease:provider-disconnect",
+      }),
+      {},
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      accepted: true,
+      providerDisconnectFault: {
+        requestRef: "acceptance:provider-disconnect:one",
+        providerSessionRefDigest: "a".repeat(64),
+      },
     });
   });
 
