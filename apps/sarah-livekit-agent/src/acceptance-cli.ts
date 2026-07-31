@@ -8,6 +8,10 @@ import { dispose } from "@livekit/rtc-node";
 import { runSarahLiveKitAcceptance } from "./acceptance-harness.js";
 import { runLiveSarahLiveKitScenario } from "./acceptance-livekit.js";
 import { resolveDeployedSarahRevision } from "./acceptance-deployment.js";
+import {
+  FORCED_TRANSPORT_PROFILES,
+  type ForcedTransportProfile,
+} from "./ice-classification.js";
 
 const OWNER_GATE = "I_ACCEPT_EP263_LIVEKIT_GCP_COST";
 const repositoryRoot = fileURLToPath(new URL("../../..", import.meta.url));
@@ -19,6 +23,7 @@ type Arguments = Readonly<{
   communityPcm?: string;
   communityRef?: string;
   channelRef?: string;
+  forcedTransport?: string;
   receipt?: string;
 }>;
 
@@ -28,7 +33,13 @@ const usage = () => {
     --private-pcm <private 24kHz mono s16le prompt> \\
     --community-pcm <private 24kHz mono s16le prompt> \\
     --community-ref <community ref> --channel-ref <channel ref> \\
+    [--forced-transport ${FORCED_TRANSPORT_PROFILES.join("|")}] \\
     --receipt docs/ops/receipts/livekit/<name>.json --apply
+
+--forced-transport declares the network constraint the operator imposed on this
+capture and defaults to unrestricted. The harness cannot discover an imposed
+constraint, so it checks the declaration against the classified ICE paths and
+refuses a capture that contradicts it.
 
 Dry-run is the default and performs no network request. A live run targets only
 https://openagents.com and wss://livekit.openagents.com. It requires:
@@ -51,6 +62,7 @@ const parseArguments = (values: readonly string[]): Arguments => {
     communityPcm?: string;
     communityRef?: string;
     channelRef?: string;
+    forcedTransport?: string;
     receipt?: string;
   } = { apply: false };
   const fields = new Map<string, keyof Omit<typeof parsed, "apply">>([
@@ -58,6 +70,7 @@ const parseArguments = (values: readonly string[]): Arguments => {
     ["--community-pcm", "communityPcm"],
     ["--community-ref", "communityRef"],
     ["--channel-ref", "channelRef"],
+    ["--forced-transport", "forcedTransport"],
     ["--receipt", "receipt"],
   ] as const);
   for (let index = 0; index < values.length; index += 1) {
@@ -93,8 +106,18 @@ const requiredArgument = (value: string | undefined, name: string): string => {
   return value;
 };
 
+const forcedTransportProfile = (value: string | undefined): ForcedTransportProfile => {
+  const declared = value?.trim() ?? "unrestricted";
+  const profile = FORCED_TRANSPORT_PROFILES.find((known) => known === declared);
+  if (profile === undefined) {
+    throw new Error(`--forced-transport must be one of ${FORCED_TRANSPORT_PROFILES.join(", ")}`);
+  }
+  return profile;
+};
+
 const run = async () => {
   const args = parseArguments(process.argv.slice(2));
+  const declaredForcedTransport = forcedTransportProfile(args.forcedTransport);
   if (!args.apply) {
     process.stdout.write(
       `${JSON.stringify({
@@ -103,6 +126,8 @@ const run = async () => {
         liveProbeExecuted: false,
         receiptWritten: false,
         requiredScenarios: ["private", "community"],
+        forcedTransportProfile: declaredForcedTransport,
+        forcedTransportProfileAuthority: "operator_declared_checked_against_classified_paths",
         requiredObservations: [
           "authenticated admission and livekit_room_v1 session",
           "room-scoped participant grant",
@@ -113,9 +138,12 @@ const run = async () => {
           "bounded post-interrupt Sarah audio tail",
           "at least one exactly accounted cancelled provider response",
           "literal principal.sarah and distinct authority identity digests",
+          "generation-bearing identity digests distinct across the two rooms",
+          "salted comparable identity digests for independent re-verification",
           "nonzero exact provider usage equal to terminal settlement",
           "audible Sarah output for owner and secondary subscriber",
-          "selected publisher and subscriber ICE paths",
+          "classified selected publisher and subscriber ICE paths",
+          "classified paths consistent with the declared forced transport profile",
           "overlapping private and community sessions",
           "terminal settlement receipts",
         ],
@@ -153,6 +181,7 @@ const run = async () => {
   const receipt = await runSarahLiveKitAcceptance(
     {
       sourceRevision,
+      forcedTransportProfile: declaredForcedTransport,
       privateScenario: {
         kind: "private",
         bearer: requiredEnvironment("OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_BEARER"),
@@ -190,6 +219,7 @@ const run = async () => {
   process.stdout.write(
     `${JSON.stringify({
       outcome: receipt.outcome,
+      forcedTransportProfile: receipt.forcedTransportProfile,
       receiptRef: receipt.receiptRef,
       resultDigest: receipt.resultDigest,
       receiptPath,

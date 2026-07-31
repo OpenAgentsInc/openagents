@@ -1,7 +1,47 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
+import {
+  FORCED_TRANSPORT_PROFILES,
+  observedTransportKind,
+  satisfiesForcedTransportProfile,
+  type ForcedTransportProfile,
+  type SelectedIcePathClassification,
+} from "./ice-classification.js";
 
-export const SARAH_LIVEKIT_ACCEPTANCE_SCHEMA = "openagents.sarah.livekit-acceptance.v3" as const;
+export const SARAH_LIVEKIT_ACCEPTANCE_SCHEMA = "openagents.sarah.livekit-acceptance.v4" as const;
 export const MAX_ACCEPTANCE_INTERRUPT_AUDIO_TAIL_MS = 750;
+
+/** The authority identities a Sarah voice generation binds, in receipt order. */
+export const IDENTITY_DIGEST_KEYS = [
+  "job",
+  "providerSession",
+  "providerConfiguration",
+  "context",
+  "capability",
+  "hold",
+  "usage",
+  "settlement",
+] as const;
+export type IdentityDigestKey = (typeof IDENTITY_DIGEST_KEYS)[number];
+
+/**
+ * The identities two concurrent rooms must never share.
+ *
+ * Each of these is minted per admitted generation, so equality across the
+ * private and community rooms is a real isolation failure. The remaining four
+ * (`capability`, `hold`, `usage`, `settlement`) are accounting identities a
+ * future design could legitimately share, so they are reported but not enforced.
+ */
+export const GENERATION_BEARING_IDENTITY_DIGEST_KEYS = [
+  "job",
+  "providerSession",
+  "providerConfiguration",
+  "context",
+] as const satisfies readonly IdentityDigestKey[];
+
+/** The forced-transport cell one classified path is direct evidence for. */
+export type ObservedTransportKind = ReturnType<typeof observedTransportKind>;
+
+const MIN_RECEIPT_SALT_BYTES = 32;
 
 export type SarahLiveKitAcceptanceScenario = Readonly<{
   kind: "private" | "community";
@@ -40,6 +80,20 @@ export type SarahLiveKitScenarioObservation = Readonly<{
   selectedIcePathObserved: boolean;
   publisherIceStatsObserved: boolean;
   subscriberIceStatsObserved: boolean;
+  /**
+   * The classified selected ICE candidate pair for each peer connection.
+   *
+   * `selectedIcePathObserved` above says only that some pair was nominated and
+   * carried packets, which cannot be assigned to a connectivity matrix row. The
+   * classification names the candidate types and the transport protocol, so the
+   * one naturally selected path is attributable. It is public-safe by
+   * construction: the classifier never reads address, port, URL, related
+   * address, or username fragment out of the LiveKit stats.
+   */
+  selectedIcePath: Readonly<{
+    publisher: SelectedIcePathClassification;
+    subscriber: SelectedIcePathClassification;
+  }>;
   microphonePublished: true;
   sarahAudioObserved: true;
   sarahTranscriptionObserved: true;
@@ -47,16 +101,7 @@ export type SarahLiveKitScenarioObservation = Readonly<{
   controlChannelReady: true;
   interruptAckObserved: true;
   interruptedLifecycleObserved: true;
-  identityDigests: Readonly<{
-    job: string;
-    providerSession: string;
-    providerConfiguration: string;
-    context: string;
-    capability: string;
-    hold: string;
-    usage: string;
-    settlement: string;
-  }>;
+  identityDigests: Readonly<Record<IdentityDigestKey, string>>;
   providerUsage: Readonly<{
     inputTokens: number;
     outputTokens: number;
@@ -68,7 +113,12 @@ export type SarahLiveKitScenarioObservation = Readonly<{
     transcriptionCount: number;
     cancelledResponseCount: number;
   }>;
-  identityIsolationObserved: true;
+  /**
+   * Measured, never asserted: the eight authority identity digests observed for
+   * this scenario are pairwise distinct. The cross-room half of isolation is
+   * decided by the harness, which is the only place that holds both scenarios.
+   */
+  identityIsolationObserved: boolean;
   exactProviderUsageObserved: true;
   subscriberFanoutCount: number;
   audibleFanoutObserved: true;
@@ -91,6 +141,22 @@ export type SarahLiveKitPublicScenarioObservation = Readonly<
     durationMs: number;
     activeRoomDurationMs: number;
     cancelledResponseCount: number;
+    /** Which connectivity matrix cell each classified path is direct evidence for. */
+    observedTransportKind: Readonly<{
+      publisher: ObservedTransportKind;
+      subscriber: ObservedTransportKind;
+    }>;
+    /**
+     * Salted projection of the raw authority identity digests.
+     *
+     * Every scenario in one receipt is salted with the SAME fresh 32-byte value,
+     * so within a receipt two projected values are equal if and only if the raw
+     * digests are equal. That is exactly what an independent reviewer needs to
+     * re-verify the cross-room comparison without the harness. Across receipts,
+     * and against any dictionary of known digests, the projection leaks nothing:
+     * the salt is fresh per receipt and is published nowhere.
+     */
+    comparableIdentityDigests: Readonly<Record<IdentityDigestKey, string>>;
   }
 >;
 
@@ -107,10 +173,22 @@ export type SarahLiveKitAcceptanceReceipt = Readonly<{
   concurrentOverlapObserved: true;
   retainedMedia: false;
   retainedTranscript: false;
+  /**
+   * The transport constraint the operator imposed on this capture.
+   *
+   * Operator-declared, because no harness can discover a network constraint it
+   * did not impose. It is checked against the classified paths, so a declaration
+   * the observation contradicts fails closed rather than being recorded as a
+   * passing connectivity row.
+   */
+  forcedTransportProfile: ForcedTransportProfile;
   scenarios: readonly SarahLiveKitPublicScenarioObservation[];
+  /** Per identity, whether the private and community rooms observed different digests. */
+  crossScenarioIdentityDistinctness: Readonly<Record<IdentityDigestKey, boolean>>;
   limitations: readonly [
     "source_revision_resolved_from_deployed_image_digest",
-    "one_selected_ice_path_per_scenario",
+    "one_selected_ice_path_per_scenario_classified",
+    "forced_transport_profile_operator_declared_not_independently_verified",
     "no_media_or_transcript_content_retained",
     "harness_retention_only_separate_cluster_privacy_scan_required",
   ];
@@ -121,10 +199,27 @@ export type SarahLiveKitAcceptanceDependencies = Readonly<{
   runScenario: (
     scenario: SarahLiveKitAcceptanceScenario,
   ) => Promise<SarahLiveKitScenarioObservation>;
+  /**
+   * The single per-receipt salt for the comparable identity digest projection.
+   * Defaults to 32 fresh bytes of `node:crypto` randomness; injected only so a
+   * test can pin it. The salt is never published.
+   */
+  randomSalt?: () => Uint8Array;
 }>;
 
 const sha256 = (value: string): `sha256:${string}` =>
   `sha256:${createHash("sha256").update(value).digest("hex")}`;
+
+const comparableIdentityDigests = (
+  digests: Readonly<Record<IdentityDigestKey, string>>,
+  receiptSalt: Uint8Array,
+): Readonly<Record<IdentityDigestKey, string>> =>
+  Object.fromEntries(
+    IDENTITY_DIGEST_KEYS.map((key) => [
+      key,
+      createHmac("sha256", receiptSalt).update(digests[key]).digest("hex"),
+    ]),
+  ) as Readonly<Record<IdentityDigestKey, string>>;
 
 const assertScenarioInput = (scenario: SarahLiveKitAcceptanceScenario): void => {
   if (scenario.kind !== scenario.roomContext.kind) {
@@ -177,6 +272,8 @@ const assertObservation = (
     !observation.selectedIcePathObserved ||
     !observation.publisherIceStatsObserved ||
     !observation.subscriberIceStatsObserved ||
+    !observation.selectedIcePath.publisher.packetsObserved ||
+    !observation.selectedIcePath.subscriber.packetsObserved ||
     !observation.microphonePublished ||
     !observation.sarahAudioObserved ||
     !observation.sarahTranscriptionObserved ||
@@ -201,7 +298,7 @@ const assertObservation = (
     observation.providerUsage.audioInputTokens +
     observation.providerUsage.audioOutputTokens;
   if (
-    identityDigests.length !== 8 ||
+    identityDigests.length !== IDENTITY_DIGEST_KEYS.length ||
     new Set(identityDigests).size !== identityDigests.length ||
     identityDigests.some((digest) => !/^[0-9a-f]{64}$/u.test(digest)) ||
     providerUsageTotal <= 0 ||
@@ -217,6 +314,8 @@ const assertObservation = (
 
 const publicObservation = (
   observation: SarahLiveKitScenarioObservation,
+  receiptSalt: Uint8Array,
+  crossScenarioIdentityDistinctness: Readonly<Record<IdentityDigestKey, boolean>>,
 ): SarahLiveKitPublicScenarioObservation => ({
   kind: observation.kind,
   admissionLatencyMs: observation.admissionLatencyMs,
@@ -230,6 +329,11 @@ const publicObservation = (
   selectedIcePathObserved: observation.selectedIcePathObserved,
   publisherIceStatsObserved: observation.publisherIceStatsObserved,
   subscriberIceStatsObserved: observation.subscriberIceStatsObserved,
+  selectedIcePath: observation.selectedIcePath,
+  observedTransportKind: {
+    publisher: observedTransportKind(observation.selectedIcePath.publisher),
+    subscriber: observedTransportKind(observation.selectedIcePath.subscriber),
+  },
   microphonePublished: observation.microphonePublished,
   sarahAudioObserved: observation.sarahAudioObserved,
   sarahTranscriptionObserved: observation.sarahTranscriptionObserved,
@@ -237,7 +341,12 @@ const publicObservation = (
   controlChannelReady: observation.controlChannelReady,
   interruptAckObserved: observation.interruptAckObserved,
   interruptedLifecycleObserved: observation.interruptedLifecycleObserved,
-  identityIsolationObserved: observation.identityIsolationObserved,
+  identityIsolationObserved:
+    observation.identityIsolationObserved &&
+    GENERATION_BEARING_IDENTITY_DIGEST_KEYS.every(
+      (key) => crossScenarioIdentityDistinctness[key],
+    ),
+  comparableIdentityDigests: comparableIdentityDigests(observation.identityDigests, receiptSalt),
   exactProviderUsageObserved: observation.exactProviderUsageObserved,
   subscriberFanoutCount: observation.subscriberFanoutCount,
   audibleFanoutObserved: observation.audibleFanoutObserved,
@@ -268,6 +377,16 @@ export const assertPublicSafeSarahLiveKitReceipt = (
     "deviceref",
     "communityref",
     "channelref",
+    // Network-locating ICE material. The classifier never reads these, and this
+    // set stops a later edit from widening the projection back onto them.
+    "address",
+    "relatedaddress",
+    "port",
+    "url",
+    "usernamefragment",
+    // The comparable-digest salt is what keeps the projection non-invertible.
+    "salt",
+    "receiptsalt",
   ]);
   const hasForbiddenKey = (value: unknown): boolean => {
     if (Array.isArray(value)) return value.some(hasForbiddenKey);
@@ -289,6 +408,7 @@ export const assertPublicSafeSarahLiveKitReceipt = (
 export const runSarahLiveKitAcceptance = async (
   input: Readonly<{
     sourceRevision: string;
+    forcedTransportProfile: ForcedTransportProfile;
     privateScenario: SarahLiveKitAcceptanceScenario;
     communityScenario: SarahLiveKitAcceptanceScenario;
   }>,
@@ -296,6 +416,9 @@ export const runSarahLiveKitAcceptance = async (
 ): Promise<SarahLiveKitAcceptanceReceipt> => {
   if (!/^[0-9a-f]{40}$/u.test(input.sourceRevision)) {
     throw new Error("source revision must be a full lowercase Git commit");
+  }
+  if (!FORCED_TRANSPORT_PROFILES.includes(input.forcedTransportProfile)) {
+    throw new Error("declared forced transport profile is not a known profile");
   }
   if (input.privateScenario.kind !== "private" || input.communityScenario.kind !== "community") {
     throw new Error("acceptance requires one private and one community scenario");
@@ -325,6 +448,38 @@ export const runSarahLiveKitAcceptance = async (
   assertObservation("private", privateObservation);
   assertObservation("community", communityObservation);
 
+  // A declared block that the observation contradicts means the block did not
+  // take effect, so the capture is not evidence for the row it claims to fill.
+  for (const observation of [privateObservation, communityObservation]) {
+    for (const peer of ["publisher", "subscriber"] as const) {
+      if (
+        !satisfiesForcedTransportProfile(
+          input.forcedTransportProfile,
+          observation.selectedIcePath[peer],
+        )
+      ) {
+        throw new Error(
+          `${observation.kind} ${peer} selected ICE path contradicts the declared ` +
+            `${input.forcedTransportProfile} transport profile`,
+        );
+      }
+    }
+  }
+
+  const crossScenarioIdentityDistinctness = Object.fromEntries(
+    IDENTITY_DIGEST_KEYS.map((key) => [
+      key,
+      privateObservation.identityDigests[key] !== communityObservation.identityDigests[key],
+    ]),
+  ) as Readonly<Record<IdentityDigestKey, boolean>>;
+  for (const key of GENERATION_BEARING_IDENTITY_DIGEST_KEYS) {
+    if (!crossScenarioIdentityDistinctness[key]) {
+      throw new Error(
+        `private and community LiveKit scenarios shared the ${key} authority identity`,
+      );
+    }
+  }
+
   const concurrentOverlapObserved =
     Math.max(privateObservation.activeRoomStartedAtMs, communityObservation.activeRoomStartedAtMs) <
     Math.min(privateObservation.activeRoomEndedAtMs, communityObservation.activeRoomEndedAtMs);
@@ -332,10 +487,14 @@ export const runSarahLiveKitAcceptance = async (
     throw new Error("private and community acceptance scenarios did not overlap");
   }
 
+  const receiptSalt = (dependencies.randomSalt ?? (() => randomBytes(MIN_RECEIPT_SALT_BYTES)))();
+  if (receiptSalt.byteLength < MIN_RECEIPT_SALT_BYTES) {
+    throw new Error("acceptance receipt salt must be at least 32 bytes");
+  }
   const observedAt = new Date(dependencies.now()).toISOString();
   const scenarios = [
-    publicObservation(privateObservation),
-    publicObservation(communityObservation),
+    publicObservation(privateObservation, receiptSalt, crossScenarioIdentityDistinctness),
+    publicObservation(communityObservation, receiptSalt, crossScenarioIdentityDistinctness),
   ] as const;
   const result = {
     schema: SARAH_LIVEKIT_ACCEPTANCE_SCHEMA,
@@ -348,10 +507,13 @@ export const runSarahLiveKitAcceptance = async (
     concurrentOverlapObserved: true as const,
     retainedMedia: false as const,
     retainedTranscript: false as const,
+    forcedTransportProfile: input.forcedTransportProfile,
     scenarios,
+    crossScenarioIdentityDistinctness,
     limitations: [
       "source_revision_resolved_from_deployed_image_digest",
-      "one_selected_ice_path_per_scenario",
+      "one_selected_ice_path_per_scenario_classified",
+      "forced_transport_profile_operator_declared_not_independently_verified",
       "no_media_or_transcript_content_retained",
       "harness_retention_only_separate_cluster_privacy_scan_required",
     ] as const,

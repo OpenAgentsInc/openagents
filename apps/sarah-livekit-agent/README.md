@@ -147,6 +147,29 @@ generation. The receipt contains only aggregate counts, amounts, durations,
 and SHA-256 evidence projections. See the production runbook before collecting
 or accepting live drill evidence.
 
+Several release-gate rows require observations no automated run can produce: a
+three-desktop community journey with a server-issued floor passed between
+members, forced UDP/TCP/TURN transport, live capability refusals, and executed
+failure drills. Those results are recorded with:
+
+```sh
+pnpm --dir apps/sarah-livekit-agent gate-observation -- --row <row>
+```
+
+Named alone, a row prints every observation it requires. `--template` writes
+that list as a fillable skeleton, and `--observations ... --apply` validates a
+filled skeleton and writes one content-addressed receipt under
+`docs/ops/receipts/livekit/gate/`. The recorder fails closed: an observation the
+row requires may not be absent, and one that was not made must carry
+`not_observed` and a reason rather than being omitted. A finding of
+`contradicted` is first-class, so a refusal that did not refuse or a bound that
+was exceeded is preserved instead of discarded. Identities appear only as
+digests, ICE classification excludes addresses, ports, and URLs, and receipts
+are written with `wx` so evidence cannot be silently replaced. An outcome of
+`observed_pass` means the observations were preserved, never that a row is
+green; row admission stays with the Omega evidence manifest. The operator
+runbook for each journey is the Omega release-gate operator notes.
+
 The provider-disconnect row has a separate, deliberately narrow live control at
 `POST /api/operator/sarah/livekit/provider-disconnect`. It is absent from the
 effective API surface unless

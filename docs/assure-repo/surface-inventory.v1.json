@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:628f1a71d5e49bd290311e59eb380426b55391edf55424457ff703476a50e4f8",
+  "sourceDigest": "sha256:71dddc0a850606a66f10c9b091d9d5d4475af6ab15c59d6112f98b1a9180006f",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -526,7 +526,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/sarah-livekit-agent (8 tracked test files)"
+          "ref": "apps/sarah-livekit-agent (10 tracked test files)"
         }
       ],
       "obligation": {

@@ -3,11 +3,13 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import type { ClientOptions, RawData } from "ws";
 import {
   acquireSarahLiveKitCommunityFloor,
+  classifySarahLiveKitScenarioIcePaths,
   measureSarahInterruptAudioTail,
   openSarahLiveKitAcceptanceControlChannel,
   type SarahLiveKitAcceptanceControlSocket,
   type SarahLiveKitAcceptanceControlSocketFactory,
 } from "./acceptance-livekit.js";
+import type { RtcStatsEntry } from "./ice-classification.js";
 
 describe("Sarah LiveKit community floor acceptance", () => {
   test("joins the admitted room and acquires the local participant floor", async () => {
@@ -57,6 +59,113 @@ describe("Sarah LiveKit community floor acceptance", () => {
       requestedLeaseMs: 30_000,
     });
     expect(requests[1]?.body.nonce).toMatch(/^[A-Za-z0-9_-]{32,256}$/u);
+  });
+});
+
+const icePeerStats = (
+  peer: string,
+  candidate: Readonly<{
+    localType: number;
+    remoteType: number;
+    protocol: string;
+    relayProtocol?: number;
+  }>,
+  overrides: Readonly<{ nominated?: boolean }> = {},
+): readonly RtcStatsEntry[] => [
+  {
+    stats: {
+      case: "transport",
+      value: {
+        rtc: { id: `${peer}-transport` },
+        transport: { selectedCandidatePairId: `${peer}-pair` },
+      },
+    },
+  },
+  {
+    stats: {
+      case: "candidatePair",
+      value: {
+        rtc: { id: `${peer}-pair` },
+        candidatePair: {
+          localCandidateId: `${peer}-local`,
+          remoteCandidateId: `${peer}-remote`,
+          nominated: overrides.nominated ?? true,
+          packetsSent: 128n,
+          packetsReceived: 96n,
+        },
+      },
+    },
+  },
+  {
+    stats: {
+      case: "localCandidate",
+      value: {
+        rtc: { id: `${peer}-local` },
+        candidate: {
+          candidateType: candidate.localType,
+          protocol: candidate.protocol,
+          ...(candidate.relayProtocol === undefined
+            ? {}
+            : { relayProtocol: candidate.relayProtocol }),
+        },
+      },
+    },
+  },
+  {
+    stats: {
+      case: "remoteCandidate",
+      value: {
+        rtc: { id: `${peer}-remote` },
+        candidate: { candidateType: candidate.remoteType, protocol: candidate.protocol },
+      },
+    },
+  },
+];
+
+const directUdp = { localType: 1, remoteType: 0, protocol: "udp" } as const;
+const turnTls = { localType: 3, remoteType: 0, protocol: "tcp", relayProtocol: 2 } as const;
+
+describe("Sarah LiveKit scenario ICE classification", () => {
+  test("classifies both peer connections from the live stats shape", () => {
+    expect(
+      classifySarahLiveKitScenarioIcePaths("private", {
+        publisherStats: icePeerStats("publisher", directUdp),
+        subscriberStats: icePeerStats("subscriber", turnTls),
+      }),
+    ).toEqual({
+      publisher: {
+        localCandidateType: "srflx",
+        remoteCandidateType: "host",
+        protocol: "udp",
+        relayed: false,
+        packetsObserved: true,
+      },
+      subscriber: {
+        localCandidateType: "relay",
+        remoteCandidateType: "host",
+        protocol: "tls",
+        relayed: true,
+        packetsObserved: true,
+      },
+    });
+  });
+
+  test("fails closed and names the typed reason instead of recording an unclassified pass", () => {
+    expect(() =>
+      classifySarahLiveKitScenarioIcePaths("community", {
+        publisherStats: icePeerStats("publisher", directUdp),
+        subscriberStats: icePeerStats("subscriber", directUdp, { nominated: false }),
+      }),
+    ).toThrow(
+      "community subscriber selected ICE path was not classifiable (selected_pair_not_nominated)",
+    );
+
+    expect(() =>
+      classifySarahLiveKitScenarioIcePaths("private", {
+        publisherStats: [],
+        subscriberStats: icePeerStats("subscriber", directUdp),
+      }),
+    ).toThrow("private publisher selected ICE path was not classifiable (no_selected_candidate_pair)");
   });
 });
 

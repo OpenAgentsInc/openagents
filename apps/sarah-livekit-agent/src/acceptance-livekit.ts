@@ -32,6 +32,7 @@ import {
   type SarahLiveKitAcceptanceScenario,
   type SarahLiveKitScenarioObservation,
 } from "./acceptance-harness.js";
+import { classifySelectedIcePath, type RtcStatsEntry } from "./ice-classification.js";
 import { mintProductionSubscriberGrant } from "./acceptance-deployment.js";
 
 const API_ORIGIN = "https://openagents.com";
@@ -605,51 +606,34 @@ const observeSarahOutputs = (room: Room, sarahParticipantRef: string, clock: Clo
   };
 };
 
-type RtcStat = Readonly<{
-  stats?: Readonly<{
-    case?: string;
-    value?: Readonly<{
-      rtc?: Readonly<{ id?: string }>;
-      transport?: Readonly<{ selectedCandidatePairId?: string }>;
-      candidatePair?: Readonly<{
-        nominated?: boolean;
-        packetsSent?: bigint;
-        packetsReceived?: bigint;
-      }>;
-    }>;
-  }>;
+export type SarahLiveKitScenarioRtcStats = Readonly<{
+  publisherStats: readonly RtcStatsEntry[];
+  subscriberStats: readonly RtcStatsEntry[];
 }>;
 
-const selectedIcePathObserved = (entries: readonly RtcStat[]): boolean => {
-  const selectedPairIds = new Set(
-    entries.flatMap((entry) =>
-      entry.stats?.case === "transport" &&
-      entry.stats.value?.transport?.selectedCandidatePairId !== undefined
-        ? [entry.stats.value.transport.selectedCandidatePairId]
-        : [],
-    ),
-  );
-  return entries.some((entry) => {
-    if (entry.stats?.case !== "candidatePair") return false;
-    const pair = entry.stats.value?.candidatePair;
-    return (
-      entry.stats.value?.rtc?.id !== undefined &&
-      selectedPairIds.has(entry.stats.value.rtc.id) &&
-      pair?.nominated === true &&
-      ((pair.packetsSent ?? 0n) > 0n || (pair.packetsReceived ?? 0n) > 0n)
-    );
-  });
-};
-
-const iceObservation = (
-  stats: Readonly<{ publisherStats: readonly RtcStat[]; subscriberStats: readonly RtcStat[] }>,
-) => {
-  const publisherIceStatsObserved = selectedIcePathObserved(stats.publisherStats);
-  const subscriberIceStatsObserved = selectedIcePathObserved(stats.subscriberStats);
+/**
+ * Classify the selected ICE path on both peer connections, or fail closed.
+ *
+ * The connectivity release-gate row needs the path named, not merely counted, so
+ * an unclassifiable pair is a scenario failure and the typed reason travels in
+ * the error rather than degrading to an unattributed pass.
+ */
+export const classifySarahLiveKitScenarioIcePaths = (
+  kind: SarahLiveKitAcceptanceScenario["kind"],
+  stats: SarahLiveKitScenarioRtcStats,
+): SarahLiveKitScenarioObservation["selectedIcePath"] => {
+  const classify = (peer: "publisher" | "subscriber", entries: readonly RtcStatsEntry[]) => {
+    const result = classifySelectedIcePath(entries);
+    if (!result.classified) {
+      throw new Error(
+        `${kind} ${peer} selected ICE path was not classifiable (${result.reason})`,
+      );
+    }
+    return result.path;
+  };
   return {
-    publisherIceStatsObserved,
-    subscriberIceStatsObserved,
-    selectedIcePathObserved: publisherIceStatsObserved && subscriberIceStatsObserved,
+    publisher: classify("publisher", stats.publisherStats),
+    subscriber: classify("subscriber", stats.subscriberStats),
   };
 };
 
@@ -847,14 +831,8 @@ export const runLiveSarahLiveKitScenario = async (
       SCENARIO_TIMEOUT_MS,
       `${scenario.kind} Sarah transcription`,
     );
-    const rtcStats = (await room.getRtcStats()) as unknown as Readonly<{
-      publisherStats: readonly RtcStat[];
-      subscriberStats: readonly RtcStat[];
-    }>;
-    const ice = iceObservation(rtcStats);
-    if (!ice.selectedIcePathObserved) {
-      throw new Error(`${scenario.kind} selected ICE path was not observable`);
-    }
+    const rtcStats = (await room.getRtcStats()) as unknown as SarahLiveKitScenarioRtcStats;
+    const selectedIcePath = classifySarahLiveKitScenarioIcePaths(scenario.kind, rtcStats);
 
     await timeout(control.close(), SCENARIO_TIMEOUT_MS, `${scenario.kind} Sarah control close`);
     await room.localParticipant?.unpublishTrack(microphone.publicationSid, true);
@@ -902,7 +880,11 @@ export const runLiveSarahLiveKitScenario = async (
       firstSarahTranscriptionLatencyMs: firstSarahTranscriptionAtMs - startedAtMs,
       interruptAckLatencyMs: interruption.acknowledgedAtMs - interruptStartedAtMs,
       postInterruptAudioTailMs,
-      ...ice,
+      // Classification already failed closed above, so both paths are observed.
+      selectedIcePathObserved: true,
+      publisherIceStatsObserved: true,
+      subscriberIceStatsObserved: true,
+      selectedIcePath,
       microphonePublished: true,
       sarahAudioObserved: true,
       sarahTranscriptionObserved: true,
@@ -922,7 +904,12 @@ export const runLiveSarahLiveKitScenario = async (
         transcriptionCount: evidence.usage.transcriptionCount,
         cancelledResponseCount: evidence.usage.cancelledResponseCount,
       },
-      identityIsolationObserved: true,
+      // Measured from the terminal evidence, not asserted: this scenario bound
+      // eight pairwise distinct authority identities. The cross-room half of the
+      // claim belongs to the harness, which holds both scenarios.
+      identityIsolationObserved:
+        new Set(Object.values(evidence.identityDigests)).size ===
+        Object.keys(evidence.identityDigests).length,
       exactProviderUsageObserved: true,
       subscriberFanoutCount: 2,
       audibleFanoutObserved: true,
