@@ -133,44 +133,55 @@ OPENAUTH_CLIENT_ID: "openagents-web"
 OPENAUTH_ISSUER_URL: "https://auth.openagents.com"
 # Omega hosted-identity self-provisioning (POST /api/omega/auth/session).
 #
-# OFF. Flipping ENABLED to "1" lets ANY valid NIP-98 proof mint a session and a
-# `nostr:<pubkey>` account with no operator step — which is what a brand-new
-# Omega install needs, and also what lets a stranger who downloads the DMG draw
-# on owner-funded hosted inference (including gpt-5.6-luna, an OpenAI
-# passthrough billed to us). It is deliberately an owner decision: commit
-# 3d796a4fc5 (2026-07-29) REPLACED self-provisioning with explicit operator
-# admission (scripts/admit-sarah-voice-npub.ts), so arming this reverses that
-# policy rather than restoring an accident.
+# ARMED (owner decision, 2026-07-31). Any valid NIP-98 proof now mints a session
+# and a `nostr:<pubkey>` account with no operator step. That is what a brand-new
+# Omega install needs — without it every fresh install signed a perfectly valid
+# proof and got a permanent 401 on its first turn — and it is also what lets a
+# stranger who downloads the DMG draw on owner-funded hosted inference
+# (including gpt-5.6-luna, an OpenAI passthrough billed to us). Commit
+# 3d796a4fc5 (2026-07-29) had REPLACED self-provisioning with explicit operator
+# admission (scripts/admit-sarah-voice-npub.ts); this reverses that policy
+# deliberately, on the owner's instruction, because operator admission does not
+# scale to "download the app and it works".
 #
-# The bounds below are declared even while the flag is off, so arming it is a
-# one-line change and never an unbounded one. The per-identity ceiling is
-# enforced on BOTH the google-gemini provider-accounts proxy and POST
-# /api/v1/chat/completions (the route that serves Omega turns), reading the same
-# token_usage_events ledger and UTC-day window, so alternating routes cannot
-# double an allowance. The per-IP limit is friction only: the x-forwarded-for
-# first hop is client-prependable, so GLOBAL_DAILY_LIMIT is the real bound.
+# The per-identity ceiling is enforced on BOTH the google-gemini
+# provider-accounts proxy and POST /api/v1/chat/completions (the route that
+# serves Omega turns), reading the same token_usage_events ledger and UTC-day
+# window, so alternating routes cannot double an allowance. The per-IP limit is
+# friction only: the x-forwarded-for first hop is client-prependable, so
+# GLOBAL_DAILY_LIMIT is the real bound.
 #
-# DAILY_TOKEN_CEILING is pinned to the module default (1000000) ON PURPOSE while
-# the flag is off. The ceiling keys on the `nostr:` id prefix, and the
-# operator-admitted Sarah voice cohort uses that SAME id form
-# (scripts/admit-sarah-voice-npub.ts). With self-provisioning off those admitted
-# identities are the only `nostr:` identities in production, so a lower number
-# here would not bound a stranger -- it would silently cut the live alpha
-# cohort's existing allowance. Keeping the default adds the missing
-# chat-completions bound without reducing anyone's current allowance.
+# ARITHMETIC AT THESE VALUES (this replaces the pre-arming note, which computed
+# the same product from the old 1000000 ceiling):
+#   worst case/day  = GLOBAL_DAILY_LIMIT x DAILY_TOKEN_CEILING
+#                   = 50 x 200000 = 10,000,000 served tokens/day
+#                     across ALL self-provisioned identities combined
+#   worst case/hour = IP_HOURLY_LIMIT x DAILY_TOKEN_CEILING
+#                   = 3 x 200000 = 600,000 tokens from one source IP
+# 200000 is the number the owner approved when arming; it is 5x lower than the
+# module default and caps the aggregate stranger exposure at 10M/day rather
+# than the 50M the previous ceiling would have allowed.
 #
-# ARMING NOTE: flipping ENABLED to "1" at these values allows
-#   GLOBAL_DAILY_LIMIT x DAILY_TOKEN_CEILING = 50 x 1000000 = 50,000,000
-# served tokens/day across all self-provisioned identities combined, some of it
-# on gpt-5.6-luna. Lower DAILY_TOKEN_CEILING in the SAME change that arms the
-# flag (200000 gives a 10,000,000/day worst case), and decide then whether the
-# admitted cohort should be split onto its own limit.
+# COHORT NOTE — READ BEFORE RAISING OR LOWERING THIS. The ceiling keys on the
+# `nostr:` id prefix, and the operator-admitted Sarah voice alpha cohort
+# (sarah_voice_alpha_memberships, admitted by scripts/admit-sarah-voice-npub.ts)
+# uses that SAME id form, so it is bounded by this number too. That is not
+# hypothetical: on 2026-07-31 the cohort's top member had drawn 10,410,253
+# tokens that UTC day and 165,657,539 all-time (140,649,583 of it on 07-29
+# alone), because the ledger read behind BOTH ceilings was a silent no-op until
+# 460e7eb80f. Arming at 200000 therefore does not only bound strangers — it cuts
+# that live alpha member's observed daily draw by ~52x, and would have bounded
+# it at 1000000 in any case. Splitting the admitted cohort onto its own limit is
+# still an open decision; until it is made, an admitted member who needs more
+# than 200000/day has to be added to INFERENCE_INTERNAL_ACCOUNT_REFS as
+# `openauth:nostr:<pubkey>` (which exempts them from BOTH ceilings entirely —
+# an unbounded grant, so it is an owner call, not an operator convenience).
 #
 # Ref: docs/audits/2026-07-28-omega-nostr-self-provisioning-abuse-bounds.md
-OMEGA_NOSTR_SELF_PROVISION_ENABLED: "0"
+OMEGA_NOSTR_SELF_PROVISION_ENABLED: "1"
 OMEGA_NOSTR_SELF_PROVISION_GLOBAL_DAILY_LIMIT: "50"
 OMEGA_NOSTR_SELF_PROVISION_IP_HOURLY_LIMIT: "3"
-OMEGA_NOSTR_SELF_PROVISION_DAILY_TOKEN_CEILING: "1000000"
+OMEGA_NOSTR_SELF_PROVISION_DAILY_TOKEN_CEILING: "200000"
 PUBLIC_NOSTR_CHAT_RELAY_SELF_PUBKEY: "e841147f262799821bbaa2930fcca982a575458f0e043e064a26ed8aba2046ed"
 SARAH_NOSTR_OWNER_PUBKEY: "bcf86577b45042c960c99fe4ac1380a3ef0565ccbdd5c81e3f20f0919fe4fd14"
 SARAH_NOSTR_EXPECTED_PUBKEY: "f7824ac493cb820171a72dd4085880d1bdcc4ba1176ba84e93afddc176ec971d"
