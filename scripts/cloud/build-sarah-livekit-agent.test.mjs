@@ -7,12 +7,17 @@ import { fileURLToPath } from "node:url";
 const repositoryRoot = resolve(fileURLToPath(new URL(".", import.meta.url)), "../..");
 
 test("Sarah worker Cloud Build stays on the existing digest-pinned production lane", async () => {
-  const [configuration, dockerfile, cloudBuildIgnore, buildScript] = await Promise.all([
-    readFile(resolve(repositoryRoot, "docker/cloud/cloudbuild-sarah-livekit-agent.yaml"), "utf8"),
-    readFile(resolve(repositoryRoot, "apps/sarah-livekit-agent/Dockerfile"), "utf8"),
-    readFile(resolve(repositoryRoot, ".gcloudignore.sarah-livekit-agent"), "utf8"),
-    readFile(resolve(repositoryRoot, "scripts/cloud/build-sarah-livekit-agent.sh"), "utf8"),
-  ]);
+  const [configuration, dockerfile, dockerIgnore, cloudBuildIgnore, buildScript] =
+    await Promise.all([
+      readFile(resolve(repositoryRoot, "docker/cloud/cloudbuild-sarah-livekit-agent.yaml"), "utf8"),
+      readFile(resolve(repositoryRoot, "apps/sarah-livekit-agent/Dockerfile"), "utf8"),
+      readFile(
+        resolve(repositoryRoot, "apps/sarah-livekit-agent/Dockerfile.dockerignore"),
+        "utf8",
+      ),
+      readFile(resolve(repositoryRoot, ".gcloudignore.sarah-livekit-agent"), "utf8"),
+      readFile(resolve(repositoryRoot, "scripts/cloud/build-sarah-livekit-agent.sh"), "utf8"),
+    ]);
 
   assert.match(
     configuration,
@@ -41,6 +46,17 @@ test("Sarah worker Cloud Build stays on the existing digest-pinned production la
   assert.match(cloudBuildIgnore, /^!packages\/audio-contract\/\*\*$/mu);
   assert.match(cloudBuildIgnore, /^!scripts\/node-test-suites\.mjs$/mu);
   assert.doesNotMatch(cloudBuildIgnore, /oa-updates|openagents-desktop|openagents-mobile/u);
+  for (const workspaceManifest of [
+    "packages/nip90/package.json",
+    "packages/runtime-platform/package.json",
+    "types/openagents-platform/package.json",
+    "types/vite-plus-matchers/package.json",
+  ]) {
+    assert.match(cloudBuildIgnore, new RegExp(`^!${workspaceManifest}$`, "mu"));
+    assert.match(dockerIgnore, new RegExp(`^!${workspaceManifest}$`, "mu"));
+  }
+  assert.match(dockerIgnore, /^apps\/sarah-livekit-agent\/node_modules$/mu);
+  assert.match(dockerIgnore, /^packages\/audio-contract\/node_modules$/mu);
   assert.match(buildScript, /--async/u);
   assert.match(buildScript, /image_summary\.digest/u);
   assert.match(buildScript, /SARAH_LIVEKIT_AGENT_IMAGE=/u);
