@@ -441,6 +441,53 @@ describe("Sarah LiveKit room broker configuration", () => {
     expect(firstDispatchMetadata).not.toBe("");
   });
 
+  test("replaces LiveKit's inert automatic room dispatch with Sarah's named dispatch", async () => {
+    let roomRef = "";
+    const createDispatch = vi.fn(async () => ({ id: "dispatch:sarah" }));
+    const deleteDispatch = vi.fn(async () => undefined);
+    const broker = makeSarahLiveKitRoomBroker(
+      {
+        livekitUrl: "wss://livekit.openagents.com",
+        apiKey: `API${"A".repeat(12)}`,
+        apiSecret: "b".repeat(48),
+        controlRoot,
+        sessionTicketSecret,
+      },
+      () => 2_000_000_000_000,
+      {
+        createRoom: vi.fn(async (input) => {
+          roomRef = input.name;
+        }),
+        deleteRoom: vi.fn(async () => undefined),
+        createDispatch,
+        listDispatch: vi.fn(async () => [
+          {
+            id: "dispatch:automatic",
+            agentName: "",
+            room: roomRef,
+            metadata: "",
+            restartPolicy: JobRestartPolicy.JRP_NEVER,
+            deployment: "",
+          },
+        ]),
+        deleteDispatch,
+        sendData: vi.fn(async () => undefined),
+      },
+    );
+
+    const provision = await broker.provision(privateProvisionInput);
+
+    expect(deleteDispatch).toHaveBeenCalledWith("dispatch:automatic", provision.roomRef);
+    expect(createDispatch).toHaveBeenCalledWith(
+      provision.roomRef,
+      SARAH_LIVEKIT_AGENT_NAME,
+      expect.objectContaining({
+        restartPolicy: JobRestartPolicy.JRP_NEVER,
+      }),
+    );
+    expect(provision.dispatchRef).toBe("dispatch:sarah");
+  });
+
   test("stops external side effects when the end-to-end provisioning deadline expires", async () => {
     let nowMs = 2_000_000_000_000;
     const createRoom = vi.fn(async () => {
@@ -494,13 +541,9 @@ describe("Sarah LiveKit room broker configuration", () => {
             agentName: mismatch === "agent" ? "another-agent" : SARAH_LIVEKIT_AGENT_NAME,
             room: mismatch === "room" ? "another-room" : expectedRoom,
             metadata:
-              mismatch === "metadata"
-                ? JSON.stringify({ schema: "foreign" })
-                : expectedMetadata,
+              mismatch === "metadata" ? JSON.stringify({ schema: "foreign" }) : expectedMetadata,
             restartPolicy:
-              mismatch === "restart"
-                ? JobRestartPolicy.JRP_ON_FAILURE
-                : JobRestartPolicy.JRP_NEVER,
+              mismatch === "restart" ? JobRestartPolicy.JRP_ON_FAILURE : JobRestartPolicy.JRP_NEVER,
             deployment: mismatch === "deployment" ? "another-deployment" : "",
           },
         ]),

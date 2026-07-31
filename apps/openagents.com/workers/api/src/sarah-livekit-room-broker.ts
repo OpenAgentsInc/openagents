@@ -22,7 +22,7 @@ import type {
   SarahVoiceLiveKitRoomBroker,
 } from "./sarah-realtime-voice-routes";
 
-// Three sequential provisioning RPCs and one fail-closed delete remain below
+// Four sequential provisioning RPCs and one fail-closed delete remain below
 // this deadline, while the 30-second database lease retains cleanup headroom.
 export const SARAH_LIVEKIT_PROVISIONING_DEADLINE_MS = 20_000;
 const SARAH_LIVEKIT_RPC_TIMEOUT_SECONDS = 4;
@@ -49,9 +49,7 @@ export type SarahLiveKitRoomBrokerClients = Readonly<{
     agentName: string,
     options: Readonly<{ metadata: string; restartPolicy: JobRestartPolicy }>,
   ) => Promise<Readonly<{ id: string }>>;
-  listDispatch: (
-    roomRef: string,
-  ) => Promise<
+  listDispatch: (roomRef: string) => Promise<
     ReadonlyArray<
       Readonly<{
         id: string;
@@ -71,6 +69,18 @@ export type SarahLiveKitRoomBrokerClients = Readonly<{
     destinationIdentities: ReadonlyArray<string>,
   ) => Promise<void>;
 }>;
+
+type SarahLiveKitDispatch = Awaited<
+  ReturnType<SarahLiveKitRoomBrokerClients["listDispatch"]>
+>[number];
+
+const isAutomaticRoomDispatch = (dispatch: SarahLiveKitDispatch, roomRef: string): boolean =>
+  dispatch.id.trim() !== "" &&
+  dispatch.agentName === "" &&
+  dispatch.room === roomRef &&
+  dispatch.metadata === "" &&
+  dispatch.restartPolicy === JobRestartPolicy.JRP_NEVER &&
+  dispatch.deployment === "";
 
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
 
@@ -98,9 +108,7 @@ export const parseSarahLiveKitControlRoot = (value: string | undefined): string 
   return value;
 };
 
-const parseSarahLiveKitSessionTicketSecret = (
-  value: string | undefined,
-): string | undefined =>
+const parseSarahLiveKitSessionTicketSecret = (value: string | undefined): string | undefined =>
   value !== undefined && /^[A-Za-z0-9_-]{64}$/u.test(value) ? value : undefined;
 
 const parseServerKeysJson = (
@@ -179,8 +187,7 @@ const roomContextForDispatch = (
 
 const isSarahClientCapabilityProfile = (
   value: string,
-): value is SarahLiveKitDispatchMetadata["capabilityProfile"] =>
-  value === "omega_editor";
+): value is SarahLiveKitDispatchMetadata["capabilityProfile"] => value === "omega_editor";
 
 const dispatchMetadataForProvision = (
   input: SarahVoiceLiveKitProvisionInput,
@@ -198,9 +205,10 @@ const dispatchMetadataForProvision = (
     roomEpoch: 1,
     participantRef: `owner-${sha256(input.ownerUserId).slice(0, 40)}`,
     sarahParticipantRef: "principal.sarah",
-    sarahPresenceLeaseRef: `sarah-presence-${sha256(
-      `${input.idempotencyKey}:presence`,
-    ).slice(0, 40)}`,
+    sarahPresenceLeaseRef: `sarah-presence-${sha256(`${input.idempotencyKey}:presence`).slice(
+      0,
+      40,
+    )}`,
     capabilityProfile: input.capabilityProfile,
     roomContext: roomContextForDispatch(input.roomContext),
   };
@@ -301,10 +309,16 @@ export const makeSarahLiveKitRoomBroker = (
     const existingDispatches = await runProvisioningSideEffect(deadlineAtMs, now, () =>
       clients.listDispatch(roomRef),
     );
-    if (existingDispatches.length > 1) {
+    const automaticDispatches = existingDispatches.filter((dispatch) =>
+      isAutomaticRoomDispatch(dispatch, roomRef),
+    );
+    const authorityDispatches = existingDispatches.filter(
+      (dispatch) => !isAutomaticRoomDispatch(dispatch, roomRef),
+    );
+    if (automaticDispatches.length > 1 || authorityDispatches.length > 1) {
       throw new Error("The Sarah LiveKit room has conflicting dispatches");
     }
-    const existingDispatch = existingDispatches[0];
+    const existingDispatch = authorityDispatches[0];
     if (existingDispatch !== undefined) {
       let decodedExisting: SarahLiveKitDispatchMetadata;
       try {
@@ -325,6 +339,12 @@ export const makeSarahLiveKitRoomBroker = (
       ) {
         throw new Error("The existing Sarah LiveKit dispatch authority conflicts");
       }
+    }
+    const automaticDispatch = automaticDispatches[0];
+    if (automaticDispatch !== undefined) {
+      await runProvisioningSideEffect(deadlineAtMs, now, () =>
+        clients.deleteDispatch(automaticDispatch.id, roomRef),
+      );
     }
     const dispatch =
       existingDispatch ??
