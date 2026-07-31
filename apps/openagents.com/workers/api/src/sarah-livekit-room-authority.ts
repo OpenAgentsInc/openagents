@@ -6,11 +6,14 @@ import {
   SARAH_LIVEKIT_ROOM_TEXT_PROJECTION_KIND,
   canonicalSarahLiveKitRoomFloorAuthority,
   canonicalSarahLiveKitRoomPresenceAuthority,
+  decodeSarahLiveKitRoomAuthoritySnapshot,
   decodeSarahLiveKitRoomFloorLease,
   decodeSarahLiveKitRoomPresenceLease,
+  type SarahLiveKitRoomAuthoritySnapshot,
   type SarahLiveKitRoomFloorLease,
   type SarahLiveKitRoomFloorState,
   type SarahLiveKitRoomPresenceLease,
+  type SarahLiveKitRoomRateBucket,
 } from "@openagentsinc/audio-contract";
 import {
   verifySignedEvent,
@@ -243,21 +246,7 @@ export type SarahLiveKitRoomMemberAccess = Readonly<{
   safetyIdentifier: string;
 }>;
 
-type RateBucket = Readonly<{
-  userRefDigest: string;
-  windowStartedAtMs: number;
-  requestCount: number;
-}>;
-
-export type SarahLiveKitRoomAuthoritySnapshot = Readonly<{
-  revision: number;
-  presence: SarahLiveKitRoomPresenceLease;
-  presenceActive: boolean;
-  floor: SarahLiveKitRoomFloorState;
-  usedNonceDigests: ReadonlyArray<string>;
-  rateBuckets: ReadonlyArray<RateBucket>;
-  nextInterruptSequence: number;
-}>;
+export type { SarahLiveKitRoomAuthoritySnapshot } from "@openagentsinc/audio-contract";
 
 export type SarahLiveKitFloorRefusal =
   | "presence_expired"
@@ -329,7 +318,7 @@ const consumeRequest = (
   | Readonly<{
       nonceDigest: string;
       usedNonceDigests: ReadonlyArray<string>;
-      rateBuckets: ReadonlyArray<RateBucket>;
+      rateBuckets: ReadonlyArray<SarahLiveKitRoomRateBucket>;
     }>
   | SarahLiveKitFloorRefusal => {
   if (!/^[A-Za-z0-9_-]{32,256}$/u.test(nonce)) return "nonce_invalid";
@@ -422,7 +411,7 @@ export const initialSarahLiveKitRoomAuthoritySnapshot = (
   presence: SarahLiveKitRoomPresenceLease,
 ): SarahLiveKitRoomAuthoritySnapshot => {
   assertPresenceLease(presence);
-  return {
+  return decodeSarahLiveKitRoomAuthoritySnapshot({
     revision: 1,
     presence,
     presenceActive: true,
@@ -430,7 +419,7 @@ export const initialSarahLiveKitRoomAuthoritySnapshot = (
     usedNonceDigests: [],
     rateBuckets: [],
     nextInterruptSequence: 1,
-  };
+  });
 };
 
 export const requestSarahLiveKitFloor = (

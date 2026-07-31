@@ -54,6 +54,7 @@ export * from "./push-engine.js";
 export * from "./runtime-intents.js";
 export * from "./runtime-mutators.js";
 export * from "./sarah-realtime-voice-store.js";
+export * from "./sarah-livekit-room-authority-store.js";
 export * from "./gym-evals-domain-tables.js";
 export * from "./read-service.js";
 export * from "./scope-auth.js";

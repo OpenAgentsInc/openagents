@@ -87,6 +87,24 @@ export const SarahLiveKitRoomFloorStateSchema = S.Union([
 ]);
 export type SarahLiveKitRoomFloorState = typeof SarahLiveKitRoomFloorStateSchema.Type;
 
+export const SarahLiveKitRoomRateBucketSchema = S.Struct({
+  userRefDigest: Digest,
+  windowStartedAtMs: Sequence,
+  requestCount: Sequence,
+});
+export type SarahLiveKitRoomRateBucket = typeof SarahLiveKitRoomRateBucketSchema.Type;
+
+export const SarahLiveKitRoomAuthoritySnapshotSchema = S.Struct({
+  revision: Sequence,
+  presence: SarahLiveKitRoomPresenceLeaseSchema,
+  presenceActive: S.Boolean,
+  floor: SarahLiveKitRoomFloorStateSchema,
+  usedNonceDigests: S.Array(Digest).check(S.isMaxLength(512)),
+  rateBuckets: S.Array(SarahLiveKitRoomRateBucketSchema).check(S.isMaxLength(128)),
+  nextInterruptSequence: Sequence,
+});
+export type SarahLiveKitRoomAuthoritySnapshot = typeof SarahLiveKitRoomAuthoritySnapshotSchema.Type;
+
 export const decodeSarahLiveKitRoomPresenceLease = (value: unknown) =>
   S.decodeUnknownSync(SarahLiveKitRoomPresenceLeaseSchema)(value, {
     onExcessProperty: "error",
@@ -101,6 +119,22 @@ export const decodeSarahLiveKitRoomFloorState = (value: unknown) =>
   S.decodeUnknownSync(SarahLiveKitRoomFloorStateSchema)(value, {
     onExcessProperty: "error",
   });
+
+export const decodeSarahLiveKitRoomAuthoritySnapshot = (
+  value: unknown,
+): SarahLiveKitRoomAuthoritySnapshot => {
+  const snapshot = S.decodeUnknownSync(SarahLiveKitRoomAuthoritySnapshotSchema)(value, {
+    onExcessProperty: "error",
+  });
+  if (
+    new Set(snapshot.usedNonceDigests).size !== snapshot.usedNonceDigests.length ||
+    new Set(snapshot.rateBuckets.map((bucket) => bucket.userRefDigest)).size !==
+      snapshot.rateBuckets.length
+  ) {
+    throw new Error("Sarah room authority snapshot contains duplicate replay state");
+  }
+  return snapshot;
+};
 
 export const canonicalSarahLiveKitRoomPresenceAuthority = (
   value: SarahLiveKitRoomPresenceLease,

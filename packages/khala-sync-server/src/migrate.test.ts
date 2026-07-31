@@ -54,6 +54,7 @@ describe("readMigrationFiles", () => {
     expect(filenames).toContain("0118_sarah_livekit_interrupt_control.sql")
     expect(filenames).toContain("0119_sarah_livekit_worker_heartbeat.sql")
     expect(filenames).toContain("0120_sarah_livekit_interrupt_applied.sql")
+    expect(filenames).toContain("0121_sarah_livekit_room_authority.sql")
     expect(filenames.indexOf("0111_sarah_livekit_worker_drain.sql")).toBeLessThan(
       filenames.indexOf("0112_sarah_livekit_tool_bridge.sql"),
     )
@@ -68,6 +69,9 @@ describe("readMigrationFiles", () => {
     )
     expect(filenames.indexOf("0119_sarah_livekit_worker_heartbeat.sql")).toBeLessThan(
       filenames.indexOf("0120_sarah_livekit_interrupt_applied.sql"),
+    )
+    expect(filenames.indexOf("0120_sarah_livekit_interrupt_applied.sql")).toBeLessThan(
+      filenames.indexOf("0121_sarah_livekit_room_authority.sql"),
     )
   })
 })
