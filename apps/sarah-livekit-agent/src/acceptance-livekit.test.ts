@@ -1,4 +1,9 @@
-import { SARAH_VOICE_PROTOCOL_VERSION, type VoiceIdentity } from "@openagentsinc/audio-contract";
+import {
+  SARAH_VOICE_MODEL,
+  SARAH_VOICE_PROTOCOL_VERSION,
+  SARAH_VOICE_SETTLEMENT_PROTOCOL_VERSION,
+  type VoiceIdentity,
+} from "@openagentsinc/audio-contract";
 import { describe, expect, test, vi } from "vite-plus/test";
 import type { ClientOptions, RawData } from "ws";
 import {
@@ -6,6 +11,7 @@ import {
   classifySarahLiveKitScenarioIcePaths,
   measureSarahInterruptAudioTail,
   openSarahLiveKitAcceptanceControlChannel,
+  pollSarahLiveKitSettlement,
   type SarahLiveKitAcceptanceControlSocket,
   type SarahLiveKitAcceptanceControlSocketFactory,
 } from "./acceptance-livekit.js";
@@ -49,9 +55,7 @@ describe("Sarah LiveKit community floor acceptance", () => {
         channelRef: "agent-chat",
       },
     });
-    expect(requests[1]?.url).toBe(
-      "https://openagents.com/api/sarah/livekit/room/floor/member",
-    );
+    expect(requests[1]?.url).toBe("https://openagents.com/api/sarah/livekit/room/floor/member");
     expect(requests[1]?.body).toMatchObject({
       action: "acquire",
       presenceLeaseRef: "presence-community",
@@ -165,7 +169,9 @@ describe("Sarah LiveKit scenario ICE classification", () => {
         publisherStats: [],
         subscriberStats: icePeerStats("subscriber", directUdp),
       }),
-    ).toThrow("private publisher selected ICE path was not classifiable (no_selected_candidate_pair)");
+    ).toThrow(
+      "private publisher selected ICE path was not classifiable (no_selected_candidate_pair)",
+    );
   });
 });
 
@@ -411,5 +417,143 @@ describe("Sarah LiveKit acceptance control channel", () => {
     second.socket.error();
     await expect(secondReady).rejects.toThrow("control transport failed");
     expect(second.socket.terminate).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Sarah LiveKit control channel terminal observation", () => {
+  test("resolves the server's own closing reason without weakening the failure path", async () => {
+    const { channel, socket, setNow } = setup();
+    socket.open();
+    socket.message(
+      serverControl(0, {
+        _tag: "session_ready",
+        model: SARAH_VOICE_MODEL,
+        expiresAtMs: 9_000,
+        reservedCreditMsat: 5_000,
+      }),
+    );
+    await expect(channel.ready).resolves.toBe(100);
+
+    setNow(450);
+    socket.message(serverControl(1, { _tag: "closing", reason: "transport_error" }));
+
+    await expect(channel.terminal).resolves.toEqual({
+      atMs: 450,
+      kind: "closing",
+      reason: "transport_error",
+    });
+  });
+
+  test("preserves an unrequested transport close as terminal evidence", async () => {
+    const { channel, socket, setNow } = setup();
+    socket.open();
+    setNow(700);
+    socket.closed();
+
+    await expect(channel.terminal).resolves.toEqual({
+      atMs: 700,
+      kind: "transport_closed",
+      reason: "closed_without_terminal_frame",
+    });
+    // The acceptance failure semantics are untouched: an unrequested close is
+    // still a rejected readiness, not a quiet pass.
+    await expect(channel.ready).rejects.toThrow("closed early");
+  });
+
+  test("records only the first terminal signal", async () => {
+    const { channel, socket, setNow } = setup();
+    socket.open();
+    setNow(300);
+    socket.message(serverControl(0, { _tag: "closing", reason: "session_expired" }));
+    setNow(900);
+    socket.closed();
+
+    await expect(channel.terminal).resolves.toEqual({
+      atMs: 300,
+      kind: "closing",
+      reason: "session_expired",
+    });
+    await expect(channel.ready).rejects.toThrow("closed early");
+  });
+});
+
+describe("Sarah LiveKit settlement poll", () => {
+  const settlement = {
+    schema: SARAH_VOICE_SETTLEMENT_PROTOCOL_VERSION,
+    sessionRef: "session-poll",
+    state: "settled" as const,
+    creditMode: "metered" as const,
+    finalChargeMsat: 1_234,
+    spendableRemainingCreditMsat: 99,
+    receiptRef: "receipt.sarah_voice_settlement.poll",
+  };
+
+  const pollClock = () => {
+    let now = 0;
+    return {
+      now: () => now,
+      sleep: (durationMs: number) => {
+        now += durationMs;
+        return Promise.resolve();
+      },
+    };
+  };
+
+  test("returns the terminal reading with the last non-terminal instant", async () => {
+    const clock = pollClock();
+    let attempts = 0;
+    const urls: string[] = [];
+    const fetch = vi.fn(async (input: string | URL) => {
+      urls.push(String(input));
+      attempts += 1;
+      return attempts < 3
+        ? new Response(JSON.stringify({ error: "not_terminal" }), { status: 404 })
+        : Response.json(settlement);
+    });
+
+    const reading = await pollSarahLiveKitSettlement(
+      fetch,
+      clock,
+      { bearer: "poll-bearer", sessionRef: "session-poll" },
+      { windowMs: 10_000, intervalMs: 500 },
+    );
+
+    expect(reading?.settlement.state).toBe("settled");
+    expect(reading?.terminalObservedAtMs).toBe(1_000);
+    // The authority turned terminal somewhere in the last interval, so the
+    // uncertainty is published rather than hidden.
+    expect(reading?.lastNonTerminalObservedAtMs).toBe(500);
+    expect(urls[0]).toBe("https://openagents.com/api/omega/sarah/voice/settlement");
+  });
+
+  test("returns null when the window closes with no terminal settlement", async () => {
+    const clock = pollClock();
+    const fetch = vi.fn(
+      async () => new Response(JSON.stringify({ error: "not_terminal" }), { status: 404 }),
+    );
+
+    await expect(
+      pollSarahLiveKitSettlement(
+        fetch,
+        clock,
+        { bearer: "poll-bearer", sessionRef: "session-poll" },
+        { windowMs: 2_000, intervalMs: 500 },
+      ),
+    ).resolves.toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(4);
+  });
+
+  test("raises a non-404 settlement failure instead of polling through it", async () => {
+    const clock = pollClock();
+    const fetch = vi.fn(async () => Response.json({ error: "forbidden" }, { status: 403 }));
+
+    await expect(
+      pollSarahLiveKitSettlement(
+        fetch,
+        clock,
+        { bearer: "poll-bearer", sessionRef: "session-poll" },
+        { windowMs: 2_000, intervalMs: 500 },
+      ),
+    ).rejects.toThrow("failed with HTTP 403 (forbidden)");
   });
 });

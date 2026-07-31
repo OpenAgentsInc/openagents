@@ -161,26 +161,22 @@ const record = (value: unknown): Readonly<Record<string, unknown>> | undefined =
     ? (value as Readonly<Record<string, unknown>>)
     : undefined;
 
-export const acquireSarahLiveKitCommunityFloor = async (input: Readonly<{
-  fetch: Http;
-  bearer: string;
-  deviceRef: string;
-  communityRef: string;
-  channelRef: string;
-  roomRef: string;
-  participantRef: string;
-}>): Promise<void> => {
+export const acquireSarahLiveKitCommunityFloor = async (
+  input: Readonly<{
+    fetch: Http;
+    bearer: string;
+    deviceRef: string;
+    communityRef: string;
+    channelRef: string;
+    roomRef: string;
+    participantRef: string;
+  }>,
+): Promise<void> => {
   const joined = record(
-    await postJson(
-      input.fetch,
-      COMMUNITY_ROOM_JOIN_PATH,
-      input.bearer,
-      input.deviceRef,
-      {
-        communityRef: input.communityRef,
-        channelRef: input.channelRef,
-      },
-    ),
+    await postJson(input.fetch, COMMUNITY_ROOM_JOIN_PATH, input.bearer, input.deviceRef, {
+      communityRef: input.communityRef,
+      channelRef: input.channelRef,
+    }),
   );
   const authority = record(joined?.authority);
   const presenceLeaseRef = joined?.presenceLeaseRef;
@@ -198,21 +194,18 @@ export const acquireSarahLiveKitCommunityFloor = async (input: Readonly<{
     throw new Error("community Sarah room join authority did not match the admitted session");
   }
   const floor = record(
-    await postJson(
-      input.fetch,
-      COMMUNITY_ROOM_MEMBER_FLOOR_PATH,
-      input.bearer,
-      input.deviceRef,
-      {
-        action: "acquire",
-        presenceLeaseRef,
-        expectedRevision: revision,
-        nonce: crypto.randomUUID().replaceAll("-", ""),
-        requestedLeaseMs: 30_000,
-      },
-    ),
+    await postJson(input.fetch, COMMUNITY_ROOM_MEMBER_FLOOR_PATH, input.bearer, input.deviceRef, {
+      action: "acquire",
+      presenceLeaseRef,
+      expectedRevision: revision,
+      nonce: crypto.randomUUID().replaceAll("-", ""),
+      requestedLeaseMs: 30_000,
+    }),
   );
-  if (!Number.isSafeInteger(floor?.revision) || (floor?.revision as number) <= (revision as number)) {
+  if (
+    !Number.isSafeInteger(floor?.revision) ||
+    (floor?.revision as number) <= (revision as number)
+  ) {
     throw new Error("community Sarah speaking floor was not acquired");
   }
 };
@@ -274,8 +267,33 @@ const validGatewayUrl = (value: string): boolean => {
   }
 };
 
+/**
+ * The first terminal signal the control channel observed.
+ *
+ * The acceptance path never needs this: it closes the channel itself and any
+ * other termination is a failure it reports through the rejected `ready`,
+ * `interrupt`, or `close` promise. A failure drill needs the opposite reading.
+ * Termination is the event under test, so the instant and the server's own
+ * stated reason are evidence rather than an error, and they have to be
+ * preserved even when the transport dies before a `closing` frame arrives.
+ *
+ * `terminal` therefore resolves and never rejects. It is purely additive: the
+ * existing failure semantics above are untouched, so the two-room acceptance
+ * receipt keeps failing closed on exactly the conditions it always did.
+ */
+export type SarahLiveKitControlTerminal = Readonly<{
+  atMs: number;
+  kind: "closing" | "error" | "transport_closed" | "transport_error";
+  /**
+   * The server's typed `closing.reason` or `error.code` when one arrived, and
+   * otherwise a public-safe name for the transport event observed instead.
+   */
+  reason: string;
+}>;
+
 export type SarahLiveKitAcceptanceControlChannel = Readonly<{
   ready: Promise<number>;
+  terminal: Promise<SarahLiveKitControlTerminal>;
   interrupt: () => Promise<Readonly<{ acknowledgedAtMs: number; interruptedAtMs: number }>>;
   close: () => Promise<void>;
   dispose: () => void;
@@ -303,6 +321,13 @@ export const openSarahLiveKitAcceptanceControlChannel = (
     maxPayload: 32_768,
   });
   const ready = deferred<number>();
+  const terminal = deferred<SarahLiveKitControlTerminal>();
+  let terminalObserved = false;
+  const observeTerminal = (kind: SarahLiveKitControlTerminal["kind"], reason: string): void => {
+    if (terminalObserved) return;
+    terminalObserved = true;
+    terminal.resolve({ atMs: now(), kind, reason });
+  };
   let interrupt:
     | ReturnType<typeof deferred<Readonly<{ acknowledgedAtMs: number; interruptedAtMs: number }>>>
     | undefined;
@@ -382,7 +407,10 @@ export const openSarahLiveKitAcceptanceControlChannel = (
         return;
       }
       expectedServerSequence += 1;
-      if (control["_tag"] === "error") {
+      if (control["_tag"] === "closing") {
+        observeTerminal("closing", control.reason);
+      } else if (control["_tag"] === "error") {
+        observeTerminal("error", control.code);
         fail(`Sarah LiveKit acceptance control returned ${control.code}`);
       } else if (control["_tag"] === "session_ready") {
         readyObserved = true;
@@ -399,9 +427,14 @@ export const openSarahLiveKitAcceptanceControlChannel = (
     }
   });
   socket.onError(() => {
+    observeTerminal("transport_error", "control_transport_error");
     fail("Sarah LiveKit acceptance control transport failed");
   });
   socket.onClose(() => {
+    observeTerminal(
+      "transport_closed",
+      closeRequested ? "user_stop" : "closed_without_terminal_frame",
+    );
     if (closeRequested) {
       closed = true;
       close?.resolve();
@@ -412,6 +445,7 @@ export const openSarahLiveKitAcceptanceControlChannel = (
 
   return {
     ready: ready.promise,
+    terminal: terminal.promise,
     interrupt: () => {
       if (!readyObserved || interrupt !== undefined) {
         return Promise.reject(
@@ -625,9 +659,7 @@ export const classifySarahLiveKitScenarioIcePaths = (
   const classify = (peer: "publisher" | "subscriber", entries: readonly RtcStatsEntry[]) => {
     const result = classifySelectedIcePath(entries);
     if (!result.classified) {
-      throw new Error(
-        `${kind} ${peer} selected ICE path was not classifiable (${result.reason})`,
-      );
+      throw new Error(`${kind} ${peer} selected ICE path was not classifiable (${result.reason})`);
     }
     return result.path;
   };
@@ -637,13 +669,50 @@ export const classifySarahLiveKitScenarioIcePaths = (
   };
 };
 
-const readSettlement = async (
+/**
+ * One terminal settlement reading, with the two instants a bound is measured
+ * against.
+ *
+ * `terminalObservedAtMs` is when this poller saw the settlement, not when the
+ * authority made it terminal — those differ by at most one poll interval. A
+ * drill measuring a bound from a fault must use the observed instant, which
+ * overstates the interval and therefore fails closed: a run recorded as within
+ * bound really was within bound. `lastNonTerminalObservedAtMs` publishes the
+ * width of that uncertainty rather than hiding it.
+ */
+export type SarahLiveKitSettlementReading = Readonly<{
+  settlement: ReturnType<typeof decodeSettlement>;
+  terminalObservedAtMs: number;
+  lastNonTerminalObservedAtMs: number;
+}>;
+
+export const SARAH_LIVEKIT_SETTLEMENT_POLL_INTERVAL_MS = 500;
+
+/**
+ * Poll the terminal settlement authority until it answers or the window closes.
+ *
+ * This reads plain authenticated HTTP against the API origin, so it survives the
+ * loss of the media transport, the SFU, or the worker. That independence is what
+ * makes it usable as the settlement observer for a failure drill whose whole
+ * premise is that the LiveKit path is gone.
+ *
+ * Returns `null` when the window closes with no terminal settlement. A caller
+ * proving a bound records that as a contradiction; a caller that merely needs
+ * the settlement raises it as an error.
+ */
+export const pollSarahLiveKitSettlement = async (
   http: Http,
   clock: Clock,
-  scenario: SarahLiveKitAcceptanceScenario,
-) => {
-  const deadline = clock.now() + SETTLEMENT_TIMEOUT_MS;
+  scenario: Readonly<{ bearer: string; sessionRef: string }>,
+  window: Readonly<{ windowMs: number; intervalMs: number }> = {
+    windowMs: SETTLEMENT_TIMEOUT_MS,
+    intervalMs: SARAH_LIVEKIT_SETTLEMENT_POLL_INTERVAL_MS,
+  },
+): Promise<SarahLiveKitSettlementReading | null> => {
+  const deadline = clock.now() + window.windowMs;
+  let lastNonTerminalObservedAtMs = clock.now();
   while (clock.now() < deadline) {
+    const attemptedAtMs = clock.now();
     // Each retry is authorized only after the preceding settlement read is non-terminal.
     // eslint-disable-next-line no-await-in-loop
     const response = await http(`${API_ORIGIN}${SARAH_VOICE_SETTLEMENT_PATH}`, {
@@ -657,23 +726,90 @@ const readSettlement = async (
     });
     if (response.ok) {
       // eslint-disable-next-line no-await-in-loop
-      return decodeSettlement(await response.json());
+      const settlement = decodeSettlement(await response.json());
+      return { settlement, terminalObservedAtMs: clock.now(), lastNonTerminalObservedAtMs };
     }
     if (response.status !== 404) {
       // eslint-disable-next-line no-await-in-loop
       throw await responseError(response, SARAH_VOICE_SETTLEMENT_PATH);
     }
+    lastNonTerminalObservedAtMs = attemptedAtMs;
     // Do not overlap reads of the same terminal accounting authority.
     // eslint-disable-next-line no-await-in-loop
-    await clock.sleep(500);
+    await clock.sleep(window.intervalMs);
   }
-  throw new Error("Sarah settlement did not become terminal");
+  return null;
 };
 
-export const runLiveSarahLiveKitScenario = async (
+const readSettlement = async (
+  http: Http,
+  clock: Clock,
+  scenario: SarahLiveKitAcceptanceScenario,
+) => {
+  const reading = await pollSarahLiveKitSettlement(http, clock, scenario);
+  if (reading === null) throw new Error("Sarah settlement did not become terminal");
+  return reading.settlement;
+};
+
+type SarahOutputObserver = ReturnType<typeof observeSarahOutputs>;
+
+/** The instants the live bring-up produced, before any scenario-specific step. */
+export type SarahLiveKitLiveSessionTimings = Readonly<{
+  startedAtMs: number;
+  admissionLatencyMs: number;
+  sessionLatencyMs: number;
+  roomConnectLatencyMs: number;
+  microphonePublishLatencyMs: number;
+  /** When the owner room finished connecting. The room is live from here. */
+  activeRoomStartedAtMs: number;
+  firstSarahAudioAtMs: number;
+  firstSarahAudioLatencyMs: number;
+}>;
+
+/**
+ * One live Sarah generation, held open for the caller to do something to.
+ *
+ * This is the bring-up half of the production acceptance path, factored out
+ * rather than reimplemented. Everything through the first audible Sarah frame is
+ * identical for an acceptance capture and for a failure drill: the same
+ * admission, the same `livekit_room_v1` session, the same room-scoped grant, the
+ * same ticketed control channel, the same microphone publication. The two
+ * diverge only in what happens next — the acceptance interrupts and settles
+ * cleanly, the drill injects a fault — so only that tail belongs to either
+ * caller.
+ *
+ * A drill driver that stood up its own session would prove something about the
+ * drill driver. Holding the production path open is what makes a drill evidence
+ * about production.
+ *
+ * The caller owns the handle and must `release()` it, normally in a `finally`.
+ * `release()` is idempotent.
+ */
+export type SarahLiveKitLiveSession = Readonly<{
+  kind: SarahLiveKitAcceptanceScenario["kind"];
+  identity: VoiceIdentity;
+  /** Room addressing, for targeting a fault. Private: never enters a receipt. */
+  roomRef: string;
+  participantRef: string;
+  sarahParticipantRef: string;
+  timings: SarahLiveKitLiveSessionTimings;
+  room: Room;
+  subscriberRoom: Room;
+  control: SarahLiveKitAcceptanceControlChannel;
+  output: SarahOutputObserver;
+  subscriberOutput: SarahOutputObserver;
+  /** Resolves once both the owner and the secondary subscriber heard Sarah. */
+  fanoutAudio: Promise<readonly [number, number]>;
+  clock: Clock;
+  http: Http;
+  unpublishMicrophone: () => Promise<void>;
+  release: () => Promise<void>;
+}>;
+
+export const openLiveSarahLiveKitSession = async (
   scenario: SarahLiveKitAcceptanceScenario,
   dependencies: SarahLiveKitLiveDependencies = {},
-): Promise<SarahLiveKitScenarioObservation> => {
+): Promise<SarahLiveKitLiveSession> => {
   const clock =
     dependencies.clock ??
     ({
@@ -762,6 +898,19 @@ export const runLiveSarahLiveKitScenario = async (
     clock,
   );
   let microphone: Awaited<ReturnType<typeof publishMicrophone>> | undefined;
+  let released = false;
+  const release = async (): Promise<void> => {
+    if (released) return;
+    released = true;
+    control.dispose();
+    await output.close();
+    await subscriberOutput.close();
+    if (room.isConnected) await room.disconnect();
+    if (subscriberRoom.isConnected) await subscriberRoom.disconnect();
+    await microphone?.track.close();
+    microphone = undefined;
+  };
+
   try {
     const roomConnectStartedAtMs = clock.now();
     await timeout(
@@ -808,18 +957,73 @@ export const runLiveSarahLiveKitScenario = async (
     );
     const microphonePublishedAtMs = clock.now();
     const fanoutAudio = Promise.all([output.audio, subscriberOutput.audio]);
+    // A rejected fanout is the caller's to observe. Attaching a no-op handler
+    // here keeps an unobserved rejection from crashing a drill that has
+    // deliberately destroyed the transport carrying that audio.
+    fanoutAudio.catch(() => {});
     const firstSarahAudioAtMs = await timeout(
       Promise.race([output.audio, subscriberOutput.audio]),
       SCENARIO_TIMEOUT_MS,
       `${scenario.kind} first Sarah audio`,
     );
+
+    return {
+      kind: scenario.kind,
+      identity,
+      roomRef: session.transport.roomRef,
+      participantRef: session.transport.participantRef,
+      sarahParticipantRef: session.transport.sarahParticipantRef,
+      timings: {
+        startedAtMs,
+        admissionLatencyMs: admissionCompletedAtMs - admissionStartedAtMs,
+        sessionLatencyMs: sessionCompletedAtMs - sessionStartedAtMs,
+        roomConnectLatencyMs: roomConnectedAtMs - roomConnectStartedAtMs,
+        microphonePublishLatencyMs: microphonePublishedAtMs - microphonePublishStartedAtMs,
+        activeRoomStartedAtMs: roomConnectedAtMs,
+        firstSarahAudioAtMs,
+        firstSarahAudioLatencyMs: firstSarahAudioAtMs - startedAtMs,
+      },
+      room,
+      subscriberRoom,
+      control,
+      output,
+      subscriberOutput,
+      fanoutAudio,
+      clock,
+      http,
+      unpublishMicrophone: async () => {
+        const published = microphone;
+        if (published === undefined) return;
+        microphone = undefined;
+        await room.localParticipant?.unpublishTrack(published.publicationSid, true);
+      },
+      release,
+    };
+  } catch (error) {
+    await release();
+    throw error;
+  }
+};
+
+export const runLiveSarahLiveKitScenario = async (
+  scenario: SarahLiveKitAcceptanceScenario,
+  dependencies: SarahLiveKitLiveDependencies = {},
+): Promise<SarahLiveKitScenarioObservation> => {
+  const session = await openLiveSarahLiveKitSession(scenario, dependencies);
+  const { clock, http, control, room, subscriberRoom, output, subscriberOutput } = session;
+  const { startedAtMs, activeRoomStartedAtMs, firstSarahAudioAtMs } = session.timings;
+  try {
     const interruptStartedAtMs = clock.now();
     const interruption = await timeout(
       control.interrupt(),
       SCENARIO_TIMEOUT_MS,
       `${scenario.kind} Sarah explicit interrupt`,
     );
-    await timeout(fanoutAudio, SCENARIO_TIMEOUT_MS, `${scenario.kind} Sarah audible fanout`);
+    await timeout(
+      session.fanoutAudio,
+      SCENARIO_TIMEOUT_MS,
+      `${scenario.kind} Sarah audible fanout`,
+    );
     const postInterruptAudioTailMs = Math.max(
       ...(await Promise.all([
         output.measureInterruptTail(interruption.acknowledgedAtMs),
@@ -835,8 +1039,7 @@ export const runLiveSarahLiveKitScenario = async (
     const selectedIcePath = classifySarahLiveKitScenarioIcePaths(scenario.kind, rtcStats);
 
     await timeout(control.close(), SCENARIO_TIMEOUT_MS, `${scenario.kind} Sarah control close`);
-    await room.localParticipant?.unpublishTrack(microphone.publicationSid, true);
-    microphone = undefined;
+    await session.unpublishMicrophone();
     const settlement = await readSettlement(http, clock, scenario);
     await room.disconnect();
     await subscriberRoom.disconnect();
@@ -870,12 +1073,12 @@ export const runLiveSarahLiveKitScenario = async (
       kind: scenario.kind,
       startedAtMs,
       endedAtMs,
-      activeRoomStartedAtMs: roomConnectedAtMs,
+      activeRoomStartedAtMs,
       activeRoomEndedAtMs,
-      admissionLatencyMs: admissionCompletedAtMs - admissionStartedAtMs,
-      sessionLatencyMs: sessionCompletedAtMs - sessionStartedAtMs,
-      roomConnectLatencyMs: roomConnectedAtMs - roomConnectStartedAtMs,
-      microphonePublishLatencyMs: microphonePublishedAtMs - microphonePublishStartedAtMs,
+      admissionLatencyMs: session.timings.admissionLatencyMs,
+      sessionLatencyMs: session.timings.sessionLatencyMs,
+      roomConnectLatencyMs: session.timings.roomConnectLatencyMs,
+      microphonePublishLatencyMs: session.timings.microphonePublishLatencyMs,
       firstSarahAudioLatencyMs: firstSarahAudioAtMs - startedAtMs,
       firstSarahTranscriptionLatencyMs: firstSarahTranscriptionAtMs - startedAtMs,
       interruptAckLatencyMs: interruption.acknowledgedAtMs - interruptStartedAtMs,
@@ -919,11 +1122,6 @@ export const runLiveSarahLiveKitScenario = async (
       settlementReceiptDigest: digestSettlementReceipt(settlement.receiptRef),
     };
   } finally {
-    control.dispose();
-    await output.close();
-    await subscriberOutput.close();
-    if (room.isConnected) await room.disconnect();
-    if (subscriberRoom.isConnected) await subscriberRoom.disconnect();
-    await microphone?.track.close();
+    await session.release();
   }
 };

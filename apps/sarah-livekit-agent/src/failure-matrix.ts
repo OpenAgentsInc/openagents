@@ -66,7 +66,15 @@ const ADMITTED_TERMINAL_REASONS = {
   reconnect: ["completed"],
 } as const satisfies Readonly<Record<SarahLiveKitFailureScenario, readonly string[]>>;
 
-const EXPECTED_FAULT_ACTION = {
+/**
+ * The fault each scenario's evidence is only valid for.
+ *
+ * Exported so the drill driver names its fault from the same constant the
+ * receipt validator checks it against. A drill that could satisfy the driver and
+ * fail the matrix, or the reverse, would let the two disagree about what was
+ * done to production.
+ */
+export const EXPECTED_FAULT_ACTION = {
   success: "none",
   cancellation: "client_cancel",
   timeout: "bounded_deadline",
