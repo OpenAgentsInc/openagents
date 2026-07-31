@@ -777,3 +777,57 @@ describe('vertex gemini adapter function calling (#6364)', () => {
     })
   })
 })
+
+describe('vertex gemini adapter budget truncation', () => {
+  // Byte-for-byte the live Vertex reply captured on 2026-07-31 from
+  // `gemini-3.6-flash` with `maxOutputTokens: 16` against a ~4400-token prompt.
+  // Note what is NOT here: the candidate has no `content` key at all, because
+  // `thoughtsTokenCount: 12` of the 16-token allowance went to reasoning before
+  // any visible text was produced. Vertex still answered HTTP 200 — this is a
+  // truncated success, not a provider fault.
+  const maxTokensResponse = {
+    candidates: [{ finishReason: 'MAX_TOKENS' }],
+    createTime: '2026-07-31T18:54:11.482979Z',
+    modelVersion: 'gemini-3.6-flash',
+    responseId: 'U-9saqO9Hf-Ru-gPyJrT6AM',
+    usageMetadata: {
+      promptTokenCount: 4410,
+      promptTokensDetails: [{ modality: 'TEXT', tokenCount: 4410 }],
+      thoughtsTokenCount: 12,
+      totalTokenCount: 4422,
+      trafficType: 'ON_DEMAND',
+    },
+  }
+
+  test('reports a content-free MAX_TOKENS candidate as an empty completion with finish reason length', async () => {
+    const { calls, fetchImpl } = recordingFetch(okJson(maxTokensResponse))
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'test-project',
+      tokenProvider: fixedToken,
+    })
+
+    const result = await run(
+      adapter.complete(
+        baseRequest({
+          model: 'gemini-3.6-flash',
+          passthroughParams: { max_tokens: 16 },
+        }),
+      ),
+    )
+
+    // `length` is the OpenAI word for MAX_TOKENS. Downstream dispatch keys off
+    // it to tell "the caller's budget ran out" apart from "the lane broke", so
+    // leaving the raw Gemini enum here would resurrect the 502.
+    expect(result.finishReason).toBe('length')
+    expect(result.content).toBe('')
+
+    // The caller's budget is passed through verbatim: this adapter does not
+    // floor it the way gemma4 does, so the tiny-budget shape stays reachable
+    // and must stay handled rather than papered over.
+    const body = JSON.parse(String(calls[0]?.init.body)) as {
+      generationConfig: { maxOutputTokens: number }
+    }
+    expect(body.generationConfig.maxOutputTokens).toBe(16)
+  })
+})

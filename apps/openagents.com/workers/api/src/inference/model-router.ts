@@ -633,6 +633,16 @@ const validateDefaultDispatchSuccess = <A>(
   if (result === undefined) {
     return acceptDispatchLane
   }
+  // TRUNCATION IS NOT A PROVIDER FAILURE. `finish_reason: length` with no
+  // visible text means the model spent the CALLER's `max_tokens` budget before
+  // it started answering — on a thinking model the reasoning draws from that
+  // same allowance, so a tight budget produces exactly this shape. Failing the
+  // lane here turns the caller's own budget into a retryable provider fault,
+  // and on a single-lane class (gemini) it surfaces as a 502 that a retry can
+  // never fix. See the matching branch in `validateChatCompletionResult`.
+  if (result.finishReason === 'length') {
+    return acceptDispatchLane
+  }
   return result.content.trim() === '' &&
     (result.toolCalls === undefined || result.toolCalls.length === 0)
     ? {

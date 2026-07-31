@@ -1235,6 +1235,36 @@ const validateChatCompletionResult: DispatchSuccessValidator<
   }
 
   if (completionState._tag === 'empty_assistant') {
+    // TRUNCATION IS NOT A PROVIDER FAILURE. A model that spent its whole output
+    // budget before emitting any visible text returns `finish_reason: length`
+    // and no content. That is the correct, complete answer to a request whose
+    // `max_tokens` was too small — the budget is the CALLER's input, so blaming
+    // the provider for honoring it is wrong twice over: it reports someone
+    // else's fault, and it does it with a 5xx that invites a retry which is
+    // guaranteed to truncate again.
+    //
+    // Observed on the live `gemini-3.6-flash` lane: `max_tokens: 16` against a
+    // ~4400-token prompt returns HTTP 200 with `finishReason: "MAX_TOKENS"`,
+    // NO `content` key, and `usageMetadata.thoughtsTokenCount: 12` — the
+    // thinking budget draws from the same output allowance, so the visible
+    // answer never starts. Every one of 22 consecutive such calls became
+    // `502 provider_error / "adapter returned empty assistant content"` because
+    // this branch never looked at the finish reason. The gemini class has a
+    // single lane (`LANE_PLAN_BY_CLASS`), so the retryable error had nowhere to
+    // fail over to and surfaced verbatim.
+    //
+    // Serving it is what the OpenAI and Gemini APIs themselves do. The client
+    // gets `finish_reason: "length"` and knows to raise `max_tokens`; it cannot
+    // learn that from a 502. Adapters normalize their native enum onto this
+    // vocabulary first (`normalizeGoogleFinishReason`: MAX_TOKENS -> length).
+    //
+    // Deliberately NOT fixed by flooring `maxOutputTokens` the way
+    // `gemma4-adapter.ts` does: that silently overrides an explicit caller
+    // budget and bills them for tokens they did not ask for.
+    if (value.value.finishReason === 'length') {
+      return { _tag: 'accepted' }
+    }
+
     return {
       _tag: 'failed',
       error: new InferenceAdapterError({

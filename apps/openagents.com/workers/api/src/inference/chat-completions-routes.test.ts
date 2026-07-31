@@ -707,3 +707,113 @@ describe('self-provisioned daily ceiling', () => {
     expect(consulted).toBe(false)
   })
 })
+
+// A thinking model spends its output budget on reasoning BEFORE it emits any
+// visible text, so a tight `max_tokens` against a large prompt comes back
+// complete-but-empty. Captured from the live Vertex lane on 2026-07-31 —
+// `gemini-3.6-flash`, `maxOutputTokens: 16`, a ~4400-token prompt — the upstream
+// reply was HTTP 200 with NO `content` key at all:
+//
+//   { "candidates": [ { "finishReason": "MAX_TOKENS" } ],
+//     "usageMetadata": { "promptTokenCount": 4410, "thoughtsTokenCount": 12,
+//                        "totalTokenCount": 4422 },
+//     "modelVersion": "gemini-3.6-flash" }
+//
+// The adapter normalizes MAX_TOKENS -> `length` and yields `content: ''`. This
+// is the shape that produced 22 consecutive `502 provider_error` responses.
+describe('truncated completions are served, not blamed on the provider', () => {
+  const truncatingRegistry = (finishReason: string) => {
+    const registry = new InferenceProviderRegistry()
+    const adapter: InferenceProviderAdapter = {
+      complete: inferenceRequest =>
+        Effect.succeed({
+          content: '',
+          finishReason,
+          servedModel: inferenceRequest.model,
+          usage: { completionTokens: 0, promptTokens: 4410, totalTokens: 4422 },
+        }),
+      id: VERTEX_GEMINI_ADAPTER_ID,
+      stream: inferenceRequest =>
+        Effect.succeed([
+          {
+            contentDelta: '',
+            finishReason,
+            servedModel: inferenceRequest.model,
+            usage: {
+              completionTokens: 0,
+              promptTokens: 4410,
+              totalTokens: 4422,
+            },
+          },
+        ]),
+    }
+    registry.register(adapter)
+    return registry
+  }
+
+  const smallBudgetRequest = (): Request =>
+    new Request('https://openagents.com/v1/chat/completions', {
+      body: JSON.stringify({
+        max_tokens: 16,
+        messages: [
+          {
+            content: `${'The following is a long technical document. '.repeat(400)}\n\nSummarize the above.`,
+            role: 'user',
+          },
+        ],
+        model: GEMINI_FLASH_MODEL_ID,
+      }),
+      method: 'POST',
+    })
+
+  test('a small max_tokens against a large prompt returns 200 with finish_reason length, not 502', async () => {
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        smallBudgetRequest(),
+        deps({
+          authenticate: async () => ({
+            accountRef: 'openauth:omega-desktop-user',
+          }),
+          laneArming: hostedLaneArming,
+          lanePlan: selectAdapterPlan,
+          registry: truncatingRegistry('length'),
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      choices: ReadonlyArray<{
+        finish_reason: string
+        message: { content: string }
+      }>
+    }
+    // The caller set the budget, so the caller is told the budget ran out. A
+    // 502 would blame the provider AND invite a retry that truncates again.
+    expect(body.choices[0]?.finish_reason).toBe('length')
+    expect(body.choices[0]?.message.content).toBe('')
+  })
+
+  test('an empty completion that did NOT truncate is still a provider error', async () => {
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        smallBudgetRequest(),
+        deps({
+          authenticate: async () => ({
+            accountRef: 'openauth:omega-desktop-user',
+          }),
+          laneArming: hostedLaneArming,
+          lanePlan: selectAdapterPlan,
+          registry: truncatingRegistry('stop'),
+        }),
+      ),
+    )
+
+    // `stop` + no content is a genuinely broken turn; the emptiness guard must
+    // keep catching it. Only `length` is exempted.
+    expect(response.status).toBe(502)
+    const body = (await response.json()) as { error: string; reason: string }
+    expect(body.error).toBe('provider_error')
+    expect(body.reason).toBe('adapter returned empty assistant content')
+  })
+})
