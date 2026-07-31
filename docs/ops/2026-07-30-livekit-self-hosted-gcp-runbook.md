@@ -381,7 +381,23 @@ state prefix `livekit/production`; it does not share the canary state.
 
 Provide the bounded master-authorized networks, the exact redacted LiveKit
 notification-channel ref, and the billing account through untracked
-`TF_VAR_*` values. Then run:
+`TF_VAR_*` values. Before the LiveKit root activates the explicit-build-
+identity organization policies, create the replacement generic builders from
+the existing production baseline and review the plan for no unrelated change:
+
+```sh
+tofu -chdir=infra/prod init -input=false
+tofu -chdir=infra/prod plan \
+  -input=false -lock-timeout=60s \
+  -out=/tmp/openagents-prod-build-identities.tfplan
+tofu -chdir=infra/prod apply \
+  -input=false -lock-timeout=60s \
+  /tmp/openagents-prod-build-identities.tfplan
+```
+
+This ordering is mandatory: the next apply requires explicit build identities
+project-wide, so the generic Cloud Run and image builders must already exist.
+Then run:
 
 ```sh
 OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
@@ -474,7 +490,20 @@ Bootstrap the boundary in this order:
    value. The Dockerfile, Cloud SDK, Node, Helm, kubectl, and Docker builder are
    all source-pinned, while the deployed trigger accepts only the final
    immutable executor digest.
-4. Set `TF_VAR_enable_deployment_control=true` and apply the production root.
+4. Set the printed executor image and enable deployment control by rerunning
+   the gated infrastructure apply:
+
+   ```sh
+   export TF_VAR_deployment_executor_image='us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/livekit-production-deployer@sha256:<digest>'
+   export TF_VAR_enable_deployment_control=true
+   OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
+   node scripts/cloud/livekit-gcp-ops.mjs \
+     --operation production-infra-apply \
+     --bundle infra/livekit/bundle.json \
+     --receipt docs/ops/receipts/livekit/production-deployment-control-<UTC>.json \
+     --apply
+   ```
+
    This creates the dedicated deployer, fixed trigger, fleet membership,
    and retention-locked receipt bucket. The root attaches the
    `livekit-privileged-identity=protected` resource tag to the default Compute,
