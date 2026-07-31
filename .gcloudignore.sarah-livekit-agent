@@ -4,6 +4,8 @@
 !pnpm-workspace.yaml
 !tsconfig.json
 !vite.config.ts
+!scripts/
+!scripts/node-test-suites.mjs
 !patches/
 !patches/**
 !apps/

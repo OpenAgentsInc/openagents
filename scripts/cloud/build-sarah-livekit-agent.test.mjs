@@ -39,6 +39,7 @@ test("Sarah worker Cloud Build stays on the existing digest-pinned production la
   assert.match(cloudBuildIgnore, /^\*\*$/mu);
   assert.match(cloudBuildIgnore, /^!apps\/sarah-livekit-agent\/\*\*$/mu);
   assert.match(cloudBuildIgnore, /^!packages\/audio-contract\/\*\*$/mu);
+  assert.match(cloudBuildIgnore, /^!scripts\/node-test-suites\.mjs$/mu);
   assert.doesNotMatch(cloudBuildIgnore, /oa-updates|openagents-desktop|openagents-mobile/u);
   assert.match(buildScript, /--async/u);
   assert.match(buildScript, /image_summary\.digest/u);
