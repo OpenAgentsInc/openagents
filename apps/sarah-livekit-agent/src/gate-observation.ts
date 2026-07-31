@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { SARAH_LIVEKIT_SFU_LOSS_BOUND_MS } from "./failure-matrix.js";
 import type {
   ForcedTransportProfile,
   SelectedIcePathClassification,
@@ -505,6 +506,23 @@ const assertSatisfiesKey = (observation: GateObservation, evidence: GateEvidence
   }
   if (key.endsWith("_refused")) {
     if (evidence.kind !== "refusal") throw new Error(`${key} requires refusal evidence`);
+    return;
+  }
+  if (key === "sfu_loss_bounded") {
+    // The recorder and the failure matrix must agree, or a drill could satisfy
+    // one and fail the other. Both read the same constant and the same fault
+    // name, so the scenario has exactly one definition.
+    if (evidence.kind !== "drill") throw new Error(`${key} requires drill evidence`);
+    if (evidence.faultInjected !== "delete_exact_sfu_pod") {
+      throw new Error(
+        `${key} requires the delete_exact_sfu_pod fault, not ${evidence.faultInjected}`,
+      );
+    }
+    if (evidence.boundedWithinMs > SARAH_LIVEKIT_SFU_LOSS_BOUND_MS) {
+      throw new Error(
+        `${key} exceeded its ${SARAH_LIVEKIT_SFU_LOSS_BOUND_MS} ms bound, measured from fault injection`,
+      );
+    }
     return;
   }
   if (key === "privacy_scope_count") {

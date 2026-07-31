@@ -10,6 +10,7 @@ export const SARAH_LIVEKIT_FAILURE_SCENARIOS = [
   "cancellation",
   "timeout",
   "planned_worker_crash",
+  "sfu_loss",
   "provider_disconnect",
   "hold_exhaustion",
   "reconnect",
@@ -17,21 +18,72 @@ export const SARAH_LIVEKIT_FAILURE_SCENARIOS = [
 
 export type SarahLiveKitFailureScenario = (typeof SARAH_LIVEKIT_FAILURE_SCENARIOS)[number];
 
-const EXPECTED_TERMINAL_REASON = {
-  success: "completed",
-  cancellation: "operator_stop",
-  timeout: "session_expired",
-  planned_worker_crash: "worker_error",
-  provider_disconnect: "provider_disconnect",
-  hold_exhaustion: "hold_exhausted",
-  reconnect: "completed",
-} as const satisfies Readonly<Record<SarahLiveKitFailureScenario, string>>;
+/**
+ * The bound `sfu_loss` asserts: from the instant the exact SFU instance is
+ * destroyed to the instant the session's accounting is terminal.
+ *
+ * It is deliberately far below the 300 second `max_session_seconds` ceiling.
+ * The worker publishes a `lease_check` every five seconds, so an authority that
+ * only learns of the loss when the session-expiry sweep fires has not
+ * demonstrated bounded SFU-loss handling — it has re-demonstrated the `timeout`
+ * scenario, with a hold pinned and a room orphaned for the intervening minutes.
+ * Thirty seconds is a small multiple of the lease cadence and is the number a
+ * run has to beat for this drill to say anything the matrix does not already
+ * say elsewhere.
+ */
+export const SARAH_LIVEKIT_SFU_LOSS_BOUND_MS = 30_000;
+
+/**
+ * The terminal reasons each scenario admits.
+ *
+ * Every scenario but `sfu_loss` pins exactly one reason, because the fault and
+ * the reason are the same event observed twice. `sfu_loss` is different: the
+ * worker protocol has no media-transport-loss reason, so the reason recorded is
+ * whichever watchdog noticed the room vanish first — the agent session close
+ * (`participant_left`), the job shutdown callback (`worker_shutdown`), or a
+ * failure on the way down (`worker_error`). All three are bounded, deterministic
+ * settlements and all three are admitted.
+ *
+ * Two reasons are deliberately NOT admitted for `sfu_loss`:
+ *
+ *   - `session_expired` means nothing terminated the session except the ordinary
+ *     deadline. The drill proved the timeout works, not that SFU loss is bounded.
+ *   - `completed` means the authority recorded a clean finish for a session whose
+ *     transport was destroyed underneath it. That is the silent-loss failure this
+ *     row exists to catch.
+ *
+ * A run that produces either is a finding. Record it `contradicted` against
+ * `sfu_loss_bounded`; do not re-run until it produces a nicer reason.
+ */
+const ADMITTED_TERMINAL_REASONS = {
+  success: ["completed"],
+  cancellation: ["operator_stop"],
+  timeout: ["session_expired"],
+  planned_worker_crash: ["worker_error"],
+  sfu_loss: ["worker_shutdown", "participant_left", "worker_error"],
+  provider_disconnect: ["provider_disconnect"],
+  hold_exhaustion: ["hold_exhausted"],
+  reconnect: ["completed"],
+} as const satisfies Readonly<Record<SarahLiveKitFailureScenario, readonly string[]>>;
 
 const EXPECTED_FAULT_ACTION = {
   success: "none",
   cancellation: "client_cancel",
   timeout: "bounded_deadline",
   planned_worker_crash: "delete_exact_worker_pod",
+  /**
+   * Delete the exact `livekit-server` pod hosting the drill session's room.
+   *
+   * Same bounded class as `delete_exact_worker_pod`: one named pod, chosen
+   * because it carries this generation's media. Not a graceful drain — a drain
+   * is a different drill and is not loss. Not a node deletion, which would take
+   * the co-located Sarah worker too and make the observation indistinguishable
+   * from `planned_worker_crash`. Never a shared firewall, NetworkPolicy,
+   * ConfigMap, Secret, or Deployment change, for the same reason the
+   * provider-disconnect drill forbids them: those faults are not scoped to one
+   * generation and cannot be attributed to it.
+   */
+  sfu_loss: "delete_exact_sfu_pod",
   provider_disconnect: "close_exact_provider_socket",
   hold_exhaustion: "exhaust_exact_session_hold",
   reconnect: "reconnect_after_terminal",
@@ -49,10 +101,53 @@ type Usage = Readonly<{
   chargeMsat: number;
 }>;
 
+/**
+ * Evidence only the SFU-loss drill produces.
+ *
+ * The other scenarios terminate through a path the authority is already
+ * watching. SFU loss destroys the transport, so the two questions the row
+ * actually asks — how long until accounting was terminal, and was anything left
+ * behind — have to be measured against the fault instant and against the
+ * room-binding table, not inferred from the session's own duration.
+ */
+export type SarahLiveKitSfuLossEvidence = Readonly<{
+  /**
+   * Digest of the exact SFU instance destroyed.
+   *
+   * A digest, not a pod name: a name is a cluster address. It exists so an
+   * independent reviewer can confirm the fault was aimed at one instance and
+   * that it was not the instance running the Sarah worker.
+   */
+  sfuInstanceDigest: string;
+  /** Digest of the Sarah worker instance, which must survive the fault. */
+  workerInstanceDigest: string;
+  faultInjectedAtMs: number;
+  /** When the packaged client or worker first observed media loss. */
+  mediaLossObservedAtMs: number;
+  /**
+   * State of this session's `sarah_livekit_room_bindings` row once the
+   * reconciler settled. `cleanup_abandoned` is the reconciler giving up, which
+   * is an orphaned room at the SFU and fails the row.
+   */
+  roomBindingTerminalState: "cleaned" | "cleanup_failed";
+  roomBindingObservedAtMs: number;
+  /** Rows still `prepared` or `active` for this session after settlement. */
+  residualActiveRoomBindingCount: 0;
+  residualWorkerGenerationCount: 0;
+  residualProviderSessionCount: 0;
+  /**
+   * Billable Sarah sessions live anywhere in the cluster during the drill
+   * window. Deleting an SFU pod takes every room on that instance, so the drill
+   * is only attributable — and only non-customer-affecting — when its own
+   * session is the single live one.
+   */
+  concurrentBillableSessionCount: 1;
+}>;
+
 export type SarahLiveKitFailureScenarioObservation = Readonly<{
   scenario: SarahLiveKitFailureScenario;
   faultAction: (typeof EXPECTED_FAULT_ACTION)[SarahLiveKitFailureScenario];
-  terminalReason: (typeof EXPECTED_TERMINAL_REASON)[SarahLiveKitFailureScenario];
+  terminalReason: (typeof ADMITTED_TERMINAL_REASONS)[SarahLiveKitFailureScenario][number];
   terminalState: "settled" | "released";
   startedAtMs: number;
   terminalAtMs: number;
@@ -88,6 +183,7 @@ export type SarahLiveKitFailureScenarioObservation = Readonly<{
     freshGenerationStartedAtMs: number;
     settledGenerationRevived: false;
   }>;
+  sfuLoss: null | SarahLiveKitSfuLossEvidence;
 }>;
 
 export type SarahLiveKitFailureMatrixObservation = Readonly<{
@@ -100,10 +196,32 @@ export type SarahLiveKitFailureMatrixObservation = Readonly<{
   scenarios: readonly SarahLiveKitFailureScenarioObservation[];
 }>;
 
+/**
+ * The SFU-loss projection.
+ *
+ * `faultToTerminalMs` is the number the row is actually about, so it is
+ * published rather than left implicit in two timestamps. The residual counts are
+ * published as the literal zeros they are required to be, so a reader does not
+ * have to trust that the validator ran.
+ */
+type PublicSfuLoss = Readonly<{
+  sfuInstanceDigest: string;
+  workerInstanceDigest: string;
+  faultToTerminalMs: number;
+  mediaLossDetectedWithinMs: number;
+  boundMs: typeof SARAH_LIVEKIT_SFU_LOSS_BOUND_MS;
+  roomBindingTerminalState: "cleaned" | "cleanup_failed";
+  residualActiveRoomBindingCount: 0;
+  residualWorkerGenerationCount: 0;
+  residualProviderSessionCount: 0;
+  concurrentBillableSessionCount: 1;
+  workerInstanceSurvived: true;
+}>;
+
 type PublicScenario = Readonly<{
   scenario: SarahLiveKitFailureScenario;
   faultAction: (typeof EXPECTED_FAULT_ACTION)[SarahLiveKitFailureScenario];
-  terminalReason: (typeof EXPECTED_TERMINAL_REASON)[SarahLiveKitFailureScenario];
+  terminalReason: (typeof ADMITTED_TERMINAL_REASONS)[SarahLiveKitFailureScenario][number];
   terminalState: "settled" | "released";
   durationMs: number;
   usage: Usage;
@@ -120,6 +238,7 @@ type PublicScenario = Readonly<{
   accountingEvidenceDigest: string;
   faultEvidenceDigest: string;
   privacyEvidenceDigest: string;
+  sfuLoss: null | PublicSfuLoss;
 }>;
 
 export type SarahLiveKitFailureMatrixReceipt = Readonly<{
@@ -244,6 +363,83 @@ const assertNoPrivateMaterial = (value: unknown, label: string): void => {
   }
 };
 
+/**
+ * Validate the SFU-loss drill.
+ *
+ * Ordering is the substance here. A fault injected before the session was live
+ * proves nothing, media loss cannot precede the fault that caused it, and a
+ * settlement that beat the media loss means the two were never causally
+ * connected. Each of those is a run to repeat rather than evidence to keep.
+ */
+const validateSfuLoss = (value: SarahLiveKitFailureScenarioObservation): void => {
+  assertExactKeys(
+    value.sfuLoss,
+    [
+      "sfuInstanceDigest",
+      "workerInstanceDigest",
+      "faultInjectedAtMs",
+      "mediaLossObservedAtMs",
+      "roomBindingTerminalState",
+      "roomBindingObservedAtMs",
+      "residualActiveRoomBindingCount",
+      "residualWorkerGenerationCount",
+      "residualProviderSessionCount",
+      "concurrentBillableSessionCount",
+    ],
+    "sfu loss evidence",
+  );
+  const sfuLoss = value.sfuLoss as SarahLiveKitSfuLossEvidence;
+  assertDigest(sfuLoss.sfuInstanceDigest, "sfuLoss.sfuInstanceDigest");
+  assertDigest(sfuLoss.workerInstanceDigest, "sfuLoss.workerInstanceDigest");
+  assert(
+    sfuLoss.sfuInstanceDigest !== sfuLoss.workerInstanceDigest,
+    "sfu loss destroyed the Sarah worker instance instead of the SFU instance",
+  );
+  for (const key of [
+    "faultInjectedAtMs",
+    "mediaLossObservedAtMs",
+    "roomBindingObservedAtMs",
+  ] as const) {
+    assertInteger(sfuLoss[key], `sfuLoss.${key}`);
+  }
+  assert(
+    sfuLoss.faultInjectedAtMs > value.startedAtMs,
+    "sfu loss injected its fault before the session was live",
+  );
+  assert(
+    sfuLoss.mediaLossObservedAtMs >= sfuLoss.faultInjectedAtMs,
+    "sfu loss observed media loss before the fault that caused it",
+  );
+  assert(
+    value.terminalAtMs >= sfuLoss.mediaLossObservedAtMs,
+    "sfu loss settled before media loss was observed",
+  );
+  assert(
+    value.terminalAtMs - sfuLoss.faultInjectedAtMs <= SARAH_LIVEKIT_SFU_LOSS_BOUND_MS,
+    `sfu loss exceeded its ${SARAH_LIVEKIT_SFU_LOSS_BOUND_MS} ms bound`,
+  );
+  assert(
+    sfuLoss.roomBindingTerminalState === "cleaned" ||
+      sfuLoss.roomBindingTerminalState === "cleanup_failed",
+    "sfu loss left the room binding in a nonterminal or abandoned state",
+  );
+  assert(
+    sfuLoss.roomBindingObservedAtMs >= value.terminalAtMs,
+    "sfu loss read the room binding before the session was terminal",
+  );
+  for (const key of [
+    "residualActiveRoomBindingCount",
+    "residualWorkerGenerationCount",
+    "residualProviderSessionCount",
+  ] as const) {
+    assert(sfuLoss[key] === 0, `sfuLoss.${key} is nonzero`);
+  }
+  assert(
+    sfuLoss.concurrentBillableSessionCount === 1,
+    "sfu loss ran with a billable session other than its own live in the cluster",
+  );
+};
+
 const validateScenario = (
   value: SarahLiveKitFailureScenarioObservation,
   expectedScenario: SarahLiveKitFailureScenario,
@@ -272,6 +468,7 @@ const validateScenario = (
       "rawMediaFindings",
       "transcriptFindings",
       "reconnect",
+      "sfuLoss",
     ],
     `scenario ${expectedScenario}`,
   );
@@ -281,7 +478,9 @@ const validateScenario = (
     `${expectedScenario} fault action is invalid`,
   );
   assert(
-    value.terminalReason === EXPECTED_TERMINAL_REASON[expectedScenario],
+    (ADMITTED_TERMINAL_REASONS[expectedScenario] as readonly string[]).includes(
+      value.terminalReason,
+    ),
     `${expectedScenario} terminal reason is invalid`,
   );
   assert(
@@ -340,6 +539,11 @@ const validateScenario = (
   }
   for (const key of ["secretFindings", "rawMediaFindings", "transcriptFindings"] as const) {
     assert(value[key] === 0, `${expectedScenario}.${key} is nonzero`);
+  }
+  if (expectedScenario !== "sfu_loss") {
+    assert(value.sfuLoss === null, `${expectedScenario} has sfu-loss-only evidence`);
+  } else {
+    validateSfuLoss(value);
   }
   if (expectedScenario !== "reconnect") {
     assert(value.reconnect === null, `${expectedScenario} has reconnect-only evidence`);
@@ -476,6 +680,23 @@ export const buildSarahLiveKitFailureMatrixReceipt = (
       accountingEvidenceDigest: scenario.accountingEvidenceDigest,
       faultEvidenceDigest: scenario.faultEvidenceDigest,
       privacyEvidenceDigest: scenario.privacyEvidenceDigest,
+      sfuLoss:
+        scenario.sfuLoss === null
+          ? null
+          : {
+              sfuInstanceDigest: scenario.sfuLoss.sfuInstanceDigest,
+              workerInstanceDigest: scenario.sfuLoss.workerInstanceDigest,
+              faultToTerminalMs: scenario.terminalAtMs - scenario.sfuLoss.faultInjectedAtMs,
+              mediaLossDetectedWithinMs:
+                scenario.sfuLoss.mediaLossObservedAtMs - scenario.sfuLoss.faultInjectedAtMs,
+              boundMs: SARAH_LIVEKIT_SFU_LOSS_BOUND_MS,
+              roomBindingTerminalState: scenario.sfuLoss.roomBindingTerminalState,
+              residualActiveRoomBindingCount: 0,
+              residualWorkerGenerationCount: 0,
+              residualProviderSessionCount: 0,
+              concurrentBillableSessionCount: 1,
+              workerInstanceSurvived: true,
+            },
     } satisfies PublicScenario;
   });
   const aggregateUsage = sumUsage(observation.scenarios);

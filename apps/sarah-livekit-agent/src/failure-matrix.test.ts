@@ -4,6 +4,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   SARAH_LIVEKIT_FAILURE_MATRIX_SCHEMA,
   SARAH_LIVEKIT_FAILURE_SCENARIOS,
+  SARAH_LIVEKIT_SFU_LOSS_BOUND_MS,
   buildSarahLiveKitFailureMatrixReceipt,
   validateSarahLiveKitFailureMatrixObservation,
   type SarahLiveKitFailureMatrixObservation,
@@ -17,6 +18,7 @@ const terminalReason = {
   cancellation: "operator_stop",
   timeout: "session_expired",
   planned_worker_crash: "worker_error",
+  sfu_loss: "worker_shutdown",
   provider_disconnect: "provider_disconnect",
   hold_exhaustion: "hold_exhausted",
   reconnect: "completed",
@@ -27,6 +29,7 @@ const faultAction = {
   cancellation: "client_cancel",
   timeout: "bounded_deadline",
   planned_worker_crash: "delete_exact_worker_pod",
+  sfu_loss: "delete_exact_sfu_pod",
   provider_disconnect: "close_exact_provider_socket",
   hold_exhaustion: "exhaust_exact_session_hold",
   reconnect: "reconnect_after_terminal",
@@ -93,6 +96,21 @@ const observation = (): SarahLiveKitFailureMatrixObservation => ({
               settledGenerationRevived: false,
             }
           : null,
+      sfuLoss:
+        scenario === "sfu_loss"
+          ? {
+              sfuInstanceDigest: digest("sfu-instance"),
+              workerInstanceDigest: digest("worker-instance"),
+              faultInjectedAtMs: 1_000 + scenarioIndex * 10_000 + 400,
+              mediaLossObservedAtMs: 1_000 + scenarioIndex * 10_000 + 700,
+              roomBindingTerminalState: "cleaned",
+              roomBindingObservedAtMs: 2_000 + scenarioIndex * 10_000 + 5_000,
+              residualActiveRoomBindingCount: 0,
+              residualWorkerGenerationCount: 0,
+              residualProviderSessionCount: 0,
+              concurrentBillableSessionCount: 1,
+            }
+          : null,
     };
   }),
 });
@@ -136,9 +154,9 @@ describe("Sarah LiveKit terminal failure matrix", () => {
       retainedMedia: false,
       retainedTranscript: false,
       aggregateUsage: {
-        inputTokens: 70,
-        outputTokens: 77,
-        chargeMsat: 119,
+        inputTokens: 80,
+        outputTokens: 88,
+        chargeMsat: 136,
       },
     });
     expect(receipt.scenarios.map((scenario) => scenario.scenario)).toEqual(
@@ -222,6 +240,115 @@ describe("Sarah LiveKit terminal failure matrix", () => {
         }),
       ),
     ).toThrow("revived a settled generation");
+  });
+
+  test("bounds SFU loss against the fault instant and publishes the elapsed time", () => {
+    const receipt = buildSarahLiveKitFailureMatrixReceipt(observation());
+    const sfuLoss = receipt.scenarios.find((scenario) => scenario.scenario === "sfu_loss");
+    expect(sfuLoss?.faultAction).toBe("delete_exact_sfu_pod");
+    expect(sfuLoss?.sfuLoss).toMatchObject({
+      faultToTerminalMs: 600,
+      mediaLossDetectedWithinMs: 300,
+      boundMs: SARAH_LIVEKIT_SFU_LOSS_BOUND_MS,
+      roomBindingTerminalState: "cleaned",
+      workerInstanceSurvived: true,
+      concurrentBillableSessionCount: 1,
+    });
+    expect(
+      receipt.scenarios.filter((scenario) => scenario.sfuLoss !== null),
+    ).toHaveLength(1);
+
+    expect(() =>
+      validateSarahLiveKitFailureMatrixObservation(
+        mutateScenario(observation(), "sfu_loss", (scenario) => {
+          scenario["terminalAtMs"] =
+            (scenario["sfuLoss"] as Record<string, number>)["faultInjectedAtMs"]! +
+            SARAH_LIVEKIT_SFU_LOSS_BOUND_MS +
+            1;
+        }),
+      ),
+    ).toThrow("exceeded its 30000 ms bound");
+  });
+
+  test("refuses an SFU-loss drill that proves nothing about SFU loss", () => {
+    // The session merely ran out. That is the timeout scenario wearing a
+    // different fault label, with a hold pinned for the intervening minutes.
+    expect(() =>
+      validateSarahLiveKitFailureMatrixObservation(
+        mutateScenario(observation(), "sfu_loss", (scenario) => {
+          scenario["terminalReason"] = "session_expired";
+        }),
+      ),
+    ).toThrow("sfu_loss terminal reason is invalid");
+
+    // A clean finish for a session whose transport was destroyed underneath it
+    // is the silent-loss failure this row exists to catch.
+    expect(() =>
+      validateSarahLiveKitFailureMatrixObservation(
+        mutateScenario(observation(), "sfu_loss", (scenario) => {
+          scenario["terminalReason"] = "completed";
+        }),
+      ),
+    ).toThrow("sfu_loss terminal reason is invalid");
+
+    // The fault landed on the Sarah worker, so this is planned_worker_crash.
+    expect(() =>
+      validateSarahLiveKitFailureMatrixObservation(
+        mutateScenario(observation(), "sfu_loss", (scenario) => {
+          const sfuLoss = scenario["sfuLoss"] as Record<string, unknown>;
+          sfuLoss["workerInstanceDigest"] = sfuLoss["sfuInstanceDigest"];
+        }),
+      ),
+    ).toThrow("destroyed the Sarah worker instance");
+
+    // Media loss cannot precede the fault that caused it.
+    expect(() =>
+      validateSarahLiveKitFailureMatrixObservation(
+        mutateScenario(observation(), "sfu_loss", (scenario) => {
+          const sfuLoss = scenario["sfuLoss"] as Record<string, number>;
+          sfuLoss["mediaLossObservedAtMs"] = sfuLoss["faultInjectedAtMs"]! - 1;
+        }),
+      ),
+    ).toThrow("before the fault that caused it");
+
+    // The reconciler gave up: the room is orphaned at the SFU.
+    expect(() =>
+      validateSarahLiveKitFailureMatrixObservation(
+        mutateScenario(observation(), "sfu_loss", (scenario) => {
+          (scenario["sfuLoss"] as Record<string, unknown>)["roomBindingTerminalState"] =
+            "cleanup_abandoned";
+        }),
+      ),
+    ).toThrow("nonterminal or abandoned state");
+
+    // Another owner's session shared the destroyed instance.
+    expect(() =>
+      validateSarahLiveKitFailureMatrixObservation(
+        mutateScenario(observation(), "sfu_loss", (scenario) => {
+          (scenario["sfuLoss"] as Record<string, unknown>)["concurrentBillableSessionCount"] = 2;
+        }),
+      ),
+    ).toThrow("billable session other than its own");
+
+    // Only sfu_loss carries this evidence.
+    expect(() =>
+      validateSarahLiveKitFailureMatrixObservation(
+        mutateScenario(observation(), "timeout", (scenario) => {
+          scenario["sfuLoss"] = {
+            sfuInstanceDigest: digest("stray-sfu"),
+            workerInstanceDigest: digest("stray-worker"),
+            faultInjectedAtMs: 20_500,
+            mediaLossObservedAtMs: 20_600,
+            roomBindingTerminalState: "cleaned",
+            roomBindingObservedAtMs: 30_000,
+            residualActiveRoomBindingCount: 0,
+            residualWorkerGenerationCount: 0,
+            residualProviderSessionCount: 0,
+            concurrentBillableSessionCount: 1,
+          };
+        }),
+      ),
+    ).toThrow("has sfu-loss-only evidence");
   });
 
   test("rejects duplicate identities and private material before receipt projection", () => {

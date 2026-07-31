@@ -1172,6 +1172,135 @@ node scripts/cloud/livekit-acceptance.mjs \
   --apply
 ```
 
+#### The SFU-loss drill (`sfu_loss`)
+
+Added 2026-07-31. The rc29 evidence manifest recorded `sfu_loss_bounded` as
+*"no such scenario is even defined"*. This is that definition. It is drill item
+2, abrupt SFU loss, expressed as one scenario the failure matrix and the gate
+recorder both enforce.
+
+**The claim under test.** An SFU instance is destroyed beneath a live,
+admitted Sarah generation. Within a bounded window the session reaches a
+terminal accounting state, that state reconciles exactly, no room binding,
+worker generation, or provider session is left behind, and the loss is not
+reported as a clean finish.
+
+**The fault.** `delete_exact_sfu_pod`: delete the one `livekit-server` pod
+hosting the drill session's room. Deliberately *not* a graceful drain, which is
+item 1 and is not loss. Deliberately *not* a node deletion, which would take the
+co-located Sarah worker with it and make the result indistinguishable from
+`planned_worker_crash`. Never a shared firewall, NetworkPolicy, ConfigMap,
+Secret, or Deployment change — the same restriction the provider-disconnect
+drill carries, and for the same reason: those faults are not scoped to one
+generation, so nothing observed after them can be attributed to it.
+
+**The bound.** Thirty seconds
+(`SARAH_LIVEKIT_SFU_LOSS_BOUND_MS` in
+`apps/sarah-livekit-agent/src/failure-matrix.ts`), measured from pod deletion to
+terminal accounting. The ceiling is not `max_session_seconds`: a session that
+survives until the 300 second expiry sweep has demonstrated the `timeout`
+scenario, not bounded SFU-loss handling, and has held a credit hold and an
+orphaned room for the intervening minutes. The worker publishes `lease_check`
+every five seconds, so thirty is a small multiple of the cadence the authority
+already runs at.
+
+**Admitted terminal reasons.** `worker_shutdown`, `participant_left`, or
+`worker_error`. The worker protocol has no media-transport-loss reason, so which
+one appears depends on which watchdog noticed the room vanish first; all three
+are bounded deterministic settlements. `session_expired` and `completed` are
+refused: the first proves only the deadline, and the second is the authority
+recording a clean finish for a session whose transport was destroyed underneath
+it, which is the silent-loss failure this row exists to catch. A run producing
+either is recorded `contradicted` — it is a finding about the system, not a run
+to repeat until it looks better.
+
+**Run exactly one billable session.** The drill requires
+`concurrentBillableSessionCount: 1`. Deleting an SFU pod takes every room on
+that instance, so a second live session would be collateral damage to another
+owner. It is also what makes the target identifiable: with one room in the
+cluster, exactly one server pod reports a nonzero room gauge.
+
+Steps:
+
+1. Confirm the cluster is idle, then start one private acceptance session and
+   complete at least one turn, so the scenario has real provider usage to
+   settle. Leave it live.
+
+2. Find the pod hosting the room. `livekit_room_total` is a per-instance gauge
+   (`Namespace: livekit`, `Subsystem: room`, `Name: total`,
+   `ConstLabels: node_id, node_type`), exposed on `prometheus_port: 6789`:
+
+   ```sh
+   for pod in $(kubectl -n livekit-system get pods \
+       -l app.kubernetes.io/name=livekit-server -o name); do
+     printf '%s ' "$pod"
+     kubectl -n livekit-system exec "$pod" -- \
+       wget -qO- http://127.0.0.1:6789/metrics | grep '^livekit_room_total'
+   done
+   ```
+
+   Exactly one pod must report a nonzero total. If two do, another session is
+   live: stop and start over rather than injecting an unattributable fault.
+
+3. Record the fault instant and delete that one pod. `--grace-period=0` makes
+   this a loss rather than a drain:
+
+   ```sh
+   date +%s%3N                       # faultInjectedAtMs
+   kubectl -n livekit-system delete pod <the-one-pod> --grace-period=0 --force
+   ```
+
+4. Record `mediaLossObservedAtMs` from the packaged client or the worker's own
+   log, and `terminalAtMs` from the settlement event.
+
+5. After settlement, read the room binding and confirm nothing was orphaned:
+
+   ```sql
+   SELECT state, cleanup_attempt_count, cleanup_abandoned_at
+     FROM sarah_livekit_room_bindings
+    WHERE session_ref = '<the drill session>';
+   ```
+
+   `cleaned` or `cleanup_failed` is terminal. `cleanup_abandoned` means the
+   reconciler gave up and the room is orphaned at the SFU: that fails the row.
+   Confirm no row for this session remains `prepared` or `active`, and that no
+   worker generation or provider session survives it.
+
+6. Record it. Both paths read the same constant and the same fault name, so the
+   matrix and the recorder cannot drift:
+
+   ```sh
+   # As one cell of the full matrix, alongside the other seven scenarios.
+   OA_SARAH_LIVEKIT_FAILURE_MATRIX_OWNER_GATE=I_ACCEPT_EP263_SARAH_FAILURE_MATRIX \
+   pnpm --dir apps/sarah-livekit-agent failure-matrix -- \
+     --input <private-observation.json> \
+     --receipt docs/ops/receipts/livekit/production-drills-<UTC>.json --apply
+
+   # And as the sfu_loss_bounded observation on the release-gate row.
+   pnpm --dir apps/sarah-livekit-agent gate-observation -- \
+     --row sarah-livekit-failure \
+     --observations <private-observations.json> \
+     --binding <private-binding.json> \
+     --operator-ref "<operator identity>" \
+     --receipt docs/ops/receipts/livekit/gate/<name>.json --apply
+   ```
+
+   The matrix scenario carries `sfuLoss` with `sfuInstanceDigest`,
+   `workerInstanceDigest` (which must differ — a fault that landed on the worker
+   is a different drill), `faultInjectedAtMs`, `mediaLossObservedAtMs`,
+   `roomBindingTerminalState`, `roomBindingObservedAtMs`, the three residual
+   counts, and `concurrentBillableSessionCount`. The gate observation carries
+   `faultInjected: "delete_exact_sfu_pod"` and `boundedWithinMs`.
+
+**Permissions.** Step 2 needs `pods/exec` and step 3 needs `delete pods` in
+`livekit-system`. Check before scheduling a window, because the fault instant is
+a poor time to discover a missing role:
+
+```sh
+kubectl -n livekit-system auth can-i create pods/exec
+kubectl -n livekit-system auth can-i delete pods
+```
+
 ### Secret, log, and retention scan
 
 Seal each completed read-only export with the executable manifest builder.

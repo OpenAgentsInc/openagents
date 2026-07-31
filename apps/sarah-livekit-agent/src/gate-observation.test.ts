@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
+import { SARAH_LIVEKIT_SFU_LOSS_BOUND_MS } from "./failure-matrix.js";
 import {
   REQUIRED_OBSERVATIONS,
   assertPublicSafeGateObservationReceipt,
@@ -537,6 +538,59 @@ describe("failure drills", () => {
     expect(receipt.observations.find((entry) => entry.key === "worker_crash_bounded")?.finding).toBe(
       "satisfied",
     );
+  });
+
+  test("holds the SFU-loss drill to the failure matrix's fault and bound", () => {
+    const sfuLoss = (overrides: Readonly<Record<string, unknown>>) =>
+      withObservation("sarah-livekit-failure", {
+        key: "sfu_loss_bounded",
+        finding: "satisfied",
+        observedAtMs: now(),
+        evidence: {
+          kind: "drill",
+          faultInjected: "delete_exact_sfu_pod",
+          boundedWithinMs: 4_200,
+          settlementState: "settled",
+          settlementReceiptDigest: `sha256:${"a".repeat(64)}`,
+          ...overrides,
+        },
+      });
+
+    const receipt = record("sarah-livekit-failure", sfuLoss({}));
+    expect(receipt.observations.find((entry) => entry.key === "sfu_loss_bounded")?.finding).toBe(
+      "satisfied",
+    );
+
+    // A drain is not a loss, and a node deletion is planned_worker_crash.
+    expect(() =>
+      record("sarah-livekit-failure", sfuLoss({ faultInjected: "drain the SFU pod" })),
+    ).toThrow(/requires the delete_exact_sfu_pod fault/u);
+
+    // Past the bound, the drill has only re-proved the session deadline.
+    expect(() =>
+      record(
+        "sarah-livekit-failure",
+        sfuLoss({ boundedWithinMs: SARAH_LIVEKIT_SFU_LOSS_BOUND_MS + 1 }),
+      ),
+    ).toThrow(/exceeded its 30000 ms bound/u);
+
+    // An exceeded bound is still a finding, so it must remain recordable.
+    const contradicted = record(
+      "sarah-livekit-failure",
+      withObservation("sarah-livekit-failure", {
+        key: "sfu_loss_bounded",
+        finding: "contradicted",
+        observedAtMs: now(),
+        evidence: {
+          kind: "drill",
+          faultInjected: "delete_exact_sfu_pod",
+          boundedWithinMs: 300_000,
+          settlementState: "settled",
+          settlementReceiptDigest: `sha256:${"b".repeat(64)}`,
+        },
+      }),
+    );
+    expect(contradicted.outcome).toBe("observed_fail");
   });
 });
 
