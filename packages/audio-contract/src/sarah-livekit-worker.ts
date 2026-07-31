@@ -1,5 +1,6 @@
 import { Schema as S } from "effect";
 import { SarahEditorCommandSchema, type SarahEditorCommand } from "./sarah-realtime.js";
+import { SarahLiveKitRoomPresenceLeaseSchema } from "./sarah-livekit-room-authority.js";
 
 export const SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION = "openagents.sarah.livekit-worker.v1" as const;
 export const SARAH_LIVEKIT_AGENT_NAME = "sarah-room-v1" as const;
@@ -107,6 +108,7 @@ export const SarahLiveKitJobClaimResponseSchema = S.Struct({
   sessionExpiresAtMs: Seq,
   safetyIdentifier: Digest,
   capabilityProfile: SarahLiveKitCapabilityProfileSchema,
+  presenceLease: S.optional(SarahLiveKitRoomPresenceLeaseSchema),
 });
 export type SarahLiveKitJobClaimResponse = typeof SarahLiveKitJobClaimResponseSchema.Type;
 
@@ -335,10 +337,18 @@ export const decodeSarahLiveKitJobClaimRequest = (value: unknown) =>
     onExcessProperty: "error",
   });
 
-export const decodeSarahLiveKitJobClaimResponse = (value: unknown) =>
-  S.decodeUnknownSync(SarahLiveKitJobClaimResponseSchema)(value, {
+export const decodeSarahLiveKitJobClaimResponse = (value: unknown) => {
+  const response = S.decodeUnknownSync(SarahLiveKitJobClaimResponseSchema)(value, {
     onExcessProperty: "error",
   });
+  if (
+    (response.capabilityProfile.kind === "community_member_v1") !==
+    (response.presenceLease !== undefined)
+  ) {
+    throw new Error("Sarah community claims require one persisted presence lease");
+  }
+  return response;
+};
 
 export const decodeSarahLiveKitJobEvent = (value: unknown) =>
   S.decodeUnknownSync(SarahLiveKitJobEventSchema)(value, {

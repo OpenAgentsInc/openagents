@@ -689,6 +689,16 @@ requireIncludes(
   "Sarah worker app-node placement",
 );
 requireIncludes(rendered, "serviceAccountName: sarah-agent", "Sarah worker KSA");
+requireIncludes(
+  sarahAgentRuntime,
+  "name: sarah-nostr-projection",
+  "Sarah Nostr projection ConfigMap",
+);
+requireIncludes(
+  sarahAgentRuntime,
+  "optional: true",
+  "Sarah Nostr projection disabled-state seam",
+);
 requireIncludes(rendered, "containerPort: 8081", "Sarah worker production health port");
 requireIncludes(rendered, "startupProbe:", "Sarah worker startup probe");
 requireIncludes(rendered, "readinessProbe:", "Sarah worker readiness probe");

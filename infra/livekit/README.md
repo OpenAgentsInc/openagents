@@ -149,13 +149,14 @@ kubectl --context=oa-livekit-prod -n livekit-system create configmap sarah-nostr
   --dry-run=client -o yaml | kubectl --context=oa-livekit-prod apply -f -
 ```
 
-Add `sarah-nostr-projection` to the worker Deployment's `envFrom` only when the
-community projection lane is enabled. Until then the signer can be deployed
-and verified independently without changing the running worker. A community
-job must fail closed if any of the four values is absent. The signer URL and
-audience must remain the exact HTTPS Cloud Run URI; the relay must use WSS.
-After enabling the reference, restart the Deployment and wait for rollout
-status before dispatching the acceptance room.
+The worker Deployment carries this ConfigMap as an optional disabled-state
+reference, but a community job fails closed if any of the four values is
+absent. The signer URL and audience must remain the exact HTTPS Cloud Run URI;
+the relay must use WSS. Set the same public Sarah key on the API as
+`SARAH_NOSTR_EXPECTED_PUBKEY` and set the admitted community media-key digest
+as `SARAH_LIVEKIT_E2EE_KEY_REVISION`; malformed or missing values prevent the
+API from returning a presence lease. Restart both revisions and wait for
+rollout status before dispatching the acceptance room.
 
 ## Sarah worker image pin
 

@@ -7,10 +7,17 @@ import { generateSarahNostrSigner } from "@openagentsinc/sarah/nostr-identity";
 import { EventEmitter } from "node:events";
 import { describe, expect, test } from "vite-plus/test";
 import WebSocket from "ws";
+import {
+  SARAH_LIVEKIT_ROOM_AUTHORITY_SCHEMA,
+  SARAH_LIVEKIT_ROOM_PRINCIPAL,
+  SARAH_LIVEKIT_ROOM_PROCESSOR_DISCLOSURE,
+  decodeSarahLiveKitRoomPresenceLease,
+} from "@openagentsinc/audio-contract";
 
 import {
   makeSarahNostrProjectionClient,
   readSarahNostrProjectionConfig,
+  sarahPresenceTemplateFromLease,
 } from "./nostr-projection-client.js";
 
 const token = `header.${"a".repeat(120)}.signature`;
@@ -39,7 +46,10 @@ class RelaySocket extends EventEmitter {
 
   constructor(readonly url: string) {
     super();
-    queueMicrotask(() => this.emit("open"));
+    queueMicrotask(() => {
+      this.emit("open");
+      this.emit("message", Buffer.from(JSON.stringify(["AUTH", "relay-challenge"])));
+    });
   }
 
   send(value: string) {
@@ -60,6 +70,46 @@ class RelaySocket extends EventEmitter {
 }
 
 describe("Sarah worker Nostr projection client", () => {
+  test("derives active and inactive replacements from the exact persisted lease", () => {
+    const lease = decodeSarahLiveKitRoomPresenceLease({
+      schema: SARAH_LIVEKIT_ROOM_AUTHORITY_SCHEMA,
+      principal: SARAH_LIVEKIT_ROOM_PRINCIPAL,
+      sarahPubkey: signer.getPublicKey(),
+      leaseRef: "presence:one",
+      communityRef: "openagents-public",
+      channelRef: "agent-chat",
+      membershipRevision: "b".repeat(64),
+      e2eeKeyRevision: "c".repeat(64),
+      roomRef: "room:one",
+      roomEpoch: 2,
+      sarahParticipantRef: SARAH_LIVEKIT_ROOM_PRINCIPAL,
+      dispatchRef: "dispatch:one",
+      sessionRef: "session:one",
+      generation: 4,
+      capabilityProfile: "community_member_v1",
+      admissionDigest: "d".repeat(64),
+      processorDisclosure: SARAH_LIVEKIT_ROOM_PROCESSOR_DISCLOSURE,
+      cohortPolicy: "authenticated_allowlisted",
+      issuedAtMs: 1_800_000_000_000,
+      expiresAtMs: 1_800_000_900_000,
+    });
+    const active = sarahPresenceTemplateFromLease(lease, "active");
+    const inactive = sarahPresenceTemplateFromLease(lease, "inactive", 1_800_000_100);
+    expect(active).toMatchObject({
+      status: "active",
+      createdAt: 1_800_000_000,
+      expiresAt: 1_800_000_900,
+      presenceLeaseRef: lease.leaseRef,
+    });
+    expect(inactive).toMatchObject({
+      status: "inactive",
+      createdAt: 1_800_000_100,
+      expiresAt: 1_800_000_100,
+      presenceLeaseRef: lease.leaseRef,
+      authorityDigest: active.authorityDigest,
+    });
+  });
+
   test("requires closed production endpoints and a stable public key", () => {
     expect(
       readSarahNostrProjectionConfig({
@@ -116,7 +166,7 @@ describe("Sarah worker Nostr projection client", () => {
     expect(first.content).toBe(template.content);
     expect(first.tags).toContainEqual(["authority", "projection_only"]);
     expect(requests.filter((request) => request.url.includes("metadata.google.internal"))).toHaveLength(1);
-    expect(requests.filter((request) => request.authorization === `Bearer ${token}`)).toHaveLength(2);
+    expect(requests.filter((request) => request.authorization === `Bearer ${token}`)).toHaveLength(3);
     expect(requests.map((request) => request.body ?? "").join("")).not.toContain(token);
   });
 

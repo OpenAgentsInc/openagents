@@ -117,6 +117,11 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // out-of-band admin-key set. Missing or malformed configuration keeps all
   // community admissions closed.
   SARAH_LIVEKIT_COMMUNITY_AUTHORITY_JSON?: string | undefined
+  // Stable public principal.sarah key and current community media-key revision.
+  // Both are public digests; missing or malformed values keep community worker
+  // claims closed before any presence event can be signed.
+  SARAH_NOSTR_EXPECTED_PUBKEY?: string | undefined
+  SARAH_LIVEKIT_E2EE_KEY_REVISION?: string | undefined
   // Staging-only owner access. The composition root also requires the exact
   // staging service origin and the canonical primary owner account. The first
   // admitted request creates one expiring, revocable database entitlement.

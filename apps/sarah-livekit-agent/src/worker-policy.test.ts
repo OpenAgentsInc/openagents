@@ -120,6 +120,27 @@ describe("Sarah LiveKit worker policy", () => {
     expect(source).toContain('observation.state === "drift"');
   });
 
+  test("publishes verified community presence before listening and expires it after projections", async () => {
+    const source = await readFile(new URL("./agent.ts", import.meta.url), "utf8");
+    const awaitProviderAdmission = source.indexOf("() => providerAdmission");
+    const publishPresence = source.indexOf(
+      'sarahPresenceTemplateFromLease(communityProjection.lease, "active")',
+      awaitProviderAdmission,
+    );
+    const subscribeParticipant = source.indexOf("publication.setSubscribed(true)");
+    const projectAssistant = source.indexOf(
+      "AgentSessionEventTypes.ConversationItemAdded",
+    );
+    const expirePresence = source.indexOf('"inactive"');
+    expect(publishPresence).toBeGreaterThan(awaitProviderAdmission);
+    expect(subscribeParticipant).toBeGreaterThan(publishPresence);
+    expect(projectAssistant).toBeGreaterThan(-1);
+    expect(source).toContain('event.item.role !== "assistant"');
+    expect(source).toContain("if (fence.settle(\"worker_error\")) requestShutdown();");
+    expect(expirePresence).toBeGreaterThan(-1);
+    expect(source).toContain("() => projectionChain");
+  });
+
   test("does not enable recording or log raw provider events", async () => {
     const source = await readFile(new URL("./agent.ts", import.meta.url), "utf8");
     expect(source).toContain("record: false");

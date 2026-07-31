@@ -41,6 +41,12 @@ import {
   verifySarahLiveKitInterruptControl,
 } from "./control-client.js";
 import {
+  makeSarahNostrProjectionClient,
+  readSarahNostrProjectionConfig,
+  sarahKind9TemplateFromMessage,
+  sarahPresenceTemplateFromLease,
+} from "./nostr-projection-client.js";
+import {
   SarahProviderAccounting,
   SarahProviderAttestation,
   SarahGenerationFence,
@@ -393,6 +399,15 @@ const entry = async (ctx: JobContext): Promise<void> => {
   } as const;
   const fence = new SarahGenerationFence();
   const accounting = new SarahProviderAccounting();
+  let projectionChain = Promise.resolve();
+  let communityProjection:
+    | Readonly<{
+        client: ReturnType<typeof makeSarahNostrProjectionClient>;
+        lease: NonNullable<typeof claim.presenceLease>;
+      }>
+    | undefined;
+  let presencePublished = false;
+  let presenceExpired = false;
   const participantAdmission = new AbortController();
   let session: AgentSession | undefined;
   let providerReady = false;
@@ -427,9 +442,33 @@ const entry = async (ctx: JobContext): Promise<void> => {
         await session?.close();
       },
       (accountingStatus) =>
-        controller
-          .event(dispatch, closeEvent(identity, fence.closeReason, accountingStatus))
-          .then(() => undefined),
+        (async () => {
+          if (
+            communityProjection !== undefined &&
+            presencePublished &&
+            !presenceExpired
+          ) {
+            try {
+              await communityProjection.client.signAndPublish(
+                sarahPresenceTemplateFromLease(
+                  communityProjection.lease,
+                  "inactive",
+                ),
+              );
+              presenceExpired = true;
+            } catch (error) {
+              log().error(
+                { error },
+                "Sarah Nostr presence replacement failed; the bounded lease will expire naturally",
+              );
+            }
+          }
+          await controller.event(
+            dispatch,
+            closeEvent(identity, fence.closeReason, accountingStatus),
+          );
+        })(),
+      () => projectionChain,
     ).finally(() => {
       if (requestContextShutdown) {
         ctx.shutdown(`sarah_livekit_${fence.closeReason}`);
@@ -440,6 +479,20 @@ const entry = async (ctx: JobContext): Promise<void> => {
   const requestShutdown = (): void => {
     void finishShutdown(true).catch(() => {});
   };
+  if (claim.presenceLease !== undefined) {
+    try {
+      communityProjection = {
+        client: makeSarahNostrProjectionClient({
+          config: readSarahNostrProjectionConfig(),
+        }),
+        lease: claim.presenceLease,
+      };
+    } catch {
+      fence.settle("worker_error");
+      requestShutdown();
+      return;
+    }
+  }
   const applyInterruptSequence = (sequence: number): Promise<void> => {
     if (sequence < observedInterruptSequence) {
       return Promise.resolve();
@@ -630,6 +683,38 @@ const entry = async (ctx: JobContext): Promise<void> => {
     }
     requestShutdown();
   });
+  session.on(AgentSessionEventTypes.ConversationItemAdded, (event) => {
+    if (
+      communityProjection === undefined ||
+      event.item.type !== "message" ||
+      event.item.role !== "assistant" ||
+      event.item.interrupted
+    ) {
+      return;
+    }
+    const content = event.item.textContent?.trim();
+    if (content === undefined || content === "") return;
+    const operation = projectionChain
+      .then(async () => {
+        if (!presencePublished || fence.settled) {
+          throw new Error("Sarah room presence is not active");
+        }
+        await communityProjection.client.signAndPublish(
+          sarahKind9TemplateFromMessage(communityProjection.lease, {
+            messageRef: event.item.id,
+            content,
+            createdAtMs: event.createdAt,
+          }),
+        );
+      })
+      .catch((error) => {
+        log().error({ error }, "Sarah Nostr text projection failed");
+        if (fence.settle("worker_error")) requestShutdown();
+        throw error;
+      });
+    projectionChain = operation.catch(() => {});
+    fence.track(operation);
+  });
 
   const leaseInterval = setInterval(() => {
     sendEvent({
@@ -745,6 +830,18 @@ const entry = async (ctx: JobContext): Promise<void> => {
       participantAdmission.signal,
     );
     if (fence.settled) return;
+    if (communityProjection !== undefined) {
+      try {
+        await communityProjection.client.signAndPublish(
+          sarahPresenceTemplateFromLease(communityProjection.lease, "active"),
+        );
+        presencePublished = true;
+      } catch (error) {
+        log().error({ error }, "Sarah Nostr presence publication failed");
+        if (fence.settle("worker_error")) requestShutdown();
+        return;
+      }
+    }
     providerReady = true;
     try {
       await applyInterruptSequence(observedInterruptSequence);

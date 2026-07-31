@@ -34,6 +34,7 @@ const PresenceTemplate = S.Struct({
   e2eeKeyRevision: Digest,
   admissionDigest: Digest,
   authorityDigest: Digest,
+  status: S.Literals(["active", "inactive"]),
 });
 
 const Kind9ProjectionTemplate = S.Struct({
@@ -46,10 +47,17 @@ const Kind9ProjectionTemplate = S.Struct({
   generation: Generation,
   content: S.String.check(S.isMinLength(1), S.isMaxLength(4_096)),
 });
+const RelayAuthTemplate = S.Struct({
+  type: S.Literal("relay_auth"),
+  createdAt: Timestamp,
+  relayUrl: S.String.check(S.isPattern(/^wss:\/\/[A-Za-z0-9.-]+(?::[0-9]+)?\/?$/u)),
+  challenge: S.String.check(S.isMinLength(1), S.isMaxLength(1_024)),
+});
 
 export const SarahSignerTemplateSchema = S.Union([
   PresenceTemplate,
   Kind9ProjectionTemplate,
+  RelayAuthTemplate,
 ]);
 export type SarahSignerTemplate = typeof SarahSignerTemplateSchema.Type;
 
@@ -89,6 +97,7 @@ export const buildSarahSigningTemplate = (
         ["admission", template.admissionDigest],
         ["processors", "sarah_openagents_openai_v1"],
         ["expires", String(template.expiresAt)],
+        ["status", template.status],
         ["alt", "OpenAgents verified Sarah room presence"],
       ],
       content: JSON.stringify({
@@ -96,6 +105,17 @@ export const buildSarahSigningTemplate = (
         authority: "presence_only",
         authorityDigest: template.authorityDigest,
       }),
+    };
+  }
+  if (template.type === "relay_auth") {
+    return {
+      kind: 22_242,
+      created_at: template.createdAt,
+      tags: [
+        ["relay", template.relayUrl],
+        ["challenge", template.challenge],
+      ],
+      content: "",
     };
   }
   return {

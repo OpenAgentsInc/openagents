@@ -8,10 +8,10 @@ import {
   type FleetRunAuthorityRepositoryShape,
   type FleetSteeringExchangeRepositoryShape,
   PostgresOwnerManagedEnvironmentEnrollmentStore,
+  PostgresSarahLiveKitRoomAuthorityStore,
   PostgresPortableOwnerLocalCapabilityOperationStore,
   PostgresPortablePhaseOperationStore,
   PostgresPortableTargetPylonBindingStore,
-  PostgresSarahLiveKitRoomAuthorityStore,
   RUNTIME_START_TURN_MUTATOR_NAME,
   makeFleetRunAuthorityRepository,
   makeFleetSteeringExchangeRepository,
@@ -3765,6 +3765,7 @@ const openSarahRealtimeVoiceStore = async (workerEnv: Env) => {
   const client = await defaultMakeKhalaSyncSqlClient(connectionString)
   return {
     store: makeSarahRealtimeVoiceStore(client.sql),
+    authorityStore: new PostgresSarahLiveKitRoomAuthorityStore(client.sql),
     close: client.end,
   }
 }
@@ -3839,6 +3840,10 @@ const sarahLiveKitWorkerRouteDependencies = {
   controlRoot: (workerEnv: Env) =>
     parseSarahLiveKitControlRoot(workerEnv.SARAH_LIVEKIT_CONTROL_ROOT),
   openStore: openSarahRealtimeVoiceStore,
+  sarahNostrPublicKey: (workerEnv: Env) =>
+    workerEnv.SARAH_NOSTR_EXPECTED_PUBKEY,
+  e2eeKeyRevision: (workerEnv: Env) =>
+    workerEnv.SARAH_LIVEKIT_E2EE_KEY_REVISION,
   resolveCommunityAccess: resolveSarahLiveKitCommunityAccess,
   cleanup: async (
     workerEnv: Env,

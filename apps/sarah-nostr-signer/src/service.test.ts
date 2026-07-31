@@ -50,6 +50,7 @@ const presence = (): Extract<SarahSignerTemplate, { type: "presence" }> => ({
   e2eeKeyRevision: "d".repeat(64),
   admissionDigest: "e".repeat(64),
   authorityDigest: "f".repeat(64),
+  status: "active",
 })
 
 const signedEvent = async (
@@ -98,6 +99,7 @@ describe("Sarah Nostr signing service", () => {
     const handle = makeSarahNostrSignerHandler({
       signer,
       allowlist,
+      relayUrl: "wss://relay.openagents.com",
       nowSeconds: () => now,
     })
     const template = presence()
@@ -124,6 +126,7 @@ describe("Sarah Nostr signing service", () => {
     const handle = makeSarahNostrSignerHandler({
       signer: generateSarahNostrSigner(),
       allowlist,
+      relayUrl: "wss://relay.openagents.com",
       nowSeconds: () => now,
     })
     const template: SarahSignerTemplate = {
@@ -145,6 +148,40 @@ describe("Sarah Nostr signing service", () => {
     expect(verifySignedEvent(event)).toBe(true)
   })
 
+  it("signs NIP-42 authentication only for the configured relay", async () => {
+    const handle = makeSarahNostrSignerHandler({
+      signer: generateSarahNostrSigner(),
+      allowlist,
+      relayUrl: "wss://relay.openagents.com",
+      nowSeconds: () => now,
+    })
+    const template: SarahSignerTemplate = {
+      type: "relay_auth",
+      createdAt: now,
+      relayUrl: "wss://relay.openagents.com",
+      challenge: "relay-challenge",
+    }
+    const response = await handle(request(template))
+    expect(response.status).toBe(200)
+    const event = await signedEvent(response, template)
+    expect(event.kind).toBe(22_242)
+    expect(event.tags).toEqual([
+      ["relay", "wss://relay.openagents.com"],
+      ["challenge", "relay-challenge"],
+    ])
+    expect(verifySignedEvent(event)).toBe(true)
+    expect(
+      (
+        await handle(
+          request({
+            ...template,
+            relayUrl: "wss://attacker.example",
+          }),
+        )
+      ).status,
+    ).toBe(403)
+  })
+
   it("rejects arbitrary event fields, groups, and secret-shaped content", async () => {
     const signer = generateSarahNostrSigner()
     const signEvent = signer.signEvent
@@ -155,6 +192,7 @@ describe("Sarah Nostr signing service", () => {
         return signEvent(template)
       } },
       allowlist,
+      relayUrl: "wss://relay.openagents.com",
       nowSeconds: () => now,
     })
 
@@ -216,13 +254,14 @@ describe("Sarah Nostr signing service", () => {
     const handle = makeSarahNostrSignerHandler({
       signer: generateSarahNostrSigner(),
       allowlist,
+      relayUrl: "wss://relay.openagents.com",
       nowSeconds: () => now,
     })
     expect(
       (await handle(request({ ...presence(), createdAt: now - 61 }))).status,
     ).toBe(409)
     expect(
-      (await handle(request({ ...presence(), expiresAt: now + 301 }))).status,
+      (await handle(request({ ...presence(), expiresAt: now + 1_801 }))).status,
     ).toBe(400)
     expect(
       (
@@ -237,6 +276,7 @@ describe("Sarah Nostr signing service", () => {
     const handle = makeSarahNostrSignerHandler({
       signer: generateSarahNostrSigner(),
       allowlist,
+      relayUrl: "wss://relay.openagents.com",
       nowSeconds: () => now,
     })
     for (const path of ["/v1/key", "/v1/identity", "/v1/secret"]) {
@@ -259,6 +299,7 @@ describe("Sarah Nostr signing service", () => {
         },
       },
       allowlist,
+      relayUrl: "wss://relay.openagents.com",
       nowSeconds: () => now,
     })
     const response = await handle(

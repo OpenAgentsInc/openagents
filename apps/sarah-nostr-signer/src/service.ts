@@ -118,7 +118,7 @@ export const parseCommunityAllowlist = (
 
 const allowedCommunity = (
   allowlist: ReadonlyArray<CommunityAllowlistEntry>,
-  template: SarahSignerTemplate,
+  template: Exclude<SarahSignerTemplate, { readonly type: "relay_auth" }>,
 ): boolean =>
   allowlist.some(
     (entry) =>
@@ -138,6 +138,7 @@ const noStoreJson = (value: unknown, status: number): Response =>
 export const makeSarahNostrSignerHandler = (options: Readonly<{
   signer: SarahNostrSigner
   allowlist: ReadonlyArray<CommunityAllowlistEntry>
+  relayUrl: string
   nowSeconds?: () => number
 }>): ((request: Request) => Promise<Response>) => {
   const nowSeconds = options.nowSeconds ?? (() => Math.floor(Date.now() / 1_000))
@@ -197,8 +198,11 @@ export const makeSarahNostrSignerHandler = (options: Readonly<{
               "e2eeKeyRevision",
               "admissionDigest",
               "authorityDigest",
+              "status",
             ]
-          : [
+          : body["template"]["type"] === "relay_auth"
+            ? ["type", "createdAt", "relayUrl", "challenge"]
+            : [
               "type",
               "createdAt",
               "groupRef",
@@ -221,7 +225,8 @@ export const makeSarahNostrSignerHandler = (options: Readonly<{
     const template = decoded.value.template
     if (
       (template.type === "kind9_projection" &&
-        containsForbiddenPublicMaterial(template.content)) ||
+        (containsForbiddenPublicMaterial(template.content) ||
+          new TextEncoder().encode(template.content).byteLength > 4_096)) ||
       (() => {
         try {
           assertSarahNostrPublicSafe(template)
@@ -233,7 +238,11 @@ export const makeSarahNostrSignerHandler = (options: Readonly<{
     ) {
       return noStoreJson({ error: "invalid_request" }, 400)
     }
-    if (!allowedCommunity(options.allowlist, template)) {
+    if (
+      template.type === "relay_auth"
+        ? template.relayUrl !== options.relayUrl
+        : !allowedCommunity(options.allowlist, template)
+    ) {
       return noStoreJson({ error: "template_not_allowed" }, 403)
     }
     const now = nowSeconds()
@@ -242,8 +251,11 @@ export const makeSarahNostrSignerHandler = (options: Readonly<{
     }
     if (
       template.type === "presence" &&
-      (template.expiresAt <= template.createdAt ||
-        template.expiresAt > template.createdAt + 300)
+      ((template.status === "active" &&
+        (template.expiresAt <= template.createdAt ||
+          template.expiresAt > template.createdAt + 1_800)) ||
+        (template.status === "inactive" &&
+          template.expiresAt !== template.createdAt))
     ) {
       return noStoreJson({ error: "invalid_expiry" }, 400)
     }

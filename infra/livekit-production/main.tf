@@ -246,6 +246,11 @@ resource "google_cloud_run_v2_service" "sarah_nostr_signer" {
       }
 
       env {
+        name  = "SARAH_NOSTR_RELAY_URL"
+        value = "wss://relay.openagents.com"
+      }
+
+      env {
         name = "SARAH_NOSTR_IDENTITY_SECRET"
 
         value_source {

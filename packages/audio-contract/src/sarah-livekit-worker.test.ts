@@ -94,6 +94,28 @@ describe("Sarah LiveKit worker contract", () => {
     });
     const communityClaim = decodeSarahLiveKitJobClaimResponse({
       ...base,
+      presenceLease: {
+        schema: "openagents.sarah.livekit-room-authority.v1",
+        principal: "principal.sarah",
+        sarahPubkey: "1".repeat(64),
+        leaseRef: "presence:one",
+        communityRef: "openagents-public",
+        channelRef: "agent-chat",
+        membershipRevision: "2".repeat(64),
+        e2eeKeyRevision: "3".repeat(64),
+        roomRef: "room:one",
+        roomEpoch: 1,
+        sarahParticipantRef: "principal.sarah",
+        dispatchRef: "dispatch:one",
+        sessionRef: "session:one",
+        generation: 1,
+        capabilityProfile: "community_member_v1",
+        admissionDigest: "4".repeat(64),
+        processorDisclosure: "sarah_openagents_openai_v1",
+        cohortPolicy: "authenticated_allowlisted",
+        issuedAtMs: 1_999_999_000_000,
+        expiresAtMs: 2_000_000_000_000,
+      },
       capabilityProfile: {
         kind: "community_member_v1",
         contextRead: false,
@@ -111,6 +133,7 @@ describe("Sarah LiveKit worker contract", () => {
     });
     expect(privateClaim.capabilityProfile.kind).toBe("private_owner_v1");
     expect(communityClaim.capabilityProfile.kind).toBe("community_member_v1");
+    expect(communityClaim.presenceLease?.leaseRef).toBe("presence:one");
     expect(communityClaim.capabilityProfile).not.toHaveProperty("privateMemoryRef");
   });
 

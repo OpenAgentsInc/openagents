@@ -4,7 +4,12 @@ import {
   reconstructSarahSignedEvent,
   type SarahSignerTemplate,
 } from "@openagentsinc/sarah/nostr-signing-boundary";
+import {
+  canonicalSarahLiveKitRoomPresenceAuthority,
+  type SarahLiveKitRoomPresenceLease,
+} from "@openagentsinc/audio-contract";
 import { Schema as S } from "effect";
+import { createHash } from "node:crypto";
 import WebSocket from "ws";
 
 const METADATA_IDENTITY_URL =
@@ -21,6 +26,42 @@ export type SarahNostrProjectionConfig = Readonly<{
 
 type Fetch = typeof fetch;
 type WebSocketConstructor = typeof WebSocket;
+const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
+
+export const sarahPresenceTemplateFromLease = (
+  lease: SarahLiveKitRoomPresenceLease,
+  status: "active" | "inactive",
+  nowSeconds = Math.floor(Date.now() / 1_000),
+): Extract<SarahSignerTemplate, { type: "presence" }> => ({
+  type: "presence",
+  createdAt: status === "active" ? Math.floor(lease.issuedAtMs / 1_000) : nowSeconds,
+  expiresAt: status === "active" ? Math.floor(lease.expiresAtMs / 1_000) : nowSeconds,
+  groupRef: lease.communityRef,
+  channelRef: lease.channelRef,
+  presenceLeaseRef: lease.leaseRef,
+  roomEpochDigest: sha256(`${lease.roomRef}\n${lease.roomEpoch}`),
+  sessionDigest: sha256(lease.sessionRef),
+  generation: lease.generation,
+  membershipRevision: lease.membershipRevision,
+  e2eeKeyRevision: lease.e2eeKeyRevision,
+  admissionDigest: lease.admissionDigest,
+  authorityDigest: sha256(canonicalSarahLiveKitRoomPresenceAuthority(lease)),
+  status,
+});
+
+export const sarahKind9TemplateFromMessage = (
+  lease: SarahLiveKitRoomPresenceLease,
+  input: Readonly<{ messageRef: string; content: string; createdAtMs: number }>,
+): Extract<SarahSignerTemplate, { type: "kind9_projection" }> => ({
+  type: "kind9_projection",
+  createdAt: Math.floor(input.createdAtMs / 1_000),
+  groupRef: lease.communityRef,
+  channelRef: lease.channelRef,
+  messageRef: input.messageRef,
+  presenceLeaseRef: lease.leaseRef,
+  generation: lease.generation,
+  content: input.content,
+});
 
 const normalizedUrl = (value: string, protocol: "https:" | "wss:"): string => {
   const url = new URL(value);
@@ -142,6 +183,8 @@ export const makeSarahNostrProjectionClient = (options: Readonly<{
   const publish = async (event: Awaited<ReturnType<typeof sign>>): Promise<void> =>
     new Promise<void>((resolve, reject) => {
       const socket = new WebSocketImpl(relayUrl);
+      let authEventId: string | undefined;
+      let authInFlight = false;
       const timer = setTimeout(() => {
         socket.close();
         reject(new Error("Sarah relay publish receipt timed out"));
@@ -151,7 +194,6 @@ export const makeSarahNostrProjectionClient = (options: Readonly<{
         socket.close();
         reject(error);
       };
-      socket.once("open", () => socket.send(JSON.stringify(["EVENT", event])));
       socket.on("message", (data) => {
         let frame: unknown;
         try {
@@ -160,13 +202,40 @@ export const makeSarahNostrProjectionClient = (options: Readonly<{
           return;
         }
         if (
+          Array.isArray(frame) &&
+          frame[0] === "AUTH" &&
+          typeof frame[1] === "string" &&
+          !authInFlight &&
+          authEventId === undefined
+        ) {
+          authInFlight = true;
+          void sign({
+            type: "relay_auth",
+            createdAt: Math.floor(nowMs() / 1_000),
+            relayUrl,
+            challenge: frame[1],
+          }).then(
+            (authEvent) => {
+              authEventId = authEvent.id;
+              socket.send(JSON.stringify(["AUTH", authEvent]));
+            },
+            fail,
+          );
+          return;
+        }
+        if (
           !Array.isArray(frame) ||
           frame[0] !== "OK" ||
-          frame[1] !== event.id ||
           typeof frame[2] !== "boolean"
         ) {
           return;
         }
+        if (frame[1] === authEventId) {
+          if (frame[2]) socket.send(JSON.stringify(["EVENT", event]));
+          else fail(new Error(`Sarah relay rejected authentication: ${String(frame[3] ?? "")}`));
+          return;
+        }
+        if (frame[1] !== event.id) return;
         clearTimeout(timer);
         socket.close();
         if (frame[2]) resolve();

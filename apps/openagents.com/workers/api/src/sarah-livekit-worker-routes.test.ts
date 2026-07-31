@@ -5,8 +5,10 @@ import {
   decodeSarahLiveKitJobClaimResponse,
 } from "@openagentsinc/audio-contract";
 import type {
+  SarahLiveKitRoomAuthorityStore,
   SarahRealtimeVoiceStore,
   SarahVoiceLiveKitMembershipLease,
+  SarahVoiceLiveKitWorkerClaim,
 } from "@openagentsinc/khala-sync-server";
 import { describe, expect, test, vi } from "vitest";
 
@@ -33,12 +35,13 @@ const token = deriveSarahLiveKitControlToken(controlRoot, {
   agentName: SARAH_LIVEKIT_AGENT_NAME,
   ...claimDispatch,
 });
-const claimLiveKitWorkerJob = vi.fn(async () => ({
+const claimLiveKitWorkerJob = vi.fn(async (): Promise<SarahVoiceLiveKitWorkerClaim> => ({
   sessionRef: "session:one",
   generation: 1,
   ownerUserId: "owner:one",
   capabilityProfile: "omega_editor" as const,
   roomContext: { kind: "private" as const },
+  admissionDigest: "d".repeat(64),
   sessionExpiresAt: "2033-05-18T03:34:20.000Z",
 }));
 const applyLiveKitWorkerEvent = vi.fn(async () => ({
@@ -60,11 +63,18 @@ const store = {
   readLiveKitMembershipLease,
   revokeLiveKitRoom,
 } as unknown as SarahRealtimeVoiceStore;
+const authorityStore = {
+  create: vi.fn(async (snapshot) => snapshot),
+  read: vi.fn(async () => undefined),
+  compareAndSwap: vi.fn(),
+} as unknown as SarahLiveKitRoomAuthorityStore;
 const cleanup = vi.fn(async () => undefined);
 const dependencies = {
   controlRoot: () => controlRoot,
   now: () => 2_000_000_000_000,
-  openStore: async () => ({ store, close: async () => undefined }),
+  openStore: async () => ({ store, authorityStore, close: async () => undefined }),
+  sarahNostrPublicKey: () => "a".repeat(64),
+  e2eeKeyRevision: () => "e".repeat(64),
   cleanup,
 };
 
@@ -95,6 +105,7 @@ describe("Sarah LiveKit worker routes", () => {
     expect(response.status).toBe(200);
     const body = decodeSarahLiveKitJobClaimResponse(await response.json());
     expect(body.capabilityProfile.kind).toBe("private_owner_v1");
+    expect(body.presenceLease).toBeUndefined();
     expect(JSON.stringify(body)).not.toContain("owner:one");
     expect(claimLiveKitWorkerJob).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -103,6 +114,61 @@ describe("Sarah LiveKit worker routes", () => {
         workerJobRef: "job:one",
       }),
     );
+  });
+
+  test("persists and returns one canonical community presence lease", async () => {
+    const communityDispatch = {
+      ...claimDispatch,
+      roomContext: {
+        kind: "community",
+        communityRef: "openagents-public",
+        channelRef: "agent-chat",
+        membershipRevision: "b".repeat(64),
+      },
+    } as const;
+    claimLiveKitWorkerJob.mockResolvedValueOnce({
+      sessionRef: "session:one",
+      generation: 1,
+      ownerUserId: "owner:one",
+      capabilityProfile: "omega_editor",
+      roomContext: communityDispatch.roomContext,
+      admissionDigest: "d".repeat(64),
+      sessionExpiresAt: "2033-05-18T03:34:20.000Z",
+    });
+    const communityToken = deriveSarahLiveKitControlToken(controlRoot, {
+      schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+      agentName: SARAH_LIVEKIT_AGENT_NAME,
+      ...communityDispatch,
+    });
+    const response = await handleSarahLiveKitWorkerClaim(
+      dependencies,
+      new Request("https://openagents.com/api/internal/sarah/livekit/job/claim", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${communityToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+          workerRef: "worker:one",
+          jobRef: "job:one",
+          dispatchRef: "dispatch:one",
+          roomSid: "RM_one",
+          dispatch: communityDispatch,
+        }),
+      }),
+      {},
+    );
+    expect(response.status).toBe(200);
+    const body = decodeSarahLiveKitJobClaimResponse(await response.json());
+    expect(body.presenceLease).toMatchObject({
+      sarahPubkey: "a".repeat(64),
+      e2eeKeyRevision: "e".repeat(64),
+      admissionDigest: "d".repeat(64),
+      communityRef: "openagents-public",
+      channelRef: "agent-chat",
+    });
+    expect(authorityStore.create).toHaveBeenCalledTimes(1);
   });
 
   test("records response and transcription usage under different idempotency refs", async () => {

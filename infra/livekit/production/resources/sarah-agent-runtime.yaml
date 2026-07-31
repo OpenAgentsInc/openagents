@@ -106,6 +106,10 @@ spec:
                 secretKeyRef:
                   name: sarah-livekit-agent
                   key: control-root
+          envFrom:
+            - configMapRef:
+                name: sarah-nostr-projection
+                optional: true
           startupProbe:
             httpGet:
               path: /

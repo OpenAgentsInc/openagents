@@ -14,6 +14,7 @@ const config = Effect.runSync(
   Config.all({
     communitiesRaw: Config.string("SARAH_NOSTR_SIGNER_COMMUNITIES_JSON"),
     expectedPubkey: Config.string("SARAH_NOSTR_EXPECTED_PUBKEY"),
+    relayUrl: Config.string("SARAH_NOSTR_RELAY_URL"),
     secretMaterial: Config.redacted(SARAH_NOSTR_IDENTITY_SECRET_ENV),
   }),
 )
@@ -31,7 +32,11 @@ const signer = createStableSarahSigner({
 })
 secretMaterial = undefined
 
-const handle = makeSarahNostrSignerHandler({ signer, allowlist })
+const handle = makeSarahNostrSignerHandler({
+  signer,
+  allowlist,
+  relayUrl: config.relayUrl,
+})
 const server = Runtime.serve({
   port: Number(process.env["PORT"] ?? 8080),
   async fetch(request) {

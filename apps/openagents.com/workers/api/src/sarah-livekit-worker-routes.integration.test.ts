@@ -5,6 +5,7 @@ import {
 } from "@openagentsinc/audio-contract";
 import {
   SarahVoiceSessionRejectedError,
+  PostgresSarahLiveKitRoomAuthorityStore,
   type SarahRealtimeVoiceStore,
   type SyncSql,
   makeSarahRealtimeVoiceStore,
@@ -203,8 +204,11 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       now: () => nowMs,
       openStore: async () => ({
         store,
+        authorityStore: new PostgresSarahLiveKitRoomAuthorityStore(sql as unknown as SyncSql),
         close: async () => undefined,
       }),
+      sarahNostrPublicKey: () => undefined,
+      e2eeKeyRevision: () => undefined,
       cleanup,
     };
     const claim = await handleSarahLiveKitWorkerClaim(

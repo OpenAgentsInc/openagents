@@ -284,6 +284,7 @@ export type SarahVoiceLiveKitWorkerClaim = Readonly<{
   ownerUserId: string;
   capabilityProfile: SarahVoiceClientProfile;
   roomContext: SarahVoiceLiveKitRoomContext;
+  admissionDigest: string;
   sessionExpiresAt: string;
 }>;
 
@@ -1550,6 +1551,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             binding.owner_user_id, binding.capability_profile,
             binding.room_context_kind, binding.community_ref,
             binding.channel_ref, binding.membership_revision,
+            binding.admission_digest,
             session.session_expires_at
           FROM sarah_livekit_room_bindings AS binding
           INNER JOIN sarah_realtime_voice_sessions AS session
@@ -1602,6 +1604,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           community_ref: string | null;
           channel_ref: string | null;
           membership_revision: string | null;
+          admission_digest: string;
           session_expires_at: string;
         }>;
         const row = first(rows);
@@ -1650,6 +1653,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           ownerUserId: row.owner_user_id,
           capabilityProfile: row.capability_profile,
           roomContext,
+          admissionDigest: row.admission_digest,
           sessionExpiresAt: row.session_expires_at,
         };
       });

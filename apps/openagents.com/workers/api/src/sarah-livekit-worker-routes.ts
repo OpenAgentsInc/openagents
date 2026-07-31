@@ -12,13 +12,20 @@ import {
   sarahEditorCommandRequiresConfirmation,
   validateSarahEditorCommandTarget,
 } from "@openagentsinc/audio-contract";
-import type { SarahRealtimeVoiceStore } from "@openagentsinc/khala-sync-server";
+import {
+  type SarahLiveKitRoomAuthorityStore,
+  type SarahRealtimeVoiceStore,
+} from "@openagentsinc/khala-sync-server";
 import { createHash, timingSafeEqual } from "node:crypto";
 
 import {
   deriveSarahLiveKitControlToken,
   parseSarahLiveKitControlRoot,
 } from "./sarah-livekit-room-broker";
+import {
+  initialSarahLiveKitRoomAuthoritySnapshot,
+  issueSarahLiveKitRoomPresenceLease,
+} from "./sarah-livekit-room-authority";
 
 export const SARAH_LIVEKIT_WORKER_CLAIM_PATH = SARAH_LIVEKIT_JOB_CLAIM_PATH;
 export const SARAH_LIVEKIT_WORKER_EVENT_PATH = SARAH_LIVEKIT_JOB_EVENT_PATH;
@@ -30,7 +37,15 @@ export type SarahLiveKitWorkerRouteDependencies<Bindings> = Readonly<{
   now?: (() => number) | undefined;
   openStore: (
     env: Bindings,
-  ) => Promise<Readonly<{ store: SarahRealtimeVoiceStore; close: () => Promise<void> }>>;
+  ) => Promise<
+    Readonly<{
+      store: SarahRealtimeVoiceStore;
+      authorityStore?: SarahLiveKitRoomAuthorityStore | undefined;
+      close: () => Promise<void>;
+    }>
+  >;
+  sarahNostrPublicKey?: ((env: Bindings) => string | undefined) | undefined;
+  e2eeKeyRevision?: ((env: Bindings) => string | undefined) | undefined;
   cleanup: (
     env: Bindings,
     input: Readonly<{ sessionRef: string; generation: number }>,
@@ -75,6 +90,8 @@ const tokenFromRequest = (request: Request): string | undefined => {
 };
 
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
+const digest = (value: string | undefined): string | undefined =>
+  value !== undefined && /^[a-f0-9]{64}$/u.test(value) ? value : undefined;
 
 const tokensMatch = (left: string, right: string): boolean => {
   const leftBytes = Buffer.from(left);
@@ -205,7 +222,13 @@ export const handleSarahLiveKitWorkerClaim = async <Bindings>(
   if (!tokensMatch(token, expectedToken)) {
     return noStoreJson({ error: "unauthorized" }, 401);
   }
-  let opened: Readonly<{ store: SarahRealtimeVoiceStore; close: () => Promise<void> }> | undefined;
+  let opened:
+    | Readonly<{
+        store: SarahRealtimeVoiceStore;
+        authorityStore?: SarahLiveKitRoomAuthorityStore | undefined;
+        close: () => Promise<void>;
+      }>
+    | undefined;
   try {
     opened = await dependencies.openStore(env);
     const nowIso = new Date((dependencies.now ?? Date.now)()).toISOString();
@@ -233,6 +256,64 @@ export const handleSarahLiveKitWorkerClaim = async <Bindings>(
     ) {
       return noStoreJson({ error: "sarah_livekit_generation_expired" }, 409);
     }
+    let presenceLease;
+    if (claimed.roomContext.kind === "community") {
+      const sarahPubkey = digest(dependencies.sarahNostrPublicKey?.(env));
+      const e2eeKeyRevision = digest(dependencies.e2eeKeyRevision?.(env));
+      if (
+        sarahPubkey === undefined ||
+        e2eeKeyRevision === undefined ||
+        opened.authorityStore === undefined
+      ) {
+        return noStoreJson({ error: "sarah_livekit_presence_authority_unavailable" }, 503);
+      }
+      const existing = await opened.authorityStore.read(body.dispatch.sarahPresenceLeaseRef);
+      if (existing !== undefined) {
+        presenceLease = existing.presence;
+        if (
+          !existing.presenceActive ||
+          presenceLease.sarahPubkey !== sarahPubkey ||
+          presenceLease.communityRef !== claimed.roomContext.communityRef ||
+          presenceLease.channelRef !== claimed.roomContext.channelRef ||
+          presenceLease.membershipRevision !== claimed.roomContext.membershipRevision ||
+          presenceLease.e2eeKeyRevision !== e2eeKeyRevision ||
+          presenceLease.roomRef !== body.dispatch.roomRef ||
+          presenceLease.roomEpoch !== body.dispatch.roomEpoch ||
+          presenceLease.sarahParticipantRef !== body.dispatch.sarahParticipantRef ||
+          presenceLease.dispatchRef !== body.dispatchRef ||
+          presenceLease.sessionRef !== claimed.sessionRef ||
+          presenceLease.generation !== claimed.generation ||
+          presenceLease.admissionDigest !== claimed.admissionDigest ||
+          presenceLease.expiresAtMs <= (dependencies.now ?? Date.now)()
+        ) {
+          return noStoreJson({ error: "sarah_livekit_presence_authority_conflict" }, 409);
+        }
+      } else {
+        presenceLease = issueSarahLiveKitRoomPresenceLease({
+          sarahPubkey,
+          presenceLeaseRef: body.dispatch.sarahPresenceLeaseRef,
+          communityRef: claimed.roomContext.communityRef,
+          channelRef: claimed.roomContext.channelRef,
+          membershipRevision: claimed.roomContext.membershipRevision,
+          currentMembershipRevision: claimed.roomContext.membershipRevision,
+          e2eeKeyRevision,
+          roomRef: body.dispatch.roomRef,
+          roomEpoch: body.dispatch.roomEpoch,
+          sarahParticipantRef: body.dispatch.sarahParticipantRef,
+          dispatchRef: body.dispatchRef,
+          sessionRef: claimed.sessionRef,
+          generation: claimed.generation,
+          admissionDigest: claimed.admissionDigest,
+          issuedAtMs: (dependencies.now ?? Date.now)(),
+          sessionExpiresAtMs,
+        });
+        const persisted = await opened.authorityStore.create(
+          initialSarahLiveKitRoomAuthoritySnapshot(presenceLease),
+          nowIso,
+        );
+        presenceLease = persisted.presence;
+      }
+    }
     return noStoreJson(
       {
         schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
@@ -242,6 +323,7 @@ export const handleSarahLiveKitWorkerClaim = async <Bindings>(
         sessionExpiresAtMs,
         safetyIdentifier: sha256(claimed.ownerUserId),
         capabilityProfile: capabilityProfile(claimed.roomContext.kind),
+        ...(presenceLease === undefined ? {} : { presenceLease }),
       },
       200,
     );

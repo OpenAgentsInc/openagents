@@ -149,6 +149,7 @@ const presenceTemplate = (
     e2eeKeyRevision: lease.e2eeKeyRevision,
     admissionDigest: lease.admissionDigest,
     authorityDigest,
+    status: "active",
   });
 
 export const makeSarahLiveKitRoomSigner = (
