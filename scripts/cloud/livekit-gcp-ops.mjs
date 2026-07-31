@@ -81,8 +81,13 @@ const PRODUCTION_RECEIPT_BUCKET =
   "openagentsgemini-livekit-deployment-receipts";
 const LEGACY_AUTOMATION_SERVICE_ACCOUNT =
   "oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com";
+const PROJECT_NUMBER = "157437760789";
 const DEFAULT_COMPUTE_SERVICE_ACCOUNT =
-  "157437760789-compute@developer.gserviceaccount.com";
+  `${PROJECT_NUMBER}-compute@developer.gserviceaccount.com`;
+const PRIVILEGED_IDENTITY_TAG =
+  "openagentsgemini/livekit-privileged-identity/protected";
+const LEGACY_AUTOMATION_DENY_POLICY =
+  "deny-legacy-livekit-privileged-impersonation";
 const CANONICAL_BUILD_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
@@ -1656,6 +1661,86 @@ const troubleshootIam = (resource, permission, label) =>
     ),
   );
 
+const policyTroubleshooterCouldNotEvaluateDeny = (result) =>
+  result?.errors?.some((error) =>
+    error?.details?.some((detail) => detail?.reason === "ERROR_IAM_DENY"),
+  ) === true;
+
+const validateLegacyAutomationDenyPolicy = (serviceAccounts) => {
+  const policy = JSON.parse(
+    captureCommand(
+      "gcloud",
+      [
+        "iam",
+        "policies",
+        "get",
+        LEGACY_AUTOMATION_DENY_POLICY,
+        `--attachment-point=cloudresourcemanager.googleapis.com/projects/${LIVEKIT_OPS.project}`,
+        "--kind=denypolicies",
+        "--format=json",
+      ],
+      "verify legacy automation impersonation deny policy",
+    ),
+  );
+  const denyRule = policy?.rules?.[0]?.denyRule;
+  if (
+    policy?.displayName !== "Block LiveKit privileged identity impersonation" ||
+    policy.rules?.length !== 1 ||
+    JSON.stringify(denyRule?.deniedPrincipals) !==
+      JSON.stringify([
+        `principal://iam.googleapis.com/projects/-/serviceAccounts/${LEGACY_AUTOMATION_SERVICE_ACCOUNT}`,
+      ]) ||
+    JSON.stringify(denyRule?.deniedPermissions) !==
+      JSON.stringify(["iam.googleapis.com/serviceAccounts.actAs"]) ||
+    denyRule?.denialCondition?.expression !==
+      `resource.matchTag('${LIVEKIT_OPS.project}/livekit-privileged-identity', 'protected')`
+  ) {
+    throw new Error("legacy automation impersonation deny policy changed");
+  }
+
+  for (const [serviceAccount, label] of serviceAccounts) {
+    const identity = JSON.parse(
+      captureCommand(
+        "gcloud",
+        [
+          "iam",
+          "service-accounts",
+          "describe",
+          serviceAccount,
+          `--project=${LIVEKIT_OPS.project}`,
+          "--format=json(uniqueId)",
+        ],
+        `resolve the ${label} resource identity`,
+      ),
+    );
+    if (!/^\d+$/u.test(identity?.uniqueId ?? "")) {
+      throw new Error(`the ${label} has no canonical resource identity`);
+    }
+    const bindings = JSON.parse(
+      captureCommand(
+        "gcloud",
+        [
+          "resource-manager",
+          "tags",
+          "bindings",
+          "list",
+          `--parent=//iam.googleapis.com/projects/${PROJECT_NUMBER}/serviceAccounts/${identity.uniqueId}`,
+          "--format=json",
+        ],
+        `verify the ${label} protected identity tag`,
+      ),
+    );
+    if (
+      !Array.isArray(bindings) ||
+      !bindings.some(
+        (binding) => binding?.tagValueNamespacedName === PRIVILEGED_IDENTITY_TAG,
+      )
+    ) {
+      throw new Error(`the ${label} is missing its protected identity tag`);
+    }
+  }
+};
+
 const validateUserSpecifiedBuildIdentityRequired = () => {
   for (const constraint of [
     "constraints/cloudbuild.useBuildServiceAccount",
@@ -1690,7 +1775,7 @@ const validateUserSpecifiedBuildIdentityRequired = () => {
 
 const validateLegacyCloudBuildRouteClosed = () => {
   validateUserSpecifiedBuildIdentityRequired();
-  for (const [serviceAccount, label] of [
+  const protectedServiceAccounts = [
     [DEFAULT_COMPUTE_SERVICE_ACCOUNT, "default Compute service account"],
     [PRODUCTION_DEPLOYER_SERVICE_ACCOUNT, "production deployer"],
     [
@@ -1717,13 +1802,25 @@ const validateLegacyCloudBuildRouteClosed = () => {
       "oa-livekit-sarah-secret-reader@openagentsgemini.iam.gserviceaccount.com",
       "Sarah secret reader",
     ],
-  ]) {
+  ];
+  const results = protectedServiceAccounts.map(([serviceAccount, label]) => [
+    label,
+    troubleshootIam(
+      `//iam.googleapis.com/projects/${LIVEKIT_OPS.project}/serviceAccounts/${serviceAccount}`,
+      "iam.serviceAccounts.actAs",
+      `verify legacy automation cannot impersonate the ${label}`,
+    ),
+  ]);
+  const denyEvaluationUnavailable = results.some(([, result]) =>
+    policyTroubleshooterCouldNotEvaluateDeny(result),
+  );
+  if (denyEvaluationUnavailable) {
+    validateLegacyAutomationDenyPolicy(protectedServiceAccounts);
+    return;
+  }
+  for (const [label, result] of results) {
     requireNotGranted(
-      troubleshootIam(
-        `//iam.googleapis.com/projects/${LIVEKIT_OPS.project}/serviceAccounts/${serviceAccount}`,
-        "iam.serviceAccounts.actAs",
-        `verify legacy automation cannot impersonate the ${label}`,
-      ),
+      result,
       `legacy automation identity can still act as the ${label}`,
     );
   }
