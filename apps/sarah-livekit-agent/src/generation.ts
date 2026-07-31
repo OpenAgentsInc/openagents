@@ -1,4 +1,5 @@
 import {
+  SARAH_LIVEKIT_MODEL,
   SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
   type SarahLiveKitJobEvent,
 } from "@openagentsinc/audio-contract";
@@ -42,6 +43,12 @@ const boundedProviderRef = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim() === value && value.length > 0 && value.length <= 256
     ? value
     : undefined;
+
+export const isAdmittedRealtimeSessionCreated = (event: unknown): boolean | undefined => {
+  const envelope = record(event);
+  if (envelope?.type !== "session.created") return undefined;
+  return record(envelope.session)?.model === SARAH_LIVEKIT_MODEL;
+};
 
 export const responseUsageEvent = (
   event: unknown,
@@ -105,6 +112,7 @@ export const transcriptionUsageEvent = (
 export class SarahGenerationFence {
   readonly pending = new Set<Promise<void>>();
   #settled = false;
+  #sealed = false;
   #closeReason: Extract<SarahLiveKitJobEvent, { _tag: "close" }>["reason"] = "worker_error";
 
   get settled(): boolean {
@@ -122,13 +130,28 @@ export class SarahGenerationFence {
     return this.#closeReason;
   }
 
+  accepts(event: SarahLiveKitJobEvent): boolean {
+    if (this.#sealed || event._tag === "close") return false;
+    if (!this.#settled) return true;
+    return event._tag === "response_usage" || event._tag === "transcription_usage";
+  }
+
+  seal(): void {
+    this.#sealed = true;
+  }
+
   track(operation: Promise<void>): void {
-    if (this.#settled) return;
+    if (this.#sealed) return;
     this.pending.add(operation);
     operation.finally(() => this.pending.delete(operation)).catch(() => {});
   }
 
   async drain(): Promise<void> {
-    await Promise.allSettled(this.pending);
+    while (this.pending.size > 0) {
+      // A provider can append final accounting behind the operation currently
+      // being delivered, so each newly visible batch must settle in order.
+      // eslint-disable-next-line no-await-in-loop
+      await Promise.allSettled(this.pending);
+    }
   }
 }

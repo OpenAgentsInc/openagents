@@ -53,3 +53,43 @@ CREATE UNIQUE INDEX IF NOT EXISTS
 ALTER TABLE sarah_realtime_voice_usage
   ADD COLUMN IF NOT EXISTS usage_kind text NOT NULL DEFAULT 'response'
     CHECK (usage_kind IN ('response', 'transcription'));
+
+CREATE TABLE IF NOT EXISTS sarah_livekit_worker_events (
+  session_ref                 text NOT NULL
+    REFERENCES sarah_realtime_voice_sessions (session_ref) ON DELETE CASCADE,
+  generation                  bigint NOT NULL CHECK (generation >= 1),
+  event_ref                   text NOT NULL CHECK (
+    length(event_ref) BETWEEN 1 AND 256
+  ),
+  worker_job_ref              text NOT NULL CHECK (
+    length(worker_job_ref) BETWEEN 1 AND 256
+  ),
+  worker_control_token_digest text NOT NULL CHECK (
+    worker_control_token_digest ~ '^[0-9a-f]{64}$'
+  ),
+  event_kind                  text NOT NULL CHECK (
+    event_kind IN (
+      'worker_connected',
+      'lease_check',
+      'response_usage',
+      'transcription_usage',
+      'close'
+    )
+  ),
+  event_payload_digest        text NOT NULL CHECK (
+    event_payload_digest ~ '^[0-9a-f]{64}$'
+  ),
+  stop_reason                 text CHECK (
+    stop_reason IS NULL
+    OR stop_reason IN (
+      'hold_exhausted',
+      'membership_revoked',
+      'operator_stop'
+    )
+  ),
+  observed_at                 text NOT NULL,
+  PRIMARY KEY (session_ref, generation, event_ref)
+);
+
+CREATE INDEX IF NOT EXISTS sarah_livekit_worker_events_job_idx
+  ON sarah_livekit_worker_events (worker_job_ref, observed_at);

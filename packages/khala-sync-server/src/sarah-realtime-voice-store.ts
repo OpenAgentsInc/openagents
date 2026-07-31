@@ -71,6 +71,48 @@ export type SarahVoiceUsage = Readonly<{
   observedAt: string;
 }>;
 
+export type SarahVoiceLiveKitWorkerStopReason =
+  | "hold_exhausted"
+  | "membership_revoked"
+  | "operator_stop";
+
+type SarahVoiceLiveKitWorkerEventCommon = Readonly<{
+  workerControlTokenDigest: string;
+  workerJobRef: string;
+  sessionRef: string;
+  generation: number;
+  eventRef: string;
+  eventPayloadDigest: string;
+  nowIso: string;
+}>;
+
+export type SarahVoiceLiveKitWorkerEvent =
+  | (SarahVoiceLiveKitWorkerEventCommon &
+      Readonly<{
+        eventKind: "worker_connected";
+        workerRoomSid: string;
+      }>)
+  | (SarahVoiceLiveKitWorkerEventCommon &
+      Readonly<{
+        eventKind: "lease_check";
+      }>)
+  | (SarahVoiceLiveKitWorkerEventCommon &
+      Readonly<{
+        eventKind: "response_usage" | "transcription_usage";
+        usage: Omit<SarahVoiceUsage, "observedAt">;
+      }>)
+  | (SarahVoiceLiveKitWorkerEventCommon &
+      Readonly<{
+        eventKind: "close";
+        closeReason: string;
+      }>);
+
+export type SarahVoiceLiveKitWorkerEventResult = Readonly<{
+  observedAt: string;
+  replayed: boolean;
+  stopReason?: SarahVoiceLiveKitWorkerStopReason;
+}>;
+
 export type SarahVoiceLiveKitRoomContext =
   | Readonly<{ kind: "private" }>
   | Readonly<{
@@ -1471,6 +1513,142 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }
   };
 
+  const recordUsageInTransaction = async (
+    tx: SyncTransactionSql,
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+      usage: SarahVoiceUsage;
+    }>,
+  ): Promise<
+    Readonly<{
+      chargedMsat: number;
+      reservedMsat: number;
+      creditLimitReached: boolean;
+    }>
+  > => {
+    const sessions = (await tx`
+      SELECT generation, state
+      FROM sarah_realtime_voice_sessions
+      WHERE session_ref = ${input.sessionRef}
+      FOR UPDATE
+    `) as ReadonlyArray<{
+      generation: number | string;
+      state: SarahVoiceSessionState;
+    }>;
+    const session = first(sessions);
+    if (
+      session === undefined ||
+      toSafeInteger(session.generation, "generation") !== input.generation ||
+      session.state !== "connected"
+    ) {
+      throw new SarahVoiceSessionRejectedError(
+        "The provider usage does not match the active Sarah voice generation",
+      );
+    }
+
+    const inserted = (await tx`
+      INSERT INTO sarah_realtime_voice_usage (
+        session_ref, provider_response_ref, input_tokens, output_tokens,
+        cached_input_tokens, audio_input_tokens, audio_output_tokens,
+        charge_msat, observed_at, usage_kind
+      ) VALUES (
+        ${input.sessionRef}, ${input.usage.providerResponseRef},
+        ${input.usage.inputTokens}, ${input.usage.outputTokens},
+        ${input.usage.cachedInputTokens}, ${input.usage.audioInputTokens},
+        ${input.usage.audioOutputTokens}, ${input.usage.chargeMsat},
+        ${input.usage.observedAt}, ${input.usage.usageKind ?? "response"}
+      )
+      ON CONFLICT (session_ref, provider_response_ref) DO NOTHING
+      RETURNING session_ref
+    `) as ReadonlyArray<{ session_ref: string }>;
+
+    if (first(inserted) === undefined) {
+      const replayed = (await tx`
+        SELECT input_tokens, output_tokens, cached_input_tokens,
+          audio_input_tokens, audio_output_tokens, charge_msat, observed_at,
+          usage_kind
+        FROM sarah_realtime_voice_usage
+        WHERE session_ref = ${input.sessionRef}
+          AND provider_response_ref = ${input.usage.providerResponseRef}
+        FOR SHARE
+      `) as ReadonlyArray<{
+        input_tokens: number | string;
+        output_tokens: number | string;
+        cached_input_tokens: number | string;
+        audio_input_tokens: number | string;
+        audio_output_tokens: number | string;
+        charge_msat: number | string;
+        observed_at: string;
+        usage_kind: "response" | "transcription";
+      }>;
+      const replay = first(replayed);
+      if (
+        replay === undefined ||
+        toSafeInteger(replay.input_tokens, "input_tokens") !== input.usage.inputTokens ||
+        toSafeInteger(replay.output_tokens, "output_tokens") !== input.usage.outputTokens ||
+        toSafeInteger(replay.cached_input_tokens, "cached_input_tokens") !==
+          input.usage.cachedInputTokens ||
+        toSafeInteger(replay.audio_input_tokens, "audio_input_tokens") !==
+          input.usage.audioInputTokens ||
+        toSafeInteger(replay.audio_output_tokens, "audio_output_tokens") !==
+          input.usage.audioOutputTokens ||
+        toSafeInteger(replay.charge_msat, "charge_msat") !== input.usage.chargeMsat ||
+        replay.observed_at !== input.usage.observedAt ||
+        replay.usage_kind !== (input.usage.usageKind ?? "response")
+      ) {
+        throw new SarahVoiceSessionRejectedError(
+          "The provider response reference was replayed with changed usage",
+        );
+      }
+    } else {
+      await tx`
+        UPDATE sarah_realtime_voice_sessions
+        SET input_tokens = input_tokens + ${input.usage.inputTokens},
+            output_tokens = output_tokens + ${input.usage.outputTokens},
+            cached_input_tokens =
+              cached_input_tokens + ${input.usage.cachedInputTokens},
+            audio_input_tokens =
+              audio_input_tokens + ${input.usage.audioInputTokens},
+            audio_output_tokens =
+              audio_output_tokens + ${input.usage.audioOutputTokens},
+            charged_msat = CASE
+              WHEN credit_mode = 'metered' THEN LEAST(
+                reserved_msat,
+                charged_msat + ${input.usage.chargeMsat}
+              )
+              ELSE charged_msat + ${input.usage.chargeMsat}
+            END,
+            updated_at = ${input.usage.observedAt}
+        WHERE session_ref = ${input.sessionRef}
+          AND generation = ${input.generation}
+          AND state = 'connected'
+      `;
+    }
+
+    const rows = (await tx`
+      SELECT reserved_msat, charged_msat, credit_mode
+      FROM sarah_realtime_voice_sessions
+      WHERE session_ref = ${input.sessionRef}
+      FOR UPDATE
+    `) as ReadonlyArray<{
+      reserved_msat: number | string;
+      charged_msat: number | string;
+      credit_mode: SarahVoiceCreditMode;
+    }>;
+    const row = first(rows);
+    if (row === undefined) {
+      throw new SarahVoiceSessionRejectedError("The voice session does not exist");
+    }
+    const reservedMsat = toSafeInteger(row.reserved_msat, "reserved_msat");
+    const chargedMsat = toSafeInteger(row.charged_msat, "charged_msat");
+    return {
+      chargedMsat,
+      reservedMsat,
+      creditLimitReached: row.credit_mode === "metered" && chargedMsat >= reservedMsat,
+    };
+  };
+
   const recordUsage = async (
     input: Readonly<{
       sessionRef: string;
@@ -1485,128 +1663,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }>
   > => {
     try {
-      return await sql.begin(async (tx) => {
-        const sessions = (await tx`
-          SELECT generation, state
-          FROM sarah_realtime_voice_sessions
-          WHERE session_ref = ${input.sessionRef}
-          FOR UPDATE
-        `) as ReadonlyArray<{
-          generation: number | string;
-          state: SarahVoiceSessionState;
-        }>;
-        const session = first(sessions);
-        if (
-          session === undefined ||
-          toSafeInteger(session.generation, "generation") !== input.generation ||
-          session.state !== "connected"
-        ) {
-          throw new SarahVoiceSessionRejectedError(
-            "The provider usage does not match the active Sarah voice generation",
-          );
-        }
-
-        const inserted = (await tx`
-          INSERT INTO sarah_realtime_voice_usage (
-            session_ref, provider_response_ref, input_tokens, output_tokens,
-            cached_input_tokens, audio_input_tokens, audio_output_tokens,
-            charge_msat, observed_at, usage_kind
-          ) VALUES (
-            ${input.sessionRef}, ${input.usage.providerResponseRef},
-            ${input.usage.inputTokens}, ${input.usage.outputTokens},
-            ${input.usage.cachedInputTokens}, ${input.usage.audioInputTokens},
-            ${input.usage.audioOutputTokens}, ${input.usage.chargeMsat},
-            ${input.usage.observedAt}, ${input.usage.usageKind ?? "response"}
-          )
-          ON CONFLICT (session_ref, provider_response_ref) DO NOTHING
-          RETURNING session_ref
-        `) as ReadonlyArray<{ session_ref: string }>;
-
-        if (first(inserted) === undefined) {
-          const replayed = (await tx`
-            SELECT input_tokens, output_tokens, cached_input_tokens,
-              audio_input_tokens, audio_output_tokens, charge_msat, observed_at,
-              usage_kind
-            FROM sarah_realtime_voice_usage
-            WHERE session_ref = ${input.sessionRef}
-              AND provider_response_ref = ${input.usage.providerResponseRef}
-            FOR SHARE
-          `) as ReadonlyArray<{
-            input_tokens: number | string;
-            output_tokens: number | string;
-            cached_input_tokens: number | string;
-            audio_input_tokens: number | string;
-            audio_output_tokens: number | string;
-            charge_msat: number | string;
-            observed_at: string;
-            usage_kind: "response" | "transcription";
-          }>;
-          const replay = first(replayed);
-          if (
-            replay === undefined ||
-            toSafeInteger(replay.input_tokens, "input_tokens") !== input.usage.inputTokens ||
-            toSafeInteger(replay.output_tokens, "output_tokens") !== input.usage.outputTokens ||
-            toSafeInteger(replay.cached_input_tokens, "cached_input_tokens") !==
-              input.usage.cachedInputTokens ||
-            toSafeInteger(replay.audio_input_tokens, "audio_input_tokens") !==
-              input.usage.audioInputTokens ||
-            toSafeInteger(replay.audio_output_tokens, "audio_output_tokens") !==
-              input.usage.audioOutputTokens ||
-            toSafeInteger(replay.charge_msat, "charge_msat") !== input.usage.chargeMsat ||
-            replay.observed_at !== input.usage.observedAt ||
-            replay.usage_kind !== (input.usage.usageKind ?? "response")
-          ) {
-            throw new SarahVoiceSessionRejectedError(
-              "The provider response reference was replayed with changed usage",
-            );
-          }
-        } else {
-          await tx`
-            UPDATE sarah_realtime_voice_sessions
-            SET input_tokens = input_tokens + ${input.usage.inputTokens},
-                output_tokens = output_tokens + ${input.usage.outputTokens},
-                cached_input_tokens =
-                  cached_input_tokens + ${input.usage.cachedInputTokens},
-                audio_input_tokens =
-                  audio_input_tokens + ${input.usage.audioInputTokens},
-                audio_output_tokens =
-                  audio_output_tokens + ${input.usage.audioOutputTokens},
-                charged_msat = CASE
-                  WHEN credit_mode = 'metered' THEN LEAST(
-                    reserved_msat,
-                    charged_msat + ${input.usage.chargeMsat}
-                  )
-                  ELSE charged_msat + ${input.usage.chargeMsat}
-                END,
-                updated_at = ${input.usage.observedAt}
-            WHERE session_ref = ${input.sessionRef}
-              AND generation = ${input.generation}
-              AND state = 'connected'
-          `;
-        }
-
-        const rows = (await tx`
-          SELECT reserved_msat, charged_msat, credit_mode
-          FROM sarah_realtime_voice_sessions
-          WHERE session_ref = ${input.sessionRef}
-          FOR UPDATE
-        `) as ReadonlyArray<{
-          reserved_msat: number | string;
-          charged_msat: number | string;
-          credit_mode: SarahVoiceCreditMode;
-        }>;
-        const row = first(rows);
-        if (row === undefined) {
-          throw new SarahVoiceSessionRejectedError("The voice session does not exist");
-        }
-        const reservedMsat = toSafeInteger(row.reserved_msat, "reserved_msat");
-        const chargedMsat = toSafeInteger(row.charged_msat, "charged_msat");
-        return {
-          chargedMsat,
-          reservedMsat,
-          creditLimitReached: row.credit_mode === "metered" && chargedMsat >= reservedMsat,
-        };
-      });
+      return await sql.begin((tx) => recordUsageInTransaction(tx, input));
     } catch (error) {
       if (error instanceof SarahVoiceSessionRejectedError) throw error;
       throw new SarahVoiceStorageError("Sarah voice usage write failed", error);
@@ -1835,6 +1892,260 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }
   };
 
+  type WorkerEventReceiptRow = Readonly<{
+    worker_job_ref: string;
+    worker_control_token_digest: string;
+    event_kind: SarahVoiceLiveKitWorkerEvent["eventKind"];
+    event_payload_digest: string;
+    stop_reason: SarahVoiceLiveKitWorkerStopReason | null;
+    observed_at: string;
+  }>;
+
+  const readWorkerEventReceipt = async (
+    tx: SyncTransactionSql,
+    input: SarahVoiceLiveKitWorkerEvent,
+  ): Promise<SarahVoiceLiveKitWorkerEventResult | undefined> => {
+    const rows = (await tx`
+      SELECT worker_job_ref, worker_control_token_digest, event_kind,
+        event_payload_digest, stop_reason, observed_at
+      FROM sarah_livekit_worker_events
+      WHERE session_ref = ${input.sessionRef}
+        AND generation = ${input.generation}
+        AND event_ref = ${input.eventRef}
+      FOR SHARE
+    `) as ReadonlyArray<WorkerEventReceiptRow>;
+    const row = first(rows);
+    if (row === undefined) return undefined;
+    if (
+      row.worker_job_ref !== input.workerJobRef ||
+      row.worker_control_token_digest !== input.workerControlTokenDigest ||
+      row.event_kind !== input.eventKind ||
+      row.event_payload_digest !== input.eventPayloadDigest
+    ) {
+      throw new SarahVoiceSessionRejectedError(
+        "The Sarah LiveKit worker event reference was replayed with changed facts",
+      );
+    }
+    return {
+      observedAt: row.observed_at,
+      replayed: true,
+      ...(row.stop_reason === null ? {} : { stopReason: row.stop_reason }),
+    };
+  };
+
+  const insertWorkerEventReceipt = async (
+    tx: SyncTransactionSql,
+    input: SarahVoiceLiveKitWorkerEvent,
+  ): Promise<SarahVoiceLiveKitWorkerEventResult> => {
+    const inserted = (await tx`
+      INSERT INTO sarah_livekit_worker_events (
+        session_ref, generation, event_ref, worker_job_ref,
+        worker_control_token_digest, event_kind, event_payload_digest,
+        stop_reason, observed_at
+      ) VALUES (
+        ${input.sessionRef}, ${input.generation}, ${input.eventRef},
+        ${input.workerJobRef}, ${input.workerControlTokenDigest},
+        ${input.eventKind}, ${input.eventPayloadDigest}, NULL, ${input.nowIso}
+      )
+      ON CONFLICT (session_ref, generation, event_ref) DO NOTHING
+      RETURNING observed_at
+    `) as ReadonlyArray<{ observed_at: string }>;
+    const row = first(inserted);
+    if (row !== undefined) {
+      return { observedAt: row.observed_at, replayed: false };
+    }
+    const replay = await readWorkerEventReceipt(tx, input);
+    if (replay === undefined) {
+      throw new SarahVoiceStorageError("The Sarah LiveKit worker event receipt disappeared", null);
+    }
+    return replay;
+  };
+
+  const setWorkerEventStopReason = async (
+    tx: SyncTransactionSql,
+    input: SarahVoiceLiveKitWorkerEvent,
+    stopReason: SarahVoiceLiveKitWorkerStopReason,
+  ): Promise<void> => {
+    await tx`
+      UPDATE sarah_livekit_worker_events
+      SET stop_reason = ${stopReason}
+      WHERE session_ref = ${input.sessionRef}
+        AND generation = ${input.generation}
+        AND event_ref = ${input.eventRef}
+        AND event_payload_digest = ${input.eventPayloadDigest}
+    `;
+  };
+
+  const applyLiveKitWorkerEvent = async (
+    input: SarahVoiceLiveKitWorkerEvent,
+  ): Promise<SarahVoiceLiveKitWorkerEventResult> => {
+    try {
+      return await sql.begin(async (tx) => {
+        const replay = await readWorkerEventReceipt(tx, input);
+        if (replay !== undefined) return replay;
+
+        const bindings = (await tx`
+          SELECT binding.room_ref, binding.sarah_participant_ref,
+            binding.state AS binding_state, binding.join_expires_at,
+            binding.sarah_joined_at, binding.worker_closed_at,
+            session.state AS session_state, session.session_expires_at
+          FROM sarah_livekit_room_bindings AS binding
+          INNER JOIN sarah_realtime_voice_sessions AS session
+            ON session.session_ref = binding.session_ref
+          WHERE binding.worker_control_token_digest =
+              ${input.workerControlTokenDigest}
+            AND binding.worker_job_ref = ${input.workerJobRef}
+            AND binding.session_ref = ${input.sessionRef}
+            AND binding.generation = ${input.generation}
+            AND (
+              ${input.eventKind === "worker_connected" ? input.workerRoomSid : null}::text IS NULL
+              OR binding.worker_room_sid =
+                ${input.eventKind === "worker_connected" ? input.workerRoomSid : null}
+            )
+          FOR UPDATE OF binding, session
+        `) as ReadonlyArray<{
+          room_ref: string;
+          sarah_participant_ref: string;
+          binding_state: "prepared" | "active" | "cleanup_ready" | "cleanup_failed" | "cleaned";
+          join_expires_at: string;
+          sarah_joined_at: string | null;
+          worker_closed_at: string | null;
+          session_state: SarahVoiceSessionState;
+          session_expires_at: string;
+        }>;
+        const binding = first(bindings);
+        if (binding === undefined) {
+          throw new SarahVoiceSessionRejectedError(
+            "The Sarah LiveKit worker event does not match its claimed generation",
+          );
+        }
+
+        if (input.eventKind === "close") {
+          const receipt = await insertWorkerEventReceipt(tx, input);
+          if (receipt.replayed) return receipt;
+          if (binding.worker_closed_at !== null) {
+            throw new SarahVoiceSessionRejectedError(
+              "The Sarah LiveKit worker emitted a second terminal event",
+            );
+          }
+          await tx`
+            UPDATE sarah_livekit_room_bindings
+            SET worker_closed_at = ${receipt.observedAt},
+                worker_close_reason = ${input.closeReason.slice(0, 256)},
+                worker_last_seen_at = ${receipt.observedAt},
+                updated_at = ${receipt.observedAt}
+            WHERE session_ref = ${input.sessionRef}
+              AND generation = ${input.generation}
+          `;
+          await settleInTransaction(tx, {
+            sessionRef: input.sessionRef,
+            closeReason: input.closeReason,
+            nowIso: receipt.observedAt,
+          });
+          return receipt;
+        }
+
+        const bindingAdmitted =
+          input.eventKind === "worker_connected"
+            ? (binding.binding_state === "prepared" || binding.binding_state === "active") &&
+              binding.sarah_joined_at === null &&
+              binding.join_expires_at > input.nowIso
+            : binding.binding_state === "active" && binding.sarah_joined_at !== null;
+        const active =
+          bindingAdmitted &&
+          (binding.session_state === "reserved" || binding.session_state === "connected") &&
+          binding.session_expires_at > input.nowIso &&
+          binding.worker_closed_at === null;
+        if (!active) {
+          const receipt = await insertWorkerEventReceipt(tx, input);
+          if (receipt.replayed) return receipt;
+          await setWorkerEventStopReason(tx, input, "membership_revoked");
+          return {
+            ...receipt,
+            stopReason: "membership_revoked",
+          };
+        }
+
+        const receipt = await insertWorkerEventReceipt(tx, input);
+        if (receipt.replayed) return receipt;
+
+        if (input.eventKind === "worker_connected") {
+          if (binding.sarah_joined_at !== null) {
+            throw new SarahVoiceSessionRejectedError(
+              "The Sarah LiveKit worker connected event conflicts with the joined participant",
+            );
+          }
+          const sessions = (await tx`
+            UPDATE sarah_realtime_voice_sessions
+            SET state = 'connected',
+                ticket_digest = NULL,
+                connected_at = COALESCE(connected_at, ${receipt.observedAt}),
+                updated_at = ${receipt.observedAt}
+            WHERE session_ref = ${input.sessionRef}
+              AND generation = ${input.generation}
+              AND transport_kind = 'livekit_room_v1'
+              AND state IN ('reserved', 'connected')
+              AND session_expires_at > ${receipt.observedAt}
+            RETURNING session_ref
+          `) as ReadonlyArray<{ session_ref: string }>;
+          if (first(sessions) === undefined) {
+            throw new SarahVoiceSessionRejectedError(
+              "The Sarah LiveKit worker cannot connect this voice generation",
+            );
+          }
+          const joined = (await tx`
+            UPDATE sarah_livekit_room_bindings
+            SET sarah_joined_at = ${receipt.observedAt},
+                state = 'active',
+                worker_last_seen_at = ${receipt.observedAt},
+                updated_at = ${receipt.observedAt}
+            WHERE session_ref = ${input.sessionRef}
+              AND generation = ${input.generation}
+              AND room_ref = ${binding.room_ref}
+              AND sarah_participant_ref = ${binding.sarah_participant_ref}
+              AND sarah_joined_at IS NULL
+              AND state IN ('prepared', 'active')
+              AND join_expires_at > ${receipt.observedAt}
+            RETURNING session_ref
+          `) as ReadonlyArray<{ session_ref: string }>;
+          if (first(joined) === undefined) {
+            throw new SarahVoiceSessionRejectedError(
+              "The Sarah LiveKit worker participant cannot join this generation",
+            );
+          }
+          return receipt;
+        }
+
+        await tx`
+          UPDATE sarah_livekit_room_bindings
+          SET worker_last_seen_at = ${receipt.observedAt},
+              updated_at = ${receipt.observedAt}
+          WHERE session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+        `;
+        if (input.eventKind === "lease_check") return receipt;
+
+        const usageResult = await recordUsageInTransaction(tx, {
+          sessionRef: input.sessionRef,
+          generation: input.generation,
+          usage: {
+            ...input.usage,
+            observedAt: receipt.observedAt,
+          },
+        });
+        if (!usageResult.creditLimitReached) return receipt;
+        await setWorkerEventStopReason(tx, input, "hold_exhausted");
+        return {
+          ...receipt,
+          stopReason: "hold_exhausted",
+        };
+      });
+    } catch (error) {
+      if (error instanceof SarahVoiceSessionRejectedError) throw error;
+      throw new SarahVoiceStorageError("Sarah LiveKit worker event apply failed", error);
+    }
+  };
+
   const sweepExpired = async (nowIso: string): Promise<number> => {
     await sql`
       UPDATE sarah_voice_admissions
@@ -1871,6 +2182,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
   };
 
   return {
+    applyLiveKitWorkerEvent,
     authorizeLiveKitWorkerEvent,
     bindLiveKitRoom,
     claimLiveKitWorkerJob,

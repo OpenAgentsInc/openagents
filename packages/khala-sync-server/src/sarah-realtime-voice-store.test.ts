@@ -752,18 +752,40 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         nowIso: "2026-07-28T13:00:21.000Z",
       }),
     ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
-    await store.recordLiveKitParticipantJoin({
+    const connectedEvent = {
+      workerControlTokenDigest: binding.workerControlTokenDigest,
+      workerJobRef: workerClaim.workerJobRef,
       sessionRef: binding.sessionRef,
       generation: 1,
-      roomRef: binding.roomRef,
-      participantRef: binding.sarahParticipantRef,
-      role: "sarah",
+      eventRef: "connected:job-livekit-1",
+      eventPayloadDigest: "9".repeat(64),
+      eventKind: "worker_connected",
+      workerRoomSid: workerClaim.workerRoomSid,
       nowIso: "2026-07-28T13:00:22.000Z",
+    } as const;
+    await expect(store.applyLiveKitWorkerEvent(connectedEvent)).resolves.toEqual({
+      observedAt: "2026-07-28T13:00:22.000Z",
+      replayed: false,
     });
-    await store.connect({
-      sessionRef: binding.sessionRef,
-      ticketDigest: "4".repeat(64),
-      nowIso: "2026-07-28T13:00:30.000Z",
+    await expect(
+      store.applyLiveKitWorkerEvent({
+        ...connectedEvent,
+        nowIso: "2026-07-28T13:00:30.000Z",
+      }),
+    ).resolves.toEqual({
+      observedAt: "2026-07-28T13:00:22.000Z",
+      replayed: true,
+    });
+    await store.sweepExpired("2026-07-28T13:01:30.000Z");
+    const [connectedSession] = await sql`
+      SELECT state, ticket_digest, connected_at
+      FROM sarah_realtime_voice_sessions
+      WHERE session_ref = 'voice-livekit-1'
+    `;
+    expect(connectedSession).toMatchObject({
+      state: "connected",
+      ticket_digest: null,
+      connected_at: "2026-07-28T13:00:22.000Z",
     });
     const usage = {
       providerResponseRef: "livekit-provider-response-1",

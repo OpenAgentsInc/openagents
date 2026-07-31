@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vite-plus/test";
-import { SarahGenerationFence, responseUsageEvent, transcriptionUsageEvent } from "./generation.js";
+import {
+  SarahGenerationFence,
+  isAdmittedRealtimeSessionCreated,
+  responseUsageEvent,
+  transcriptionUsageEvent,
+} from "./generation.js";
 
 const identity = {
   sessionRef: "session:one",
@@ -8,6 +13,32 @@ const identity = {
 } as const;
 
 describe("Sarah LiveKit generation fence", () => {
+  test("admits only session.created for the exact configured Realtime model", () => {
+    expect(
+      isAdmittedRealtimeSessionCreated({
+        type: "session.created",
+        session: { id: "sess_one", model: "gpt-realtime-2.1" },
+      }),
+    ).toBe(true);
+    expect(
+      isAdmittedRealtimeSessionCreated({
+        type: "session.created",
+        session: { id: "sess_one", model: "gpt-realtime" },
+      }),
+    ).toBe(false);
+    expect(
+      isAdmittedRealtimeSessionCreated({
+        type: "session.created",
+        session: { id: "sess_one" },
+      }),
+    ).toBe(false);
+    expect(
+      isAdmittedRealtimeSessionCreated({
+        type: "response.created",
+      }),
+    ).toBeUndefined();
+  });
+
   test("extracts exact response.done token details without transcript content", () => {
     const event = responseUsageEvent(
       {
@@ -87,16 +118,43 @@ describe("Sarah LiveKit generation fence", () => {
 
   test("settles a generation once and drains tracked accounting", async () => {
     const fence = new SarahGenerationFence();
-    let completed = false;
+    let completedBeforeSettlement = false;
     fence.track(
       Promise.resolve().then(() => {
-        completed = true;
+        completedBeforeSettlement = true;
       }),
     );
     expect(fence.settle("provider_disconnect")).toBe(true);
     expect(fence.settle("completed")).toBe(false);
+    const finalUsage = responseUsageEvent(
+      {
+        type: "response.done",
+        response: {
+          id: "resp_final",
+          status: "failed",
+          usage: {
+            input_tokens: 8,
+            output_tokens: 2,
+          },
+        },
+      },
+      identity,
+    );
+    if (finalUsage === undefined) {
+      throw new Error("The final usage fixture was not admitted");
+    }
+    expect(fence.accepts(finalUsage)).toBe(true);
+    let completedAfterSettlement = false;
+    fence.track(
+      Promise.resolve().then(() => {
+        completedAfterSettlement = true;
+      }),
+    );
+    fence.seal();
+    expect(fence.accepts(finalUsage)).toBe(false);
     await fence.drain();
-    expect(completed).toBe(true);
+    expect(completedBeforeSettlement).toBe(true);
+    expect(completedAfterSettlement).toBe(true);
     expect(fence.closeReason).toBe("provider_disconnect");
   });
 });

@@ -26,7 +26,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { makeSarahLiveKitControlClient } from "./control-client.js";
-import { SarahGenerationFence, responseUsageEvent, transcriptionUsageEvent } from "./generation.js";
+import {
+  SarahGenerationFence,
+  isAdmittedRealtimeSessionCreated,
+  responseUsageEvent,
+  transcriptionUsageEvent,
+} from "./generation.js";
 
 const PRIVATE_INSTRUCTIONS = [
   "You are Sarah, the OpenAgents owner's conversational agent.",
@@ -199,7 +204,7 @@ const entry = async (ctx: JobContext): Promise<void> => {
   let session: AgentSession | undefined;
   let eventChain = Promise.resolve();
   const sendEvent = (event: SarahLiveKitJobEvent): void => {
-    if (fence.settled && event._tag !== "close") return;
+    if (!fence.accepts(event)) return;
     const operation = eventChain
       .then(async () => {
         const result = await controller.event(dispatch.controlToken, event);
@@ -218,6 +223,11 @@ const entry = async (ctx: JobContext): Promise<void> => {
   };
 
   const model = new ObservedRealtimeModel(claim.safetyIdentifier, (event) => {
+    const admittedSession = isAdmittedRealtimeSessionCreated(event);
+    if (admittedSession === false) {
+      if (fence.settle("provider_mismatch")) void session?.close();
+      return;
+    }
     const usage = responseUsageEvent(event, identity) ?? transcriptionUsageEvent(event, identity);
     if (usage !== undefined) sendEvent(usage);
   });
@@ -269,6 +279,7 @@ const entry = async (ctx: JobContext): Promise<void> => {
     clearTimeout(expiryTimer);
     if (!fence.settled) fence.settle("worker_shutdown");
     await session?.close();
+    fence.seal();
     await fence.drain();
     await controller.event(dispatch.controlToken, closeEvent(identity, fence.closeReason));
   });
