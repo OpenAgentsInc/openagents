@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { lstatSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   PRIVACY_SCOPES,
@@ -90,7 +90,15 @@ const parseArgs = (args) => {
 };
 
 const privateBytes = (path) => {
-  const bytes = readFileSync(resolve(path));
+  const resolvedPath = resolve(path);
+  const input = lstatSync(resolvedPath);
+  if (!input.isFile() || input.isSymbolicLink()) {
+    throw new Error("privacy scan secret inputs must be regular files");
+  }
+  if ((input.mode & 0o077) !== 0) {
+    throw new Error("privacy scan secret inputs must have mode 0600 or stricter");
+  }
+  const bytes = readFileSync(resolvedPath);
   let end = bytes.length;
   while (end > 0 && [0x0a, 0x0d].includes(bytes[end - 1])) end -= 1;
   return bytes.subarray(0, end);
