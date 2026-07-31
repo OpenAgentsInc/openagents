@@ -7,10 +7,18 @@ import {
   parseArgs,
   parseTriggeredBuildId,
   receiptPath,
+  receiptObjectUri,
   resolvedBuildRevision,
   triggerRunArguments,
   validateBuildDescription,
 } from "./livekit-production-deploy.mjs";
+
+test("receipt retrieval uses Cloud Build's flattened artifact object", () => {
+  assert.equal(
+    receiptObjectUri("75767c7d-a6eb-4f0b-b259-a122de6a33cb"),
+    "gs://openagentsgemini-livekit-deployment-receipts/production-runtime/75767c7d-a6eb-4f0b-b259-a122de6a33cb/receipt.json",
+  );
+});
 
 const buildId = "123e4567-e89b-42d3-a456-426614174000";
 const revision = "1".repeat(40);

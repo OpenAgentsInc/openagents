@@ -194,6 +194,11 @@ export const receiptPath = (path) => {
   return absolute;
 };
 
+export const receiptObjectUri = (buildId) => {
+  if (!BUILD_ID.test(buildId)) fail("receipt object requires a canonical Cloud Build id");
+  return `gs://${RECEIPT_BUCKET}/production-runtime/${buildId}/receipt.json`;
+};
+
 const retrieveReceipt = (buildId, path) => {
   const build = describeBuild(buildId);
   if (build.status !== "SUCCESS") fail("receipt retrieval requires a successful build");
@@ -209,7 +214,7 @@ const retrieveReceipt = (buildId, path) => {
     [
       "storage",
       "cp",
-      `gs://${RECEIPT_BUCKET}/production-runtime/${buildId}/docs/ops/receipts/livekit/receipt.json`,
+      receiptObjectUri(buildId),
       temporary,
       "--project",
       PROJECT,
