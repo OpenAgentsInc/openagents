@@ -424,6 +424,10 @@ const entry = async (ctx: JobContext): Promise<void> => {
     if (usage !== undefined) sendEvent(usage);
     const admitted = admittedRealtimeProvider(event, accounting.providerSessionRefDigest);
     if (admitted === undefined || providerAdmissionObserved) return;
+    if (admitted === false) {
+      persistProviderAdmission(admitted);
+      return;
+    }
     pendingProviderAdmission = admitted;
     if (sessionStarted) persistProviderAdmission(admitted);
   });

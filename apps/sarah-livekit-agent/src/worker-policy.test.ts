@@ -43,6 +43,14 @@ describe("Sarah LiveKit worker policy", () => {
     expect(manifest).toContain("terminationGracePeriodSeconds: 90");
   });
 
+  test("fails a provider mismatch before deferring a valid admission until session start", async () => {
+    const source = await readFile(new URL("./agent.ts", import.meta.url), "utf8");
+    const rejectMismatch = source.indexOf("if (admitted === false)");
+    const deferAdmission = source.indexOf("pendingProviderAdmission = admitted");
+    expect(rejectMismatch).toBeGreaterThan(-1);
+    expect(deferAdmission).toBeGreaterThan(rejectMismatch);
+  });
+
   test("does not enable recording or log raw provider events", async () => {
     const source = await readFile(new URL("./agent.ts", import.meta.url), "utf8");
     expect(source).toContain("record: false");
