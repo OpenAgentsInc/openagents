@@ -159,33 +159,44 @@ OPENAUTH_ISSUER_URL: "https://auth.openagents.com"
 # install charges only the mint budget, so this number bounds onboarding rate,
 # not usage.
 #
-# ARITHMETIC AT THESE VALUES (this replaces the pre-arming note, which computed
-# the same product from the old 1000000 ceiling):
+# ARITHMETIC AT THESE VALUES:
 #   worst case/day  = GLOBAL_DAILY_LIMIT x DAILY_TOKEN_CEILING
-#                   = 50 x 200000 = 10,000,000 served tokens/day
+#                   = 20 x 1000000 = 20,000,000 served tokens/day
 #                     across ALL self-provisioned identities combined
 #   derived/hour    = IP_HOURLY_LIMIT x DAILY_TOKEN_CEILING
-#                   = 30 x 200000 = 6,000,000 tokens from one source IP
-# 200000 is the number the owner approved when arming; it is 5x lower than the
-# module default and caps the aggregate stranger exposure at 10M/day rather
-# than the 50M the previous ceiling would have allowed.
+#                   = 30 x 1000000 = 30,000,000 tokens from one source IP
 #
-# WHICH BOUND ACTUALLY BINDS (owner raise 3 -> 30, 2026-07-31). Raising
-# IP_HOURLY_LIMIT 10x does NOT raise total spend exposure: the aggregate stays
-# GLOBAL_DAILY_LIMIT x DAILY_TOKEN_CEILING = 10,000,000 tokens/day, because a
-# source IP cannot mint accounts the global 50/day budget has already spent. At
-# 30/hour one NAT can exhaust the whole deployment's daily account budget in
-# under two hours, so GLOBAL_DAILY_LIMIT is now the first bound for any
-# multi-tester IP, and the 6,000,000/hour derivation is unreachable in practice
-# (it would need 30 identities each burning a full day's allowance inside one
-# hour, and 24 such hours would be 144M/day against a 10M/day aggregate).
-#   - ONE tester on one IP: bound by DAILY_TOKEN_CEILING (200000/day). They
-#     create exactly one identity, so IP_HOURLY_LIMIT never applied to them at
-#     3 and does not apply at 30. This raise is cosmetic for that case; only
-#     DAILY_TOKEN_CEILING moves it, and that multiplies aggregate exposure.
-#   - MANY testers behind one NAT: this raise is real. The observed
-#     `creation_ip` refusal of a fourth simultaneous onboarding is exactly what
-#     3/hour produced; 30/hour removes it, up to the global 50/day.
+# HEADROOM RETUNE (owner direction, 2026-07-31). The free tier was far too
+# restrictive per tester: 200000 tokens/day is a couple of real sessions, and a
+# tester who hit it was done for the day. DAILY_TOKEN_CEILING goes 200000 ->
+# 1000000 (5x per-tester headroom, back to the module default), and
+# GLOBAL_DAILY_LIMIT goes 50 -> 20 to pay for part of it.
+#
+# The trade is deliberate and is NOT a 5x spend increase. Aggregate exposure is
+# the product of the two, so it moves 10M -> 20M tokens/day: a 2x increase,
+# accepted knowingly. The reasoning is that an alpha needs generous room per
+# tester far more than it needs a high account count. 20 NEW identities per day
+# is ample before launch — it bounds onboarding rate, not returning testers,
+# who charge only the mint budget and keep their own full 1000000/day. If the
+# count ever binds, the owner can raise GLOBAL_DAILY_LIMIT on its own without
+# touching per-tester room, and each +1 there is now worth 1M/day rather than
+# 200k, so raise it in smaller steps than before.
+#
+# WHICH BOUND ACTUALLY BINDS. IP_HOURLY_LIMIT (raised 3 -> 30 earlier on
+# 2026-07-31) still does NOT set total spend exposure: a source IP cannot mint
+# accounts the global daily budget has already spent. At 30/hour one NAT
+# exhausts the global 20/day account budget in the first hour, so
+# GLOBAL_DAILY_LIMIT is the first bound for any multi-tester address and the
+# 30,000,000/hour derivation is unreachable in practice (it would need 30
+# identities each burning a full day's allowance inside one hour, against a
+# 20-identity/day global budget).
+#   - ONE tester on one IP: bound by DAILY_TOKEN_CEILING (1000000/day). They
+#     create exactly one identity, so IP_HOURLY_LIMIT never applies to them.
+#     This ceiling is the only number that moves that tester, which is why it
+#     is the one the owner raised.
+#   - MANY testers behind one NAT: bound by IP_HOURLY_LIMIT up to the global
+#     20/day. The earlier 3/hour value refused a fourth simultaneous
+#     onboarding; 30/hour removes that refusal.
 # Do not treat the per-IP bucket as spend protection. The x-forwarded-for first
 # hop is client-prependable, so an attacker bypasses it outright.
 # GLOBAL_DAILY_LIMIT x DAILY_TOKEN_CEILING is the only bound that actually
@@ -219,9 +230,9 @@ OPENAUTH_ISSUER_URL: "https://auth.openagents.com"
 #
 # Ref: docs/audits/2026-07-28-omega-nostr-self-provisioning-abuse-bounds.md
 OMEGA_NOSTR_SELF_PROVISION_ENABLED: "1"
-OMEGA_NOSTR_SELF_PROVISION_GLOBAL_DAILY_LIMIT: "50"
+OMEGA_NOSTR_SELF_PROVISION_GLOBAL_DAILY_LIMIT: "20"
 OMEGA_NOSTR_SELF_PROVISION_IP_HOURLY_LIMIT: "30"
-OMEGA_NOSTR_SELF_PROVISION_DAILY_TOKEN_CEILING: "200000"
+OMEGA_NOSTR_SELF_PROVISION_DAILY_TOKEN_CEILING: "1000000"
 PUBLIC_NOSTR_CHAT_RELAY_SELF_PUBKEY: "e841147f262799821bbaa2930fcca982a575458f0e043e064a26ed8aba2046ed"
 SARAH_NOSTR_OWNER_PUBKEY: "bcf86577b45042c960c99fe4ac1380a3ef0565ccbdd5c81e3f20f0919fe4fd14"
 SARAH_NOSTR_EXPECTED_PUBKEY: "f7824ac493cb820171a72dd4085880d1bdcc4ba1176ba84e93afddc176ec971d"
