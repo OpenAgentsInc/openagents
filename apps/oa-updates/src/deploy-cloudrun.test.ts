@@ -42,6 +42,10 @@ describe("oa-updates additive Cloud Run deploy command", () => {
     });
     expect(build).toContain("cloudbuild.incremental.yaml");
     expect(build).toContain(
+      "projects/openagentsgemini/serviceAccounts/oa-cloud-image-builder@openagentsgemini.iam.gserviceaccount.com",
+    );
+    expect(build).toContain("gs://openagentsgemini-cloud-build-source/source");
+    expect(build).toContain(
       `_BASE_IMAGE=${immutableBase},_IMAGE=${immutableBase.split("@")[0]}:source-${"c".repeat(40)}`,
     );
     expect(deploy).toContain(`${immutableBase.split("@")[0]}@${immutableBuiltDigest}`);

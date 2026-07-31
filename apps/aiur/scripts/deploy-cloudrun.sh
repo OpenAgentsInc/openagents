@@ -15,7 +15,9 @@ set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVICE="${AIUR_CLOUDRUN_SERVICE:-openagents-aiur}"
+PROJECT="${AIUR_CLOUDRUN_PROJECT:-openagentsgemini}"
 REGION="${AIUR_CLOUDRUN_REGION:-us-central1}"
+BUILD_SERVICE_ACCOUNT="projects/${PROJECT}/serviceAccounts/oa-cloud-run-source-builder@${PROJECT}.iam.gserviceaccount.com"
 SECRET_NAME="${AIUR_OWNER_SECRET_NAME:-aiur-owner-user-ids}"
 OWNER_USER_IDS="github:14167547"
 
@@ -35,7 +37,9 @@ fi
 
 echo "==> Deploying $SERVICE to Cloud Run ($REGION)"
 gcloud run deploy "$SERVICE" \
+  --project "$PROJECT" \
   --source . \
+  --build-service-account "$BUILD_SERVICE_ACCOUNT" \
   --region "$REGION" \
   --allow-unauthenticated \
   --port 8080 \

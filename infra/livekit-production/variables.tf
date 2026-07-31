@@ -87,3 +87,27 @@ variable "enable_turn_udp" {
   type        = bool
   default     = false
 }
+
+variable "enable_deployment_control" {
+  description = "Create the fixed production runtime Cloud Build trigger and Connect Gateway path."
+  type        = bool
+  default     = false
+}
+
+variable "deployment_executor_image" {
+  description = "Immutable image containing the reviewed LiveKit deployment runner and tools."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition = (
+      var.deployment_executor_image == null ||
+      can(regex(
+        "^us-central1-docker\\.pkg\\.dev/openagentsgemini/oa-cloud/livekit-production-deployer@sha256:[0-9a-f]{64}$",
+        var.deployment_executor_image,
+      ))
+    )
+    error_message = "The deployment executor must use the exact production repository and an immutable digest."
+  }
+}

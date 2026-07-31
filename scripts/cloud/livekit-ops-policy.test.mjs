@@ -765,6 +765,165 @@ test("public receipt projection is digest-only and source receipts cannot claim 
   );
 });
 
+test("deployment receipt execution provenance is closed and source bound", () => {
+  const sourceReceipt = {
+    schemaVersion: "openagents.livekit_ops_receipt.v1",
+    receiptRef: "livekit-ops-receipt-ref://sha256/deployment-execution",
+    issueRef: "github-issue-ref://OpenAgentsInc/openagents/9284",
+    stage: "production",
+    phase: "deployment",
+    sourceBaseRevision: deployedRevision,
+    deployedRevision,
+    bundleDigest: digest("1"),
+    configurationDigest: digest("2"),
+    resourceRefs: ["gcp-resource-ref://livekit/production"],
+    startedAt: "2026-07-31T00:00:00.000Z",
+    settledAt: "2026-07-31T00:01:00.000Z",
+    outcome: "passed",
+    evidenceTier: "live_observed",
+    liveProof: true,
+    resultDigest: digest("3"),
+    limitations: [],
+    execution: {
+      buildRef:
+        "gcp-cloud-build-ref://openagentsgemini/us-central1/123e4567-e89b-42d3-a456-426614174000",
+      triggerRef:
+        "gcp-cloud-build-trigger-ref://openagentsgemini/us-central1/oa-livekit-prod-runtime",
+      serviceAccountRef:
+        "gcp-service-account-ref://openagentsgemini/oa-livekit-prod-deployer",
+      sourceRevision: deployedRevision,
+      configurationDigest: digest("4"),
+    },
+  };
+  assert.equal(validateSourceOnlyReceipt(sourceReceipt), sourceReceipt);
+  assert.throws(
+    () =>
+      validateSourceOnlyReceipt({
+        ...sourceReceipt,
+        execution: { ...sourceReceipt.execution, sourceRevision: "2".repeat(40) },
+      }),
+    /does not match deployed revision/u,
+  );
+  assert.throws(
+    () =>
+      validateSourceOnlyReceipt({
+        ...sourceReceipt,
+        execution: { ...sourceReceipt.execution, arbitraryConfig: true },
+      }),
+    /unsupported field/u,
+  );
+});
+
+test("deployment control Terraform fixes identity, source, route, and substitutions", () => {
+  const module = readFileSync(
+    resolve(
+      import.meta.dirname,
+      "../../infra/modules/livekit-deployment-control/main.tf",
+    ),
+    "utf8",
+  );
+  const runner = readFileSync(
+    resolve(import.meta.dirname, "livekit-gcp-ops.mjs"),
+    "utf8",
+  );
+  const rbac = readFileSync(
+    resolve(
+      import.meta.dirname,
+      "../../infra/livekit-production/deployer-gateway-rbac.yaml",
+    ),
+    "utf8",
+  );
+  const productionRoot = readFileSync(
+    resolve(import.meta.dirname, "../../infra/livekit-production/main.tf"),
+    "utf8",
+  );
+  const workerBuilder = readFileSync(
+    resolve(import.meta.dirname, "build-sarah-livekit-agent.sh"),
+    "utf8",
+  );
+  const apiDeployer = readFileSync(
+    resolve(
+      import.meta.dirname,
+      "../../apps/openagents.com/workers/api/scripts/deploy-cloudrun.sh",
+    ),
+    "utf8",
+  );
+  assert.match(module, /account_id\s+=\s+local\.service_account_id/u);
+  assert.match(module, /name\s+=\s+local\.trigger_name/u);
+  assert.match(module, /service_account\s+=\s+google_service_account\.deployer\.id/u);
+  assert.match(module, /source_to_build\s*\{/u);
+  assert.match(module, /ref\s+=\s+"refs\/heads\/main"/u);
+  assert.doesNotMatch(module, /\bsubstitutions\s*=/u);
+  assert.match(module, /roles\/gkehub\.gatewayAdmin/u);
+  assert.match(module, /google_gke_hub_membership/u);
+  assert.doesNotMatch(module, /google_iam_deny_policy/u);
+  assert.doesNotMatch(module, /livekitProductionTriggerInvoker/u);
+  assert.match(productionRoot, /account_id\s+=\s+"oa-livekit-image-builder"/u);
+  assert.match(productionRoot, /roles\/artifactregistry\.writer/u);
+  assert.match(productionRoot, /cloudbuild\.useBuildServiceAccount/u);
+  assert.match(productionRoot, /cloudbuild\.useComputeServiceAccount/u);
+  assert.match(productionRoot, /enforce\s+=\s+"FALSE"/u);
+  assert.match(
+    productionRoot,
+    /google_iam_deny_policy" "legacy_automation_privileged_impersonation/u,
+  );
+  assert.match(
+    productionRoot,
+    /resource\.matchTag\('\$\{var\.project_id\}\/livekit-privileged-identity', 'protected'\)/u,
+  );
+  assert.match(productionRoot, /iam\.googleapis\.com\/serviceAccounts\.actAs/u);
+  assert.doesNotMatch(productionRoot, /cloudbuild\.googleapis\.com\/builds\.create/u);
+  assert.match(productionRoot, /default_compute/u);
+  assert.match(productionRoot, /module\.platform\.privileged_service_account_unique_ids/u);
+  assert.match(workerBuilder, /--service-account "\$\{builder\}"/u);
+  assert.match(apiDeployer, /--build-service-account "\$BUILD_SERVICE_ACCOUNT"/u);
+  assert.match(runner, /fleet",\s+"memberships",\s+"get-credentials"/u);
+  assert.match(runner, /policy-troubleshoot/u);
+  assert.match(runner, /org-policies/u);
+  assert.doesNotMatch(runner, /"cloudbuild\.builds\.create"/u);
+  assert.match(runner, /DEFAULT_COMPUTE_SERVICE_ACCOUNT/u);
+  assert.match(runner, /observed access was not conclusively NOT_GRANTED/u);
+  assert.match(runner, /preflight deployment receipt artifact write/u);
+  assert.match(rbac, /kind: Role\nmetadata:\n  name: oa-livekit-prod-runtime-deployer/u);
+  assert.doesNotMatch(rbac, /cluster-admin/u);
+  assert.doesNotMatch(rbac, /resources: \["clusterroles"\]/u);
+});
+
+test("repository build paths select narrow service accounts explicitly", () => {
+  const sourceDeployers = [
+    "apps/aiur/scripts/deploy-cloudrun.sh",
+    "apps/forge-git-service/scripts/deploy-cloudrun.sh",
+    "apps/khala-capture/scripts/deploy-cloudrun.sh",
+    "apps/khala-live-hub/scripts/deploy-cloudrun.sh",
+    "apps/oa-queue-worker/scripts/deploy-cloudrun.sh",
+    "apps/oa-updates/scripts/deploy-cloudrun.sh",
+    "apps/openagents-audio-edge/deploy-cloudrun.sh",
+    "apps/openagents-audio/scripts/deploy-cloudrun.sh",
+    "apps/openagents.com/apps/start/scripts/deploy-cloudrun.sh",
+    "apps/openagents.com/workers/api/scripts/deploy-cloudrun.sh",
+  ];
+  for (const path of sourceDeployers) {
+    const script = readFileSync(resolve(import.meta.dirname, "../..", path), "utf8");
+    assert.match(script, /--source/u, path);
+    assert.match(script, /--build-service-account/u, path);
+    assert.match(script, /oa-cloud-run-source-builder/u, path);
+  }
+
+  const directBuildPaths = [
+    "scripts/cloud/build-sarah-livekit-agent.sh",
+    "scripts/cloud/build-livekit-production-deployer.sh",
+    "scripts/cloud/deploy-managed-sandbox-bridge.sh",
+    "scripts/cloud/provision-managed-sandbox-runtime.sh",
+    "apps/oa-updates/scripts/deploy-cloudrun.sh",
+  ];
+  for (const path of directBuildPaths) {
+    const script = readFileSync(resolve(import.meta.dirname, "../..", path), "utf8");
+    assert.match(script, /--service-account/u, path);
+    assert.match(script, /--gcs-source-staging-dir/u, path);
+    assert.match(script, /(?:oa-livekit-image-builder|oa-cloud-image-builder)/u, path);
+  }
+});
+
 test("public-safe validation rejects endpoints, IPs, secrets, transcripts, and audio fields", () => {
   assert.throws(
     () => assertPublicSafe({ endpoint: "redacted" }),

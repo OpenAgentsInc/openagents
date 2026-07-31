@@ -77,3 +77,23 @@ output "budget_name" {
   description = "Google Cloud Billing budget resource name."
   value       = module.observability.budget_name
 }
+
+output "deployment_control" {
+  description = "Fixed-trigger production deployment control resources."
+  value = var.enable_deployment_control ? {
+    service_account = module.deployment_control[0].service_account_email
+    trigger_name    = module.deployment_control[0].trigger_name
+    membership_name = module.deployment_control[0].membership_name
+    receipt_bucket  = module.deployment_control[0].receipt_bucket
+  } : null
+}
+
+output "image_builder_service_account" {
+  description = "Narrow service account required by LiveKit image build scripts."
+  value       = google_service_account.image_builder.email
+}
+
+output "image_build_source_bucket" {
+  description = "Dedicated seven-day source staging bucket for explicit LiveKit image builds."
+  value       = google_storage_bucket.image_build_source.name
+}

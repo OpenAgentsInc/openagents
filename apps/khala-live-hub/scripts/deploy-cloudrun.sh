@@ -34,7 +34,9 @@ if [[ "$ENVIRONMENT" != "staging" && "$ENVIRONMENT" != "prod" ]]; then
 fi
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT="${KHALA_LIVE_HUB_PROJECT:-openagentsgemini}"
 REGION="${KHALA_LIVE_HUB_REGION:-us-central1}"
+BUILD_SERVICE_ACCOUNT="projects/${PROJECT}/serviceAccounts/oa-cloud-run-source-builder@${PROJECT}.iam.gserviceaccount.com"
 if [[ "$ENVIRONMENT" == "prod" ]]; then
   SERVICE="${KHALA_LIVE_HUB_SERVICE:-khala-live-hub}"
 else
@@ -74,7 +76,9 @@ fi
 
 echo "==> Deploying $SERVICE to Cloud Run ($REGION, env $ENVIRONMENT)"
 gcloud run deploy "$SERVICE" \
+  --project "$PROJECT" \
   --source . \
+  --build-service-account "$BUILD_SERVICE_ACCOUNT" \
   --region "$REGION" \
   --allow-unauthenticated \
   --port 8080 \
@@ -88,7 +92,7 @@ gcloud run deploy "$SERVICE" \
   --set-env-vars "KHALA_LIVE_HUB_REBUILD_VERSIONS=500" \
   --set-secrets "KHALA_LIVE_HUB_TOKEN=${TOKEN_SECRET}:latest,KHALA_SYNC_DATABASE_URL=${DB_SECRET}:latest"
 
-URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')"
+URL="$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format='value(status.url)')"
 echo "==> Done. Service URL: $URL"
 echo "    Verify:"
 echo "      curl -s $URL/health                                   # => {\"ok\":true,...}"

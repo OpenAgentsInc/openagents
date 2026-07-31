@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "openagents.livekit_deployment_control.v1",
+  "project": "openagentsgemini",
+  "region": "us-central1",
+  "trigger": "oa-livekit-prod-runtime",
+  "serviceAccount": "oa-livekit-prod-deployer",
+  "legacyAutomation": "oa-mvp-automation",
+  "legacyDefaultComputeServiceAccount": "157437760789-compute",
+  "requiredBuildIdentityPolicies": [
+    "cloudbuild.useBuildServiceAccount=false",
+    "cloudbuild.useComputeServiceAccount=false"
+  ],
+  "privilegedIdentityDenyPolicy": "deny-legacy-livekit-privileged-impersonation",
+  "privilegedIdentityTag": "openagentsgemini/livekit-privileged-identity/protected",
+  "sourceRef": "refs/heads/main",
+  "operation": "production-runtime-apply",
+  "clusterCredentialRoute": "gke_connect_gateway",
+  "receiptBucket": "openagentsgemini-livekit-deployment-receipts",
+  "maximumBuildSeconds": 5400,
+  "callerSubstitutions": [],
+  "callerIamGrants": []
+}

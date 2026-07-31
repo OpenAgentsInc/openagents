@@ -125,6 +125,92 @@ module "oa_convex_nonprod_pg" {
 # Cloud Run (shell ownership only; revisions deploy via gcloud/CI)
 # ---------------------------------------------------------------------------
 
+locals {
+  automation_service_account = "oa-mvp-automation@${var.project_id}.iam.gserviceaccount.com"
+}
+
+data "google_artifact_registry_repository" "oa_cloud" {
+  project       = var.project_id
+  location      = var.region
+  repository_id = "oa-cloud"
+}
+
+resource "google_service_account" "cloud_image_builder" {
+  project      = var.project_id
+  account_id   = "oa-cloud-image-builder"
+  display_name = "OpenAgents immutable image builder"
+  description  = "Build-only identity selected explicitly by general OpenAgents container builds."
+}
+
+resource "google_artifact_registry_repository_iam_member" "cloud_image_builder" {
+  project    = data.google_artifact_registry_repository.oa_cloud.project
+  location   = data.google_artifact_registry_repository.oa_cloud.location
+  repository = data.google_artifact_registry_repository.oa_cloud.repository_id
+  role       = "roles/artifactregistry.writer"
+  member     = "serviceAccount:${google_service_account.cloud_image_builder.email}"
+}
+
+resource "google_project_iam_member" "cloud_image_builder_log_writer" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.cloud_image_builder.email}"
+}
+
+resource "google_storage_bucket" "cloud_build_source" {
+  project                     = var.project_id
+  name                        = "${var.project_id}-cloud-build-source"
+  location                    = var.region
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+  force_destroy               = false
+
+  lifecycle_rule {
+    action {
+      type = "Delete"
+    }
+    condition {
+      age = 7
+    }
+  }
+}
+
+resource "google_storage_bucket_iam_member" "cloud_image_builder_source_reader" {
+  bucket = google_storage_bucket.cloud_build_source.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.cloud_image_builder.email}"
+}
+
+resource "google_service_account_iam_member" "cloud_build_cloud_image_builder" {
+  service_account_id = google_service_account.cloud_image_builder.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:service-${var.project_number}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
+}
+
+resource "google_service_account_iam_member" "automation_cloud_image_builder" {
+  service_account_id = google_service_account.cloud_image_builder.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${local.automation_service_account}"
+}
+
+resource "google_service_account" "cloud_run_source_builder" {
+  project      = var.project_id
+  account_id   = "oa-cloud-run-source-builder"
+  display_name = "OpenAgents Cloud Run source builder"
+  description  = "Build-only identity selected explicitly by Cloud Run source deployments."
+}
+
+resource "google_project_iam_member" "cloud_run_source_builder" {
+  project = var.project_id
+  role    = "roles/run.builder"
+  member  = "serviceAccount:${google_service_account.cloud_run_source_builder.email}"
+}
+
+resource "google_service_account_iam_member" "automation_cloud_run_source_builder" {
+  service_account_id = google_service_account.cloud_run_source_builder.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${local.automation_service_account}"
+}
+
 module "oa_updates" {
   source = "../modules/cloud-run-service"
 

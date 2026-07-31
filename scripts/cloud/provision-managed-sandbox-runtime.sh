@@ -69,6 +69,8 @@ control_token_secret="oa-managed-sandbox-control-token${suffix}"
 broker_signing_secret="oa-managed-sandbox-broker-signing-key${suffix}"
 checkpoint_bucket="${project}-managed-sandbox-checkpoints${suffix}"
 control_sa="oa-codex-control@${project}.iam.gserviceaccount.com"
+build_sa="projects/${project}/serviceAccounts/oa-cloud-image-builder@${project}.iam.gserviceaccount.com"
+build_source="gs://${project}-cloud-build-source/source"
 project_number="$(gcloud projects describe "$project" --format='value(projectNumber)')"
 runtime_sa="${project_number}-compute@developer.gserviceaccount.com"
 revision="$(git rev-parse HEAD)"
@@ -164,6 +166,8 @@ control_image="${region}-docker.pkg.dev/${project}/oa-cloud/oa-codex-control:${i
 if [[ "$apply" == "true" ]]; then
   control_build_id="$(gcloud builds submit . \
     --project "$project" --region "$region" --async --format='value(id)' \
+    --service-account "$build_sa" \
+    --gcs-source-staging-dir "$build_source" \
     --config docker/cloud/cloudbuild-oa-codex-control.yaml \
     --substitutions "_IMAGE=${control_image},_REVISION=${revision}")"
   for _ in $(seq 1 240); do
@@ -185,6 +189,8 @@ if [[ "$apply" == "true" ]]; then
 else
   run gcloud builds submit . \
     --project "$project" --region "$region" --async --format='value(id)' \
+    --service-account "$build_sa" \
+    --gcs-source-staging-dir "$build_source" \
     --config docker/cloud/cloudbuild-oa-codex-control.yaml \
     --substitutions "_IMAGE=${control_image},_REVISION=${revision}"
 fi

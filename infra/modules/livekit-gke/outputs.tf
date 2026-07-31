@@ -58,6 +58,18 @@ output "secret_reader_service_account_emails" {
   }
 }
 
+output "privileged_service_account_unique_ids" {
+  description = "Unique IDs of runtime identities that legacy automation must never impersonate."
+  value = {
+    nodes         = google_service_account.nodes.unique_id
+    server        = google_service_account.server.unique_id
+    agent         = google_service_account.agent.unique_id
+    secret_reader = google_service_account.secret_reader.unique_id
+    dns_reader    = google_service_account.dns_secret_reader.unique_id
+    sarah_reader  = google_service_account.sarah_secret_reader.unique_id
+  }
+}
+
 output "secret_ids" {
   description = "Secret Manager container IDs. Versions are created out of band; Redis material contains only host and CA certificate."
   value = {

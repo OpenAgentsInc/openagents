@@ -26,9 +26,14 @@ region="${OPENAGENTS_GCP_REGION:-us-central1}"
 repository="oa-cloud"
 image_name="sarah-livekit-agent"
 revision="$(git -C "${repository_root}" rev-parse HEAD)"
+remote_revision="$(git -C "${repository_root}" ls-remote --exit-code origin refs/heads/main | awk '{print $1}')"
 
 if [[ ! "${revision}" =~ ^[0-9a-f]{40}$ ]]; then
   printf 'refusing worker build without an exact Git source revision\n' >&2
+  exit 1
+fi
+if [[ "${revision}" != "${remote_revision}" ]]; then
+  printf 'refusing worker build unless HEAD is current remote main\n' >&2
   exit 1
 fi
 if [[ -n "$(git -C "${repository_root}" status --porcelain --untracked-files=normal)" ]]; then
@@ -40,13 +45,16 @@ image_tag="${region}-docker.pkg.dev/${project}/${repository}/${image_name}:sourc
 configuration="${repository_root}/docker/cloud/cloudbuild-sarah-livekit-agent.yaml"
 ignore_file="${repository_root}/.gcloudignore.sarah-livekit-agent"
 substitutions="_IMAGE=${image_tag},_REVISION=${revision}"
+builder="projects/${project}/serviceAccounts/oa-livekit-image-builder@${project}.iam.gserviceaccount.com"
+source_staging="gs://${project}-livekit-build-source/source"
 
 if [[ "${apply}" != "true" ]]; then
   printf 'Cloud Build dry run; no cloud state changed.\n'
   printf 'source revision: %s\n' "${revision}"
   printf 'mutable build tag: %s\n' "${image_tag}"
-  printf 'command: gcloud builds submit . --project %s --region %s --config %s --ignore-file %s --substitutions %s\n' \
-    "${project}" "${region}" "${configuration}" "${ignore_file}" "${substitutions}"
+  printf 'build service account: %s\n' "${builder}"
+  printf 'command: gcloud builds submit . --project %s --region %s --service-account %s --config %s --ignore-file %s --substitutions %s\n' \
+    "${project}" "${region}" "${builder}" "${configuration}" "${ignore_file}" "${substitutions}"
   printf 'rerun with --apply to publish and resolve the immutable digest\n'
   exit 0
 fi
@@ -58,6 +66,8 @@ build_id="$(
   gcloud builds submit . \
     --project "${project}" \
     --region "${region}" \
+    --service-account "${builder}" \
+    --gcs-source-staging-dir "${source_staging}" \
     --async \
     --format='value(id)' \
     --config "${configuration}" \

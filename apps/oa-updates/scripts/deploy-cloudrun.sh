@@ -10,7 +10,11 @@ if [[ "${OA_UPDATES_DEPLOY_DRY_RUN:-0}" != "1" ]]; then
 fi
 
 service="${OA_UPDATES_SERVICE:-oa-updates}"
+project="${OA_UPDATES_PROJECT:-openagentsgemini}"
 region="${OA_UPDATES_REGION:-us-central1}"
+build_service_account="projects/${project}/serviceAccounts/oa-cloud-run-source-builder@${project}.iam.gserviceaccount.com"
+image_build_service_account="projects/${project}/serviceAccounts/oa-cloud-image-builder@${project}.iam.gserviceaccount.com"
+image_build_source="gs://${project}-cloud-build-source/source"
 
 # Deploy OpenAgents Updates to Cloud Run from the oa-updates app directory.
 #
@@ -125,7 +129,9 @@ case "$deploy_mode" in
   full)
     args=(
       run deploy "$service"
+      --project "$project"
       --source .
+      --build-service-account "$build_service_account"
       --region "$region" \
       --allow-unauthenticated \
       --port 8080 \
@@ -168,6 +174,10 @@ case "$deploy_mode" in
     image_tag="${OA_UPDATES_IMAGE_TAG:-${image_repository}:source-${source_revision}}"
     build_args=(
       builds submit
+      --project "$project"
+      --region "$region"
+      --service-account "$image_build_service_account"
+      --gcs-source-staging-dir "$image_build_source"
       --config cloudbuild.incremental.yaml
       --substitutions "_BASE_IMAGE=${base_image},_IMAGE=${image_tag}"
       .

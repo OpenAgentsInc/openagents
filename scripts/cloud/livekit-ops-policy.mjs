@@ -1092,7 +1092,7 @@ export function validateSourceOnlyReceipt(value) {
       "resultDigest",
       "limitations",
     ],
-    [],
+    ["execution"],
     "receipt",
   );
   assert(
@@ -1151,6 +1151,32 @@ export function validateSourceOnlyReceipt(value) {
   }
   assertDigest(value.resultDigest, "receipt.resultDigest");
   assert(Array.isArray(value.limitations), "receipt limitations must be an array");
+  if (value.execution !== undefined) {
+    assertExactKeys(
+      value.execution,
+      [
+        "buildRef",
+        "triggerRef",
+        "serviceAccountRef",
+        "sourceRevision",
+        "configurationDigest",
+      ],
+      [],
+      "receipt.execution",
+    );
+    assertRef(value.execution.buildRef, "receipt.execution.buildRef");
+    assertRef(value.execution.triggerRef, "receipt.execution.triggerRef");
+    assertRef(value.execution.serviceAccountRef, "receipt.execution.serviceAccountRef");
+    assertCommit(value.execution.sourceRevision, "receipt.execution.sourceRevision");
+    assert(
+      value.execution.sourceRevision === value.deployedRevision,
+      "receipt execution source does not match deployed revision",
+    );
+    assertDigest(
+      value.execution.configurationDigest,
+      "receipt.execution.configurationDigest",
+    );
+  }
   assertPublicSafe(value);
   return value;
 }

@@ -9,6 +9,7 @@ APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "$APP_DIR/../.." && pwd)"
 PROJECT="${OPENAGENTS_GCP_PROJECT:-openagentsgemini}"
 REGION="${OPENAGENTS_GCP_REGION:-us-central1}"
+BUILD_SERVICE_ACCOUNT="projects/${PROJECT}/serviceAccounts/oa-cloud-run-source-builder@${PROJECT}.iam.gserviceaccount.com"
 SERVICE="${FORGE_GIT_SERVICE:-forge-git}"
 DATABASE_SECRET="${FORGE_GIT_DATABASE_SECRET:-openagents-monolith-database-url-prod}"
 DATABASE_PASSWORD_SECRET="${FORGE_GIT_DATABASE_PASSWORD_SECRET:-openagents-monolith-pgpassword}"
@@ -56,6 +57,7 @@ gcloud run deploy "$SERVICE" \
   --project "$PROJECT" \
   --region "$REGION" \
   --source . \
+  --build-service-account "$BUILD_SERVICE_ACCOUNT" \
   --execution-environment gen2 \
   --service-account "$RUNTIME_SERVICE_ACCOUNT" \
   --ingress internal-and-cloud-load-balancing \

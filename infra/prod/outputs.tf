@@ -30,3 +30,18 @@ output "forge_git_repository_disk_name" {
   description = "Persistent disk that owns Forge Git refs"
   value       = module.forge_git.repository_disk_name
 }
+
+output "cloud_run_source_builder_service_account" {
+  description = "Explicit build-only identity for gcloud run deploy --source."
+  value       = google_service_account.cloud_run_source_builder.email
+}
+
+output "cloud_image_builder_service_account" {
+  description = "Explicit build-only identity for general Cloud Build image submissions."
+  value       = google_service_account.cloud_image_builder.email
+}
+
+output "cloud_build_source_bucket" {
+  description = "Dedicated seven-day source staging bucket for general Cloud Build submissions."
+  value       = google_storage_bucket.cloud_build_source.name
+}

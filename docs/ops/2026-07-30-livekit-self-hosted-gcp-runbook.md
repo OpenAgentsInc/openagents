@@ -431,16 +431,126 @@ After the infrastructure receipt passes:
 7. Publish DNS-only A records for `livekit.openagents.com` and
    `turn.livekit.openagents.com` to their separate exact reserved addresses.
 
-### Phase 2: preflight, install addons, and apply the runtime
+### Phase 2: bootstrap addons, then apply the runtime through the fixed trigger
+
+Production runtime mutation is admitted only through the server-side
+`oa-livekit-prod-runtime` Cloud Build trigger. Do not submit
+`livekit-gcp-ops.mjs` as an arbitrary local Cloud Build config and do not run
+its production runtime operation directly. The trigger is Terraform-managed,
+uses the dedicated `oa-livekit-prod-deployer` service account, fixes its source
+at `refs/heads/main`, accepts no caller substitutions, and runs an executor image
+that must be pinned by digest. The trigger's source, service account, inline
+build, receipt bucket, 90-minute worst-case timeout, and Connect Gateway
+membership are part of the reviewed execution boundary.
+
+Bootstrap the boundary in this order:
+
+1. Apply `infra/prod` first. It creates two explicit, non-runtime build
+   identities: `oa-cloud-run-source-builder` for Cloud Run source deploys and
+   `oa-cloud-image-builder` for direct container builds. The latter can write
+   only to `oa-cloud`, write build logs, and read the dedicated seven-day
+   `openagentsgemini-cloud-build-source` staging bucket. The automation
+   identity can act as these narrow builders; it receives no ability to act as
+   the LiveKit runtime deployer. Every repository Cloud Run source-deploy and
+   direct Cloud Build path supplies its corresponding identity explicitly.
+2. Apply the LiveKit production root once with deployment control disabled. This
+   creates `oa-livekit-image-builder`, whose only project grant is log-write
+   and whose only data mutation grant is writer on the `oa-cloud` Artifact
+   Registry repository. It can read only the dedicated
+   `openagentsgemini-livekit-build-source` staging bucket, whose objects expire
+   after seven days. Both Sarah and deployer image scripts select that bucket,
+   pass the exact service account to Cloud Build, and force Cloud Logging;
+   neither can fall back to the default Compute service account or default
+   Cloud Build storage.
+   The root also sets both `cloudbuild.useBuildServiceAccount` and
+   `cloudbuild.useComputeServiceAccount` to not enforced. In combination,
+   these Google Cloud constraints require each build to specify a service
+   account and prevent fallback to the legacy Cloud Build or default Compute
+   identities.
+3. From a clean worktree whose `HEAD` exactly equals current `origin/main`
+   (a detached HEAD or temporary worktree branch is valid), run
+   `scripts/cloud/build-livekit-production-deployer.sh --apply`, resolve the
+   resulting digest, and set `TF_VAR_deployment_executor_image` to the printed
+   value. The Dockerfile, Cloud SDK, Node, Helm, kubectl, and Docker builder are
+   all source-pinned, while the deployed trigger accepts only the final
+   immutable executor digest.
+4. Set `TF_VAR_enable_deployment_control=true` and apply the production root.
+   This creates the dedicated deployer, fixed trigger, fleet membership,
+   and retention-locked receipt bucket. The root attaches the
+   `livekit-privileged-identity=protected` resource tag to the default Compute,
+   LiveKit node, runtime, secret-reader, and production deployer service
+   accounts. A conditioned project IAM deny blocks only
+   `oa-mvp-automation`'s `iam.serviceAccounts.actAs` requests whose target has
+   that tag. It does not deny `cloudbuild.builds.create` or affect untagged
+   service accounts, so the automation identity retains build submission
+   through the explicit narrow builders. Service-account resource tags are a
+   Google Cloud Preview feature; do not apply the deny if the tag-binding API
+   is unavailable, and do not admit production until the fail-closed
+   impersonation preflight passes for every protected identity.
+5. As a one-time cluster administrator on clean, current `main`, install and
+   verify the pinned controllers, recording a separate receipt:
+
+   ```sh
+   OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
+   node scripts/cloud/livekit-gcp-ops.mjs \
+     --operation production-addon-bootstrap \
+     --bundle infra/livekit/bundle.json \
+     --receipt docs/ops/receipts/livekit/production-addon-bootstrap-<UTC>.json \
+     --apply
+   ```
+
+6. Still using the one-time cluster administrator, apply
+   `infra/livekit-production/deployer-gateway-rbac.yaml`. It grants the
+   deployer Connect Gateway impersonation, mutation only in `livekit-system`
+   and the admitted `cert-manager` resources, read-only access to controller
+   Deployments and four CRDs, and mutation of only the named cluster-scoped
+   LiveKit resources. It never grants cluster-role, webhook, or CRD mutation,
+   and does not grant `cluster-admin`.
+
+Cloud Build uses the same `cloudbuild.builds.create` permission for a fixed
+trigger and an arbitrary build, so a project-wide denial would also disable
+the project's other build workflows. Instead, the two effective organization
+policies must conclusively require a user-specified build identity. A
+pre-existing project owner starts this manual trigger. Before every runtime
+mutation, the runner verifies those effective policies and Policy
+Troubleshooter must return conclusively `NOT_GRANTED` for the legacy
+automation identity's ability to act as both the default Compute and
+every LiveKit node, runtime, secret-reader, and production deployer identity.
+Unknown, conditional, or inherited policy results fail closed.
+
+Start the fixed trigger from clean, current `main`:
 
 ```sh
-OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
-node scripts/cloud/livekit-gcp-ops.mjs \
-  --operation production-runtime-apply \
-  --bundle infra/livekit/bundle.json \
-  --receipt docs/ops/receipts/livekit/production-deployment-<UTC>.json \
-  --apply
+node scripts/cloud/livekit-production-deploy.mjs start
 ```
+
+The launcher prints the canonical build ID. Its local wait is bounded but does
+not cancel a still-running build. Resume observation without starting a second
+deployment:
+
+```sh
+node scripts/cloud/livekit-production-deploy.mjs status \
+  --build-id <canonical-build-UUID> \
+  --timeout-seconds 3600
+```
+
+After `SUCCESS`, retrieve the source-only receipt for review and commit:
+
+```sh
+node scripts/cloud/livekit-production-deploy.mjs retrieve \
+  --build-id <canonical-build-UUID> \
+  --receipt docs/ops/receipts/livekit/production-deployment-<UTC>.json
+```
+
+Before Kubernetes mutation, the build preflights an exclusive local receipt
+path, writes and reads a no-clobber build-scoped object in the retention-locked
+receipt bucket, and attests the live build and trigger. The tiny preflight
+object remains under the same 30-day retention policy. The receipt binds the canonical build
+ref, trigger ref, dedicated service-account ref, resolved source revision, and
+reviewed execution-boundary digest. Retrieval refuses a non-successful build,
+an existing target path, or mismatched provenance. This gives start, bounded
+wait, resume, and retrieve the same build-ID contract even when an operator
+terminal or network disappears.
 
 The runner first compares each DNS answer set to its exact reserved address,
 requires all four latest target versions to be enabled, verifies the three
@@ -449,7 +559,7 @@ structured secret schemas, compares the Redis host and CA to the live
 byte-for-byte the existing production Sarah value. Payloads are held only in
 process memory and never printed or retained in the public receipt.
 
-Runtime apply requires Helm 3 and rejects Helm 4. It reads
+The one-time addon bootstrap requires Helm 3 and rejects Helm 4. It reads
 `infra/livekit/addons.lock.json`, downloads the exact chart archives, verifies
 their SHA-256 digests, renders every execution image by immutable OCI digest,
 rejects tag-only output, and installs:
@@ -461,11 +571,15 @@ rejects tag-only output, and installs:
 
 CRD installation is explicit. Every addon component is selected onto
 `oa-livekit-prod-app`; the lock includes the ACME solver and startup check
-because they execute outside the long-running Deployments. The runner waits
+because they execute outside the long-running Deployments. The bootstrap waits
 for the required CRDs to become Established and for all controller deployments
 to roll out before applying any `Certificate`, `ClusterIssuer`, `SecretStore`,
 or `ExternalSecret`. Receipts retain only opaque chart and image refs,
-versions, and digests.
+versions, and digests. Recurring runtime deployments do not receive the
+cluster-wide Helm permissions needed to repeat this bootstrap. Instead, they
+fail before mutation unless all six long-running controller Deployments use
+the locked image digests, the ACME solver argument is locked, and all four
+required CRDs are established.
 
 The runner uses a temporary `KUBECONFIG`, validates the exact cluster, node
 pools, Redis tier, addresses, Kubernetes namespace, Workload Identity
@@ -480,12 +594,17 @@ namespace flag and preserves each admitted object's explicit scope. It never
 prints a Secret, a credential-bearing ConfigMap payload, an external IP, or a
 provider response.
 
-The worker image must be built from
+The worker image must be built from a clean worktree whose `HEAD` exactly
+equals current `origin/main`; the branch name is intentionally irrelevant so
+an isolated or detached worktree can preserve unrelated user changes. Build
+the worker from
 `apps/sarah-livekit-agent/Dockerfile` with the repository root as its context
 by `scripts/cloud/build-sarah-livekit-agent.sh --apply` and published to the
 existing
 `us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/sarah-livekit-agent`
-Artifact Registry path. Replace the
+Artifact Registry path. The script always supplies
+`oa-livekit-image-builder`; it cannot fall back to the default Compute service
+account, and its Docker build step is pinned by digest. Replace the
 source-only zero-digest placeholder with the observed digest in both the
 worker manifest and `bundle.json`, set `workerImage.pinState=pinned`, refresh
 the manifest and rendered-manifest digests, and run `infra/livekit/verify.sh`.
@@ -505,6 +624,19 @@ honestly by a static Kubernetes CIDR allow-list.
 Every canonical API deployment commits
 `SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED=false`; an absent or malformed value is
 also disabled. This makes rollout two explicit phases:
+
+The monolith deploy script also passes the full
+`oa-cloud-run-source-builder` resource through `--build-service-account`.
+`infra/prod` grants that identity only the documented Cloud Run Builder role.
+The repository's other source deploy scripts use the same explicit builder;
+direct image builds use `oa-cloud-image-builder` or the even narrower LiveKit
+image builder. Apply `infra/prod` before enabling the explicit-identity
+policies in the LiveKit production root. `oa-mvp-automation` may submit builds
+and act as these two reviewed build-only identities, but cannot act as the
+default Compute or production LiveKit deployer identities. Build and Cloud Run
+runtime identities remain different; neither builder receives Secret Manager,
+Cloud Run deploy, GKE, or runtime service-account impersonation grants from
+this change.
 
 1. deploy the API revision with admission disabled, then wait for SFU
    readiness, Redis health, signaling and TURN load-balancer health,

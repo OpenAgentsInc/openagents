@@ -43,6 +43,7 @@ WITH_SCHEDULER="${2:-}"
 
 PROJECT="${OPENAGENTS_GCP_PROJECT:-openagentsgemini}"
 REGION="${OPENAGENTS_GCP_REGION:-us-central1}"
+BUILD_SERVICE_ACCOUNT="projects/${PROJECT}/serviceAccounts/oa-cloud-run-source-builder@${PROJECT}.iam.gserviceaccount.com"
 NETWORK="${OPENAGENTS_MONOLITH_NETWORK:-default}"
 SUBNETWORK="${OPENAGENTS_MONOLITH_SUBNETWORK:-forge-git}"
 
@@ -264,6 +265,7 @@ echo "==> Deploying $SERVICE to Cloud Run ($REGION)"
 gcloud run deploy "$SERVICE" \
   --project "$PROJECT" \
   --source . \
+  --build-service-account "$BUILD_SERVICE_ACCOUNT" \
   --region "$REGION" \
   --allow-unauthenticated \
   --port 8080 \

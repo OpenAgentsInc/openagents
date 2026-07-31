@@ -4,6 +4,7 @@ set -euo pipefail
 TARGET="${1:-stage1}"
 PROJECT="${OPENAGENTS_GCP_PROJECT:-openagentsgemini}"
 REGION="${OPENAGENTS_GCP_REGION:-us-central1}"
+BUILD_SERVICE_ACCOUNT="projects/${PROJECT}/serviceAccounts/oa-cloud-run-source-builder@${PROJECT}.iam.gserviceaccount.com"
 PUBLIC_API_ORIGIN="${OPENAGENTS_PUBLIC_API_ORIGIN:-https://openagents.com}"
 FORGE_READ_BASE_URL="${OPENAGENTS_FORGE_READ_BASE_URL:-https://forge-git-ezxz4mgdsq-uc.a.run.app}"
 FORGE_SERVICE_AUTH_SECRET="${OPENAGENTS_FORGE_SERVICE_AUTH_SECRET:-openagents-forge-git-policy-authority-token}"
@@ -30,6 +31,7 @@ echo "==> Deploying $SERVICE to Cloud Run ($REGION)"
 gcloud run deploy "$SERVICE" \
   --project "$PROJECT" \
   --source . \
+  --build-service-account "$BUILD_SERVICE_ACCOUNT" \
   --region "$REGION" \
   --allow-unauthenticated \
   --port 8080 \

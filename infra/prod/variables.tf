@@ -14,6 +14,12 @@ variable "region" {
   default     = "us-central1"
 }
 
+variable "project_number" {
+  description = "Numeric Google Cloud project number."
+  type        = string
+  default     = "157437760789"
+}
+
 variable "portable_checkpoint_kms_crypto_key_resource" {
   description = "Existing full CryptoKey resource for portable checkpoint DEK wrap and unwrap. Null keeps the IAM grant absent."
   type        = string

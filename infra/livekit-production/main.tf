@@ -1,10 +1,114 @@
 locals {
-  environment = "production"
+  environment                = "production"
+  automation_service_account = "oa-mvp-automation@${var.project_id}.iam.gserviceaccount.com"
   labels = {
     environment = local.environment
     program     = "ep263-livekit"
     service     = "livekit"
   }
+}
+
+resource "google_org_policy_policy" "cloudbuild_use_build_service_account" {
+  name   = "projects/${var.project_id}/policies/cloudbuild.useBuildServiceAccount"
+  parent = "projects/${var.project_id}"
+
+  spec {
+    rules {
+      enforce = "FALSE"
+    }
+  }
+}
+
+resource "google_org_policy_policy" "cloudbuild_use_compute_service_account" {
+  name   = "projects/${var.project_id}/policies/cloudbuild.useComputeServiceAccount"
+  parent = "projects/${var.project_id}"
+
+  spec {
+    rules {
+      enforce = "FALSE"
+    }
+  }
+}
+
+data "google_service_account" "default_compute" {
+  project    = var.project_id
+  account_id = "${var.project_number}-compute"
+}
+
+resource "google_tags_tag_key" "privileged_service_account" {
+  parent      = "projects/${var.project_number}"
+  short_name  = "livekit-privileged-identity"
+  description = "Identities that the legacy automation service account must never impersonate."
+}
+
+resource "google_tags_tag_value" "privileged_service_account" {
+  parent      = google_tags_tag_key.privileged_service_account.id
+  short_name  = "protected"
+  description = "Protected LiveKit runtime, secret, node, or deployer service account."
+}
+
+data "google_artifact_registry_repository" "oa_cloud" {
+  project       = var.project_id
+  location      = var.region
+  repository_id = "oa-cloud"
+}
+
+resource "google_service_account" "image_builder" {
+  project      = var.project_id
+  account_id   = "oa-livekit-image-builder"
+  display_name = "LiveKit immutable image builder"
+  description  = "Build-only identity for Sarah and production deployer images; no runtime or secret access."
+}
+
+resource "google_artifact_registry_repository_iam_member" "image_builder" {
+  project    = data.google_artifact_registry_repository.oa_cloud.project
+  location   = data.google_artifact_registry_repository.oa_cloud.location
+  repository = data.google_artifact_registry_repository.oa_cloud.repository_id
+  role       = "roles/artifactregistry.writer"
+  member     = "serviceAccount:${google_service_account.image_builder.email}"
+}
+
+resource "google_project_iam_member" "image_builder_log_writer" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.image_builder.email}"
+}
+
+resource "google_storage_bucket" "image_build_source" {
+  project                     = var.project_id
+  name                        = "${var.project_id}-livekit-build-source"
+  location                    = var.region
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+  force_destroy               = false
+  labels                      = local.labels
+
+  lifecycle_rule {
+    action {
+      type = "Delete"
+    }
+    condition {
+      age = 7
+    }
+  }
+}
+
+resource "google_storage_bucket_iam_member" "image_builder_source_reader" {
+  bucket = google_storage_bucket.image_build_source.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.image_builder.email}"
+}
+
+resource "google_service_account_iam_member" "cloud_build_image_builder" {
+  service_account_id = google_service_account.image_builder.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:service-${var.project_number}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
+}
+
+resource "google_service_account_iam_member" "automation_image_builder" {
+  service_account_id = google_service_account.image_builder.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${local.automation_service_account}"
 }
 
 module "network" {
@@ -84,6 +188,78 @@ module "observability" {
   max_rooms                = 20
   max_participants         = 60
   labels                   = local.labels
+}
+
+module "deployment_control" {
+  count  = var.enable_deployment_control ? 1 : 0
+  source = "../modules/livekit-deployment-control"
+
+  project_id                = var.project_id
+  project_number            = var.project_number
+  region                    = var.region
+  cluster_id                = module.platform.cluster_id
+  managed_secret_ids        = module.platform.secret_ids
+  deployment_executor_image = var.deployment_executor_image
+  labels                    = local.labels
+
+  depends_on = [module.platform]
+}
+
+locals {
+  protected_service_account_unique_ids = merge(
+    {
+      default_compute = data.google_service_account.default_compute.unique_id
+    },
+    module.platform.privileged_service_account_unique_ids,
+    var.enable_deployment_control ? {
+      production_deployer = module.deployment_control[0].service_account_unique_id
+    } : {},
+  )
+}
+
+resource "google_tags_tag_binding" "privileged_service_account" {
+  for_each = local.protected_service_account_unique_ids
+
+  parent    = "//iam.googleapis.com/projects/${var.project_id}/serviceAccounts/${each.value}"
+  tag_value = google_tags_tag_value.privileged_service_account.id
+}
+
+resource "google_iam_deny_policy" "legacy_automation_privileged_impersonation" {
+  parent       = urlencode("cloudresourcemanager.googleapis.com/projects/${var.project_id}")
+  name         = "deny-legacy-livekit-privileged-impersonation"
+  display_name = "Deny legacy automation impersonation of privileged LiveKit identities"
+
+  rules {
+    description = "Only service accounts tagged as protected are in scope; narrow build-only identities remain usable."
+
+    deny_rule {
+      denied_principals = [
+        "principal://iam.googleapis.com/projects/-/serviceAccounts/${local.automation_service_account}",
+      ]
+      denied_permissions = [
+        "iam.googleapis.com/serviceAccounts.actAs",
+      ]
+
+      denial_condition {
+        title       = "Target is a protected LiveKit identity"
+        description = "Resource-level service account tag keeps this deny from affecting unrelated project service accounts."
+        expression  = "resource.matchTag('${var.project_id}/livekit-privileged-identity', 'protected')"
+      }
+    }
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+
+  depends_on = [google_tags_tag_binding.privileged_service_account]
+}
+
+check "deployment_control_executor" {
+  assert {
+    condition     = !var.enable_deployment_control || var.deployment_executor_image != null
+    error_message = "Enable deployment control only after the reviewed executor image is pinned by digest."
+  }
 }
 
 check "turn_udp_rollout" {

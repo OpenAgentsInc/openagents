@@ -7,7 +7,14 @@ import { fileURLToPath } from "node:url";
 const repositoryRoot = resolve(fileURLToPath(new URL(".", import.meta.url)), "../..");
 
 test("Sarah worker Cloud Build stays on the existing digest-pinned production lane", async () => {
-  const [configuration, dockerfile, dockerIgnore, cloudBuildIgnore, buildScript] =
+  const [
+    configuration,
+    dockerfile,
+    dockerIgnore,
+    cloudBuildIgnore,
+    buildScript,
+    deployerBuildScript,
+  ] =
     await Promise.all([
       readFile(resolve(repositoryRoot, "docker/cloud/cloudbuild-sarah-livekit-agent.yaml"), "utf8"),
       readFile(resolve(repositoryRoot, "apps/sarah-livekit-agent/Dockerfile"), "utf8"),
@@ -17,6 +24,10 @@ test("Sarah worker Cloud Build stays on the existing digest-pinned production la
       ),
       readFile(resolve(repositoryRoot, ".gcloudignore.sarah-livekit-agent"), "utf8"),
       readFile(resolve(repositoryRoot, "scripts/cloud/build-sarah-livekit-agent.sh"), "utf8"),
+      readFile(
+        resolve(repositoryRoot, "scripts/cloud/build-livekit-production-deployer.sh"),
+        "utf8",
+      ),
     ]);
 
   assert.match(
@@ -43,6 +54,11 @@ test("Sarah worker Cloud Build stays on the existing digest-pinned production la
     /deploy\s+\\\n\s+--legacy --prod --ignore-scripts --config\.allowUnusedPatches=true/u,
   );
   assert.match(buildScript, /status --porcelain --untracked-files=normal/u);
+  assert.match(deployerBuildScript, /status --porcelain --untracked-files=normal/u);
+  assert.match(buildScript, /revision\}" != "\$\{remote_revision/u);
+  assert.match(deployerBuildScript, /revision\}" != "\$\{remote_revision/u);
+  assert.doesNotMatch(buildScript, /branch --show-current/u);
+  assert.doesNotMatch(deployerBuildScript, /branch --show-current/u);
   assert.match(buildScript, /\.gcloudignore\.sarah-livekit-agent/u);
   assert.match(buildScript, /--ignore-file "\$\{ignore_file\}"/u);
   assert.match(cloudBuildIgnore, /^\*\*$/mu);

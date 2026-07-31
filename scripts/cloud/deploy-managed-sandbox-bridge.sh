@@ -60,6 +60,8 @@ if [[ -z "$service_account" ]]; then
   service_account="${project_number}-compute@developer.gserviceaccount.com"
 fi
 image="${region}-docker.pkg.dev/${project}/oa-cloud/oa-cloud-run-bridge:${image_tag}"
+build_sa="projects/${project}/serviceAccounts/oa-cloud-image-builder@${project}.iam.gserviceaccount.com"
+build_source="gs://${project}-cloud-build-source/source"
 
 run() {
   if [[ "$apply" == "true" ]]; then
@@ -77,6 +79,8 @@ if [[ "$apply" == "true" ]]; then
       --region "$region" \
       --async \
       --format='value(id)' \
+      --service-account "$build_sa" \
+      --gcs-source-staging-dir "$build_source" \
       --config docker/cloud/cloudbuild-oa-cloud-run-bridge.yaml \
       --substitutions "_IMAGE=${image},_REVISION=${revision}"
   })"
@@ -99,6 +103,8 @@ if [[ "$apply" == "true" ]]; then
 else
   run gcloud builds submit . \
     --project "$project" --region "$region" --async --format='value(id)' \
+    --service-account "$build_sa" \
+    --gcs-source-staging-dir "$build_source" \
     --config docker/cloud/cloudbuild-oa-cloud-run-bridge.yaml \
     --substitutions "_IMAGE=${image},_REVISION=${revision}"
 fi

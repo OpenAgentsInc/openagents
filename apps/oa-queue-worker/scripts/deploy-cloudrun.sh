@@ -21,7 +21,9 @@ set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVICE="${OA_QUEUE_WORKER_SERVICE:-oa-queue-worker}"
+PROJECT="${OA_QUEUE_WORKER_PROJECT:-openagentsgemini}"
 REGION="${OA_QUEUE_WORKER_REGION:-us-central1}"
+BUILD_SERVICE_ACCOUNT="projects/${PROJECT}/serviceAccounts/oa-cloud-run-source-builder@${PROJECT}.iam.gserviceaccount.com"
 DB_SECRET="${OA_QUEUE_WORKER_DB_SECRET:-oa-queue-worker-database-url}"
 TOKEN_SECRET="${OA_QUEUE_WORKER_TOKEN_SECRET:-oa-queue-worker-delivery-token}"
 DELIVERY_URL="${OA_QUEUE_DELIVERY_URL:-https://openagents.com}"
@@ -33,7 +35,9 @@ pnpm run build
 
 echo "==> Deploying $SERVICE to Cloud Run ($REGION)"
 gcloud run deploy "$SERVICE" \
+  --project "$PROJECT" \
   --source . \
+  --build-service-account "$BUILD_SERVICE_ACCOUNT" \
   --region "$REGION" \
   --no-allow-unauthenticated \
   --port 8080 \

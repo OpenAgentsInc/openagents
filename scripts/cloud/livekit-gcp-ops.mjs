@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve, sep } from "node:path";
 import {
@@ -28,6 +35,7 @@ const OPERATIONS = new Set([
   "canary-destroy",
   "production-plan",
   "production-infra-apply",
+  "production-addon-bootstrap",
   "production-runtime-apply",
   "production-rollback",
 ]);
@@ -58,11 +66,24 @@ const PRODUCTION_SECRET_IDS = Object.freeze([
   "oa-livekit-prod-sarah-control-root",
 ]);
 const SARAH_OPENAI_SOURCE_SECRET = "sarah-openai-api-key";
+const DEPLOYMENT_CONTROL_BOUNDARY =
+  "infra/livekit-production/deployment-control-boundary.json";
+const PRODUCTION_DEPLOYER_SERVICE_ACCOUNT =
+  "oa-livekit-prod-deployer@openagentsgemini.iam.gserviceaccount.com";
+const PRODUCTION_DEPLOY_TRIGGER = "oa-livekit-prod-runtime";
+const PRODUCTION_RECEIPT_BUCKET =
+  "openagentsgemini-livekit-deployment-receipts";
+const LEGACY_AUTOMATION_SERVICE_ACCOUNT =
+  "oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com";
+const DEFAULT_COMPUTE_SERVICE_ACCOUNT =
+  "157437760789-compute@developer.gserviceaccount.com";
+const CANONICAL_BUILD_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
 const usage = () => {
   process.stderr.write(`Usage:
   node scripts/cloud/livekit-gcp-ops.mjs \\
-    --operation validate-source|canary-plan|canary-infra-apply|canary-apply|canary-destroy|production-plan|production-infra-apply|production-runtime-apply|production-rollback \\
+    --operation validate-source|canary-plan|canary-infra-apply|canary-apply|canary-destroy|production-plan|production-infra-apply|production-addon-bootstrap|production-runtime-apply|production-rollback \\
     --bundle infra/livekit/bundle.json \\
     [--receipt docs/ops/receipts/livekit/<name>.json] \\
     [--current-manifest PATH --previous-bundle PATH --previous-manifest PATH \\
@@ -78,11 +99,11 @@ Every live read or mutation requires both --apply and:
 canary-apply is the second phase after canary-infra-apply and refuses until
 the four secret versions, DNS, trusted certificate, and empty VM slot pass.
 
-production-runtime-apply is the second phase after production-infra-apply. It
-refuses until secret versions and DNS match the reserved addresses, then uses
-Helm 3 to install the pinned addons before the runtime. production-rollback
-additionally requires a previous immutable bundle, its rendered manifest, and
-a private admission-disable receipt.
+production-addon-bootstrap is a one-time cluster-administrator operation after
+production-infra-apply. production-runtime-apply refuses until those pinned
+addons and the secret/DNS preflight pass, then mutates only its narrow runtime
+scope. production-rollback additionally requires a previous immutable bundle,
+its rendered manifest, and a private admission-disable receipt.
 `);
 };
 
@@ -343,13 +364,17 @@ const command = (bin, args, options = {}) => ({
 });
 
 const runtimeManifestApplyCommand = (manifestPath) =>
-  command("kubectl", [
-    "apply",
-    "--server-side",
-    "--field-manager=openagents-livekit-ops",
-    "-f",
-    manifestPath,
-  ]);
+  command(
+    "kubectl",
+    [
+      "apply",
+      "--server-side",
+      "--field-manager=openagents-livekit-ops",
+      "-f",
+      manifestPath,
+    ],
+    { label: "apply production runtime manifest" },
+  );
 
 const terraformCommands = (root, action, extraArguments = []) => {
   requireRepositoryPath(root, root);
@@ -433,15 +458,16 @@ const productionCredentialsCommand = (kubeconfig) =>
     "gcloud",
     [
       "container",
-      "clusters",
+      "fleet",
+      "memberships",
       "get-credentials",
       "oa-livekit-prod",
       "--project",
       LIVEKIT_OPS.project,
-      "--region",
-      LIVEKIT_OPS.region,
+      "--location",
+      "global",
     ],
-    { label: `bind temporary kubeconfig ${kubeconfig}` },
+    { label: `bind Connect Gateway temporary kubeconfig ${kubeconfig}` },
   );
 
 const renderProduction = (bundle, temporaryDirectory, execute) => {
@@ -1104,6 +1130,102 @@ const imageTagAndDigest = (reference) => {
   return value;
 };
 
+const immutableImageIdentity = (reference) =>
+  reference.replace(/:[^/:@]+@sha256:/u, "@sha256:");
+
+const validateInstalledAddons = (addonLock, kubeconfig) => {
+  const environment = kubectlEnv(kubeconfig);
+  const readDeployments = (namespace, names) =>
+    JSON.parse(
+      captureCommandWithEnvironment(
+        "kubectl",
+        ["--namespace", namespace, "get", "deployment", ...names, "--output=json"],
+        `read installed ${namespace} addon deployments`,
+        environment,
+      ),
+    );
+  const certManager = readDeployments("cert-manager", [
+    "cert-manager",
+    "cert-manager-cainjector",
+    "cert-manager-webhook",
+  ]);
+  const externalSecrets = readDeployments("external-secrets", [
+    "external-secrets",
+    "external-secrets-cert-controller",
+    "external-secrets-webhook",
+  ]);
+  const expected = new Map([
+    ["cert-manager/cert-manager", addonLock.certManager.images.controller],
+    ["cert-manager/cert-manager-cainjector", addonLock.certManager.images.cainjector],
+    ["cert-manager/cert-manager-webhook", addonLock.certManager.images.webhook],
+    ["external-secrets/external-secrets", addonLock.externalSecrets.image],
+    ["external-secrets/external-secrets-cert-controller", addonLock.externalSecrets.image],
+    ["external-secrets/external-secrets-webhook", addonLock.externalSecrets.image],
+  ]);
+  const observed = [...(certManager.items ?? []), ...(externalSecrets.items ?? [])];
+  if (observed.length !== expected.size) {
+    throw new Error("installed addon deployment inventory is incomplete");
+  }
+  for (const deployment of observed) {
+    const key = `${deployment.metadata?.namespace}/${deployment.metadata?.name}`;
+    const expectedImage = expected.get(key);
+    const containers = deployment.spec?.template?.spec?.containers;
+    if (
+      !expectedImage ||
+      !Array.isArray(containers) ||
+      containers.length !== 1 ||
+      immutableImageIdentity(containers[0]?.image ?? "") !==
+        immutableImageIdentity(expectedImage)
+    ) {
+      throw new Error(`installed addon image does not match the lock for ${key}`);
+    }
+  }
+  const controller = observed.find(
+    (deployment) =>
+      deployment.metadata?.namespace === "cert-manager" &&
+      deployment.metadata?.name === "cert-manager",
+  );
+  const controllerArguments = controller?.spec?.template?.spec?.containers?.[0]?.args ?? [];
+  if (
+    !controllerArguments.some(
+      (argument) =>
+        typeof argument === "string" &&
+        immutableImageIdentity(argument.split("=").at(-1) ?? "") ===
+          immutableImageIdentity(addonLock.certManager.images.acmeSolver),
+    )
+  ) {
+    throw new Error("installed cert-manager solver image does not match the lock");
+  }
+  const crds = JSON.parse(
+    captureCommandWithEnvironment(
+      "kubectl",
+      [
+        "get",
+        "customresourcedefinition",
+        "certificates.cert-manager.io",
+        "clusterissuers.cert-manager.io",
+        "externalsecrets.external-secrets.io",
+        "secretstores.external-secrets.io",
+        "--output=json",
+      ],
+      "read installed addon CRDs",
+      environment,
+    ),
+  );
+  if (
+    !Array.isArray(crds.items) ||
+    crds.items.length !== 4 ||
+    crds.items.some(
+      (crd) =>
+        !crd.status?.conditions?.some(
+          (condition) => condition.type === "Established" && condition.status === "True",
+        ),
+    )
+  ) {
+    throw new Error("installed addon CRDs are incomplete or not established");
+  }
+};
+
 const certManagerImageArguments = (addonLock) => [
   "--set-string",
   `image.digest=${imageDigest(addonLock.certManager.images.controller)}`,
@@ -1324,7 +1446,7 @@ const git = (...args) => {
   return result.stdout.trim();
 };
 
-const validateGitProvenance = () => {
+const validateLocalGitProvenance = () => {
   const deployedRevision = git("rev-parse", "HEAD");
   if (!/^[0-9a-f]{40}$/u.test(deployedRevision)) {
     throw new Error("deployed source revision is invalid");
@@ -1344,10 +1466,274 @@ const validateGitProvenance = () => {
   return deployedRevision;
 };
 
+const validateCloudBuildProvenance = () => {
+  if (process.env.OA_LIVEKIT_EXECUTION_MODE !== "cloud_build_trigger") {
+    throw new Error("production runtime mutations require the fixed Cloud Build trigger");
+  }
+  const buildId = process.env.BUILD_ID;
+  const revision = process.env.COMMIT_SHA;
+  const configuredDigest = process.env.OA_LIVEKIT_EXECUTION_CONFIG_DIGEST;
+  if (!buildId || !CANONICAL_BUILD_ID.test(buildId)) {
+    throw new Error("Cloud Build execution is missing a canonical build id");
+  }
+  if (!revision || !/^[0-9a-f]{40}$/u.test(revision)) {
+    throw new Error("Cloud Build execution is missing its resolved source revision");
+  }
+  const remoteMain = git(
+    "ls-remote",
+    "--exit-code",
+    "https://github.com/OpenAgentsInc/openagents.git",
+    "refs/heads/main",
+  )
+    .split(/\s+/u)
+    .at(0);
+  if (revision !== remoteMain) {
+    throw new Error("Cloud Build source revision is not current remote main");
+  }
+  const boundaryPath = requireRepositoryPath(
+    DEPLOYMENT_CONTROL_BOUNDARY,
+    DEPLOYMENT_CONTROL_BOUNDARY,
+  );
+  const observedDigest = sha256(readFileSync(boundaryPath));
+  if (configuredDigest !== observedDigest) {
+    throw new Error("Cloud Build execution boundary digest does not match reviewed source");
+  }
+  const build = JSON.parse(
+    captureCommand(
+      "gcloud",
+      [
+        "builds",
+        "describe",
+        buildId,
+        "--project",
+        LIVEKIT_OPS.project,
+        "--region",
+        LIVEKIT_OPS.region,
+        "--format=json(id,status,buildTriggerId,serviceAccount,sourceProvenance.resolvedRepoSource.commitSha)",
+      ],
+      "attest production deployment build",
+    ),
+  );
+  if (
+    build.id !== buildId ||
+    build.status !== "WORKING" ||
+    build.serviceAccount !==
+      `projects/${LIVEKIT_OPS.project}/serviceAccounts/${PRODUCTION_DEPLOYER_SERVICE_ACCOUNT}` ||
+    build.sourceProvenance?.resolvedRepoSource?.commitSha !== revision ||
+    typeof build.buildTriggerId !== "string" ||
+    build.buildTriggerId.length === 0
+  ) {
+    throw new Error("Cloud Build execution does not match the fixed deployment identity or source");
+  }
+  const trigger = JSON.parse(
+    captureCommand(
+      "gcloud",
+      [
+        "builds",
+        "triggers",
+        "describe",
+        PRODUCTION_DEPLOY_TRIGGER,
+        "--project",
+        LIVEKIT_OPS.project,
+        "--region",
+        LIVEKIT_OPS.region,
+        "--format=json(id,name,serviceAccount,sourceToBuild,substitutions,build)",
+      ],
+      "attest production deployment trigger",
+    ),
+  );
+  const step = trigger.build?.steps?.[0];
+  const expectedEnvironment = new Set([
+    "BUILD_ID=$BUILD_ID",
+    "COMMIT_SHA=$COMMIT_SHA",
+    "OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST",
+    "OA_LIVEKIT_EXECUTION_MODE=cloud_build_trigger",
+    `OA_LIVEKIT_EXECUTION_CONFIG_DIGEST=${observedDigest}`,
+    "KUBECONFIG=/workspace/.kubeconfig",
+    "USE_GKE_GCLOUD_AUTH_PLUGIN=True",
+  ]);
+  const observedEnvironment = new Set(step?.env ?? []);
+  const environmentMatches =
+    expectedEnvironment.size === observedEnvironment.size &&
+    [...expectedEnvironment].every((entry) => observedEnvironment.has(entry));
+  if (
+    trigger.id !== build.buildTriggerId ||
+    trigger.name !== PRODUCTION_DEPLOY_TRIGGER ||
+    trigger.serviceAccount !==
+      `projects/${LIVEKIT_OPS.project}/serviceAccounts/${PRODUCTION_DEPLOYER_SERVICE_ACCOUNT}` ||
+    trigger.sourceToBuild?.ref !== "refs/heads/main" ||
+    trigger.sourceToBuild?.uri !== "https://github.com/OpenAgentsInc/openagents" ||
+    trigger.sourceToBuild?.repoType !== "GITHUB" ||
+    Object.keys(trigger.substitutions ?? {}).length !== 0 ||
+    !step ||
+    trigger.build.steps.length !== 1 ||
+    !/^us-central1-docker\.pkg\.dev\/openagentsgemini\/oa-cloud\/livekit-production-deployer@sha256:[0-9a-f]{64}$/u.test(
+      step.name ?? "",
+    ) ||
+    step.entrypoint !== "node" ||
+    JSON.stringify(step.args) !==
+      JSON.stringify([
+        "scripts/cloud/livekit-gcp-ops.mjs",
+        "--operation",
+        "production-runtime-apply",
+        "--bundle",
+        "infra/livekit/bundle.json",
+        "--receipt",
+        "docs/ops/receipts/livekit/receipt.json",
+        "--apply",
+      ]) ||
+    !environmentMatches ||
+    trigger.build?.artifacts?.objects?.location !==
+      `gs://${PRODUCTION_RECEIPT_BUCKET}/production-runtime/$BUILD_ID/` ||
+    JSON.stringify(trigger.build?.artifacts?.objects?.paths) !==
+      JSON.stringify(["docs/ops/receipts/livekit/receipt.json"]) ||
+    trigger.build?.options?.logging !== "CLOUD_LOGGING_ONLY" ||
+    trigger.build?.timeout !== "5400s"
+  ) {
+    throw new Error("Cloud Build trigger identity or source boundary changed");
+  }
+  return {
+    buildId,
+    deployedRevision: revision,
+    execution: {
+      buildRef: `gcp-cloud-build-ref://${LIVEKIT_OPS.project}/${LIVEKIT_OPS.region}/${buildId}`,
+      triggerRef: `gcp-cloud-build-trigger-ref://${LIVEKIT_OPS.project}/${LIVEKIT_OPS.region}/${PRODUCTION_DEPLOY_TRIGGER}`,
+      serviceAccountRef: `gcp-service-account-ref://${LIVEKIT_OPS.project}/oa-livekit-prod-deployer`,
+      sourceRevision: revision,
+      configurationDigest: observedDigest,
+    },
+  };
+};
+
+const requireNotGranted = (value, label) => {
+  if (value?.access !== "NOT_GRANTED") {
+    throw new Error(`${label}; observed access was not conclusively NOT_GRANTED`);
+  }
+};
+
+const troubleshootIam = (resource, permission, label) =>
+  JSON.parse(
+    captureCommand(
+      "gcloud",
+      [
+        "policy-troubleshoot",
+        "iam",
+        resource,
+        `--principal-email=${LEGACY_AUTOMATION_SERVICE_ACCOUNT}`,
+        `--permission=${permission}`,
+        "--format=json(access)",
+      ],
+      label,
+    ),
+  );
+
+const validateUserSpecifiedBuildIdentityRequired = () => {
+  for (const constraint of [
+    "constraints/cloudbuild.useBuildServiceAccount",
+    "constraints/cloudbuild.useComputeServiceAccount",
+  ]) {
+    const policy = JSON.parse(
+      captureCommand(
+        "gcloud",
+        [
+          "resource-manager",
+          "org-policies",
+          "describe",
+          constraint,
+          `--project=${LIVEKIT_OPS.project}`,
+          "--effective",
+          "--format=json",
+        ],
+        `verify ${constraint} requires a user-specified build service account`,
+      ),
+    );
+    const rules = policy?.spec?.rules;
+    if (
+      !Array.isArray(rules) ||
+      rules.length !== 1 ||
+      rules[0]?.enforce !== false
+    ) {
+      throw new Error(
+        `${constraint} does not conclusively require a user-specified build service account`,
+      );
+    }
+  }
+};
+
+const validateLegacyCloudBuildRouteClosed = () => {
+  validateUserSpecifiedBuildIdentityRequired();
+  for (const [serviceAccount, label] of [
+    [DEFAULT_COMPUTE_SERVICE_ACCOUNT, "default Compute service account"],
+    [PRODUCTION_DEPLOYER_SERVICE_ACCOUNT, "production deployer"],
+    [
+      "oa-livekit-prod-nodes@openagentsgemini.iam.gserviceaccount.com",
+      "LiveKit GKE node identity",
+    ],
+    [
+      "oa-livekit-server@openagentsgemini.iam.gserviceaccount.com",
+      "LiveKit server identity",
+    ],
+    [
+      "oa-livekit-agent@openagentsgemini.iam.gserviceaccount.com",
+      "Sarah agent identity",
+    ],
+    [
+      "livekit-secret-reader@openagentsgemini.iam.gserviceaccount.com",
+      "LiveKit secret reader",
+    ],
+    [
+      "oa-livekit-cert-manager-reader@openagentsgemini.iam.gserviceaccount.com",
+      "LiveKit DNS secret reader",
+    ],
+    [
+      "oa-livekit-sarah-secret-reader@openagentsgemini.iam.gserviceaccount.com",
+      "Sarah secret reader",
+    ],
+  ]) {
+    requireNotGranted(
+      troubleshootIam(
+        `//iam.googleapis.com/projects/${LIVEKIT_OPS.project}/serviceAccounts/${serviceAccount}`,
+        "iam.serviceAccounts.actAs",
+        `verify legacy automation cannot impersonate the ${label}`,
+      ),
+      `legacy automation identity can still act as the ${label}`,
+    );
+  }
+};
+
+const preflightReceiptArtifact = (temporaryDirectory, buildId) => {
+  const marker = resolve(temporaryDirectory, "receipt-artifact-preflight");
+  const object =
+    `gs://${PRODUCTION_RECEIPT_BUCKET}/preflight/` +
+    `${buildId}/receipt-artifact-preflight`;
+  writeFileSync(marker, `${buildId}\n`, { encoding: "utf8", mode: 0o600 });
+  captureCommand(
+    "gcloud",
+    [
+      "storage",
+      "cp",
+      "--no-clobber",
+      marker,
+      object,
+      "--project",
+      LIVEKIT_OPS.project,
+    ],
+    "preflight deployment receipt artifact write",
+  );
+  const observed = captureCommand(
+    "gcloud",
+    ["storage", "cat", object],
+    "preflight deployment receipt artifact read",
+  );
+  if (observed !== `${buildId}\n`) {
+    throw new Error("deployment receipt artifact preflight did not round trip");
+  }
+};
+
 const writeReceipt = (
   path,
   bundle,
-  { stage, phase, outcome, resourceRefs, result, deployedRevision },
+  { stage, phase, outcome, resourceRefs, result, deployedRevision, execution },
 ) => {
   const resultDigest = sha256(JSON.stringify(result));
   const now = new Date().toISOString();
@@ -1372,6 +1758,7 @@ const writeReceipt = (
       "This operation receipt proves only the scoped deployment lifecycle step.",
       "Connectivity, load, drills, scans, cost, and rollback acceptance require separate receipts.",
     ],
+    ...(execution === undefined ? {} : { execution }),
   };
   validateSourceOnlyReceipt(receipt);
   const receiptPath = resolve(path);
@@ -1386,6 +1773,21 @@ const writeReceipt = (
     mode: 0o600,
   });
   return receipt;
+};
+
+const preflightReceiptPath = (path) => {
+  const receiptPath = resolve(path);
+  const receiptsRoot = `${resolve("docs/ops/receipts/livekit")}${sep}`;
+  if (!receiptPath.startsWith(receiptsRoot)) {
+    throw new Error("receipt must stay under docs/ops/receipts/livekit");
+  }
+  mkdirSync(dirname(receiptPath), { recursive: true });
+  writeFileSync(receiptPath, "", {
+    encoding: "utf8",
+    flag: "wx",
+    mode: 0o600,
+  });
+  rmSync(receiptPath);
 };
 
 const verifyCanary = () => {
@@ -1532,6 +1934,36 @@ const run = () => {
         ...terraformCommands(PRODUCTION_TERRAFORM_ROOT, "apply"),
         ...productionInfrastructureValidationCommands(),
       ];
+    } else if (args.operation === "production-addon-bootstrap") {
+      const priorityClass = requireRepositoryPath(
+        "infra/livekit/production/resources/priority-class.yaml",
+        "infra/livekit/production/resources/priority-class.yaml",
+      );
+      const certificateIssuer = requireRepositoryPath(
+        "infra/livekit/production/resources/certificate-issuer.yaml",
+        "infra/livekit/production/resources/certificate-issuer.yaml",
+      );
+      const certManagerMonitoring = requireRepositoryPath(
+        "infra/livekit/production/resources/cert-manager-monitoring.yaml",
+        "infra/livekit/production/resources/cert-manager-monitoring.yaml",
+      );
+      commands = [
+        ...productionInfrastructureValidationCommands(),
+        productionCredentialsCommand(kubeconfig),
+        ...addonDownloadCommands(addonLock, temporaryDirectory),
+        ...addonInstallCommands(addonLock, temporaryDirectory),
+        command("kubectl", [
+          "apply",
+          "--server-side",
+          "--field-manager=openagents-livekit-bootstrap",
+          "-f",
+          priorityClass,
+          "-f",
+          certificateIssuer,
+          "-f",
+          certManagerMonitoring,
+        ]),
+      ];
     } else if (args.operation === "production-runtime-apply") {
       if (
         args.apply &&
@@ -1546,8 +1978,6 @@ const run = () => {
         ...productionInfrastructureValidationCommands(),
         productionCredentialsCommand(kubeconfig),
         ...renderProduction(bundle, temporaryDirectory, false),
-        ...addonDownloadCommands(addonLock, temporaryDirectory),
-        ...addonInstallCommands(addonLock, temporaryDirectory),
         runtimeManifestApplyCommand(resolve(temporaryDirectory, RENDERED_MANIFEST)),
         command("kubectl", [
           "--namespace",
@@ -1647,7 +2077,19 @@ const run = () => {
     if (process.env.OA_LIVEKIT_OWNER_GATE !== OWNER_GATE) {
       throw new Error(`--apply requires OA_LIVEKIT_OWNER_GATE=${OWNER_GATE}`);
     }
-    const deployedRevision = validateGitProvenance();
+    if (args.receipt) preflightReceiptPath(args.receipt);
+    const cloudExecution =
+      args.operation === "production-runtime-apply"
+        ? validateCloudBuildProvenance()
+        : {
+            deployedRevision: validateLocalGitProvenance(),
+            execution: undefined,
+          };
+    const { deployedRevision } = cloudExecution;
+    if (args.operation === "production-runtime-apply") {
+      validateLegacyCloudBuildRouteClosed();
+      preflightReceiptArtifact(temporaryDirectory, cloudExecution.buildId);
+    }
     if (
       rollbackAdmissionReceipt !== undefined &&
       rollbackAdmissionReceipt.deployedRevision !== deployedRevision
@@ -1666,12 +2108,11 @@ const run = () => {
     }
     if (args.operation === "production-runtime-apply") {
       validateProductionPreflight();
-      validateHelm3();
-      const firstPullIndex = commands.findIndex(
-        (step) => step.bin === "helm" && step.args[0] === "pull",
+      const runtimeApplyIndex = commands.findIndex(
+        (step) => step.label === "apply production runtime manifest",
       );
-      if (firstPullIndex < 0) throw new Error("addon download stage is missing");
-      executeCommands(commands.slice(0, firstPullIndex), kubectlEnv(kubeconfig));
+      if (runtimeApplyIndex < 0) throw new Error("runtime apply stage is missing");
+      executeCommands(commands.slice(0, runtimeApplyIndex), kubectlEnv(kubeconfig));
       validateRenderedManifest(
         resolve(temporaryDirectory, RENDERED_MANIFEST),
         bundle.renderedManifestDigest,
@@ -1680,10 +2121,20 @@ const run = () => {
         resolve(temporaryDirectory, RENDERED_MANIFEST),
         "rendered production runtime manifest",
       );
+      validateInstalledAddons(addonLock, kubeconfig);
+      executeCommands(commands.slice(runtimeApplyIndex), kubectlEnv(kubeconfig));
+    } else if (args.operation === "production-addon-bootstrap") {
+      validateHelm3();
+      const firstPullIndex = commands.findIndex(
+        (step) => step.bin === "helm" && step.args[0] === "pull",
+      );
+      if (firstPullIndex < 0) throw new Error("addon download stage is missing");
+      executeCommands(commands.slice(0, firstPullIndex), kubectlEnv(kubeconfig));
       executeCommands(commands.slice(firstPullIndex, firstPullIndex + 2), kubectlEnv(kubeconfig));
       validateDownloadedAddonCharts(addonLock, temporaryDirectory);
       validateRenderedAddonImages(addonLock, temporaryDirectory);
       executeCommands(commands.slice(firstPullIndex + 2), kubectlEnv(kubeconfig));
+      validateInstalledAddons(addonLock, kubeconfig);
     } else {
       executeCommands(commands, kubectlEnv(kubeconfig));
     }
@@ -1726,6 +2177,7 @@ const run = () => {
     const destroy = args.operation === "canary-destroy";
     const rollback = args.operation === "production-rollback";
     const runtime = args.operation === "production-runtime-apply";
+    const addonBootstrap = args.operation === "production-addon-bootstrap";
     const resourceRefs = [
       canary ? "gcp-resource-ref://livekit/canary" : "gcp-resource-ref://livekit/production",
     ];
@@ -1733,11 +2185,9 @@ const run = () => {
       resourceRefs.push("gcp-preflight-ref://livekit/canary/secrets-dns-certificate-empty-vm");
     }
     if (runtime) {
-      resourceRefs.push(
-        "gcp-preflight-ref://livekit/production/secrets-dns",
-        ...addonResourceRefs(addonLock),
-      );
+      resourceRefs.push("gcp-preflight-ref://livekit/production/secrets-dns");
     }
+    if (runtime || addonBootstrap) resourceRefs.push(...addonResourceRefs(addonLock));
     const receiptBundle = rollback ? rollbackTargetBundle : bundle;
     if (receiptBundle === undefined) {
       throw new Error("rollback target bundle is unavailable at receipt boundary");
@@ -1761,6 +2211,7 @@ const run = () => {
           : { prunedInventoryDigest: sha256(JSON.stringify(rollbackPrunedInventory)) }),
       },
       deployedRevision,
+      execution: cloudExecution.execution,
     });
     process.stdout.write(
       `${JSON.stringify({

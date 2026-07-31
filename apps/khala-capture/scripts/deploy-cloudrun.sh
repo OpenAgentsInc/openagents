@@ -43,6 +43,7 @@ fi
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT="${KHALA_CAPTURE_PROJECT:-openagentsgemini}"
 REGION="${KHALA_CAPTURE_REGION:-us-central1}"
+BUILD_SERVICE_ACCOUNT="projects/${PROJECT}/serviceAccounts/oa-cloud-run-source-builder@${PROJECT}.iam.gserviceaccount.com"
 INSTANCE="${KHALA_CAPTURE_SQL_INSTANCE:-openagentsgemini:us-central1:khala-sync-pg}"
 
 if [[ "$ENVIRONMENT" == "prod" ]]; then
@@ -81,6 +82,7 @@ echo "==> Deploying $SERVICE to Cloud Run ($REGION, env $ENVIRONMENT)"
 gcloud run deploy "$SERVICE" \
   --project "$PROJECT" \
   --source . \
+  --build-service-account "$BUILD_SERVICE_ACCOUNT" \
   --region "$REGION" \
   --allow-unauthenticated \
   --port 8080 \
