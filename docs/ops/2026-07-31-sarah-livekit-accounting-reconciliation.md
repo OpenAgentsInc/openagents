@@ -121,3 +121,11 @@ If no claim arrives, the API settles the provisioning intent before broker
 cleanup and returns unavailable. With `JRP_NEVER`, the deployment must not rely
 on automatic redispatch: a missing explicit dispatch fails closed and is safe to
 retry with the same idempotency key.
+
+Explicit interruption is generation-bound and non-terminal. Migration
+`0118_sarah_livekit_interrupt_control.sql` stores only an increasing interrupt
+sequence and request timestamp. The API sends the same sequence to Sarah over a
+reliable, HMAC-authenticated LiveKit server data packet; the periodic worker
+lease returns it as a fallback. Replayed or stale sequences do not create a
+second interruption, and interruption never changes settlement authority or
+permits a provider reconnection.

@@ -22,6 +22,7 @@ import {
 } from "@livekit/rtc-node";
 import {
   SARAH_LIVEKIT_AGENT_NAME,
+  SARAH_LIVEKIT_CONTROL_TOPIC,
   SARAH_LIVEKIT_MODEL,
   SARAH_LIVEKIT_TRANSCRIPTION_MODEL,
   SARAH_LIVEKIT_VOICE,
@@ -34,7 +35,10 @@ import {
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { makeSarahLiveKitControlClient } from "./control-client.js";
+import {
+  makeSarahLiveKitControlClient,
+  verifySarahLiveKitInterruptControl,
+} from "./control-client.js";
 import {
   SarahProviderAccounting,
   SarahProviderAttestation,
@@ -383,7 +387,12 @@ const entry = async (ctx: JobContext): Promise<void> => {
   const accounting = new SarahProviderAccounting();
   const participantAdmission = new AbortController();
   let session: AgentSession | undefined;
+  let providerReady = false;
+  let observedInterruptSequence = 0;
+  let appliedInterruptSequence = 0;
+  let interruptOperation = Promise.resolve();
   let disableParticipantMedia: (() => void) | undefined;
+  let disableControlData: (() => void) | undefined;
   let clearWorkerTimers: (() => void) | undefined;
   let shutdownOperation: Promise<void> | undefined;
   let sarahCloseInProgress = false;
@@ -392,6 +401,7 @@ const entry = async (ctx: JobContext): Promise<void> => {
     if (shutdownOperation !== undefined) return shutdownOperation;
     participantAdmission.abort();
     disableParticipantMedia?.();
+    disableControlData?.();
     clearWorkerTimers?.();
     sarahCloseInProgress = true;
     shutdownOperation = closeAfterProviderAccounting(
@@ -422,6 +432,29 @@ const entry = async (ctx: JobContext): Promise<void> => {
   const requestShutdown = (): void => {
     void finishShutdown(true).catch(() => {});
   };
+  const applyInterruptSequence = (sequence: number): Promise<void> => {
+    if (sequence < observedInterruptSequence) {
+      return Promise.resolve();
+    }
+    observedInterruptSequence = sequence;
+    if (!providerReady || sequence <= appliedInterruptSequence || fence.settled) {
+      return Promise.resolve();
+    }
+    interruptOperation = interruptOperation.then(async () => {
+      if (
+        !providerReady ||
+        observedInterruptSequence <= appliedInterruptSequence ||
+        fence.settled ||
+        session === undefined
+      ) {
+        return;
+      }
+      const appliedSequence = observedInterruptSequence;
+      await session.interrupt({ force: true }).await;
+      appliedInterruptSequence = appliedSequence;
+    });
+    return interruptOperation;
+  };
   const sendEvent = (event: SarahLiveKitJobEvent): Promise<void> | undefined => {
     if (!fence.accepts(event)) return undefined;
     const operation = eventChain
@@ -429,6 +462,10 @@ const entry = async (ctx: JobContext): Promise<void> => {
         const result = await controller.event(dispatch, event);
         if (result.stopReason !== undefined && fence.settle(result.stopReason)) {
           requestShutdown();
+          return;
+        }
+        if (result.interruptSequence !== undefined) {
+          await applyInterruptSequence(result.interruptSequence);
         }
       })
       .catch((error) => {
@@ -597,6 +634,34 @@ const entry = async (ctx: JobContext): Promise<void> => {
   });
 
   await ctx.connect(undefined, AutoSubscribe.SUBSCRIBE_NONE);
+  const receiveControlData = (
+    data: Uint8Array,
+    participant: RemoteParticipant | undefined,
+    _kind: unknown,
+    topic: string | undefined,
+  ) => {
+    if (
+      topic !== SARAH_LIVEKIT_CONTROL_TOPIC ||
+      participant !== undefined ||
+      data.byteLength > 2_048
+    ) {
+      return;
+    }
+    try {
+      const sequence = verifySarahLiveKitInterruptControl(
+        requiredEnvironment("SARAH_LIVEKIT_CONTROL_ROOT"),
+        dispatch,
+        JSON.parse(new TextDecoder().decode(data)) as unknown,
+      );
+      void applyInterruptSequence(sequence).catch(() => {
+        if (fence.settle("worker_error")) requestShutdown();
+      });
+    } catch {
+      // Unauthenticated room data is never worker control.
+    }
+  };
+  ctx.room.on(RoomEvent.DataReceived, receiveControlData);
+  disableControlData = () => ctx.room.off(RoomEvent.DataReceived, receiveControlData);
   const connected = await controller.event(dispatch, {
     schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
     _tag: "worker_connected",
@@ -654,6 +719,13 @@ const entry = async (ctx: JobContext): Promise<void> => {
       participantAdmission.signal,
     );
     if (fence.settled) return;
+    providerReady = true;
+    try {
+      await applyInterruptSequence(observedInterruptSequence);
+    } catch {
+      if (fence.settle("worker_error")) requestShutdown();
+      return;
+    }
     const subscribeMicrophone = (
       publication: RemoteTrackPublication,
       remoteParticipant: RemoteParticipant,

@@ -73,6 +73,17 @@ No LiveKit room data packet authorizes a command. Omega issue #185 owns the
 client adapter that maps these existing `SarahVoiceServerControl` and
 `SarahVoiceClientControl` frames into the desktop command-confirmation UI.
 
+An explicit Omega `interrupt` remains a control-channel request. The API first
+increments a durable sequence on the exact room generation, then uses the
+LiveKit server API to send a reliable HMAC-authenticated interrupt packet only
+to `principal.sarah`. The worker accepts the packet only when its session,
+generation, room, epoch, signature, and increasing sequence match dispatch
+authority; participant-originated and stale packets are ignored. The existing
+worker lease response carries the same sequence as a delivery fallback. An
+acknowledgment is emitted only after the durable request and direct LiveKit
+delivery succeed. The packet cannot authorize tools and contains no transcript
+or media.
+
 New room admission is serialized in Postgres and refuses room 21. Operators can
 set `SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED=false` on the API to stop all new
 LiveKit admissions and dispatches without preventing existing generations from

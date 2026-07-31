@@ -2,8 +2,14 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import {
   SARAH_LIVEKIT_AGENT_NAME,
   SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+  canonicalSarahLiveKitInterruptControl,
 } from "@openagentsinc/audio-contract";
-import { deriveSarahLiveKitControlToken, makeSarahLiveKitControlClient } from "./control-client.js";
+import { createHmac } from "node:crypto";
+import {
+  deriveSarahLiveKitControlToken,
+  makeSarahLiveKitControlClient,
+  verifySarahLiveKitInterruptControl,
+} from "./control-client.js";
 
 const controlRoot = "A".repeat(64);
 const dispatch = {
@@ -204,6 +210,58 @@ describe("Sarah LiveKit control client", () => {
         eventRef: "lease:expired",
       }),
     ).resolves.toEqual({ accepted: true, stopReason: "session_expired" });
+  });
+
+  test("authenticates a generation-bound room interrupt and rejects changed authority", () => {
+    const unsigned = {
+      schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+      _tag: "interrupt" as const,
+      sessionRef: dispatch.sessionRef,
+      generation: dispatch.generation,
+      roomRef: dispatch.roomRef,
+      roomEpoch: dispatch.roomEpoch,
+      interruptSequence: 7,
+    };
+    const control = {
+      ...unsigned,
+      signature: createHmac("sha256", Buffer.from(controlRoot, "utf8"))
+        .update(canonicalSarahLiveKitInterruptControl(unsigned))
+        .digest("base64url"),
+    };
+    expect(verifySarahLiveKitInterruptControl(controlRoot, dispatch, control)).toBe(7);
+    expect(() =>
+      verifySarahLiveKitInterruptControl(controlRoot, dispatch, {
+        ...control,
+        interruptSequence: 8,
+      }),
+    ).toThrow("signature");
+    expect(() =>
+      verifySarahLiveKitInterruptControl(controlRoot, dispatch, {
+        ...control,
+        roomRef: "room:other",
+      }),
+    ).toThrow("dispatch authority");
+  });
+
+  test("returns a durable interrupt sequence from the worker lease", async () => {
+    const client = makeSarahLiveKitControlClient(
+      {
+        baseUrl: "https://openagents.com",
+        workerRef: "worker:one",
+        controlRoot,
+      },
+      vi.fn(async () => Response.json({ accepted: true, interruptSequence: 4 })) as typeof fetch,
+    );
+    await expect(
+      client.event(dispatch, {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "lease_check",
+        sessionRef: dispatch.sessionRef,
+        generation: dispatch.generation,
+        jobRef: "job:one",
+        eventRef: "lease:interrupt",
+      }),
+    ).resolves.toEqual({ accepted: true, interruptSequence: 4 });
   });
 
   test("retries an idempotent tool proposal after an unknown delivery outcome", async () => {

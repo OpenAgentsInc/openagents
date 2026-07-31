@@ -5,6 +5,8 @@ import {
   SARAH_LIVEKIT_TOOL_STATE_PATH,
   SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
   canonicalSarahLiveKitDispatchAuthority,
+  canonicalSarahLiveKitInterruptControl,
+  decodeSarahLiveKitInterruptControl,
   decodeSarahLiveKitJobClaimResponse,
   decodeSarahLiveKitToolProposalResponse,
   decodeSarahLiveKitToolStateResponse,
@@ -15,7 +17,7 @@ import {
   type SarahLiveKitToolProposal,
   type SarahLiveKitToolStateResponse,
 } from "@openagentsinc/audio-contract";
-import { createHmac } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 export type SarahLiveKitControlConfig = Readonly<{
   baseUrl: string;
@@ -32,6 +34,7 @@ export type SarahLiveKitClaimInput = Readonly<{
 
 export type SarahLiveKitEventResult = Readonly<{
   accepted: true;
+  interruptSequence?: number;
   stopReason?: "hold_exhausted" | "membership_revoked" | "operator_stop" | "session_expired";
 }>;
 
@@ -87,6 +90,45 @@ export const deriveSarahLiveKitControlToken = (
   `oa_sarah_lk_${createHmac("sha256", parseControlRoot(controlRoot))
     .update(canonicalSarahLiveKitDispatchAuthority(dispatch))
     .digest("base64url")}`;
+
+export const verifySarahLiveKitInterruptControl = (
+  controlRoot: string,
+  dispatch: SarahLiveKitDispatchMetadata,
+  value: unknown,
+): number => {
+  const control = decodeSarahLiveKitInterruptControl(value);
+  if (
+    control.sessionRef !== dispatch.sessionRef ||
+    control.generation !== dispatch.generation ||
+    control.roomRef !== dispatch.roomRef ||
+    control.roomEpoch !== dispatch.roomEpoch ||
+    control.interruptSequence < 1
+  ) {
+    throw new Error("The Sarah LiveKit interrupt disagreed with dispatch authority");
+  }
+  const expected = createHmac("sha256", parseControlRoot(controlRoot))
+    .update(
+      canonicalSarahLiveKitInterruptControl({
+        schema: control.schema,
+        _tag: control._tag,
+        sessionRef: control.sessionRef,
+        generation: control.generation,
+        roomRef: control.roomRef,
+        roomEpoch: control.roomEpoch,
+        interruptSequence: control.interruptSequence,
+      }),
+    )
+    .digest("base64url");
+  const observedBytes = Buffer.from(control.signature);
+  const expectedBytes = Buffer.from(expected);
+  if (
+    observedBytes.length !== expectedBytes.length ||
+    !timingSafeEqual(observedBytes, expectedBytes)
+  ) {
+    throw new Error("The Sarah LiveKit interrupt signature was invalid");
+  }
+  return control.interruptSequence;
+};
 
 const boundedBody = async (response: Response): Promise<unknown> => {
   const contentLength = Number(response.headers.get("content-length") ?? "0");
@@ -169,7 +211,20 @@ const decodeSarahLiveKitEventResult = (body: unknown): SarahLiveKitEventResult =
       body.stopReason === "session_expired")
       ? body.stopReason
       : undefined;
-  return stopReason === undefined ? { accepted: true } : { accepted: true, stopReason };
+  const interruptSequence =
+    "interruptSequence" in body &&
+    Number.isSafeInteger(body.interruptSequence) &&
+    Number(body.interruptSequence) >= 0
+      ? Number(body.interruptSequence)
+      : undefined;
+  if ("interruptSequence" in body && interruptSequence === undefined) {
+    throw new Error("The Sarah LiveKit interrupt sequence was invalid");
+  }
+  return {
+    accepted: true,
+    ...(interruptSequence === undefined ? {} : { interruptSequence }),
+    ...(stopReason === undefined ? {} : { stopReason }),
+  };
 };
 
 export const makeSarahLiveKitControlClient = (

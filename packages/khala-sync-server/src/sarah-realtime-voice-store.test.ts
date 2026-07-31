@@ -1390,6 +1390,45 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       providerConfigurationDigest: "b".repeat(64),
       admittedAt: "2026-07-28T13:00:23.000Z",
     });
+    await expect(
+      store.requestLiveKitWorkerInterrupt({
+        sessionRef: binding.sessionRef,
+        generation: 2,
+        nowIso: "2026-07-28T13:00:23.250Z",
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceSessionRejectedError);
+    await expect(
+      store.requestLiveKitWorkerInterrupt({
+        sessionRef: binding.sessionRef,
+        generation: 1,
+        nowIso: "2026-07-28T13:00:23.500Z",
+      }),
+    ).resolves.toEqual({
+      interruptSequence: 1,
+      roomRef: binding.roomRef,
+      roomEpoch: binding.roomEpoch,
+      sarahParticipantRef: binding.sarahParticipantRef,
+    });
+    const interruptLease = {
+      workerControlTokenDigest: binding.workerControlTokenDigest,
+      workerJobRef: workerClaim.workerJobRef,
+      sessionRef: binding.sessionRef,
+      generation: 1,
+      eventRef: "lease:interrupt-1",
+      eventPayloadDigest: "1".repeat(64),
+      eventKind: "lease_check",
+      nowIso: "2026-07-28T13:00:24.000Z",
+    } as const;
+    await expect(store.applyLiveKitWorkerEvent(interruptLease)).resolves.toEqual({
+      observedAt: "2026-07-28T13:00:24.000Z",
+      replayed: false,
+      interruptSequence: 1,
+    });
+    await expect(store.applyLiveKitWorkerEvent(interruptLease)).resolves.toEqual({
+      observedAt: "2026-07-28T13:00:24.000Z",
+      replayed: true,
+      interruptSequence: 1,
+    });
     await store.sweepExpired("2026-07-28T13:01:30.000Z");
     const [connectedSession] = await sql`
       SELECT state, ticket_digest, connected_at
@@ -1505,6 +1544,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         {
           observedAt: "2026-07-28T13:00:58.000Z",
           replayed: false,
+          interruptSequence: 1,
         },
         1,
       ]);

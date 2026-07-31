@@ -1,8 +1,10 @@
-import { JobRestartPolicy, TrackSource } from "@livekit/protocol";
+import { DataPacket_Kind, JobRestartPolicy, TrackSource } from "@livekit/protocol";
 import {
   SARAH_LIVEKIT_AGENT_NAME,
+  SARAH_LIVEKIT_CONTROL_TOPIC,
   SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
   canonicalSarahLiveKitDispatchAuthority,
+  canonicalSarahLiveKitInterruptControl,
   decodeSarahLiveKitDispatchMetadata,
   type SarahLiveKitDispatchMetadata,
 } from "@openagentsinc/audio-contract";
@@ -62,6 +64,12 @@ export type SarahLiveKitRoomBrokerClients = Readonly<{
     >
   >;
   deleteDispatch: (dispatchRef: string, roomRef: string) => Promise<unknown>;
+  sendData: (
+    roomRef: string,
+    data: Uint8Array,
+    topic: string,
+    destinationIdentities: ReadonlyArray<string>,
+  ) => Promise<void>;
 }>;
 
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
@@ -218,7 +226,7 @@ export const makeSarahLiveKitRoomBroker = (
   config: SarahLiveKitRoomBrokerConfig,
   now: () => number = Date.now,
   suppliedClients?: SarahLiveKitRoomBrokerClients,
-): SarahVoiceLiveKitRoomBroker => {
+): SarahVoiceLiveKitRoomBroker & Required<Pick<SarahVoiceLiveKitRoomBroker, "interrupt">> => {
   const origin = controlOrigin(config.livekitUrl);
   const clientOptions = {
     requestTimeout: SARAH_LIVEKIT_RPC_TIMEOUT_SECONDS,
@@ -238,6 +246,11 @@ export const makeSarahLiveKitRoomBroker = (
       dispatchService.createDispatch(roomRef, agentName, options),
     listDispatch: (roomRef) => dispatchService.listDispatch(roomRef),
     deleteDispatch: (dispatchRef, roomRef) => dispatchService.deleteDispatch(dispatchRef, roomRef),
+    sendData: (roomRef, data, topic, destinationIdentities) =>
+      roomService.sendData(roomRef, data, DataPacket_Kind.RELIABLE, {
+        topic,
+        destinationIdentities: [...destinationIdentities],
+      }),
   };
   const inFlightProvisions = new Map<string, Promise<SarahVoiceLiveKitProvision>>();
 
@@ -403,6 +416,29 @@ export const makeSarahLiveKitRoomBroker = (
       ]);
     },
     cleanupRoom,
+    interrupt: async (input) => {
+      const unsigned = {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        _tag: "interrupt" as const,
+        sessionRef: input.sessionRef,
+        generation: input.generation,
+        roomRef: input.roomRef,
+        roomEpoch: input.roomEpoch,
+        interruptSequence: input.interruptSequence,
+      };
+      const payload = {
+        ...unsigned,
+        signature: createHmac("sha256", Buffer.from(config.controlRoot, "utf8"))
+          .update(canonicalSarahLiveKitInterruptControl(unsigned))
+          .digest("base64url"),
+      };
+      await clients.sendData(
+        input.roomRef,
+        new TextEncoder().encode(JSON.stringify(payload)),
+        SARAH_LIVEKIT_CONTROL_TOPIC,
+        [input.sarahParticipantRef],
+      );
+    },
   };
 };
 

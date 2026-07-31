@@ -168,6 +168,16 @@ export type SarahVoiceLiveKitRoomBroker = Readonly<{
       sarahPresenceLeaseRef: string
     }>,
   ) => Promise<void>
+  interrupt?: (
+    input: Readonly<{
+      sessionRef: string
+      generation: number
+      roomRef: string
+      roomEpoch: number
+      sarahParticipantRef: string
+      interruptSequence: number
+    }>,
+  ) => Promise<void>
 }>
 
 export type SarahVoiceLiveKitLifecycleDependencies<Bindings> = Readonly<{

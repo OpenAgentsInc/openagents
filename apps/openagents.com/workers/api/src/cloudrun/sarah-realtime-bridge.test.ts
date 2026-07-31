@@ -209,6 +209,89 @@ describe('Sarah Realtime bridge metering', () => {
     })
   })
 
+  test('durably sequences and delivers a LiveKit interrupt before acknowledging it', async () => {
+    const nowMs = Date.now()
+    const requestLiveKitWorkerInterrupt = vi.fn(async () => ({
+      interruptSequence: 3,
+      roomRef: 'room:interrupt',
+      roomEpoch: 1,
+      sarahParticipantRef: 'principal.sarah',
+    }))
+    const interruptLiveKit = vi.fn(async () => undefined)
+    const data = makeSarahRealtimeBridgeData({
+      session: {
+        sessionRef: 'session-interrupt',
+        ownerUserId: 'user-1',
+        ownerActorRef: 'agent:user-1',
+        deviceRef: 'device-1',
+        threadRef: 'thread-1',
+        generation: 2,
+        disclosureRef: 'disclosure-1',
+        clientProfile: 'omega_editor',
+        transportKind: 'livekit_room_v1',
+        creditMode: 'metered',
+        entitlementRef: null,
+        admissionCohortRef: 'sarah_voice_cohort:alpha_v1',
+        state: 'connected',
+        reservedMsat: 1_000,
+        chargedMsat: 0,
+        ticketExpiresAt: new Date(nowMs + 30_000).toISOString(),
+        sessionExpiresAt: new Date(nowMs + 60_000).toISOString(),
+        settlementReceiptRef: null,
+      },
+      apiKey: 'unused',
+      safetyIdentifier: 'test-safety',
+      creditMsatPerMillionTokens: 1_000,
+      store: { requestLiveKitWorkerInterrupt } as never,
+      interruptLiveKit,
+      closeStore: async () => undefined,
+      tasks: {} as never,
+    })
+    data.helloReceived = true
+    const sent: Array<Record<string, unknown>> = []
+    const socket = {
+      data,
+      send: (message: string) =>
+        sent.push(JSON.parse(message) as Record<string, unknown>),
+      close: () => undefined,
+    }
+    makeSarahRealtimeWebSocketHandlers().message(
+      socket as never,
+      JSON.stringify({
+        schema: 'openagents.sarah.voice.v1',
+        _tag: 'interrupt',
+        identity: {
+          ownerRef: 'user-1',
+          deviceRef: 'device-1',
+          threadRef: 'thread-1',
+          sessionRef: 'session-interrupt',
+          generation: 2,
+        },
+        sequence: 0,
+      }),
+    )
+    await flushSarahLiveKitToolControl(socket as never)
+
+    expect(requestLiveKitWorkerInterrupt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionRef: 'session-interrupt',
+        generation: 2,
+      }),
+    )
+    expect(interruptLiveKit).toHaveBeenCalledWith({
+      sessionRef: 'session-interrupt',
+      generation: 2,
+      interruptSequence: 3,
+      roomRef: 'room:interrupt',
+      roomEpoch: 1,
+      sarahParticipantRef: 'principal.sarah',
+    })
+    expect(sent.map(frame => frame._tag)).toEqual([
+      'interrupt_ack',
+      'lifecycle',
+    ])
+  })
+
   test('keeps a LiveKit ticket connection control-only and rejects audio frames', () => {
     const nowMs = Date.now()
     const data = makeSarahRealtimeBridgeData({

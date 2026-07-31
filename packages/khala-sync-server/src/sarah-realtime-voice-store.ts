@@ -154,6 +154,7 @@ export type SarahVoiceLiveKitWorkerEvent =
 export type SarahVoiceLiveKitWorkerEventResult = Readonly<{
   observedAt: string;
   replayed: boolean;
+  interruptSequence?: number;
   stopReason?: SarahVoiceLiveKitWorkerStopReason;
 }>;
 
@@ -2034,6 +2035,67 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }
   };
 
+  const requestLiveKitWorkerInterrupt = async (
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+      nowIso: string;
+    }>,
+  ): Promise<
+    Readonly<{
+      interruptSequence: number;
+      roomRef: string;
+      roomEpoch: number;
+      sarahParticipantRef: string;
+    }>
+  > => {
+    try {
+      const rows = (await sql`
+        UPDATE sarah_livekit_room_bindings AS binding
+        SET worker_interrupt_sequence = binding.worker_interrupt_sequence + 1,
+            worker_interrupt_requested_at = ${input.nowIso},
+            updated_at = ${input.nowIso}
+        FROM sarah_realtime_voice_sessions AS session
+        WHERE binding.session_ref = ${input.sessionRef}
+          AND binding.generation = ${input.generation}
+          AND binding.state = 'active'
+          AND binding.worker_job_ref IS NOT NULL
+          AND binding.worker_closed_at IS NULL
+          AND binding.worker_stop_reason IS NULL
+          AND session.session_ref = binding.session_ref
+          AND session.generation = binding.generation
+          AND session.transport_kind = 'livekit_room_v1'
+          AND session.state = 'connected'
+          AND session.session_expires_at > ${input.nowIso}
+        RETURNING binding.worker_interrupt_sequence, binding.room_ref,
+          binding.room_epoch, binding.sarah_participant_ref
+      `) as ReadonlyArray<{
+        worker_interrupt_sequence: number | string;
+        room_ref: string;
+        room_epoch: number | string;
+        sarah_participant_ref: string;
+      }>;
+      const row = first(rows);
+      if (row === undefined) {
+        throw new SarahVoiceSessionRejectedError(
+          "The Sarah LiveKit generation cannot accept an interrupt",
+        );
+      }
+      return {
+        interruptSequence: toSafeInteger(
+          row.worker_interrupt_sequence,
+          "worker interrupt sequence",
+        ),
+        roomRef: row.room_ref,
+        roomEpoch: toSafeInteger(row.room_epoch, "room epoch"),
+        sarahParticipantRef: row.sarah_participant_ref,
+      };
+    } catch (error) {
+      if (error instanceof SarahVoiceSessionRejectedError) throw error;
+      throw new SarahVoiceStorageError("Sarah LiveKit interrupt request failed", error);
+    }
+  };
+
   const settleLiveKitProvisioningIntent = async (
     input: Readonly<{
       sessionRef: string;
@@ -3046,6 +3108,31 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     observed_at: string;
   }>;
 
+  const readWorkerInterruptSequence = async (
+    tx: SyncTransactionSql,
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+      eventKind: SarahVoiceLiveKitWorkerEvent["eventKind"];
+    }>,
+  ): Promise<number | undefined> => {
+    if (input.eventKind !== "lease_check") return undefined;
+    const rows = (await tx`
+      SELECT worker_interrupt_sequence
+      FROM sarah_livekit_room_bindings
+      WHERE session_ref = ${input.sessionRef}
+        AND generation = ${input.generation}
+      FOR SHARE
+    `) as ReadonlyArray<{ worker_interrupt_sequence: number | string }>;
+    const row = first(rows);
+    if (row === undefined) {
+      throw new SarahVoiceSessionRejectedError(
+        "The Sarah LiveKit worker binding disappeared",
+      );
+    }
+    return toSafeInteger(row.worker_interrupt_sequence, "worker interrupt sequence");
+  };
+
   const readWorkerEventReceipt = async (
     tx: SyncTransactionSql,
     input: SarahVoiceLiveKitWorkerEvent,
@@ -3071,9 +3158,11 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         "The Sarah LiveKit worker event reference was replayed with changed facts",
       );
     }
+    const interruptSequence = await readWorkerInterruptSequence(tx, input);
     return {
       observedAt: row.observed_at,
       replayed: true,
+      ...(interruptSequence === undefined ? {} : { interruptSequence }),
       ...(row.stop_reason === null ? {} : { stopReason: row.stop_reason }),
     };
   };
@@ -3097,7 +3186,12 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     `) as ReadonlyArray<{ observed_at: string }>;
     const row = first(inserted);
     if (row !== undefined) {
-      return { observedAt: row.observed_at, replayed: false };
+      const interruptSequence = await readWorkerInterruptSequence(tx, input);
+      return {
+        observedAt: row.observed_at,
+        replayed: false,
+        ...(interruptSequence === undefined ? {} : { interruptSequence }),
+      };
     }
     const replay = await readWorkerEventReceipt(tx, input);
     if (replay === undefined) {
@@ -4158,6 +4252,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     reserve,
     revokeAlphaCohort,
     revokeLiveKitRoom,
+    requestLiveKitWorkerInterrupt,
     decideLiveKitTool,
     proposeLiveKitTool,
     settle,

@@ -32,6 +32,16 @@ export type SarahRealtimeBridgeData = {
   readonly safetyIdentifier: string
   readonly creditMsatPerMillionTokens: number
   readonly store: SarahRealtimeVoiceStore
+  readonly interruptLiveKit:
+    | ((input: Readonly<{
+        sessionRef: string
+        generation: number
+        roomRef: string
+        roomEpoch: number
+        sarahParticipantRef: string
+        interruptSequence: number
+      }>) => Promise<void>)
+    | undefined
   readonly closeStore: () => Promise<void>
   readonly tasks: BackgroundTasks
   upstream: WebSocket | undefined
@@ -944,6 +954,26 @@ const handleControl = (ws: Socket, raw: string): void => {
         ws.data.helloReceived = true
         break
       case 'interrupt':
+        if (ws.data.session.transportKind === 'livekit_room_v1') {
+          queueLiveKitToolControl(ws, async () => {
+            if (ws.data.interruptLiveKit === undefined) {
+              throw new Error('Sarah LiveKit interrupt delivery is not configured')
+            }
+            const interrupt = await ws.data.store.requestLiveKitWorkerInterrupt({
+              sessionRef: ws.data.session.sessionRef,
+              generation: ws.data.session.generation,
+              nowIso: new Date().toISOString(),
+            })
+            await ws.data.interruptLiveKit({
+              sessionRef: ws.data.session.sessionRef,
+              generation: ws.data.session.generation,
+              ...interrupt,
+            })
+            sendControl(ws, { _tag: 'interrupt_ack' })
+            sendControl(ws, { _tag: 'lifecycle', state: 'interrupted' })
+          })
+          break
+        }
         ws.data.upstream?.send(JSON.stringify({ type: 'response.cancel' }))
         if (
           control.providerItemRef !== undefined &&
@@ -1238,12 +1268,14 @@ export const makeSarahRealtimeBridgeData = (
     safetyIdentifier: string
     creditMsatPerMillionTokens: number
     store: SarahRealtimeVoiceStore
+    interruptLiveKit?: SarahRealtimeBridgeData['interruptLiveKit']
     closeStore: () => Promise<void>
     tasks: BackgroundTasks
   }>,
 ): SarahRealtimeBridgeData => ({
   _tag: 'sarah_realtime',
   ...input,
+  interruptLiveKit: input.interruptLiveKit,
   upstream: undefined,
   expectedControlSequence: 0,
   expectedAudioSequence: 0,

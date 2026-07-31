@@ -357,6 +357,11 @@ const main = async (): Promise<void> => {
           const safetyIdentifier = createHash('sha256')
             .update(`openagents:user:${session.ownerUserId}`)
             .digest('hex')
+          const liveKitConfig = parseSarahLiveKitRoomBrokerConfig(runtime.env)
+          const liveKitBroker =
+            liveKitConfig === undefined
+              ? undefined
+              : makeSarahLiveKitRoomBroker(liveKitConfig)
           const upgraded = bunServer.upgrade(incoming, {
             data: makeSarahRealtimeBridgeData({
               session,
@@ -365,6 +370,7 @@ const main = async (): Promise<void> => {
               creditMsatPerMillionTokens:
                 routeConfig.creditMsatPerMillionTokens,
               store,
+              interruptLiveKit: liveKitBroker?.interrupt,
               closeStore: client.end,
               tasks,
             }),

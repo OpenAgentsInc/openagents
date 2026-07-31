@@ -1,6 +1,8 @@
 import { JobRestartPolicy } from "@livekit/protocol";
 import {
   SARAH_LIVEKIT_AGENT_NAME,
+  SARAH_LIVEKIT_CONTROL_TOPIC,
+  decodeSarahLiveKitInterruptControl,
   decodeSarahLiveKitDispatchMetadata,
 } from "@openagentsinc/audio-contract";
 import { describe, expect, test, vi } from "vitest";
@@ -205,6 +207,7 @@ describe("Sarah LiveKit room broker configuration", () => {
     );
     const listDispatch = vi.fn(async () => []);
     const deleteDispatch = vi.fn(async () => undefined);
+    const sendData = vi.fn<SarahLiveKitRoomBrokerClients["sendData"]>(async () => undefined);
     const broker = makeSarahLiveKitRoomBroker(
       {
         livekitUrl: "wss://livekit.openagents.com",
@@ -220,6 +223,7 @@ describe("Sarah LiveKit room broker configuration", () => {
         createDispatch,
         listDispatch,
         deleteDispatch,
+        sendData,
       },
     );
     const digest = broker.workerControlTokenDigest(privateProvisionInput);
@@ -249,6 +253,34 @@ describe("Sarah LiveKit room broker configuration", () => {
     expect(JSON.stringify({ job: { metadata: dispatchOptions.metadata } })).not.toMatch(
       /bearer|credential|controlToken/iu,
     );
+    if (broker.interrupt === undefined) {
+      throw new Error("The Sarah LiveKit broker did not expose interrupt delivery");
+    }
+    await broker.interrupt({
+      sessionRef: dispatch.sessionRef,
+      generation: dispatch.generation,
+      roomRef: dispatch.roomRef,
+      roomEpoch: dispatch.roomEpoch,
+      sarahParticipantRef: dispatch.sarahParticipantRef,
+      interruptSequence: 2,
+    });
+    expect(sendData).toHaveBeenCalledWith(
+      dispatch.roomRef,
+      expect.any(Uint8Array),
+      SARAH_LIVEKIT_CONTROL_TOPIC,
+      [dispatch.sarahParticipantRef],
+    );
+    const payload = decodeSarahLiveKitInterruptControl(
+      JSON.parse(new TextDecoder().decode(sendData.mock.calls[0]?.[1])),
+    );
+    expect(payload).toMatchObject({
+      sessionRef: dispatch.sessionRef,
+      generation: dispatch.generation,
+      roomRef: dispatch.roomRef,
+      roomEpoch: dispatch.roomEpoch,
+      interruptSequence: 2,
+    });
+    expect(payload.signature).toMatch(/^[A-Za-z0-9_-]{43}$/u);
     expect(broker.workerControlTokenDigest(privateProvisionInput)).toBe(digest);
     expect(broker.sessionTicket(privateProvisionInput)).toMatch(/^[A-Za-z0-9_-]{43}$/u);
     expect(broker.sessionTicket(privateProvisionInput)).toBe(
@@ -269,6 +301,7 @@ describe("Sarah LiveKit room broker configuration", () => {
         createDispatch,
         listDispatch,
         deleteDispatch,
+        sendData,
       },
     );
     expect(differentControlRootBroker.sessionTicket(privateProvisionInput)).toBe(
@@ -292,6 +325,7 @@ describe("Sarah LiveKit room broker configuration", () => {
         createDispatch,
         listDispatch,
         deleteDispatch,
+        sendData,
       },
     );
     expect(workerControlRootOnlyBroker.sessionTicket(privateProvisionInput)).not.toBe(
@@ -312,6 +346,7 @@ describe("Sarah LiveKit room broker configuration", () => {
         createDispatch,
         listDispatch,
         deleteDispatch,
+        sendData,
       },
     );
     expect(differentApiSecretBroker.sessionTicket(privateProvisionInput)).not.toBe(
@@ -381,6 +416,7 @@ describe("Sarah LiveKit room broker configuration", () => {
       createDispatch,
       listDispatch: vi.fn(async () => (existing === undefined ? [] : [existing])),
       deleteDispatch: vi.fn(async () => undefined),
+      sendData: vi.fn(async () => undefined),
     };
     const broker = makeSarahLiveKitRoomBroker(
       {
@@ -427,6 +463,7 @@ describe("Sarah LiveKit room broker configuration", () => {
         createDispatch,
         listDispatch,
         deleteDispatch: vi.fn(async () => undefined),
+        sendData: vi.fn(async () => undefined),
       },
     );
 
@@ -468,6 +505,7 @@ describe("Sarah LiveKit room broker configuration", () => {
           },
         ]),
         deleteDispatch: vi.fn(async () => undefined),
+        sendData: vi.fn(async () => undefined),
       };
       const broker = makeSarahLiveKitRoomBroker(
         {
@@ -527,6 +565,7 @@ describe("Sarah LiveKit room broker configuration", () => {
         deleteDispatch: vi.fn(async () => {
           throw notFound();
         }),
+        sendData: vi.fn(async () => undefined),
       },
     );
 

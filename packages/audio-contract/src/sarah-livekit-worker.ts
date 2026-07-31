@@ -11,6 +11,7 @@ export const SARAH_LIVEKIT_JOB_EVENT_PATH = "/api/internal/sarah/livekit/job/eve
 export const SARAH_LIVEKIT_TOOL_PROPOSAL_PATH =
   "/api/internal/sarah/livekit/tool/proposal" as const;
 export const SARAH_LIVEKIT_TOOL_STATE_PATH = "/api/internal/sarah/livekit/tool/state" as const;
+export const SARAH_LIVEKIT_CONTROL_TOPIC = "openagents.sarah.control.v1" as const;
 
 const Ref = S.Trim.check(S.isMinLength(1), S.isMaxLength(256));
 const Digest = S.String.check(S.isPattern(/^[a-f0-9]{64}$/u));
@@ -186,6 +187,18 @@ export const SarahLiveKitJobEventSchema = S.Union([
 ]);
 export type SarahLiveKitJobEvent = typeof SarahLiveKitJobEventSchema.Type;
 
+export const SarahLiveKitInterruptControlSchema = S.Struct({
+  schema: S.Literal(SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION),
+  _tag: S.Literal("interrupt"),
+  sessionRef: Ref,
+  generation: Seq,
+  roomRef: Ref,
+  roomEpoch: Seq,
+  interruptSequence: Seq,
+  signature: S.String.check(S.isPattern(/^[A-Za-z0-9_-]{43}$/u)),
+});
+export type SarahLiveKitInterruptControl = typeof SarahLiveKitInterruptControlSchema.Type;
+
 export const SarahLiveKitToolProposalRequestSchema = S.Struct({
   schema: S.Literal(SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION),
   sessionRef: Ref,
@@ -284,6 +297,25 @@ export const canonicalSarahLiveKitDispatchAuthority = (
     roomContext,
   ]);
 };
+
+export const canonicalSarahLiveKitInterruptControl = (
+  value: Omit<SarahLiveKitInterruptControl, "signature">,
+): string =>
+  JSON.stringify([
+    "openagents.sarah.livekit-interrupt-hmac.v1",
+    value.schema,
+    value._tag,
+    value.sessionRef,
+    value.generation,
+    value.roomRef,
+    value.roomEpoch,
+    value.interruptSequence,
+  ]);
+
+export const decodeSarahLiveKitInterruptControl = (value: unknown) =>
+  S.decodeUnknownSync(SarahLiveKitInterruptControlSchema)(value, {
+    onExcessProperty: "error",
+  });
 
 export const decodeSarahLiveKitJobClaimRequest = (value: unknown) =>
   S.decodeUnknownSync(SarahLiveKitJobClaimRequestSchema)(value, {

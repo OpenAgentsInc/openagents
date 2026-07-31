@@ -394,9 +394,13 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
       });
     }
     return noStoreJson(
-      result.stopReason === undefined
-        ? { accepted: true }
-        : { accepted: true, stopReason: result.stopReason },
+      {
+        accepted: true,
+        ...(result.interruptSequence === undefined
+          ? {}
+          : { interruptSequence: result.interruptSequence }),
+        ...(result.stopReason === undefined ? {} : { stopReason: result.stopReason }),
+      },
       200,
     );
   } catch {
