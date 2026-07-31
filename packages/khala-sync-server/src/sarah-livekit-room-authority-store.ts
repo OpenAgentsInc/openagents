@@ -625,6 +625,23 @@ export class PostgresSarahLiveKitRoomAuthorityStore implements SarahLiveKitRoomA
     return this.readWith(this.sql, presenceLeaseRef);
   }
 
+  /**
+   * Resolve one admitted member of a live community room.
+   *
+   * Like `readActiveCommunityRoomRendezvous` this admits the bounded
+   * pre-admission window on purpose. The join route reuses the participant ref
+   * this returns and otherwise mints a new one, and the summoning member is
+   * bound to the exact ref the dispatched worker waits for. Refusing to read
+   * that binding before the worker admits its provider would hand the member a
+   * different identity, so the worker would wait out its deadline and the room
+   * would never connect. The member floor is likewise acquired before the
+   * member connects, because the worker reads the floor holder when it
+   * receives `worker_connected`.
+   *
+   * Membership, expiry, removal, worker stop/close, binding cleanup, session
+   * release, and epoch/revision staleness all still fail closed. See
+   * `sarah-livekit-community-room-first-join.test.ts`.
+   */
   async readParticipantBinding(input: {
     readonly presenceLeaseRef: string;
     readonly ownerUserId?: string;
@@ -678,13 +695,12 @@ export class PostgresSarahLiveKitRoomAuthorityStore implements SarahLiveKitRoomA
           AND (${input.userRefDigest ?? null}::text IS NULL
             OR member.user_ref_digest=${input.userRefDigest ?? null})
           AND binding.room_context_kind='community'
-          AND binding.state='active'
+          AND binding.state IN ('prepared', 'active')
           AND member.state='active'
           AND member.join_expires_at>${input.now}
-          AND binding.sarah_joined_at IS NOT NULL
           AND binding.worker_stop_reason IS NULL
           AND binding.worker_closed_at IS NULL
-          AND session.state='connected'
+          AND session.state IN ('reserved', 'connected')
           AND session.session_expires_at>${input.now}
           AND binding.community_ref=authority.community_ref
           AND binding.channel_ref=authority.channel_ref

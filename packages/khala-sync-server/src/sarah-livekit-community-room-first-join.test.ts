@@ -73,6 +73,9 @@ const snapshot = decodeSarahLiveKitRoomAuthoritySnapshot({
   nextInterruptSequence: 1,
 });
 
+/** The participant identity the dispatched Sarah worker waits for. */
+const dispatchedParticipantRef = "participant.owner";
+
 const activeRendezvous = {
   presenceLeaseRef: snapshot.presence.leaseRef,
   membershipRevision: snapshot.presence.membershipRevision,
@@ -132,6 +135,22 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit community room first join", 
     store = new PostgresSarahLiveKitRoomAuthorityStore(sql as unknown as SyncSql);
     await store.create(snapshot, now);
     await store.claimCommunityRoomRendezvous(snapshot, now);
+    // The voice session route bootstraps the community room through the summon
+    // handler, which binds the summoning member to the participant ref the
+    // dispatched worker is waiting for.
+    await store.bindParticipant({
+      presenceLeaseRef: snapshot.presence.leaseRef,
+      ownerUserId: "owner.first-join",
+      userRefDigest: digest("1"),
+      memberPubkey: digest("2"),
+      participantRef: dispatchedParticipantRef,
+      membershipRevision: snapshot.presence.membershipRevision,
+      roomRef: snapshot.presence.roomRef,
+      roomEpoch: snapshot.presence.roomEpoch,
+      participantGrantDigest: digest("e"),
+      joinExpiresAt: later,
+      now,
+    });
   });
 
   afterEach(async () => {
@@ -161,6 +180,110 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit community room first join", 
     // the first member can never join, so the worker can never connect the
     // accounting session that the read was demanding.
     await expect(readRendezvous()).resolves.toEqual(activeRendezvous);
+  });
+
+  test("returns the dispatched participant identity before the worker admits its provider", async () => {
+    // The join route reuses the bound participant ref and otherwise mints a new
+    // one. If this read fails during the pre-admission window the route hands
+    // the member an identity the dispatched worker is not waiting for, so the
+    // worker never admits and the room never connects.
+    await expect(
+      store.readParticipantBinding({
+        presenceLeaseRef: snapshot.presence.leaseRef,
+        ownerUserId: "owner.first-join",
+        now,
+      }),
+    ).resolves.toMatchObject({
+      ownerUserId: "owner.first-join",
+      participantRef: dispatchedParticipantRef,
+      communityRef: snapshot.presence.communityRef,
+      channelRef: snapshot.presence.channelRef,
+      membershipRevision: snapshot.presence.membershipRevision,
+      roomRef: snapshot.presence.roomRef,
+      roomEpoch: snapshot.presence.roomEpoch,
+    });
+  });
+
+  test("refuses a participant whose room join window expired", async () => {
+    await sql`
+      UPDATE sarah_livekit_room_members
+      SET join_expires_at=${new Date(nowMs - 1_000).toISOString()},updated_at=${now}
+      WHERE presence_lease_ref=${snapshot.presence.leaseRef}`;
+    try {
+      await expect(
+        store.readParticipantBinding({
+          presenceLeaseRef: snapshot.presence.leaseRef,
+          ownerUserId: "owner.first-join",
+          now,
+        }),
+      ).resolves.toBeUndefined();
+    } finally {
+      await sql`
+        UPDATE sarah_livekit_room_members
+        SET join_expires_at=${later},updated_at=${now}
+        WHERE presence_lease_ref=${snapshot.presence.leaseRef}`;
+    }
+  });
+
+  test("refuses a removed participant", async () => {
+    await store.removeParticipant({
+      presenceLeaseRef: snapshot.presence.leaseRef,
+      userRefDigest: digest("1"),
+      now,
+    });
+    try {
+      await expect(
+        store.readParticipantBinding({
+          presenceLeaseRef: snapshot.presence.leaseRef,
+          ownerUserId: "owner.first-join",
+          now,
+        }),
+      ).resolves.toBeUndefined();
+    } finally {
+      await sql`
+        UPDATE sarah_livekit_room_members
+        SET state='active',removed_at=NULL,updated_at=${now}
+        WHERE presence_lease_ref=${snapshot.presence.leaseRef}`;
+    }
+  });
+
+  test("refuses a participant once the worker stopped or the binding entered cleanup", async () => {
+    await sql`
+      UPDATE sarah_livekit_room_bindings
+      SET state='cleanup_ready',updated_at=${now}
+      WHERE session_ref=${snapshot.presence.sessionRef}`;
+    await expect(
+      store.readParticipantBinding({
+        presenceLeaseRef: snapshot.presence.leaseRef,
+        ownerUserId: "owner.first-join",
+        now,
+      }),
+    ).resolves.toBeUndefined();
+    await sql`
+      UPDATE sarah_livekit_room_bindings
+      SET state='prepared',worker_closed_at=${now},updated_at=${now}
+      WHERE session_ref=${snapshot.presence.sessionRef}`;
+    await expect(
+      store.readParticipantBinding({
+        presenceLeaseRef: snapshot.presence.leaseRef,
+        ownerUserId: "owner.first-join",
+        now,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  test("refuses a participant on a released accounting session", async () => {
+    await sql`
+      UPDATE sarah_realtime_voice_sessions
+      SET state='released',updated_at=${now}
+      WHERE session_ref=${snapshot.presence.sessionRef}`;
+    await expect(
+      store.readParticipantBinding({
+        presenceLeaseRef: snapshot.presence.leaseRef,
+        ownerUserId: "owner.first-join",
+        now,
+      }),
+    ).resolves.toBeUndefined();
   });
 
   test("still resolves once the worker has connected the accounting session", async () => {
