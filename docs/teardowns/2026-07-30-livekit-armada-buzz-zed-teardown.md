@@ -1793,10 +1793,13 @@ server rechecks the caller's current signed membership, reads the winning
 rendezvous, reuses the caller's current verified participant identity or
 allocates one, mints a short-lived grant for that exact room, writes the
 Nostr-user-to-LiveKit-participant binding, and returns the grant and current
-authority snapshot together. The response includes the complete active
-verified participant roster. A client therefore never has to infer a room
-from a display name, discover a presence lease out of band, or join media
-before it has identity/floor authority.
+authority snapshot together. The response includes the strict top-level
+`role: "member" | "moderator"` derived from that same resolved membership and
+the complete active verified participant roster. The matching summon response
+returns the same role projection. A client therefore never has to infer its
+moderation authority from a participant row, infer a room from a display name,
+discover a presence lease out of band, or join media before it has
+identity/floor authority.
 
 A membership-revision mismatch retires the rendezvous, closes Sarah presence,
 and stops the winning worker generation. Moderator removal does the same.
