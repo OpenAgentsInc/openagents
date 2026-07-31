@@ -18,12 +18,12 @@
     "sourceCommit": "0b3fd288e3ef3263ec475ba0d78cf3ad77459981"
   },
   "workerImage": {
-    "reference": "us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/sarah-livekit-agent@sha256:44a748c528bbf633c62c69826d031a01d6513ff15c70ef6359195066e50b7c67",
-    "digest": "sha256:44a748c528bbf633c62c69826d031a01d6513ff15c70ef6359195066e50b7c67",
+    "reference": "us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/sarah-livekit-agent@sha256:07e7be7fad9150e93ab49c47dc8c935a3bc02e103ba82d10b3a81ad9f01a304c",
+    "digest": "sha256:07e7be7fad9150e93ab49c47dc8c935a3bc02e103ba82d10b3a81ad9f01a304c",
     "pinState": "pinned"
   },
   "configurationDigest": "sha256:b0bf0f0cb801943b789906c615d3277629a8f73bd6d06b52a60aaf2c86eb8a7d",
-  "renderedManifestDigest": "sha256:a670b648a47bfd389d49443391612f7b41d54a54d622fb2e863fbbad60323b12",
+  "renderedManifestDigest": "sha256:4ab600b28e4b21e088b4941e047e938a3923ed0e4fc7f7c5a125975cf6d93523",
   "resources": {
     "cluster": "oa-livekit-prod",
     "sfuNodePool": "oa-livekit-prod-sfu",
@@ -137,7 +137,7 @@
     },
     {
       "path": "infra/livekit/production/resources/sarah-agent-runtime.yaml",
-      "sha256": "sha256:c1b72bf984e02cbcc6141352908dc5dbffbc043ad79a0a5a9efc9634a4333a0e"
+      "sha256": "sha256:b0cdcf013b23ff6d11ad240603556991fc6243506b905bfb9072ecb16ae63fc2"
     },
     {
       "path": "infra/livekit/production/resources/secret-identity.yaml",

@@ -175,7 +175,7 @@ variable "sarah_nostr_signer_communities" {
   default = [
     {
       groupRef    = "openagents-public"
-      channelRefs = ["agent-chat"]
+      channelRefs = ["agent-chat", "alpha-feedback"]
     },
   ]
 
