@@ -45,6 +45,14 @@ resource "google_project_iam_member" "gateway_roles" {
   member  = "serviceAccount:${google_service_account.deployer.email}"
 }
 
+resource "google_artifact_registry_repository_iam_member" "deployer_image_reader" {
+  project    = var.project_id
+  location   = var.region
+  repository = "oa-cloud"
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${google_service_account.deployer.email}"
+}
+
 resource "google_secret_manager_secret_iam_member" "preflight_reader" {
   for_each = var.managed_secret_ids
 
@@ -208,6 +216,7 @@ resource "google_cloudbuild_trigger" "production_runtime" {
   }
 
   depends_on = [
+    google_artifact_registry_repository_iam_member.deployer_image_reader,
     google_gke_hub_membership.production,
     google_project_iam_member.gateway_roles,
     google_secret_manager_secret_iam_member.preflight_reader,
