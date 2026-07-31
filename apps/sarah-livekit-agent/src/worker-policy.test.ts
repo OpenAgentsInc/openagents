@@ -63,6 +63,8 @@ describe("Sarah LiveKit worker policy", () => {
     expect(agentSource).toContain("llm.toJsonSchema(providerTool.parameters)");
     expect(agentSource).toContain('toolChoice: "auto"');
     expect(agentSource).toContain("expectedProviderProfile");
+    expect(agentSource).toContain('"openai_client_event_queued"');
+    expect(agentSource).toContain("providerAttestation.observeClientEvent");
     expect(agentSource).toContain("Date.now() + 10_000");
     expect(agentSource).toContain("speed: 1");
     expect(agentSource).toContain("tracing: null");
@@ -74,6 +76,8 @@ describe("Sarah LiveKit worker policy", () => {
     expect(generationSource).toContain("outputAudio.speed === 1");
     expect(generationSource).toContain("instructions: profile.instructions");
     expect(generationSource).toContain("canonicalJson(observed) === canonicalJson(expectedTools)");
+    expect(generationSource).toContain('"startup_base"');
+    expect(generationSource).toContain('"tool_choice_none"');
   });
 
   test("keeps participant media unsubscribed until provider admission is durable", async () => {

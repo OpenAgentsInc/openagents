@@ -113,7 +113,7 @@ export type SarahRealtimeProviderTool = Readonly<{
 export type SarahRealtimeProviderProfile = Readonly<{
   instructions: string;
   tools: ReadonlyArray<SarahRealtimeProviderTool>;
-  toolChoice: "auto";
+  toolChoice: "auto" | "none";
 }>;
 
 const sortedProviderTools = (
@@ -270,6 +270,36 @@ const providerProfileMatch = (
   return canonicalJson(observed) === canonicalJson(expectedTools) ? "exact" : "mismatch";
 };
 
+const providerTransportMatch = (
+  event: unknown,
+  expectedProviderSessionRefDigest: string | undefined,
+): Readonly<Record<string, unknown>> | undefined => {
+  const envelope = record(event);
+  if (envelope?.type !== "session.updated") return undefined;
+  const session = record(envelope.session);
+  const audio = record(session?.audio);
+  const sessionRef = providerSessionRef(event);
+  if (session === undefined || audio === undefined || sessionRef === undefined) {
+    return undefined;
+  }
+  const observedProviderSessionRefDigest = digest(sessionRef);
+  if (
+    expectedProviderSessionRefDigest === undefined ||
+    observedProviderSessionRefDigest !== expectedProviderSessionRefDigest ||
+    session.model !== SARAH_LIVEKIT_MODEL ||
+    !Array.isArray(session.output_modalities) ||
+    session.output_modalities.length !== 1 ||
+    session.output_modalities[0] !== "audio" ||
+    !exactKeys(audio, ["input", "output"]) ||
+    !exactInputAudio(audio.input) ||
+    !exactOutputAudio(audio.output) ||
+    !exactProviderPolicy(session)
+  ) {
+    return undefined;
+  }
+  return session;
+};
+
 export type AdmittedRealtimeProvider = Readonly<{
   providerSessionRefDigest: string;
   providerConfigurationDigest: string;
@@ -283,32 +313,14 @@ export const admittedRealtimeProvider = (
 ): AdmittedRealtimeProvider | false | undefined => {
   const envelope = record(event);
   if (envelope?.type !== "session.updated") return undefined;
-  const session = record(envelope.session);
-  const audio = record(session?.audio);
-  const sessionRef = providerSessionRef(event);
-  if (session === undefined || audio === undefined || sessionRef === undefined) {
-    return false;
-  }
-  const providerSessionRefDigest = digest(sessionRef);
-  if (
-    expectedProviderSessionRefDigest === undefined ||
-    providerSessionRefDigest !== expectedProviderSessionRefDigest ||
-    session.model !== SARAH_LIVEKIT_MODEL ||
-    !Array.isArray(session.output_modalities) ||
-    session.output_modalities.length !== 1 ||
-    session.output_modalities[0] !== "audio" ||
-    !exactKeys(audio, ["input", "output"]) ||
-    !exactInputAudio(audio.input) ||
-    !exactOutputAudio(audio.output) ||
-    !exactProviderPolicy(session)
-  ) {
-    return false;
-  }
+  if (expectedProviderSessionRefDigest === undefined) return false;
+  const session = providerTransportMatch(event, expectedProviderSessionRefDigest);
+  if (session === undefined) return false;
   const profileMatch = providerProfileMatch(session, expectedProfile, allowToolLoadingTransition);
   if (profileMatch === "loading_tools") return undefined;
   if (profileMatch === "mismatch") return false;
   return {
-    providerSessionRefDigest,
+    providerSessionRefDigest: expectedProviderSessionRefDigest,
     providerConfigurationDigest: sarahProviderConfigurationDigest(expectedProfile),
   };
 };
@@ -324,15 +336,184 @@ export type SarahProviderAttestationObservation =
   | Readonly<{ state: "mismatch" }>
   | Readonly<{ state: "drift" }>;
 
+type SarahProviderTransition =
+  | "startup_base"
+  | "startup_instructions"
+  | "startup_tools"
+  | "tool_choice_none"
+  | "tool_choice_auto";
+
+const exactClientSessionUpdate = (
+  event: unknown,
+  keys: ReadonlyArray<string>,
+): Readonly<Record<string, unknown>> | undefined => {
+  const envelope = record(event);
+  const session = record(envelope?.session);
+  if (
+    envelope?.type !== "session.update" ||
+    session === undefined ||
+    !exactKeys(envelope, ["type", "session", "event_id"]) ||
+    !exactKeys(session, keys)
+  ) {
+    return undefined;
+  }
+  return session;
+};
+
+const startupBaseClientUpdate = (event: unknown): boolean => {
+  const session = exactClientSessionUpdate(event, [
+    "type",
+    "model",
+    "output_modalities",
+    "audio",
+    "max_output_tokens",
+    "tool_choice",
+    "tracing",
+    "instructions",
+  ]);
+  const audio = record(session?.audio);
+  return (
+    session !== undefined &&
+    session.type === "realtime" &&
+    session.model === SARAH_LIVEKIT_MODEL &&
+    Array.isArray(session.output_modalities) &&
+    session.output_modalities.length === 1 &&
+    session.output_modalities[0] === "audio" &&
+    session.max_output_tokens === "inf" &&
+    session.tool_choice === "auto" &&
+    session.tracing === null &&
+    session.instructions === undefined &&
+    audio !== undefined &&
+    exactKeys(audio, ["input", "output"]) &&
+    exactInputAudio(audio.input) &&
+    exactOutputAudio(audio.output)
+  );
+};
+
+const startupInstructionsClientUpdate = (
+  event: unknown,
+  expectedProfile: SarahRealtimeProviderProfile,
+): boolean => {
+  const session = exactClientSessionUpdate(event, ["type", "instructions"]);
+  return (
+    session !== undefined &&
+    session.type === "realtime" &&
+    session.instructions === expectedProfile.instructions
+  );
+};
+
+const startupToolsClientUpdate = (
+  event: unknown,
+  expectedProfile: SarahRealtimeProviderProfile,
+): boolean => {
+  const session = exactClientSessionUpdate(event, ["type", "model", "tools"]);
+  return (
+    session !== undefined &&
+    session.type === "realtime" &&
+    session.model === SARAH_LIVEKIT_MODEL &&
+    providerProfileMatch(
+      {
+        instructions: expectedProfile.instructions,
+        tool_choice: expectedProfile.toolChoice,
+        tools: session.tools,
+      },
+      expectedProfile,
+      false,
+    ) === "exact"
+  );
+};
+
+const toolChoiceClientUpdate = (event: unknown, toolChoice: "auto" | "none"): boolean => {
+  const session = exactClientSessionUpdate(event, ["type", "tool_choice"]);
+  return session !== undefined && session.type === "realtime" && session.tool_choice === toolChoice;
+};
+
 export class SarahProviderAttestation {
   #candidate: AdmittedRealtimeProvider | undefined;
   #durable: AdmittedRealtimeProvider | undefined;
+  readonly #expectedProviderTransitions: SarahProviderTransition[] = [];
+  #clientPhase: "startup_base" | "startup_instructions" | "startup_tools" | "steady" =
+    "startup_base";
+  #commandedToolChoice: "auto" | "none" = "auto";
+
+  observeClientEvent(event: unknown, expectedProfile: SarahRealtimeProviderProfile): boolean {
+    const envelope = record(event);
+    if (envelope?.type !== "session.update") return true;
+    if (this.#clientPhase === "startup_base") {
+      if (!startupBaseClientUpdate(event)) return false;
+      this.#expectedProviderTransitions.push("startup_base");
+      this.#clientPhase = "startup_instructions";
+      return true;
+    }
+    if (this.#clientPhase === "startup_instructions") {
+      if (!startupInstructionsClientUpdate(event, expectedProfile)) return false;
+      this.#expectedProviderTransitions.push("startup_instructions");
+      this.#clientPhase = "startup_tools";
+      return true;
+    }
+    if (this.#clientPhase === "startup_tools") {
+      if (!startupToolsClientUpdate(event, expectedProfile)) return false;
+      this.#expectedProviderTransitions.push("startup_tools");
+      this.#clientPhase = "steady";
+      return true;
+    }
+    if (this.#durable === undefined) return false;
+    if (this.#commandedToolChoice === "auto" && toolChoiceClientUpdate(event, "none")) {
+      this.#expectedProviderTransitions.push("tool_choice_none");
+      this.#commandedToolChoice = "none";
+      return true;
+    }
+    if (this.#commandedToolChoice === "none" && toolChoiceClientUpdate(event, "auto")) {
+      this.#expectedProviderTransitions.push("tool_choice_auto");
+      this.#commandedToolChoice = "auto";
+      return true;
+    }
+    return false;
+  }
 
   observe(
     event: unknown,
     expectedProviderSessionRefDigest: string | undefined,
     expectedProfile: SarahRealtimeProviderProfile,
   ): SarahProviderAttestationObservation {
+    const envelope = record(event);
+    if (envelope?.type !== "session.updated") return { state: "pending" };
+    const transition = this.#expectedProviderTransitions[0];
+    if (transition !== undefined) {
+      const transitionProfile =
+        transition === "tool_choice_none"
+          ? ({ ...expectedProfile, toolChoice: "none" } as const)
+          : expectedProfile;
+      const observed =
+        transition === "startup_base"
+          ? this.#observeStartupBase(event, expectedProviderSessionRefDigest, expectedProfile)
+          : transition === "startup_instructions"
+            ? admittedRealtimeProvider(
+                event,
+                expectedProviderSessionRefDigest,
+                { ...expectedProfile, tools: [] },
+                false,
+              )
+            : admittedRealtimeProvider(
+                event,
+                expectedProviderSessionRefDigest,
+                transitionProfile,
+                false,
+              );
+      if (observed === false || observed === undefined) {
+        this.#candidate = undefined;
+        return { state: this.#durable === undefined ? "mismatch" : "drift" };
+      }
+      this.#expectedProviderTransitions.shift();
+      if (transition === "startup_base" || transition === "startup_instructions") {
+        return { state: "pending" };
+      }
+      if (transition === "tool_choice_none" || transition === "tool_choice_auto") {
+        return { state: "confirmed", admission: this.#durable ?? observed };
+      }
+      this.#candidate = observed;
+      return { state: "candidate", admission: observed };
+    }
     const observed = admittedRealtimeProvider(
       event,
       expectedProviderSessionRefDigest,
@@ -359,6 +540,29 @@ export class SarahProviderAttestation {
     }
     this.#durable = admission;
     return true;
+  }
+
+  #observeStartupBase(
+    event: unknown,
+    expectedProviderSessionRefDigest: string | undefined,
+    expectedProfile: SarahRealtimeProviderProfile,
+  ): AdmittedRealtimeProvider | false {
+    if (expectedProviderSessionRefDigest === undefined) return false;
+    const session = providerTransportMatch(event, expectedProviderSessionRefDigest);
+    if (
+      session === undefined ||
+      typeof session.instructions !== "string" ||
+      session.instructions.length === 0 ||
+      session.tool_choice !== "auto" ||
+      !Array.isArray(session.tools) ||
+      session.tools.length !== 0
+    ) {
+      return false;
+    }
+    return {
+      providerSessionRefDigest: expectedProviderSessionRefDigest,
+      providerConfigurationDigest: sarahProviderConfigurationDigest(expectedProfile),
+    };
   }
 }
 

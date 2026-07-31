@@ -280,12 +280,14 @@ const agentForProfile = (
 
 type RawRealtimeSession = ReturnType<openai.realtime.RealtimeModel["session"]> & {
   on(event: "openai_server_event_received", listener: (event: unknown) => void): RawRealtimeSession;
+  on(event: "openai_client_event_queued", listener: (event: unknown) => void): RawRealtimeSession;
 };
 
 class ObservedRealtimeModel extends openai.realtime.RealtimeModel {
   constructor(
     safetyIdentifier: string,
-    private readonly observe: (event: unknown) => void,
+    private readonly observeServerEvent: (event: unknown) => void,
+    private readonly observeClientEvent: (event: unknown) => void,
   ) {
     super({
       model: SARAH_LIVEKIT_MODEL,
@@ -317,7 +319,8 @@ class ObservedRealtimeModel extends openai.realtime.RealtimeModel {
 
   override session() {
     const session = super.session() as RawRealtimeSession;
-    session.on("openai_server_event_received", this.observe);
+    session.on("openai_server_event_received", this.observeServerEvent);
+    session.on("openai_client_event_queued", this.observeClientEvent);
     return session;
   }
 }
@@ -449,16 +452,17 @@ const entry = async (ctx: JobContext): Promise<void> => {
       resolveProviderAdmission?.();
     }, rejectProviderAdmission);
   };
-  const model = new ObservedRealtimeModel(claim.safetyIdentifier, (event) => {
-    fence.observeProviderEvent();
-    const usage = responseUsageEvent(event, identity) ?? transcriptionUsageEvent(event, identity);
-    const terminalResponseRef = accounting.observe(event, usage?._tag === "response_usage");
-    if (usage !== undefined) {
-      const delivery = sendEvent(usage);
-      if (delivery === undefined) {
-        accounting.failTerminalUsageDelivery();
-      } else {
-        if (terminalResponseRef !== undefined) {
+  const model = new ObservedRealtimeModel(
+    claim.safetyIdentifier,
+    (event) => {
+      fence.observeProviderEvent();
+      const usage = responseUsageEvent(event, identity) ?? transcriptionUsageEvent(event, identity);
+      const terminalResponseRef = accounting.observe(event, usage?._tag === "response_usage");
+      if (usage !== undefined) {
+        const delivery = sendEvent(usage);
+        if (delivery === undefined) {
+          accounting.failTerminalUsageDelivery();
+        } else if (terminalResponseRef !== undefined) {
           void delivery.then(
             () => accounting.acknowledgeTerminalUsage(terminalResponseRef),
             () => accounting.failTerminalUsageDelivery(),
@@ -467,23 +471,31 @@ const entry = async (ctx: JobContext): Promise<void> => {
           void delivery.catch(() => accounting.failTerminalUsageDelivery());
         }
       }
-    }
-    const observation =
-      expectedProviderProfile === undefined
-        ? ({ state: "pending" } as const)
-        : providerAttestation.observe(
-            event,
-            accounting.providerSessionRefDigest,
-            expectedProviderProfile,
-          );
-    if (observation.state === "pending" || observation.state === "confirmed") return;
-    if (observation.state === "mismatch" || observation.state === "drift") {
-      rejectProviderMismatch();
-      return;
-    }
-    pendingProviderAdmission = observation.admission;
-    if (sessionStarted) persistProviderAdmission(observation.admission);
-  });
+      const observation =
+        expectedProviderProfile === undefined
+          ? ({ state: "pending" } as const)
+          : providerAttestation.observe(
+              event,
+              accounting.providerSessionRefDigest,
+              expectedProviderProfile,
+            );
+      if (observation.state === "pending" || observation.state === "confirmed") return;
+      if (observation.state === "mismatch" || observation.state === "drift") {
+        rejectProviderMismatch();
+        return;
+      }
+      pendingProviderAdmission = observation.admission;
+      if (sessionStarted) persistProviderAdmission(observation.admission);
+    },
+    (event) => {
+      if (
+        expectedProviderProfile !== undefined &&
+        !providerAttestation.observeClientEvent(event, expectedProviderProfile)
+      ) {
+        rejectProviderMismatch();
+      }
+    },
+  );
   session = new AgentSession({
     llm: model,
     vad: null,

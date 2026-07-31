@@ -245,6 +245,107 @@ describe("Sarah LiveKit generation fence", () => {
     );
   });
 
+  test("correlates the finite provider startup sequence before admitting media", () => {
+    const sessionDigest = createProviderSessionDigest();
+    const attestation = new SarahProviderAttestation();
+
+    expect(attestation.observeClientEvent(startupBaseClientEvent(), privateProviderProfile)).toBe(
+      true,
+    );
+    expect(
+      attestation.observeClientEvent(
+        startupInstructionsClientEvent(privateProviderProfile),
+        privateProviderProfile,
+      ),
+    ).toBe(true);
+    expect(
+      attestation.observeClientEvent(
+        startupToolsClientEvent(privateProviderProfile),
+        privateProviderProfile,
+      ),
+    ).toBe(true);
+
+    expect(
+      attestation.observe(
+        providerUpdatedEvent({
+          instructions: "OpenAI default instructions",
+          tools: [],
+          toolChoice: "auto",
+        }),
+        sessionDigest,
+        privateProviderProfile,
+      ),
+    ).toEqual({ state: "pending" });
+    expect(
+      attestation.observe(
+        providerUpdatedEvent({ ...privateProviderProfile, tools: [] }),
+        sessionDigest,
+        privateProviderProfile,
+      ),
+    ).toEqual({ state: "pending" });
+    const candidate = attestation.observe(
+      providerUpdatedEvent(privateProviderProfile),
+      sessionDigest,
+      privateProviderProfile,
+    );
+    expect(candidate.state).toBe("candidate");
+    if (candidate.state !== "candidate") {
+      throw new Error("The correlated provider candidate was unavailable");
+    }
+    expect(attestation.markDurable(candidate.admission)).toBe(true);
+  });
+
+  test("permits only correlated tool-free follow-up and exact restoration", () => {
+    const sessionDigest = createProviderSessionDigest();
+    const attestation = admittedAttestation(sessionDigest, privateProviderProfile);
+
+    expect(
+      attestation.observeClientEvent(toolChoiceClientEvent("none"), privateProviderProfile),
+    ).toBe(true);
+    expect(
+      attestation.observe(
+        providerUpdatedEvent({ ...privateProviderProfile, toolChoice: "none" }),
+        sessionDigest,
+        privateProviderProfile,
+      ),
+    ).toMatchObject({ state: "confirmed" });
+    expect(
+      attestation.observeClientEvent(toolChoiceClientEvent("auto"), privateProviderProfile),
+    ).toBe(true);
+    expect(
+      attestation.observe(
+        providerUpdatedEvent(privateProviderProfile),
+        sessionDigest,
+        privateProviderProfile,
+      ),
+    ).toMatchObject({ state: "confirmed" });
+  });
+
+  test("rejects uncommanded provider drift and unexpected outbound updates", () => {
+    const sessionDigest = createProviderSessionDigest();
+    const attestation = admittedAttestation(sessionDigest, privateProviderProfile);
+
+    expect(
+      attestation.observe(
+        providerUpdatedEvent({ ...privateProviderProfile, toolChoice: "none" }),
+        sessionDigest,
+        privateProviderProfile,
+      ),
+    ).toEqual({ state: "drift" });
+
+    const fresh = admittedAttestation(sessionDigest, privateProviderProfile);
+    expect(
+      fresh.observeClientEvent(
+        {
+          type: "session.update",
+          event_id: "hostile_update",
+          session: { type: "realtime", instructions: "Hostile replacement" },
+        },
+        privateProviderProfile,
+      ),
+    ).toBe(false);
+  });
+
   test("extracts exact response.done token details without transcript content", () => {
     const event = responseUsageEvent(
       {
@@ -706,6 +807,94 @@ const providerUpdatedEvent = (profile: SarahRealtimeProviderProfile = privatePro
     tool_choice: profile.toolChoice,
   },
 });
+
+const startupBaseClientEvent = () => ({
+  type: "session.update",
+  session: {
+    type: "realtime",
+    model: "gpt-realtime-2.1",
+    output_modalities: ["audio"],
+    audio: {
+      input: {
+        format: { type: "audio/pcm", rate: 24_000 },
+        noise_reduction: undefined,
+        transcription: { model: "gpt-4o-mini-transcribe" },
+        turn_detection: {
+          type: "semantic_vad",
+          eagerness: "high",
+          create_response: true,
+          interrupt_response: true,
+        },
+      },
+      output: {
+        format: { type: "audio/pcm", rate: 24_000 },
+        speed: 1,
+        voice: "marin",
+      },
+    },
+    max_output_tokens: "inf",
+    tool_choice: "auto",
+    tracing: null,
+    instructions: undefined,
+  },
+});
+
+const startupInstructionsClientEvent = (profile: SarahRealtimeProviderProfile) => ({
+  type: "session.update",
+  event_id: "instructions_update_one",
+  session: {
+    type: "realtime",
+    instructions: profile.instructions,
+  },
+});
+
+const startupToolsClientEvent = (profile: SarahRealtimeProviderProfile) => ({
+  type: "session.update",
+  event_id: "tools_update_one",
+  session: {
+    type: "realtime",
+    model: "gpt-realtime-2.1",
+    tools: profile.tools,
+  },
+});
+
+const toolChoiceClientEvent = (toolChoice: "auto" | "none") => ({
+  type: "session.update",
+  event_id: `options_update_${toolChoice}`,
+  session: {
+    type: "realtime",
+    tool_choice: toolChoice,
+  },
+});
+
+const admittedAttestation = (
+  sessionDigest: string,
+  profile: SarahRealtimeProviderProfile,
+): SarahProviderAttestation => {
+  const attestation = new SarahProviderAttestation();
+  if (
+    !attestation.observeClientEvent(startupBaseClientEvent(), profile) ||
+    !attestation.observeClientEvent(startupInstructionsClientEvent(profile), profile) ||
+    !attestation.observeClientEvent(startupToolsClientEvent(profile), profile)
+  ) {
+    throw new Error("The test startup client sequence was rejected");
+  }
+  attestation.observe(
+    providerUpdatedEvent({
+      instructions: "OpenAI default instructions",
+      tools: [],
+      toolChoice: "auto",
+    }),
+    sessionDigest,
+    profile,
+  );
+  attestation.observe(providerUpdatedEvent({ ...profile, tools: [] }), sessionDigest, profile);
+  const candidate = attestation.observe(providerUpdatedEvent(profile), sessionDigest, profile);
+  if (candidate.state !== "candidate" || !attestation.markDurable(candidate.admission)) {
+    throw new Error("The test provider admission was not durable");
+  }
+  return attestation;
+};
 
 const closeEventForTest = {
   schema: "openagents.sarah.livekit-worker.v1",
