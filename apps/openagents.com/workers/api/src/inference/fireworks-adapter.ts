@@ -176,7 +176,16 @@ const headersFor = (
 
 // Receipt-first usage extraction. Reads the provider `usage` object verbatim;
 // the optional cached-input dimension comes from `prompt_tokens_details` when
-// Fireworks reports it (prompt-cache hits, billed ~50% of input).
+// Fireworks reports it (prompt-cache hits, billed ~50% of input), and the
+// optional reasoning dimension from `completion_tokens_details.reasoning_tokens`
+// when a thinking model reports it.
+//
+// NOTE the OpenAI convention, which differs from Google's: `reasoning_tokens`
+// is a SUBSET of `completion_tokens`, not a sibling of it. So this is purely a
+// breakdown of output that was already counted — recording it changes no total
+// and no public counter, it only makes the thinking share attributable. This
+// adapter already surfaces reasoning on the CONTENT channel
+// (`delta.reasoning_content`); without this it accounted for none of it.
 const extractUsage = (raw: unknown): InferenceUsage | undefined => {
   const record = recordFromUnknown(raw)
   if (record === undefined) {
@@ -199,11 +208,19 @@ const extractUsage = (raw: unknown): InferenceUsage | undefined => {
   const details = recordFromUnknown(usage['prompt_tokens_details'])
   const cached =
     details === undefined ? Number.NaN : Number(details['cached_tokens'])
+  const completionDetails = recordFromUnknown(
+    usage['completion_tokens_details'],
+  )
+  const reasoning =
+    completionDetails === undefined
+      ? Number.NaN
+      : Number(completionDetails['reasoning_tokens'])
   return {
     completionTokens,
     promptTokens,
     totalTokens,
     ...(Number.isFinite(cached) ? { cachedPromptTokens: cached } : {}),
+    ...(Number.isFinite(reasoning) ? { reasoningTokens: reasoning } : {}),
   }
 }
 

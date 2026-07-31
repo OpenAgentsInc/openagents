@@ -285,3 +285,73 @@ describe('OpenRouter Khala fallback adapter', () => {
     expect(error.retryable).toBe(false)
   })
 })
+
+// OpenRouter normalizes every upstream onto the OpenAI usage shape, so a
+// thinking model reports its scratchpad as
+// `completion_tokens_details.reasoning_tokens` — a SUBSET of
+// `completion_tokens`. The adapter decoded reasoning on the CONTENT channel
+// (`delta.reasoning`) while accounting for none of it, so every reasoning token
+// routed through this lane wrote 0 into `token_usage_events.reasoning_tokens`.
+describe('OpenRouter reasoning-token attribution', () => {
+  const thinkingUsage = {
+    completion_tokens: 96,
+    completion_tokens_details: { reasoning_tokens: 92 },
+    prompt_tokens: 20,
+    total_tokens: 116,
+  }
+
+  it('maps completion_tokens_details.reasoning_tokens on the non-streaming path', async () => {
+    const fetchImpl: OpenRouterFetch = async () =>
+      jsonResponse(completionBody({ usage: thinkingUsage }))
+    const adapter = makeOpenRouterAdapter(adapterConfig(fetchImpl))
+
+    const result = await runResult(adapter.complete(request()))
+
+    expect(result._tag).toBe('Success')
+    if (result._tag !== 'Success') return
+    expect(result.success.usage.reasoningTokens).toBe(92)
+    // Reasoning sits inside completion here, so no total or counter moves.
+    expect(result.success.usage.completionTokens).toBe(96)
+    expect(result.success.usage.totalTokens).toBe(116)
+  })
+
+  it('maps reasoning tokens off the terminal SSE usage frame', async () => {
+    const fetchImpl: OpenRouterFetch = async () =>
+      sseResponse(
+        [
+          `data: ${JSON.stringify({
+            choices: [{ delta: { content: 'Hi' }, index: 0 }],
+            model: 'openrouter/granite',
+          })}`,
+          `data: ${JSON.stringify({
+            choices: [{ delta: {}, finish_reason: 'stop', index: 0 }],
+            model: 'openrouter/granite',
+            usage: thinkingUsage,
+          })}`,
+          'data: [DONE]',
+          '',
+        ].join('\n\n'),
+      )
+    const adapter = makeOpenRouterAdapter(adapterConfig(fetchImpl))
+
+    const result = await runResult(adapter.streamSse!(request({ stream: true })))
+
+    expect(result._tag).toBe('Success')
+    if (result._tag !== 'Success') return
+    for await (const _frame of result.success.frames) {
+      // drain
+    }
+    expect(result.success.terminal().usage?.reasoningTokens).toBe(92)
+  })
+
+  it('leaves reasoningTokens undefined for a non-thinking response', async () => {
+    const fetchImpl: OpenRouterFetch = async () => jsonResponse(completionBody())
+    const adapter = makeOpenRouterAdapter(adapterConfig(fetchImpl))
+
+    const result = await runResult(adapter.complete(request()))
+
+    expect(result._tag).toBe('Success')
+    if (result._tag !== 'Success') return
+    expect(result.success.usage.reasoningTokens).toBeUndefined()
+  })
+})

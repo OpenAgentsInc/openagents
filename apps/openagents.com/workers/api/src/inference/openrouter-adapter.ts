@@ -263,11 +263,26 @@ const extractUsage = (raw: unknown): InferenceUsage | undefined => {
   const details = recordFromUnknown(usage['prompt_tokens_details'])
   const cached =
     details === undefined ? Number.NaN : Number(details['cached_tokens'])
+  // OpenRouter normalizes every upstream onto the OpenAI usage shape, so a
+  // thinking model's scratchpad count arrives as
+  // `completion_tokens_details.reasoning_tokens` — a SUBSET of
+  // `completion_tokens`, not an addend. This adapter already surfaces reasoning
+  // on the content channel (`delta.reasoning`); without this it accounted for
+  // none of it and every reasoning token routed through OpenRouter landed in
+  // `token_usage_events.reasoning_tokens` as 0.
+  const completionDetails = recordFromUnknown(
+    usage['completion_tokens_details'],
+  )
+  const reasoning =
+    completionDetails === undefined
+      ? Number.NaN
+      : Number(completionDetails['reasoning_tokens'])
   return {
     completionTokens,
     promptTokens,
     totalTokens,
     ...(Number.isFinite(cached) ? { cachedPromptTokens: cached } : {}),
+    ...(Number.isFinite(reasoning) ? { reasoningTokens: reasoning } : {}),
   }
 }
 

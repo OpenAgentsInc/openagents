@@ -186,6 +186,10 @@ type OpenAiUsage = Readonly<{
   completion_tokens?: number;
   total_tokens?: number;
   prompt_tokens_details?: Readonly<{ cached_tokens?: number }>;
+  // Reasoning/thinking breakdown of `completion_tokens` (OpenAI convention: a
+  // SUBSET of completion, never an addend). Partners serving thinking models
+  // report it here.
+  completion_tokens_details?: Readonly<{ reasoning_tokens?: number }>;
 }>;
 
 type OpenAiResponse = Readonly<{
@@ -251,11 +255,13 @@ const openAiUsage = (usage: OpenAiUsage | undefined): InferenceUsage => {
   const promptTokens = usage?.prompt_tokens ?? 0;
   const completionTokens = usage?.completion_tokens ?? 0;
   const cached = usage?.prompt_tokens_details?.cached_tokens;
+  const reasoning = usage?.completion_tokens_details?.reasoning_tokens;
   return {
     promptTokens,
     completionTokens,
     totalTokens: usage?.total_tokens ?? promptTokens + completionTokens,
     ...(typeof cached === "number" ? { cachedPromptTokens: cached } : {}),
+    ...(typeof reasoning === "number" ? { reasoningTokens: reasoning } : {}),
   };
 };
 
@@ -554,11 +560,18 @@ const streamUsageOf = (frame: Record<string, unknown>): InferenceUsage | undefin
   }
   const details = recordFromUnknown(usage["prompt_tokens_details"]);
   const cached = details === undefined ? undefined : finiteNumber(details["cached_tokens"]);
+  // Same reasoning breakdown as the non-streaming `openAiUsage`. Verified
+  // separately from it rather than assumed to follow: these two parsers read
+  // the same wire field through different code and have drifted before.
+  const completionDetails = recordFromUnknown(usage["completion_tokens_details"]);
+  const reasoning =
+    completionDetails === undefined ? undefined : finiteNumber(completionDetails["reasoning_tokens"]);
   return {
     completionTokens,
     promptTokens,
     totalTokens: finiteNumber(usage["total_tokens"]) ?? promptTokens + completionTokens,
     ...(cached === undefined ? {} : { cachedPromptTokens: cached }),
+    ...(reasoning === undefined ? {} : { reasoningTokens: reasoning }),
   };
 };
 

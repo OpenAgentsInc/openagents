@@ -933,3 +933,69 @@ describe('fireworks adapter incremental pass-through stream', () => {
     }
   })
 })
+
+// --- reasoning-token attribution -----------------------------------------
+//
+// Fireworks speaks the OpenAI usage shape, where a thinking model's scratchpad
+// count arrives as `completion_tokens_details.reasoning_tokens` — a SUBSET of
+// `completion_tokens`, not an addend. The adapter already decoded reasoning on
+// the CONTENT channel (`delta.reasoning_content`) while accounting for none of
+// it, so every reasoning token served through this lane wrote 0 into
+// `token_usage_events.reasoning_tokens`.
+describe('fireworks adapter reasoning-token attribution', () => {
+  const thinkingUsage = {
+    completion_tokens: 96,
+    completion_tokens_details: { reasoning_tokens: 92 },
+    prompt_tokens: 20,
+    total_tokens: 116,
+  }
+
+  test('complete() maps completion_tokens_details.reasoning_tokens', async () => {
+    const { fetchImpl } = recordingFetch(
+      jsonResponse(completionBody({ usage: thinkingUsage })),
+    )
+    const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
+
+    const result = await runResult(adapter.complete(request()))
+    expect(result._tag).toBe('Success')
+    if (result._tag !== 'Success') return
+
+    expect(result.success.usage.reasoningTokens).toBe(92)
+    // Reasoning is inside completion under the OpenAI convention, so the
+    // totals are untouched and no public counter moves.
+    expect(result.success.usage.completionTokens).toBe(96)
+    expect(result.success.usage.totalTokens).toBe(116)
+  })
+
+  test('streamSse() maps reasoning tokens off the terminal usage frame', async () => {
+    const { fetchImpl } = recordingFetch(
+      sseResponse([
+        { choices: [{ delta: { content: 'hi' }, index: 0 }] },
+        {
+          choices: [{ delta: {}, finish_reason: 'stop', index: 0 }],
+          usage: thinkingUsage,
+        },
+      ]),
+    )
+    const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
+
+    const source = await runResult(adapter.streamSse!(request({ stream: true })))
+    expect(source._tag).toBe('Success')
+    if (source._tag !== 'Success') return
+    for await (const _frame of source.success.frames) {
+      // drain
+    }
+
+    expect(source.success.terminal().usage?.reasoningTokens).toBe(92)
+  })
+
+  test('a non-thinking response leaves reasoningTokens undefined', async () => {
+    const { fetchImpl } = recordingFetch(jsonResponse(completionBody()))
+    const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
+
+    const result = await runResult(adapter.complete(request()))
+    expect(result._tag).toBe('Success')
+    if (result._tag !== 'Success') return
+    expect(result.success.usage.reasoningTokens).toBeUndefined()
+  })
+})

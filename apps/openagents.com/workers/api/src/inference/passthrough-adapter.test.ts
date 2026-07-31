@@ -1184,3 +1184,80 @@ describe("passthrough adapter — incremental SSE pass-through", () => {
     expect(body["temperature"]).toBeUndefined();
   });
 });
+
+// --- reasoning-token attribution ------------------------------------------
+//
+// `openAiReasoningPayload` (captured upstream from `gpt-5.6-luna`, 2026-07-31)
+// has always carried `completion_tokens_details: { reasoning_tokens: 92 }`, and
+// the adapter has always thrown it away: `OpenAiUsage` did not even declare the
+// field. The existing streamed test asserted only `completionTokens === 96`,
+// so a captured wire value sat in the repo documenting a drop that nothing
+// caught. Under the OpenAI convention `reasoning_tokens` is a SUBSET of
+// `completion_tokens`, so recording it moves no total and no public counter —
+// it only makes the thinking share attributable in
+// `token_usage_events.reasoning_tokens`.
+describe("passthrough adapter reasoning-token attribution", () => {
+  test("complete() maps completion_tokens_details.reasoning_tokens", async () => {
+    const adapter = makePassthroughAdapter(
+      openAiConfig(fetchReturning(200, openAiReasoningPayload)),
+    );
+
+    const result = successValue(await run(adapter.complete(request({ model: "gpt-5.6-luna" }))));
+
+    expect(result.usage.reasoningTokens).toBe(92);
+    expect(result.usage.completionTokens).toBe(96);
+    expect(result.usage.totalTokens).toBe(116);
+  });
+
+  test("buffered stream() carries reasoning tokens on the terminal chunk", async () => {
+    const adapter = makePassthroughAdapter(
+      openAiConfig(fetchReturning(200, openAiReasoningPayload)),
+    );
+
+    const chunks = successValue(
+      await run(adapter.stream(request({ model: "gpt-5.6-luna", stream: true }))),
+    );
+
+    expect(chunks[1]?.usage?.reasoningTokens).toBe(92);
+  });
+
+  test("streamSse() maps reasoning tokens off the terminal usage frame", async () => {
+    // The streamed parser is a DIFFERENT function from the non-streaming one,
+    // reading the same wire field; it is asserted separately rather than
+    // assumed to follow.
+    const adapter = makePassthroughAdapter(
+      openAiConfig(
+        fetchStreaming(() =>
+          chunkedSseResponse([
+            { choices: [{ delta: { content: "391" }, index: 0 }] },
+            {
+              choices: [{ delta: {}, finish_reason: "stop", index: 0 }],
+              model: "gpt-5.6-luna",
+              usage: {
+                completion_tokens: 96,
+                completion_tokens_details: { reasoning_tokens: 92 },
+                prompt_tokens: 20,
+                total_tokens: 116,
+              },
+            },
+          ]),
+        ),
+      ),
+    );
+
+    const drained = await drainSource(
+      adapter,
+      request({ model: "gpt-5.6-luna", stream: true }),
+    );
+
+    expect(drained.source.terminal().usage?.reasoningTokens).toBe(92);
+  });
+
+  test("a partner that reports no reasoning leaves the field undefined", async () => {
+    const adapter = makePassthroughAdapter(openAiConfig(fetchReturning(200, openAiPayload)));
+
+    const result = successValue(await run(adapter.complete(request())));
+
+    expect(result.usage.reasoningTokens).toBeUndefined();
+  });
+});
