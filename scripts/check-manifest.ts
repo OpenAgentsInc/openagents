@@ -109,6 +109,10 @@ export const fastPolicyTargets: readonly CheckTarget[] = [
     name: "vp1-retirement",
     command: ["node", "scripts/vp1-retired-money-surface-guard.mjs", "."],
   },
+  {
+    name: "sarah-participant-join-authority",
+    command: ["node", "scripts/sarah-participant-join-authority-guard.mjs", "."],
+  },
 ];
 
 export const completionTargets: readonly CheckTarget[] = [
