@@ -6,10 +6,12 @@ import { createHash } from 'node:crypto'
 import { describe, expect, test } from 'vitest'
 
 import {
+  flushSarahLiveKitToolControl,
   handleSarahProviderEvent,
   makeSarahRealtimeBridgeData,
   makeSarahRealtimeWebSocketHandlers,
   parseSarahRealtimeBridgeCreditRate,
+  pollSarahLiveKitToolControl,
   sarahEditorCommandRequiresConfirmation,
   sessionUpdateForSarahClientProfile,
   usageFromInputTranscription,
@@ -47,6 +49,165 @@ const clientAudioFrame = (sequence: number): Uint8Array => {
 }
 
 describe('Sarah Realtime bridge metering', () => {
+  test('carries a LiveKit proposal, confirmed execution, and outcome over control only', async () => {
+    const proposal = {
+      proposalRef: 'proposal:one',
+      proposalDigest: 'a'.repeat(64),
+      command: {
+        _tag: 'start_agent_thread' as const,
+        message: 'Inspect the current test failure.',
+        presentation: 'foreground' as const,
+      },
+      confirmationRequired: true as const,
+      expiresAtMs: Date.now() + 60_000,
+    }
+    let proposalState:
+      | { state: 'proposed' }
+      | { state: 'execute_sent' }
+      | {
+          state: 'outcome'
+          outcomeRef: string
+          ok: boolean
+          summary: string
+        } = { state: 'proposed' }
+    const store = {
+      readLiveKitToolProposals: async () =>
+        proposalState.state === 'proposed' ? [proposal] : [],
+      decideLiveKitTool: async (input: { decision: 'confirm' | 'decline' }) => {
+        if (
+          input.decision !== 'confirm' ||
+          proposalState.state !== 'proposed'
+        ) {
+          throw new Error('unexpected decision')
+        }
+        proposalState = { state: 'execute_sent' }
+        return proposal
+      },
+      recordLiveKitToolOutcome: async (input: {
+        outcomeRef: string
+        ok: boolean
+        summary: string
+      }) => {
+        if (proposalState.state !== 'execute_sent') {
+          throw new Error('outcome before execution')
+        }
+        proposalState = {
+          state: 'outcome',
+          outcomeRef: input.outcomeRef,
+          ok: input.ok,
+          summary: input.summary,
+        }
+      },
+    }
+    const nowMs = Date.now()
+    const data = makeSarahRealtimeBridgeData({
+      session: {
+        sessionRef: 'session-1',
+        ownerUserId: 'user-1',
+        ownerActorRef: 'agent:user-1',
+        deviceRef: 'device-1',
+        threadRef: 'thread-1',
+        generation: 1,
+        disclosureRef: 'disclosure-1',
+        clientProfile: 'omega_editor',
+        transportKind: 'livekit_room_v1',
+        creditMode: 'metered',
+        entitlementRef: null,
+        admissionCohortRef: 'sarah_voice_cohort:alpha_v1',
+        state: 'connected',
+        reservedMsat: 1_000,
+        chargedMsat: 0,
+        ticketExpiresAt: new Date(nowMs + 30_000).toISOString(),
+        sessionExpiresAt: new Date(nowMs + 60_000).toISOString(),
+        settlementReceiptRef: null,
+      },
+      apiKey: 'unused',
+      safetyIdentifier: 'test-safety',
+      creditMsatPerMillionTokens: 1_000,
+      store: store as never,
+      closeStore: async () => undefined,
+      tasks: {} as never,
+    })
+    const sent: Array<Record<string, unknown>> = []
+    const socket = {
+      data,
+      send: (message: string) =>
+        sent.push(JSON.parse(message) as Record<string, unknown>),
+      close: () => undefined,
+    }
+    const identity = {
+      ownerRef: 'user-1',
+      deviceRef: 'device-1',
+      threadRef: 'thread-1',
+      sessionRef: 'session-1',
+      generation: 1,
+    }
+    const handlers = makeSarahRealtimeWebSocketHandlers()
+
+    handlers.message(
+      socket as never,
+      JSON.stringify({
+        schema: 'openagents.sarah.voice.v1',
+        _tag: 'session_hello',
+        identity,
+        sequence: 0,
+        disclosureRef: 'disclosure-1',
+      }),
+    )
+    await pollSarahLiveKitToolControl(socket as never)
+    expect(sent.at(-1)).toMatchObject({
+      _tag: 'tool_proposal',
+      proposalRef: proposal.proposalRef,
+      command: { _tag: 'start_agent_thread' },
+    })
+
+    handlers.message(
+      socket as never,
+      JSON.stringify({
+        schema: 'openagents.sarah.voice.v1',
+        _tag: 'tool_decision',
+        identity,
+        sequence: 1,
+        proposalRef: proposal.proposalRef,
+        proposalDigest: proposal.proposalDigest,
+        decision: 'confirm',
+      }),
+    )
+    await flushSarahLiveKitToolControl(socket as never)
+    expect(sent.at(-1)).toMatchObject({
+      _tag: 'tool_execute',
+      proposalRef: proposal.proposalRef,
+      command: { _tag: 'start_agent_thread' },
+    })
+
+    handlers.message(
+      socket as never,
+      JSON.stringify({
+        schema: 'openagents.sarah.voice.v1',
+        _tag: 'tool_outcome',
+        identity,
+        sequence: 2,
+        proposalRef: proposal.proposalRef,
+        proposalDigest: proposal.proposalDigest,
+        outcomeRef: 'outcome:one',
+        ok: true,
+        summary: 'Omega accepted the new agent thread.',
+      }),
+    )
+    await flushSarahLiveKitToolControl(socket as never)
+    expect(sent.at(-1)).toMatchObject({
+      _tag: 'tool_outcome_ref',
+      proposalRef: proposal.proposalRef,
+      outcomeRef: 'outcome:one',
+    })
+    expect(proposalState).toEqual({
+      state: 'outcome',
+      outcomeRef: 'outcome:one',
+      ok: true,
+      summary: 'Omega accepted the new agent thread.',
+    })
+  })
+
   test('keeps a LiveKit ticket connection control-only and rejects audio frames', () => {
     const nowMs = Date.now()
     const data = makeSarahRealtimeBridgeData({

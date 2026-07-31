@@ -2,9 +2,13 @@ import {
   SARAH_LIVEKIT_AGENT_NAME,
   SARAH_LIVEKIT_JOB_CLAIM_PATH,
   SARAH_LIVEKIT_JOB_EVENT_PATH,
+  SARAH_LIVEKIT_TOOL_PROPOSAL_PATH,
+  SARAH_LIVEKIT_TOOL_STATE_PATH,
   SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
   decodeSarahLiveKitJobClaimRequest,
   decodeSarahLiveKitJobEvent,
+  decodeSarahLiveKitToolProposalRequest,
+  decodeSarahLiveKitToolStateRequest,
 } from "@openagentsinc/audio-contract";
 import type { SarahRealtimeVoiceStore } from "@openagentsinc/khala-sync-server";
 import { createHash, timingSafeEqual } from "node:crypto";
@@ -16,6 +20,8 @@ import {
 
 export const SARAH_LIVEKIT_WORKER_CLAIM_PATH = SARAH_LIVEKIT_JOB_CLAIM_PATH;
 export const SARAH_LIVEKIT_WORKER_EVENT_PATH = SARAH_LIVEKIT_JOB_EVENT_PATH;
+export const SARAH_LIVEKIT_WORKER_TOOL_PROPOSAL_PATH = SARAH_LIVEKIT_TOOL_PROPOSAL_PATH;
+export const SARAH_LIVEKIT_WORKER_TOOL_STATE_PATH = SARAH_LIVEKIT_TOOL_STATE_PATH;
 
 export type SarahLiveKitWorkerRouteDependencies<Bindings> = Readonly<{
   controlRoot: (env: Bindings) => string | undefined;
@@ -95,10 +101,11 @@ const capabilityProfile = (
 ):
   | Readonly<{
       kind: "private_owner_v1";
-      contextRead: true;
-      editorProposals: true;
-      ownerMemory: true;
-      workspace: true;
+      contextRead: false;
+      editorProposals: false;
+      agentThreadProposals: true;
+      ownerMemory: false;
+      workspace: false;
       payments: false;
       release: false;
       memberAdmin: false;
@@ -110,6 +117,7 @@ const capabilityProfile = (
       kind: "community_member_v1";
       contextRead: false;
       editorProposals: false;
+      agentThreadProposals: false;
       ownerMemory: false;
       workspace: false;
       payments: false;
@@ -122,10 +130,11 @@ const capabilityProfile = (
   kind === "private"
     ? {
         kind: "private_owner_v1",
-        contextRead: true,
-        editorProposals: true,
-        ownerMemory: true,
-        workspace: true,
+        contextRead: false,
+        editorProposals: false,
+        agentThreadProposals: true,
+        ownerMemory: false,
+        workspace: false,
         payments: false,
         release: false,
         memberAdmin: false,
@@ -137,6 +146,7 @@ const capabilityProfile = (
         kind: "community_member_v1",
         contextRead: false,
         editorProposals: false,
+        agentThreadProposals: false,
         ownerMemory: false,
         workspace: false,
         payments: false,
@@ -320,6 +330,123 @@ export const handleSarahLiveKitWorkerEvent = async <Bindings>(
     );
   } catch {
     return noStoreJson({ error: "sarah_livekit_worker_event_refused" }, 409);
+  } finally {
+    try {
+      await opened?.close();
+    } catch {
+      // The response outcome is already fixed and must not expose storage details.
+    }
+  }
+};
+
+export const handleSarahLiveKitWorkerToolProposal = async <Bindings>(
+  dependencies: SarahLiveKitWorkerRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+): Promise<Response> => {
+  if (request.method !== "POST") {
+    return noStoreJson({ error: "method_not_allowed" }, 405);
+  }
+  const token = tokenFromRequest(request);
+  if (token === undefined) return noStoreJson({ error: "unauthorized" }, 401);
+  if (parseSarahLiveKitControlRoot(dependencies.controlRoot(env)) === undefined) {
+    return noStoreJson({ error: "unauthorized" }, 401);
+  }
+  const body = await parseBody(request, decodeSarahLiveKitToolProposalRequest);
+  if (body === undefined) {
+    return noStoreJson({ error: "invalid_sarah_livekit_tool_proposal" }, 400);
+  }
+  let opened: Readonly<{ store: SarahRealtimeVoiceStore; close: () => Promise<void> }> | undefined;
+  try {
+    opened = await dependencies.openStore(env);
+    const now = (dependencies.now ?? Date.now)();
+    const nowIso = new Date(now).toISOString();
+    const expiresAt = new Date(now + 60_000).toISOString();
+    const commandPayload = canonicalJson(body.command);
+    const proposalRef = `sarah_lk_tool_${sha256(
+      canonicalJson([body.sessionRef, body.generation, body.eventRef]),
+    ).slice(0, 40)}`;
+    const proposalDigest = sha256(
+      canonicalJson({
+        protocol: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        sessionRef: body.sessionRef,
+        generation: body.generation,
+        proposalRef,
+        command: body.command,
+        expiresAt,
+      }),
+    );
+    const proposal = await opened.store.proposeLiveKitTool({
+      workerControlTokenDigest: sha256(token),
+      workerJobRef: body.jobRef,
+      sessionRef: body.sessionRef,
+      generation: body.generation,
+      workerEventRef: body.eventRef,
+      providerCallRef: body.providerCallRef,
+      commandPayloadDigest: sha256(commandPayload),
+      proposalRef,
+      proposalDigest,
+      command: body.command,
+      nowIso,
+      expiresAt,
+    });
+    return noStoreJson(
+      {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        accepted: true,
+        proposal,
+      },
+      200,
+    );
+  } catch {
+    return noStoreJson({ error: "sarah_livekit_tool_proposal_refused" }, 409);
+  } finally {
+    try {
+      await opened?.close();
+    } catch {
+      // The response outcome is already fixed and must not expose storage details.
+    }
+  }
+};
+
+export const handleSarahLiveKitWorkerToolState = async <Bindings>(
+  dependencies: SarahLiveKitWorkerRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+): Promise<Response> => {
+  if (request.method !== "POST") {
+    return noStoreJson({ error: "method_not_allowed" }, 405);
+  }
+  const token = tokenFromRequest(request);
+  if (token === undefined) return noStoreJson({ error: "unauthorized" }, 401);
+  if (parseSarahLiveKitControlRoot(dependencies.controlRoot(env)) === undefined) {
+    return noStoreJson({ error: "unauthorized" }, 401);
+  }
+  const body = await parseBody(request, decodeSarahLiveKitToolStateRequest);
+  if (body === undefined) {
+    return noStoreJson({ error: "invalid_sarah_livekit_tool_state" }, 400);
+  }
+  let opened: Readonly<{ store: SarahRealtimeVoiceStore; close: () => Promise<void> }> | undefined;
+  try {
+    opened = await dependencies.openStore(env);
+    const state = await opened.store.readLiveKitToolState({
+      workerControlTokenDigest: sha256(token),
+      workerJobRef: body.jobRef,
+      sessionRef: body.sessionRef,
+      generation: body.generation,
+      proposalRef: body.proposalRef,
+      proposalDigest: body.proposalDigest,
+      nowIso: new Date((dependencies.now ?? Date.now)()).toISOString(),
+    });
+    return noStoreJson(
+      {
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        ...state,
+      },
+      200,
+    );
+  } catch {
+    return noStoreJson({ error: "sarah_livekit_tool_state_refused" }, 409);
   } finally {
     try {
       await opened?.close();

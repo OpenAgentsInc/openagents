@@ -6,6 +6,8 @@ import {
   decodeSarahLiveKitDispatchMetadata,
   decodeSarahLiveKitJobClaimResponse,
   decodeSarahLiveKitJobEvent,
+  decodeSarahLiveKitToolProposalRequest,
+  decodeSarahLiveKitToolStateResponse,
 } from "./sarah-livekit-worker.js";
 
 const dispatch = {
@@ -77,10 +79,11 @@ describe("Sarah LiveKit worker contract", () => {
       ...base,
       capabilityProfile: {
         kind: "private_owner_v1",
-        contextRead: true,
-        editorProposals: true,
-        ownerMemory: true,
-        workspace: true,
+        contextRead: false,
+        editorProposals: false,
+        agentThreadProposals: true,
+        ownerMemory: false,
+        workspace: false,
         payments: false,
         release: false,
         memberAdmin: false,
@@ -95,6 +98,7 @@ describe("Sarah LiveKit worker contract", () => {
         kind: "community_member_v1",
         contextRead: false,
         editorProposals: false,
+        agentThreadProposals: false,
         ownerMemory: false,
         workspace: false,
         payments: false,
@@ -138,5 +142,40 @@ describe("Sarah LiveKit worker contract", () => {
         providerTranscriptionRef: "transcription:one",
       })._tag,
     ).toBe("transcription_usage");
+  });
+
+  test("admits only the generation-bound start-agent-thread tool contract", () => {
+    const proposal = decodeSarahLiveKitToolProposalRequest({
+      schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+      sessionRef: "session:one",
+      generation: 1,
+      jobRef: "job:one",
+      eventRef: "tool:event:one",
+      providerCallRef: "call:one",
+      command: {
+        _tag: "start_agent_thread",
+        message: "Inspect the current test failure.",
+        presentation: "foreground",
+      },
+    });
+    expect(proposal.command._tag).toBe("start_agent_thread");
+    expect(() =>
+      decodeSarahLiveKitToolProposalRequest({
+        ...proposal,
+        command: {
+          _tag: "context_read",
+          path: "src/app.ts",
+        },
+      }),
+    ).toThrow();
+    expect(
+      decodeSarahLiveKitToolStateResponse({
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        state: "outcome",
+        outcomeRef: "outcome:one",
+        ok: true,
+        summary: "Omega accepted the new agent thread.",
+      }).state,
+    ).toBe("outcome");
   });
 });

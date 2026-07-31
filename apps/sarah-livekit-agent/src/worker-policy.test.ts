@@ -36,12 +36,14 @@ describe("Sarah LiveKit worker policy", () => {
     expect(source).not.toContain("logMetrics");
   });
 
-  test("uses the least worker permission grant enforced by Agents JS 1.6.0", async () => {
+  test("grants data publish only for ephemeral LiveKit transcription output", async () => {
     const source = await readFile(new URL("./agent.ts", import.meta.url), "utf8");
     expect(source).toMatch(
-      /new WorkerPermissions\(\s*true,\s*true,\s*false,\s*false,\s*\[\],\s*false,?\s*\)/u,
+      /new WorkerPermissions\(\s*true,\s*true,\s*true,\s*false,\s*\[\],\s*false,?\s*\)/u,
     );
     expect(source).not.toContain("TrackSource.MICROPHONE");
-    expect(source).toContain("Agents JS 1.6.0 does not send canPublishSources");
+    expect(source).toContain("publishTranscription");
+    expect(source).not.toContain(".publishData(");
+    expect(source).toContain("stores no transcript");
   });
 });

@@ -1305,8 +1305,12 @@ import {
 import {
   SARAH_LIVEKIT_WORKER_CLAIM_PATH,
   SARAH_LIVEKIT_WORKER_EVENT_PATH,
+  SARAH_LIVEKIT_WORKER_TOOL_PROPOSAL_PATH,
+  SARAH_LIVEKIT_WORKER_TOOL_STATE_PATH,
   handleSarahLiveKitWorkerClaim,
   handleSarahLiveKitWorkerEvent,
+  handleSarahLiveKitWorkerToolProposal,
+  handleSarahLiveKitWorkerToolState,
 } from './sarah-livekit-worker-routes'
 import { makeSarahManagedSandboxTools } from './sarah-managed-sandbox'
 import {
@@ -13989,6 +13993,28 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env) =>
       Effect.promise(() =>
         handleSarahLiveKitWorkerEvent(
+          sarahLiveKitWorkerRouteDependencies,
+          request,
+          env,
+        ),
+      ),
+  },
+  {
+    path: SARAH_LIVEKIT_WORKER_TOOL_PROPOSAL_PATH,
+    handler: (request, env) =>
+      Effect.promise(() =>
+        handleSarahLiveKitWorkerToolProposal(
+          sarahLiveKitWorkerRouteDependencies,
+          request,
+          env,
+        ),
+      ),
+  },
+  {
+    path: SARAH_LIVEKIT_WORKER_TOOL_STATE_PATH,
+    handler: (request, env) =>
+      Effect.promise(() =>
+        handleSarahLiveKitWorkerToolState(
           sarahLiveKitWorkerRouteDependencies,
           request,
           env,

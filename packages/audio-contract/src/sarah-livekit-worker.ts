@@ -7,6 +7,9 @@ export const SARAH_LIVEKIT_VOICE = "marin" as const;
 export const SARAH_LIVEKIT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe" as const;
 export const SARAH_LIVEKIT_JOB_CLAIM_PATH = "/api/internal/sarah/livekit/job/claim" as const;
 export const SARAH_LIVEKIT_JOB_EVENT_PATH = "/api/internal/sarah/livekit/job/event" as const;
+export const SARAH_LIVEKIT_TOOL_PROPOSAL_PATH =
+  "/api/internal/sarah/livekit/tool/proposal" as const;
+export const SARAH_LIVEKIT_TOOL_STATE_PATH = "/api/internal/sarah/livekit/tool/state" as const;
 
 const Ref = S.Trim.check(S.isMinLength(1), S.isMaxLength(256));
 const Digest = S.String.check(S.isPattern(/^[a-f0-9]{64}$/u));
@@ -26,10 +29,11 @@ export type SarahLiveKitRoomContext = typeof SarahLiveKitRoomContextSchema.Type;
 export const SarahLiveKitCapabilityProfileSchema = S.Union([
   S.Struct({
     kind: S.Literal("private_owner_v1"),
-    contextRead: S.Literal(true),
-    editorProposals: S.Literal(true),
-    ownerMemory: S.Literal(true),
-    workspace: S.Literal(true),
+    contextRead: S.Literal(false),
+    editorProposals: S.Literal(false),
+    agentThreadProposals: S.Literal(true),
+    ownerMemory: S.Literal(false),
+    workspace: S.Literal(false),
     payments: S.Literal(false),
     release: S.Literal(false),
     memberAdmin: S.Literal(false),
@@ -41,6 +45,7 @@ export const SarahLiveKitCapabilityProfileSchema = S.Union([
     kind: S.Literal("community_member_v1"),
     contextRead: S.Literal(false),
     editorProposals: S.Literal(false),
+    agentThreadProposals: S.Literal(false),
     ownerMemory: S.Literal(false),
     workspace: S.Literal(false),
     payments: S.Literal(false),
@@ -169,6 +174,73 @@ export const SarahLiveKitJobEventSchema = S.Union([
 ]);
 export type SarahLiveKitJobEvent = typeof SarahLiveKitJobEventSchema.Type;
 
+export const SarahLiveKitAgentThreadCommandSchema = S.Struct({
+  _tag: S.Literal("start_agent_thread"),
+  message: S.String.check(S.isMinLength(1), S.isMaxLength(16_384)),
+  presentation: S.Literals(["foreground", "background"]),
+});
+export type SarahLiveKitAgentThreadCommand = typeof SarahLiveKitAgentThreadCommandSchema.Type;
+
+export const SarahLiveKitToolProposalRequestSchema = S.Struct({
+  schema: S.Literal(SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION),
+  sessionRef: Ref,
+  generation: Seq,
+  jobRef: Ref,
+  eventRef: Ref,
+  providerCallRef: Ref,
+  command: SarahLiveKitAgentThreadCommandSchema,
+});
+export type SarahLiveKitToolProposalRequest = typeof SarahLiveKitToolProposalRequestSchema.Type;
+
+export const SarahLiveKitToolProposalSchema = S.Struct({
+  proposalRef: Ref,
+  proposalDigest: Digest,
+  command: SarahLiveKitAgentThreadCommandSchema,
+  confirmationRequired: S.Literal(true),
+  expiresAtMs: Seq,
+});
+export type SarahLiveKitToolProposal = typeof SarahLiveKitToolProposalSchema.Type;
+
+export const SarahLiveKitToolProposalResponseSchema = S.Struct({
+  schema: S.Literal(SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION),
+  accepted: S.Literal(true),
+  proposal: SarahLiveKitToolProposalSchema,
+});
+export type SarahLiveKitToolProposalResponse = typeof SarahLiveKitToolProposalResponseSchema.Type;
+
+export const SarahLiveKitToolStateRequestSchema = S.Struct({
+  schema: S.Literal(SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION),
+  sessionRef: Ref,
+  generation: Seq,
+  jobRef: Ref,
+  proposalRef: Ref,
+  proposalDigest: Digest,
+});
+export type SarahLiveKitToolStateRequest = typeof SarahLiveKitToolStateRequestSchema.Type;
+
+export const SarahLiveKitToolStateResponseSchema = S.Union([
+  S.Struct({
+    schema: S.Literal(SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION),
+    state: S.Literal("waiting_decision"),
+  }),
+  S.Struct({
+    schema: S.Literal(SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION),
+    state: S.Literal("declined"),
+  }),
+  S.Struct({
+    schema: S.Literal(SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION),
+    state: S.Literal("execute_sent"),
+  }),
+  S.Struct({
+    schema: S.Literal(SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION),
+    state: S.Literal("outcome"),
+    outcomeRef: Ref,
+    ok: S.Boolean,
+    summary: S.String.check(S.isMaxLength(2_048)),
+  }),
+]);
+export type SarahLiveKitToolStateResponse = typeof SarahLiveKitToolStateResponseSchema.Type;
+
 export const decodeSarahLiveKitDispatchMetadata = (value: unknown) =>
   S.decodeUnknownSync(SarahLiveKitDispatchMetadataSchema)(value, {
     onExcessProperty: "error",
@@ -215,5 +287,25 @@ export const decodeSarahLiveKitJobClaimResponse = (value: unknown) =>
 
 export const decodeSarahLiveKitJobEvent = (value: unknown) =>
   S.decodeUnknownSync(SarahLiveKitJobEventSchema)(value, {
+    onExcessProperty: "error",
+  });
+
+export const decodeSarahLiveKitToolProposalRequest = (value: unknown) =>
+  S.decodeUnknownSync(SarahLiveKitToolProposalRequestSchema)(value, {
+    onExcessProperty: "error",
+  });
+
+export const decodeSarahLiveKitToolProposalResponse = (value: unknown) =>
+  S.decodeUnknownSync(SarahLiveKitToolProposalResponseSchema)(value, {
+    onExcessProperty: "error",
+  });
+
+export const decodeSarahLiveKitToolStateRequest = (value: unknown) =>
+  S.decodeUnknownSync(SarahLiveKitToolStateRequestSchema)(value, {
+    onExcessProperty: "error",
+  });
+
+export const decodeSarahLiveKitToolStateResponse = (value: unknown) =>
+  S.decodeUnknownSync(SarahLiveKitToolStateResponseSchema)(value, {
     onExcessProperty: "error",
   });

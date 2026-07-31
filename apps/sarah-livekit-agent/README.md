@@ -24,12 +24,13 @@ worker does not record media, retain transcripts, or log raw OpenAI events.
 
 Agents JS 1.6.0 enforces publish, subscribe, publish-data, metadata-update, and
 hidden permissions during worker registration, but it does not send its
-`canPublishSources` field to LiveKit. Sarah therefore uses the least grant that
-this pinned release can enforce: publish and subscribe enabled for voice,
-publish-data and metadata updates disabled, and a visible participant. The
-session itself enables audio output only and disables video and text output;
-that media-source restriction is behavioral, not a server-enforced worker
-permission in this SDK release.
+`canPublishSources` field to LiveKit. Sarah enables publish and subscribe for
+voice and enables publish-data only because the pinned SDK implements disclosed
+session transcription with `localParticipant.publishTranscription`. The worker
+has no generic data-publish call, does not store transcripts, disables metadata
+updates, and remains visible. The session enables audio and ephemeral
+transcription output only; its media-source restriction is behavioral, not a
+server-enforced worker permission in this SDK release.
 
 The OpenAI plugin is pinned and patched to attach the generation's hashed owner
 identifier as `OpenAI-Safety-Identifier`. Response usage comes only from
@@ -37,9 +38,23 @@ identifier as `OpenAI-Safety-Identifier`. Response usage comes only from
 separately from the transcription-completed event.
 
 Private and community jobs instantiate separate capability profiles. Community
-jobs receive no owner memory, workspace, editor proposal, payment,
-administration, shell, Git, or credential capability. The private editor tool
-returns a confirmation-required proposal and cannot execute it.
+jobs are structurally tool-free and receive no owner memory, workspace, editor
+proposal, payment, administration, shell, Git, or credential capability. A
+private Omega job has one tool: `start_agent_thread`. The tool creates a
+generation-bound proposal and waits. It returns success to OpenAI only after
+Omega confirms the proposal, receives the bounded command, and returns a typed
+outcome.
+
+For the Omega client, LiveKit remains the audio transport. The session's
+ticketed `gatewayUrl` remains the authoritative control channel. The client
+must keep that socket open, render `tool_proposal`, send `tool_decision` with
+the exact proposal ref and digest, execute only the `tool_execute` command, and
+return `tool_outcome` with the same ref and digest. The API then emits
+`tool_outcome_ref`; the worker observes that outcome through its authenticated
+control route and only then returns the function result to the Realtime model.
+No LiveKit room data packet authorizes a command. Omega issue #185 owns the
+client adapter that maps these existing `SarahVoiceServerControl` and
+`SarahVoiceClientControl` frames into the desktop command-confirmation UI.
 
 New room admission is serialized in Postgres and refuses room 21. Operators can
 set `SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED=false` on the API to stop all new

@@ -1,12 +1,19 @@
 import {
   SARAH_LIVEKIT_JOB_CLAIM_PATH,
   SARAH_LIVEKIT_JOB_EVENT_PATH,
+  SARAH_LIVEKIT_TOOL_PROPOSAL_PATH,
+  SARAH_LIVEKIT_TOOL_STATE_PATH,
   SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
   canonicalSarahLiveKitDispatchAuthority,
   decodeSarahLiveKitJobClaimResponse,
+  decodeSarahLiveKitToolProposalResponse,
+  decodeSarahLiveKitToolStateResponse,
+  type SarahLiveKitAgentThreadCommand,
   type SarahLiveKitDispatchMetadata,
   type SarahLiveKitJobClaimResponse,
   type SarahLiveKitJobEvent,
+  type SarahLiveKitToolProposal,
+  type SarahLiveKitToolStateResponse,
 } from "@openagentsinc/audio-contract";
 import { createHmac } from "node:crypto";
 
@@ -26,6 +33,23 @@ export type SarahLiveKitClaimInput = Readonly<{
 export type SarahLiveKitEventResult = Readonly<{
   accepted: true;
   stopReason?: "hold_exhausted" | "membership_revoked" | "operator_stop" | "session_expired";
+}>;
+
+export type SarahLiveKitToolProposalInput = Readonly<{
+  sessionRef: string;
+  generation: number;
+  jobRef: string;
+  eventRef: string;
+  providerCallRef: string;
+  command: SarahLiveKitAgentThreadCommand;
+}>;
+
+export type SarahLiveKitToolStateInput = Readonly<{
+  sessionRef: string;
+  generation: number;
+  jobRef: string;
+  proposalRef: string;
+  proposalDigest: string;
 }>;
 
 const normalizedBaseUrl = (value: string): string => {
@@ -179,5 +203,45 @@ export const makeSarahLiveKitControlClient = (
     return stopReason === undefined ? { accepted: true } : { accepted: true, stopReason };
   };
 
-  return { claim, event } as const;
+  const proposeTool = async (
+    dispatch: SarahLiveKitDispatchMetadata,
+    input: SarahLiveKitToolProposalInput,
+  ): Promise<SarahLiveKitToolProposal> => {
+    const response = await fetcher(`${baseUrl}${SARAH_LIVEKIT_TOOL_PROPOSAL_PATH}`, {
+      method: "POST",
+      headers: noStoreHeaders(controlToken(dispatch)),
+      body: JSON.stringify({
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        ...input,
+      }),
+      redirect: "error",
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) {
+      throw new Error(`Sarah LiveKit tool proposal refused (${response.status})`);
+    }
+    return decodeSarahLiveKitToolProposalResponse(await boundedBody(response)).proposal;
+  };
+
+  const readToolState = async (
+    dispatch: SarahLiveKitDispatchMetadata,
+    input: SarahLiveKitToolStateInput,
+  ): Promise<SarahLiveKitToolStateResponse> => {
+    const response = await fetcher(`${baseUrl}${SARAH_LIVEKIT_TOOL_STATE_PATH}`, {
+      method: "POST",
+      headers: noStoreHeaders(controlToken(dispatch)),
+      body: JSON.stringify({
+        schema: SARAH_LIVEKIT_WORKER_PROTOCOL_VERSION,
+        ...input,
+      }),
+      redirect: "error",
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) {
+      throw new Error(`Sarah LiveKit tool state refused (${response.status})`);
+    }
+    return decodeSarahLiveKitToolStateResponse(await boundedBody(response));
+  };
+
+  return { claim, event, proposeTool, readToolState } as const;
 };

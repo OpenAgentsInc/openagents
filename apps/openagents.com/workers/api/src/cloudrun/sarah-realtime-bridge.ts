@@ -42,9 +42,12 @@ export type SarahRealtimeBridgeData = {
   cleanupStarted: boolean
   currentOutputItemRef: string | undefined
   readonly proposals: Map<string, ToolProposal>
+  readonly deliveredLiveKitProposalRefs: Set<string>
   meteringTail: Promise<void>
+  toolControlTail: Promise<void>
   expiryTimer: ReturnType<typeof setTimeout> | undefined
   providerHeartbeatTimer: ReturnType<typeof setInterval> | undefined
+  liveKitToolPollTimer: ReturnType<typeof setInterval> | undefined
 }
 
 type ToolProposal = Readonly<{
@@ -147,8 +150,11 @@ const cleanup = (ws: Socket, closeReason: string): Promise<void> => {
   if (ws.data.providerHeartbeatTimer !== undefined) {
     clearInterval(ws.data.providerHeartbeatTimer)
   }
+  if (ws.data.liveKitToolPollTimer !== undefined) {
+    clearInterval(ws.data.liveKitToolPollTimer)
+  }
   safeProviderClose(ws.data.upstream)
-  return ws.data.meteringTail
+  return Promise.all([ws.data.meteringTail, ws.data.toolControlTail])
     .then(() =>
       ws.data.store.settle({
         sessionRef: ws.data.session.sessionRef,
@@ -164,6 +170,54 @@ const cleanup = (ws: Socket, closeReason: string): Promise<void> => {
       },
     )
 }
+
+const queueLiveKitToolControl = (
+  ws: Socket,
+  operation: () => Promise<void>,
+): void => {
+  ws.data.toolControlTail = ws.data.toolControlTail
+    .then(operation)
+    .catch(() => {
+      sendControl(ws, {
+        _tag: 'error',
+        code: 'internal',
+        retryable: false,
+      })
+    })
+}
+
+export const pollSarahLiveKitToolControl = async (
+  ws: Socket,
+): Promise<void> => {
+  if (
+    ws.data.session.transportKind !== 'livekit_room_v1' ||
+    ws.data.session.clientProfile !== 'omega_editor'
+  ) {
+    return
+  }
+  const proposals = await ws.data.store.readLiveKitToolProposals({
+    sessionRef: ws.data.session.sessionRef,
+    generation: ws.data.session.generation,
+    nowIso: new Date().toISOString(),
+  })
+  for (const proposal of proposals) {
+    if (ws.data.deliveredLiveKitProposalRefs.has(proposal.proposalRef)) {
+      continue
+    }
+    ws.data.deliveredLiveKitProposalRefs.add(proposal.proposalRef)
+    sendControl(ws, {
+      _tag: 'tool_proposal',
+      proposalRef: proposal.proposalRef,
+      proposalDigest: proposal.proposalDigest,
+      command: proposal.command,
+      confirmationRequired: true,
+      expiresAtMs: proposal.expiresAtMs,
+    })
+  }
+}
+
+export const flushSarahLiveKitToolControl = (ws: Socket): Promise<void> =>
+  ws.data.toolControlTail
 
 const decodeClientMedia = (
   bytes: Uint8Array,
@@ -870,6 +924,27 @@ const handleControl = (ws: Socket, raw: string): void => {
         sendControl(ws, { _tag: 'lifecycle', state: 'interrupted' })
         break
       case 'tool_decision': {
+        if (ws.data.session.transportKind === 'livekit_room_v1') {
+          queueLiveKitToolControl(ws, async () => {
+            const proposal = await ws.data.store.decideLiveKitTool({
+              sessionRef: ws.data.session.sessionRef,
+              generation: ws.data.session.generation,
+              proposalRef: control.proposalRef,
+              proposalDigest: control.proposalDigest,
+              decision: control.decision,
+              nowIso: new Date().toISOString(),
+            })
+            if (control.decision === 'confirm' && proposal !== undefined) {
+              sendControl(ws, {
+                _tag: 'tool_execute',
+                proposalRef: proposal.proposalRef,
+                proposalDigest: proposal.proposalDigest,
+                command: proposal.command,
+              })
+            }
+          })
+          break
+        }
         const proposal = ws.data.proposals.get(control.proposalRef)
         if (
           proposal === undefined ||
@@ -904,6 +979,26 @@ const handleControl = (ws: Socket, raw: string): void => {
         break
       }
       case 'tool_outcome': {
+        if (ws.data.session.transportKind === 'livekit_room_v1') {
+          queueLiveKitToolControl(ws, async () => {
+            await ws.data.store.recordLiveKitToolOutcome({
+              sessionRef: ws.data.session.sessionRef,
+              generation: ws.data.session.generation,
+              proposalRef: control.proposalRef,
+              proposalDigest: control.proposalDigest,
+              outcomeRef: control.outcomeRef,
+              ok: control.ok,
+              summary: control.summary,
+              nowIso: new Date().toISOString(),
+            })
+            sendControl(ws, {
+              _tag: 'tool_outcome_ref',
+              proposalRef: control.proposalRef,
+              outcomeRef: control.outcomeRef,
+            })
+          })
+          break
+        }
         const proposal = ws.data.proposals.get(control.proposalRef)
         if (
           proposal === undefined ||
@@ -962,6 +1057,11 @@ export const makeSarahRealtimeWebSocketHandlers = () => ({
         reservedCreditMsat: ws.data.session.reservedMsat,
       })
       sendControl(ws, { _tag: 'lifecycle', state: 'listening' })
+      queueLiveKitToolControl(ws, () => pollSarahLiveKitToolControl(ws))
+      ws.data.liveKitToolPollTimer = setInterval(() => {
+        queueLiveKitToolControl(ws, () => pollSarahLiveKitToolControl(ws))
+      }, 250)
+      ws.data.liveKitToolPollTimer.unref()
       return
     }
     const upstream = new WebSocket(realtimeUrl, {
@@ -1123,9 +1223,12 @@ export const makeSarahRealtimeBridgeData = (
   cleanupStarted: false,
   currentOutputItemRef: undefined,
   proposals: new Map(),
+  deliveredLiveKitProposalRefs: new Set(),
   meteringTail: Promise.resolve(),
+  toolControlTail: Promise.resolve(),
   expiryTimer: undefined,
   providerHeartbeatTimer: undefined,
+  liveKitToolPollTimer: undefined,
 })
 
 export const parseSarahRealtimeBridgeCreditRate = (

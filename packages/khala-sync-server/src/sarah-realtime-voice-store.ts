@@ -114,6 +114,31 @@ export type SarahVoiceLiveKitWorkerEventResult = Readonly<{
   stopReason?: SarahVoiceLiveKitWorkerStopReason;
 }>;
 
+export type SarahVoiceLiveKitAgentThreadCommand = Readonly<{
+  _tag: "start_agent_thread";
+  message: string;
+  presentation: "foreground" | "background";
+}>;
+
+export type SarahVoiceLiveKitToolProposal = Readonly<{
+  proposalRef: string;
+  proposalDigest: string;
+  command: SarahVoiceLiveKitAgentThreadCommand;
+  confirmationRequired: true;
+  expiresAtMs: number;
+}>;
+
+export type SarahVoiceLiveKitToolState =
+  | Readonly<{ state: "waiting_decision" }>
+  | Readonly<{ state: "declined" }>
+  | Readonly<{ state: "execute_sent" }>
+  | Readonly<{
+      state: "outcome";
+      outcomeRef: string;
+      ok: boolean;
+      summary: string;
+    }>;
+
 export type SarahVoiceLiveKitRoomContext =
   | Readonly<{ kind: "private" }>
   | Readonly<{
@@ -714,11 +739,14 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           UPDATE sarah_realtime_voice_sessions
           SET state = 'connected',
               ticket_digest = NULL,
-              connected_at = ${input.nowIso},
+              connected_at = COALESCE(connected_at, ${input.nowIso}),
               updated_at = ${input.nowIso}
           WHERE session_ref = ${input.sessionRef}
             AND ticket_digest = ${input.ticketDigest}
-            AND state = 'reserved'
+            AND (
+              state = 'reserved'
+              OR (state = 'connected' AND transport_kind = 'livekit_room_v1')
+            )
             AND ticket_expires_at > ${input.nowIso}
             AND session_expires_at > ${input.nowIso}
           RETURNING session_ref, owner_user_id, owner_actor_ref, device_ref,
@@ -2265,7 +2293,6 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           const sessions = (await tx`
             UPDATE sarah_realtime_voice_sessions
             SET state = 'connected',
-                ticket_digest = NULL,
                 connected_at = COALESCE(connected_at, ${receipt.observedAt}),
                 updated_at = ${receipt.observedAt}
             WHERE session_ref = ${input.sessionRef}
@@ -2345,6 +2372,420 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     } catch (error) {
       if (error instanceof SarahVoiceSessionRejectedError) throw error;
       throw new SarahVoiceStorageError("Sarah LiveKit worker event apply failed", error);
+    }
+  };
+
+  type LiveKitToolProposalRow = Readonly<{
+    proposal_ref: string;
+    proposal_digest: string;
+    worker_job_ref: string;
+    worker_control_token_digest: string;
+    worker_event_ref: string;
+    provider_call_ref: string;
+    command_payload_digest: string;
+    command: unknown;
+    state: "proposed" | "declined" | "execute_sent" | "outcome";
+    outcome_ref: string | null;
+    outcome_ok: boolean | null;
+    outcome_summary: string | null;
+    expires_at: string;
+  }>;
+
+  const decodeStoredLiveKitAgentThreadCommand = (
+    value: unknown,
+  ): SarahVoiceLiveKitAgentThreadCommand => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new SarahVoiceStorageError("The Sarah LiveKit tool command is invalid", value);
+    }
+    const command = value as Record<string, unknown>;
+    const commandKeys = Object.keys(command);
+    if (
+      commandKeys.length !== 3 ||
+      commandKeys.some(
+        (key) => key !== "_tag" && key !== "message" && key !== "presentation",
+      ) ||
+      command._tag !== "start_agent_thread" ||
+      typeof command.message !== "string" ||
+      command.message.length < 1 ||
+      new TextEncoder().encode(command.message).byteLength > 16_384 ||
+      (command.presentation !== "foreground" && command.presentation !== "background")
+    ) {
+      throw new SarahVoiceStorageError("The Sarah LiveKit tool command is invalid", value);
+    }
+    return {
+      _tag: "start_agent_thread",
+      message: command.message,
+      presentation: command.presentation,
+    };
+  };
+
+  const toLiveKitToolProposal = (row: LiveKitToolProposalRow): SarahVoiceLiveKitToolProposal => {
+    const expiresAtMs = Date.parse(row.expires_at);
+    if (!Number.isSafeInteger(expiresAtMs) || expiresAtMs < 0) {
+      throw new SarahVoiceStorageError(
+        "The Sarah LiveKit tool proposal expiry is invalid",
+        row.expires_at,
+      );
+    }
+    return {
+      proposalRef: row.proposal_ref,
+      proposalDigest: row.proposal_digest,
+      command: decodeStoredLiveKitAgentThreadCommand(row.command),
+      confirmationRequired: true,
+      expiresAtMs,
+    };
+  };
+
+  const proposeLiveKitTool = async (
+    input: Readonly<{
+      workerControlTokenDigest: string;
+      workerJobRef: string;
+      sessionRef: string;
+      generation: number;
+      workerEventRef: string;
+      providerCallRef: string;
+      commandPayloadDigest: string;
+      proposalRef: string;
+      proposalDigest: string;
+      command: SarahVoiceLiveKitAgentThreadCommand;
+      nowIso: string;
+      expiresAt: string;
+    }>,
+  ): Promise<SarahVoiceLiveKitToolProposal> => {
+    try {
+      return await sql.begin(async (tx) => {
+        const existingRows = (await tx`
+          SELECT proposal_ref, proposal_digest, worker_job_ref,
+            worker_control_token_digest, worker_event_ref, provider_call_ref,
+            command_payload_digest, command, state, outcome_ref, outcome_ok,
+            outcome_summary, expires_at
+          FROM sarah_livekit_tool_proposals
+          WHERE session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+            AND worker_event_ref = ${input.workerEventRef}
+          FOR UPDATE
+        `) as ReadonlyArray<LiveKitToolProposalRow>;
+        const existing = first(existingRows);
+        if (existing !== undefined) {
+          if (
+            existing.worker_job_ref !== input.workerJobRef ||
+            existing.worker_control_token_digest !== input.workerControlTokenDigest ||
+            existing.provider_call_ref !== input.providerCallRef ||
+            existing.command_payload_digest !== input.commandPayloadDigest
+          ) {
+            throw new SarahVoiceSessionRejectedError(
+              "The Sarah LiveKit tool event was replayed with changed facts",
+            );
+          }
+          return toLiveKitToolProposal(existing);
+        }
+
+        const admitted = (await tx`
+          SELECT session.session_expires_at
+          FROM sarah_livekit_room_bindings AS binding
+          INNER JOIN sarah_realtime_voice_sessions AS session
+            ON session.session_ref = binding.session_ref
+          WHERE binding.worker_control_token_digest =
+              ${input.workerControlTokenDigest}
+            AND binding.worker_job_ref = ${input.workerJobRef}
+            AND binding.session_ref = ${input.sessionRef}
+            AND binding.generation = ${input.generation}
+            AND binding.room_context_kind = 'private'
+            AND binding.capability_profile = 'omega_editor'
+            AND binding.state = 'active'
+            AND binding.worker_closed_at IS NULL
+            AND session.state = 'connected'
+            AND session.transport_kind = 'livekit_room_v1'
+            AND session.client_profile = 'omega_editor'
+            AND session.session_expires_at > ${input.nowIso}
+            AND ${input.expiresAt} > ${input.nowIso}
+            AND ${input.expiresAt} <= session.session_expires_at
+          FOR UPDATE OF binding, session
+        `) as ReadonlyArray<{ session_expires_at: string }>;
+        if (first(admitted) === undefined) {
+          throw new SarahVoiceSessionRejectedError(
+            "The Sarah LiveKit generation has no private tool authority",
+          );
+        }
+
+        const inserted = (await tx`
+          INSERT INTO sarah_livekit_tool_proposals (
+            session_ref, generation, proposal_ref, proposal_digest,
+            worker_job_ref, worker_control_token_digest, worker_event_ref,
+            provider_call_ref, command_payload_digest, command, state,
+            outcome_ref, outcome_ok, outcome_summary, created_at, expires_at,
+            decision_at, outcome_at
+          ) VALUES (
+            ${input.sessionRef}, ${input.generation}, ${input.proposalRef},
+            ${input.proposalDigest}, ${input.workerJobRef},
+            ${input.workerControlTokenDigest}, ${input.workerEventRef},
+            ${input.providerCallRef}, ${input.commandPayloadDigest},
+            ${JSON.stringify(input.command)}::jsonb, 'proposed', NULL, NULL,
+            NULL, ${input.nowIso}, ${input.expiresAt}, NULL, NULL
+          )
+          RETURNING proposal_ref, proposal_digest, worker_job_ref,
+            worker_control_token_digest, worker_event_ref, provider_call_ref,
+            command_payload_digest, command, state, outcome_ref, outcome_ok,
+            outcome_summary, expires_at
+        `) as ReadonlyArray<LiveKitToolProposalRow>;
+        const row = first(inserted);
+        if (row === undefined) {
+          throw new SarahVoiceStorageError(
+            "The Sarah LiveKit tool proposal did not return a row",
+            null,
+          );
+        }
+        return toLiveKitToolProposal(row);
+      });
+    } catch (error) {
+      if (error instanceof SarahVoiceSessionRejectedError) throw error;
+      if (error instanceof SarahVoiceStorageError) throw error;
+      throw new SarahVoiceStorageError("Sarah LiveKit tool proposal failed", error);
+    }
+  };
+
+  const readLiveKitToolProposals = async (
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+      nowIso: string;
+    }>,
+  ): Promise<ReadonlyArray<SarahVoiceLiveKitToolProposal>> => {
+    try {
+      const rows = (await sql`
+        SELECT proposal.proposal_ref, proposal.proposal_digest,
+          proposal.worker_job_ref, proposal.worker_control_token_digest,
+          proposal.worker_event_ref, proposal.provider_call_ref,
+          proposal.command_payload_digest, proposal.command, proposal.state,
+          proposal.outcome_ref, proposal.outcome_ok, proposal.outcome_summary,
+          proposal.expires_at
+        FROM sarah_livekit_tool_proposals AS proposal
+        INNER JOIN sarah_livekit_room_bindings AS binding
+          ON binding.session_ref = proposal.session_ref
+          AND binding.generation = proposal.generation
+        INNER JOIN sarah_realtime_voice_sessions AS session
+          ON session.session_ref = proposal.session_ref
+        WHERE proposal.session_ref = ${input.sessionRef}
+          AND proposal.generation = ${input.generation}
+          AND proposal.state = 'proposed'
+          AND proposal.expires_at > ${input.nowIso}
+          AND binding.room_context_kind = 'private'
+          AND binding.capability_profile = 'omega_editor'
+          AND binding.state = 'active'
+          AND session.state = 'connected'
+          AND session.transport_kind = 'livekit_room_v1'
+        ORDER BY proposal.created_at ASC
+        LIMIT 16
+      `) as ReadonlyArray<LiveKitToolProposalRow>;
+      return rows.map(toLiveKitToolProposal);
+    } catch (error) {
+      if (error instanceof SarahVoiceStorageError) throw error;
+      throw new SarahVoiceStorageError("Sarah LiveKit tool proposal read failed", error);
+    }
+  };
+
+  const decideLiveKitTool = async (
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+      proposalRef: string;
+      proposalDigest: string;
+      decision: "confirm" | "decline";
+      nowIso: string;
+    }>,
+  ): Promise<SarahVoiceLiveKitToolProposal | undefined> => {
+    try {
+      return await sql.begin(async (tx) => {
+        const rows = (await tx`
+          SELECT proposal.proposal_ref, proposal.proposal_digest,
+            proposal.worker_job_ref, proposal.worker_control_token_digest,
+            proposal.worker_event_ref, proposal.provider_call_ref,
+            proposal.command_payload_digest, proposal.command, proposal.state,
+            proposal.outcome_ref, proposal.outcome_ok,
+            proposal.outcome_summary, proposal.expires_at
+          FROM sarah_livekit_tool_proposals AS proposal
+          INNER JOIN sarah_livekit_room_bindings AS binding
+            ON binding.session_ref = proposal.session_ref
+            AND binding.generation = proposal.generation
+          INNER JOIN sarah_realtime_voice_sessions AS session
+            ON session.session_ref = proposal.session_ref
+          WHERE proposal.session_ref = ${input.sessionRef}
+            AND proposal.generation = ${input.generation}
+            AND proposal.proposal_ref = ${input.proposalRef}
+            AND proposal.proposal_digest = ${input.proposalDigest}
+            AND binding.room_context_kind = 'private'
+            AND binding.capability_profile = 'omega_editor'
+            AND binding.state = 'active'
+            AND session.state = 'connected'
+            AND session.transport_kind = 'livekit_room_v1'
+          FOR UPDATE OF proposal
+        `) as ReadonlyArray<LiveKitToolProposalRow>;
+        const row = first(rows);
+        if (row === undefined || row.expires_at <= input.nowIso) {
+          throw new SarahVoiceSessionRejectedError(
+            "The Sarah LiveKit tool decision is invalid or expired",
+          );
+        }
+        if (
+          (input.decision === "confirm" && row.state === "execute_sent") ||
+          (input.decision === "decline" && row.state === "declined")
+        ) {
+          return input.decision === "confirm" ? toLiveKitToolProposal(row) : undefined;
+        }
+        if (row.state !== "proposed") {
+          throw new SarahVoiceSessionRejectedError(
+            "The Sarah LiveKit tool decision conflicts with prior state",
+          );
+        }
+        await tx`
+          UPDATE sarah_livekit_tool_proposals
+          SET state = ${input.decision === "confirm" ? "execute_sent" : "declined"},
+              decision_at = ${input.nowIso}
+          WHERE session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+            AND proposal_ref = ${input.proposalRef}
+        `;
+        return input.decision === "confirm" ? toLiveKitToolProposal(row) : undefined;
+      });
+    } catch (error) {
+      if (error instanceof SarahVoiceSessionRejectedError) throw error;
+      if (error instanceof SarahVoiceStorageError) throw error;
+      throw new SarahVoiceStorageError("Sarah LiveKit tool decision failed", error);
+    }
+  };
+
+  const recordLiveKitToolOutcome = async (
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+      proposalRef: string;
+      proposalDigest: string;
+      outcomeRef: string;
+      ok: boolean;
+      summary: string;
+      nowIso: string;
+    }>,
+  ): Promise<void> => {
+    try {
+      await sql.begin(async (tx) => {
+        const rows = (await tx`
+          SELECT proposal_ref, proposal_digest, worker_job_ref,
+            worker_control_token_digest, worker_event_ref, provider_call_ref,
+            command_payload_digest, command, state, outcome_ref, outcome_ok,
+            outcome_summary, expires_at
+          FROM sarah_livekit_tool_proposals
+          WHERE session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+            AND proposal_ref = ${input.proposalRef}
+            AND proposal_digest = ${input.proposalDigest}
+          FOR UPDATE
+        `) as ReadonlyArray<LiveKitToolProposalRow>;
+        const row = first(rows);
+        if (row === undefined) {
+          throw new SarahVoiceSessionRejectedError(
+            "The Sarah LiveKit tool outcome does not match a proposal",
+          );
+        }
+        if (row.state === "outcome") {
+          if (
+            row.outcome_ref !== input.outcomeRef ||
+            row.outcome_ok !== input.ok ||
+            row.outcome_summary !== input.summary
+          ) {
+            throw new SarahVoiceSessionRejectedError(
+              "The Sarah LiveKit tool outcome was replayed with changed facts",
+            );
+          }
+          return;
+        }
+        if (row.state !== "execute_sent") {
+          throw new SarahVoiceSessionRejectedError(
+            "The Sarah LiveKit tool outcome arrived before approved execution",
+          );
+        }
+        await tx`
+          UPDATE sarah_livekit_tool_proposals
+          SET state = 'outcome',
+              outcome_ref = ${input.outcomeRef},
+              outcome_ok = ${input.ok},
+              outcome_summary = ${input.summary},
+              outcome_at = ${input.nowIso}
+          WHERE session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+            AND proposal_ref = ${input.proposalRef}
+        `;
+      });
+    } catch (error) {
+      if (error instanceof SarahVoiceSessionRejectedError) throw error;
+      throw new SarahVoiceStorageError("Sarah LiveKit tool outcome failed", error);
+    }
+  };
+
+  const readLiveKitToolState = async (
+    input: Readonly<{
+      workerControlTokenDigest: string;
+      workerJobRef: string;
+      sessionRef: string;
+      generation: number;
+      proposalRef: string;
+      proposalDigest: string;
+      nowIso: string;
+    }>,
+  ): Promise<SarahVoiceLiveKitToolState> => {
+    try {
+      return await sql.begin(async (tx) => {
+        await tx`
+          UPDATE sarah_livekit_tool_proposals
+          SET state = 'declined',
+              decision_at = COALESCE(decision_at, ${input.nowIso})
+          WHERE session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+            AND proposal_ref = ${input.proposalRef}
+            AND proposal_digest = ${input.proposalDigest}
+            AND worker_control_token_digest =
+              ${input.workerControlTokenDigest}
+            AND worker_job_ref = ${input.workerJobRef}
+            AND state = 'proposed'
+            AND expires_at <= ${input.nowIso}
+        `;
+        const rows = (await tx`
+          SELECT proposal_ref, proposal_digest, worker_job_ref,
+            worker_control_token_digest, worker_event_ref, provider_call_ref,
+            command_payload_digest, command, state, outcome_ref, outcome_ok,
+            outcome_summary, expires_at
+          FROM sarah_livekit_tool_proposals
+          WHERE session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+            AND proposal_ref = ${input.proposalRef}
+            AND proposal_digest = ${input.proposalDigest}
+            AND worker_control_token_digest =
+              ${input.workerControlTokenDigest}
+            AND worker_job_ref = ${input.workerJobRef}
+          FOR SHARE
+        `) as ReadonlyArray<LiveKitToolProposalRow>;
+        const row = first(rows);
+        if (row === undefined) {
+          throw new SarahVoiceSessionRejectedError(
+            "The Sarah LiveKit tool state does not match its worker generation",
+          );
+        }
+        if (row.state === "proposed") return { state: "waiting_decision" };
+        if (row.state === "declined") return { state: "declined" };
+        if (row.state === "execute_sent") return { state: "execute_sent" };
+        if (row.outcome_ref === null || row.outcome_ok === null || row.outcome_summary === null) {
+          throw new SarahVoiceStorageError("The Sarah LiveKit tool outcome row is incomplete", row);
+        }
+        return {
+          state: "outcome",
+          outcomeRef: row.outcome_ref,
+          ok: row.outcome_ok,
+          summary: row.outcome_summary,
+        };
+      });
+    } catch (error) {
+      if (error instanceof SarahVoiceSessionRejectedError) throw error;
+      if (error instanceof SarahVoiceStorageError) throw error;
+      throw new SarahVoiceStorageError("Sarah LiveKit tool state read failed", error);
     }
   };
 
@@ -2447,14 +2888,19 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     readActiveAlphaMembership,
     readActiveStagingOwnerEntitlement,
     readLiveKitCleanup,
+    readLiveKitToolProposals,
+    readLiveKitToolState,
     claimLiveKitProvisioningIntents,
     readSettlement,
     readSpendableCredit,
     recordLiveKitParticipantJoin,
     recordUsage,
+    recordLiveKitToolOutcome,
     reserve,
     revokeAlphaCohort,
     revokeLiveKitRoom,
+    decideLiveKitTool,
+    proposeLiveKitTool,
     settle,
     settleLiveKitProvisioningIntent,
     sweepExpired,

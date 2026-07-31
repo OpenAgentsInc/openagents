@@ -1664,6 +1664,13 @@ come from the Freerange teardown
   a high-entropy Secret Manager HMAC root and the canonical immutable dispatch
   fields. Durable state stores only its digest, and missing or malformed HMAC
   configuration fails authentication closed.
+- A LiveKit community Sarah generation is structurally tool-free. A private
+  Omega generation advertises only `start_agent_thread`: the worker creates a
+  generation-bound typed proposal, Omega decides and executes it only through
+  the ticketed OpenAgents control socket, and a typed Omega outcome must return
+  before the Realtime function result can report success. LiveKit room data,
+  model prose, proposal delivery, confirmation, and command delivery are not
+  execution outcomes.
 - Rust may own native capture/playback and the bounded media envelope only. It
   owns no transcript, command, Sync, storage, retention-policy, or outcome
   schema, the Effect audio contract is canonical.
