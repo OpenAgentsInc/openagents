@@ -27,6 +27,10 @@ export const rootTestTargets: readonly CheckTarget[] = [
     command: ["node", "--test", "scripts/zero-supported-bun-guard.test.mjs"],
   },
   {
+    name: "uncalled-production-symbol-guard",
+    command: ["node", "--test", "scripts/uncalled-production-symbol-guard.test.mjs"],
+  },
+  {
     name: "sol-docs",
     command: ["pnpm", "exec", "vp", "test", "--run", "scripts/check-sol-docs.test.ts"],
   },
@@ -112,6 +116,10 @@ export const fastPolicyTargets: readonly CheckTarget[] = [
   {
     name: "sarah-participant-join-authority",
     command: ["node", "scripts/sarah-participant-join-authority-guard.mjs", "."],
+  },
+  {
+    name: "uncalled-production-symbol",
+    command: ["node", "scripts/uncalled-production-symbol-guard.mjs", "."],
   },
 ];
 
