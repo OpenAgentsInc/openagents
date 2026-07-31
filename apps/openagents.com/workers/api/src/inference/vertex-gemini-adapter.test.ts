@@ -284,8 +284,9 @@ describe('vertex gemini adapter streamSse — incremental pass-through', () => {
     ])
 
     // Receipt-first terminal state from the final fragment's cumulative usage.
+    // The Gemini enum "STOP" is normalized onto the OpenAI wire vocabulary.
     const terminal = source.terminal()
-    expect(terminal.finishReason).toBe('STOP')
+    expect(terminal.finishReason).toBe('stop')
     expect(terminal.servedModel).toBe(DEFAULT_GEMINI_MODEL_ID)
     expect(terminal.usage?.promptTokens).toBe(5)
     expect(terminal.usage?.completionTokens).toBe(3)
@@ -331,6 +332,191 @@ describe('vertex gemini adapter streamSse — incremental pass-through', () => {
     )
     expect(result).not.toBe('ok')
     expect(result).toMatchObject({ retryable: true })
+  })
+
+  // REGRESSION (BUG 2, defect C). Gemini reports its OWN finishReason enum;
+  // emitting it verbatim gives a stock OpenAI client `finish_reason: "STOP"` /
+  // `"MAX_TOKENS"`, which is not in the OpenAI vocabulary.
+  test('normalizes a MAX_TOKENS truncation to the OpenAI `length` reason', async () => {
+    const { fetchImpl } = recordingFetch(
+      sseStreamResponse([
+        {
+          candidates: [
+            {
+              content: { parts: [{ text: 'trunc' }] },
+              finishReason: 'MAX_TOKENS',
+            },
+          ],
+          usageMetadata: {
+            candidatesTokenCount: 1,
+            promptTokenCount: 2,
+            totalTokenCount: 3,
+          },
+        },
+      ]),
+    )
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    const source = await run(adapter.streamSse!(baseRequest({ stream: true })))
+    const frames = await drainFrames(source.frames)
+
+    expect(frames.map(frame => frame.finishReason)).toEqual(['length'])
+    expect(source.terminal().finishReason).toBe('length')
+  })
+})
+
+// REGRESSION SUITE (BUG 2, defect B). Before this, `vertex-gemini-adapter.ts`
+// contained ZERO occurrences of `toolCallDeltas`: every Gemini `functionCall`
+// part — and its `thoughtSignature` — was silently discarded on BOTH streaming
+// paths, so a streamed tool-using turn reached the client as an empty completion
+// with `finish_reason: STOP`, while the identical non-streaming request returned
+// the real tool call.
+//
+// These fragments mirror the real Vertex wire shape: the functionCall arrives in
+// its OWN SSE frame carrying name/args/id plus a SIBLING `thoughtSignature` on
+// the part, and a LATER frame carries the empty text part, `finishReason`, and
+// `usageMetadata`.
+const toolCallFragments = [
+  {
+    candidates: [
+      {
+        content: {
+          parts: [
+            {
+              functionCall: {
+                args: { path: 'docs/roadmap.md' },
+                id: 'call_vertex_1',
+                name: 'read_repo_file',
+              },
+              thoughtSignature: 'sig-stream-abc',
+            },
+          ],
+        },
+      },
+    ],
+    modelVersion: DEFAULT_GEMINI_MODEL_ID,
+  },
+  {
+    candidates: [{ content: { parts: [{ text: '' }] }, finishReason: 'STOP' }],
+    modelVersion: DEFAULT_GEMINI_MODEL_ID,
+    usageMetadata: {
+      candidatesTokenCount: 12,
+      promptTokenCount: 40,
+      thoughtsTokenCount: 8,
+      totalTokenCount: 60,
+    },
+  },
+] as const
+
+describe('vertex gemini adapter streaming tool calls (BUG 2 defect B)', () => {
+  test('streamSse emits toolCallDeltas for a Gemini functionCall fragment, preserving thoughtSignature', async () => {
+    const { fetchImpl } = recordingFetch(sseStreamResponse(toolCallFragments))
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    const source = await run(adapter.streamSse!(baseRequest({ stream: true })))
+    const frames = await drainFrames(source.frames)
+
+    const deltas = frames.flatMap(frame => frame.toolCallDeltas ?? [])
+    expect(deltas).toHaveLength(1)
+    expect(deltas[0]).toEqual({
+      function: {
+        arguments: JSON.stringify({ path: 'docs/roadmap.md' }),
+        name: 'read_repo_file',
+      },
+      id: 'call_vertex_1',
+      index: 0,
+      thoughtSignature: 'sig-stream-abc',
+      type: 'function',
+    })
+
+    // Gemini says "STOP" even when the turn ended in a functionCall; the wire
+    // contract requires `tool_calls`.
+    expect(source.terminal().finishReason).toBe('tool_calls')
+    expect(source.terminal().usage?.totalTokens).toBe(60)
+  })
+
+  test('parallel tool calls across fragments keep a turn-wide ascending index', async () => {
+    const { fetchImpl } = recordingFetch(
+      sseStreamResponse([
+        toolCallFragments[0],
+        {
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    functionCall: {
+                      args: { path: 'AGENTS.md' },
+                      name: 'read_repo_file',
+                    },
+                    thoughtSignature: 'sig-stream-def',
+                  },
+                  {
+                    functionCall: {
+                      args: { query: 'roadmap' },
+                      name: 'search_repo',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        toolCallFragments[1],
+      ]),
+    )
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    const source = await run(adapter.streamSse!(baseRequest({ stream: true })))
+    const frames = await drainFrames(source.frames)
+    const deltas = frames.flatMap(frame => frame.toolCallDeltas ?? [])
+
+    expect(deltas.map(delta => delta.index)).toEqual([0, 1, 2])
+    expect(deltas.map(delta => delta.function?.name)).toEqual([
+      'read_repo_file',
+      'read_repo_file',
+      'search_repo',
+    ])
+    // A call Gemini did not id gets a stable synthesized one, never a collision.
+    expect(new Set(deltas.map(delta => delta.id)).size).toBe(3)
+    expect(deltas[2]?.thoughtSignature).toBeUndefined()
+  })
+
+  test('the buffered stream path emits the same toolCallDeltas chunk', async () => {
+    const body = toolCallFragments
+      .map(fragment => `data: ${JSON.stringify(fragment)}\n\n`)
+      .join('')
+    const { fetchImpl } = recordingFetch(
+      new Response(body, {
+        headers: { 'content-type': 'text/event-stream' },
+        status: 200,
+      }),
+    )
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    const chunks = await run(adapter.stream(baseRequest({ stream: true })))
+    const deltas = chunks.flatMap(chunk => chunk.toolCallDeltas ?? [])
+
+    expect(deltas).toHaveLength(1)
+    expect(deltas[0]?.function?.name).toBe('read_repo_file')
+    expect(deltas[0]?.thoughtSignature).toBe('sig-stream-abc')
+    expect(chunks[chunks.length - 1]?.finishReason).toBe('tool_calls')
   })
 })
 
@@ -380,6 +566,100 @@ describe('vertex gemini adapter function calling (#6364)', () => {
     expect(body['toolConfig']).toEqual({
       functionCallingConfig: { mode: 'AUTO' },
     })
+  })
+
+  // REGRESSION (BUG 2, defect A). Omega's OpenAgents provider does not override
+  // `tool_input_format`, so it sends full JSON Schema with `$defs`/`$ref`. The
+  // old sanitizer stripped only `additionalProperties`/`$schema`, so Vertex
+  // answered `400 Unknown name "$ref" ... Unknown name "$defs"` and the route
+  // turned that into a 502 `provider_error` with no log line.
+  test('inlines $defs/$ref into a Vertex-legal parameters schema', async () => {
+    const { calls, fetchImpl } = recordingFetch(okJson(geminiResponse))
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    await run(
+      adapter.complete(
+        baseRequest({
+          passthroughParams: {
+            tools: [
+              {
+                function: {
+                  description: 'Edit a file',
+                  name: 'edit_file',
+                  parameters: {
+                    $defs: {
+                      Mode: { enum: ['create', 'overwrite'], type: 'string' },
+                    },
+                    $schema: 'https://json-schema.org/draft/2020-12/schema',
+                    additionalProperties: false,
+                    properties: {
+                      mode: { $ref: '#/$defs/Mode' },
+                      path: { type: 'string' },
+                    },
+                    required: ['path', 'mode'],
+                    type: 'object',
+                  },
+                },
+                type: 'function',
+              },
+            ],
+          },
+        }),
+      ),
+    )
+
+    const body = JSON.parse(calls[0]!.init.body as string) as Record<
+      string,
+      unknown
+    >
+    const declarations = (body['tools'] as Array<Record<string, unknown>>)[0]![
+      'functionDeclarations'
+    ] as Array<Record<string, unknown>>
+    expect(declarations[0]!['parameters']).toEqual({
+      properties: {
+        mode: { enum: ['create', 'overwrite'], type: 'string' },
+        path: { type: 'string' },
+      },
+      required: ['path', 'mode'],
+      type: 'object',
+    })
+    // The exact keywords Vertex 400s on must not survive anywhere in the body.
+    const serialized = calls[0]!.init.body as string
+    expect(serialized).not.toContain('$ref')
+    expect(serialized).not.toContain('$defs')
+    expect(serialized).not.toContain('$schema')
+    expect(serialized).not.toContain('additionalProperties')
+  })
+
+  test('normalizes a raw Gemini finish reason on the non-streaming path', async () => {
+    const { fetchImpl } = recordingFetch(
+      okJson({
+        candidates: [
+          {
+            content: { parts: [{ text: 'truncated answ' }] },
+            finishReason: 'MAX_TOKENS',
+          },
+        ],
+        usageMetadata: {
+          candidatesTokenCount: 4,
+          promptTokenCount: 8,
+          totalTokenCount: 12,
+        },
+      }),
+    )
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    expect((await run(adapter.complete(baseRequest()))).finishReason).toBe(
+      'length',
+    )
   })
 
   test('parses a Gemini functionCall response into OpenAI-compatible toolCalls', async () => {

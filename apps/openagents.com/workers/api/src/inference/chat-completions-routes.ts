@@ -1280,7 +1280,42 @@ const resolveCacheAffinity = (
 
 const defaultId = () => compactRandomId('chatcmpl')
 
-const providerErrorResponse = (error: InferenceAdapterError) => {
+// OBSERVABILITY (the 2026-07-31 hosted-Gemini 502). `error.reason` carries the
+// upstream provider rejection — including the exact Vertex `400 INVALID_ARGUMENT
+// Unknown name "$ref"` text — but it was ONLY ever written into the client's
+// response body and then discarded, which is why a hard tool-schema failure
+// stayed invisible across four Cloud Run revisions. Emit one structured line at
+// the terminal 502 so the failing lane, model, upstream status, and neutral
+// reason are greppable in Cloud Logging.
+//
+// PUBLIC-SAFE: adapter id, requested model, upstream HTTP status, failure kind,
+// retryability, and the adapter's own reason string (adapters are already
+// forbidden from putting credentials or endpoint URLs in it — the Gemma lane
+// carries its API key in the URL and never surfaces it). No prompts, no message
+// content, no tokens.
+const logProviderError = (
+  error: InferenceAdapterError,
+  requestedModel: string | undefined,
+): void => {
+  console.warn(
+    JSON.stringify({
+      adapter: error.adapterId,
+      event: 'inference_provider_error',
+      ...(error.httpStatus === undefined
+        ? {}
+        : { upstreamStatus: error.httpStatus }),
+      ...(error.kind === undefined ? {} : { kind: error.kind }),
+      reason: error.reason,
+      ...(requestedModel === undefined ? {} : { requestedModel }),
+      retryable: error.retryable,
+    }),
+  )
+}
+
+const providerErrorResponse = (
+  error: InferenceAdapterError,
+  requestedModel?: string | undefined,
+) => {
   if (error.kind === 'route_admission_reserved_headroom_unavailable') {
     return noStoreJsonResponse(
       {
@@ -1335,6 +1370,7 @@ const providerErrorResponse = (error: InferenceAdapterError) => {
       { headers: { 'retry-after': '1' }, status: 429 },
     )
   }
+  logProviderError(error, requestedModel)
   return noStoreJsonResponse(
     { error: 'provider_error', reason: error.reason },
     { status: 502 },
@@ -3283,7 +3319,7 @@ export const handleChatCompletions = (
       // error) must surface as the 502 it is, not be retried via the buffered
       // path (which would double-dispatch and could 524 again).
       if (sseDispatch.error.kind !== 'stream_not_supported') {
-        const response = providerErrorResponse(sseDispatch.error)
+        const response = providerErrorResponse(sseDispatch.error, requestedModel)
         applyByokResponseHeader(response, byok, false)
         return response
       }
@@ -3302,7 +3338,7 @@ export const handleChatCompletions = (
         Effect.catch(error => Effect.succeed({ error, ok: false as const })),
       )
       if (!chunks.ok) {
-        const response = providerErrorResponse(chunks.error)
+        const response = providerErrorResponse(chunks.error, requestedModel)
         applyByokResponseHeader(response, byok, false)
         return response
       }
@@ -3541,7 +3577,7 @@ export const handleChatCompletions = (
       Effect.catch(error => Effect.succeed({ error, ok: false as const })),
     )
     if (!result.ok) {
-      const response = providerErrorResponse(result.error)
+      const response = providerErrorResponse(result.error, requestedModel)
       applyByokResponseHeader(response, byok, false)
       return response
     }

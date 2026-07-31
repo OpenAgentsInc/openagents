@@ -49,6 +49,10 @@ import { Effect } from 'effect'
 
 import { parseJsonRecord } from '../json-boundary'
 import {
+  normalizeGoogleFinishReason,
+  sanitizeGoogleToolSchema,
+} from './google-tool-schema'
+import {
   AUTOPILOT_CONCIERGE_MODEL_ID,
   GEMINI_FLASH_MODEL_ID,
   KHALA_MINI_MODEL_ID,
@@ -63,6 +67,7 @@ import {
   type InferenceStreamEvent,
   type InferenceStreamSource,
   type InferenceToolCall,
+  type InferenceToolCallDelta,
   type InferenceUsage,
 } from './provider-adapter'
 import {
@@ -249,26 +254,6 @@ const buildGenerationConfig = (
 // lane serves it.
 // ---------------------------------------------------------------------------
 
-// Gemini function-declaration parameter schemas reject some JSON-Schema keywords
-// our tool definitions carry (e.g. `additionalProperties`, `$schema`). Strip
-// them recursively so a standard OpenAI `parameters` schema is accepted.
-const sanitizeGeminiSchema = (value: unknown): unknown => {
-  if (Array.isArray(value)) {
-    return value.map(sanitizeGeminiSchema)
-  }
-  if (typeof value === 'object' && value !== null) {
-    const out: Record<string, unknown> = {}
-    for (const [key, child] of Object.entries(value)) {
-      if (key === 'additionalProperties' || key === '$schema') {
-        continue
-      }
-      out[key] = sanitizeGeminiSchema(child)
-    }
-    return out
-  }
-  return value
-}
-
 type OpenAiToolDefinition = Readonly<{
   type?: unknown
   function?:
@@ -298,7 +283,12 @@ const buildGeminiTools = (
         declaration['description'] = fn.description
       }
       if (typeof fn?.parameters === 'object' && fn.parameters !== null) {
-        declaration['parameters'] = sanitizeGeminiSchema(fn.parameters)
+        // Vertex `FunctionDeclaration.parameters` is the bounded OpenAPI-3.0
+        // subset, NOT JSON Schema: an unknown keyword (`$ref`, `$defs`, `const`,
+        // `exclusiveMinimum`, ...) is a hard 400 that the route surfaces as a
+        // 502. `$ref`/`$defs` are INLINED, everything outside the subset is
+        // dropped or translated (see google-tool-schema.ts).
+        declaration['parameters'] = sanitizeGoogleToolSchema(fn.parameters)
       }
       return declaration
     })
@@ -458,89 +448,134 @@ const parseUsage = (raw: unknown): InferenceUsage => {
   }
 }
 
-// Concatenate the text from a Gemini candidate's content.parts (text parts
-// only). Reads the FIRST candidate (we request a single completion).
-const extractText = (candidates: unknown): string => {
+// The `content.parts` of the first candidate (we request a single completion).
+const partsOfFirstCandidate = (
+  candidates: unknown,
+): ReadonlyArray<Record<string, unknown>> => {
   if (!Array.isArray(candidates) || candidates.length === 0) {
-    return ''
+    return []
   }
   const first = candidates[0]
   if (typeof first !== 'object' || first === null) {
-    return ''
+    return []
   }
   const content = (first as Record<string, unknown>)['content']
   if (typeof content !== 'object' || content === null) {
-    return ''
+    return []
   }
   const parts = (content as Record<string, unknown>)['parts']
   if (!Array.isArray(parts)) {
-    return ''
+    return []
   }
-  return parts
-    .map(part => {
-      if (typeof part === 'object' && part !== null) {
-        const text = (part as Record<string, unknown>)['text']
-        return typeof text === 'string' ? text : ''
-      }
-      return ''
-    })
-    .join('')
+  return parts.filter(
+    (part): part is Record<string, unknown> =>
+      typeof part === 'object' && part !== null,
+  )
 }
 
+// Concatenate the text from a Gemini candidate's content.parts (text parts
+// only). Reads the FIRST candidate (we request a single completion).
+const extractText = (candidates: unknown): string =>
+  partsOfFirstCandidate(candidates)
+    .map(part => (typeof part['text'] === 'string' ? part['text'] : ''))
+    .join('')
+
+// One Gemini `functionCall` part normalized into the OpenAI tool-call shape.
+// `index` is the tool-call ordinal WITHIN THE WHOLE TURN (the streaming path
+// carries a running offset across SSE fragments, which is what OpenAI's
+// `tool_calls[].index` means).
+type NormalizedGeminiToolCall = Readonly<{
+  index: number
+  id: string
+  name: string
+  arguments: string
+  thoughtSignature: string | undefined
+}>
+
+// Normalize every `functionCall` part of the first candidate. Shared by the
+// buffered `complete` path and BOTH streaming paths so a tool call can never be
+// decoded on one path and dropped on another. `arguments` is JSON-stringified to
+// match the OpenAI shape the operator loop + other adapters consume.
+const normalizedToolCalls = (
+  candidates: unknown,
+  indexOffset: number,
+): ReadonlyArray<NormalizedGeminiToolCall> => {
+  const calls: Array<NormalizedGeminiToolCall> = []
+  for (const part of partsOfFirstCandidate(candidates)) {
+    const functionCall = part['functionCall']
+    if (typeof functionCall !== 'object' || functionCall === null) {
+      continue
+    }
+    const record = functionCall as Record<string, unknown>
+    const name = record['name']
+    if (typeof name !== 'string' || name === '') {
+      continue
+    }
+    const index = indexOffset + calls.length
+    const providerId = record['id']
+    // Gemini 3 returns a `thoughtSignature` on the PART alongside `functionCall`;
+    // it MUST be replayed with the call or the next turn 400s. Capture it.
+    const signature = part['thoughtSignature']
+    calls.push({
+      arguments: JSON.stringify(record['args'] ?? {}),
+      id:
+        typeof providerId === 'string' && providerId !== ''
+          ? providerId
+          : `gemini_call_${index}_${name}`,
+      index,
+      name,
+      thoughtSignature:
+        typeof signature === 'string' && signature !== ''
+          ? signature
+          : undefined,
+    })
+  }
+  return calls
+}
+
+const toInferenceToolCall = (
+  call: NormalizedGeminiToolCall,
+): InferenceToolCall => ({
+  function: { arguments: call.arguments, name: call.name },
+  id: call.id,
+  type: 'function',
+  ...(call.thoughtSignature === undefined
+    ? {}
+    : { thoughtSignature: call.thoughtSignature }),
+})
+
+// The streaming counterpart. Gemini delivers a COMPLETE `functionCall` in a
+// single SSE fragment (it never splits the argument JSON across frames), so each
+// delta carries the whole call — including the `thoughtSignature`, without which
+// the client's next turn is rejected with HTTP 400.
+const toInferenceToolCallDelta = (
+  call: NormalizedGeminiToolCall,
+): InferenceToolCallDelta => ({
+  function: { arguments: call.arguments, name: call.name },
+  id: call.id,
+  index: call.index,
+  type: 'function',
+  ...(call.thoughtSignature === undefined
+    ? {}
+    : { thoughtSignature: call.thoughtSignature }),
+})
+
 // Extract OpenAI-compatible tool calls from a Gemini candidate's
-// `content.parts[].functionCall` (#6364). Gemini does not return a call id, so
-// we synthesize a stable one per call. `arguments` is JSON-stringified to match
-// the OpenAI shape the operator loop + other adapters consume.
+// `content.parts[].functionCall` (#6364).
 const extractToolCalls = (
   candidates: unknown,
 ): ReadonlyArray<InferenceToolCall> | undefined => {
-  if (!Array.isArray(candidates) || candidates.length === 0) {
-    return undefined
-  }
-  const first = candidates[0]
-  if (typeof first !== 'object' || first === null) {
-    return undefined
-  }
-  const content = (first as Record<string, unknown>)['content']
-  if (typeof content !== 'object' || content === null) {
-    return undefined
-  }
-  const parts = (content as Record<string, unknown>)['parts']
-  if (!Array.isArray(parts)) {
-    return undefined
-  }
-  const calls: Array<InferenceToolCall> = []
-  parts.forEach((part, index) => {
-    if (typeof part !== 'object' || part === null) return
-    const functionCall = (part as Record<string, unknown>)['functionCall']
-    if (typeof functionCall !== 'object' || functionCall === null) return
-    const record = functionCall as Record<string, unknown>
-    const name = typeof record['name'] === 'string' ? record['name'] : null
-    if (name === null) return
-    const args = record['args']
-    // Gemini 3 returns a `thoughtSignature` on the PART alongside `functionCall`;
-    // it MUST be replayed with the call or the next turn 400s. Capture it.
-    const signature = (part as Record<string, unknown>)['thoughtSignature']
-    calls.push({
-      function: {
-        arguments: JSON.stringify(args ?? {}),
-        name,
-      },
-      id: `gemini_call_${index}_${name}`,
-      type: 'function',
-      ...(typeof signature === 'string' && signature !== ''
-        ? { thoughtSignature: signature }
-        : {}),
-    })
-  })
-  return calls.length === 0 ? undefined : calls
+  const calls = normalizedToolCalls(candidates, 0)
+  return calls.length === 0 ? undefined : calls.map(toInferenceToolCall)
 }
 
-// Pull the finishReason from the first candidate (Gemini values: "STOP",
-// "MAX_TOKENS", "SAFETY", ...). Defaults to 'stop' when absent.
-const extractFinishReason = (candidates: unknown): string => {
+// The RAW Gemini finishReason of the first candidate ("STOP", "MAX_TOKENS",
+// "SAFETY", ...), or undefined when the fragment carries none. Callers normalize
+// it onto the OpenAI vocabulary with `normalizeGoogleFinishReason` before it
+// reaches the wire.
+const rawFinishReason = (candidates: unknown): string | undefined => {
   if (!Array.isArray(candidates) || candidates.length === 0) {
-    return 'stop'
+    return undefined
   }
   const first = candidates[0]
   if (typeof first === 'object' && first !== null) {
@@ -549,7 +584,7 @@ const extractFinishReason = (candidates: unknown): string => {
       return reason
     }
   }
-  return 'stop'
+  return undefined
 }
 
 // Whether an HTTP status from Vertex should be a retryable (overflow-eligible)
@@ -683,13 +718,14 @@ export const makeVertexGeminiAdapter = (
         const toolCalls = extractToolCalls(candidates)
         const result: InferenceResult = {
           content: extractText(candidates),
-          // When Gemini returns function calls, normalize the finish reason to
-          // the OpenAI `tool_calls` value the operator loop + route key off
-          // (Gemini reports "STOP" even when it emits a functionCall).
-          finishReason:
-            toolCalls !== undefined
-              ? 'tool_calls'
-              : extractFinishReason(candidates),
+          // Gemini reports its OWN finishReason enum ("STOP", "MAX_TOKENS",
+          // ...). The gateway speaks the OpenAI wire contract, so normalize it —
+          // including upgrading "STOP" to `tool_calls` when the turn ended in a
+          // functionCall (Gemini reports "STOP" either way).
+          finishReason: normalizeGoogleFinishReason(
+            rawFinishReason(candidates),
+            toolCalls !== undefined,
+          ),
           servedModel:
             typeof json['modelVersion'] === 'string'
               ? (json['modelVersion'] as string)
@@ -775,12 +811,25 @@ const foldGeminiUsage = (
 // Shared by the buffered `stream` array path and the incremental `streamSse`
 // pass-through so both produce identical normalization. `usage` carries the
 // cumulative usage VISIBLE SO FAR (Gemini cumulates), folded over `priorUsage`.
+//
+// TOOL CALLS ARE FIRST-CLASS HERE. Gemini emits a `functionCall` in its OWN SSE
+// fragment (name + args + id + a sibling `thoughtSignature`); a later fragment
+// carries the empty text part, `finishReason`, and `usageMetadata`. Decoding the
+// functionCall parts into `toolCallDeltas` is what stops a streamed tool-using
+// turn from arriving as an empty completion — and preserving `thoughtSignature`
+// is what stops the client's NEXT turn from being rejected with HTTP 400.
+//
+// `toolCallIndexOffset` is the number of tool calls already emitted earlier in
+// THIS stream, so `tool_calls[].index` keeps the OpenAI meaning of a turn-wide
+// ordinal across fragments.
 const eventForGeminiFragment = (
   fragment: Record<string, unknown>,
   priorUsage: InferenceUsage | undefined,
+  toolCallIndexOffset = 0,
 ): InferenceStreamEvent => {
   const event: {
     contentDelta: string
+    toolCallDeltas?: ReadonlyArray<InferenceToolCallDelta>
     finishReason?: string
     usage?: InferenceUsage
     servedModel?: string
@@ -789,15 +838,18 @@ const eventForGeminiFragment = (
   const candidates = fragment['candidates']
   if (Array.isArray(candidates) && candidates.length > 0) {
     event.contentDelta = extractText(candidates)
-    // extractFinishReason defaults to 'stop'; only adopt a real terminal reason
-    // when the fragment actually carries one.
-    const first = candidates[0]
-    if (
-      typeof first === 'object' &&
-      first !== null &&
-      typeof (first as Record<string, unknown>)['finishReason'] === 'string'
-    ) {
-      event.finishReason = extractFinishReason(candidates)
+    const toolCalls = normalizedToolCalls(candidates, toolCallIndexOffset)
+    if (toolCalls.length > 0) {
+      event.toolCallDeltas = toolCalls.map(toInferenceToolCallDelta)
+    }
+    // Only adopt a terminal reason when the fragment actually carries one.
+    // Normalize it onto the OpenAI vocabulary immediately so no raw Gemini enum
+    // can ever reach the wire; the callers re-normalize with the WHOLE turn's
+    // tool-call knowledge (which upgrades `stop` to `tool_calls`), and the
+    // normalizer is idempotent over its own output.
+    const raw = rawFinishReason(candidates)
+    if (raw !== undefined) {
+      event.finishReason = normalizeGoogleFinishReason(raw)
     }
   }
 
@@ -844,15 +896,19 @@ const parseGeminiSseChunks = (
   let servedModel = resolveModelId(requestedModel)
   let usage: InferenceUsage | undefined
   const contentDeltas: Array<string> = []
+  const toolCallDeltas: Array<InferenceToolCallDelta> = []
 
   for (const line of body.split('\n')) {
     const fragment = parseGeminiSseData(line)
     if (fragment === undefined) {
       continue
     }
-    const event = eventForGeminiFragment(fragment, usage)
+    const event = eventForGeminiFragment(fragment, usage, toolCallDeltas.length)
     if (event.contentDelta !== '') {
       contentDeltas.push(event.contentDelta)
+    }
+    if (event.toolCallDeltas !== undefined) {
+      toolCallDeltas.push(...event.toolCallDeltas)
     }
     if (event.finishReason !== undefined) {
       finishReason = event.finishReason
@@ -876,9 +932,15 @@ const parseGeminiSseChunks = (
   if (joined !== '') {
     chunks.push({ contentDelta: joined })
   }
+  if (toolCallDeltas.length > 0) {
+    chunks.push({ contentDelta: '', toolCallDeltas })
+  }
   chunks.push({
     contentDelta: '',
-    finishReason: finishReason ?? 'stop',
+    finishReason: normalizeGoogleFinishReason(
+      finishReason,
+      toolCallDeltas.length > 0,
+    ),
     servedModel,
     usage: terminalUsage,
   })
@@ -901,6 +963,11 @@ const makeGeminiSseSource = (
   let finishReason: string | undefined
   let usage: InferenceUsage | undefined
   let servedModel: string | undefined = resolveModelId(requestedModel)
+  // Turn-wide tool-call ordinal. Gemini emits each functionCall in its own SSE
+  // fragment, so the offset must survive across fragments for the OpenAI
+  // `tool_calls[].index` contract — and it is also how the terminal frame knows
+  // to report `tool_calls` instead of Gemini's "STOP".
+  let toolCallCount = 0
 
   const captureTerminalState = (event: InferenceStreamEvent): void => {
     if (event.finishReason !== undefined) {
@@ -911,6 +978,9 @@ const makeGeminiSseSource = (
     }
     if (event.servedModel !== undefined) {
       servedModel = event.servedModel
+    }
+    if (event.toolCallDeltas !== undefined) {
+      toolCallCount += event.toolCallDeltas.length
     }
   }
 
@@ -930,7 +1000,7 @@ const makeGeminiSseSource = (
           buffer = buffer.slice(newlineIndex + 1)
           const fragment = parseGeminiSseData(line)
           if (fragment !== undefined) {
-            const event = eventForGeminiFragment(fragment, usage)
+            const event = eventForGeminiFragment(fragment, usage, toolCallCount)
             captureTerminalState(event)
             yield event
           }
@@ -939,7 +1009,7 @@ const makeGeminiSseSource = (
         if (done) {
           const tail = parseGeminiSseData(buffer)
           if (tail !== undefined) {
-            const event = eventForGeminiFragment(tail, usage)
+            const event = eventForGeminiFragment(tail, usage, toolCallCount)
             captureTerminalState(event)
             yield event
           }
@@ -953,6 +1023,10 @@ const makeGeminiSseSource = (
 
   return {
     frames,
-    terminal: () => ({ finishReason, servedModel, usage }),
+    terminal: () => ({
+      finishReason: normalizeGoogleFinishReason(finishReason, toolCallCount > 0),
+      servedModel,
+      usage,
+    }),
   }
 }

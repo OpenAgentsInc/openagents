@@ -33,10 +33,17 @@ export const inferenceToolCallsFromUnknown = (
     ) {
       return undefined
     }
+    // Gemini 3 returns an opaque `thoughtSignature` with each tool call and
+    // REJECTS (HTTP 400) a follow-up turn that replays the call without it. It
+    // rides the OpenAI-shaped wire object as an additive field, so a client that
+    // echoes the assistant message back verbatim round-trips it. Dropping it
+    // here would silently break the next turn of every Gemini tool loop.
+    const thoughtSignature = presentString(record?.['thoughtSignature'])
     parsed.push({
       function: { arguments: args, name },
       id,
       type: 'function',
+      ...(thoughtSignature === undefined ? {} : { thoughtSignature }),
     })
   }
   return parsed
@@ -63,6 +70,7 @@ export const inferenceToolCallDeltasFromUnknown = (
     const type = record['type'] === 'function' ? 'function' : undefined
     const name = stringValue(fn?.['name'])
     const args = stringValue(fn?.['arguments'])
+    const thoughtSignature = presentString(record['thoughtSignature'])
     const delta: InferenceToolCallDelta = {
       index,
       ...(id === undefined ? {} : { id }),
@@ -75,6 +83,7 @@ export const inferenceToolCallDeltasFromUnknown = (
               ...(args === undefined ? {} : { arguments: args }),
             },
           }),
+      ...(thoughtSignature === undefined ? {} : { thoughtSignature }),
     }
     if (
       delta.id === undefined &&

@@ -181,7 +181,9 @@ describe('gemma4 adapter — thought filtering + exact token mapping', () => {
     // The `thought: true` scratchpad is filtered out of user-visible content.
     expect(result.content).toBe('Hello from Gemma')
     expect(result.content).not.toContain('reason about this')
-    expect(result.finishReason).toBe('STOP')
+    // Google's raw "STOP" enum is normalized onto the OpenAI wire vocabulary —
+    // a stock OpenAI client does not understand `finish_reason: "STOP"`.
+    expect(result.finishReason).toBe('stop')
     expect(result.servedModel).toBe(DEFAULT_GEMMA4_MODEL_ID)
     // Exact usage: reasoningTokens mapped verbatim from thoughtsTokenCount; the
     // provider total (which already includes thoughts) is trusted.
@@ -191,6 +193,28 @@ describe('gemma4 adapter — thought filtering + exact token mapping', () => {
       reasoningTokens: 5,
       totalTokens: 17,
     })
+  })
+
+  test('maps a MAX_TOKENS truncation onto the OpenAI `length` reason', async () => {
+    const { fetchImpl } = recordingFetch(
+      okJson({
+        candidates: [
+          {
+            content: { parts: [{ text: 'cut off' }] },
+            finishReason: 'MAX_TOKENS',
+          },
+        ],
+        usageMetadata: {
+          candidatesTokenCount: 2,
+          promptTokenCount: 3,
+          totalTokenCount: 5,
+        },
+      }),
+    )
+    const adapter = makeGemma4Adapter(armedConfig(fetchImpl))
+    expect((await run(adapter.complete(baseRequest()))).finishReason).toBe(
+      'length',
+    )
   })
 
   test('omits reasoningTokens when the provider reports none', async () => {
@@ -231,6 +255,62 @@ describe('gemma4 adapter — buffered function calling', () => {
       type: 'function',
     },
   ]
+
+  // REGRESSION (BUG 2, defect A). The Generative Language API shares Vertex's
+  // bounded OpenAPI-3.0 schema subset, and this lane carried the SAME
+  // strip-only-additionalProperties/$schema sanitizer that made the hosted
+  // Gemini lane 502 on any `$defs`/`$ref` tool definition.
+  test('inlines $defs/$ref and drops out-of-subset keywords from tool parameters', async () => {
+    const { calls, fetchImpl } = recordingFetch(okJson(gemmaThinkingResponse))
+    const adapter = makeGemma4Adapter(armedConfig(fetchImpl))
+
+    await run(
+      adapter.complete(
+        baseRequest({
+          passthroughParams: {
+            tools: [
+              {
+                function: {
+                  name: 'write_file',
+                  parameters: {
+                    $defs: {
+                      Mode: { enum: ['create', 'append'], type: 'string' },
+                    },
+                    $schema: 'https://json-schema.org/draft/2020-12/schema',
+                    additionalProperties: false,
+                    properties: {
+                      bytes: { exclusiveMinimum: 0, type: 'integer' },
+                      mode: { $ref: '#/$defs/Mode' },
+                    },
+                    required: ['mode'],
+                    type: 'object',
+                  },
+                },
+                type: 'function',
+              },
+            ],
+          },
+        }),
+      ),
+    )
+
+    const serialized = calls[0]!.init.body as string
+    const body = JSON.parse(serialized) as Record<string, unknown>
+    const declarations = (body['tools'] as Array<Record<string, unknown>>)[0]![
+      'functionDeclarations'
+    ] as Array<Record<string, unknown>>
+    expect(declarations[0]!['parameters']).toEqual({
+      properties: {
+        bytes: { type: 'integer' },
+        mode: { enum: ['create', 'append'], type: 'string' },
+      },
+      required: ['mode'],
+      type: 'object',
+    })
+    expect(serialized).not.toContain('$ref')
+    expect(serialized).not.toContain('$defs')
+    expect(serialized).not.toContain('exclusiveMinimum')
+  })
 
   test('maps declared tools and parses a functionCall response', async () => {
     const { calls, fetchImpl } = recordingFetch(
@@ -528,7 +608,7 @@ describe('gemma4 adapter — streamSse incremental pass-through', () => {
     )
     expect(calls[0]?.url).toContain('&alt=sse')
     const terminal = source.terminal()
-    expect(terminal.finishReason).toBe('STOP')
+    expect(terminal.finishReason).toBe('stop')
     expect(terminal.servedModel).toBe(DEFAULT_GEMMA4_MODEL_ID)
     expect(terminal.usage).toEqual({
       completionTokens: 3,
@@ -561,7 +641,7 @@ describe('gemma4 adapter — streamSse incremental pass-through', () => {
     const chunks = await run(adapter.stream(baseRequest({ stream: true })))
     expect(chunks[0]?.contentDelta).toBe('Hello from Gemma')
     const terminal = chunks.at(-1)!
-    expect(terminal.finishReason).toBe('STOP')
+    expect(terminal.finishReason).toBe('stop')
     expect(terminal.usage?.reasoningTokens).toBe(5)
     expect(terminal.servedModel).toBe(DEFAULT_GEMMA4_MODEL_ID)
   })

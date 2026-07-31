@@ -48,6 +48,10 @@ import { Effect, Redacted } from 'effect'
 import { parseJsonRecord } from '../json-boundary'
 import { DEFAULT_GEMMA4_MODEL_ID } from './gemma4-model'
 import {
+  normalizeGoogleFinishReason,
+  sanitizeGoogleToolSchema,
+} from './google-tool-schema'
+import {
   InferenceAdapterError,
   type InferenceMessage,
   type InferenceProviderAdapter,
@@ -145,17 +149,6 @@ const requestCarriesTools = (request: InferenceRequest): boolean => {
 const toGemmaRole = (role: string): 'user' | 'model' =>
   role === 'assistant' || role === 'model' ? 'model' : 'user'
 
-const sanitizeGemmaSchema = (value: unknown): unknown => {
-  if (Array.isArray(value)) return value.map(sanitizeGemmaSchema)
-  if (typeof value !== 'object' || value === null) return value
-  const output: Record<string, unknown> = {}
-  for (const [key, child] of Object.entries(value)) {
-    if (key === 'additionalProperties' || key === '$schema') continue
-    output[key] = sanitizeGemmaSchema(child)
-  }
-  return output
-}
-
 type OpenAiToolDefinition = Readonly<{
   type?: unknown
   function?:
@@ -183,8 +176,12 @@ const buildGemmaTools = (
         ...(typeof fn.description === 'string'
           ? { description: fn.description }
           : {}),
+        // The Generative Language API shares Vertex's bounded OpenAPI-3.0
+        // `Schema` subset for `FunctionDeclaration.parameters`: an unknown
+        // JSON-Schema keyword (`$ref`, `$defs`, `const`, `exclusiveMinimum`,
+        // ...) is a hard 400. See google-tool-schema.ts.
         ...(typeof fn.parameters === 'object' && fn.parameters !== null
-          ? { parameters: sanitizeGemmaSchema(fn.parameters) }
+          ? { parameters: sanitizeGoogleToolSchema(fn.parameters) }
           : {}),
       }
     })
@@ -470,9 +467,13 @@ const extractToolCalls = (
   return calls.length === 0 ? undefined : calls
 }
 
-const extractFinishReason = (candidates: unknown): string => {
+// The RAW Google finishReason of the first candidate ("STOP", "MAX_TOKENS",
+// "SAFETY", ...), or undefined when the candidate carries none. Callers map it
+// onto the OpenAI `finish_reason` vocabulary with `normalizeGoogleFinishReason`
+// before it reaches the wire — a stock OpenAI client does not understand "STOP".
+const rawFinishReason = (candidates: unknown): string | undefined => {
   if (!Array.isArray(candidates) || candidates.length === 0) {
-    return 'stop'
+    return undefined
   }
   const first = candidates[0]
   if (typeof first === 'object' && first !== null) {
@@ -481,7 +482,7 @@ const extractFinishReason = (candidates: unknown): string => {
       return reason
     }
   }
-  return 'stop'
+  return undefined
 }
 
 const servedModelFrom = (
@@ -549,13 +550,9 @@ const eventForGemmaFragment = (
     if (thought !== '') {
       event.reasoningDelta = thought
     }
-    const first = candidates[0]
-    if (
-      typeof first === 'object' &&
-      first !== null &&
-      typeof (first as Record<string, unknown>)['finishReason'] === 'string'
-    ) {
-      event.finishReason = extractFinishReason(candidates)
+    const raw = rawFinishReason(candidates)
+    if (raw !== undefined) {
+      event.finishReason = normalizeGoogleFinishReason(raw)
     }
   }
 
@@ -639,7 +636,14 @@ const makeGemmaSseSource = (
 
   return {
     frames,
-    terminal: () => ({ finishReason, servedModel, usage }),
+    // Never leak Google's raw finishReason enum onto the OpenAI wire. This lane
+    // refuses tool-bearing streams up front (ensureStreamToolsSupported), so a
+    // streamed turn can never have produced tool calls here.
+    terminal: () => ({
+      finishReason: normalizeGoogleFinishReason(finishReason),
+      servedModel,
+      usage,
+    }),
   }
 }
 
@@ -783,10 +787,10 @@ export const makeGemma4Adapter = (
       const toolCalls = extractToolCalls(candidates)
       return {
         content: extractVisibleText(candidates),
-        finishReason:
-          toolCalls === undefined
-            ? extractFinishReason(candidates)
-            : 'tool_calls',
+        finishReason: normalizeGoogleFinishReason(
+          rawFinishReason(candidates),
+          toolCalls !== undefined,
+        ),
         servedModel: servedModelFrom(raw, model),
         ...(toolCalls === undefined ? {} : { toolCalls }),
         usage: parseUsage(raw['usageMetadata']),

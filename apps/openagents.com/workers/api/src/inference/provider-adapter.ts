@@ -138,6 +138,11 @@ export type InferenceToolCallDelta = Readonly<{
         arguments?: string | undefined
       }>
     | undefined
+  // Same contract as `InferenceToolCall.thoughtSignature`, on the STREAMING
+  // path. Gemini emits the signature on the SSE fragment that carries the
+  // `functionCall`; dropping it from the delta means a streaming client can
+  // never replay the call and its next turn is rejected with HTTP 400.
+  thoughtSignature?: string | undefined
 }>
 
 // Non-streaming adapter result.
