@@ -652,6 +652,7 @@ export const parseSarahRealtimeVoiceRouteConfig = (
 
 const capabilityBoundaryForProfile = (
   clientProfile: 'omega_editor' | 'mobile_voice_only' | 'mobile_command_center',
+  roomContextKind: 'private' | 'community' = 'private',
 ) => {
   const fixedBoundary = {
     directShell: false as const,
@@ -659,6 +660,9 @@ const capabilityBoundaryForProfile = (
     payment: false as const,
     credentialAccess: false as const,
     deviceControl: false as const,
+  }
+  if (roomContextKind === 'community') {
+    return { commands: [], confirmationRequired: [], ...fixedBoundary }
   }
   if (clientProfile === 'omega_editor') {
     return {
@@ -862,7 +866,10 @@ export const handleSarahRealtimeVoiceAdmissionRequest = async <User, Bindings>(
         requiredHoldMsat: 0,
         spendableRemainingCreditMsat: null,
         maxDurationSeconds: config.maxSessionSeconds,
-        capabilityBoundary: capabilityBoundaryForProfile(clientProfile),
+        capabilityBoundary: capabilityBoundaryForProfile(
+          clientProfile,
+          admissionRoomContext.kind,
+        ),
       }
       const admissionRef = makeAdmissionRef()
       const admissionExpiresAtMs = nowMs + SARAH_VOICE_ADMISSION_LIFETIME_MS
@@ -928,7 +935,10 @@ export const handleSarahRealtimeVoiceAdmissionRequest = async <User, Bindings>(
       requiredHoldMsat: config.reservationMsat,
       spendableRemainingCreditMsat,
       maxDurationSeconds: config.maxSessionSeconds,
-      capabilityBoundary: capabilityBoundaryForProfile(clientProfile),
+      capabilityBoundary: capabilityBoundaryForProfile(
+        clientProfile,
+        admissionRoomContext.kind,
+      ),
     }
     let admissionBinding:
       | Readonly<{ admissionRef: string; admissionExpiresAtMs: number }>
@@ -1303,17 +1313,6 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
             ownerActorRef: `agent:${userId}`,
           })
         : null
-    const capabilityBoundary = capabilityBoundaryForProfile(clientProfile)
-    const currentTerms = {
-      clientProfile,
-      admissionCohortRef,
-      creditMode,
-      creditRateMsatPerMillionTokens: config.creditMsatPerMillionTokens,
-      requiredHoldMsat: reservedMsat,
-      spendableRemainingCreditMsat,
-      maxDurationSeconds: config.maxSessionSeconds,
-      capabilityBoundary,
-    }
     let liveKitRoomContext:
       | Readonly<{ kind: 'private' }>
       | (SarahVoiceLiveKitCommunityAccess & Readonly<{ kind: 'community' }>) = {
@@ -1339,6 +1338,20 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
         )
       }
       liveKitRoomContext = { kind: 'community', ...access }
+    }
+    const capabilityBoundary = capabilityBoundaryForProfile(
+      clientProfile,
+      liveKitRoomContext.kind,
+    )
+    const currentTerms = {
+      clientProfile,
+      admissionCohortRef,
+      creditMode,
+      creditRateMsatPerMillionTokens: config.creditMsatPerMillionTokens,
+      requiredHoldMsat: reservedMsat,
+      spendableRemainingCreditMsat,
+      maxDurationSeconds: config.maxSessionSeconds,
+      capabilityBoundary,
     }
     const currentAdmissionDigest =
       requiresAdmission && admissionRef !== undefined

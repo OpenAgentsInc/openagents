@@ -557,6 +557,15 @@ describe('managed Sarah Realtime voice session route', () => {
 
     expect(response.status).toBe(201)
     expect(await response.json()).toMatchObject({
+      capabilityBoundary: {
+        commands: [],
+        confirmationRequired: [],
+        directShell: false,
+        directGit: false,
+        payment: false,
+        credentialAccess: false,
+        deviceControl: false,
+      },
       transport: {
         kind: 'livekit_room_v1',
         permissions: { canPublish: false, canSubscribe: true },
@@ -620,16 +629,25 @@ describe('managed Sarah Realtime voice session route', () => {
         }),
       })
 
-    expect(
-      (
-        await handleSarahRealtimeVoiceAdmissionRequest(
-          dependencies,
-          makeAdmissionRequest(),
-          {},
-          ctx,
-        )
-      ).status,
-    ).toBe(200)
+    const firstAdmissionResponse =
+      await handleSarahRealtimeVoiceAdmissionRequest(
+        dependencies,
+        makeAdmissionRequest(),
+        {},
+        ctx,
+      )
+    expect(firstAdmissionResponse.status).toBe(200)
+    expect(await firstAdmissionResponse.json()).toMatchObject({
+      capabilityBoundary: {
+        commands: [],
+        confirmationRequired: [],
+        directShell: false,
+        directGit: false,
+        payment: false,
+        credentialAccess: false,
+        deviceControl: false,
+      },
+    })
     membershipRevision = 'membership-revision-2'
     expect(
       (

@@ -51,6 +51,20 @@ describe("Sarah LiveKit worker policy", () => {
     expect(deferAdmission).toBeGreaterThan(rejectMismatch);
   });
 
+  test("attests the server-confirmed prompt and exact serialized tool profile", async () => {
+    const agentSource = await readFile(new URL("./agent.ts", import.meta.url), "utf8");
+    const generationSource = await readFile(new URL("./generation.ts", import.meta.url), "utf8");
+    expect(agentSource).toContain("providerProfile: realtimeProviderProfile(instructions, tools)");
+    expect(agentSource).toContain("llm.toJsonSchema(providerTool.parameters)");
+    expect(agentSource).toContain('toolChoice: "auto"');
+    expect(agentSource).toContain("expectedProviderProfile");
+    expect(agentSource).toContain("Date.now() + 10_000");
+    expect(generationSource).toContain("session.instructions !== expected.instructions");
+    expect(generationSource).toContain("session.tool_choice !== expected.toolChoice");
+    expect(generationSource).toContain("instructions: profile.instructions");
+    expect(generationSource).toContain("canonicalJson(observed) === canonicalJson(expectedTools)");
+  });
+
   test("does not enable recording or log raw provider events", async () => {
     const source = await readFile(new URL("./agent.ts", import.meta.url), "utf8");
     expect(source).toContain("record: false");

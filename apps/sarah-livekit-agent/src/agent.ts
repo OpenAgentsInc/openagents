@@ -7,6 +7,7 @@ import {
   WorkerPermissions,
   cli,
   defineAgent,
+  llm,
   tool,
   type JobContext,
 } from "@livekit/agents";
@@ -33,6 +34,7 @@ import {
   admittedRealtimeProvider,
   closeAfterProviderAccounting,
   responseUsageEvent,
+  type SarahRealtimeProviderProfile,
   transcriptionUsageEvent,
   waitForAdmissionUntil,
 } from "./generation.js";
@@ -233,23 +235,40 @@ export const makePrivateEditorTools = (
   }),
 ];
 
+const realtimeProviderProfile = (
+  instructions: string,
+  tools: ReturnType<typeof makePrivateEditorTools>,
+): SarahRealtimeProviderProfile => ({
+  instructions,
+  tools: tools.map((providerTool) => ({
+    type: "function",
+    name: providerTool.name,
+    description: providerTool.description,
+    parameters: llm.toJsonSchema(providerTool.parameters),
+  })),
+  toolChoice: "auto",
+});
+
 const agentForProfile = (
   profile: SarahLiveKitCapabilityProfile,
   controller: ControlClient,
   dispatch: ReturnType<typeof decodeSarahLiveKitDispatchMetadata>,
   identity: Readonly<{ sessionRef: string; generation: number; jobRef: string }>,
-): Agent =>
-  Agent.create({
-    instructions:
-      profile.kind === "private_owner_v1" ? PRIVATE_INSTRUCTIONS : COMMUNITY_INSTRUCTIONS,
-    tools:
-      profile.kind === "private_owner_v1" &&
-      profile.contextRead &&
-      profile.editorProposals &&
-      profile.agentThreadProposals
-        ? makePrivateEditorTools(controller, dispatch, identity)
-        : [],
-  });
+): Readonly<{ agent: Agent; providerProfile: SarahRealtimeProviderProfile }> => {
+  const tools =
+    profile.kind === "private_owner_v1" &&
+    profile.contextRead &&
+    profile.editorProposals &&
+    profile.agentThreadProposals
+      ? makePrivateEditorTools(controller, dispatch, identity)
+      : [];
+  const instructions =
+    profile.kind === "private_owner_v1" ? PRIVATE_INSTRUCTIONS : COMMUNITY_INSTRUCTIONS;
+  return {
+    agent: Agent.create({ instructions, tools }),
+    providerProfile: realtimeProviderProfile(instructions, tools),
+  };
+};
 
 type RawRealtimeSession = ReturnType<openai.realtime.RealtimeModel["session"]> & {
   on(event: "openai_server_event_received", listener: (event: unknown) => void): RawRealtimeSession;
@@ -387,9 +406,8 @@ const entry = async (ctx: JobContext): Promise<void> => {
   });
   let providerAdmissionObserved = false;
   let sessionStarted = false;
-  let pendingProviderAdmission:
-    | ReturnType<typeof admittedRealtimeProvider>
-    | undefined;
+  let expectedProviderProfile: SarahRealtimeProviderProfile | undefined;
+  let pendingProviderAdmission: ReturnType<typeof admittedRealtimeProvider> | undefined;
   const persistProviderAdmission = (
     admitted: Exclude<ReturnType<typeof admittedRealtimeProvider>, undefined>,
   ) => {
@@ -422,7 +440,14 @@ const entry = async (ctx: JobContext): Promise<void> => {
     const usage = responseUsageEvent(event, identity) ?? transcriptionUsageEvent(event, identity);
     accounting.observe(event, usage?._tag === "response_usage");
     if (usage !== undefined) sendEvent(usage);
-    const admitted = admittedRealtimeProvider(event, accounting.providerSessionRefDigest);
+    const admitted =
+      expectedProviderProfile === undefined
+        ? undefined
+        : admittedRealtimeProvider(
+            event,
+            accounting.providerSessionRefDigest,
+            expectedProviderProfile,
+          );
     if (admitted === undefined || providerAdmissionObserved) return;
     if (admitted === false) {
       persistProviderAdmission(admitted);
@@ -529,8 +554,10 @@ const entry = async (ctx: JobContext): Promise<void> => {
   if (participant.identity !== dispatch.participantRef) {
     throw new Error("The admitted Sarah room participant was not present");
   }
+  const selectedAgent = agentForProfile(claim.capabilityProfile, controller, dispatch, identity);
+  expectedProviderProfile = selectedAgent.providerProfile;
   await session.start({
-    agent: agentForProfile(claim.capabilityProfile, controller, dispatch, identity),
+    agent: selectedAgent.agent,
     room: ctx.room,
     inputOptions: {
       participantIdentity: dispatch.participantRef,
@@ -553,7 +580,7 @@ const entry = async (ctx: JobContext): Promise<void> => {
   try {
     await waitForAdmissionUntil(
       () => providerAdmission,
-      claim.sessionExpiresAtMs,
+      Math.min(claim.sessionExpiresAtMs, Date.now() + 10_000),
       participantAdmission.signal,
     );
   } catch {

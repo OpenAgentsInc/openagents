@@ -5,6 +5,8 @@ import {
   admittedRealtimeProvider,
   closeAfterProviderAccounting,
   responseUsageEvent,
+  sarahProviderConfigurationDigest,
+  type SarahRealtimeProviderProfile,
   transcriptionUsageEvent,
   waitForAdmissionUntil,
 } from "./generation.js";
@@ -14,6 +16,30 @@ const identity = {
   generation: 4,
   jobRef: "job:one",
 } as const;
+
+const privateProviderProfile = {
+  instructions: "Private Sarah instructions",
+  tools: [
+    {
+      type: "function",
+      name: "editor_context_read",
+      description: "Read one admitted editor range.",
+      parameters: {
+        type: "object",
+        properties: { startLine: { type: "integer", minimum: 1 } },
+        required: ["startLine"],
+        additionalProperties: false,
+      },
+    },
+  ],
+  toolChoice: "auto",
+} as const satisfies SarahRealtimeProviderProfile;
+
+const communityProviderProfile = {
+  instructions: "Community Sarah instructions",
+  tools: [],
+  toolChoice: "auto",
+} as const satisfies SarahRealtimeProviderProfile;
 
 describe("Sarah LiveKit generation fence", () => {
   test("admits only the exact server-confirmed Realtime configuration", () => {
@@ -26,7 +52,11 @@ describe("Sarah LiveKit generation fence", () => {
       false,
     );
     const event = providerUpdatedEvent();
-    const admitted = admittedRealtimeProvider(event, accounting.providerSessionRefDigest);
+    const admitted = admittedRealtimeProvider(
+      event,
+      accounting.providerSessionRefDigest,
+      privateProviderProfile,
+    );
     expect(admitted).toMatchObject({
       providerSessionRefDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
       providerConfigurationDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
@@ -44,6 +74,7 @@ describe("Sarah LiveKit generation fence", () => {
           },
         },
         accounting.providerSessionRefDigest,
+        privateProviderProfile,
       ),
     ).toBe(false);
     expect(
@@ -65,10 +96,64 @@ describe("Sarah LiveKit generation fence", () => {
           },
         },
         accounting.providerSessionRefDigest,
+        privateProviderProfile,
       ),
     ).toBe(false);
     expect(
-      admittedRealtimeProvider({ type: "response.created" }, accounting.providerSessionRefDigest),
+      admittedRealtimeProvider(
+        { type: "response.created" },
+        accounting.providerSessionRefDigest,
+        privateProviderProfile,
+      ),
+    ).toBeUndefined();
+  });
+
+  test("attests exact private and community prompts, tools, schemas, and tool choice", () => {
+    const sessionDigest = createProviderSessionDigest();
+    const privateEvent = providerUpdatedEvent(privateProviderProfile);
+    const privateAdmission = admittedRealtimeProvider(
+      privateEvent,
+      sessionDigest,
+      privateProviderProfile,
+    );
+    const communityAdmission = admittedRealtimeProvider(
+      providerUpdatedEvent(communityProviderProfile),
+      sessionDigest,
+      communityProviderProfile,
+    );
+    expect(privateAdmission).toMatchObject({
+      providerConfigurationDigest: sarahProviderConfigurationDigest(privateProviderProfile),
+    });
+    expect(communityAdmission).toMatchObject({
+      providerConfigurationDigest: sarahProviderConfigurationDigest(communityProviderProfile),
+    });
+    expect(privateAdmission).not.toEqual(communityAdmission);
+    expect(JSON.stringify(privateAdmission)).not.toContain(privateProviderProfile.instructions);
+
+    for (const session of [
+      { ...privateEvent.session, instructions: "Changed instructions" },
+      {
+        ...privateEvent.session,
+        tools: [
+          {
+            ...privateEvent.session.tools[0],
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+      },
+      { ...privateEvent.session, tools: [] },
+      { ...privateEvent.session, tool_choice: "none" },
+    ]) {
+      expect(
+        admittedRealtimeProvider(
+          { ...privateEvent, session },
+          sessionDigest,
+          privateProviderProfile,
+        ),
+      ).toBeUndefined();
+    }
+    expect(
+      admittedRealtimeProvider(privateEvent, sessionDigest, communityProviderProfile),
     ).toBeUndefined();
   });
 
@@ -361,7 +446,23 @@ describe("Sarah LiveKit generation fence", () => {
   });
 });
 
-const providerUpdatedEvent = () => ({
+const createProviderSessionDigest = (): string => {
+  const accounting = new SarahProviderAccounting();
+  accounting.observe(
+    {
+      type: "session.created",
+      session: { id: "sess_one", model: "gpt-realtime-2.1" },
+    },
+    false,
+  );
+  const providerSessionRefDigest = accounting.providerSessionRefDigest;
+  if (providerSessionRefDigest === undefined) {
+    throw new Error("The test provider session digest was unavailable");
+  }
+  return providerSessionRefDigest;
+};
+
+const providerUpdatedEvent = (profile: SarahRealtimeProviderProfile = privateProviderProfile) => ({
   type: "session.updated",
   session: {
     id: "sess_one",
@@ -383,6 +484,9 @@ const providerUpdatedEvent = () => ({
         voice: "marin",
       },
     },
+    instructions: profile.instructions,
+    tools: profile.tools,
+    tool_choice: profile.toolChoice,
   },
 });
 

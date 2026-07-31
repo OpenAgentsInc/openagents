@@ -61,7 +61,21 @@ const providerSessionRef = (event: unknown): string | undefined => {
 
 const digest = (value: string): string => createHash("sha256").update(value).digest("hex");
 
-const canonicalProviderConfiguration = {
+const canonicalJson = (value: unknown): string => {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(",")}]`;
+  }
+  const object = value as Readonly<Record<string, unknown>>;
+  return `{${Object.keys(object)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(object[key])}`)
+    .join(",")}}`;
+};
+
+const canonicalProviderTransportConfiguration = {
   model: SARAH_LIVEKIT_MODEL,
   outputModalities: ["audio"],
   inputAudio: {
@@ -80,9 +94,35 @@ const canonicalProviderConfiguration = {
   },
 } as const;
 
-export const SARAH_LIVEKIT_PROVIDER_CONFIGURATION_DIGEST = digest(
-  JSON.stringify(canonicalProviderConfiguration),
-);
+export type SarahRealtimeProviderTool = Readonly<{
+  type: "function";
+  name: string;
+  description: string;
+  parameters: unknown;
+}>;
+
+export type SarahRealtimeProviderProfile = Readonly<{
+  instructions: string;
+  tools: ReadonlyArray<SarahRealtimeProviderTool>;
+  toolChoice: "auto";
+}>;
+
+const sortedProviderTools = (
+  tools: ReadonlyArray<SarahRealtimeProviderTool>,
+): ReadonlyArray<SarahRealtimeProviderTool> =>
+  [...tools].sort((left, right) => left.name.localeCompare(right.name));
+
+export const sarahProviderConfigurationDigest = (profile: SarahRealtimeProviderProfile): string =>
+  digest(
+    canonicalJson({
+      ...canonicalProviderTransportConfiguration,
+      profile: {
+        instructions: profile.instructions,
+        tools: sortedProviderTools(profile.tools),
+        toolChoice: profile.toolChoice,
+      },
+    }),
+  );
 
 const exactAudioFormat = (value: unknown): boolean => {
   const format = record(value);
@@ -128,6 +168,50 @@ const exactTurnDetection = (value: unknown): boolean => {
   );
 };
 
+const providerTool = (value: unknown): SarahRealtimeProviderTool | undefined => {
+  const tool = record(value);
+  if (
+    tool === undefined ||
+    !exactKeys(tool, ["type", "name", "description", "parameters"]) ||
+    tool.type !== "function" ||
+    typeof tool.name !== "string" ||
+    typeof tool.description !== "string" ||
+    record(tool.parameters) === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    type: "function",
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters,
+  };
+};
+
+const exactProviderProfile = (
+  session: Readonly<Record<string, unknown>>,
+  expected: SarahRealtimeProviderProfile,
+): boolean => {
+  if (
+    session.instructions !== expected.instructions ||
+    session.tool_choice !== expected.toolChoice ||
+    !Array.isArray(session.tools)
+  ) {
+    return false;
+  }
+  const tools = session.tools.map(providerTool);
+  if (tools.some((tool) => tool === undefined)) return false;
+  const observed = sortedProviderTools(tools as ReadonlyArray<SarahRealtimeProviderTool>);
+  const expectedTools = sortedProviderTools(expected.tools);
+  if (
+    new Set(observed.map((tool) => tool.name)).size !== observed.length ||
+    new Set(expectedTools.map((tool) => tool.name)).size !== expectedTools.length
+  ) {
+    return false;
+  }
+  return canonicalJson(observed) === canonicalJson(expectedTools);
+};
+
 export type AdmittedRealtimeProvider = Readonly<{
   providerSessionRefDigest: string;
   providerConfigurationDigest: string;
@@ -136,6 +220,7 @@ export type AdmittedRealtimeProvider = Readonly<{
 export const admittedRealtimeProvider = (
   event: unknown,
   expectedProviderSessionRefDigest: string | undefined,
+  expectedProfile: SarahRealtimeProviderProfile,
 ): AdmittedRealtimeProvider | false | undefined => {
   const envelope = record(event);
   if (envelope?.type !== "session.updated") return undefined;
@@ -170,9 +255,10 @@ export const admittedRealtimeProvider = (
   ) {
     return false;
   }
+  if (!exactProviderProfile(session, expectedProfile)) return undefined;
   return {
     providerSessionRefDigest,
-    providerConfigurationDigest: SARAH_LIVEKIT_PROVIDER_CONFIGURATION_DIGEST,
+    providerConfigurationDigest: sarahProviderConfigurationDigest(expectedProfile),
   };
 };
 
