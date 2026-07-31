@@ -6,7 +6,7 @@
   "version": "0.2.0-rc29",
   "releaseTag": "v0.2.0-rc29",
   "releasedAt": "2026-07-31T15:17:20Z",
-  "releaseNotes": "Developer ID signed, notarized by Apple, and stapled on both the app and the disk image, so the first start works offline. This candidate supersedes rc28, which predates the LiveKit desktop lane and the owner review cycle that followed it.",
+  "releaseNotes": "Developer ID signed, notarized by Apple, and stapled on both the app and the disk image, so the first start works offline. This candidate carries the LiveKit desktop lane and the owner review cycle that followed it.",
   "releasePageUrl": "https://github.com/OpenAgentsInc/omega/releases/tag/v0.2.0-rc29",
   "sourceRepository": "https://github.com/OpenAgentsInc/omega",
   "sourceRevision": "c7ecf769e82320b9c43dfccaf7a9ebc4f980b1a6",
