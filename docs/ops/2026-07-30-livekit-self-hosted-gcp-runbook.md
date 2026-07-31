@@ -1022,8 +1022,34 @@ curl -fsS -H 'Accept: application/nostr+json' \
 
 Do not replace the allowlist with a wildcard. A worker close, including a
 provider or projection error, must stop the corresponding Sarah authority and
-retire its community-room rendezvous so the next admitted generation is not
-blocked by a stale active room.
+retire its community-room rendezvous **and its room members** so the next
+admitted generation is not blocked by a stale active room.
+
+Mint the two acceptance bearers with the checked-in operator tool. Do not
+hand-build a one-shot minting helper for a run and delete it afterwards: that
+made every acceptance a slightly different, unreviewable procedure, and a
+deleted helper is not evidence (EP263-LK H1, #9282).
+
+```sh
+OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
+CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config \
+pnpm exec tsx \
+  apps/openagents.com/workers/api/scripts/mint-livekit-acceptance-bearer.ts \
+  --role both --credential-file /tmp/oa-livekit-acceptance.env
+
+set -a; . /tmp/oa-livekit-acceptance.env; set +a
+```
+
+It reads `oa-livekit-acceptance-private-nostr-key` and
+`oa-livekit-acceptance-community-nostr-key` from Secret Manager in memory only,
+signs one NIP-98 kind-27235 event per identity against
+`POST /api/omega/auth/session`, and writes the four
+`OA_SARAH_LIVEKIT_ACCEPTANCE_*` variables to a mode-0600 file outside the
+repository. It refuses a credential path inside the working tree, refuses two
+identities that resolve to the same owner, prints only the owner ref, expiry,
+and a SHA-256 digest of each bearer, and creates no durable identity row. The
+bearers expire in 15 minutes, so mint immediately before the run and re-run the
+tool rather than reusing a stale file.
 
 Keep the bearer tokens in environment variables and keep the two 24 kHz mono
 signed-16-bit PCM prompts outside Git. The prompts must contain an innocuous
