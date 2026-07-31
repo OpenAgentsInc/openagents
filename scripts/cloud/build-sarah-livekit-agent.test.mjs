@@ -14,6 +14,7 @@ test("Sarah worker Cloud Build stays on the existing digest-pinned production la
     cloudBuildIgnore,
     buildScript,
     deployerBuildScript,
+    deployerDockerfile,
   ] =
     await Promise.all([
       readFile(resolve(repositoryRoot, "docker/cloud/cloudbuild-sarah-livekit-agent.yaml"), "utf8"),
@@ -26,6 +27,10 @@ test("Sarah worker Cloud Build stays on the existing digest-pinned production la
       readFile(resolve(repositoryRoot, "scripts/cloud/build-sarah-livekit-agent.sh"), "utf8"),
       readFile(
         resolve(repositoryRoot, "scripts/cloud/build-livekit-production-deployer.sh"),
+        "utf8",
+      ),
+      readFile(
+        resolve(repositoryRoot, "infra/livekit-production/deployer.Dockerfile"),
         "utf8",
       ),
     ]);
@@ -55,6 +60,12 @@ test("Sarah worker Cloud Build stays on the existing digest-pinned production la
   );
   assert.match(buildScript, /status --porcelain --untracked-files=normal/u);
   assert.match(deployerBuildScript, /status --porcelain --untracked-files=normal/u);
+  assert.match(deployerDockerfile, /releases\/download\/v4\.53\.3\/yq_linux_amd64/u);
+  assert.match(
+    deployerDockerfile,
+    /fa52a4e758c63d38299163fbdd1edfb4c4963247918bf9c1c5d31d84789eded4/u,
+  );
+  assert.match(deployerDockerfile, /yq --version/u);
   assert.match(buildScript, /revision\}" != "\$\{remote_revision/u);
   assert.match(deployerBuildScript, /revision\}" != "\$\{remote_revision/u);
   assert.doesNotMatch(buildScript, /branch --show-current/u);

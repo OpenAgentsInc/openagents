@@ -17,6 +17,12 @@ RUN apt-get update \
     && echo "7721f265e18709862655affba5343e85e1980639395d5754473dafaadcaa69e3  /usr/local/bin/kubectl" \
       | sha256sum --check --strict \
     && chmod 0755 /usr/local/bin/kubectl \
+    && curl --fail --location --silent --show-error \
+      --output /usr/local/bin/yq \
+      https://github.com/mikefarah/yq/releases/download/v4.53.3/yq_linux_amd64 \
+    && echo "fa52a4e758c63d38299163fbdd1edfb4c4963247918bf9c1c5d31d84789eded4  /usr/local/bin/yq" \
+      | sha256sum --check --strict \
+    && chmod 0755 /usr/local/bin/yq \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
@@ -26,6 +32,7 @@ RUN node --version \
     && gcloud version \
     && gke-gcloud-auth-plugin --version \
     && helm version --short \
-    && kubectl version --client
+    && kubectl version --client \
+    && yq --version
 
 WORKDIR /workspace
