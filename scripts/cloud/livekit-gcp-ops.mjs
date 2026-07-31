@@ -1655,7 +1655,7 @@ const troubleshootIam = (resource, permission, label) =>
         resource,
         `--principal-email=${LEGACY_AUTOMATION_SERVICE_ACCOUNT}`,
         `--permission=${permission}`,
-        "--format=json(access)",
+        "--format=json(access,errors)",
       ],
       label,
     ),
