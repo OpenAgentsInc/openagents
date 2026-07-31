@@ -528,6 +528,7 @@ Bootstrap the boundary in this order:
    Google Cloud Preview feature; do not apply the deny if the tag-binding API
    is unavailable, and do not admit production until the fail-closed
    impersonation preflight passes for every protected identity.
+
 5. As a one-time cluster administrator on clean, current `main`, install and
    verify the pinned controllers, recording a separate receipt:
 
@@ -856,18 +857,84 @@ node scripts/cloud/livekit-acceptance.mjs \
 
 ### Secret, log, and retention scan
 
-Seed a private forbidden-pattern corpus with synthetic markers. Scan:
+The executable collector is `scripts/cloud/livekit-privacy-scan.mjs`. It scans
+eight exact scopes: packaged Omega, every other packaged client, Sarah worker
+pods, logs, Redis, object storage, traces, and crash artifacts. It compares the
+real production OpenAI key against every scope except the server-side pod
+export, compares the real `principal.sarah` private identity against every
+scope, and compares private synthetic retention canaries against every runtime
+persistence scope. It also detects private-key material, named transcript
+objects and payloads, and common retained media formats and signatures.
 
-- pod environment/file inventory without reading secret payloads into logs;
+- the fully unpacked, release-signed Omega artifact and fully unpacked artifacts
+  for every other shipped client;
+- every current Sarah worker pod's environment and readable filesystem,
+  including `/tmp`, plus current and previous-container output;
 - SFU, worker, load-balancer, Redis, and provider-safe logs;
-- Redis key metadata and bounded values through a purpose-built redaction
-  checker;
-- Cloud Storage object names and retention inventory;
-- metrics and traces;
-- crash and support artifacts.
+- Redis keys and values through a read-only TLS client;
+- every in-scope Cloud Storage object name and content;
+- complete bounded trace exports;
+- every in-scope crash, Error Reporting, core, and support artifact.
 
-The public result records only the number of patterns tested and zero/nonzero
-findings. It never records a matched value.
+Capture all eight scopes over the same bounded acceptance window into private
+directories outside Git. Each directory must contain at least one payload file
+and `_scope-manifest.json` with this closed schema:
+
+```json
+{
+  "schemaVersion": "openagents.sarah.livekit_privacy_scope_export.v1",
+  "scope": "logs",
+  "sourceBaseRevision": "<exact-deployed-40-hex-revision>",
+  "collectionMode": "read_only",
+  "complete": true,
+  "startedAt": "<RFC3339>",
+  "completedAt": "<RFC3339>",
+  "objectCount": 1,
+  "byteCount": 1234
+}
+```
+
+`objectCount` and `byteCount` cover payload files recursively and exclude the
+manifest. The collector rejects missing or additional scopes, incomplete or
+stale manifests, a capture longer than two hours, source-revision drift,
+count/byte mismatches, empty evidence, symlinks, special files, and objects
+larger than 256 MiB. Split a larger read-only export into smaller payload
+files. An unavailable backend is a failed gate, not a zero-finding scan.
+
+Write the two production secrets and one or more unique synthetic retention
+canaries to mode-0600 temporary files without printing them. The Sarah identity
+input is the current `sarah-nostr-identity-secret`; the OpenAI input is the
+current `oa-livekit-prod-openai-api-key`. Then run:
+
+```sh
+OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
+node scripts/cloud/livekit-privacy-scan.mjs \
+  --source-base-revision <exact-deployed-40-hex-revision> \
+  --openai-key-file <private-openai-key-file> \
+  --sarah-private-key-file <private-sarah-key-file> \
+  --retention-canary-file <private-canary-file> \
+  --scope packaged_omega=<private-export-directory> \
+  --scope packaged_clients=<private-export-directory> \
+  --scope pods=<private-export-directory> \
+  --scope logs=<private-export-directory> \
+  --scope redis=<private-export-directory> \
+  --scope object_storage=<private-export-directory> \
+  --scope traces=<private-export-directory> \
+  --scope crash_artifacts=<private-export-directory> \
+  --output <private-privacy-observation.json> \
+  --apply
+```
+
+The private result contains only per-scope counts, byte counts, completion
+states, and SHA-256 evidence digests. It never contains a matched value, object
+name, secret, transcript, media, or source path. A passing result's `results`
+object can be embedded as the `privacyScan` field in the private Sarah matrix
+observation. The matrix and standalone secret-scan validators now require
+complete per-scope evidence and reject aggregate counts that do not equal the
+scope totals.
+
+For the six runtime persistence scopes, the same private evidence can also be
+projected through the standalone gate:
 
 ```sh
 OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \

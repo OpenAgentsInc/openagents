@@ -32,6 +32,17 @@ import {
 
 const digest = (character) => `sha256:${character.repeat(64)}`;
 const deployedRevision = "1".repeat(40);
+const privacyScopeResults = (scopes) =>
+  scopes.map((scope, index) => ({
+    scope,
+    state: "complete",
+    objectCount: 1,
+    bytesScanned: 100 + index,
+    evidenceDigest: digest(((index + 1) % 10).toString()),
+    findings: 0,
+    rawMediaObjects: 0,
+    transcriptObjects: 0,
+  }));
 
 test("billing account IDs admit Google's uppercase alphanumeric shape", () => {
   const linkedBillingAccountId = "01D15C-64524A-1062EA";
@@ -696,12 +707,14 @@ test("failure drills require bounded visible outcomes without speech continuity 
 });
 
 test("secret scan covers every persistence surface and rejects findings", () => {
+  const scopes = ["pods", "logs", "redis", "object_storage", "traces", "crash_artifacts"];
   const observation = envelope("secret_scan", {
-    scopes: ["pods", "logs", "redis", "object_storage", "traces", "crash_artifacts"],
+    scopes,
     forbiddenPatternCount: 24,
     findings: 0,
     rawMediaObjects: 0,
     transcriptObjects: 0,
+    scopeResults: privacyScopeResults(scopes),
   });
   assert.equal(validateSecretScanObservation(observation), observation);
   assert.throws(
@@ -710,6 +723,15 @@ test("secret scan covers every persistence surface and rejects findings", () => 
         envelope("secret_scan", { ...observation.results, findings: 1 }),
       ),
     /found forbidden material/u,
+  );
+  const unavailable = structuredClone(observation);
+  unavailable.results.scopeResults[0].state = "unavailable";
+  assert.throws(() => validateSecretScanObservation(unavailable), /is unavailable/u);
+  const aggregateMismatch = structuredClone(observation);
+  aggregateMismatch.results.scopeResults[0].findings = 1;
+  assert.throws(
+    () => validateSecretScanObservation(aggregateMismatch),
+    /does not match its scope evidence/u,
   );
 });
 
@@ -768,6 +790,16 @@ test("Sarah matrix requires isolated identities, exact usage, every terminal, fa
       findings: 0,
       rawMediaObjects: 0,
       transcriptObjects: 0,
+      scopeResults: privacyScopeResults([
+        "packaged_omega",
+        "packaged_clients",
+        "pods",
+        "logs",
+        "redis",
+        "object_storage",
+        "traces",
+        "crash_artifacts",
+      ]),
     },
   });
   assert.equal(validateSarahMatrixObservation(observation), observation);
@@ -882,8 +914,7 @@ test("deployment receipt execution provenance is closed and source bound", () =>
         "gcp-cloud-build-ref://openagentsgemini/us-central1/123e4567-e89b-42d3-a456-426614174000",
       triggerRef:
         "gcp-cloud-build-trigger-ref://openagentsgemini/us-central1/oa-livekit-prod-runtime",
-      serviceAccountRef:
-        "gcp-service-account-ref://openagentsgemini/oa-livekit-prod-deployer",
+      serviceAccountRef: "gcp-service-account-ref://openagentsgemini/oa-livekit-prod-deployer",
       sourceRevision: deployedRevision,
       configurationDigest: digest("4"),
     },
@@ -909,21 +940,12 @@ test("deployment receipt execution provenance is closed and source bound", () =>
 
 test("deployment control Terraform fixes identity, source, route, and substitutions", () => {
   const module = readFileSync(
-    resolve(
-      import.meta.dirname,
-      "../../infra/modules/livekit-deployment-control/main.tf",
-    ),
+    resolve(import.meta.dirname, "../../infra/modules/livekit-deployment-control/main.tf"),
     "utf8",
   );
-  const runner = readFileSync(
-    resolve(import.meta.dirname, "livekit-gcp-ops.mjs"),
-    "utf8",
-  );
+  const runner = readFileSync(resolve(import.meta.dirname, "livekit-gcp-ops.mjs"), "utf8");
   const rbac = readFileSync(
-    resolve(
-      import.meta.dirname,
-      "../../infra/livekit-production/deployer-gateway-rbac.yaml",
-    ),
+    resolve(import.meta.dirname, "../../infra/livekit-production/deployer-gateway-rbac.yaml"),
     "utf8",
   );
   const productionRoot = readFileSync(
@@ -946,7 +968,10 @@ test("deployment control Terraform fixes identity, source, route, and substituti
   assert.match(module, /service_account\s+=\s+google_service_account\.deployer\.id/u);
   assert.match(module, /google_cloudbuildv2_connection" "source/u);
   assert.match(module, /app_installation_id\s+=\s+var\.github_app_installation_id/u);
-  assert.match(module, /oauth_token_secret_version\s+=\s+var\.github_authorizer_token_secret_version/u);
+  assert.match(
+    module,
+    /oauth_token_secret_version\s+=\s+var\.github_authorizer_token_secret_version/u,
+  );
   assert.match(module, /google_cloudbuildv2_repository" "source/u);
   assert.match(module, /parent_connection\s+=\s+google_cloudbuildv2_connection\.source\.name/u);
   assert.match(module, /roles\/cloudbuild\.connectionViewer/u);
@@ -995,7 +1020,10 @@ test("deployment control Terraform fixes identity, source, route, and substituti
   assert.match(runner, /observed access was not conclusively NOT_GRANTED/u);
   assert.match(runner, /preflight deployment receipt artifact write/u);
   assert.match(runner, /"repositories",\s+"describe"/u);
-  assert.match(runner, /trigger\.sourceToBuild\?\.repository !== PRODUCTION_SOURCE_REPOSITORY_RESOURCE/u);
+  assert.match(
+    runner,
+    /trigger\.sourceToBuild\?\.repository !== PRODUCTION_SOURCE_REPOSITORY_RESOURCE/u,
+  );
   assert.match(runner, /sourceRepository\.remoteUri !== PRODUCTION_SOURCE_REMOTE_URI/u);
   assert.match(rbac, /kind: Role\nmetadata:\n  name: oa-livekit-prod-runtime-deployer/u);
   assert.match(rbac, /- cert-manager\.io/u);

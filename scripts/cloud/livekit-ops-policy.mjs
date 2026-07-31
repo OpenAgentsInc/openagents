@@ -954,6 +954,41 @@ export const REQUIRED_SARAH_MATRIX_SCENARIOS = Object.freeze([
   "reconnect",
 ]);
 
+const validatePrivacyScopeEvidence = (value, expectedScopes, label) => {
+  assert(Array.isArray(value), `${label} must be an array`);
+  assert(value.length === expectedScopes.length, `${label} must cover every required scope`);
+  for (const scope of expectedScopes) {
+    const result = value.find((candidate) => candidate.scope === scope);
+    assert(result !== undefined, `${label} is missing ${scope}`);
+    assertExactKeys(
+      result,
+      [
+        "scope",
+        "state",
+        "objectCount",
+        "bytesScanned",
+        "evidenceDigest",
+        "findings",
+        "rawMediaObjects",
+        "transcriptObjects",
+      ],
+      [],
+      `${label}.${scope}`,
+    );
+    assert(result.state === "complete", `${label}.${scope} is unavailable`);
+    assertInteger(result.objectCount, 1, 100_000_000, `${label}.${scope}.objectCount`);
+    assertInteger(result.bytesScanned, 1, 9_007_199_254_740_991, `${label}.${scope}.bytesScanned`);
+    assertDigest(result.evidenceDigest, `${label}.${scope}.evidenceDigest`);
+    for (const key of ["findings", "rawMediaObjects", "transcriptObjects"]) {
+      assertInteger(result[key], 0, 100_000_000, `${label}.${scope}.${key}`);
+    }
+  }
+  assert(
+    new Set(value.map((result) => result.scope)).size === expectedScopes.length,
+    `${label} contains a duplicate scope`,
+  );
+};
+
 export function validateSarahMatrixObservation(value) {
   validateObservationEnvelope(value, "sarah_matrix");
   assertExactKeys(
@@ -1083,7 +1118,14 @@ export function validateSarahMatrixObservation(value) {
   );
   assertExactKeys(
     value.results.privacyScan,
-    ["scopes", "forbiddenPatternCount", "findings", "rawMediaObjects", "transcriptObjects"],
+    [
+      "scopes",
+      "forbiddenPatternCount",
+      "findings",
+      "rawMediaObjects",
+      "transcriptObjects",
+      "scopeResults",
+    ],
     [],
     "Sarah privacy scan",
   );
@@ -1103,6 +1145,11 @@ export function validateSarahMatrixObservation(value) {
       privacyScopes.every((scope) => value.results.privacyScan.scopes.includes(scope)),
     "Sarah privacy scan is missing a packaged client or runtime scope",
   );
+  validatePrivacyScopeEvidence(
+    value.results.privacyScan.scopeResults,
+    privacyScopes,
+    "Sarah privacy scope evidence",
+  );
   assertInteger(
     value.results.privacyScan.forbiddenPatternCount,
     1,
@@ -1111,6 +1158,11 @@ export function validateSarahMatrixObservation(value) {
   );
   for (const key of ["findings", "rawMediaObjects", "transcriptObjects"]) {
     assert(value.results.privacyScan[key] === 0, `Sarah privacy scan ${key} is nonzero`);
+    assert(
+      value.results.privacyScan.scopeResults.reduce((total, result) => total + result[key], 0) ===
+        value.results.privacyScan[key],
+      `Sarah privacy scan ${key} does not match its scope evidence`,
+    );
   }
   return value;
 }
@@ -1119,7 +1171,14 @@ export function validateSecretScanObservation(value) {
   validateObservationEnvelope(value, "secret_scan");
   assertExactKeys(
     value.results,
-    ["scopes", "forbiddenPatternCount", "findings", "rawMediaObjects", "transcriptObjects"],
+    [
+      "scopes",
+      "forbiddenPatternCount",
+      "findings",
+      "rawMediaObjects",
+      "transcriptObjects",
+      "scopeResults",
+    ],
     [],
     "observation.results",
   );
@@ -1130,6 +1189,7 @@ export function validateSecretScanObservation(value) {
       expectedScopes.every((scope) => value.results.scopes.includes(scope)),
     "secret scan does not cover every required scope",
   );
+  validatePrivacyScopeEvidence(value.results.scopeResults, expectedScopes, "secret scan evidence");
   assertInteger(
     value.results.forbiddenPatternCount,
     1,
@@ -1139,6 +1199,13 @@ export function validateSecretScanObservation(value) {
   assert(value.results.findings === 0, "secret scan found forbidden material");
   assert(value.results.rawMediaObjects === 0, "secret scan found raw media");
   assert(value.results.transcriptObjects === 0, "secret scan found transcripts");
+  for (const key of ["findings", "rawMediaObjects", "transcriptObjects"]) {
+    assert(
+      value.results.scopeResults.reduce((total, result) => total + result[key], 0) ===
+        value.results[key],
+      `secret scan ${key} does not match its scope evidence`,
+    );
+  }
   return value;
 }
 
@@ -1328,13 +1395,7 @@ export function validateSourceOnlyReceipt(value) {
   if (value.execution !== undefined) {
     assertExactKeys(
       value.execution,
-      [
-        "buildRef",
-        "triggerRef",
-        "serviceAccountRef",
-        "sourceRevision",
-        "configurationDigest",
-      ],
+      ["buildRef", "triggerRef", "serviceAccountRef", "sourceRevision", "configurationDigest"],
       [],
       "receipt.execution",
     );
@@ -1346,10 +1407,7 @@ export function validateSourceOnlyReceipt(value) {
       value.execution.sourceRevision === value.deployedRevision,
       "receipt execution source does not match deployed revision",
     );
-    assertDigest(
-      value.execution.configurationDigest,
-      "receipt.execution.configurationDigest",
-    );
+    assertDigest(value.execution.configurationDigest, "receipt.execution.configurationDigest");
   }
   assertPublicSafe(value);
   return value;
