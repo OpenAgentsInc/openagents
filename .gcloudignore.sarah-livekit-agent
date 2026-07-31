@@ -9,8 +9,12 @@
 !patches/
 !patches/**
 !apps/
+!apps/**/package.json
 !apps/sarah-livekit-agent/
 !apps/sarah-livekit-agent/**
 !packages/
+!packages/**/package.json
 !packages/audio-contract/
 !packages/audio-contract/**
+!types/
+!types/**/package.json
