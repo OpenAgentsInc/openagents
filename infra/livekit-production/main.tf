@@ -227,7 +227,7 @@ resource "google_tags_tag_binding" "privileged_service_account" {
 resource "google_iam_deny_policy" "legacy_automation_privileged_impersonation" {
   parent       = urlencode("cloudresourcemanager.googleapis.com/projects/${var.project_id}")
   name         = "deny-legacy-livekit-privileged-impersonation"
-  display_name = "Deny legacy automation impersonation of privileged LiveKit identities"
+  display_name = "Block LiveKit privileged identity impersonation"
 
   rules {
     description = "Only service accounts tagged as protected are in scope; narrow build-only identities remain usable."
