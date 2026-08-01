@@ -359,7 +359,7 @@ const run = async () => {
   const scenarioInput: SarahLiveKitAcceptanceScenario = {
     kind: room,
     bearer: environment(`OA_SARAH_LIVEKIT_ACCEPTANCE_${suffix}_BEARER`),
-    subscriberRef: `remaining-drill-subscriber-${randomUUID()}`,
+    subscriberRef: `drill-${room}-subscriber-${randomUUID()}`,
     ownerRef: environment(`OA_SARAH_LIVEKIT_ACCEPTANCE_${suffix}_OWNER_REF`),
     deviceRef: `remaining-drill-device-${randomUUID()}`,
     threadRef: `remaining-drill-thread-${randomUUID()}`,
@@ -379,7 +379,7 @@ const run = async () => {
     scenario === "reconnect"
       ? {
           ...scenarioInput,
-          subscriberRef: `remaining-drill-subscriber-${randomUUID()}`,
+          subscriberRef: `drill-${room}-subscriber-${randomUUID()}`,
           sessionRef: `remaining-drill-reconnect-fresh-${randomUUID()}`,
           generation: 2,
         }

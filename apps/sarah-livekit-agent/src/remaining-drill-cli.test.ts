@@ -39,6 +39,8 @@ describe("remaining Sarah LiveKit drill CLI", () => {
     expect(source).toContain("remaining-drill public receipt must stay under");
     expect(source.match(/flag: "wx"/gu)).toHaveLength(2);
     expect(source.match(/mode: 0o600/gu)).toHaveLength(2);
+    expect(source).toContain("`drill-${room}-subscriber-${randomUUID()}`");
+    expect(source).not.toContain("remaining-drill-subscriber");
     expect(source).not.toContain("secretmanager");
     expect(source).not.toContain("gcloud secrets");
     expect(source).not.toMatch(/console\.log\([^)]*(?:BEARER|authorization)/u);
