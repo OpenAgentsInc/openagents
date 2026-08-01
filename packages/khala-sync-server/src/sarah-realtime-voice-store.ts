@@ -145,6 +145,8 @@ export type SarahVoiceUnmeteredAuthorityCapture = Readonly<{
   sessionRefDigest: string;
   startLedgerStateDigest: string;
   endLedgerStateDigest: string;
+  startBalanceStateDigest: string;
+  endBalanceStateDigest: string;
   ledgerMutationCount: number;
   captureReceiptRef: string;
   captureDigest: string;
@@ -559,6 +561,20 @@ const unmeteredLedgerStateDigest = (input: Readonly<{
   acceptanceDigest(
     JSON.stringify({
       schema: "openagents.sarah.unmetered-ledger-state.v1",
+      ...input,
+    }),
+  );
+
+const unmeteredBalanceStateDigest = (input: Readonly<{
+  ownerActorRef: string;
+  rowPresent: boolean;
+  balanceMsat: number | null;
+  heldMsat: number | null;
+  updatedAt: string | null;
+}>): string =>
+  acceptanceDigest(
+    JSON.stringify({
+      schema: "openagents.sarah.unmetered-balance-state.v1",
       ...input,
     }),
   );
@@ -1107,6 +1123,26 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           throw new SarahVoiceStorageError("The reservation did not return a row", null);
         }
         if (input.creditMode === "owner_waived_unmetered") {
+          const balanceRows = (await tx`
+            SELECT balance_msat, held_msat, updated_at
+            FROM agent_balances
+            WHERE actor_ref = ${input.ownerActorRef}
+            FOR SHARE
+          `) as ReadonlyArray<{
+            balance_msat: number | string;
+            held_msat: number | string;
+            updated_at: string;
+          }>;
+          const balance = first(balanceRows);
+          const startBalanceStateDigest = unmeteredBalanceStateDigest({
+            ownerActorRef: input.ownerActorRef,
+            rowPresent: balance !== undefined,
+            balanceMsat:
+              balance === undefined ? null : toSafeInteger(balance.balance_msat, "balance_msat"),
+            heldMsat:
+              balance === undefined ? null : toSafeInteger(balance.held_msat, "held_msat"),
+            updatedAt: balance?.updated_at ?? null,
+          });
           const startLedgerStateDigest = unmeteredLedgerStateDigest({
             sessionRef: input.sessionRef,
             generation: input.generation,
@@ -1118,10 +1154,11 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           await tx`
             INSERT INTO sarah_voice_unmetered_authority_captures (
               session_ref, generation, authority, start_ledger_state_digest,
-              ledger_mutation_count, created_at
+              start_balance_state_digest, ledger_mutation_count, created_at
             ) VALUES (
               ${input.sessionRef}, ${input.generation},
-              'owner_waived_unmetered_v1', ${startLedgerStateDigest}, 0,
+              'owner_waived_unmetered_v1', ${startLedgerStateDigest},
+              ${startBalanceStateDigest}, 0,
               ${input.nowIso}
             )
           `;
@@ -2873,6 +2910,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       chargedMsat: number;
       terminalReceiptRef: string;
       nowIso: string;
+      ownerActorRef: string;
     }>,
   ): Promise<void> => {
     const payInRows = (await tx`
@@ -2905,14 +2943,34 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       payInCount,
       payInLegCount,
     });
+    const balanceRows = (await tx`
+      SELECT balance_msat, held_msat, updated_at
+      FROM agent_balances
+      WHERE actor_ref = ${input.ownerActorRef}
+      FOR SHARE
+    `) as ReadonlyArray<{
+      balance_msat: number | string;
+      held_msat: number | string;
+      updated_at: string;
+    }>;
+    const balance = first(balanceRows);
+    const endBalanceStateDigest = unmeteredBalanceStateDigest({
+      ownerActorRef: input.ownerActorRef,
+      rowPresent: balance !== undefined,
+      balanceMsat:
+        balance === undefined ? null : toSafeInteger(balance.balance_msat, "balance_msat"),
+      heldMsat: balance === undefined ? null : toSafeInteger(balance.held_msat, "held_msat"),
+      updatedAt: balance?.updated_at ?? null,
+    });
     const captureRows = (await tx`
-      SELECT start_ledger_state_digest, terminal_at
+      SELECT start_ledger_state_digest, start_balance_state_digest, terminal_at
       FROM sarah_voice_unmetered_authority_captures
       WHERE session_ref = ${input.sessionRef}
         AND generation = ${input.generation}
       FOR UPDATE
     `) as ReadonlyArray<{
       start_ledger_state_digest: string;
+      start_balance_state_digest: string;
       terminal_at: string | null;
     }>;
     const capture = first(captureRows);
@@ -2928,6 +2986,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         generation: input.generation,
         startLedgerStateDigest: capture.start_ledger_state_digest,
         endLedgerStateDigest,
+        startBalanceStateDigest: capture.start_balance_state_digest,
+        endBalanceStateDigest,
         ledgerMutationCount,
         terminalReceiptRef: input.terminalReceiptRef,
       }),
@@ -2935,9 +2995,12 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     await tx`
       UPDATE sarah_voice_unmetered_authority_captures
       SET end_ledger_state_digest = ${endLedgerStateDigest},
+          end_balance_state_digest = ${endBalanceStateDigest},
           ledger_mutation_count = ${ledgerMutationCount},
           capture_receipt_ref = ${`sarah_voice_unmetered_authority:${captureDigest}`},
-          capture_digest = ${captureDigest}, terminal_at = ${input.nowIso}
+          capture_digest = ${captureDigest},
+          terminal_authority_ref = ${input.terminalReceiptRef},
+          terminal_at = ${input.nowIso}
       WHERE session_ref = ${input.sessionRef}
         AND generation = ${input.generation}
         AND terminal_at IS NULL
@@ -3035,6 +3098,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         terminalReceiptRef:
           `sarah_voice_accounting_uncertain:${uncertainRecord.sessionRef}:${uncertainRecord.generation}`,
         nowIso: input.nowIso,
+        ownerActorRef: uncertainRecord.ownerActorRef,
       });
     }
     return uncertainRecord;
@@ -3192,6 +3256,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         chargedMsat: current.chargedMsat,
         terminalReceiptRef: receiptRef,
         nowIso: input.nowIso,
+        ownerActorRef: current.ownerActorRef,
       });
     }
     await tx`
@@ -3842,6 +3907,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           waiver.authority AS waiver_authority,
           capture.generation AS capture_generation,
           capture.start_ledger_state_digest, capture.end_ledger_state_digest,
+          capture.start_balance_state_digest, capture.end_balance_state_digest,
           capture.ledger_mutation_count, capture.capture_receipt_ref,
           capture.capture_digest,
           CASE
@@ -3903,6 +3969,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         capture_generation: number | string | null;
         start_ledger_state_digest: string | null;
         end_ledger_state_digest: string | null;
+        start_balance_state_digest: string | null;
+        end_balance_state_digest: string | null;
         ledger_mutation_count: number | string | null;
         capture_receipt_ref: string | null;
         capture_digest: string | null;
@@ -3987,6 +4055,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           row.capture_generation !== null &&
           row.start_ledger_state_digest !== null &&
           row.end_ledger_state_digest !== null &&
+          row.start_balance_state_digest !== null &&
+          row.end_balance_state_digest !== null &&
           row.ledger_mutation_count !== null &&
           row.capture_receipt_ref !== null &&
           row.capture_digest !== null
@@ -3997,6 +4067,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
                 sessionRefDigest: acceptanceDigest(row.session_ref),
                 startLedgerStateDigest: row.start_ledger_state_digest,
                 endLedgerStateDigest: row.end_ledger_state_digest,
+                startBalanceStateDigest: row.start_balance_state_digest,
+                endBalanceStateDigest: row.end_balance_state_digest,
                 ledgerMutationCount: toSafeInteger(
                   row.ledger_mutation_count,
                   "ledger_mutation_count",
@@ -4144,6 +4216,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         row.capture_generation !== null &&
         row.start_ledger_state_digest !== null &&
         row.end_ledger_state_digest !== null &&
+        row.start_balance_state_digest !== null &&
+        row.end_balance_state_digest !== null &&
         row.ledger_mutation_count !== null &&
         row.capture_receipt_ref !== null &&
         row.capture_digest !== null
@@ -4155,6 +4229,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           sessionRefDigest: acceptanceDigest(row.session_ref),
           startLedgerStateDigest: row.start_ledger_state_digest,
           endLedgerStateDigest: row.end_ledger_state_digest,
+          startBalanceStateDigest: row.start_balance_state_digest,
+          endBalanceStateDigest: row.end_balance_state_digest,
           ledgerMutationCount: toSafeInteger(
             row.ledger_mutation_count,
             "ledger_mutation_count",

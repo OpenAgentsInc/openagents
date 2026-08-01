@@ -161,6 +161,16 @@ describe.skipIf(!hasLocalPostgres())("Sarah voice owner-waived unmetered account
       SELECT actor_ref FROM agent_balances WHERE actor_ref = 'agent:user-unmetered'
     `;
     expect(balance).toBeUndefined();
+    const [uncertainCapture] = await sql`
+      SELECT start_balance_state_digest, end_balance_state_digest,
+        terminal_authority_ref
+      FROM sarah_voice_unmetered_authority_captures
+      WHERE session_ref = 'voice-unmetered'
+    `;
+    expect(uncertainCapture).toMatchObject({
+      end_balance_state_digest: uncertainCapture?.start_balance_state_digest,
+      terminal_authority_ref: "sarah_voice_accounting_uncertain:voice-unmetered:1",
+    });
   }, 120_000);
 
   test("waives an uncertain hold idempotently without changing provider evidence", async () => {
@@ -327,6 +337,11 @@ describe.skipIf(!hasLocalPostgres())("Sarah voice owner-waived unmetered account
         'operator:test', 'test', ${nowIso}
       )
     `;
+    await sql`
+      INSERT INTO agent_balances (
+        actor_ref, balance_msat, held_msat, usd_credit_msat, created_at, updated_at
+      ) VALUES ('agent:user-capture', 100, 0, 0, ${nowIso}, ${nowIso})
+    `;
     const store = makeSarahRealtimeVoiceStore(sql as unknown as SyncSql);
     await store.reserve({
       sessionRef: "voice-capture",
@@ -394,14 +409,18 @@ describe.skipIf(!hasLocalPostgres())("Sarah voice owner-waived unmetered account
     });
     const [capture] = await sql`
       SELECT start_ledger_state_digest, end_ledger_state_digest,
-        ledger_mutation_count, capture_receipt_ref, capture_digest
+        start_balance_state_digest, end_balance_state_digest,
+        ledger_mutation_count, capture_receipt_ref, capture_digest,
+        terminal_authority_ref
       FROM sarah_voice_unmetered_authority_captures
       WHERE session_ref = 'voice-capture'
     `;
     expect(capture).toMatchObject({
       ledger_mutation_count: "0",
       end_ledger_state_digest: capture?.start_ledger_state_digest,
+      end_balance_state_digest: capture?.start_balance_state_digest,
       capture_receipt_ref: `sarah_voice_unmetered_authority:${String(capture?.capture_digest)}`,
+      terminal_authority_ref: "sarah_voice_settlement:voice-capture",
     });
   }, 120_000);
 });

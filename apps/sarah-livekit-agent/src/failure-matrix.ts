@@ -24,6 +24,8 @@ export type SarahLiveKitUnmeteredAuthorityCapture = Readonly<{
   sessionRefDigest: string;
   startLedgerStateDigest: string;
   endLedgerStateDigest: string;
+  startBalanceStateDigest: string;
+  endBalanceStateDigest: string;
   ledgerMutationCount: 0;
   captureReceiptRef: string;
   captureDigest: string;
@@ -42,8 +44,6 @@ export type SarahLiveKitRetiredFailureScenarioObservation = Readonly<{
   spendableRemainingCreditMsat: null;
   reservedMsat: 0;
   chargedMsat: 0;
-  balanceDeltaMsat: 0;
-  heldDeltaMsat: 0;
   ledgerMutationCount: 0;
 }>;
 
@@ -243,9 +243,28 @@ export type SarahLiveKitUnmeteredAuthorityCaptureRow = Readonly<{
   generation: number;
   startLedgerStateDigest: string;
   endLedgerStateDigest: string;
+  startBalanceStateDigest: string;
+  endBalanceStateDigest: string;
   ledgerMutationCount: number;
   captureReceiptRef: string;
   captureDigest: string;
+  sessionState: string;
+  creditMode: string;
+  providerAccountingStatus: string | null;
+  closeReason: string | null;
+  reservedMsat: number;
+  chargedMsat: number;
+  settlementReceiptRef: string | null;
+  terminalAuthorityRef: string;
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  audioInputTokens: number;
+  audioOutputTokens: number;
+  usageChargeMsat: number;
+  responseCount: number;
+  transcriptionCount: number;
+  cancelledResponseCount: number;
 }>;
 
 /**
@@ -383,6 +402,8 @@ const validateUnmeteredAuthorityCapture = (
       "sessionRefDigest",
       "startLedgerStateDigest",
       "endLedgerStateDigest",
+      "startBalanceStateDigest",
+      "endBalanceStateDigest",
       "ledgerMutationCount",
       "captureReceiptRef",
       "captureDigest",
@@ -400,6 +421,8 @@ const validateUnmeteredAuthorityCapture = (
     RAW_SHA256.test(value.sessionRefDigest) &&
       RAW_SHA256.test(value.startLedgerStateDigest) &&
       RAW_SHA256.test(value.endLedgerStateDigest) &&
+      RAW_SHA256.test(value.startBalanceStateDigest) &&
+      RAW_SHA256.test(value.endBalanceStateDigest) &&
       RAW_SHA256.test(value.captureDigest),
     `${label} digests are invalid`,
   );
@@ -409,6 +432,7 @@ const validateUnmeteredAuthorityCapture = (
   );
   assert(
     value.startLedgerStateDigest === value.endLedgerStateDigest &&
+      value.startBalanceStateDigest === value.endBalanceStateDigest &&
       value.ledgerMutationCount === 0,
     `${label} does not prove zero ledger mutation`,
   );
@@ -756,8 +780,6 @@ export const validateSarahLiveKitFailureMatrixObservation = (
       "spendableRemainingCreditMsat",
       "reservedMsat",
       "chargedMsat",
-      "balanceDeltaMsat",
-      "heldDeltaMsat",
       "ledgerMutationCount",
     ],
     "retired hold-exhaustion observation",
@@ -789,8 +811,6 @@ export const validateSarahLiveKitFailureMatrixObservation = (
       retired.spendableRemainingCreditMsat === null &&
       retired.reservedMsat === 0 &&
       retired.chargedMsat === 0 &&
-      retired.balanceDeltaMsat === 0 &&
-      retired.heldDeltaMsat === 0 &&
       retired.ledgerMutationCount === 0,
     "retired hold-exhaustion evidence does not prove zero hold and zero ledger mutation",
   );
@@ -843,11 +863,53 @@ export const validateSarahLiveKitFailureMatrixAuthorityRows = (
         row.generation === capture.generation &&
         row.startLedgerStateDigest === capture.startLedgerStateDigest &&
         row.endLedgerStateDigest === capture.endLedgerStateDigest &&
+        row.startBalanceStateDigest === capture.startBalanceStateDigest &&
+        row.endBalanceStateDigest === capture.endBalanceStateDigest &&
         row.ledgerMutationCount === capture.ledgerMutationCount &&
         row.captureDigest === capture.captureDigest,
       "production authority capture does not match the observation",
     );
   }
+  for (const scenario of observation.scenarios) {
+    const row = rows.find(
+      (candidate) =>
+        candidate.captureReceiptRef === scenario.unmeteredAuthorityCapture.captureReceiptRef,
+    ) as SarahLiveKitUnmeteredAuthorityCaptureRow;
+    const expectedProviderStatus =
+      scenario.scenario === "provider_disconnect" ? "uncertain" : "exact";
+    assert(
+      row.sessionState === scenario.terminalState &&
+        row.creditMode === scenario.creditMode &&
+        row.providerAccountingStatus === expectedProviderStatus &&
+        row.closeReason === scenario.terminalReason &&
+        row.reservedMsat === scenario.hold.reservedMsat &&
+        row.chargedMsat === scenario.hold.chargedMsat &&
+        row.inputTokens === scenario.usage.inputTokens &&
+        row.outputTokens === scenario.usage.outputTokens &&
+        row.cachedInputTokens === scenario.usage.cachedInputTokens &&
+        row.audioInputTokens === scenario.usage.audioInputTokens &&
+        row.audioOutputTokens === scenario.usage.audioOutputTokens &&
+        row.usageChargeMsat === scenario.usage.chargeMsat &&
+        row.responseCount === scenario.usage.responseCount &&
+        row.transcriptionCount === scenario.usage.transcriptionCount &&
+        row.cancelledResponseCount === scenario.usage.cancelledResponseCount &&
+        digest(row.terminalAuthorityRef) === scenario.identityDigests.settlement &&
+        (expectedProviderStatus === "exact"
+          ? row.settlementReceiptRef === row.terminalAuthorityRef
+          : row.settlementReceiptRef === null),
+      `${scenario.scenario} production terminal authority does not match the observation`,
+    );
+  }
+  const retiredCapture = observation.retiredScenarios[0].unmeteredAuthorityCapture;
+  const retiredRow = rows.find(
+    (row) => row.captureReceiptRef === retiredCapture.captureReceiptRef,
+  ) as SarahLiveKitUnmeteredAuthorityCaptureRow;
+  assert(
+    retiredRow.creditMode === "owner_waived_unmetered" &&
+      retiredRow.reservedMsat === 0 &&
+      retiredRow.chargedMsat === 0,
+    "retired production authority does not prove zero hold",
+  );
 };
 
 const sumUsage = (scenarios: readonly SarahLiveKitFailureScenarioObservation[]): Usage =>

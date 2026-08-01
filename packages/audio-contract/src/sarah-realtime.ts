@@ -167,6 +167,8 @@ export const SarahVoiceSettlementResponseSchema = S.Struct({
       sessionRefDigest: Digest,
       startLedgerStateDigest: Digest,
       endLedgerStateDigest: Digest,
+      startBalanceStateDigest: Digest,
+      endBalanceStateDigest: Digest,
       ledgerMutationCount: Seq,
       captureReceiptRef: Ref,
       captureDigest: Digest,

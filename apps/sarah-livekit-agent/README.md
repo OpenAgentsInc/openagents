@@ -172,7 +172,9 @@ production observation that remains outside the repository, verify its durable
 unmetered authority captures through a read-only production database query, and
 write one public-safe receipt. It does not inject a fault. Each scenario must reconcile
 exact provider usage, the reserved/charged/released hold, and terminal
-settlement; show one terminal event; show at most one worker generation and one
+settlement against those database rows. Each capture also requires identical
+start/end owner balance-state digests, including row presence and update time;
+show one terminal event; show at most one worker generation and one
 provider session; require fresh admission; and carry zero secret, raw-media,
 and transcript findings. Provider disconnect preserves uncertain provider
 accounting and is published with `exactAccounting: false`; its durable capture

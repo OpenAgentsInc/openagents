@@ -24,6 +24,8 @@ const authorityCapture = (value: string, generation: number) => {
     sessionRefDigest: rawDigest(`session-${value}`),
     startLedgerStateDigest: ledgerDigest,
     endLedgerStateDigest: ledgerDigest,
+    startBalanceStateDigest: rawDigest(`balance-${value}`),
+    endBalanceStateDigest: rawDigest(`balance-${value}`),
     ledgerMutationCount: 0 as const,
     captureReceiptRef: `sarah_voice_unmetered_authority:${captureDigest}`,
     captureDigest,
@@ -71,8 +73,6 @@ const observation = (): SarahLiveKitFailureMatrixObservation => ({
       spendableRemainingCreditMsat: null,
       reservedMsat: 0,
       chargedMsat: 0,
-      balanceDeltaMsat: 0,
-      heldDeltaMsat: 0,
       ledgerMutationCount: 0,
     },
   ],
@@ -93,7 +93,11 @@ const observation = (): SarahLiveKitFailureMatrixObservation => ({
         generation: `sha256:${rawDigest(`session-${scenario}`)}`,
         hold: digest(`identity-${base + 3}`),
         usage: digest(`identity-${base + 4}`),
-        settlement: digest(`identity-${base + 5}`),
+        settlement: digest(
+          scenario === "provider_disconnect"
+            ? `sarah_voice_accounting_uncertain:session-${scenario}:${scenarioIndex + 1}`
+            : `sarah_voice_settlement:session-${scenario}`,
+        ),
       },
       usage: {
         inputTokens: 10,
@@ -169,9 +173,13 @@ const mutateScenario = (
 describe("Sarah LiveKit terminal failure matrix", () => {
   test("keeps the owner-gated CLI non-mutating and private input outside Git", () => {
     const source = readFileSync(new URL("./failure-matrix-cli.ts", import.meta.url), "utf8");
+    const pathSource = readFileSync(
+      new URL("./failure-matrix-paths.ts", import.meta.url),
+      "utf8",
+    );
     expect(source).toContain("I_ACCEPT_EP263_SARAH_FAILURE_MATRIX");
-    expect(source).toContain("private failure-matrix observation must remain outside");
-    expect(source).toContain("receipt path must be under docs/ops/receipts/livekit");
+    expect(pathSource).toContain("private failure-matrix observation must remain outside");
+    expect(pathSource).toContain("receipt path must be under docs/ops/receipts/livekit");
     expect(source).toContain('flag: "wx"');
     expect(source).toContain("must be from the last 24 hours");
     expect(source).toContain("SARAH_FAILURE_MATRIX_EXPECTED_PRODUCTION_DATABASE");
@@ -322,11 +330,58 @@ describe("Sarah LiveKit terminal failure matrix", () => {
       input.retiredScenarios[0].unmeteredAuthorityCapture,
     ];
     const sessionRefs = [...SARAH_LIVEKIT_FAILURE_SCENARIOS, "retired"];
-    const rows = captures.map((capture, index) => ({
-      ...capture,
-      sessionRef: `session-${sessionRefs[index]}`,
-    }));
+    const rows = captures.map((capture, index) => {
+      const scenario = SARAH_LIVEKIT_FAILURE_SCENARIOS[index];
+      const sessionRef = `session-${sessionRefs[index]}`;
+      const uncertain = scenario === "provider_disconnect";
+      const terminalAuthorityRef = uncertain
+        ? `sarah_voice_accounting_uncertain:${sessionRef}:${index + 1}`
+        : `sarah_voice_settlement:${sessionRef}`;
+      return {
+        ...capture,
+        sessionRef,
+        sessionState: uncertain ? "accounting_uncertain" : "released",
+        creditMode: "owner_waived_unmetered",
+        providerAccountingStatus: scenario === undefined ? null : uncertain ? "uncertain" : "exact",
+        closeReason: scenario === undefined ? "completed" : terminalReason[scenario],
+        reservedMsat: 0,
+        chargedMsat: 0,
+        settlementReceiptRef: uncertain || scenario === undefined ? null : terminalAuthorityRef,
+        terminalAuthorityRef,
+        inputTokens: scenario === undefined ? 0 : 10,
+        outputTokens: scenario === undefined ? 0 : 11,
+        cachedInputTokens: scenario === undefined ? 0 : 1,
+        audioInputTokens: scenario === undefined ? 0 : 12,
+        audioOutputTokens: scenario === undefined ? 0 : 13,
+        usageChargeMsat: 0,
+        responseCount: scenario === undefined ? 0 : 2,
+        transcriptionCount: scenario === undefined ? 0 : 1,
+        cancelledResponseCount: scenario === undefined || scenario === "success" ? 0 : 1,
+      };
+    });
     expect(() => validateSarahLiveKitFailureMatrixAuthorityRows(input, rows)).not.toThrow();
+    const disconnectIndex = SARAH_LIVEKIT_FAILURE_SCENARIOS.indexOf("provider_disconnect");
+    const disconnectRow = rows[disconnectIndex]!;
+    rows[disconnectIndex] = {
+      ...disconnectRow,
+      sessionState: "released",
+      providerAccountingStatus: "exact",
+      settlementReceiptRef: disconnectRow.terminalAuthorityRef,
+    };
+    expect(() => validateSarahLiveKitFailureMatrixAuthorityRows(input, rows)).toThrow(
+      "provider_disconnect production terminal authority",
+    );
+    rows[disconnectIndex] = disconnectRow;
+    rows[0] = { ...rows[0]!, inputTokens: 999 };
+    expect(() => validateSarahLiveKitFailureMatrixAuthorityRows(input, rows)).toThrow(
+      "success production terminal authority",
+    );
+    rows[0] = { ...rows[0]!, inputTokens: 10 };
+    rows[0] = { ...rows[0]!, endBalanceStateDigest: rawDigest("changed-balance") };
+    expect(() => validateSarahLiveKitFailureMatrixAuthorityRows(input, rows)).toThrow(
+      "does not match",
+    );
+    rows[0] = { ...rows[0]!, endBalanceStateDigest: rows[0]!.startBalanceStateDigest };
     rows[0] = { ...rows[0]!, captureDigest: rawDigest("fabricated") };
     expect(() => validateSarahLiveKitFailureMatrixAuthorityRows(input, rows)).toThrow(
       "does not match",

@@ -2253,9 +2253,12 @@ The remaining-drill CLI no longer accepts the scenario, so it cannot loop
 forever waiting for a condition the owner removed. Historical evidence remains
 in the v1 receipt. A v2 live-proof matrix must bind every active and retired row
 to a durable runtime capture by session digest and generation. The receipt CLI
-rereads those captures from the production database and rejects a missing,
-reused, or changed capture. It rejects any nonzero reserved,
-charged, released, balance-delta, held-delta, or ledger-mutation value. Every
+rereads those captures together with session, provider-accounting, usage, close,
+and terminal-receipt authority from the production database. It rejects a
+missing, reused, relabeled, or changed capture. The capture binds the owner's
+`agent_balances` row-presence, balance, held amount, and update instant at both
+ends of the run; those digests must be identical. It rejects any nonzero
+reserved, charged, released, or ledger-mutation value. Every
 active v2 scenario likewise requires `owner_waived_unmetered`, nonzero provider
 token evidence, and zero platform credit accounting. `provider_disconnect`
 truthfully remains `accounting_uncertain` with `exactAccounting: false`; every

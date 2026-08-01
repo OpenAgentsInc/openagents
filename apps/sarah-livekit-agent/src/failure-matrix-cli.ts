@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
@@ -12,10 +12,10 @@ import {
   type SarahLiveKitFailureMatrixObservation,
   type SarahLiveKitUnmeteredAuthorityCaptureRow,
 } from "./failure-matrix.js";
+import { canonicalFailureMatrixPaths } from "./failure-matrix-paths.js";
 
 const OWNER_GATE = "I_ACCEPT_EP263_SARAH_FAILURE_MATRIX";
 const repositoryRoot = fileURLToPath(new URL("../../..", import.meta.url));
-const receiptRoot = resolve(repositoryRoot, "docs/ops/receipts/livekit");
 
 const requiredEnvironment = (name: string): string => {
   const value = process.env[name]?.trim();
@@ -54,18 +54,58 @@ const readProductionAuthorityRows = async (
     SELECT json_build_object(
       'databaseName', current_database(),
       'rows', COALESCE(json_agg(json_build_object(
-        'sessionRef', session_ref,
-        'authority', authority,
-        'generation', generation,
-        'startLedgerStateDigest', start_ledger_state_digest,
-        'endLedgerStateDigest', end_ledger_state_digest,
-        'ledgerMutationCount', ledger_mutation_count::integer,
-        'captureReceiptRef', capture_receipt_ref,
-        'captureDigest', capture_digest
-      ) ORDER BY capture_receipt_ref) FILTER (WHERE capture_receipt_ref IS NOT NULL), '[]'::json)
+        'sessionRef', capture.session_ref,
+        'authority', capture.authority,
+        'generation', capture.generation,
+        'startLedgerStateDigest', capture.start_ledger_state_digest,
+        'endLedgerStateDigest', capture.end_ledger_state_digest,
+        'startBalanceStateDigest', capture.start_balance_state_digest,
+        'endBalanceStateDigest', capture.end_balance_state_digest,
+        'ledgerMutationCount', capture.ledger_mutation_count::integer,
+        'captureReceiptRef', capture.capture_receipt_ref,
+        'captureDigest', capture.capture_digest,
+        'sessionState', session.state,
+        'creditMode', session.credit_mode,
+        'providerAccountingStatus', binding.provider_accounting_status,
+        'closeReason', session.close_reason,
+        'reservedMsat', session.reserved_msat,
+        'chargedMsat', session.charged_msat,
+        'settlementReceiptRef', session.settlement_receipt_ref,
+        'terminalAuthorityRef', capture.terminal_authority_ref,
+        'inputTokens', usage.input_tokens,
+        'outputTokens', usage.output_tokens,
+        'cachedInputTokens', usage.cached_input_tokens,
+        'audioInputTokens', usage.audio_input_tokens,
+        'audioOutputTokens', usage.audio_output_tokens,
+        'usageChargeMsat', usage.charge_msat,
+        'responseCount', usage.response_count,
+        'transcriptionCount', usage.transcription_count,
+        'cancelledResponseCount', usage.cancelled_response_count
+      ) ORDER BY capture.capture_receipt_ref)
+        FILTER (WHERE capture.capture_receipt_ref IS NOT NULL), '[]'::json)
     )
-    FROM sarah_voice_unmetered_authority_captures
-    WHERE capture_receipt_ref IN (${literals});
+    FROM sarah_voice_unmetered_authority_captures AS capture
+    INNER JOIN sarah_realtime_voice_sessions AS session
+      ON session.session_ref = capture.session_ref
+    LEFT JOIN sarah_livekit_room_bindings AS binding
+      ON binding.session_ref = capture.session_ref
+      AND binding.generation = capture.generation
+    LEFT JOIN LATERAL (
+      SELECT COALESCE(SUM(input_tokens), 0) AS input_tokens,
+        COALESCE(SUM(output_tokens), 0) AS output_tokens,
+        COALESCE(SUM(cached_input_tokens), 0) AS cached_input_tokens,
+        COALESCE(SUM(audio_input_tokens), 0) AS audio_input_tokens,
+        COALESCE(SUM(audio_output_tokens), 0) AS audio_output_tokens,
+        COALESCE(SUM(charge_msat), 0) AS charge_msat,
+        COUNT(*) FILTER (WHERE usage_kind = 'response') AS response_count,
+        COUNT(*) FILTER (WHERE usage_kind = 'transcription') AS transcription_count,
+        COUNT(*) FILTER (
+          WHERE usage_kind = 'response' AND provider_status = 'cancelled'
+        ) AS cancelled_response_count
+      FROM sarah_realtime_voice_usage
+      WHERE session_ref = capture.session_ref
+    ) AS usage ON true
+    WHERE capture.capture_receipt_ref IN (${literals});
   `);
   let parsed: unknown;
   try {
@@ -169,14 +209,11 @@ const run = async () => {
   if (process.env.OA_SARAH_LIVEKIT_FAILURE_MATRIX_OWNER_GATE !== OWNER_GATE) {
     throw new Error(`--apply requires OA_SARAH_LIVEKIT_FAILURE_MATRIX_OWNER_GATE=${OWNER_GATE}`);
   }
-  const inputPath = resolve(args.input as string);
-  if (inputPath === repositoryRoot || inputPath.startsWith(`${repositoryRoot}/`)) {
-    throw new Error("private failure-matrix observation must remain outside the repository");
-  }
-  const receiptPath = resolve(repositoryRoot, args.receipt as string);
-  if (!receiptPath.startsWith(`${receiptRoot}/`)) {
-    throw new Error("receipt path must be under docs/ops/receipts/livekit");
-  }
+  const { inputPath, receiptPath } = canonicalFailureMatrixPaths(
+    repositoryRoot,
+    args.input as string,
+    args.receipt as string,
+  );
   const observation = JSON.parse(
     await readFile(inputPath, "utf8"),
   ) as SarahLiveKitFailureMatrixObservation;
