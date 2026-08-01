@@ -1,3 +1,4 @@
+export * from "./artifact-witness.ts";
 export * from "./canonical.ts";
 export * from "./benchmark.ts";
 export * from "./claims.ts";

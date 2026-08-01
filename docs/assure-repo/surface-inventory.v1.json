@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:ef25d9333074425b64001ec2406eb35cdc42a3f3bf16812bdcebd4fc50bae668",
+  "sourceDigest": "sha256:669ab3ec4c659e49f792bbd6b02685b01829347b9dc00bf614b78067cb2265ee",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -2261,7 +2261,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/forensic-contract (4 tracked test files)"
+          "ref": "packages/forensic-contract (5 tracked test files)"
         }
       ],
       "obligation": {

@@ -1,0 +1,132 @@
+{
+  "schema": "openagents.coldcard_artifact_witness_fixture.v1",
+  "witnessVersionRef": "artifact-witness.coldcard.v1",
+  "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "toolchainDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "cases": [
+    {
+      "capture": {
+        "schema": "openagents.artifact_witness_capture.v1",
+        "artifacts": [
+          { "artifactRef": "artifact.vulnerable.preprocessed", "digest": "sha256:0101010101010101010101010101010101010101010101010101010101010101", "kind": "preprocessed_source", "status": "available" },
+          { "artifactRef": "artifact.vulnerable.commands", "digest": "sha256:0202020202020202020202020202020202020202020202020202020202020202", "kind": "compiler_command", "status": "available" },
+          { "artifactRef": "artifact.vulnerable.object", "digest": "sha256:0303030303030303030303030303030303030303030303030303030303030303", "kind": "object", "status": "available" },
+          { "artifactRef": "artifact.vulnerable.archive", "digest": "sha256:0404040404040404040404040404040404040404040404040404040404040404", "kind": "archive", "status": "available" },
+          { "artifactRef": "artifact.vulnerable.symbols", "digest": "sha256:0505050505050505050505050505050505050505050505050505050505050505", "kind": "symbol_table", "status": "available" },
+          { "artifactRef": "artifact.vulnerable.link-map", "digest": "sha256:0606060606060606060606060606060606060606060606060606060606060606", "kind": "link_map", "status": "available" },
+          { "artifactRef": "artifact.vulnerable.firmware", "digest": "sha256:0707070707070707070707070707070707070707070707070707070707070707", "kind": "firmware", "status": "available" },
+          { "artifactRef": "artifact.vulnerable.debug", "digest": "sha256:0808080808080808080808080808080808080808080808080808080808080808", "kind": "debug_metadata", "status": "available" },
+          { "artifactRef": "artifact.vulnerable.build-log", "digest": "sha256:0909090909090909090909090909090909090909090909090909090909090909", "kind": "build_log", "status": "available" }
+        ],
+        "buildConfigurationDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "buildOutcome": "succeeded",
+        "callGraphComplete": true,
+        "callEdges": [
+          { "evidenceArtifactRefs": ["artifact.vulnerable.object", "artifact.vulnerable.link-map", "artifact.vulnerable.debug"], "fromSymbol": "symbol.micropython.rng_get", "toSymbol": "symbol.libngu.random_bytes" }
+        ],
+        "captureRef": "capture.coldcard.vulnerable",
+        "capturedAt": "2026-08-01T18:00:00.000Z",
+        "macroObservations": [
+          { "macroName": "macro.MICROPY_HW_ENABLE_RNG", "preprocessedArtifactRef": "artifact.vulnerable.preprocessed", "value": "0" }
+        ],
+        "sourceBundleDigest": "sha256:1212121212121212121212121212121212121212121212121212121212121212",
+        "symbolInventoryComplete": true,
+        "symbolProviders": [
+          { "archiveArtifactRef": "artifact.vulnerable.archive", "linkMapArtifactRef": "artifact.vulnerable.link-map", "objectArtifactRef": "artifact.vulnerable.object", "providerRef": "provider.micropython.yasmarang", "symbolName": "symbol.micropython.rng_get", "symbolTableArtifactRef": "artifact.vulnerable.symbols" }
+        ],
+        "targetCommit": "bcc2c382a324690a2fcf972c0bac3b79bf923f7b",
+        "targetSnapshotRef": "target.coldcard.vulnerable",
+        "toolchainDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "variant": "vulnerable",
+        "widthObservations": [
+          { "evidenceArtifactRefs": ["artifact.vulnerable.preprocessed", "artifact.vulnerable.object", "artifact.vulnerable.debug"], "retainedBits": 32, "symbolName": "symbol.micropython.rng_get", "truncationObserved": false }
+        ],
+        "workerPlacementRef": "placement.openagents-cloud.coldcard.vulnerable",
+        "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "assertions": [
+        { "assertionRef": "assertion.vulnerable.macro-zero", "description": "Resolve the board RNG macro from preprocessed source.", "expectedValue": "0", "kind": "preprocessed_macro_value", "macroName": "macro.MICROPY_HW_ENABLE_RNG" },
+        { "assertionRef": "assertion.vulnerable.fallback-provider", "description": "Observe rng_get resolving to the deterministic fallback provider.", "expectedProviderRef": "provider.micropython.yasmarang", "kind": "symbol_provider", "symbolName": "symbol.micropython.rng_get" },
+        { "assertionRef": "assertion.vulnerable.secret-sink", "description": "Trace the linked RNG provider to the libngu secret consumer.", "kind": "source_to_secret_sink", "sinkSymbol": "symbol.libngu.random_bytes", "sourceSymbol": "symbol.micropython.rng_get" },
+        { "assertionRef": "assertion.vulnerable.width", "description": "Record the retained provider width before later generator analysis.", "kind": "minimum_retained_width", "minimumBits": 32, "symbolName": "symbol.micropython.rng_get" }
+      ]
+    },
+    {
+      "capture": {
+        "schema": "openagents.artifact_witness_capture.v1",
+        "artifacts": [
+          { "artifactRef": "artifact.fixed.preprocessed", "digest": "sha256:2121212121212121212121212121212121212121212121212121212121212121", "kind": "preprocessed_source", "status": "available" },
+          { "artifactRef": "artifact.fixed.commands", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "kind": "compiler_command", "status": "available" },
+          { "artifactRef": "artifact.fixed.object", "digest": "sha256:2323232323232323232323232323232323232323232323232323232323232323", "kind": "object", "status": "available" },
+          { "artifactRef": "artifact.fixed.archive", "digest": "sha256:2424242424242424242424242424242424242424242424242424242424242424", "kind": "archive", "status": "available" },
+          { "artifactRef": "artifact.fixed.symbols", "digest": "sha256:2525252525252525252525252525252525252525252525252525252525252525", "kind": "symbol_table", "status": "available" },
+          { "artifactRef": "artifact.fixed.link-map", "digest": "sha256:2626262626262626262626262626262626262626262626262626262626262626", "kind": "link_map", "status": "available" },
+          { "artifactRef": "artifact.fixed.firmware", "digest": "sha256:2727272727272727272727272727272727272727272727272727272727272727", "kind": "firmware", "status": "available" },
+          { "artifactRef": "artifact.fixed.debug", "digest": "sha256:2828282828282828282828282828282828282828282828282828282828282828", "kind": "debug_metadata", "status": "available" },
+          { "artifactRef": "artifact.fixed.build-log", "digest": "sha256:2929292929292929292929292929292929292929292929292929292929292929", "kind": "build_log", "status": "available" }
+        ],
+        "buildConfigurationDigest": "sha256:3131313131313131313131313131313131313131313131313131313131313131",
+        "buildOutcome": "succeeded",
+        "callGraphComplete": true,
+        "callEdges": [
+          { "evidenceArtifactRefs": ["artifact.fixed.object", "artifact.fixed.link-map", "artifact.fixed.debug"], "fromSymbol": "symbol.stm32.hardware_rng", "toSymbol": "symbol.libngu.random_bytes" }
+        ],
+        "captureRef": "capture.coldcard.fixed",
+        "capturedAt": "2026-08-01T18:01:00.000Z",
+        "macroObservations": [
+          { "macroName": "macro.MICROPY_HW_ENABLE_RNG", "preprocessedArtifactRef": "artifact.fixed.preprocessed", "value": "1" }
+        ],
+        "sourceBundleDigest": "sha256:3232323232323232323232323232323232323232323232323232323232323232",
+        "symbolInventoryComplete": true,
+        "symbolProviders": [
+          { "archiveArtifactRef": "artifact.fixed.archive", "linkMapArtifactRef": "artifact.fixed.link-map", "objectArtifactRef": "artifact.fixed.object", "providerRef": "provider.stm32.hardware_rng", "symbolName": "symbol.stm32.hardware_rng", "symbolTableArtifactRef": "artifact.fixed.symbols" }
+        ],
+        "targetCommit": "ca72463709f4e3f8964952039d5caf955f566a87",
+        "targetSnapshotRef": "target.coldcard.fixed",
+        "toolchainDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "variant": "fixed",
+        "widthObservations": [
+          { "evidenceArtifactRefs": ["artifact.fixed.preprocessed", "artifact.fixed.object", "artifact.fixed.debug"], "retainedBits": 32, "symbolName": "symbol.stm32.hardware_rng", "truncationObserved": false }
+        ],
+        "workerPlacementRef": "placement.openagents-cloud.coldcard.fixed",
+        "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "assertions": [
+        { "assertionRef": "assertion.fixed.macro-one", "description": "Resolve the enabled board RNG macro from preprocessed source.", "expectedValue": "1", "kind": "preprocessed_macro_value", "macroName": "macro.MICROPY_HW_ENABLE_RNG" },
+        { "assertionRef": "assertion.fixed.hardware-provider", "description": "Observe the approved STM32 hardware RNG provider in linked artifacts.", "expectedProviderRef": "provider.stm32.hardware_rng", "kind": "symbol_provider", "symbolName": "symbol.stm32.hardware_rng" },
+        { "assertionRef": "assertion.fixed.fallback-absent", "description": "Prove the forbidden Yasmarang fallback is absent from the complete symbol inventory.", "forbiddenProviderRef": "provider.micropython.yasmarang", "forbiddenSymbolName": "symbol.micropython.yasmarang", "kind": "forbidden_symbol_absent" },
+        { "assertionRef": "assertion.fixed.secret-sink", "description": "Trace the approved hardware provider to the libngu secret consumer.", "kind": "source_to_secret_sink", "sinkSymbol": "symbol.libngu.random_bytes", "sourceSymbol": "symbol.stm32.hardware_rng" },
+        { "assertionRef": "assertion.fixed.no-truncation", "description": "Prove the approved provider is not truncated at the observed secret path.", "kind": "truncation_absent", "symbolName": "symbol.stm32.hardware_rng" }
+      ]
+    },
+    {
+      "capture": {
+        "schema": "openagents.artifact_witness_capture.v1",
+        "artifacts": [
+          { "artifactRef": "artifact.fault.build-log", "digest": "sha256:4141414141414141414141414141414141414141414141414141414141414141", "kind": "build_log", "status": "available" }
+        ],
+        "buildConfigurationDigest": "sha256:4242424242424242424242424242424242424242424242424242424242424242",
+        "buildOutcome": "failed",
+        "callGraphComplete": false,
+        "callEdges": [],
+        "captureRef": "capture.coldcard.fault-build",
+        "capturedAt": "2026-08-01T18:02:00.000Z",
+        "faultMutationRef": "mutation.remove-approved-stm32-provider",
+        "macroObservations": [],
+        "sourceBundleDigest": "sha256:4343434343434343434343434343434343434343434343434343434343434343",
+        "symbolInventoryComplete": false,
+        "symbolProviders": [],
+        "targetCommit": "ca72463709f4e3f8964952039d5caf955f566a87",
+        "targetSnapshotRef": "target.coldcard.fixed.fault-build",
+        "toolchainDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "variant": "fault_build",
+        "widthObservations": [],
+        "workerPlacementRef": "placement.openagents-cloud.coldcard.fault-build",
+        "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "assertions": [
+        { "assertionRef": "assertion.fault.remove-provider-fails", "description": "Removing the approved provider must fail the build closed.", "expectedMutationRef": "mutation.remove-approved-stm32-provider", "kind": "fault_build_fails" }
+      ]
+    }
+  ]
+}

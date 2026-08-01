@@ -11,6 +11,7 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
+    "./artifact-witness": "./src/artifact-witness.ts",
     "./benchmark": "./src/benchmark.ts",
     "./canonical": "./src/canonical.ts",
     "./claims": "./src/claims.ts",

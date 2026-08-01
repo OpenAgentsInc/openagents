@@ -13,6 +13,10 @@ The package owns:
 - the Coldcard reproduction, generator, entropy, historical-chain,
   transaction-fingerprint, node-scan, evidence-graph, and claim-revision
   shapes;
+- the C/C++ artifact-witness capture, assertion, result, and report shapes,
+  plus a deterministic evaluator for preprocessed macros, compiler inputs,
+  linked symbol providers, secret-sink reachability, retained widths,
+  truncation, and fail-closed fault builds;
 - the five-arm Coldcard benchmark, four suite-manifest, split-isolation, and
   honest historical-import shapes, with the checked-in development pack at
   `fixtures/forensics/coldcard/` in the repository;
@@ -51,6 +55,9 @@ The implementation deliberately keeps these facts separate:
 - scorecards rebuild event and receipt digests from retained evidence; and
 - postmortem comparison outputs cannot become derivation or evaluator inputs,
   and Coldcard development arms cannot enter evaluator-only holdouts.
+- missing build artifacts become `not_proven`, complete symbol inventories are
+  required to prove fallback absence, and statistical output tests are never
+  entropy-provenance evidence.
 
 Consumers must decode untrusted input with `strictDecode` or equivalent Effect
 Schema options that set `onExcessProperty: "error"`. The schemas do not make a

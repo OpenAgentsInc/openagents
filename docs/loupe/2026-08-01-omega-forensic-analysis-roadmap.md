@@ -1097,6 +1097,16 @@ Exit gate:
 
 This begins the longer Codex-analysis vision.
 
+OFR-014 implements the typed capture and deterministic witness evaluator for
+this phase. It resolves macro claims only from preprocessed-source plus compiler
+command evidence; provider claims only from object, archive, symbol-table, and
+link-map evidence; and absence claims only from a complete symbol inventory.
+Missing required artifacts return `not_proven`, and statistical output tests
+are recorded only as inadmissible diagnostics. The checked-in vulnerable,
+fixed, and provider-removal cases are conformance/fault fixtures; a real capture
+must still arrive from the admitted OpenAgents Cloud profile with its own
+content-addressed bytes and receipts.
+
 Deliver for one C/C++ embedded build pipeline:
 
 - pinned toolchain and build-configuration capture;

@@ -1779,6 +1779,14 @@
   ],
   "allowed": [
     {
+      "ref": "packages/forensic-contract/src/artifact-witness.ts#evaluateArtifactWitness",
+      "reason": "Published deterministic artifact evaluator; the native forensic worker route will call it when the code-to-artifact suite moves from checked-in conformance fixtures to admitted OpenAgents Cloud capture bytes."
+    },
+    {
+      "ref": "packages/forensic-contract/src/artifact-witness.ts#evaluateColdcardArtifactWitnessSuite",
+      "reason": "Published vulnerable/fixed/fault matrix gate; the forensic evaluator route will call it when all three admitted OpenAgents Cloud captures are persisted for a suite run."
+    },
+    {
       "ref": "packages/forensic-contract/src/canonical.ts#canonicalizeForensicContract",
       "reason": "Published forensic contract API; OFR-002 and OFR-003 will call it from source materialization and run persistence when those issues land."
     },

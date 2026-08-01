@@ -18,6 +18,10 @@ The pack contains:
   generator/owned-fixture, historical fingerprint, and evidence-graph work;
   inputs owned by later issues remain `required_unmaterialized`, never zero or
   silently present; and
+- `artifact-witness-fixtures.v1.json`: deterministic vulnerable, fixed, and
+  provider-removal fault-build capture fixtures for the OFR-014 evaluator.
+  Their digests are conformance fixture values, not claims that a production
+  firmware build ran outside the admitted OpenAgents Cloud worker path; and
 - `historical-import.v1.json`: Episode 264 Arm A as
   `completed_incomplete` and Arm B as an unverified `source_observed` hit.
 
