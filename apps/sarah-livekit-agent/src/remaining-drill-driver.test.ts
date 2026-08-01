@@ -153,6 +153,7 @@ const fakeSession = (
 describe("remaining Sarah LiveKit drill drivers", () => {
   test("targets provider disconnect by the active generation digest", async () => {
     const scenario = privateScenario("provider-session", 1);
+    const liveSession = fakeSession(scenario);
     let terminal = false;
     let requestRef: string | null = null;
     const observation = await runSarahLiveKitRemainingDrill(
@@ -164,11 +165,13 @@ describe("remaining Sarah LiveKit drill drivers", () => {
         observationWindowMs: 10_000,
       },
       {
-        openSession: () => Promise.resolve(fakeSession(scenario)),
+        openSession: () => Promise.resolve(liveSession),
         readAuthority: () =>
           Promise.resolve(
             terminal
               ? terminalSnapshot(scenario.sessionRef, 1, "provider_disconnect", {
+                  state: "accounting_uncertain",
+                  settlementReceiptRef: `sarah_voice_accounting_uncertain:${scenario.sessionRef}:1`,
                   providerDisconnectApplied: true,
                   providerDisconnectRequestRef: requestRef,
                 })
@@ -189,6 +192,7 @@ describe("remaining Sarah LiveKit drill drivers", () => {
 
     expect(observation.previous.closeReason).toBe("provider_disconnect");
     expect(observation.providerDisconnect?.requestRef).toBe(requestRef);
+    expect(liveSession.http).not.toHaveBeenCalled();
     const receipt = buildSarahLiveKitRemainingDrillReceipt(observation);
     expect(receipt.schema).toBe(SARAH_LIVEKIT_REMAINING_DRILL_RECEIPT_SCHEMA);
     expect(receipt.providerDisconnectApplied).toBe(true);

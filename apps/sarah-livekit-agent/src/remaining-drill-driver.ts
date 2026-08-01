@@ -158,7 +158,7 @@ export type SarahLiveKitRemainingDrillDependencies = SarahLiveKitLiveDependencie
 const SHA256 = /^[a-f0-9]{64}$/u;
 const COMMIT = /^[a-f0-9]{40}$/u;
 const terminal = (state: SarahLiveKitAuthoritySnapshot["state"]): boolean =>
-  state === "settled" || state === "released";
+  state === "accounting_uncertain" || state === "settled" || state === "released";
 const digest = (value: string): `sha256:${string}` =>
   `sha256:${createHash("sha256").update(value).digest("hex")}`;
 const PUBLIC_TERMINAL_REASONS = new Set([
@@ -361,7 +361,6 @@ const runSingleSession = async (
     ) {
       throw new Error("provider-disconnect fault was not durably applied to this generation");
     }
-    await settleAfterTerminal(session, input.session, input.observationWindowMs);
     return { turnsSent: 1, authority, providerDisconnect: request };
   }
 

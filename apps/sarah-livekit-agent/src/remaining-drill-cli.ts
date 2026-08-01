@@ -206,7 +206,11 @@ SELECT json_build_object(
   'terminalAtMs', CASE WHEN target.terminal_at IS NULL THEN NULL
     ELSE FLOOR(EXTRACT(EPOCH FROM target.terminal_at::timestamptz) * 1000)::bigint END,
   'reservationRef', target.reservation_ref,
-  'settlementReceiptRef', target.settlement_receipt_ref,
+  'settlementReceiptRef', CASE
+    WHEN target.state = 'accounting_uncertain'
+      THEN 'sarah_voice_accounting_uncertain:' || target.session_ref || ':' || target.generation
+    ELSE target.settlement_receipt_ref
+  END,
   'workerJobRef', target.worker_job_ref,
   'providerSessionRefDigest', target.provider_session_ref_digest,
   'reservedMsat', target.reserved_msat,
