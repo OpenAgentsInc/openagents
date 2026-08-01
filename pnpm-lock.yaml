@@ -29,7 +29,7 @@ overrides:
 packageExtensionsChecksum: sha256-q5WdBF7BCWKzly/tgcivWtVAQ00t1e/WaEGl0+mhjaI=
 
 patchedDependencies:
-  '@livekit/agents-plugin-openai@1.6.0': f835494fc05d76c8ba0e8fa988fd35a13002ce892aecceb4083464d9d7c3f2df
+  '@livekit/agents-plugin-openai@1.6.0': c6d42b1a673c3f8e4aafdc02657b5bbfc08bc730d19f0ade763f07821ce38e99
   '@livekit/agents@1.6.0': 059f02ff2b2072fb0f3647c0f30e22d4ea7e4152dd60b2dd76d654ab1c85a95c
   electron-installer-common@0.10.4: a1b1b1fe2cb13041b23248884df37684b9c9004e9ece6748b7b5073a4579a458
   electron-installer-redhat@3.4.0: b2c436ac0a107342f61f3552393db1bc02bf369b8929055f0634d4469a98f914
@@ -1609,7 +1609,7 @@ importers:
         version: 1.6.0(patch_hash=059f02ff2b2072fb0f3647c0f30e22d4ea7e4152dd60b2dd76d654ab1c85a95c)(@livekit/rtc-node@0.13.32)(typescript@6.0.3)(zod@4.1.8)
       '@livekit/agents-plugin-openai':
         specifier: 1.6.0
-        version: 1.6.0(patch_hash=f835494fc05d76c8ba0e8fa988fd35a13002ce892aecceb4083464d9d7c3f2df)(@livekit/agents@1.6.0(patch_hash=059f02ff2b2072fb0f3647c0f30e22d4ea7e4152dd60b2dd76d654ab1c85a95c)(@livekit/rtc-node@0.13.32)(typescript@6.0.3)(zod@4.1.8))(@livekit/rtc-node@0.13.32)(zod@4.1.8)
+        version: 1.6.0(patch_hash=c6d42b1a673c3f8e4aafdc02657b5bbfc08bc730d19f0ade763f07821ce38e99)(@livekit/agents@1.6.0(patch_hash=059f02ff2b2072fb0f3647c0f30e22d4ea7e4152dd60b2dd76d654ab1c85a95c)(@livekit/rtc-node@0.13.32)(typescript@6.0.3)(zod@4.1.8))(@livekit/rtc-node@0.13.32)(zod@4.1.8)
       '@livekit/protocol':
         specifier: 1.50.4
         version: 1.50.4
@@ -15897,7 +15897,7 @@ snapshots:
       '@inquirer/prompts': 6.0.1
       '@inquirer/type': 1.5.5
 
-  '@livekit/agents-plugin-openai@1.6.0(patch_hash=f835494fc05d76c8ba0e8fa988fd35a13002ce892aecceb4083464d9d7c3f2df)(@livekit/agents@1.6.0(patch_hash=059f02ff2b2072fb0f3647c0f30e22d4ea7e4152dd60b2dd76d654ab1c85a95c)(@livekit/rtc-node@0.13.32)(typescript@6.0.3)(zod@4.1.8))(@livekit/rtc-node@0.13.32)(zod@4.1.8)':
+  '@livekit/agents-plugin-openai@1.6.0(patch_hash=c6d42b1a673c3f8e4aafdc02657b5bbfc08bc730d19f0ade763f07821ce38e99)(@livekit/agents@1.6.0(patch_hash=059f02ff2b2072fb0f3647c0f30e22d4ea7e4152dd60b2dd76d654ab1c85a95c)(@livekit/rtc-node@0.13.32)(typescript@6.0.3)(zod@4.1.8))(@livekit/rtc-node@0.13.32)(zod@4.1.8)':
     dependencies:
       '@livekit/agents': 1.6.0(patch_hash=059f02ff2b2072fb0f3647c0f30e22d4ea7e4152dd60b2dd76d654ab1c85a95c)(@livekit/rtc-node@0.13.32)(typescript@6.0.3)(zod@4.1.8)
       '@livekit/mutex': 1.1.1
