@@ -4715,7 +4715,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         let workerStopCloseReason = binding.worker_stop_close_reason;
         if (input.eventKind !== "close" && workerStopReason === null) {
           const currentMembership =
-            session.credit_mode === "metered"
+            session.credit_mode !== "staging_owner_entitlement"
               ? ((await tx`
                   SELECT membership.membership_ref AS lease_ref
                   FROM sarah_voice_alpha_memberships AS membership

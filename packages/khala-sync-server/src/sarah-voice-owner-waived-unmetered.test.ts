@@ -102,7 +102,8 @@ describe.skipIf(!hasLocalPostgres())("Sarah voice owner-waived unmetered account
         sarah_participant_ref, participant_grant_digest, join_expires_at,
         dispatch_ref, sarah_presence_lease_ref, publish_allowed,
         subscribe_allowed, state, created_at, updated_at,
-        worker_job_ref, worker_last_seen_at, provider_session_ref_digest,
+        worker_control_token_digest, worker_job_ref, worker_room_sid,
+        worker_last_seen_at, provider_session_ref_digest,
         provider_configuration_digest, provider_admitted_at,
         provider_accounting_status, provider_accounting_uncertain_at,
         provider_accounting_uncertain_reason
@@ -113,10 +114,27 @@ describe.skipIf(!hasLocalPostgres())("Sarah voice owner-waived unmetered account
         'owner-unmetered', 'principal.sarah', ${"2".repeat(64)},
         '2026-08-01T12:05:00.000Z', 'dispatch-unmetered',
         'presence-unmetered', false, true, 'active', ${nowIso}, ${nowIso},
-        'job-unmetered', ${nowIso}, ${"3".repeat(64)}, ${"4".repeat(64)},
+        ${"5".repeat(64)}, 'job-unmetered', 'room-sid-unmetered', ${nowIso},
+        ${"3".repeat(64)}, ${"4".repeat(64)},
         ${nowIso}, 'pending', NULL, NULL
       )
     `;
+    await expect(
+      store.applyLiveKitWorkerEvent({
+        workerControlTokenDigest: "5".repeat(64),
+        workerJobRef: "job-unmetered",
+        sessionRef: "voice-unmetered",
+        generation: 1,
+        eventRef: "connected:job-unmetered",
+        eventPayloadDigest: "6".repeat(64),
+        eventKind: "worker_connected",
+        workerRoomSid: "room-sid-unmetered",
+        nowIso: "2026-08-01T12:00:21.000Z",
+      }),
+    ).resolves.toEqual({
+      observedAt: "2026-08-01T12:00:21.000Z",
+      replayed: false,
+    });
     await expect(
       store.sweepExpired("2026-08-01T12:06:00.000Z"),
     ).resolves.toBe(1);
