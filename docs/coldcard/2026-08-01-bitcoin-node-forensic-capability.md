@@ -1,12 +1,21 @@
 # Our Bitcoin node as forensic capability
 
-Status: **capability analysis and implementation proposal.** It authorizes no
-scan of a third-party target, no public claim, no attribution, and no change to
-the managed-sandbox credential boundary. It records one live read-only
-reproduction against our own node and proposes how that node should — and
-should not — be wired into the forensic workbench.
+Status: **capability analysis, implementation proposal, and first measured
+results.** It authorizes no scan of a third-party target, no public claim, no
+attribution, and no change to the managed-sandbox credential boundary. It
+records read-only reproduction and a 1,701-block scan against our own node, and
+proposes how that node should — and should not — be wired into the forensic
+workbench.
 
 Date: 2026-08-01
+
+**Headline results (§9).** All eight published known-positive vectors reproduce
+exactly. The fingerprint's false-positive rate — never previously published — is
+2,820–6,154 per million at 2 sat/vB and 24–701 per million at 30 sat/vB, which
+is high enough to change how much the fingerprint can carry. The published
+"estimate always overshoots the real size" property does not reproduce. No
+undocumented sweep wave was found in 1,701 blocks, including the previously
+unscanned pre-wave rehearsal window.
 
 Reading order:
 
@@ -129,6 +138,161 @@ independently confirm the *strict overshoot* property, and that the difference
 is exactly the kind of thing OFR-016's mutation controls and script-type
 stratification exist to settle. A reproduction that quietly reported "PASS" on
 all three marks here would have been laundering.
+
+§9 settles this at scale: on all eight published known-positive vectors, and on
+893 of 905 fingerprint matches inside the documented wave blocks, the estimate
+**equals** the real vsize rather than exceeding it.
+
+---
+
+## 9. Wide scan: 1,701 blocks, 7.12M transactions
+
+Executed 2026-08-01 on `oa-bitcoind` at chain tip 960,601. Three ranges, all
+read-only, exact integer satoshi arithmetic, zero prevout errors:
+
+| Scan | Blocks | Range | Eligible tx | Purpose |
+| --- | --- | --- | --- | --- |
+| `incident` | 420 | 960,180–960,599 | 1,782,741 | all documented waves plus everything after |
+| `prewave` | 980 | 959,200–960,179 | 4,736,538 | the unscanned pre-wave rehearsal window |
+| `control2025` | 301 | 900,000–900,300 | 603,465 | negative control, unrelated era |
+
+Self-test first, per OFR-016: **all eight published known-positive vectors
+reproduce** — seven at exactly 2 sat/vB, one at exactly 30 sat/vB. No wide scan
+was allowed to run until that passed.
+
+Raw artifacts (currently node-local at `/var/tmp/ccscan`, and the first thing
+§5.1 should freeze into a content-addressed bundle):
+
+| File | SHA-256 |
+| --- | --- |
+| `cc-hits-incident.jsonl` | `a5fec35b3da3da8ce01ac1325fdfbdddd51bff5e72859a0c9875e7ed6c59676e` |
+| `cc-hits-prewave.jsonl` | `f081763cbe904954d231ee7683d772934010a750e857f8a21cf56aef7daaa813` |
+| `cc-hits-control2025.jsonl` | `d7d15ee6ad356b2d7a8a5547164ab455ad2e291358ca0f3bf331c08452626e78` |
+| `cc-stats-incident.jsonl` | `b2f3c2e55ac0491825739dafcc332a161a50e9e0309c054b2e1c188a724f9da9` |
+| `cc-stats-prewave.jsonl` | `a3ee450edbe653d9059afaa6e466882a05efd13d341cc41913f3feef37849b0e` |
+| `cc-stats-control2025.jsonl` | `ea4ffbea2de9b6f0e8e04e62e2d712d1a5f437327d29478cd8d1e70fde349fcb` |
+
+Range endpoints are checkpointed by block hash — e.g. `incident` spans
+`00000000000000000001bb5454b2ff5a4c954adad88e748cef281da1af9d482e` to
+`000000000000000000005e8a53cdc76c07f460649b19ac4c9782fba2e4030484`.
+
+### 9.1 The unpublished denominator
+
+This is the number that did not exist before, and it is the main result.
+
+False-positive rate per million eligible non-coinbase transactions, by era:
+
+| Era | Eligible tx | rate = 2 | rate = 30 | any integer rate |
+| --- | --- | --- | --- | --- |
+| `control2025` | 603,465 | **2,820** | **537** | 37,043 |
+| `incident` | 1,782,741 | **3,707** | **701** | 25,876 |
+| `prewave` | 4,736,538 | **6,154** | **24** | 18,922 |
+
+Across all 7.12M transactions, **2.22%** satisfy the exact-integer fee rule at
+some whole-number rate. The rule alone carries almost no information.
+
+Two consequences follow, and both correct the published account.
+
+**At 2 sat/vB the fingerprint is unusable.** Between 2,820 and 6,154 ordinary
+transactions per million match. In the 980-block pre-wave window alone that is
+roughly 29,000 chance matches. The postmortem is candid that 2 sat/vB collides
+with ordinary traffic; this measures the collision at three to six per thousand.
+
+**At 30 sat/vB the fingerprint is far weaker than reported.** The postmortem
+reports "zero false positives across 7,553 transactions at 30 sat/vB." Our
+control era yields 537 per million. At that rate, 7,553 transactions have an
+expected false-positive count of about **4**, and observing zero is an ordinary
+outcome of a small sample — not evidence of a clean discriminator. The reported
+zero is consistent with our measurement; the inference usually drawn from it is
+not. Scanning 1.78M transactions in the incident window at 701 per million
+implies on the order of 1,200 chance matches at rate 30 before any real sweep is
+counted.
+
+### 9.2 The overshoot claim does not survive
+
+Stratified over every match, not just the self-test set:
+
+| Population | n | estimate = real | estimate > real | estimate < real |
+| --- | --- | --- | --- | --- |
+| Published known positives | 8 | **8** | 0 | 0 |
+| Matches in documented wave blocks | 905 | **893** | 8 | 4 |
+| Rate-30 consolidation candidates | 25 | 23 | 1 | 1 |
+| 2025 control era | 8,048 | 7,647 | 77 | 324 |
+
+The published claim is that the estimate exceeds the real signed size **every
+single time**, and that this is what proves the fee was priced before signing.
+On our independent implementation it essentially never does: the estimate lands
+exactly on the real vsize in 98.7% of documented-wave matches and in all eight
+published vectors.
+
+This does not refute the fingerprint — the exact-integer property reproduces
+perfectly, and that is the part doing the work. It refutes the stated
+*mechanism* for why the property holds, or indicates the reference
+implementation's size table differs from the documented `42 + 68|91|148`.
+Either way, the overshoot property should not be cited as evidence until it is
+reconciled.
+
+### 9.3 Candidate sweeps outside the documented waves
+
+Applying the full mark set — exact integer rate at an operator constant,
+`nLockTime = 0`, single output, all-P2WPKH inputs, no low-R grinding, at least
+two inputs, at least 0.01 BTC — reduces 158,111 raw matches to **25
+transactions in 15 blocks** at rate 30.
+
+The documented waves light up exactly as they should: blocks 960,183 / 960,185 /
+960,188 / 960,190 / 960,191 carry 15 of those 25, including the 31.39 BTC and
+17.45 BTC clusters. The filter finds what it is supposed to find.
+
+The remaining candidates do **not** look like victim sweeps. The largest all
+share a shape that is wrong for the theory:
+
+| Block | Rate | Inputs | Value | Fee |
+| --- | --- | --- | --- | --- |
+| 960,080 | 2 | 2 | 99.56000000 BTC | 356 sat |
+| 960,103 | 2 | 2 | 98.95000000 BTC | 356 sat |
+| 960,577 | 2 | 2 | 84.21092752 BTC | 356 sat |
+| 960,405 | 30 | 2 | 30.15862326 BTC | 5,340 sat |
+| 960,240 | 30 | 2 | 5.04994000 BTC | 5,340 sat |
+| 960,253 | 30 | 2 | 2.79994000 BTC | 5,340 sat |
+
+Every one is exactly two inputs to one output, with an identical fee inside each
+rate class, and several carry round-number values minus a fee
+(`5.04994`, `2.79994`). That is the signature of **exchange or custodial
+withdrawal automation** — a batcher paying from a fixed size table — not of a
+sweep consolidating heterogeneous victim UTXOs. A real sweep looks like the
+documented ones: varied amounts, varied input counts, arriving in bursts.
+
+**No credible undocumented wave was found in 1,701 blocks.** That includes the
+pre-wave rehearsal window, which nobody had scanned and which was the highest
+expected-value region in the plan. It is a negative result, and it is worth
+exactly what it is: evidence that this fingerprint, at this width, does not
+surface additional operator activity in these ranges — not evidence that none
+exists.
+
+### 9.4 What this run establishes and does not
+
+Establishes:
+
+- our node independently reproduces the published fingerprint on all eight
+  known positives, from raw chain data, with exact integer arithmetic;
+- the fingerprint's false-positive rate, measured for the first time, is high
+  enough that at 2 sat/vB it cannot support any claim, and at 30 sat/vB it
+  supports a claim only in combination with shape, clustering, and value;
+- the published overshoot property does not reproduce;
+- 1,701 blocks contain no additional sweep-shaped operator-rate cluster that
+  resembles the documented waves.
+
+Does not establish:
+
+- that any listed candidate is a theft, an attacker transaction, or connected to
+  Coldcard at all. Every one is a **program-similarity candidate** and nothing
+  more. Section 7's limits apply in full: the shape of a transaction is a claim
+  about software, never about a person, an intent, or an authorization.
+- that the documented waves are complete. Our scan covers 959,200–960,599 and a
+  2025 control; earlier rehearsal, later resumption, and other fee regimes remain
+  unscanned.
+- any figure fit for publication. This is a candidate dataset pending
+  deterministic replay and admission, per §7.
 
 ---
 
@@ -313,8 +477,23 @@ reimplementation with a known-answer self-test — both outside the sandbox, bot
 cheap, and both directly on the OFR-016 path. The node never becomes reachable
 from a forensic guest; it feeds frozen, digest-pinned bundles into one.
 
-The immediate open question, worth settling early because it changes how much
-the fingerprint can carry: what is the false-match rate per million eligible
-transactions at 2 and 30 sat/vB across eras? Nobody has published that number.
-We are now, as far as this analysis can tell, unusually well positioned to
-measure it.
+The open question this document was written to pose — the false-match rate per
+million eligible transactions at 2 and 30 sat/vB — is now measured in §9.1, and
+the answer materially weakens what the fingerprint alone can support. That is
+the most useful thing produced here, and it came from one afternoon on a node we
+already owned.
+
+Three follow-ups, in priority order:
+
+1. **Freeze the artifacts.** The raw hits in §9 live in node-local scratch and
+   should become content-addressed bundles with their block-hash checkpoints, so
+   the measurement survives the machine.
+2. **Reconcile the overshoot discrepancy.** Either the published mechanism is
+   overstated or the reference size table differs from the documented one. It is
+   cheap to settle and it affects how the fingerprint is described.
+3. **Widen the base-rate measurement across fee regimes and eras**, since a
+   single control era is thin support for a denominator this important.
+   Extending it is now purely a matter of scan hours.
+
+None of this requires the sandbox to reach the node, and none of it should
+change that.
