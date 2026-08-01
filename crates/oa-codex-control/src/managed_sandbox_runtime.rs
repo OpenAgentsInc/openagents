@@ -339,6 +339,28 @@ struct StopObservation {
     zero_scratch: bool,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ForensicStopProof {
+    schema: String,
+    driver_ref: String,
+    zero_process: bool,
+    zero_scratch: bool,
+    active_process_groups: u64,
+    scratch_paths_remaining: u64,
+}
+
+impl ForensicStopProof {
+    fn is_authoritative(&self) -> bool {
+        self.schema == "openagents.forensic_worker_prepare_stop.v1"
+            && self.driver_ref == FORENSIC_WORKER_DRIVER_REF
+            && self.zero_process
+            && self.zero_scratch
+            && self.active_process_groups == 0
+            && self.scratch_paths_remaining == 0
+    }
+}
+
 trait ManagedSandboxProvider {
     fn kind(&self) -> &'static str;
     fn admit(&self, profile: &ManagedSandboxRuntimeProfile) -> Result<(), RuntimeError>;
@@ -3083,12 +3105,26 @@ impl ManagedSandboxProvider for LiveGceManagedSandboxProvider {
     }
 
     fn stop(&self, ownership: &ProviderOwnership) -> Result<StopObservation, RuntimeError> {
-        self.gcloud(&guest_ssh_args(
+        let proof_output = self.gcloud(&guest_ssh_args(
             &self.config.project_id,
             &self.config.zone,
             &ownership.resource_name,
-            format!("{FORENSIC_WORKER_EXECUTABLE} prepare-stop >/dev/null"),
+            format!("{FORENSIC_WORKER_EXECUTABLE} prepare-stop"),
         ))?;
+        let proof: ForensicStopProof = serde_json::from_str(proof_output.trim()).map_err(|_| {
+            RuntimeError::new(
+                503,
+                "forensic_stop_proof_invalid",
+                "forensic guest stop proof was not valid JSON",
+            )
+        })?;
+        if !proof.is_authoritative() {
+            return Err(RuntimeError::new(
+                503,
+                "forensic_stop_proof_incomplete",
+                "forensic guest stop proof did not authoritatively observe zero residue",
+            ));
+        }
         let mut args = vec![
             "compute".to_string(),
             "instances".to_string(),
@@ -3106,8 +3142,8 @@ impl ManagedSandboxProvider for LiveGceManagedSandboxProvider {
         describe.extend(["--format".to_string(), "value(status)".to_string()]);
         Ok(StopObservation {
             stopped: self.gcloud(&describe)?.trim() == "TERMINATED",
-            zero_process: true,
-            zero_scratch: true,
+            zero_process: proof.zero_process,
+            zero_scratch: proof.zero_scratch,
         })
     }
 

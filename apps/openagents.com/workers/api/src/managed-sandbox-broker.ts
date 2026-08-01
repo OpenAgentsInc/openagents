@@ -22,6 +22,7 @@ import {
   type BoxV1Policy,
   type BoxV1Principal,
   type BoxV1Runtime,
+  type BoxV1TurnGuardrails,
 } from "./managed-sandbox-box-v1-routes";
 
 export type ManagedSandboxBrokerResult = Readonly<{
@@ -39,10 +40,17 @@ export type ManagedSandboxBroker = Readonly<{
     command: ManagedSandboxCommand,
     options?: Readonly<{
       prompt?: string | undefined;
+      guardrails?: BoxV1TurnGuardrails | undefined;
       attachmentGeneration?: number | undefined;
       initialResource?: ManagedSandboxResource | undefined;
     }>,
   ) => Effect.Effect<ManagedSandboxBrokerResult, BoxV1FacadeError>;
+  reconcileProbeRecovery?:
+    | ((
+        command: Extract<ManagedSandboxCommand, { _tag: "Stop" }>,
+        outcome: BoxV1LifecycleOutcome,
+      ) => Effect.Effect<ManagedSandboxBrokerResult, BoxV1FacadeError>)
+    | undefined;
   list: (limit?: number) => Effect.Effect<ReadonlyArray<ManagedSandboxResource>, BoxV1FacadeError>;
 }>;
 
@@ -469,9 +477,7 @@ export const makeManagedSandboxBroker = (
         reservation.status === "pending" &&
         resource.capabilities.some((capability) => capability.state !== "revoked")
       ) {
-        return yield* conflict(
-          "delete requires durable revocation of every sandbox capability",
-        );
+        return yield* conflict("delete requires durable revocation of every sandbox capability");
       }
 
       if (
@@ -528,6 +534,7 @@ export const makeManagedSandboxBroker = (
             resource,
             turn,
             prompt,
+            guardrails: options?.guardrails,
           });
           if (providerEvents[0]?._tag !== "RuntimeStarted") {
             return yield* unavailable("agent_turn_start");
@@ -621,8 +628,56 @@ export const makeManagedSandboxBroker = (
       };
     });
 
+  const reconcileProbeRecovery: NonNullable<ManagedSandboxBroker["reconcileProbeRecovery"]> = (
+    rawCommand,
+    outcome,
+  ) =>
+    Effect.gen(function* () {
+      const command = yield* decode(ManagedSandboxCommandSchema, rawCommand);
+      if (
+        command._tag !== "Stop" ||
+        outcome.action !== "probe" ||
+        outcome.phase !== "recovery_required"
+      ) {
+        return yield* invalid("probe reconciliation requires an exact recovery outcome");
+      }
+      const reservation = yield* reserve(command);
+      if (outcome.generation !== reservation.resource.resourceGeneration) {
+        return yield* conflict("probe recovery belongs to a different resource generation");
+      }
+      let receipt = yield* syntheticReceipt(reservation);
+      let events: ReadonlyArray<ManagedSandboxEvent> = [];
+      if (reservation.status === "pending") {
+        events = yield* materializeLifecycleEvents(reservation.resource, outcome);
+        receipt = yield* input.store.settle({
+          ...scope,
+          sandboxRef: reservation.resource.sandboxRef,
+          commandRef: command.commandRef,
+          expectedResourceGeneration: reservation.resource.resourceGeneration,
+          events,
+          outcome: "failed",
+          ...(outcome.errorCode === null ? {} : { errorCode: `reason.${outcome.errorCode}` }),
+          observedAt: outcome.observedAt,
+        });
+      }
+      const resource = yield* inspect(reservation.resource.sandboxRef);
+      if (resource.facts.lifecycle !== "recovery_required") {
+        return yield* conflict("probe recovery was not durably reconciled");
+      }
+      return {
+        command,
+        resource,
+        receipt,
+        turn: null,
+        turnReceipt: null,
+        events,
+        lifecycleOutcome: outcome,
+      };
+    });
+
   return {
     execute,
+    reconcileProbeRecovery,
     list: (limit = 100) => input.store.list({ ...scope, limit }),
   };
 };

@@ -73,6 +73,7 @@ export class BoxV1MemoryAuthority implements BoxV1NativeStore {
   readonly turnDetails = new Map<string, ManagedSandboxTurn>()
   readonly turnReceipts = new Map<string, ManagedSandboxTurnReceipt>()
   readonly projections = new Map<string, ManagedSandboxProjectionState>()
+  readonly providerBudgetTokens = new Map<string, number>()
 
   reservation = (input: {
     ownerRef: string
@@ -497,6 +498,29 @@ export class BoxV1MemoryAuthority implements BoxV1NativeStore {
           ? stored.reservation.command.turnRef
           : undefined
       if (turnRef === undefined) {
+        if (input.events.some(event => event._tag === 'RecoveryMarked')) {
+          resource = decodeResource({
+            ...resource,
+            version: resource.version + 1,
+            lastEventSequence:
+              input.events.at(-1)?.sequence ?? resource.lastEventSequence,
+            facts: {
+              ...resource.facts,
+              lifecycle: 'recovery_required',
+              guestState: 'unknown',
+              filesystemState: 'unknown',
+              ingressState: 'unknown',
+              runtimeState: 'unknown',
+              acceptingWork: false,
+            },
+            updatedAt: input.observedAt,
+          })
+          self.resources.set(resource.sandboxRef, resource)
+          self.eventsBySandbox.set(resource.sandboxRef, [
+            ...(self.eventsBySandbox.get(resource.sandboxRef) ?? []),
+            ...input.events,
+          ])
+        }
         const receipt = decodeReceipt({
           schema: 'openagents.managed_sandbox_receipt.v1',
           receiptRef: `receipt.box.${input.commandRef}`,
@@ -773,6 +797,48 @@ export class BoxV1MemoryAuthority implements BoxV1NativeStore {
         : { turn, receipt, events: appended }
     })
   }
+
+  consumeProviderBudget = (input: {
+    ownerRef: string
+    tenantRef: string
+    sandboxRef: string
+    resourceGeneration: number
+    turnRef: string
+    capabilityRef: string
+    reservationRef: string
+    maxTokens: number
+    reservedTokens: number
+    deadlineAt: string
+    observedAt: string
+  }): Effect.Effect<
+    { reservationRef: string; consumedTokens: number; remainingTokens: number },
+    BoxV1FacadeError
+  > =>
+    this.scoped(input).pipe(
+      Effect.flatMap(resource => {
+        const turn = this.turnDetails.get(input.turnRef)
+        const key = `${input.sandboxRef}|${input.resourceGeneration}|${input.turnRef}|${input.capabilityRef}`
+        const consumedTokens = this.providerBudgetTokens.get(key) ?? 0
+        if (
+          resource.resourceGeneration !== input.resourceGeneration ||
+          turn?.capabilityRef !== input.capabilityRef ||
+          input.reservedTokens < 1 ||
+          consumedTokens + input.reservedTokens > input.maxTokens ||
+          Date.parse(input.deadlineAt) <= Date.parse(input.observedAt)
+        ) {
+          return Effect.fail(
+            conflict('provider budget is exhausted or out of scope'),
+          )
+        }
+        const nextConsumedTokens = consumedTokens + input.reservedTokens
+        this.providerBudgetTokens.set(key, nextConsumedTokens)
+        return Effect.succeed({
+          reservationRef: input.reservationRef,
+          consumedTokens: nextConsumedTokens,
+          remainingTokens: input.maxTokens - nextConsumedTokens,
+        })
+      }),
+    )
 
   readProjection = (input: {
     ownerRef: string

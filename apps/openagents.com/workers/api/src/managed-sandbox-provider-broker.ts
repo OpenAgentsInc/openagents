@@ -42,6 +42,21 @@ const ProviderCapabilityClaimsSchema = S.Struct({
   issuedAtMs: NonNegativeInteger,
   expiresAtMs: PositiveInteger,
   nonce: S.String,
+  guardrails: S.optionalKey(
+    S.Struct({
+      receiptRef: S.String,
+      sandboxRef: S.String,
+      resourceGeneration: PositiveInteger,
+      observedAt: S.String,
+      deadlineAt: S.String,
+      remainingTokens: PositiveInteger,
+      remainingCostMicros: PositiveInteger,
+      networkBytesObserved: NonNegativeInteger,
+      remainingNetworkBytes: PositiveInteger,
+      artifactBytesObserved: NonNegativeInteger,
+      remainingArtifactBytes: PositiveInteger,
+    }),
+  ),
 })
 
 export type ManagedSandboxProviderCapabilityClaims =
@@ -102,6 +117,7 @@ export const mintManagedSandboxProviderCapability = (
     capabilityExpiresAt: string
     provider: 'codex' | 'claude'
     requestedModelRef: string
+    guardrails?: ManagedSandboxProviderCapabilityClaims['guardrails'] | undefined
     nowMs?: number | undefined
   }>,
 ): Effect.Effect<string, BoxV1FacadeError> =>
@@ -141,6 +157,9 @@ export const mintManagedSandboxProviderCapability = (
         issuedAtMs: nowMs,
         expiresAtMs,
         nonce: base64UrlEncode(nonceBytes),
+        ...(input.guardrails === undefined
+          ? {}
+          : { guardrails: input.guardrails }),
       })
       const payload = base64UrlEncode(encoder.encode(JSON.stringify(claims)))
       const key = await hmacKey(secret)
@@ -352,6 +371,20 @@ export const makeManagedSandboxProviderBrokerRoutes = (
       ) {
         return json({ error: 'turn_scope_conflict' }, 409)
       }
+      const forensicTurn =
+        turn.value.turn.runtime.harnessRef ===
+        'driver.openagents.forensic-worker.v1'
+      const guardrails = claims.guardrails
+      if (
+        (forensicTurn &&
+          (guardrails === undefined ||
+            guardrails.sandboxRef !== claims.sandboxRef ||
+            guardrails.resourceGeneration !== claims.resourceGeneration ||
+            Date.parse(guardrails.deadlineAt) <= nowMs)) ||
+        (!forensicTurn && guardrails !== undefined)
+      ) {
+        return json({ error: 'budget_guardrail_scope_conflict' }, 409)
+      }
       const parsed = yield* Effect.try({
         try: () => parseJsonUnknown(new TextDecoder().decode(bytes)),
         catch: () => undefined,
@@ -368,6 +401,51 @@ export const makeManagedSandboxProviderBrokerRoutes = (
         ...(parsed.value as Record<string, unknown>),
         model: claims.providerModel,
       }
+      let providerSignal: AbortSignal | undefined
+      if (guardrails !== undefined) {
+        const inputTokenUpperBound = bytes.byteLength
+        const remainingForOutput =
+          guardrails.remainingTokens - inputTokenUpperBound
+        if (remainingForOutput < 1) {
+          return json({ error: 'provider_token_budget_exhausted' }, 429)
+        }
+        const requestedOutput = Number(
+          provider === 'codex'
+            ? body['max_output_tokens']
+            : body['max_tokens'],
+        )
+        const maxOutputTokens = Math.min(
+          Number.isSafeInteger(requestedOutput) && requestedOutput > 0
+            ? requestedOutput
+            : remainingForOutput,
+          remainingForOutput,
+        )
+        if (provider === 'codex') body['max_output_tokens'] = maxOutputTokens
+        else body['max_tokens'] = maxOutputTokens
+        const nonceBytes = new Uint8Array(18)
+        crypto.getRandomValues(nonceBytes)
+        const reservation = yield* store
+          .consumeProviderBudget({
+            ownerRef: claims.ownerRef,
+            tenantRef: claims.tenantRef,
+            sandboxRef: claims.sandboxRef,
+            resourceGeneration: claims.resourceGeneration,
+            turnRef: claims.turnRef,
+            capabilityRef: claims.capabilityRef,
+            reservationRef: `reservation.provider.${base64UrlEncode(nonceBytes)}`,
+            maxTokens: guardrails.remainingTokens,
+            reservedTokens: inputTokenUpperBound + maxOutputTokens,
+            deadlineAt: guardrails.deadlineAt,
+            observedAt: new Date(nowMs).toISOString(),
+          })
+          .pipe(Effect.option)
+        if (reservation._tag !== 'Some') {
+          return json({ error: 'provider_token_budget_exhausted' }, 429)
+        }
+        providerSignal = AbortSignal.timeout(
+          Math.max(1, Date.parse(guardrails.deadlineAt) - nowMs),
+        )
+      }
       const fetchImpl = dependencies.fetchImpl ?? fetch
       if (provider === 'codex') {
         const apiKey = env.OPENAI_API_KEY?.trim()
@@ -381,6 +459,9 @@ export const makeManagedSandboxProviderBrokerRoutes = (
                 'content-type': 'application/json',
               },
               body: JSON.stringify(body),
+              ...(providerSignal === undefined
+                ? {}
+                : { signal: providerSignal }),
             }),
           catch: () => undefined,
         }).pipe(Effect.option)
@@ -429,6 +510,9 @@ export const makeManagedSandboxProviderBrokerRoutes = (
               'content-type': 'application/json',
             },
             body: JSON.stringify(body),
+            ...(providerSignal === undefined
+              ? {}
+              : { signal: providerSignal }),
           }),
         catch: () => undefined,
       }).pipe(Effect.option)

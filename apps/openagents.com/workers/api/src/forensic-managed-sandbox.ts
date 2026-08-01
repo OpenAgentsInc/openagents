@@ -32,6 +32,7 @@ const FORENSIC_DRIVER_REF = "driver.openagents.forensic-worker.v1";
 const FORENSIC_PROFILE_REF = "profile.sbx.gce.e2-small.v1";
 const FORENSIC_NETWORK_POLICY_REF =
   "network-policy-ref://openagents/managed-sandbox/broker-only-v1";
+const MANAGED_SANDBOX_MAX_HOURLY_COST_MICROS = 20_000;
 
 export const FORENSIC_MANAGED_SANDBOX_PATH = "/api/forensics/workers" as const;
 const INITIAL_FORENSIC_BUDGET_REF = "budget.forensic.worker.initial.v1";
@@ -281,9 +282,7 @@ export const makeForensicManagedSandbox = (
     Effect.gen(function* () {
       const resources = yield* input.broker.list();
       const budget = yield* input.resolveBudget(placement.budgetRef);
-      const resource = resources.find(
-        (candidate) => candidate.sandboxRef === placement.sandboxRef,
-      );
+      const resource = resources.find((candidate) => candidate.sandboxRef === placement.sandboxRef);
       if (
         resource === undefined ||
         !exactPlacementResource(
@@ -446,6 +445,28 @@ export const makeForensicManagedSandbox = (
       if (resource.facts.lifecycle !== "ready") {
         return yield* recoveryRequired("forensic worker is not ready for dispatch");
       }
+      const dispatchNow = now();
+      const currentTime = dispatchNow.getTime();
+      const requestedAt = Date.parse(request.requestedAt);
+      const capability = resource.capabilities.find(
+        (candidate) => candidate.capabilityRef === request.capabilityRef,
+      );
+      if (
+        !Number.isFinite(requestedAt) ||
+        currentTime - requestedAt < 0 ||
+        currentTime - requestedAt > 30_000 ||
+        resource.lease.state !== "active" ||
+        Date.parse(resource.lease.expiresAt) <= currentTime ||
+        capability === undefined ||
+        capability.kind !== "agent_turn" ||
+        capability.state !== "active" ||
+        Date.parse(capability.expiresAt) <= currentTime ||
+        !placement.capabilityRefs.includes(capability.capabilityRef)
+      ) {
+        return yield* refuse(
+          "forensic dispatch requires the exact active generation-bound agent-turn capability",
+        );
+      }
       const budget = yield* input.resolveBudget(placement.budgetRef);
       const probe = yield* input.runtime.probe === undefined
         ? Effect.fail(recoveryRequired("forensic budget authority is unavailable"))
@@ -461,6 +482,32 @@ export const makeForensicManagedSandbox = (
         probe.generation !== resource.resourceGeneration ||
         probe.usageProof === undefined
       ) {
+        if (
+          probe.action === "probe" &&
+          probe.phase === "recovery_required" &&
+          probe.generation === resource.resourceGeneration
+        ) {
+          const reconciliation = yield* decodeCommand({
+            _tag: "Stop",
+            schema: "openagents.managed_sandbox_command.v1",
+            commandRef: `${request.commandRef}.probe-recovery`,
+            requestedByRef: request.requestedByRef,
+            ownerRef: placement.ownerRef,
+            tenantRef: placement.tenantRef,
+            idempotencyRef: `${request.idempotencyRef}.probe-recovery`,
+            requestedAt: request.requestedAt,
+            sandboxRef: placement.sandboxRef,
+            expectedVersion: resource.version,
+            reasonRef: `reason.${probe.errorCode ?? "forensic_probe_recovery"}`,
+          });
+          if (reconciliation._tag !== "Stop") {
+            return yield* recoveryRequired("forensic probe reconciliation was invalid");
+          }
+          if (input.broker.reconcileProbeRecovery === undefined) {
+            return yield* recoveryRequired("forensic probe recovery authority is unavailable");
+          }
+          yield* input.broker.reconcileProbeRecovery(reconciliation, probe);
+        }
         return yield* recoveryRequired("forensic budget receipt did not bind the live worker");
       }
       yield* assertForensicBudgetBelowPrompt(
@@ -482,7 +529,7 @@ export const makeForensicManagedSandbox = (
         {
           sandboxRef: resource.sandboxRef,
           resourceGeneration: resource.resourceGeneration,
-          now: now(),
+          now: dispatchNow,
         },
       );
       if (
@@ -494,6 +541,46 @@ export const makeForensicManagedSandbox = (
         return yield* refuse("forensic dispatch budget does not bind the admitted worker");
       }
       const promptDigest = yield* sha256(request.prompt);
+      const observedAt = Date.parse(probe.observedAt);
+      const remainingTimeMillis = budget.maxTimeSeconds * 1_000 - probe.measuredRunningMs;
+      const remainingCostMicros = budget.maxCostMicros - probe.measuredCostMicros;
+      const costBoundMillis = Math.floor(
+        (remainingCostMicros * 3_600_000) / MANAGED_SANDBOX_MAX_HOURLY_COST_MICROS,
+      );
+      const deadlineMillis = Math.min(
+        Date.parse(resource.lease.expiresAt),
+        Date.parse(capability.expiresAt),
+        currentTime + remainingTimeMillis,
+        currentTime + costBoundMillis,
+      );
+      const guardrails = {
+        receiptRef: probe.receiptRef,
+        sandboxRef: resource.sandboxRef,
+        resourceGeneration: resource.resourceGeneration,
+        observedAt: probe.observedAt,
+        deadlineAt: new Date(deadlineMillis).toISOString(),
+        remainingTokens: budget.maxTokens - probe.usageProof.tokens,
+        remainingCostMicros,
+        networkBytesObserved: probe.usageProof.networkBytes,
+        remainingNetworkBytes: budget.maxNetworkBytes - probe.usageProof.networkBytes,
+        artifactBytesObserved: probe.usageProof.artifactBytes,
+        remainingArtifactBytes:
+          budget.maxArtifactBytes - probe.usageProof.sourceBytes - probe.usageProof.artifactBytes,
+      };
+      if (
+        !Number.isFinite(observedAt) ||
+        !Number.isFinite(deadlineMillis) ||
+        deadlineMillis <= currentTime ||
+        Object.values(guardrails).some((value) =>
+          typeof value === "number" ? !Number.isSafeInteger(value) || value < 0 : false,
+        ) ||
+        guardrails.remainingTokens < 1 ||
+        guardrails.remainingCostMicros < 1 ||
+        guardrails.remainingNetworkBytes < 1 ||
+        guardrails.remainingArtifactBytes < 1
+      ) {
+        return yield* recoveryRequired("forensic in-flight budget guardrails were exhausted");
+      }
       const command = yield* decodeCommand({
         _tag: "Dispatch",
         schema: "openagents.managed_sandbox_command.v1",
@@ -516,6 +603,7 @@ export const makeForensicManagedSandbox = (
       });
       const result = yield* input.broker.execute(command, {
         prompt: request.prompt,
+        guardrails,
       });
       yield* assertOrderedEvents(result);
       return result;
@@ -591,28 +679,34 @@ export const makeForensicManagedSandbox = (
       if (revoked.resource.capabilities.some((capability) => capability.state !== "revoked")) {
         return yield* recoveryRequired("forensic capability cleanup was not durably observed");
       }
-      const stop: ManagedSandboxCommand = yield* decodeCommand({
-        _tag: "Stop",
-        schema: "openagents.managed_sandbox_command.v1",
-        commandRef: `${request.commandRef}.stop`,
-        requestedByRef: request.requestedByRef,
-        ownerRef: placement.ownerRef,
-        tenantRef: placement.tenantRef,
-        idempotencyRef: `${request.idempotencyRef}.stop`,
-        requestedAt: request.requestedAt,
-        sandboxRef: placement.sandboxRef,
-        expectedVersion: revoked.resource.version,
-        reasonRef: request.reasonRef,
-      });
-      const stopped = yield* input.broker.execute(stop);
+      const stopped =
+        revoked.resource.facts.lifecycle === "recovery_required"
+          ? undefined
+          : yield* input.broker.execute(
+              yield* decodeCommand({
+                _tag: "Stop",
+                schema: "openagents.managed_sandbox_command.v1",
+                commandRef: `${request.commandRef}.stop`,
+                requestedByRef: request.requestedByRef,
+                ownerRef: placement.ownerRef,
+                tenantRef: placement.tenantRef,
+                idempotencyRef: `${request.idempotencyRef}.stop`,
+                requestedAt: request.requestedAt,
+                sandboxRef: placement.sandboxRef,
+                expectedVersion: revoked.resource.version,
+                reasonRef: request.reasonRef,
+              }),
+            );
       if (
-        stopped.resource.facts.lifecycle !== "stopped" ||
-        stopped.lifecycleOutcome?.phase !== "stopped" ||
-        stopped.lifecycleOutcome.cleanupProof?.zeroProcess !== true ||
-        stopped.lifecycleOutcome.cleanupProof.zeroScratch !== true
+        stopped !== undefined &&
+        (stopped.resource.facts.lifecycle !== "stopped" ||
+          stopped.lifecycleOutcome?.phase !== "stopped" ||
+          stopped.lifecycleOutcome.cleanupProof?.zeroProcess !== true ||
+          stopped.lifecycleOutcome.cleanupProof.zeroScratch !== true)
       ) {
         return yield* recoveryRequired("forensic process or scratch cleanup was not observed");
       }
+      const deleteResource = stopped?.resource ?? revoked.resource;
       const command: ManagedSandboxCommand = yield* decodeCommand({
         _tag: "Delete",
         schema: "openagents.managed_sandbox_command.v1",
@@ -623,7 +717,7 @@ export const makeForensicManagedSandbox = (
         idempotencyRef: `${request.idempotencyRef}.delete`,
         requestedAt: request.requestedAt,
         sandboxRef: placement.sandboxRef,
-        expectedVersion: stopped.resource.version,
+        expectedVersion: deleteResource.version,
         reasonRef: request.reasonRef,
       });
       const result = yield* input.broker.execute(command);
@@ -647,7 +741,7 @@ export const makeForensicManagedSandbox = (
         ...placement,
         resourceGeneration: result.resource.resourceGeneration,
         state: "cleaned",
-        stopReceiptRef: stopped.receipt.receiptRef,
+        ...(stopped === undefined ? {} : { stopReceiptRef: stopped.receipt.receiptRef }),
         deletionReceiptRef: result.receipt.receiptRef,
         cleanupReceiptRef: outcome.receiptRef,
         updatedAt: outcome.observedAt,
@@ -665,9 +759,7 @@ export const makeForensicManagedSandbox = (
       capability === undefined ||
       Date.parse(resource.lease.expiresAt) <= Date.parse(requestedAt)
     ) {
-      return Effect.fail(
-        refuse("forensic artifact capability is not active for this generation"),
-      );
+      return Effect.fail(refuse("forensic artifact capability is not active for this generation"));
     }
     return Effect.succeed({
       capabilityRef: capability.capabilityRef,

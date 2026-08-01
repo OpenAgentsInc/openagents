@@ -1061,6 +1061,127 @@ describe('SBX-03 Box-v1 compatibility facade', () => {
     }
   })
 
+  test('dispatch mints and forwards only the turn exact durable capability ref', async () => {
+    const harness = makeHandler()
+    const api = apiFor(
+      'https://local-box.test/v1',
+      'test-token',
+      fetchFor(harness.handle),
+    )
+    const boxId = (
+      await api.create(
+        { createBoxRequest: { noEnv: true } },
+        retryHeaders('sbx09-exact-turn-capability'),
+      )
+    ).box.id
+    const resource = harness.authority.resources.get(boxId)
+    if (resource === undefined) throw new Error('expected managed sandbox')
+    const decoyCapabilityRef = 'capability.sbx09.decoy.agent-turn'
+    const exactCapabilityRef = 'capability.sbx09.exact.agent-turn'
+    const scopedResource = {
+      ...resource,
+      capabilities: [
+        {
+          capabilityRef: decoyCapabilityRef,
+          kind: 'agent_turn' as const,
+          state: 'active' as const,
+          expiresAt: '2099-07-19T21:00:00.000Z',
+        },
+        {
+          capabilityRef: exactCapabilityRef,
+          kind: 'agent_turn' as const,
+          state: 'active' as const,
+          expiresAt: '2099-07-19T21:00:00.000Z',
+        },
+      ],
+    }
+    const turn = {
+      schema: 'openagents.managed_sandbox_turn.v1' as const,
+      turnRef: 'turn.sbx09.exact-capability',
+      sandboxRef: resource.sandboxRef,
+      ownerRef: resource.ownerRef,
+      tenantRef: resource.tenantRef,
+      workUnitRef: resource.workUnitRef,
+      attachmentRef: resource.attachmentRef,
+      attachmentGeneration: resource.attachmentGeneration,
+      resourceGeneration: resource.resourceGeneration,
+      turnSequence: 1,
+      lastEventSequence: 0,
+      commandRef: 'command.sbx09.exact-capability',
+      capabilityRef: exactCapabilityRef,
+      promptDigest: `sha256:${'c'.repeat(64)}`,
+      runtime: {
+        provider: 'codex' as const,
+        modelRef: 'model.codex.default',
+        harnessRef: 'harness.openai.codex-sdk.v1',
+      },
+      status: 'pending' as const,
+      createdAt: '2026-07-19T18:30:00.000Z',
+    }
+    const originalFetch = globalThis.fetch
+    let capturedBody: Record<string, unknown> = {}
+    globalThis.fetch = (async (_input, init) => {
+      capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+      return Response.json({
+        schemaVersion: 'openagents.managed_sandbox_turn_runtime.v1',
+        turnRef: turn.turnRef,
+        resourceGeneration: turn.resourceGeneration,
+        events: [
+          {
+            _tag: 'RuntimeStarted',
+            turnRef: turn.turnRef,
+            resourceGeneration: turn.resourceGeneration,
+            turnEventSequence: 1,
+            observedAt: '2026-07-19T18:30:01.000Z',
+          },
+        ],
+      })
+    }) as typeof fetch
+    try {
+      const runtime = await Effect.runPromise(
+        managedSandboxBoxV1RuntimeForEnv({
+          OA_MANAGED_SANDBOX_CONTROL_URL: 'https://sandbox-control.test',
+          OA_MANAGED_SANDBOX_CONTROL_TOKEN: 'sandbox-private-bearer',
+          OA_MANAGED_SANDBOX_BROKER_SIGNING_KEY: 's'.repeat(48),
+        } as unknown as OpenAgentsWorkerEnv),
+      )
+      await expect(
+        Effect.runPromise(
+          runtime.dispatch({
+            principal: boxV1TestPrincipal,
+            resource: scopedResource,
+            turn,
+            prompt: 'inspect the exact capability',
+          }),
+        ),
+      ).resolves.toHaveLength(1)
+      expect(capturedBody['capabilityRef']).toBe(exactCapabilityRef)
+      expect(capturedBody['capabilityRef']).not.toBe(decoyCapabilityRef)
+      await expect(
+        Effect.runPromise(
+          runtime.dispatch({
+            principal: boxV1TestPrincipal,
+            resource: {
+              ...scopedResource,
+              capabilities: scopedResource.capabilities.map(capability =>
+                capability.capabilityRef === exactCapabilityRef
+                  ? {
+                      ...capability,
+                      expiresAt: '2026-07-19T18:29:59.000Z',
+                    }
+                  : capability,
+              ),
+            },
+            turn,
+            prompt: 'must not substitute the decoy',
+          }),
+        ),
+      ).rejects.toBeDefined()
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
   test('streams Codex and Claude turn events through the unmodified SDK cursor helpers', async () => {
     const base = makeBoxV1MemoryRuntime()
     const runtime: ReturnType<typeof makeBoxV1MemoryRuntime> = {

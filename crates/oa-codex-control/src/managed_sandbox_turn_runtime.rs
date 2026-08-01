@@ -38,6 +38,22 @@ pub struct RuntimeIdentity {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TurnGuardrails {
+    receipt_ref: String,
+    sandbox_ref: String,
+    resource_generation: u64,
+    observed_at: String,
+    deadline_at: String,
+    remaining_tokens: u64,
+    remaining_cost_micros: u64,
+    network_bytes_observed: u64,
+    remaining_network_bytes: u64,
+    artifact_bytes_observed: u64,
+    remaining_artifact_bytes: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ManagedSandboxTurnRuntimeRequest {
     pub schema_version: String,
     pub action: TurnAction,
@@ -48,6 +64,7 @@ pub struct ManagedSandboxTurnRuntimeRequest {
     pub work_unit_ref: String,
     pub sandbox_ref: String,
     pub turn_ref: String,
+    pub capability_ref: String,
     pub expected_resource_generation: u64,
     pub prompt_digest: String,
     pub runtime: RuntimeIdentity,
@@ -63,6 +80,8 @@ pub struct ManagedSandboxTurnRuntimeRequest {
     pub provider_capability_token: Option<String>,
     #[serde(default)]
     pub provider_model: Option<String>,
+    #[serde(default)]
+    pub guardrails: Option<TurnGuardrails>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -335,6 +354,27 @@ pub struct ManagedSandboxTurnRuntimeResponse {
     pub turn_ref: String,
     pub resource_generation: u64,
     events: Vec<RuntimeEvent>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    interruption_proof: Option<InterruptionProof>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct InterruptionProof {
+    schema_version: String,
+    process_group_id: u64,
+    zero_process_group: bool,
+    descendants_remaining: u64,
+    escalated_to_sigkill: bool,
+}
+
+impl InterruptionProof {
+    fn is_authoritative(&self) -> bool {
+        self.schema_version == "openagents.managed_sandbox_interrupt_proof.v1"
+            && self.process_group_id > 1
+            && self.zero_process_group
+            && self.descendants_remaining == 0
+    }
 }
 
 #[derive(Debug)]
@@ -384,6 +424,7 @@ impl ManagedSandboxTurnRuntimeRequest {
             ("workUnitRef", self.work_unit_ref.as_str()),
             ("sandboxRef", self.sandbox_ref.as_str()),
             ("turnRef", self.turn_ref.as_str()),
+            ("capabilityRef", self.capability_ref.as_str()),
             ("modelRef", self.runtime.model_ref.as_str()),
             ("harnessRef", self.runtime.harness_ref.as_str()),
         ] {
@@ -425,12 +466,33 @@ impl ManagedSandboxTurnRuntimeRequest {
                     .as_deref()
                     .ok_or_else(|| TurnRuntimeError::invalid("dispatch_provider_model_required"))?;
                 validate_provider_model(provider_model)?;
+                if self.runtime.harness_ref == "driver.openagents.forensic-worker.v1" {
+                    let guardrails = self
+                        .guardrails
+                        .as_ref()
+                        .ok_or_else(|| TurnRuntimeError::invalid("dispatch_guardrails_required"))?;
+                    validate_ref("receiptRef", &guardrails.receipt_ref)?;
+                    if guardrails.sandbox_ref != self.sandbox_ref
+                        || guardrails.resource_generation != self.expected_resource_generation
+                        || !guardrails.observed_at.ends_with('Z')
+                        || !guardrails.deadline_at.ends_with('Z')
+                        || guardrails.remaining_tokens == 0
+                        || guardrails.remaining_cost_micros == 0
+                        || guardrails.remaining_network_bytes == 0
+                        || guardrails.remaining_artifact_bytes == 0
+                    {
+                        return Err(TurnRuntimeError::invalid(
+                            "dispatch_guardrails_scope_invalid",
+                        ));
+                    }
+                }
             }
             TurnAction::Sync
                 if self.prompt.is_some()
                     || self.reason_ref.is_some()
                     || self.provider_capability_token.is_some()
-                    || self.provider_model.is_some() =>
+                    || self.provider_model.is_some()
+                    || self.guardrails.is_some() =>
             {
                 return Err(TurnRuntimeError::invalid("sync_payload_invalid"));
             }
@@ -441,7 +503,10 @@ impl ManagedSandboxTurnRuntimeRequest {
                         .as_deref()
                         .ok_or_else(|| TurnRuntimeError::invalid("interrupt_reason_required"))?,
                 )?;
-                if self.provider_capability_token.is_some() || self.provider_model.is_some() {
+                if self.provider_capability_token.is_some()
+                    || self.provider_model.is_some()
+                    || self.guardrails.is_some()
+                {
                     return Err(TurnRuntimeError::invalid("interrupt_payload_invalid"));
                 }
                 validate_ref(
@@ -565,6 +630,25 @@ fn validate_response(
             "interrupt_not_visible",
         ));
     }
+    if request.action == TurnAction::Interrupt
+        && !response
+            .interruption_proof
+            .as_ref()
+            .is_some_and(InterruptionProof::is_authoritative)
+    {
+        return Err(TurnRuntimeError::new(
+            409,
+            "runtime_conflict",
+            "interrupt_quiescence_unproven",
+        ));
+    }
+    if request.action != TurnAction::Interrupt && response.interruption_proof.is_some() {
+        return Err(TurnRuntimeError::new(
+            409,
+            "runtime_conflict",
+            "interrupt_proof_out_of_scope",
+        ));
+    }
     for (offset, event) in response.events.iter().enumerate() {
         let (turn_ref, generation, sequence, observed_at) = event.coordinates();
         if turn_ref != request.turn_ref
@@ -629,7 +713,10 @@ mod tests {
     use std::fs;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static DRIVER_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
     fn request(action: TurnAction, provider: &str, after: u64) -> ManagedSandboxTurnRuntimeRequest {
         ManagedSandboxTurnRuntimeRequest {
@@ -642,6 +729,7 @@ mod tests {
             work_unit_ref: "work.sbx04.test".to_string(),
             sandbox_ref: "sandbox.sbx04.test".to_string(),
             turn_ref: "turn.sbx04.test".to_string(),
+            capability_ref: "capability.sbx04.agent-turn".to_string(),
             expected_resource_generation: 3,
             prompt_digest: format!("sha256:{}", "a".repeat(64)),
             runtime: RuntimeIdentity {
@@ -659,18 +747,20 @@ mod tests {
                 .then(|| "private.signed.capability.token.with.sufficient.length".to_string()),
             provider_model: (action == TurnAction::Dispatch)
                 .then(|| format!("{provider}-provider-model")),
+            guardrails: None,
         }
     }
 
     #[cfg(unix)]
     fn driver(response: &Value) -> std::path::PathBuf {
         let root = env::temp_dir().join(format!(
-            "oa-sbx04-turn-driver-{}-{}",
+            "oa-sbx04-turn-driver-{}-{}-{}",
             std::process::id(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("clock")
-                .as_nanos()
+                .as_nanos(),
+            DRIVER_SEQUENCE.fetch_add(1, Ordering::Relaxed),
         ));
         fs::create_dir_all(&root).expect("driver root");
         let path = root.join("driver.sh");
@@ -764,5 +854,60 @@ mod tests {
         )
         .expect_err("conflict");
         assert_eq!(error.status(), 409);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn requires_authoritative_process_group_quiescence_for_interrupt() {
+        let events = json!([
+            {
+                "_tag": "RuntimeInterruptRequested",
+                "turnRef": "turn.sbx04.test",
+                "resourceGeneration": 3,
+                "turnEventSequence": 5,
+                "observedAt": "2026-07-19T19:30:01.000Z",
+                "reasonRef": "reason.sbx04.stop"
+            },
+            {
+                "_tag": "RuntimeInterrupted",
+                "turnRef": "turn.sbx04.test",
+                "resourceGeneration": 3,
+                "turnEventSequence": 6,
+                "observedAt": "2026-07-19T19:30:02.000Z",
+                "reasonRef": "reason.sbx04.stop"
+            }
+        ]);
+        let missing = json!({
+            "schemaVersion": SCHEMA_VERSION,
+            "turnRef": "turn.sbx04.test",
+            "resourceGeneration": 3,
+            "events": events
+        });
+        let error = execute_with_driver(
+            &driver(&missing),
+            request(TurnAction::Interrupt, "codex", 4),
+        )
+        .expect_err("quiescence proof required");
+        assert_eq!(error.reason_ref, "interrupt_quiescence_unproven");
+
+        let admitted = json!({
+            "schemaVersion": SCHEMA_VERSION,
+            "turnRef": "turn.sbx04.test",
+            "resourceGeneration": 3,
+            "events": events,
+            "interruptionProof": {
+                "schemaVersion": "openagents.managed_sandbox_interrupt_proof.v1",
+                "processGroupId": 42,
+                "zeroProcessGroup": true,
+                "descendantsRemaining": 0,
+                "escalatedToSigkill": true
+            }
+        });
+        let response = execute_with_driver(
+            &driver(&admitted),
+            request(TurnAction::Interrupt, "codex", 4),
+        )
+        .expect("authoritative interruption admitted");
+        assert_eq!(response.events.len(), 2);
     }
 }

@@ -6,7 +6,10 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import type { OpenAgentsWorkerEnv } from './bindings'
-import type { BoxV1NativeStore } from './managed-sandbox-box-v1-routes'
+import {
+  BoxV1FacadeError,
+  type BoxV1NativeStore,
+} from './managed-sandbox-box-v1-routes'
 import {
   makeManagedSandboxProviderBrokerRoutes,
   managedSandboxProviderBrokerPaths,
@@ -85,7 +88,10 @@ const resource = (
     updatedAt: '2026-07-19T20:00:00.000Z',
   }) as ManagedSandboxResource
 
-const turnFor = (provider: 'codex' | 'claude' = 'codex') =>
+const turnFor = (
+  provider: 'codex' | 'claude' = 'codex',
+  forensic = false,
+) =>
   ({
     schema: 'openagents.managed_sandbox_turn.v1',
     turnRef,
@@ -104,8 +110,9 @@ const turnFor = (provider: 'codex' | 'claude' = 'codex') =>
     runtime: {
       provider,
       modelRef: `model.${provider}.default`,
-      harnessRef:
-        provider === 'codex'
+      harnessRef: forensic
+        ? 'driver.openagents.forensic-worker.v1'
+        : provider === 'codex'
           ? 'harness.openai.codex-sdk.v1'
           : 'harness.anthropic.claude-agent-sdk.v1',
     },
@@ -148,6 +155,20 @@ const token = (provider: 'codex' | 'claude' = 'codex') =>
       nowMs,
     }),
   )
+
+const guardrails = {
+  receiptRef: 'receipt.sbx09.forensic.budget',
+  sandboxRef,
+  resourceGeneration: 1,
+  observedAt: new Date(nowMs).toISOString(),
+  deadlineAt: new Date(nowMs + 10 * 60 * 1_000).toISOString(),
+  remainingTokens: 200,
+  remainingCostMicros: 1_000,
+  networkBytesObserved: 100,
+  remainingNetworkBytes: 10_000,
+  artifactBytesObserved: 0,
+  remainingArtifactBytes: 10_000,
+} as const
 
 describe('managed-sandbox provider capability broker', () => {
   test('redeems one exact live generation without disclosing provider credentials', async () => {
@@ -219,6 +240,89 @@ describe('managed-sandbox provider capability broker', () => {
     const response = await Effect.runPromise(effect!)
     expect(response.status).toBe(403)
     expect(await response.json()).toEqual({ error: 'capability_revoked' })
+  })
+
+  test('atomically reserves the cumulative forensic token ceiling and clamps provider output', async () => {
+    let consumedTokens = 0
+    let upstreamCalls = 0
+    let upstreamBody: Record<string, unknown> | undefined
+    const guardedStore = {
+      inspect: () => Effect.succeed(resource()),
+      inspectTurn: () => Effect.succeed({ turn: turnFor('codex', true) }),
+      consumeProviderBudget: (input: {
+        reservationRef: string
+        maxTokens: number
+        reservedTokens: number
+      }) => {
+        if (consumedTokens + input.reservedTokens > input.maxTokens) {
+          return Effect.fail(
+            new BoxV1FacadeError({
+              code: 'conflict',
+              status: 409,
+              message: 'provider token budget exhausted',
+              retryable: false,
+            }),
+          )
+        }
+        consumedTokens += input.reservedTokens
+        return Effect.succeed({
+          reservationRef: input.reservationRef,
+          consumedTokens,
+          remainingTokens: input.maxTokens - consumedTokens,
+        })
+      },
+    } as unknown as BoxV1NativeStore
+    const routes = makeManagedSandboxProviderBrokerRoutes({
+      store: () => guardedStore,
+      nowMs: () => nowMs + 1,
+      fetchImpl: async (_url, init) => {
+        upstreamCalls += 1
+        upstreamBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+        return Response.json({ id: 'response.forensic.guarded' })
+      },
+    })
+    const capability = await Effect.runPromise(
+      mintManagedSandboxProviderCapability(env, {
+        actorRef: 'principal.sbx09.live',
+        ownerRef,
+        tenantRef,
+        sandboxRef,
+        turnRef,
+        resourceGeneration: 1,
+        capabilityRef,
+        capabilityExpiresAt: '2026-07-19T20:10:00.000Z',
+        provider: 'codex',
+        requestedModelRef: 'model.codex.default',
+        guardrails,
+        nowMs,
+      }),
+    )
+    const requestBody = JSON.stringify({
+      input: 'Return READY.',
+      max_output_tokens: 10_000,
+    })
+    const request = () =>
+      new Request(
+        `https://openagents.test${managedSandboxProviderBrokerPaths.openai}`,
+        {
+          method: 'POST',
+          headers: { authorization: `Bearer ${capability}` },
+          body: requestBody,
+        },
+      )
+    const first = await Effect.runPromise(routes.route(request(), env)!)
+    expect(first.status).toBe(200)
+    expect(upstreamBody?.['max_output_tokens']).toBe(
+      guardrails.remainingTokens -
+        new TextEncoder().encode(requestBody).byteLength,
+    )
+    const second = await Effect.runPromise(routes.route(request(), env)!)
+    expect(second.status).toBe(429)
+    expect(await second.json()).toEqual({
+      error: 'provider_token_budget_exhausted',
+    })
+    expect(upstreamCalls).toBe(1)
+    expect(consumedTokens).toBe(guardrails.remainingTokens)
   })
 
   test('checks capability revocation before provider request validation', async () => {

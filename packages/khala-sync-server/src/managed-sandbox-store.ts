@@ -1092,9 +1092,7 @@ export class PostgresManagedSandboxStore {
                   facts: { ...resource.facts, leaseState: command.lease.state },
                 }),
             ...(command.budget === undefined ? {} : { budget: command.budget }),
-            ...(command.capabilities === undefined
-              ? {}
-              : { capabilities: command.capabilities }),
+            ...(command.capabilities === undefined ? {} : { capabilities: command.capabilities }),
             updatedAt: command.requestedAt,
           }),
         );
@@ -1188,6 +1186,138 @@ export class PostgresManagedSandboxStore {
         command,
         resource,
         turnSequence,
+      };
+    });
+  }
+
+  async consumeProviderBudget(
+    input: Readonly<{
+      ownerRef: string;
+      tenantRef: string;
+      sandboxRef: string;
+      resourceGeneration: number;
+      turnRef: string;
+      capabilityRef: string;
+      reservationRef: string;
+      maxTokens: number;
+      reservedTokens: number;
+      deadlineAt: string;
+      observedAt: string;
+    }>,
+  ): Promise<{ reservationRef: string; consumedTokens: number; remainingTokens: number }> {
+    const ownerRef = decodeRef(input.ownerRef);
+    const tenantRef = decodeRef(input.tenantRef);
+    const sandboxRef = decodeRef(input.sandboxRef);
+    const turnRef = decodeRef(input.turnRef);
+    const capabilityRef = decodeRef(input.capabilityRef);
+    const reservationRef = decodeRef(input.reservationRef);
+    if (
+      !Number.isSafeInteger(input.resourceGeneration) ||
+      input.resourceGeneration < 1 ||
+      !Number.isSafeInteger(input.maxTokens) ||
+      input.maxTokens < 1 ||
+      !Number.isSafeInteger(input.reservedTokens) ||
+      input.reservedTokens < 1 ||
+      input.reservedTokens > input.maxTokens ||
+      !Number.isFinite(Date.parse(input.deadlineAt)) ||
+      Date.parse(input.deadlineAt) <= Date.parse(input.observedAt)
+    ) {
+      throw new ManagedSandboxStoreError("invalid", "provider budget reservation is invalid");
+    }
+    return this.sql.begin(async (tx) => {
+      await tx`SELECT pg_advisory_xact_lock(hashtextextended(${`${sandboxRef}|${input.resourceGeneration}|${turnRef}`}, 0))`;
+      const turnRows: ReadonlyArray<{
+        turn_json: unknown;
+        owner_user_id: string;
+        tenant_ref: string;
+      }> = await tx`
+          SELECT t.turn_json, s.owner_user_id, s.tenant_ref
+          FROM khala_sync_managed_sandbox_turns t
+          JOIN khala_sync_managed_sandboxes s ON s.sandbox_ref = t.sandbox_ref
+          WHERE t.sandbox_ref = ${sandboxRef}
+            AND t.resource_generation = ${input.resourceGeneration}
+            AND t.turn_ref = ${turnRef}
+          FOR UPDATE OF t
+        `;
+      const turnRow = turnRows[0];
+      if (turnRow === undefined) {
+        throw new ManagedSandboxStoreError("not_found", "provider budget turn does not exist");
+      }
+      if (turnRow.owner_user_id !== ownerRef || turnRow.tenant_ref !== tenantRef) {
+        throw new ManagedSandboxStoreError(
+          "permission_denied",
+          "provider budget scope does not match",
+        );
+      }
+      const turn = decodeTurn(turnRow.turn_json);
+      if (
+        turn.resourceGeneration !== input.resourceGeneration ||
+        turn.capabilityRef !== capabilityRef ||
+        !["pending", "running"].includes(turn.status)
+      ) {
+        throw new ManagedSandboxStoreError(
+          "command_conflict",
+          "provider budget turn is not active",
+        );
+      }
+      const rows: ReadonlyArray<{
+        max_tokens: string | number;
+        consumed_tokens: string | number;
+        deadline_at: Date | string;
+      }> = await tx`
+        SELECT max_tokens, consumed_tokens, deadline_at
+        FROM khala_sync_managed_sandbox_provider_budgets
+        WHERE sandbox_ref = ${sandboxRef}
+          AND resource_generation = ${input.resourceGeneration}
+          AND turn_ref = ${turnRef}
+          AND capability_ref = ${capabilityRef}
+        FOR UPDATE
+      `;
+      const existing = rows[0];
+      let consumedTokens = existing === undefined ? 0 : Number(existing.consumed_tokens);
+      if (existing === undefined) {
+        await tx`
+          INSERT INTO khala_sync_managed_sandbox_provider_budgets
+            (sandbox_ref, resource_generation, turn_ref, capability_ref, max_tokens,
+             consumed_tokens, deadline_at, created_at, updated_at)
+          VALUES
+            (${sandboxRef}, ${input.resourceGeneration}, ${turnRef}, ${capabilityRef},
+             ${input.maxTokens}, 0, ${input.deadlineAt}::timestamptz,
+             ${input.observedAt}::timestamptz, ${input.observedAt}::timestamptz)
+        `;
+      } else if (
+        Number(existing.max_tokens) !== input.maxTokens ||
+        new Date(existing.deadline_at).toISOString() !== new Date(input.deadlineAt).toISOString()
+      ) {
+        throw new ManagedSandboxStoreError("command_conflict", "provider budget envelope changed");
+      }
+      if (consumedTokens + input.reservedTokens > input.maxTokens) {
+        throw new ManagedSandboxStoreError(
+          "command_conflict",
+          "provider token budget is exhausted",
+        );
+      }
+      await tx`
+        INSERT INTO khala_sync_managed_sandbox_provider_budget_reservations
+          (reservation_ref, sandbox_ref, resource_generation, turn_ref,
+           capability_ref, reserved_tokens, observed_at)
+        VALUES
+          (${reservationRef}, ${sandboxRef}, ${input.resourceGeneration}, ${turnRef},
+           ${capabilityRef}, ${input.reservedTokens}, ${input.observedAt}::timestamptz)
+      `;
+      consumedTokens += input.reservedTokens;
+      await tx`
+        UPDATE khala_sync_managed_sandbox_provider_budgets
+        SET consumed_tokens = ${consumedTokens}, updated_at = ${input.observedAt}::timestamptz
+        WHERE sandbox_ref = ${sandboxRef}
+          AND resource_generation = ${input.resourceGeneration}
+          AND turn_ref = ${turnRef}
+          AND capability_ref = ${capabilityRef}
+      `;
+      return {
+        reservationRef,
+        consumedTokens,
+        remainingTokens: input.maxTokens - consumedTokens,
       };
     });
   }

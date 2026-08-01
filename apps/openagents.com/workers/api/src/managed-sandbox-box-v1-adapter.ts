@@ -168,6 +168,8 @@ export const managedSandboxBoxV1StoreForEnv = (
     withPostgresStore(env, store => store.readTurnEvents(input)),
   recordRuntimeEvents: input =>
     withPostgresStore(env, store => store.recordRuntimeEvents(input)),
+  consumeProviderBudget: input =>
+    withPostgresStore(env, store => store.consumeProviderBudget(input)),
   readProjection: input =>
     withPostgresStore(env, store => store.readProjection(input)),
   advanceProjection: input =>
@@ -311,6 +313,17 @@ const managedSandboxTurnResponseSchema = S.Struct({
   turnRef: S.String,
   resourceGeneration: S.Number,
   events: S.Array(ManagedSandboxRuntimeEventInputSchema),
+  interruptionProof: S.optionalKey(
+    S.Struct({
+      schemaVersion: S.Literal(
+        'openagents.managed_sandbox_interrupt_proof.v1',
+      ),
+      processGroupId: S.Number.check(S.isInt(), S.isGreaterThan(1)),
+      zeroProcessGroup: S.Literal(true),
+      descendantsRemaining: S.Literal(0),
+      escalatedToSigkill: S.Boolean,
+    }),
+  ),
 })
 
 const NonNegativeInteger = S.Number.check(
@@ -826,6 +839,7 @@ const runtimeScope = (
   sandboxRef: input.resource.sandboxRef,
   turnRef: input.turn.turnRef,
   expectedResourceGeneration: input.resource.resourceGeneration,
+  capabilityRef: input.turn.capabilityRef,
   promptDigest: input.turn.promptDigest,
   runtime: input.turn.runtime,
 })
@@ -868,13 +882,33 @@ export const managedSandboxBoxV1RuntimeForEnv = (
       Effect.gen(function* () {
         const capability = input.resource.capabilities.find(
           candidate =>
-            candidate.kind === 'agent_turn' && candidate.state === 'active',
+            candidate.capabilityRef === input.turn.capabilityRef &&
+            candidate.kind === 'agent_turn' &&
+            candidate.state === 'active' &&
+            Date.parse(candidate.expiresAt) > Date.parse(input.turn.createdAt) &&
+            Date.parse(candidate.expiresAt) > Date.now(),
         )
         if (capability === undefined) {
           return yield* new BoxV1FacadeError({
             code: 'permission_denied',
             status: 403,
             message: 'sandbox generation has no active agent-turn capability',
+            retryable: false,
+          })
+        }
+        if (
+          input.turn.runtime.harnessRef ===
+            'driver.openagents.forensic-worker.v1' &&
+          (input.guardrails === undefined ||
+            input.guardrails.sandboxRef !== input.resource.sandboxRef ||
+            input.guardrails.resourceGeneration !==
+              input.resource.resourceGeneration ||
+            Date.parse(input.guardrails.deadlineAt) <= Date.now())
+        ) {
+          return yield* new BoxV1FacadeError({
+            code: 'conflict',
+            status: 409,
+            message: 'forensic turn guardrails do not bind the live generation',
             retryable: false,
           })
         }
@@ -890,6 +924,7 @@ export const managedSandboxBoxV1RuntimeForEnv = (
             capabilityExpiresAt: capability.expiresAt,
             provider: input.turn.runtime.provider,
             requestedModelRef: input.turn.runtime.modelRef,
+            guardrails: input.guardrails,
           })
         const response = yield* managedSandboxRuntimeRequest(env, {
           action: 'dispatch',
@@ -901,6 +936,9 @@ export const managedSandboxBoxV1RuntimeForEnv = (
             input.turn.runtime.provider,
             input.turn.runtime.modelRef,
           ),
+          ...(input.guardrails === undefined
+            ? {}
+            : { guardrails: input.guardrails }),
         })
         return response.events
       }),

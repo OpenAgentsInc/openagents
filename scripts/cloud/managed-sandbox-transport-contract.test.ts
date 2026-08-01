@@ -71,17 +71,14 @@ describe("managed-sandbox guest transport contract", () => {
   });
 
   test("forensic guest exposes fixed usage and process-scratch cleanup proofs", () => {
-    const driver = readFileSync(
-      resolve(import.meta.dirname, "forensic-worker-driver.mjs"),
-      "utf8",
-    );
+    const driver = readFileSync(resolve(import.meta.dirname, "forensic-worker-driver.mjs"), "utf8");
     expect(driver).toContain('process.argv[2] === "usage"');
     expect(driver).toContain('process.argv[2] === "prepare-stop"');
     expect(driver).toContain("sourceBytes");
     expect(driver).toContain("artifactBytes");
     expect(driver).toContain("activeTurns");
     expect(driver).toContain('const NETWORK_ROOT = "/sys/class/net"');
-    expect(driver).toContain('const SOURCE_ROOT = `${WORKSPACE}/source`');
+    expect(driver).toContain("const SOURCE_ROOT = `${WORKSPACE}/source`");
     expect(driver).not.toContain("networkBytes: sourceBytes + artifactBytes");
     expect(driver).toContain("zeroProcess: true");
     expect(driver).toContain("zeroScratch: true");
@@ -126,6 +123,30 @@ describe("managed-sandbox guest transport contract", () => {
 
     const claude = source.slice(source.indexOf("const runClaude = async () => {"));
     expect(claude).toContain("if (settled) continue;");
+    expect(source).toContain("provider_usage_unavailable");
+    expect(source).not.toContain("usage?.input_tokens ?? usage?.inputTokens ?? 0");
+    expect(source).toContain(
+      "thread.runStreamed(request.prompt, { signal: abortController.signal })",
+    );
+    expect(source).toContain("abortController,");
+    expect(source).toContain('finishReason: "budget_guardrail"');
+  });
+
+  test("turn interruption proves full process-group quiescence before terminal receipt", () => {
+    const driver = readFileSync(
+      resolve(import.meta.dirname, "managed-sandbox-turn-driver.mjs"),
+      "utf8",
+    );
+    const interrupt = readFileSync(
+      resolve(import.meta.dirname, "managed-sandbox-guest-interrupt.mjs"),
+      "utf8",
+    );
+    expect(driver).toContain("/usr/bin/setsid");
+    expect(driver).toContain("interruptionProof: proof");
+    expect(driver).not.toMatch(/kill \$\(cat .*\) 2>\/dev\/null \|\| true/u);
+    expect(interrupt).toContain('signal(processGroupId, "SIGTERM")');
+    expect(interrupt).toContain('signal(processGroupId, "SIGKILL")');
+    expect(interrupt).toContain("processGroupMembers(processGroupId).length === 0");
   });
 
   test("guest emitter admits exactly one terminal event per turn", () => {

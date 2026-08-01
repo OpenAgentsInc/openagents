@@ -198,16 +198,24 @@ the complete readiness and zero-residue observations instead of reducing them
 to a single boolean. Before every prompt, a fresh generation-bound native probe
 supplies measured runtime and cost plus exact guest-observed token, source,
 artifact, network, and active-turn usage; caller assertions are not budget
-authority. Cancellation must reach a terminal turn receipt. Deletion first
+authority. The resulting in-flight guardrail carries an absolute time/cost
+deadline, an atomically reserved cumulative token ceiling, and live network and
+artifact ceilings below prompt control. Missing provider usage is never
+reported as exact zero. Cancellation terminates and observes the full workload
+process group, including `SIGTERM`-ignoring descendants, before it can emit a
+terminal interrupted receipt. Deletion first
 revokes durable capabilities, then uses the fixed guest driver to prove process
-and scratch cleanup before stopping the VM, and finally proves zero compute,
+and scratch cleanup, including `io-*` and `/run` residue, before stopping the VM,
+and finally proves zero compute,
 disk, firewall, process, scratch, and ingress residue. Grant cleanup comes only
 from the durable broker resource showing every capability explicitly revoked;
 the provider receipt never asserts it. Guest network usage is the cumulative
 non-loopback interface byte count since fresh VM boot, independent of the
 separate source and artifact byte totals. Missing usage, cost, readiness,
 settlement, broker, stop, or cleanup truth refuses or returns
-`recovery_required`; there is no silent placement fallback. Generation-bound
+`recovery_required`; there is no silent placement fallback. Probe recovery is
+first reconciled into the durable broker event stream and can then be cleaned
+directly from that state. Generation-bound
 source-materializer and artifact capabilities expose the narrow private seams
 consumed by OFR-003 and later artifact publication without granting ambient
 guest access.

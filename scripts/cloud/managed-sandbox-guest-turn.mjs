@@ -1,7 +1,16 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
@@ -25,6 +34,7 @@ if (`sha256:${digest(request.prompt)}` !== request.promptDigest) process.exit(2)
 const turnKey = digest(request.turnRef).slice(0, 24);
 const runtimeHome = `/run/openagents-managed-sandbox/${turnKey}`;
 const workspace = "/workspace";
+const artifactPath = `${workspace}/forensic-artifact.tar.zst`;
 mkdirSync(runtimeHome, { recursive: true, mode: 0o700 });
 mkdirSync(workspace, { recursive: true, mode: 0o700 });
 
@@ -55,15 +65,101 @@ const emit = (event) => {
 };
 const usageRef = (usage) =>
   `provider.usage.sha256.${digest(`${request.turnRef}|${JSON.stringify(usage)}`)}`;
-const runtimeUsage = (usage) => ({
-  inputTokens: Number(usage?.input_tokens ?? usage?.inputTokens ?? 0),
-  outputTokens: Number(usage?.output_tokens ?? usage?.outputTokens ?? 0),
-  ...(Number.isFinite(Number(usage?.cached_input_tokens))
-    ? { cachedInputTokens: Number(usage.cached_input_tokens) }
-    : {}),
-  providerUsageRef: usageRef(usage),
-  exact: true,
-});
+const runtimeUsage = (usage) => {
+  const inputTokens = usage?.input_tokens ?? usage?.inputTokens;
+  const outputTokens = usage?.output_tokens ?? usage?.outputTokens;
+  if (
+    typeof inputTokens !== "number" ||
+    !Number.isSafeInteger(inputTokens) ||
+    inputTokens < 0 ||
+    typeof outputTokens !== "number" ||
+    !Number.isSafeInteger(outputTokens) ||
+    outputTokens < 0
+  ) {
+    throw new Error("provider_usage_unavailable");
+  }
+  return {
+    inputTokens,
+    outputTokens,
+    ...(Number.isSafeInteger(Number(usage?.cached_input_tokens)) &&
+    Number(usage.cached_input_tokens) >= 0
+      ? { cachedInputTokens: Number(usage.cached_input_tokens) }
+      : {}),
+    providerUsageRef: usageRef(usage),
+    exact: true,
+  };
+};
+
+const networkBytes = () => {
+  let bytes = 0;
+  let observed = false;
+  for (const interfaceName of readdirSync("/sys/class/net")) {
+    if (interfaceName === "lo") continue;
+    observed = true;
+    for (const counter of ["rx_bytes", "tx_bytes"]) {
+      const value = Number.parseInt(
+        readFileSync(`/sys/class/net/${interfaceName}/statistics/${counter}`, "utf8"),
+        10,
+      );
+      if (!Number.isSafeInteger(value) || value < 0) throw new Error("network_usage_invalid");
+      bytes += value;
+      if (!Number.isSafeInteger(bytes)) throw new Error("network_usage_invalid");
+    }
+  }
+  if (!observed) throw new Error("network_usage_unavailable");
+  return bytes;
+};
+
+const artifactBytes = () => {
+  if (!existsSync(artifactPath)) return 0;
+  const status = lstatSync(artifactPath);
+  if (!status.isFile() || !Number.isSafeInteger(status.size)) {
+    throw new Error("artifact_usage_invalid");
+  }
+  return status.size;
+};
+
+const guardrails = request.guardrails;
+const guarded = request.runtime?.harnessRef === "driver.openagents.forensic-worker.v1";
+if (
+  guarded &&
+  (guardrails?.sandboxRef !== request.sandboxRef ||
+    guardrails?.resourceGeneration !== request.expectedResourceGeneration ||
+    !Number.isSafeInteger(guardrails?.remainingTokens) ||
+    guardrails.remainingTokens < 1 ||
+    !Number.isSafeInteger(guardrails?.remainingCostMicros) ||
+    guardrails.remainingCostMicros < 1 ||
+    !Number.isSafeInteger(guardrails?.networkBytesObserved) ||
+    !Number.isSafeInteger(guardrails?.remainingNetworkBytes) ||
+    !Number.isSafeInteger(guardrails?.artifactBytesObserved) ||
+    !Number.isSafeInteger(guardrails?.remainingArtifactBytes) ||
+    Date.parse(guardrails?.deadlineAt) <= Date.now())
+) {
+  process.exit(2);
+}
+const abortController = new AbortController();
+let budgetExceeded = false;
+const enforceBudget = () => {
+  if (!guarded) return;
+  try {
+    if (
+      Date.now() >= Date.parse(guardrails.deadlineAt) ||
+      networkBytes() > guardrails.networkBytesObserved + guardrails.remainingNetworkBytes ||
+      artifactBytes() > guardrails.artifactBytesObserved + guardrails.remainingArtifactBytes
+    ) {
+      budgetExceeded = true;
+      abortController.abort();
+    }
+  } catch {
+    budgetExceeded = true;
+    abortController.abort();
+  }
+};
+const deadlineTimer = guarded
+  ? setTimeout(enforceBudget, Math.max(0, Date.parse(guardrails.deadlineAt) - Date.now()))
+  : undefined;
+const budgetTimer = guarded ? setInterval(enforceBudget, 100) : undefined;
+enforceBudget();
 
 const runCodex = async () => {
   let settled = false;
@@ -83,7 +179,7 @@ const runCodex = async () => {
     approvalPolicy: "never",
     networkAccessEnabled: false,
   });
-  const streamed = await thread.runStreamed(request.prompt);
+  const streamed = await thread.runStreamed(request.prompt, { signal: abortController.signal });
   for await (const event of streamed.events) {
     if (settled) continue;
     if (event.type === "item.completed" && event.item.type === "agent_message" && event.item.text) {
@@ -135,6 +231,7 @@ const runClaude = async () => {
         ANTHROPIC_API_KEY: request.providerCapabilityToken,
         CLAUDE_AGENT_SDK_CLIENT_APP: "openagents-managed-sandbox/1",
       },
+      abortController,
     },
   });
   for await (const message of session) {
@@ -171,12 +268,16 @@ try {
   else throw new Error("provider_not_admitted");
 } catch (error) {
   if (terminalEventTag === undefined) {
-    emit({
-      _tag: "RuntimeFailed",
-      errorRef: `provider.failure.sha256.${digest(error instanceof Error ? error.name : "unknown")}`,
-      retryable: true,
-    });
+    if (budgetExceeded) emit({ _tag: "RuntimeSettled", finishReason: "budget_guardrail" });
+    else
+      emit({
+        _tag: "RuntimeFailed",
+        errorRef: `provider.failure.sha256.${digest(error instanceof Error ? error.name : "unknown")}`,
+        retryable: true,
+      });
   }
 } finally {
+  if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
+  if (budgetTimer !== undefined) clearInterval(budgetTimer);
   rmSync(runtimeHome, { recursive: true, force: true });
 }

@@ -346,6 +346,45 @@ describe("forensic managed sandbox", () => {
         ),
       ),
     ).rejects.toBeDefined();
+    for (const [suffix, capabilityRef] of [
+      ["source", placement.capabilityRefs[1]!],
+      ["artifact", placement.capabilityRefs[2]!],
+      ["unknown", "capability.forensic.unknown"],
+    ] as const) {
+      await expect(
+        Effect.runPromise(
+          service.dispatch(placement, {
+            commandRef: `command.forensic.dispatch.${suffix}`,
+            idempotencyRef: `idempotency.forensic.dispatch.${suffix}`,
+            requestedByRef: principal.actorRef,
+            turnRef: `turn.forensic.${suffix}`,
+            capabilityRef,
+            requestedAt: "2026-08-01T10:00:00.000Z",
+            prompt: "must not run",
+          }),
+        ),
+      ).rejects.toBeDefined();
+    }
+    await expect(
+      Effect.runPromise(
+        service.dispatch(
+          {
+            ...placement,
+            capabilityRefs: ["capability.forensic.forged", ...placement.capabilityRefs.slice(1)],
+          },
+          {
+            commandRef: "command.forensic.dispatch.forged-capability",
+            idempotencyRef: "idempotency.forensic.dispatch.forged-capability",
+            requestedByRef: principal.actorRef,
+            turnRef: "turn.forensic.forged-capability",
+            capabilityRef: "capability.forensic.forged",
+            requestedAt: "2026-08-01T10:00:00.000Z",
+            prompt: "must not run",
+          },
+        ),
+      ),
+    ).rejects.toBeDefined();
+    expect(probeCalls).toBe(0);
     await expect(
       Effect.runPromise(
         service.delete(
@@ -440,6 +479,95 @@ describe("forensic managed sandbox", () => {
         ),
       ),
     ).rejects.toBeDefined();
+  });
+
+  test("durably reconciles probe recovery and deletes directly from recovery-required", async () => {
+    const authority = new BoxV1MemoryAuthority();
+    const memoryRuntime = makeBoxV1MemoryRuntime();
+    const lifecycleActions: Array<BoxV1LifecycleOutcome["action"]> = [];
+    const runtime: BoxV1Runtime = {
+      ...memoryRuntime,
+      lifecycle: (input) => {
+        const action = input.command._tag.toLowerCase() as "create" | "stop" | "resume" | "delete";
+        lifecycleActions.push(action);
+        return Effect.succeed({
+          ...proof(action, action === "delete" ? "deleted" : "ready"),
+          operationRef: input.command.commandRef,
+          generation: input.resource.resourceGeneration,
+        });
+      },
+      probe: (input) => {
+        const { usageProof: _usageProof, ...recoveryProof } = proof("probe", "recovery_required");
+        return Effect.succeed({
+          ...recoveryProof,
+          operationRef: input.operationRef,
+          generation: input.resource.resourceGeneration,
+          readinessObserved: false,
+          errorCode: "forensic_usage_unavailable",
+        });
+      },
+    };
+    const broker = makeManagedSandboxBroker({ principal, policy, store: authority, runtime });
+    const service = makeForensicManagedSandbox({
+      broker,
+      policy,
+      principal,
+      runtime,
+      profileDigest: `sha256:${"b".repeat(64)}`,
+      resolveBudget: () => Effect.succeed(budget),
+      now: () => new Date("2026-08-01T10:00:00.000Z"),
+    });
+    const placement = await Effect.runPromise(
+      service.admit({
+        commandRef: "command.forensic.recovery.create",
+        idempotencyRef: "idempotency.forensic.recovery.create",
+        requestedByRef: principal.actorRef,
+        ownerRef: principal.ownerRef,
+        tenantRef: principal.tenantRef,
+        workUnitRef: "work.forensic.recovery",
+        attachmentRef: "attachment.forensic.recovery",
+        placementRef: "placement.forensic.recovery",
+        regionRef: "region.google-cloud.us-central1",
+        budgetRef: "budget.forensic.recovery",
+        requestedAt: "2026-08-01T10:00:00.000Z",
+        expiresAt: "2026-08-01T10:15:00.000Z",
+        budget,
+      }),
+    );
+    await expect(
+      Effect.runPromise(
+        service.dispatch(placement, {
+          commandRef: "command.forensic.recovery.dispatch",
+          idempotencyRef: "idempotency.forensic.recovery.dispatch",
+          requestedByRef: principal.actorRef,
+          turnRef: "turn.forensic.recovery",
+          capabilityRef: placement.capabilityRefs[0]!,
+          requestedAt: "2026-08-01T10:00:00.000Z",
+          prompt: "must not run after a failed probe",
+        }),
+      ),
+    ).rejects.toBeDefined();
+    expect(authority.resources.get(placement.sandboxRef)?.facts.lifecycle).toBe(
+      "recovery_required",
+    );
+    expect(
+      authority.eventsBySandbox
+        .get(placement.sandboxRef)
+        ?.some((event) => event._tag === "RecoveryMarked"),
+    ).toBe(true);
+    await expect(
+      Effect.runPromise(
+        service.delete(placement, {
+          commandRef: "command.forensic.recovery.cleanup",
+          idempotencyRef: "idempotency.forensic.recovery.cleanup",
+          requestedByRef: principal.actorRef,
+          reasonRef: "reason.forensic.recovery",
+          requestedAt: "2026-08-01T10:00:01.000Z",
+        }),
+      ),
+    ).resolves.toMatchObject({ state: "cleaned" });
+    expect(authority.resources.get(placement.sandboxRef)?.facts.lifecycle).toBe("deleted");
+    expect(lifecycleActions).toEqual(["create", "delete"]);
   });
 
   test("the live route is authenticated, default-off, and exposes one exact path", async () => {

@@ -162,6 +162,22 @@ export type BoxV1NativeStore = Readonly<{
     events: ReadonlyArray<ManagedSandboxRuntimeEventInput>
     evidenceRefs?: ReadonlyArray<string>
   }) => Effect.Effect<RecordManagedSandboxRuntimeEventsResult, BoxV1FacadeError>
+  consumeProviderBudget: (input: {
+    ownerRef: string
+    tenantRef: string
+    sandboxRef: string
+    resourceGeneration: number
+    turnRef: string
+    capabilityRef: string
+    reservationRef: string
+    maxTokens: number
+    reservedTokens: number
+    deadlineAt: string
+    observedAt: string
+  }) => Effect.Effect<
+    { reservationRef: string; consumedTokens: number; remainingTokens: number },
+    BoxV1FacadeError
+  >
   readProjection: (input: {
     ownerRef: string
     tenantRef: string
@@ -228,6 +244,20 @@ export type BoxV1LifecycleOutcome = Readonly<{
   observedAt: string
 }>
 
+export type BoxV1TurnGuardrails = Readonly<{
+  receiptRef: string
+  sandboxRef: string
+  resourceGeneration: number
+  observedAt: string
+  deadlineAt: string
+  remainingTokens: number
+  remainingCostMicros: number
+  networkBytesObserved: number
+  remainingNetworkBytes: number
+  artifactBytesObserved: number
+  remainingArtifactBytes: number
+}>
+
 export type BoxV1Runtime = Readonly<{
   probe?:
     | ((input: {
@@ -252,6 +282,7 @@ export type BoxV1Runtime = Readonly<{
     resource: ManagedSandboxResource
     turn: ManagedSandboxTurn
     prompt: string
+    guardrails?: BoxV1TurnGuardrails | undefined
   }) => Effect.Effect<
     ReadonlyArray<ManagedSandboxRuntimeEventInput>,
     BoxV1FacadeError

@@ -326,9 +326,23 @@ preflight, stops the guest, and only then deletes provider resources. Before
 prompt dispatch, a fresh native probe receipt supplies measured running time
 and cost plus exact guest-observed token, source, artifact, network, and
 active-turn usage. Request bodies cannot assert or substitute that usage truth.
+The service converts that receipt into a generation-bound in-flight envelope:
+an absolute time-and-cost deadline, an atomic cumulative provider-token
+ceiling, and absolute network and artifact byte ceilings. The provider broker
+conservatively reserves input plus bounded output tokens before every upstream
+request and clamps caller output limits. The guest independently aborts the SDK
+turn at the deadline or when live network or artifact counters cross their
+ceiling. Missing provider usage never becomes an exact zero receipt.
 Network usage is the cumulative non-loopback RX and TX byte count observed from
 Linux interface counters since the fresh VM boot; source and artifact byte
 totals remain separate and are not substituted for network traffic.
+Turn dispatch stores a dedicated process-group identity. Cancellation signals
+the whole group, escalates when needed, waits for every non-zombie member to
+disappear, and only then records `RuntimeInterrupted`. Stop cleanup removes
+turn, `io-*`, source, artifact, and `/run/openagents-managed-sandbox` residue
+before emitting its parsed zero-process/zero-scratch proof. A probe that reports
+`recovery_required` is materialized into the durable broker event stream and
+can proceed directly through capability revocation and deletion.
 The specialization never receives a raw project identifier, provider or user
 credential, guest service-account token, guest address, or ambient Internet
 capability.

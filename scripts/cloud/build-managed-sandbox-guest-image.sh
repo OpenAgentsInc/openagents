@@ -87,6 +87,8 @@ npm install --omit=dev --save-exact \
   @anthropic-ai/claude-agent-sdk@0.3.172
 install -o root -g root -m 0755 /tmp/managed-sandbox-guest-turn.mjs \
   /opt/openagents-managed-sandbox/managed-sandbox-guest-turn.mjs
+install -o root -g root -m 0755 /tmp/managed-sandbox-guest-interrupt.mjs \
+  /opt/openagents-managed-sandbox/managed-sandbox-guest-interrupt.mjs
 install -o root -g root -m 0755 /tmp/managed-sandbox-guest-io.py \
   /opt/openagents-managed-sandbox/managed-sandbox-guest-io.py
 install -o root -g root -m 0755 /tmp/managed-sandbox-guest-checkpoint.py \
@@ -95,6 +97,7 @@ install -o root -g root -m 0755 /tmp/forensic-worker-driver.mjs \
   /opt/openagents-managed-sandbox/forensic-worker-driver.mjs
 rm -f \
   /tmp/managed-sandbox-guest-turn.mjs \
+  /tmp/managed-sandbox-guest-interrupt.mjs \
   /tmp/managed-sandbox-guest-io.py \
   /tmp/managed-sandbox-guest-checkpoint.py \
   /tmp/forensic-worker-driver.mjs
@@ -155,6 +158,8 @@ test -s /etc/machine-id
 ip -4 -o address show scope global | grep -q 'inet '
 test -x /usr/bin/node
 test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-turn.mjs
+test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-interrupt.mjs
+test -x /usr/bin/setsid
 test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-io.py
 test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-checkpoint.py
 test -x /opt/openagents-managed-sandbox/forensic-worker-driver.mjs
@@ -244,6 +249,10 @@ done
 gcloud compute scp \
   scripts/cloud/managed-sandbox-guest-turn.mjs \
   "openagents@${builder}:/tmp/managed-sandbox-guest-turn.mjs" \
+  --project "$project" --zone "$zone" --quiet
+gcloud compute scp \
+  scripts/cloud/managed-sandbox-guest-interrupt.mjs \
+  "openagents@${builder}:/tmp/managed-sandbox-guest-interrupt.mjs" \
   --project "$project" --zone "$zone" --quiet
 gcloud compute scp \
   scripts/cloud/managed-sandbox-guest-io.py \

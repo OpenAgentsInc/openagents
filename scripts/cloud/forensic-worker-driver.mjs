@@ -10,7 +10,8 @@ import {
   rmSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { join } from "node:path";
+import { basename, join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const DRIVER_REF = "driver.openagents.forensic-worker.v1";
 const BUBBLEWRAP = "/usr/bin/bwrap";
@@ -18,6 +19,7 @@ const WORKSPACE = "/workspace";
 const TURN_ROOT = "/var/lib/openagents/managed-sandbox-turns";
 const SOURCE_ROOT = `${WORKSPACE}/source`;
 const ARTIFACT_PATH = `${WORKSPACE}/forensic-artifact.tar.zst`;
+const RUNTIME_ROOT = "/run/openagents-managed-sandbox";
 const NETWORK_ROOT = "/sys/class/net";
 
 const refuse = (reason) => {
@@ -27,23 +29,32 @@ const refuse = (reason) => {
 
 const emit = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 
-const livePid = (path) => {
+const liveIdentifier = (path, processGroup) => {
   try {
-    const pid = Number.parseInt(readFileSync(path, "utf8"), 10);
-    if (!Number.isSafeInteger(pid) || pid < 1) return false;
-    process.kill(pid, 0);
+    const identifier = Number.parseInt(readFileSync(path, "utf8"), 10);
+    if (!Number.isSafeInteger(identifier) || identifier < 1) return true;
+    process.kill(processGroup ? -identifier : identifier, 0);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    return error?.code !== "ESRCH";
   }
 };
 
-const turnDirectories = () =>
-  existsSync(TURN_ROOT)
-    ? readdirSync(TURN_ROOT, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory() && !entry.name.startsWith("io-"))
-        .map((entry) => join(TURN_ROOT, entry.name))
+const directories = (turnRoot, includeIo) =>
+  existsSync(turnRoot)
+    ? readdirSync(turnRoot, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && (includeIo || !entry.name.startsWith("io-")))
+        .map((entry) => join(turnRoot, entry.name))
     : [];
+
+const turnDirectories = () => directories(TURN_ROOT, false);
+
+export const workloadIsLiveAt = (directory) =>
+  existsSync(join(directory, "pgid"))
+    ? liveIdentifier(join(directory, "pgid"), true)
+    : existsSync(join(directory, "pid"))
+      ? liveIdentifier(join(directory, "pid"), false)
+      : !basename(directory).startsWith("io-");
 
 const fileSize = (path) => {
   if (!existsSync(path)) return { bytes: 0, exact: true };
@@ -163,12 +174,13 @@ const usage = () => {
   let tokens = 0;
   let activeTurns = 0;
   for (const directory of turnDirectories()) {
-    if (livePid(join(directory, "pid"))) activeTurns += 1;
+    if (workloadIsLiveAt(directory)) activeTurns += 1;
     try {
       const state = JSON.parse(readFileSync(join(directory, "state.json"), "utf8"));
       const usageEvents = Array.isArray(state.events)
         ? state.events.filter((event) => event?._tag === "RuntimeUsageRecorded")
         : [];
+      if (usageEvents.length !== 1) exact = false;
       for (const event of usageEvents) {
         if (event?.usage?.exact !== true) exact = false;
         const inputTokens = event?.usage?.inputTokens;
@@ -194,27 +206,45 @@ const usage = () => {
   });
 };
 
-const prepareStop = () => {
-  const directories = turnDirectories();
-  if (directories.some((directory) => livePid(join(directory, "pid")))) {
+export const prepareStopAt = ({ turnRoot, sourceRoot, artifactPath, runtimeRoot }) => {
+  const scratchDirectories = directories(turnRoot, true);
+  if (scratchDirectories.some(workloadIsLiveAt)) {
     refuse("forensic_process_still_active");
   }
-  for (const directory of directories) rmSync(directory, { recursive: true, force: true });
-  rmSync(SOURCE_ROOT, { recursive: true, force: true });
-  rmSync(ARTIFACT_PATH, { force: true });
-  if (turnDirectories().length !== 0 || existsSync(SOURCE_ROOT) || existsSync(ARTIFACT_PATH)) {
+  rmSync(turnRoot, { recursive: true, force: true });
+  rmSync(sourceRoot, { recursive: true, force: true });
+  rmSync(artifactPath, { recursive: true, force: true });
+  rmSync(runtimeRoot, { recursive: true, force: true });
+  const scratchPathsRemaining = [turnRoot, sourceRoot, artifactPath, runtimeRoot].filter(
+    existsSync,
+  );
+  if (scratchPathsRemaining.length !== 0) {
     refuse("forensic_scratch_still_present");
   }
-  emit({
+  return {
     schema: "openagents.forensic_worker_prepare_stop.v1",
     driverRef: DRIVER_REF,
     zeroProcess: true,
     zeroScratch: true,
-  });
+    activeProcessGroups: 0,
+    scratchPathsRemaining: 0,
+  };
 };
 
-if (process.argv.length !== 3) refuse("unsupported_operation");
-if (process.argv[2] === "preflight") preflight();
-else if (process.argv[2] === "usage") usage();
-else if (process.argv[2] === "prepare-stop") prepareStop();
-else refuse("unsupported_operation");
+const prepareStop = () =>
+  emit(
+    prepareStopAt({
+      turnRoot: TURN_ROOT,
+      sourceRoot: SOURCE_ROOT,
+      artifactPath: ARTIFACT_PATH,
+      runtimeRoot: RUNTIME_ROOT,
+    }),
+  );
+
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  if (process.argv.length !== 3) refuse("unsupported_operation");
+  if (process.argv[2] === "preflight") preflight();
+  else if (process.argv[2] === "usage") usage();
+  else if (process.argv[2] === "prepare-stop") prepareStop();
+  else refuse("unsupported_operation");
+}

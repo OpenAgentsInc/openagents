@@ -32,6 +32,7 @@ const turnKey = digest(request.turnRef).slice(0, 24);
 const remoteDir = `/var/lib/openagents/managed-sandbox-turns/${turnKey}`;
 const statePath = `${remoteDir}/state.json`;
 const requestPath = `${remoteDir}/request.json`;
+const interruptDriver = "/opt/openagents-managed-sandbox/managed-sandbox-guest-interrupt.mjs";
 
 const sshArgs = (command) => [
   "compute",
@@ -57,11 +58,12 @@ const ssh = (command) =>
     timeout: 60_000,
   });
 
-const response = (events) => ({
+const response = (events, interruptionProof) => ({
   schemaVersion: "openagents.managed_sandbox_turn_runtime.v1",
   turnRef: request.turnRef,
   resourceGeneration: request.expectedResourceGeneration,
   events,
+  ...(interruptionProof === undefined ? {} : { interruptionProof }),
 });
 
 const readState = () => {
@@ -72,8 +74,8 @@ const readState = () => {
   }
 };
 
-const writeResponse = (events) => {
-  process.stdout.write(JSON.stringify(response(events)));
+const writeResponse = (events, interruptionProof) => {
+  process.stdout.write(JSON.stringify(response(events, interruptionProof)));
   process.exit(0);
 };
 
@@ -106,14 +108,29 @@ if (request.action === "interrupt") {
     observedAt: new Date().toISOString(),
     reasonRef: request.reasonRef,
   };
+  const proof = JSON.parse(ssh(`${interruptDriver} ${remoteDir}`));
+  if (
+    proof?.schemaVersion !== "openagents.managed_sandbox_interrupt_proof.v1" ||
+    proof?.zeroProcessGroup !== true ||
+    proof?.descendantsRemaining !== 0
+  ) {
+    fail();
+  }
+  const settledState = readState();
+  if (!settledState || !Array.isArray(settledState.events)) fail();
+  const settledSequence = settledState.events.at(-1)?.turnEventSequence ?? 0;
+  if (settledSequence !== after) fail();
   const payload = Buffer.from(
-    JSON.stringify({ ...state, events: [...state.events, requested, interrupted] }),
+    JSON.stringify({
+      ...settledState,
+      events: [...settledState.events, requested, interrupted],
+      interruptionProof: proof,
+    }),
   ).toString("base64");
   ssh(
-    `set -eu; test -f ${remoteDir}/pid && kill $(cat ${remoteDir}/pid) 2>/dev/null || true; ` +
-      `printf %s ${payload} | base64 -d > ${statePath}.tmp; mv ${statePath}.tmp ${statePath}`,
+    `set -eu; printf %s ${payload} | base64 -d > ${statePath}.tmp; mv ${statePath}.tmp ${statePath}`,
   );
-  writeResponse([requested, interrupted]);
+  writeResponse([requested, interrupted], proof);
 }
 
 if (request.action !== "dispatch" || typeof request.providerCapabilityToken !== "string") fail();
@@ -164,8 +181,9 @@ try {
   if (copy.status !== 0) fail();
   ssh(
     `set -eu; chmod 0600 ${requestPath} ${statePath}; ` +
-      `nohup /usr/bin/node /opt/openagents-managed-sandbox/managed-sandbox-guest-turn.mjs ` +
-      `${requestPath} ${statePath} >/dev/null 2>&1 & echo $! > ${remoteDir}/pid`,
+      `nohup /usr/bin/setsid /usr/bin/node /opt/openagents-managed-sandbox/managed-sandbox-guest-turn.mjs ` +
+      `${requestPath} ${statePath} >/dev/null 2>&1 & workload=$!; ` +
+      `echo $workload > ${remoteDir}/pid; echo $workload > ${remoteDir}/pgid`,
   );
   writeResponse([started]);
 } finally {
