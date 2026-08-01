@@ -10,7 +10,8 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/adapter.ts"
+    ".": "./src/adapter.ts",
+    "./verifier": "./src/verifier.ts"
   },
   "publishConfig": {
     "access": "public"

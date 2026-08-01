@@ -292,6 +292,17 @@ each typed output. The execution boundary compares source digests before and
 after the pluggable backend, treats prose as diagnostics only, and creates
 findings or visibly unverified hypotheses solely from their strict typed lanes.
 
+OFR-007 adds the independent verifier boundary at the adapter's `./verifier`
+entry point. It replaces the split child-flush/completion authority with one
+atomic adapter result, rejects discovery/verifier identity reuse, requires
+source-reference, macro-value, and symbol-provider receipts before locking one
+deeply immutable initial verdict, and permits PoC/control work only after that
+lock. A confirmed result requires an admitted-worker PoC receipt plus observed
+failure on the immutable vulnerable target and success on the immutable fixed
+target. Discovery plans, envelopes, and results remain explicitly
+`discovery_only`; a separate six-part release-gate record is the only artifact
+that can become eligible for `independent_verification` integration.
+
 ### 4.3 Two output lanes
 
 More detailed responses must not weaken Loupe's finding discipline.
@@ -1208,12 +1219,14 @@ Exit gate:
 
 The first implementation program should be cut in this order:
 
-OFR-001 through OFR-006 now provide the contract lattice, the native disposable
+OFR-001 through OFR-007 now provide the contract lattice, the native disposable
 GCE forensic worker, immutable private source delivery, the frozen Coldcard
 development benchmark, and native metric evidence with a rebuildable
 censor-aware scorecard, plus the authority-bounded configurable Loupe adapter.
-OFR-007 is the next implementation gate; later rows remain ordered dependencies,
-not parallel workstreams.
+The Loupe verifier boundary now adds ordered independent verdicts, deterministic
+evidence receipts, vulnerable/fixed execution controls, and an explicit
+discovery-only release gate. OFR-008 is the next implementation gate; later
+rows remain ordered dependencies, not parallel workstreams.
 
 | ID | Work item | Primary home |
 | --- | --- | --- |

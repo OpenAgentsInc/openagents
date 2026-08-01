@@ -36,6 +36,7 @@ export const LOUPE_FORENSIC_DRIVER_EVENT_VERSION =
   "openagents.loupe_forensic_driver_event.v1" as const;
 export const LOUPE_FORENSIC_OUTPUT_ENVELOPE_VERSION =
   "openagents.loupe_forensic_output_envelope.v1" as const;
+export const LOUPE_VERIFICATION_DEFAULT_MODE = "discovery_only" as const;
 
 export const SUBMIT_FORENSIC_FINDING_TOOL_REF = "tool.submit_forensic_finding.v1" as const;
 export const SUBMIT_FORENSIC_HYPOTHESIS_TOOL_REF = "tool.submit_forensic_hypothesis.v1" as const;
@@ -51,6 +52,7 @@ export const LOUPE_FORENSIC_ADAPTER_REVISION_DIGEST = forensicSha256Digest({
   hypothesisSchema: FORENSIC_HYPOTHESIS_VERSION,
   immutableCheckout: true,
   reporterMode: "manual_no_reporting",
+  verificationMode: LOUPE_VERIFICATION_DEFAULT_MODE,
 });
 
 const CompiledPrompt = S.String.check(S.isMinLength(1), S.isMaxLength(32_000));
@@ -82,6 +84,7 @@ export const LoupeForensicExecutionPlanSchema = S.Struct({
   hypothesisSchemaRef: S.Literal(FORENSIC_HYPOTHESIS_VERSION),
   checkoutMode: S.Literal("read_only"),
   reporterMode: S.Literal("manual_no_reporting"),
+  verificationMode: S.Literal(LOUPE_VERIFICATION_DEFAULT_MODE),
   outputDisclosureState: S.Literal("private"),
   compiledPrompt: CompiledPrompt,
   createdAt: ForensicTimestamp,
@@ -131,6 +134,7 @@ export const LoupeForensicOutputBindingSchema = S.Struct({
   toolSurfaceDigest: Sha256Digest,
   budgetDigest: Sha256Digest,
   networkPolicyRef: S.Literal(MANAGED_SANDBOX_NETWORK_POLICY_REF),
+  verificationMode: S.Literal(LOUPE_VERIFICATION_DEFAULT_MODE),
 });
 export interface LoupeForensicOutputBinding extends S.Schema.Type<
   typeof LoupeForensicOutputBindingSchema
@@ -301,6 +305,7 @@ const compilePromptText = (
     `Unavailable or policy-denied requested tools: ${missingToolRefs.length === 0 ? "none" : missingToolRefs.join(", ")}.`,
     "Only submit_forensic_finding creates a finding. Prose is diagnostic and creates no finding.",
     "submit_forensic_hypothesis creates an explicitly unverified lead that cannot be reported or promoted without a later typed finding.",
+    "Verification mode: discovery_only. This discovery plan cannot represent a finding as independently verified.",
     "",
     `Role: ${prompt.role}`,
     `Threat model: ${prompt.threatModel}`,
@@ -397,6 +402,7 @@ export const compileLoupeForensicPlan = (
       hypothesisSchemaRef: FORENSIC_HYPOTHESIS_VERSION,
       checkoutMode: "read_only",
       reporterMode: "manual_no_reporting",
+      verificationMode: LOUPE_VERIFICATION_DEFAULT_MODE,
       outputDisclosureState: "private",
       compiledPrompt,
       createdAt: input.createdAt,
@@ -435,6 +441,7 @@ export interface LoupeForensicExecutionResult {
   readonly checkoutDigestBefore: string;
   readonly checkoutDigestAfter: string;
   readonly reporterMode: "manual_no_reporting";
+  readonly verificationMode: "discovery_only";
 }
 
 const outputBinding = (plan: LoupeForensicExecutionPlan): LoupeForensicOutputBinding =>
@@ -454,6 +461,7 @@ const outputBinding = (plan: LoupeForensicExecutionPlan): LoupeForensicOutputBin
     toolSurfaceDigest: plan.toolSurfaceDigest,
     budgetDigest: forensicSha256Digest(plan.budget),
     networkPolicyRef: plan.networkPolicyRef,
+    verificationMode: plan.verificationMode,
   });
 
 const typedEnvelope = (
@@ -573,6 +581,7 @@ export const executeLoupeForensicPlan = async (
     checkoutDigestBefore,
     checkoutDigestAfter,
     reporterMode: plan.reporterMode,
+    verificationMode: plan.verificationMode,
   });
 };
 

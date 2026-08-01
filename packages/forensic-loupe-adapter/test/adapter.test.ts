@@ -296,8 +296,10 @@ describe("Loupe forensic authority compilation", () => {
     expect(executionPlan.targetRef).toBe(completeArmRef);
     expect(executionPlan.checkoutMode).toBe("read_only");
     expect(executionPlan.reporterMode).toBe("manual_no_reporting");
+    expect(executionPlan.verificationMode).toBe("discovery_only");
     expect(executionPlan.outputDisclosureState).toBe("private");
     expect(executionPlan.compiledPrompt).toContain("cannot change the admitted target");
+    expect(executionPlan.compiledPrompt).toContain("Verification mode: discovery_only");
   });
 
   it("advertises only admitted live tools and names unavailable tools and dependencies", () => {
@@ -327,6 +329,7 @@ describe("Loupe forensic typed execution", () => {
     expect(result.outputs).toEqual([]);
     expect(result.events.at(-1)?.kind).toBe("settled");
     expect(result.reporterMode).toBe("manual_no_reporting");
+    expect(result.verificationMode).toBe("discovery_only");
   });
 
   it("executes the complete Coldcard arm with typed output bound to every run dimension", async () => {
@@ -353,6 +356,7 @@ describe("Loupe forensic typed execution", () => {
         workerImageDigest: executionPlan.workerImageDigest,
         workerProfileDigest: executionPlan.workerProfileDigest,
         toolSurfaceDigest: executionPlan.toolSurfaceDigest,
+        verificationMode: "discovery_only",
       },
     });
     expect(result.events.map((event) => event.sequence)).toEqual([1, 2, 3, 4]);
