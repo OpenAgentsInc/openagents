@@ -1,0 +1,158 @@
+{
+  "schema": "openagents.sarah.livekit-acceptance.v4",
+  "observedAt": "2026-08-01T14:40:05.547Z",
+  "environment": "production",
+  "apiOrigin": "https://openagents.com",
+  "livekitOrigin": "wss://livekit.openagents.com",
+  "sourceRevision": "e094294d2e9a9938d41a12b64484169c7244a3b3",
+  "outcome": "passed",
+  "concurrentOverlapObserved": true,
+  "retainedMedia": false,
+  "retainedTranscript": false,
+  "forcedTransportProfile": "unrestricted",
+  "scenarios": [
+    {
+      "kind": "private",
+      "admissionLatencyMs": 255,
+      "sessionLatencyMs": 794,
+      "roomConnectLatencyMs": 1979,
+      "microphonePublishLatencyMs": 7230,
+      "firstSarahAudioLatencyMs": 14546,
+      "firstSarahTranscriptionLatencyMs": 15029,
+      "interruptAckLatencyMs": 72,
+      "postInterruptAudioTailMs": 557,
+      "selectedIcePathObserved": true,
+      "publisherIceStatsObserved": true,
+      "subscriberIceStatsObserved": true,
+      "selectedIcePath": {
+        "publisher": {
+          "localCandidateType": "srflx",
+          "remoteCandidateType": "host",
+          "protocol": "udp",
+          "relayed": false,
+          "packetsObserved": true
+        },
+        "subscriber": {
+          "localCandidateType": "prflx",
+          "remoteCandidateType": "host",
+          "protocol": "udp",
+          "relayed": false,
+          "packetsObserved": true
+        }
+      },
+      "observedTransportKind": {
+        "publisher": "direct_udp",
+        "subscriber": "direct_udp"
+      },
+      "microphonePublished": true,
+      "sarahAudioObserved": true,
+      "sarahTranscriptionObserved": true,
+      "principalSarahObserved": true,
+      "controlChannelReady": true,
+      "interruptAckObserved": true,
+      "interruptedLifecycleObserved": true,
+      "identityIsolationObserved": true,
+      "comparableIdentityDigests": {
+        "job": "3938fcafbf2dace52389907db631692f24080f4e022c5958089f85a929294ed1",
+        "providerSession": "cc9e2a3c8931c7238d3f7cbc3b2a847c92effdaaff45094b2bb925e0ab1923f1",
+        "providerConfiguration": "5b52d4bc34c2dc1b76807c48931e2a3c7db961ed5e4d736780540efc9f9d8063",
+        "context": "5e94b1575b417f7164a137df52a21b36516148dded830b73e44e088914937e90",
+        "capability": "d47677900e1c1f9bc111a3dcce6b5713d199db48b63c83cbc29d9b85a65a9d37",
+        "hold": "4e47a6846c3035449465c72d0ccba4c4a0830026a78cc57b8bac479f2f96e35b",
+        "usage": "cc54b885de51490178bc80eeec32ba1f94c3387301b52e81e84b0aad0cdc59c7",
+        "settlement": "d357f10f88ae025bb3aac14ecb19dc459d276714d1b3cb01c32b623706f56acb"
+      },
+      "exactProviderUsageObserved": true,
+      "subscriberFanoutCount": 2,
+      "audibleFanoutObserved": true,
+      "settlementState": "settled",
+      "settlementCreditMode": "metered",
+      "finalChargeMsat": 74816,
+      "settlementReceiptDigest": "sha256:744d72a9393eed9a259c6561afc613416a43f0fc6b8852f981593128ec763fb2",
+      "durationMs": 16679,
+      "activeRoomDurationMs": 13649,
+      "cancelledResponseCount": 1
+    },
+    {
+      "kind": "community",
+      "admissionLatencyMs": 544,
+      "sessionLatencyMs": 734,
+      "roomConnectLatencyMs": 1471,
+      "microphonePublishLatencyMs": 6981,
+      "firstSarahAudioLatencyMs": 13723,
+      "firstSarahTranscriptionLatencyMs": 14340,
+      "interruptAckLatencyMs": 125,
+      "postInterruptAudioTailMs": 555,
+      "selectedIcePathObserved": true,
+      "publisherIceStatsObserved": true,
+      "subscriberIceStatsObserved": true,
+      "selectedIcePath": {
+        "publisher": {
+          "localCandidateType": "prflx",
+          "remoteCandidateType": "host",
+          "protocol": "udp",
+          "relayed": false,
+          "packetsObserved": true
+        },
+        "subscriber": {
+          "localCandidateType": "srflx",
+          "remoteCandidateType": "host",
+          "protocol": "udp",
+          "relayed": false,
+          "packetsObserved": true
+        }
+      },
+      "observedTransportKind": {
+        "publisher": "direct_udp",
+        "subscriber": "direct_udp"
+      },
+      "microphonePublished": true,
+      "sarahAudioObserved": true,
+      "sarahTranscriptionObserved": true,
+      "principalSarahObserved": true,
+      "controlChannelReady": true,
+      "interruptAckObserved": true,
+      "interruptedLifecycleObserved": true,
+      "identityIsolationObserved": true,
+      "comparableIdentityDigests": {
+        "job": "10dd3fced59b2c4c94fe8837168fdb9f5885fad0417591063ac96fe3c1d5df89",
+        "providerSession": "4a4806d55ccbb82b813905b057741dfb7b2145a586e9ca78bea6d6663a61de01",
+        "providerConfiguration": "3d2087bd9b72a2631278c106065a03c61de49e7e5c8cc6a179c225797323b39d",
+        "context": "059bcd1df15d39ca85f3c280fe9c10364ff4ebd6771489d82e80b5c591073813",
+        "capability": "d47677900e1c1f9bc111a3dcce6b5713d199db48b63c83cbc29d9b85a65a9d37",
+        "hold": "471e0103206ce2254b7eed36cec140f18012af46a90c5ce69b1107ba3e1fae04",
+        "usage": "ee27274ef24debbc38f40c3476f68870f31a671898a66ee1cb9290080c063f42",
+        "settlement": "54553d89567f5c2bf5927bb1183b85e89224fbdcfa44b4f5f2bce1575b7e0da1"
+      },
+      "exactProviderUsageObserved": true,
+      "subscriberFanoutCount": 2,
+      "audibleFanoutObserved": true,
+      "settlementState": "settled",
+      "settlementCreditMode": "metered",
+      "finalChargeMsat": 19968,
+      "settlementReceiptDigest": "sha256:fba55b3ad464551e19310e5f645316268a7efc32e8f7381e9ca35019d9142490",
+      "durationMs": 16918,
+      "activeRoomDurationMs": 13711,
+      "cancelledResponseCount": 1
+    }
+  ],
+  "crossScenarioIdentityDistinctness": {
+    "job": true,
+    "providerSession": true,
+    "providerConfiguration": true,
+    "context": true,
+    "capability": false,
+    "hold": true,
+    "usage": true,
+    "settlement": true
+  },
+  "limitations": [
+    "source_revision_resolved_from_deployed_image_digest",
+    "one_selected_ice_path_per_scenario_classified",
+    "forced_transport_profile_operator_declared_not_independently_verified",
+    "no_media_or_transcript_content_retained",
+    "harness_retention_only_separate_cluster_privacy_scan_required"
+  ],
+  "receiptRef": "receipt.sarah_livekit_acceptance.sha256_69fb5d5b4a46296790a8afa970d05084678a187435e97d1ccd279a71f652eb3d",
+  "resultDigest": "sha256:69fb5d5b4a46296790a8afa970d05084678a187435e97d1ccd279a71f652eb3d"
+}
