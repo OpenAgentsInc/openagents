@@ -58,6 +58,16 @@ export const admissionDrift = (committed, serving) =>
     serving: serving[key],
   }))
 
+export const resolveServingRevision = (service) => {
+  const serving = (service.status?.traffic ?? []).filter(
+    (target) => target.percent === 100 && typeof target.revisionName === 'string',
+  )
+  if (serving.length !== 1) {
+    throw new Error('service does not have exactly one revision serving 100 percent of traffic')
+  }
+  return serving[0].revisionName
+}
+
 const describe = (args) =>
   JSON.parse(
     execFileSync('gcloud', [...args, '--format=json'], {
@@ -69,14 +79,16 @@ const describe = (args) =>
 const readServingRevisionState = (service, region, project, revision) => {
   const revisionName =
     revision ??
-    describe([
-      'run',
-      'services',
-      'describe',
-      service,
-      `--project=${project}`,
-      `--region=${region}`,
-    ]).status?.latestReadyRevisionName
+    resolveServingRevision(
+      describe([
+        'run',
+        'services',
+        'describe',
+        service,
+        `--project=${project}`,
+        `--region=${region}`,
+      ]),
+    )
 
   if (typeof revisionName !== 'string' || revisionName.length === 0) {
     throw new Error(`could not resolve a ready revision for ${service}`)

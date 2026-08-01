@@ -33,6 +33,8 @@ describe("remaining Sarah LiveKit drill CLI", () => {
     expect(source).toContain("BEGIN TRANSACTION READ ONLY");
     expect(source).toContain('spawn("psql", ["-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1"]');
     expect(source).toContain("sarah_livekit_provider_disconnect_faults");
+    expect(source).toContain("target.close_reason LIKE 'livekit_worker_%'");
+    expect(source).toContain("target.close_reason IN ('client_closed', 'user_stop')");
     expect(source).toContain("activityAfterTerminalCount");
     expect(source).toContain("chargedMsat");
     expect(source).toContain("private remaining-drill observation must stay outside");

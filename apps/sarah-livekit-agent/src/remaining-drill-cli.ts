@@ -201,7 +201,12 @@ SELECT json_build_object(
   'sessionRef', target.session_ref,
   'generation', target.generation,
   'state', target.state,
-  'closeReason', target.close_reason,
+  'closeReason', CASE
+    WHEN target.close_reason IN ('client_closed', 'user_stop') THEN 'operator_stop'
+    WHEN target.close_reason LIKE 'livekit_worker_%'
+      THEN substring(target.close_reason FROM length('livekit_worker_') + 1)
+    ELSE target.close_reason
+  END,
   'startedAtMs', FLOOR(EXTRACT(EPOCH FROM target.created_at::timestamptz) * 1000)::bigint,
   'terminalAtMs', CASE WHEN target.terminal_at IS NULL THEN NULL
     ELSE FLOOR(EXTRACT(EPOCH FROM target.terminal_at::timestamptz) * 1000)::bigint END,

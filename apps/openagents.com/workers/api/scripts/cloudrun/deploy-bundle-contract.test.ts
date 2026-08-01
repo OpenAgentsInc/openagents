@@ -8,6 +8,7 @@ import {
   LIVEKIT_ADMISSION_KEYS,
   admissionDrift,
   parseCommittedAdmissionState,
+  resolveServingRevision,
 } from './check-livekit-admission-drift.mjs'
 
 describe('Cloud Run Vite Plus bundle contract', () => {
@@ -229,6 +230,30 @@ describe('Cloud Run Vite Plus bundle contract', () => {
     // A key missing from the serving revision is drift, not agreement: an
     // absent value is runtime-disabled and must never read as enabled.
     expect(admissionDrift(parsed, {})).toHaveLength(2)
+  })
+
+  test('reads the revision receiving all service traffic', () => {
+    expect(
+      resolveServingRevision({
+        status: {
+          latestReadyRevisionName: 'fault-on',
+          traffic: [
+            { revisionName: 'safe', percent: 100 },
+            { revisionName: 'fault-on', percent: 0 },
+          ],
+        },
+      }),
+    ).toBe('safe')
+    expect(() =>
+      resolveServingRevision({
+        status: {
+          traffic: [
+            { revisionName: 'one', percent: 50 },
+            { revisionName: 'two', percent: 50 },
+          ],
+        },
+      }),
+    ).toThrow('exactly one revision serving 100 percent')
   })
 
   test('ships Vite Plus split chunks beside the server entry', () => {
