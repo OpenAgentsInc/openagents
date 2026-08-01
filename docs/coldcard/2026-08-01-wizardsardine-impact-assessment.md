@@ -302,80 +302,46 @@ Supplementary material:
 
 ---
 
-## Addendum: Loupe-derived refinements
+## Addendum: why Loupe matters here
 
 Addendum date: 2026-08-01.
 
-This addendum is limited to what the Loupe evidence changes or qualifies in the
-assessment above. It is not a synopsis of the Loupe corpus.
+[Loupe](../loupe/README.md) is an open-source, opt-in AI security scanner for
+source repositories, associated with Spiral/Block. It clones a target repository,
+assigns source files to separate agent review sessions, gives each session read-only
+access to the mounted worktree, collects structured vulnerability reports with
+proposed regression-test diffs, passes findings to separate verifier sessions, and
+leaves confirmed reports behind a human approval gate.
 
-### Refinement to this assessment and the Wizardsardine article
+Loupe matters to this assessment for one narrow reason. As
+[episode 264](../transcripts/264.md) explains, it supplied a real counterfactual
+test of whether a proactive AI reviewer could have found the Coldcard defect before
+the incident. Loupe did not find it in advance because Coldcard had not opted in and
+nobody had run Loupe against the project. The
+[OpenAgents experiment](../loupe/2026-08-01-coldcard-prefix-experiment-results.md)
+then ran Loupe against the pinned vulnerable revision:
 
-The Coldcard experiment corrects the broad reading of section 6's statement about
-file-local review and adds empirical support for the article's central source-level
-causal chain.
+- Its default checkout left the libNgU and MicroPython submodules empty. That run
+  produced 12 plausible findings but **missed** the Coldcard defect.
+- With those pinned dependencies present, the same scanner produced 22 findings and
+  **found the full source-level causal chain three times**. A session assigned the
+  same board-header file that existed in both runs could inspect the complete
+  worktree only in the second run.
 
-- The [initial prediction](../loupe/2026-08-01-would-loupe-have-caught-coldcard.md)
-  expected a per-file Loupe scan to miss the failure even if dependencies were
-  present. The
-  [pre-registered experiment](../loupe/2026-08-01-coldcard-prefix-experiment.md)
-  refuted that prediction. Arm A, a default clone with empty submodules, scanned 12
-  focal files, produced 12 findings, and missed. Arm B, with pinned libNgU and
-  MicroPython source present, scanned 16 focal files, produced 22 findings, and hit
-  the frozen rubric; the full causal chain appeared three times in the
-  [results](../loupe/2026-08-01-coldcard-prefix-experiment-results.md).
-- Loupe's focal file was not its evidence boundary: each session could inspect the
-  mounted worktree. The accurate refinement is therefore not that file-focused
-  analysis is structurally unable to find this class of failure. It is that review
-  without the dependency-complete program is likely to miss a cross-repository
-  configuration-and-linkage defect, while a focal-file session with the complete
-  tree can reconstruct it.
-- The Arm B result corroborates the Wizardsardine article's source-level account:
-  the zero-valued board macro, libNgU's macro-existence check, MicroPython's
-  deterministic fallback, symbol selection, and the use of that generator for
-  wallet-secret material form a coherent chain visible in the pinned source.
-- It does **not** prove which implementation was present in the exact shipped
-  firmware artifact. The experiment used a known incident, hand-picked files, one
-  run per arm, and one model family. Verification was disabled; `validate_poc`
-  checked whether a patch applied but did not execute its test; and the run did not
-  build the firmware or inspect its objects, link map, or image. As the
-  [follow-up analysis](../loupe/2026-08-01-codex-analysis.md) notes, the vendor's
-  build-time symbol-table assertion is stronger artifact evidence.
-- Nothing in the Loupe result changes the feature-by-feature blast radius,
-  prerequisite analysis, or remediation above. In particular, reaching
-  `ngu.random` establishes a dependency, not remote exploitability without the
-  relevant artifact, transcript, verifier, public oracle, policy path, or physical
-  capability.
+That result materially refines the prevention conclusion in section 6: this defect
+was within reach of contemporary AI source review when the reviewer received the
+complete program. The limiting factors were incomplete default inputs and the
+absence of anyone proactively running the opt-in scanner—not an inherent inability
+of a file-focused session to reason across files. It also shows why a productive
+scan is not evidence of coverage when required dependencies are missing.
 
-### Refinement to the Kimi/K3 assessment
+The result stops at source-level detection. Loupe did not build the exact release,
+inspect its final objects or link map, or execute the proposed proof. The vendor's
+build-time symbol check remains the stronger control because it proves which
+`rng_get` implementation the shipping artifact contains.
 
-The Loupe result raises confidence in one part of the supplied Kimi/K3 report and
-does not resolve its overclaims.
-
-- Loupe Arm B separately reconstructed the report's central cross-repository RNG
-  chain from dependency-complete source. That is useful source-level corroboration
-  of the causal map, not corroboration of every feature conclusion in the report.
-- The report's statement that it independently verified every material technical
-  claim remains too strong. Neither the Kimi/K3 report nor the Loupe experiment
-  built and inspected the exact firmware artifact, executed an exploit
-  reproduction, or supplied human peer review. Agreement between AI analyses does
-  not promote a source claim into artifact or exploit proof.
-- The report's useful scope refinements still stand: Clone Coldcard is distinct
-  from ordinary encrypted backups, and a recoverable USB session can expose a
-  desktop-entered BIP-39 passphrase.
-- The corrections already recorded in section 4 also stand. The report's USB list
-  is not a complete bound-session inventory; `Users.pick_secret` does provide
-  device-side HSM user-secret generation through the working hardware RNG; a
-  predictable 28-bit teleport index does not reveal a sound seed-derived private
-  key; and predictable defense-in-depth randomness is not by itself a verified
-  remote exploit.
-
-### Refined bottom line
-
-The Loupe experiment shows that a model with the complete pinned dependency tree
-could reconstruct the known source defect, while Loupe's default incomplete clone
-would have missed it. That narrows one review-method claim and corroborates the
-central source narrative in both the Wizardsardine article and the Kimi/K3 report.
-It does not upgrade either source analysis into proof of the shipped artifact or of
-every downstream exploit claim, and it does not change the owner remediation
-conclusion.
+Loupe therefore does **not** change the incident facts, feature blast radius,
+Kimi/K3 corrections, or owner remediation above, and it is not used as evidence for
+those conclusions. Its material contribution is limited to showing that complete,
+proactively scanned source could have surfaced the causal defect before release,
+while the default incomplete scan would not have done so.
