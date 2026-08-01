@@ -328,6 +328,34 @@ Read in this order:
    firmware, that it would **not** have caught the entropy bug, with the four
    structural reasons and the experiment that would settle it.
 
+6. [`2026-08-01-coldcard-prefix-experiment.md`](2026-08-01-coldcard-prefix-experiment.md)
+   and
+   [`2026-08-01-coldcard-prefix-experiment-results.md`](2026-08-01-coldcard-prefix-experiment-results.md)
+   — the pre-registered two-arm experiment and its result: default Loupe missed
+   the bug with empty submodules, while the dependency-complete arm found the
+   full causal chain three times.
+7. [`2026-08-01-codex-analysis.md`](2026-08-01-codex-analysis.md) and
+   [`2026-08-01-hardening-against-ai-assisted-attacks.md`](2026-08-01-hardening-against-ai-assisted-attacks.md)
+   — independent defensive analyses of artifact provenance, security
+   invariants, executable evidence, related vulnerability classes, and phased
+   implementation.
+8. [`2026-08-01-coordination-not-scanners.md`](2026-08-01-coordination-not-scanners.md)
+   — why scan coverage, shared profiles, result divergence, campaign rooms, and
+   cost pooling are ecosystem coordination problems rather than scanner
+   features alone.
+9. [`2026-08-01-omega-forensic-analysis-roadmap.md`](2026-08-01-omega-forensic-analysis-roadmap.md)
+   — the owner-directed delivery sequence: begin with configurable Loupe-style
+   runs and prompt iteration inside Omega on disposable OpenAgents Cloud GCE
+   workers, measure qualified identification time, tokens, cost, recall, and
+   evidence quality from native events, govern optimized candidates through
+   DSPy/Blueprint boundaries, independently reproduce the pinned Coldcard
+   postmortem from generator behavior through historical-chain fingerprints
+   and provenance graphs, then advance to executable evidence, variant analysis,
+   and coordinated remediation.
+
 Documents 3 and 4 are speculation and authorize nothing. Documents 1 and 2 are
 factual records — of source read, and of a scan run. Document 5 is a prediction
 recorded ahead of the experiment so it can be scored honestly afterwards.
+Document 6 records the experiment and its refutation. Documents 7 and 8 are
+analysis. Document 9 is a roadmap and retains the authority boundaries stated
+in that file.
