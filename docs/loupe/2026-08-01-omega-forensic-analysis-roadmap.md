@@ -281,6 +281,17 @@ Every artifact has a canonical representation and digest. A result always names
 the exact prompt digest, model, parameters, target digest, dependency manifest,
 and tool surface that produced it.
 
+OFR-006 implements this seam in
+`@openagentsinc/forensic-loupe-adapter`. Structured artifacts now validate a
+content digest over prompt fields and parent lineage. The compiler takes
+budgets, broker-only network policy, source/coverage, worker digests, and the
+effective tool surface from admitted contracts; prompt prose cannot override
+them. It advertises absent tools and required dependencies as missing, forces a
+read-only checkout and `manual_no_reporting`, and binds those dimensions into
+each typed output. The execution boundary compares source digests before and
+after the pluggable backend, treats prose as diagnostics only, and creates
+findings or visibly unverified hypotheses solely from their strict typed lanes.
+
 ### 4.3 Two output lanes
 
 More detailed responses must not weaken Loupe's finding discipline.
@@ -1197,11 +1208,12 @@ Exit gate:
 
 The first implementation program should be cut in this order:
 
-OFR-001 through OFR-005 now provide the contract lattice, the native disposable
+OFR-001 through OFR-006 now provide the contract lattice, the native disposable
 GCE forensic worker, immutable private source delivery, the frozen Coldcard
 development benchmark, and native metric evidence with a rebuildable
-censor-aware scorecard. OFR-006 is the next implementation gate; later rows
-remain ordered dependencies, not parallel workstreams.
+censor-aware scorecard, plus the authority-bounded configurable Loupe adapter.
+OFR-007 is the next implementation gate; later rows remain ordered dependencies,
+not parallel workstreams.
 
 | ID | Work item | Primary home |
 | --- | --- | --- |

@@ -18,6 +18,7 @@ The package owns:
   `fixtures/forensics/coldcard/` in the repository;
 - strict boundary decoding with excess-property rejection;
 - deterministic canonical JSON and SHA-256 contract digests;
+- prompt artifact digests that bind structured content and parent lineage;
 - fail-closed run-transition, event-sequence, claim-rung, and prior-revision
   laws; and
 - a content-digested frozen catalog spanning lifecycle, detection, evidence,

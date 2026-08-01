@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:127dca7b4c4db05c13978f9d9c9f76ea26a11dac8196a1b917b8496d6b093c53",
+  "sourceDigest": "sha256:273a6a99e9a3ccc75544fa677645385d0c346d2da2fce5bd07eb65e90df69172",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -2270,6 +2270,23 @@
       }
     },
     {
+      "id": "package:@openagentsinc/forensic-loupe-adapter",
+      "kind": "package",
+      "owningPath": "packages/forensic-loupe-adapter",
+      "title": "@openagentsinc/forensic-loupe-adapter",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/forensic-loupe-adapter (1 tracked test file)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
       "id": "package:@openagentsinc/forge-protocol",
       "kind": "package",
       "owningPath": "packages/forge-protocol",
@@ -3438,17 +3455,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 179,
+    "totalSurfaces": 180,
     "byKind": {
       "app": 19,
       "crate": 6,
       "document": 52,
-      "package": 90,
+      "package": 91,
       "public-endpoint": 2,
       "release-pipeline": 9,
       "worker": 1
     },
-    "withOracle": 165,
+    "withOracle": 166,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3456,7 +3473,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 129,
+      "designed": 130,
       "inconclusive": 9,
       "mapped": 36,
       "out-of-scope": 5

@@ -2127,6 +2127,25 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
+  packages/forensic-loupe-adapter:
+    dependencies:
+      '@openagentsinc/forensic-contract':
+        specifier: workspace:*
+        version: link:../forensic-contract
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.1
+        version: 24.13.1
+      '@types/vite-plus-matchers':
+        specifier: workspace:*
+        version: link:../../types/vite-plus-matchers
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
   packages/forge-protocol:
     dependencies:
       effect:

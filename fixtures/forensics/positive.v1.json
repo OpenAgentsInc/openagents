@@ -217,7 +217,7 @@
       },
       "exampleRefs": ["example.coldcard.source.flaw"],
       "parameterRefs": ["parameter.effort.high"],
-      "canonicalDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "canonicalDigest": "sha256:6cf2b496b836eb3abbea022eb1e90dc8a65e990d853eed71c6fe83e10b042c80",
       "datasetRevisionRef": "dataset.forensic.development.v1",
       "compatibilityRefs": ["compatibility.loupe.adapter.v1"],
       "createdAt": "2026-08-01T12:00:00.000Z"

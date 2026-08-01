@@ -1,5 +1,6 @@
 import { Schema as S } from "effect";
 
+import { forensicSha256Digest } from "./canonical.ts";
 import {
   BoundedRefs,
   BoundedShortTexts,
@@ -225,6 +226,28 @@ export const ForensicPromptIrSchema = S.Struct({
 });
 export interface ForensicPromptIr extends S.Schema.Type<typeof ForensicPromptIrSchema> {}
 
+const promptArtifactCanonicalValue = (artifact: {
+  readonly parentPromptArtifactRef?: string;
+  readonly promptIr: ForensicPromptIr;
+  readonly exampleRefs: ReadonlyArray<string>;
+  readonly parameterRefs: ReadonlyArray<string>;
+  readonly datasetRevisionRef: string;
+  readonly compatibilityRefs: ReadonlyArray<string>;
+}) => ({
+  ...(artifact.parentPromptArtifactRef === undefined
+    ? {}
+    : { parentPromptArtifactRef: artifact.parentPromptArtifactRef }),
+  promptIr: artifact.promptIr,
+  exampleRefs: artifact.exampleRefs,
+  parameterRefs: artifact.parameterRefs,
+  datasetRevisionRef: artifact.datasetRevisionRef,
+  compatibilityRefs: artifact.compatibilityRefs,
+});
+
+export const forensicPromptArtifactDigest = (
+  artifact: Parameters<typeof promptArtifactCanonicalValue>[0],
+): Sha256Digest => forensicSha256Digest(promptArtifactCanonicalValue(artifact));
+
 export const ForensicPromptArtifactSchema = S.Struct({
   schema: S.Literal(FORENSIC_PROMPT_ARTIFACT_VERSION),
   promptArtifactRef: ForensicRef,
@@ -236,7 +259,18 @@ export const ForensicPromptArtifactSchema = S.Struct({
   datasetRevisionRef: ForensicRef,
   compatibilityRefs: BoundedRefs,
   createdAt: ForensicTimestamp,
-}).annotate({ identifier: "ForensicPromptArtifact" });
+})
+  .pipe(
+    S.check(
+      S.makeFilter(
+        (artifact) => artifact.canonicalDigest === forensicPromptArtifactDigest(artifact),
+        {
+          message: "prompt artifact canonical digest must bind its structured content and lineage",
+        },
+      ),
+    ),
+  )
+  .annotate({ identifier: "ForensicPromptArtifact" });
 export interface ForensicPromptArtifact extends S.Schema.Type<
   typeof ForensicPromptArtifactSchema
 > {}

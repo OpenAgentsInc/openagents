@@ -26,6 +26,7 @@ import {
 } from "../src/reproduction.ts";
 import {
   ForensicCoverageManifestSchema,
+  ForensicPromptArtifactSchema,
   ForensicRunEventSchema,
   ForensicRunSchema,
 } from "../src/run.ts";
@@ -189,6 +190,19 @@ describe("forensic claim laws", () => {
 });
 
 describe("forensic fail-closed schemas", () => {
+  it("rejects prompt content or lineage that drifts from the canonical digest", () => {
+    const artifact = strictDecode(
+      ForensicPromptArtifactSchema,
+      positive("openagents.forensic_prompt_artifact.v1"),
+    );
+    expect(() =>
+      strictDecode(ForensicPromptArtifactSchema, {
+        ...artifact,
+        promptIr: { ...artifact.promptIr, role: "Tampered after digest creation." },
+      }),
+    ).toThrow(/canonical digest/);
+  });
+
   it("rejects complete coverage with a missing required dependency", () => {
     const coverage = strictDecode(
       ForensicCoverageManifestSchema,
