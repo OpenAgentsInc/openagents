@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 import {
+  isAdmittedSourceCheckout,
   parseArgs,
   parseTriggeredBuildId,
   receiptPath,
@@ -13,15 +14,25 @@ import {
   validateBuildDescription,
 } from "./livekit-production-deploy.mjs";
 
+const buildId = "123e4567-e89b-42d3-a456-426614174000";
+const revision = "1".repeat(40);
+
+test("launcher admits any clean checkout at the exact remote main revision", () => {
+  assert.equal(isAdmittedSourceCheckout({ clean: true, head: revision, remote: revision }), true);
+  assert.equal(isAdmittedSourceCheckout({ clean: false, head: revision, remote: revision }), false);
+  assert.equal(
+    isAdmittedSourceCheckout({ clean: true, head: revision, remote: "2".repeat(40) }),
+    false,
+  );
+  assert.equal(isAdmittedSourceCheckout({ clean: true, head: "main", remote: "main" }), false);
+});
+
 test("receipt retrieval uses Cloud Build's flattened artifact object", () => {
   assert.equal(
     receiptObjectUri("75767c7d-a6eb-4f0b-b259-a122de6a33cb"),
     "gs://openagentsgemini-livekit-deployment-receipts/production-runtime/75767c7d-a6eb-4f0b-b259-a122de6a33cb/receipt.json",
   );
 });
-
-const buildId = "123e4567-e89b-42d3-a456-426614174000";
-const revision = "1".repeat(40);
 
 test("launcher accepts only fixed start, resumable status, and receipt retrieval", () => {
   assert.deepEqual(parseArgs(["start"]), {
@@ -42,10 +53,7 @@ test("launcher accepts only fixed start, resumable status, and receipt retrieval
     "docs/ops/receipts/livekit/result.json",
   );
   assert.throws(() => parseArgs(["start", "--config", "attacker.yaml"]), /unsupported/u);
-  assert.throws(
-    () => parseArgs(["start", "--build-id", buildId]),
-    /does not accept --build-id/u,
-  );
+  assert.throws(() => parseArgs(["start", "--build-id", buildId]), /does not accept --build-id/u);
   assert.throws(
     () => parseArgs(["status", "--build-id", "not-a-build"]),
     /canonical Cloud Build id/u,
@@ -119,10 +127,7 @@ test("launcher accepts the Cloud Build v2 resolved Git source and operation enve
     sourceProvenance: { resolvedGitSource: { revision } },
   };
   assert.equal(resolvedBuildRevision(build), revision);
-  assert.equal(
-    parseTriggeredBuildId(JSON.stringify({ metadata: { build } }), revision),
-    buildId,
-  );
+  assert.equal(parseTriggeredBuildId(JSON.stringify({ metadata: { build } }), revision), buildId);
   assert.throws(
     () => parseTriggeredBuildId(JSON.stringify({ metadata: { build } }), "2".repeat(40)),
     /outside the production deployment boundary/u,
@@ -131,10 +136,7 @@ test("launcher accepts the Cloud Build v2 resolved Git source and operation enve
 
 test("receipt retrieval path is exclusive and repository scoped", () => {
   const accepted = receiptPath("docs/ops/receipts/livekit/secure-deployment.json");
-  assert.equal(
-    accepted,
-    resolve("docs/ops/receipts/livekit/secure-deployment.json"),
-  );
+  assert.equal(accepted, resolve("docs/ops/receipts/livekit/secure-deployment.json"));
   const external = resolve(mkdtempSync(resolve(tmpdir(), "livekit-receipt-test-")), "receipt.json");
   assert.throws(() => receiptPath(external), /must stay under/u);
 });

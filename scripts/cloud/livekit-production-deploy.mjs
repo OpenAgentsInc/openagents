@@ -1,13 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateSourceOnlyReceipt } from "./livekit-ops-policy.mjs";
@@ -18,7 +12,14 @@ const TRIGGER = "oa-livekit-prod-runtime";
 const RECEIPT_BUCKET = "openagentsgemini-livekit-deployment-receipts";
 const DEPLOYER_SERVICE_ACCOUNT =
   "projects/openagentsgemini/serviceAccounts/oa-livekit-prod-deployer@openagentsgemini.iam.gserviceaccount.com";
-const TERMINAL = new Set(["SUCCESS", "FAILURE", "INTERNAL_ERROR", "TIMEOUT", "CANCELLED", "EXPIRED"]);
+const TERMINAL = new Set([
+  "SUCCESS",
+  "FAILURE",
+  "INTERNAL_ERROR",
+  "TIMEOUT",
+  "CANCELLED",
+  "EXPIRED",
+]);
 const BUILD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
 const usage = () => {
@@ -83,14 +84,16 @@ const run = (bin, args, label) => {
 
 const git = (...args) => run("git", args, `git ${args[0]}`);
 
+export const isAdmittedSourceCheckout = ({ clean, head, remote }) =>
+  clean && /^[0-9a-f]{40}$/u.test(head) && head === remote;
+
 const remoteMainRevision = () => {
-  if (git("status", "--porcelain") !== "") fail("start requires a clean worktree");
-  if (git("branch", "--show-current") !== "main") fail("start must run from main");
-  const revision = git("ls-remote", "--exit-code", "origin", "refs/heads/main")
-    .split(/\s+/u)
-    .at(0);
-  if (!revision || !/^[0-9a-f]{40}$/u.test(revision)) fail("remote main is not observable");
-  if (git("rev-parse", "HEAD") !== revision) fail("local main is not current remote main");
+  const clean = git("status", "--porcelain") === "";
+  const head = git("rev-parse", "HEAD");
+  const revision = git("ls-remote", "--exit-code", "origin", "refs/heads/main").split(/\s+/u).at(0);
+  if (!isAdmittedSourceCheckout({ clean, head, remote: revision })) {
+    fail("start requires a clean checkout at current remote main");
+  }
   return revision;
 };
 
@@ -211,20 +214,11 @@ const retrieveReceipt = (buildId, path) => {
   mkdirSync(dirname(target), { recursive: true });
   run(
     "gcloud",
-    [
-      "storage",
-      "cp",
-      receiptObjectUri(buildId),
-      temporary,
-      "--project",
-      PROJECT,
-    ],
+    ["storage", "cp", receiptObjectUri(buildId), temporary, "--project", PROJECT],
     "retrieve production deployment receipt",
   );
   try {
-    const receipt = validateSourceOnlyReceipt(
-      JSON.parse(readFileSync(temporary, "utf8")),
-    );
+    const receipt = validateSourceOnlyReceipt(JSON.parse(readFileSync(temporary, "utf8")));
     const expectedBuildRef = `gcp-cloud-build-ref://openagentsgemini/us-central1/${buildId}`;
     if (
       receipt?.execution?.buildRef !== expectedBuildRef ||
