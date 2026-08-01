@@ -687,7 +687,11 @@ and act as these two reviewed build-only identities, but cannot act as the
 default Compute or production LiveKit deployer identities. Build and Cloud Run
 runtime identities remain different; neither builder receives Secret Manager,
 Cloud Run deploy, GKE, or runtime service-account impersonation grants from
-this change.
+this change. Run the following Cloud Run deploys as a current owner account,
+not with the `oa-mvp-automation` gcloud configuration. Once the protected tag
+bindings are active, the deny policy intentionally refuses the automation
+identity's attempt to act as the default Compute runtime identity; the explicit
+`oa-cloud-run-source-builder` remains the narrowly scoped image build identity.
 
 1. deploy the API revision with admission explicitly disabled, then wait for
    SFU readiness, Redis health, signaling and TURN load-balancer health,

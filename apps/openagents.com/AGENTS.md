@@ -163,12 +163,13 @@ Historical Foldkit docs remain migration evidence only.
   against the served bundle or rendered DOM before calling the work complete.
 - When the user asks to deploy `openagents.com`, the sanctioned production path
   is the Google Cloud Run monolith script:
-  `CLOUDSDK_CONFIG=/Users/christopherdavid/work/.secrets/gcloud-sa-config bash workers/api/scripts/deploy-cloudrun.sh production`.
+  `bash workers/api/scripts/deploy-cloudrun.sh production`, authenticated as a
+  current owner account that can act as the Cloud Run runtime identity.
   The script builds the web assets, bundles the Node Cloud Run entrypoint, renders
   non-secret env vars, mounts Secret Manager secrets, attaches the Cloud SQL
-  instance, and deploys `openagents-monolith` in `us-central1`. Use the
-  automation service-account config from the workspace `AGENTS.md`. Do not fall
-  back to interactive `gcloud`.
+  instance, and deploys `openagents-monolith` in `us-central1`. Do not select the
+  `oa-mvp-automation` config: the production LiveKit deny policy intentionally
+  prevents that identity from acting as the default Compute runtime identity.
 - The old Wrangler/Cloudflare Worker deploy path is legacy for this app. Do not
   restore or invoke it. Google Cloud is the only deploy authority for this app.
 - Never report deployment success until live smoke checks prove both the document
