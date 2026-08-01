@@ -976,7 +976,8 @@ revision-bound captures:
   blocked; TURN/TLS requires UDP and non-TLS TCP blocked.
 - `openagents.livekit_load_capture.v1`: opaque session refs with start/end,
   terminal status, and first-audio latency; the timestamped exact cap-plus-one
-  refusal; and at least three bounded telemetry samples containing
+  HTTP `409` `sarah_voice_livekit_capacity_limit` refusal; and at least three
+  bounded telemetry samples containing
   active/capacity rooms, SFU/worker CPU, and packet loss. Cap and telemetry
   timestamps must fall inside the session window, and the capture must be
   sealed within five minutes of the last settlement. The adapter derives peak
@@ -1204,6 +1205,14 @@ metrics separate and use opaque refs. The pass condition is:
 - p95 first audio is at or below five seconds;
 - every session has one terminal provider/accounting outcome;
 - no raw media or transcript enters a retained system.
+
+The cap-plus-one request must receive HTTP `409` with
+`sarah_voice_livekit_capacity_limit`. That response is emitted only after the
+refused reservation reaches the normal zero-charge terminal release. If the
+release fails, the API returns
+`sarah_voice_livekit_capacity_release_failed` with HTTP `503`; that is a failed
+load run with pending accounting, not cap evidence. A generic storage or
+LiveKit-unavailable response cannot prove the hard cap.
 
 ```sh
 OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \

@@ -25,6 +25,7 @@ import {
   SarahVoiceConcurrentSessionError,
   SarahVoiceDuplicateParticipantError,
   SarahVoiceInsufficientCreditError,
+  SarahVoiceLiveKitCapacityError,
   SarahVoiceSessionRejectedError,
   type SarahVoiceUsage,
 } from '@openagentsinc/khala-sync-server'
@@ -1914,6 +1915,24 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
             // The stale-claim window releases it if this could not.
           }
           return noStoreJson({ error: 'duplicate_participant_refused' }, 409)
+        }
+        if (error instanceof SarahVoiceLiveKitCapacityError) {
+          try {
+            await opened.store.settle({
+              sessionRef: body.identity.sessionRef,
+              closeReason: 'livekit_capacity_refused',
+              nowIso,
+            })
+          } catch {
+            return noStoreJson(
+              { error: 'sarah_voice_livekit_capacity_release_failed' },
+              503,
+            )
+          }
+          return noStoreJson(
+            { error: 'sarah_voice_livekit_capacity_limit' },
+            409,
+          )
         }
         console.error('Sarah LiveKit provisioning failed', {
           sessionRef: body.identity.sessionRef,

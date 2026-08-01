@@ -407,16 +407,22 @@ const projectLoad = (capture, bundle, binding) => {
     concurrentRooms >= bundle.limits.maxConcurrentSarahRooms,
     "load sessions never overlapped at the admitted concurrency",
   );
-  exactKeys(capture.capAttempt, ["observedAt", "requestedRooms", "refused"], [], "capAttempt");
+  exactKeys(
+    capture.capAttempt,
+    ["observedAt", "requestedRooms", "responseStatus", "refusalCode"],
+    [],
+    "capAttempt",
+  );
   const capAttemptObservedAt = Date.parse(
     timestamp(capture.capAttempt.observedAt, "capAttempt.observedAt"),
   );
   assert(
     capture.capAttempt.requestedRooms === bundle.limits.maxConcurrentSarahRooms + 1 &&
-      capture.capAttempt.refused === true &&
+      capture.capAttempt.responseStatus === 409 &&
+      capture.capAttempt.refusalCode === "sarah_voice_livekit_capacity_limit" &&
       capAttemptObservedAt >= earliestSessionStart &&
       capAttemptObservedAt <= latestSessionSettlement,
-    "load cap attempt did not prove refusal immediately above the admitted cap",
+    "load cap attempt did not prove the typed refusal immediately above the admitted cap",
   );
   assert(
     Array.isArray(capture.telemetrySamples) &&

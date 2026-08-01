@@ -181,7 +181,8 @@ test("load result is derived from overlapping terminal sessions, cap refusal, an
     capAttempt: {
       observedAt: "2026-07-31T12:05:00.000Z",
       requestedRooms: 21,
-      refused: true,
+      responseStatus: 409,
+      refusalCode: "sarah_voice_livekit_capacity_limit",
     },
     telemetrySamples: [0, 20, 20].map((activeRooms, index) => ({
       observedAt: `2026-07-31T12:0${index}:00.000Z`,
@@ -210,6 +211,22 @@ test("load result is derived from overlapping terminal sessions, cap refusal, an
         ...binding,
       }),
     /settledSessions|unsettled/u,
+  );
+  assert.throws(
+    () =>
+      buildProbeResult({
+        step: "alpha_load",
+        capture: {
+          ...capture,
+          capAttempt: {
+            ...capture.capAttempt,
+            responseStatus: 503,
+            refusalCode: "sarah_voice_livekit_unavailable",
+          },
+        },
+        ...binding,
+      }),
+    /typed refusal/u,
   );
 });
 

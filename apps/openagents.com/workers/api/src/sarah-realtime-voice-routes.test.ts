@@ -11,6 +11,7 @@ import {
   type SarahRealtimeVoiceStore,
   SarahVoiceAdmissionRejectedError,
   SarahVoiceInsufficientCreditError,
+  SarahVoiceLiveKitCapacityError,
   SarahVoiceSessionRejectedError,
 } from '@openagentsinc/khala-sync-server'
 import { describe, expect, test, vi } from 'vitest'
@@ -1433,6 +1434,83 @@ describe('managed Sarah Realtime voice session route', () => {
     finishProvision?.()
     expect((await winner).status).toBe(201)
     expect(fixture.bindLiveKitRoom).toHaveBeenCalledTimes(1)
+  })
+
+  test('returns a typed refusal when the LiveKit room cap is exhausted', async () => {
+    const fixture = makeDependencies()
+    fixture.prepareLiveKitProvisioningIntent.mockRejectedValueOnce(
+      new SarahVoiceLiveKitCapacityError(
+        'The Sarah LiveKit active-room capacity is exhausted',
+      ),
+    )
+    const broker = {
+      workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
+      sessionTicket: vi.fn(() => 'livekit-session-ticket'),
+      provision: vi.fn(),
+      cleanup: vi.fn(async () => undefined),
+      cleanupByIdempotencyKey: vi.fn(async () => undefined),
+      cleanupRoom: vi.fn(async () => undefined),
+    }
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      { ...fixture.dependencies, liveKitRoomBroker: broker },
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'disclosure-1',
+        requestedTransport: 'livekit_room_v1',
+        roomContext: { kind: 'private' },
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({
+      error: 'sarah_voice_livekit_capacity_limit',
+    })
+    expect(broker.provision).not.toHaveBeenCalled()
+    expect(fixture.bindLiveKitRoom).not.toHaveBeenCalled()
+    expect(fixture.settle).toHaveBeenCalledWith({
+      sessionRef: identity.sessionRef,
+      closeReason: 'livekit_capacity_refused',
+      nowIso: '2026-07-28T12:00:00.000Z',
+    })
+  })
+
+  test('fails closed when a capacity refusal cannot release its reservation', async () => {
+    const fixture = makeDependencies()
+    fixture.prepareLiveKitProvisioningIntent.mockRejectedValueOnce(
+      new SarahVoiceLiveKitCapacityError(
+        'The Sarah LiveKit active-room capacity is exhausted',
+      ),
+    )
+    fixture.settle.mockRejectedValueOnce(new Error('database unavailable'))
+    const broker = {
+      workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
+      sessionTicket: vi.fn(() => 'livekit-session-ticket'),
+      provision: vi.fn(),
+      cleanup: vi.fn(async () => undefined),
+      cleanupByIdempotencyKey: vi.fn(async () => undefined),
+      cleanupRoom: vi.fn(async () => undefined),
+    }
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      { ...fixture.dependencies, liveKitRoomBroker: broker },
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'disclosure-1',
+        requestedTransport: 'livekit_room_v1',
+        roomContext: { kind: 'private' },
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({
+      error: 'sarah_voice_livekit_capacity_release_failed',
+    })
+    expect(broker.provision).not.toHaveBeenCalled()
   })
 
   test('rejects a revoked alpha member before reserving credit', async () => {
