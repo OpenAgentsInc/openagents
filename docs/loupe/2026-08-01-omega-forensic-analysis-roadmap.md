@@ -5,7 +5,7 @@ research work. It does not itself authorize scanning a third-party target,
 publishing a vulnerability claim, contacting a maintainer, spending beyond an
 admitted budget, or running an exploit outside an owned lab.
 
-Roadmap revision: 5
+Roadmap revision: 6
 
 Date: 2026-08-01
 
@@ -36,6 +36,16 @@ The bounded OFR-001 through OFR-018 implementation program is complete as of
 This means the product and contract surfaces described below exist and are
 tested; it does not turn the roadmap's safety boundaries into authorization for
 a live target, disclosure, or unknown-key search.
+
+Use the
+[implementation and operator guide](2026-08-01-omega-forensics-implementation-and-operator-guide.md)
+for the consolidated component inventory, current operating procedure,
+verification commands, prompt-improvement loop, and known interface gaps. Use
+the
+[Coldcard practice-run runbook](../coldcard/2026-08-01-omega-coldcard-forensic-practice-runbook.md)
+for the exact five-arm benchmark and evidence-ladder sequence. These guides are
+the operating layer; this roadmap remains the design rationale and historical
+delivery sequence.
 
 - OFR-001–OFR-007 provide the versioned contracts, admitted Google Cloud worker
   path, dependency-complete source bundles, Coldcard benchmark, frozen metrics,

@@ -19,6 +19,21 @@ that any such work starts from the code rather than from the tweet thread.
 Treat the clone as read-only reference material per the workspace `projects/`
 convention. Do not vendor its code.
 
+## Current OpenAgents implementation
+
+The bounded OFR-001 through OFR-018 program that followed this study is now
+implemented. Start with
+[`Omega forensic analysis: implementation and operator guide`](2026-08-01-omega-forensics-implementation-and-operator-guide.md)
+for the complete component inventory, authority boundary, operator workflow,
+verification commands, metrics, prompt-iteration loop, and current UI gaps.
+Use the
+[`Omega Coldcard forensic practice-run runbook`](../coldcard/2026-08-01-omega-coldcard-forensic-practice-runbook.md)
+for the first end-to-end benchmark.
+
+Implementation does not mean public availability. The native OpenAgents Cloud
+forensic profile remains default-off unless separately admitted, and every
+third-party run remains private and manual-reporting by default.
+
 ---
 
 ## 1. What it is
