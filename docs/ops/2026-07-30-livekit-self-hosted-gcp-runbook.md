@@ -869,6 +869,40 @@ commands, provider diagnostics, topology, secrets, media, or transcripts. A
 failed command, invalid timestamp, malformed probe result, or failed policy
 condition writes neither observation nor receipt.
 
+Generate drill and rollback plans with the controlled adapter after the live
+actions and restoration checks have written their private captures:
+
+```sh
+node scripts/cloud/livekit-controlled-plan.mjs \
+  --phase drills \
+  --bundle infra/livekit/bundle.json \
+  --deployed-revision <exact-deployed-40-hex-revision> \
+  --resource-ref gke-cluster-ref://openagentsgemini/us-central1/oa-livekit-prod \
+  --input sfu_pod_drain=<private-capture.json> \
+  --input sfu_node_loss=<private-capture.json> \
+  --input zone_loss=<private-capture.json> \
+  --input redis_failover=<private-capture.json> \
+  --input signaling_backend_removal=<private-capture.json> \
+  --input certificate_renewal=<private-capture.json> \
+  --input turn_backend_loss=<private-capture.json> \
+  --input worker_crash=<private-capture.json> \
+  --input provider_disconnect=<private-capture.json> \
+  --input quota_exhaustion=<private-capture.json> \
+  --input server_rollback=<private-capture.json> \
+  --output <private-drill-plan.json>
+```
+
+The drill capture schema is
+`openagents.livekit_controlled_drill_capture.v1`. It binds the source and
+deployed revisions, scenario, observation time, SHA-256 precondition/action/
+restoration receipt digests, scoped-target and restoration observations,
+worker-generation and provider-session maxima, terminal accounting state,
+old-generation rejection, fresh-generation admission, and the literal speech
+continuity disposition `not_claimed`. The adapter derives the acceptance row;
+there is no input field that says the drill passed. These captures do not
+replace the live fault driver. A capture without an actually observed scoped
+mutation and restoration is invalid.
+
 #### Non-destructive probe adapters
 
 Collect the preflight inventory directly from the live read-only Kubernetes
@@ -1726,6 +1760,29 @@ Rollback order is fixed:
 
 Never move an active generation silently between transports.
 
+After deploying the API with `SARAH_LIVEKIT_ADMISSIONS=off`, create the private
+drained-boundary receipt. Use a Cloud SQL Auth Proxy connection and standard
+libpq variables. Keep `PGPASSWORD` in the environment; do not put a database
+URL or password in the command line.
+
+```sh
+OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
+PGHOST=127.0.0.1 PGPORT=<proxy-port> PGUSER=<reader> \
+PGPASSWORD='<from the admitted runtime secret path>' PGDATABASE=khala_sync_prod \
+node scripts/cloud/livekit-admission-disable.mjs \
+  --bundle infra/livekit/bundle.json \
+  --deployed-revision <exact-deployed-40-hex-revision> \
+  --output <outside-repository/private-admission-disable-receipt.json> \
+  --apply
+```
+
+The tool is read-only. It requires the latest Ready Cloud Run revision to
+receive 100% of traffic with
+`SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED=false`. It then requires zero active
+LiveKit bindings and zero `reserved`, `connected`, or
+`accounting_uncertain` LiveKit settlements. An uncertain hold is pending; it
+cannot be omitted or rounded into a drained boundary.
+
 Plan first:
 
 ```sh
@@ -1767,6 +1824,40 @@ digest. A changed addon pin is rejected instead of being rounded into a
 runtime rollback claim.
 
 Project the post-rollback observation:
+
+First generate the single-step controlled plan from the private rollback
+capture:
+
+```sh
+node scripts/cloud/livekit-controlled-plan.mjs \
+  --phase rollback \
+  --bundle <last-healthy-bundle.json> \
+  --deployed-revision <exact-deployed-40-hex-revision> \
+  --resource-ref gke-cluster-ref://openagentsgemini/us-central1/oa-livekit-prod \
+  --input scoped_rollback=<private-controlled-rollback-capture.json> \
+  --output <private-rollback-plan.json>
+
+OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
+node scripts/cloud/livekit-production-acceptance.mjs \
+  --plan <private-rollback-plan.json> \
+  --bundle <last-healthy-bundle.json> \
+  --private-observation <outside-repository/private-rollback-observation.json> \
+  --receipt docs/ops/receipts/livekit/production-rollback-<UTC>.json \
+  --allow-controlled-mutation \
+  --apply
+```
+
+The `openagents.livekit_controlled_rollback_capture.v1` input embeds the exact
+admission-disable receipt and a bounded projection of the live runtime rollback
+receipt. Its postcheck records the restored bundle, configuration, server
+image, and worker image digests; active-room, pending-settlement, and silent
+transport-switch counts; continued admission disable; and an ordered set of
+before/after digests for unrelated services. The adapter derives all six
+rollback acceptance booleans and refuses a changed pin, unrelated-service
+digest, active room, pending settlement, or transport switch.
+
+The older direct projection remains available for a complete private
+observation produced by another independently validated harness:
 
 ```sh
 OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \

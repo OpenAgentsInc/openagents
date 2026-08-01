@@ -69,6 +69,23 @@ emits a public receipt only after `livekit-ops-policy.mjs` accepts the complete
 phase. Failure drills and rollback require a separate controlled-mutation
 interlock in addition to the owner cost gate.
 
+`scripts/cloud/livekit-controlled-plan.mjs` generates the closed drill and
+rollback plans. Its adapter accepts only revision-bound private captures and
+derives drill results from scoped action/restoration receipts, provider and
+worker overlap counts, terminal accounting, and old/fresh generation evidence.
+Rollback results are derived from the admission-disable receipt, live runtime
+rollback receipt, restored pins, terminal room/accounting counts, transport
+switch count, and ordered before/after digests for unrelated services. It does
+not execute a fault or accept an operator-authored pass value.
+
+Before runtime rollback,
+`scripts/cloud/livekit-admission-disable.mjs --apply` verifies the serving
+Cloud Run revision has admission disabled and 100% traffic, then reads only
+aggregate active-room and pending-settlement counts through `psql`. Database
+credentials remain in standard libpq environment variables and never enter
+argv or the exclusive private receipt. The tool does not deploy, scale, drain,
+or mutate the database.
+
 Use `scripts/cloud/livekit-production-plan.mjs` and
 `scripts/cloud/livekit-acceptance-probe.mjs` for the non-destructive
 connectivity, load, secret-scan, and cost phases. The plan generator refuses
