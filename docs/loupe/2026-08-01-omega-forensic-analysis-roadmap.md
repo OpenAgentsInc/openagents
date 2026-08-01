@@ -1169,6 +1169,17 @@ Exit gate:
 
 ### Phase 6 — historical chain replay and evidence graph
 
+OFR-016 implements immutable historical block bundles and the private Bitcoin
+Core capability boundary. The guest sees an opaque broker binding and only
+read-only chain methods—never an endpoint, cookie, credential, external IP, or
+wallet RPC. The scanner runs frozen positives before a wide scan, uses exact
+integer satoshi fee-table arithmetic, preserves the cheap candidate set through
+prevout resolution, fails on missing fee/prevout data, and appends a digest-
+chained checkpoint after every block. Every checkpoint resumes to identical raw
+and normalized output. False matches are stratified per million eligible
+transactions by fee, era, script type, and fingerprint revision. The claim
+ceiling is always program similarity.
+
 Deliver:
 
 - content-addressed historical block bundles plus a separately admitted private

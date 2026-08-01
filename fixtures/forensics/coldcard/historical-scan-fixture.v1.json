@@ -1,0 +1,139 @@
+{
+  "schema": "openagents.coldcard_historical_scan_fixture.v1",
+  "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "capability": {
+    "schema": "openagents.private_bitcoin_core_capability.v1",
+    "arbitraryEndpointAllowed": false,
+    "capabilityRef": "capability.bitcoin-core.read-only.synthetic",
+    "externalIpVisibleToGuest": false,
+    "guestNetwork": "none",
+    "methods": ["getblockchaininfo", "getblockhash", "getblock", "getrawtransaction"],
+    "nodeIdentityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "secretDelivery": "broker_bound_not_guest_visible",
+    "serverBindingRef": "binding.bitcoin-core.private.synthetic",
+    "walletRpcAllowed": false
+  },
+  "definition": {
+    "allowedSequences": [4294967295],
+    "definitionRef": "fingerprint.coldcard.transaction-builder.v1",
+    "eligibleInputTypes": ["p2wpkh", "p2sh_p2wpkh", "p2pkh"],
+    "feeRateMaximum": 1000,
+    "feeRateMinimum": 1,
+    "fixedOverheadVbytes": 42,
+    "inputVbytes": { "p2pkh": 148, "p2sh_p2wpkh": 91, "p2wpkh": 68 },
+    "knownPositiveControls": [
+      { "expectedFeeRateSatsPerVbyte": 30, "transactionRef": "transaction.known-positive" }
+    ],
+    "negativeControlBlockRefs": ["block.101"],
+    "requiredLocktime": 0,
+    "requiredOutputCount": 1,
+    "requiredOutputScriptType": "p2wpkh",
+    "requiredVersion": 2,
+    "revisionDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "bundle": {
+    "schema": "openagents.historical_block_bundle.v1",
+    "blocks": [
+      {
+        "blockHash": "sha256:3030303030303030303030303030303030303030303030303030303030303030",
+        "blockTime": "2026-07-30T10:00:00.000Z",
+        "height": 100,
+        "rawBlockDigest": "sha256:4040404040404040404040404040404040404040404040404040404040404040",
+        "transactions": [
+          {
+            "feeSats": "3300",
+            "inputs": [
+              { "inputRef": "input.known-positive.0", "inputType": "p2wpkh", "pubkeyDigest": "sha256:4141414141414141414141414141414141414141414141414141414141414141", "sequence": 4294967295, "signatureRWidthBytes": 33 }
+            ],
+            "locktime": 0,
+            "outputCount": 1,
+            "outputScriptType": "p2wpkh",
+            "outputValueSats": "100000",
+            "prevoutDataStatus": "complete",
+            "transactionRef": "transaction.known-positive",
+            "txid": "sha256:4242424242424242424242424242424242424242424242424242424242424242",
+            "version": 2,
+            "vsize": 109
+          }
+        ]
+      },
+      {
+        "blockHash": "sha256:5050505050505050505050505050505050505050505050505050505050505050",
+        "blockTime": "2026-07-30T10:10:00.000Z",
+        "height": 101,
+        "rawBlockDigest": "sha256:5151515151515151515151515151515151515151515151515151515151515151",
+        "transactions": [
+          {
+            "feeSats": "3300",
+            "inputs": [
+              { "inputRef": "input.negative.0", "inputType": "p2wpkh", "pubkeyDigest": "sha256:5252525252525252525252525252525252525252525252525252525252525252", "sequence": 4294967293, "signatureRWidthBytes": 32 }
+            ],
+            "locktime": 100,
+            "outputCount": 1,
+            "outputScriptType": "p2wpkh",
+            "outputValueSats": "200000",
+            "prevoutDataStatus": "complete",
+            "transactionRef": "transaction.negative-locktime",
+            "txid": "sha256:5353535353535353535353535353535353535353535353535353535353535353",
+            "version": 2,
+            "vsize": 109
+          }
+        ]
+      },
+      {
+        "blockHash": "sha256:6060606060606060606060606060606060606060606060606060606060606060",
+        "blockTime": "2026-07-31T10:00:00.000Z",
+        "height": 102,
+        "rawBlockDigest": "sha256:6161616161616161616161616161616161616161616161616161616161616161",
+        "transactions": [
+          {
+            "feeSats": "220",
+            "inputs": [
+              { "inputRef": "input.wide-hit.0", "inputType": "p2wpkh", "pubkeyDigest": "sha256:6262626262626262626262626262626262626262626262626262626262626262", "sequence": 4294967295, "signatureRWidthBytes": 32 }
+            ],
+            "locktime": 0,
+            "outputCount": 1,
+            "outputScriptType": "p2wpkh",
+            "outputValueSats": "300000",
+            "prevoutDataStatus": "complete",
+            "transactionRef": "transaction.wide-hit",
+            "txid": "sha256:6363636363636363636363636363636363636363636363636363636363636363",
+            "version": 2,
+            "vsize": 109
+          }
+        ]
+      },
+      {
+        "blockHash": "sha256:7070707070707070707070707070707070707070707070707070707070707070",
+        "blockTime": "2026-07-31T10:10:00.000Z",
+        "height": 103,
+        "rawBlockDigest": "sha256:7171717171717171717171717171717171717171717171717171717171717171",
+        "transactions": [
+          {
+            "feeSats": "1001",
+            "inputs": [
+              { "inputRef": "input.off-fingerprint.0", "inputType": "p2pkh", "pubkeyDigest": "sha256:7272727272727272727272727272727272727272727272727272727272727272", "sequence": 4294967294 }
+            ],
+            "locktime": 0,
+            "outputCount": 1,
+            "outputScriptType": "p2wpkh",
+            "outputValueSats": "400000",
+            "prevoutDataStatus": "complete",
+            "transactionRef": "transaction.off-fingerprint-fee",
+            "txid": "sha256:7373737373737373737373737373737373737373737373737373737373737373",
+            "version": 2,
+            "vsize": 189
+          }
+        ]
+      }
+    ],
+    "bundleRef": "bundle.coldcard.synthetic-history.v1",
+    "capturedAt": "2026-08-01T21:00:00.000Z",
+    "contentDigest": "sha256:3f9c935dca42de3d2a9a7d5517cba293ae42084bbdf631d62b9cbd1230a27cbf",
+    "endHeight": 103,
+    "genesisHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "network": "mainnet",
+    "sourceIdentityDigest": "sha256:1212121212121212121212121212121212121212121212121212121212121212",
+    "startHeight": 100
+  }
+}

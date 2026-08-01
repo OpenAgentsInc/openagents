@@ -16,6 +16,7 @@
     "./canonical": "./src/canonical.ts",
     "./claims": "./src/claims.ts",
     "./coldcard-generator": "./src/coldcard-generator.ts",
+    "./historical-scan": "./src/historical-scan.ts",
     "./lifecycle": "./src/lifecycle.ts",
     "./metrics": "./src/metrics.ts",
     "./projection": "./src/projection.ts",

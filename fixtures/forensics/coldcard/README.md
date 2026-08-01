@@ -27,6 +27,11 @@ The pack contains:
   vectors, plus a synthetic public-material match and an explicit measured-
   throughput work-factor input. It contains no mnemonic, xprv, or live value
   oracle input; and
+- `historical-scan-fixture.v1.json`: a content-addressed four-block synthetic
+  bundle with one frozen positive, one negative range, one wider collision,
+  exact satoshi fees, a private read-only capability, and resumable checkpoints.
+  It contains no RPC endpoint, cookie, credential, wallet method, or live-wallet
+  query; and
 - `historical-import.v1.json`: Episode 264 Arm A as
   `completed_incomplete` and Arm B as an unverified `source_observed` hit.
 

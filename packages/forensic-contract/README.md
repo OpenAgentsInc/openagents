@@ -21,6 +21,10 @@ The package owns:
   32-bit reseed truncation, target-compatible uniform retry, keypad shuffle
   trace, frozen mutation-vector evaluator, explicit work-factor calculator,
   and synthetic/owner-authorized public-material reproduction receipt;
+- immutable historical block bundles, a broker-bound private read-only Bitcoin
+  Core capability, exact-integer two-phase fingerprint scanning, self-test and
+  negative-control gates, append-only checkpoints, deterministic resume, and
+  fee/era/script/revision base-rate projections;
 - the five-arm Coldcard benchmark, four suite-manifest, split-isolation, and
   honest historical-import shapes, with the checked-in development pack at
   `fixtures/forensics/coldcard/` in the repository;
@@ -65,6 +69,9 @@ The implementation deliberately keeps these facts separate:
 - owned-fixture reproduction never performs a live-value lookup, persists only
   digests of xpub/address material, returns no mnemonic or xprv, and requires an
   explicit synthetic or owner-authorization reference.
+- historical scanning fails on missing fee or required prevout data, resolves
+  exactly the cheap candidate set, and caps every result at program similarity;
+  it never grants identity, intent, theft, victim, or live-wallet claims.
 
 Consumers must decode untrusted input with `strictDecode` or equivalent Effect
 Schema options that set `onExcessProperty: "error"`. The schemas do not make a
