@@ -1845,6 +1845,22 @@
     {
       "ref": "packages/forensic-contract/src/projection.ts#projectForensicScorecardPublicSafe",
       "reason": "Published public-safe forensic aggregate projector; OFR-012 will call it after deterministic scorecard projection lands in Omega."
+    },
+    {
+      "ref": "packages/forensic-contract/src/evidence-derivation.ts#deriveEvidenceGraph",
+      "reason": "Published deterministic graph builder; the native forensic worker route will call it after admitted OpenAgents Cloud historical scan and report evidence is persisted."
+    },
+    {
+      "ref": "packages/forensic-contract/src/evidence-derivation.ts#reconcileEvidenceFigures",
+      "reason": "Published precision-aware reconciliation boundary; the forensic evaluator route will call it when independently derived and published figure artifacts are available."
+    },
+    {
+      "ref": "packages/forensic-contract/src/evidence-derivation.ts#appendClaimHistoryEvent",
+      "reason": "Published append-only history transition; the forensic claim authority will call it when evidence promotion and correction persistence is connected."
+    },
+    {
+      "ref": "packages/forensic-contract/src/evidence-derivation.ts#claimEvidenceIsIsolatedToRung",
+      "reason": "Published claim-rung diagnostic; the Omega evidence-ladder adapter will call it when OFR-018 renders isolated fingerprint, component, unauthorized-movement, and identity gates."
     }
   ]
 }

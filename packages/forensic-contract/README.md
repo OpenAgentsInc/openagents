@@ -72,6 +72,14 @@ The implementation deliberately keeps these facts separate:
 - historical scanning fails on missing fee or required prevout data, resolves
   exactly the cheap candidate set, and caps every result at program similarity;
   it never grants identity, intent, theft, victim, or live-wallet claims.
+- evidence graphs begin with typed report, publication, and fingerprint seeds;
+  preserve every source when nodes converge; co-generate edges and explanations
+  from one versioned rule; and report victim totals, unreachable collectors,
+  and unpooled operators as unavailable rather than deriving zeros or people
+  counts from addresses, transactions, UTXOs, or reports.
+- published-figure reconciliation retains both figures and explicit precision
+  bounds as `MATCH`, `DRIFT`, or `UNAVAILABLE`, while promotions and corrections
+  append digest-linked claim-history events instead of rewriting provenance.
 
 Consumers must decode untrusted input with `strictDecode` or equivalent Effect
 Schema options that set `onExcessProperty: "error"`. The schemas do not make a

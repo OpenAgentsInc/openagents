@@ -107,6 +107,7 @@ export const EvidenceKind = S.Literals([
   "base_rate",
   "evidence_graph",
   "pooling_edge",
+  "temporal_proximity",
   "victim_testimony",
   "transaction_reference",
   "identity_evidence",

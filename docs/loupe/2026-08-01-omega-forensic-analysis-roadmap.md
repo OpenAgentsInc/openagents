@@ -755,6 +755,17 @@ The pack contains four independently rerunnable suites:
    reconcile independent published figures at their stated precision, and
    preserve unconfirmed and unmeasurable completeness limits.
 
+OFR-017 materializes the fourth suite in
+`@openagentsinc/forensic-contract/evidence-derivation`. The implementation
+derives a deterministic known-floor graph from the checked-in synthetic
+Coldcard fixture, binds each edge and generated explanation to the same rule
+and input digest, retains weaker program-pattern provenance through promotion,
+and keeps components separate from temporal episodes. Its boundary suite
+covers traversal depth, explicit change exclusion, dust, episode gaps, and
+shared-input thresholds. Reconciliation retains independent derived and
+published figures with their precision interval, and the append-only claim
+history makes every promotion or correction provenance-bearing.
+
 The chain suite runs only on the admitted OpenAgents Cloud GCE worker. Start
 with a content-addressed block-range bundle for deterministic evaluation, then
 add a private, brokered Bitcoin Core data capability for wider scans. The guest

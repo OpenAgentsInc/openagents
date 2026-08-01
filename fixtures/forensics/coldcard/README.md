@@ -34,6 +34,10 @@ The pack contains:
   query; and
 - `historical-import.v1.json`: Episode 264 Arm A as
   `completed_incomplete` and Arm B as an unverified `source_observed` hit.
+- `evidence-derivation-fixture.v1.json`: synthetic victim-report, published-
+  address, program-fingerprint, transaction-flow, change, dust, traversal,
+  shared-input, and temporal-gap inputs for the OFR-017 evidence graph. It is
+  development data only and contains no private keys or live-wallet oracle.
 
 ## Tree digest procedure
 

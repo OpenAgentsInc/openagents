@@ -1,0 +1,84 @@
+{
+  "schema": "openagents.evidence_derivation_input.v1",
+  "inputRef": "input.coldcard.evidence-owned-fixture.v1",
+  "generatedAt": "2026-08-01T22:00:00.000Z",
+  "configuration": {
+    "changeRule": "exclude_explicit_change",
+    "componentRule": "shared_input_and_transaction_flow",
+    "configurationDigest": "sha256:b71cdc401aace5d7950fe50a7746e5ae33fe826534821819afc47dc25b2bce7c",
+    "dustThresholdSats": "546",
+    "episodeGapSeconds": 3600,
+    "maxTraversalDepth": 2,
+    "minimumSharedInputs": 2,
+    "revisionRef": "revision.coldcard-evidence.v1"
+  },
+  "victimReports": [
+    {
+      "addressRef": "address.fixture.victim-a",
+      "evidenceDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "reportRef": "report.fixture.victim-a",
+      "victimRef": "victim.fixture.a",
+      "transactionRefs": ["transaction.fixture.001"]
+    }
+  ],
+  "publishedAddresses": [
+    {
+      "addressRef": "address.fixture.victim-a",
+      "publishedClaimRef": "claim.published.fixture.victim-a",
+      "sourceConfidence": "published_unconfirmed",
+      "sourceDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  ],
+  "scanCandidates": [
+    {
+      "candidateRef": "candidate.fixture.program-match",
+      "fingerprintRevisionDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "sourceDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "transactionRef": "transaction.fixture.003"
+    }
+  ],
+  "chainTransactions": [
+    {
+      "blockHeight": 800001,
+      "inputAddressRefs": ["address.fixture.victim-a", "address.fixture.co-input"],
+      "observedAt": "2020-01-01T00:00:00.000Z",
+      "rawTransactionDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "transactionRef": "transaction.fixture.001",
+      "outputs": [
+        { "addressRef": "address.fixture.collector", "classification": "destination", "outputRef": "output.fixture.001.0", "valueSats": "100000" },
+        { "addressRef": "address.fixture.change", "classification": "change", "outputRef": "output.fixture.001.1", "valueSats": "9000" },
+        { "addressRef": "address.fixture.dust", "classification": "unknown", "outputRef": "output.fixture.001.2", "valueSats": "546" }
+      ]
+    },
+    {
+      "blockHeight": 800002,
+      "inputAddressRefs": ["address.fixture.collector"],
+      "observedAt": "2020-01-01T01:00:00.000Z",
+      "rawTransactionDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "transactionRef": "transaction.fixture.002",
+      "outputs": [
+        { "addressRef": "address.fixture.vault", "classification": "destination", "outputRef": "output.fixture.002.0", "valueSats": "99000" }
+      ]
+    },
+    {
+      "blockHeight": 800003,
+      "inputAddressRefs": ["address.fixture.vault"],
+      "observedAt": "2020-01-01T03:00:01.000Z",
+      "rawTransactionDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "transactionRef": "transaction.fixture.003",
+      "outputs": [
+        { "addressRef": "address.fixture.onward", "classification": "destination", "outputRef": "output.fixture.003.0", "valueSats": "98000" }
+      ]
+    },
+    {
+      "blockHeight": 800004,
+      "inputAddressRefs": ["address.fixture.onward"],
+      "observedAt": "2020-01-01T04:00:01.000Z",
+      "rawTransactionDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "transactionRef": "transaction.fixture.004",
+      "outputs": [
+        { "addressRef": "address.fixture.beyond-depth", "classification": "destination", "outputRef": "output.fixture.004.0", "valueSats": "97000" }
+      ]
+    }
+  ]
+}

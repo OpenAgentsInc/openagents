@@ -3,6 +3,7 @@ export * from "./canonical.ts";
 export * from "./benchmark.ts";
 export * from "./claims.ts";
 export * from "./coldcard-generator.ts";
+export * from "./evidence-derivation.ts";
 export * from "./historical-scan.ts";
 export * from "./lifecycle.ts";
 export * from "./metrics.ts";
