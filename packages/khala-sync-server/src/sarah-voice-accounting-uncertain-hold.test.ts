@@ -260,6 +260,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah voice accounting-uncertain holds", (
     await expect(store.readSettlement({ sessionRef, ownerUserId })).resolves.toMatchObject({
       state: "accounting_uncertain",
       holdPreserved: true,
+      noHoldCreated: false,
       accountingEscalation: {
         escalationRef: escalated.accounting_escalation_ref,
         escalatedAt,

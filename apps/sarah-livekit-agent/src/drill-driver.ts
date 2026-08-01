@@ -71,7 +71,6 @@ export const SARAH_LIVEKIT_DRILL_SCENARIOS = [
   "planned_worker_crash",
   "sfu_loss",
   "provider_disconnect",
-  "hold_exhaustion",
   "reconnect",
 ] as const satisfies readonly SarahLiveKitFailureScenario[];
 export type SarahLiveKitDrillScenario = (typeof SARAH_LIVEKIT_DRILL_SCENARIOS)[number];
@@ -163,7 +162,7 @@ export type SarahLiveKitDrillInstrumentSource =
 
 export type SarahLiveKitDrillSettlement = Readonly<{
   state: "settled" | "released";
-  creditMode: "metered" | "staging_owner_entitlement";
+  creditMode: "metered" | "staging_owner_entitlement" | "owner_waived_unmetered";
   finalChargeMsat: number;
   receiptDigest: `sha256:${string}`;
   terminalObservedAtMs: number;

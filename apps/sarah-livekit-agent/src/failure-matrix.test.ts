@@ -4,7 +4,6 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   SARAH_LIVEKIT_FAILURE_MATRIX_SCHEMA,
   SARAH_LIVEKIT_FAILURE_SCENARIOS,
-  SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIOS,
   SARAH_LIVEKIT_SFU_LOSS_BOUND_MS,
   buildSarahLiveKitFailureMatrixReceipt,
   validateSarahLiveKitFailureMatrixObservation,
@@ -41,14 +40,34 @@ const observation = (): SarahLiveKitFailureMatrixObservation => ({
   workerImageDigest: digest("worker"),
   observedAt: "2026-07-31T12:00:00.000Z",
   runDigest: digest("run"),
-  retiredScenarios: SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIOS,
+  retiredScenarios: [
+    {
+      scenario: "hold_exhaustion",
+      classification: "not_applicable_removed",
+      authority: "owner_waived_unmetered_v1",
+      observedAtMs: 90_000,
+      generationDigest: digest("retired-generation"),
+      admissionEvidenceDigest: digest("retired-admission"),
+      sessionEvidenceDigest: digest("retired-session"),
+      ledgerStateBeforeDigest: digest("retired-ledger"),
+      ledgerStateAfterDigest: digest("retired-ledger"),
+      requiredHoldMsat: 0,
+      spendableRemainingCreditMsat: null,
+      reservedMsat: 0,
+      chargedMsat: 0,
+      balanceDeltaMsat: 0,
+      heldDeltaMsat: 0,
+      ledgerMutationCount: 0,
+    },
+  ],
   scenarios: SARAH_LIVEKIT_FAILURE_SCENARIOS.map((scenario, scenarioIndex) => {
     const base = scenarioIndex * 10;
     return {
       scenario,
       faultAction: faultAction[scenario],
       terminalReason: terminalReason[scenario],
-      terminalState: "settled",
+      terminalState: "released",
+      creditMode: "owner_waived_unmetered",
       startedAtMs: 1_000 + scenarioIndex * 10_000,
       terminalAtMs: 2_000 + scenarioIndex * 10_000,
       identityDigests: {
@@ -68,14 +87,21 @@ const observation = (): SarahLiveKitFailureMatrixObservation => ({
         responseCount: 2,
         transcriptionCount: 1,
         cancelledResponseCount: scenario === "success" ? 0 : 1,
-        chargeMsat: 17,
+        chargeMsat: 0,
       },
       hold: {
-        reservedMsat: 100,
-        chargedMsat: 17,
-        releasedMsat: 83,
+        reservedMsat: 0,
+        chargedMsat: 0,
+        releasedMsat: 0,
       },
-      settlementChargeMsat: 17,
+      ledger: {
+        stateBeforeDigest: digest(`ledger-${scenario}`),
+        stateAfterDigest: digest(`ledger-${scenario}`),
+        balanceDeltaMsat: 0,
+        heldDeltaMsat: 0,
+        mutationCount: 0,
+      },
+      settlementChargeMsat: 0,
       terminalEventCount: 1,
       maximumWorkerGenerationCount: 1,
       maximumProviderSessionCount: 1,
@@ -156,7 +182,7 @@ describe("Sarah LiveKit terminal failure matrix", () => {
       aggregateUsage: {
         inputTokens: 70,
         outputTokens: 77,
-        chargeMsat: 119,
+        chargeMsat: 0,
       },
     });
     expect(receipt.scenarios.map((scenario) => scenario.scenario)).toEqual(
@@ -178,7 +204,15 @@ describe("Sarah LiveKit terminal failure matrix", () => {
           scenario["settlementChargeMsat"] = 18;
         }),
       ),
-    ).toThrow("do not reconcile");
+    ).toThrow("mutated owner-waived platform credit");
+
+    expect(() =>
+      validateSarahLiveKitFailureMatrixObservation(
+        mutateScenario(observation(), "success", (scenario) => {
+          scenario["creditMode"] = "metered";
+        }),
+      ),
+    ).toThrow("did not use owner-waived unmetered authority");
 
     expect(() =>
       validateSarahLiveKitFailureMatrixObservation(
@@ -211,6 +245,28 @@ describe("Sarah LiveKit terminal failure matrix", () => {
         }),
       ),
     ).toThrow("rawMediaFindings is nonzero");
+  });
+
+  test("requires live authority evidence for the retired hold-exhaustion row", () => {
+    const changedLedger = structuredClone(observation()) as unknown as {
+      retiredScenarios: Array<Record<string, unknown>>;
+    };
+    changedLedger.retiredScenarios[0]!["ledgerStateAfterDigest"] = digest("changed-ledger");
+    expect(() =>
+      validateSarahLiveKitFailureMatrixObservation(
+        changedLedger as unknown as SarahLiveKitFailureMatrixObservation,
+      ),
+    ).toThrow("does not prove zero hold and zero ledger mutation");
+
+    const fabricatedHold = structuredClone(observation()) as unknown as {
+      retiredScenarios: Array<Record<string, unknown>>;
+    };
+    fabricatedHold.retiredScenarios[0]!["reservedMsat"] = 1;
+    expect(() =>
+      validateSarahLiveKitFailureMatrixObservation(
+        fabricatedHold as unknown as SarahLiveKitFailureMatrixObservation,
+      ),
+    ).toThrow("does not prove zero hold and zero ledger mutation");
   });
 
   test("requires reconnect to start after terminal with a new generation", () => {

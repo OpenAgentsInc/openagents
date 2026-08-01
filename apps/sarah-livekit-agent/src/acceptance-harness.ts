@@ -123,7 +123,7 @@ export type SarahLiveKitScenarioObservation = Readonly<{
   subscriberFanoutCount: number;
   audibleFanoutObserved: true;
   settlementState: "settled" | "released";
-  settlementCreditMode: "metered" | "staging_owner_entitlement";
+  settlementCreditMode: "metered" | "staging_owner_entitlement" | "owner_waived_unmetered";
   finalChargeMsat: number;
   settlementReceiptDigest: `sha256:${string}`;
 }>;

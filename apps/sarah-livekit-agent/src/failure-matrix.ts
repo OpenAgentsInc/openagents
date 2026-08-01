@@ -15,15 +15,26 @@ export const SARAH_LIVEKIT_FAILURE_SCENARIOS = [
   "reconnect",
 ] as const;
 
-export const SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIOS = [
-  {
-    scenario: "hold_exhaustion",
-    classification: "not_applicable_removed",
-    authority: "owner_waived_unmetered_v1",
-    reservedMsat: 0,
-    ledgerChargeMsat: 0,
-  },
-] as const;
+export const SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIO = "hold_exhaustion" as const;
+
+export type SarahLiveKitRetiredFailureScenarioObservation = Readonly<{
+  scenario: typeof SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIO;
+  classification: "not_applicable_removed";
+  authority: "owner_waived_unmetered_v1";
+  observedAtMs: number;
+  generationDigest: string;
+  admissionEvidenceDigest: string;
+  sessionEvidenceDigest: string;
+  ledgerStateBeforeDigest: string;
+  ledgerStateAfterDigest: string;
+  requiredHoldMsat: 0;
+  spendableRemainingCreditMsat: null;
+  reservedMsat: 0;
+  chargedMsat: 0;
+  balanceDeltaMsat: 0;
+  heldDeltaMsat: 0;
+  ledgerMutationCount: 0;
+}>;
 
 export type SarahLiveKitFailureScenario = (typeof SARAH_LIVEKIT_FAILURE_SCENARIOS)[number];
 
@@ -164,6 +175,7 @@ export type SarahLiveKitFailureScenarioObservation = Readonly<{
   faultAction: (typeof EXPECTED_FAULT_ACTION)[SarahLiveKitFailureScenario];
   terminalReason: (typeof ADMITTED_TERMINAL_REASONS)[SarahLiveKitFailureScenario][number];
   terminalState: "settled" | "released";
+  creditMode: "owner_waived_unmetered";
   startedAtMs: number;
   terminalAtMs: number;
   identityDigests: Readonly<{
@@ -179,6 +191,13 @@ export type SarahLiveKitFailureScenarioObservation = Readonly<{
     reservedMsat: number;
     chargedMsat: number;
     releasedMsat: number;
+  }>;
+  ledger: Readonly<{
+    stateBeforeDigest: string;
+    stateAfterDigest: string;
+    balanceDeltaMsat: 0;
+    heldDeltaMsat: 0;
+    mutationCount: 0;
   }>;
   settlementChargeMsat: number;
   terminalEventCount: number;
@@ -209,7 +228,7 @@ export type SarahLiveKitFailureMatrixObservation = Readonly<{
   observedAt: string;
   runDigest: string;
   scenarios: readonly SarahLiveKitFailureScenarioObservation[];
-  retiredScenarios: typeof SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIOS;
+  retiredScenarios: readonly [SarahLiveKitRetiredFailureScenarioObservation];
 }>;
 
 /**
@@ -239,10 +258,13 @@ type PublicScenario = Readonly<{
   faultAction: (typeof EXPECTED_FAULT_ACTION)[SarahLiveKitFailureScenario];
   terminalReason: (typeof ADMITTED_TERMINAL_REASONS)[SarahLiveKitFailureScenario][number];
   terminalState: "settled" | "released";
+  creditMode: "owner_waived_unmetered";
   durationMs: number;
   usage: Usage;
   settlementChargeMsat: number;
   holdReleasedMsat: number;
+  ledgerStateDigest: string;
+  noLedgerMutation: true;
   terminalEventCount: 1;
   maximumWorkerGenerationCount: 1;
   maximumProviderSessionCount: 1;
@@ -269,7 +291,7 @@ export type SarahLiveKitFailureMatrixReceipt = Readonly<{
   outcome: "passed";
   liveProof: true;
   scenarios: readonly PublicScenario[];
-  retiredScenarios: typeof SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIOS;
+  retiredScenarios: readonly [SarahLiveKitRetiredFailureScenarioObservation];
   aggregateUsage: Usage;
   retainedMedia: false;
   retainedTranscript: false;
@@ -468,11 +490,13 @@ const validateScenario = (
       "faultAction",
       "terminalReason",
       "terminalState",
+      "creditMode",
       "startedAtMs",
       "terminalAtMs",
       "identityDigests",
       "usage",
       "hold",
+      "ledger",
       "settlementChargeMsat",
       "terminalEventCount",
       "maximumWorkerGenerationCount",
@@ -500,9 +524,10 @@ const validateScenario = (
     ),
     `${expectedScenario} terminal reason is invalid`,
   );
+  assert(value.terminalState === "released", `${expectedScenario} is not unmetered-terminal`);
   assert(
-    value.terminalState === "settled" || value.terminalState === "released",
-    `${expectedScenario} is not terminal`,
+    value.creditMode === "owner_waived_unmetered",
+    `${expectedScenario} did not use owner-waived unmetered authority`,
   );
   assertInteger(value.startedAtMs, `${expectedScenario}.startedAtMs`);
   assertInteger(value.terminalAtMs, `${expectedScenario}.terminalAtMs`);
@@ -532,10 +557,30 @@ const validateScenario = (
   );
   assertInteger(value.settlementChargeMsat, `${expectedScenario}.settlementChargeMsat`);
   assert(
-    value.usage.chargeMsat === value.settlementChargeMsat &&
-      value.hold.chargedMsat === value.settlementChargeMsat &&
-      value.hold.reservedMsat === value.hold.chargedMsat + value.hold.releasedMsat,
-    `${expectedScenario} provider usage, hold, and settlement do not reconcile`,
+    value.usage.inputTokens + value.usage.outputTokens > 0,
+    `${expectedScenario} has no recorded provider token usage`,
+  );
+  assert(
+    value.usage.chargeMsat === 0 &&
+      value.settlementChargeMsat === 0 &&
+      value.hold.reservedMsat === 0 &&
+      value.hold.chargedMsat === 0 &&
+      value.hold.releasedMsat === 0,
+    `${expectedScenario} mutated owner-waived platform credit`,
+  );
+  assertExactKeys(
+    value.ledger,
+    ["stateBeforeDigest", "stateAfterDigest", "balanceDeltaMsat", "heldDeltaMsat", "mutationCount"],
+    `${expectedScenario}.ledger`,
+  );
+  assertDigest(value.ledger.stateBeforeDigest, `${expectedScenario}.ledger.stateBeforeDigest`);
+  assertDigest(value.ledger.stateAfterDigest, `${expectedScenario}.ledger.stateAfterDigest`);
+  assert(
+    value.ledger.stateBeforeDigest === value.ledger.stateAfterDigest &&
+      value.ledger.balanceDeltaMsat === 0 &&
+      value.ledger.heldDeltaMsat === 0 &&
+      value.ledger.mutationCount === 0,
+    `${expectedScenario} has no authoritative zero-ledger-mutation proof`,
   );
   assert(value.terminalEventCount === 1, `${expectedScenario} has duplicate terminal events`);
   assert(
@@ -622,9 +667,58 @@ export const validateSarahLiveKitFailureMatrixObservation = (
     "observedAt must be an ISO timestamp",
   );
   assert(
-    JSON.stringify(value.retiredScenarios) ===
-      JSON.stringify(SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIOS),
-    "failure matrix retired scenario classification is invalid",
+    Array.isArray(value.retiredScenarios) && value.retiredScenarios.length === 1,
+    "failure matrix must contain one retired hold-exhaustion observation",
+  );
+  const retired = value.retiredScenarios[0];
+  assertExactKeys(
+    retired,
+    [
+      "scenario",
+      "classification",
+      "authority",
+      "observedAtMs",
+      "generationDigest",
+      "admissionEvidenceDigest",
+      "sessionEvidenceDigest",
+      "ledgerStateBeforeDigest",
+      "ledgerStateAfterDigest",
+      "requiredHoldMsat",
+      "spendableRemainingCreditMsat",
+      "reservedMsat",
+      "chargedMsat",
+      "balanceDeltaMsat",
+      "heldDeltaMsat",
+      "ledgerMutationCount",
+    ],
+    "retired hold-exhaustion observation",
+  );
+  assert(
+    retired.scenario === SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIO &&
+      retired.classification === "not_applicable_removed" &&
+      retired.authority === "owner_waived_unmetered_v1",
+    "failure matrix retired scenario policy is invalid",
+  );
+  assertInteger(retired.observedAtMs, "retiredScenarios.observedAtMs");
+  for (const key of [
+    "generationDigest",
+    "admissionEvidenceDigest",
+    "sessionEvidenceDigest",
+    "ledgerStateBeforeDigest",
+    "ledgerStateAfterDigest",
+  ] as const) {
+    assertDigest(retired[key], `retiredScenarios.${key}`);
+  }
+  assert(
+    retired.ledgerStateBeforeDigest === retired.ledgerStateAfterDigest &&
+      retired.requiredHoldMsat === 0 &&
+      retired.spendableRemainingCreditMsat === null &&
+      retired.reservedMsat === 0 &&
+      retired.chargedMsat === 0 &&
+      retired.balanceDeltaMsat === 0 &&
+      retired.heldDeltaMsat === 0 &&
+      retired.ledgerMutationCount === 0,
+    "retired hold-exhaustion evidence does not prove zero hold and zero ledger mutation",
   );
   assert(
     Array.isArray(value.scenarios) &&
@@ -688,10 +782,13 @@ export const buildSarahLiveKitFailureMatrixReceipt = (
       faultAction: scenario.faultAction,
       terminalReason: scenario.terminalReason,
       terminalState: scenario.terminalState,
+      creditMode: scenario.creditMode,
       durationMs: scenario.terminalAtMs - scenario.startedAtMs,
       usage: scenario.usage,
       settlementChargeMsat: scenario.settlementChargeMsat,
       holdReleasedMsat: scenario.hold.releasedMsat,
+      ledgerStateDigest: scenario.ledger.stateAfterDigest,
+      noLedgerMutation: true,
       terminalEventCount: 1,
       maximumWorkerGenerationCount: 1,
       maximumProviderSessionCount: 1,
@@ -730,7 +827,7 @@ export const buildSarahLiveKitFailureMatrixReceipt = (
       observedAt: observation.observedAt,
       runDigest: observation.runDigest,
       scenarios,
-      retiredScenarios: SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIOS,
+      retiredScenarios: observation.retiredScenarios,
       aggregateUsage,
     }),
   );
@@ -746,7 +843,7 @@ export const buildSarahLiveKitFailureMatrixReceipt = (
     outcome: "passed",
     liveProof: true,
     scenarios,
-    retiredScenarios: SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIOS,
+    retiredScenarios: observation.retiredScenarios,
     aggregateUsage,
     retainedMedia: false,
     retainedTranscript: false,

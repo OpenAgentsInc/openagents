@@ -52,6 +52,13 @@ export type SarahVoiceSettlementProjection =
       spendableRemainingCreditMsat: number | null;
       settlementReceiptRef: string;
       acceptanceEvidence?: SarahVoiceLiveKitAcceptanceEvidence;
+      accountingWaiver?: Readonly<{
+        authority: "owner_waived_unmetered_v1";
+        providerAccountingStatus: "uncertain";
+        waiverReceiptRef: string;
+        waiverPayloadDigest: string;
+        providerEvidenceDigest: string;
+      }>;
     }>
   | Readonly<{
       sessionRef: string;
@@ -59,7 +66,8 @@ export type SarahVoiceSettlementProjection =
       creditMode: SarahVoiceCreditMode;
       recordedChargeMsat: number;
       reservedMsat: number;
-      holdPreserved: true;
+      holdPreserved: boolean;
+      noHoldCreated: boolean;
       reason: string;
       accountingEscalation?: Readonly<{
         escalationRef: string;
@@ -94,7 +102,8 @@ export type SarahVoiceLiveKitFailureEvidence = Readonly<{
   providerSessionCount: number;
   providerAdmittedAt: string;
   workerClosedAt: string | null;
-  holdPreserved: true;
+  holdPreserved: boolean;
+  noHoldCreated: boolean;
 }>;
 
 export type SarahVoiceLiveKitAcceptanceEvidence = Readonly<{
@@ -3676,6 +3685,10 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           binding.membership_revision, binding.sarah_participant_ref,
           binding.provider_accounting_status, binding.worker_closed_at,
           binding.provider_admitted_at,
+          waiver.waiver_receipt_ref, waiver.waiver_payload_digest,
+          waiver.provider_evidence_refs_json,
+          waiver.provider_accounting_status AS waiver_provider_accounting_status,
+          waiver.authority AS waiver_authority,
           CASE
             WHEN session.credit_mode = 'metered'
               THEN COALESCE(
@@ -3689,6 +3702,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           ON balance.actor_ref = session.owner_actor_ref
         LEFT JOIN sarah_livekit_room_bindings AS binding
           ON binding.session_ref = session.session_ref
+        LEFT JOIN sarah_voice_accounting_waivers AS waiver
+          ON waiver.session_ref = session.session_ref
         WHERE session.session_ref = ${input.sessionRef}
           AND session.owner_user_id = ${input.ownerUserId}
           AND session.state IN ('accounting_uncertain', 'settled', 'released')
@@ -3723,6 +3738,11 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         provider_accounting_status: "pending" | "exact" | "uncertain" | null;
         worker_closed_at: string | null;
         provider_admitted_at: string | null;
+        waiver_receipt_ref: string | null;
+        waiver_payload_digest: string | null;
+        provider_evidence_refs_json: unknown | null;
+        waiver_provider_accounting_status: "uncertain" | null;
+        waiver_authority: "owner_waived_unmetered_v1" | null;
         spendable_remaining_credit_msat: number | string | null;
       }>;
       const row = first(rows);
@@ -3795,7 +3815,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             providerSessionCount: 1,
             providerAdmittedAt: row.provider_admitted_at,
             workerClosedAt: row.worker_closed_at,
-            holdPreserved: true,
+            holdPreserved: row.credit_mode === "metered",
+            noHoldCreated: row.credit_mode === "owner_waived_unmetered",
           };
         }
         return {
@@ -3804,7 +3825,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           creditMode: row.credit_mode,
           recordedChargeMsat: toSafeInteger(row.charged_msat, "charged_msat"),
           reservedMsat: toSafeInteger(row.reserved_msat, "reserved_msat"),
-          holdPreserved: true,
+          holdPreserved: row.credit_mode === "metered",
+          noHoldCreated: row.credit_mode === "owner_waived_unmetered",
           reason: row.provider_accounting_uncertain_reason ?? "provider_accounting_uncertain",
           ...(row.accounting_escalation_ref === null || row.accounting_escalated_at === null
             ? {}
@@ -3904,6 +3926,29 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           providerAdmittedAt: row.provider_admitted_at,
         };
       }
+      let accountingWaiver:
+        | NonNullable<
+            Extract<
+              SarahVoiceSettlementProjection,
+              Readonly<{ state: "settled" | "released" }>
+            >["accountingWaiver"]
+          >
+        | undefined;
+      if (
+        row.waiver_authority === "owner_waived_unmetered_v1" &&
+        row.waiver_provider_accounting_status === "uncertain" &&
+        row.waiver_receipt_ref !== null &&
+        row.waiver_payload_digest !== null &&
+        Array.isArray(row.provider_evidence_refs_json)
+      ) {
+        accountingWaiver = {
+          authority: row.waiver_authority,
+          providerAccountingStatus: row.waiver_provider_accounting_status,
+          waiverReceiptRef: row.waiver_receipt_ref,
+          waiverPayloadDigest: row.waiver_payload_digest,
+          providerEvidenceDigest: acceptanceDigest(JSON.stringify(row.provider_evidence_refs_json)),
+        };
+      }
       return {
         sessionRef: row.session_ref,
         state: row.state,
@@ -3915,6 +3960,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             : toSafeInteger(row.spendable_remaining_credit_msat, "spendable_remaining_credit_msat"),
         settlementReceiptRef: row.settlement_receipt_ref,
         ...(acceptanceEvidence === undefined ? {} : { acceptanceEvidence }),
+        ...(accountingWaiver === undefined ? {} : { accountingWaiver }),
       };
     } catch (error) {
       throw new SarahVoiceStorageError("Sarah voice settlement lookup failed", error);

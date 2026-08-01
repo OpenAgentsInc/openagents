@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, symlinkSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -11,17 +14,27 @@ import {
   waiverPayloadDigest,
 } from './waive-sarah-accounting-uncertain'
 
-const repositoryRoot = '/repo'
-const common = [
-  '--environment',
-  'production',
-  '--private-output',
-  '/private/waiver.json',
-  '--reason',
-  'Owner waived platform credit accounting',
-  '--evidence-ref',
-  'issue:9285',
-] as const
+const fixture = () => {
+  const root = mkdtempSync(join(tmpdir(), 'sarah-waiver-cli-'))
+  const repositoryRoot = join(root, 'repo')
+  const privateRoot = join(root, 'private')
+  mkdirSync(join(repositoryRoot, 'apps', 'nested'), { recursive: true })
+  mkdirSync(privateRoot)
+  return {
+    repositoryRoot,
+    privateRoot,
+    common: [
+      '--environment',
+      'production',
+      '--private-output',
+      join(privateRoot, 'waiver.json'),
+      '--reason',
+      'Owner waived platform credit accounting',
+      '--evidence-ref',
+      'issue:9285',
+    ],
+  }
+}
 
 const targets: ReadonlyArray<WaiverTarget> = [
   {
@@ -35,12 +48,14 @@ const targets: ReadonlyArray<WaiverTarget> = [
 
 describe('Sarah accounting waiver CLI safety', () => {
   test('defaults to a non-mutating preview and needs no owner gate', () => {
+    const { common, repositoryRoot } = fixture()
     const input = parseArguments(common, repositoryRoot)
     expect(input.apply).toBe(false)
     expect(() => assertOwnerGate(input.apply, undefined)).not.toThrow()
   })
 
   test('apply requires both an exact target set and the owner gate', () => {
+    const { common, repositoryRoot } = fixture()
     expect(() =>
       parseArguments(['--apply', ...common], repositoryRoot),
     ).toThrow()
@@ -70,6 +85,7 @@ describe('Sarah accounting waiver CLI safety', () => {
   })
 
   test('derives replay-stable per-row authority and redacts public output', () => {
+    const { common, repositoryRoot } = fixture()
     const input = parseArguments(common, repositoryRoot)
     expect(waiverPayloadDigest(targets[0]!, input)).toBe(
       waiverPayloadDigest(targets[0]!, input),
@@ -91,5 +107,22 @@ describe('Sarah accounting waiver CLI safety', () => {
       recordedChargeMsat: 15,
       mode: 'preview',
     })
+  })
+
+  test('rejects nested-checkout and symlink escapes back into the repository', () => {
+    const { common, privateRoot, repositoryRoot } = fixture()
+    const nestedOutput = join(repositoryRoot, 'apps', 'nested', 'waiver.json')
+    const nestedArgs = [...common]
+    nestedArgs[nestedArgs.indexOf('--private-output') + 1] = nestedOutput
+    expect(() => parseArguments(nestedArgs, repositoryRoot)).toThrow()
+
+    const link = join(privateRoot, 'repo-link')
+    symlinkSync(join(repositoryRoot, 'apps'), link)
+    const linkedArgs = [...common]
+    linkedArgs[linkedArgs.indexOf('--private-output') + 1] = join(
+      link,
+      'waiver.json',
+    )
+    expect(() => parseArguments(linkedArgs, repositoryRoot)).toThrow()
   })
 })

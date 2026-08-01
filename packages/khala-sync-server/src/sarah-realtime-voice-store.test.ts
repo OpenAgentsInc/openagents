@@ -2168,6 +2168,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       recordedChargeMsat: 15,
       reservedMsat: 1_000,
       holdPreserved: true,
+      noHoldCreated: false,
       failureEvidence: {
         principal: "principal.sarah",
         generation: 1,
@@ -2189,6 +2190,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         workerJobCount: 0,
         providerSessionCount: 1,
         holdPreserved: true,
+        noHoldCreated: false,
       },
     });
 

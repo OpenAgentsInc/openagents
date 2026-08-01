@@ -57,6 +57,16 @@ credit. It does not insert, delete, or change provider usage rows, and the
 binding remains `uncertain` with its original reason and timestamps. Never
 describe this path as exact provider reconciliation.
 
+The authenticated settlement projection keeps that distinction visible after
+release: `accountingWaiver.providerAccountingStatus` remains `uncertain` and
+the response carries only waiver/evidence digests, never exact acceptance
+evidence. A currently uncertain unmetered session reports
+`holdPreserved: false` and `noHoldCreated: true`; legacy metered uncertainty
+continues to report the inverse. The waiver CLI derives the repository root
+from its checked-in module location and resolves the output parent through
+symlinks, so running from a nested package cannot place private output back in
+the checkout.
+
 ## Evidence boundary
 
 Obtain the complete provider usage export for the provider session. Record only

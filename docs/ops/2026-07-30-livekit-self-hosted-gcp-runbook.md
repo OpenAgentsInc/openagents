@@ -2247,7 +2247,12 @@ response that changes the session, generation, digest, or
 `reservedMsat = chargedMsat = 0` without reading or mutating `agent_balances`.
 The remaining-drill CLI no longer accepts the scenario, so it cannot loop
 forever waiting for a condition the owner removed. Historical evidence remains
-in the v1 receipt; v2 failure-matrix receipts carry the explicit retirement row.
+in the v1 receipt. A v2 live-proof matrix must bind the retirement row to the
+observed production admission, session generation, and identical authoritative
+ledger-state digests before/after the session. It rejects any nonzero reserved,
+charged, released, balance-delta, held-delta, or ledger-mutation value. Every
+active v2 scenario likewise requires `owner_waived_unmetered`, nonzero provider
+token evidence, and zero platform credit accounting.
 
 `reconnect` creates a distinct generation-two session only after the first
 session is terminal and its settlement is readable. After fresh admission it

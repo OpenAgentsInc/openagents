@@ -150,6 +150,15 @@ export const SarahVoiceSettlementResponseSchema = S.Struct({
   finalChargeMsat: Seq,
   spendableRemainingCreditMsat: S.NullOr(Seq),
   receiptRef: Ref,
+  accountingWaiver: S.optional(
+    S.Struct({
+      authority: S.Literal("owner_waived_unmetered_v1"),
+      providerAccountingStatus: S.Literal("uncertain"),
+      waiverReceiptRef: Ref,
+      waiverPayloadDigest: Digest,
+      providerEvidenceDigest: Digest,
+    }),
+  ),
   acceptanceEvidence: S.optional(
     S.Struct({
       principal: S.Literal("principal.sarah"),

@@ -2153,6 +2153,42 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
     expect(await response.json()).toMatchObject({ acceptanceEvidence })
   })
 
+  test('projects an uncertain owner waiver without exact acceptance evidence', async () => {
+    const fixture = makeDependencies()
+    const accountingWaiver = {
+      authority: 'owner_waived_unmetered_v1' as const,
+      providerAccountingStatus: 'uncertain' as const,
+      waiverReceiptRef: 'sarah_voice_accounting_waiver:waiver-1',
+      waiverPayloadDigest: 'a'.repeat(64),
+      providerEvidenceDigest: 'b'.repeat(64),
+    }
+    vi.mocked(fixture.store.readSettlement).mockResolvedValue({
+      sessionRef: identity.sessionRef,
+      state: 'released',
+      creditMode: 'owner_waived_unmetered',
+      finalChargeMsat: 0,
+      spendableRemainingCreditMsat: null,
+      settlementReceiptRef: accountingWaiver.waiverReceiptRef,
+      accountingWaiver,
+    })
+    const response = await handleSarahRealtimeVoiceSettlementRequest(
+      fixture.dependencies,
+      new Request('https://openagents.com/api/omega/sarah/voice/settlement', {
+        headers: {
+          authorization: 'Bearer test',
+          [SARAH_REALTIME_VOICE_SESSION_HEADER]: identity.sessionRef,
+          [SARAH_LIVEKIT_ACCEPTANCE_EVIDENCE_HEADER]: 'live-observation-v1',
+        },
+      }),
+      {},
+      ctx,
+    )
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body).toMatchObject({ accountingWaiver })
+    expect(body).not.toHaveProperty('acceptanceEvidence')
+  })
+
   test('reports uncertain provider accounting without fabricating settlement', async () => {
     const fixture = makeDependencies()
     vi.mocked(fixture.store.readSettlement).mockResolvedValue({
@@ -2162,6 +2198,7 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
       recordedChargeMsat: 175,
       reservedMsat: 1_000,
       holdPreserved: true,
+      noHoldCreated: false,
       reason: 'livekit_worker_provider_disconnect',
       accountingEscalation: {
         escalationRef: `sarah_voice_accounting_escalation:${'a'.repeat(64)}`,
@@ -2188,6 +2225,7 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
       recordedChargeMsat: 175,
       reservedCreditMsat: 1_000,
       holdPreserved: true,
+      noHoldCreated: false,
       reason: 'livekit_worker_provider_disconnect',
       accountingEscalation: {
         escalationRef: `sarah_voice_accounting_escalation:${'a'.repeat(64)}`,
@@ -2203,6 +2241,7 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
       generation: 1,
       providerAccountingStatus: 'uncertain',
       holdPreserved: true,
+      noHoldCreated: false,
     }
     vi.mocked(fixture.store.readSettlement).mockResolvedValue({
       sessionRef: identity.sessionRef,
@@ -2211,6 +2250,7 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
       recordedChargeMsat: 175,
       reservedMsat: 1_000,
       holdPreserved: true,
+      noHoldCreated: false,
       reason: 'livekit_worker_heartbeat_expired',
       failureEvidence,
     } as never)

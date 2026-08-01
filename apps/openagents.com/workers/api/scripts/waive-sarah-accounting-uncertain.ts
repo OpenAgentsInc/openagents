@@ -2,13 +2,17 @@
 
 import { makeSarahRealtimeVoiceStore } from '@openagentsinc/khala-sync-server'
 import { createHash } from 'node:crypto'
-import { writeFileSync } from 'node:fs'
-import { isAbsolute, resolve } from 'node:path'
+import { realpathSync, writeFileSync } from 'node:fs'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { defaultMakeKhalaSyncSqlClient } from '../src/khala-sync-push-routes'
 
 export const OWNER_GATE = 'I_APPROVE_SARAH_UNMETERED_ACCOUNTING_WAIVER'
 export const OPERATOR_ACTOR_REF = 'operator:owner_sarah_unmetered_waiver'
+export const REPOSITORY_ROOT = realpathSync(
+  fileURLToPath(new URL('../../../../../', import.meta.url)),
+)
 
 export type Arguments = Readonly<{
   apply: boolean
@@ -47,7 +51,7 @@ const requiredEnv = (name: string): string => {
 
 export const parseArguments = (
   argv: ReadonlyArray<string>,
-  repositoryRoot = process.cwd(),
+  repositoryRoot = REPOSITORY_ROOT,
 ): Arguments => {
   let apply = false
   let environment: string | undefined
@@ -93,13 +97,21 @@ export const parseArguments = (
       ? undefined
       : Number(expectedTargetCountText)
   const sortedEvidence = [...providerEvidenceRefs].sort()
+  const canonicalRepositoryRoot = realpathSync(repositoryRoot)
   const resolvedPrivateOutput =
-    privateOutput === undefined ? undefined : resolve(privateOutput)
+    privateOutput === undefined
+      ? undefined
+      : join(
+          realpathSync(dirname(resolve(privateOutput))),
+          basename(privateOutput),
+        )
   if (
     environment !== 'production' ||
     resolvedPrivateOutput === undefined ||
     !isAbsolute(privateOutput ?? '') ||
-    resolvedPrivateOutput.startsWith(`${resolve(repositoryRoot)}/`) ||
+    (resolvedPrivateOutput !== undefined &&
+      (resolvedPrivateOutput === canonicalRepositoryRoot ||
+        resolvedPrivateOutput.startsWith(`${canonicalRepositoryRoot}/`))) ||
     reason === undefined ||
     reason.length < 1 ||
     reason.length > 1_024 ||

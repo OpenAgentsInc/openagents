@@ -4,9 +4,9 @@ import {
   decodeSarahLiveKitJobClaimResponse,
 } from "@openagentsinc/audio-contract";
 import {
-  SarahVoiceSessionRejectedError,
   PostgresSarahLiveKitRoomAuthorityStore,
   type SarahRealtimeVoiceStore,
+  SarahVoiceSessionRejectedError,
   type SyncSql,
   makeSarahRealtimeVoiceStore,
 } from "@openagentsinc/khala-sync-server";
@@ -670,6 +670,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       recordedChargeMsat: 175,
       reservedMsat: 1_000,
       holdPreserved: true,
+      noHoldCreated: false,
       reason: "livekit_worker_heartbeat_expired",
     });
     const [balance] = await sql`

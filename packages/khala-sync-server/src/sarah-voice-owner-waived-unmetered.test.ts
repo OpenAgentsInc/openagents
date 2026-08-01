@@ -89,13 +89,53 @@ describe.skipIf(!hasLocalPostgres())("Sarah voice owner-waived unmetered account
         },
       }),
     ).resolves.toEqual({ chargedMsat: 0, reservedMsat: 0, creditLimitReached: false });
+    await sql`
+      UPDATE sarah_realtime_voice_sessions
+      SET transport_kind = 'livekit_room_v1', state = 'accounting_uncertain'
+      WHERE session_ref = 'voice-unmetered'
+    `;
+    await sql`
+      INSERT INTO sarah_livekit_room_bindings (
+        session_ref, owner_user_id, device_ref, thread_ref, generation,
+        capability_profile, admission_ref, admission_digest,
+        room_context_kind, room_ref, room_epoch, participant_ref,
+        sarah_participant_ref, participant_grant_digest, join_expires_at,
+        dispatch_ref, sarah_presence_lease_ref, publish_allowed,
+        subscribe_allowed, state, created_at, updated_at,
+        worker_job_ref, worker_last_seen_at, provider_session_ref_digest,
+        provider_configuration_digest, provider_admitted_at,
+        provider_accounting_status, provider_accounting_uncertain_at,
+        provider_accounting_uncertain_reason
+      ) VALUES (
+        'voice-unmetered', 'user-unmetered', 'device-unmetered',
+        'thread-unmetered', 1, 'omega_editor', 'admission-unmetered',
+        ${"1".repeat(64)}, 'private', 'room-unmetered', 1,
+        'owner-unmetered', 'principal.sarah', ${"2".repeat(64)},
+        '2026-08-01T12:05:00.000Z', 'dispatch-unmetered',
+        'presence-unmetered', false, true, 'active', ${nowIso}, ${nowIso},
+        'job-unmetered', ${nowIso}, ${"3".repeat(64)}, ${"4".repeat(64)},
+        ${nowIso}, 'uncertain', '2026-08-01T12:00:30.000Z',
+        'provider_disconnected'
+      )
+    `;
     await expect(
-      store.settle({
+      store.readSettlement({
         sessionRef: "voice-unmetered",
-        closeReason: "completed",
-        nowIso: "2026-08-01T12:00:30.000Z",
+        ownerUserId: "user-unmetered",
       }),
-    ).resolves.toMatchObject({ state: "released", chargedMsat: 0, reservedMsat: 0 });
+    ).resolves.toMatchObject({
+      state: "accounting_uncertain",
+      creditMode: "owner_waived_unmetered",
+      reservedMsat: 0,
+      recordedChargeMsat: 0,
+      holdPreserved: false,
+      noHoldCreated: true,
+      failureEvidence: {
+        providerAccountingStatus: "uncertain",
+        holdPreserved: false,
+        noHoldCreated: true,
+      },
+    });
     const [usage] = await sql`
       SELECT input_tokens, output_tokens, charge_msat
       FROM sarah_realtime_voice_usage
@@ -192,6 +232,20 @@ describe.skipIf(!hasLocalPostgres())("Sarah voice owner-waived unmetered account
     await expect(
       store.waiveLiveKitAccounting({ ...input, nowIso: "2026-08-01T15:00:00.000Z" }),
     ).resolves.toMatchObject({ replayed: true, releasedHoldMsat: 1000 });
+    await expect(
+      store.readSettlement({ sessionRef: "voice-waiver", ownerUserId: "user-waiver" }),
+    ).resolves.toMatchObject({
+      state: "released",
+      creditMode: "owner_waived_unmetered",
+      finalChargeMsat: 0,
+      accountingWaiver: {
+        authority: "owner_waived_unmetered_v1",
+        providerAccountingStatus: "uncertain",
+        waiverReceiptRef: `sarah_voice_accounting_waiver:${"f".repeat(64)}`,
+        waiverPayloadDigest: "f".repeat(64),
+        providerEvidenceDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      },
+    });
 
     const [balance] = await sql`
       SELECT balance_msat, held_msat FROM agent_balances

@@ -1160,6 +1160,7 @@ export const handleSarahRealtimeVoiceSettlementRequest = async <User, Bindings>(
           recordedChargeMsat: settlement.recordedChargeMsat,
           reservedCreditMsat: settlement.reservedMsat,
           holdPreserved: settlement.holdPreserved,
+          noHoldCreated: settlement.noHoldCreated,
           reason: settlement.reason,
           ...(settlement.accountingEscalation === undefined
             ? {}
@@ -1177,6 +1178,11 @@ export const handleSarahRealtimeVoiceSettlementRequest = async <User, Bindings>(
         acceptanceEvidence?: unknown
       }
     ).acceptanceEvidence
+    const accountingWaiver = (
+      settlement as typeof settlement & {
+        accountingWaiver?: unknown
+      }
+    ).accountingWaiver
     const acceptanceEvidenceRequested =
       request.headers.get(SARAH_LIVEKIT_ACCEPTANCE_EVIDENCE_HEADER) ===
       'live-observation-v1'
@@ -1189,6 +1195,7 @@ export const handleSarahRealtimeVoiceSettlementRequest = async <User, Bindings>(
         finalChargeMsat: settlement.finalChargeMsat,
         spendableRemainingCreditMsat: settlement.spendableRemainingCreditMsat,
         receiptRef: settlement.settlementReceiptRef,
+        ...(accountingWaiver === undefined ? {} : { accountingWaiver }),
         ...(acceptanceEvidence === undefined || !acceptanceEvidenceRequested
           ? {}
           : { acceptanceEvidence }),
