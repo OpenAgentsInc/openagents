@@ -12,15 +12,15 @@ is that every blocker was cleared in one pass rather than one at a time.
 
 ## What changed
 
-| Blocker recorded 2026-07-31 | State now | How |
-| --- | --- | --- |
-| `pods/log` Forbidden | cleared | The automation identity now reads current and previous-container output. Verified by a real `kubectl logs` call, not `auth can-i`. |
-| `pods/exec` denied | cleared | Verified by a real `exec` against a named pod. |
-| `clouderrorreporting` not enabled | cleared | API enabled, then `roles/errorreporting.viewer` granted. `groupStats` returns `200`. |
-| `redis.instances.list` denied, no VPC path | cleared | `roles/redis.viewer` granted, and the read-only TLS path was built and proven. See below. |
-| `packaged_clients` undefined | defined | Section 1. |
-| `object_storage` undefined | defined | Section 2. |
-| `traces` undefined | defined, and it is a finding | Section 3. |
+| Blocker recorded 2026-07-31                | State now                    | How                                                                                                                                |
+| ------------------------------------------ | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `pods/log` Forbidden                       | cleared                      | The automation identity now reads current and previous-container output. Verified by a real `kubectl logs` call, not `auth can-i`. |
+| `pods/exec` denied                         | cleared                      | Verified by a real `exec` against a named pod.                                                                                     |
+| `clouderrorreporting` not enabled          | cleared                      | API enabled, then `roles/errorreporting.viewer` granted. `groupStats` returns `200`.                                               |
+| `redis.instances.list` denied, no VPC path | cleared                      | `roles/redis.viewer` granted, and the read-only TLS path was built and proven. See below.                                          |
+| `packaged_clients` undefined               | defined                      | Section 1.                                                                                                                         |
+| `object_storage` undefined                 | defined                      | Section 2.                                                                                                                         |
+| `traces` undefined                         | defined, and it is a finding | Section 3.                                                                                                                         |
 
 `auth can-i` is not evidence on this cluster. It returned `yes` for `pods/log`
 while the real call was still `Forbidden`. Every permission claim in this
@@ -230,21 +230,25 @@ an uninjected canary would be asserting a cleanliness nobody measured.
 
 So the order is: inject unique synthetic canaries through a live Sarah LiveKit
 session, then collect all eight scopes inside one two-hour window, then scan.
+The production scan consumes the two exact Secret Manager values in memory
+through `--gcp-secret-manager`; it never stages either value in an export or
+temporary file. Synthetic retention canaries remain mode-0600 inputs because
+the acceptance harness creates and injects them.
 The injection step depends on the headless harness and should be sequenced with
 whoever owns it.
 
 Measured collection cost, so the window can be planned rather than discovered:
 
-| Scope | Cost |
-| --- | --- |
-| `packaged_omega` | ~170 MiB, already unpacked on the collecting host |
-| `packaged_clients` | ~1 GiB, must be fetched first |
-| `pods` | ~1.8 GiB — 511 MiB per agent pod, 80.6 MiB per SFU pod, `/tmp` is 4 KiB |
-| `logs` | bounded by the query window |
-| `redis` | ~14 KiB |
-| `object_storage` | ~780 MiB across ~9,070 objects |
-| `traces` | the enumeration result |
-| `crash_artifacts` | Error Reporting groups plus previous-container output |
+| Scope              | Cost                                                                    |
+| ------------------ | ----------------------------------------------------------------------- |
+| `packaged_omega`   | ~170 MiB, already unpacked on the collecting host                       |
+| `packaged_clients` | ~1 GiB, must be fetched first                                           |
+| `pods`             | ~1.8 GiB — 511 MiB per agent pod, 80.6 MiB per SFU pod, `/tmp` is 4 KiB |
+| `logs`             | bounded by the query window                                             |
+| `redis`            | ~14 KiB                                                                 |
+| `object_storage`   | ~780 MiB across ~9,070 objects                                          |
+| `traces`           | the enumeration result                                                  |
+| `crash_artifacts`  | Error Reporting groups plus previous-container output                   |
 
 About 4 GiB total. Fetch the packaged clients before the window opens, since
 download time counts against the two hours.

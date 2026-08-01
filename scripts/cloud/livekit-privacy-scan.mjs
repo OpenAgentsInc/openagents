@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { spawnSync } from "node:child_process";
 import { lstatSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
@@ -9,13 +10,19 @@ import {
 } from "./livekit-privacy-scan-lib.mjs";
 
 const OWNER_GATE = "I_ACCEPT_EP263_LIVEKIT_GCP_COST";
+const FIXTURE_FILE_GATE = "I_ACCEPT_TEST_FIXTURES_ONLY";
+const PROJECT = "openagentsgemini";
+const SECRET_IDS = Object.freeze({
+  openAiKey: "oa-livekit-prod-openai-api-key",
+  sarahPrivateKey: "sarah-nostr-identity-secret",
+});
+const MAXIMUM_SECRET_BYTES = 1024 * 1024;
 
 const usage = () => {
   process.stderr.write(`Usage:
   node scripts/cloud/livekit-privacy-scan.mjs \\
     --source-base-revision <40-hex-git-revision> \\
-    --openai-key-file <private-file> \\
-    --sarah-private-key-file <private-file> \\
+    --gcp-secret-manager \\
     --retention-canary-file <private-file> [--retention-canary-file <private-file> ...] \\
     --scope packaged_omega=<path> --scope packaged_clients=<path> \\
     --scope pods=<path> --scope logs=<path> --scope redis=<path> \\
@@ -23,10 +30,15 @@ const usage = () => {
     --scope crash_artifacts=<path> \\
     --output <private-observation.json> --apply
 
-Each scope path must be a complete read-only export captured for the same
+Production scans consume the two exact Secret Manager resources in memory and
+never write or print their values. Each scope path must be a complete read-only export captured for the same
 bounded acceptance window. Missing, empty, unreadable, oversized, symlinked,
 or special-file inputs fail closed. Output contains counts and SHA-256
 evidence digests only; matched values and object names are never emitted.
+
+Mode-0600 secret files are accepted only for deterministic fixtures when
+OA_LIVEKIT_PRIVACY_FIXTURE_FILES=I_ACCEPT_TEST_FIXTURES_ONLY. They are not a
+production collection path.
 `);
 };
 
@@ -34,6 +46,7 @@ const parseArgs = (args) => {
   const parsed = {
     apply: false,
     canaryFiles: [],
+    gcpSecretManager: false,
     openAiKeyFile: undefined,
     output: undefined,
     sarahPrivateKeyFile: undefined,
@@ -44,6 +57,10 @@ const parseArgs = (args) => {
     const argument = args[index];
     if (argument === "--apply") {
       parsed.apply = true;
+      continue;
+    }
+    if (argument === "--gcp-secret-manager") {
+      parsed.gcpSecretManager = true;
       continue;
     }
     if (argument === "--help" || argument === "-h") {
@@ -80,8 +97,19 @@ const parseArgs = (args) => {
   if (process.env.OA_LIVEKIT_OWNER_GATE !== OWNER_GATE) {
     throw new Error(`--apply requires OA_LIVEKIT_OWNER_GATE=${OWNER_GATE}`);
   }
-  for (const key of ["openAiKeyFile", "output", "sarahPrivateKeyFile", "sourceBaseRevision"]) {
+  for (const key of ["output", "sourceBaseRevision"]) {
     if (!parsed[key]) throw new Error(`required privacy scan argument is missing: ${key}`);
+  }
+  if (parsed.gcpSecretManager && (parsed.openAiKeyFile || parsed.sarahPrivateKeyFile)) {
+    throw new Error("Secret Manager mode cannot be combined with secret files");
+  }
+  if (!parsed.gcpSecretManager) {
+    if (!parsed.openAiKeyFile || !parsed.sarahPrivateKeyFile) {
+      throw new Error("production privacy scans require --gcp-secret-manager");
+    }
+    if (process.env.OA_LIVEKIT_PRIVACY_FIXTURE_FILES !== FIXTURE_FILE_GATE) {
+      throw new Error("secret files are admitted only for deterministic test fixtures");
+    }
   }
   if (parsed.canaryFiles.length === 0) {
     throw new Error("at least one --retention-canary-file is required");
@@ -104,6 +132,42 @@ const privateBytes = (path) => {
   return bytes.subarray(0, end);
 };
 
+const secretManagerBytes = (secretId) => {
+  const result = spawnSync(
+    "gcloud",
+    [
+      "secrets",
+      "versions",
+      "access",
+      "latest",
+      `--secret=${secretId}`,
+      `--project=${PROJECT}`,
+      "--quiet",
+    ],
+    {
+      encoding: null,
+      env: process.env,
+      maxBuffer: MAXIMUM_SECRET_BYTES,
+      shell: false,
+      timeout: 30_000,
+    },
+  );
+  if (result.error || result.status !== 0 || !Buffer.isBuffer(result.stdout)) {
+    throw new Error(`Secret Manager could not supply the required ${secretId} evidence`);
+  }
+  if (result.stdout.length === 0 || result.stdout.length >= MAXIMUM_SECRET_BYTES) {
+    result.stdout.fill(0);
+    throw new Error(`Secret Manager returned invalid ${secretId} evidence length`);
+  }
+  let end = result.stdout.length;
+  while (end > 0 && [0x0a, 0x0d].includes(result.stdout[end - 1])) end -= 1;
+  if (end === 0) {
+    result.stdout.fill(0);
+    throw new Error(`Secret Manager returned empty ${secretId} evidence`);
+  }
+  return result.stdout.subarray(0, end);
+};
+
 const writeExclusive = (path, value) => {
   writeFileSync(resolve(path), `${JSON.stringify(value, null, 2)}\n`, {
     encoding: "utf8",
@@ -113,13 +177,24 @@ const writeExclusive = (path, value) => {
 };
 
 let parsed;
+let secretMaterial = [];
 try {
   parsed = parseArgs(process.argv.slice(2));
+  const openAiKey = parsed.gcpSecretManager
+    ? secretManagerBytes(SECRET_IDS.openAiKey)
+    : privateBytes(parsed.openAiKeyFile);
+  secretMaterial.push(openAiKey);
+  const sarahPrivateKey = parsed.gcpSecretManager
+    ? secretManagerBytes(SECRET_IDS.sarahPrivateKey)
+    : privateBytes(parsed.sarahPrivateKeyFile);
+  secretMaterial.push(sarahPrivateKey);
+  const canaries = parsed.canaryFiles.map(privateBytes);
+  secretMaterial.push(...canaries);
   const result = scanSarahLiveKitPrivacy({
     scopeInputs: parsed.scopeInputs,
-    openAiKey: privateBytes(parsed.openAiKeyFile),
-    sarahPrivateKey: privateBytes(parsed.sarahPrivateKeyFile),
-    canaries: parsed.canaryFiles.map(privateBytes),
+    openAiKey,
+    sarahPrivateKey,
+    canaries,
     sourceBaseRevision: parsed.sourceBaseRevision,
   });
   writeExclusive(parsed.output, result);
@@ -153,4 +228,6 @@ try {
   process.stderr.write(`${message}\n`);
   usage();
   process.exitCode = 1;
+} finally {
+  for (const bytes of secretMaterial) bytes.fill(0);
 }

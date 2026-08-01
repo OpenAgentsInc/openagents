@@ -87,9 +87,55 @@ const run = (fixtureValue, output = join(fixtureValue.root, "privacy.json")) =>
       env: {
         ...process.env,
         OA_LIVEKIT_OWNER_GATE: "I_ACCEPT_EP263_LIVEKIT_GCP_COST",
+        OA_LIVEKIT_PRIVACY_FIXTURE_FILES: "I_ACCEPT_TEST_FIXTURES_ONLY",
       },
     },
   );
+
+const runSecretManager = (fixtureValue, output = join(fixtureValue.root, "privacy-gcp.json")) => {
+  const fakeBin = join(fixtureValue.root, "bin");
+  mkdirSync(fakeBin);
+  const fakeGcloud = join(fakeBin, "gcloud");
+  writeFileSync(
+    fakeGcloud,
+    `#!/usr/bin/env node
+if (!process.argv.includes("--project=openagentsgemini") || process.argv.some((value) => value.startsWith("--out-file"))) process.exit(2);
+const secret = process.argv.find((value) => value.startsWith("--secret="));
+if (secret === "--secret=oa-livekit-prod-openai-api-key") process.stdout.write(${JSON.stringify(
+      `sk-${"o".repeat(40)}`,
+    )});
+else if (secret === "--secret=sarah-nostr-identity-secret") process.stdout.write(${JSON.stringify(
+      "sarah-private-key-material-must-never-reach-workers",
+    )});
+else process.exitCode = 2;
+`,
+    { mode: 0o700 },
+  );
+  chmodSync(fakeGcloud, 0o700);
+  return spawnSync(
+    process.execPath,
+    [
+      script,
+      "--source-base-revision",
+      revision,
+      "--gcp-secret-manager",
+      "--retention-canary-file",
+      fixtureValue.canary,
+      ...fixtureValue.scopeArguments,
+      "--output",
+      output,
+      "--apply",
+    ],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        OA_LIVEKIT_OWNER_GATE: "I_ACCEPT_EP263_LIVEKIT_GCP_COST",
+        PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+      },
+    },
+  );
+};
 
 test("accepts mode-0600 regular secret inputs without printing their values", () => {
   const inputs = fixture();
@@ -100,6 +146,52 @@ test("accepts mode-0600 regular secret inputs without printing their values", ()
   assert.equal(result.stdout.includes(readFileSync(inputs.sarahPrivateKey, "utf8")), false);
   assert.equal(result.stdout.includes(readFileSync(inputs.canary, "utf8")), false);
   assert.equal(JSON.parse(readFileSync(output, "utf8")).outcome, "passed");
+});
+
+test("consumes the exact production Secret Manager resources without writing their values", () => {
+  const inputs = fixture();
+  const output = join(inputs.root, "privacy-gcp.json");
+  const result = runSecretManager(inputs, output);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.includes(readFileSync(inputs.openAiKey, "utf8")), false);
+  assert.equal(result.stdout.includes(readFileSync(inputs.sarahPrivateKey, "utf8")), false);
+  assert.equal(
+    readFileSync(output, "utf8").includes(readFileSync(inputs.openAiKey, "utf8")),
+    false,
+  );
+  assert.equal(JSON.parse(readFileSync(output, "utf8")).outcome, "passed");
+});
+
+test("refuses production secret files without the fixture-only gate", () => {
+  const inputs = fixture();
+  const result = spawnSync(
+    process.execPath,
+    [
+      script,
+      "--source-base-revision",
+      revision,
+      "--openai-key-file",
+      inputs.openAiKey,
+      "--sarah-private-key-file",
+      inputs.sarahPrivateKey,
+      "--retention-canary-file",
+      inputs.canary,
+      ...inputs.scopeArguments,
+      "--output",
+      join(inputs.root, "refused.json"),
+      "--apply",
+    ],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        OA_LIVEKIT_OWNER_GATE: "I_ACCEPT_EP263_LIVEKIT_GCP_COST",
+        OA_LIVEKIT_PRIVACY_FIXTURE_FILES: "",
+      },
+    },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /deterministic test fixtures/u);
 });
 
 test("rejects group-readable and symbolic-link secret inputs", () => {

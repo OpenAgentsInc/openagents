@@ -1308,7 +1308,7 @@ node scripts/cloud/livekit-acceptance.mjs \
 #### The SFU-loss drill (`sfu_loss`)
 
 Added 2026-07-31. The rc29 evidence manifest recorded `sfu_loss_bounded` as
-*"no such scenario is even defined"*. This is that definition. It is drill item
+_"no such scenario is even defined"_. This is that definition. It is drill item
 2, abrupt SFU loss, expressed as one scenario the failure matrix and the gate
 recorder both enforce.
 
@@ -1319,8 +1319,8 @@ worker generation, or provider session is left behind, and the loss is not
 reported as a clean finish.
 
 **The fault.** `delete_exact_sfu_pod`: delete the one `livekit-server` pod
-hosting the drill session's room. Deliberately *not* a graceful drain, which is
-item 1 and is not loss. Deliberately *not* a node deletion, which would take the
+hosting the drill session's room. Deliberately _not_ a graceful drain, which is
+item 1 and is not loss. Deliberately _not_ a node deletion, which would take the
 co-located Sarah worker with it and make the result indistinguishable from
 `planned_worker_crash`. Never a shared firewall, NetworkPolicy, ConfigMap,
 Secret, or Deployment change — the same restriction the provider-disconnect
@@ -1448,7 +1448,7 @@ a poor time to discover a missing role.
 > `gke-gcloud-auth-plugin` caches its token in `~/.kube/gke_gcloud_auth_plugin_cache`,
 > which is **outside** `CLOUDSDK_CONFIG`. Running one `kubectl` as the
 > interactive owner account poisons that cache, and every later command that
-> *sets* `CLOUDSDK_CONFIG` still authenticates as the owner. That makes a
+> _sets_ `CLOUDSDK_CONFIG` still authenticates as the owner. That makes a
 > namespace-scoped grant look far broader than it is. Run
 > `rm -f ~/.kube/gke_gcloud_auth_plugin_cache` after any identity switch and
 > confirm with `kubectl auth whoami` before recording a permission finding.
@@ -1457,10 +1457,10 @@ a poor time to discover a missing role.
 namespace-scoped RBAC in `livekit-system` only, under owner authority, so the
 pod-deleting drills and the privacy scan's `pods` scope stop being blocked:
 
-| Object | Grant |
-| --- | --- |
-| `Role/sarah-livekit-drill-automation` (ns `livekit-system`) | `pods: delete`; `pods/log: get, list` |
-| `RoleBinding/sarah-livekit-drill-automation` | the above to user `oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com` |
+| Object                                                      | Grant                                                                          |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `Role/sarah-livekit-drill-automation` (ns `livekit-system`) | `pods: delete`; `pods/log: get, list`                                          |
+| `RoleBinding/sarah-livekit-drill-automation`                | the above to user `oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com` |
 
 Deliberately excluded, and verified `Forbidden` by real calls: `pods/exec` (it
 is arbitrary command execution inside production pods), `pods: create`, and
@@ -1523,10 +1523,10 @@ normal media path, so they genuinely entered audio, transcription, and anything
 downstream that retains either. They are deliberately non-secret and are
 published here so the scan can search for them.
 
-| Journey | Spoken canary phrase |
-| --- | --- |
-| private | `marmalade obelisk seven three one nine` |
-| community | `juniper caravan four eight two six` |
+| Journey   | Spoken canary phrase                     |
+| --------- | ---------------------------------------- |
+| private   | `marmalade obelisk seven three one nine` |
+| community | `juniper caravan four eight two six`     |
 
 **Injection window: `2026-07-31T18:41:26Z` to `2026-07-31T18:41:51Z`.** Evidence:
 `docs/ops/receipts/livekit/production-sarah-canary-20260731T184800Z.json`,
@@ -1621,17 +1621,20 @@ count/byte mismatches, empty evidence, symlinks, special files, and objects
 larger than 256 MiB. Split a larger read-only export into smaller payload
 files. An unavailable backend is a failed gate, not a zero-finding scan.
 
-Write the two production secrets and one or more unique synthetic retention
-canaries to mode-0600 temporary files without printing them. The Sarah identity
-input is the current `sarah-nostr-identity-secret`; the OpenAI input is the
-current `oa-livekit-prod-openai-api-key`. Then run:
+Inject one or more unique synthetic retention canaries through the admitted
+session, then keep only those synthetic values in mode-0600 files. Do not
+export the two production secrets. The scanner reads the exact
+`sarah-nostr-identity-secret` and `oa-livekit-prod-openai-api-key` versions
+directly from Secret Manager into bounded process memory, scans the eight
+exports, overwrites its in-memory buffers, and emits only counts and digests.
+The executing identity must already have access to those exact resources; the
+scanner does not grant or broaden IAM.
 
 ```sh
 OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
 node scripts/cloud/livekit-privacy-scan.mjs \
   --source-base-revision <exact-deployed-40-hex-revision> \
-  --openai-key-file <private-openai-key-file> \
-  --sarah-private-key-file <private-sarah-key-file> \
+  --gcp-secret-manager \
   --retention-canary-file <private-canary-file> \
   --scope packaged_omega=<private-export-directory> \
   --scope packaged_clients=<private-export-directory> \
@@ -1652,6 +1655,11 @@ object can be embedded as the `privacyScan` field in the private Sarah matrix
 observation. The matrix and standalone secret-scan validators now require
 complete per-scope evidence and reject aggregate counts that do not equal the
 scope totals.
+
+Secret-file inputs remain fixture-only and require the separate
+`OA_LIVEKIT_PRIVACY_FIXTURE_FILES=I_ACCEPT_TEST_FIXTURES_ONLY` gate. They are
+not a production fallback. If Secret Manager access is unavailable, the scan
+is unavailable; do not copy the values to make the gate pass.
 
 For the six runtime persistence scopes, the same private evidence can also be
 projected through the standalone gate:
@@ -1721,15 +1729,52 @@ can be unlabelled, so that alert is a guardrail rather than complete cost
 evidence. Daily billing-export reconciliation must include those unlabelled
 charges before the cost gate can pass.
 
-Project a measured cost observation only after billing export and the active
-alerts have been inspected:
+Generate the private cost capture from the detailed BigQuery billing export
+and the live Billing Budget API. The collector queries the exact project and a
+bounded 1-through-31-day window, deterministically categorizes exact LiveKit
+labels and resource identities, and fails on an identified row it cannot
+categorize. Kubernetes-created network charges and project-level observability
+charges are often unlabelled, so it conservatively includes every matching
+load-balancer, address, NAT, network-egress, Logging, and Monitoring SKU in the
+project window. That can overstate LiveKit cost but cannot silently understate
+it. Gross cost and negative credits stay separate.
+
+```sh
+OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
+node scripts/cloud/livekit-cost-collector.mjs \
+  --billing-export-table <project.dataset.gcp_billing_export_v1_table> \
+  --billing-account <billing-account-id> \
+  --window-start <YYYY-MM-DD> \
+  --window-end <exclusive-YYYY-MM-DD> \
+  --source-base-revision <exact-deployed-40-hex-revision> \
+  --deployed-revision <exact-deployed-40-hex-revision> \
+  --fixed-floor-monthly-usd 1500 \
+  --output <private-cost-capture.json> \
+  --apply
+```
+
+The command writes nothing unless both read-only queries succeed, exactly one
+`LiveKit production` budget has the admitted USD/project/label/threshold/
+notification policy, at least one LiveKit billing row is attributable, and
+every attributable row has a closed category. The gross monthly forecast is
+derived from the observed daily gross run rate and never subtracts credits; it
+cannot fall below the fixed planning floor. As of the last verified billing
+inventory, the billing account had no detailed BigQuery billing export and the
+automation identity could not read billing-account data. Those are external
+data/IAM blockers, not reasons to hand-author rows. Enable a detailed usage
+export and grant only the required BigQuery data-viewer plus Billing Budget
+viewer permissions before executing this gate. Billing exports are not
+retroactive, so preserve the first complete post-enable window as the earliest
+eligible cost observation.
+
+Project a measured cost observation only after that generated capture exists:
 
 ```sh
 OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
 node scripts/cloud/livekit-acceptance.mjs \
   --phase cost \
   --bundle infra/livekit/bundle.json \
-  --input <private-cost-observation.json> \
+  --input <private-cost-capture.json> \
   --receipt docs/ops/receipts/livekit/production-cost-<UTC>.json \
   --apply
 ```
@@ -2069,6 +2114,7 @@ Run the provider-disconnect row as follows:
    `sharedInfrastructureMutated: false`. An exact retry is idempotent; changing
    any authority under the request ref, or issuing a second request for the
    generation, must conflict.
+
 5. Within the normal five-second worker lease interval, observe a durable
    `provider_disconnect_fault_applied` event bound to the same request,
    generation, worker job, and provider digest. The worker then fences the
