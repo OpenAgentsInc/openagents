@@ -323,5 +323,11 @@ Read in this order:
    attested absence as a product, the corpus-and-trust moat, and the failure
    modes.
 
+5. [`2026-08-01-would-loupe-have-caught-coldcard.md`](2026-08-01-would-loupe-have-caught-coldcard.md)
+   — a written-down prediction, made before running Loupe against the Coldcard
+   firmware, that it would **not** have caught the entropy bug, with the four
+   structural reasons and the experiment that would settle it.
+
 Documents 3 and 4 are speculation and authorize nothing. Documents 1 and 2 are
-factual records — of source read, and of a scan run.
+factual records — of source read, and of a scan run. Document 5 is a prediction
+recorded ahead of the experiment so it can be scored honestly afterwards.
