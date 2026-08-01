@@ -1,12 +1,21 @@
-# Loupe scan of Omega — preliminary results
+# Loupe scan of Omega — results
 
-Status: **PRELIMINARY AND UNVERIFIED. Scan in progress.**
+Status: **SCAN COMPLETE. NOTHING VERIFIED.**
 
-Every finding below is in state `pending`. The verifier has not run on a single
-one of them. Loupe only enqueues verify jobs when the scan job completes, so
-none of these has had its independent second-opinion pass, and none has been
-read by a human. **Do not treat any line in this document as a confirmed
-vulnerability.** A follow-up document will record verified results.
+## Plain summary
+
+- The scan finished. It looked at **99 files** of our own code and reported
+  **132 possible problems** — 12 rated High, 106 Medium, 14 Low.
+- **Nothing has been double-checked.** Not by a second agent, not by a human.
+- The double-check step could not run, because **Loupe has a bug** (§6). Its
+  worker reports "verdict saved," its server replies "no verdict exists," the
+  job retries three times and dies. Every one of the 132 is stuck part-way.
+- **The scanner machine is stopped** so it stops costing money. Its disk is
+  kept, so the findings are still there.
+
+**So: treat every line below as an unconfirmed claim by one AI, and nothing
+more.** Some will be real. Some will be wrong. Nobody knows which yet, and
+finding out is the next job.
 
 This is the first time we have run Project Loupe against our own code. See
 [`docs/loupe/README.md`](README.md) for what Loupe is and how it works.
@@ -42,27 +51,34 @@ expose `scanner_config`, so direct API registration is the only route.
 
 Result: **99 files in scope.**
 
-### Progress at time of writing
+### Final run figures
 
 | | |
 | --- | --- |
-| Files launched | **30 / 99 (30%)** |
-| Elapsed | ~28 min |
-| Rate | ~1.1 files/min at 4 concurrent (~3.6 min/file) |
-| Findings so far | **17** |
-| Errors / auth failures | 0 |
+| Files scanned | **99 / 99 (complete)** |
+| Discovery wall time | ~3h20m (21:51 → ~01:15 UTC) |
+| Rate | ~0.5 files/min at 4 concurrent |
+| **Findings** | **132** — 12 High, 106 Medium, 14 Low |
+| Scan job | `Succeeded` |
+| Verify jobs | **0 succeeded, 14 failed, 118 never ran** (see §6) |
+| Findings verified | **0** |
+| Discovery errors / auth failures / rate limits | 0 |
 
-Files are walked roughly alphabetically, so the ~69 remaining cover
-`omega_community` through `omega_zero_base` — including the zero-base action
-gate, identity, signer-broker, and device-bridge crates. Those are the ones
-most worth scanning, and none of them is represented below yet.
-
-Projected: ~55 findings total, ~65 min more for discovery, then one verify
-session per finding.
+Roughly 1.3 findings per file. Discovery itself was completely clean — no
+provider errors, no rate limiting, no timeouts. The failure is entirely in the
+verification stage.
 
 ---
 
-## 2. Findings so far (17, all `pending`)
+## 2. The first 17 findings
+
+The full set is 132. Only the first 17 are tabulated here, from the early part
+of the run; they are kept because the surrounding analysis refers to them. The
+remaining 115 live in the scanner's database (§7 explains how to get them out)
+and the later ones are more interesting — the alphabetical walk did not reach
+our own security-relevant crates until well past this table.
+
+All 132, including these, are unverified.
 
 | # | Sev | Location | Title |
 | --- | --- | --- | --- |
@@ -168,16 +184,19 @@ Two consequences worth stating plainly:
 
 ## 4. Caveats that bound every number above
 
-- **Nothing is verified.** All 17 are `pending`. The verifier — an independent
-  Codex session, and per Loupe's design one whose verdict locks before it is
-  allowed to write a fix — has not run. Expect some of these to be dismissed.
-- **Nothing has been read by a human.** The approval gate is on, so findings
-  will park in `awaiting_approval`; no one has triaged them.
+- **Nothing is verified, and now nothing can be** without fixing the bug in §6.
+  All 132 are stuck in `validating`. The verifier — an independent Codex
+  session, and per Loupe's design one whose verdict locks before it is allowed
+  to write a fix — ran and produced nothing the server kept. Expect a
+  meaningful share of these to be dismissed once it works; that dismissal rate
+  is the single most useful unknown here.
+- **Nothing has been read by a human.** No one has triaged any of the 132.
 - **Severity is the discovering agent's own rating**, and Loupe's prompt tells
   it to be conservative. It is not a calibrated score.
-- **70% of the in-scope files have not been scanned**, including every crate
-  after `omega_agent_detect` alphabetically. The current crate distribution says
-  nothing about where bugs actually concentrate.
+- **The table in §2 shows 17 of 132.** It is an early slice, not a sample —
+  the alphabetical walk had not yet reached `omega_community`,
+  `omega_effectd`, `omega_identity`, `omega_signer_broker`, or
+  `omega_zero_base`. Do not infer where bugs concentrate from it.
 - **A finding is not a vulnerability until its PoC is applied and observed to
   fail on HEAD.** Loupe's `validate_poc` only proves the diff *applies*
   (`git apply --check`); it does not run the test. Applying and running each PoC
@@ -213,18 +232,109 @@ visibility first would have skipped that entirely.
 
 ---
 
-## 6. Next steps
+## 6. Why nothing got verified — a bug in Loupe
 
-1. Let discovery finish (~65 min from the snapshot above), then let every
-   finding take its verify pass.
-2. Record verified results in a follow-up document with per-finding verdicts.
-3. **Settle the upstream question on finding 12 before anything is published.**
-4. For findings that survive: apply each PoC to a scratch worktree and confirm
-   it fails on HEAD. That is the step that converts a claim into evidence.
-5. Decide whether a second, wider run against the inherited Zed crates is worth
-   the cost — the High finding argues it might be, and the cost argues for
-   scoping it to the crates our call sites actually reach.
+Discovery finished cleanly. **Verification never produced a single verdict**,
+and the cause is a defect in Loupe itself, not in our setup or our key.
 
-Operational note: the scanner VM is billable and idle between runs. Stop or
-delete `oa-loupe-scanner-1` when the scan completes and the data has been
-pulled off it.
+### What happens
+
+Loupe queued one verify job per finding — 132 of them. Each one ran, and each
+one ended like this:
+
+```
+INFO  verifier submitted verdict via MCP (runner skipping POST)
+WARN  server returned 409 Conflict: successful verify completion
+      requires a submitted verdict
+```
+
+Read those two lines together. **The worker says the verdict was saved. The
+server says no verdict exists.** The worker then reports the job complete, the
+server refuses with a 409, the job retries three times and fails.
+
+### Why the worker believes it
+
+`crates/loupe-worker/src/runner.rs:235-246`. When the verifier returns
+`VerifyOutcome::Submitted`, the runner deliberately skips its own POST:
+
+> MCP-driven verifier already POSTed via the MCP child's session-end flush.
+> POSTing again from here would land a duplicate verification row; the runner
+> stays out of the way.
+
+The intent is right — avoid a duplicate row. The flaw is that **the runner
+trusts that claim without ever confirming the server accepted it.** When the
+child's flush does not land, the verdict is silently lost, and the only symptom
+is a 409 at the very end.
+
+### Likely mechanism — hypothesis, not established
+
+The sandbox runs with `--die-with-parent`. When the codex process exits, the
+MCP child may be killed **before** its session-end flush completes. That would
+make this specific to sandboxed runs. We cannot confirm it from this run: the
+earlier unsandboxed macOS attempt (§5) was stopped long before it reached
+verification, so there is no comparison. Confirming or refuting this is one
+experiment: run verification once with the sandbox disabled and see whether
+verdicts land.
+
+### Why this is worth writing down
+
+It is the same failure shape this repository has been finding in its own code
+all week: **one component believes work happened, the authority disagrees, and
+nothing reconciles the two.** A ceiling that read zero for weeks, a sweep that
+reported healthy while unable to close a loop it opened, a refusal reason with
+no code path — and now a verifier that reports success into a void.
+
+There is an uncomfortable lesson in it. Loupe's design discipline is genuinely
+good, and the companion documents in this folder praise it at length —
+emission only through a typed tool, verdicts locked before fixes, PoCs that
+must fail on HEAD. **That discipline still did not prevent a fail-open gap
+between its own child process and its own server.** Typed contracts at one
+boundary do not protect the boundary you did not type.
+
+### Cost consequence
+
+14 verify jobs failed at 3 attempts each before this was caught; 118 never ran.
+Had they run, all 132 would have failed identically — roughly **396 paid agent
+sessions producing nothing**. The worker was stopped and the VM terminated for
+that reason.
+
+---
+
+## 7. Current state of the machine and the data
+
+- **VM `oa-loupe-scanner-1` is `TERMINATED`**, not deleted. No compute charge;
+  the boot disk still incurs storage cost.
+- **All 132 findings are intact** in the SQLCipher database at
+  `~/loupe-data/loupe.sqlite` on that disk, sealed under `~/loupe-data/master.key`.
+- To get them out: start the instance, start `loupe-server` with
+  `LOUPE_MASTER_KEY=$(cat ~/loupe-data/master.key)`, and use
+  `loupectl finding list 1 -n 300` / `loupectl finding show <id>`. The full
+  bring-up is in `README.md`.
+- The only secret on the box is the provider key at `~/loupe-openai.env`
+  (mode `0600`). No GitHub credentials — Omega is public and was cloned
+  anonymously.
+
+---
+
+## 8. Next steps
+
+1. **Extract the 132 findings off the disk** before deleting anything. Right
+   now they exist in exactly one place.
+2. **Report the verify bug upstream.** It is well-characterized, reproducible,
+   and a real contribution to a project whose source we have now read closely.
+   §6 is most of the report already.
+3. **Test the `--die-with-parent` hypothesis** by running verification once
+   unsandboxed. One experiment either explains the bug or eliminates the
+   explanation.
+4. **Get verdicts another way** if upstream is slow: patch the runner to POST
+   when the server reports no verdict, which is the conservative fix regardless
+   of root cause.
+5. **Settle the upstream question on finding 12 before anything is published.**
+6. For findings that survive verification: apply each PoC to a scratch worktree
+   and confirm it fails on HEAD. That is the step that converts a claim into
+   evidence, and no PoC in this run has had it.
+7. Decide whether a wider run against the inherited Zed crates is worth the
+   cost — the High finding argues it might be, and the cost argues for scoping
+   it to the crates our call sites actually reach.
+
+Do not delete `oa-loupe-scanner-1` until step 1 is done.
