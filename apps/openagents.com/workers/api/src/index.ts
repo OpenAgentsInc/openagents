@@ -494,6 +494,13 @@ import {
   makeForensicManagedSandboxRoutes,
 } from './forensic-managed-sandbox'
 import {
+  FORENSIC_SOURCE_MATERIALIZATION_PATH,
+  makeForensicSourceMaterializer,
+  makeForensicSourceRoutes,
+  makeManagedSandboxForensicSourceDelivery,
+  makeR2ForensicSourceStores,
+} from './forensic-source-materializer'
+import {
   authorizeForgeControlPlaneBearer,
   makeForgeControlPlaneRoutes,
 } from './forge-control-plane-routes'
@@ -12883,6 +12890,53 @@ const forensicManagedSandboxRoutes = makeForensicManagedSandboxRoutes<Env>({
   runtime: managedSandboxBoxV1RuntimeForEnv,
 })
 
+const forensicSourceRoutes = makeForensicSourceRoutes<Env>({
+  authenticateOwner: async (request, env, ctx) => {
+    const actor = await authenticateRequestActor(request, env, ctx)
+    if (actor === undefined || actor.kind !== 'human') return undefined
+    return {
+      userId: actor.user.userId,
+      ...(actor.tokens === undefined
+        ? {}
+        : {
+            decorateResponseHeaders: (headers: Headers) => {
+              appendSessionCookies(headers, actor.tokens!)
+            },
+          }),
+    }
+  },
+  enabled: env =>
+    isManagedSandboxBrokerEnabled(env.MANAGED_SANDBOX_BROKER_ENABLED) &&
+    isManagedSandboxRuntimeConfigured(env),
+  materializer: (env, ownerRef) =>
+    Effect.gen(function* () {
+      const policy = yield* managedSandboxBoxV1PolicyForEnv(env)
+      const runtime = yield* managedSandboxBoxV1RuntimeForEnv(env)
+      const principal = {
+        actorRef: `agent:${ownerRef}`,
+        ownerRef,
+        tenantRef: ownerRef,
+        login: ownerRef,
+        email: null,
+      }
+      const stores = makeR2ForensicSourceStores(artifactsBucketForEnv(env))
+      const broker = makeManagedSandboxBroker({
+        principal,
+        policy,
+        store: managedSandboxBoxV1StoreForEnv(env),
+        runtime,
+      })
+      return makeForensicSourceMaterializer({
+        ...stores,
+        delivery: makeManagedSandboxForensicSourceDelivery({
+          broker,
+          runtime,
+          principal,
+        }),
+      })
+    }),
+})
+
 const managedSandboxPhase2Routes = makeManagedSandboxPhase2Routes<Env>({
   authenticateOwner: async (request, env, ctx) => {
     const actor = await authenticateRequestActor(request, env, ctx)
@@ -14153,6 +14207,11 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: FORENSIC_MANAGED_SANDBOX_PATH,
     handler: (request, env, ctx) =>
       forensicManagedSandboxRoutes.handle(request, env, ctx),
+  },
+  {
+    path: FORENSIC_SOURCE_MATERIALIZATION_PATH,
+    handler: (request, env, ctx) =>
+      forensicSourceRoutes.handle(request, env, ctx),
   },
   {
     path: MANAGED_SANDBOX_DESKTOP_COMMANDS_PATH,

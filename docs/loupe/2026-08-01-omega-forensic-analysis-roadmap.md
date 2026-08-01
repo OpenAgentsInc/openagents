@@ -202,6 +202,19 @@ prove zero compute, firewall, scratch, ingress, and grant residue. Missing cost,
 readiness, settlement, broker, or cleanup truth refuses or returns
 `recovery_required`; there is no silent placement fallback.
 
+OFR-003 implements the private source path. Scoped SCM/Forge intake leaves
+owner-, tenant-, work-unit-, commit-, tree-, and byte-bound source objects in
+OpenAgents' private artifact store. The authenticated materializer validates
+those objects, emits a terminal coverage manifest, and refuses to create or
+deliver a bundle when a required dependency is absent. Complete bundles are
+canonical JSON with a deterministic SHA-256 digest and reach only the exact
+ready sandbox generation through its active `file_write` capability, with zero
+network allowance. The receipt binds every delivered file and cleanup requires
+private artifact deletion, native deleted filesystem state, scratch cleanup,
+and capability revocation. The generic materializer never invents submodule
+tree digests; the Coldcard benchmark owns the rule that its complete arm must
+include libNgU, MicroPython, ckcc-protocol, and mpy-qr.
+
 ### 3.2 What the Box and Optibox teardown changes
 
 Adopt the useful resource semantics, not the vendor control plane:
@@ -1156,6 +1169,11 @@ Exit gate:
 ## 10. Issue-ready first sequence
 
 The first implementation program should be cut in this order:
+
+OFR-001 through OFR-003 now provide the contract lattice, the native disposable
+GCE forensic worker, and immutable private source delivery. OFR-004 is the next
+implementation gate; later rows remain ordered dependencies, not parallel
+workstreams.
 
 | ID | Work item | Primary home |
 | --- | --- | --- |

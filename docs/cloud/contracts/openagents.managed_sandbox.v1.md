@@ -323,6 +323,15 @@ single-turn budget from the admitted deployment policy and resolves that exact
 budget by `budget.forensic.worker.initial.v1`; request bodies cannot substitute
 a different dispatch budget.
 
+OFR-003 adds a second authenticated, default-off boundary at
+`POST /api/forensics/source-bundles`. The admitted forensic generation receives
+one active `file_write` capability in addition to `agent_turn`; that capability
+can deliver only a scope- and digest-verified private source bundle through the
+bounded guest-I/O adapter. It does not grant SCM access or network egress. The
+source object, coverage, deterministic bundle, delivery receipt, and
+zero-residue rules are specified in
+`openagents.forensic_source_bundle.v1.md`.
+
 The live provider is default-off and requires the control VM metadata identity.
 It refuses a downloadable service-account key.
 The legacy fake GCE and fake Cloud-VM lanes remain test tools and cannot return

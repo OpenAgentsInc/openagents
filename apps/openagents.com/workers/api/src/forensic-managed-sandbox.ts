@@ -221,6 +221,7 @@ export const makeForensicManagedSandbox = (
         return yield* refuse("forensic worker lease is invalid");
       }
       const capabilityRef = `capability.${admission.workUnitRef}.agent_turn`;
+      const sourceMaterializerCapabilityRef = `capability.${admission.workUnitRef}.source_materializer`;
       const command = yield* decodeCommand({
         _tag: "Create",
         schema: "openagents.managed_sandbox_command.v1",
@@ -255,6 +256,12 @@ export const makeForensicManagedSandbox = (
           {
             capabilityRef,
             kind: "agent_turn",
+            state: "active",
+            expiresAt: admission.expiresAt,
+          },
+          {
+            capabilityRef: sourceMaterializerCapabilityRef,
+            kind: "file_write",
             state: "active",
             expiresAt: admission.expiresAt,
           },
@@ -293,7 +300,7 @@ export const makeForensicManagedSandbox = (
         networkPolicyRef: FORENSIC_NETWORK_POLICY_REF,
         leaseRef: result.resource.lease.leaseRef,
         budgetRef: admission.budgetRef,
-        capabilityRefs: [capabilityRef],
+        capabilityRefs: [capabilityRef, sourceMaterializerCapabilityRef],
         state: "worker_ready",
         admissionReceiptRef: result.receipt.receiptRef,
         readinessReceiptRef: outcome.receiptRef,
