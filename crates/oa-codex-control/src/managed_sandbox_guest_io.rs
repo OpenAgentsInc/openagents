@@ -5,6 +5,7 @@
 //! every request and receipt, bounds driver lifetime/output, and never invokes
 //! a shell on the control host.
 
+use std::collections::BTreeSet;
 use std::env;
 use std::io::{Read, Write};
 use std::path::Path;
@@ -38,6 +39,8 @@ pub enum GuestIoAction {
     WriteFile,
     ExecuteCommand,
     ReadArtifact,
+    InstallForensicSource,
+    RemoveForensicSource,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -91,6 +94,18 @@ pub struct ManagedSandboxGuestIoRequest {
     pub timeout_millis: Option<u64>,
     #[serde(default)]
     pub retention_until: Option<String>,
+    #[serde(default)]
+    pub artifact_ref: Option<String>,
+    #[serde(default)]
+    pub artifact_content_base64: Option<String>,
+    #[serde(default)]
+    pub artifact_content_digest: Option<String>,
+    #[serde(default)]
+    pub source_path: Option<String>,
+    #[serde(default)]
+    pub scratch_path: Option<String>,
+    #[serde(default)]
+    pub expected_source_digest: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -183,6 +198,30 @@ pub struct ManagedSandboxGuestIoResponse {
     pub content_base64: Option<String>,
     #[serde(default)]
     pub artifact: Option<ArtifactReceipt>,
+    #[serde(default)]
+    pub artifact_ref: Option<String>,
+    #[serde(default)]
+    pub artifact_content_digest: Option<String>,
+    #[serde(default)]
+    pub artifact_byte_length: Option<u64>,
+    #[serde(default)]
+    pub post_copy_digest: Option<String>,
+    #[serde(default)]
+    pub source_read_only: Option<bool>,
+    #[serde(default)]
+    pub source_readback_verified: Option<bool>,
+    #[serde(default)]
+    pub scratch_separate_and_writable: Option<bool>,
+    #[serde(default)]
+    pub expected_source_digest: Option<String>,
+    #[serde(default)]
+    pub guest_source_deleted: Option<bool>,
+    #[serde(default)]
+    pub guest_source_readback_absent: Option<bool>,
+    #[serde(default)]
+    pub scratch_deleted: Option<bool>,
+    #[serde(default)]
+    pub scratch_readback_absent: Option<bool>,
 }
 
 #[derive(Debug)]
@@ -274,9 +313,18 @@ impl ManagedSandboxGuestIoRequest {
                 if self.timeout_millis.is_some() {
                     return Err(GuestIoError::invalid("read_payload_invalid"));
                 }
+                self.require_source_fields_absent()?;
             }
             GuestIoAction::WriteFile => {
-                validate_path(required(&self.path, "write_path_required")?)?;
+                let path = required(&self.path, "write_path_required")?;
+                validate_path(path)?;
+                if path == "workspace/source" || path.starts_with("workspace/source/") {
+                    return Err(GuestIoError::new(
+                        403,
+                        "capability_denied",
+                        "forensic_source_requires_dedicated_delivery",
+                    ));
+                }
                 let encoding = required(&self.encoding, "write_encoding_required")?;
                 validate_encoding(encoding)?;
                 let content = required(&self.content, "write_content_required")?;
@@ -296,6 +344,7 @@ impl ManagedSandboxGuestIoRequest {
                 if self.timeout_millis.is_some() {
                     return Err(GuestIoError::invalid("write_payload_invalid"));
                 }
+                self.require_source_fields_absent()?;
             }
             GuestIoAction::ExecuteCommand => {
                 let command = required(&self.command, "command_required")?;
@@ -321,6 +370,7 @@ impl ManagedSandboxGuestIoRequest {
                     &self.content_digest,
                     &self.retention_until,
                 ])?;
+                self.require_source_fields_absent()?;
             }
             GuestIoAction::ReadArtifact => {
                 validate_path(required(&self.path, "artifact_path_required")?)?;
@@ -339,6 +389,74 @@ impl ManagedSandboxGuestIoRequest {
                 if self.timeout_millis.is_some() {
                     return Err(GuestIoError::invalid("artifact_payload_invalid"));
                 }
+                self.require_source_fields_absent()?;
+            }
+            GuestIoAction::InstallForensicSource => {
+                let artifact_ref = required(&self.artifact_ref, "source_artifact_ref_required")?;
+                validate_ref(artifact_ref)?;
+                let encoded = required(
+                    &self.artifact_content_base64,
+                    "source_artifact_content_required",
+                )?;
+                let bytes = BASE64
+                    .decode(encoded)
+                    .map_err(|_| GuestIoError::invalid("source_artifact_base64_invalid"))?;
+                let content_digest = required(
+                    &self.artifact_content_digest,
+                    "source_artifact_digest_required",
+                )?;
+                if bytes.is_empty()
+                    || bytes.len() as u64 > self.limits.max_artifact_bytes
+                    || digest(&bytes) != *content_digest
+                    || forbidden_material(&bytes)
+                {
+                    return Err(GuestIoError::invalid("source_artifact_digest_conflict"));
+                }
+                validate_source_bundle_payload(&bytes)?;
+                validate_source_paths(
+                    required(&self.source_path, "source_path_required")?,
+                    required(&self.scratch_path, "source_scratch_path_required")?,
+                )?;
+                self.require_absent(&[
+                    &self.path,
+                    &self.encoding,
+                    &self.content,
+                    &self.content_digest,
+                    &self.command,
+                    &self.command_digest,
+                    &self.cwd,
+                    &self.retention_until,
+                    &self.expected_source_digest,
+                ])?;
+                if self.timeout_millis.is_some() {
+                    return Err(GuestIoError::invalid("source_install_payload_invalid"));
+                }
+            }
+            GuestIoAction::RemoveForensicSource => {
+                validate_digest(required(
+                    &self.expected_source_digest,
+                    "expected_source_digest_required",
+                )?)?;
+                validate_source_paths(
+                    required(&self.source_path, "source_path_required")?,
+                    required(&self.scratch_path, "source_scratch_path_required")?,
+                )?;
+                self.require_absent(&[
+                    &self.path,
+                    &self.encoding,
+                    &self.content,
+                    &self.content_digest,
+                    &self.command,
+                    &self.command_digest,
+                    &self.cwd,
+                    &self.retention_until,
+                    &self.artifact_ref,
+                    &self.artifact_content_base64,
+                    &self.artifact_content_digest,
+                ])?;
+                if self.timeout_millis.is_some() {
+                    return Err(GuestIoError::invalid("source_remove_payload_invalid"));
+                }
             }
         }
         Ok(())
@@ -352,10 +470,22 @@ impl ManagedSandboxGuestIoRequest {
         }
     }
 
+    fn require_source_fields_absent(&self) -> Result<(), GuestIoError> {
+        self.require_absent(&[
+            &self.artifact_ref,
+            &self.artifact_content_base64,
+            &self.artifact_content_digest,
+            &self.source_path,
+            &self.scratch_path,
+            &self.expected_source_digest,
+        ])
+    }
+
     fn effective_path(&self) -> &str {
         self.path
             .as_deref()
             .or(self.cwd.as_deref())
+            .or(self.source_path.as_deref())
             .expect("validated guest I/O path")
     }
 }
@@ -589,6 +719,43 @@ fn validate_response(
                 validate_ref(evidence_ref)?;
             }
         }
+        GuestIoAction::InstallForensicSource => {
+            let encoded = required(
+                &request.artifact_content_base64,
+                "source_artifact_content_required",
+            )?;
+            let bytes = BASE64
+                .decode(encoded)
+                .map_err(|_| GuestIoError::conflict("source_artifact_base64_invalid"))?;
+            let expected_digest = required(
+                &request.artifact_content_digest,
+                "source_artifact_digest_required",
+            )?;
+            if response.artifact_ref != request.artifact_ref
+                || response.artifact_content_digest.as_ref() != Some(expected_digest)
+                || response.artifact_byte_length != Some(bytes.len() as u64)
+                || response.post_copy_digest.as_ref() != Some(expected_digest)
+                || response.source_read_only != Some(true)
+                || response.source_readback_verified != Some(true)
+                || response.scratch_separate_and_writable != Some(true)
+                || response.receipt.bytes_read != bytes.len() as u64
+                || response.receipt.bytes_written != bytes.len() as u64
+            {
+                return Err(GuestIoError::conflict("source_install_receipt_conflict"));
+            }
+        }
+        GuestIoAction::RemoveForensicSource => {
+            if response.expected_source_digest != request.expected_source_digest
+                || response.guest_source_deleted != Some(true)
+                || response.guest_source_readback_absent != Some(true)
+                || response.scratch_deleted != Some(true)
+                || response.scratch_readback_absent != Some(true)
+                || response.receipt.bytes_read != 0
+                || response.receipt.bytes_written != 0
+            {
+                return Err(GuestIoError::conflict("source_remove_receipt_conflict"));
+            }
+        }
     }
     Ok(())
 }
@@ -702,6 +869,116 @@ fn validate_encoding(value: &str) -> Result<(), GuestIoError> {
     }
 }
 
+fn validate_digest(value: &str) -> Result<(), GuestIoError> {
+    if value.len() == 71
+        && value.starts_with("sha256:")
+        && value[7..]
+            .chars()
+            .all(|character| character.is_ascii_hexdigit() && !character.is_ascii_uppercase())
+    {
+        Ok(())
+    } else {
+        Err(GuestIoError::invalid("sha256_digest_invalid"))
+    }
+}
+
+fn validate_source_paths(source_path: &str, scratch_path: &str) -> Result<(), GuestIoError> {
+    if source_path == "workspace/source" && scratch_path == "workspace/scratch" {
+        Ok(())
+    } else {
+        Err(GuestIoError::invalid("forensic_source_paths_not_admitted"))
+    }
+}
+
+fn validate_bundle_relative_path(value: &str) -> Result<(), GuestIoError> {
+    if value.is_empty()
+        || value.len() > 1_024
+        || value.starts_with('/')
+        || value.ends_with('/')
+        || value.contains('\0')
+        || value.contains('\\')
+        || value
+            .split('/')
+            .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+    {
+        Err(GuestIoError::invalid("source_bundle_path_invalid"))
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_source_bundle_payload(bytes: &[u8]) -> Result<(), GuestIoError> {
+    let value: Value = serde_json::from_slice(bytes)
+        .map_err(|_| GuestIoError::invalid("source_bundle_payload_invalid"))?;
+    let object = value
+        .as_object()
+        .ok_or_else(|| GuestIoError::invalid("source_bundle_payload_invalid"))?;
+    let expected_keys = [
+        "commitSha",
+        "entries",
+        "gitTreeSha",
+        "repositoryRef",
+        "schema",
+    ];
+    if object.len() != expected_keys.len()
+        || expected_keys.iter().any(|key| !object.contains_key(*key))
+        || object.get("schema").and_then(Value::as_str)
+            != Some("openagents.forensic_source_bundle_payload.v2")
+        || object
+            .get("repositoryRef")
+            .and_then(Value::as_str)
+            .is_none()
+        || object.get("commitSha").and_then(Value::as_str).is_none()
+        || object.get("gitTreeSha").and_then(Value::as_str).is_none()
+    {
+        return Err(GuestIoError::invalid("source_bundle_payload_invalid"));
+    }
+    let entries = object
+        .get("entries")
+        .and_then(Value::as_array)
+        .ok_or_else(|| GuestIoError::invalid("source_bundle_entries_invalid"))?;
+    if entries.is_empty() {
+        return Err(GuestIoError::invalid("source_bundle_entries_invalid"));
+    }
+    let mut paths = BTreeSet::new();
+    for entry in entries {
+        let entry = entry
+            .as_object()
+            .ok_or_else(|| GuestIoError::invalid("source_bundle_entry_invalid"))?;
+        if entry.len() != 3
+            || !entry.contains_key("path")
+            || !entry.contains_key("contentDigest")
+            || !entry.contains_key("contentBase64")
+        {
+            return Err(GuestIoError::invalid("source_bundle_entry_invalid"));
+        }
+        let path = entry
+            .get("path")
+            .and_then(Value::as_str)
+            .ok_or_else(|| GuestIoError::invalid("source_bundle_path_invalid"))?;
+        validate_bundle_relative_path(path)?;
+        if path == ".openagents-forensic-source.json" || !paths.insert(path) {
+            return Err(GuestIoError::invalid("source_bundle_path_duplicate"));
+        }
+        let content_digest = entry
+            .get("contentDigest")
+            .and_then(Value::as_str)
+            .ok_or_else(|| GuestIoError::invalid("source_bundle_entry_digest_invalid"))?;
+        validate_digest(content_digest)?;
+        let content = entry
+            .get("contentBase64")
+            .and_then(Value::as_str)
+            .ok_or_else(|| GuestIoError::invalid("source_bundle_entry_content_invalid"))?;
+        let content = BASE64
+            .decode(content)
+            .map_err(|_| GuestIoError::invalid("source_bundle_entry_content_invalid"))?;
+        if digest(&content) != content_digest || forbidden_material(&content) {
+            return Err(GuestIoError::invalid("source_bundle_entry_digest_conflict"));
+        }
+    }
+    Ok(())
+}
+
 fn decode_content(encoding: &str, value: &str) -> Result<Vec<u8>, GuestIoError> {
     if encoding == "utf8" {
         Ok(value.as_bytes().to_vec())
@@ -755,63 +1032,7 @@ mod tests {
     }
 
     fn request(action: GuestIoAction) -> ManagedSandboxGuestIoRequest {
-        let (
-            path,
-            encoding,
-            content,
-            content_digest,
-            command,
-            command_digest,
-            cwd,
-            timeout,
-            retention,
-        ) = match action {
-            GuestIoAction::ReadFile => (
-                Some("workspace/a.txt".to_string()),
-                Some("utf8".to_string()),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-            ),
-            GuestIoAction::WriteFile => (
-                Some("workspace/a.txt".to_string()),
-                Some("utf8".to_string()),
-                Some("hello".to_string()),
-                Some(digest(b"hello")),
-                None,
-                None,
-                None,
-                None,
-                None,
-            ),
-            GuestIoAction::ExecuteCommand => (
-                None,
-                None,
-                None,
-                None,
-                Some("pwd".to_string()),
-                Some(digest(b"pwd")),
-                Some("workspace".to_string()),
-                Some(1_000),
-                None,
-            ),
-            GuestIoAction::ReadArtifact => (
-                Some("workspace/a.bin".to_string()),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                Some("2026-07-20T20:00:00.000Z".to_string()),
-            ),
-        };
-        ManagedSandboxGuestIoRequest {
+        let mut request = ManagedSandboxGuestIoRequest {
             schema_version: SCHEMA_VERSION.to_string(),
             action,
             operation_ref: "operation.sbx05.test".to_string(),
@@ -828,16 +1049,70 @@ mod tests {
             capability_expires_at: "2026-07-19T21:00:00.000Z".to_string(),
             requested_at: "2026-07-19T20:00:00.000Z".to_string(),
             limits: limits(),
-            path,
-            encoding,
-            content,
-            content_digest,
-            command,
-            command_digest,
-            cwd,
-            timeout_millis: timeout,
-            retention_until: retention,
+            path: None,
+            encoding: None,
+            content: None,
+            content_digest: None,
+            command: None,
+            command_digest: None,
+            cwd: None,
+            timeout_millis: None,
+            retention_until: None,
+            artifact_ref: None,
+            artifact_content_base64: None,
+            artifact_content_digest: None,
+            source_path: None,
+            scratch_path: None,
+            expected_source_digest: None,
+        };
+        match action {
+            GuestIoAction::ReadFile => {
+                request.path = Some("workspace/a.txt".to_string());
+                request.encoding = Some("utf8".to_string());
+            }
+            GuestIoAction::WriteFile => {
+                request.path = Some("workspace/a.txt".to_string());
+                request.encoding = Some("utf8".to_string());
+                request.content = Some("hello".to_string());
+                request.content_digest = Some(digest(b"hello"));
+            }
+            GuestIoAction::ExecuteCommand => {
+                request.command = Some("pwd".to_string());
+                request.command_digest = Some(digest(b"pwd"));
+                request.cwd = Some("workspace".to_string());
+                request.timeout_millis = Some(1_000);
+            }
+            GuestIoAction::ReadArtifact => {
+                request.path = Some("workspace/a.bin".to_string());
+                request.retention_until = Some("2026-07-20T20:00:00.000Z".to_string());
+            }
+            GuestIoAction::InstallForensicSource => {
+                let payload = json!({
+                    "schema": "openagents.forensic_source_bundle_payload.v2",
+                    "repositoryRef": "repo.test",
+                    "commitSha": "commit-test",
+                    "gitTreeSha": "tree-test",
+                    "entries": [{
+                        "path": "src/main.rs",
+                        "contentDigest": digest(b"fn main() {}\n"),
+                        "contentBase64": BASE64.encode(b"fn main() {}\n"),
+                    }],
+                })
+                .to_string()
+                .into_bytes();
+                request.artifact_ref = Some("artifact.forensic-source.test".to_string());
+                request.artifact_content_base64 = Some(BASE64.encode(&payload));
+                request.artifact_content_digest = Some(digest(&payload));
+                request.source_path = Some("workspace/source".to_string());
+                request.scratch_path = Some("workspace/scratch".to_string());
+            }
+            GuestIoAction::RemoveForensicSource => {
+                request.expected_source_digest = Some(digest(b"source"));
+                request.source_path = Some("workspace/source".to_string());
+                request.scratch_path = Some("workspace/scratch".to_string());
+            }
         }
+        request
     }
 
     fn receipt(request: &ManagedSandboxGuestIoRequest, read: u64, written: u64) -> GuestIoReceipt {
@@ -900,6 +1175,18 @@ mod tests {
             max_processes_observed: None,
             content_base64: None,
             artifact: None,
+            artifact_ref: None,
+            artifact_content_digest: None,
+            artifact_byte_length: None,
+            post_copy_digest: None,
+            source_read_only: None,
+            source_readback_verified: None,
+            scratch_separate_and_writable: None,
+            expected_source_digest: None,
+            guest_source_deleted: None,
+            guest_source_readback_absent: None,
+            scratch_deleted: None,
+            scratch_readback_absent: None,
         }
     }
 
@@ -910,6 +1197,8 @@ mod tests {
             GuestIoAction::WriteFile,
             GuestIoAction::ExecuteCommand,
             GuestIoAction::ReadArtifact,
+            GuestIoAction::InstallForensicSource,
+            GuestIoAction::RemoveForensicSource,
         ] {
             let request = request(action);
             request.validate().unwrap();
@@ -960,6 +1249,39 @@ mod tests {
                         content_type: "application/octet-stream".to_string(),
                         evidence_refs: vec!["evidence.sbx05.test".to_string()],
                     });
+                    value
+                }
+                GuestIoAction::InstallForensicSource => {
+                    let length = request
+                        .artifact_content_base64
+                        .as_deref()
+                        .map(|encoded| {
+                            let padding = encoded
+                                .as_bytes()
+                                .iter()
+                                .rev()
+                                .take_while(|byte| **byte == b'=')
+                                .count();
+                            encoded.len() / 4 * 3 - padding
+                        })
+                        .unwrap_or_default() as u64;
+                    let mut value = base_response(&request, receipt(&request, length, length));
+                    value.artifact_ref = request.artifact_ref.clone();
+                    value.artifact_content_digest = request.artifact_content_digest.clone();
+                    value.artifact_byte_length = Some(length);
+                    value.post_copy_digest = request.artifact_content_digest.clone();
+                    value.source_read_only = Some(true);
+                    value.source_readback_verified = Some(true);
+                    value.scratch_separate_and_writable = Some(true);
+                    value
+                }
+                GuestIoAction::RemoveForensicSource => {
+                    let mut value = base_response(&request, receipt(&request, 0, 0));
+                    value.expected_source_digest = request.expected_source_digest.clone();
+                    value.guest_source_deleted = Some(true);
+                    value.guest_source_readback_absent = Some(true);
+                    value.scratch_deleted = Some(true);
+                    value.scratch_readback_absent = Some(true);
                     value
                 }
             };
@@ -1019,6 +1341,19 @@ mod tests {
         secret.content = Some("-----BEGIN PRIVATE KEY-----".to_string());
         secret.content_digest = Some(digest(secret.content.as_ref().unwrap().as_bytes()));
         assert!(secret.validate().is_err());
+
+        let mut generic_source_write = request(GuestIoAction::WriteFile);
+        generic_source_write.path = Some("workspace/source/src/main.rs".to_string());
+        assert!(matches!(
+            generic_source_write.validate(),
+            Err(error)
+                if error.status == 403
+                    && error.reason_ref == "forensic_source_requires_dedicated_delivery"
+        ));
+
+        let mut source = request(GuestIoAction::InstallForensicSource);
+        source.artifact_content_digest = Some(digest(b"different artifact"));
+        assert!(source.validate().is_err());
 
         let mut expired = request(GuestIoAction::ReadFile);
         expired.capability_expires_at = expired.requested_at.clone();

@@ -133,6 +133,7 @@ export const SandboxCapabilitySchema = S.Struct({
     "file_write",
     "artifact_read",
     "owner_tunnel",
+    "forensic_source_delivery",
   ]),
   state: S.Literals(["pending", "active", "revoked", "expired"]),
   expiresAt: SandboxTimestamp,

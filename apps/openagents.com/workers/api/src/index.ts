@@ -495,10 +495,15 @@ import {
 } from './forensic-managed-sandbox'
 import {
   FORENSIC_SOURCE_MATERIALIZATION_PATH,
+  ForensicSourceMaterializationError,
+  coldcardBuildConfigGeneratedInputRegistration,
+  makeForensicSourceDispatchAuthority,
   makeForensicSourceMaterializer,
   makeForensicSourceRoutes,
+  makeGcsForensicSourceStores,
+  makeGithubForensicScmResolver,
   makeManagedSandboxForensicSourceDelivery,
-  makeR2ForensicSourceStores,
+  makeRegisteredForensicGeneratedInputResolver,
 } from './forensic-source-materializer'
 import {
   authorizeForgeControlPlaneBearer,
@@ -12888,6 +12893,55 @@ const forensicManagedSandboxRoutes = makeForensicManagedSandboxRoutes<Env>({
   profileDigest: env => env.OA_MANAGED_SANDBOX_PROFILE_DIGEST,
   store: managedSandboxBoxV1StoreForEnv,
   runtime: managedSandboxBoxV1RuntimeForEnv,
+  assertSourceReady: (env, binding) =>
+    Effect.gen(function* () {
+      const policy = yield* managedSandboxBoxV1PolicyForEnv(env)
+      const runtime = yield* managedSandboxBoxV1RuntimeForEnv(env)
+      const principal = {
+        actorRef: `agent:${binding.ownerRef}`,
+        ownerRef: binding.ownerRef,
+        tenantRef: binding.tenantRef,
+        login: binding.ownerRef,
+        email: null,
+      }
+      const stores = makeGcsForensicSourceStores(artifactsBucketForEnv(env))
+      const broker = makeManagedSandboxBroker({
+        principal,
+        policy,
+        store: managedSandboxBoxV1StoreForEnv(env),
+        runtime,
+      })
+      const lease = yield* makeForensicSourceDispatchAuthority({
+        ...stores,
+        delivery: makeManagedSandboxForensicSourceDelivery({
+          broker,
+          runtime,
+          principal,
+        }),
+      }).assertReady(binding)
+      const mapSourceError = (error: ForensicSourceMaterializationError) =>
+        new BoxV1FacadeError({
+          code: 'conflict',
+          status: 409,
+          message: error.message,
+          retryable: error.retryable,
+        })
+      return {
+        expiresAt: lease.expiresAt,
+        release: lease.release.pipe(Effect.mapError(mapSourceError)),
+      }
+    }).pipe(
+      Effect.mapError(error =>
+        error instanceof ForensicSourceMaterializationError
+          ? new BoxV1FacadeError({
+              code: 'conflict',
+              status: 409,
+              message: error.message,
+              retryable: error.retryable,
+            })
+          : error,
+      ),
+    ),
 })
 
 const forensicSourceRoutes = makeForensicSourceRoutes<Env>({
@@ -12919,7 +12973,7 @@ const forensicSourceRoutes = makeForensicSourceRoutes<Env>({
         login: ownerRef,
         email: null,
       }
-      const stores = makeR2ForensicSourceStores(artifactsBucketForEnv(env))
+      const stores = makeGcsForensicSourceStores(artifactsBucketForEnv(env))
       const broker = makeManagedSandboxBroker({
         principal,
         policy,
@@ -12927,6 +12981,24 @@ const forensicSourceRoutes = makeForensicSourceRoutes<Env>({
         runtime,
       })
       return makeForensicSourceMaterializer({
+        scm: makeGithubForensicScmResolver({
+          readAccessToken: userRef =>
+            Effect.tryPromise({
+              try: async () =>
+                (await authKvStoreForEnv(env).get(
+                  githubIdentityTokenKey(userRef),
+                )) ?? undefined,
+              catch: () =>
+                new ForensicSourceMaterializationError({
+                  code: 'source_unavailable',
+                  message: 'GitHub identity authority is unavailable',
+                  retryable: true,
+                }),
+            }),
+        }),
+        generated: makeRegisteredForensicGeneratedInputResolver([
+          coldcardBuildConfigGeneratedInputRegistration,
+        ]),
         ...stores,
         delivery: makeManagedSandboxForensicSourceDelivery({
           broker,

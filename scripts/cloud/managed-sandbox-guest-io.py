@@ -17,6 +17,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -163,6 +164,328 @@ def write_beneath(root_fd: int, relative: str, value: bytes) -> None:
         os.close(fd)
 
 
+def canonical_json(value: Any) -> bytes:
+    return json.dumps(
+        value, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+
+
+def validate_bundle_path(value: str) -> None:
+    if (
+        not value
+        or len(value) > 1024
+        or value.startswith("/")
+        or value.endswith("/")
+        or "\\" in value
+        or any(segment in {"", ".", ".."} for segment in value.split("/"))
+    ):
+        raise ValueError("source_bundle_path_invalid")
+
+
+def decode_source_bundle(
+    value: bytes,
+) -> tuple[dict[str, Any], list[tuple[str, bytes]]]:
+    payload = json.loads(value)
+    if not isinstance(payload, dict) or set(payload) != {
+        "schema",
+        "repositoryRef",
+        "commitSha",
+        "gitTreeSha",
+        "entries",
+    }:
+        raise ValueError("source_bundle_payload_invalid")
+    if (
+        payload["schema"] != "openagents.forensic_source_bundle_payload.v2"
+        or not all(
+            isinstance(payload[field], str) and payload[field]
+            for field in ("repositoryRef", "commitSha", "gitTreeSha")
+        )
+    ):
+        raise ValueError("source_bundle_payload_invalid")
+    if not isinstance(payload["entries"], list) or not payload["entries"]:
+        raise ValueError("source_bundle_entries_invalid")
+    files: list[tuple[str, bytes]] = []
+    paths: set[str] = set()
+    for entry in payload["entries"]:
+        if not isinstance(entry, dict) or set(entry) != {
+            "path",
+            "contentDigest",
+            "contentBase64",
+        }:
+            raise ValueError("source_bundle_entry_invalid")
+        path = entry["path"]
+        if not isinstance(path, str):
+            raise ValueError("source_bundle_path_invalid")
+        validate_bundle_path(path)
+        if path == ".openagents-forensic-source.json" or path in paths:
+            raise ValueError("source_bundle_path_duplicate")
+        paths.add(path)
+        try:
+            content = base64.b64decode(entry["contentBase64"], validate=True)
+        except (TypeError, ValueError):
+            raise ValueError("source_bundle_entry_content_invalid") from None
+        if (
+            not isinstance(entry["contentDigest"], str)
+            or digest(content) != entry["contentDigest"]
+            or contains_secret(content)
+        ):
+            raise ValueError("source_bundle_entry_digest_conflict")
+        files.append((path, content))
+    return payload, files
+
+
+def installation_scope(request: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "operationRef": request["operationRef"],
+        "sandboxRef": request["sandboxRef"],
+        "resourceGeneration": request["resourceGeneration"],
+        "capabilityRef": request["capabilityRef"],
+    }
+
+
+def source_manifest(
+    payload: dict[str, Any], request: dict[str, Any]
+) -> dict[str, Any]:
+    return {
+        "schema": payload["schema"],
+        "repositoryRef": payload["repositoryRef"],
+        "commitSha": payload["commitSha"],
+        "gitTreeSha": payload["gitTreeSha"],
+        "entries": [
+            {"path": entry["path"], "contentDigest": entry["contentDigest"]}
+            for entry in payload["entries"]
+        ],
+        "installationScope": installation_scope(request),
+    }
+
+
+def installed_source_digest(source: Path) -> str:
+    marker = source / ".openagents-forensic-source.json"
+    if marker.is_symlink() or not marker.is_file():
+        raise ValueError("installed_source_manifest_invalid")
+    manifest = json.loads(marker.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict) or set(manifest) != {
+        "schema",
+        "repositoryRef",
+        "commitSha",
+        "gitTreeSha",
+        "entries",
+        "installationScope",
+    }:
+        raise ValueError("installed_source_manifest_invalid")
+    if not isinstance(manifest["entries"], list):
+        raise ValueError("installed_source_manifest_invalid")
+    entries = []
+    paths: set[str] = set()
+    expected_directories: set[str] = set()
+    for entry in manifest["entries"]:
+        if not isinstance(entry, dict) or set(entry) != {"path", "contentDigest"}:
+            raise ValueError("installed_source_manifest_invalid")
+        path = entry["path"]
+        validate_bundle_path(path)
+        if path == ".openagents-forensic-source.json" or path in paths:
+            raise ValueError("installed_source_manifest_invalid")
+        paths.add(path)
+        candidate = source / path
+        if candidate.is_symlink() or not candidate.is_file():
+            raise ValueError("installed_source_content_drift")
+        parent = Path(path).parent
+        while parent != Path("."):
+            expected_directories.add(parent.as_posix())
+            parent = parent.parent
+        content = candidate.read_bytes()
+        if digest(content) != entry["contentDigest"]:
+            raise ValueError("installed_source_content_drift")
+        entries.append(
+            {
+                "path": path,
+                "contentDigest": entry["contentDigest"],
+                "contentBase64": base64.b64encode(content).decode("ascii"),
+            }
+        )
+    for candidate in source.rglob("*"):
+        relative = candidate.relative_to(source).as_posix()
+        if candidate.is_symlink():
+            raise ValueError("installed_source_content_drift")
+        if candidate.is_file():
+            if relative not in paths and relative != ".openagents-forensic-source.json":
+                raise ValueError("installed_source_content_drift")
+        elif candidate.is_dir():
+            if relative not in expected_directories:
+                raise ValueError("installed_source_content_drift")
+        else:
+            raise ValueError("installed_source_content_drift")
+    payload = {
+        "schema": manifest["schema"],
+        "repositoryRef": manifest["repositoryRef"],
+        "commitSha": manifest["commitSha"],
+        "gitTreeSha": manifest["gitTreeSha"],
+        "entries": entries,
+    }
+    return digest(canonical_json(payload))
+
+
+def installed_source_scope(source: Path) -> dict[str, Any]:
+    marker = source / ".openagents-forensic-source.json"
+    manifest = json.loads(marker.read_text(encoding="utf-8"))
+    scope = manifest.get("installationScope") if isinstance(manifest, dict) else None
+    if not isinstance(scope, dict) or set(scope) != {
+        "operationRef",
+        "sandboxRef",
+        "resourceGeneration",
+        "capabilityRef",
+    }:
+        raise ValueError("installed_source_scope_invalid")
+    return scope
+
+
+def source_tree_is_read_only(source: Path) -> bool:
+    return all(
+        (path.stat().st_mode & 0o222) == 0
+        for path in [source, *source.rglob("*")]
+    )
+
+
+def install_forensic_source(request: dict[str, Any]) -> dict[str, Any]:
+    if (
+        request["sourcePath"] != "workspace/source"
+        or request["scratchPath"] != "workspace/scratch"
+    ):
+        raise ValueError("forensic_source_paths_not_admitted")
+    artifact = base64.b64decode(request["artifactContentBase64"], validate=True)
+    if not artifact or len(artifact) > int(request["limits"]["maxArtifactBytes"]):
+        raise ValueError("source_artifact_out_of_bounds")
+    if digest(artifact) != request["artifactContentDigest"] or contains_secret(
+        artifact
+    ):
+        raise ValueError("source_artifact_digest_conflict")
+    payload, files = decode_source_bundle(artifact)
+    source = WORKSPACE / "source"
+    source_scratch = WORKSPACE / "scratch"
+    if source.is_symlink() or source_scratch.is_symlink():
+        raise ValueError("forensic_source_destination_symlink")
+    if source.is_dir() and not source_scratch.exists():
+        if (
+            installed_source_digest(source) == request["artifactContentDigest"]
+            and installed_source_scope(source) == installation_scope(request)
+            and source_tree_is_read_only(source)
+        ):
+            source_scratch.mkdir(mode=0o700)
+            return {
+                "postCopyDigest": request["artifactContentDigest"],
+                "artifactByteLength": len(artifact),
+            }
+        raise ValueError("forensic_source_destination_not_empty")
+    if not source.exists() and source_scratch.exists():
+        make_tree_removable(source_scratch)
+        shutil.rmtree(source_scratch)
+    if source.exists() or source_scratch.exists():
+        if (
+            source.is_dir()
+            and source_scratch.is_dir()
+            and installed_source_digest(source) == request["artifactContentDigest"]
+            and installed_source_scope(source) == installation_scope(request)
+            and source_tree_is_read_only(source)
+            and os.access(source_scratch, os.W_OK)
+            and not any(source_scratch.iterdir())
+        ):
+            return {
+                "postCopyDigest": request["artifactContentDigest"],
+                "artifactByteLength": len(artifact),
+            }
+        raise ValueError("forensic_source_destination_not_empty")
+    staging = Path(tempfile.mkdtemp(prefix=".forensic-source-", dir=WORKSPACE))
+    try:
+        staging_fd = os.open(staging, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        try:
+            for path, content in files:
+                write_beneath(staging_fd, path, content)
+            write_beneath(
+                staging_fd,
+                ".openagents-forensic-source.json",
+                canonical_json(source_manifest(payload, request)),
+            )
+        finally:
+            os.close(staging_fd)
+        for path in sorted(
+            staging.rglob("*"), key=lambda item: len(item.parts), reverse=True
+        ):
+            path.chmod(0o555 if path.is_dir() else 0o444)
+        staging.chmod(0o555)
+        staging.rename(source)
+        source_scratch.mkdir(mode=0o700)
+    except BaseException:
+        if staging.exists():
+            for path in staging.rglob("*"):
+                path.chmod(0o700 if path.is_dir() else 0o600)
+            staging.chmod(0o700)
+            shutil.rmtree(staging)
+        if source.exists():
+            make_tree_removable(source)
+            shutil.rmtree(source)
+        if source_scratch.exists():
+            make_tree_removable(source_scratch)
+            shutil.rmtree(source_scratch)
+        raise
+    post_copy_digest = installed_source_digest(source)
+    if (
+        post_copy_digest != request["artifactContentDigest"]
+        or not source_tree_is_read_only(source)
+        or not source_scratch.is_dir()
+        or not os.access(source_scratch, os.W_OK)
+        or source.resolve() == source_scratch.resolve()
+    ):
+        make_tree_removable(source)
+        make_tree_removable(source_scratch)
+        shutil.rmtree(source, ignore_errors=True)
+        shutil.rmtree(source_scratch, ignore_errors=True)
+        raise ValueError("forensic_source_post_copy_verification_failed")
+    return {"postCopyDigest": post_copy_digest, "artifactByteLength": len(artifact)}
+
+
+def make_tree_removable(root: Path) -> None:
+    if not root.exists():
+        return
+    for path in root.rglob("*"):
+        if path.is_symlink():
+            continue
+        if path.is_dir():
+            path.chmod(0o700)
+        else:
+            path.chmod(0o600)
+    root.chmod(0o700)
+
+
+def remove_forensic_source(request: dict[str, Any]) -> None:
+    if (
+        request["sourcePath"] != "workspace/source"
+        or request["scratchPath"] != "workspace/scratch"
+    ):
+        raise ValueError("forensic_source_paths_not_admitted")
+    source = WORKSPACE / "source"
+    source_scratch = WORKSPACE / "scratch"
+    if source.is_symlink() or source_scratch.is_symlink():
+        raise ValueError("forensic_source_cleanup_symlink")
+    digest_mismatch = False
+    if source.exists():
+        try:
+            digest_mismatch = (
+                installed_source_digest(source) != request["expectedSourceDigest"]
+            )
+        except (OSError, ValueError, json.JSONDecodeError):
+            digest_mismatch = True
+    make_tree_removable(source)
+    make_tree_removable(source_scratch)
+    if source.exists():
+        shutil.rmtree(source)
+    if source_scratch.exists():
+        shutil.rmtree(source_scratch)
+    if source.exists() or source_scratch.exists():
+        raise ValueError("forensic_source_cleanup_incomplete")
+    if digest_mismatch:
+        raise ValueError("installed_source_digest_conflict_removed")
+
+
 def process_group_count(group: int) -> int:
     count = 0
     for stat_path in Path("/proc").glob("[0-9]*/stat"):
@@ -203,39 +526,50 @@ def execute_command(request: dict[str, Any], scratch: Path) -> dict[str, Any]:
     output_limit = int(limits["maxOutputBytes"])
     before = resource.getrusage(resource.RUSAGE_CHILDREN)
     started = time.monotonic()
+    bubblewrap = [
+        "/usr/bin/bwrap",
+        "--die-with-parent",
+        "--unshare-net",
+        "--unshare-pid",
+        "--unshare-uts",
+        "--unshare-ipc",
+        "--ro-bind",
+        "/",
+        "/",
+        "--bind",
+        str(WORKSPACE),
+        str(WORKSPACE),
+        "--bind",
+        f"/proc/self/fd/{cwd_fd}",
+        str(canonical_cwd),
+    ]
+    source = WORKSPACE / "source"
+    source_scratch = WORKSPACE / "scratch"
+    if source.is_dir():
+        bubblewrap.extend(["--ro-bind", str(source), str(source)])
+    if source_scratch.is_dir():
+        bubblewrap.extend(["--bind", str(source_scratch), str(source_scratch)])
+    bubblewrap.extend(
+        [
+            "--tmpfs",
+            "/run",
+            "--proc",
+            "/proc",
+            "--dev",
+            "/dev",
+            "--bind",
+            str(scratch),
+            "/tmp",
+            "--chdir",
+            str(canonical_cwd),
+            "/bin/sh",
+            "-lc",
+            request["command"],
+        ]
+    )
     try:
         process = subprocess.Popen(
-            [
-                "/usr/bin/bwrap",
-                "--die-with-parent",
-                "--unshare-net",
-                "--unshare-pid",
-                "--unshare-uts",
-                "--unshare-ipc",
-                "--ro-bind",
-                "/",
-                "/",
-                "--bind",
-                str(WORKSPACE),
-                str(WORKSPACE),
-                "--bind",
-                f"/proc/self/fd/{cwd_fd}",
-                str(canonical_cwd),
-                "--tmpfs",
-                "/run",
-                "--proc",
-                "/proc",
-                "--dev",
-                "/dev",
-                "--bind",
-                str(scratch),
-                "/tmp",
-                "--chdir",
-                str(canonical_cwd),
-                "/bin/sh",
-                "-lc",
-                request["command"],
-            ],
+            bubblewrap,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -328,7 +662,7 @@ def receipt(
     identity = digest(
         f"{request['operationRef']}|{request['resourceGeneration']}".encode()
     )[7:]
-    effective_path = request.get("path") or request.get("cwd")
+    effective_path = request.get("path") or request.get("cwd") or request.get("sourcePath")
     return {
         "schemaVersion": "openagents.managed_sandbox_guest_io_receipt.v1",
         "receiptRef": f"receipt.sbx09.{identity}",
@@ -362,6 +696,11 @@ def handle(request: dict[str, Any]) -> dict[str, Any]:
     started_at = bounded_timestamp(request["requestedAt"])
     operation_key = hashlib.sha256(request["operationRef"].encode()).hexdigest()[:24]
     scratch = SCRATCH_ROOT / operation_key
+    if scratch.is_symlink():
+        raise ValueError("operation_scratch_symlink")
+    if scratch.exists():
+        make_tree_removable(scratch)
+        shutil.rmtree(scratch)
     scratch.mkdir(parents=True, mode=0o700, exist_ok=False)
     root_fd = os.open(WORKSPACE, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
     action = request["action"]
@@ -453,6 +792,30 @@ def handle(request: dict[str, Any]) -> dict[str, Any]:
                 },
             )
             receipt_kwargs["bytes_read"] = len(value)
+        elif action == "install_forensic_source":
+            install = install_forensic_source(request)
+            response.update(
+                artifactRef=request["artifactRef"],
+                artifactContentDigest=request["artifactContentDigest"],
+                artifactByteLength=install["artifactByteLength"],
+                postCopyDigest=install["postCopyDigest"],
+                sourceReadOnly=True,
+                sourceReadbackVerified=True,
+                scratchSeparateAndWritable=True,
+            )
+            receipt_kwargs.update(
+                bytes_read=install["artifactByteLength"],
+                bytes_written=install["artifactByteLength"],
+            )
+        elif action == "remove_forensic_source":
+            remove_forensic_source(request)
+            response.update(
+                expectedSourceDigest=request["expectedSourceDigest"],
+                guestSourceDeleted=True,
+                guestSourceReadbackAbsent=True,
+                scratchDeleted=True,
+                scratchReadbackAbsent=True,
+            )
         else:
             raise ValueError("action_not_admitted")
     finally:

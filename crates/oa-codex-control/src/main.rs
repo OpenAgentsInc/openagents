@@ -44,10 +44,31 @@ const DEFAULT_OPENCODE_BIN: &str = "/usr/local/bin/opencode";
 const DEFAULT_STATE_ROOT: &str = "/var/lib/openagents/codex-control";
 const DEFAULT_WORKROOMD_BIN: &str = "/usr/local/bin/oa-workroomd";
 const MAX_BODY_BYTES: usize = 128 * 1024 * 1024;
+const MAX_MANAGED_SANDBOX_GUEST_IO_BODY_BYTES: usize = 2 * 1024 * 1024;
+const MAX_FORENSIC_SOURCE_INSTALL_BODY_BYTES: usize = 24 * 1024 * 1024;
 static JSON_WRITE_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// cloud#97: count of queued jobs the internal tick worker has dispatched and
 /// not yet observed reach a terminal state. Bounds queue concurrency.
 static QUEUE_IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
+
+fn managed_sandbox_guest_io_body_admitted(body: &[u8]) -> bool {
+    if body.len() <= MAX_MANAGED_SANDBOX_GUEST_IO_BODY_BYTES {
+        return true;
+    }
+    if body.len() > MAX_FORENSIC_SOURCE_INSTALL_BODY_BYTES {
+        return false;
+    }
+    serde_json::from_slice::<Value>(body)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("action")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
+        .as_deref()
+        == Some("install_forensic_source")
+}
 
 #[derive(Debug, Clone)]
 struct Config {
@@ -740,10 +761,10 @@ fn handle_stream(mut stream: TcpStream, config: &Config) -> Result<(), String> {
             }
         }
         "/v1/managed-sandbox/runtime/io" => {
-            if request.body.len() > 2 * 1024 * 1024 {
+            if !managed_sandbox_guest_io_body_admitted(&request.body) {
                 return write_invalid_request(
                     &mut stream,
-                    "invalid_request: managed-sandbox guest I/O body exceeds 2 MiB".to_string(),
+                    "invalid_request: managed-sandbox guest I/O body exceeds the action-specific bound".to_string(),
                 );
             }
             let operation = match serde_json::from_slice::<
@@ -5467,6 +5488,45 @@ fn redact_for_log(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn guest_io_body_limit_expands_only_for_bounded_forensic_source_install() {
+        let install = serde_json::to_vec(&serde_json::json!({
+            "action": "install_forensic_source",
+            "artifactContentBase64": "a".repeat(MAX_MANAGED_SANDBOX_GUEST_IO_BODY_BYTES),
+        }))
+        .unwrap();
+        assert!(install.len() > MAX_MANAGED_SANDBOX_GUEST_IO_BODY_BYTES);
+        assert!(managed_sandbox_guest_io_body_admitted(&install));
+
+        let generic = serde_json::to_vec(&serde_json::json!({
+            "action": "write_file",
+            "content": "a".repeat(MAX_MANAGED_SANDBOX_GUEST_IO_BODY_BYTES),
+        }))
+        .unwrap();
+        assert!(!managed_sandbox_guest_io_body_admitted(&generic));
+
+        let remove = serde_json::to_vec(&serde_json::json!({
+            "action": "remove_forensic_source",
+            "padding": "a".repeat(MAX_MANAGED_SANDBOX_GUEST_IO_BODY_BYTES),
+        }))
+        .unwrap();
+        assert!(!managed_sandbox_guest_io_body_admitted(&remove));
+
+        let oversized = format!(
+            "{{\"action\":\"install_forensic_source\",\"padding\":\"{}\"}}",
+            "a".repeat(MAX_FORENSIC_SOURCE_INSTALL_BODY_BYTES)
+        );
+        assert!(oversized.len() > MAX_FORENSIC_SOURCE_INSTALL_BODY_BYTES);
+        assert!(!managed_sandbox_guest_io_body_admitted(
+            oversized.as_bytes()
+        ));
+        assert!(!managed_sandbox_guest_io_body_admitted(&vec![
+            b'!';
+            MAX_MANAGED_SANDBOX_GUEST_IO_BODY_BYTES
+                + 1
+        ]));
+    }
 
     #[test]
     fn parses_sandbox_aliases() {

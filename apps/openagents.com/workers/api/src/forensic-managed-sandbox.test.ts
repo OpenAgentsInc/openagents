@@ -1,5 +1,6 @@
 import type { ForensicBudget } from "@openagentsinc/forensic-contract";
-import { Effect } from "effect";
+import { ManagedSandboxResourceSchema } from "@openagentsinc/managed-sandbox-contract";
+import { Effect, Schema as S } from "effect";
 import { describe, expect, test } from "vite-plus/test";
 
 import {
@@ -8,16 +9,17 @@ import {
   makeForensicManagedSandbox,
   makeForensicManagedSandboxRoutes,
 } from "./forensic-managed-sandbox";
+import { BoxV1FacadeError } from "./managed-sandbox-box-v1-routes";
 import type {
   BoxV1LifecycleOutcome,
   BoxV1Policy,
   BoxV1Runtime,
 } from "./managed-sandbox-box-v1-routes";
-import { makeManagedSandboxBroker, type ManagedSandboxBroker } from "./managed-sandbox-broker";
 import {
   BoxV1MemoryAuthority,
   makeBoxV1MemoryRuntime,
 } from "./managed-sandbox-box-v1.test-support";
+import { type ManagedSandboxBroker, makeManagedSandboxBroker } from "./managed-sandbox-broker";
 
 const budget: ForensicBudget = {
   maxTimeSeconds: 900,
@@ -46,6 +48,15 @@ const budgetScope = {
   sandboxRef: usage.sandboxRef,
   resourceGeneration: usage.resourceGeneration,
   now: new Date(usage.observedAt),
+};
+const sourceBinding = {
+  runRef: "run.forensic.fixture",
+  authorityRef: "authority.forensic-source.fixture",
+  bundleRef: "bundle.forensic.fixture",
+  coverageRef: "coverage.forensic.fixture",
+  coverageDigest: `sha256:${"c".repeat(64)}`,
+  sourceDigest: `sha256:${"d".repeat(64)}`,
+  materializationReceiptRef: "receipt.forensic-source.fixture",
 };
 const principal = {
   actorRef: "agent:owner.forensic.fixture",
@@ -167,6 +178,11 @@ describe("forensic managed sandbox", () => {
       },
       profileDigest: `sha256:${"b".repeat(64)}`,
       resolveBudget: () => Effect.succeed(budget),
+      assertSourceReady: () =>
+        Effect.succeed({
+          expiresAt: "2026-08-01T10:15:00.000Z",
+          release: Effect.void,
+        }),
     });
 
     await expect(
@@ -202,6 +218,11 @@ describe("forensic managed sandbox", () => {
       policy,
       profileDigest: `sha256:${"b".repeat(64)}`,
       resolveBudget: () => Effect.succeed(budget),
+      assertSourceReady: () =>
+        Effect.succeed({
+          expiresAt: "2026-08-01T10:15:00.000Z",
+          release: Effect.void,
+        }),
     });
     expect(Object.keys(service).sort()).toEqual([
       "admit",
@@ -217,8 +238,13 @@ describe("forensic managed sandbox", () => {
     const memoryRuntime = makeBoxV1MemoryRuntime();
     const lifecycleActions: Array<BoxV1LifecycleOutcome["action"]> = [];
     let probeCalls = 0;
+    let dispatchDeadlineAt: string | undefined;
     const runtime: BoxV1Runtime = {
       ...memoryRuntime,
+      dispatch: (input) => {
+        dispatchDeadlineAt = input.guardrails?.deadlineAt;
+        return memoryRuntime.dispatch(input);
+      },
       lifecycle: (input) => {
         const action = input.command._tag.toLowerCase() as "create" | "stop" | "resume" | "delete";
         lifecycleActions.push(action);
@@ -286,7 +312,12 @@ describe("forensic managed sandbox", () => {
           },
         }),
     };
-    const broker = makeManagedSandboxBroker({ principal, policy, store: authority, runtime });
+    const broker = makeManagedSandboxBroker({
+      principal,
+      policy,
+      store: authority,
+      runtime,
+    });
     const service = makeForensicManagedSandbox({
       broker,
       policy,
@@ -294,6 +325,11 @@ describe("forensic managed sandbox", () => {
       runtime,
       profileDigest: `sha256:${"b".repeat(64)}`,
       resolveBudget: () => Effect.succeed(budget),
+      assertSourceReady: () =>
+        Effect.succeed({
+          expiresAt: "2026-08-01T10:05:00.000Z",
+          release: Effect.void,
+        }),
       now: () => new Date("2026-08-01T10:00:00.000Z"),
     });
     const placement = await Effect.runPromise(
@@ -325,6 +361,7 @@ describe("forensic managed sandbox", () => {
             capabilityRef: placement.capabilityRefs[0]!,
             requestedAt: "2026-08-01T10:00:00.000Z",
             prompt: "must not run",
+            sourceBinding,
           },
         ),
       ),
@@ -361,6 +398,7 @@ describe("forensic managed sandbox", () => {
             capabilityRef,
             requestedAt: "2026-08-01T10:00:00.000Z",
             prompt: "must not run",
+            sourceBinding,
           }),
         ),
       ).rejects.toBeDefined();
@@ -380,6 +418,7 @@ describe("forensic managed sandbox", () => {
             capabilityRef: "capability.forensic.forged",
             requestedAt: "2026-08-01T10:00:00.000Z",
             prompt: "must not run",
+            sourceBinding,
           },
         ),
       ),
@@ -402,7 +441,10 @@ describe("forensic managed sandbox", () => {
     await expect(
       Effect.runPromise(
         service.collectArtifact(
-          { ...placement, resourceGeneration: placement.resourceGeneration + 1 },
+          {
+            ...placement,
+            resourceGeneration: placement.resourceGeneration + 1,
+          },
           "2026-08-01T10:00:00.000Z",
         ),
       ),
@@ -424,8 +466,10 @@ describe("forensic managed sandbox", () => {
         capabilityRef: placement.capabilityRefs[0]!,
         requestedAt: "2026-08-01T10:00:00.000Z",
         prompt: "inspect the admitted source",
+        sourceBinding,
       }),
     );
+    expect(dispatchDeadlineAt).toBe("2026-08-01T10:05:00.000Z");
     await Effect.runPromise(
       service.cancel(placement, {
         commandRef: "command.forensic.cancel.fixture",
@@ -447,9 +491,15 @@ describe("forensic managed sandbox", () => {
         requestedAt: "2026-08-01T10:00:00.000Z",
       }),
     );
-    expect(cleaned).toMatchObject({ state: "cleaned", stopReceiptRef: expect.any(String) });
+    expect(cleaned).toMatchObject({
+      state: "cleaned",
+      stopReceiptRef: expect.any(String),
+    });
     const durable = authority.resources.get(placement.sandboxRef);
-    expect(durable?.facts).toMatchObject({ lifecycle: "deleted", cleanupComplete: true });
+    expect(durable?.facts).toMatchObject({
+      lifecycle: "deleted",
+      cleanupComplete: true,
+    });
     expect(durable?.capabilities.every((capability) => capability.state === "revoked")).toBe(true);
     expect(lifecycleActions).toEqual(["create", "stop", "delete"]);
     expect(probeCalls).toBe(1);
@@ -507,7 +557,12 @@ describe("forensic managed sandbox", () => {
         });
       },
     };
-    const broker = makeManagedSandboxBroker({ principal, policy, store: authority, runtime });
+    const broker = makeManagedSandboxBroker({
+      principal,
+      policy,
+      store: authority,
+      runtime,
+    });
     const service = makeForensicManagedSandbox({
       broker,
       policy,
@@ -515,6 +570,11 @@ describe("forensic managed sandbox", () => {
       runtime,
       profileDigest: `sha256:${"b".repeat(64)}`,
       resolveBudget: () => Effect.succeed(budget),
+      assertSourceReady: () =>
+        Effect.succeed({
+          expiresAt: "2026-08-01T10:15:00.000Z",
+          release: Effect.void,
+        }),
       now: () => new Date("2026-08-01T10:00:00.000Z"),
     });
     const placement = await Effect.runPromise(
@@ -544,6 +604,7 @@ describe("forensic managed sandbox", () => {
           capabilityRef: placement.capabilityRefs[0]!,
           requestedAt: "2026-08-01T10:00:00.000Z",
           prompt: "must not run after a failed probe",
+          sourceBinding,
         }),
       ),
     ).rejects.toBeDefined();
@@ -570,6 +631,150 @@ describe("forensic managed sandbox", () => {
     expect(lifecycleActions).toEqual(["create", "delete"]);
   });
 
+  test("refuses before runtime/model dispatch when durable source authority is absent", async () => {
+    let runtimeDispatches = 0;
+    const sourcePrincipal = {
+      actorRef: "agent:owner.forensic.source-gate",
+      ownerRef: "owner.forensic.source-gate",
+      tenantRef: "tenant.forensic.source-gate",
+      login: "Forensics",
+      email: null,
+    };
+    const resource = S.decodeUnknownSync(ManagedSandboxResourceSchema)({
+      schema: "openagents.managed_sandbox.v1",
+      sandboxRef: "sandbox.forensic.source-gate",
+      ownerRef: "owner.forensic.source-gate",
+      tenantRef: "tenant.forensic.source-gate",
+      programRef: "program.managed_agent_sandboxes",
+      workUnitRef: "work.forensic.source-gate",
+      attachmentRef: "attachment.forensic.source-gate",
+      attachmentGeneration: 1,
+      resourceGeneration: 1,
+      version: 1,
+      lastEventSequence: 1,
+      target: policy.target,
+      imageDigest: policy.imageDigest,
+      profileRef: policy.profileRef,
+      lease: {
+        leaseRef: "lease.forensic.source-gate",
+        state: "active",
+        issuedAt: "2026-08-01T10:00:00.000Z",
+        expiresAt: "2026-08-01T10:15:00.000Z",
+        ttlSeconds: 900,
+        renewable: false,
+      },
+      budget: {
+        currency: "USD",
+        maxCostMicros: budget.maxCostMicros,
+        maxCpuMillis: budget.maxTimeSeconds * 1_000,
+        maxNetworkBytes: budget.maxNetworkBytes,
+        maxArtifactBytes: budget.maxArtifactBytes,
+        maxLifetimeSeconds: budget.maxTimeSeconds,
+      },
+      capabilities: [
+        {
+          capabilityRef: "capability.work.forensic.source-gate.agent_turn",
+          kind: "agent_turn",
+          state: "active",
+          expiresAt: "2026-08-01T10:15:00.000Z",
+        },
+      ],
+      facts: {
+        lifecycle: "ready",
+        leaseState: "active",
+        guestState: "present",
+        filesystemState: "attached",
+        ingressState: "broker_only",
+        runtimeState: "none",
+        acceptingWork: true,
+        cleanupComplete: false,
+      },
+      createdAt: "2026-08-01T10:00:00.000Z",
+      updatedAt: "2026-08-01T10:00:01.000Z",
+    });
+    const broker = {
+      list: () => Effect.succeed([resource]),
+      execute: () => {
+        runtimeDispatches += 1;
+        return Effect.die("broker dispatch must not run without source authority");
+      },
+    } as ManagedSandboxBroker;
+    const service = makeForensicManagedSandbox({
+      broker,
+      policy,
+      principal: sourcePrincipal,
+      runtime: {
+        ...unusedRuntime,
+        probe: (input) =>
+          Effect.succeed({
+            ...proof("probe", "ready"),
+            operationRef: input.operationRef,
+            generation: input.resource.resourceGeneration,
+          }),
+      },
+      profileDigest: `sha256:${"b".repeat(64)}`,
+      resolveBudget: () => Effect.succeed(budget),
+      assertSourceReady: () =>
+        Effect.fail(
+          new BoxV1FacadeError({
+            code: "conflict",
+            status: 409,
+            message: "durable source authority is absent",
+            retryable: false,
+          }),
+        ),
+    });
+    const placement = {
+      schema: "openagents.forensic_worker_placement.v1" as const,
+      placementRef: "placement.forensic.source-gate",
+      ownerRef: resource.ownerRef,
+      tenantRef: resource.tenantRef,
+      workUnitRef: resource.workUnitRef,
+      sandboxRef: resource.sandboxRef,
+      attachmentGeneration: resource.attachmentGeneration,
+      resourceGeneration: resource.resourceGeneration,
+      targetClass: "openagents_managed" as const,
+      provider: "google_cloud" as const,
+      adapterRef: "adapter.oa-codex-control.gce.v1" as const,
+      isolation: "gce_vm" as const,
+      regionRef: "region.google-cloud.us-central1",
+      imageDigest: policy.imageDigest,
+      profileDigest: `sha256:${"b".repeat(64)}` as const,
+      networkPolicyRef: "network-policy-ref://openagents/managed-sandbox/broker-only-v1" as const,
+      leaseRef: resource.lease.leaseRef,
+      budgetRef: "budget.forensic.source-gate",
+      capabilityRefs: ["capability.work.forensic.source-gate.agent_turn"],
+      state: "worker_ready" as const,
+      admissionReceiptRef: "receipt.forensic.source-gate.admission",
+      readinessReceiptRef: "receipt.forensic.source-gate.readiness",
+      updatedAt: "2026-08-01T10:00:01.000Z",
+    };
+
+    await expect(
+      Effect.runPromise(
+        service.dispatch(placement, {
+          commandRef: "command.forensic.source-gate.dispatch",
+          idempotencyRef: "idempotency.forensic.source-gate.dispatch",
+          requestedByRef: sourcePrincipal.actorRef,
+          turnRef: "turn.forensic.source-gate",
+          capabilityRef: `capability.work.forensic.source-gate.agent_turn`,
+          requestedAt: "2026-08-01T10:01:00.000Z",
+          prompt: "Inspect the pinned source.",
+          sourceBinding: {
+            runRef: "run.forensic.source-gate",
+            authorityRef: "authority.forensic-source.absent",
+            bundleRef: "bundle.forensic.source-gate",
+            coverageRef: "coverage.forensic.source-gate",
+            coverageDigest: `sha256:${"c".repeat(64)}`,
+            sourceDigest: `sha256:${"d".repeat(64)}`,
+            materializationReceiptRef: "receipt.forensic-source.absent",
+          },
+        }),
+      ),
+    ).rejects.toBeDefined();
+    expect(runtimeDispatches).toBe(0);
+  });
+
   test("the live route is authenticated, default-off, and exposes one exact path", async () => {
     const routes = makeForensicManagedSandboxRoutes({
       authenticateOwner: async () => ({ userId: "owner.forensic.fixture" }),
@@ -580,6 +785,7 @@ describe("forensic managed sandbox", () => {
         throw new Error("store must not run while disabled");
       },
       runtime: () => Effect.die("runtime must not run while disabled"),
+      assertSourceReady: () => Effect.die("authority must not run while disabled"),
     });
     const response = await Effect.runPromise(
       routes.handle(
@@ -592,6 +798,8 @@ describe("forensic managed sandbox", () => {
       ),
     );
     expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({ error: "runtime_not_admitted" });
+    await expect(response.json()).resolves.toMatchObject({
+      error: "runtime_not_admitted",
+    });
   });
 });

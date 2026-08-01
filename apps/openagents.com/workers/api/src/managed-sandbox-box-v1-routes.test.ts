@@ -764,6 +764,79 @@ describe('SBX-03 Box-v1 compatibility facade', () => {
     )
   })
 
+  test('models dedicated forensic source install and verified cleanup in the memory runtime', async () => {
+    const runtime = makeBoxV1MemoryRuntime()
+    const harness = makeHandler({ runtime })
+    const api = apiFor(
+      'https://local-box.test/v1',
+      'test-token',
+      fetchFor(harness.handle),
+    )
+    const boxId = (
+      await api.create(
+        { createBoxRequest: { noEnv: true } },
+        retryHeaders('forensic-source-memory-runtime'),
+      )
+    ).box.id
+    const resource = harness.authority.resources.get(boxId)
+    if (resource === undefined) throw new Error('expected managed sandbox')
+    const sourceDigest = `sha256:${'d'.repeat(64)}`
+    const common = {
+      principal: boxV1TestPrincipal,
+      resource,
+      idempotencyRef: 'idempotency.forensic-source.test',
+      capabilityRef: 'capability.forensic-source.test',
+      capabilityState: 'active' as const,
+      capabilityExpiresAt: '2026-07-19T19:00:00.000Z',
+      requestedAt: '2026-07-19T18:30:00.000Z',
+      limits: {
+        workspaceRootRef: 'workspace.managed-sandbox',
+        maxFileBytes: 1_048_576,
+        maxArtifactBytes: 10_000_000,
+        maxOutputBytes: 131_072,
+        maxDurationMillis: 120_000,
+        maxCpuMillis: 120_000,
+        maxProcesses: 32,
+        maxNetworkBytes: 0,
+        networkPolicyRef: 'network-policy.managed-sandbox.deny-all',
+      },
+    }
+    const installed = await Effect.runPromise(
+      runtime.installForensicSource({
+        ...common,
+        operationRef: 'operation.forensic-source.install',
+        artifactRef: 'artifact.forensic-source.test',
+        artifactBytes: new TextEncoder().encode('{}'),
+        sourceDigest,
+      }),
+    )
+    expect(installed).toMatchObject({
+      postCopyDigest: sourceDigest,
+      sourceReadOnly: true,
+      sourceReadbackVerified: true,
+      scratchSeparateAndWritable: true,
+    })
+    expect(installed.receipt).toMatchObject({
+      action: 'install_forensic_source',
+      bytesRead: 2,
+      bytesWritten: 2,
+    })
+
+    const cleaned = await Effect.runPromise(
+      runtime.removeForensicSource({
+        ...common,
+        operationRef: 'operation.forensic-source.cleanup',
+        expectedSourceDigest: sourceDigest,
+      }),
+    )
+    expect(cleaned).toMatchObject({
+      guestSourceDeleted: true,
+      guestSourceReadbackAbsent: true,
+      scratchDeleted: true,
+      scratchReadbackAbsent: true,
+    })
+  })
+
   test('validates the production private artifact response against exact returned bytes', async () => {
     const harness = makeHandler()
     const api = apiFor(

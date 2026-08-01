@@ -665,6 +665,15 @@ const guestIoDigest = (
     catch: () => upstreamUnavailable('guest_io_digest'),
   })
 
+const guestIoBase64 = (bytes: Uint8Array): string => {
+  let binary = ''
+  const chunkSize = 32_768
+  for (let offset = 0; offset < bytes.byteLength; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
+  }
+  return btoa(binary)
+}
+
 const managedSandboxGuestIoRequest = (
   env: OpenAgentsWorkerEnv,
   body: Readonly<Record<string, unknown>>,
@@ -1069,6 +1078,95 @@ export const managedSandboxBoxV1RuntimeForEnv = (
           contentType: exact.artifact.contentType,
           receipt: exact.receipt,
           artifact: exact.artifact,
+        }
+      }),
+    installForensicSource: input =>
+      Effect.gen(function* () {
+        if (input.artifactBytes.byteLength > input.limits.maxArtifactBytes) {
+          return yield* new BoxV1FacadeError({
+            code: 'validation_failed',
+            status: 400,
+            message: 'forensic source artifact exceeds the admitted byte limit',
+            retryable: false,
+          })
+        }
+        const artifactContentDigest = yield* guestIoDigest(input.artifactBytes)
+        if (artifactContentDigest !== input.sourceDigest) {
+          return yield* new BoxV1FacadeError({
+            code: 'conflict',
+            status: 409,
+            message:
+              'forensic source artifact bytes do not match the source digest',
+            retryable: false,
+          })
+        }
+        const response = yield* managedSandboxGuestIoRequest(env, {
+          action: 'install_forensic_source',
+          ...guestIoScope(input),
+          artifactRef: input.artifactRef,
+          artifactContentBase64: guestIoBase64(input.artifactBytes),
+          artifactContentDigest,
+          sourcePath: 'workspace/source',
+          scratchPath: 'workspace/scratch',
+        })
+        const exact = yield* exactGuestIoResponse(
+          response,
+          'install_forensic_source',
+          input,
+        )
+        if (
+          exact.artifactRef !== input.artifactRef ||
+          exact.artifactContentDigest !== artifactContentDigest ||
+          exact.artifactByteLength !== input.artifactBytes.byteLength ||
+          exact.postCopyDigest !== artifactContentDigest ||
+          exact.receipt.bytesRead !== input.artifactBytes.byteLength ||
+          exact.receipt.bytesWritten !== input.artifactBytes.byteLength
+        ) {
+          return yield* new BoxV1FacadeError({
+            code: 'conflict',
+            status: 409,
+            message:
+              'forensic source installation receipt does not match the exact artifact bytes',
+            retryable: false,
+          })
+        }
+        return {
+          receipt: exact.receipt,
+          postCopyDigest: exact.postCopyDigest,
+          sourceReadOnly: exact.sourceReadOnly,
+          sourceReadbackVerified: exact.sourceReadbackVerified,
+          scratchSeparateAndWritable: exact.scratchSeparateAndWritable,
+        }
+      }),
+    removeForensicSource: input =>
+      Effect.gen(function* () {
+        const response = yield* managedSandboxGuestIoRequest(env, {
+          action: 'remove_forensic_source',
+          ...guestIoScope(input),
+          expectedSourceDigest: input.expectedSourceDigest,
+          sourcePath: 'workspace/source',
+          scratchPath: 'workspace/scratch',
+        })
+        const exact = yield* exactGuestIoResponse(
+          response,
+          'remove_forensic_source',
+          input,
+        )
+        if (exact.expectedSourceDigest !== input.expectedSourceDigest) {
+          return yield* new BoxV1FacadeError({
+            code: 'conflict',
+            status: 409,
+            message:
+              'forensic source cleanup receipt does not match the installed source digest',
+            retryable: false,
+          })
+        }
+        return {
+          receipt: exact.receipt,
+          guestSourceDeleted: exact.guestSourceDeleted,
+          guestSourceReadbackAbsent: exact.guestSourceReadbackAbsent,
+          scratchDeleted: exact.scratchDeleted,
+          scratchReadbackAbsent: exact.scratchReadbackAbsent,
         }
       }),
   })

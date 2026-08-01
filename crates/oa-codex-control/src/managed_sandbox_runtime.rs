@@ -811,6 +811,12 @@ fn authorize_private_preview_at(
         cwd: None,
         timeout_millis: None,
         retention_until: None,
+        artifact_ref: None,
+        artifact_content_base64: None,
+        artifact_content_digest: None,
+        source_path: None,
+        scratch_path: None,
+        expected_source_digest: None,
     })
 }
 

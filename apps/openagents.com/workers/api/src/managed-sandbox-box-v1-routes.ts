@@ -393,6 +393,50 @@ export type BoxV1Runtime = Readonly<{
     },
     BoxV1FacadeError
   >
+  installForensicSource: (input: {
+    principal: BoxV1Principal
+    resource: ManagedSandboxResource
+    operationRef: string
+    idempotencyRef: string
+    capabilityRef: string
+    capabilityState: 'active'
+    capabilityExpiresAt: string
+    requestedAt: string
+    limits: ManagedSandboxGuestIoLimits
+    artifactRef: string
+    artifactBytes: Uint8Array
+    sourceDigest: string
+  }) => Effect.Effect<
+    {
+      receipt: ManagedSandboxGuestIoReceipt
+      postCopyDigest: string
+      sourceReadOnly: true
+      sourceReadbackVerified: true
+      scratchSeparateAndWritable: true
+    },
+    BoxV1FacadeError
+  >
+  removeForensicSource: (input: {
+    principal: BoxV1Principal
+    resource: ManagedSandboxResource
+    operationRef: string
+    idempotencyRef: string
+    capabilityRef: string
+    capabilityState: 'active'
+    capabilityExpiresAt: string
+    requestedAt: string
+    limits: ManagedSandboxGuestIoLimits
+    expectedSourceDigest: string
+  }) => Effect.Effect<
+    {
+      receipt: ManagedSandboxGuestIoReceipt
+      guestSourceDeleted: true
+      guestSourceReadbackAbsent: true
+      scratchDeleted: true
+      scratchReadbackAbsent: true
+    },
+    BoxV1FacadeError
+  >
 }>
 
 export type BoxV1LifecycleCommandExecutor = (
@@ -462,6 +506,10 @@ export const unavailableBoxV1Runtime: BoxV1Runtime = {
   writeFile: () => Effect.fail(upstreamUnavailable('file_write')),
   command: () => Effect.fail(upstreamUnavailable('command')),
   artifact: () => Effect.fail(upstreamUnavailable('artifact_read')),
+  installForensicSource: () =>
+    Effect.fail(upstreamUnavailable('forensic_source_delivery')),
+  removeForensicSource: () =>
+    Effect.fail(upstreamUnavailable('forensic_source_delivery')),
 }
 
 const decode = <A>(

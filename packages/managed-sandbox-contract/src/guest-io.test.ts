@@ -69,6 +69,26 @@ test("decodes the closed guest I/O request vocabulary", () => {
       retentionUntil: "2026-07-20T20:00:00.000Z",
     }),
   ).toMatchObject({ action: "read_artifact" });
+  expect(
+    decode({
+      ...common,
+      action: "install_forensic_source",
+      artifactRef: "artifact.forensic-source.test",
+      artifactContentBase64: "e30=",
+      artifactContentDigest: `sha256:${"d".repeat(64)}`,
+      sourcePath: "workspace/source",
+      scratchPath: "workspace/scratch",
+    }),
+  ).toMatchObject({ action: "install_forensic_source" });
+  expect(
+    decode({
+      ...common,
+      action: "remove_forensic_source",
+      expectedSourceDigest: `sha256:${"d".repeat(64)}`,
+      sourcePath: "workspace/source",
+      scratchPath: "workspace/scratch",
+    }),
+  ).toMatchObject({ action: "remove_forensic_source" });
 });
 
 describe("guest I/O response receipts", () => {
@@ -165,6 +185,70 @@ describe("guest I/O response receipts", () => {
           secretScan: "unknown",
           evidenceRefs: [],
         },
+      }),
+    ).toThrow();
+  });
+
+  test("requires exact forensic source post-copy and cleanup readback facts", () => {
+    const receipt = {
+      schemaVersion: "openagents.managed_sandbox_guest_io_receipt.v1" as const,
+      receiptRef: "receipt.sbx05.source",
+      operationRef: common.operationRef,
+      sandboxRef: common.sandboxRef,
+      resourceGeneration: common.resourceGeneration,
+      capabilityRef: common.capabilityRef,
+      action: "install_forensic_source" as const,
+      outcome: "succeeded" as const,
+      pathDigest: `sha256:${"c".repeat(64)}`,
+      startedAt: common.requestedAt,
+      finishedAt: common.requestedAt,
+      bytesRead: 2,
+      bytesWritten: 2,
+      cpuMillis: 0,
+      networkBytes: 0,
+      processTerminated: true,
+      descendantsRemaining: 0,
+      scratchCleaned: true,
+      ingressClosed: true,
+      egressDenied: true,
+      pathPolicy: "resolved_beneath_workspace_root" as const,
+      symlinkTraversal: false as const,
+      secretScan: "clean" as const,
+      evidenceRefs: ["evidence.sbx05.source"],
+    };
+    const digest = `sha256:${"d".repeat(64)}`;
+    expect(
+      S.decodeUnknownSync(ManagedSandboxGuestIoResponseSchema)({
+        schemaVersion: common.schemaVersion,
+        action: "install_forensic_source",
+        operationRef: common.operationRef,
+        sandboxRef: common.sandboxRef,
+        resourceGeneration: common.resourceGeneration,
+        receipt,
+        artifactRef: "artifact.forensic-source.test",
+        artifactContentDigest: digest,
+        artifactByteLength: 2,
+        postCopyDigest: digest,
+        sourceReadOnly: true,
+        sourceReadbackVerified: true,
+        scratchSeparateAndWritable: true,
+      }),
+    ).toMatchObject({ sourceReadOnly: true, postCopyDigest: digest });
+    expect(() =>
+      S.decodeUnknownSync(ManagedSandboxGuestIoResponseSchema)({
+        schemaVersion: common.schemaVersion,
+        action: "install_forensic_source",
+        operationRef: common.operationRef,
+        sandboxRef: common.sandboxRef,
+        resourceGeneration: common.resourceGeneration,
+        receipt,
+        artifactRef: "artifact.forensic-source.test",
+        artifactContentDigest: digest,
+        artifactByteLength: 2,
+        postCopyDigest: digest,
+        sourceReadOnly: false,
+        sourceReadbackVerified: true,
+        scratchSeparateAndWritable: true,
       }),
     ).toThrow();
   });

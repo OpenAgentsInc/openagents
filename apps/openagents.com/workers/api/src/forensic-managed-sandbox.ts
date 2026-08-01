@@ -76,6 +76,17 @@ export type ForensicWorkerDispatch = Readonly<{
   capabilityRef: string;
   requestedAt: string;
   prompt: string;
+  sourceBinding: ForensicWorkerSourceBinding;
+}>;
+
+export type ForensicWorkerSourceBinding = Readonly<{
+  runRef: string;
+  authorityRef: string;
+  bundleRef: string;
+  coverageRef: string;
+  coverageDigest: string;
+  sourceDigest: string;
+  materializationReceiptRef: string;
 }>;
 
 export type ForensicWorkerCancellation = Readonly<{
@@ -274,6 +285,20 @@ export const makeForensicManagedSandbox = (
     profileDigest: `sha256:${string}`;
     resolveBudget: (budgetRef: string) => Effect.Effect<ForensicBudget, BoxV1FacadeError>;
     now?: (() => Date) | undefined;
+    assertSourceReady: (
+      binding: ForensicWorkerSourceBinding &
+        Readonly<{
+          ownerRef: string;
+          tenantRef: string;
+          workUnitRef: string;
+          sandboxRef: string;
+          attachmentGeneration: number;
+          resourceGeneration: number;
+        }>,
+    ) => Effect.Effect<
+      Readonly<{ expiresAt: string; release: Effect.Effect<void, BoxV1FacadeError> }>,
+      BoxV1FacadeError
+    >;
   }>,
 ): ForensicManagedSandbox => {
   const now = input.now ?? (() => new Date());
@@ -383,7 +408,7 @@ export const makeForensicManagedSandbox = (
           },
           {
             capabilityRef: capabilityRefs.sourceMaterializer,
-            kind: "file_write",
+            kind: "forensic_source_delivery",
             state: "active",
             expiresAt: admission.expiresAt,
           },
@@ -601,10 +626,43 @@ export const makeForensicManagedSandbox = (
           harnessRef: FORENSIC_DRIVER_REF,
         },
       });
-      const result = yield* input.broker.execute(command, {
-        prompt: request.prompt,
-        guardrails,
+      const sourceLease = yield* input.assertSourceReady({
+        ...request.sourceBinding,
+        ownerRef: placement.ownerRef,
+        tenantRef: placement.tenantRef,
+        workUnitRef: placement.workUnitRef,
+        sandboxRef: placement.sandboxRef,
+        attachmentGeneration: placement.attachmentGeneration,
+        resourceGeneration: placement.resourceGeneration,
       });
+      const sourceLeaseExpiresAt = Date.parse(sourceLease.expiresAt);
+      if (!Number.isFinite(sourceLeaseExpiresAt) || sourceLeaseExpiresAt <= currentTime) {
+        yield* sourceLease.release;
+        return yield* recoveryRequired("forensic source dispatch lease is already expired");
+      }
+      const sourceGuardrails = {
+        ...guardrails,
+        deadlineAt: new Date(
+          Math.min(Date.parse(guardrails.deadlineAt), sourceLeaseExpiresAt),
+        ).toISOString(),
+      };
+      const result = yield* input.broker
+        .execute(command, {
+          prompt: request.prompt,
+          guardrails: sourceGuardrails,
+        })
+        .pipe(
+          Effect.onError(() =>
+            sourceLease.release.pipe(
+              Effect.catch(() =>
+                Effect.logError(
+                  "forensic source dispatch lease release failed after dispatch error",
+                ),
+              ),
+            ),
+          ),
+        );
+      yield* sourceLease.release;
       yield* assertOrderedEvents(result);
       return result;
     });
@@ -856,6 +914,15 @@ const ForensicWorkerRouteRequestSchema = S.TaggedUnion({
     turnRef: S.String,
     capabilityRef: S.String,
     prompt: S.String.check(S.isMinLength(1), S.isMaxLength(100_000)),
+    sourceBinding: S.Struct({
+      runRef: S.String,
+      authorityRef: S.String,
+      bundleRef: S.String,
+      coverageRef: S.String,
+      coverageDigest: S.String.check(S.isPattern(/^sha256:[0-9a-f]{64}$/u)),
+      sourceDigest: S.String.check(S.isPattern(/^sha256:[0-9a-f]{64}$/u)),
+      materializationReceiptRef: S.String,
+    }),
     requestedAt: ForensicRouteTimestamp,
   },
   CollectArtifact: {
@@ -897,6 +964,13 @@ export type ForensicManagedSandboxRouteDependencies<Bindings> = Readonly<{
   profileDigest: (env: Bindings) => string | undefined;
   store: (env: Bindings) => BoxV1NativeStore;
   runtime: (env: Bindings) => Effect.Effect<BoxV1Runtime, BoxV1FacadeError>;
+  assertSourceReady: (
+    env: Bindings,
+    binding: Parameters<Parameters<typeof makeForensicManagedSandbox>[0]["assertSourceReady"]>[0],
+  ) => Effect.Effect<
+    Readonly<{ expiresAt: string; release: Effect.Effect<void, BoxV1FacadeError> }>,
+    BoxV1FacadeError
+  >;
   now?: (() => Date) | undefined;
 }>;
 
@@ -1003,6 +1077,7 @@ export const makeForensicManagedSandboxRoutes = <Bindings>(
           budgetRef === INITIAL_FORENSIC_BUDGET_REF
             ? Effect.succeed(budget)
             : Effect.fail(refuse("forensic budget ref is not admitted")),
+        assertSourceReady: (binding) => dependencies.assertSourceReady(env, binding),
       });
       const requestedByRef = `agent:${owner.userId}`;
       const handledAtMs = now().getTime();
@@ -1042,6 +1117,7 @@ export const makeForensicManagedSandboxRoutes = <Bindings>(
             capabilityRef: body.capabilityRef,
             requestedAt: body.requestedAt,
             prompt: body.prompt,
+            sourceBinding: body.sourceBinding,
           });
           break;
         case "CollectArtifact":

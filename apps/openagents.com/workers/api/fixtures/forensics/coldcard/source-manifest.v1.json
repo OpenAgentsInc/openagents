@@ -1,0 +1,170 @@
+{
+  "schema": "openagents.coldcard_source_manifest.v1",
+  "repositoryRef": "repository.github.Coldcard.firmware",
+  "repository": {
+    "provider": "github",
+    "owner": "Coldcard",
+    "name": "firmware"
+  },
+  "commitSha": "bcc2c382a324690a2fcf972c0bac3b79bf923f7b",
+  "gitTreeSha": "7abc9a4c680b5623fc8a64f70555dd2d3802e488",
+  "submodules": [
+    {
+      "path": "external/micropython",
+      "repository": {
+        "provider": "github",
+        "owner": "Coldcard",
+        "name": "micropython"
+      },
+      "disposition": "materialize",
+      "commitSha": "4107246f8a080807b62c3b4838e71e812ea68b6f",
+      "gitTreeSha": "ad62e4aa1f12fb8b3ae8fd1d4ca3b1de3a4ebb01"
+    },
+    {
+      "path": "external/ckcc-protocol",
+      "repository": {
+        "provider": "github",
+        "owner": "Coldcard",
+        "name": "ckcc-protocol"
+      },
+      "disposition": "materialize",
+      "commitSha": "3d1dfa858beb58b8dac37d8c66d7aed2909812f2",
+      "gitTreeSha": "c1902d12dfdc67ce3102aa9a17e7bdc6bdccd9b9"
+    },
+    {
+      "path": "external/mpy-qr",
+      "repository": {
+        "provider": "github",
+        "owner": "coinkite",
+        "name": "mpy-qr"
+      },
+      "disposition": "materialize",
+      "commitSha": "11347d83f4eb325b10676a4eb8e17deccfe0df44",
+      "gitTreeSha": "b4f4f94bcd3d3d802b9d46aad90bcb299f0e6be1"
+    },
+    {
+      "path": "external/libngu",
+      "repository": {
+        "provider": "github",
+        "owner": "switck",
+        "name": "libngu"
+      },
+      "disposition": "materialize",
+      "commitSha": "537519a829259622ea6b0334fbafd6cae852852f",
+      "gitTreeSha": "80554cee27ef9b2445844528e24ed28ed030082c"
+    },
+    {
+      "path": "stm32/mk4-bootloader/hal",
+      "repository": {
+        "provider": "github",
+        "owner": "STMicroelectronics",
+        "name": "STM32CubeL4"
+      },
+      "disposition": "stale_declaration",
+      "reasonRef": "reason.coldcard.gitmodules_without_gitlink"
+    },
+    {
+      "path": "misc/gpu/external/stm32c0xx_hal_driver",
+      "repository": {
+        "provider": "github",
+        "owner": "STMicroelectronics",
+        "name": "stm32c0xx_hal_driver"
+      },
+      "disposition": "exclude",
+      "commitSha": "4c5e3e45a8478a33decb1f45d663f485f89c459b",
+      "gitTreeSha": "c54dc537aa84eaa78e1b5c8b7a5c62b81e84b7a1",
+      "reasonRef": "reason.coldcard.gpu_not_in_rng_causal_scope"
+    },
+    {
+      "path": "misc/gpu/external/cmsis_device_c0",
+      "repository": {
+        "provider": "github",
+        "owner": "STMicroelectronics",
+        "name": "cmsis_device_c0"
+      },
+      "disposition": "exclude",
+      "commitSha": "7e32bf9d8117ee4c8f6a1d138b814fc24bf4c906",
+      "gitTreeSha": "062ed276b12b091b24dd503226114a8f87ab3e91",
+      "reasonRef": "reason.coldcard.gpu_not_in_rng_causal_scope"
+    }
+  ],
+  "paths": [
+    {
+      "bundlePath": "stm32/COLDCARD/mpconfigboard.h",
+      "repositoryPath": "stm32/COLDCARD/mpconfigboard.h",
+      "source": "target",
+      "classification": "target",
+      "required": true,
+      "contentDigest": "sha256:42d612817213c02aa791543141d32ab00a334607acc55142ecee343df857f824"
+    },
+    {
+      "bundlePath": "shared/seed.py",
+      "repositoryPath": "shared/seed.py",
+      "source": "target",
+      "classification": "target",
+      "required": true,
+      "contentDigest": "sha256:1176359ea14f96b392925c2e2f9d821a1a61a0ef8524b72f4edc3a75b02d07d4"
+    },
+    {
+      "bundlePath": "external/libngu/ngu/random.c",
+      "repositoryPath": "ngu/random.c",
+      "source": "submodule",
+      "submodulePath": "external/libngu",
+      "classification": "dependency",
+      "required": true,
+      "contentDigest": "sha256:812585e47b2f9251693280c95b5e58558cbd564d62e4398b17388f9cb5198abb"
+    },
+    {
+      "bundlePath": "external/micropython/ports/stm32/rng.c",
+      "repositoryPath": "ports/stm32/rng.c",
+      "source": "submodule",
+      "submodulePath": "external/micropython",
+      "classification": "dependency",
+      "required": true,
+      "contentDigest": "sha256:66ecfdf8111b80aa09456d49751100466f9e596a20839af32b5e6529b4e26742"
+    },
+    {
+      "bundlePath": "external/ckcc-protocol/README.md",
+      "repositoryPath": "README.md",
+      "source": "submodule",
+      "submodulePath": "external/ckcc-protocol",
+      "classification": "dependency",
+      "required": true,
+      "contentDigest": "sha256:d3cd78b74016f4fb3ec04e995ff0bde3d8746a3ec7582c1fccb2d9e4cd1fbbf3"
+    },
+    {
+      "bundlePath": "external/mpy-qr/README.md",
+      "repositoryPath": "README.md",
+      "source": "submodule",
+      "submodulePath": "external/mpy-qr",
+      "classification": "dependency",
+      "required": true,
+      "contentDigest": "sha256:3f69f0dcd8f87c310cf6d2d37891ac8a9938a981a541cf9649fc6c6311591ada"
+    }
+  ],
+  "generatedInputs": [
+    {
+      "path": "generated/coldcard-build-config.json",
+      "generatorRef": "generator.coldcard.build-config.v1",
+      "generatorDigest": "sha256:3b8270cc172286efcdfe05cb86fe71b9c8bde9e61acb48bc6cbcb826a485bc15",
+      "input": {
+        "board": "COLDCARD",
+        "commit": "bcc2c382a324690a2fcf972c0bac3b79bf923f7b",
+        "toolchain": "stm32/dockerfile.build@sha256:e1900ca9116bcd97ae95d51c189a5003a22022a16f2aae389096f2a3200eef46"
+      },
+      "toolchainPins": [
+        {
+          "toolchainRef": "toolchain.coldcard.stm32.dockerfile-build",
+          "digest": "sha256:e1900ca9116bcd97ae95d51c189a5003a22022a16f2aae389096f2a3200eef46"
+        }
+      ],
+      "contentDigest": "sha256:39f6dfdd73a211627e2417581106635b988302426219e2a04ca348c3b6db5277",
+      "required": true
+    }
+  ],
+  "incompleteArm": {
+    "omitBundlePath": "external/mpy-qr/README.md",
+    "expectedStatus": "incomplete",
+    "dispatchAllowed": false
+  }
+}

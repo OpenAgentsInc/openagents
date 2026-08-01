@@ -20,6 +20,8 @@ export const ManagedSandboxGuestIoActionSchema = S.Literals([
   "write_file",
   "execute_command",
   "read_artifact",
+  "install_forensic_source",
+  "remove_forensic_source",
 ]);
 export type ManagedSandboxGuestIoAction = typeof ManagedSandboxGuestIoActionSchema.Type;
 
@@ -82,6 +84,22 @@ export const ManagedSandboxGuestIoRequestSchema = S.Union([
     action: S.Literal("read_artifact"),
     path: S.String.check(S.isMinLength(1), S.isMaxLength(1_024)),
     retentionUntil: SandboxTimestamp,
+  }),
+  S.Struct({
+    ...RequestBase,
+    action: S.Literal("install_forensic_source"),
+    artifactRef: SandboxRef,
+    artifactContentBase64: S.String,
+    artifactContentDigest: Sha256Digest,
+    sourcePath: S.Literal("workspace/source"),
+    scratchPath: S.Literal("workspace/scratch"),
+  }),
+  S.Struct({
+    ...RequestBase,
+    action: S.Literal("remove_forensic_source"),
+    expectedSourceDigest: Sha256Digest,
+    sourcePath: S.Literal("workspace/source"),
+    scratchPath: S.Literal("workspace/scratch"),
   }),
 ]);
 export type ManagedSandboxGuestIoRequest = typeof ManagedSandboxGuestIoRequestSchema.Type;
@@ -172,6 +190,26 @@ export const ManagedSandboxGuestIoResponseSchema = S.Union([
     action: S.Literal("read_artifact"),
     contentBase64: S.String,
     artifact: ManagedSandboxArtifactReceiptSchema,
+  }),
+  S.Struct({
+    ...ResponseBase,
+    action: S.Literal("install_forensic_source"),
+    artifactRef: SandboxRef,
+    artifactContentDigest: Sha256Digest,
+    artifactByteLength: NonNegativeInt,
+    postCopyDigest: Sha256Digest,
+    sourceReadOnly: S.Literal(true),
+    sourceReadbackVerified: S.Literal(true),
+    scratchSeparateAndWritable: S.Literal(true),
+  }),
+  S.Struct({
+    ...ResponseBase,
+    action: S.Literal("remove_forensic_source"),
+    expectedSourceDigest: Sha256Digest,
+    guestSourceDeleted: S.Literal(true),
+    guestSourceReadbackAbsent: S.Literal(true),
+    scratchDeleted: S.Literal(true),
+    scratchReadbackAbsent: S.Literal(true),
   }),
 ]);
 export type ManagedSandboxGuestIoResponse = typeof ManagedSandboxGuestIoResponseSchema.Type;

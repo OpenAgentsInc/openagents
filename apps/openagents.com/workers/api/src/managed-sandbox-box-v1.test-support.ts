@@ -918,6 +918,7 @@ export const boxV1TestPrincipal: BoxV1Principal = {
 
 export const makeBoxV1MemoryRuntime = (): BoxV1Runtime => {
   const files = new Map<string, string>()
+  let forensicSourceDigest: string | undefined
   files.set('workspace/README.md', 'OpenAgents staging sandbox')
   const guestIoReceipt = (
     input: {
@@ -1059,6 +1060,54 @@ export const makeBoxV1MemoryRuntime = (): BoxV1Runtime => {
             },
           })
     },
+    installForensicSource: input =>
+      Effect.gen(function* () {
+        if (
+          forensicSourceDigest !== undefined &&
+          forensicSourceDigest !== input.sourceDigest
+        ) {
+          return yield* conflict(
+            'a different forensic source is already installed',
+          )
+        }
+        forensicSourceDigest = input.sourceDigest
+        return {
+          receipt: guestIoReceipt(
+            { ...input, path: 'workspace/source' },
+            'install_forensic_source',
+            input.artifactBytes.byteLength,
+            input.artifactBytes.byteLength,
+          ),
+          postCopyDigest: input.sourceDigest,
+          sourceReadOnly: true as const,
+          sourceReadbackVerified: true as const,
+          scratchSeparateAndWritable: true as const,
+        }
+      }),
+    removeForensicSource: input =>
+      Effect.gen(function* () {
+        if (
+          forensicSourceDigest !== undefined &&
+          forensicSourceDigest !== input.expectedSourceDigest
+        ) {
+          return yield* conflict(
+            'forensic source cleanup digest does not match the installed source',
+          )
+        }
+        forensicSourceDigest = undefined
+        return {
+          receipt: guestIoReceipt(
+            { ...input, path: 'workspace/source' },
+            'remove_forensic_source',
+            0,
+            0,
+          ),
+          guestSourceDeleted: true as const,
+          guestSourceReadbackAbsent: true as const,
+          scratchDeleted: true as const,
+          scratchReadbackAbsent: true as const,
+        }
+      }),
   }
 }
 
