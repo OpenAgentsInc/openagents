@@ -1169,6 +1169,12 @@ export const handleSarahRealtimeVoiceSettlementRequest = async <User, Bindings>(
           !failureEvidenceRequested
             ? {}
             : { failureEvidence: settlement.failureEvidence }),
+          ...(settlement.unmeteredAuthorityCapture === undefined
+            ? {}
+            : {
+                unmeteredAuthorityCapture:
+                  settlement.unmeteredAuthorityCapture,
+              }),
         },
         409,
       )
@@ -1183,6 +1189,11 @@ export const handleSarahRealtimeVoiceSettlementRequest = async <User, Bindings>(
         accountingWaiver?: unknown
       }
     ).accountingWaiver
+    const unmeteredAuthorityCapture = (
+      settlement as typeof settlement & {
+        unmeteredAuthorityCapture?: unknown
+      }
+    ).unmeteredAuthorityCapture
     const acceptanceEvidenceRequested =
       request.headers.get(SARAH_LIVEKIT_ACCEPTANCE_EVIDENCE_HEADER) ===
       'live-observation-v1'
@@ -1196,6 +1207,9 @@ export const handleSarahRealtimeVoiceSettlementRequest = async <User, Bindings>(
         spendableRemainingCreditMsat: settlement.spendableRemainingCreditMsat,
         receiptRef: settlement.settlementReceiptRef,
         ...(accountingWaiver === undefined ? {} : { accountingWaiver }),
+        ...(unmeteredAuthorityCapture === undefined
+          ? {}
+          : { unmeteredAuthorityCapture }),
         ...(acceptanceEvidence === undefined || !acceptanceEvidenceRequested
           ? {}
           : { acceptanceEvidence }),

@@ -17,6 +17,18 @@ export const SARAH_LIVEKIT_FAILURE_SCENARIOS = [
 
 export const SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIO = "hold_exhaustion" as const;
 
+export type SarahLiveKitUnmeteredAuthorityCapture = Readonly<{
+  schema: "openagents.sarah.unmetered-authority-capture.v1";
+  authority: "owner_waived_unmetered_v1";
+  generation: number;
+  sessionRefDigest: string;
+  startLedgerStateDigest: string;
+  endLedgerStateDigest: string;
+  ledgerMutationCount: 0;
+  captureReceiptRef: string;
+  captureDigest: string;
+}>;
+
 export type SarahLiveKitRetiredFailureScenarioObservation = Readonly<{
   scenario: typeof SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIO;
   classification: "not_applicable_removed";
@@ -25,8 +37,7 @@ export type SarahLiveKitRetiredFailureScenarioObservation = Readonly<{
   generationDigest: string;
   admissionEvidenceDigest: string;
   sessionEvidenceDigest: string;
-  ledgerStateBeforeDigest: string;
-  ledgerStateAfterDigest: string;
+  unmeteredAuthorityCapture: SarahLiveKitUnmeteredAuthorityCapture;
   requiredHoldMsat: 0;
   spendableRemainingCreditMsat: null;
   reservedMsat: 0;
@@ -174,7 +185,8 @@ export type SarahLiveKitFailureScenarioObservation = Readonly<{
   scenario: SarahLiveKitFailureScenario;
   faultAction: (typeof EXPECTED_FAULT_ACTION)[SarahLiveKitFailureScenario];
   terminalReason: (typeof ADMITTED_TERMINAL_REASONS)[SarahLiveKitFailureScenario][number];
-  terminalState: "settled" | "released";
+  terminalState: "released" | "accounting_uncertain";
+  providerAccountingStatus: "exact" | "uncertain";
   creditMode: "owner_waived_unmetered";
   startedAtMs: number;
   terminalAtMs: number;
@@ -192,13 +204,7 @@ export type SarahLiveKitFailureScenarioObservation = Readonly<{
     chargedMsat: number;
     releasedMsat: number;
   }>;
-  ledger: Readonly<{
-    stateBeforeDigest: string;
-    stateAfterDigest: string;
-    balanceDeltaMsat: 0;
-    heldDeltaMsat: 0;
-    mutationCount: 0;
-  }>;
+  unmeteredAuthorityCapture: SarahLiveKitUnmeteredAuthorityCapture;
   settlementChargeMsat: number;
   terminalEventCount: number;
   maximumWorkerGenerationCount: number;
@@ -231,6 +237,17 @@ export type SarahLiveKitFailureMatrixObservation = Readonly<{
   retiredScenarios: readonly [SarahLiveKitRetiredFailureScenarioObservation];
 }>;
 
+export type SarahLiveKitUnmeteredAuthorityCaptureRow = Readonly<{
+  sessionRef: string;
+  authority: string;
+  generation: number;
+  startLedgerStateDigest: string;
+  endLedgerStateDigest: string;
+  ledgerMutationCount: number;
+  captureReceiptRef: string;
+  captureDigest: string;
+}>;
+
 /**
  * The SFU-loss projection.
  *
@@ -257,19 +274,20 @@ type PublicScenario = Readonly<{
   scenario: SarahLiveKitFailureScenario;
   faultAction: (typeof EXPECTED_FAULT_ACTION)[SarahLiveKitFailureScenario];
   terminalReason: (typeof ADMITTED_TERMINAL_REASONS)[SarahLiveKitFailureScenario][number];
-  terminalState: "settled" | "released";
+  terminalState: "released" | "accounting_uncertain";
+  providerAccountingStatus: "exact" | "uncertain";
   creditMode: "owner_waived_unmetered";
   durationMs: number;
   usage: Usage;
   settlementChargeMsat: number;
   holdReleasedMsat: number;
-  ledgerStateDigest: string;
+  authorityCaptureDigest: string;
   noLedgerMutation: true;
   terminalEventCount: 1;
   maximumWorkerGenerationCount: 1;
   maximumProviderSessionCount: 1;
   freshAdmissionRequired: true;
-  exactAccounting: true;
+  exactAccounting: boolean;
   noWorkerOverlap: true;
   noProviderOverlap: true;
   settledGenerationRevived: false;
@@ -303,6 +321,7 @@ export type SarahLiveKitFailureMatrixReceipt = Readonly<{
 }>;
 
 const SHA256 = /^sha256:[0-9a-f]{64}$/u;
+const RAW_SHA256 = /^[0-9a-f]{64}$/u;
 const COMMIT = /^[0-9a-f]{40}$/u;
 const PRIVATE_KEY =
   /^(authorization|bearer|cookie|credential|private.?key|secret|ticket|transcript(?:content)?|audio(?:content|bytes)?|pcm|prompt(?:content)?|email|endpoint|url)$/iu;
@@ -349,6 +368,50 @@ const assertInteger: (value: unknown, label: string) => asserts value is number 
 
 const assertDigest: (value: unknown, label: string) => asserts value is string = (value, label) => {
   assert(typeof value === "string" && SHA256.test(value), `${label} must be a sha256 digest`);
+};
+
+const validateUnmeteredAuthorityCapture = (
+  value: SarahLiveKitUnmeteredAuthorityCapture,
+  label: string,
+): void => {
+  assertExactKeys(
+    value,
+    [
+      "schema",
+      "authority",
+      "generation",
+      "sessionRefDigest",
+      "startLedgerStateDigest",
+      "endLedgerStateDigest",
+      "ledgerMutationCount",
+      "captureReceiptRef",
+      "captureDigest",
+    ],
+    label,
+  );
+  assert(
+    value.schema === "openagents.sarah.unmetered-authority-capture.v1" &&
+      value.authority === "owner_waived_unmetered_v1",
+    `${label} authority is invalid`,
+  );
+  assertInteger(value.generation, `${label}.generation`);
+  assert(value.generation > 0, `${label}.generation must be positive`);
+  assert(
+    RAW_SHA256.test(value.sessionRefDigest) &&
+      RAW_SHA256.test(value.startLedgerStateDigest) &&
+      RAW_SHA256.test(value.endLedgerStateDigest) &&
+      RAW_SHA256.test(value.captureDigest),
+    `${label} digests are invalid`,
+  );
+  assert(
+    value.captureReceiptRef === `sarah_voice_unmetered_authority:${value.captureDigest}`,
+    `${label} receipt does not bind its capture digest`,
+  );
+  assert(
+    value.startLedgerStateDigest === value.endLedgerStateDigest &&
+      value.ledgerMutationCount === 0,
+    `${label} does not prove zero ledger mutation`,
+  );
 };
 
 const assertUsage = (usage: Usage, label: string): void => {
@@ -490,13 +553,14 @@ const validateScenario = (
       "faultAction",
       "terminalReason",
       "terminalState",
+      "providerAccountingStatus",
       "creditMode",
       "startedAtMs",
       "terminalAtMs",
       "identityDigests",
       "usage",
       "hold",
-      "ledger",
+      "unmeteredAuthorityCapture",
       "settlementChargeMsat",
       "terminalEventCount",
       "maximumWorkerGenerationCount",
@@ -524,7 +588,18 @@ const validateScenario = (
     ),
     `${expectedScenario} terminal reason is invalid`,
   );
-  assert(value.terminalState === "released", `${expectedScenario} is not unmetered-terminal`);
+  if (expectedScenario === "provider_disconnect") {
+    assert(
+      value.terminalState === "accounting_uncertain" &&
+        value.providerAccountingStatus === "uncertain",
+      "provider_disconnect must preserve truthful uncertain provider accounting",
+    );
+  } else {
+    assert(
+      value.terminalState === "released" && value.providerAccountingStatus === "exact",
+      `${expectedScenario} must have exact released accounting`,
+    );
+  }
   assert(
     value.creditMode === "owner_waived_unmetered",
     `${expectedScenario} did not use owner-waived unmetered authority`,
@@ -568,19 +643,14 @@ const validateScenario = (
       value.hold.releasedMsat === 0,
     `${expectedScenario} mutated owner-waived platform credit`,
   );
-  assertExactKeys(
-    value.ledger,
-    ["stateBeforeDigest", "stateAfterDigest", "balanceDeltaMsat", "heldDeltaMsat", "mutationCount"],
-    `${expectedScenario}.ledger`,
+  validateUnmeteredAuthorityCapture(
+    value.unmeteredAuthorityCapture,
+    `${expectedScenario}.unmeteredAuthorityCapture`,
   );
-  assertDigest(value.ledger.stateBeforeDigest, `${expectedScenario}.ledger.stateBeforeDigest`);
-  assertDigest(value.ledger.stateAfterDigest, `${expectedScenario}.ledger.stateAfterDigest`);
   assert(
-    value.ledger.stateBeforeDigest === value.ledger.stateAfterDigest &&
-      value.ledger.balanceDeltaMsat === 0 &&
-      value.ledger.heldDeltaMsat === 0 &&
-      value.ledger.mutationCount === 0,
-    `${expectedScenario} has no authoritative zero-ledger-mutation proof`,
+    value.identityDigests.generation ===
+      `sha256:${value.unmeteredAuthorityCapture.sessionRefDigest}`,
+    `${expectedScenario} authority capture is not bound to its session generation`,
   );
   assert(value.terminalEventCount === 1, `${expectedScenario} has duplicate terminal events`);
   assert(
@@ -681,8 +751,7 @@ export const validateSarahLiveKitFailureMatrixObservation = (
       "generationDigest",
       "admissionEvidenceDigest",
       "sessionEvidenceDigest",
-      "ledgerStateBeforeDigest",
-      "ledgerStateAfterDigest",
+      "unmeteredAuthorityCapture",
       "requiredHoldMsat",
       "spendableRemainingCreditMsat",
       "reservedMsat",
@@ -704,14 +773,19 @@ export const validateSarahLiveKitFailureMatrixObservation = (
     "generationDigest",
     "admissionEvidenceDigest",
     "sessionEvidenceDigest",
-    "ledgerStateBeforeDigest",
-    "ledgerStateAfterDigest",
   ] as const) {
     assertDigest(retired[key], `retiredScenarios.${key}`);
   }
+  validateUnmeteredAuthorityCapture(
+    retired.unmeteredAuthorityCapture,
+    "retiredScenarios.unmeteredAuthorityCapture",
+  );
   assert(
-    retired.ledgerStateBeforeDigest === retired.ledgerStateAfterDigest &&
-      retired.requiredHoldMsat === 0 &&
+    retired.generationDigest === `sha256:${retired.unmeteredAuthorityCapture.sessionRefDigest}`,
+    "retired authority capture is not bound to its session generation",
+  );
+  assert(
+    retired.requiredHoldMsat === 0 &&
       retired.spendableRemainingCreditMsat === null &&
       retired.reservedMsat === 0 &&
       retired.chargedMsat === 0 &&
@@ -741,6 +815,39 @@ export const validateSarahLiveKitFailureMatrixObservation = (
   );
   assertNoPrivateMaterial(value, "failure matrix observation");
   return value;
+};
+
+export const validateSarahLiveKitFailureMatrixAuthorityRows = (
+  observation: SarahLiveKitFailureMatrixObservation,
+  rows: readonly SarahLiveKitUnmeteredAuthorityCaptureRow[],
+): void => {
+  validateSarahLiveKitFailureMatrixObservation(observation);
+  const captures = [
+    ...observation.scenarios.map((scenario) => scenario.unmeteredAuthorityCapture),
+    observation.retiredScenarios[0].unmeteredAuthorityCapture,
+  ];
+  assert(
+    new Set(captures.map((capture) => capture.captureReceiptRef)).size === captures.length,
+    "failure matrix reused an unmetered authority capture",
+  );
+  assert(rows.length === captures.length, "production authority capture row count is invalid");
+  for (const capture of captures) {
+    const matches = rows.filter(
+      (row) => row.captureReceiptRef === capture.captureReceiptRef,
+    );
+    assert(matches.length === 1, "production authority capture is missing or duplicated");
+    const row = matches[0] as SarahLiveKitUnmeteredAuthorityCaptureRow;
+    assert(
+      row.authority === capture.authority &&
+        digest(row.sessionRef) === `sha256:${capture.sessionRefDigest}` &&
+        row.generation === capture.generation &&
+        row.startLedgerStateDigest === capture.startLedgerStateDigest &&
+        row.endLedgerStateDigest === capture.endLedgerStateDigest &&
+        row.ledgerMutationCount === capture.ledgerMutationCount &&
+        row.captureDigest === capture.captureDigest,
+      "production authority capture does not match the observation",
+    );
+  }
 };
 
 const sumUsage = (scenarios: readonly SarahLiveKitFailureScenarioObservation[]): Usage =>
@@ -782,18 +889,19 @@ export const buildSarahLiveKitFailureMatrixReceipt = (
       faultAction: scenario.faultAction,
       terminalReason: scenario.terminalReason,
       terminalState: scenario.terminalState,
+      providerAccountingStatus: scenario.providerAccountingStatus,
       creditMode: scenario.creditMode,
       durationMs: scenario.terminalAtMs - scenario.startedAtMs,
       usage: scenario.usage,
       settlementChargeMsat: scenario.settlementChargeMsat,
       holdReleasedMsat: scenario.hold.releasedMsat,
-      ledgerStateDigest: scenario.ledger.stateAfterDigest,
+      authorityCaptureDigest: scenario.unmeteredAuthorityCapture.captureDigest,
       noLedgerMutation: true,
       terminalEventCount: 1,
       maximumWorkerGenerationCount: 1,
       maximumProviderSessionCount: 1,
       freshAdmissionRequired: true,
-      exactAccounting: true,
+      exactAccounting: scenario.providerAccountingStatus === "exact",
       noWorkerOverlap: true,
       noProviderOverlap: true,
       settledGenerationRevived: false,

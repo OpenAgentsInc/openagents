@@ -59,6 +59,7 @@ export type SarahVoiceSettlementProjection =
         waiverPayloadDigest: string;
         providerEvidenceDigest: string;
       }>;
+      unmeteredAuthorityCapture?: SarahVoiceUnmeteredAuthorityCapture;
     }>
   | Readonly<{
       sessionRef: string;
@@ -74,6 +75,7 @@ export type SarahVoiceSettlementProjection =
         escalatedAt: string;
       }>;
       failureEvidence?: SarahVoiceLiveKitFailureEvidence;
+      unmeteredAuthorityCapture?: SarahVoiceUnmeteredAuthorityCapture;
     }>;
 
 export type SarahVoiceLiveKitFailureEvidence = Readonly<{
@@ -134,6 +136,18 @@ export type SarahVoiceLiveKitAcceptanceEvidence = Readonly<{
   providerSessionCount: number;
   workerClosedAt: string;
   providerAdmittedAt: string;
+}>;
+
+export type SarahVoiceUnmeteredAuthorityCapture = Readonly<{
+  schema: "openagents.sarah.unmetered-authority-capture.v1";
+  authority: "owner_waived_unmetered_v1";
+  generation: number;
+  sessionRefDigest: string;
+  startLedgerStateDigest: string;
+  endLedgerStateDigest: string;
+  ledgerMutationCount: number;
+  captureReceiptRef: string;
+  captureDigest: string;
 }>;
 
 export type SarahVoiceSessionRecord = Readonly<{
@@ -533,6 +547,21 @@ const first = <A>(rows: ReadonlyArray<A>): A | undefined => rows[0];
 
 const acceptanceDigest = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
+
+const unmeteredLedgerStateDigest = (input: Readonly<{
+  sessionRef: string;
+  generation: number;
+  reservedMsat: number;
+  chargedMsat: number;
+  payInCount: number;
+  payInLegCount: number;
+}>): string =>
+  acceptanceDigest(
+    JSON.stringify({
+      schema: "openagents.sarah.unmetered-ledger-state.v1",
+      ...input,
+    }),
+  );
 
 const plusMillisecondsIso = (value: string, milliseconds: number): string => {
   const epochMilliseconds = Date.parse(value);
@@ -1076,6 +1105,26 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         const row = first(rows);
         if (row === undefined) {
           throw new SarahVoiceStorageError("The reservation did not return a row", null);
+        }
+        if (input.creditMode === "owner_waived_unmetered") {
+          const startLedgerStateDigest = unmeteredLedgerStateDigest({
+            sessionRef: input.sessionRef,
+            generation: input.generation,
+            reservedMsat: 0,
+            chargedMsat: 0,
+            payInCount: 0,
+            payInLegCount: 0,
+          });
+          await tx`
+            INSERT INTO sarah_voice_unmetered_authority_captures (
+              session_ref, generation, authority, start_ledger_state_digest,
+              ledger_mutation_count, created_at
+            ) VALUES (
+              ${input.sessionRef}, ${input.generation},
+              'owner_waived_unmetered_v1', ${startLedgerStateDigest}, 0,
+              ${input.nowIso}
+            )
+          `;
         }
         return {
           ...toRecord(row),
@@ -2815,6 +2864,86 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }
   };
 
+  const finalizeUnmeteredAuthorityCaptureInTransaction = async (
+    tx: SyncTransactionSql,
+    input: Readonly<{
+      sessionRef: string;
+      generation: number;
+      reservedMsat: number;
+      chargedMsat: number;
+      terminalReceiptRef: string;
+      nowIso: string;
+    }>,
+  ): Promise<void> => {
+    const payInRows = (await tx`
+      SELECT COUNT(*) AS pay_in_count
+      FROM pay_ins
+      WHERE context_ref = ${input.sessionRef}
+        OR id = ${`sarah:voice:${input.sessionRef}`}
+    `) as ReadonlyArray<{ pay_in_count: number | string }>;
+    const payInLegRows = (await tx`
+      SELECT COUNT(*) AS pay_in_leg_count
+      FROM pay_in_legs
+      WHERE external_ref = 'sarah_realtime_voice'
+        AND pay_in_id = ${`sarah:voice:${input.sessionRef}`}
+    `) as ReadonlyArray<{ pay_in_leg_count: number | string }>;
+    const payInCount = toSafeInteger(first(payInRows)?.pay_in_count ?? 0, "pay_in_count");
+    const payInLegCount = toSafeInteger(
+      first(payInLegRows)?.pay_in_leg_count ?? 0,
+      "pay_in_leg_count",
+    );
+    const ledgerMutationCount =
+      payInCount +
+      payInLegCount +
+      (input.reservedMsat === 0 ? 0 : 1) +
+      (input.chargedMsat === 0 ? 0 : 1);
+    const endLedgerStateDigest = unmeteredLedgerStateDigest({
+      sessionRef: input.sessionRef,
+      generation: input.generation,
+      reservedMsat: input.reservedMsat,
+      chargedMsat: input.chargedMsat,
+      payInCount,
+      payInLegCount,
+    });
+    const captureRows = (await tx`
+      SELECT start_ledger_state_digest, terminal_at
+      FROM sarah_voice_unmetered_authority_captures
+      WHERE session_ref = ${input.sessionRef}
+        AND generation = ${input.generation}
+      FOR UPDATE
+    `) as ReadonlyArray<{
+      start_ledger_state_digest: string;
+      terminal_at: string | null;
+    }>;
+    const capture = first(captureRows);
+    if (capture === undefined) {
+      throw new SarahVoiceStorageError("Unmetered authority capture is missing", null);
+    }
+    if (capture.terminal_at !== null) return;
+    const captureDigest = acceptanceDigest(
+      JSON.stringify({
+        schema: "openagents.sarah.unmetered-authority-capture.v1",
+        authority: "owner_waived_unmetered_v1",
+        sessionRef: input.sessionRef,
+        generation: input.generation,
+        startLedgerStateDigest: capture.start_ledger_state_digest,
+        endLedgerStateDigest,
+        ledgerMutationCount,
+        terminalReceiptRef: input.terminalReceiptRef,
+      }),
+    );
+    await tx`
+      UPDATE sarah_voice_unmetered_authority_captures
+      SET end_ledger_state_digest = ${endLedgerStateDigest},
+          ledger_mutation_count = ${ledgerMutationCount},
+          capture_receipt_ref = ${`sarah_voice_unmetered_authority:${captureDigest}`},
+          capture_digest = ${captureDigest}, terminal_at = ${input.nowIso}
+      WHERE session_ref = ${input.sessionRef}
+        AND generation = ${input.generation}
+        AND terminal_at IS NULL
+    `;
+  };
+
   const markLiveKitAccountingUncertainInTransaction = async (
     tx: SyncTransactionSql,
     input: Readonly<{
@@ -2896,7 +3025,19 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     if (uncertain === undefined) {
       throw new SarahVoiceStorageError("The uncertain accounting state was not persisted", null);
     }
-    return toRecord(uncertain);
+    const uncertainRecord = toRecord(uncertain);
+    if (uncertainRecord.creditMode === "owner_waived_unmetered") {
+      await finalizeUnmeteredAuthorityCaptureInTransaction(tx, {
+        sessionRef: uncertainRecord.sessionRef,
+        generation: uncertainRecord.generation,
+        reservedMsat: uncertainRecord.reservedMsat,
+        chargedMsat: uncertainRecord.chargedMsat,
+        terminalReceiptRef:
+          `sarah_voice_accounting_uncertain:${uncertainRecord.sessionRef}:${uncertainRecord.generation}`,
+        nowIso: input.nowIso,
+      });
+    }
+    return uncertainRecord;
   };
 
   const settleInTransaction = async (
@@ -2928,7 +3069,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     const current = toRecord(row);
     if (current.state === "accounting_uncertain" && input.exactReconciliation !== true) {
       throw new SarahVoiceSessionRejectedError(
-        "Sarah voice accounting is uncertain and its hold must be preserved",
+        "Sarah voice accounting is uncertain and requires explicit reconciliation or owner waiver",
       );
     }
     if (current.state === "connected" && row.credit_rate_msat_per_million_tokens === null) {
@@ -3042,6 +3183,16 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     const settled = first(settledRows);
     if (settled === undefined) {
       throw new SarahVoiceStorageError("The settlement did not return a row", null);
+    }
+    if (current.creditMode === "owner_waived_unmetered") {
+      await finalizeUnmeteredAuthorityCaptureInTransaction(tx, {
+        sessionRef: current.sessionRef,
+        generation: current.generation,
+        reservedMsat: current.reservedMsat,
+        chargedMsat: current.chargedMsat,
+        terminalReceiptRef: receiptRef,
+        nowIso: input.nowIso,
+      });
     }
     await tx`
       UPDATE sarah_livekit_room_bindings
@@ -3689,6 +3840,10 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           waiver.provider_evidence_refs_json,
           waiver.provider_accounting_status AS waiver_provider_accounting_status,
           waiver.authority AS waiver_authority,
+          capture.generation AS capture_generation,
+          capture.start_ledger_state_digest, capture.end_ledger_state_digest,
+          capture.ledger_mutation_count, capture.capture_receipt_ref,
+          capture.capture_digest,
           CASE
             WHEN session.credit_mode = 'metered'
               THEN COALESCE(
@@ -3704,6 +3859,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           ON binding.session_ref = session.session_ref
         LEFT JOIN sarah_voice_accounting_waivers AS waiver
           ON waiver.session_ref = session.session_ref
+        LEFT JOIN sarah_voice_unmetered_authority_captures AS capture
+          ON capture.session_ref = session.session_ref
         WHERE session.session_ref = ${input.sessionRef}
           AND session.owner_user_id = ${input.ownerUserId}
           AND session.state IN ('accounting_uncertain', 'settled', 'released')
@@ -3743,6 +3900,12 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         provider_evidence_refs_json: unknown | null;
         waiver_provider_accounting_status: "uncertain" | null;
         waiver_authority: "owner_waived_unmetered_v1" | null;
+        capture_generation: number | string | null;
+        start_ledger_state_digest: string | null;
+        end_ledger_state_digest: string | null;
+        ledger_mutation_count: number | string | null;
+        capture_receipt_ref: string | null;
+        capture_digest: string | null;
         spendable_remaining_credit_msat: number | string | null;
       }>;
       const row = first(rows);
@@ -3815,18 +3978,41 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             providerSessionCount: 1,
             providerAdmittedAt: row.provider_admitted_at,
             workerClosedAt: row.worker_closed_at,
-            holdPreserved: row.credit_mode === "metered",
-            noHoldCreated: row.credit_mode === "owner_waived_unmetered",
+            holdPreserved: toSafeInteger(row.reserved_msat, "reserved_msat") > 0,
+            noHoldCreated: toSafeInteger(row.reserved_msat, "reserved_msat") === 0,
           };
         }
+        const unmeteredAuthorityCapture =
+          row.credit_mode === "owner_waived_unmetered" &&
+          row.capture_generation !== null &&
+          row.start_ledger_state_digest !== null &&
+          row.end_ledger_state_digest !== null &&
+          row.ledger_mutation_count !== null &&
+          row.capture_receipt_ref !== null &&
+          row.capture_digest !== null
+            ? {
+                schema: "openagents.sarah.unmetered-authority-capture.v1" as const,
+                authority: "owner_waived_unmetered_v1" as const,
+                generation: toSafeInteger(row.capture_generation, "capture_generation"),
+                sessionRefDigest: acceptanceDigest(row.session_ref),
+                startLedgerStateDigest: row.start_ledger_state_digest,
+                endLedgerStateDigest: row.end_ledger_state_digest,
+                ledgerMutationCount: toSafeInteger(
+                  row.ledger_mutation_count,
+                  "ledger_mutation_count",
+                ),
+                captureReceiptRef: row.capture_receipt_ref,
+                captureDigest: row.capture_digest,
+              }
+            : undefined;
         return {
           sessionRef: row.session_ref,
           state: row.state,
           creditMode: row.credit_mode,
           recordedChargeMsat: toSafeInteger(row.charged_msat, "charged_msat"),
           reservedMsat: toSafeInteger(row.reserved_msat, "reserved_msat"),
-          holdPreserved: row.credit_mode === "metered",
-          noHoldCreated: row.credit_mode === "owner_waived_unmetered",
+          holdPreserved: toSafeInteger(row.reserved_msat, "reserved_msat") > 0,
+          noHoldCreated: toSafeInteger(row.reserved_msat, "reserved_msat") === 0,
           reason: row.provider_accounting_uncertain_reason ?? "provider_accounting_uncertain",
           ...(row.accounting_escalation_ref === null || row.accounting_escalated_at === null
             ? {}
@@ -3837,6 +4023,9 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
                 },
               }),
           ...(failureEvidence === undefined ? {} : { failureEvidence }),
+          ...(unmeteredAuthorityCapture === undefined
+            ? {}
+            : { unmeteredAuthorityCapture }),
         };
       }
       if (row.settlement_receipt_ref === null) {
@@ -3949,6 +4138,31 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           providerEvidenceDigest: acceptanceDigest(JSON.stringify(row.provider_evidence_refs_json)),
         };
       }
+      let unmeteredAuthorityCapture: SarahVoiceUnmeteredAuthorityCapture | undefined;
+      if (
+        row.credit_mode === "owner_waived_unmetered" &&
+        row.capture_generation !== null &&
+        row.start_ledger_state_digest !== null &&
+        row.end_ledger_state_digest !== null &&
+        row.ledger_mutation_count !== null &&
+        row.capture_receipt_ref !== null &&
+        row.capture_digest !== null
+      ) {
+        unmeteredAuthorityCapture = {
+          schema: "openagents.sarah.unmetered-authority-capture.v1",
+          authority: "owner_waived_unmetered_v1",
+          generation: toSafeInteger(row.capture_generation, "capture_generation"),
+          sessionRefDigest: acceptanceDigest(row.session_ref),
+          startLedgerStateDigest: row.start_ledger_state_digest,
+          endLedgerStateDigest: row.end_ledger_state_digest,
+          ledgerMutationCount: toSafeInteger(
+            row.ledger_mutation_count,
+            "ledger_mutation_count",
+          ),
+          captureReceiptRef: row.capture_receipt_ref,
+          captureDigest: row.capture_digest,
+        };
+      }
       return {
         sessionRef: row.session_ref,
         state: row.state,
@@ -3961,6 +4175,9 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         settlementReceiptRef: row.settlement_receipt_ref,
         ...(acceptanceEvidence === undefined ? {} : { acceptanceEvidence }),
         ...(accountingWaiver === undefined ? {} : { accountingWaiver }),
+        ...(unmeteredAuthorityCapture === undefined
+          ? {}
+          : { unmeteredAuthorityCapture }),
       };
     } catch (error) {
       throw new SarahVoiceStorageError("Sarah voice settlement lookup failed", error);

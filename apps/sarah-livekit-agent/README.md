@@ -166,14 +166,17 @@ The terminal-failure matrix command is non-mutating by design:
 pnpm --dir apps/sarah-livekit-agent failure-matrix
 ```
 
-Its default mode prints the eight required scenarios and executes no network
+Its default mode prints the seven active scenarios and executes no network
 request. With `--apply`, a separate owner gate permits it to validate a private
-production observation that remains outside the repository and to write one
-public-safe receipt. It does not inject a fault. Each scenario must reconcile
+production observation that remains outside the repository, verify its durable
+unmetered authority captures through a read-only production database query, and
+write one public-safe receipt. It does not inject a fault. Each scenario must reconcile
 exact provider usage, the reserved/charged/released hold, and terminal
 settlement; show one terminal event; show at most one worker generation and one
 provider session; require fresh admission; and carry zero secret, raw-media,
-and transcript findings. Reconnect must begin after the previous terminal
+and transcript findings. Provider disconnect preserves uncertain provider
+accounting and is published with `exactAccounting: false`; its durable capture
+still proves that it created no hold or platform credit mutation. Reconnect must begin after the previous terminal
 boundary with a different generation digest and must not revive the settled
 generation. The receipt contains only aggregate counts, amounts, durations,
 and SHA-256 evidence projections. See the production runbook before collecting

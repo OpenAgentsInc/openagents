@@ -2,16 +2,89 @@
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   SARAH_LIVEKIT_FAILURE_SCENARIOS,
   buildSarahLiveKitFailureMatrixReceipt,
+  validateSarahLiveKitFailureMatrixAuthorityRows,
+  validateSarahLiveKitFailureMatrixObservation,
   type SarahLiveKitFailureMatrixObservation,
+  type SarahLiveKitUnmeteredAuthorityCaptureRow,
 } from "./failure-matrix.js";
 
 const OWNER_GATE = "I_ACCEPT_EP263_SARAH_FAILURE_MATRIX";
 const repositoryRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const receiptRoot = resolve(repositoryRoot, "docs/ops/receipts/livekit");
+
+const requiredEnvironment = (name: string): string => {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`${name} is required`);
+  return value;
+};
+
+const runPsql = (statement: string): Promise<string> =>
+  new Promise((resolveOutput, reject) => {
+    const child = spawn("psql", ["-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1"], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const output: Buffer[] = [];
+    const errors: Buffer[] = [];
+    child.stdout.on("data", (chunk: Buffer) => output.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => errors.push(chunk));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolveOutput(Buffer.concat(output).toString("utf8").trim());
+      else reject(new Error(`psql authority read failed (${Buffer.concat(errors).toString("utf8").trim()})`));
+    });
+    child.stdin.end(statement);
+  });
+
+const readProductionAuthorityRows = async (
+  observation: SarahLiveKitFailureMatrixObservation,
+): Promise<readonly SarahLiveKitUnmeteredAuthorityCaptureRow[]> => {
+  const receiptRefs = [
+    ...observation.scenarios.map(
+      (scenario) => scenario.unmeteredAuthorityCapture.captureReceiptRef,
+    ),
+    observation.retiredScenarios[0].unmeteredAuthorityCapture.captureReceiptRef,
+  ];
+  const literals = receiptRefs.map((reference) => `'${reference}'`).join(", ");
+  const output = await runPsql(`
+    SELECT json_build_object(
+      'databaseName', current_database(),
+      'rows', COALESCE(json_agg(json_build_object(
+        'sessionRef', session_ref,
+        'authority', authority,
+        'generation', generation,
+        'startLedgerStateDigest', start_ledger_state_digest,
+        'endLedgerStateDigest', end_ledger_state_digest,
+        'ledgerMutationCount', ledger_mutation_count::integer,
+        'captureReceiptRef', capture_receipt_ref,
+        'captureDigest', capture_digest
+      ) ORDER BY capture_receipt_ref) FILTER (WHERE capture_receipt_ref IS NOT NULL), '[]'::json)
+    )
+    FROM sarah_voice_unmetered_authority_captures
+    WHERE capture_receipt_ref IN (${literals});
+  `);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(output);
+  } catch {
+    throw new Error("psql authority read returned invalid JSON");
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error("psql authority read returned an invalid result");
+  }
+  const result = parsed as { databaseName?: unknown; rows?: unknown };
+  if (
+    result.databaseName !== requiredEnvironment("SARAH_FAILURE_MATRIX_EXPECTED_PRODUCTION_DATABASE")
+  ) {
+    throw new Error("refusing Sarah failure-matrix authority read against the wrong database");
+  }
+  if (!Array.isArray(result.rows)) throw new Error("psql authority read returned invalid rows");
+  return result.rows as readonly SarahLiveKitUnmeteredAuthorityCaptureRow[];
+};
 
 type Arguments = Readonly<{
   apply: boolean;
@@ -29,8 +102,9 @@ Dry-run is the default. It performs no network request, fault injection, pod
 mutation, provider disconnect, or receipt write.
 
 --apply validates observations collected by the production runbook and writes
-one public-safe receipt. It still performs no live or destructive action. It
-requires:
+one public-safe receipt after a read-only production database authority check.
+It performs no fault injection, mutation, provider disconnect, or other live or
+destructive action. It requires:
   OA_SARAH_LIVEKIT_FAILURE_MATRIX_OWNER_GATE=${OWNER_GATE}
 
 The private observation must remain outside the repository. The harness refuses
@@ -106,6 +180,7 @@ const run = async () => {
   const observation = JSON.parse(
     await readFile(inputPath, "utf8"),
   ) as SarahLiveKitFailureMatrixObservation;
+  validateSarahLiveKitFailureMatrixObservation(observation);
   const observedAtMs = Date.parse(observation.observedAt);
   const observationAgeMs = Date.now() - observedAtMs;
   if (
@@ -115,6 +190,8 @@ const run = async () => {
   ) {
     throw new Error("private failure-matrix observation must be from the last 24 hours");
   }
+  const authorityRows = await readProductionAuthorityRows(observation);
+  validateSarahLiveKitFailureMatrixAuthorityRows(observation, authorityRows);
   const receipt = buildSarahLiveKitFailureMatrixReceipt(observation);
   await mkdir(dirname(receiptPath), { recursive: true });
   await writeFile(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, {

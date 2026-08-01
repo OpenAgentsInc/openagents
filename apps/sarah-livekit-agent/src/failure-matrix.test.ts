@@ -6,12 +6,29 @@ import {
   SARAH_LIVEKIT_FAILURE_SCENARIOS,
   SARAH_LIVEKIT_SFU_LOSS_BOUND_MS,
   buildSarahLiveKitFailureMatrixReceipt,
+  validateSarahLiveKitFailureMatrixAuthorityRows,
   validateSarahLiveKitFailureMatrixObservation,
   type SarahLiveKitFailureMatrixObservation,
   type SarahLiveKitFailureScenario,
 } from "./failure-matrix.js";
 
 const digest = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
+const rawDigest = (value: string) => createHash("sha256").update(value).digest("hex");
+const authorityCapture = (value: string, generation: number) => {
+  const ledgerDigest = rawDigest(`ledger-${value}`);
+  const captureDigest = rawDigest(`capture-${value}`);
+  return {
+    schema: "openagents.sarah.unmetered-authority-capture.v1" as const,
+    authority: "owner_waived_unmetered_v1" as const,
+    generation,
+    sessionRefDigest: rawDigest(`session-${value}`),
+    startLedgerStateDigest: ledgerDigest,
+    endLedgerStateDigest: ledgerDigest,
+    ledgerMutationCount: 0 as const,
+    captureReceiptRef: `sarah_voice_unmetered_authority:${captureDigest}`,
+    captureDigest,
+  };
+};
 
 const terminalReason = {
   success: "completed",
@@ -46,11 +63,10 @@ const observation = (): SarahLiveKitFailureMatrixObservation => ({
       classification: "not_applicable_removed",
       authority: "owner_waived_unmetered_v1",
       observedAtMs: 90_000,
-      generationDigest: digest("retired-generation"),
+      generationDigest: `sha256:${rawDigest("session-retired")}`,
       admissionEvidenceDigest: digest("retired-admission"),
       sessionEvidenceDigest: digest("retired-session"),
-      ledgerStateBeforeDigest: digest("retired-ledger"),
-      ledgerStateAfterDigest: digest("retired-ledger"),
+      unmeteredAuthorityCapture: authorityCapture("retired", 80),
       requiredHoldMsat: 0,
       spendableRemainingCreditMsat: null,
       reservedMsat: 0,
@@ -66,14 +82,15 @@ const observation = (): SarahLiveKitFailureMatrixObservation => ({
       scenario,
       faultAction: faultAction[scenario],
       terminalReason: terminalReason[scenario],
-      terminalState: "released",
+      terminalState: scenario === "provider_disconnect" ? "accounting_uncertain" : "released",
+      providerAccountingStatus: scenario === "provider_disconnect" ? "uncertain" : "exact",
       creditMode: "owner_waived_unmetered",
       startedAtMs: 1_000 + scenarioIndex * 10_000,
       terminalAtMs: 2_000 + scenarioIndex * 10_000,
       identityDigests: {
         job: digest(`identity-${base}`),
         providerSession: digest(`identity-${base + 1}`),
-        generation: digest(`identity-${base + 2}`),
+        generation: `sha256:${rawDigest(`session-${scenario}`)}`,
         hold: digest(`identity-${base + 3}`),
         usage: digest(`identity-${base + 4}`),
         settlement: digest(`identity-${base + 5}`),
@@ -94,13 +111,7 @@ const observation = (): SarahLiveKitFailureMatrixObservation => ({
         chargedMsat: 0,
         releasedMsat: 0,
       },
-      ledger: {
-        stateBeforeDigest: digest(`ledger-${scenario}`),
-        stateAfterDigest: digest(`ledger-${scenario}`),
-        balanceDeltaMsat: 0,
-        heldDeltaMsat: 0,
-        mutationCount: 0,
-      },
+      unmeteredAuthorityCapture: authorityCapture(scenario, scenarioIndex + 1),
       settlementChargeMsat: 0,
       terminalEventCount: 1,
       maximumWorkerGenerationCount: 1,
@@ -163,9 +174,9 @@ describe("Sarah LiveKit terminal failure matrix", () => {
     expect(source).toContain("receipt path must be under docs/ops/receipts/livekit");
     expect(source).toContain('flag: "wx"');
     expect(source).toContain("must be from the last 24 hours");
-    expect(source).not.toMatch(
-      /from "node:child_process"|execFile|spawnSync|fetch\(|kubectl|gcloud/u,
-    );
+    expect(source).toContain("SARAH_FAILURE_MATRIX_EXPECTED_PRODUCTION_DATABASE");
+    expect(source).toContain('spawn("psql"');
+    expect(source).not.toMatch(/execFile|spawnSync|fetch\(|kubectl|gcloud/u);
   });
 
   test("requires every scenario and projects exact accounting without private authority refs", () => {
@@ -188,7 +199,18 @@ describe("Sarah LiveKit terminal failure matrix", () => {
     expect(receipt.scenarios.map((scenario) => scenario.scenario)).toEqual(
       SARAH_LIVEKIT_FAILURE_SCENARIOS,
     );
-    expect(receipt.scenarios.every((scenario) => scenario.exactAccounting)).toBe(true);
+    expect(
+      receipt.scenarios.find((scenario) => scenario.scenario === "provider_disconnect"),
+    ).toMatchObject({
+      terminalState: "accounting_uncertain",
+      providerAccountingStatus: "uncertain",
+      exactAccounting: false,
+    });
+    expect(
+      receipt.scenarios
+        .filter((scenario) => scenario.scenario !== "provider_disconnect")
+        .every((scenario) => scenario.exactAccounting),
+    ).toBe(true);
     const serialized = JSON.stringify(receipt);
     expect(serialized).not.toContain("identity-");
     expect(serialized).not.toContain("reconnect-previous");
@@ -245,18 +267,39 @@ describe("Sarah LiveKit terminal failure matrix", () => {
         }),
       ),
     ).toThrow("rawMediaFindings is nonzero");
+
+    expect(() =>
+      validateSarahLiveKitFailureMatrixObservation(
+        mutateScenario(observation(), "success", (scenario) => {
+          scenario["terminalState"] = "accounting_uncertain";
+          scenario["providerAccountingStatus"] = "uncertain";
+        }),
+      ),
+    ).toThrow("must have exact released accounting");
+
+    expect(() =>
+      validateSarahLiveKitFailureMatrixObservation(
+        mutateScenario(observation(), "provider_disconnect", (scenario) => {
+          scenario["terminalState"] = "released";
+          scenario["providerAccountingStatus"] = "exact";
+        }),
+      ),
+    ).toThrow("truthful uncertain provider accounting");
   });
 
   test("requires live authority evidence for the retired hold-exhaustion row", () => {
     const changedLedger = structuredClone(observation()) as unknown as {
       retiredScenarios: Array<Record<string, unknown>>;
     };
-    changedLedger.retiredScenarios[0]!["ledgerStateAfterDigest"] = digest("changed-ledger");
+    const changedCapture = changedLedger.retiredScenarios[0]![
+      "unmeteredAuthorityCapture"
+    ] as Record<string, unknown>;
+    changedCapture["endLedgerStateDigest"] = rawDigest("changed-ledger");
     expect(() =>
       validateSarahLiveKitFailureMatrixObservation(
         changedLedger as unknown as SarahLiveKitFailureMatrixObservation,
       ),
-    ).toThrow("does not prove zero hold and zero ledger mutation");
+    ).toThrow("does not prove zero ledger mutation");
 
     const fabricatedHold = structuredClone(observation()) as unknown as {
       retiredScenarios: Array<Record<string, unknown>>;
@@ -267,6 +310,27 @@ describe("Sarah LiveKit terminal failure matrix", () => {
         fabricatedHold as unknown as SarahLiveKitFailureMatrixObservation,
       ),
     ).toThrow("does not prove zero hold and zero ledger mutation");
+  });
+
+  test("requires every caller-supplied capture to match production authority rows", () => {
+    const input = observation();
+    expect(() => validateSarahLiveKitFailureMatrixAuthorityRows(input, [])).toThrow(
+      "row count",
+    );
+    const captures = [
+      ...input.scenarios.map((scenario) => scenario.unmeteredAuthorityCapture),
+      input.retiredScenarios[0].unmeteredAuthorityCapture,
+    ];
+    const sessionRefs = [...SARAH_LIVEKIT_FAILURE_SCENARIOS, "retired"];
+    const rows = captures.map((capture, index) => ({
+      ...capture,
+      sessionRef: `session-${sessionRefs[index]}`,
+    }));
+    expect(() => validateSarahLiveKitFailureMatrixAuthorityRows(input, rows)).not.toThrow();
+    rows[0] = { ...rows[0]!, captureDigest: rawDigest("fabricated") };
+    expect(() => validateSarahLiveKitFailureMatrixAuthorityRows(input, rows)).toThrow(
+      "does not match",
+    );
   });
 
   test("requires reconnect to start after terminal with a new generation", () => {

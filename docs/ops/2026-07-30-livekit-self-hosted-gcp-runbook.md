@@ -1416,6 +1416,7 @@ Steps:
    ```sh
    # As one cell of the full matrix, alongside the other seven scenarios.
    OA_SARAH_LIVEKIT_FAILURE_MATRIX_OWNER_GATE=I_ACCEPT_EP263_SARAH_FAILURE_MATRIX \
+   SARAH_FAILURE_MATRIX_EXPECTED_PRODUCTION_DATABASE=<production-database-name> \
    pnpm --dir apps/sarah-livekit-agent failure-matrix -- \
      --input <private-observation.json> \
      --receipt docs/ops/receipts/livekit/production-drills-<UTC>.json --apply
@@ -2070,6 +2071,7 @@ projecting it into the aggregate `sarah_matrix` receipt:
 pnpm --dir apps/sarah-livekit-agent failure-matrix
 
 OA_SARAH_LIVEKIT_FAILURE_MATRIX_OWNER_GATE=I_ACCEPT_EP263_SARAH_FAILURE_MATRIX \
+SARAH_FAILURE_MATRIX_EXPECTED_PRODUCTION_DATABASE=<production-database-name> \
 pnpm --dir apps/sarah-livekit-agent failure-matrix -- \
   --input <private-terminal-matrix-observation.json> \
   --receipt docs/ops/receipts/livekit/production-sarah-terminal-matrix-<UTC>.json \
@@ -2078,14 +2080,16 @@ pnpm --dir apps/sarah-livekit-agent failure-matrix -- \
 
 The first command is the required preflight. It performs no network request,
 fault injection, pod mutation, provider disconnect, or receipt write. The
-second command is also non-mutating: the owner gate authorizes validation and
-public receipt projection only. Keep the private input outside the repository.
+second command is also non-mutating: the owner gate authorizes a read-only
+production database authority check, validation, and public receipt projection
+only. Standard libpq environment variables must target the named production
+database. Keep the private input outside the repository.
 The public receipt is mode 0600 and contains no room, owner, job, provider,
 hold, usage, or settlement identifier.
 
-The private input has exactly eight scenario rows in this order: `success`,
+The private input has seven active scenario rows in this order: `success`,
 `cancellation`, `timeout`, `planned_worker_crash`, `sfu_loss`,
-`provider_disconnect`, `hold_exhaustion`, and `reconnect`. `sfu_loss` was
+`provider_disconnect`, and `reconnect`, plus one retired `hold_exhaustion` row. `sfu_loss` was
 inserted after `planned_worker_crash` by openagents `af65458919`; this paragraph
 said seven until 2026-07-31, so an input written from it failed validation with
 "failure matrix must contain every scenario exactly once". Each row must
@@ -2247,12 +2251,15 @@ response that changes the session, generation, digest, or
 `reservedMsat = chargedMsat = 0` without reading or mutating `agent_balances`.
 The remaining-drill CLI no longer accepts the scenario, so it cannot loop
 forever waiting for a condition the owner removed. Historical evidence remains
-in the v1 receipt. A v2 live-proof matrix must bind the retirement row to the
-observed production admission, session generation, and identical authoritative
-ledger-state digests before/after the session. It rejects any nonzero reserved,
+in the v1 receipt. A v2 live-proof matrix must bind every active and retired row
+to a durable runtime capture by session digest and generation. The receipt CLI
+rereads those captures from the production database and rejects a missing,
+reused, or changed capture. It rejects any nonzero reserved,
 charged, released, balance-delta, held-delta, or ledger-mutation value. Every
 active v2 scenario likewise requires `owner_waived_unmetered`, nonzero provider
-token evidence, and zero platform credit accounting.
+token evidence, and zero platform credit accounting. `provider_disconnect`
+truthfully remains `accounting_uncertain` with `exactAccounting: false`; every
+other active row must be released with exact provider accounting.
 
 `reconnect` creates a distinct generation-two session only after the first
 session is terminal and its settlement is readable. After fresh admission it

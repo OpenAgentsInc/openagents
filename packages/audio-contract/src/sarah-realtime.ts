@@ -159,6 +159,19 @@ export const SarahVoiceSettlementResponseSchema = S.Struct({
       providerEvidenceDigest: Digest,
     }),
   ),
+  unmeteredAuthorityCapture: S.optional(
+    S.Struct({
+      schema: S.Literal("openagents.sarah.unmetered-authority-capture.v1"),
+      authority: S.Literal("owner_waived_unmetered_v1"),
+      generation: Seq,
+      sessionRefDigest: Digest,
+      startLedgerStateDigest: Digest,
+      endLedgerStateDigest: Digest,
+      ledgerMutationCount: Seq,
+      captureReceiptRef: Ref,
+      captureDigest: Digest,
+    }),
+  ),
   acceptanceEvidence: S.optional(
     S.Struct({
       principal: S.Literal("principal.sarah"),

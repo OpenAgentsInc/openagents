@@ -91,7 +91,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah voice owner-waived unmetered account
     ).resolves.toEqual({ chargedMsat: 0, reservedMsat: 0, creditLimitReached: false });
     await sql`
       UPDATE sarah_realtime_voice_sessions
-      SET transport_kind = 'livekit_room_v1', state = 'accounting_uncertain'
+      SET transport_kind = 'livekit_room_v1'
       WHERE session_ref = 'voice-unmetered'
     `;
     await sql`
@@ -114,10 +114,15 @@ describe.skipIf(!hasLocalPostgres())("Sarah voice owner-waived unmetered account
         '2026-08-01T12:05:00.000Z', 'dispatch-unmetered',
         'presence-unmetered', false, true, 'active', ${nowIso}, ${nowIso},
         'job-unmetered', ${nowIso}, ${"3".repeat(64)}, ${"4".repeat(64)},
-        ${nowIso}, 'uncertain', '2026-08-01T12:00:30.000Z',
-        'provider_disconnected'
+        ${nowIso}, 'pending', NULL, NULL
       )
     `;
+    await expect(
+      store.sweepExpired("2026-08-01T12:06:00.000Z"),
+    ).resolves.toBe(1);
+    await expect(
+      store.sweepExpired("2026-08-01T12:09:00.000Z"),
+    ).resolves.toBe(1);
     await expect(
       store.readSettlement({
         sessionRef: "voice-unmetered",
@@ -134,6 +139,16 @@ describe.skipIf(!hasLocalPostgres())("Sarah voice owner-waived unmetered account
         providerAccountingStatus: "uncertain",
         holdPreserved: false,
         noHoldCreated: true,
+      },
+      unmeteredAuthorityCapture: {
+        schema: "openagents.sarah.unmetered-authority-capture.v1",
+        authority: "owner_waived_unmetered_v1",
+        generation: 1,
+        ledgerMutationCount: 0,
+        sessionRefDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        captureReceiptRef: expect.stringMatching(
+          /^sarah_voice_unmetered_authority:[0-9a-f]{64}$/u,
+        ),
       },
     });
     const [usage] = await sql`
@@ -293,6 +308,100 @@ describe.skipIf(!hasLocalPostgres())("Sarah voice owner-waived unmetered account
       prior_recorded_charge_msat: "15",
       provider_accounting_status: "uncertain",
       authority: "owner_waived_unmetered_v1",
+    });
+  }, 120_000);
+
+  test("persists a zero-mutation authority capture with terminal settlement", async () => {
+    const nowIso = "2026-08-01T16:00:00.000Z";
+    await sql`
+      INSERT INTO users (id, kind, display_name, status, created_at, updated_at)
+      VALUES ('user-capture', 'human', 'Capture', 'active', ${nowIso}, ${nowIso})
+    `;
+    await sql`
+      INSERT INTO sarah_voice_alpha_memberships (
+        membership_ref, owner_user_id, cohort_ref, state, admitted_at,
+        admission_actor_ref, admission_reason, updated_at
+      ) VALUES (
+        'membership-capture', 'user-capture',
+        'sarah_voice_cohort:alpha_v1', 'active', ${nowIso},
+        'operator:test', 'test', ${nowIso}
+      )
+    `;
+    const store = makeSarahRealtimeVoiceStore(sql as unknown as SyncSql);
+    await store.reserve({
+      sessionRef: "voice-capture",
+      reservationRef: "reservation-capture",
+      ownerUserId: "user-capture",
+      ownerActorRef: "agent:user-capture",
+      deviceRef: "device-capture",
+      threadRef: "thread-capture",
+      generation: 3,
+      ticketDigest: "9".repeat(64),
+      disclosureRef: "disclosure-capture",
+      clientProfile: "omega_editor",
+      transportKind: "custom_wss_v1",
+      creditMode: "owner_waived_unmetered",
+      entitlementRef: null,
+      admissionCohortRef: "sarah_voice_cohort:alpha_v1",
+      creditRateMsatPerMillionTokens: 64_000_000,
+      reservedMsat: 0,
+      ticketExpiresAt: "2026-08-01T16:01:00.000Z",
+      sessionExpiresAt: "2026-08-01T16:05:00.000Z",
+      nowIso,
+    });
+    await store.connect({
+      sessionRef: "voice-capture",
+      ticketDigest: "9".repeat(64),
+      nowIso: "2026-08-01T16:00:01.000Z",
+    });
+    await store.recordUsage({
+      sessionRef: "voice-capture",
+      generation: 3,
+      usage: {
+        providerResponseRef: "response:capture",
+        providerStatus: "completed",
+        inputTokens: 5,
+        outputTokens: 7,
+        cachedInputTokens: 0,
+        audioInputTokens: 11,
+        audioOutputTokens: 13,
+        observedAt: "2026-08-01T16:00:02.000Z",
+      },
+    });
+    await store.settle({
+      sessionRef: "voice-capture",
+      closeReason: "completed",
+      nowIso: "2026-08-01T16:00:03.000Z",
+    });
+    await expect(
+      store.readSettlement({ sessionRef: "voice-capture", ownerUserId: "user-capture" }),
+    ).resolves.toMatchObject({
+      state: "released",
+      creditMode: "owner_waived_unmetered",
+      finalChargeMsat: 0,
+      unmeteredAuthorityCapture: {
+        schema: "openagents.sarah.unmetered-authority-capture.v1",
+        authority: "owner_waived_unmetered_v1",
+        generation: 3,
+        ledgerMutationCount: 0,
+        startLedgerStateDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        endLedgerStateDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        captureReceiptRef: expect.stringMatching(
+          /^sarah_voice_unmetered_authority:[0-9a-f]{64}$/u,
+        ),
+        captureDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      },
+    });
+    const [capture] = await sql`
+      SELECT start_ledger_state_digest, end_ledger_state_digest,
+        ledger_mutation_count, capture_receipt_ref, capture_digest
+      FROM sarah_voice_unmetered_authority_captures
+      WHERE session_ref = 'voice-capture'
+    `;
+    expect(capture).toMatchObject({
+      ledger_mutation_count: "0",
+      end_ledger_state_digest: capture?.start_ledger_state_digest,
+      capture_receipt_ref: `sarah_voice_unmetered_authority:${String(capture?.capture_digest)}`,
     });
   }, 120_000);
 });
