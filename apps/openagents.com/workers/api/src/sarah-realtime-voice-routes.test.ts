@@ -1315,7 +1315,9 @@ describe('managed Sarah Realtime voice session route', () => {
 
   test('refuses a second client once the generation participant is in the room', async () => {
     const fixture = makeDependencies()
-    fixture.readLiveKitOwnerParticipantAdmitted.mockImplementation(async () => true)
+    fixture.readLiveKitOwnerParticipantAdmitted.mockImplementation(
+      async () => true,
+    )
     const broker = {
       workerControlTokenDigest: vi.fn(() => 'b'.repeat(64)),
       sessionTicket: vi.fn(() => 'livekit-session-ticket'),
@@ -2078,6 +2080,10 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
       reservedMsat: 1_000,
       holdPreserved: true,
       reason: 'livekit_worker_provider_disconnect',
+      accountingEscalation: {
+        escalationRef: `sarah_voice_accounting_escalation:${'a'.repeat(64)}`,
+        escalatedAt: '2026-08-01T13:15:00.000Z',
+      },
     })
     const response = await handleSarahRealtimeVoiceSettlementRequest(
       fixture.dependencies,
@@ -2100,6 +2106,10 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
       reservedCreditMsat: 1_000,
       holdPreserved: true,
       reason: 'livekit_worker_provider_disconnect',
+      accountingEscalation: {
+        escalationRef: `sarah_voice_accounting_escalation:${'a'.repeat(64)}`,
+        escalatedAt: '2026-08-01T13:15:00.000Z',
+      },
     })
   })
 
@@ -2140,8 +2150,7 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
         headers: {
           authorization: 'Bearer test',
           [SARAH_REALTIME_VOICE_SESSION_HEADER]: identity.sessionRef,
-          [SARAH_LIVEKIT_ACCEPTANCE_EVIDENCE_HEADER]:
-            'live-observation-v1',
+          [SARAH_LIVEKIT_ACCEPTANCE_EVIDENCE_HEADER]: 'live-observation-v1',
         },
       }),
       {},

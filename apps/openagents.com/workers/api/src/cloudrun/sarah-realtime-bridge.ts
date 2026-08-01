@@ -33,14 +33,16 @@ export type SarahRealtimeBridgeData = {
   readonly creditMsatPerMillionTokens: number
   readonly store: SarahRealtimeVoiceStore
   readonly interruptLiveKit:
-    | ((input: Readonly<{
-        sessionRef: string
-        generation: number
-        roomRef: string
-        roomEpoch: number
-        sarahParticipantRef: string
-        interruptSequence: number
-      }>) => Promise<void>)
+    | ((
+        input: Readonly<{
+          sessionRef: string
+          generation: number
+          roomRef: string
+          roomEpoch: number
+          sarahParticipantRef: string
+          interruptSequence: number
+        }>,
+      ) => Promise<void>)
     | undefined
   readonly closeStore: () => Promise<void>
   readonly tasks: BackgroundTasks
@@ -62,6 +64,7 @@ export type SarahRealtimeBridgeData = {
   liveKitAdmissionPollTimer: ReturnType<typeof setInterval> | undefined
   liveKitToolPollTimer: ReturnType<typeof setInterval> | undefined
   liveKitProviderReady: boolean
+  providerGenerationRef: string | undefined
 }
 
 type ToolProposal = Readonly<{
@@ -109,6 +112,43 @@ const identityForSession = (
   sessionRef: session.sessionRef,
   generation: session.generation,
 })
+
+/**
+ * Public-safe identity for one admitted provider generation.
+ *
+ * The raw provider session id and its control-plane digest never cross the
+ * gateway. Including the OpenAgents session generation makes a provider id
+ * reused by a faulty provider distinct from a later managed generation.
+ */
+export const deriveSarahProviderGenerationRef = (
+  session: Pick<SarahVoiceSessionRecord, 'sessionRef' | 'generation'>,
+  providerIdentity: string,
+): string =>
+  `provider_generation:${createHash('sha256')
+    .update(
+      JSON.stringify([
+        'openagents.sarah.provider_generation.v1',
+        session.sessionRef,
+        session.generation,
+        providerIdentity,
+      ]),
+    )
+    .digest('hex')}`
+
+const admitProviderGeneration = (
+  data: SarahRealtimeBridgeData,
+  providerIdentity: string,
+): string | undefined => {
+  const next = deriveSarahProviderGenerationRef(data.session, providerIdentity)
+  if (
+    data.providerGenerationRef !== undefined &&
+    data.providerGenerationRef !== next
+  ) {
+    return undefined
+  }
+  data.providerGenerationRef = next
+  return next
+}
 
 type WithoutServerEnvelope<T> = T extends unknown
   ? Omit<T, 'schema' | 'identity' | 'sequence'>
@@ -300,7 +340,17 @@ export const pollSarahLiveKitProviderAdmission = async (
     ws.data.tasks.add(cleanup(ws, 'livekit_provider_unavailable'))
     return
   }
+  if (admission.state !== 'admitted') return
   ws.data.liveKitProviderReady = true
+  const providerGenerationRef = admitProviderGeneration(
+    ws.data,
+    admission.providerSessionRefDigest,
+  )
+  if (providerGenerationRef === undefined) {
+    closeClient(ws, 'provider_error', 1011)
+    ws.data.tasks.add(cleanup(ws, 'livekit_provider_generation_changed'))
+    return
+  }
   if (ws.data.liveKitAdmissionPollTimer !== undefined) {
     clearInterval(ws.data.liveKitAdmissionPollTimer)
     ws.data.liveKitAdmissionPollTimer = undefined
@@ -308,6 +358,7 @@ export const pollSarahLiveKitProviderAdmission = async (
   sendControl(ws, {
     _tag: 'session_ready',
     model: SARAH_VOICE_MODEL,
+    providerGenerationRef,
     expiresAtMs: Date.parse(ws.data.session.sessionExpiresAt),
     reservedCreditMsat: ws.data.session.reservedMsat,
   })
@@ -804,9 +855,32 @@ export const handleSarahProviderEvent = (ws: Socket, raw: string): void => {
   }
   const type = typeof event.type === 'string' ? event.type : ''
   if (type === 'session.updated') {
+    const providerSession =
+      typeof event.session === 'object' && event.session !== null
+        ? (event.session as Readonly<Record<string, unknown>>)
+        : undefined
+    const providerSessionRef = providerSession?.id
+    if (
+      typeof providerSessionRef !== 'string' ||
+      providerSessionRef.length === 0
+    ) {
+      closeClient(ws, 'provider_error', 1011)
+      ws.data.tasks.add(cleanup(ws, 'provider_generation_missing'))
+      return
+    }
+    const providerGenerationRef = admitProviderGeneration(
+      ws.data,
+      providerSessionRef,
+    )
+    if (providerGenerationRef === undefined) {
+      closeClient(ws, 'provider_error', 1011)
+      ws.data.tasks.add(cleanup(ws, 'provider_generation_changed'))
+      return
+    }
     sendControl(ws, {
       _tag: 'session_ready',
       model: SARAH_VOICE_MODEL,
+      providerGenerationRef,
       expiresAtMs: Date.parse(ws.data.session.sessionExpiresAt),
       reservedCreditMsat: ws.data.session.reservedMsat,
     })
@@ -980,13 +1054,17 @@ const handleControl = (ws: Socket, raw: string): void => {
         if (ws.data.session.transportKind === 'livekit_room_v1') {
           queueLiveKitToolControl(ws, async () => {
             if (ws.data.interruptLiveKit === undefined) {
-              throw new Error('Sarah LiveKit interrupt delivery is not configured')
+              throw new Error(
+                'Sarah LiveKit interrupt delivery is not configured',
+              )
             }
-            const interrupt = await ws.data.store.requestLiveKitWorkerInterrupt({
-              sessionRef: ws.data.session.sessionRef,
-              generation: ws.data.session.generation,
-              nowIso: new Date().toISOString(),
-            })
+            const interrupt = await ws.data.store.requestLiveKitWorkerInterrupt(
+              {
+                sessionRef: ws.data.session.sessionRef,
+                generation: ws.data.session.generation,
+                nowIso: new Date().toISOString(),
+              },
+            )
             await ws.data.interruptLiveKit({
               sessionRef: ws.data.session.sessionRef,
               generation: ws.data.session.generation,
@@ -1321,6 +1399,7 @@ export const makeSarahRealtimeBridgeData = (
   liveKitAdmissionPollTimer: undefined,
   liveKitToolPollTimer: undefined,
   liveKitProviderReady: false,
+  providerGenerationRef: undefined,
 })
 
 export const parseSarahRealtimeBridgeCreditRate = (

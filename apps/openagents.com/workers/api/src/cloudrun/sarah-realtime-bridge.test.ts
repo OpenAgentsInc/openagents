@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 import { describe, expect, test, vi } from 'vitest'
 
 import {
+  deriveSarahProviderGenerationRef,
   flushSarahLiveKitToolControl,
   handleSarahProviderEvent,
   makeSarahRealtimeBridgeData,
@@ -19,6 +20,109 @@ import {
   usageFromProviderResponse,
   validateSarahEditorCommandTarget,
 } from './sarah-realtime-bridge'
+
+describe('Sarah provider generation projection', () => {
+  test('is stable for one provider and differs for a new provider or managed generation', () => {
+    const session = { sessionRef: 'session-one', generation: 7 }
+    const first = deriveSarahProviderGenerationRef(session, 'provider-one')
+
+    expect(first).toMatch(/^provider_generation:[0-9a-f]{64}$/u)
+    expect(deriveSarahProviderGenerationRef(session, 'provider-one')).toBe(
+      first,
+    )
+    expect(deriveSarahProviderGenerationRef(session, 'provider-two')).not.toBe(
+      first,
+    )
+    expect(
+      deriveSarahProviderGenerationRef(
+        { sessionRef: 'session-one', generation: 8 },
+        'provider-one',
+      ),
+    ).not.toBe(first)
+    expect(first).not.toContain('provider-one')
+  })
+
+  test('keeps one ref for repeated readiness and closes on provider replacement', async () => {
+    const tasks: Array<Promise<unknown>> = []
+    const data = makeSarahRealtimeBridgeData({
+      session: {
+        sessionRef: 'session-provider-fence',
+        ownerUserId: 'user-1',
+        ownerActorRef: 'agent:user-1',
+        deviceRef: 'device-1',
+        threadRef: 'thread-1',
+        generation: 4,
+        disclosureRef: 'disclosure-1',
+        clientProfile: 'omega_editor',
+        transportKind: 'custom_wss_v1',
+        creditMode: 'metered',
+        entitlementRef: null,
+        admissionCohortRef: 'sarah_voice_cohort:alpha_v1',
+        state: 'connected',
+        reservedMsat: 1_000,
+        chargedMsat: 0,
+        ticketExpiresAt: '2026-07-29T12:01:00.000Z',
+        sessionExpiresAt: '2026-07-29T12:05:00.000Z',
+        settlementReceiptRef: null,
+      },
+      apiKey: 'test-key',
+      safetyIdentifier: 'test-safety',
+      creditMsatPerMillionTokens: 1_000,
+      store: {
+        settle: async () => undefined,
+      } as never,
+      closeStore: async () => undefined,
+      tasks: {
+        add: (task: Promise<unknown>) => tasks.push(task),
+        size: () => tasks.length,
+        drain: async () => {
+          await Promise.all(tasks)
+        },
+      },
+    })
+    const sent: Array<string> = []
+    const close = vi.fn()
+    const socket = {
+      data,
+      send: (message: string) => sent.push(message),
+      close,
+    }
+
+    handleSarahProviderEvent(
+      socket as never,
+      JSON.stringify({
+        type: 'session.updated',
+        session: { id: 'provider-session-one' },
+      }),
+    )
+    handleSarahProviderEvent(
+      socket as never,
+      JSON.stringify({
+        type: 'session.updated',
+        session: { id: 'provider-session-one' },
+      }),
+    )
+    const ready = sent
+      .map(message => JSON.parse(message) as Record<string, unknown>)
+      .filter(message => message._tag === 'session_ready')
+    expect(ready).toHaveLength(2)
+    expect(ready[0]?.providerGenerationRef).toBe(
+      ready[1]?.providerGenerationRef,
+    )
+
+    handleSarahProviderEvent(
+      socket as never,
+      JSON.stringify({
+        type: 'session.updated',
+        session: { id: 'provider-session-two' },
+      }),
+    )
+    await Promise.all(tasks)
+
+    expect(close).toHaveBeenCalledWith(1011, 'provider_error')
+    expect(data.providerGenerationRef).toBe(ready[0]?.providerGenerationRef)
+  })
+})
 
 const clientAudioFrame = (sequence: number): Uint8Array => {
   const payload = Buffer.from([0, 0])
@@ -370,6 +474,12 @@ describe('Sarah Realtime bridge metering', () => {
         'session_ready',
         'lifecycle',
       ])
+      expect(JSON.parse(sent[1] ?? '{}')).toMatchObject({
+        _tag: 'session_ready',
+        providerGenerationRef: expect.stringMatching(
+          /^provider_generation:[0-9a-f]{64}$/u,
+        ),
+      })
 
       handlers.message(socket as never, clientAudioFrame(0))
       expect(JSON.parse(sent.at(-1) ?? '{}')).toMatchObject({

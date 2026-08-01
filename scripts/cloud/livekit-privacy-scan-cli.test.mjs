@@ -21,6 +21,8 @@ const script = resolve(import.meta.dirname, "livekit-privacy-scan.mjs");
 const revision = "a".repeat(40);
 
 const fixture = () => {
+  const completedAt = new Date().toISOString();
+  const startedAt = new Date(Date.parse(completedAt) - 5 * 60_000).toISOString();
   const root = mkdtempSync(join(tmpdir(), "livekit-privacy-scan-cli-"));
   const scopeArguments = [];
   for (const scope of PRIVACY_SCOPES) {
@@ -36,8 +38,8 @@ const fixture = () => {
         sourceBaseRevision: revision,
         collectionMode: "read_only",
         complete: true,
-        startedAt: "2026-07-31T09:00:00.000Z",
-        completedAt: "2026-07-31T09:05:00.000Z",
+        startedAt,
+        completedAt,
         objectCount: 1,
         byteCount: Buffer.byteLength(payload),
       }),

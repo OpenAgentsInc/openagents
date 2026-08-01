@@ -27,18 +27,29 @@ export type SarahVoiceStuckAccountingHolds = Readonly<{
 export type SarahVoiceScheduledMaintenanceOperations = Readonly<{
   sweepExpired?: (() => Promise<number>) | undefined
   /**
+   * Records a durable escalation for overdue accounting holds. The store
+   * removes only the voice-concurrency lock; charge, hold, and provider
+   * accounting remain unchanged until exact operator reconciliation.
+   */
+  escalateStuckAccountingHolds?:
+    | (() => Promise<
+        Readonly<{
+          escalated: number
+          owners: number
+          oldestAgeMs: number
+        }>
+      >)
+    | undefined
+  /**
    * Reports `accounting_uncertain` holds that have gone stale.
    *
-   * Additive and read-only. An unreconciled hold occupies its owner's single
-   * voice concurrency slot, and `sweepExpired` — the function that opens that
-   * state — has no branch that can close it, so the per-minute sweep reports
-   * healthy while every later session for that identity is refused
-   * `sarah_voice_concurrency_limit`. Every LiveKit lane shares the same two
-   * acceptance identities, so one stuck hold denies voice to all of them with
-   * no signal anywhere. This is that signal.
+   * Additive and read-only. Before bounded escalation, an unreconciled hold
+   * occupies its owner's voice slot; after escalation, it remains a financial
+   * incident that needs complete provider evidence. This signal covers both
+   * phases without carrying identifiers into the log.
    *
-   * It must never settle, expire, or escalate a hold. Bounding reconciliation
-   * changes a settlement invariant and is reserved for the owner.
+   * It must never settle or expire a hold. Escalated rows remain visible until
+   * exact reconciliation moves the money and closes the incident.
    */
   reportStuckAccountingHolds?:
     (() => Promise<SarahVoiceStuckAccountingHolds>) | undefined
@@ -71,6 +82,20 @@ export const runSarahVoiceScheduledMaintenance = async (
     }
   }
 
+  if (operations.escalateStuckAccountingHolds !== undefined) {
+    try {
+      const result = await operations.escalateStuckAccountingHolds()
+      if (result.escalated > 0) {
+        report('sarah_voice_accounting_uncertain_holds_escalated', result)
+      }
+    } catch (error) {
+      report(
+        'sarah_voice_accounting_uncertain_escalation_failed',
+        errorDetail(error),
+      )
+    }
+  }
+
   if (operations.reportStuckAccountingHolds !== undefined) {
     try {
       const holds = await operations.reportStuckAccountingHolds()
@@ -78,10 +103,7 @@ export const runSarahVoiceScheduledMaintenance = async (
         report('sarah_voice_accounting_uncertain_holds_stuck', holds)
       }
     } catch (error) {
-      report(
-        'sarah_voice_accounting_uncertain_scan_failed',
-        errorDetail(error),
-      )
+      report('sarah_voice_accounting_uncertain_scan_failed', errorDetail(error))
     }
   }
 

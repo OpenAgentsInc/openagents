@@ -13,26 +13,27 @@ import { hasLocalPostgres, startLocalPostgres, type LocalPostgres } from "./test
  * `accounting_uncertain` is a hold, not a settlement.
  *
  * Migration 0115 widened `sarah_realtime_voice_owner_active_idx` to cover
- * `accounting_uncertain` on purpose: the owner's hold is preserved until exact
- * provider accounting is reconciled, rather than fabricating a terminal
- * settlement from the usage seen so far. `sweepExpired` therefore selects only
- * `reserved` and `connected`, and cannot terminate an uncertain row.
+ * `accounting_uncertain` while exact provider accounting is still inside its
+ * bounded reconciliation window. Migration 0128 removes only that concurrency
+ * lock after a durable escalation. The owner's hold remains preserved until
+ * exact provider accounting is reconciled. `sweepExpired` therefore selects
+ * only `reserved` and `connected`, and cannot terminate an uncertain row.
  *
  * That asymmetry looks like a bug, and it has already been misread as one. The
- * liveness symptom is real — an unreconciled hold occupies the owner's single
- * concurrency slot until an operator reconciles it — but "make the sweep's
- * selected set match the index's blocking set" is not its fix. A sweep that
- * terminated this state would invent the exact charge the design refuses to
- * invent, trading a liveness bug for a money bug.
+ * liveness symptom is real — an unreconciled hold occupied the owner's single
+ * concurrency slot forever — but "make the sweep's selected set match the
+ * index's blocking set" is not its fix. A sweep that terminated this state
+ * would invent the exact charge the design refuses to invent, trading a
+ * liveness bug for a money bug.
  *
  * This file exists so that trade cannot be made quietly. It was written after a
  * coordinating agent issued exactly that instruction and it was stopped only
  * because a second reviewer checked the claim instead of accepting it.
  *
- * The two honest repairs — stop letting an accounting state act as a per-owner
- * concurrency lock, or give reconciliation a bounded deadline that escalates —
- * both change settlement invariants and are reserved for the owner. Either one
- * lands with this file updated deliberately, not deleted to make a sweep pass.
+ * The repair keeps the money invariant and separates it from voice liveness:
+ * after a bounded window, maintenance records a durable escalation and removes
+ * only the concurrency lock. The full hold and uncertain state remain until an
+ * operator supplies complete provider evidence through exact reconciliation.
  */
 describe.skipIf(!hasLocalPostgres())("Sarah voice accounting-uncertain holds", () => {
   let pg: LocalPostgres;
@@ -106,6 +107,16 @@ describe.skipIf(!hasLocalPostgres())("Sarah voice accounting-uncertain holds", (
         ${"c".repeat(64)}, ${"d".repeat(64)},
         ${connectedAt}, 'uncertain',
         ${uncertainAt}, 'worker_disappeared'
+      )
+    `;
+    await sql`
+      INSERT INTO sarah_realtime_voice_usage (
+        session_ref, provider_response_ref, input_tokens, output_tokens,
+        cached_input_tokens, audio_input_tokens, audio_output_tokens,
+        charge_msat, observed_at, usage_kind, provider_status
+      ) VALUES (
+        ${sessionRef}, 'response:provider-response-uncertain',
+        100, 50, 10, 80, 40, 15, ${connectedAt}, 'response', 'completed'
       )
     `;
   }, 120_000);
@@ -194,6 +205,93 @@ describe.skipIf(!hasLocalPostgres())("Sarah voice accounting-uncertain holds", (
     ).resolves.toMatchObject({ stuck: 1, owners: 1, oldestAgeMs: 86_400_000 });
   }, 120_000);
 
+  test("escalates at the bound without moving money and releases only the voice slot", async () => {
+    const store = makeSarahRealtimeVoiceStore(sql as unknown as SyncSql);
+    const uncertainMs = Date.parse(uncertainAt);
+    const balanceBefore = (
+      await sql`
+      SELECT balance_msat, held_msat FROM agent_balances
+      WHERE actor_ref = ${`agent:${ownerUserId}`}
+    `
+    )[0];
+
+    await expect(
+      store.escalateStuckAccountingUncertainHolds({
+        nowIso: new Date(uncertainMs + SARAH_VOICE_ACCOUNTING_UNCERTAIN_STUCK_MS - 1).toISOString(),
+      }),
+    ).resolves.toEqual({ escalated: 0, owners: 0, oldestAgeMs: 0 });
+
+    const escalatedAt = new Date(
+      uncertainMs + SARAH_VOICE_ACCOUNTING_UNCERTAIN_STUCK_MS,
+    ).toISOString();
+    await expect(
+      store.escalateStuckAccountingUncertainHolds({ nowIso: escalatedAt }),
+    ).resolves.toEqual({
+      escalated: 1,
+      owners: 1,
+      oldestAgeMs: SARAH_VOICE_ACCOUNTING_UNCERTAIN_STUCK_MS,
+    });
+    await expect(
+      store.escalateStuckAccountingUncertainHolds({ nowIso: escalatedAt }),
+    ).resolves.toEqual({ escalated: 0, owners: 0, oldestAgeMs: 0 });
+
+    const [escalated] = await sql`
+      SELECT state, charged_msat, accounting_escalated_at,
+        accounting_escalation_ref
+      FROM sarah_realtime_voice_sessions
+      WHERE session_ref = ${sessionRef}
+    `;
+    expect(escalated).toMatchObject({
+      state: "accounting_uncertain",
+      charged_msat: "15",
+      accounting_escalated_at: escalatedAt,
+      accounting_escalation_ref: expect.stringMatching(
+        /^sarah_voice_accounting_escalation:[0-9a-f]{64}$/u,
+      ),
+    });
+    const balanceAfter = (
+      await sql`
+      SELECT balance_msat, held_msat FROM agent_balances
+      WHERE actor_ref = ${`agent:${ownerUserId}`}
+    `
+    )[0];
+    expect(balanceAfter).toEqual(balanceBefore);
+
+    await expect(store.readSettlement({ sessionRef, ownerUserId })).resolves.toMatchObject({
+      state: "accounting_uncertain",
+      holdPreserved: true,
+      accountingEscalation: {
+        escalationRef: escalated.accounting_escalation_ref,
+        escalatedAt,
+      },
+    });
+
+    // The old full hold still reduces spendable credit, but it is no longer a
+    // voice-concurrency mutex. The normal credit reservation remains the bound.
+    await expect(sql`
+      INSERT INTO sarah_realtime_voice_sessions (
+        session_ref, reservation_ref, owner_user_id, owner_actor_ref,
+        device_ref, thread_ref, generation, disclosure_ref, state,
+        reserved_msat, charged_msat, ticket_expires_at, session_expires_at,
+        created_at, updated_at, client_profile, credit_mode, transport_kind,
+        credit_rate_msat_per_million_tokens
+      ) VALUES (
+        'voice-after-accounting-escalation',
+        'reservation-after-accounting-escalation', ${ownerUserId},
+        ${`agent:${ownerUserId}`}, 'omega-after-escalation',
+        'thread-after-escalation', 1, 'disclosure-after-escalation',
+        'connected', 1000, 0, '2026-07-28T13:20:00.000Z',
+        '2026-07-28T13:30:00.000Z', ${escalatedAt}, ${escalatedAt},
+        'omega_editor', 'metered', 'livekit_room_v1', 100000
+      )
+    `).resolves.toBeDefined();
+    await sql`
+      UPDATE agent_balances
+      SET held_msat = held_msat + 1000
+      WHERE actor_ref = ${`agent:${ownerUserId}`}
+    `;
+  }, 120_000);
+
   /**
    * The second half of the same lock, and the more important one.
    *
@@ -237,5 +335,64 @@ describe.skipIf(!hasLocalPostgres())("Sarah voice accounting-uncertain holds", (
     const after = await readHold();
     expect(after?.state).toBe("accounting_uncertain");
     expect(String(after?.charged_msat)).toBe(String(before?.charged_msat));
+  }, 120_000);
+
+  test("reconciles an escalated hold while the owner's newer voice session stays active", async () => {
+    const store = makeSarahRealtimeVoiceStore(sql as unknown as SyncSql);
+
+    await expect(
+      store.reconcileLiveKitAccounting({
+        reconciliationRef: "reconciliation-after-escalation",
+        reconciliationPayloadDigest: "e".repeat(64),
+        sessionRef,
+        generation: 1,
+        providerSessionRefDigest: "c".repeat(64),
+        operatorActorRef: "operator:accounting-test",
+        reason: "Complete provider export matched the recorded response",
+        providerEvidenceRefs: ["provider-export:uncertain-hold"],
+        usage: [
+          {
+            usageKind: "response",
+            providerResponseRef: "response:provider-response-uncertain",
+            providerStatus: "completed",
+            inputTokens: 100,
+            outputTokens: 50,
+            cachedInputTokens: 10,
+            audioInputTokens: 80,
+            audioOutputTokens: 40,
+          },
+        ],
+        nowIso: "2026-07-29T14:00:00.000Z",
+      }),
+    ).resolves.toMatchObject({
+      state: "settled",
+      finalChargeMsat: 15,
+      replayed: false,
+    });
+
+    const [oldSession] = await sql`
+      SELECT state, charged_msat, accounting_escalation_ref
+      FROM sarah_realtime_voice_sessions
+      WHERE session_ref = ${sessionRef}
+    `;
+    expect(oldSession).toMatchObject({
+      state: "settled",
+      charged_msat: "15",
+      accounting_escalation_ref: expect.stringMatching(
+        /^sarah_voice_accounting_escalation:[0-9a-f]{64}$/u,
+      ),
+    });
+    const [newSession] = await sql`
+      SELECT state, charged_msat
+      FROM sarah_realtime_voice_sessions
+      WHERE session_ref = 'voice-after-accounting-escalation'
+    `;
+    expect(newSession).toMatchObject({ state: "connected", charged_msat: "0" });
+    const [balance] = await sql`
+      SELECT balance_msat, held_msat
+      FROM agent_balances
+      WHERE actor_ref = ${`agent:${ownerUserId}`}
+    `;
+    expect(balance).toMatchObject({ balance_msat: "9985", held_msat: "1000" });
   }, 120_000);
 });

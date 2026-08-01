@@ -1,7 +1,17 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { describe, expect, test } from 'vitest'
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { hashPayloadBytes } from 'nostr-effect/nip98'
+import { generateSecretKey, verifyEvent } from 'nostr-effect/pure'
+import { describe, expect, test, vi } from 'vitest'
 
 import {
   ACCEPTANCE_ROLES,
@@ -10,10 +20,14 @@ import {
   acceptanceSecretId,
   assertDistinctOwners,
   assertPublicSafeSummary,
+  mintCredential,
+  nip98Authorization,
   parseArguments,
   parseSessionResponse,
   renderEnvFile,
+  resolveRepositoryRoot,
   summarize,
+  writeCredentialFileExclusive,
 } from './mint-livekit-acceptance-bearer'
 
 // A syntactically valid, entirely fake session bearer. Nothing here ever
@@ -99,7 +113,10 @@ describe('mint-livekit-acceptance-bearer parseArguments', () => {
       /--credential-file is required/u,
     )
     expect(() =>
-      parseArguments(['--role', 'both', '--credential-file', ''], REPOSITORY_ROOT),
+      parseArguments(
+        ['--role', 'both', '--credential-file', ''],
+        REPOSITORY_ROOT,
+      ),
     ).toThrow(/--credential-file is required/u)
   })
 
@@ -308,7 +325,10 @@ describe('mint-livekit-acceptance-bearer parseSessionResponse', () => {
 
   test('rejects a bearer that is not an oa_omega_ session token', () => {
     expect(() =>
-      parseSessionResponse('private', sessionBody({ accessToken: 'oa_omega_' })),
+      parseSessionResponse(
+        'private',
+        sessionBody({ accessToken: 'oa_omega_' }),
+      ),
     ).toThrow(/carried no oa_omega_ bearer/u)
     expect(() =>
       parseSessionResponse(
@@ -417,6 +437,120 @@ describe('mint-livekit-acceptance-bearer renderEnvFile', () => {
 
     expect(rendered).toContain('OA_SARAH_LIVEKIT_ACCEPTANCE_PRIVATE_BEARER=')
     expect(rendered).not.toContain('COMMUNITY')
+  })
+})
+
+describe('mint-livekit-acceptance-bearer side effects', () => {
+  test('creates one owner-only file and refuses overwrite or symlink replacement', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'oa-livekit-credential-'))
+    const credentialFile = join(directory, 'acceptance.env')
+    const symlinkTarget = join(directory, 'target.env')
+    const symlinkFile = join(directory, 'credential-link.env')
+    try {
+      writeCredentialFileExclusive(credentialFile, 'FIRST=value\n')
+      expect(readFileSync(credentialFile, 'utf8')).toBe('FIRST=value\n')
+      expect(statSync(credentialFile).mode & 0o777).toBe(0o600)
+
+      expect(() =>
+        writeCredentialFileExclusive(credentialFile, 'SECOND=value\n'),
+      ).toThrow()
+      expect(readFileSync(credentialFile, 'utf8')).toBe('FIRST=value\n')
+
+      writeFileSync(symlinkTarget, 'TARGET=value\n', { mode: 0o644 })
+      // Use the platform API here: the production `wx` open must reject this
+      // final-component symlink rather than following it.
+      symlinkSync(symlinkTarget, symlinkFile)
+      expect(() =>
+        writeCredentialFileExclusive(symlinkFile, 'SECRET=value\n'),
+      ).toThrow()
+      expect(readFileSync(symlinkTarget, 'utf8')).toBe('TARGET=value\n')
+      expect(statSync(symlinkTarget).mode & 0o777).toBe(0o644)
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  test('decodes URL-escaped repository paths before applying path guards', () => {
+    const encodedScriptUrl = pathToFileURL(
+      '/tmp/openagents path/apps/openagents.com/workers/api/scripts/tool.ts',
+    ).href
+
+    expect(encodedScriptUrl).toContain('%20')
+    expect(resolveRepositoryRoot(encodedScriptUrl)).toBe(
+      '/tmp/openagents path/',
+    )
+  })
+
+  test('signs exactly one POST session request with a verifiable NIP-98 proof', async () => {
+    const secret = generateSecretKey()
+    const createdAtSeconds = 1_785_513_600
+    const requestInputs: Array<Readonly<{ url: string; init?: RequestInit }>> =
+      []
+    const fetchMock = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        requestInputs.push({ url: String(input), init })
+        return new Response(JSON.stringify(sessionBody()), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      },
+    )
+    const readSecret = vi.fn(() => Buffer.from(secret).toString('hex'))
+
+    await expect(
+      mintCredential('private', 'https://openagents.com', {
+        readSecret,
+        fetch: fetchMock as typeof fetch,
+        nowSeconds: () => createdAtSeconds,
+      }),
+    ).resolves.toMatchObject({
+      role: 'private',
+      ownerRef: PRIVATE_USER_ID,
+      bearer: FAKE_BEARER,
+    })
+
+    expect(readSecret).toHaveBeenCalledOnce()
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(requestInputs).toHaveLength(1)
+    const request = requestInputs[0]
+    expect(request?.url).toBe('https://openagents.com/api/omega/auth/session')
+    expect(request?.init?.method).toBe('POST')
+    expect(request?.init?.body).toBeInstanceOf(Uint8Array)
+    const headers = new Headers(request?.init?.headers)
+    const authorization = headers.get('authorization')
+    expect(authorization).toMatch(/^Nostr /u)
+    const event = JSON.parse(
+      Buffer.from(
+        authorization?.slice('Nostr '.length) ?? '',
+        'base64',
+      ).toString('utf8'),
+    ) as Parameters<typeof verifyEvent>[0]
+    expect(verifyEvent(event)).toBe(true)
+    expect(event.kind).toBe(27_235)
+    expect(event.created_at).toBe(createdAtSeconds)
+    expect(event.tags).toEqual([
+      ['u', 'https://openagents.com/api/omega/auth/session'],
+      ['method', 'POST'],
+      ['payload', hashPayloadBytes(new Uint8Array())],
+    ])
+  })
+
+  test('pins the pure NIP-98 helper to its supplied instant', () => {
+    const secret = generateSecretKey()
+    const authorization = nip98Authorization(
+      secret,
+      'https://openagents.com/api/omega/auth/session',
+      new Uint8Array(),
+      1_785_513_600,
+    )
+    const event = JSON.parse(
+      Buffer.from(authorization.slice('Nostr '.length), 'base64').toString(
+        'utf8',
+      ),
+    ) as Parameters<typeof verifyEvent>[0]
+
+    expect(verifyEvent(event)).toBe(true)
+    expect(event.created_at).toBe(1_785_513_600)
   })
 })
 

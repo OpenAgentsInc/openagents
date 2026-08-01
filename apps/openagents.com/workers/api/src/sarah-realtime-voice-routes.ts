@@ -1171,6 +1171,9 @@ export const handleSarahRealtimeVoiceSettlementRequest = async <User, Bindings>(
           reservedCreditMsat: settlement.reservedMsat,
           holdPreserved: settlement.holdPreserved,
           reason: settlement.reason,
+          ...(settlement.accountingEscalation === undefined
+            ? {}
+            : { accountingEscalation: settlement.accountingEscalation }),
           ...(settlement.failureEvidence === undefined ||
           !failureEvidenceRequested
             ? {}

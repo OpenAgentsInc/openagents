@@ -58,6 +58,10 @@ export type SarahVoiceSettlementProjection =
       reservedMsat: number;
       holdPreserved: true;
       reason: string;
+      accountingEscalation?: Readonly<{
+        escalationRef: string;
+        escalatedAt: string;
+      }>;
       failureEvidence?: SarahVoiceLiveKitFailureEvidence;
     }>;
 
@@ -393,19 +397,20 @@ export const SARAH_LIVEKIT_WORKER_HEARTBEAT_TIMEOUT_MS = 30_000;
  * How long an `accounting_uncertain` hold may sit before it is worth an
  * operator's attention.
  *
- * `sarah_realtime_voice_owner_active_idx` is per owner and covers
- * `('reserved','connected','accounting_uncertain')`, so an unreconciled hold
- * occupies that owner's single concurrency slot. Every later voice session for
- * the same identity is then refused `sarah_voice_concurrency_limit`. Because
- * every LiveKit lane shares the same two acceptance identities, one lane's
- * stuck reconciliation silently denies voice to all of them, and the per-minute
- * sweep reports healthy throughout.
- *
- * This bound only decides when to *report*. It is deliberately not a deadline
- * that expires, escalates, or settles anything: bounding reconciliation is a
- * settlement-invariant change reserved for the owner.
+ * Before this bound, `sarah_realtime_voice_owner_active_idx` treats an
+ * uncertain hold as active and refuses a later voice generation. At the bound,
+ * maintenance records a durable escalation and the partial index removes only
+ * that row's concurrency lock. The full hold and uncertain state remain until
+ * exact provider reconciliation.
  */
 export const SARAH_VOICE_ACCOUNTING_UNCERTAIN_STUCK_MS = 900_000;
+export const SARAH_VOICE_ACCOUNTING_ESCALATION_BATCH_SIZE = 100;
+
+export type SarahVoiceAccountingEscalationResult = Readonly<{
+  escalated: number;
+  owners: number;
+  oldestAgeMs: number;
+}>;
 
 export class SarahVoiceInsufficientCreditError extends Error {
   override readonly name = "SarahVoiceInsufficientCreditError";
@@ -2868,6 +2873,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       sessionRef: string;
       closeReason: string;
       nowIso: string;
+      exactReconciliation?: boolean | undefined;
     }>,
   ): Promise<SarahVoiceSessionRecord> => {
     const rows = (await tx`
@@ -2888,7 +2894,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       throw new SarahVoiceSessionRejectedError("The voice session does not exist");
     }
     const current = toRecord(row);
-    if (current.state === "accounting_uncertain") {
+    if (current.state === "accounting_uncertain" && input.exactReconciliation !== true) {
       throw new SarahVoiceSessionRejectedError(
         "Sarah voice accounting is uncertain and its hold must be preserved",
       );
@@ -3358,8 +3364,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         `;
         await tx`
           UPDATE sarah_realtime_voice_sessions
-          SET state = 'connected',
-              input_tokens = ${inputTokens},
+          SET input_tokens = ${inputTokens},
               output_tokens = ${outputTokens},
               cached_input_tokens = ${cachedInputTokens},
               audio_input_tokens = ${audioInputTokens},
@@ -3374,6 +3379,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           sessionRef: input.sessionRef,
           closeReason: `accounting_reconciled:${input.reconciliationRef}`,
           nowIso: input.nowIso,
+          exactReconciliation: true,
         });
         if (
           (settled.state !== "settled" && settled.state !== "released") ||
@@ -3416,7 +3422,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           session.admission_cohort_ref,
           session.input_tokens, session.output_tokens,
           session.cached_input_tokens, session.audio_input_tokens,
-          session.audio_output_tokens,
+          session.audio_output_tokens, session.accounting_escalation_ref,
+          session.accounting_escalated_at,
           binding.provider_accounting_uncertain_reason,
           binding.worker_job_ref, binding.provider_session_ref_digest,
           binding.provider_configuration_digest, binding.capability_profile,
@@ -3456,6 +3463,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         cached_input_tokens: number | string;
         audio_input_tokens: number | string;
         audio_output_tokens: number | string;
+        accounting_escalation_ref: string | null;
+        accounting_escalated_at: string | null;
         provider_accounting_uncertain_reason: string | null;
         worker_job_ref: string | null;
         provider_session_ref_digest: string | null;
@@ -3553,6 +3562,14 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           reservedMsat: toSafeInteger(row.reserved_msat, "reserved_msat"),
           holdPreserved: true,
           reason: row.provider_accounting_uncertain_reason ?? "provider_accounting_uncertain",
+          ...(row.accounting_escalation_ref === null || row.accounting_escalated_at === null
+            ? {}
+            : {
+                accountingEscalation: {
+                  escalationRef: row.accounting_escalation_ref,
+                  escalatedAt: row.accounting_escalated_at,
+                },
+              }),
           ...(failureEvidence === undefined ? {} : { failureEvidence }),
         };
       }
@@ -4957,6 +4974,99 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
   };
 
   /**
+   * Escalates overdue provider-accounting holds without settling them.
+   *
+   * The durable escalation removes only the per-owner voice-concurrency lock.
+   * It does not change the session state, recorded charge, provider-accounting
+   * status, or held credit. Exact provider evidence is still required by
+   * `reconcileLiveKitAccounting` before any money moves.
+   */
+  const escalateStuckAccountingUncertainHolds = async (input: {
+    readonly nowIso: string;
+    readonly stuckAfterMs?: number | undefined;
+    readonly batchSize?: number | undefined;
+  }): Promise<SarahVoiceAccountingEscalationResult> => {
+    const nowMs = Date.parse(input.nowIso);
+    if (!Number.isFinite(nowMs)) {
+      throw new SarahVoiceSessionRejectedError("An accounting escalation needs a valid instant");
+    }
+    const stuckAfterMs = input.stuckAfterMs ?? SARAH_VOICE_ACCOUNTING_UNCERTAIN_STUCK_MS;
+    const batchSize = input.batchSize ?? SARAH_VOICE_ACCOUNTING_ESCALATION_BATCH_SIZE;
+    if (!Number.isFinite(stuckAfterMs) || stuckAfterMs < 0) {
+      throw new SarahVoiceSessionRejectedError(
+        "An accounting escalation needs a non-negative bound",
+      );
+    }
+    if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 1_000) {
+      throw new SarahVoiceSessionRejectedError(
+        "An accounting escalation needs a batch size from 1 through 1000",
+      );
+    }
+    const stuckBeforeIso = new Date(nowMs - stuckAfterMs).toISOString();
+    try {
+      return await sql.begin(async (tx) => {
+        const rows = (await tx`
+          SELECT session.session_ref, session.generation, session.owner_user_id,
+            COALESCE(binding.provider_accounting_uncertain_at, session.updated_at)
+              AS accounting_uncertain_at
+          FROM sarah_realtime_voice_sessions AS session
+          LEFT JOIN sarah_livekit_room_bindings AS binding
+            ON binding.session_ref = session.session_ref
+            AND binding.generation = session.generation
+          WHERE session.state = 'accounting_uncertain'
+            AND session.accounting_escalated_at IS NULL
+            AND COALESCE(binding.provider_accounting_uncertain_at, session.updated_at)
+                <= ${stuckBeforeIso}
+          ORDER BY accounting_uncertain_at, session.session_ref
+          LIMIT ${batchSize}
+          FOR UPDATE OF session SKIP LOCKED
+        `) as ReadonlyArray<{
+          session_ref: string;
+          generation: number | string;
+          owner_user_id: string;
+          accounting_uncertain_at: string;
+        }>;
+        const owners = new Set<string>();
+        let escalatedCount = 0;
+        let oldestMs: number | undefined;
+        for (const row of rows) {
+          const generation = toSafeInteger(row.generation, "generation");
+          const escalationRef = `sarah_voice_accounting_escalation:${acceptanceDigest(
+            JSON.stringify([row.session_ref, generation, row.accounting_uncertain_at]),
+          )}`;
+          // Serialize one immutable escalation receipt onto the session row.
+          // eslint-disable-next-line no-await-in-loop
+          const escalated = (await tx`
+            UPDATE sarah_realtime_voice_sessions
+            SET accounting_escalated_at = ${input.nowIso},
+                accounting_escalation_ref = ${escalationRef}
+            WHERE session_ref = ${row.session_ref}
+              AND generation = ${generation}
+              AND state = 'accounting_uncertain'
+              AND accounting_escalated_at IS NULL
+            RETURNING owner_user_id
+          `) as ReadonlyArray<{ owner_user_id: string }>;
+          if (first(escalated) === undefined) continue;
+          escalatedCount += 1;
+          owners.add(row.owner_user_id);
+          const uncertainMs = Date.parse(row.accounting_uncertain_at);
+          if (Number.isFinite(uncertainMs)) {
+            oldestMs = oldestMs === undefined ? uncertainMs : Math.min(oldestMs, uncertainMs);
+          }
+        }
+        return {
+          escalated: escalatedCount,
+          owners: owners.size,
+          oldestAgeMs: oldestMs === undefined ? 0 : Math.max(0, nowMs - oldestMs),
+        };
+      });
+    } catch (error) {
+      if (error instanceof SarahVoiceSessionRejectedError) throw error;
+      throw new SarahVoiceStorageError("Sarah voice accounting escalation failed", error);
+    }
+  };
+
+  /**
    * Counts `accounting_uncertain` holds that have outlived
    * `SARAH_VOICE_ACCOUNTING_UNCERTAIN_STUCK_MS`.
    *
@@ -4974,9 +5084,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
   const readStuckAccountingUncertainHolds = async (input: {
     readonly nowIso: string;
     readonly stuckAfterMs?: number | undefined;
-  }): Promise<
-    Readonly<{ stuck: number; owners: number; oldestAgeMs: number }>
-  > => {
+  }): Promise<Readonly<{ stuck: number; owners: number; oldestAgeMs: number }>> => {
     const nowMs = Date.parse(input.nowIso);
     if (!Number.isFinite(nowMs)) {
       throw new SarahVoiceSessionRejectedError("A stuck-hold scan needs a valid instant");
@@ -5212,6 +5320,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     requestLiveKitProviderDisconnectFault,
     readLiveKitWorkerInterruptApplied,
     decideLiveKitTool,
+    escalateStuckAccountingUncertainHolds,
     proposeLiveKitTool,
     settle,
     settleLiveKitProvisioningIntent,

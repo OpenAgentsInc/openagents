@@ -50,6 +50,12 @@ start, and a server-confirmed OpenAI configuration with the exact model, audio
 modality and formats, transcription model, voice, and semantic-VAD response and
 interruption policy. It persists only bounded SHA-256 provider session and
 configuration references before the control socket emits `session_ready`.
+That frame carries a domain-separated `providerGenerationRef`, not a provider
+session id or its control-plane digest. It stays stable when client media
+reconnects to the same admitted generation and changes for a fresh provider or
+OpenAgents generation. A custom-Realtime socket that reports a different
+provider session after readiness is fenced and closed instead of being treated
+as a reconnect.
 
 Private and community jobs instantiate separate capability profiles. Community
 jobs are structurally tool-free and receive no owner memory, workspace, editor

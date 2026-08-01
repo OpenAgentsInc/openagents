@@ -5,6 +5,7 @@ import {
   SARAH_VOICE_ADMISSION_PROTOCOL_VERSION,
   SARAH_VOICE_ACCOUNTING_RECONCILIATION_PROTOCOL_VERSION,
   SARAH_VOICE_COHORT_REVOCATION_PROTOCOL_VERSION,
+  SARAH_VOICE_MODEL,
   SARAH_VOICE_PROTOCOL_VERSION,
   SARAH_VOICE_SETTLEMENT_PROTOCOL_VERSION,
   decodeOmegaNostrDeviceLinkChallengeRequest,
@@ -140,6 +141,32 @@ describe("Sarah Realtime voice contract", () => {
         state: "listening",
       })._tag,
     ).toBe("lifecycle");
+    expect(
+      decodeSarahVoiceServerControl({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        sequence: 1,
+        _tag: "session_ready",
+        model: SARAH_VOICE_MODEL,
+        providerGenerationRef: `provider_generation:${"a".repeat(64)}`,
+        expiresAtMs: 2_000,
+        reservedCreditMsat: 1_000,
+      }),
+    ).toMatchObject({
+      _tag: "session_ready",
+      providerGenerationRef: `provider_generation:${"a".repeat(64)}`,
+    });
+    expect(() =>
+      decodeSarahVoiceServerControl({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        sequence: 1,
+        _tag: "session_ready",
+        model: SARAH_VOICE_MODEL,
+        expiresAtMs: 2_000,
+        reservedCreditMsat: 1_000,
+      }),
+    ).toThrow();
   });
 
   test("decodes exact admission economics without accepting a ticket", () => {

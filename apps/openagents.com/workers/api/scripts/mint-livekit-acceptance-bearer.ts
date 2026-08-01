@@ -35,7 +35,7 @@
 //   pnpm --dir apps/sarah-livekit-agent acceptance -- --apply …
 //
 // Bearers expire in 15 minutes. Run this immediately before the acceptance.
-
+import { parseSecretMaterial } from '@openagentsinc/sarah/nostr-identity'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
@@ -43,8 +43,6 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { hashPayloadBytes } from 'nostr-effect/nip98'
 import { finalizeEvent } from 'nostr-effect/pure'
-
-import { parseSecretMaterial } from '@openagentsinc/sarah/nostr-identity'
 
 /** The same cost/mutation gate every other EP263-LK operator tool requires. */
 export const OWNER_GATE = 'I_ACCEPT_EP263_LIVEKIT_GCP_COST'
@@ -157,11 +155,12 @@ export const nip98Authorization = (
   secret: Uint8Array,
   url: string,
   payload: Uint8Array,
+  createdAtSeconds = Math.floor(Date.now() / 1_000),
 ): string => {
   const event = finalizeEvent(
     {
       content: '',
-      created_at: Math.floor(Date.now() / 1_000),
+      created_at: createdAtSeconds,
       kind: 27_235,
       tags: [
         ['u', url],
@@ -276,9 +275,7 @@ export const summarize = (
   ownerRef: credential.ownerRef,
   bearerDigest: sha256Hex(credential.bearer),
   expiresInSeconds: credential.expiresInSeconds,
-  expiresAt: new Date(
-    now + credential.expiresInSeconds * 1_000,
-  ).toISOString(),
+  expiresAt: new Date(now + credential.expiresInSeconds * 1_000).toISOString(),
 })
 
 /**
@@ -302,6 +299,28 @@ export const assertPublicSafeSummary = (
   }
 }
 
+/** Resolve encoded spaces and other URL escapes before applying path guards. */
+export const resolveRepositoryRoot = (importMetaUrl: string): string =>
+  fileURLToPath(new URL('../../../../..', importMetaUrl))
+
+/**
+ * Create the credential file exactly once with owner-only permissions.
+ *
+ * `mode` does not repair an existing file opened for truncation. `wx` refuses
+ * an existing file or symlink instead, so the tool cannot overwrite a stale
+ * bearer, preserve unsafe permissions, or race a path replacement.
+ */
+export const writeCredentialFileExclusive = (
+  credentialFile: string,
+  contents: string,
+): void => {
+  writeFileSync(credentialFile, contents, {
+    encoding: 'utf8',
+    flag: 'wx',
+    mode: 0o600,
+  })
+}
+
 const readAcceptanceSecret = (role: AcceptanceRole): string =>
   execFileSync(
     'gcloud',
@@ -318,17 +337,35 @@ const readAcceptanceSecret = (role: AcceptanceRole): string =>
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] },
   )
 
-const mint = async (
+export type AcceptanceCredentialDependencies = Readonly<{
+  readSecret: (role: AcceptanceRole) => string
+  fetch: typeof fetch
+  nowSeconds: () => number
+}>
+
+const defaultDependencies: AcceptanceCredentialDependencies = {
+  readSecret: readAcceptanceSecret,
+  fetch,
+  nowSeconds: () => Math.floor(Date.now() / 1_000),
+}
+
+export const mintCredential = async (
   role: AcceptanceRole,
   baseUrl: string,
+  dependencies: AcceptanceCredentialDependencies = defaultDependencies,
 ): Promise<MintedCredential> => {
   const url = `${baseUrl}/api/omega/auth/session`
   const payload = new Uint8Array()
   let secret: Uint8Array | undefined
   try {
-    secret = parseSecretMaterial(readAcceptanceSecret(role))
-    const authorization = nip98Authorization(secret, url, payload)
-    const response = await fetch(url, {
+    secret = parseSecretMaterial(dependencies.readSecret(role))
+    const authorization = nip98Authorization(
+      secret,
+      url,
+      payload,
+      dependencies.nowSeconds(),
+    )
+    const response = await dependencies.fetch(url, {
       method: 'POST',
       headers: { authorization },
       body: payload,
@@ -352,23 +389,21 @@ const main = async (): Promise<void> => {
     )
   }
 
-  const repositoryRoot = resolve(
-    new URL('../../../../..', import.meta.url).pathname,
-  )
+  const repositoryRoot = resolve(resolveRepositoryRoot(import.meta.url))
   const parsed = parseArguments(process.argv.slice(2), repositoryRoot)
 
   const credentials: Array<MintedCredential> = []
   for (const role of parsed.roles) {
-    credentials.push(await mint(role, parsed.baseUrl))
+    credentials.push(await mintCredential(role, parsed.baseUrl))
   }
   if (credentials.length > 1) {
     assertDistinctOwners(credentials)
   }
 
-  writeFileSync(parsed.credentialFile, renderEnvFile(credentials), {
-    encoding: 'utf8',
-    mode: 0o600,
-  })
+  writeCredentialFileExclusive(
+    parsed.credentialFile,
+    renderEnvFile(credentials),
+  )
 
   const now = Date.now()
   const summaries = credentials.map(credential => {

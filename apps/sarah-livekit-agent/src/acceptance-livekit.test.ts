@@ -350,6 +350,7 @@ describe("Sarah LiveKit acceptance control channel", () => {
       serverControl(1, {
         _tag: "session_ready",
         model: "gpt-realtime-2.1",
+        providerGenerationRef: "provider_generation:fixture-one",
         expiresAtMs: 10_000,
         reservedCreditMsat: 1_000,
       }),
@@ -405,6 +406,7 @@ describe("Sarah LiveKit acceptance control channel", () => {
       serverControl(1, {
         _tag: "session_ready",
         model: "gpt-realtime-2.1",
+        providerGenerationRef: "provider_generation:fixture-two",
         expiresAtMs: 10_000,
         reservedCreditMsat: 1_000,
       }),
@@ -428,6 +430,7 @@ describe("Sarah LiveKit control channel terminal observation", () => {
       serverControl(0, {
         _tag: "session_ready",
         model: SARAH_VOICE_MODEL,
+        providerGenerationRef: "provider_generation:fixture-three",
         expiresAtMs: 9_000,
         reservedCreditMsat: 5_000,
       }),

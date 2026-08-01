@@ -1072,8 +1072,12 @@ signs one NIP-98 kind-27235 event per identity against
 repository. It refuses a credential path inside the working tree, refuses two
 identities that resolve to the same owner, prints only the owner ref, expiry,
 and a SHA-256 digest of each bearer, and creates no durable identity row. The
-bearers expire in 15 minutes, so mint immediately before the run and re-run the
-tool rather than reusing a stale file.
+output uses an exclusive create with mode `0600`: an existing file or final
+symlink is refused instead of truncated with whatever permissions it already
+had. The repository path guard decodes file-URL escapes before comparison.
+Bearers expire in 15 minutes, so mint immediately before the run. For another
+run, use a fresh path or explicitly delete the expired file first; the tool will
+not overwrite it.
 
 Keep the bearer tokens in environment variables and keep the two 24 kHz mono
 signed-16-bit PCM prompts outside Git. The prompts must contain an innocuous
@@ -1206,31 +1210,23 @@ Do not infer many-small-room capacity from LiveKit's large-room benchmark.
 >   runbook already names. Its stated insufficiency — a 30 s scrape against a
 >   ~21 s session — is resolved by the held-open session, not by new authority,
 >   so that source requires `--hold-ms` of at least 90 s.
-> - **The private acceptance owner can be held indefinitely by
->   `accounting_uncertain`.** `sarah_realtime_voice_owner_active_idx` refuses a
->   second session while a row is `reserved`, `connected`, **or**
->   `accounting_uncertain`, but `sweepExpired` selects only `reserved` and
->   `connected`. An abandoned generation therefore parks in
->   `accounting_uncertain` forever, every later session for that owner is refused
->   `sarah_voice_concurrency_limit`, and the per-minute sweep reports healthy the
->   whole time. Clearing it needs the accounting-reconciliation procedure and its
->   provider usage export. Never guess the usage to unblock a drill, and never
->   raise or bypass the concurrency limit: both corrupt the accounting the drill
->   exists to check.
+> - **Source fix: accounting uncertainty no longer owns the voice slot
+>   indefinitely.** Migration `0128_sarah_voice_accounting_escalation.sql` and
+>   scheduled maintenance preserve the full hold and uncertain state for 15
+>   minutes, then record a durable escalation and remove only the per-owner
+>   voice-concurrency lock. The unresolved hold still reduces spendable credit
+>   and still requires the provider-export reconciliation procedure. Never
+>   guess usage or release the hold to unblock a drill. Treat the old behavior
+>   as a live blocker until the migration and API revision are deployed and the
+>   escalation event is observed on that revision.
 
-> **Community rooms cannot bring up a session at all, 2026-07-31.** A drill or
-> acceptance run that selects `--room community` fails with 503
-> `sarah_voice_livekit_unavailable`, and the proximate cause in the Cloud Run log
-> is `Sarah shared-room authority bootstrap failed (400):
-> {"error":"device_ref_required"}`. Commit `94d49d8bab` added a device-ref gate
-> to the room-authority handlers, which read
-> `SARAH_ROOM_DEVICE_REF_HEADER` off the request, but
-> `bootstrapLiveKitCommunityRoom` in
-> `apps/openagents.com/workers/api/src/index.ts` still synthesizes its internal
-> `summon` request with only a `content-type` header. Reproduced twice on
-> revision `openagents-monolith-00374-h4p`. Until the bootstrap threads a device
-> ref through, run drills against a private room and record community-room
-> observations as blocked on this defect rather than on credentials or capacity.
+> **Closed source and live, 2026-07-31: community bootstrap carries the
+> authenticated device ref.** Commit `c76d2af6a4` threads the admitted device
+> ref through the internal summon boundary. The subsequent concurrent private
+> and community acceptance passed and is retained at
+> `docs/ops/receipts/livekit/2026-07-31-ep263lk-community-join-acceptance.json`.
+> A future `device_ref_required` response is a regression or deployment-drift
+> signal, not the standing reason to omit the community drill.
 
 Run every drill from the exact pinned candidate:
 

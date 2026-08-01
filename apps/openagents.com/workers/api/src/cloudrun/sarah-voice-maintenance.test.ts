@@ -15,7 +15,7 @@ describe('Sarah voice scheduled maintenance', () => {
         },
         reconcileProvisioning: async () => {
           order.push('provisioning')
-          return { cleaned: 1, failed: 0 }
+          return { cleaned: 1, failed: 0, abandoned: 0 }
         },
         reconcileTerminalRooms: async () => {
           order.push('terminal')
@@ -34,7 +34,7 @@ describe('Sarah voice scheduled maintenance', () => {
       ['sarah_voice_expired_sessions_processed', { swept: 2 }],
       [
         'sarah_livekit_provisioning_intents_reconciled',
-        { cleaned: 1, failed: 0 },
+        { cleaned: 1, failed: 0, abandoned: 0 },
       ],
       [
         'sarah_livekit_terminal_rooms_reconciled',
@@ -152,6 +152,66 @@ describe('Sarah voice scheduled maintenance', () => {
       [
         'sarah_voice_accounting_uncertain_holds_stuck',
         { stuck: 2, owners: 1, oldestAgeMs: 3_600_000 },
+      ],
+    ])
+  })
+
+  test('reports durable accounting escalation before the unresolved-hold scan', async () => {
+    const order: string[] = []
+    const report = vi.fn()
+
+    await runSarahVoiceScheduledMaintenance(
+      {
+        escalateStuckAccountingHolds: async () => {
+          order.push('escalate')
+          return { escalated: 2, owners: 2, oldestAgeMs: 3_600_000 }
+        },
+        reportStuckAccountingHolds: async () => {
+          order.push('report')
+          return { stuck: 2, owners: 2, oldestAgeMs: 3_600_000 }
+        },
+      },
+      report,
+    )
+
+    expect(order).toEqual(['escalate', 'report'])
+    expect(report.mock.calls).toEqual([
+      [
+        'sarah_voice_accounting_uncertain_holds_escalated',
+        { escalated: 2, owners: 2, oldestAgeMs: 3_600_000 },
+      ],
+      [
+        'sarah_voice_accounting_uncertain_holds_stuck',
+        { stuck: 2, owners: 2, oldestAgeMs: 3_600_000 },
+      ],
+    ])
+  })
+
+  test('isolates accounting escalation failure from the unresolved-hold scan', async () => {
+    const report = vi.fn()
+
+    await runSarahVoiceScheduledMaintenance(
+      {
+        escalateStuckAccountingHolds: async () => {
+          throw new Error('escalation unavailable')
+        },
+        reportStuckAccountingHolds: async () => ({
+          stuck: 1,
+          owners: 1,
+          oldestAgeMs: 3_600_000,
+        }),
+      },
+      report,
+    )
+
+    expect(report.mock.calls).toEqual([
+      [
+        'sarah_voice_accounting_uncertain_escalation_failed',
+        { error: 'escalation unavailable' },
+      ],
+      [
+        'sarah_voice_accounting_uncertain_holds_stuck',
+        { stuck: 1, owners: 1, oldestAgeMs: 3_600_000 },
       ],
     ])
   })

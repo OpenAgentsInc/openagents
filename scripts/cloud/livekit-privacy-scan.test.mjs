@@ -138,6 +138,7 @@ test("fails closed for missing scopes, empty exports, and symlinks", () => {
         sarahPrivateKey,
         canaries: [canary],
         sourceBaseRevision: revision,
+        observedAt: "2026-07-31T00:00:00.000Z",
       }),
     /no evidence bytes/u,
   );

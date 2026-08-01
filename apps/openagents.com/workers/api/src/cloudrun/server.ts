@@ -44,7 +44,6 @@ import {
 } from './binding-unavailable'
 import { buildCloudRunRuntime } from './env'
 import { makeBackgroundTasks, makeExecutionContext } from './execution-context'
-import { awaitPostgresReady } from './postgres-readiness'
 import { gateForgeDocumentRequest } from './forge-ui-gate'
 // #8634/#8635 scope 5: retained /forum* serves the Effect Native conversion.
 import { handleForumUiRequest } from './forum-ui'
@@ -55,6 +54,7 @@ import {
 } from './http-utils'
 // #8652 PORTAL-1: client portal mounts at openagents.com/portal (EN surface).
 import { handlePortalUiRequest } from './portal-ui'
+import { awaitPostgresReady } from './postgres-readiness'
 import { isPublicSiteRootRequest } from './public-site-host'
 import {
   type SarahRealtimeBridgeData,
@@ -150,9 +150,23 @@ const main = async (): Promise<void> => {
               }
             }
           : undefined,
-        // A stuck accounting hold is invisible from every other counter here:
-        // it keeps the owner's concurrency slot while the sweep reports
-        // healthy. Reads only; never settles or expires a hold.
+        escalateStuckAccountingHolds: voiceConfig.enabled
+          ? async () => {
+              const client =
+                await defaultMakeKhalaSyncSqlClient(connectionString)
+              try {
+                return await makeSarahRealtimeVoiceStore(
+                  client.sql,
+                ).escalateStuckAccountingUncertainHolds({
+                  nowIso: new Date().toISOString(),
+                })
+              } finally {
+                await client.end()
+              }
+            }
+          : undefined,
+        // An escalated hold still needs exact provider reconciliation. Keep it
+        // visible even after it no longer denies the owner's voice slot.
         reportStuckAccountingHolds: voiceConfig.enabled
           ? async () => {
               const client =

@@ -497,6 +497,7 @@ export const SarahVoiceServerControlSchema = S.Union([
     ...BaseServer,
     _tag: S.Literal("session_ready"),
     model: S.Literal(SARAH_VOICE_MODEL),
+    providerGenerationRef: Ref,
     expiresAtMs: Seq,
     reservedCreditMsat: Seq,
   }),

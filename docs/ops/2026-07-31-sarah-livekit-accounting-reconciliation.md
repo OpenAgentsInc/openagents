@@ -5,6 +5,36 @@ Use this procedure only when a LiveKit voice session is in
 hold because the admitted OpenAI Realtime session may have remained billable
 after the worker lost control delivery.
 
+## Bounded escalation and voice availability
+
+Scheduled maintenance gives exact provider reconciliation 15 minutes. At that
+deadline it writes `accounting_escalation_ref` and `accounting_escalated_at` on
+the uncertain session. The session stays `accounting_uncertain`; its recorded
+charge, provider-accounting status, balance, and complete credit hold do not
+change. The escalation removes only that row from the per-owner active-voice
+index, so an accounting incident cannot deny the owner all later voice sessions
+forever. Normal spendable-credit checks still include the preserved hold.
+
+The settlement endpoint returns the escalation reference and timestamp with
+the existing 409 response. The maintenance tick also reports
+`sarah_voice_accounting_uncertain_holds_escalated` once and continues to report
+the unresolved hold until exact reconciliation succeeds. Use this query to
+find the actionable rows after either event:
+
+```sql
+SELECT session_ref, owner_user_id, generation, accounting_escalation_ref,
+       accounting_escalated_at, reserved_msat, charged_msat,
+       provider_accounting_uncertain_reason,
+       provider_session_ref_digest
+FROM sarah_realtime_voice_sessions AS session
+JOIN sarah_livekit_room_bindings AS binding USING (session_ref)
+WHERE session.state = 'accounting_uncertain'
+ORDER BY accounting_escalated_at NULLS FIRST, session.updated_at;
+```
+
+Escalation is not settlement evidence. Do not release or debit the hold from an
+escalation receipt, and do not infer missing provider usage from its deadline.
+
 ## Evidence boundary
 
 Obtain the complete provider usage export for the provider session. Record only
