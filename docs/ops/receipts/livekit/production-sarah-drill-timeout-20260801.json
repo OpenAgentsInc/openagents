@@ -1,0 +1,43 @@
+{
+  "schema": "openagents.sarah.livekit-drill-observation.v1",
+  "scenario": "timeout",
+  "faultAction": "bounded_deadline",
+  "roomKind": "private",
+  "outcome": "passed",
+  "contradictions": [],
+  "sessionStartedAtMs": 1785596905964,
+  "sessionLiveAtMs": 1785596921451,
+  "holdMs": 90000,
+  "faultInjectedAtMs": 1785597013479,
+  "mediaLossObservedAtMs": 1785597207003,
+  "controlTerminal": {
+    "atMs": 1785597206457,
+    "kind": "closing",
+    "reason": "session_expired"
+  },
+  "settlement": {
+    "state": "settled",
+    "creditMode": "metered",
+    "finalChargeMsat": 88064,
+    "receiptDigest": "sha256:7bcc6bac1acf3ab115933416c15f8ce0f62f1963499c756906f94bafb35ac88c",
+    "terminalObservedAtMs": 1785597207460,
+    "lastNonTerminalObservedAtMs": 1785597206413
+  },
+  "boundMs": 300000,
+  "faultToTerminalMs": 193981,
+  "mediaLossDetectedWithinMs": 193524,
+  "withinBound": true,
+  "concurrentBillableSessionCount": 1,
+  "instrumentSource": "managed_prometheus",
+  "faultTargetDigest": null,
+  "workerInstanceDigest": null,
+  "workerInstanceSurvived": null,
+  "faultDiscoveryMs": 0,
+  "observationWindowMs": 330000,
+  "settlementPollIntervalMs": 500,
+  "limitations": [
+    "terminal_settlement_instant_is_observed_not_authoritative",
+    "worker_side_terminal_reason_is_not_published_by_the_settlement_authority",
+    "fault_execution_is_delegated_to_the_injector_and_attested_by_digest"
+  ]
+}
