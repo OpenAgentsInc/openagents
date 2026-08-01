@@ -169,12 +169,21 @@ or exploit consequences. It supplies no reason to alter the paper-wallet, clone,
 USB, Key C, password, teleport, HSM, PIN-shuffle, side-channel, Seed XOR, or
 dice/import conclusions.
 
-### [Loupe](../loupe/2026-08-01-coldcard-prefix-experiment-results.md) and [hardening](../loupe/2026-08-01-hardening-against-ai-assisted-attacks.md) documents: no conclusion change
+### Loupe experiment, generator reproduction, roadmap, and hardening: no conclusion change
 
 The article reinforces the existing recommendation for mandatory review on
-entropy-critical paths. It does not change the Loupe experiment: dependency-complete
+entropy-critical paths. It does not change the
+[Loupe experiment](../loupe/2026-08-01-coldcard-prefix-experiment-results.md): dependency-complete
 source was sufficient for a model to identify the known chain, the default incomplete
 checkout missed it, and neither run proved the exact final artifact.
+
+It likewise does not alter the independent
+[generator reproduction](../loupe/2026-08-01-coldcard-generator-reproduction.md),
+which models the pinned generator semantics and keeps source, behavior, work-factor,
+and owned-fixture claims separate. The op-ed supplies no competing vector or behavior
+result. The [forensic roadmap](../loupe/2026-08-01-omega-forensic-analysis-roadmap.md)
+and [hardening recommendations](../loupe/2026-08-01-hardening-against-ai-assisted-attacks.md)
+therefore need no substantive change.
 
 ### [Bitcoin-node forensic analysis](2026-08-01-bitcoin-node-forensic-capability.md): no change
 
