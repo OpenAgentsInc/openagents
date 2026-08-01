@@ -1256,8 +1256,16 @@ development benchmark, and native metric evidence with a rebuildable
 censor-aware scorecard, plus the authority-bounded configurable Loupe adapter.
 The Loupe verifier boundary now adds ordered independent verdicts, deterministic
 evidence receipts, vulnerable/fixed execution controls, and an explicit
-discovery-only release gate. OFR-008 is the next implementation gate; later
-rows remain ordered dependencies, not parallel workstreams.
+discovery-only release gate. OFR-013 now adds the bounded offline forensic
+prompt compiler and Blueprint governance records. Candidate identity covers
+Prompt IR, typed schemas, tool policy, examples, parameters, every dataset
+revision, optimizer configuration, and frozen metric/T5/censoring/eligibility
+definitions. Holdout evaluation requires distinct generator/evaluator
+identities, matched baseline populations, fresh OpenAgents Cloud worker and
+source-state evidence, hard gates before Pareto comparison, mechanical
+evidence, and an operator-owned release gate. Activation and rollback are
+append-only transitions. OFR-014 is the next implementation gate; later rows
+remain ordered dependencies, not parallel workstreams.
 
 | ID | Work item | Primary home |
 | --- | --- | --- |

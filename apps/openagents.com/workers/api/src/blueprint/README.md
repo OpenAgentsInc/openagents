@@ -33,6 +33,9 @@ The deprecated Rust Blueprint workspace is reference material only.
   - `schemas/optimizer-run.ts` models Optimizer Runs, retained failures,
     candidate module refs, scorecards, release gate refs, and evidence-only
     optimizer output.
+  - `schemas/forensic-prompt-optimization.ts` models immutable forensic prompt
+    candidates, frozen dataset and metric identities, independent holdout
+    evaluations, and append-only activation or rollback transitions.
   - `schemas/simulation.ts` models Simulation Branches, Scenario Forks,
     simulated-only effect isolation, and no-production-effect projections.
   - `schemas/program-registry.ts` models operator-safe Program Registry
@@ -100,6 +103,10 @@ The deprecated Rust Blueprint workspace is reference material only.
   `services/signature-contribution.ts` keeps marketplace/community
   contribution drafts non-authoritative until review and release-gate
   promotion.
+  `services/forensic-prompt-compiler.ts` compiles a bounded offline candidate
+  set, keeps evaluator-only holdouts hidden from generation, requires fresh
+  OpenAgents Cloud evaluation evidence, and prevents generators from promoting
+  their own candidates.
 - Future `exports/`: generated JSON Schema and OpenAPI artifacts for agents
   and Rust consumers.
 - `fixtures/`: retained fixtures and release-gate examples. The first seeded

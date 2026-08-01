@@ -475,6 +475,44 @@ export {
 } from './schemas/optimizer-run'
 
 export {
+  FORENSIC_PROMPT_CANDIDATE_VERSION,
+  FORENSIC_PROMPT_COMPILER_VERSION,
+  FORENSIC_PROMPT_EVALUATION_VERSION,
+  FORENSIC_PROMPT_TRANSITION_VERSION,
+  ForensicDatasetSplit,
+  type ForensicDatasetSplit as ForensicDatasetSplitType,
+  ForensicOptimizerVisibility,
+  type ForensicOptimizerVisibility as ForensicOptimizerVisibilityType,
+  ForensicPromptActiveTransition,
+  type ForensicPromptActiveTransition as ForensicPromptActiveTransitionType,
+  ForensicPromptCandidate,
+  type ForensicPromptCandidate as ForensicPromptCandidateType,
+  ForensicPromptCompilerKind,
+  type ForensicPromptCompilerKind as ForensicPromptCompilerKindType,
+  ForensicPromptCompilerRun,
+  type ForensicPromptCompilerRun as ForensicPromptCompilerRunType,
+  ForensicPromptDatasetRevision,
+  type ForensicPromptDatasetRevision as ForensicPromptDatasetRevisionType,
+  ForensicPromptEvaluation,
+  type ForensicPromptEvaluation as ForensicPromptEvaluationType,
+  ForensicPromptMetricFreeze,
+  type ForensicPromptMetricFreeze as ForensicPromptMetricFreezeType,
+  ForensicPromptOptimizerConfiguration,
+  type ForensicPromptOptimizerConfiguration as ForensicPromptOptimizerConfigurationType,
+} from './schemas/forensic-prompt-optimization'
+
+export {
+  compileForensicPromptCandidates,
+  promoteForensicPrompt,
+  rollbackForensicPrompt,
+  validateForensicPromptEvaluation,
+  type CompileForensicPromptCandidatesInput,
+  type ForensicPromptCandidateInput,
+  type PromoteForensicPromptInput,
+  type ValidateForensicPromptEvaluationInput,
+} from './services/forensic-prompt-compiler'
+
+export {
   BlueprintEffectIsolation,
   type BlueprintEffectIsolation as BlueprintEffectIsolationType,
   BlueprintScenarioFork,
