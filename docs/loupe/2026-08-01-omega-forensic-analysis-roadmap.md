@@ -5,7 +5,7 @@ research work. It does not itself authorize scanning a third-party target,
 publishing a vulnerability claim, contacting a maintainer, spending beyond an
 admitted budget, or running an exploit outside an owned lab.
 
-Roadmap revision: 3
+Roadmap revision: 4
 
 Date: 2026-08-01
 
@@ -13,6 +13,7 @@ Primary evidence:
 
 - [`Episode 264 - Running Loupe`](../transcripts/264.md)
 - [`Results: Loupe on the pre-fix Coldcard firmware`](2026-08-01-coldcard-prefix-experiment-results.md)
+- [`Coldcard RNG postmortem` at pinned commit `47d8f55`](https://github.com/Kelbie/coldcard-rng-postmortem/tree/47d8f5543812c8244fa95ed90db957ddcc05200c)
 - [`Codex analysis: what should catch the Coldcard class of failure`](2026-08-01-codex-analysis.md)
 - [`Coordination, not scanners`](2026-08-01-coordination-not-scanners.md)
 - [`DSPy in Effect: Git history audit`](../dspy/2026-07-20-dspy-in-effect-git-history-audit.md)
@@ -61,6 +62,13 @@ The required mechanism is:
 Coldcard is the development benchmark, not evidence that the system can find
 unknown vulnerabilities. Generalization must be measured on blinded structural
 variants, unrelated historical bugs, and clean controls.
+
+The benchmark does not end at rediscovering the source defect. It should
+independently reproduce the postmortem's evidence chain from source selection,
+through generator behavior and an owned or synthetic recovery fixture, to a
+frozen historical-chain replay. Each step remains a separate claim: finding a
+source flaw is not proof of the shipped artifact, a transaction fingerprint is
+not a person, and chain movement is not proof of theft without victim evidence.
 
 ---
 
@@ -569,7 +577,150 @@ silently becomes evaluation data.
 
 ---
 
-## 6. Prompt optimization with DSPy and Blueprint
+## 6. Reproduce the Coldcard postmortem as an evidence ladder
+
+The pinned `coldcard-rng-postmortem` repository is a reference implementation
+of evidence-driven incident analysis, not an oracle whose conclusions should
+be copied. It separates a small hand-maintained evidence seed from generated
+chain derivations, records why each graph edge exists, reconciles independent
+published figures, and keeps weaker pattern matches distinct from victim-
+confirmed waves. Its own history also records material corrections after
+independent audits. OpenAgents should reproduce the underlying analysis from
+frozen inputs and make correction cheaper, more visible, and harder to avoid.
+
+### 6.1 Claim ladder
+
+Every Coldcard run should render these claims separately. Evidence at one rung
+does not silently promote a later rung.
+
+| Rung | Question | Minimum qualifying evidence | What it still does not prove |
+| --- | --- | --- | --- |
+| Source selection | Can this source tree select the deterministic fallback for a secret consumer? | Resolvable macro, guard, symbol, caller, and sink references in a dependency-complete tree. | Which implementation shipped. |
+| Artifact reality | What did the pinned build compile and link? | Preprocessed source, compiler inputs, archive membership, symbol provider, link map, firmware digest, and an observed fault build. | That the state space is practically searchable. |
+| Generator behavior | What bytes does the selected implementation emit from an exact state and call trace? | Golden vectors from an independently implemented Yasmarang emulator, initialization and reseed traces, retained-width accounting, and mutation controls. | The unknown-state distribution on a real device. |
+| Exploitability | What candidate state space follows from each hardware, firmware, UID, timer, and user-interaction assumption? | A versioned entropy model with exact assumptions, ranges, sensitivity analysis, and measured enumeration and derivation receipts. | Recovery of a particular user's wallet. |
+| Owned-fixture recovery | Does the full seed-to-wallet pipeline recover a known fixture? | A synthetic or explicitly owned device/emulator fixture whose expected xpub or addresses match after replaying the recorded call trace and derivation paths. | Permission to enumerate or query anyone else's keys. |
+| Historical program fingerprint | Which public historical transactions share software-chosen construction habits? | Positive-control matches, negative block ranges, rate-conditioned collision estimates, cluster evidence, and a frozen chain snapshot. | A person's identity, intent, or theft. |
+| Entity grouping | Which collectors or vaults are joined by observed pooling edges? | A provenance-bearing graph with bounded traversal, connected-component derivation, and identity-versus-time clustering kept separate. | That every payer is a distinct victim or that the graph is complete. |
+| Unauthorized taking | Which reported movements were not authorized by their owners? | Victim testimony tied to a transaction, with source provenance and review. | The legal identity of the operator. |
+
+Use an explicit claim lattice in the evaluator and UI: `source_flaw`,
+`artifact_selected`, `state_space_model`, `owned_fixture_recovered`,
+`program_fingerprint`, `entity_cluster`, `unauthorized_movement`, and
+`identity_attribution`. A transaction fingerprint can support
+`program_fingerprint`; it cannot satisfy `unauthorized_movement`. Coin movement
+can support graph edges; it cannot distinguish a thief from an owner or
+rescuer. Address, UTXO, and transaction counts never become victim counts.
+
+### 6.2 Reproduction pack
+
+Build a checked-in `ColdcardReproductionManifest.v1` against the pinned
+postmortem commit. Expected values from that repository are comparison targets,
+not benchmark inputs. The OpenAgents implementation must recompute them from
+immutable raw evidence and report disagreement rather than copying the
+postmortem's generated `chain.json`.
+
+The pack contains four independently rerunnable suites:
+
+1. **Code-to-artifact suite.** Reproduce the broken macro guard, missing global
+   `rng_get()` provider, deterministic fallback selection, secret-consumer
+   reachability, later 32-bit reseed truncation, and the fixed provider. Freeze
+   the cross-repository introduction, propagation, partial-mitigation, and fix
+   commits with diff size, changed paths, review state, generated configuration,
+   submodule pins, and build inputs. Large mixed-purpose or unreviewed crypto-
+   boundary changes rank review priority; they are not themselves causal proof.
+2. **Generator and owned-fixture suite.** Implement the exact PRNG state update,
+   initialization, reseed/truncation behavior, keypad-shuffle call trace, BIP39
+   mnemonic generation, and relevant HD derivation paths independently of the
+   target code. Freeze golden vectors for known states, guard/reseed mutations,
+   a clean hardware-RNG control, and a synthetic or owner-authorized fixture
+   with an expected xpub match. Recompute every published entropy tier from
+   assumptions instead of embedding labels such as "73 bits" as conclusions.
+3. **Historical chain-fingerprint suite.** Reproduce the fee-table arithmetic,
+   transaction shape, locktime, sequence, signature-R, script-type, pace, and
+   pooling analysis against immutable historical blocks. Self-test on known
+   positive transactions before scanning, then measure negative ranges and
+   low-fee-rate collisions. Include an off-fingerprint victim-confirmed wave so
+   a different builder cannot contaminate the program-fingerprint aggregate.
+4. **Evidence-graph suite.** Begin only with typed victim reports, published
+   addresses with the publisher's confidence, and project scan candidates.
+   Derive destinations, payers, collectors, onward spends, vaults, components,
+   waves, and explanations from graph edges. Bound traversal depth, exclude
+   change explicitly, separate ownership components from temporal episodes,
+   reconcile independent published figures at their stated precision, and
+   preserve unconfirmed and unmeasurable completeness limits.
+
+The chain suite runs only on the admitted OpenAgents Cloud GCE worker. Start
+with a content-addressed block-range bundle for deterministic evaluation, then
+add a private, brokered Bitcoin Core data capability for wider scans. The guest
+does not receive an external IP, node cookie, RPC credential, wallet RPC,
+provider credential, or arbitrary node endpoint. A typed scan profile names
+network, genesis, required block hashes, node version and posture, ranges,
+fingerprint revision, thresholds, checkpoint, and output limits. The worker
+fails loudly if fee or prevout data required by the selected phase is absent.
+
+Preserve the postmortem scanner's useful execution shape: validate known
+transactions first; run the cheapest and most informative ranges before a
+wide scan; append raw hits and per-block checkpoints; resume deterministically;
+deduplicate by transaction ID; and resolve expensive prevouts only after a
+cheap candidate filter. Keep append-only raw hits, a generated normalized
+dataset, and human-facing projections as three different artifacts. The raw
+capture pins block hashes, endpoint or node identity class, capture time,
+response digests, and source revision so a changing public API cannot redefine
+an old result.
+
+### 6.3 What to emulate, extend, and reject
+
+| Reference pattern | OpenAgents treatment |
+| --- | --- |
+| Small hand-maintained evidence seeds; everything else derived. | Emulate with typed evidence inputs and provenance-bearing graph edges whose generated `because` text comes from the same derivation that created the edge. |
+| `victim report -> transaction -> destination -> payers -> onward spend`. | Emulate, but require bounded traversal, explicit change classification, claim-tier transitions, and fixtures for ambiguous multi-output transactions. |
+| Pattern-match candidates remain weaker than victim-confirmed waves. | Emulate as a claim lattice; promotion appends a revision and never erases the earlier weaker provenance. |
+| Positive scanner self-test and resumable JSONL output. | Extend with negative-control ranges, mutation tests, per-rate base-rate estimates, exact integer satoshi arithmetic, block-hash checkpoints, and signed receipts. |
+| Generated frozen dataset drives every UI number. | Extend with immutable raw-input bundles, canonical digests, schema and evaluator revisions, replay tests, and a separate admission gate before projection or publication. |
+| Independent published totals are reconciled, and drift is loud. | Emulate at the publisher's stated precision; never overwrite derived values with quoted totals. Treat external prose as evidence to compare, not numeric input. |
+| Connected components define pooling waves while time gaps define episodes. | Emulate the separation and attach threshold-sensitivity receipts; do not infer one operator merely from temporal proximity. |
+| Public chain habits identify a transaction-building program. | Extend with low-rate collision controls and cluster scoring. Never promote one match to identity, intent, or theft. |
+| Scheduled live refresh preserves the last good build on fetch failure. | Keep the stale-but-honest behavior, but do not make a mutable public endpoint or a bot commit to `main` the evidentiary authority. Generated data remains a candidate until deterministic replay and admission pass. |
+| Screenshots and quotes make the narrative legible. | Store source metadata, bounded excerpts, capture digests, and redaction state. Never ingest, reproduce, or publish a mnemonic, xprv, node credential, or other secret-bearing evidence. |
+
+Do not copy the reference scanner as the product implementation. Its README
+requires `txindex` while the code treats it as optional, it relies on live
+network sources, and it has no complete deterministic test suite. Hard-coded
+run gaps, traversal bounds, first-destination assumptions, dust classification,
+and floating JSON-to-satoshi conversion all become explicit versioned policy
+with boundary fixtures and sensitivity results. Use exact integer or decimal
+amounts. A missing negative control, raw digest, or policy receipt produces
+`not_proven`, not a zero-hit success.
+
+### 6.4 Coldcard-specific metrics and Omega views
+
+Keep the general qualified-identification metrics in section 5.4 and add these
+stage metrics. None is a reward for finding or spending keys.
+
+| Metric | Collection | Omega display | Improve toward |
+| --- | --- | --- | --- |
+| Time and tokens to each claim rung | First qualifying immutable event for each rung, joined to exact or upper-bound usage receipts. | Evidence-ladder timeline with missing rungs visible. | Earlier and lower only while every rung's gate remains satisfied. |
+| Generator-vector coverage | Required state, reseed, truncation, call-trace, derivation, and mutation vectors passed divided by the frozen vector set. | Reproduction matrix. | 100% on vulnerable and fixed expectations. |
+| State-space model sensitivity | Candidate counts and entropy bounds across frozen UID, timer, call-trace, firmware, and hardware assumptions. | Assumption explorer with interval and changed-input diff. | Narrower justified bounds, not smaller convenient numbers. |
+| Enumeration and derivation efficiency | Candidate states, BIP39 seeds, derivation paths, and synthetic oracle checks per second and per CPU-second, with profile digest. | Throughput and cost panels. | Higher after correctness vectors pass. |
+| Historical scan throughput | Blocks and transactions inspected per second, checkpoint bytes, restart time, and expensive-prevout fraction. | Resumable scan console and range heatmap. | Higher with identical candidate set and receipts. |
+| Fingerprint candidate funnel | Transactions scanned -> cheap candidates -> exact formula matches -> clusters -> evidence-linked waves. | Sankey or staged funnel split by fee regime. | Fewer unsupported promotions; preserve true controls. |
+| False matches per million transactions | Negative-control matches per million eligible transactions, stratified by fee rate, era, script type, and fingerprint revision. | Rate-conditioned precision table and confidence interval. | Lower, especially where normal traffic collides. |
+| Evidence-derivation coverage | Displayed graph nodes and claims with complete source, edge, rule, and explanation provenance. | Evidence graph health overlay. | 100%; orphaned prose is a hard failure. |
+| Reconciliation drift | Difference between independently derived and published transaction, UTXO, and value figures at stated precision. | `MATCH | DRIFT | UNAVAILABLE` ledger. | Exact agreement or an explained retained discrepancy. |
+| Claim correction burden | Claims revised after independent review, time to correction, affected projections, and evidence tier before/after. | Append-only claim history and correction diff. | Faster correction and fewer unsupported high-tier claims. |
+
+Add five linked Omega views: an evidence ladder, a source-to-artifact and
+generator trace, an entropy-assumption explorer, a resumable historical-chain
+scan console, and a provenance graph with claim-revision history. The scan
+console can display public transaction identifiers only inside the private
+run boundary. Candidate addresses and clusters remain non-reportable until
+human review and disclosure authority are separately recorded.
+
+---
+
+## 7. Prompt optimization with DSPy and Blueprint
 
 OpenAgents has useful prior art, but the current state must be named accurately:
 
@@ -586,7 +737,7 @@ OpenAgents has useful prior art, but the current state must be named accurately:
 
 The forensic system should use this split.
 
-### 6.1 Offline candidate compiler
+### 7.1 Offline candidate compiler
 
 Run prompt search as an offline, bounded job. Start with deterministic methods:
 
@@ -619,7 +770,7 @@ promotion evaluator applies the same frozen registry to holdout scorecards. No
 optimizer may redefine `T5`, exclude misses, change censoring, inspect holdout
 examples, or select a metric revision after seeing candidate results.
 
-### 6.2 Blueprint governance spine
+### 7.2 Blueprint governance spine
 
 Represent each scan as an evidence-only Program Run. Represent an optimization
 series as an Optimizer Run whose candidate modules point to immutable prompt
@@ -639,7 +790,7 @@ Required properties:
 - runtime serves a checked-in or otherwise immutable admitted artifact;
 - every result remains attributable to the artifact that produced it.
 
-### 6.3 Independent evaluation
+### 7.3 Independent evaluation
 
 The candidate generator and release evaluator must have distinct execution
 identities and inputs. A second model family is useful but not sufficient;
@@ -658,13 +809,14 @@ a factual source or artifact claim is true when a deterministic check exists.
 
 ---
 
-## 7. Versioned contracts
+## 8. Versioned contracts
 
 Names are provisional; the information is not.
 
 | Contract | Required content |
 | --- | --- |
 | `ForensicTargetSnapshot.v1` | Repository, commit, source digest, dirty-state truth, dependency policy, toolchain refs, and authorization refs. |
+| `ColdcardReproductionManifest.v1` | Pinned source and postmortem commits, suite identities, raw-input refs, expected comparison ranges, controls, assumptions, claim-rung gates, disclosure posture, and evaluator revision. |
 | `ForensicSourceBundle.v1` | Exact repository and commit, git tree, declared submodule commits, dependency manifest, private artifact ref, content digest, builder identity, retention, and materialization receipt. |
 | `ForensicCoverageManifest.v1` | Present, absent, excluded, oversized, generated, and dependency paths; coverage status and reasons. |
 | `ForensicScanProfile.v1` | Scope ranking, vulnerability classes, model matrix, prompt artifact, tools, sandbox, network, and budgets. |
@@ -673,6 +825,14 @@ Names are provisional; the information is not.
 | `ForensicRun.v1` | Target, profile, worker placement, source bundle, state, timing, usage truth, findings, hypotheses, errors, and native receipt refs. |
 | `ForensicFinding.v1` | Claim, causal steps, source refs, assumptions, severity, evidence tier, PoC, verifier state, and disclosure state. |
 | `ForensicHypothesis.v1` | Suspected mechanism, supporting refs, missing evidence, next check, consequence if true, and expiration state. |
+| `ForensicClaimRecord.v1` | Claim kind, subject, bounded proposition, evidence tier, supporting and refuting refs, assumptions, confidence, author, adjudication, and non-implications. |
+| `ForensicClaimRevision.v1` | Prior claim, appended evidence, old and new tier or disposition, reason, reviewer, affected projections, and correction timestamp; the prior claim remains addressable. |
+| `ForensicEvidenceGraph.v1` | Typed nodes and edges, derivation rule, source claim, bounded traversal policy, generated explanation, component and episode identities, confidence, and completeness limits. |
+| `GeneratorTrace.v1` | Implementation revision, exact initial state, reseed inputs and retained width, ordered call trace, output digest, golden-vector identity, toolchain/profile, and receipt refs. |
+| `EntropyStateModel.v1` | Hardware/firmware class, known and unknown inputs, distributions or ranges, assumptions, candidate-count bounds, sensitivity results, enumeration plan, and independent review. |
+| `HistoricalChainSnapshot.v1` | Network and genesis, block range and hashes, node/source identity class and version, raw response digests, capture time, amount encoding, retention, and materialization receipt. |
+| `TransactionFingerprint.v1` | Software-chosen features, exact arithmetic, eligibility and thresholds, fingerprint revision, positive and negative controls, fee-regime base rates, cluster rule, and known exclusions. |
+| `NodeScanReceipt.v1` | Scan profile, chain snapshot, completed ranges and checkpoints, self-test and negative-control results, raw-hit digest, candidate funnel, resume state, missing-data failures, and worker receipt refs. |
 | `ForensicEvidenceReceipt.v1` | Exact command or tool, immutable inputs, observed result, artifact digests, environment, and timestamp. |
 | `ForensicRunEvent.v1` | Append-only run sequence for lifecycle milestones, tranche, agent role, turn, tool, usage, hypothesis, finding, verification, review, failure, and cleanup refs. |
 | `ForensicMetricDefinition.v1` | Versioned formula, unit, eligible population, censor and miss treatment, exactness rules, dimensions, aggregation, and display metadata. |
@@ -700,13 +860,16 @@ cannot manufacture success. Output silence never means idle or complete.
 
 ---
 
-## 8. Delivery phases
+## 9. Delivery phases
 
 ### Phase 0 — freeze the benchmark and run contracts
 
 Deliver:
 
 - Coldcard manifest with the five required arms;
+- pinned postmortem reference, claim lattice, four-suite reproduction manifest,
+  immutable raw-input schemas, and controls that prevent expected generated
+  outputs from becoming evaluator inputs;
 - structured finding and hypothesis schemas;
 - immutable source-bundle and coverage-manifest schemas;
 - coverage manifest and incomplete-state rules;
@@ -730,7 +893,9 @@ Exit gate:
 - a fake or unavailable GCE target cannot satisfy `worker_ready`, and a missing
   cleanup receipt cannot satisfy `completed*`;
 - imported Episode 264 data marks unavailable historical timing or token
-  fields as unavailable rather than zero.
+  fields as unavailable rather than zero;
+- a claim-rung evaluator rejects attempts to use a source hit as artifact proof,
+  a fingerprint as identity, or chain movement alone as theft.
 
 ### Phase 1 — run Loupe-style analysis from Omega
 
@@ -838,7 +1003,69 @@ Exit gate:
 - removing the approved provider makes the build or invariant check fail;
 - no statistical output test is accepted as proof of entropy provenance.
 
-### Phase 5 — executable evidence and controlled dynamic analysis
+### Phase 5 — Coldcard generator and owned-fixture reproduction
+
+Deliver:
+
+- an independently implemented Yasmarang generator with exact state,
+  initialization, reseed, retained-width, and call-trace receipts;
+- golden vectors for vulnerable, partially mitigated, fixed, and mutated
+  implementations;
+- versioned entropy-state models for the relevant hardware and firmware classes,
+  with every UID, timer, interaction, and reseed assumption exposed;
+- BIP39 and HD-derivation replay across the paths in the frozen fixture;
+- a known synthetic or explicitly owner-authorized emulator/device fixture with
+  an expected xpub or address-set match;
+- a consumer-reachability inventory covering every product secret derived from
+  the affected random source, not wallet seeds alone; and
+- the evidence-ladder, generator-trace, and entropy-assumption Omega views.
+
+Exit gate:
+
+- golden vectors and mutation controls prove the emulator distinguishes each
+  relevant source and reseed behavior;
+- an independent implementation reproduces the owned fixture from its frozen
+  assumptions and records an xpub or address match;
+- published entropy and work-factor estimates are recomputed with sensitivity
+  ranges and measured throughput rather than copied;
+- no unknown candidate secret is queried against mainnet or another live value
+  oracle; and
+- source, artifact, behavior, exploitability, and owned-fixture claims remain
+  separately reviewable.
+
+### Phase 6 — historical chain replay and evidence graph
+
+Deliver:
+
+- content-addressed historical block bundles plus a separately admitted private
+  Bitcoin Core data capability on the OpenAgents Cloud GCE path;
+- exact fee arithmetic and transaction-builder fingerprint evaluation;
+- positive self-tests, negative block ranges, mutation controls, low-fee
+  collision estimates, and off-fingerprint victim-wave exclusion;
+- resumable phased scanning with append-only raw hits, block-hash checkpoints,
+  deterministic deduplication, and late prevout resolution;
+- typed victim reports, published candidates, scan candidates, evidence graph,
+  bounded derivation rules, components, temporal episodes, and claim revisions;
+- generated reconciliation, limitations, and stale-or-drift warnings; and
+- the private scan console, candidate funnel, graph, reconciliation, and claim-
+  history Omega views.
+
+Exit gate:
+
+- the independent replay recomputes the pinned postmortem's known positive
+  fingerprint and graph figures from raw inputs or records an explained drift;
+- every displayed number and graph explanation is traceable to immutable raw
+  input and a versioned derivation rule;
+- false matches are measured per million eligible historical transactions and
+  stratified by fee regime rather than inferred from a single hit;
+- stopping and resuming at any completed-block checkpoint produces the same raw
+  hit digest and normalized dataset;
+- the guest receives neither ambient Internet nor raw node credentials, and
+  missing fee/prevout data fails loudly; and
+- program fingerprint, entity grouping, unauthorized movement, and identity
+  attribution cannot satisfy each other's gates.
+
+### Phase 7 — executable evidence and controlled dynamic analysis
 
 Deliver:
 
@@ -860,7 +1087,7 @@ Exit gate:
   capabilities;
 - no dynamic result grants disclosure authority.
 
-### Phase 6 — entropy, oracle, delta, and variant analysis
+### Phase 8 — entropy, oracle, delta, and variant analysis
 
 Deliver:
 
@@ -880,7 +1107,7 @@ Exit gate:
 - newly missing evidence becomes `not_proven`, never `safe`;
 - fix persistence is checked against a later release.
 
-### Phase 7 — coordinated defensive service
+### Phase 9 — coordinated defensive service
 
 Deliver:
 
@@ -905,13 +1132,13 @@ Exit gate:
 
 ---
 
-## 9. Issue-ready first sequence
+## 10. Issue-ready first sequence
 
 The first implementation program should be cut in this order:
 
 | ID | Work item | Primary home |
 | --- | --- | --- |
-| OFR-001 | Define forensic target, source bundle, coverage, worker placement, prompt, run/event, finding, hypothesis, receipt, metric-definition, and scorecard contracts. | `openagents` |
+| OFR-001 | Define forensic target, source bundle, coverage, worker placement, prompt, run/event, finding, hypothesis, claim/revision, evidence-graph, reproduction, generator, entropy, chain-snapshot, transaction-fingerprint, node-scan, receipt, metric-definition, and scorecard contracts. | `openagents` |
 | OFR-002 | Admit an image-pinned forensic worker profile on the native OpenAgents managed-sandbox GCE path; prove readiness, refusal of every fallback, cost limits, cancellation, deletion, and zero residue. | OpenAgents Cloud |
 | OFR-003 | Materialize a pinned target and all declared submodules into an immutable private source bundle, deliver it through a scoped capability, and emit the coverage manifest without guest Internet egress. | OpenAgents Cloud / upstream Loupe where general |
 | OFR-004 | Import the Coldcard benchmark arms and frozen rubric. | `openagents` |
@@ -925,6 +1152,10 @@ The first implementation program should be cut in this order:
 | OFR-012 | Add matched run matrices, recall curves, divergence, retained failures, confidence intervals, Pareto views, and deterministic scorecards. | `omega` + `openagents` |
 | OFR-013 | Add bounded offline prompt compilation and Blueprint release-gate records. | `openagents` |
 | OFR-014 | Build the Coldcard C/C++ artifact witness and fault-build fixtures. | OpenAgents Cloud / `openagents` |
+| OFR-015 | Implement the independent Coldcard PRNG, reseed, call-trace, entropy-state, BIP39, HD-path, mutation, and owned-fixture reproduction suite. | OpenAgents Cloud / `openagents` |
+| OFR-016 | Admit immutable historical block bundles and a private read-only Bitcoin Core capability; implement self-testing, resumable transaction-fingerprint scans and negative-control base-rate measurement. | OpenAgents Cloud / `openagents` |
+| OFR-017 | Implement typed evidence seeds, bounded derivation, evidence graphs, reconciliation, claim lattice, append-only promotion/correction history, and deterministic replay tests. | `openagents` |
+| OFR-018 | Add Omega evidence-ladder, generator trace, entropy explorer, historical scan console, candidate funnel, evidence graph, reconciliation, and correction-history views. | `omega` + `openagents` |
 
 Do not start OFR-013 by restoring the deleted DSE package unchanged. Harvest its
 tested design: typed signatures, Prompt IR, canonical hashes, budgets, receipts,
@@ -933,7 +1164,7 @@ current Effect, Node, package-manager, and runtime boundaries.
 
 ---
 
-## 10. Non-negotiable boundaries
+## 11. Non-negotiable boundaries
 
 1. **Worker supply is closed for now.** Every repository-reading, inference,
    build, test, PoC, and fuzz run uses the exact admitted OpenAgents Cloud GCE
@@ -946,7 +1177,10 @@ current Effect, Node, package-manager, and runtime boundaries.
    `incomplete` or `not_proven`.
 4. **No live-key work.** Never derive, search for, correlate, or spend a real
    user's key. Coldcard impact demonstrations use known synthetic seeds and
-   owned local fixtures only.
+   explicitly owner-authorized fixtures only. Never query an address derived
+   from an unknown candidate secret against mainnet or another live value
+   oracle. Historical scans may analyze frozen public transactions by their
+   construction fingerprint; they may not hunt live wallets.
 5. **No live exploitation.** Dynamic software work stays inside the admitted
    OpenAgents Cloud sandbox against synthetic, regtest, signet, or emulator
    targets. Owned-hardware work requires a later, separate capability and gate.
@@ -962,10 +1196,16 @@ current Effect, Node, package-manager, and runtime boundaries.
    known historical bug is not a zero-day track record.
 11. **No scanner monoculture.** Share useful fixes upstream, retain configuration
     diversity, and compare divergence before replacing a working tool.
+12. **Claims do not promote each other.** Source flaw, artifact selection,
+    exploitability, program fingerprint, entity grouping, unauthorized taking,
+    and identity attribution each require their own evidence and review.
+13. **Secret-bearing evidence stays out.** Do not ingest or republish mnemonics,
+    xprvs, node cookies, RPC credentials, or screenshots containing them. Store
+    a redacted description, provenance, and digest where evidence is required.
 
 ---
 
-## 11. Decisions this roadmap makes
+## 12. Decisions this roadmap makes
 
 - Start in Omega with an interactive, configurable Loupe-style lab.
 - Run every initial forensic workload on one disposable, admitted OpenAgents
@@ -985,8 +1225,20 @@ current Effect, Node, package-manager, and runtime boundaries.
   lineage and promotion, not as interchangeable names for one system.
 - Require holdout independence and clean controls before prompt promotion.
 - Build artifact provenance before claiming final-binary proof.
-- Advance from source candidates to executed evidence, variants, coordination,
-  and proof-carrying remediation in that order.
+- Reproduce the pinned Coldcard postmortem independently as four suites: code-
+  to-artifact, generator and owned fixture, historical fingerprint, and
+  provenance-bearing evidence graph.
+- Keep source flaws, generator behavior, work-factor models, owned-fixture
+  recovery, transaction fingerprints, entity clusters, theft, and identity as
+  separate claim rungs.
+- Run historical-chain work on immutable block bundles or a private brokered
+  node capability inside the same OpenAgents Cloud GCE supply, never a local or
+  credential-bearing worker.
+- Prefer append-only raw evidence, deterministic derivation, loud drift, claim
+  corrections, positive and negative controls, and stale-but-honest projections.
+- Advance from source candidates to artifact proof, Coldcard reproduction,
+  executed evidence, variants, coordination, and proof-carrying remediation in
+  that order.
 
 The near-term success condition is not "Omega has a security scanner." It is:
 

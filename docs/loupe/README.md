@@ -348,8 +348,10 @@ Read in this order:
    runs and prompt iteration inside Omega on disposable OpenAgents Cloud GCE
    workers, measure qualified identification time, tokens, cost, recall, and
    evidence quality from native events, govern optimized candidates through
-   DSPy/Blueprint boundaries, then advance to artifact witnesses, executable
-   evidence, variant analysis, and coordinated remediation.
+   DSPy/Blueprint boundaries, independently reproduce the pinned Coldcard
+   postmortem from generator behavior through historical-chain fingerprints
+   and provenance graphs, then advance to executable evidence, variant analysis,
+   and coordinated remediation.
 
 Documents 3 and 4 are speculation and authorize nothing. Documents 1 and 2 are
 factual records — of source read, and of a scan run. Document 5 is a prediction
