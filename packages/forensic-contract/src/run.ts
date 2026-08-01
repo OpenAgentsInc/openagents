@@ -392,6 +392,26 @@ export const ForensicRunEventKind = S.Literals([
 ]);
 export type ForensicRunEventKind = typeof ForensicRunEventKind.Type;
 
+export const ForensicMetricEventContextSchema = S.Struct({
+  benchmarkRevisionDigest: Sha256Digest,
+  datasetSplit: S.Literals(["train", "development", "holdout", "clean_holdout"]),
+  armRef: ForensicRef,
+  repetition: PositiveInteger,
+  targetDigest: Sha256Digest,
+  sourceBundleDigest: Sha256Digest,
+  promptDigest: Sha256Digest,
+  modelDigest: Sha256Digest,
+  modelParametersDigest: Sha256Digest,
+  workerImageDigest: Sha256Digest,
+  workerProfileDigest: Sha256Digest,
+  sandboxRef: ForensicRef,
+  resourceGeneration: NonNegativeInteger,
+  evaluatorRevisionDigest: Sha256Digest,
+});
+export interface ForensicMetricEventContext extends S.Schema.Type<
+  typeof ForensicMetricEventContextSchema
+> {}
+
 export const ForensicRunEventSchema = S.Struct({
   schema: S.Literal(FORENSIC_RUN_EVENT_VERSION),
   eventRef: ForensicRef,
@@ -399,11 +419,26 @@ export const ForensicRunEventSchema = S.Struct({
   sequence: PositiveInteger,
   kind: ForensicRunEventKind,
   actorRef: ForensicRef,
+  metricContext: ForensicMetricEventContextSchema,
   relatedRefs: BoundedRefs,
   detailRefs: BoundedRefs,
+  clock: S.Literals(["control_plane_server", "worker_monotonic"]),
+  monotonicElapsedMilliseconds: S.optionalKey(NonNegativeInteger),
   usage: S.optionalKey(UsageTruthSchema),
   observedAt: ForensicTimestamp,
-}).annotate({ identifier: "ForensicRunEvent" });
+})
+  .pipe(
+    S.check(
+      S.makeFilter(
+        (event) =>
+          event.clock === "worker_monotonic"
+            ? event.monotonicElapsedMilliseconds !== undefined
+            : event.monotonicElapsedMilliseconds === undefined,
+        { message: "only worker events may carry worker-monotonic elapsed time" },
+      ),
+    ),
+  )
+  .annotate({ identifier: "ForensicRunEvent" });
 export interface ForensicRunEvent extends S.Schema.Type<typeof ForensicRunEventSchema> {}
 
 export const ForensicUsageExactnessSchema = S.Struct({

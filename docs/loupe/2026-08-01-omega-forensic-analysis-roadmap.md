@@ -541,6 +541,20 @@ paths, prompts, findings, raw model output, topology, and credentials stay in
 the admitted private evidence boundary. Even aggregate publication remains
 default-private until an explicit projection and release policy admits it.
 
+
+OFR-005 implements this evidence boundary in
+`@openagentsinc/forensic-contract`. `ForensicRunEvent.v1` now carries the full
+benchmark, split, arm, repetition, target, source, prompt, model, worker,
+sandbox-generation, evaluator, and clock context. Provider usage and evaluator
+adjudications are separate append-only receipts. The scorecard projector derives
+T5 from the original content-digested `finding_submitted` event, counts every
+turn started before it, retains misses as nonzero right-censored observations,
+and rebuilds event and receipt digests from retained inputs. The frozen registry
+contains the lifecycle, detection, evidence, token, cost, reliability,
+reviewer-load, and Coldcard-specific definitions above. Public scorecard
+projection exposes only content digests and aggregate population counts,
+durations, tokens, costs, sample counts, and exactness.
+
 #### 5.4.7 Omega views
 
 | View | What it shows |
@@ -1183,9 +1197,10 @@ Exit gate:
 
 The first implementation program should be cut in this order:
 
-OFR-001 through OFR-004 now provide the contract lattice, the native disposable
-GCE forensic worker, immutable private source delivery, and the frozen Coldcard
-development benchmark. OFR-005 is the next implementation gate; later rows
+OFR-001 through OFR-005 now provide the contract lattice, the native disposable
+GCE forensic worker, immutable private source delivery, the frozen Coldcard
+development benchmark, and native metric evidence with a rebuildable
+censor-aware scorecard. OFR-006 is the next implementation gate; later rows
 remain ordered dependencies, not parallel workstreams.
 
 | ID | Work item | Primary home |

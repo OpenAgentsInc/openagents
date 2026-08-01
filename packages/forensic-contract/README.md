@@ -8,7 +8,8 @@ or publish a claim.
 The package owns:
 
 - target, source-bundle, coverage, profile, worker-placement, prompt, run,
-  event, finding, hypothesis, receipt, metric, scorecard, and promotion shapes;
+  event, finding, hypothesis, receipt, metric-registry, provider-usage,
+  evaluator-adjudication, scorecard, and promotion shapes;
 - the Coldcard reproduction, generator, entropy, historical-chain,
   transaction-fingerprint, node-scan, evidence-graph, and claim-revision
   shapes;
@@ -19,8 +20,14 @@ The package owns:
 - deterministic canonical JSON and SHA-256 contract digests;
 - fail-closed run-transition, event-sequence, claim-rung, and prior-revision
   laws; and
-- one bounded public run projection that contains digests, counts, durations,
-  usage totals, completeness, and cleanup truth only.
+- a content-digested frozen catalog spanning lifecycle, detection, evidence,
+  token, cost, reliability, reviewer-load, and Coldcard reproduction metrics;
+- a deterministic scorecard projector that derives T5 from immutable finding
+  event bytes plus later frozen adjudication, retains miss/censor truth and
+  spent usage, and isolates every split/population; and
+- bounded public run and scorecard projections containing only digests,
+  aggregate counts, durations, usage/cost totals, exactness, completeness, and
+  cleanup truth.
 
 ## Contract laws
 
@@ -33,8 +40,14 @@ The implementation deliberately keeps these facts separate:
 - claim revisions append evidence and bind the exact prior claim digest;
 - a successful historical scan requires positive and negative controls and no
   missing required data;
-- prompt candidates cannot evaluate or promote themselves; and
-- unavailable values retain a reason and never become zero.
+- prompt candidates cannot evaluate or promote themselves;
+- faster prompt candidates cannot win with a hard-gate or quality regression;
+- provider usage and cost retain exactness, and unavailable values contain no
+  numeric fields that could be mistaken for zero;
+- eligible misses retain their spent usage and a nonzero right-censor boundary;
+- fixed, clean, incomplete, development, and holdout populations cannot pool;
+- evaluator timing cannot replace the original content-digested finding time;
+- scorecards rebuild event and receipt digests from retained evidence; and
 - postmortem comparison outputs cannot become derivation or evaluator inputs,
   and Coldcard development arms cannot enter evaluator-only holdouts.
 
@@ -53,7 +66,9 @@ Every schema registered by `FORENSIC_CONTRACT_SCHEMAS` has one positive and one
 negative fixture. The tests also cover semantic false-green cases, including
 invalid lifecycle transitions, incomplete coverage, cross-rung claim evidence,
 non-dense chain inputs, missing scan controls, optimizer self-promotion,
-scorecard count drift, secret projection, and unknown fields.
+scorecard count/population drift, adjudication timestamp rewriting, zero-valued
+unavailable usage, missing censor boundaries, quality-dominated promotion,
+secret aggregate projection, and unknown fields.
 
 Run the package checks with:
 

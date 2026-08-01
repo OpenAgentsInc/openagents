@@ -119,25 +119,34 @@ export const NonEmptyBoundedRefs = BoundedRefs.check(S.isMinLength(1));
 export const BoundedDigests = S.Array(Sha256Digest).check(S.isMaxLength(256));
 export const BoundedShortTexts = S.Array(ShortText).check(S.isMaxLength(128));
 
-export const UsageTruthSchema = S.Struct({
+const AvailableUsageTruthSchema = S.Struct({
   inputTokens: NonNegativeInteger,
   cachedInputTokens: NonNegativeInteger,
   outputTokens: NonNegativeInteger,
   reasoningTokens: NonNegativeInteger,
   totalTokens: NonNegativeInteger,
-  exactness: Exactness,
+  exactness: S.Literals(["exact", "estimated", "upper_bound"]),
   providerUsageRef: S.optionalKey(ForensicRef),
 }).pipe(
   S.check(
     S.makeFilter(
       (usage) =>
-        usage.exactness === "unavailable" ||
         usage.totalTokens === usage.inputTokens + usage.cachedInputTokens + usage.outputTokens,
       { message: "available total tokens must equal input + cached input + output" },
     ),
   ),
 );
-export interface UsageTruth extends S.Schema.Type<typeof UsageTruthSchema> {}
+
+const UnavailableUsageTruthSchema = S.Struct({
+  exactness: S.Literal("unavailable"),
+  unavailableReasonRef: ForensicRef,
+});
+
+export const UsageTruthSchema = S.Union([
+  AvailableUsageTruthSchema,
+  UnavailableUsageTruthSchema,
+]).annotate({ identifier: "ForensicUsageTruth" });
+export type UsageTruth = typeof UsageTruthSchema.Type;
 
 export const DurationTruthSchema = S.Struct({
   milliseconds: NonNegativeInteger,

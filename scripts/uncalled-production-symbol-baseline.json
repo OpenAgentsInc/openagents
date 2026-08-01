@@ -1795,16 +1795,24 @@
       "reason": "Published forensic contract registry; OFR-003 will consume it for run storage and contract-version negotiation when that issue lands."
     },
     {
-      "ref": "packages/forensic-contract/src/lifecycle.ts#evaluateForensicEventSequence",
-      "reason": "Published forensic contract API; OFR-003 will call it before persisting append-only forensic run streams when that issue lands."
-    },
-    {
       "ref": "packages/forensic-contract/src/lifecycle.ts#evaluateForensicRunTransition",
       "reason": "Published forensic contract API; OFR-003 will call it from the durable run lifecycle authority when that issue lands."
     },
     {
+      "ref": "packages/forensic-contract/src/metrics.ts#FROZEN_FORENSIC_METRIC_REGISTRY",
+      "reason": "Published frozen forensic metric catalog; OFR-008 and OFR-012 will consume it in Omega metric provenance and matched run matrices."
+    },
+    {
+      "ref": "packages/forensic-contract/src/metrics.ts#rebuildForensicScorecard",
+      "reason": "Published deterministic forensic projector; OFR-012 will call it from retained run-matrix evidence when the Omega comparison path lands."
+    },
+    {
       "ref": "packages/forensic-contract/src/projection.ts#projectForensicRunPublicSafe",
       "reason": "Published forensic contract API; OFR-008 and OFR-017 will call it from Omega and public-forensics projections when those issues land."
+    },
+    {
+      "ref": "packages/forensic-contract/src/projection.ts#projectForensicScorecardPublicSafe",
+      "reason": "Published public-safe forensic aggregate projector; OFR-012 will call it after deterministic scorecard projection lands in Omega."
     }
   ]
 }

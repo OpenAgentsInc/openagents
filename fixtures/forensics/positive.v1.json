@@ -462,8 +462,25 @@
       "sequence": 1,
       "kind": "request_accepted",
       "actorRef": "actor.operator.fixture",
+      "metricContext": {
+        "benchmarkRevisionDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "datasetSplit": "development",
+        "armRef": "arm.complete.vulnerable",
+        "repetition": 1,
+        "targetDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "sourceBundleDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "promptDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "modelDigest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "modelParametersDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "workerImageDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+        "workerProfileDigest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+        "sandboxRef": "sandbox.forensic.fixture.1",
+        "resourceGeneration": 1,
+        "evaluatorRevisionDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+      },
       "relatedRefs": ["profile.forensic.coldcard.v1"],
       "detailRefs": ["receipt.request.admitted.1"],
+      "clock": "control_plane_server",
       "observedAt": "2026-08-01T12:00:00.000Z"
     },
     "openagents.forensic_metric_definition.v1": {
@@ -482,6 +499,63 @@
       "revisionDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "createdAt": "2026-08-01T12:00:00.000Z"
     },
+    "openagents.forensic_metric_registry.v1": {
+      "schema": "openagents.forensic_metric_registry.v1",
+      "registryRef": "registry.forensic.metrics.v1",
+      "definitions": [
+        {
+          "schema": "openagents.forensic_metric_definition.v1",
+          "metricRef": "metric.time.to.identification.v1",
+          "name": "Analysis time to qualified identification",
+          "formula": "T5 first qualified identification minus T3 analysis started on one server-side clock.",
+          "unit": "milliseconds",
+          "eligiblePopulationRef": "population.complete.vulnerable.arms",
+          "censorPolicy": "Runs without T5 are right-censored at their declared time or token budget.",
+          "missPolicy": "Misses remain in the hit-rate denominator and retain their spent budget.",
+          "exactnessPolicy": "Use native ordered event timestamps; unavailable values remain unavailable.",
+          "dimensionRefs": ["dimension.model", "dimension.prompt", "dimension.arm"],
+          "aggregation": "survival_estimator",
+          "displayMetadataRefs": ["display.run.waterfall"],
+          "revisionDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "createdAt": "2026-08-01T12:00:00.000Z"
+        }
+      ],
+      "revisionDigest": "sha256:e66fa259b4a522641b8ebe3e313b7124a0c3e087c194b44e6185d47bc9fa59b5",
+      "frozenAt": "2026-08-01T12:00:01.000Z"
+    },
+    "openagents.forensic_provider_usage_receipt.v1": {
+      "schema": "openagents.forensic_provider_usage_receipt.v1",
+      "receiptRef": "receipt.provider.turn.1",
+      "runRef": "run.forensic.coldcard.1",
+      "turnRef": "turn.discovery.1",
+      "role": "discovery",
+      "attempt": 1,
+      "startEventRef": "event.turn.started.1",
+      "startEventSequence": 4,
+      "settledEventSequence": 7,
+      "abandoned": false,
+      "losingParallelArm": false,
+      "usage": { "inputTokens": 1000, "cachedInputTokens": 200, "outputTokens": 300, "reasoningTokens": 100, "totalTokens": 1500, "exactness": "exact", "providerUsageRef": "usage.provider.turn.1" },
+      "costMicros": 250000,
+      "recordedAt": "2026-08-01T12:05:00.000Z"
+    },
+    "openagents.forensic_evaluator_adjudication.v1": {
+      "schema": "openagents.forensic_evaluator_adjudication.v1",
+      "adjudicationRef": "adjudication.finding.coldcard.1",
+      "runRef": "run.forensic.coldcard.1",
+      "findingRef": "finding.coldcard.rng.1",
+      "findingEventRef": "event.finding.submitted.1",
+      "findingEventDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "evaluatorRevisionDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "outcome": "qualified",
+      "vulnerabilityIdentityDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "requiredCausalLinks": 6,
+      "supportedCausalLinks": 6,
+      "submittedSourceRefs": 3,
+      "validSourceRefs": 3,
+      "reasonRefs": ["reason.oracle.coldcard.rng"],
+      "evaluatedAt": "2026-08-01T12:09:00.000Z"
+    },
     "openagents.forensic_scorecard.v1": {
       "schema": "openagents.forensic_scorecard.v1",
       "scorecardRef": "scorecard.forensic.baseline.v1",
@@ -493,13 +567,16 @@
         { "gateRef": "gate.complete.input", "passed": true, "evidenceRefs": ["coverage.coldcard.complete"], "blockerRefs": [] }
       ],
       "runs": [
-        { "runDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "armRef": "arm.complete.vulnerable", "datasetSplit": "development", "coverageStatus": "complete", "censored": false, "miss": false, "values": [ { "metricRef": "metric.time.to.identification.v1", "numericValue": 120000, "exactness": "exact", "sourceEventRefs": ["event.analysis.started", "event.finding.submitted"], "sourceReceiptRefs": [] } ], "failureRefs": [] }
+        { "runDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "armRef": "arm.complete.vulnerable", "datasetSplit": "development", "population": "vulnerable", "coverageStatus": "complete", "outcome": "hit", "eligibleForIdentification": true, "censored": false, "miss": false, "spentUsage": { "inputTokens": 1000, "cachedInputTokens": 200, "outputTokens": 300, "reasoningTokens": 100, "totalTokens": 1500, "exactness": "exact" }, "qualifiedFindingEventRef": "event.finding.submitted", "qualifiedFindingObservedAt": "2026-08-01T12:02:00.000Z", "values": [ { "metricRef": "metric.time.to.identification.v1", "numericValue": 120000, "exactness": "exact", "sourceEventRefs": ["event.analysis.started", "event.finding.submitted"], "sourceReceiptRefs": [] } ], "failureRefs": [] }
+      ],
+      "populationGroups": [
+        { "datasetSplit": "development", "population": "vulnerable", "runCount": 1, "hitCount": 1, "missCount": 0, "censorCount": 0 }
       ],
       "distributionRefs": ["distribution.time.kaplan.meier.1"],
       "censorCount": 0,
       "missCount": 0,
       "confidenceIntervalRefs": ["interval.hit.rate.1"],
-      "costMicros": 250000,
+      "cost": { "micros": 250000, "exactness": "exact" },
       "eventDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
       "receiptDigest": "sha256:1212121212121212121212121212121212121212121212121212121212121212",
       "generatedAt": "2026-08-01T13:10:00.000Z"
@@ -511,9 +588,13 @@
       "candidateProducerRef": "actor.prompt.compiler.1",
       "evaluatorRef": "actor.prompt.evaluator.1",
       "scorecardRef": "scorecard.forensic.candidate.1",
+      "baselineScorecardRef": "scorecard.forensic.baseline.1",
       "releaseGateRef": "gate.prompt.release.1",
       "hardGateRefs": ["gate.complete.input", "gate.clean.control"],
       "allHardGatesPassed": true,
+      "paretoStatus": "dominates",
+      "qualityRegressionMetricRefs": [],
+      "efficiencyImprovementMetricRefs": ["metric.time.to.identification.v1"],
       "holdoutDatasetDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "cleanHoldoutDatasetDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
       "holdoutEvidenceRefs": ["evidence.holdout.scorecard.1"],
@@ -544,6 +625,24 @@
       "totalDurationMilliseconds": 600000,
       "totalDurationExactness": "exact",
       "usage": { "inputTokens": 1000, "cachedInputTokens": 200, "outputTokens": 300, "reasoningTokens": 100, "totalTokens": 1500, "exactness": "exact" }
+    },
+    "openagents.forensic_scorecard_public_projection.v1": {
+      "schema": "openagents.forensic_scorecard_public_projection.v1",
+      "scorecardDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "datasetRevisionDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "metricDefinitionRevisionDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "evaluatorRevisionDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "candidateDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "allHardGatesPassed": true,
+      "populations": [
+        { "datasetSplit": "development", "population": "vulnerable", "runCount": 1, "hitCount": 1, "missCount": 0, "censorCount": 0, "identificationDurationSampleCount": 1, "identificationDurationTotalMilliseconds": 120000, "identificationTokenSampleCount": 1, "identificationTokenTotal": 1500 }
+      ],
+      "censorCount": 0,
+      "missCount": 0,
+      "costMicros": 250000,
+      "costExactness": "exact",
+      "sourceEventCount": 2,
+      "sourceReceiptCount": 1
     }
   }
 }

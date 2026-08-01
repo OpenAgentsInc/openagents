@@ -29,8 +29,12 @@
     "openagents.forensic_evidence_receipt.v1",
     "openagents.forensic_run_event.v1",
     "openagents.forensic_metric_definition.v1",
+    "openagents.forensic_metric_registry.v1",
+    "openagents.forensic_provider_usage_receipt.v1",
+    "openagents.forensic_evaluator_adjudication.v1",
     "openagents.forensic_scorecard.v1",
     "openagents.forensic_prompt_promotion.v1",
-    "openagents.forensic_run_public_projection.v1"
+    "openagents.forensic_run_public_projection.v1",
+    "openagents.forensic_scorecard_public_projection.v1"
   ]
 }
