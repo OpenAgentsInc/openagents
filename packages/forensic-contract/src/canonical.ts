@@ -45,7 +45,7 @@ export const forensicCanonicalJson = (value: unknown): string => {
         }
 
         const members: Array<string> = [];
-        for (const key of Object.keys(current).toSorted()) {
+        for (const key of Object.keys(current).sort()) {
           const member = Reflect.get(current, key);
           if (member === undefined) continue;
           members.push(`${JSON.stringify(key)}:${encode(member, [...path, key])}`);

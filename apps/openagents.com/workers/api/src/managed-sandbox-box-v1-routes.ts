@@ -189,6 +189,29 @@ export type BoxV1LifecycleOutcome = Readonly<{
   generation: number
   readinessObserved: boolean
   cleanupObserved: boolean
+  forensicDriverRef?: string
+  readinessProof?: Readonly<{
+    providerRunning: boolean
+    guestMarkerObserved: boolean
+    imageAdmitted: boolean
+    noExternalIp: boolean
+    noGuestServiceAccount: boolean
+    egressDefaultDeny: boolean
+    brokerEgressOnly: boolean
+    metadataEgressOnly: boolean
+    controlIngressOnly: boolean
+    metadataRestricted: boolean
+    linuxGuest: boolean
+    bubblewrapReady: boolean
+    forensicDriverReady: boolean
+  }>
+  cleanupProof?: Readonly<{
+    zeroCompute: boolean
+    zeroFirewall: boolean
+    zeroScratch: boolean
+    zeroIngress: boolean
+    zeroGrants: boolean
+  }>
   measuredRunningMs: number
   measuredCostMicros: number
   errorCode: string | null
@@ -323,17 +346,19 @@ export type BoxV1Runtime = Readonly<{
   >
 }>
 
-export type BoxV1LifecycleCommandExecutor = (input: Readonly<{
-  principal: BoxV1Principal
-  policy: BoxV1Policy
-  store: BoxV1NativeStore
-  runtime: BoxV1Runtime
-  command: Extract<
-    ManagedSandboxCommand,
-    { _tag: 'Create' | 'Stop' | 'Resume' | 'Delete' }
-  >
-  initialResource?: ManagedSandboxResource | undefined
-}>) => Effect.Effect<
+export type BoxV1LifecycleCommandExecutor = (
+  input: Readonly<{
+    principal: BoxV1Principal
+    policy: BoxV1Policy
+    store: BoxV1NativeStore
+    runtime: BoxV1Runtime
+    command: Extract<
+      ManagedSandboxCommand,
+      { _tag: 'Create' | 'Stop' | 'Resume' | 'Delete' }
+    >
+    initialResource?: ManagedSandboxResource | undefined
+  }>,
+) => Effect.Effect<
   Readonly<{ resource: ManagedSandboxResource }>,
   BoxV1FacadeError
 >

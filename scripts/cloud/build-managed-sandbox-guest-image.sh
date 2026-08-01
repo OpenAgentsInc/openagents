@@ -9,7 +9,8 @@ Usage:
 
 Builds the immutable SBX-09 GCE guest image with Node.js 24,
 @openai/codex-sdk@0.144.3, @anthropic-ai/claude-agent-sdk@0.3.172, and the
-OpenAgents guest driver. Default mode is dry-run.
+OpenAgents guest drivers, including the forensic worker preflight. Default mode
+is dry-run.
 USAGE
 }
 
@@ -90,10 +91,13 @@ install -o root -g root -m 0755 /tmp/managed-sandbox-guest-io.py \
   /opt/openagents-managed-sandbox/managed-sandbox-guest-io.py
 install -o root -g root -m 0755 /tmp/managed-sandbox-guest-checkpoint.py \
   /opt/openagents-managed-sandbox/managed-sandbox-guest-checkpoint.py
+install -o root -g root -m 0755 /tmp/forensic-worker-driver.mjs \
+  /opt/openagents-managed-sandbox/forensic-worker-driver.mjs
 rm -f \
   /tmp/managed-sandbox-guest-turn.mjs \
   /tmp/managed-sandbox-guest-io.py \
-  /tmp/managed-sandbox-guest-checkpoint.py
+  /tmp/managed-sandbox-guest-checkpoint.py \
+  /tmp/forensic-worker-driver.mjs
 cat >/etc/systemd/system/openagents-managed-sandbox-hostkeys.service <<'UNIT'
 [Unit]
 Description=Generate per-guest OpenSSH host keys
@@ -153,6 +157,7 @@ test -x /usr/bin/node
 test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-turn.mjs
 test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-io.py
 test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-checkpoint.py
+test -x /opt/openagents-managed-sandbox/forensic-worker-driver.mjs
 test -d /var/lib/openagents/managed-sandbox-checkpoints
 test -d /var/lib/openagents/managed-sandbox-turns
 test -d /var/lib/openagents/managed-sandbox-io
@@ -165,6 +170,8 @@ test "$(runuser -u openagents -- /usr/bin/bwrap \
   --die-with-parent --unshare-net --unshare-pid --unshare-uts --unshare-ipc \
   --ro-bind / / --bind /workspace /workspace --tmpfs /run --proc /proc \
   --dev /dev --chdir /workspace /bin/pwd)" = '/workspace'
+runuser -u openagents -- \
+  /opt/openagents-managed-sandbox/forensic-worker-driver.mjs preflight >/dev/null
 systemctl is-active --quiet openagents-managed-sandbox-hostkeys.service
 systemctl is-active --quiet openagents-managed-sandbox-metadata-guard.service
 systemctl is-active --quiet ssh.service
@@ -245,6 +252,10 @@ gcloud compute scp \
 gcloud compute scp \
   scripts/cloud/managed-sandbox-guest-checkpoint.py \
   "openagents@${builder}:/tmp/managed-sandbox-guest-checkpoint.py" \
+  --project "$project" --zone "$zone" --quiet
+gcloud compute scp \
+  scripts/cloud/forensic-worker-driver.mjs \
+  "openagents@${builder}:/tmp/forensic-worker-driver.mjs" \
   --project "$project" --zone "$zone" --quiet
 gcloud compute scp "$setup_file" "openagents@${builder}:/tmp/setup.sh" \
   --project "$project" --zone "$zone" --quiet

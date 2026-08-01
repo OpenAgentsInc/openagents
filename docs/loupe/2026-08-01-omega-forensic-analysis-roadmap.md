@@ -190,6 +190,18 @@ public availability claim. Owner-gated staging is the first integration
 environment; release requires the exact currently deployed revisions to pass
 the forensic worker gate.
 
+OFR-002 implements that gate as a narrow native managed-sandbox specialization.
+The pinned guest image installs `driver.openagents.forensic-worker.v1`, whose
+preflight proves Linux and executes an allowlisted workload through Bubblewrap
+with an unshared network namespace. The native lifecycle receipt now carries
+the complete readiness and zero-residue observations instead of reducing them
+to a single boolean. Before every prompt, the specialization checks remaining
+time, token, measured-cost, artifact, network, and single-turn concurrency
+budgets. Cancellation must reach a terminal turn receipt, and deletion must
+prove zero compute, firewall, scratch, ingress, and grant residue. Missing cost,
+readiness, settlement, broker, or cleanup truth refuses or returns
+`recovery_required`; there is no silent placement fallback.
+
 ### 3.2 What the Box and Optibox teardown changes
 
 Adopt the useful resource semantics, not the vendor control plane:

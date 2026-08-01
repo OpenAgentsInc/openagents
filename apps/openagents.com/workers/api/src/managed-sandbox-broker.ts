@@ -1,5 +1,5 @@
-import type { ManagedSandboxCommandReservation } from "@openagentsinc/khala-sync-server";
 import { canonicalJson } from "@openagentsinc/khala-sync";
+import type { ManagedSandboxCommandReservation } from "@openagentsinc/khala-sync-server";
 import {
   type ManagedSandboxCommand,
   ManagedSandboxCommandSchema,
@@ -16,12 +16,12 @@ import {
 import { Effect, Schema as S } from "effect";
 
 import {
+  BoxV1FacadeError,
   type BoxV1LifecycleOutcome,
   type BoxV1NativeStore,
   type BoxV1Policy,
   type BoxV1Principal,
   type BoxV1Runtime,
-  BoxV1FacadeError,
 } from "./managed-sandbox-box-v1-routes";
 
 export type ManagedSandboxBrokerResult = Readonly<{
@@ -31,6 +31,7 @@ export type ManagedSandboxBrokerResult = Readonly<{
   turn: ManagedSandboxTurn | null;
   turnReceipt: ManagedSandboxTurnReceipt | null;
   events: ReadonlyArray<ManagedSandboxEvent>;
+  lifecycleOutcome?: BoxV1LifecycleOutcome | null;
 }>;
 
 export type ManagedSandboxBroker = Readonly<{
@@ -256,7 +257,10 @@ const materializeLifecycleEvents = (
       case "stopped": {
         const checkpoint = yield* digest(outcome.receiptRef);
         inputs = [
-          { _tag: "FilesystemCheckpointed", checkpointDigest: `sha256:${checkpoint}` },
+          {
+            _tag: "FilesystemCheckpointed",
+            checkpointDigest: `sha256:${checkpoint}`,
+          },
           { _tag: "GuestStopped" },
         ];
         break;
@@ -369,7 +373,10 @@ export const makeManagedSandboxBroker = (
         commandRef: command.commandRef,
       });
       if (existing !== undefined) {
-        const normalized = { ...command, requestedAt: existing.command.requestedAt };
+        const normalized = {
+          ...command,
+          requestedAt: existing.command.requestedAt,
+        };
         if (canonicalJson(normalized) !== canonicalJson(existing.command)) {
           return yield* conflict("command ref is bound to different request bytes");
         }
@@ -423,8 +430,7 @@ export const makeManagedSandboxBroker = (
           resource.profileRef !== command.profileRef ||
           JSON.stringify(resource.lease) !== JSON.stringify(command.lease) ||
           JSON.stringify(resource.budget) !== JSON.stringify(command.budget) ||
-          JSON.stringify(resource.capabilities) !==
-            JSON.stringify(command.requestedCapabilities) ||
+          JSON.stringify(resource.capabilities) !== JSON.stringify(command.requestedCapabilities) ||
           resource.facts.lifecycle !== "provisioning" ||
           resource.facts.cleanupComplete
         ) {
@@ -432,7 +438,10 @@ export const makeManagedSandboxBroker = (
             "caller-supplied initial resource does not match the admitted create command",
           );
         }
-        return yield* input.store.reserve({ command, initialResource: resource });
+        return yield* input.store.reserve({
+          command,
+          initialResource: resource,
+        });
       }
       const suffix = yield* digest(command.commandRef);
       const resource = yield* initialResource(
@@ -453,6 +462,7 @@ export const makeManagedSandboxBroker = (
       let turn: ManagedSandboxTurn | null = null;
       let turnReceipt: ManagedSandboxTurnReceipt | null = null;
       let events: ReadonlyArray<ManagedSandboxEvent> = [];
+      let lifecycleOutcome: BoxV1LifecycleOutcome | null = null;
 
       if (
         ["Create", "Stop", "Resume", "Delete"].includes(command._tag) &&
@@ -468,6 +478,7 @@ export const makeManagedSandboxBroker = (
           resource,
           command: lifecycleCommand,
         });
+        lifecycleOutcome = providerOutcome;
         const providerReceiptDigest = yield* digest(providerOutcome.receiptRef);
         events = yield* materializeLifecycleEvents(resource, providerOutcome);
         const succeeded = ["ready", "stopped", "deleted"].includes(providerOutcome.phase);
@@ -478,9 +489,7 @@ export const makeManagedSandboxBroker = (
           expectedResourceGeneration: resource.resourceGeneration,
           events,
           outcome: succeeded ? "succeeded" : "failed",
-          artifactRefs: [
-            `artifact.managed-sandbox.lifecycle-receipt.${providerReceiptDigest}`,
-          ],
+          artifactRefs: [`artifact.managed-sandbox.lifecycle-receipt.${providerReceiptDigest}`],
           ...(providerOutcome.errorCode === null
             ? {}
             : { errorCode: `reason.${providerOutcome.errorCode}` }),
@@ -591,7 +600,15 @@ export const makeManagedSandboxBroker = (
         }
       }
 
-      return { command, resource, receipt, turn, turnReceipt, events };
+      return {
+        command,
+        resource,
+        receipt,
+        turn,
+        turnReceipt,
+        events,
+        lifecycleOutcome,
+      };
     });
 
   return {

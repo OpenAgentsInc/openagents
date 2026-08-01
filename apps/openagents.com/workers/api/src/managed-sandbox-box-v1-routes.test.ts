@@ -19,13 +19,13 @@ import {
   makeBoxV1Routes,
   unavailableBoxV1Runtime,
 } from './managed-sandbox-box-v1-routes'
-import { makeManagedSandboxBroker } from './managed-sandbox-broker'
 import {
   BoxV1MemoryAuthority,
   boxV1TestPolicy,
   boxV1TestPrincipal,
   makeBoxV1MemoryRuntime,
 } from './managed-sandbox-box-v1.test-support'
+import { makeManagedSandboxBroker } from './managed-sandbox-broker'
 
 type TestEnv = Readonly<{ enabled: boolean }>
 
@@ -88,8 +88,7 @@ const makeHandler = (
         ...(input.initialResource === undefined
           ? {}
           : {
-              attachmentGeneration:
-                input.initialResource.attachmentGeneration,
+              attachmentGeneration: input.initialResource.attachmentGeneration,
               initialResource: input.initialResource,
             }),
       })
@@ -944,6 +943,29 @@ describe('SBX-03 Box-v1 compatibility facade', () => {
           firewallRef: 'gce-firewall-ref://sha256/sbx09',
           diskRef: 'gce-disk-ref://sha256/sbx09',
           providerKind: 'live_gce',
+          forensicDriverRef: 'driver.openagents.forensic-worker.v1',
+          readiness: {
+            providerRunning: true,
+            guestMarkerObserved: true,
+            imageAdmitted: true,
+            noExternalIp: true,
+            noGuestServiceAccount: true,
+            egressDefaultDeny: true,
+            brokerEgressOnly: true,
+            metadataEgressOnly: true,
+            controlIngressOnly: true,
+            metadataRestricted: true,
+            linuxGuest: true,
+            bubblewrapReady: true,
+            forensicDriverReady: true,
+          },
+          cleanup: {
+            zeroCompute: false,
+            zeroFirewall: false,
+            zeroScratch: false,
+            zeroIngress: false,
+            zeroGrants: false,
+          },
           readinessObserved: true,
           cleanupObserved: false,
           measuredRunningMs: 100,

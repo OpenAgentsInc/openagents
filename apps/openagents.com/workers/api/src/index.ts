@@ -490,6 +490,10 @@ import {
   selectExactManagedFleetProviderAccount,
 } from './fleet-managed-dispatch-authority'
 import {
+  FORENSIC_MANAGED_SANDBOX_PATH,
+  makeForensicManagedSandboxRoutes,
+} from './forensic-managed-sandbox'
+import {
   authorizeForgeControlPlaneBearer,
   makeForgeControlPlaneRoutes,
 } from './forge-control-plane-routes'
@@ -12855,6 +12859,30 @@ const managedSandboxDesktopRoutes = makeManagedSandboxDesktopRoutes<Env>({
   runtime: managedSandboxBoxV1RuntimeForEnv,
 })
 
+const forensicManagedSandboxRoutes = makeForensicManagedSandboxRoutes<Env>({
+  authenticateOwner: async (request, env, ctx) => {
+    const actor = await authenticateRequestActor(request, env, ctx)
+    if (actor === undefined || actor.kind !== 'human') return undefined
+    return {
+      userId: actor.user.userId,
+      ...(actor.tokens === undefined
+        ? {}
+        : {
+            decorateResponseHeaders: (headers: Headers) => {
+              appendSessionCookies(headers, actor.tokens!)
+            },
+          }),
+    }
+  },
+  enabled: env =>
+    isManagedSandboxBrokerEnabled(env.MANAGED_SANDBOX_BROKER_ENABLED) &&
+    isManagedSandboxRuntimeConfigured(env),
+  policy: managedSandboxBoxV1PolicyForEnv,
+  profileDigest: env => env.OA_MANAGED_SANDBOX_PROFILE_DIGEST,
+  store: managedSandboxBoxV1StoreForEnv,
+  runtime: managedSandboxBoxV1RuntimeForEnv,
+})
+
 const managedSandboxPhase2Routes = makeManagedSandboxPhase2Routes<Env>({
   authenticateOwner: async (request, env, ctx) => {
     const actor = await authenticateRequestActor(request, env, ctx)
@@ -14120,6 +14148,11 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: MANAGED_SANDBOX_DESKTOP_ADMISSION_PATH,
     handler: (request, env, ctx) =>
       managedSandboxDesktopRoutes.admission(request, env, ctx),
+  },
+  {
+    path: FORENSIC_MANAGED_SANDBOX_PATH,
+    handler: (request, env, ctx) =>
+      forensicManagedSandboxRoutes.handle(request, env, ctx),
   },
   {
     path: MANAGED_SANDBOX_DESKTOP_COMMANDS_PATH,

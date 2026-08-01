@@ -299,6 +299,30 @@ Delete verifies zero instance, firewall rule, and disk residue.
 The admitted profile creates no ingress or guest identity grant.
 Any nonzero or unknown cleanup observation reports `recovery_required`.
 
+The initial forensic specialization is a strict consumer of this native GCE
+profile. The admitted guest image must contain
+`driver.openagents.forensic-worker.v1`; readiness additionally proves a Linux
+guest, executable Bubblewrap, and a successful network-unshared driver
+preflight. The lifecycle adapter rejects a ready receipt unless every provider,
+image, identity, network, Linux, Bubblewrap, and driver observation is true.
+It rejects a deleted receipt unless compute, firewall, scratch storage,
+ingress, and grant residue are all observed at zero.
+
+`forensic-managed-sandbox.ts` exposes only create, budget-gated dispatch,
+structurally settled cancellation, and verified deletion. The initial path has
+one new VM and one active turn per run. It exposes no resume, stop, checkpoint,
+fork, restore, prewarm, Box, Pylon, local, fake, BYO, generic-container, or
+foreign-provider operation. Time, token, cost, artifact, network, and
+concurrency truth is checked before prompt dispatch; absent cost truth refuses.
+The specialization never receives a raw project identifier, provider or user
+credential, guest service-account token, guest address, or ambient Internet
+capability.
+The authenticated, default-off `POST /api/forensics/workers` route exposes
+those four tagged operations to first-party clients. It derives the initial
+single-turn budget from the admitted deployment policy and resolves that exact
+budget by `budget.forensic.worker.initial.v1`; request bodies cannot substitute
+a different dispatch budget.
+
 The live provider is default-off and requires the control VM metadata identity.
 It refuses a downloadable service-account key.
 The legacy fake GCE and fake Cloud-VM lanes remain test tools and cannot return

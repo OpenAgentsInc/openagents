@@ -25,6 +25,9 @@ const MAX_CAPABILITY_REFS: usize = 32;
 const MAX_TTL_MS: u64 = 24 * 60 * 60 * 1_000;
 const GCE_METADATA_SERVER_CIDR: &str = "169.254.169.254/32";
 const GUEST_IO_EXECUTABLE: &str = "/opt/openagents-managed-sandbox/managed-sandbox-guest-io.py";
+const FORENSIC_WORKER_EXECUTABLE: &str =
+    "/opt/openagents-managed-sandbox/forensic-worker-driver.mjs";
+const FORENSIC_WORKER_DRIVER_REF: &str = "driver.openagents.forensic-worker.v1";
 const LIVE_ACTIVE_SANDBOX_FILTER: &str =
     "labels.openagents-managed=managed-sandbox AND status!=TERMINATED";
 
@@ -251,7 +254,7 @@ struct ProviderOwnership {
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ReadinessObservation {
+pub struct ReadinessObservation {
     provider_running: bool,
     guest_marker_observed: bool,
     image_admitted: bool,
@@ -263,6 +266,12 @@ struct ReadinessObservation {
     metadata_egress_only: bool,
     control_ingress_only: bool,
     metadata_restricted: bool,
+    #[serde(default)]
+    linux_guest: bool,
+    #[serde(default)]
+    bubblewrap_ready: bool,
+    #[serde(default)]
+    forensic_driver_ready: bool,
 }
 
 impl ReadinessObservation {
@@ -277,12 +286,15 @@ impl ReadinessObservation {
             && self.metadata_egress_only
             && self.control_ingress_only
             && self.metadata_restricted
+            && self.linux_guest
+            && self.bubblewrap_ready
+            && self.forensic_driver_ready
     }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CleanupObservation {
+pub struct CleanupObservation {
     zero_compute: bool,
     zero_firewall: bool,
     zero_scratch: bool,
@@ -432,6 +444,9 @@ pub struct ManagedSandboxRuntimeReceipt {
     pub firewall_ref: String,
     pub disk_ref: String,
     pub provider_kind: String,
+    pub forensic_driver_ref: String,
+    pub readiness: ReadinessObservation,
+    pub cleanup: CleanupObservation,
     pub readiness_observed: bool,
     pub cleanup_observed: bool,
     pub measured_running_ms: u64,
@@ -2096,6 +2111,9 @@ fn receipt_for(
         firewall_ref: journal.ownership.firewall_ref.clone(),
         disk_ref: journal.ownership.disk_ref.clone(),
         provider_kind: journal.provider_kind.clone(),
+        forensic_driver_ref: FORENSIC_WORKER_DRIVER_REF.to_string(),
+        readiness: journal.readiness.clone(),
+        cleanup: journal.cleanup.clone(),
         readiness_observed: journal.phase == RuntimePhase::Ready && journal.readiness.is_ready(),
         cleanup_observed: journal.cleanup.is_clean(),
         measured_running_ms: running_ms,
@@ -2282,7 +2300,9 @@ fn guest_io_probe_args(project_id: &str, zone: &str, resource_name: &str) -> Vec
         "--ssh-flag=-oStrictHostKeyChecking=no".to_string(),
         "--ssh-flag=-oUserKnownHostsFile=/dev/null".to_string(),
         "--command".to_string(),
-        format!("test -x {GUEST_IO_EXECUTABLE} && test -d /workspace"),
+        format!(
+            "test -x {GUEST_IO_EXECUTABLE} && test -d /workspace && test \"$(uname -s)\" = Linux && test -x /usr/bin/bwrap && test -x {FORENSIC_WORKER_EXECUTABLE} && {FORENSIC_WORKER_EXECUTABLE} preflight >/dev/null"
+        ),
     ]
 }
 
@@ -2468,7 +2488,7 @@ impl LiveGceManagedSandboxProvider {
             ownership.resource_ref, ownership.disk_ref, generation
         ));
         format!(
-            "#!/bin/sh\nset -eu\numask 077\nfor _ in $(seq 1 60); do\n  if /bin/systemctl is-active --quiet ssh.service && test -x {GUEST_IO_EXECUTABLE}; then break; fi\n  sleep 1\ndone\n/bin/systemctl is-active --quiet ssh.service\ntest -x {GUEST_IO_EXECUTABLE}\n/usr/sbin/iptables -C OUTPUT -d 169.254.169.254/32 -m owner --uid-owner openagents -j REJECT\nprintf 'OA_MSB_READY:{marker}:{generation}\\n' >/dev/ttyS0\nprintf 'OA_MSB_PROBE:{marker}:{generation}\\n' >/dev/ttyS0\n"
+            "#!/bin/sh\nset -eu\numask 077\nfor _ in $(seq 1 60); do\n  if /bin/systemctl is-active --quiet ssh.service && test -x {GUEST_IO_EXECUTABLE} && test -x {FORENSIC_WORKER_EXECUTABLE}; then break; fi\n  sleep 1\ndone\n/bin/systemctl is-active --quiet ssh.service\ntest -x {GUEST_IO_EXECUTABLE}\ntest -x {FORENSIC_WORKER_EXECUTABLE}\n{FORENSIC_WORKER_EXECUTABLE} preflight >/dev/null\n/usr/sbin/iptables -C OUTPUT -d 169.254.169.254/32 -m owner --uid-owner openagents -j REJECT\nprintf 'OA_MSB_READY:{marker}:{generation}\\n' >/dev/ttyS0\nprintf 'OA_MSB_PROBE:{marker}:{generation}\\n' >/dev/ttyS0\n"
         )
     }
 
@@ -2639,6 +2659,9 @@ impl LiveGceManagedSandboxProvider {
             metadata_egress_only,
             control_ingress_only,
             metadata_restricted,
+            linux_guest: true,
+            bubblewrap_ready: true,
+            forensic_driver_ready: true,
         })
     }
 
@@ -3282,6 +3305,9 @@ mod tests {
                 metadata_egress_only: true,
                 control_ingress_only: true,
                 metadata_restricted: true,
+                linux_guest: true,
+                bubblewrap_ready: true,
+                forensic_driver_ready: true,
             }
         }
 
@@ -3294,6 +3320,29 @@ mod tests {
                 zero_grants: true,
             }
         }
+    }
+
+    #[test]
+    fn legacy_readiness_journals_fail_closed_on_new_forensic_observations(
+    ) -> Result<(), serde_json::Error> {
+        let readiness: ReadinessObservation = serde_json::from_value(serde_json::json!({
+            "providerRunning": true,
+            "guestMarkerObserved": true,
+            "imageAdmitted": true,
+            "noExternalIp": true,
+            "noGuestServiceAccount": true,
+            "egressDefaultDeny": true,
+            "brokerEgressOnly": true,
+            "metadataEgressOnly": true,
+            "controlIngressOnly": true,
+            "metadataRestricted": true
+        }))?;
+
+        assert!(!readiness.is_ready());
+        assert!(!readiness.linux_guest);
+        assert!(!readiness.bubblewrap_ready);
+        assert!(!readiness.forensic_driver_ready);
+        Ok(())
     }
 
     impl ManagedSandboxProvider for TestProvider {
@@ -3460,7 +3509,7 @@ mod tests {
     }
 
     #[test]
-    fn live_readiness_probes_the_exact_guest_io_path_over_internal_ssh() {
+    fn live_readiness_probes_the_exact_forensic_guest_path_over_internal_ssh() {
         let args = guest_io_probe_args("project-1", "us-central1-a", "oa-msb-generation");
         assert_eq!(
             &args[..3],
@@ -3473,9 +3522,7 @@ mod tests {
         assert!(args.contains(&"--ssh-flag=-oConnectTimeout=5".to_string()));
         assert_eq!(
             args.last().map(String::as_str),
-            Some(
-                "test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-io.py && test -d /workspace"
-            )
+            Some("test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-io.py && test -d /workspace && test \"$(uname -s)\" = Linux && test -x /usr/bin/bwrap && test -x /opt/openagents-managed-sandbox/forensic-worker-driver.mjs && /opt/openagents-managed-sandbox/forensic-worker-driver.mjs preflight >/dev/null")
         );
     }
 
@@ -3914,7 +3961,10 @@ mod tests {
                 .profile_digest
         );
         assert!(fork_journal.profile.capability_refs[0].starts_with("capability-ref://run/fork-"));
-        assert_eq!(fork_journal.profile.capability_refs, context.fork_capability_refs);
+        assert_eq!(
+            fork_journal.profile.capability_refs,
+            context.fork_capability_refs
+        );
         assert!(fork_journal.pending_checkpoint_fork.is_some());
 
         // Simulate a process stop after provider create and before lifecycle settlement.

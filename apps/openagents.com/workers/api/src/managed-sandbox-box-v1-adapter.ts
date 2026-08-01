@@ -319,6 +319,30 @@ const NonNegativeInteger = S.Number.check(
 )
 const PositiveInteger = S.Number.check(S.isInt(), S.isGreaterThan(0))
 
+const managedSandboxReadinessProofSchema = S.Struct({
+  providerRunning: S.Boolean,
+  guestMarkerObserved: S.Boolean,
+  imageAdmitted: S.Boolean,
+  noExternalIp: S.Boolean,
+  noGuestServiceAccount: S.Boolean,
+  egressDefaultDeny: S.Boolean,
+  brokerEgressOnly: S.Boolean,
+  metadataEgressOnly: S.Boolean,
+  controlIngressOnly: S.Boolean,
+  metadataRestricted: S.Boolean,
+  linuxGuest: S.Boolean,
+  bubblewrapReady: S.Boolean,
+  forensicDriverReady: S.Boolean,
+})
+
+const managedSandboxCleanupProofSchema = S.Struct({
+  zeroCompute: S.Boolean,
+  zeroFirewall: S.Boolean,
+  zeroScratch: S.Boolean,
+  zeroIngress: S.Boolean,
+  zeroGrants: S.Boolean,
+})
+
 const managedSandboxLifecycleResponseSchema = S.Struct({
   schemaVersion: S.Literal('openagents.managed_sandbox_runtime.v1'),
   receiptRef: S.String,
@@ -343,6 +367,9 @@ const managedSandboxLifecycleResponseSchema = S.Struct({
   controlIdentityRef: S.String,
   guestIdentityRef: S.String,
   providerKind: S.Literal('live_gce'),
+  forensicDriverRef: S.Literal('driver.openagents.forensic-worker.v1'),
+  readiness: managedSandboxReadinessProofSchema,
+  cleanup: managedSandboxCleanupProofSchema,
   readinessObserved: S.Boolean,
   cleanupObserved: S.Boolean,
   measuredRunningMs: NonNegativeInteger,
@@ -518,6 +545,10 @@ const managedSandboxLifecycleRequest = (
         'identity-ref://openagents/managed-sandbox/control' ||
       receipt.guestIdentityRef !==
         'identity-ref://openagents/managed-sandbox/guest-none' ||
+      (receipt.phase === 'ready' &&
+        Object.values(receipt.readiness).some(observed => !observed)) ||
+      (receipt.phase === 'deleted' &&
+        Object.values(receipt.cleanup).some(observed => !observed)) ||
       receipt.readinessObserved !== (receipt.phase === 'ready') ||
       (receipt.phase === 'deleted' && !receipt.cleanupObserved) ||
       (receipt.cleanupObserved &&
@@ -544,6 +575,9 @@ const managedSandboxLifecycleRequest = (
       generation: receipt.generation,
       readinessObserved: receipt.readinessObserved,
       cleanupObserved: receipt.cleanupObserved,
+      forensicDriverRef: receipt.forensicDriverRef,
+      readinessProof: receipt.readiness,
+      cleanupProof: receipt.cleanup,
       measuredRunningMs: receipt.measuredRunningMs,
       measuredCostMicros: receipt.measuredCostMicrousd,
       errorCode: receipt.errorCode,

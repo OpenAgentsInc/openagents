@@ -1330,6 +1330,9 @@ importers:
       '@openagentsinc/email-templates':
         specifier: workspace:*
         version: link:../../packages/email-templates
+      '@openagentsinc/forensic-contract':
+        specifier: workspace:*
+        version: link:../../../../packages/forensic-contract
       '@openagentsinc/forge-protocol':
         specifier: workspace:*
         version: link:../../../../packages/forge-protocol
