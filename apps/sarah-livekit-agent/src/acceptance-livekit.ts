@@ -480,6 +480,25 @@ const pcmSamples = (pcm: Uint8Array): Int16Array => {
   return samples;
 };
 
+const writeMicrophoneTurn = async (source: AudioSource, pcm: Uint8Array): Promise<void> => {
+  const samples = pcmSamples(pcm);
+  const samplesPerFrame = 240;
+  for (let offset = 0; offset < samples.length; offset += samplesPerFrame) {
+    const length = Math.min(samplesPerFrame, samples.length - offset);
+    const frame = AudioFrame.create(24_000, 1, samplesPerFrame);
+    frame.data.set(samples.subarray(offset, offset + length));
+    // A single native source must receive frames in playout order.
+    // eslint-disable-next-line no-await-in-loop
+    await source.captureFrame(frame);
+  }
+  const silenceFrames = 150;
+  for (let index = 0; index < silenceFrames; index += 1) {
+    // The semantic VAD needs ordered trailing silence to close the spoken turn.
+    // eslint-disable-next-line no-await-in-loop
+    await source.captureFrame(AudioFrame.create(24_000, 1, samplesPerFrame));
+  }
+};
+
 const publishMicrophone = async (
   room: Room,
   pcm: Uint8Array,
@@ -497,22 +516,7 @@ const publishMicrophone = async (
     const publication = await participant.publishTrack(track, options);
     if (publication.sid === undefined) throw new Error("LiveKit microphone publication has no SID");
 
-    const samples = pcmSamples(pcm);
-    const samplesPerFrame = 240;
-    for (let offset = 0; offset < samples.length; offset += samplesPerFrame) {
-      const length = Math.min(samplesPerFrame, samples.length - offset);
-      const frame = AudioFrame.create(24_000, 1, samplesPerFrame);
-      frame.data.set(samples.subarray(offset, offset + length));
-      // A single native source must receive frames in playout order.
-      // eslint-disable-next-line no-await-in-loop
-      await source.captureFrame(frame);
-    }
-    const silenceFrames = 150;
-    for (let index = 0; index < silenceFrames; index += 1) {
-      // The semantic VAD needs ordered trailing silence to close the spoken turn.
-      // eslint-disable-next-line no-await-in-loop
-      await source.captureFrame(AudioFrame.create(24_000, 1, samplesPerFrame));
-    }
+    await writeMicrophoneTurn(source, pcm);
     return { track, source, publicationSid: publication.sid };
   } catch (error) {
     await track.close();
@@ -811,6 +815,8 @@ export type SarahLiveKitLiveSession = Readonly<{
   fanoutAudio: Promise<readonly [number, number]>;
   clock: Clock;
   http: Http;
+  /** Send another ordered semantic turn on the already admitted microphone. */
+  sendMicrophoneTurn: (pcm: Uint8Array) => Promise<void>;
   unpublishMicrophone: () => Promise<void>;
   release: () => Promise<void>;
 }>;
@@ -1000,6 +1006,13 @@ export const openLiveSarahLiveKitSession = async (
       fanoutAudio,
       clock,
       http,
+      sendMicrophoneTurn: async (pcm) => {
+        const published = microphone;
+        if (published === undefined) {
+          throw new Error("Sarah LiveKit microphone is no longer published");
+        }
+        await writeMicrophoneTurn(published.source, pcm);
+      },
       unpublishMicrophone: async () => {
         const published = microphone;
         if (published === undefined) return;

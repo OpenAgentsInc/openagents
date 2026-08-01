@@ -2213,6 +2213,50 @@ admitted hold. Reconnect happens only after the previous terminal boundary and
 uses a fresh admission. Never hand-author a passing row from expectations or
 unit-test output.
 
+The checked-in runner for the three authority-driven rows is
+`pnpm --dir apps/sarah-livekit-agent remaining-drill`. Run it without `--apply`
+first; the preflight makes no network request, opens no room, changes no credit,
+and writes no receipt. A live example is:
+
+```sh
+OA_SARAH_LIVEKIT_REMAINING_DRILL_OWNER_GATE=I_ACCEPT_EP263_SARAH_REMAINING_DRILLS \
+pnpm --dir apps/sarah-livekit-agent remaining-drill -- \
+  --scenario provider_disconnect \
+  --room private \
+  --pcm <outside-repository/private.pcm> \
+  --source-revision <deployed-40-hex-revision> \
+  --worker-image-digest sha256:<deployed-worker-digest> \
+  --observation-window-ms 30000 \
+  --private-output <outside-repository/provider-disconnect-private.json> \
+  --receipt docs/ops/receipts/livekit/production-provider-disconnect-<UTC>.json \
+  --apply
+```
+
+The runner needs the normal private/community acceptance bearer and owner ref,
+standard libpq variables for a read-only connection to the production
+authority, and, for `provider_disconnect` only, `OPENAGENTS_ADMIN_BEARER`. It
+does not query Secret Manager or print, return, or persist that bearer. The
+provider action is the existing one-generation acceptance request: its target
+comes from the active binding's provider digest, and the runner rejects any
+response that changes the session, generation, digest, or
+`sharedInfrastructureMutated: false` assertion.
+
+`hold_exhaustion` has no `--turns` option. It rereads the exact session before
+each next PCM turn and continues only while the authority says that generation
+is active. It passes only after `hold_exhausted`, terminal exact accounting,
+and `chargedMsat == reservedMsat`; it never grants, moves, releases, or guesses
+credit. Size the observation window for the admitted hold and candidate rate.
+
+`reconnect` creates a distinct generation-two session only after the first
+session is terminal and its settlement is readable. After fresh admission it
+rereads the old row and rejects a changed terminal instant, any event after the
+old close, an equal or earlier generation, or overlapping start time. It then
+settles the fresh generation as well. The public receipt contains only digests,
+counts, amounts, reasons, and timings. The mode-0600 private observation remains
+outside Git and carries the refs needed to independently review the database
+rows. Neither output substitutes for the eight-scope privacy evidence required
+by the final failure-matrix receipt.
+
 ## Issue close gate
 
 Do not close #9284 until all are linked from #9282:

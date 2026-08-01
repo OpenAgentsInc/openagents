@@ -146,13 +146,26 @@ charge equal to recorded provider usage. The receipt retains only booleans,
 counts, timings, totals, and digests. Failure injection, reconnect, and
 packaged-client privacy collection remain separate live operator actions.
 
+The authority-driven failure rows have a checked-in live runner:
+
+```sh
+pnpm --dir apps/sarah-livekit-agent remaining-drill
+```
+
+Dry-run is the default. Its live mode covers exact-generation provider
+disconnect, authority-reported hold exhaustion, and reconnect after a terminal
+old generation. It writes a mode-0600 private observation outside the
+repository and a separately redacted public receipt. See the production
+runbook for the owner gate, credentials, read-only authority connection, and
+arming/withdrawal sequence for provider disconnect.
+
 The terminal-failure matrix command is non-mutating by design:
 
 ```sh
 pnpm --dir apps/sarah-livekit-agent failure-matrix
 ```
 
-Its default mode prints the seven required scenarios and executes no network
+Its default mode prints the eight required scenarios and executes no network
 request. With `--apply`, a separate owner gate permits it to validate a private
 production observation that remains outside the repository and to write one
 public-safe receipt. It does not inject a fault. Each scenario must reconcile
