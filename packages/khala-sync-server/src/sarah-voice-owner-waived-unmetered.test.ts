@@ -189,6 +189,33 @@ describe.skipIf(!hasLocalPostgres())("Sarah voice owner-waived unmetered account
       end_balance_state_digest: uncertainCapture?.start_balance_state_digest,
       terminal_authority_ref: "sarah_voice_accounting_uncertain:voice-unmetered:1",
     });
+    await expect(
+      store.reserve({
+        sessionRef: "voice-unmetered-next",
+        reservationRef: "reservation-unmetered-next",
+        ownerUserId: "user-unmetered",
+        ownerActorRef: "agent:user-unmetered",
+        deviceRef: "device-unmetered",
+        threadRef: "thread-unmetered",
+        generation: 2,
+        ticketDigest: "7".repeat(64),
+        disclosureRef: "disclosure-unmetered-next",
+        clientProfile: "omega_editor",
+        transportKind: "livekit_room_v1",
+        creditMode: "owner_waived_unmetered",
+        entitlementRef: null,
+        admissionCohortRef: "sarah_voice_cohort:alpha_v1",
+        creditRateMsatPerMillionTokens: 64_000_000,
+        reservedMsat: 0,
+        ticketExpiresAt: "2026-08-01T12:10:00.000Z",
+        sessionExpiresAt: "2026-08-01T12:15:00.000Z",
+        nowIso: "2026-08-01T12:09:01.000Z",
+      }),
+    ).resolves.toMatchObject({
+      generation: 2,
+      creditMode: "owner_waived_unmetered",
+      reservedMsat: 0,
+    });
   }, 120_000);
 
   test("waives an uncertain hold idempotently without changing provider evidence", async () => {

@@ -437,11 +437,12 @@ export const SARAH_LIVEKIT_WORKER_HEARTBEAT_TIMEOUT_MS = 30_000;
  * How long an `accounting_uncertain` hold may sit before it is worth an
  * operator's attention.
  *
- * Before this bound, `sarah_realtime_voice_owner_active_idx` treats an
- * uncertain hold as active and refuses a later voice generation. At the bound,
- * maintenance records a durable escalation and the partial index removes only
- * that row's concurrency lock. The full hold and uncertain state remain until
- * exact provider reconciliation.
+ * Before this bound, `sarah_realtime_voice_owner_active_idx` treats a metered
+ * uncertain hold as active and refuses a later voice generation. Owner-waived
+ * sessions have no hold and do not take this path. At the bound, maintenance
+ * records a durable escalation and the partial index removes only that row's
+ * concurrency lock. The full hold and uncertain state remain until exact
+ * provider reconciliation.
  */
 export const SARAH_VOICE_ACCOUNTING_UNCERTAIN_STUCK_MS = 900_000;
 export const SARAH_VOICE_ACCOUNTING_ESCALATION_BATCH_SIZE = 100;
@@ -984,7 +985,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         }
 
         const priorSessions = (await tx`
-          SELECT generation, state
+          SELECT generation, state, credit_mode
           FROM sarah_realtime_voice_sessions
           WHERE owner_user_id = ${input.ownerUserId}
             AND thread_ref = ${input.threadRef}
@@ -994,11 +995,19 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         `) as ReadonlyArray<{
           generation: number | string;
           state: SarahVoiceSessionState;
+          credit_mode: SarahVoiceCreditMode;
         }>;
         const priorSession = first(priorSessions);
         if (priorSession !== undefined) {
           const priorGeneration = toSafeInteger(priorSession.generation, "generation");
-          if (priorSession.state !== "settled" && priorSession.state !== "released") {
+          if (
+            priorSession.state !== "settled" &&
+            priorSession.state !== "released" &&
+            !(
+              priorSession.state === "accounting_uncertain" &&
+              priorSession.credit_mode === "owner_waived_unmetered"
+            )
+          ) {
             throw new SarahVoiceConcurrentSessionError(
               "The prior Sarah voice generation has not completed accounting",
             );
@@ -5597,6 +5606,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             ON binding.session_ref = session.session_ref
             AND binding.generation = session.generation
           WHERE session.state = 'accounting_uncertain'
+            AND session.credit_mode <> 'owner_waived_unmetered'
             AND session.accounting_escalated_at IS NULL
             AND COALESCE(binding.provider_accounting_uncertain_at, session.updated_at)
                 <= ${stuckBeforeIso}
@@ -5626,6 +5636,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             WHERE session_ref = ${row.session_ref}
               AND generation = ${generation}
               AND state = 'accounting_uncertain'
+              AND credit_mode <> 'owner_waived_unmetered'
               AND accounting_escalated_at IS NULL
             RETURNING owner_user_id
           `) as ReadonlyArray<{ owner_user_id: string }>;
@@ -5687,6 +5698,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         ON binding.session_ref = session.session_ref
         AND binding.generation = session.generation
       WHERE session.state = 'accounting_uncertain'
+        AND session.credit_mode <> 'owner_waived_unmetered'
         AND COALESCE(binding.provider_accounting_uncertain_at, session.updated_at)
             <= ${stuckBeforeIso}
     `) as ReadonlyArray<{
