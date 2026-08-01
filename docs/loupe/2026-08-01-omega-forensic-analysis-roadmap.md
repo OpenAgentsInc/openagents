@@ -5,7 +5,7 @@ research work. It does not itself authorize scanning a third-party target,
 publishing a vulnerability claim, contacting a maintainer, spending beyond an
 admitted budget, or running an exploit outside an owned lab.
 
-Roadmap revision: 4
+Roadmap revision: 5
 
 Date: 2026-08-01
 
@@ -27,6 +27,37 @@ Primary evidence:
 - [`SBX-09 independent admission disposition`](../cloud/2026-07-21-sbx09-independent-admission-disposition.md)
 - [`Ascii Box and Optibox teardown`](../teardowns/2026-07-19-ascii-box-optibox-openagents-gcp-analysis.md)
 - [`Managed-sandbox ProductSpec`](../../specs/openagents/managed-agent-sandboxes.product-spec.md)
+
+## Implementation status
+
+The bounded OFR-001 through OFR-018 implementation program is complete as of
+2026-08-01. The child issues and their acceptance evidence are linked from
+[the master tracker](https://github.com/OpenAgentsInc/openagents/issues/9300).
+This means the product and contract surfaces described below exist and are
+tested; it does not turn the roadmap's safety boundaries into authorization for
+a live target, disclosure, or unknown-key search.
+
+- OFR-001–OFR-007 provide the versioned contracts, admitted Google Cloud worker
+  path, dependency-complete source bundles, Coldcard benchmark, frozen metrics,
+  configurable Loupe adapter, and independent verification path.
+- OFR-008–OFR-012 provide Omega's target/preflight, native cloud lifecycle,
+  evidence review, immutable prompt candidate editor, and matched run matrices.
+- OFR-013 provides bounded prompt compilation and independent Blueprint-style
+  evaluation and promotion gates.
+- OFR-014–OFR-017 provide the artifact witness, generator and owned-fixture
+  reproduction, historical fingerprint scanner, and provenance-bearing evidence
+  graph with reconciliation and append-only claim history.
+- [OFR-018](https://github.com/OpenAgentsInc/omega/issues/197) provides Omega's
+  linked evidence ladder, source/artifact/generator trace, entropy explorer,
+  private resumable scan console, provenance health, reconciliation, and
+  correction views. Its implementation contract and synthetic fixture are
+  documented in the
+  [Omega Coldcard evidence views](https://github.com/OpenAgentsInc/omega/blob/main/docs/src/development/omega-coldcard-evidence-views.md).
+
+Ongoing expansion beyond these bounded issues—new blinded benchmarks, live
+operational campaigns, maintainer coordination, or automatic remediation—must
+receive its own scope, authority, and acceptance evidence. It is not implied by
+closing the implementation tracker.
 
 The first target is the historical, pre-fix Coldcard firmware at
 `bcc2c382a324690a2fcf972c0bac3b79bf923f7b`. The first product is an
