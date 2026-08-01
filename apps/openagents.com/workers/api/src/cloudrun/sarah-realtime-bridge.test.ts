@@ -620,6 +620,75 @@ describe('Sarah Realtime bridge metering', () => {
     expect(settle).not.toHaveBeenCalled()
   })
 
+  test('preserves explicit user stop when close callbacks run synchronously', async () => {
+    const nowMs = Date.now()
+    const revokeLiveKitRoom = vi.fn(async () => ({
+      state: 'connected' as const,
+      chargedMsat: 0,
+    }))
+    const pending: Promise<unknown>[] = []
+    const data = makeSarahRealtimeBridgeData({
+      session: {
+        sessionRef: 'session-explicit-close',
+        ownerUserId: 'user-1',
+        ownerActorRef: 'agent:user-1',
+        deviceRef: 'device-1',
+        threadRef: 'thread-1',
+        generation: 5,
+        disclosureRef: 'disclosure-1',
+        clientProfile: 'omega_editor',
+        transportKind: 'livekit_room_v1',
+        creditMode: 'metered',
+        entitlementRef: null,
+        admissionCohortRef: 'sarah_voice_cohort:alpha_v1',
+        state: 'connected',
+        reservedMsat: 1_000,
+        chargedMsat: 0,
+        ticketExpiresAt: new Date(nowMs + 30_000).toISOString(),
+        sessionExpiresAt: new Date(nowMs + 60_000).toISOString(),
+        settlementReceiptRef: null,
+      },
+      apiKey: 'unused',
+      safetyIdentifier: 'test-safety',
+      creditMsatPerMillionTokens: 1_000,
+      store: { revokeLiveKitRoom } as never,
+      closeStore: async () => undefined,
+      tasks: {
+        add: (task: Promise<unknown>) => pending.push(task),
+      } as never,
+    })
+    data.helloReceived = true
+    const handlers = makeSarahRealtimeWebSocketHandlers()
+    const socket = {
+      data,
+      send: () => undefined,
+      close: () => handlers.close(socket as never, 1000, ''),
+    }
+
+    handlers.message(
+      socket as never,
+      JSON.stringify({
+        schema: 'openagents.sarah.voice.v1',
+        _tag: 'close',
+        identity: {
+          ownerRef: 'user-1',
+          deviceRef: 'device-1',
+          threadRef: 'thread-1',
+          sessionRef: 'session-explicit-close',
+          generation: 5,
+        },
+        sequence: 0,
+        reason: 'user_stop',
+      }),
+    )
+    await Promise.all(pending)
+
+    expect(revokeLiveKitRoom).toHaveBeenCalledTimes(1)
+    expect(revokeLiveKitRoom).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'user_stop' }),
+    )
+  })
+
   test('advances audio sequence while upstream is still connecting', () => {
     const data = makeSarahRealtimeBridgeData({
       session: {

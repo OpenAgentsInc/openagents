@@ -1242,6 +1242,13 @@ Do not infer many-small-room capacity from LiveKit's large-room benchmark.
 > never produce `concurrentBillableSessionCount: 1` — is no longer the reason any
 > observation is unobserved.
 >
+> Once admission succeeds, a setup or instrumentation error is not permission
+> to abandon the generation. The driver sends the ordinary authenticated close,
+> stops its microphone publication, and waits for terminal settlement before it
+> returns the original error. If either close or settlement fails, the command
+> reports both failures and writes no drill receipt; do not immediately retry
+> while that generation still owns the voice-concurrency slot.
+>
 > **Two live blockers replaced it, and both are recorded from real API calls.**
 >
 > - **`pods/exec` is Forbidden for the drill automation identity.** The granted

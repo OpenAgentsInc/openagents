@@ -1198,8 +1198,14 @@ const handleControl = (ws: Socket, raw: string): void => {
         sendControl(ws, { _tag: 'heartbeat' })
         break
       case 'close':
+        // Mark the explicit control reason before `ws.close()`: some runtimes
+        // invoke the close callback synchronously, and that callback must not
+        // win by replacing `user_stop` with an empty-transport `client_closed`.
+        {
+          const cleanupOperation = cleanup(ws, control.reason)
+          ws.data.tasks.add(cleanupOperation)
+        }
         closeClient(ws, 'user_stop')
-        ws.data.tasks.add(cleanup(ws, control.reason))
         break
     }
   } catch {

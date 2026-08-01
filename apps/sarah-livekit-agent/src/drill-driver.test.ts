@@ -75,6 +75,7 @@ type Harness = Readonly<{
   clock: ReturnType<typeof fakeClock>;
   room: FakeRoom;
   released: () => number;
+  controlCloses: () => number;
   faultCalls: () => number;
   resolveControlTerminal: (terminal: SarahLiveKitControlTerminal) => void;
 }>;
@@ -99,6 +100,8 @@ const harness = (
     fault?: SarahLiveKitDrillFaultResult;
     injectFault?: SarahLiveKitDrillInput["injectFault"];
     billableSessions?: number;
+    countBillableSessions?: SarahLiveKitDrillInput["countBillableSessions"];
+    settleOnControlClose?: boolean;
     overrides?: Partial<SarahLiveKitDrillInput>;
   }>,
 ): Harness => {
@@ -106,6 +109,7 @@ const harness = (
   const room = new FakeRoom();
   const subscriberRoom = new FakeRoom();
   let releaseCount = 0;
+  let controlCloseCount = 0;
   let faultCount = 0;
   let faultAtMs: number | undefined;
   let resolveTerminal: ((terminal: SarahLiveKitControlTerminal) => void) | undefined;
@@ -152,7 +156,11 @@ const harness = (
       ready: Promise.resolve(1_200),
       terminal,
       interrupt: () => Promise.reject(new Error("unused")),
-      close: () => Promise.resolve(),
+      close: () => {
+        controlCloseCount += 1;
+        if (options.settleOnControlClose) faultAtMs = clock.now();
+        return Promise.resolve();
+      },
       dispose: () => {},
     },
     output: undefined as never,
@@ -181,6 +189,7 @@ const harness = (
     clock,
     room,
     released: () => releaseCount,
+    controlCloses: () => controlCloseCount,
     faultCalls: () => faultCount,
     resolveControlTerminal: (value) => resolveTerminal?.(value),
     input: {
@@ -196,7 +205,7 @@ const harness = (
         }
         return injectFault(context);
       },
-      countBillableSessions: () => options.billableSessions ?? 1,
+      countBillableSessions: options.countBillableSessions ?? (() => options.billableSessions ?? 1),
       ...options.overrides,
     },
     dependencies: { openSession: () => Promise.resolve(session) },
@@ -391,12 +400,27 @@ describe("Sarah LiveKit single-session drill driver", () => {
     const built = harness({
       settleAfterMs: 4_000,
       injectFault: () => Promise.reject(new Error("kubectl delete refused")),
+      settleOnControlClose: true,
     });
 
     await expect(run(built)).rejects.toThrow("kubectl delete refused");
     // A fault that could not be injected is a drill that did not run, so it
     // raises rather than recording a contradiction — but the session it opened
     // is still cleaned up.
+    expect(built.released()).toBe(1);
+    expect(built.controlCloses()).toBe(1);
+  });
+
+  test("gracefully settles a generation when instrumentation fails before the fault", async () => {
+    const built = harness({
+      settleAfterMs: 4_000,
+      countBillableSessions: () => Promise.reject(new Error("gauge read refused")),
+      settleOnControlClose: true,
+    });
+
+    await expect(run(built)).rejects.toThrow("gauge read refused");
+    expect(built.faultCalls()).toBe(0);
+    expect(built.controlCloses()).toBe(1);
     expect(built.released()).toBe(1);
   });
 

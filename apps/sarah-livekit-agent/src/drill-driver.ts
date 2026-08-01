@@ -291,6 +291,38 @@ const observeMediaLoss = (session: SarahLiveKitLiveSession) => {
   };
 };
 
+const settleFailedDrillSession = async (
+  session: SarahLiveKitLiveSession,
+  scenario: SarahLiveKitAcceptanceScenario,
+  observationWindowMs: number,
+): Promise<void> => {
+  const failures: unknown[] = [];
+  try {
+    await session.control.close();
+  } catch (error) {
+    failures.push(error);
+  }
+  try {
+    await session.unpublishMicrophone();
+  } catch (error) {
+    failures.push(error);
+  }
+  try {
+    const settlement = await pollSarahLiveKitSettlement(session.http, session.clock, scenario, {
+      windowMs: observationWindowMs,
+      intervalMs: SARAH_LIVEKIT_SETTLEMENT_POLL_INTERVAL_MS,
+    });
+    if (settlement === null) {
+      failures.push(new Error("failed Sarah LiveKit drill session did not become terminal"));
+    }
+  } catch (error) {
+    failures.push(error);
+  }
+  if (failures.length > 0) {
+    throw new AggregateError(failures, "failed Sarah LiveKit drill session did not settle cleanly");
+  }
+};
+
 export const runSarahLiveKitDrill = async (
   input: SarahLiveKitDrillInput,
   dependencies: SarahLiveKitDrillDependencies = {},
@@ -458,6 +490,17 @@ export const runSarahLiveKitDrill = async (
         "fault_execution_is_delegated_to_the_injector_and_attested_by_digest",
       ],
     };
+  } catch (error) {
+    try {
+      await settleFailedDrillSession(session, input.session, observationWindowMs);
+    } catch (settlementError) {
+      throw new AggregateError(
+        [error, settlementError],
+        "Sarah LiveKit drill failed and its admitted generation did not settle cleanly",
+        { cause: error },
+      );
+    }
+    throw error;
   } finally {
     mediaLoss.close();
     await session.release();
