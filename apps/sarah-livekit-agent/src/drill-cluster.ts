@@ -225,6 +225,8 @@ export const readLiveKitSfuGauges: ReadLiveKitSfuGauges = async () => {
  */
 export const MANAGED_PROMETHEUS_PROJECT = "openagentsgemini";
 export const MANAGED_PROMETHEUS_LOOKBACK_MS = 300_000;
+export const MANAGED_PROMETHEUS_MAX_SAMPLE_AGE_MS = 75_000;
+export const MANAGED_PROMETHEUS_MAX_GAUGE_SKEW_MS = 45_000;
 /**
  * The shortest hold that guarantees a scrape of the drill's own room has been
  * ingested before the gauge is read: one 30 s scrape interval, plus the ~14 s
@@ -256,7 +258,9 @@ const pointValue = (point: ManagedPrometheusPoint): number => {
  * Series are returned per instance, so "latest" is resolved within each series
  * rather than across them.
  */
-const latestByPod = (series: readonly ManagedPrometheusSeries[]): ReadonlyMap<string, number> => {
+const latestByPod = (
+  series: readonly ManagedPrometheusSeries[],
+): ReadonlyMap<string, Readonly<{ atMs: number; value: number }>> => {
   const latest = new Map<string, { atMs: number; value: number }>();
   for (const entry of series) {
     const podName = entry.metric.labels?.pod;
@@ -270,7 +274,7 @@ const latestByPod = (series: readonly ManagedPrometheusSeries[]): ReadonlyMap<st
       }
     }
   }
-  return new Map([...latest].map(([podName, held]) => [podName, held.value]));
+  return latest;
 };
 
 /**
@@ -293,19 +297,33 @@ export const selectLatestManagedPrometheusGauges = (
   pods: readonly string[],
   roomSeries: readonly ManagedPrometheusSeries[],
   participantSeries: readonly ManagedPrometheusSeries[],
+  observedAtMs = Date.now(),
 ): readonly LiveKitSfuGauge[] => {
   const rooms = latestByPod(roomSeries);
   const participants = latestByPod(participantSeries);
   return pods.map((podName) => {
-    const roomTotal = rooms.get(podName);
-    const participantTotal = participants.get(podName);
-    if (roomTotal === undefined || participantTotal === undefined) {
+    const room = rooms.get(podName);
+    const participant = participants.get(podName);
+    if (room === undefined || participant === undefined) {
       throw new Error(
         `managed prometheus has no recent gauge sample for livekit-server instance ${podName}, ` +
           "so the cluster reading is incomplete",
       );
     }
-    return { podName, roomTotal, participantTotal };
+    if (
+      observedAtMs - room.atMs > MANAGED_PROMETHEUS_MAX_SAMPLE_AGE_MS ||
+      observedAtMs - participant.atMs > MANAGED_PROMETHEUS_MAX_SAMPLE_AGE_MS
+    ) {
+      throw new Error(
+        `managed prometheus gauge sample for livekit-server instance ${podName} is stale`,
+      );
+    }
+    if (Math.abs(room.atMs - participant.atMs) > MANAGED_PROMETHEUS_MAX_GAUGE_SKEW_MS) {
+      throw new Error(
+        `managed prometheus gauge samples for livekit-server instance ${podName} are not coherent`,
+      );
+    }
+    return { podName, roomTotal: room.value, participantTotal: participant.value };
   });
 };
 
@@ -359,7 +377,7 @@ export const readLiveKitSfuGaugesFromManagedPrometheus: ReadLiveKitSfuGauges = a
     startTime,
     endTime,
   );
-  return selectLatestManagedPrometheusGauges(pods, rooms, participants);
+  return selectLatestManagedPrometheusGauges(pods, rooms, participants, nowMs);
 };
 
 export const readSarahWorkerLogs = async (

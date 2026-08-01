@@ -295,11 +295,17 @@ const observeMediaLoss = (session: SarahLiveKitLiveSession) => {
   const listener = () => {
     observedAtMs ??= session.clock.now();
   };
-  for (const room of rooms) room.on(RoomEvent.Disconnected, listener);
+  for (const room of rooms) {
+    room.on(RoomEvent.Reconnecting, listener);
+    room.on(RoomEvent.Disconnected, listener);
+  }
   return {
     observedAtMs: () => observedAtMs,
     close: () => {
-      for (const room of rooms) room.off(RoomEvent.Disconnected, listener);
+      for (const room of rooms) {
+        room.off(RoomEvent.Reconnecting, listener);
+        room.off(RoomEvent.Disconnected, listener);
+      }
     },
   };
 };

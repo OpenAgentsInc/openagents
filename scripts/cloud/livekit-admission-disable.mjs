@@ -16,7 +16,11 @@ SELECT
     WHERE binding.state IN ('prepared', 'active')
   ) AS active_room_count,
   COUNT(*) FILTER (
-    WHERE session.state IN ('reserved', 'connected', 'accounting_uncertain')
+    WHERE session.state IN ('reserved', 'connected')
+      OR (
+        session.state = 'accounting_uncertain'
+        AND session.credit_mode <> 'owner_waived_unmetered'
+      )
   ) AS pending_settlement_count
 FROM sarah_livekit_room_bindings AS binding
 INNER JOIN sarah_realtime_voice_sessions AS session USING (session_ref);

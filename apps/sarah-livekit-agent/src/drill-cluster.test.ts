@@ -158,6 +158,7 @@ describe("selectLatestManagedPrometheusGauges", () => {
         series("sfu-a", [["2026-07-31T19:27:00.000Z", 2]]),
         series("sfu-b", [["2026-07-31T19:27:00.000Z", 0]]),
       ],
+      Date.parse("2026-07-31T19:27:30.000Z"),
     );
     expect(gauges).toEqual([
       { podName: "sfu-a", roomTotal: 1, participantTotal: 2 },
@@ -186,6 +187,7 @@ describe("selectLatestManagedPrometheusGauges", () => {
         series("sfu-a", [["2026-07-31T19:27:00.000Z", 0]]),
         series("sfu-b", [["2026-07-31T19:27:00.000Z", 2]]),
       ],
+      Date.parse("2026-07-31T19:27:30.000Z"),
     );
     expect(countLiveRooms(gauges)).toBe(1);
     expect(selectSoleSfuPodHostingARoom(gauges).podName).toBe("sfu-b");
@@ -199,6 +201,7 @@ describe("selectLatestManagedPrometheusGauges", () => {
         ["sfu-a", "sfu-quiet"],
         [series("sfu-a", [["2026-07-31T19:27:00.000Z", 1]])],
         [series("sfu-a", [["2026-07-31T19:27:00.000Z", 2]])],
+        Date.parse("2026-07-31T19:27:30.000Z"),
       ),
     ).toThrow("no recent gauge sample for livekit-server instance sfu-quiet");
   });
@@ -209,6 +212,7 @@ describe("selectLatestManagedPrometheusGauges", () => {
         ["sfu-a"],
         [series("sfu-a", [["2026-07-31T19:27:00.000Z", 1]])],
         [],
+        Date.parse("2026-07-31T19:27:30.000Z"),
       ),
     ).toThrow("cluster reading is incomplete");
   });
@@ -223,7 +227,30 @@ describe("selectLatestManagedPrometheusGauges", () => {
         ]),
       ],
       [series("sfu-a", [["2026-07-31T19:27:00.000Z", 2]])],
+      Date.parse("2026-07-31T19:27:30.000Z"),
     );
     expect(gauges).toEqual([{ podName: "sfu-a", roomTotal: 1, participantTotal: 2 }]);
+  });
+
+  test("refuses a stale nonzero sample instead of deleting the room's old host", () => {
+    expect(() =>
+      selectLatestManagedPrometheusGauges(
+        ["sfu-old"],
+        [series("sfu-old", [["2026-07-31T19:20:00.000Z", 1]])],
+        [series("sfu-old", [["2026-07-31T19:20:00.000Z", 2]])],
+        Date.parse("2026-07-31T19:27:30.000Z"),
+      ),
+    ).toThrow("is stale");
+  });
+
+  test("refuses room and participant samples from materially different scrapes", () => {
+    expect(() =>
+      selectLatestManagedPrometheusGauges(
+        ["sfu-a"],
+        [series("sfu-a", [["2026-07-31T19:27:20.000Z", 1]])],
+        [series("sfu-a", [["2026-07-31T19:26:20.000Z", 2]])],
+        Date.parse("2026-07-31T19:27:30.000Z"),
+      ),
+    ).toThrow("are not coherent");
   });
 });

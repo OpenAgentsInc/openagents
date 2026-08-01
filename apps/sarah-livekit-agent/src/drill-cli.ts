@@ -344,7 +344,12 @@ const run = async () => {
     instrumentSource === "managed_prometheus"
       ? readLiveKitSfuGaugesFromManagedPrometheus
       : readLiveKitSfuGauges;
-  const injectFault = buildInjector(scenario, readGauges);
+  let gaugeSnapshot: ReturnType<typeof readGauges> | undefined;
+  const readFaultGauges = () => {
+    gaugeSnapshot ??= readGauges();
+    return gaugeSnapshot;
+  };
+  const injectFault = buildInjector(scenario, readFaultGauges);
   const suffix = roomKind === "private" ? "PRIVATE" : "COMMUNITY";
   const runRef = randomUUID();
   const pcm = await readFile(pcmPath);
@@ -360,7 +365,7 @@ const run = async () => {
       // fault target, so the sfu_loss precondition is observed rather than
       // attested. Rooms over-count billable Sarah generations, which is the
       // direction that fails closed.
-      countBillableSessions: async () => countLiveRooms(await readGauges()),
+      countBillableSessions: async () => countLiveRooms(await readFaultGauges()),
       instrumentSource,
       session: {
         kind: roomKind,

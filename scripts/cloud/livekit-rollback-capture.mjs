@@ -21,7 +21,10 @@ SELECT
   (SELECT COUNT(*)
      FROM sarah_realtime_voice_sessions
     WHERE transport_kind = 'livekit_room_v1'
-      AND state IN ('reserved', 'connected', 'accounting_uncertain'))
+      AND (
+        state IN ('reserved', 'connected')
+        OR (state = 'accounting_uncertain' AND credit_mode <> 'owner_waived_unmetered')
+      ))
     AS pending_settlement_count,
   (SELECT COUNT(*)
      FROM sarah_livekit_room_bindings AS binding
