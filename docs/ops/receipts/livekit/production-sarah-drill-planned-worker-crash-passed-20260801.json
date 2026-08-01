@@ -1,0 +1,43 @@
+{
+  "schema": "openagents.sarah.livekit-drill-observation.v2",
+  "scenario": "planned_worker_crash",
+  "faultAction": "delete_exact_worker_pod",
+  "roomKind": "private",
+  "outcome": "passed",
+  "contradictions": [],
+  "sessionStartedAtMs": 1785625869769,
+  "sessionLiveAtMs": 1785625881456,
+  "holdMs": 90000,
+  "faultInjectedAtMs": 1785625978180,
+  "mediaLossObservedAtMs": null,
+  "controlTerminal": null,
+  "settlement": {
+    "state": "accounting_uncertain",
+    "creditMode": "owner_waived_unmetered",
+    "recordedChargeMsat": 0,
+    "reservedCreditMsat": 0,
+    "noHoldCreated": true,
+    "reason": "livekit_worker_heartbeat_expired",
+    "authorityCaptureDigest": "sha256:972ac52c328f978098f8130c846e512cec28a52264c715aa543b22c68546edbd",
+    "exactAccounting": false,
+    "terminalObservedAtMs": 1785626043713,
+    "lastNonTerminalObservedAtMs": 1785626042981
+  },
+  "boundMs": 180000,
+  "faultToTerminalMs": 65533,
+  "mediaLossDetectedWithinMs": null,
+  "withinBound": true,
+  "concurrentBillableSessionCount": 1,
+  "instrumentSource": "managed_prometheus",
+  "faultTargetDigest": "sha256:bb54519f1206cd5075a28bb266ca78e85d83992bb0c1e0da121f7b01ca7fac31",
+  "workerInstanceDigest": "sha256:bb54519f1206cd5075a28bb266ca78e85d83992bb0c1e0da121f7b01ca7fac31",
+  "workerInstanceSurvived": false,
+  "faultDiscoveryMs": 1737,
+  "observationWindowMs": 240000,
+  "settlementPollIntervalMs": 500,
+  "limitations": [
+    "terminal_settlement_instant_is_observed_not_authoritative",
+    "worker_side_terminal_reason_is_not_published_by_the_settlement_authority",
+    "fault_execution_is_delegated_to_the_injector_and_attested_by_digest"
+  ]
+}
