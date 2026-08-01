@@ -307,6 +307,9 @@ proceeds, the honest starting points are:
 
 Read in this order:
 
+0. [`loupe-in-plain-words.md`](loupe-in-plain-words.md) — **start here.** The
+   algorithm step by step and the exact instructions given to the AI, in plain
+   language, in about five minutes. No jargon.
 1. **This file** — what Loupe is, read from source at `c94aac5`.
 2. [`2026-07-31-omega-first-scan-preliminary.md`](2026-07-31-omega-first-scan-preliminary.md)
    — the first run against our own code. The empirical ground under everything
