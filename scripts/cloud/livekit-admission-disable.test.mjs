@@ -91,6 +91,15 @@ test("derives the admission-disable receipt from serving config and drained coun
   });
 });
 
+test("accepts tagged revisions that receive no production traffic", () => {
+  const tagged = service();
+  tagged.status.traffic.push({
+    revisionName: "openagents-monolith-broker-test",
+    tag: "broker-test",
+  });
+  assert.equal(collect(tagged).activeRoomCount, 0);
+});
+
 test("refuses admission drift, split traffic, active rooms, and unsettled accounting", () => {
   assert.throws(() => collect(service(), "0,0\n", revision("true")), /admission is not disabled/u);
   const split = service();

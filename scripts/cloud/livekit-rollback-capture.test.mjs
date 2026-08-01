@@ -107,6 +107,7 @@ const commandRunner =
   ({
     admission = "false",
     counts = "khala_sync_prod,0,0,0\n",
+    cloudRunService = service(),
     deploymentInventory = deployments(),
     kubeContext = "gke_openagentsgemini_us-central1_oa-livekit-prod",
     updateGeneration = "11",
@@ -141,7 +142,7 @@ const commandRunner =
     }
     assert.equal(bin, "gcloud");
     if (args[0] === "run" && args[1] === "services" && args[2] === "describe")
-      return { status: 0, stdout: JSON.stringify(service()), stderr: "" };
+      return { status: 0, stdout: JSON.stringify(cloudRunService), stderr: "" };
     if (args[0] === "run" && args[1] === "revisions")
       return { status: 0, stdout: JSON.stringify(revision(admission)), stderr: "" };
     if (args[0] === "sql")
@@ -240,6 +241,15 @@ test("collects an ordered live baseline and derives a valid controlled rollback 
       unrelatedServicesUnchanged: true,
     },
   );
+});
+
+test("accepts tagged Cloud Run revisions that receive no traffic", () => {
+  const tagged = service();
+  tagged.status.traffic.push({
+    revisionName: "openagents-monolith-broker-test",
+    tag: "broker-test",
+  });
+  assert.equal(baseline({ cloudRunService: tagged }).unrelatedServiceDigests.length, 5);
 });
 
 test("refuses admission drift, nonterminal database state, and silent transport mismatches", () => {

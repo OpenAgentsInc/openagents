@@ -278,10 +278,13 @@ const latestServingRevision = (service) => {
     "production Cloud Run has no Ready revision",
   );
   const traffic = service.status?.traffic ?? [];
+  // Cloud Run retains tagged revisions as zero-traffic entries without a
+  // percentage, so they do not make the serving revision a split deployment.
+  const servingTraffic = traffic.filter((entry) => (entry.percent ?? 0) > 0);
   assert(
-    traffic.length === 1 &&
-      traffic[0]?.revisionName === revisionName &&
-      traffic[0]?.percent === 100,
+    servingTraffic.length === 1 &&
+      servingTraffic[0]?.revisionName === revisionName &&
+      servingTraffic[0]?.percent === 100,
     "production Cloud Run traffic is not wholly on its latest Ready revision",
   );
   return revisionName;

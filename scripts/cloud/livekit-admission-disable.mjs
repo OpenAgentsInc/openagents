@@ -116,10 +116,13 @@ const latestServingRevision = (service) => {
     "production Cloud Run service has no latest Ready revision",
   );
   const traffic = service.status?.traffic ?? [];
+  // Tagged revisions remain in this array without a traffic percentage. Only
+  // entries with a positive percentage participate in the serving split.
+  const servingTraffic = traffic.filter((entry) => (entry.percent ?? 0) > 0);
   assert(
-    traffic.length === 1 &&
-      traffic[0]?.revisionName === latestReadyRevisionName &&
-      traffic[0]?.percent === 100,
+    servingTraffic.length === 1 &&
+      servingTraffic[0]?.revisionName === latestReadyRevisionName &&
+      servingTraffic[0]?.percent === 100,
     "production Cloud Run traffic is not wholly on the latest Ready revision",
   );
   return latestReadyRevisionName;
