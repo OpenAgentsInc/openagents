@@ -2308,13 +2308,14 @@
         "docs/cloud/README.md",
         "docs/ide/README.md",
         "docs/ide/ROADMAP.md",
+        "docs/loupe/2026-08-01-omega-forensic-analysis-roadmap.md",
         "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
         "docs/sol/2026-07-18-sarah-owner-orchestrator-reboot-accepted-plan.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md",
         "docs/sol/issues/README.md"
       ],
-      "inboundSourceCount": 9,
+      "inboundSourceCount": 10,
       "issueLinks": [
         9023,
         9024,

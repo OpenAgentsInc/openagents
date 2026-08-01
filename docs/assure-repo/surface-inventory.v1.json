@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:69bc63c72dad2adeb40833a17e1208656b2ad9f129ab7cc3718de68433461efa",
+  "sourceDigest": "sha256:377b3c6657356a46fdd01e8a9817923e8df067670f9f8dccea45db7cad3e4575",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -2253,6 +2253,23 @@
       }
     },
     {
+      "id": "package:@openagentsinc/forensic-contract",
+      "kind": "package",
+      "owningPath": "packages/forensic-contract",
+      "title": "@openagentsinc/forensic-contract",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/forensic-contract (2 tracked test files)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
       "id": "package:@openagentsinc/forge-protocol",
       "kind": "package",
       "owningPath": "packages/forge-protocol",
@@ -3421,17 +3438,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 178,
+    "totalSurfaces": 179,
     "byKind": {
       "app": 19,
       "crate": 6,
       "document": 52,
-      "package": 89,
+      "package": 90,
       "public-endpoint": 2,
       "release-pipeline": 9,
       "worker": 1
     },
-    "withOracle": 164,
+    "withOracle": 165,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3439,7 +3456,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 128,
+      "designed": 129,
       "inconclusive": 9,
       "mapped": 36,
       "out-of-scope": 5

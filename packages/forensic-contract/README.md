@@ -1,0 +1,58 @@
+# OpenAgents forensic contracts
+
+`@openagentsinc/forensic-contract` is the canonical Effect Schema boundary for
+the Omega forensic-analysis program. It contains data contracts only. It does
+not admit a worker, authorize a scan, execute a target, contact a maintainer,
+or publish a claim.
+
+The package owns:
+
+- target, source-bundle, coverage, profile, worker-placement, prompt, run,
+  event, finding, hypothesis, receipt, metric, scorecard, and promotion shapes;
+- the Coldcard reproduction, generator, entropy, historical-chain,
+  transaction-fingerprint, node-scan, evidence-graph, and claim-revision
+  shapes;
+- strict boundary decoding with excess-property rejection;
+- deterministic canonical JSON and SHA-256 contract digests;
+- fail-closed run-transition, event-sequence, claim-rung, and prior-revision
+  laws; and
+- one bounded public run projection that contains digests, counts, durations,
+  usage totals, completeness, and cleanup truth only.
+
+## Contract laws
+
+The implementation deliberately keeps these facts separate:
+
+- incomplete source coverage cannot become a complete result;
+- a completed result requires observed zero-residue cleanup;
+- source evidence cannot qualify an artifact, fingerprint, theft, or identity
+  claim;
+- claim revisions append evidence and bind the exact prior claim digest;
+- a successful historical scan requires positive and negative controls and no
+  missing required data;
+- prompt candidates cannot evaluate or promote themselves; and
+- unavailable values retain a reason and never become zero.
+
+Consumers must decode untrusted input with `strictDecode` or equivalent Effect
+Schema options that set `onExcessProperty: "error"`. The schemas do not make a
+runtime available and do not raise an evidence tier by themselves.
+
+## Conformance fixtures
+
+The complete v1 corpus is checked in at:
+
+- `fixtures/forensics/positive.v1.json`
+- `fixtures/forensics/negative.v1.json`
+
+Every schema registered by `FORENSIC_CONTRACT_SCHEMAS` has one positive and one
+negative fixture. The tests also cover semantic false-green cases, including
+invalid lifecycle transitions, incomplete coverage, cross-rung claim evidence,
+non-dense chain inputs, missing scan controls, optimizer self-promotion,
+scorecard count drift, secret projection, and unknown fields.
+
+Run the package checks with:
+
+```sh
+pnpm --filter @openagentsinc/forensic-contract test
+pnpm --filter @openagentsinc/forensic-contract typecheck
+```

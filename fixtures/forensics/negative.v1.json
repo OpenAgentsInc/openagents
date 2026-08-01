@@ -1,0 +1,33 @@
+{
+  "schema": "openagents.forensic_negative_conformance_fixtures.v1",
+  "mutation": {
+    "kind": "replace_schema",
+    "value": "openagents.forensic.invalid.v1"
+  },
+  "contracts": [
+    "openagents.forensic_target_snapshot.v1",
+    "openagents.coldcard_reproduction_manifest.v1",
+    "openagents.forensic_source_bundle.v1",
+    "openagents.forensic_coverage_manifest.v1",
+    "openagents.forensic_scan_profile.v1",
+    "openagents.forensic_worker_placement.v1",
+    "openagents.forensic_prompt_artifact.v1",
+    "openagents.forensic_run.v1",
+    "openagents.forensic_finding.v1",
+    "openagents.forensic_hypothesis.v1",
+    "openagents.forensic_claim_record.v1",
+    "openagents.forensic_claim_revision.v1",
+    "openagents.forensic_evidence_graph.v1",
+    "openagents.generator_trace.v1",
+    "openagents.entropy_state_model.v1",
+    "openagents.historical_chain_snapshot.v1",
+    "openagents.transaction_fingerprint.v1",
+    "openagents.node_scan_receipt.v1",
+    "openagents.forensic_evidence_receipt.v1",
+    "openagents.forensic_run_event.v1",
+    "openagents.forensic_metric_definition.v1",
+    "openagents.forensic_scorecard.v1",
+    "openagents.forensic_prompt_promotion.v1",
+    "openagents.forensic_run_public_projection.v1"
+  ]
+}

@@ -838,6 +838,15 @@ Names are provisional; the information is not.
 | `ForensicMetricDefinition.v1` | Versioned formula, unit, eligible population, censor and miss treatment, exactness rules, dimensions, aggregation, and display metadata. |
 | `ForensicScorecard.v1` | Dataset revision, metric-definition revision, hard-gate results, per-run values, distributions, censor counts, confidence intervals, failures, cost, and event/receipt provenance. |
 | `ForensicPromptPromotion.v1` | Candidate, evaluator, release gate, operator decision, rollback anchor, and active-pointer transition. |
+| `ForensicRunPublicProjection.v1` | Run, source, prompt, model, worker image/profile digests; lifecycle/completeness/cleanup truth; bounded counts, durations, and usage exactness. It excludes repository paths, prompts, findings, topology, credentials, and private evidence. |
+
+The canonical implementation home is
+[`packages/forensic-contract`](../../packages/forensic-contract/README.md).
+OFR-001 provides strict Effect Schema decoders, canonical JSON and SHA-256
+digests, the run-transition and claim-lattice laws, a bounded public projection,
+and positive/negative fixtures for every registered v1 contract. These schemas
+define admissible data; they do not by themselves admit a worker, prove a
+finding, or authorize disclosure.
 
 Run state is explicit:
 

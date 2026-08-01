@@ -1777,5 +1777,34 @@
     "packages/world-contract/src/index.ts#worldVectorInsideBounds",
     "scripts/github-issue-triage.ts#issueHasAnyLabel"
   ],
-  "allowed": []
+  "allowed": [
+    {
+      "ref": "packages/forensic-contract/src/canonical.ts#canonicalizeForensicContract",
+      "reason": "Published forensic contract API; OFR-002 and OFR-003 will call it from source materialization and run persistence when those issues land."
+    },
+    {
+      "ref": "packages/forensic-contract/src/claims.ts#evaluateClaimGate",
+      "reason": "Published forensic contract API; OFR-004 and OFR-008 will call it from evidence adjudication and Omega review when those issues land."
+    },
+    {
+      "ref": "packages/forensic-contract/src/claims.ts#evaluateClaimRevisionOrigin",
+      "reason": "Published forensic contract API; OFR-004 and OFR-008 will call it from append-only claim revision and Omega review when those issues land."
+    },
+    {
+      "ref": "packages/forensic-contract/src/index.ts#FORENSIC_CONTRACT_SCHEMA_IDS",
+      "reason": "Published forensic contract registry; OFR-003 will consume it for run storage and contract-version negotiation when that issue lands."
+    },
+    {
+      "ref": "packages/forensic-contract/src/lifecycle.ts#evaluateForensicEventSequence",
+      "reason": "Published forensic contract API; OFR-003 will call it before persisting append-only forensic run streams when that issue lands."
+    },
+    {
+      "ref": "packages/forensic-contract/src/lifecycle.ts#evaluateForensicRunTransition",
+      "reason": "Published forensic contract API; OFR-003 will call it from the durable run lifecycle authority when that issue lands."
+    },
+    {
+      "ref": "packages/forensic-contract/src/projection.ts#projectForensicRunPublicSafe",
+      "reason": "Published forensic contract API; OFR-008 and OFR-017 will call it from Omega and public-forensics projections when those issues land."
+    }
+  ]
 }
