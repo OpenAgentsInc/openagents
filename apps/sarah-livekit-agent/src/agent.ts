@@ -58,6 +58,7 @@ import {
   validateSarahProviderDisconnectFaultTarget,
   waitForAdmissionUntil,
 } from "./generation.js";
+import { selectSarahFloorParticipant } from "./participant-selection.js";
 
 const PRIVATE_INSTRUCTIONS = [
   "You are Sarah, the OpenAgents owner's conversational agent.",
@@ -891,7 +892,12 @@ const entry = async (ctx: JobContext): Promise<void> => {
     record: false,
   });
   if (dispatch.roomContext.kind === "community") {
-    session._roomIO?.setParticipant(floorParticipantRef);
+    try {
+      selectSarahFloorParticipant(session, floorParticipantRef);
+    } catch {
+      if (fence.settle("worker_error")) requestShutdown();
+      return;
+    }
   }
   sessionStarted = true;
   if (pendingProviderAdmission !== undefined) {
@@ -937,7 +943,7 @@ const entry = async (ctx: JobContext): Promise<void> => {
     };
     applyFloorParticipant = (participantRef) => {
       floorParticipantRef = participantRef;
-      session?._roomIO?.setParticipant(participantRef);
+      selectSarahFloorParticipant(session, participantRef);
       for (const remoteParticipant of ctx.room.remoteParticipants.values()) {
         remoteParticipant.trackPublications.forEach((publication) => {
           if (

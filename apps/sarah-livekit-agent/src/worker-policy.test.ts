@@ -133,7 +133,8 @@ describe("Sarah LiveKit worker policy", () => {
     expect(source).toContain(
       'dispatch.roomContext.kind === "community" ? null : dispatch.participantRef',
     );
-    expect(source).toContain("session?._roomIO?.setParticipant(participantRef)");
+    expect(source).toContain("selectSarahFloorParticipant(session, participantRef)");
+    expect(source).not.toContain("session?._roomIO?.setParticipant");
     expect(source).toContain(
       "participantRef !== null && remoteParticipant.identity === participantRef",
     );

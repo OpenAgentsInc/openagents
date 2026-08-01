@@ -68,6 +68,18 @@ without a confirmation prompt, while replace, save, and agent-thread commands
 require confirmation. Every tool waits for a typed Omega outcome before it can
 return success to OpenAI.
 
+Community floor switching uses the participant-selection boundary in the pinned
+LiveKit Agents SDK. The worker fails the generation closed if that boundary is
+absent or changes shape; it never leaves a prior participant attached after an
+unverified SDK fallback.
+
+Omega 0.2.0 does not admit application-layer LiveKit frame E2EE. The room
+authority's `e2eeKeyRevision` is a configuration binding only, not proof that
+media was encrypted or that a membership change rotated a media key. A future
+frame-E2EE release must add key distribution, Sarah-worker admission, membership
+rotation, and installed-client interoperability evidence before changing that
+claim.
+
 For the Omega client, LiveKit remains the audio transport. The session's
 ticketed `gatewayUrl` remains the authoritative control channel. The client
 must keep that socket open, render `tool_proposal`, send `tool_decision` with
