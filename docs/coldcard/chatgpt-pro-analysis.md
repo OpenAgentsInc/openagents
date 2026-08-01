@@ -47,9 +47,21 @@ Coldcard’s board configuration contained:
 #define MICROPY_HW_ENABLE_RNG (0)
 ```
 
-The developers intended this to mean: *do not use MicroPython’s RNG implementation because Coldcard provides its own superior implementation.*
+The developers intended this to mean: _do not use MicroPython’s RNG implementation because Coldcard provides its own superior implementation._
 
 That assumption was reasonable at a glance, but it conflicted with how two separate codebases interpreted the flag. ([Block Engineering Blog][3])
+
+The zero-valued macro was not introduced by the vulnerable 2021 libNgU migration
+on the original board. It is already present, with the same explanatory comment,
+in Coldcard's initial public firmware snapshot from 2018. The May 2021 Mk4 board
+port copied the same configuration and the earlier board's custom `rng.c`; the two
+`rng.c` files are the same Git blob in that commit. The security regression arose
+when libNgU treated the macro's existence as proof of a usable `rng_get`, the seed
+path moved to libNgU, and Coldcard's custom file did not export that exact global
+symbol. The public history does not show that the macro was changed to zero in
+response to a duplicate-symbol compiler error. See the
+[Bitcoin++ op-ed source review](2026-08-01-bitcoin-plus-plus-oped-analysis.md)
+for the commit-by-commit audit.
 
 ## 3. LibNgU checked whether the flag existed—not whether it was enabled
 
@@ -138,20 +150,20 @@ dat = 0;
 
 Those values are:
 
-* The low 32 bits of the processor’s fixed factory identifier.
-* A processor tick-counter value.
-* The real-time clock’s time register.
-* The real-time clock’s subsecond register.
+- The low 32 bits of the processor’s fixed factory identifier.
+- A processor tick-counter value.
+- The real-time clock’s time register.
+- The real-time clock’s subsecond register.
 
 After that one-time initialization, every output followed the deterministic Yasmarang state-transition algorithm. No fresh physical entropy was collected on subsequent calls. ([GitHub][4])
 
-Those inputs can make outputs *look* random, but they are poor cryptographic secrets:
+Those inputs can make outputs _look_ random, but they are poor cryptographic secrets:
 
-* A chip UID is an identifier, not secret entropy.
-* The tick counter has a small and structured range.
-* The RTC values are tied to boot and execution timing.
-* The timer values are correlated rather than independent.
-* Devices running the same firmware tend to reach the first RNG call through similar execution paths.
+- A chip UID is an identifier, not secret entropy.
+- The tick counter has a small and structured range.
+- The RTC values are tied to boot and execution timing.
+- The timer values are correlated rather than independent.
+- Devices running the same firmware tend to reach the first RNG call through similar execution paths.
 
 Researchers estimate that controlled measurements from an attacker-owned Coldcard could help prioritize the likely timing states on victim devices. The exact practical narrowing still needs more empirical hardware testing, but this is radically smaller than searching a genuinely random 128- or 256-bit secret. ([Block Engineering Blog][3])
 
@@ -309,8 +321,8 @@ uint32_t rng_get(void)
 
 The build also deliberately prevents MicroPython’s fallback `rng.c` from supplying any symbols. A new `rng-code-check` examines the resulting object files and fails the build unless:
 
-* The board-specific RNG object defines the global `rng_get`.
-* MicroPython’s upstream fallback RNG object defines no RNG symbols.
+- The board-specific RNG object defines the global `rng_get`.
+- MicroPython’s upstream fallback RNG object defines no RNG symbols.
 
 That converts a subtle runtime security assumption into a mechanically enforced build invariant.
 
@@ -361,5 +373,3 @@ Nothing needed to “break” Bitcoin, extract a secure element, compromise the 
 [3]: https://engineering.block.xyz/blog/predictable-rng-fallback-and-32-bit-reseed-in-coldcard-firmware "Predictable RNG Fallback and 32-Bit Reseed in COLDCARD Firmware | Block Engineering Blog"
 [4]: https://github.com/micropython/micropython/blob/master/ports/stm32/rng.c "micropython/ports/stm32/rng.c at master · micropython/micropython · GitHub"
 [5]: https://blog.coinkite.com/coldcard-mk3-seed-generation-warning/ "Coldcard Security Advisory | COINKITE Blog"
-
-
