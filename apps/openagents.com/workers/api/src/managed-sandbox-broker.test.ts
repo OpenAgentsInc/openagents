@@ -354,4 +354,115 @@ describe("native managed-sandbox broker", () => {
     expect(replay.receipt).toEqual(first.receipt);
     expect(lifecycleCalls).toBe(1);
   });
+
+  test("cannot clean provider resources while durable capabilities remain unrevoked", async () => {
+    const resource = S.decodeUnknownSync(ManagedSandboxResourceSchema)({
+      schema: "openagents.managed_sandbox.v1",
+      sandboxRef: "sandbox.native.cleanup.fixture",
+      ownerRef: "owner.fixture",
+      tenantRef: "owner.fixture",
+      programRef: "program.managed_agent_sandboxes",
+      workUnitRef: "work.native.fixture",
+      attachmentRef: "attachment.native.fixture",
+      attachmentGeneration: 7,
+      resourceGeneration: 1,
+      version: 4,
+      lastEventSequence: 4,
+      target: policy.target,
+      imageDigest,
+      profileRef: policy.profileRef,
+      lease: {
+        leaseRef: "lease.native.fixture",
+        state: "active",
+        issuedAt: now,
+        expiresAt: "2026-07-19T17:00:00.000Z",
+        ttlSeconds: 3_600,
+        renewable: true,
+      },
+      budget: {
+        currency: "USD",
+        maxCostMicros: 10_000,
+        maxCpuMillis: 3_600_000,
+        maxNetworkBytes: 100_000_000,
+        maxArtifactBytes: 10_000_000,
+        maxLifetimeSeconds: 3_600,
+      },
+      capabilities: [
+        {
+          capabilityRef: "capability.native.fixture.agent_turn",
+          kind: "agent_turn",
+          state: "active",
+          expiresAt: "2026-07-19T17:00:00.000Z",
+        },
+      ],
+      facts: {
+        lifecycle: "stopped",
+        leaseState: "active",
+        guestState: "absent",
+        filesystemState: "durable",
+        ingressState: "revoked",
+        runtimeState: "none",
+        acceptingWork: false,
+        cleanupComplete: false,
+      },
+      createdAt: now,
+      updatedAt: now,
+    });
+    const command = S.decodeUnknownSync(ManagedSandboxCommandSchema)({
+      _tag: "Delete",
+      schema: "openagents.managed_sandbox_command.v1",
+      commandRef: "command.native.delete.fixture",
+      requestedByRef: "principal.desktop",
+      ownerRef: "owner.fixture",
+      tenantRef: "owner.fixture",
+      idempotencyRef: "idempotency.native.delete.fixture",
+      requestedAt: now,
+      sandboxRef: resource.sandboxRef,
+      expectedVersion: resource.version,
+      reasonRef: "reason.native.cleanup",
+    });
+    let lifecycleCalls = 0;
+    let settlementCalls = 0;
+    const store = {
+      reservation: () => Effect.sync((): undefined => undefined),
+      inspect: () => Effect.succeed(resource),
+      reserve: () =>
+        Effect.succeed({
+          disposition: "reserved" as const,
+          status: "pending" as const,
+          command,
+          resource,
+        }),
+      settle: () => {
+        settlementCalls += 1;
+        return Effect.die("unrevoked delete must not settle");
+      },
+    } as unknown as BoxV1NativeStore;
+    const broker = makeManagedSandboxBroker({
+      principal: {
+        actorRef: "principal.desktop",
+        ownerRef: "owner.fixture",
+        tenantRef: "owner.fixture",
+        login: "Desktop",
+        email: null,
+      },
+      policy,
+      store,
+      runtime: {
+        ...unavailableBoxV1Runtime,
+        lifecycle: () => {
+          lifecycleCalls += 1;
+          return Effect.die("unrevoked delete must not reach provider cleanup");
+        },
+      },
+      now: () => new Date(now),
+    });
+
+    await expect(Effect.runPromise(broker.execute(command))).rejects.toMatchObject({
+      code: "conflict",
+    });
+    expect(resource.facts.cleanupComplete).toBe(false);
+    expect(lifecycleCalls).toBe(0);
+    expect(settlementCalls).toBe(0);
+  });
 });

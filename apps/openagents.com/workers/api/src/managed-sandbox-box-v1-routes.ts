@@ -184,7 +184,7 @@ export type BoxV1NativeStore = Readonly<{
 export type BoxV1LifecycleOutcome = Readonly<{
   operationRef: string
   receiptRef: string
-  action: 'create' | 'stop' | 'resume' | 'delete'
+  action: 'create' | 'probe' | 'stop' | 'resume' | 'delete'
   phase: 'ready' | 'stopped' | 'failed' | 'recovery_required' | 'deleted'
   generation: number
   readinessObserved: boolean
@@ -207,10 +207,20 @@ export type BoxV1LifecycleOutcome = Readonly<{
   }>
   cleanupProof?: Readonly<{
     zeroCompute: boolean
+    zeroDisk: boolean
     zeroFirewall: boolean
+    zeroProcess: boolean
     zeroScratch: boolean
     zeroIngress: boolean
     zeroGrants: boolean
+  }>
+  usageProof?: Readonly<{
+    exact: boolean
+    tokens: number
+    sourceBytes: number
+    artifactBytes: number
+    networkBytes: number
+    activeTurns: number
   }>
   measuredRunningMs: number
   measuredCostMicros: number
@@ -219,6 +229,14 @@ export type BoxV1LifecycleOutcome = Readonly<{
 }>
 
 export type BoxV1Runtime = Readonly<{
+  probe?:
+    | ((input: {
+        principal: BoxV1Principal
+        resource: ManagedSandboxResource
+        operationRef: string
+        idempotencyRef: string
+      }) => Effect.Effect<BoxV1LifecycleOutcome, BoxV1FacadeError>)
+    | undefined
   lifecycle?:
     | ((input: {
         principal: BoxV1Principal
@@ -978,8 +996,53 @@ const makeBoxCompatibilityService = (input: {
           >,
         })
       }
-      const resource = yield* inspect(sandboxRef)
+      let resource = yield* inspect(sandboxRef)
       const requestedAt = nowIso(input.now)
+      if (
+        tag === 'Delete' &&
+        resource.capabilities.some(capability => capability.state !== 'revoked')
+      ) {
+        const revokeIdentity = yield* makeCommandIdentity(
+          input.principal,
+          'delete-revoke',
+          key,
+        )
+        const existingRevoke = yield* input.store.reservation({
+          ...scope,
+          commandRef: revokeIdentity.commandRef,
+        })
+        if (existingRevoke !== undefined) {
+          if (
+            existingRevoke.command._tag !== 'Update' ||
+            existingRevoke.resource.sandboxRef !== sandboxRef ||
+            existingRevoke.resource.capabilities.some(
+              capability => capability.state !== 'revoked',
+            )
+          ) {
+            return yield* conflictError(
+              'delete revocation idempotency key is bound to another action',
+            )
+          }
+          resource = existingRevoke.resource
+        } else {
+          const revoke = yield* decode(ManagedSandboxCommandSchema, {
+            _tag: 'Update',
+            schema: 'openagents.managed_sandbox_command.v1',
+            commandRef: revokeIdentity.commandRef,
+            requestedByRef: input.principal.actorRef,
+            ...scope,
+            idempotencyRef: revokeIdentity.idempotencyRef,
+            requestedAt,
+            sandboxRef,
+            expectedVersion: resource.version,
+            capabilities: resource.capabilities.map(capability => ({
+              ...capability,
+              state: 'revoked',
+            })),
+          })
+          resource = (yield* input.store.reserve({ command: revoke })).resource
+        }
+      }
       const command = yield* decode(ManagedSandboxCommandSchema, {
         _tag: tag,
         schema: 'openagents.managed_sandbox_command.v1',

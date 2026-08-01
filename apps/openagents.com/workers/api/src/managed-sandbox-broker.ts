@@ -465,6 +465,16 @@ export const makeManagedSandboxBroker = (
       let lifecycleOutcome: BoxV1LifecycleOutcome | null = null;
 
       if (
+        command._tag === "Delete" &&
+        reservation.status === "pending" &&
+        resource.capabilities.some((capability) => capability.state !== "revoked")
+      ) {
+        return yield* conflict(
+          "delete requires durable revocation of every sandbox capability",
+        );
+      }
+
+      if (
         ["Create", "Stop", "Resume", "Delete"].includes(command._tag) &&
         reservation.status === "pending" &&
         input.runtime.lifecycle !== undefined

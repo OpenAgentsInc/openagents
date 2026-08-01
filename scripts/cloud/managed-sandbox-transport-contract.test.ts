@@ -70,6 +70,24 @@ describe("managed-sandbox guest transport contract", () => {
     expect(source).toContain("--chdir /workspace /bin/pwd)\" = '/workspace'");
   });
 
+  test("forensic guest exposes fixed usage and process-scratch cleanup proofs", () => {
+    const driver = readFileSync(
+      resolve(import.meta.dirname, "forensic-worker-driver.mjs"),
+      "utf8",
+    );
+    expect(driver).toContain('process.argv[2] === "usage"');
+    expect(driver).toContain('process.argv[2] === "prepare-stop"');
+    expect(driver).toContain("sourceBytes");
+    expect(driver).toContain("artifactBytes");
+    expect(driver).toContain("activeTurns");
+    expect(driver).toContain('const NETWORK_ROOT = "/sys/class/net"');
+    expect(driver).toContain('const SOURCE_ROOT = `${WORKSPACE}/source`');
+    expect(driver).not.toContain("networkBytes: sourceBytes + artifactBytes");
+    expect(driver).toContain("zeroProcess: true");
+    expect(driver).toContain("zeroScratch: true");
+    expect(driver).not.toContain("process.env");
+  });
+
   test("guest image installs the content-only checkpoint primitive and scratch root", () => {
     const source = readFileSync(
       resolve(import.meta.dirname, "build-managed-sandbox-guest-image.sh"),

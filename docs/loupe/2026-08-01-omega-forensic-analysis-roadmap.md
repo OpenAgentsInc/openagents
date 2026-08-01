@@ -195,12 +195,22 @@ The pinned guest image installs `driver.openagents.forensic-worker.v1`, whose
 preflight proves Linux and executes an allowlisted workload through Bubblewrap
 with an unshared network namespace. The native lifecycle receipt now carries
 the complete readiness and zero-residue observations instead of reducing them
-to a single boolean. Before every prompt, the specialization checks remaining
-time, token, measured-cost, artifact, network, and single-turn concurrency
-budgets. Cancellation must reach a terminal turn receipt, and deletion must
-prove zero compute, firewall, scratch, ingress, and grant residue. Missing cost,
-readiness, settlement, broker, or cleanup truth refuses or returns
-`recovery_required`; there is no silent placement fallback.
+to a single boolean. Before every prompt, a fresh generation-bound native probe
+supplies measured runtime and cost plus exact guest-observed token, source,
+artifact, network, and active-turn usage; caller assertions are not budget
+authority. Cancellation must reach a terminal turn receipt. Deletion first
+revokes durable capabilities, then uses the fixed guest driver to prove process
+and scratch cleanup before stopping the VM, and finally proves zero compute,
+disk, firewall, process, scratch, and ingress residue. Grant cleanup comes only
+from the durable broker resource showing every capability explicitly revoked;
+the provider receipt never asserts it. Guest network usage is the cumulative
+non-loopback interface byte count since fresh VM boot, independent of the
+separate source and artifact byte totals. Missing usage, cost, readiness,
+settlement, broker, stop, or cleanup truth refuses or returns
+`recovery_required`; there is no silent placement fallback. Generation-bound
+source-materializer and artifact capabilities expose the narrow private seams
+consumed by OFR-003 and later artifact publication without granting ambient
+guest access.
 
 OFR-003 implements the private source path. Scoped SCM/Forge intake leaves
 owner-, tenant-, work-unit-, commit-, tree-, and byte-bound source objects in

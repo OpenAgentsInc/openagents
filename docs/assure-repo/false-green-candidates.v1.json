@@ -2,7 +2,7 @@
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
   "note": "Heuristic false-green LEADS, not findings. A finding requires a demonstrated reproduction (surviving mutation via mutation-runner). Do not treat a candidate as a confirmed false green. Coverage-theater leads may include tests that delegate their assertion to a custom helper the classifier does not recognise; verify before acting.",
-  "sourceDigest": "sha256:bd800b0dae1c59033086d130bc745bccdcd5c6d45331e5f7f8217e8a4a480208",
+  "sourceDigest": "sha256:0706a1ce849d23b405c416b1ebe7bcce09563a251e989efc279695a30576c43d",
   "summary": {
     "filesScanned": 2704,
     "candidateCount": 19,
@@ -93,7 +93,7 @@
     },
     {
       "file": "apps/openagents.com/workers/api/src/managed-sandbox-box-v1-routes.test.ts",
-      "line": 536,
+      "line": 541,
       "mode": "false_green_coverage_theater",
       "evidence": "test block contains no expect/assert call"
     },

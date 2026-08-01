@@ -497,7 +497,34 @@ export class BoxV1MemoryAuthority implements BoxV1NativeStore {
           ? stored.reservation.command.turnRef
           : undefined
       if (turnRef === undefined) {
-        return yield* conflict('test settlement supports runtime commands only')
+        const receipt = decodeReceipt({
+          schema: 'openagents.managed_sandbox_receipt.v1',
+          receiptRef: `receipt.box.${input.commandRef}`,
+          commandRef: input.commandRef,
+          sandboxRef: resource.sandboxRef,
+          ownerRef: resource.ownerRef,
+          tenantRef: resource.tenantRef,
+          resourceGeneration: resource.resourceGeneration,
+          version: resource.version,
+          outcome: input.outcome,
+          lifecycle: resource.facts.lifecycle,
+          eventRefs: input.events.map(event => event.eventRef),
+          artifactRefs: input.artifactRefs ?? [],
+          ...(input.errorCode === undefined
+            ? {}
+            : { errorCode: input.errorCode }),
+          observedAt: input.observedAt,
+        })
+        self.commands.set(input.commandRef, {
+          ...stored,
+          reservation: {
+            ...stored.reservation,
+            status: 'settled',
+            resource,
+            receipt,
+          },
+        })
+        return receipt
       }
       const currentTurn = self.turnDetails.get(turnRef)
       if (currentTurn === undefined) return yield* notFound()

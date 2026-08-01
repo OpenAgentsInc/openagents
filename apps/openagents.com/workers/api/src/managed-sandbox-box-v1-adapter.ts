@@ -337,17 +337,28 @@ const managedSandboxReadinessProofSchema = S.Struct({
 
 const managedSandboxCleanupProofSchema = S.Struct({
   zeroCompute: S.Boolean,
+  zeroDisk: S.Boolean,
   zeroFirewall: S.Boolean,
+  zeroProcess: S.Boolean,
   zeroScratch: S.Boolean,
   zeroIngress: S.Boolean,
   zeroGrants: S.Boolean,
+})
+
+const managedSandboxForensicUsageSchema = S.Struct({
+  exact: S.Boolean,
+  tokens: NonNegativeInteger,
+  sourceBytes: NonNegativeInteger,
+  artifactBytes: NonNegativeInteger,
+  networkBytes: NonNegativeInteger,
+  activeTurns: NonNegativeInteger,
 })
 
 const managedSandboxLifecycleResponseSchema = S.Struct({
   schemaVersion: S.Literal('openagents.managed_sandbox_runtime.v1'),
   receiptRef: S.String,
   operationRef: S.String,
-  action: S.Literals(['create', 'stop', 'resume', 'delete']),
+  action: S.Literals(['create', 'probe', 'stop', 'resume', 'delete']),
   sandboxRef: S.String,
   generation: PositiveInteger,
   phase: S.Literals([
@@ -368,6 +379,7 @@ const managedSandboxLifecycleResponseSchema = S.Struct({
   guestIdentityRef: S.String,
   providerKind: S.Literal('live_gce'),
   forensicDriverRef: S.Literal('driver.openagents.forensic-worker.v1'),
+  forensicUsage: managedSandboxForensicUsageSchema,
   readiness: managedSandboxReadinessProofSchema,
   cleanup: managedSandboxCleanupProofSchema,
   readinessObserved: S.Boolean,
@@ -390,14 +402,21 @@ const lifecycleAction = (
 
 const managedSandboxLifecycleRequest = (
   env: OpenAgentsWorkerEnv,
-  input: {
-    principal: BoxV1Principal
-    resource: ManagedSandboxResource
-    command: Extract<
-      ManagedSandboxCommand,
-      { _tag: 'Create' | 'Stop' | 'Resume' | 'Delete' }
-    >
-  },
+  input:
+    | {
+        principal: BoxV1Principal
+        resource: ManagedSandboxResource
+        command: Extract<
+          ManagedSandboxCommand,
+          { _tag: 'Create' | 'Stop' | 'Resume' | 'Delete' }
+        >
+      }
+    | {
+        principal: BoxV1Principal
+        resource: ManagedSandboxResource
+        operationRef: string
+        idempotencyRef: string
+      },
 ) =>
   Effect.gen(function* () {
     const baseUrl = env.OA_MANAGED_SANDBOX_CONTROL_URL?.trim()
@@ -406,7 +425,12 @@ const managedSandboxLifecycleRequest = (
     if (!baseUrl || !bearerToken || !profileDigest) {
       return yield* upstreamUnavailable('lifecycle')
     }
-    const action = lifecycleAction(input.command)
+    const action =
+      'command' in input ? lifecycleAction(input.command) : ('probe' as const)
+    const operationRef =
+      'command' in input ? input.command.commandRef : input.operationRef
+    const idempotencyRef =
+      'command' in input ? input.command.idempotencyRef : input.idempotencyRef
     const capabilityRefs = yield* Effect.forEach(
       input.resource.capabilities,
       capability =>
@@ -427,8 +451,8 @@ const managedSandboxLifecycleRequest = (
               'x-openagents-managed-sandbox-token': bearerToken,
             },
             body: JSON.stringify({
-              operationRef: input.command.commandRef,
-              idempotencyRef: input.command.idempotencyRef,
+              operationRef,
+              idempotencyRef,
               actorRef: input.principal.actorRef,
               ownerRef: input.resource.ownerRef,
               tenantRef: input.resource.tenantRef,
@@ -519,13 +543,14 @@ const managedSandboxLifecycleRequest = (
           : input.resource.resourceGeneration
     const expectedPhase = {
       create: 'ready',
+      probe: 'ready',
       stop: 'stopped',
       resume: 'ready',
       delete: 'deleted',
     }[action]
     const expectedImageRef = `gce-image-ref://sha256/${input.resource.imageDigest.replace('sha256:', '')}`
     if (
-      receipt.operationRef !== input.command.commandRef ||
+      receipt.operationRef !== operationRef ||
       receipt.action !== action ||
       receipt.sandboxRef !== input.resource.sandboxRef ||
       receipt.generation !== expectedGeneration ||
@@ -548,7 +573,13 @@ const managedSandboxLifecycleRequest = (
       (receipt.phase === 'ready' &&
         Object.values(receipt.readiness).some(observed => !observed)) ||
       (receipt.phase === 'deleted' &&
-        Object.values(receipt.cleanup).some(observed => !observed)) ||
+        (!receipt.cleanup.zeroCompute ||
+          !receipt.cleanup.zeroDisk ||
+          !receipt.cleanup.zeroFirewall ||
+          !receipt.cleanup.zeroProcess ||
+          !receipt.cleanup.zeroScratch ||
+          !receipt.cleanup.zeroIngress ||
+          receipt.cleanup.zeroGrants)) ||
       receipt.readinessObserved !== (receipt.phase === 'ready') ||
       (receipt.phase === 'deleted' && !receipt.cleanupObserved) ||
       (receipt.cleanupObserved &&
@@ -578,6 +609,7 @@ const managedSandboxLifecycleRequest = (
       forensicDriverRef: receipt.forensicDriverRef,
       readinessProof: receipt.readiness,
       cleanupProof: receipt.cleanup,
+      usageProof: receipt.forensicUsage,
       measuredRunningMs: receipt.measuredRunningMs,
       measuredCostMicros: receipt.measuredCostMicrousd,
       errorCode: receipt.errorCode,
@@ -831,6 +863,7 @@ export const managedSandboxBoxV1RuntimeForEnv = (
   Effect.succeed({
     ...unavailableBoxV1Runtime,
     lifecycle: input => managedSandboxLifecycleRequest(env, input),
+    probe: input => managedSandboxLifecycleRequest(env, input),
     dispatch: input =>
       Effect.gen(function* () {
         const capability = input.resource.capabilities.find(

@@ -296,20 +296,47 @@ impl ReadinessObservation {
 #[serde(rename_all = "camelCase")]
 pub struct CleanupObservation {
     zero_compute: bool,
+    #[serde(default)]
+    zero_disk: bool,
     zero_firewall: bool,
+    #[serde(default)]
+    zero_process: bool,
     zero_scratch: bool,
     zero_ingress: bool,
     zero_grants: bool,
 }
 
 impl CleanupObservation {
-    fn is_clean(&self) -> bool {
+    fn runtime_residue_is_clean(&self) -> bool {
         self.zero_compute
+            && self.zero_disk
             && self.zero_firewall
+            && self.zero_process
             && self.zero_scratch
             && self.zero_ingress
-            && self.zero_grants
     }
+
+    fn provider_resources_are_clean(&self) -> bool {
+        self.zero_compute && self.zero_disk && self.zero_firewall && self.zero_ingress
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForensicUsageObservation {
+    exact: bool,
+    tokens: u64,
+    source_bytes: u64,
+    artifact_bytes: u64,
+    network_bytes: u64,
+    active_turns: u64,
+}
+
+#[derive(Clone, Debug, Default)]
+struct StopObservation {
+    stopped: bool,
+    zero_process: bool,
+    zero_scratch: bool,
 }
 
 trait ManagedSandboxProvider {
@@ -328,7 +355,11 @@ trait ManagedSandboxProvider {
         ownership: &ProviderOwnership,
         generation: u64,
     ) -> Result<ReadinessObservation, RuntimeError>;
-    fn stop(&self, ownership: &ProviderOwnership) -> Result<bool, RuntimeError>;
+    fn stop(&self, ownership: &ProviderOwnership) -> Result<StopObservation, RuntimeError>;
+    fn forensic_usage(
+        &self,
+        ownership: &ProviderOwnership,
+    ) -> Result<ForensicUsageObservation, RuntimeError>;
     fn resume(
         &self,
         ownership: &ProviderOwnership,
@@ -412,6 +443,8 @@ struct RuntimeJournal {
     accrued_running_ms: u64,
     readiness: ReadinessObservation,
     cleanup: CleanupObservation,
+    #[serde(default)]
+    forensic_usage: ForensicUsageObservation,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pending_checkpoint_restore: Option<PendingCheckpointRestore>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -445,6 +478,7 @@ pub struct ManagedSandboxRuntimeReceipt {
     pub disk_ref: String,
     pub provider_kind: String,
     pub forensic_driver_ref: String,
+    pub forensic_usage: ForensicUsageObservation,
     pub readiness: ReadinessObservation,
     pub cleanup: CleanupObservation,
     pub readiness_observed: bool,
@@ -1750,6 +1784,7 @@ fn execute_create(
         accrued_running_ms: 0,
         readiness: ReadinessObservation::default(),
         cleanup: CleanupObservation::default(),
+        forensic_usage: ForensicUsageObservation::default(),
         pending_checkpoint_restore: None,
         pending_checkpoint_fork: None,
         private_ingress: Vec::new(),
@@ -1783,7 +1818,7 @@ fn execute_create(
 
 fn settle_failed_create(provider: &dyn ManagedSandboxProvider, journal: &mut RuntimeJournal) {
     match provider.cleanup(&journal.ownership) {
-        Ok(cleanup) if cleanup.is_clean() => {
+        Ok(cleanup) if cleanup.runtime_residue_is_clean() => {
             journal.cleanup = cleanup;
             journal.phase = RuntimePhase::Failed;
         }
@@ -1872,7 +1907,16 @@ fn execute_existing(
                 return Err(invalid_phase("probe", journal.phase));
             }
             match provider.probe(&journal.ownership, journal.generation) {
-                Ok(readiness) if readiness.is_ready() => journal.readiness = readiness,
+                Ok(readiness) if readiness.is_ready() => {
+                    journal.readiness = readiness;
+                    match provider.forensic_usage(&journal.ownership) {
+                        Ok(usage) if usage.exact => journal.forensic_usage = usage,
+                        _ => {
+                            journal.phase = RuntimePhase::RecoveryRequired;
+                            error_code = Some("forensic_usage_unavailable".to_string());
+                        }
+                    }
+                }
                 Ok(readiness) => {
                     journal.readiness = readiness;
                     journal.phase = RuntimePhase::RecoveryRequired;
@@ -1891,10 +1935,12 @@ fn execute_existing(
             journal.phase = RuntimePhase::Stopping;
             save_journal(&journal_path(state_root, &request.sandbox_ref), &journal)?;
             match provider.stop(&journal.ownership) {
-                Ok(true) => {
+                Ok(observation) if observation.stopped => {
                     accrue_running_time(&mut journal, now);
                     journal.phase = RuntimePhase::Stopped;
                     journal.readiness = ReadinessObservation::default();
+                    journal.cleanup.zero_process = observation.zero_process;
+                    journal.cleanup.zero_scratch = observation.zero_scratch;
                 }
                 _ => {
                     journal.phase = RuntimePhase::RecoveryRequired;
@@ -1965,10 +2011,12 @@ fn execute_existing(
                 }
             }
             RuntimePhase::Stopping => match provider.stop(&journal.ownership) {
-                Ok(true) => {
+                Ok(observation) if observation.stopped => {
                     accrue_running_time(&mut journal, now);
                     journal.phase = RuntimePhase::Stopped;
                     journal.readiness = ReadinessObservation::default();
+                    journal.cleanup.zero_process = observation.zero_process;
+                    journal.cleanup.zero_scratch = observation.zero_scratch;
                 }
                 _ => {
                     journal.phase = RuntimePhase::RecoveryRequired;
@@ -2019,15 +2067,18 @@ fn begin_and_observe_cleanup(
         return;
     }
     match provider.cleanup(&journal.ownership) {
-        Ok(cleanup) if cleanup.is_clean() => {
+        Ok(mut cleanup) => {
+            cleanup.zero_process |= journal.cleanup.zero_process;
+            cleanup.zero_scratch |= journal.cleanup.zero_scratch;
+            if !cleanup.runtime_residue_is_clean() {
+                journal.cleanup = cleanup;
+                journal.phase = RuntimePhase::RecoveryRequired;
+                return;
+            }
             accrue_running_time(journal, now);
             journal.cleanup = cleanup;
             journal.phase = RuntimePhase::Deleted;
             journal.readiness = ReadinessObservation::default();
-        }
-        Ok(cleanup) => {
-            journal.cleanup = cleanup;
-            journal.phase = RuntimePhase::RecoveryRequired;
         }
         Err(_) => journal.phase = RuntimePhase::RecoveryRequired,
     }
@@ -2112,10 +2163,11 @@ fn receipt_for(
         disk_ref: journal.ownership.disk_ref.clone(),
         provider_kind: journal.provider_kind.clone(),
         forensic_driver_ref: FORENSIC_WORKER_DRIVER_REF.to_string(),
+        forensic_usage: journal.forensic_usage.clone(),
         readiness: journal.readiness.clone(),
         cleanup: journal.cleanup.clone(),
         readiness_observed: journal.phase == RuntimePhase::Ready && journal.readiness.is_ready(),
-        cleanup_observed: journal.cleanup.is_clean(),
+        cleanup_observed: journal.cleanup.runtime_residue_is_clean(),
         measured_running_ms: running_ms,
         measured_cost_microusd: cost,
         sandbox_budget_microusd: journal.profile.budget.sandbox_budget_microusd,
@@ -2282,7 +2334,12 @@ struct LiveGceManagedSandboxProvider {
     config: LiveGceManagedSandboxConfig,
 }
 
-fn guest_io_probe_args(project_id: &str, zone: &str, resource_name: &str) -> Vec<String> {
+fn guest_ssh_args(
+    project_id: &str,
+    zone: &str,
+    resource_name: &str,
+    command: String,
+) -> Vec<String> {
     vec![
         "compute".to_string(),
         "ssh".to_string(),
@@ -2300,10 +2357,19 @@ fn guest_io_probe_args(project_id: &str, zone: &str, resource_name: &str) -> Vec
         "--ssh-flag=-oStrictHostKeyChecking=no".to_string(),
         "--ssh-flag=-oUserKnownHostsFile=/dev/null".to_string(),
         "--command".to_string(),
+        command,
+    ]
+}
+
+fn guest_io_probe_args(project_id: &str, zone: &str, resource_name: &str) -> Vec<String> {
+    guest_ssh_args(
+        project_id,
+        zone,
+        resource_name,
         format!(
             "test -x {GUEST_IO_EXECUTABLE} && test -d /workspace && test \"$(uname -s)\" = Linux && test -x /usr/bin/bwrap && test -x {FORENSIC_WORKER_EXECUTABLE} && {FORENSIC_WORKER_EXECUTABLE} preflight >/dev/null"
         ),
-    ]
+    )
 }
 
 fn egress_tcp_allow_is_scoped(
@@ -3016,7 +3082,13 @@ impl ManagedSandboxProvider for LiveGceManagedSandboxProvider {
         self.observe(ownership, generation, "PROBE")
     }
 
-    fn stop(&self, ownership: &ProviderOwnership) -> Result<bool, RuntimeError> {
+    fn stop(&self, ownership: &ProviderOwnership) -> Result<StopObservation, RuntimeError> {
+        self.gcloud(&guest_ssh_args(
+            &self.config.project_id,
+            &self.config.zone,
+            &ownership.resource_name,
+            format!("{FORENSIC_WORKER_EXECUTABLE} prepare-stop >/dev/null"),
+        ))?;
         let mut args = vec![
             "compute".to_string(),
             "instances".to_string(),
@@ -3032,7 +3104,39 @@ impl ManagedSandboxProvider for LiveGceManagedSandboxProvider {
         ];
         describe.extend(self.instance_args(ownership));
         describe.extend(["--format".to_string(), "value(status)".to_string()]);
-        Ok(self.gcloud(&describe)?.trim() == "TERMINATED")
+        Ok(StopObservation {
+            stopped: self.gcloud(&describe)?.trim() == "TERMINATED",
+            zero_process: true,
+            zero_scratch: true,
+        })
+    }
+
+    fn forensic_usage(
+        &self,
+        ownership: &ProviderOwnership,
+    ) -> Result<ForensicUsageObservation, RuntimeError> {
+        let output = self.gcloud(&guest_ssh_args(
+            &self.config.project_id,
+            &self.config.zone,
+            &ownership.resource_name,
+            format!("{FORENSIC_WORKER_EXECUTABLE} usage"),
+        ))?;
+        let usage: ForensicUsageObservation =
+            serde_json::from_str(output.trim()).map_err(|_| {
+                RuntimeError::new(
+                    503,
+                    "forensic_usage_invalid",
+                    "forensic guest usage observation was not valid JSON",
+                )
+            })?;
+        if !usage.exact {
+            return Err(RuntimeError::new(
+                503,
+                "forensic_usage_unavailable",
+                "forensic guest usage observation was not exact",
+            ));
+        }
+        Ok(usage)
     }
 
     fn resume(
@@ -3087,13 +3191,11 @@ impl ManagedSandboxProvider for LiveGceManagedSandboxProvider {
             &ownership.ingress_deny_firewall_name,
             false,
         );
-        let mut observation = CleanupObservation {
-            zero_grants: true,
-            ..CleanupObservation::default()
-        };
+        let mut observation = CleanupObservation::default();
         for _ in 0..15 {
             observation.zero_compute =
                 self.count_named("instances", &ownership.resource_name, true)? == 0;
+            observation.zero_disk = self.count_named("disks", &ownership.disk_name, true)? == 0;
             observation.zero_firewall = [
                 &ownership.firewall_name,
                 &ownership.broker_egress_firewall_name,
@@ -3115,8 +3217,7 @@ impl ManagedSandboxProvider for LiveGceManagedSandboxProvider {
                 self.count_named("firewall-rules", name, false)
                     .is_ok_and(|count| count == 0)
             });
-            observation.zero_scratch = self.count_named("disks", &ownership.disk_name, true)? == 0;
-            if observation.is_clean() {
+            if observation.provider_resources_are_clean() {
                 break;
             }
             thread::sleep(Duration::from_secs(2));
@@ -3314,12 +3415,34 @@ mod tests {
         fn clean() -> CleanupObservation {
             CleanupObservation {
                 zero_compute: true,
+                zero_disk: true,
                 zero_firewall: true,
+                zero_process: true,
                 zero_scratch: true,
                 zero_ingress: true,
-                zero_grants: true,
+                zero_grants: false,
             }
         }
+    }
+
+    #[test]
+    fn provider_and_guest_residue_observations_remain_independent() {
+        let mut observation = CleanupObservation {
+            zero_compute: true,
+            zero_disk: true,
+            zero_firewall: true,
+            zero_process: false,
+            zero_scratch: false,
+            zero_ingress: true,
+            zero_grants: false,
+        };
+        assert!(observation.provider_resources_are_clean());
+        assert!(!observation.runtime_residue_is_clean());
+
+        observation.zero_process = true;
+        assert!(!observation.runtime_residue_is_clean());
+        observation.zero_scratch = true;
+        assert!(observation.runtime_residue_is_clean());
     }
 
     #[test]
@@ -3406,8 +3529,23 @@ mod tests {
                 ReadinessObservation::default()
             })
         }
-        fn stop(&self, _: &ProviderOwnership) -> Result<bool, RuntimeError> {
-            Ok(!self.state.lock().unwrap().fail_stop)
+        fn stop(&self, _: &ProviderOwnership) -> Result<StopObservation, RuntimeError> {
+            let stopped = !self.state.lock().unwrap().fail_stop;
+            Ok(StopObservation {
+                stopped,
+                zero_process: stopped,
+                zero_scratch: stopped,
+            })
+        }
+
+        fn forensic_usage(
+            &self,
+            _: &ProviderOwnership,
+        ) -> Result<ForensicUsageObservation, RuntimeError> {
+            Ok(ForensicUsageObservation {
+                exact: true,
+                ..ForensicUsageObservation::default()
+            })
         }
         fn resume(
             &self,
@@ -3650,6 +3788,7 @@ mod tests {
         )
         .unwrap();
         assert!(probe.readiness_observed);
+        assert!(probe.forensic_usage.exact);
         let stop = execute_with_provider(
             &root,
             &provider,
@@ -3658,6 +3797,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(stop.phase, RuntimePhase::Stopped);
+        assert!(stop.cleanup.zero_process);
+        assert!(stop.cleanup.zero_scratch);
         let resume = execute_with_provider(
             &root,
             &provider,
@@ -3684,6 +3825,11 @@ mod tests {
         .unwrap();
         assert_eq!(delete.phase, RuntimePhase::Deleted);
         assert!(delete.cleanup_observed);
+        assert!(delete.cleanup.zero_compute);
+        assert!(delete.cleanup.zero_disk);
+        assert!(delete.cleanup.zero_firewall);
+        assert!(delete.cleanup.zero_process);
+        assert!(delete.cleanup.zero_scratch);
         let json = serde_json::to_string(&delete).unwrap().to_ascii_lowercase();
         assert!(!json.contains("private-"));
         assert!(!json.contains("serviceaccount.com"));
@@ -4060,7 +4206,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(journal.phase, RuntimePhase::Deleted);
-        assert!(journal.cleanup.is_clean());
+        assert!(journal.cleanup.runtime_residue_is_clean());
         let _ = fs::remove_dir_all(root);
     }
 
@@ -4529,8 +4675,14 @@ mod tests {
             ) -> Result<ReadinessObservation, RuntimeError> {
                 self.0.probe(o, g)
             }
-            fn stop(&self, o: &ProviderOwnership) -> Result<bool, RuntimeError> {
+            fn stop(&self, o: &ProviderOwnership) -> Result<StopObservation, RuntimeError> {
                 self.0.stop(o)
+            }
+            fn forensic_usage(
+                &self,
+                o: &ProviderOwnership,
+            ) -> Result<ForensicUsageObservation, RuntimeError> {
+                self.0.forensic_usage(o)
             }
             fn resume(
                 &self,

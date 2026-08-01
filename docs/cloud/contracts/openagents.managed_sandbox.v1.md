@@ -305,20 +305,35 @@ profile. The admitted guest image must contain
 guest, executable Bubblewrap, and a successful network-unshared driver
 preflight. The lifecycle adapter rejects a ready receipt unless every provider,
 image, identity, network, Linux, Bubblewrap, and driver observation is true.
-It rejects a deleted receipt unless compute, firewall, scratch storage,
-ingress, and grant residue are all observed at zero.
+It rejects a deleted provider receipt unless compute, disk, firewall, process,
+scratch storage, and ingress residue are all observed at zero. Process and
+scratch cleanup are proven by a fixed guest-driver stop preflight before the VM
+is stopped; compute, disk, firewall, and ingress observations come from their
+separate provider inventories after deletion. The provider receipt does not
+claim grant cleanup. The broker emits `CleanupObserved` only after the durable
+resource shows every capability explicitly revoked.
 
-`forensic-managed-sandbox.ts` exposes only create, budget-gated dispatch,
-structurally settled cancellation, and verified deletion. The initial path has
-one new VM and one active turn per run. It exposes no resume, stop, checkpoint,
-fork, restore, prewarm, Box, Pylon, local, fake, BYO, generic-container, or
-foreign-provider operation. Time, token, cost, artifact, network, and
-concurrency truth is checked before prompt dispatch; absent cost truth refuses.
+`forensic-managed-sandbox.ts` exposes admission, budget-gated dispatch,
+structurally settled cancellation, narrow private artifact collection, and
+verified deletion. Admission supplies generation-bound source-materializer and
+artifact capabilities; OFR-003 owns source delivery and cleanup receipts at its
+separate private boundary. Artifact collection uses one fixed path and an exact
+native receipt. The initial path has one new VM and one active turn per run. It
+exposes no client-visible resume, stop, checkpoint, fork, restore, prewarm, Box,
+Pylon, local, fake, BYO, generic-container, or foreign-provider operation.
+Deletion internally revokes durable capabilities, performs the fixed stop
+preflight, stops the guest, and only then deletes provider resources. Before
+prompt dispatch, a fresh native probe receipt supplies measured running time
+and cost plus exact guest-observed token, source, artifact, network, and
+active-turn usage. Request bodies cannot assert or substitute that usage truth.
+Network usage is the cumulative non-loopback RX and TX byte count observed from
+Linux interface counters since the fresh VM boot; source and artifact byte
+totals remain separate and are not substituted for network traffic.
 The specialization never receives a raw project identifier, provider or user
 credential, guest service-account token, guest address, or ambient Internet
 capability.
 The authenticated, default-off `POST /api/forensics/workers` route exposes
-those four tagged operations to first-party clients. It derives the initial
+those five tagged operations to first-party clients. It derives the initial
 single-turn budget from the admitted deployment policy and resolves that exact
 budget by `budget.forensic.worker.initial.v1`; request bodies cannot substitute
 a different dispatch budget.

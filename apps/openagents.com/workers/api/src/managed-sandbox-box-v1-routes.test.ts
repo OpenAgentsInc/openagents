@@ -504,6 +504,11 @@ describe('SBX-03 Box-v1 compatibility facade', () => {
       fetchFor(harness.handle),
     )
     const boxId = await exerciseAdmittedCorpus(api)
+    expect(
+      harness.authority.resources
+        .get(boxId)
+        ?.capabilities.every(capability => capability.state === 'revoked'),
+    ).toBe(true)
     const rawProjection = (await (
       await harness.handle(
         new Request(`https://local-box.test/v1/boxes/${boxId}`, {
@@ -944,6 +949,14 @@ describe('SBX-03 Box-v1 compatibility facade', () => {
           diskRef: 'gce-disk-ref://sha256/sbx09',
           providerKind: 'live_gce',
           forensicDriverRef: 'driver.openagents.forensic-worker.v1',
+          forensicUsage: {
+            exact: true,
+            tokens: 0,
+            sourceBytes: 0,
+            artifactBytes: 0,
+            networkBytes: 0,
+            activeTurns: 0,
+          },
           readiness: {
             providerRunning: true,
             guestMarkerObserved: true,
@@ -961,7 +974,9 @@ describe('SBX-03 Box-v1 compatibility facade', () => {
           },
           cleanup: {
             zeroCompute: false,
+            zeroDisk: false,
             zeroFirewall: false,
+            zeroProcess: false,
             zeroScratch: false,
             zeroIngress: false,
             zeroGrants: false,
