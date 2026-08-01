@@ -123,7 +123,7 @@ export const SarahVoiceAdmissionResponseSchema = S.Struct({
     SARAH_VOICE_ALPHA_COHORT_REF,
     SARAH_VOICE_STAGING_OWNER_COHORT_REF,
   ]),
-  creditMode: S.Literals(["metered", "staging_owner_entitlement"]),
+  creditMode: S.Literals(["metered", "staging_owner_entitlement", "owner_waived_unmetered"]),
   creditRateMsatPerMillionTokens: Seq,
   requiredHoldMsat: Seq,
   spendableRemainingCreditMsat: S.NullOr(Seq),
@@ -146,7 +146,7 @@ export const SarahVoiceSettlementResponseSchema = S.Struct({
   schema: S.Literal(SARAH_VOICE_SETTLEMENT_PROTOCOL_VERSION),
   sessionRef: Ref,
   state: S.Literals(["settled", "released"]),
-  creditMode: S.Literals(["metered", "staging_owner_entitlement"]),
+  creditMode: S.Literals(["metered", "staging_owner_entitlement", "owner_waived_unmetered"]),
   finalChargeMsat: Seq,
   spendableRemainingCreditMsat: S.NullOr(Seq),
   receiptRef: Ref,
@@ -345,7 +345,9 @@ export const SarahVoiceSessionResponseSchema = S.Struct({
   admissionCohortRef: S.optional(
     S.Literals([SARAH_VOICE_ALPHA_COHORT_REF, SARAH_VOICE_STAGING_OWNER_COHORT_REF]),
   ),
-  creditMode: S.optional(S.Literals(["metered", "staging_owner_entitlement"])),
+  creditMode: S.optional(
+    S.Literals(["metered", "staging_owner_entitlement", "owner_waived_unmetered"]),
+  ),
   creditRateMsatPerMillionTokens: S.optional(Seq),
   spendableRemainingCreditMsat: S.optional(S.NullOr(Seq)),
   capabilityBoundary: S.optional(SarahVoiceCapabilityBoundarySchema),

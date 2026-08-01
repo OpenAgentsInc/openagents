@@ -4,6 +4,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   SARAH_LIVEKIT_FAILURE_MATRIX_SCHEMA,
   SARAH_LIVEKIT_FAILURE_SCENARIOS,
+  SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIOS,
   SARAH_LIVEKIT_SFU_LOSS_BOUND_MS,
   buildSarahLiveKitFailureMatrixReceipt,
   validateSarahLiveKitFailureMatrixObservation,
@@ -20,7 +21,6 @@ const terminalReason = {
   planned_worker_crash: "worker_error",
   sfu_loss: "worker_shutdown",
   provider_disconnect: "provider_disconnect",
-  hold_exhaustion: "hold_exhausted",
   reconnect: "completed",
 } as const;
 
@@ -31,7 +31,6 @@ const faultAction = {
   planned_worker_crash: "delete_exact_worker_pod",
   sfu_loss: "delete_exact_sfu_pod",
   provider_disconnect: "close_exact_provider_socket",
-  hold_exhaustion: "exhaust_exact_session_hold",
   reconnect: "reconnect_after_terminal",
 } as const;
 
@@ -42,13 +41,14 @@ const observation = (): SarahLiveKitFailureMatrixObservation => ({
   workerImageDigest: digest("worker"),
   observedAt: "2026-07-31T12:00:00.000Z",
   runDigest: digest("run"),
+  retiredScenarios: SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIOS,
   scenarios: SARAH_LIVEKIT_FAILURE_SCENARIOS.map((scenario, scenarioIndex) => {
     const base = scenarioIndex * 10;
     return {
       scenario,
       faultAction: faultAction[scenario],
       terminalReason: terminalReason[scenario],
-      terminalState: scenario === "hold_exhaustion" ? "released" : "settled",
+      terminalState: "settled",
       startedAtMs: 1_000 + scenarioIndex * 10_000,
       terminalAtMs: 2_000 + scenarioIndex * 10_000,
       identityDigests: {
@@ -154,9 +154,9 @@ describe("Sarah LiveKit terminal failure matrix", () => {
       retainedMedia: false,
       retainedTranscript: false,
       aggregateUsage: {
-        inputTokens: 80,
-        outputTokens: 88,
-        chargeMsat: 136,
+        inputTokens: 70,
+        outputTokens: 77,
+        chargeMsat: 119,
       },
     });
     expect(receipt.scenarios.map((scenario) => scenario.scenario)).toEqual(
@@ -206,7 +206,7 @@ describe("Sarah LiveKit terminal failure matrix", () => {
 
     expect(() =>
       validateSarahLiveKitFailureMatrixObservation(
-        mutateScenario(observation(), "hold_exhaustion", (scenario) => {
+        mutateScenario(observation(), "provider_disconnect", (scenario) => {
           scenario["rawMediaFindings"] = 1;
         }),
       ),

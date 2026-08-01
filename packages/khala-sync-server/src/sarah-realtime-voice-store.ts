@@ -19,7 +19,10 @@ export type SarahVoiceClientProfile =
   | "omega_editor"
   | "mobile_voice_only"
   | "mobile_command_center";
-export type SarahVoiceCreditMode = "metered" | "staging_owner_entitlement";
+export type SarahVoiceCreditMode =
+  | "metered"
+  | "staging_owner_entitlement"
+  | "owner_waived_unmetered";
 export type SarahVoiceTransportKind = "custom_wss_v1" | "livekit_room_v1";
 export const SARAH_LIVEKIT_MAX_ACTIVE_ROOMS = 20;
 
@@ -379,6 +382,18 @@ export type SarahVoiceAccountingReconciliationResult = Readonly<{
   state: "settled" | "released";
   finalChargeMsat: number;
   settlementReceiptRef: string;
+  replayed: boolean;
+}>;
+
+export type SarahVoiceAccountingWaiverResult = Readonly<{
+  waiverRef: string;
+  waiverReceiptRef: string;
+  sessionRef: string;
+  state: "released";
+  releasedHoldMsat: number;
+  recordedChargeWaivedMsat: number;
+  providerAccountingStatus: "uncertain";
+  authority: "owner_waived_unmetered_v1";
   replayed: boolean;
 }>;
 
@@ -939,7 +954,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           }
         }
 
-        if (input.creditMode === "metered") {
+        if (input.creditMode === "metered" || input.creditMode === "owner_waived_unmetered") {
           const memberships = (await tx`
             SELECT membership_ref
             FROM sarah_voice_alpha_memberships
@@ -954,7 +969,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
               "The Sarah voice alpha membership is not active",
             );
           }
-          if (input.admissionBinding !== undefined) {
+          if (input.creditMode === "metered" && input.admissionBinding !== undefined) {
             const balances = (await tx`
               SELECT balance_msat - held_msat AS spendable_msat
               FROM agent_balances
@@ -972,17 +987,23 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
               );
             }
           }
-          const balances = (await tx`
-            UPDATE agent_balances
-            SET held_msat = held_msat + ${input.reservedMsat},
-                updated_at = ${input.nowIso}
-            WHERE actor_ref = ${input.ownerActorRef}
-              AND balance_msat - held_msat >= ${input.reservedMsat}
-            RETURNING actor_ref
-          `) as ReadonlyArray<{ actor_ref: string }>;
-          if (first(balances) === undefined) {
-            throw new SarahVoiceInsufficientCreditError(
-              "The account has insufficient available credit",
+          if (input.creditMode === "metered") {
+            const balances = (await tx`
+              UPDATE agent_balances
+              SET held_msat = held_msat + ${input.reservedMsat},
+                  updated_at = ${input.nowIso}
+              WHERE actor_ref = ${input.ownerActorRef}
+                AND balance_msat - held_msat >= ${input.reservedMsat}
+              RETURNING actor_ref
+            `) as ReadonlyArray<{ actor_ref: string }>;
+            if (first(balances) === undefined) {
+              throw new SarahVoiceInsufficientCreditError(
+                "The account has insufficient available credit",
+              );
+            }
+          } else if (input.reservedMsat !== 0 || input.entitlementRef !== null) {
+            throw new SarahVoiceAdmissionRejectedError(
+              "Owner-waived Sarah voice must not reserve credit",
             );
           }
         } else {
@@ -2613,13 +2634,14 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }>
   > => {
     const sessions = (await tx`
-      SELECT generation, state, credit_rate_msat_per_million_tokens
+      SELECT generation, state, credit_mode, credit_rate_msat_per_million_tokens
       FROM sarah_realtime_voice_sessions
       WHERE session_ref = ${input.sessionRef}
       FOR UPDATE
     `) as ReadonlyArray<{
       generation: number | string;
       state: SarahVoiceSessionState;
+      credit_mode: SarahVoiceCreditMode;
       credit_rate_msat_per_million_tokens: number | string | null;
     }>;
     const session = first(sessions);
@@ -2655,7 +2677,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }
     const usage = {
       ...input.usage,
-      chargeMsat: Number(chargeMsatBigInt),
+      chargeMsat: session.credit_mode === "owner_waived_unmetered" ? 0 : Number(chargeMsatBigInt),
     };
 
     const inserted = (await tx`
@@ -2726,6 +2748,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             audio_output_tokens =
               audio_output_tokens + ${usage.audioOutputTokens},
             charged_msat = CASE
+              WHEN credit_mode = 'owner_waived_unmetered' THEN 0
               WHEN credit_mode = 'metered' THEN LEAST(
                 reserved_msat,
                 charged_msat + ${usage.chargeMsat}
@@ -2931,9 +2954,12 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }
 
     const receiptRef = `sarah_voice_settlement:${current.sessionRef}`;
-    if (current.creditMode === "staging_owner_entitlement") {
+    if (
+      current.creditMode === "staging_owner_entitlement" ||
+      current.creditMode === "owner_waived_unmetered"
+    ) {
       // The session and usage rows are the settlement evidence. The staging
-      // entitlement does not write a payment or change the credit balance.
+      // entitlement and owner waiver do not write a payment or change credit.
     } else if (current.chargedMsat > 0) {
       await tx`
         INSERT INTO pay_ins (
@@ -3033,6 +3059,224 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     } catch (error) {
       if (error instanceof SarahVoiceSessionRejectedError) throw error;
       throw new SarahVoiceStorageError("Sarah voice settlement failed", error);
+    }
+  };
+
+  const waiveLiveKitAccounting = async (
+    input: Readonly<{
+      waiverRef: string;
+      waiverPayloadDigest: string;
+      sessionRef: string;
+      generation: number;
+      providerSessionRefDigest: string;
+      operatorActorRef: string;
+      reason: string;
+      providerEvidenceRefs: ReadonlyArray<string>;
+      nowIso: string;
+    }>,
+  ): Promise<SarahVoiceAccountingWaiverResult> => {
+    try {
+      if (
+        input.waiverRef.length < 1 ||
+        input.waiverRef.length > 256 ||
+        !/^[0-9a-f]{64}$/u.test(input.waiverPayloadDigest) ||
+        !/^[0-9a-f]{64}$/u.test(input.providerSessionRefDigest) ||
+        input.reason.length < 1 ||
+        input.reason.length > 1_024 ||
+        input.providerEvidenceRefs.length < 1 ||
+        input.providerEvidenceRefs.length > 16 ||
+        new Set(input.providerEvidenceRefs).size !== input.providerEvidenceRefs.length ||
+        input.providerEvidenceRefs.some(
+          (reference) => reference.length < 1 || reference.length > 512,
+        )
+      ) {
+        throw new SarahVoiceSessionRejectedError("The Sarah voice accounting waiver is invalid");
+      }
+      const waiverReceiptRef = `sarah_voice_accounting_waiver:${input.waiverPayloadDigest}`;
+      return await sql.begin(async (tx) => {
+        const sessions = (await tx`
+          SELECT session_ref, generation, owner_actor_ref, state, transport_kind,
+            credit_mode, reserved_msat, charged_msat
+          FROM sarah_realtime_voice_sessions
+          WHERE session_ref = ${input.sessionRef}
+          FOR UPDATE
+        `) as ReadonlyArray<{
+          session_ref: string;
+          generation: number | string;
+          owner_actor_ref: string;
+          state: SarahVoiceSessionState;
+          transport_kind: SarahVoiceTransportKind;
+          credit_mode: SarahVoiceCreditMode;
+          reserved_msat: number | string;
+          charged_msat: number | string;
+        }>;
+        const session = first(sessions);
+        if (
+          session === undefined ||
+          toSafeInteger(session.generation, "generation") !== input.generation
+        ) {
+          throw new SarahVoiceSessionRejectedError(
+            "The Sarah voice accounting waiver generation does not exist",
+          );
+        }
+
+        const priorRows = (await tx`
+          SELECT waiver_ref, waiver_receipt_ref, waiver_payload_digest,
+            session_ref, generation, operator_actor_ref, waiver_reason,
+            provider_evidence_refs_json, provider_session_ref_digest,
+            prior_reserved_msat, prior_recorded_charge_msat,
+            provider_accounting_status, authority
+          FROM sarah_voice_accounting_waivers
+          WHERE waiver_ref = ${input.waiverRef}
+            OR session_ref = ${input.sessionRef}
+          FOR SHARE
+        `) as ReadonlyArray<{
+          waiver_ref: string;
+          waiver_receipt_ref: string;
+          waiver_payload_digest: string;
+          session_ref: string;
+          generation: number | string;
+          operator_actor_ref: string;
+          waiver_reason: string;
+          provider_evidence_refs_json: unknown;
+          provider_session_ref_digest: string;
+          prior_reserved_msat: number | string;
+          prior_recorded_charge_msat: number | string;
+          provider_accounting_status: "uncertain";
+          authority: "owner_waived_unmetered_v1";
+        }>;
+        const prior = first(priorRows);
+        if (prior !== undefined) {
+          if (
+            priorRows.length !== 1 ||
+            prior.waiver_ref !== input.waiverRef ||
+            prior.waiver_receipt_ref !== waiverReceiptRef ||
+            prior.waiver_payload_digest !== input.waiverPayloadDigest ||
+            prior.session_ref !== input.sessionRef ||
+            toSafeInteger(prior.generation, "generation") !== input.generation ||
+            prior.operator_actor_ref !== input.operatorActorRef ||
+            prior.waiver_reason !== input.reason ||
+            prior.provider_session_ref_digest !== input.providerSessionRefDigest ||
+            !Array.isArray(prior.provider_evidence_refs_json) ||
+            JSON.stringify(prior.provider_evidence_refs_json) !==
+              JSON.stringify(input.providerEvidenceRefs) ||
+            session.state !== "released" ||
+            session.credit_mode !== "owner_waived_unmetered" ||
+            toSafeInteger(session.reserved_msat, "reserved_msat") !== 0 ||
+            toSafeInteger(session.charged_msat, "charged_msat") !== 0
+          ) {
+            throw new SarahVoiceSessionRejectedError(
+              "The Sarah voice accounting waiver conflicts with prior authority",
+            );
+          }
+          return {
+            waiverRef: prior.waiver_ref,
+            waiverReceiptRef: prior.waiver_receipt_ref,
+            sessionRef: prior.session_ref,
+            state: "released",
+            releasedHoldMsat: toSafeInteger(prior.prior_reserved_msat, "prior_reserved_msat"),
+            recordedChargeWaivedMsat: toSafeInteger(
+              prior.prior_recorded_charge_msat,
+              "prior_recorded_charge_msat",
+            ),
+            providerAccountingStatus: prior.provider_accounting_status,
+            authority: prior.authority,
+            replayed: true,
+          };
+        }
+        if (
+          session.transport_kind !== "livekit_room_v1" ||
+          session.state !== "accounting_uncertain"
+        ) {
+          throw new SarahVoiceSessionRejectedError(
+            "Only uncertain LiveKit accounting can receive an owner waiver",
+          );
+        }
+        const bindings = (await tx`
+          SELECT provider_accounting_status, provider_session_ref_digest
+          FROM sarah_livekit_room_bindings
+          WHERE session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+          FOR UPDATE
+        `) as ReadonlyArray<{
+          provider_accounting_status: "pending" | "exact" | "uncertain";
+          provider_session_ref_digest: string | null;
+        }>;
+        const binding = first(bindings);
+        if (
+          binding?.provider_accounting_status !== "uncertain" ||
+          binding.provider_session_ref_digest !== input.providerSessionRefDigest
+        ) {
+          throw new SarahVoiceSessionRejectedError(
+            "The LiveKit provider accounting evidence does not match the waiver",
+          );
+        }
+        const priorReservedMsat = toSafeInteger(session.reserved_msat, "reserved_msat");
+        const priorRecordedChargeMsat = toSafeInteger(session.charged_msat, "charged_msat");
+        if (priorReservedMsat > 0) {
+          const released = (await tx`
+            UPDATE agent_balances
+            SET held_msat = held_msat - ${priorReservedMsat},
+                updated_at = ${input.nowIso}
+            WHERE actor_ref = ${session.owner_actor_ref}
+              AND held_msat >= ${priorReservedMsat}
+            RETURNING actor_ref
+          `) as ReadonlyArray<{ actor_ref: string }>;
+          if (first(released) === undefined) {
+            throw new SarahVoiceStorageError(
+              "The waived Sarah voice hold could not be released",
+              null,
+            );
+          }
+        }
+        await tx`
+          INSERT INTO sarah_voice_accounting_waivers (
+            waiver_ref, waiver_receipt_ref, waiver_payload_digest, session_ref,
+            generation, operator_actor_ref, waiver_reason,
+            provider_evidence_refs_json, provider_session_ref_digest,
+            prior_reserved_msat, prior_recorded_charge_msat,
+            provider_accounting_status, authority, created_at
+          ) VALUES (
+            ${input.waiverRef}, ${waiverReceiptRef}, ${input.waiverPayloadDigest},
+            ${input.sessionRef}, ${input.generation}, ${input.operatorActorRef},
+            ${input.reason},
+            ${JSON.stringify(input.providerEvidenceRefs)}::text::jsonb,
+            ${input.providerSessionRefDigest}, ${priorReservedMsat},
+            ${priorRecordedChargeMsat}, 'uncertain',
+            'owner_waived_unmetered_v1', ${input.nowIso}
+          )
+        `;
+        await tx`
+          UPDATE sarah_realtime_voice_sessions
+          SET state = 'released', credit_mode = 'owner_waived_unmetered',
+              entitlement_ref = NULL, reserved_msat = 0, charged_msat = 0,
+              ticket_digest = NULL, settlement_receipt_ref = ${waiverReceiptRef},
+              close_reason = ${`accounting_owner_waived:${input.waiverRef}`.slice(0, 256)},
+              settled_at = ${input.nowIso}, updated_at = ${input.nowIso}
+          WHERE session_ref = ${input.sessionRef}
+            AND generation = ${input.generation}
+            AND state = 'accounting_uncertain'
+        `;
+        return {
+          waiverRef: input.waiverRef,
+          waiverReceiptRef,
+          sessionRef: input.sessionRef,
+          state: "released",
+          releasedHoldMsat: priorReservedMsat,
+          recordedChargeWaivedMsat: priorRecordedChargeMsat,
+          providerAccountingStatus: "uncertain",
+          authority: "owner_waived_unmetered_v1",
+          replayed: false,
+        };
+      });
+    } catch (error) {
+      if (
+        error instanceof SarahVoiceSessionRejectedError ||
+        error instanceof SarahVoiceStorageError
+      ) {
+        throw error;
+      }
+      throw new SarahVoiceStorageError("Sarah voice accounting waiver failed", error);
     }
   };
 
@@ -5313,6 +5557,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     recordUsage,
     recordLiveKitToolOutcome,
     reconcileLiveKitAccounting,
+    waiveLiveKitAccounting,
     reserve,
     revokeAlphaCohort,
     revokeLiveKitRoom,

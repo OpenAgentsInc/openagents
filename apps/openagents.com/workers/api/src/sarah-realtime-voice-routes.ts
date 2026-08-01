@@ -747,7 +747,7 @@ export const parseSarahRealtimeVoiceRouteConfig = (
   )
   if (
     !Number.isSafeInteger(reservationMsat) ||
-    reservationMsat <= 0 ||
+    reservationMsat !== 0 ||
     !Number.isSafeInteger(creditMsatPerMillionTokens) ||
     creditMsatPerMillionTokens <= 0 ||
     !Number.isSafeInteger(maxSessionSeconds) ||
@@ -1028,27 +1028,19 @@ export const handleSarahRealtimeVoiceAdmissionRequest = async <User, Bindings>(
       )
     }
 
-    const [membership, spendableRemainingCreditMsat] = await Promise.all([
-      opened.store.readActiveAlphaMembership({
-        ownerUserId: userId,
-        cohortRef: SARAH_VOICE_ALPHA_COHORT_REF,
-        nowIso,
-      }),
-      opened.store.readSpendableCredit({
-        ownerUserId: userId,
-        ownerActorRef: `agent:${userId}`,
-      }),
-    ])
-    const admitted =
-      membership !== undefined &&
-      spendableRemainingCreditMsat >= config.reservationMsat
+    const membership = await opened.store.readActiveAlphaMembership({
+      ownerUserId: userId,
+      cohortRef: SARAH_VOICE_ALPHA_COHORT_REF,
+      nowIso,
+    })
+    const admitted = membership !== undefined
     const terms = {
       clientProfile,
       admissionCohortRef: SARAH_VOICE_ALPHA_COHORT_REF,
-      creditMode: 'metered' as const,
+      creditMode: 'owner_waived_unmetered' as const,
       creditRateMsatPerMillionTokens: config.creditMsatPerMillionTokens,
-      requiredHoldMsat: config.reservationMsat,
-      spendableRemainingCreditMsat,
+      requiredHoldMsat: 0,
+      spendableRemainingCreditMsat: null,
       maxDurationSeconds: config.maxSessionSeconds,
       capabilityBoundary: capabilityBoundaryForProfile(
         clientProfile,
@@ -1078,7 +1070,7 @@ export const handleSarahRealtimeVoiceAdmissionRequest = async <User, Bindings>(
           transportKind: requestedTransport,
           roomContext: admissionRoomContext,
         }),
-        spendableRemainingCreditMsat,
+        spendableRemainingCreditMsat: null,
         nowIso,
         expiresAt: new Date(admissionExpiresAtMs).toISOString(),
       })
@@ -1093,10 +1085,7 @@ export const handleSarahRealtimeVoiceAdmissionRequest = async <User, Bindings>(
         ...(admitted
           ? {}
           : {
-              refusalReason:
-                membership === undefined
-                  ? 'cohort_inactive'
-                  : 'insufficient_credit',
+              refusalReason: 'cohort_inactive',
             }),
         ...(issuedNostrAuth === undefined
           ? {}
@@ -1574,19 +1563,15 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
       )
     }
     const creditMode =
-      entitlement === undefined ? 'metered' : 'staging_owner_entitlement'
-    const reservedMsat = entitlement === undefined ? config.reservationMsat : 0
+      entitlement === undefined
+        ? 'owner_waived_unmetered'
+        : 'staging_owner_entitlement'
+    const reservedMsat = 0
     const admissionCohortRef =
       entitlement === undefined
         ? SARAH_VOICE_ALPHA_COHORT_REF
         : SARAH_VOICE_STAGING_OWNER_COHORT_REF
-    const spendableRemainingCreditMsat =
-      requiresAdmission && entitlement === undefined
-        ? await opened.store.readSpendableCredit({
-            ownerUserId: userId,
-            ownerActorRef: `agent:${userId}`,
-          })
-        : null
+    const spendableRemainingCreditMsat = null
     let liveKitRoomContext:
       | Readonly<{ kind: 'private' }>
       | (SarahVoiceLiveKitCommunityAccess & Readonly<{ kind: 'community' }>) = {

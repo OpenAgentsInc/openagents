@@ -15,8 +15,15 @@ export const SARAH_LIVEKIT_REMAINING_DRILL_RECEIPT_SCHEMA =
 
 export const SARAH_LIVEKIT_REMAINING_DRILL_SCENARIOS = [
   "provider_disconnect",
-  "hold_exhaustion",
   "reconnect",
+] as const;
+export const SARAH_LIVEKIT_RETIRED_DRILL_SCENARIOS = [
+  {
+    scenario: "hold_exhaustion",
+    classification: "not_applicable_removed",
+    authority: "owner_waived_unmetered_v1",
+    reason: "Sarah voice admission creates no credit hold or ledger charge",
+  },
 ] as const;
 export type SarahLiveKitRemainingDrillScenario =
   (typeof SARAH_LIVEKIT_REMAINING_DRILL_SCENARIOS)[number];
@@ -358,47 +365,7 @@ const runSingleSession = async (
     return { turnsSent: 1, authority, providerDisconnect: request };
   }
 
-  if (input.scenario !== "hold_exhaustion") {
-    throw new Error("single-session remaining drill scenario is unsupported");
-  }
-  let turnsSent = 1;
-  let authority = await readExactAuthority(dependencies, session.identity.sessionRef);
-  const deadline = session.clock.now() + input.observationWindowMs;
-  while (!terminal(authority.state)) {
-    if (authority.chargedMsat < authority.reservedMsat) {
-      try {
-        // No fixed turn count: each next turn is authorized only after the
-        // authoritative session row says this hold still has capacity.
-        // eslint-disable-next-line no-await-in-loop
-        await session.sendMicrophoneTurn(input.session.pcm);
-        turnsSent += 1;
-      } catch (error) {
-        // A terminal hold can close the media source while the last turn is being
-        // written. Only the authority may convert that failure into a pass.
-        // eslint-disable-next-line no-await-in-loop
-        authority = await readExactAuthority(dependencies, session.identity.sessionRef);
-        if (!terminal(authority.state) || authority.closeReason !== "hold_exhausted") throw error;
-        break;
-      }
-    }
-    // eslint-disable-next-line no-await-in-loop
-    authority = await readExactAuthority(dependencies, session.identity.sessionRef);
-    if (session.clock.now() >= deadline && !terminal(authority.state)) {
-      throw new Error("the exact admitted hold did not exhaust within the observation window");
-    }
-    if (!terminal(authority.state)) {
-      // eslint-disable-next-line no-await-in-loop
-      await session.clock.sleep(pollIntervalMs);
-      // eslint-disable-next-line no-await-in-loop
-      authority = await readExactAuthority(dependencies, session.identity.sessionRef);
-    }
-  }
-  assertTerminalAuthority(authority, "hold_exhausted");
-  if (authority.chargedMsat !== authority.reservedMsat) {
-    throw new Error("hold_exhaustion stopped before the exact admitted hold was exhausted");
-  }
-  await settleAfterTerminal(session, input.session, input.observationWindowMs);
-  return { turnsSent, authority, providerDisconnect: null };
+  throw new Error("single-session remaining drill scenario is unsupported");
 };
 
 export const runSarahLiveKitRemainingDrill = async (
@@ -569,14 +536,6 @@ export const buildSarahLiveKitRemainingDrillReceipt = (
       observation.providerDisconnect.sharedInfrastructureMutated !== false)
   ) {
     throw new Error("provider_disconnect receipt has no exact applied fault");
-  }
-  if (
-    observation.scenario === "hold_exhaustion" &&
-    (observation.previous.closeReason !== "hold_exhausted" ||
-      observation.previous.chargedMsat !== observation.previous.reservedMsat ||
-      observation.providerDisconnect !== null)
-  ) {
-    throw new Error("hold_exhaustion receipt did not exhaust the exact admitted hold");
   }
   if (observation.scenario === "reconnect") {
     if (

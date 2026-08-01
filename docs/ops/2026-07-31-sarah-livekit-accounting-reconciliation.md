@@ -1,9 +1,11 @@
 # Sarah LiveKit accounting reconciliation
 
 Use this procedure only when a LiveKit voice session is in
-`accounting_uncertain`. That state deliberately preserves the owner's credit
-hold because the admitted OpenAI Realtime session may have remained billable
-after the worker lost control delivery.
+`accounting_uncertain`. Production-alpha Sarah now uses
+`owner_waived_unmetered`: admission records a zero hold, never reads spendable
+credit, and never debits the OpenAgents ledger. Provider tokens and uncertainty
+remain durable evidence; zero ledger charge is an owner waiver, not a claim
+that provider usage was free or exact.
 
 ## Bounded escalation and voice availability
 
@@ -13,7 +15,8 @@ the uncertain session. The session stays `accounting_uncertain`; its recorded
 charge, provider-accounting status, balance, and complete credit hold do not
 change. The escalation removes only that row from the per-owner active-voice
 index, so an accounting incident cannot deny the owner all later voice sessions
-forever. Normal spendable-credit checks still include the preserved hold.
+forever. Pre-cutover metered holds remain preserved until exact reconciliation
+or the separately gated owner-waiver batch below.
 
 The settlement endpoint returns the escalation reference and timestamp with
 the existing 409 response. The maintenance tick also reports
@@ -34,6 +37,25 @@ ORDER BY accounting_escalated_at NULLS FIRST, session.updated_at;
 
 Escalation is not settlement evidence. Do not release or debit the hold from an
 escalation receipt, and do not infer missing provider usage from its deadline.
+
+## Owner-waived pre-cutover release
+
+When the owner deliberately retires platform credit charging, first preview
+the eligible pre-cutover rows with
+`scripts/waive-sarah-accounting-uncertain.ts`. The tool discovers metered
+LiveKit rows whose provider status is still uncertain, writes the private refs
+only to a new mode-0600 file outside the repository, and prints only aggregate
+amounts and digests. Apply requires `--environment production`, the exact
+previewed target count and target-set digest,
+`SARAH_ACCOUNTING_WAIVER_EXPECTED_PRODUCTION_DATABASE` matching
+`current_database()`, and
+`SARAH_ACCOUNTING_WAIVER_OWNER_GATE=I_APPROVE_SARAH_UNMETERED_ACCOUNTING_WAIVER`.
+
+Each row receives an idempotent `owner_waived_unmetered_v1` audit receipt. The
+transaction releases the old hold and records zero reserved/charged platform
+credit. It does not insert, delete, or change provider usage rows, and the
+binding remains `uncertain` with its original reason and timestamps. Never
+describe this path as exact provider reconciliation.
 
 ## Evidence boundary
 

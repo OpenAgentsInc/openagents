@@ -69,9 +69,9 @@ provider_disconnect additionally requires OPENAGENTS_ADMIN_BEARER in process
 memory and an already armed bounded acceptance revision. The command sends the
 bearer only to the exact HTTPS API origin and never writes or prints it.
 
-hold_exhaustion never chooses a turn count and never changes credit. It sends
-the next turn only while the exact session authority is active and stops only
-when that authority reports hold_exhausted with charged == reserved.
+hold_exhaustion is retired as not_applicable_removed. Owner-waived Sarah
+admission creates reservedMsat=0 and never mutates balance or held credit, so
+there is no hold to exhaust and this driver cannot select that scenario.
 
 reconnect closes and settles the old generation before admitting a distinct,
 strictly later generation. It then rereads the old authority and refuses any

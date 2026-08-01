@@ -2241,11 +2241,13 @@ comes from the active binding's provider digest, and the runner rejects any
 response that changes the session, generation, digest, or
 `sharedInfrastructureMutated: false` assertion.
 
-`hold_exhaustion` has no `--turns` option. It rereads the exact session before
-each next PCM turn and continues only while the authority says that generation
-is active. It passes only after `hold_exhausted`, terminal exact accounting,
-and `chargedMsat == reservedMsat`; it never grants, moves, releases, or guesses
-credit. Size the observation window for the admitted hold and candidate rate.
+`hold_exhaustion` is retired as `not_applicable_removed` under
+`owner_waived_unmetered_v1`. Admission must report `requiredHoldMsat: 0` and
+`spendableRemainingCreditMsat: null`; reservation must persist
+`reservedMsat = chargedMsat = 0` without reading or mutating `agent_balances`.
+The remaining-drill CLI no longer accepts the scenario, so it cannot loop
+forever waiting for a condition the owner removed. Historical evidence remains
+in the v1 receipt; v2 failure-matrix receipts carry the explicit retirement row.
 
 `reconnect` creates a distinct generation-two session only after the first
 session is terminal and its settlement is readable. After fresh admission it

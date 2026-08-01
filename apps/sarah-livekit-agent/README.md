@@ -41,8 +41,9 @@ control plane. Sarah-initiated shutdown cancels an in-flight response, drains
 response and transcription accounting, and only then closes the provider and
 asks the worker SDK to shut down. A transcription failure, accounting timeout,
 or provider/SDK-first disconnect enters `accounting_uncertain`: the recorded
-charge is not presented as final, the full credit hold remains reserved, and
-room cleanup waits for explicit provider reconciliation.
+provider usage is not presented as exact. Owner-waived sessions have no credit
+hold or ledger charge; pre-cutover metered holds require exact reconciliation
+or the separately owner-gated waiver audit.
 
 The control plane does not advertise the session as ready when the worker merely
 joins LiveKit. It waits for the owner participant, a completed `AgentSession`
@@ -227,8 +228,9 @@ This control never changes a firewall, route, NetworkPolicy, Secret, LiveKit
 server, or shared Deployment. If complete terminal response and transcription
 usage reaches the control plane during the bounded drain, normal exact
 settlement applies. If the socket closes before completeness can be proven, the
-session becomes `accounting_uncertain`, keeps its full hold, and requires the
-provider-export reconciliation procedure. The acceptance response is
+session becomes `accounting_uncertain` and requires the provider-export
+reconciliation procedure. Under `owner_waived_unmetered_v1` it keeps provider
+evidence but creates no platform hold or charge. The acceptance response is
 `Cache-Control: no-store`; keep its session and provider identifiers in the
 private drill record rather than a public receipt.
 

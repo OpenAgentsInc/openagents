@@ -86,8 +86,8 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // platform OpenAI key only in the Cloud Run monolith. Clients receive a
   // one-use OpenAgents ticket and never receive provider credentials.
   SARAH_REALTIME_VOICE_ENABLED?: string | undefined
-  // Credit held before the provider socket opens. Required and positive when
-  // the feature is enabled.
+  // Legacy metered reservation. Production-alpha Sarah is owner-waived and
+  // requires this to be zero; retained only for rollback compatibility.
   SARAH_REALTIME_RESERVATION_MSAT?: string | undefined
   // OpenAgents credit rate for exact provider token usage. This is an operator
   // rate, not a claim about the provider's public price.

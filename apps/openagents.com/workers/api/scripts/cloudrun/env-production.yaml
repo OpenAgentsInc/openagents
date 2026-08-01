@@ -260,11 +260,11 @@ SARAH_LIVEKIT_COMMUNITY_AUTHORITY_JSON: '{"schema":"openagents.sarah.livekit.com
 # room authority and requires a newly provisioned room before Sarah can hear.
 SARAH_LIVEKIT_E2EE_KEY_REVISION: "a4b0c1ca91d556815f39dfe192105cbe5201db24fa94e5bfd6f5bea3e68b0669"
 SARAH_LIVEKIT_URL: "wss://livekit.openagents.com"
-# Managed Sarah Realtime voice (#9272). Matches staging credit hold + rate so
-# mobile/desktop clients can reserve sessions; off-by-default until this flip.
+# Managed Sarah Realtime voice (#9272/#9285). Provider usage remains recorded,
+# but owner-waived alpha sessions do not reserve or debit platform credit.
 SARAH_REALTIME_CREDIT_MSAT_PER_MILLION_TOKENS: "64000000"
 SARAH_REALTIME_MAX_SESSION_SECONDS: "300"
-SARAH_REALTIME_RESERVATION_MSAT: "256000"
+SARAH_REALTIME_RESERVATION_MSAT: "0"
 SARAH_REALTIME_VOICE_ENABLED: "true"
 WEB_ANALYTICS_ENABLED: "true"
 PGHOST: "/cloudsql/openagentsgemini:us-central1:khala-sync-pg"

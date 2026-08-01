@@ -4,6 +4,7 @@ import type { SarahLiveKitLiveSession } from "./acceptance-livekit.js";
 import type { SarahLiveKitAcceptanceScenario } from "./acceptance-harness.js";
 import {
   SARAH_LIVEKIT_REMAINING_DRILL_RECEIPT_SCHEMA,
+  SARAH_LIVEKIT_RETIRED_DRILL_SCENARIOS,
   assertPublicSafeSarahLiveKitRemainingDrillReceipt,
   buildSarahLiveKitRemainingDrillReceipt,
   runSarahLiveKitRemainingDrill,
@@ -194,78 +195,14 @@ describe("remaining Sarah LiveKit drill drivers", () => {
     expect(JSON.stringify(receipt)).not.toContain(scenario.sessionRef);
   });
 
-  test("keeps sending turns until authority, not a turn guess, reports exact hold exhaustion", async () => {
-    const scenario = privateScenario("hold-session", 1);
-    let turns = 1;
-    const observation = await runSarahLiveKitRemainingDrill(
-      {
+  test("retires hold exhaustion instead of looping against a zero hold", () => {
+    expect(SARAH_LIVEKIT_RETIRED_DRILL_SCENARIOS).toEqual([
+      expect.objectContaining({
         scenario: "hold_exhaustion",
-        session: scenario,
-        sourceRevision: revision,
-        workerImageDigest: image,
-        observationWindowMs: 10_000,
-      },
-      {
-        openSession: () =>
-          Promise.resolve(
-            fakeSession(scenario, {
-              send: () => {
-                turns += 1;
-              },
-            }),
-          ),
-        readAuthority: () =>
-          Promise.resolve(
-            turns < 4
-              ? snapshot(scenario.sessionRef, 1, { chargedMsat: turns * 2_000 })
-              : terminalSnapshot(scenario.sessionRef, 1, "hold_exhausted", {
-                  chargedMsat: 10_000,
-                }),
-          ),
-      },
-    );
-
-    expect(turns).toBe(4);
-    expect(observation.turnsSent).toBe(4);
-    expect(observation.previous.chargedMsat).toBe(observation.previous.reservedMsat);
-  });
-
-  test("polls a full active hold without sending an over-cap turn", async () => {
-    const scenario = privateScenario("full-hold-session", 1);
-    let reads = 0;
-    let sends = 0;
-    const observation = await runSarahLiveKitRemainingDrill(
-      {
-        scenario: "hold_exhaustion",
-        session: scenario,
-        sourceRevision: revision,
-        workerImageDigest: image,
-        observationWindowMs: 10_000,
-      },
-      {
-        openSession: () =>
-          Promise.resolve(
-            fakeSession(scenario, {
-              send: () => {
-                sends += 1;
-              },
-            }),
-          ),
-        readAuthority: () => {
-          reads += 1;
-          return Promise.resolve(
-            reads === 1
-              ? snapshot(scenario.sessionRef, 1, { chargedMsat: 10_000 })
-              : terminalSnapshot(scenario.sessionRef, 1, "hold_exhausted", {
-                  chargedMsat: 10_000,
-                }),
-          );
-        },
-      },
-    );
-
-    expect(sends).toBe(0);
-    expect(observation.turnsSent).toBe(1);
+        classification: "not_applicable_removed",
+        authority: "owner_waived_unmetered_v1",
+      }),
+    ]);
   });
 
   test("admits a strictly later generation only after the old generation is terminal", async () => {

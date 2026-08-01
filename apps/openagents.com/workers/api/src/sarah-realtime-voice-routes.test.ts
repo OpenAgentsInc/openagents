@@ -26,6 +26,7 @@ import {
   handleSarahRealtimeVoiceCohortRevocationRequest,
   handleSarahRealtimeVoiceSessionRequest,
   handleSarahRealtimeVoiceSettlementRequest,
+  parseSarahRealtimeVoiceRouteConfig,
   reconcileSarahLiveKitProvisioningIntents,
   reconcileSarahLiveKitTerminalRooms,
   recordSarahLiveKitParticipantJoin,
@@ -188,6 +189,26 @@ const makeDependencies = (
 }
 
 describe('managed Sarah Realtime voice session route', () => {
+  test('requires a zero reservation while owner-waived mode is active', () => {
+    const base = {
+      SARAH_REALTIME_VOICE_ENABLED: 'true',
+      SARAH_REALTIME_CREDIT_MSAT_PER_MILLION_TOKENS: '64000000',
+      SARAH_REALTIME_MAX_SESSION_SECONDS: '300',
+    }
+    expect(
+      parseSarahRealtimeVoiceRouteConfig({
+        ...base,
+        SARAH_REALTIME_RESERVATION_MSAT: '0',
+      }),
+    ).toMatchObject({ enabled: true, reservationMsat: 0 })
+    expect(
+      parseSarahRealtimeVoiceRouteConfig({
+        ...base,
+        SARAH_REALTIME_RESERVATION_MSAT: '256000',
+      }),
+    ).toBeUndefined()
+  })
+
   test('requires a server-issued admission for the Omega editor profile', async () => {
     const fixture = makeDependencies()
     const response = await handleSarahRealtimeVoiceSessionRequest(
@@ -241,7 +262,7 @@ describe('managed Sarah Realtime voice session route', () => {
     })
   })
 
-  test('issues a one-use OpenAgents ticket after reserving credit', async () => {
+  test('issues an owner-waived ticket without reserving or reading credit', async () => {
     const fixture = makeDependencies()
     const response = await handleSarahRealtimeVoiceSessionRequest(
       fixture.dependencies,
@@ -263,15 +284,15 @@ describe('managed Sarah Realtime voice session route', () => {
       schema: SARAH_VOICE_PROTOCOL_VERSION,
       sessionRef: 'voice-1',
       model: 'gpt-realtime-2.1',
-      reservedCreditMsat: 25_000,
+      reservedCreditMsat: 0,
       maxDurationSeconds: 600,
       clientProfile: 'omega_editor',
       admissionRef: 'sarah_voice_admission:test',
       admissionExpiresAtMs: Date.UTC(2026, 6, 28, 12, 2, 0),
       admissionCohortRef: 'sarah_voice_cohort:alpha_v1',
-      creditMode: 'metered',
+      creditMode: 'owner_waived_unmetered',
       creditRateMsatPerMillionTokens: 100_000,
-      spendableRemainingCreditMsat: 100_000,
+      spendableRemainingCreditMsat: null,
       capabilityBoundary: {
         commands: [
           'context_read',
@@ -301,16 +322,17 @@ describe('managed Sarah Realtime voice session route', () => {
       expect.objectContaining({
         ownerActorRef: 'agent:user-1',
         clientProfile: 'omega_editor',
-        reservedMsat: 25_000,
+        reservedMsat: 0,
         ticketDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
         admissionBinding: {
           admissionRef: 'sarah_voice_admission:test',
           creditRateMsatPerMillionTokens: 100_000,
-          spendableRemainingCreditMsat: 100_000,
+          spendableRemainingCreditMsat: null,
           termsDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
         },
       }),
     )
+    expect(fixture.store.readSpendableCredit).not.toHaveBeenCalled()
     expect(fixture.close).toHaveBeenCalledOnce()
   })
 
@@ -1102,7 +1124,11 @@ describe('managed Sarah Realtime voice session route', () => {
 
     await expect(
       reconcileSarahLiveKitProvisioningIntents(dependencies, {}),
-    ).resolves.toEqual({ cleaned: 1, failed: 0, abandoned: 0 })
+    ).resolves.toEqual({
+      cleaned: 1,
+      failed: 0,
+      abandoned: 0,
+    })
 
     expect(settleLiveKitProvisioningIntent).toHaveBeenCalledWith({
       sessionRef: intent.sessionRef,
@@ -1634,9 +1660,9 @@ describe('managed Sarah Realtime voice session route', () => {
     })
     expect(fixture.reserve).toHaveBeenCalledWith(
       expect.objectContaining({
-        creditMode: 'metered',
+        creditMode: 'owner_waived_unmetered',
         entitlementRef: null,
-        reservedMsat: 25_000,
+        reservedMsat: 0,
       }),
     )
   })
@@ -1661,9 +1687,9 @@ describe('managed Sarah Realtime voice session route', () => {
     expect(fixture.readActiveStagingOwnerEntitlement).not.toHaveBeenCalled()
     expect(fixture.reserve).toHaveBeenCalledWith(
       expect.objectContaining({
-        creditMode: 'metered',
+        creditMode: 'owner_waived_unmetered',
         entitlementRef: null,
-        reservedMsat: 25_000,
+        reservedMsat: 0,
       }),
     )
   })
@@ -1847,10 +1873,10 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
       admitted: true,
       clientProfile: 'omega_editor',
       admissionCohortRef: 'sarah_voice_cohort:alpha_v1',
-      creditMode: 'metered',
+      creditMode: 'owner_waived_unmetered',
       creditRateMsatPerMillionTokens: 100_000,
-      requiredHoldMsat: 25_000,
-      spendableRemainingCreditMsat: 100_000,
+      requiredHoldMsat: 0,
+      spendableRemainingCreditMsat: null,
       maxDurationSeconds: 600,
       capabilityBoundary: {
         commands: [
@@ -1877,6 +1903,7 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
       admissionExpiresAtMs: Date.UTC(2026, 6, 28, 12, 2, 0),
     })
     expect(fixture.reserve).not.toHaveBeenCalled()
+    expect(fixture.store.readSpendableCredit).not.toHaveBeenCalled()
   })
 
   test('blocks new LiveKit admissions at the emergency rollback seam', async () => {
@@ -1910,54 +1937,32 @@ describe('managed Sarah Realtime voice admission and closeout routes', () => {
     expect(fixture.reserve).not.toHaveBeenCalled()
   })
 
-  test.each([
-    {
-      membershipActive: false,
-      spendableMsat: 100_000,
-      reason: 'cohort_inactive',
-    },
-    {
-      membershipActive: true,
-      spendableMsat: 10_000,
-      reason: 'insufficient_credit',
-    },
-  ] as const)(
-    'reports $reason without creating a reservation',
-    async fixtureCase => {
-      const fixture = makeDependencies()
-      vi.mocked(fixture.store.readActiveAlphaMembership).mockResolvedValue(
-        fixtureCase.membershipActive
-          ? {
-              membershipRef: 'sarah_voice_alpha:user-1',
-              cohortRef: 'sarah_voice_cohort:alpha_v1',
-              ownerUserId: 'user-1',
-            }
-          : undefined,
-      )
-      vi.mocked(fixture.store.readSpendableCredit).mockResolvedValue(
-        fixtureCase.spendableMsat,
-      )
-      const response = await handleSarahRealtimeVoiceAdmissionRequest(
-        fixture.dependencies,
-        new Request(`https://openagents.com${SARAH_VOICE_ADMISSION_PATH}`, {
-          method: 'POST',
-          headers: {
-            authorization: 'Bearer test',
-            [SARAH_REALTIME_VOICE_DEVICE_HEADER]: identity.deviceRef,
-          },
-          body: JSON.stringify(admissionBody),
-        }),
-        {},
-        ctx,
-      )
-      expect(await response.json()).toMatchObject({
-        admitted: false,
-        refusalReason: fixtureCase.reason,
-        spendableRemainingCreditMsat: fixtureCase.spendableMsat,
-      })
-      expect(fixture.reserve).not.toHaveBeenCalled()
-    },
-  )
+  test('reports inactive membership without consulting credit', async () => {
+    const fixture = makeDependencies()
+    vi.mocked(fixture.store.readActiveAlphaMembership).mockResolvedValue(
+      undefined,
+    )
+    const response = await handleSarahRealtimeVoiceAdmissionRequest(
+      fixture.dependencies,
+      new Request(`https://openagents.com${SARAH_VOICE_ADMISSION_PATH}`, {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer test',
+          [SARAH_REALTIME_VOICE_DEVICE_HEADER]: identity.deviceRef,
+        },
+        body: JSON.stringify(admissionBody),
+      }),
+      {},
+      ctx,
+    )
+    expect(await response.json()).toMatchObject({
+      admitted: false,
+      refusalReason: 'cohort_inactive',
+      spendableRemainingCreditMsat: null,
+    })
+    expect(fixture.reserve).not.toHaveBeenCalled()
+    expect(fixture.store.readSpendableCredit).not.toHaveBeenCalled()
+  })
 
   test('authenticates NIP-98 admission and rejects a replayed or expired challenge', async () => {
     const fixture = makeDependencies()

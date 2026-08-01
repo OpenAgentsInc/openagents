@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 
 export const SARAH_LIVEKIT_FAILURE_MATRIX_SCHEMA =
-  "openagents.sarah.livekit-failure-matrix-observation.v1" as const;
+  "openagents.sarah.livekit-failure-matrix-observation.v2" as const;
 export const SARAH_LIVEKIT_FAILURE_MATRIX_RECEIPT_SCHEMA =
-  "openagents.sarah.livekit-failure-matrix-receipt.v1" as const;
+  "openagents.sarah.livekit-failure-matrix-receipt.v2" as const;
 
 export const SARAH_LIVEKIT_FAILURE_SCENARIOS = [
   "success",
@@ -12,8 +12,17 @@ export const SARAH_LIVEKIT_FAILURE_SCENARIOS = [
   "planned_worker_crash",
   "sfu_loss",
   "provider_disconnect",
-  "hold_exhaustion",
   "reconnect",
+] as const;
+
+export const SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIOS = [
+  {
+    scenario: "hold_exhaustion",
+    classification: "not_applicable_removed",
+    authority: "owner_waived_unmetered_v1",
+    reservedMsat: 0,
+    ledgerChargeMsat: 0,
+  },
 ] as const;
 
 export type SarahLiveKitFailureScenario = (typeof SARAH_LIVEKIT_FAILURE_SCENARIOS)[number];
@@ -62,7 +71,6 @@ const ADMITTED_TERMINAL_REASONS = {
   planned_worker_crash: ["worker_error"],
   sfu_loss: ["worker_shutdown", "participant_left", "worker_error"],
   provider_disconnect: ["provider_disconnect"],
-  hold_exhaustion: ["hold_exhausted"],
   reconnect: ["completed"],
 } as const satisfies Readonly<Record<SarahLiveKitFailureScenario, readonly string[]>>;
 
@@ -93,7 +101,6 @@ export const EXPECTED_FAULT_ACTION = {
    */
   sfu_loss: "delete_exact_sfu_pod",
   provider_disconnect: "close_exact_provider_socket",
-  hold_exhaustion: "exhaust_exact_session_hold",
   reconnect: "reconnect_after_terminal",
 } as const satisfies Readonly<Record<SarahLiveKitFailureScenario, string>>;
 
@@ -202,6 +209,7 @@ export type SarahLiveKitFailureMatrixObservation = Readonly<{
   observedAt: string;
   runDigest: string;
   scenarios: readonly SarahLiveKitFailureScenarioObservation[];
+  retiredScenarios: typeof SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIOS;
 }>;
 
 /**
@@ -261,6 +269,7 @@ export type SarahLiveKitFailureMatrixReceipt = Readonly<{
   outcome: "passed";
   liveProof: true;
   scenarios: readonly PublicScenario[];
+  retiredScenarios: typeof SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIOS;
   aggregateUsage: Usage;
   retainedMedia: false;
   retainedTranscript: false;
@@ -599,6 +608,7 @@ export const validateSarahLiveKitFailureMatrixObservation = (
       "observedAt",
       "runDigest",
       "scenarios",
+      "retiredScenarios",
     ],
     "failure matrix observation",
   );
@@ -610,6 +620,11 @@ export const validateSarahLiveKitFailureMatrixObservation = (
   assert(
     typeof value.observedAt === "string" && Number.isFinite(Date.parse(value.observedAt)),
     "observedAt must be an ISO timestamp",
+  );
+  assert(
+    JSON.stringify(value.retiredScenarios) ===
+      JSON.stringify(SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIOS),
+    "failure matrix retired scenario classification is invalid",
   );
   assert(
     Array.isArray(value.scenarios) &&
@@ -715,6 +730,7 @@ export const buildSarahLiveKitFailureMatrixReceipt = (
       observedAt: observation.observedAt,
       runDigest: observation.runDigest,
       scenarios,
+      retiredScenarios: SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIOS,
       aggregateUsage,
     }),
   );
@@ -730,6 +746,7 @@ export const buildSarahLiveKitFailureMatrixReceipt = (
     outcome: "passed",
     liveProof: true,
     scenarios,
+    retiredScenarios: SARAH_LIVEKIT_RETIRED_FAILURE_SCENARIOS,
     aggregateUsage,
     retainedMedia: false,
     retainedTranscript: false,
