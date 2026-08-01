@@ -5,7 +5,7 @@ research work. It does not itself authorize scanning a third-party target,
 publishing a vulnerability claim, contacting a maintainer, spending beyond an
 admitted budget, or running an exploit outside an owned lab.
 
-Roadmap revision: 2
+Roadmap revision: 3
 
 Date: 2026-08-01
 
@@ -351,27 +351,207 @@ Hard gates:
   deletion and zero residual compute, firewall, disk, process, scratch, and
   capability grants.
 
-Scorecard dimensions:
+Efficiency metrics become promotion-eligible only when the candidate satisfies
+the hard gates. Operational and reliability metrics include every run. Failed,
+incomplete, cancelled, budget-exhausted, and missed runs remain in the dataset
+with their actual terminal state; they are not removed to make latency or token
+numbers look better.
 
-- causal-chain coverage;
-- evidence-reference validity;
-- uncertainty calibration;
-- PoC or invariant-check quality;
-- actionable detail;
-- false-positive and duplicate burden;
-- time to first actionable finding;
-- time to reviewed finding;
-- tokens, wall-clock, and cost per confirmed finding;
-- result stability across repeated runs;
-- performance on renamed and blinded variants.
+### 5.4 Metrics: faster identification without weaker evidence
 
-"Immediately" becomes a measured property. Before setting a public latency
-number, run at least three baseline repetitions on a pinned worker class. The
-initial release gate is that the full causal finding appears during the first
-priority tranche, before lower-risk bulk scanning completes. The resulting
-p50 and p95 become the next revision's explicit latency target.
+"Immediately" must mean the first **qualified identification**, not the first
+time model prose happens to mention randomness. A finding qualifies when it:
 
-### 5.4 Data splits
+1. was emitted through the typed finding tool;
+2. is later mapped by the frozen evaluator to the benchmark vulnerability or
+   independently adjudicated vulnerability identity;
+3. contains the required causal links and resolvable source references; and
+4. carries the correct input-completeness and evidence-tier claims.
+
+Verification and human acceptance are later milestones. For a blinded target,
+the evaluator classifies the finding after the run but uses the original
+immutable finding-event timestamp. It must not rewrite the time of discovery.
+
+#### 5.4.1 Canonical milestones
+
+| Marker | Meaning | Collected from |
+| --- | --- | --- |
+| `T0 request_accepted` | Native forensic command and exact run bytes are durably admitted. | Worker broker command record. |
+| `T1 worker_ready` | The exact live GCE guest, image/profile, isolation, network posture, and forensic driver are observed ready. | Managed-sandbox readiness event and receipt. |
+| `T2 coverage_ready` | The immutable source bundle is mounted and its coverage manifest is terminal. | Source-materializer and preflight receipt. |
+| `T3 analysis_started` | The first discovery turn is structurally accepted. | Native runtime-turn event. |
+| `T4 first_hypothesis` | The first typed forensic hypothesis is recorded. | Forensic event stream. |
+| `T5 first_qualified_identification` | The earliest typed finding later accepted by the frozen vulnerability oracle. | Finding event plus evaluator adjudication. |
+| `T6 first_verified_finding` | Deterministic evidence or an admitted independent verifier confirms the finding. | Evidence or verifier receipt. |
+| `T7 first_reviewed_finding` | A human accepts, corrects, or rejects the finding in Omega. | Review decision event. |
+| `T8 cleanup_observed` | The sandbox is deleted and the zero-residue oracle passes. | Native cleanup receipt. |
+
+Durations spanning control-plane phases use one server-side clock. Durations
+inside the worker use monotonic elapsed values reported in receipts. Do not
+subtract unsynchronized guest, browser, and control-plane wall clocks.
+
+#### 5.4.2 Speed and lifecycle metrics
+
+| Metric | Definition | Collection | Omega display | Improve toward |
+| --- | --- | --- | --- | --- |
+| Provision latency | `T1 - T0`. | Managed-sandbox command, readiness event, and provision receipt. | Run waterfall: queue plus provision segment. | Lower without weaker readiness. |
+| Input-readiness latency | `T2 - T1`. | Source-bundle and coverage receipts. | Preflight segment with submodule and dependency drill-down. | Lower while completeness stays green. |
+| Time to first hypothesis | `T4 - T3`. Diagnostic only; not a hit. | First typed hypothesis event. | Dashed marker on the analysis timeline. | Lower only when later yield does not regress. |
+| Analysis time to identification | `T5 - T3`. The primary scanner-speed metric. | Runtime start, immutable finding event, and frozen evaluator result. | Primary run card and finding detail. | Lower p50 and tail latency. |
+| End-to-end time to identification | `T5 - T0`. Includes supply and preflight. | Same events plus broker admission. | Primary comparison column and full waterfall. | Lower without hiding infrastructure time. |
+| Time to verification | `T6 - T0` and `T6 - T5`. | Evidence and verifier receipts. | Verification segment beside discovery time. | Lower while verifier independence holds. |
+| Time to reviewed finding | `T7 - T0` and active reviewer minutes. | Explicit Omega review-session and decision events, with idle time separate. | Review queue and finding detail. | Lower operator burden. |
+| Cleanup latency | `T8 - cleanup_requested`. | Stop, delete, and cleanup receipts. | Final lifecycle segment; red until zero residue. | Lower, with 100% observed cleanup. |
+| First-priority-tranche hit | Whether `T5` occurs before the priority tranche closes. | Scheduler tranche event plus qualified finding. | Badge and run-matrix boolean. | Higher hit rate. |
+| Work fraction to identification | Focal-file sessions and ranked tranches started/completed through `T5`, divided by the declared scan plan. | Scheduler plan and session events. | Scan-progress marker at the qualified hit. | Lower fraction with equal or better recall. |
+
+Runs with no `T5` are right-censored at their declared time or token budget and
+count as misses. They never receive a zero duration and are never omitted from
+hit-rate denominators. Compute latency and token distributions with a censor-
+aware survival estimator; if censoring makes a percentile unidentified, show
+`not_estimable` instead of inventing it. Alongside p50 and p95, display the
+sample count, miss/censor count, range, and confidence interval. Three
+repetitions are useful as a smoke baseline but cannot support a meaningful p95;
+until the pre-registered sample size is reached, show every observation and
+label tail statistics provisional.
+
+#### 5.4.3 Detection and evidence-quality metrics
+
+| Metric | Definition | Collection | Omega display | Improve toward |
+| --- | --- | --- | --- | --- |
+| Qualified hit rate | Runs with at least one `T5` divided by all eligible runs, including misses. | Frozen evaluator over typed findings. | Run-matrix hit percentage with numerator and denominator. | Higher on development and untouched holdout. |
+| Finding precision | Unique qualified vulnerability claims divided by all unique adjudicated vulnerability claims. | Frozen evaluator plus deduplicated typed findings. | Submitted/unique/qualified funnel. | Higher without suppressing difficult true findings. |
+| Recall at fixed time | Fraction of known benchmark vulnerabilities qualified by a fixed elapsed-time budget. | Finding timestamps and benchmark oracle. | Recall-versus-time curve and named `Hit@time` columns. | Curve moves up and left. |
+| Recall at fixed tokens | Fraction qualified before a fixed aggregate token budget. | Finding sequence, provider usage receipts, benchmark oracle. | Recall-versus-token curve and `Hit@tokens`. | Curve moves up and left. |
+| Causal-chain coverage | Required causal links supported by valid evidence divided by all frozen links. | Deterministic Coldcard/fixture evaluator. | Per-link checklist and aggregate percentage. | 100% for a benchmark hit. |
+| Evidence-reference validity | Resolvable, target-bound source and artifact refs divided by submitted refs. | Tree, symbol, build, and artifact resolvers. | Evidence health badge with broken-ref drill-down. | 100%. |
+| Verification rate | Qualified findings with admitted confirming receipts divided by qualified findings. | PoC, invariant, artifact, and verifier receipts. | Finding funnel: submitted → qualified → verified → reviewed. | Higher without circular verification. |
+| Clean-control false-positive rate | Clean controls incorrectly receiving a qualified vulnerability claim. | Frozen clean-control evaluator. | Red matrix column and release-gate failure. | Zero. |
+| Fixed-control regression rate | Runs that still report the historical issue on the fixed commit. | Fixed-revision evaluator. | Dedicated hard-gate column. | Zero. |
+| Duplicate burden | Duplicate submitted findings divided by all submitted findings. | Semantic identity plus deterministic fingerprint. | Collapsed duplicate groups and ratio. | Lower without hiding distinct variants. |
+| Calibration | Agreement between `finding`, `hypothesis`, `not_proven`, and later adjudication. | Typed claim state plus evaluator/reviewer decisions. | Calibration table by confidence/evidence tier. | Better calibrated; unsupported certainty decreases. |
+| Generalization gap | Development hit rate minus blinded holdout hit rate. | Dataset-split identity and scorecards. | Development/holdout paired bars. | Smaller without training on holdout. |
+| Run stability | Agreement of qualified vulnerability identities and causal links across matched repetitions. | Repeated-run groups. | Stability percentage and divergence view. | Higher, while real alternate findings remain visible. |
+
+Finding count is not a success metric. A prompt that emits more duplicates or
+weak claims must not appear better. Aggregate by adjudicated vulnerability
+identity and preserve every dismissed or duplicate submission for burden
+measurement.
+
+For hit, recall, latency, and token-to-identification metrics, an eligible run
+is a scheduled repetition of a complete vulnerable or structural-variant arm.
+Incomplete-input, fixed, and clean arms contribute their own hard-gate and
+false-positive metrics rather than being mislabeled as vulnerability misses.
+
+#### 5.4.4 Token, cost, and work-efficiency metrics
+
+| Metric | Definition | Collection | Omega display | Improve toward |
+| --- | --- | --- | --- | --- |
+| Tokens to identification | Sum of input, cached-input, and output tokens consumed through `T5` across discovery, verifier, and judge turns. Parallel agents all count. When a provider exposes usage only at turn settlement, count the full usage of every turn started before `T5` and mark the value `upper_bound`. | Provider usage receipts joined to native turn and finding sequences. | Primary efficiency column with role and exactness breakdown. | Lower while hit and quality gates hold. |
+| Total run tokens | All provider tokens through structural settlement, grouped by discovery, verification, judging, and failed/retried turns. | Provider usage receipts. | Live budget meter and stacked bar. | Lower for equivalent or better evidence. |
+| Tokens per unique qualified finding | Total run tokens divided by unique qualified vulnerability identities. Misses show the full spent budget and zero yield, not infinity hidden from charts. | Usage receipts plus adjudicated dedup groups. | Efficiency table and trend. | Lower with nonzero qualified yield. |
+| Post-identification tokens | Tokens after `T5`, split into verification, additional discovery, and unproductive work. Turn-level-only usage is marked estimated rather than split as exact. | Turn sequence relative to finding event. | Finding timeline and optimization drill-down. | Remove unproductive tail, retain useful verification/coverage. |
+| Cache utilization | Cached input tokens divided by cache-eligible input tokens, with provider exactness. | Provider usage receipts. | Cache segment in token bar. | Higher when it reduces cost without stale context. |
+| Cost to identification | Provider cost plus measured GCE incremental cost through `T5`. | Provider billing/usage refs and managed-sandbox cost receipts. | USD-micro cost card and matrix column. | Lower subject to quality gates. |
+| Total run cost | All provider, GCE, artifact, and evaluator cost through `T8`. | Native usage, infrastructure, and artifact receipts. | Budget meter and cost waterfall. | Lower with cleanup complete. |
+| Tool work to identification | Tool calls, files opened, dependency boundaries crossed, bytes read, builds, and verifier actions through `T5`. | Bounded forensic-driver tool events. | Evidence-path summary and tool waterfall. | Fewer irrelevant actions, not fewer required dependencies. |
+| Concurrency amplification | Sum of active agent milliseconds divided by analysis wall time, shown beside peak concurrency. | Turn start/settlement events. | Parallelism card. | Use deliberately; lower wall time without uncontrolled token growth. |
+| Worker utilization | Measured running CPU time and memory high-water mark relative to lease time/profile. | GCE and forensic-driver receipts. | Infrastructure detail. | Right-size the admitted profile. |
+
+Usage values retain `exact | estimated | unavailable`. Unknown usage is not
+coerced to zero. Raw token counts are comparable only within the same provider
+tokenizer and model revision; cross-model comparisons emphasize qualified hit
+rate, elapsed time, measured cost, and workload-normalized results. Retries,
+abandoned turns, verifier calls, and parallel losing arms remain charged to the
+candidate that caused them. Provider-specific reasoning, cache-read, and cache-
+write tokens stay separately labeled when exposed rather than being silently
+mixed into a supposedly portable total.
+
+#### 5.4.5 Reliability and human-load metrics
+
+| Metric | Definition and collection | Omega display | Improve toward |
+| --- | --- | --- | --- |
+| Admission and run success | Requested runs reaching `worker_ready`, structural settlement, and `T8`, with refusal reasons separated. Native lifecycle receipts. | Fleet health funnel. | Higher without accepting weaker targets. |
+| Cancellation latency | Cancel intent to runtime interruption, then to `T8`. Command, interrupt, and cleanup events. | Cancellation timeline. | Lower and reliably bounded. |
+| Cleanup success | Runs with observed zero residue divided by all provisioned runs. Cleanup oracle. | Global red/green SLO and per-run receipt link. | 100%; anything else is `recovery_required`. |
+| Budget compliance | Runs staying within token, time, cost, network, and artifact caps. Budget receipts. | Budget bars and hard-gate status. | 100%. |
+| Reviewer minutes per qualified finding | Explicit review-session intervals divided by qualified findings; no keystroke or ambient focus surveillance. Omega review events. | Reviewer workload dashboard. | Lower without rubber-stamping. |
+| Correction and rejection burden | Qualified findings materially corrected or rejected by reviewers. Review decision reasons. | Funnel and reason histogram. | Lower while difficult true findings remain discoverable. |
+| Actionable acceptance rate | Qualified findings accepted for retained regression or remediation work. Review decisions. | Finding funnel. | Higher; never used alone as truth. |
+
+#### 5.4.6 Collection and projection
+
+All metric inputs are append-only native facts, not client analytics guesses:
+
+- the managed-sandbox broker records admission, generation, readiness, lease,
+  budget, stop, deletion, cleanup, measured runtime, and infrastructure cost;
+- the forensic driver records tranche, agent role, turn, tool, file/dependency,
+  hypothesis, finding, verifier, artifact, retry, and settlement events;
+- provider adapters record exact usage when exposed and explicitly mark
+  estimated or unavailable usage;
+- deterministic evaluators append vulnerability identity, causal-link,
+  reference, control, PoC, and holdout adjudications without mutating the
+  original event; and
+- Omega appends human review decisions and bounded active-review intervals.
+
+Each event binds run, benchmark, dataset split, arm, repetition, target/source
+bundle, prompt digest, model and parameters, worker image/profile, sandbox and
+generation, evaluator revision, sequence, and receipt refs. Native events and
+private evidence remain in the existing Cloud SQL/Khala Sync and private GCS
+boundaries. A metrics projector derives `ForensicScorecard.v1`; projections
+are rebuildable and never become lifecycle or finding authority.
+
+The projector separates complete and incomplete inputs, vulnerable and clean
+controls, development and holdout, and model/worker revisions. Public-safe
+aggregates contain counts, durations, costs, and digests only. Repository
+paths, prompts, findings, raw model output, topology, and credentials stay in
+the admitted private evidence boundary. Even aggregate publication remains
+default-private until an explicit projection and release policy admits it.
+
+#### 5.4.7 Omega views
+
+| View | What it shows |
+| --- | --- |
+| Live run header | Current phase, elapsed time, token/cost/budget consumption, current tranche, first-hypothesis and qualified-hit markers, worker health, and cleanup state. |
+| Run waterfall | Queue, provision, source materialization, preflight, analysis, verification, review, stop/delete, and cleanup durations with findings and failures placed on the same ordered timeline. |
+| Finding detail | Time and tokens to this finding, causal-link coverage, evidence validity, verification status, duplicate group, and human decision. |
+| Matrix comparison | One row per prompt/model/profile arm; hit rate, misses, p50/p95 identification time, tokens and cost to identification, causal coverage, false positives, cleanup, and sample size. |
+| Trend and Pareto view | Version-over-version curves for recall@time and recall@tokens plus the non-dominated frontier of hit rate, identification latency, tokens, cost, false positives, and reviewer load. |
+| Metric provenance drawer | Exact formula and version, eligibility and censor rules, raw event/receipt refs, exactness, dataset split, sample size, confidence interval, and evaluator revision. |
+
+Incomplete runs remain visible in the same interface but never pool with
+complete runs. A user can drill from any aggregate to the exact contributing
+runs, including misses and failures.
+
+#### 5.4.8 Improvement and promotion policy
+
+Do not collapse the program into one reward number. Optimize in this order:
+
+1. satisfy every input, isolation, clean-control, evidence, budget, and cleanup
+   hard gate;
+2. maximize qualified holdout hit rate and causal-chain coverage at fixed time
+   and token budgets;
+3. among candidates that do not regress those properties, reduce p50 and tail
+   time to identification, tokens to identification, and cost to
+   identification; and
+4. then reduce verification latency, reviewer load, duplicate burden, and
+   infrastructure waste.
+
+Show the Pareto frontier rather than hiding tradeoffs in a weighted average. A
+candidate that is faster because it misses more runs, emits unsupported claims,
+skips dependencies, disables verification, or spends more parallel tokens does
+not improve. Promotion comparisons use matched arms, pinned worker/model
+revisions, pre-registered budgets and sample sizes, blinded holdout data, clean
+controls, and uncertainty intervals. Baseline and candidate retain every miss,
+cancellation, retry, and cleanup failure.
+
+The first release gate remains full causal identification during the first
+priority tranche. Initial repetitions establish the baseline distributions;
+the next roadmap revision should freeze explicit `Hit@time`, `Hit@tokens`, p50,
+tail-latency, token, cost, false-positive, and reviewer-load targets rather than
+choosing targets after seeing candidate results.
+
+### 5.5 Data splits
 
 The known Coldcard incident may be used for development. It may not be the
 holdout.
@@ -431,6 +611,14 @@ Candidate generation may optimize for more detailed output, but it cannot trade
 away evidence validity, incomplete-input detection, fixed-control precision, or
 budget compliance. Those are gates, not weighted preferences.
 
+The candidate generator consumes the versioned metric registry and train or
+development scorecards only. Its objective is lexicographic and Pareto-based:
+pass the hard gates, improve qualified hit rate and causal coverage at fixed
+budgets, then reduce identification time, tokens, and cost. The independent
+promotion evaluator applies the same frozen registry to holdout scorecards. No
+optimizer may redefine `T5`, exclude misses, change censoring, inspect holdout
+examples, or select a metric revision after seeing candidate results.
+
 ### 6.2 Blueprint governance spine
 
 Represent each scan as an evidence-only Program Run. Represent an optimization
@@ -486,7 +674,9 @@ Names are provisional; the information is not.
 | `ForensicFinding.v1` | Claim, causal steps, source refs, assumptions, severity, evidence tier, PoC, verifier state, and disclosure state. |
 | `ForensicHypothesis.v1` | Suspected mechanism, supporting refs, missing evidence, next check, consequence if true, and expiration state. |
 | `ForensicEvidenceReceipt.v1` | Exact command or tool, immutable inputs, observed result, artifact digests, environment, and timestamp. |
-| `ForensicScorecard.v1` | Dataset revision, hard-gate results, metrics, failures, cost, and comparison refs. |
+| `ForensicRunEvent.v1` | Append-only run sequence for lifecycle milestones, tranche, agent role, turn, tool, usage, hypothesis, finding, verification, review, failure, and cleanup refs. |
+| `ForensicMetricDefinition.v1` | Versioned formula, unit, eligible population, censor and miss treatment, exactness rules, dimensions, aggregation, and display metadata. |
+| `ForensicScorecard.v1` | Dataset revision, metric-definition revision, hard-gate results, per-run values, distributions, censor counts, confidence intervals, failures, cost, and event/receipt provenance. |
 | `ForensicPromptPromotion.v1` | Candidate, evaluator, release gate, operator decision, rollback anchor, and active-pointer transition. |
 
 Run state is explicit:
@@ -520,6 +710,8 @@ Deliver:
 - structured finding and hypothesis schemas;
 - immutable source-bundle and coverage-manifest schemas;
 - coverage manifest and incomplete-state rules;
+- frozen milestone, metric-definition, eligibility, censoring, token-exactness,
+  and aggregation rules;
 - `ForensicWorkerPlacement.v1` bound to the native managed-sandbox identity,
   generation, admission, lifecycle, budget, and cleanup contracts;
 - exact GCE forensic image/profile inputs, a broker-only network policy, and
@@ -536,7 +728,9 @@ Exit gate:
 - Arm B imports as an unverified source-level hit;
 - the fixed commit and holdout identities are separate from development data;
 - a fake or unavailable GCE target cannot satisfy `worker_ready`, and a missing
-  cleanup receipt cannot satisfy `completed*`.
+  cleanup receipt cannot satisfy `completed*`;
+- imported Episode 264 data marks unavailable historical timing or token
+  fields as unavailable rather than zero.
 
 ### Phase 1 — run Loupe-style analysis from Omega
 
@@ -548,9 +742,12 @@ Deliver:
   OpenAgents managed-sandbox broker;
 - one disposable GCE VM launch per run, an image-pinned forensic workload
   driver, Linux and Bubblewrap readiness proof, and ordered progress stream;
+- append-only milestone, tranche, turn, tool, usage, finding, verification,
+  review, and cleanup instrumentation plus a rebuildable metric projector;
 - editable prompt artifact with immutable save-as-candidate behavior;
 - typed finding and hypothesis intake;
-- editor navigation, PoC diff, log, and receipt views;
+- editor navigation, PoC diff, log, receipt, live budget, run-waterfall, and
+  metric-provenance views;
 - manual cancellation and hard budget stops;
 - no-reporting default.
 
@@ -570,6 +767,9 @@ Exit gate:
   sandbox, and preserves runtime and cleanup receipts;
 - a broker outage, unmeasurable spend, or incomplete cleanup produces refusal
   or `recovery_required`, never a successful result;
+- Coldcard runs show end-to-end and analysis time to identification, tokens and
+  cost to identification, causal coverage, exactness, and censor state from
+  native events;
 - no target source, credentials, or findings leave the admitted boundary.
 
 ### Phase 2 — prompt lab and controlled run matrices
@@ -583,13 +783,16 @@ Deliver:
 - repeated-run support and stochastic result summaries;
 - divergence view;
 - deterministic scorecard computation;
+- recall-versus-time and recall-versus-token curves, matched baseline tables,
+  confidence intervals, and Pareto views;
 - retained-failure capture;
 - baseline-versus-candidate comparison.
 
 Exit gate:
 
-- at least one candidate improves actionable causal detail on development data
-  without regressing any hard gate or clean control;
+- at least one candidate improves a pre-registered development-set Pareto
+  metric without regressing qualified hit rate, causal detail, any hard gate,
+  or clean control;
 - every score is reproducible from retained refs;
 - result comparison never merges incomplete and complete runs as peers.
 
@@ -708,21 +911,22 @@ The first implementation program should be cut in this order:
 
 | ID | Work item | Primary home |
 | --- | --- | --- |
-| OFR-001 | Define forensic target, source bundle, coverage, worker placement, prompt, run, finding, hypothesis, receipt, and scorecard contracts. | `openagents` |
+| OFR-001 | Define forensic target, source bundle, coverage, worker placement, prompt, run/event, finding, hypothesis, receipt, metric-definition, and scorecard contracts. | `openagents` |
 | OFR-002 | Admit an image-pinned forensic worker profile on the native OpenAgents managed-sandbox GCE path; prove readiness, refusal of every fallback, cost limits, cancellation, deletion, and zero residue. | OpenAgents Cloud |
 | OFR-003 | Materialize a pinned target and all declared submodules into an immutable private source bundle, deliver it through a scoped capability, and emit the coverage manifest without guest Internet egress. | OpenAgents Cloud / upstream Loupe where general |
 | OFR-004 | Import the Coldcard benchmark arms and frozen rubric. | `openagents` |
-| OFR-005 | Add a configurable Loupe prompt/profile seam without weakening typed submission. | upstream Loupe or adapter |
-| OFR-006 | Repair and prove the Loupe verifier path, or keep the first release explicitly discovery-only. | upstream Loupe or adapter |
-| OFR-007 | Add Omega Forensics target, OpenAgents-managed placement, and preflight UI. | `omega` |
-| OFR-008 | Launch, interrupt, cancel, clean up, and monitor a native managed-sandbox run from Omega with hard budgets. | `omega` + `openagents` |
-| OFR-009 | Render findings, hypotheses, evidence maps, PoC diffs, source navigation, placement truth, and cleanup status. | `omega` |
-| OFR-010 | Add prompt artifact editor, diff, digest, and candidate save. | `omega` + `openagents` |
-| OFR-011 | Add run matrices, divergence, retained failures, and deterministic scorecards. | `omega` + `openagents` |
-| OFR-012 | Add bounded offline prompt compilation and Blueprint release-gate records. | `openagents` |
-| OFR-013 | Build the Coldcard C/C++ artifact witness and fault-build fixtures. | OpenAgents Cloud / `openagents` |
+| OFR-005 | Implement native forensic milestone and usage events, the frozen metric registry, evaluator adjudications, rebuildable scorecards, and miss/censor negative controls. | `openagents` + OpenAgents Cloud |
+| OFR-006 | Add a configurable Loupe prompt/profile seam without weakening typed submission. | upstream Loupe or adapter |
+| OFR-007 | Repair and prove the Loupe verifier path, or keep the first release explicitly discovery-only. | upstream Loupe or adapter |
+| OFR-008 | Add Omega Forensics target, OpenAgents-managed placement, and preflight UI. | `omega` |
+| OFR-009 | Launch, interrupt, cancel, clean up, and monitor a native managed-sandbox run from Omega with hard budgets. | `omega` + `openagents` |
+| OFR-010 | Render findings, hypotheses, evidence maps, PoC diffs, source navigation, placement truth, live budgets, run waterfalls, metric provenance, and cleanup status. | `omega` |
+| OFR-011 | Add prompt artifact editor, diff, digest, and candidate save. | `omega` + `openagents` |
+| OFR-012 | Add matched run matrices, recall curves, divergence, retained failures, confidence intervals, Pareto views, and deterministic scorecards. | `omega` + `openagents` |
+| OFR-013 | Add bounded offline prompt compilation and Blueprint release-gate records. | `openagents` |
+| OFR-014 | Build the Coldcard C/C++ artifact witness and fault-build fixtures. | OpenAgents Cloud / `openagents` |
 
-Do not start OFR-012 by restoring the deleted DSE package unchanged. Harvest its
+Do not start OFR-013 by restoring the deleted DSE package unchanged. Harvest its
 tested design: typed signatures, Prompt IR, canonical hashes, budgets, receipts,
 dataset splits, immutable candidates, and rollback. Implement against the
 current Effect, Node, package-manager, and runtime boundaries.
@@ -772,6 +976,11 @@ current Effect, Node, package-manager, and runtime boundaries.
 - Preserve Loupe's typed finding and verdict-ordering discipline.
 - Add a separate typed hypothesis lane for detailed forensic inquiry.
 - Optimize versioned prompt artifacts against frozen datasets and scorecards.
+- Measure qualified identification time, tokens, cost, recall at fixed budgets,
+  causal coverage, false positives, cleanup, and reviewer load from native
+  events, with misses and unavailable data kept visible.
+- Promote from hard gates and a visible Pareto frontier, never a single score
+  that can trade detection quality for speed or token savings.
 - Use offline DSPy/GEPA for candidate generation and Blueprint for governed
   lineage and promotion, not as interchangeable names for one system.
 - Require holdout independence and clean controls before prompt promotion.

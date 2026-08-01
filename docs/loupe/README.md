@@ -346,9 +346,10 @@ Read in this order:
 9. [`2026-08-01-omega-forensic-analysis-roadmap.md`](2026-08-01-omega-forensic-analysis-roadmap.md)
    — the owner-directed delivery sequence: begin with configurable Loupe-style
    runs and prompt iteration inside Omega on disposable OpenAgents Cloud GCE
-   workers, govern optimized candidates through DSPy/Blueprint boundaries,
-   then advance to artifact witnesses, executable evidence, variant analysis,
-   and coordinated remediation.
+   workers, measure qualified identification time, tokens, cost, recall, and
+   evidence quality from native events, govern optimized candidates through
+   DSPy/Blueprint boundaries, then advance to artifact witnesses, executable
+   evidence, variant analysis, and coordinated remediation.
 
 Documents 3 and 4 are speculation and authorize nothing. Documents 1 and 2 are
 factual records — of source read, and of a scan run. Document 5 is a prediction
