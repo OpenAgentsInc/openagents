@@ -1888,9 +1888,11 @@ node scripts/cloud/livekit-admission-disable.mjs \
 The tool is read-only. It requires the latest Ready Cloud Run revision to
 receive 100% of traffic with
 `SARAH_LIVEKIT_NEW_ADMISSIONS_ENABLED=false`. It then requires zero active
-LiveKit bindings and zero `reserved`, `connected`, or
-`accounting_uncertain` LiveKit settlements. An uncertain hold is pending; it
-cannot be omitted or rounded into a drained boundary.
+LiveKit bindings and zero `reserved` or `connected` LiveKit settlements.
+Metered or staging-entitlement `accounting_uncertain` settlements also remain
+pending. An `owner_waived_unmetered` uncertain settlement has no hold, charge,
+or voice-concurrency lock, so it is terminal for the rollback drain boundary
+while its uncertainty record remains preserved.
 
 After that boundary is recorded, but before applying the runtime rollback,
 capture the ordered unrelated-service baseline. The collector is read-only and

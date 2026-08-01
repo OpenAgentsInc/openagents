@@ -387,6 +387,10 @@ export const runSarahLiveKitDrill = async (
   try {
     await clock.sleep(holdMs);
 
+    if (controlTerminal !== null) {
+      throw new Error("drill session became terminal before fault-target discovery");
+    }
+
     const concurrentBillableSessionCount = await input.countBillableSessions();
     if (
       !Number.isSafeInteger(concurrentBillableSessionCount) ||

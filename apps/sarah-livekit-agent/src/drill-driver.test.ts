@@ -450,14 +450,33 @@ describe("Sarah LiveKit single-session drill driver", () => {
 
   test("preserves the control channel's own terminal reason", async () => {
     const built = withMediaLoss(harness({ settleAfterMs: 4_000 }));
-    built.resolveControlTerminal({ atMs: 2_500, kind: "closing", reason: "transport_error" });
-    const observation = await run(built);
+    const observation = await run({
+      ...built,
+      input: {
+        ...built.input,
+        injectFault: async (context) => {
+          const result = await built.input.injectFault(context);
+          built.resolveControlTerminal({ atMs: 2_500, kind: "closing", reason: "transport_error" });
+          return result;
+        },
+      },
+    });
 
     expect(observation.controlTerminal).toEqual({
       atMs: 2_500,
       kind: "closing",
       reason: "transport_error",
     });
+  });
+
+  test("refuses to discover or delete a target after the held session became terminal", async () => {
+    const built = harness({ settleAfterMs: 0, settleOnControlClose: true });
+    built.resolveControlTerminal({ atMs: 1_750, kind: "closing", reason: "session_expired" });
+
+    await expect(run(built)).rejects.toThrow(
+      "drill session became terminal before fault-target discovery",
+    );
+    expect(built.faultCalls()).toBe(0);
   });
 
   test("releases the live session when the fault injector fails", async () => {
