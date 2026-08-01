@@ -139,6 +139,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah voice owner-waived unmetered account
     await expect(store.sweepExpired("2026-08-01T12:09:00.000Z")).resolves.toBe(0);
     const [deadWorkerBoundary] = await sql`
       SELECT session.state, session.close_reason, session.updated_at,
+        binding.state AS binding_state,
         binding.worker_stop_reason, binding.worker_stop_deadline_at,
         binding.provider_accounting_status,
         binding.provider_accounting_uncertain_at
@@ -156,6 +157,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah voice owner-waived unmetered account
       worker_stop_deadline_at: null,
       provider_accounting_status: "uncertain",
       provider_accounting_uncertain_at: "2026-08-01T12:06:00.000Z",
+      binding_state: "cleanup_ready",
     });
     await expect(
       store.readSettlement({

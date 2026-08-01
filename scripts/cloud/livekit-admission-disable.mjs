@@ -14,6 +14,7 @@ const COUNTS_QUERY = `
 SELECT
   COUNT(*) FILTER (
     WHERE binding.state IN ('prepared', 'active')
+      AND session.state IN ('reserved', 'connected')
   ) AS active_room_count,
   COUNT(*) FILTER (
     WHERE session.state IN ('reserved', 'connected')

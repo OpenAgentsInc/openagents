@@ -1338,15 +1338,16 @@ Secret, or Deployment change — the same restriction the provider-disconnect
 drill carries, and for the same reason: those faults are not scoped to one
 generation, so nothing observed after them can be attributed to it.
 
-**The bound.** Thirty seconds
+**The bound.** Sixty seconds
 (`SARAH_LIVEKIT_SFU_LOSS_BOUND_MS` in
 `apps/sarah-livekit-agent/src/failure-matrix.ts`), measured from pod deletion to
 terminal accounting. The ceiling is not `max_session_seconds`: a session that
 survives until the 300 second expiry sweep has demonstrated the `timeout`
 scenario, not bounded SFU-loss handling, and has held a credit hold and an
 orphaned room for the intervening minutes. The worker publishes `lease_check`
-every five seconds, so thirty is a small multiple of the cadence the authority
-already runs at.
+every five seconds. The authority sweep runs on a minute cadence, so the bound
+covers the measured detection path without substituting the five-minute
+session deadline for failure handling.
 
 **Admitted terminal reasons.** `worker_shutdown`, `participant_left`, or
 `worker_error`. The worker protocol has no media-transport-loss reason, so which

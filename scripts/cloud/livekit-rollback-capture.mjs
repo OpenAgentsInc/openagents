@@ -16,8 +16,10 @@ const COUNTS_QUERY = `
 SELECT
   current_database() AS database_name,
   (SELECT COUNT(*)
-     FROM sarah_livekit_room_bindings
-    WHERE state IN ('prepared', 'active')) AS active_room_count,
+     FROM sarah_livekit_room_bindings AS binding
+     INNER JOIN sarah_realtime_voice_sessions AS session USING (session_ref)
+    WHERE binding.state IN ('prepared', 'active')
+      AND session.state IN ('reserved', 'connected')) AS active_room_count,
   (SELECT COUNT(*)
      FROM sarah_realtime_voice_sessions
     WHERE transport_kind = 'livekit_room_v1'

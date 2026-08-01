@@ -496,7 +496,7 @@ describe("Sarah LiveKit terminal failure matrix", () => {
             1;
         }),
       ),
-    ).toThrow("exceeded its 30000 ms bound");
+    ).toThrow(`exceeded its ${SARAH_LIVEKIT_SFU_LOSS_BOUND_MS} ms bound`);
   });
 
   test("refuses an SFU-loss drill that proves nothing about SFU loss", () => {

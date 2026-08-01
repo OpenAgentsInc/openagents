@@ -574,7 +574,7 @@ describe("failure drills", () => {
         "sarah-livekit-failure",
         sfuLoss({ boundedWithinMs: SARAH_LIVEKIT_SFU_LOSS_BOUND_MS + 1 }),
       ),
-    ).toThrow(/exceeded its 30000 ms bound/u);
+    ).toThrow(`exceeded its ${SARAH_LIVEKIT_SFU_LOSS_BOUND_MS} ms bound`);
 
     // An exceeded bound is still a finding, so it must remain recordable.
     const contradicted = record(

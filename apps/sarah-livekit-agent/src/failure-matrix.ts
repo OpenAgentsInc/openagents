@@ -58,11 +58,11 @@ export type SarahLiveKitFailureScenario = (typeof SARAH_LIVEKIT_FAILURE_SCENARIO
  * only learns of the loss when the session-expiry sweep fires has not
  * demonstrated bounded SFU-loss handling — it has re-demonstrated the `timeout`
  * scenario, with a hold pinned and a room orphaned for the intervening minutes.
- * Thirty seconds is a small multiple of the lease cadence and is the number a
- * run has to beat for this drill to say anything the matrix does not already
- * say elsewhere.
+ * The authority sweep runs on a minute cadence. Sixty seconds therefore covers
+ * the measured detection path without substituting the five-minute session
+ * deadline for failure handling.
  */
-export const SARAH_LIVEKIT_SFU_LOSS_BOUND_MS = 30_000;
+export const SARAH_LIVEKIT_SFU_LOSS_BOUND_MS = 60_000;
 
 /**
  * The terminal reasons each scenario admits.

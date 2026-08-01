@@ -3123,6 +3123,17 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         ownerActorRef: uncertainRecord.ownerActorRef,
       });
     }
+    await tx`
+      UPDATE sarah_livekit_room_bindings
+      SET state = 'cleanup_ready',
+          cleanup_attempt_count = 0,
+          cleanup_next_attempt_at = NULL,
+          cleanup_abandoned_at = NULL,
+          updated_at = ${input.nowIso}
+      WHERE session_ref = ${uncertainRecord.sessionRef}
+        AND generation = ${uncertainRecord.generation}
+        AND state IN ('prepared', 'active', 'cleanup_failed')
+    `;
     return uncertainRecord;
   };
 

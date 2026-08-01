@@ -71,6 +71,7 @@ const collect = (cloudRunService = service(), counts = "0,0\n", cloudRunRevision
         }
         assert.equal(bin, "psql");
         assert.ok(args.includes("--no-psqlrc"));
+        assert.match(args.at(-1), /session\.state IN \('reserved', 'connected'\)/u);
         assert.match(args.at(-1), /credit_mode <> 'owner_waived_unmetered'/u);
         return { status: 0, stdout: counts, stderr: "" };
       },

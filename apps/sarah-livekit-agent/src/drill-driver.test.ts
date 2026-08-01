@@ -509,7 +509,7 @@ describe("Sarah LiveKit single-session drill driver", () => {
 
   test("refuses an sfu_loss bound other than the one the failure matrix defines", async () => {
     await expect(
-      run(harness({ settleAfterMs: 4_000, overrides: { boundMs: 60_000 } })),
+      run(harness({ settleAfterMs: 4_000, overrides: { boundMs: 30_000 } })),
     ).rejects.toThrow(`${SARAH_LIVEKIT_SFU_LOSS_BOUND_MS} ms bound`);
   });
 

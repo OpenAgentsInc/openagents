@@ -119,6 +119,7 @@ const commandRunner =
         false,
       );
       assert.equal(environment.PGPASSWORD, "never-in-argv");
+      assert.match(args.at(-1), /session\.state IN \('reserved', 'connected'\)/u);
       assert.match(args.at(-1), /credit_mode <> 'owner_waived_unmetered'/u);
       return { status: 0, stdout: counts, stderr: "" };
     }
