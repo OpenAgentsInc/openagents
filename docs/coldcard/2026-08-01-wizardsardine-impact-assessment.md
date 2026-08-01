@@ -247,7 +247,9 @@ through the shipped artifact:
    Each caller needs its own consequence and prerequisite analysis.
 5. **Review dependency migrations as security-boundary changes.** The regression
    crossed firmware, MicroPython, libngu, compile-time configuration, and linker
-   resolution. File-local review was structurally unlikely to catch it.
+   resolution. Review without the dependency-complete program is structurally
+   unlikely to catch it; a focal-file session that can inspect the complete tree
+   can reconstruct the chain.
 6. **Model common-mode failure at the policy level.** Multiple devices from one
    implementation can be less independent than their physical separation implies.
    Multi-vendor designs reduce that risk but increase integration, backup, upgrade,
@@ -300,261 +302,80 @@ Supplementary material:
 
 ---
 
-## Addendum: what the Loupe corpus changes
+## Addendum: Loupe-derived refinements
 
 Addendum date: 2026-08-01.
 
-Basis: all 12 documents in [`docs/loupe/`](../loupe/), including the Loupe source
-study, the Omega scan, the pre-registered Coldcard prediction and experiment, the
-experiment results, the independent defensive analyses, and the current forensic
-roadmap.
+This addendum is limited to what the Loupe evidence changes or qualifies in the
+assessment above. It is not a synopsis of the Loupe corpus.
 
-### 1. The experiment corrects an important overstatement
+### Refinement to this assessment and the Wizardsardine article
 
-The Loupe work first predicted that a per-file scanner would almost certainly miss
-the Coldcard failure even with the relevant dependencies present. That prediction
-was refuted.
+The Coldcard experiment corrects the broad reading of section 6's statement about
+file-local review and adds empirical support for the article's central source-level
+causal chain.
 
-The pre-registered experiment held the vulnerable Coldcard revision, model, effort,
-prompt, and selected focal files constant:
+- The [initial prediction](../loupe/2026-08-01-would-loupe-have-caught-coldcard.md)
+  expected a per-file Loupe scan to miss the failure even if dependencies were
+  present. The
+  [pre-registered experiment](../loupe/2026-08-01-coldcard-prefix-experiment.md)
+  refuted that prediction. Arm A, a default clone with empty submodules, scanned 12
+  focal files, produced 12 findings, and missed. Arm B, with pinned libNgU and
+  MicroPython source present, scanned 16 focal files, produced 22 findings, and hit
+  the frozen rubric; the full causal chain appeared three times in the
+  [results](../loupe/2026-08-01-coldcard-prefix-experiment-results.md).
+- Loupe's focal file was not its evidence boundary: each session could inspect the
+  mounted worktree. The accurate refinement is therefore not that file-focused
+  analysis is structurally unable to find this class of failure. It is that review
+  without the dependency-complete program is likely to miss a cross-repository
+  configuration-and-linkage defect, while a focal-file session with the complete
+  tree can reconstruct it.
+- The Arm B result corroborates the Wizardsardine article's source-level account:
+  the zero-valued board macro, libNgU's macro-existence check, MicroPython's
+  deterministic fallback, symbol selection, and the use of that generator for
+  wallet-secret material form a coherent chain visible in the pinned source.
+- It does **not** prove which implementation was present in the exact shipped
+  firmware artifact. The experiment used a known incident, hand-picked files, one
+  run per arm, and one model family. Verification was disabled; `validate_poc`
+  checked whether a patch applied but did not execute its test; and the run did not
+  build the firmware or inspect its objects, link map, or image. As the
+  [follow-up analysis](../loupe/2026-08-01-codex-analysis.md) notes, the vendor's
+  build-time symbol-table assertion is stronger artifact evidence.
+- Nothing in the Loupe result changes the feature-by-feature blast radius,
+  prerequisite analysis, or remediation above. In particular, reaching
+  `ngu.random` establishes a dependency, not remote exploitability without the
+  relevant artifact, transcript, verifier, public oracle, policy path, or physical
+  capability.
 
-| Arm | Mounted source                                   | Files | Findings | Frozen-rubric result |
-| --- | ------------------------------------------------ | ----: | -------: | -------------------- |
-| A   | Default clone; submodules empty                  |    12 |       12 | **MISS**             |
-| B   | Pinned libNgU and MicroPython submodules present |    16 |       22 | **HIT**              |
+### Refinement to the Kimi/K3 assessment
 
-Arm B reconstructed the complete causal chain three times. The strongest finding
-identified the zero-valued macro, libNgU's existence test, MicroPython's deterministic
-fallback, symbol resolution, and the use of `ngu.random.bytes()` for wallet-seed
-material. Arm A produced plausible RNG hardening findings but did not identify the
-defect.
+The Loupe result raises confidence in one part of the supplied Kimi/K3 report and
+does not resolve its overclaims.
 
-The crucial correction is that Loupe assigns a focal file but exposes the whole
-mounted worktree to the session. The winning board-header file existed in both arms;
-only its surrounding dependency evidence changed. A focal-file scanner is therefore
-not necessarily file-isolated. The statement above that file-local review was
-unlikely to catch the failure remains valid only for a reviewer or harness that
-actually restricts evidence to one file. It must not be generalized to Loupe's
-worktree-visible sessions.
+- Loupe Arm B separately reconstructed the report's central cross-repository RNG
+  chain from dependency-complete source. That is useful source-level corroboration
+  of the causal map, not corroboration of every feature conclusion in the report.
+- The report's statement that it independently verified every material technical
+  claim remains too strong. Neither the Kimi/K3 report nor the Loupe experiment
+  built and inspected the exact firmware artifact, executed an exploit
+  reproduction, or supplied human peer review. Agreement between AI analyses does
+  not promote a source claim into artifact or exploit proof.
+- The report's useful scope refinements still stand: Clone Coldcard is distinct
+  from ordinary encrypted backups, and a recoverable USB session can expose a
+  desktop-entered BIP-39 passphrase.
+- The corrections already recorded in section 4 also stand. The report's USB list
+  is not a complete bound-session inventory; `Users.pick_secret` does provide
+  device-side HSM user-secret generation through the working hardware RNG; a
+  predictable 28-bit teleport index does not reveal a sound seed-derived private
+  key; and predictable defense-in-depth randomness is not by itself a verified
+  remote exploit.
 
-This result makes **input completeness** the first scanner invariant. Loupe's default
-bare-clone path did not materialize submodules and did not announce the missing
-program fraction. It still returned 12 findings, so the incomplete run looked
-productive. A scan receipt must bind the exact commit, dependency revisions,
-generated inputs, exclusions, and missing paths. If required source is absent, the
-result is `incomplete`, not a comprehensive miss or a clean bill of health.
+### Refined bottom line
 
-### 2. The hit is detection evidence, not final-artifact proof
-
-The result does not establish that Loupe independently proved the shipped firmware
-artifact:
-
-- The Coldcard files were hand selected with hindsight. A cold operator would have
-  faced 458 candidate Python/C/header files and would not already know to prioritize
-  these 12–16.
-- There was one stochastic run per arm using one model family. The known incident
-  could be present in model knowledge, although the A/B divergence makes simple
-  recall an incomplete explanation.
-- Loupe verification was disabled because its verifier path was broken. The earlier
-  Omega run produced 132 candidates and zero retained verdicts: the worker believed
-  a verdict had been saved while the server had no verdict. Typed submission at one
-  boundary did not protect the unacknowledged child-to-server flush boundary.
-- `validate_poc` checked that a diff applied. It did not execute the proposed test.
-- The Coldcard finding inferred which `rng_get()` would be selected. It did not build
-  the exact board firmware and inspect the objects, link map, or final image.
-
-In the Loupe evidence ladder, the experiment is T1 at best: a source-level claim
-with an applicable PoC diff. The eventual Coldcard fix used stronger evidence—a
-build-time symbol-table assertion that the intended board object provides `rng_get`
-and the fallback object provides no RNG symbols. That is the decisive artifact-level
-control.
-
-The same boundary applies to the supplied K3 report. Its source map and the manual
-spot checks in this assessment make it useful corroboration, but neither a detailed
-model narrative nor agreement among models proves the linked release artifact.
-
-### 3. Coldcard needs a claim ladder, not one vulnerability label
-
-The forensic roadmap supplies a useful claim lattice. Applied here, the claims are:
-
-1. **Source flaw:** can the dependency-complete source select the deterministic
-   fallback for a secret consumer?
-2. **Artifact selection:** which implementation did the pinned board build actually
-   compile and link?
-3. **Generator behavior:** what output follows from an exact initial state, reseed,
-   and call trace?
-4. **Exploitability model:** what candidate space follows from the hardware,
-   firmware, UID, timers, interaction history, and attacker knowledge?
-5. **Owned-fixture recovery:** can an independent implementation recover a known
-   synthetic or explicitly owned xpub/address set?
-6. **Historical program fingerprint:** which historical transactions share
-   software-selected construction habits?
-7. **Entity grouping:** which collectors and vaults are joined by observed graph
-   edges?
-8. **Unauthorized movement:** which transactions are tied to owner testimony that
-   the movement was not authorized?
-9. **Identity attribution:** who operated the recovery or collection system?
-
-Evidence at one rung does not promote the next. A source hit is not artifact proof;
-an entropy estimate is not a recovered wallet; a fee or transaction fingerprint is
-not a person; a cluster is not a victim count; and movement on-chain is not proof of
-unauthorized taking without owner evidence. This sharpens the time-bounded incident
-caveats already stated in section 2.
-
-It also explains why the ancillary-feature table must follow full data flow. A call
-to the defective generator proves a dependency. It does not alone prove that an
-attacker has the artifact, transcript, verifier, public oracle, policy path, or
-physical capability needed to exploit that feature.
-
-### 4. Replace the graphic's remote/local split with attacker economics
-
-The Loupe analyses identify the most dangerous combination as:
-
-> a reduced or structured candidate space plus a cheap, public, offline oracle.
-
-That is a better prioritization rule than the graphic's binary remote/physical
-legend. For each feature, assess four independent dimensions:
-
-| Dimension        | Question                                                                                                                                                     |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Candidate space  | How many states remain after device, firmware, timing, call-trace, and attacker-knowledge assumptions?                                                       |
-| Oracle           | Can a guess be verified publicly, offline, cheaply, and without rate limits?                                                                                 |
-| Required capture | Does the attacker need an address, xpub, clone file, USB transcript, teleport payload, password verifier, Seed XOR share, or device observation?             |
-| Consequence      | Does success expose a signing key, transported seed, passphrase, session confidentiality, policy factor, password, or only a defense-in-depth randomization? |
-
-This ordering reinforces the feature conclusions above:
-
-- Paper wallets are especially severe because the public address is an exact offline
-  key verifier.
-- Clone compromise can be tested against a durable encrypted artifact, but the
-  attacker must obtain the clone file or exchange material.
-- USB and ordinary Key Teleport require captured transcripts or payloads; their
-  consequence depends on what crossed the session.
-- Generated passwords require a verifier and may encounter online rate limits.
-- Key C matters through the wallet's satisfiable spending policy, not merely because
-  a key exists.
-- PIN shuffle and side-channel masking weaken physical defenses but are not remote
-  seed-recovery claims.
-- The 28-bit multisig-teleport index remains an example of why a small random value
-  is not automatically a small private-key space.
-
-### 5. The prevention stack should be ordered by cost and evidence
-
-Reading the full Loupe corpus reorders the defensive recommendations:
-
-1. **Review policy first.** The four culprit changes recorded in the postmortem had
-   no reviewer, and two had no pull request. A required reviewer for entropy, seed,
-   key-derivation, board-configuration, and cryptographic-integration paths is the
-   cheapest control.
-2. **Materialize and attest inputs.** Fetch pinned submodules and required generated
-   or vendored sources. Refuse a comprehensive result when the source/build graph is
-   incomplete.
-3. **Use source agents as candidate generators.** The complete-tree Loupe arm shows
-   that a capable session can reconstruct the cross-repository mechanism from source.
-4. **Prove symbol provenance in the build artifact.** Assert the exact provider of
-   every security-critical symbol and forbid fallback providers. This is what makes
-   the result deterministic and release-specific.
-5. **Run fault builds.** Remove or disable the approved entropy provider; vary flags
-   among undefined, zero, and one; change link order; and require secret creation or
-   the build to fail closed.
-6. **Trace runtime provenance.** On a faithful build or owned device, observe that
-   secret creation reaches the approved source and aborts on source failure.
-7. **Measure hardware properties separately.** Static and artifact provenance cannot
-   prove that a physical entropy source is healthy, independent, or side-channel
-   resistant.
-
-Output randomness tests do not replace this stack. Hashing a small candidate set can
-produce outputs that look statistically random while retaining the same small
-candidate set.
-
-### 6. What the scan methodology should learn from this incident
-
-The corpus supports six practices that generalize beyond Coldcard:
-
-- **Compare configurations.** The A/B divergence was the highest-value signal. One
-  successful-looking run can preserve its own default's blind spot indefinitely.
-- **Rank by security path and attacker economics.** Entropy, nonces, signing,
-  firmware trust, wallet import/export, policy paths, and public oracles deserve
-  priority over alphabetical file coverage.
-- **Separate hypotheses from findings.** A question such as “does this seed path
-  reach the approved source?” should survive as a typed unverified lead without
-  becoming a vulnerability claim.
-- **Execute evidence before external reporting.** A finding should not leave the
-  private review boundary until its regression or invariant check has been observed
-  failing on the vulnerable state and passing on the repaired state.
-- **Measure misses and incomplete runs.** Finding count is not a success metric.
-  Dependency gaps, verifier failures, retries, cancellations, unknown usage, and
-  clean-control false positives stay in the denominator.
-- **Use Coldcard as development data, not proof of generalization.** The known
-  incident is contaminated by hindsight. Promotion needs renamed structural
-  variants, unrelated historical failures, clean controls, and blinded holdouts.
-
-The roadmap records OFR-001 through OFR-005 as implemented foundations for contracts,
-managed GCE execution, immutable source delivery, the frozen Coldcard development
-benchmark, and censor-aware metric evidence. This addendum did not independently
-audit those implementations or their deployed state. The roadmap names OFR-006—the
-configurable Loupe prompt/profile seam—as the next implementation gate.
-
-### 7. Coordination is part of the security result
-
-Loupe already supplies a disciplined candidate lifecycle. The remaining ecosystem
-problem is allocating scans, comparing coverage, deduplicating private findings,
-funding compute, coordinating disclosure, delivering fixes, and ensuring that fixes
-persist.
-
-The Coldcard experiment shows why configuration diversity matters: two otherwise
-identical runs disagreed because one had the complete program. A useful scan ledger
-would therefore record target, commit, source coverage, dependency policy, prompt,
-model, effort, evidence tier, and missing inputs—not publish a context-free finding
-count.
-
-There is a dual-use boundary. A public project-by-project map of unscanned security
-paths can become an attacker target list. Aggregate coverage can be public, while
-specific gaps, findings, and divergence remain inside an authenticated coordination
-group until disclosure. Hash commitments can establish discovery timing and private
-dedup without revealing the vulnerability.
-
-The durable output should be a proof-carrying fix: a minimal patch, an independently
-re-executable failing-before/passing-after regression, pinned environment and source
-digests, explicit assumptions, reviewer decision, and persistence watch. Human merge
-review remains mandatory. The strategic asset is not model access or a new scanner;
-it is a corpus of executed fixes plus maintainer trust.
-
-### 8. Refined conclusion
-
-The Loupe corpus does not change the user remediation conclusion: fixed firmware
-does not repair previously generated weak material, and affected seeds and ancillary
-secrets still require feature-specific assessment and rotation.
-
-It does change the detection conclusion. Coldcard was not beyond AI source review in
-principle. A dependency-complete, source-visible Loupe session found the full known
-mechanism. The operational default still would have missed it because the required
-dependencies were absent, and the hit still stopped before final-artifact proof.
-
-The evidence supports a narrower lesson than either “AI could not find this” or
-“source review was enough”:
-
-> A defensible release process must combine complete inputs, risk-directed
-> attention, and release-artifact proof.
-
-Complete source lets an agent form the right hypothesis. A digest-bound build
-invariant proves which implementation is in the checked artifact. Fault and runtime
-tests prove that the secure path is load-bearing. A claim ladder prevents source
-findings, chain fingerprints, and incident attribution from being collapsed
-together. Coordination makes those checks repeatable across projects instead of
-depending on one operator choosing the right configuration by chance.
-
-### Loupe materials reviewed
-
-- [`README.md`](../loupe/README.md)
-- [`loupe-in-plain-words.md`](../loupe/loupe-in-plain-words.md)
-- [`2026-07-31-omega-first-scan-preliminary.md`](../loupe/2026-07-31-omega-first-scan-preliminary.md)
-- [`2026-07-31-omega-first-class-pentester-speculation.md`](../loupe/2026-07-31-omega-first-class-pentester-speculation.md)
-- [`2026-07-31-fix-as-a-service-company-thesis.md`](../loupe/2026-07-31-fix-as-a-service-company-thesis.md)
-- [`2026-08-01-would-loupe-have-caught-coldcard.md`](../loupe/2026-08-01-would-loupe-have-caught-coldcard.md)
-- [`2026-08-01-coldcard-prefix-experiment.md`](../loupe/2026-08-01-coldcard-prefix-experiment.md)
-- [`2026-08-01-coldcard-prefix-experiment-results.md`](../loupe/2026-08-01-coldcard-prefix-experiment-results.md)
-- [`2026-08-01-codex-analysis.md`](../loupe/2026-08-01-codex-analysis.md)
-- [`2026-08-01-hardening-against-ai-assisted-attacks.md`](../loupe/2026-08-01-hardening-against-ai-assisted-attacks.md)
-- [`2026-08-01-coordination-not-scanners.md`](../loupe/2026-08-01-coordination-not-scanners.md)
-- [`2026-08-01-omega-forensic-analysis-roadmap.md`](../loupe/2026-08-01-omega-forensic-analysis-roadmap.md)
+The Loupe experiment shows that a model with the complete pinned dependency tree
+could reconstruct the known source defect, while Loupe's default incomplete clone
+would have missed it. That narrows one review-method claim and corroborates the
+central source narrative in both the Wizardsardine article and the Kimi/K3 report.
+It does not upgrade either source analysis into proof of the shipped artifact or of
+every downstream exploit claim, and it does not change the owner remediation
+conclusion.
