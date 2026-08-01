@@ -325,7 +325,7 @@ const main = async (): Promise<void> => {
       `${JSON.stringify(publicReceiptFor(input, targets, results, privateReceipt))}\n`,
     )
   } finally {
-    await client.close()
+    await client.end()
   }
 }
 
