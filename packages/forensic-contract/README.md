@@ -17,6 +17,10 @@ The package owns:
   plus a deterministic evaluator for preprocessed macros, compiler inputs,
   linked symbol providers, secret-sink reachability, retained widths,
   truncation, and fail-closed fault builds;
+- an independent uint32 Yasmarang transition, libngu/provider combiner,
+  32-bit reseed truncation, target-compatible uniform retry, keypad shuffle
+  trace, frozen mutation-vector evaluator, explicit work-factor calculator,
+  and synthetic/owner-authorized public-material reproduction receipt;
 - the five-arm Coldcard benchmark, four suite-manifest, split-isolation, and
   honest historical-import shapes, with the checked-in development pack at
   `fixtures/forensics/coldcard/` in the repository;
@@ -58,6 +62,9 @@ The implementation deliberately keeps these facts separate:
 - missing build artifacts become `not_proven`, complete symbol inventories are
   required to prove fallback absence, and statistical output tests are never
   entropy-provenance evidence.
+- owned-fixture reproduction never performs a live-value lookup, persists only
+  digests of xpub/address material, returns no mnemonic or xprv, and requires an
+  explicit synthetic or owner-authorization reference.
 
 Consumers must decode untrusted input with `strictDecode` or equivalent Effect
 Schema options that set `onExcessProperty: "error"`. The schemas do not make a

@@ -22,6 +22,11 @@ The pack contains:
   provider-removal fault-build capture fixtures for the OFR-014 evaluator.
   Their digests are conformance fixture values, not claims that a production
   firmware build ran outside the admitted OpenAgents Cloud worker path; and
+- `generator-vectors.v1.json`: frozen vulnerable, 32-bit-reseeded, approved-
+  provider, and guard/provider/initialization/call-trace/reseed mutation
+  vectors, plus a synthetic public-material match and an explicit measured-
+  throughput work-factor input. It contains no mnemonic, xprv, or live value
+  oracle input; and
 - `historical-import.v1.json`: Episode 264 Arm A as
   `completed_incomplete` and Arm B as an unverified `source_observed` hit.
 

@@ -1,0 +1,122 @@
+{
+  "schema": "openagents.coldcard_generator_vectors.v1",
+  "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "vectors": [
+    {
+      "schema": "openagents.coldcard_generator_vector.v1",
+      "vectorRef": "vector.coldcard.vulnerable",
+      "fixtureClass": "vulnerable",
+      "initialStateDigest": "sha256:7434c1e1895fa2902cc4636cf51e60dd5c2c45df347f228db9d2489cc71a9c76",
+      "outputLength": 32,
+      "expectedOutputDigest": "sha256:03b386847c239d65f0177bb610e94c52b036f330ca544fb5f8bf69853e485cba",
+      "callTraceDigest": "sha256:485b4dd3dfed3709ece37e133cb5d892f0997efd622101b07f6ba143b7da4e64",
+      "expectedShuffleDigest": "sha256:a0feea12f3275c7b9f29790f053671e0aba648c8e64a8e393e7d7e48eb59142b",
+      "retainedReseedWidthBits": 0,
+      "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "schema": "openagents.coldcard_generator_vector.v1",
+      "vectorRef": "vector.coldcard.partially-mitigated",
+      "fixtureClass": "partially_mitigated",
+      "initialStateDigest": "sha256:9b587685bd32c686af7fe97f10cc29c3ef431b768360ba281808023b4bc70ff3",
+      "outputLength": 32,
+      "expectedOutputDigest": "sha256:8b61bcf1b59c1e18994551f3174cccd6f6d64499bf5b796161f075a2e112b62f",
+      "callTraceDigest": "sha256:27d2e4bcb58125eddec68075bb4ff5b1da22a02ed66ac1b87c94d9f6e864e03f",
+      "expectedShuffleDigest": "sha256:b78886523e293d8099cdff0940fe0a61a1a30dbee58aedad58cbd1c660e08068",
+      "retainedReseedWidthBits": 32,
+      "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "schema": "openagents.coldcard_generator_vector.v1",
+      "vectorRef": "vector.coldcard.fixed",
+      "fixtureClass": "fixed",
+      "initialStateDigest": "sha256:18eb6baad98859639d3a6c40a4b72afe958406a8036fdc8ca77c93c185d7184b",
+      "outputLength": 32,
+      "expectedOutputDigest": "sha256:ad4b63a01a8969335ea85ea43e4b8e0263b557016aa6e8971421d895508fef2c",
+      "callTraceDigest": "sha256:ce9eb16c347f65e0ed8651e80904d2dc6fafdebbd090e771dd22dba42dfcb3e3",
+      "expectedShuffleDigest": "sha256:6557ffb0d545bc4ec372799374ee98fe4bf7bbbd43876e445c43861266eb7700",
+      "retainedReseedWidthBits": 0,
+      "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "schema": "openagents.coldcard_generator_vector.v1",
+      "vectorRef": "vector.coldcard.mutated-guard",
+      "fixtureClass": "mutated_guard",
+      "initialStateDigest": "sha256:b69e684858bea136fd0cff601f13ae441f3fc9f1dde70e7ad9cab65ab0f9df2a",
+      "outputLength": 32,
+      "expectedOutputDigest": "sha256:b205b92e74fa821f6f7bdb3ebff192284215622ad4c6f5c9803e15148b63f446",
+      "callTraceDigest": "sha256:86d9bd77e5d37c12a9674edfe0739fac78d0c41481125b294559e3a817b62a38",
+      "expectedShuffleDigest": "sha256:ab2504c5eb2a2ddcaeb37898da4de3ae80c801bfcfff78bda4ad89be7a882780",
+      "retainedReseedWidthBits": 0,
+      "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "schema": "openagents.coldcard_generator_vector.v1",
+      "vectorRef": "vector.coldcard.mutated-provider",
+      "fixtureClass": "mutated_provider",
+      "initialStateDigest": "sha256:a242065c92482d2ae0e9fb79f213b9b401af1d6252505c8d0ec7e90a88284975",
+      "outputLength": 32,
+      "expectedOutputDigest": "sha256:dff27f9a00915955ae376cd5c5726b61598d3a8e184792b308a353a28ebf8296",
+      "callTraceDigest": "sha256:bf49bde2270c8551f4d4bf2864a4b71c3b0d35d12d951a3a1670e2b3d29ec2ec",
+      "expectedShuffleDigest": "sha256:c88200cbcf8fc297366451d4c56ab23bb46eb6cf016676f77cd6792e09d88506",
+      "retainedReseedWidthBits": 0,
+      "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "schema": "openagents.coldcard_generator_vector.v1",
+      "vectorRef": "vector.coldcard.mutated-initialization",
+      "fixtureClass": "mutated_initialization",
+      "initialStateDigest": "sha256:d70f6d924018489a7776b0a3a5fa4216afc319a4edf05322ad2a648b9165d69d",
+      "outputLength": 32,
+      "expectedOutputDigest": "sha256:4f425af68a2646ebfb304d51d544756adc85face2c10d8ee51834db52438bc8d",
+      "callTraceDigest": "sha256:9a82dc731e75a66341a9a9a82f163aa46cd1ac2d6fabe690e5ffa0b1c5d2ada2",
+      "expectedShuffleDigest": "sha256:4a4508bd02b52e03332bd71176412aa62ef538bb49c4e762461a6ea4ddb041e6",
+      "retainedReseedWidthBits": 0,
+      "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "schema": "openagents.coldcard_generator_vector.v1",
+      "vectorRef": "vector.coldcard.mutated-call-trace",
+      "fixtureClass": "mutated_call_trace",
+      "initialStateDigest": "sha256:e4e9af535aca34fe56d54e926446a0228ea1c7f6964e0db775be505a63b7a532",
+      "outputLength": 32,
+      "expectedOutputDigest": "sha256:0dd1ceeb604a05294f74b55f01e8a7a25a50aa3ba82933a70d099862e935ff13",
+      "callTraceDigest": "sha256:9ab5816ead3bb65147c2e5cdd730cd0a55ff9f6f638c8b15120f6b93e83824c9",
+      "expectedShuffleDigest": "sha256:0cfe8caa4e5c91d9ffc6c3fc69317f63abd7dff0cfaf17d772bbc8f927e74783",
+      "retainedReseedWidthBits": 0,
+      "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "schema": "openagents.coldcard_generator_vector.v1",
+      "vectorRef": "vector.coldcard.mutated-reseed-truncation",
+      "fixtureClass": "mutated_reseed_truncation",
+      "initialStateDigest": "sha256:e4b18abb3dacd5bf5b39ae93f6df7bec998c1091b7be3f99e5213e1c1c2b3ef1",
+      "outputLength": 32,
+      "expectedOutputDigest": "sha256:3f1f6598b22efcb1c50735ad8464a45a5dc6838e986c4321ea2ef2d73e2b0010",
+      "callTraceDigest": "sha256:8d83d019e5292372d0ca439ad0baf9d56070044eeb21ea946609056981d321b8",
+      "expectedShuffleDigest": "sha256:8f3ea450576a03eb39414485d8d817138e22896bad8fccf522e3392bf145912e",
+      "retainedReseedWidthBits": 32,
+      "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "syntheticFixture": {
+    "fixtureRef": "fixture.coldcard.synthetic.v1",
+    "authorizationRef": "authority.synthetic.coldcard.v1",
+    "derivationPaths": ["m/84'/0'/0'/0/0", "m/84'/0'/0'/0/1", "m/49'/0'/0'/0/0", "m/44'/0'/0'/0/0"],
+    "expectedAddressSetDigest": "sha256:28da4c3fe6937adbf5bbf67348732a0eddb826dc101fc3f779c7818681fc4e05",
+    "expectedPublicMaterialDigest": "sha256:300d64a6669140fa96868374cc8c2b394446a8a318f02ed9af40a777b407cf77"
+  },
+  "workFactor": {
+    "hardwareClassRef": "hardware.coldcard.mk3.synthetic-model",
+    "firmwareRef": "firmware.coldcard.vulnerable.bcc2c382",
+    "dimensions": [
+      { "assumptionRef": "assumption.uid-known", "candidateCount": "1", "correlationGroupRef": "correlation.uid" },
+      { "assumptionRef": "assumption.timer-upper-bound", "candidateCount": "80000", "correlationGroupRef": "correlation.timing" },
+      { "assumptionRef": "assumption.rtc-correlated-with-timer", "candidateCount": "60000", "correlationGroupRef": "correlation.timing" },
+      { "assumptionRef": "assumption.call-trace-frozen", "candidateCount": "22500000", "correlationGroupRef": "correlation.call-trace" }
+    ],
+    "measuredCandidatesPerSecond": "250000",
+    "throughputReceiptRef": "receipt.openagents-cloud.synthetic-throughput.v1",
+    "assumptionRefs": ["assumption.uid-known", "assumption.timer-upper-bound", "assumption.rtc-correlated-with-timer", "assumption.call-trace-frozen"]
+  }
+}

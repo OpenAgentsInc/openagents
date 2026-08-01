@@ -1779,6 +1779,26 @@
   ],
   "allowed": [
     {
+      "ref": "packages/forensic-contract/src/coldcard-generator.ts#LIBNGU_INITIAL_YASMARANG_STATE",
+      "reason": "Published pinned libngu initial state; the native forensic worker vector builder will use it for admitted vulnerable and mutation reproductions."
+    },
+    {
+      "ref": "packages/forensic-contract/src/coldcard-generator.ts#buildColdcardGeneratorTrace",
+      "reason": "Published digest-only trace builder; the native forensic worker route will call it when an admitted OpenAgents Cloud generator reproduction is persisted."
+    },
+    {
+      "ref": "packages/forensic-contract/src/coldcard-generator.ts#calculateForensicWorkFactor",
+      "reason": "Published explicit-assumption estimator; the forensic evaluator route will call it after admitted OpenAgents Cloud throughput receipts are available."
+    },
+    {
+      "ref": "packages/forensic-contract/src/coldcard-generator.ts#evaluateColdcardGeneratorVector",
+      "reason": "Published frozen-vector evaluator; the native forensic worker route will call it for vulnerable, fixed, and mutation suites on admitted OpenAgents Cloud workers."
+    },
+    {
+      "ref": "packages/forensic-contract/src/coldcard-generator.ts#reproduceColdcardOwnedFixture",
+      "reason": "Published secret-safe reproduction boundary; the forensic evaluator route will call it only for synthetic or explicitly owner-authorized fixtures after the OpenAgents Cloud execution adapter lands."
+    },
+    {
       "ref": "packages/forensic-contract/src/artifact-witness.ts#evaluateArtifactWitness",
       "reason": "Published deterministic artifact evaluator; the native forensic worker route will call it when the code-to-artifact suite moves from checked-in conformance fixtures to admitted OpenAgents Cloud capture bytes."
     },

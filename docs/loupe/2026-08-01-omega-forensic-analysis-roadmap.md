@@ -1129,6 +1129,16 @@ Exit gate:
 
 ### Phase 5 — Coldcard generator and owned-fixture reproduction
 
+OFR-015 implements the independent generator path: exact uint32 Yasmarang
+state updates, libngu/provider mixing, adjacent-provider health check, 32-bit
+reseed truncation, uniform retry behavior, and Fisher-Yates keypad call traces.
+Frozen vectors distinguish vulnerable, partially mitigated, approved-provider,
+and guard/provider/initialization/call-trace/reseed mutations. Work estimates
+are recomputed from explicit candidate counts and measured-throughput receipts.
+The synthetic/owner-authorized fixture boundary derives BIP39/BIP32 public
+material locally, persists only digests, returns no mnemonic or xprv, and
+structurally records that no mainnet or live-value lookup occurred.
+
 Deliver:
 
 - an independently implemented Yasmarang generator with exact state,

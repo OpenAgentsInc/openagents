@@ -2,6 +2,7 @@ export * from "./artifact-witness.ts";
 export * from "./canonical.ts";
 export * from "./benchmark.ts";
 export * from "./claims.ts";
+export * from "./coldcard-generator.ts";
 export * from "./lifecycle.ts";
 export * from "./metrics.ts";
 export * from "./primitives.ts";
