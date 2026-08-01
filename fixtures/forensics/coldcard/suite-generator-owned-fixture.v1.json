@@ -1,0 +1,28 @@
+{
+  "schema": "openagents.coldcard_suite_manifest.v1",
+  "suiteRef": "suite.coldcard.generator-owned-fixture.v1",
+  "suite": "generator_owned_fixture",
+  "executionTarget": "openagents_gce",
+  "inputs": [
+    { "inputRef": "input.coldcard.generator-source", "status": "available", "digest": "sha256:7c041d0be166a91edc46fa20e6f737451f3a9c9fe44ba9144e2354b25fbbc86b" },
+    { "inputRef": "input.coldcard.synthetic-owned-fixture", "status": "required_unmaterialized", "unavailableReasonRef": "reason.ofr015.owned-fixture-pending" }
+  ],
+  "evaluatorInputRefs": ["input.coldcard.generator-source", "input.coldcard.synthetic-owned-fixture"],
+  "expectedComparisonRefs": ["comparison.postmortem.entropy-tiers", "comparison.postmortem.generator-claims"],
+  "controlRefs": ["control.coldcard.known-state-vectors", "control.coldcard.guard-reseed-mutations", "control.coldcard.hardware-rng"],
+  "requiredCheckRefs": [
+    "check.coldcard.yasmarang-state-update",
+    "check.coldcard.initialization",
+    "check.coldcard.reseed-truncation",
+    "check.coldcard.keypad-shuffle-call-trace",
+    "check.coldcard.bip39-generation",
+    "check.coldcard.hd-derivation",
+    "check.coldcard.synthetic-xpub-match",
+    "check.coldcard.entropy-assumption-sensitivity"
+  ],
+  "outputContractRefs": ["openagents.generator_trace.v1", "openagents.entropy_state_model.v1", "openagents.forensic_claim_record.v1"],
+  "permittedClaimRefs": ["claim.state_space_model", "claim.owned_fixture_recovered"],
+  "forbiddenClaimRefs": ["claim.unauthorized_movement", "claim.identity_attribution"],
+  "evaluatorDigest": "sha256:7f570b1ad33aa0a31080e4ed9e25fe3316b4d46309bdc00f3767c0c3616ad6a9",
+  "createdAt": "2026-08-01T16:00:00.000Z"
+}

@@ -1,6 +1,87 @@
 {
   "schema": "openagents.forensic_conformance_fixtures.v1",
   "contracts": {
+    "openagents.coldcard_benchmark_manifest.v1": {
+      "schema": "openagents.coldcard_benchmark_manifest.v1",
+      "benchmarkRef": "benchmark.coldcard.v1",
+      "vulnerableCommit": "1111111111111111111111111111111111111111",
+      "fixedCommit": "2222222222222222222222222222222222222222",
+      "reproductionManifestRef": "manifest.coldcard.reproduction.v1",
+      "reproductionManifestDigest": "sha256:1010101010101010101010101010101010101010101010101010101010101010",
+      "treeDigestAlgorithm": "sha256_git_ls_tree_r_z_v1",
+      "arms": [
+        { "armRef": "arm.coldcard.incomplete", "kind": "incomplete_clone", "datasetSplit": "development", "targetRevisionRole": "vulnerable_target", "fixtureDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "coverageStatus": "incomplete", "missingDependencyPaths": ["external/libngu"], "expectedRunState": "completed_incomplete", "expectedVerdict": "not_scored_incomplete", "expectedEvidenceTier": "hypothesis", "finalLinkOutcome": "not_applicable", "requiredCausalLinkRefs": [], "exactMatchResistanceRefs": [], "controlCaseRefs": [], "modelCallPolicy": "blocked_before_inference" },
+        { "armRef": "arm.coldcard.complete", "kind": "complete_vulnerable", "datasetSplit": "development", "targetRevisionRole": "vulnerable_target", "fixtureDigest": "sha256:1212121212121212121212121212121212121212121212121212121212121212", "coverageStatus": "complete", "missingDependencyPaths": [], "expectedRunState": "completed", "expectedVerdict": "source_hit_unverified", "expectedEvidenceTier": "source_observed", "finalLinkOutcome": "not_proven", "requiredCausalLinkRefs": ["causal.one"], "exactMatchResistanceRefs": [], "controlCaseRefs": [], "modelCallPolicy": "allowed" },
+        { "armRef": "arm.coldcard.fixed", "kind": "fixed_clone", "datasetSplit": "control", "targetRevisionRole": "fixed_target", "fixtureDigest": "sha256:1313131313131313131313131313131313131313131313131313131313131313", "coverageStatus": "complete", "missingDependencyPaths": [], "expectedRunState": "completed", "expectedVerdict": "historical_finding_absent", "expectedEvidenceTier": "source_observed", "finalLinkOutcome": "not_applicable", "requiredCausalLinkRefs": [], "exactMatchResistanceRefs": [], "controlCaseRefs": ["control.fixed"], "modelCallPolicy": "allowed" },
+        { "armRef": "arm.coldcard.structural", "kind": "structural_variants", "datasetSplit": "development", "targetRevisionRole": "fixture", "fixtureDigest": "sha256:1414141414141414141414141414141414141414141414141414141414141414", "coverageStatus": "complete", "missingDependencyPaths": [], "expectedRunState": "completed", "expectedVerdict": "semantic_variant_hit", "expectedEvidenceTier": "source_observed", "finalLinkOutcome": "not_proven", "requiredCausalLinkRefs": ["causal.one"], "exactMatchResistanceRefs": ["variant.macro", "variant.symbol", "variant.path", "variant.guard", "variant.dependency"], "controlCaseRefs": [], "modelCallPolicy": "allowed" },
+        { "armRef": "arm.coldcard.clean", "kind": "clean_controls", "datasetSplit": "control", "targetRevisionRole": "fixture", "fixtureDigest": "sha256:1515151515151515151515151515151515151515151515151515151515151515", "coverageStatus": "complete", "missingDependencyPaths": [], "expectedRunState": "completed", "expectedVerdict": "no_false_positive", "expectedEvidenceTier": "source_observed", "finalLinkOutcome": "not_applicable", "requiredCausalLinkRefs": [], "exactMatchResistanceRefs": [], "controlCaseRefs": ["control.hardware", "control.unavailable", "control.nonsecret"], "modelCallPolicy": "allowed" }
+      ],
+      "rubric": {
+        "rubricRef": "rubric.coldcard.v1",
+        "rubricDigest": "sha256:1616161616161616161616161616161616161616161616161616161616161616",
+        "causalLinks": [
+          { "causalLinkRef": "causal.one", "sequence": 1, "proposition": "first", "requiredSourcePaths": ["one.c"] },
+          { "causalLinkRef": "causal.two", "sequence": 2, "proposition": "second", "requiredSourcePaths": ["two.c"] },
+          { "causalLinkRef": "causal.three", "sequence": 3, "proposition": "third", "requiredSourcePaths": ["three.c"] },
+          { "causalLinkRef": "causal.four", "sequence": 4, "proposition": "fourth", "requiredSourcePaths": ["four.c"] },
+          { "causalLinkRef": "causal.five", "sequence": 5, "proposition": "fifth", "requiredSourcePaths": ["five.c"] },
+          { "causalLinkRef": "causal.six", "sequence": 6, "proposition": "sixth", "requiredSourcePaths": ["six.c"] }
+        ],
+        "sourceHitRequiresAllCausalLinks": true,
+        "genericRandomnessAdviceIsHit": false,
+        "sourceTierFinalLinkOutcome": "not_proven",
+        "fixedHistoricalFindingAllowed": false,
+        "incompleteComprehensiveClaimAllowed": false,
+        "structuralExactMatchAllowed": false,
+        "maxTimeSeconds": 900,
+        "maxTokens": 200000,
+        "maxCostMicros": 10000,
+        "maxConcurrency": 1
+      },
+      "datasetSplits": [
+        { "split": "train", "ownerRef": "owner.train", "manifestDigest": "sha256:1717171717171717171717171717171717171717171717171717171717171717", "optimizerVisibility": "optimizer_visible", "benchmarkArmRefs": [] },
+        { "split": "development", "ownerRef": "owner.development", "manifestDigest": "sha256:1818181818181818181818181818181818181818181818181818181818181818", "optimizerVisibility": "optimizer_visible", "benchmarkArmRefs": ["arm.coldcard.complete", "arm.coldcard.structural"] },
+        { "split": "holdout", "ownerRef": "owner.holdout", "manifestDigest": "sha256:1919191919191919191919191919191919191919191919191919191919191919", "optimizerVisibility": "evaluator_only", "benchmarkArmRefs": [] },
+        { "split": "clean_holdout", "ownerRef": "owner.clean-holdout", "manifestDigest": "sha256:2020202020202020202020202020202020202020202020202020202020202020", "optimizerVisibility": "evaluator_only", "benchmarkArmRefs": [] }
+      ],
+      "suites": [
+        { "suite": "code_to_artifact", "manifestRef": "suite.code", "manifestDigest": "sha256:2121212121212121212121212121212121212121212121212121212121212121" },
+        { "suite": "generator_owned_fixture", "manifestRef": "suite.generator", "manifestDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222" },
+        { "suite": "historical_chain_fingerprint", "manifestRef": "suite.chain", "manifestDigest": "sha256:2323232323232323232323232323232323232323232323232323232323232323" },
+        { "suite": "evidence_graph", "manifestRef": "suite.graph", "manifestDigest": "sha256:2424242424242424242424242424242424242424242424242424242424242424" }
+      ],
+      "historicalImportRef": "import.coldcard.episode264",
+      "historicalImportDigest": "sha256:2525252525252525252525252525252525252525252525252525252525252525",
+      "createdAt": "2026-08-01T12:00:00.000Z"
+    },
+    "openagents.coldcard_historical_import.v1": {
+      "schema": "openagents.coldcard_historical_import.v1",
+      "importRef": "import.coldcard.episode264",
+      "episodeRef": "docs/transcripts/264.md",
+      "resultsRef": "docs/loupe/2026-08-01-coldcard-prefix-experiment-results.md",
+      "sourceExperimentRef": "docs/loupe/2026-08-01-coldcard-prefix-experiment.md",
+      "runs": [
+        { "runRef": "run.episode264.arm-a", "armRef": "arm.coldcard.incomplete", "inputCompleteness": "incomplete", "importedRunState": "completed_incomplete", "verdict": "miss", "findingCount": 12, "highSeverityCount": 3, "mediumSeverityCount": 9, "qualifiedFindingRefs": [], "evidenceTier": "hypothesis", "verificationState": "disabled", "wallDurationMilliseconds": { "exactness": "unavailable", "unavailableReasonRef": "reason.history.duration-not-recorded" }, "tokenUsage": { "exactness": "unavailable", "unavailableReasonRef": "reason.history.usage-destroyed" } },
+        { "runRef": "run.episode264.arm-b", "armRef": "arm.coldcard.complete-vulnerable", "inputCompleteness": "complete", "importedRunState": "completed", "verdict": "hit", "findingCount": 22, "highSeverityCount": 5, "mediumSeverityCount": 17, "qualifiedFindingRefs": ["finding.loupe.152"], "evidenceTier": "source_observed", "verificationState": "disabled", "wallDurationMilliseconds": { "exactness": "unavailable", "unavailableReasonRef": "reason.history.duration-not-recorded" }, "tokenUsage": { "exactness": "unavailable", "unavailableReasonRef": "reason.history.usage-destroyed" } }
+      ],
+      "importedAt": "2026-08-01T12:00:00.000Z"
+    },
+    "openagents.coldcard_suite_manifest.v1": {
+      "schema": "openagents.coldcard_suite_manifest.v1",
+      "suiteRef": "suite.coldcard.code-to-artifact.v1",
+      "suite": "code_to_artifact",
+      "executionTarget": "openagents_gce",
+      "inputs": [{ "inputRef": "input.coldcard.source", "status": "available", "digest": "sha256:2626262626262626262626262626262626262626262626262626262626262626" }],
+      "evaluatorInputRefs": ["input.coldcard.source"],
+      "expectedComparisonRefs": ["comparison.postmortem.code"],
+      "controlRefs": ["control.coldcard.fixed"],
+      "requiredCheckRefs": ["check.coldcard.symbol-provider"],
+      "outputContractRefs": ["openagents.forensic_evidence_receipt.v1"],
+      "permittedClaimRefs": ["claim.source-flaw", "claim.artifact-selected"],
+      "forbiddenClaimRefs": ["claim.identity-attribution"],
+      "evaluatorDigest": "sha256:2727272727272727272727272727272727272727272727272727272727272727",
+      "createdAt": "2026-08-01T12:00:00.000Z"
+    },
     "openagents.forensic_target_snapshot.v1": {
       "schema": "openagents.forensic_target_snapshot.v1",
       "targetRef": "target.coldcard.vulnerable",

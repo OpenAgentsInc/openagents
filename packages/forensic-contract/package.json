@@ -11,6 +11,7 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
+    "./benchmark": "./src/benchmark.ts",
     "./canonical": "./src/canonical.ts",
     "./claims": "./src/claims.ts",
     "./lifecycle": "./src/lifecycle.ts",

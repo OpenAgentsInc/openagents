@@ -1,0 +1,28 @@
+{
+  "schema": "openagents.coldcard_suite_manifest.v1",
+  "suiteRef": "suite.coldcard.historical-chain-fingerprint.v1",
+  "suite": "historical_chain_fingerprint",
+  "executionTarget": "openagents_gce",
+  "inputs": [
+    { "inputRef": "input.coldcard.historical-block-bundle", "status": "required_unmaterialized", "unavailableReasonRef": "reason.ofr016.block-bundle-pending" },
+    { "inputRef": "input.coldcard.positive-transactions", "status": "required_unmaterialized", "unavailableReasonRef": "reason.ofr016.positive-controls-pending" },
+    { "inputRef": "input.coldcard.negative-block-ranges", "status": "required_unmaterialized", "unavailableReasonRef": "reason.ofr016.negative-controls-pending" }
+  ],
+  "evaluatorInputRefs": ["input.coldcard.historical-block-bundle", "input.coldcard.positive-transactions", "input.coldcard.negative-block-ranges"],
+  "expectedComparisonRefs": ["comparison.postmortem.program-fingerprint", "comparison.postmortem.generated-chain-json"],
+  "controlRefs": ["control.coldcard.known-positive-transactions", "control.coldcard.low-fee-rate-collisions", "control.coldcard.off-fingerprint-confirmed-wave"],
+  "requiredCheckRefs": [
+    "check.coldcard.fee-table-exact-arithmetic",
+    "check.coldcard.transaction-shape",
+    "check.coldcard.locktime-sequence-signature-r-script-type",
+    "check.coldcard.positive-self-test",
+    "check.coldcard.negative-base-rate",
+    "check.coldcard.resumable-checkpoint",
+    "check.coldcard.prevout-late-resolution"
+  ],
+  "outputContractRefs": ["openagents.historical_chain_snapshot.v1", "openagents.transaction_fingerprint.v1", "openagents.node_scan_receipt.v1"],
+  "permittedClaimRefs": ["claim.program_fingerprint"],
+  "forbiddenClaimRefs": ["claim.unauthorized_movement", "claim.identity_attribution"],
+  "evaluatorDigest": "sha256:b7baf2eb8410f0fc335cffaae259028af192f489a3e54ea2e1b1308bb807bc0d",
+  "createdAt": "2026-08-01T16:00:00.000Z"
+}

@@ -1,0 +1,27 @@
+{
+  "schema": "openagents.coldcard_suite_manifest.v1",
+  "suiteRef": "suite.coldcard.evidence-graph.v1",
+  "suite": "evidence_graph",
+  "executionTarget": "openagents_gce",
+  "inputs": [
+    { "inputRef": "input.coldcard.typed-victim-reports", "status": "required_unmaterialized", "unavailableReasonRef": "reason.ofr017.typed-evidence-pending" },
+    { "inputRef": "input.coldcard.published-address-claims", "status": "required_unmaterialized", "unavailableReasonRef": "reason.ofr017.published-claims-pending" },
+    { "inputRef": "input.coldcard.scan-candidates", "status": "required_unmaterialized", "unavailableReasonRef": "reason.ofr017.scan-candidates-pending" }
+  ],
+  "evaluatorInputRefs": ["input.coldcard.typed-victim-reports", "input.coldcard.published-address-claims", "input.coldcard.scan-candidates"],
+  "expectedComparisonRefs": ["comparison.postmortem.generated-chain-json", "comparison.postmortem.published-aggregate-figures"],
+  "controlRefs": ["control.coldcard.ambiguous-multi-output", "control.coldcard.change-exclusion", "control.coldcard.publisher-precision"],
+  "requiredCheckRefs": [
+    "check.coldcard.bounded-traversal",
+    "check.coldcard.explicit-change-classification",
+    "check.coldcard.provenance-bearing-edges",
+    "check.coldcard.component-episode-separation",
+    "check.coldcard.independent-figure-reconciliation",
+    "check.coldcard.unconfirmed-completeness-limit"
+  ],
+  "outputContractRefs": ["openagents.forensic_evidence_graph.v1", "openagents.forensic_claim_record.v1", "openagents.forensic_claim_revision.v1"],
+  "permittedClaimRefs": ["claim.entity_cluster", "claim.unauthorized_movement"],
+  "forbiddenClaimRefs": ["claim.identity_attribution", "claim.victim-count-from-address-count"],
+  "evaluatorDigest": "sha256:182b15b9b224a41544289c47d5833599d85606aa32e8ce84012371648d6f9c63",
+  "createdAt": "2026-08-01T16:00:00.000Z"
+}

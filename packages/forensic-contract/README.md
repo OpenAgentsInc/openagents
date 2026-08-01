@@ -12,6 +12,9 @@ The package owns:
 - the Coldcard reproduction, generator, entropy, historical-chain,
   transaction-fingerprint, node-scan, evidence-graph, and claim-revision
   shapes;
+- the five-arm Coldcard benchmark, four suite-manifest, split-isolation, and
+  honest historical-import shapes, with the checked-in development pack at
+  `fixtures/forensics/coldcard/` in the repository;
 - strict boundary decoding with excess-property rejection;
 - deterministic canonical JSON and SHA-256 contract digests;
 - fail-closed run-transition, event-sequence, claim-rung, and prior-revision
@@ -32,6 +35,8 @@ The implementation deliberately keeps these facts separate:
   missing required data;
 - prompt candidates cannot evaluate or promote themselves; and
 - unavailable values retain a reason and never become zero.
+- postmortem comparison outputs cannot become derivation or evaluator inputs,
+  and Coldcard development arms cannot enter evaluator-only holdouts.
 
 Consumers must decode untrusted input with `strictDecode` or equivalent Effect
 Schema options that set `onExcessProperty: "error"`. The schemas do not make a

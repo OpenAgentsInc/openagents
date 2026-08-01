@@ -1,0 +1,49 @@
+{
+  "schema": "openagents.coldcard_reproduction_manifest.v1",
+  "manifestRef": "manifest.coldcard.reproduction.2026-08-01.v1",
+  "pinnedRevisions": [
+    { "role": "vulnerable_target", "repositoryRef": "repo.coldcard.firmware", "commitSha": "bcc2c382a324690a2fcf972c0bac3b79bf923f7b", "treeDigest": "sha256:c1b3fe958af8e6110589ce8772bf3064e4f40ea529c8b0d345e5881ba4b9df5d" },
+    { "role": "fixed_target", "repositoryRef": "repo.coldcard.firmware", "commitSha": "ca72463709f4e3f8964952039d5caf955f566a87", "treeDigest": "sha256:015039b7f92bcc34b042e091037818f7e364e141891053120243977f02d373f6" },
+    { "role": "libngu", "repositoryRef": "repo.switck.libngu", "commitSha": "537519a829259622ea6b0334fbafd6cae852852f", "treeDigest": "sha256:66061a40108a0ea4184cf83aeecc15cf3008e083e98e668fd926279b791ea448" },
+    { "role": "micropython", "repositoryRef": "repo.coldcard.micropython", "commitSha": "4107246f8a080807b62c3b4838e71e812ea68b6f", "treeDigest": "sha256:7c041d0be166a91edc46fa20e6f737451f3a9c9fe44ba9144e2354b25fbbc86b" },
+    { "role": "ckcc_protocol", "repositoryRef": "repo.coldcard.ckcc-protocol", "commitSha": "3d1dfa858beb58b8dac37d8c66d7aed2909812f2", "treeDigest": "sha256:f6c3a1d546f45b1c402d0b0a03306c88ee7c70e096e15acd8033cb5acc28f19b" },
+    { "role": "mpy_qr", "repositoryRef": "repo.coinkite.mpy-qr", "commitSha": "11347d83f4eb325b10676a4eb8e17deccfe0df44", "treeDigest": "sha256:f422cdf157e9daef6b73bb97ab30b95e882b79046352c7888912295409962ec3" },
+    { "role": "postmortem", "repositoryRef": "repo.kelbie.coldcard-rng-postmortem", "commitSha": "47d8f5543812c8244fa95ed90db957ddcc05200c", "treeDigest": "sha256:c665e24e736138701b1f4ad05c7ec838c466f29ab10912fc9363f48be2b076a7" }
+  ],
+  "suites": ["code_to_artifact", "generator_owned_fixture", "historical_chain_fingerprint", "evidence_graph"],
+  "rawInputRefs": [
+    "input.coldcard.pinned-source-trees",
+    "input.coldcard.synthetic-owned-fixture",
+    "input.coldcard.historical-block-bundle",
+    "input.coldcard.typed-evidence-seeds"
+  ],
+  "expectedComparisonRefs": [
+    "comparison.postmortem.generated-chain-json",
+    "comparison.postmortem.published-entropy-tiers",
+    "comparison.postmortem.published-aggregate-figures"
+  ],
+  "controlRefs": [
+    "control.coldcard.fixed-provider",
+    "control.coldcard.guard-mutations",
+    "control.coldcard.low-fee-collisions",
+    "control.coldcard.off-fingerprint-confirmed-wave"
+  ],
+  "assumptionRefs": [
+    "assumption.coldcard.synthetic-or-owner-authorized-only",
+    "assumption.coldcard.no-third-party-key-enumeration",
+    "assumption.coldcard.public-chain-fingerprint-not-identity"
+  ],
+  "claimGates": [
+    { "claimKind": "source_flaw", "requiredEvidenceKinds": ["source_reference"] },
+    { "claimKind": "artifact_selected", "requiredEvidenceKinds": ["preprocessed_source", "symbol_provider", "firmware_digest", "fault_build"] },
+    { "claimKind": "state_space_model", "requiredEvidenceKinds": ["generator_vector", "assumption_model", "sensitivity_receipt"] },
+    { "claimKind": "owned_fixture_recovered", "requiredEvidenceKinds": ["owned_fixture_authorization", "generator_trace", "wallet_match"] },
+    { "claimKind": "program_fingerprint", "requiredEvidenceKinds": ["historical_chain_snapshot", "positive_control", "negative_control", "base_rate"] },
+    { "claimKind": "entity_cluster", "requiredEvidenceKinds": ["evidence_graph", "pooling_edge"] },
+    { "claimKind": "unauthorized_movement", "requiredEvidenceKinds": ["victim_testimony", "transaction_reference"] },
+    { "claimKind": "identity_attribution", "requiredEvidenceKinds": ["identity_evidence", "independent_review"] }
+  ],
+  "disclosurePosture": "private_manual_reporting",
+  "evaluatorDigest": "sha256:032f53eb10ffc6b1f5037e6a00817db3d432d49da61e0d7c4387726f9646907f",
+  "createdAt": "2026-08-01T16:00:00.000Z"
+}

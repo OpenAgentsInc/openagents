@@ -1,0 +1,39 @@
+{
+  "schema": "openagents.coldcard_dataset_splits.v1",
+  "splits": [
+    {
+      "split": "train",
+      "ownerRef": "owner.forensics.prompt-team",
+      "privateManifestRef": "dataset.coldcard.train.v1",
+      "benchmarkArmRefs": [],
+      "optimizerVisibility": "optimizer_visible"
+    },
+    {
+      "split": "development",
+      "ownerRef": "owner.forensics.benchmark-team",
+      "privateManifestRef": "dataset.coldcard.development.v1",
+      "benchmarkArmRefs": [
+        "arm.coldcard.incomplete",
+        "arm.coldcard.complete-vulnerable",
+        "arm.coldcard.fixed",
+        "arm.coldcard.structural-variants",
+        "arm.coldcard.clean-controls"
+      ],
+      "optimizerVisibility": "optimizer_visible"
+    },
+    {
+      "split": "holdout",
+      "ownerRef": "owner.forensics.independent-holdout",
+      "privateManifestRef": "dataset.private.untouched-security-holdout.v1",
+      "benchmarkArmRefs": [],
+      "optimizerVisibility": "evaluator_only"
+    },
+    {
+      "split": "clean_holdout",
+      "ownerRef": "owner.forensics.independent-clean-holdout",
+      "privateManifestRef": "dataset.private.clean-security-holdout.v1",
+      "benchmarkArmRefs": [],
+      "optimizerVisibility": "evaluator_only"
+    }
+  ]
+}

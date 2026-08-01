@@ -600,6 +600,19 @@ holdout.
 Missing or overlapping holdout data fails the promotion gate. Train data never
 silently becomes evaluation data.
 
+OFR-004 freezes this development pack in
+`fixtures/forensics/coldcard/`. Its manifest binds five content-addressed arms,
+the six required source causal links, the source-tier `not_proven` boundary,
+budgets, four separately owned dataset splits, four reproduction suites, and
+the Episode 264 import. Repository trees use the reproducible
+`sha256_git_ls_tree_r_z_v1` digest over `git ls-tree -r -z` bytes. Arm A is
+`completed_incomplete`; Arm B is an unverified `source_observed` hit; missing
+historical time and token values remain unavailable without a numeric field.
+Visible Coldcard variants remain development data, while evaluator-only
+holdouts have separate owners and digests and contain no Coldcard arm refs.
+Postmortem-generated values are comparison refs only and schema validation
+rejects them as derivation or evaluator inputs.
+
 ---
 
 ## 6. Reproduce the Coldcard postmortem as an evidence ladder
@@ -1170,10 +1183,10 @@ Exit gate:
 
 The first implementation program should be cut in this order:
 
-OFR-001 through OFR-003 now provide the contract lattice, the native disposable
-GCE forensic worker, and immutable private source delivery. OFR-004 is the next
-implementation gate; later rows remain ordered dependencies, not parallel
-workstreams.
+OFR-001 through OFR-004 now provide the contract lattice, the native disposable
+GCE forensic worker, immutable private source delivery, and the frozen Coldcard
+development benchmark. OFR-005 is the next implementation gate; later rows
+remain ordered dependencies, not parallel workstreams.
 
 | ID | Work item | Primary home |
 | --- | --- | --- |

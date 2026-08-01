@@ -5,8 +5,11 @@
     "value": "openagents.forensic.invalid.v1"
   },
   "contracts": [
+    "openagents.coldcard_benchmark_manifest.v1",
+    "openagents.coldcard_historical_import.v1",
     "openagents.forensic_target_snapshot.v1",
     "openagents.coldcard_reproduction_manifest.v1",
+    "openagents.coldcard_suite_manifest.v1",
     "openagents.forensic_source_bundle.v1",
     "openagents.forensic_coverage_manifest.v1",
     "openagents.forensic_scan_profile.v1",

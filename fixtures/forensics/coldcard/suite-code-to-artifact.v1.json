@@ -1,0 +1,33 @@
+{
+  "schema": "openagents.coldcard_suite_manifest.v1",
+  "suiteRef": "suite.coldcard.code-to-artifact.v1",
+  "suite": "code_to_artifact",
+  "executionTarget": "openagents_gce",
+  "inputs": [
+    { "inputRef": "input.coldcard.vulnerable-tree", "status": "available", "digest": "sha256:c1b3fe958af8e6110589ce8772bf3064e4f40ea529c8b0d345e5881ba4b9df5d" },
+    { "inputRef": "input.coldcard.fixed-tree", "status": "available", "digest": "sha256:015039b7f92bcc34b042e091037818f7e364e141891053120243977f02d373f6" },
+    { "inputRef": "input.coldcard.pinned-dependencies", "status": "available", "digest": "sha256:e85fdfe6d06f1619495ac004b1374de22f5cb1f2df5af768d1d8bd0dcfb113f8" },
+    { "inputRef": "input.coldcard.reproducible-build-toolchain", "status": "required_unmaterialized", "unavailableReasonRef": "reason.ofr014.artifact-witness-pending" }
+  ],
+  "evaluatorInputRefs": ["input.coldcard.vulnerable-tree", "input.coldcard.fixed-tree", "input.coldcard.pinned-dependencies"],
+  "expectedComparisonRefs": ["comparison.postmortem.source-history", "comparison.postmortem.artifact-claims"],
+  "controlRefs": ["control.coldcard.fixed-provider", "control.coldcard.fault-build"],
+  "requiredCheckRefs": [
+    "check.coldcard.macro-definedness",
+    "check.coldcard.missing-global-rng-get",
+    "check.coldcard.fallback-selection",
+    "check.coldcard.secret-consumer-reachability",
+    "check.coldcard.reseed-retained-width",
+    "check.coldcard.preprocessed-source",
+    "check.coldcard.archive-membership",
+    "check.coldcard.symbol-provider",
+    "check.coldcard.link-map",
+    "check.coldcard.firmware-digest",
+    "check.coldcard.observed-fault-build"
+  ],
+  "outputContractRefs": ["openagents.forensic_evidence_receipt.v1", "openagents.forensic_claim_record.v1"],
+  "permittedClaimRefs": ["claim.source_flaw", "claim.artifact_selected"],
+  "forbiddenClaimRefs": ["claim.state_space_model", "claim.unauthorized_movement", "claim.identity_attribution"],
+  "evaluatorDigest": "sha256:dc4d913ef82143e12518f58f27f2217002193f0d201677134f1f5ccd7134eda0",
+  "createdAt": "2026-08-01T16:00:00.000Z"
+}

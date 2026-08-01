@@ -1,0 +1,126 @@
+{
+  "schema": "openagents.coldcard_arm_fixtures.v1",
+  "fixtures": [
+    {
+      "armRef": "arm.coldcard.incomplete",
+      "sourceRefs": ["source.coldcard.vulnerable"],
+      "presentDependencyPaths": [],
+      "missingDependencyPaths": [
+        "external/libngu",
+        "external/micropython",
+        "external/ckcc-protocol",
+        "external/mpy-qr"
+      ],
+      "variantRefs": [],
+      "controlCaseRefs": []
+    },
+    {
+      "armRef": "arm.coldcard.complete-vulnerable",
+      "sourceRefs": [
+        "source.coldcard.vulnerable",
+        "source.libngu.pinned",
+        "source.micropython.pinned",
+        "source.ckcc-protocol.pinned",
+        "source.mpy-qr.pinned"
+      ],
+      "presentDependencyPaths": [
+        "external/libngu",
+        "external/micropython",
+        "external/ckcc-protocol",
+        "external/mpy-qr"
+      ],
+      "missingDependencyPaths": [],
+      "variantRefs": [],
+      "controlCaseRefs": []
+    },
+    {
+      "armRef": "arm.coldcard.fixed",
+      "sourceRefs": [
+        "source.coldcard.fixed",
+        "source.libngu.pinned",
+        "source.micropython.pinned",
+        "source.ckcc-protocol.pinned",
+        "source.mpy-qr.pinned"
+      ],
+      "presentDependencyPaths": [
+        "external/libngu",
+        "external/micropython",
+        "external/ckcc-protocol",
+        "external/mpy-qr"
+      ],
+      "missingDependencyPaths": [],
+      "variantRefs": [],
+      "controlCaseRefs": ["control.coldcard.fixed-provider"]
+    },
+    {
+      "armRef": "arm.coldcard.structural-variants",
+      "sourceRefs": ["fixture.coldcard.structural-variants.v1"],
+      "presentDependencyPaths": ["vendor/entropy-provider"],
+      "missingDependencyPaths": [],
+      "variantRefs": [
+        "variant.coldcard.rename-macro",
+        "variant.coldcard.rename-symbol",
+        "variant.coldcard.move-paths",
+        "variant.coldcard.reverse-guard",
+        "variant.coldcard.move-fallback-dependency"
+      ],
+      "controlCaseRefs": []
+    },
+    {
+      "armRef": "arm.coldcard.clean-controls",
+      "sourceRefs": ["fixture.coldcard.clean-controls.v1"],
+      "presentDependencyPaths": ["vendor/hardware-entropy", "vendor/ui-prng"],
+      "missingDependencyPaths": ["vendor/intentionally-unavailable"],
+      "variantRefs": [],
+      "controlCaseRefs": [
+        "control.coldcard.correct-hardware-rng",
+        "control.coldcard.unavailable-dependency-not-proven",
+        "control.coldcard.non-secret-deterministic-prng"
+      ]
+    }
+  ],
+  "structuralVariants": [
+    {
+      "variantRef": "variant.coldcard.rename-macro",
+      "transformation": "Rename the hardware entropy feature macro while preserving conflicting definedness and value semantics.",
+      "forbiddenShortcut": "Exact MICROPY_HW_ENABLE_RNG token match"
+    },
+    {
+      "variantRef": "variant.coldcard.rename-symbol",
+      "transformation": "Rename rng_get and every caller while preserving fallback provider selection.",
+      "forbiddenShortcut": "Exact rng_get symbol match"
+    },
+    {
+      "variantRef": "variant.coldcard.move-paths",
+      "transformation": "Move board, provider, and secret consumer files to unrelated paths.",
+      "forbiddenShortcut": "Exact Coldcard repository path match"
+    },
+    {
+      "variantRef": "variant.coldcard.reverse-guard",
+      "transformation": "Reverse the preprocessor guard shape while preserving the definedness/value contradiction.",
+      "forbiddenShortcut": "Exact #ifndef syntax match"
+    },
+    {
+      "variantRef": "variant.coldcard.move-fallback-dependency",
+      "transformation": "Move the deterministic fallback into a different pinned dependency.",
+      "forbiddenShortcut": "Exact MicroPython dependency match"
+    }
+  ],
+  "cleanControls": [
+    {
+      "controlCaseRef": "control.coldcard.correct-hardware-rng",
+      "expectedDisposition": "historical_finding_absent",
+      "description": "The secret consumer resolves to the certified hardware entropy provider."
+    },
+    {
+      "controlCaseRef": "control.coldcard.unavailable-dependency-not-proven",
+      "expectedDisposition": "not_proven",
+      "description": "A required provider dependency is unavailable, so the only honest result is incomplete."
+    },
+    {
+      "controlCaseRef": "control.coldcard.non-secret-deterministic-prng",
+      "expectedDisposition": "historical_finding_absent",
+      "description": "A deterministic PRNG is used only for non-secret UI behavior."
+    }
+  ]
+}

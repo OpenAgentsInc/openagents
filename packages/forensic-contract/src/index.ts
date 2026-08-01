@@ -1,4 +1,5 @@
 export * from "./canonical.ts";
+export * from "./benchmark.ts";
 export * from "./claims.ts";
 export * from "./lifecycle.ts";
 export * from "./metrics.ts";
@@ -7,6 +8,14 @@ export * from "./projection.ts";
 export * from "./reproduction.ts";
 export * from "./run.ts";
 
+import {
+  COLDCARD_BENCHMARK_MANIFEST_VERSION,
+  COLDCARD_HISTORICAL_IMPORT_VERSION,
+  COLDCARD_SUITE_MANIFEST_VERSION,
+  ColdcardBenchmarkManifestSchema,
+  ColdcardHistoricalImportSchema,
+  ColdcardSuiteManifestSchema,
+} from "./benchmark.ts";
 import {
   FORENSIC_CLAIM_RECORD_VERSION,
   FORENSIC_CLAIM_REVISION_VERSION,
@@ -67,8 +76,11 @@ import {
 } from "./run.ts";
 
 export const FORENSIC_CONTRACT_SCHEMAS = {
+  [COLDCARD_BENCHMARK_MANIFEST_VERSION]: ColdcardBenchmarkManifestSchema,
+  [COLDCARD_HISTORICAL_IMPORT_VERSION]: ColdcardHistoricalImportSchema,
   [FORENSIC_TARGET_SNAPSHOT_VERSION]: ForensicTargetSnapshotSchema,
   [COLDCARD_REPRODUCTION_MANIFEST_VERSION]: ColdcardReproductionManifestSchema,
+  [COLDCARD_SUITE_MANIFEST_VERSION]: ColdcardSuiteManifestSchema,
   [FORENSIC_SOURCE_BUNDLE_VERSION]: ForensicSourceBundleSchema,
   [FORENSIC_COVERAGE_MANIFEST_VERSION]: ForensicCoverageManifestSchema,
   [FORENSIC_SCAN_PROFILE_VERSION]: ForensicScanProfileSchema,
@@ -96,7 +108,10 @@ export const FORENSIC_CONTRACT_SCHEMAS = {
 export type ForensicContractSchemaId = keyof typeof FORENSIC_CONTRACT_SCHEMAS;
 
 export const FORENSIC_CONTRACT_SCHEMA_IDS = [
+  COLDCARD_BENCHMARK_MANIFEST_VERSION,
+  COLDCARD_HISTORICAL_IMPORT_VERSION,
   COLDCARD_REPRODUCTION_MANIFEST_VERSION,
+  COLDCARD_SUITE_MANIFEST_VERSION,
   ENTROPY_STATE_MODEL_VERSION,
   FORENSIC_CLAIM_RECORD_VERSION,
   FORENSIC_CLAIM_REVISION_VERSION,

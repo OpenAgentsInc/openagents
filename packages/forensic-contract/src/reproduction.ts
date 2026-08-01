@@ -122,6 +122,13 @@ export const ColdcardReproductionManifestSchema = S.Struct({
           ) && new Set(manifest.pinnedRevisions.map((revision) => revision.role)).size === 7,
         { message: "Coldcard reproduction manifest requires one pin per required revision role" },
       ),
+      S.makeFilter(
+        (manifest) =>
+          manifest.expectedComparisonRefs.every(
+            (reference) => !manifest.rawInputRefs.includes(reference),
+          ),
+        { message: "Coldcard postmortem comparisons cannot enter reproduction inputs" },
+      ),
     ),
   )
   .annotate({ identifier: "ColdcardReproductionManifest" });

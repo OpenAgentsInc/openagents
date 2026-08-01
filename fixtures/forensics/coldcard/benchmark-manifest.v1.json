@@ -1,0 +1,187 @@
+{
+  "schema": "openagents.coldcard_benchmark_manifest.v1",
+  "benchmarkRef": "benchmark.coldcard.forensic-development.2026-08-01.v1",
+  "vulnerableCommit": "bcc2c382a324690a2fcf972c0bac3b79bf923f7b",
+  "fixedCommit": "ca72463709f4e3f8964952039d5caf955f566a87",
+  "reproductionManifestRef": "manifest.coldcard.reproduction.2026-08-01.v1",
+  "reproductionManifestDigest": "sha256:1f3456d7f4dd39cdfaad93dce4485641f759f0efe71dd02d46087e7dbf829fc0",
+  "treeDigestAlgorithm": "sha256_git_ls_tree_r_z_v1",
+  "arms": [
+    {
+      "armRef": "arm.coldcard.incomplete",
+      "kind": "incomplete_clone",
+      "datasetSplit": "development",
+      "targetRevisionRole": "vulnerable_target",
+      "fixtureDigest": "sha256:fe2f51a71a87497828bc69519ccfc19dd928677bc159a4f1422ebff74f1f17fc",
+      "coverageStatus": "incomplete",
+      "missingDependencyPaths": ["external/libngu", "external/micropython", "external/ckcc-protocol", "external/mpy-qr"],
+      "expectedRunState": "completed_incomplete",
+      "expectedVerdict": "not_scored_incomplete",
+      "expectedEvidenceTier": "hypothesis",
+      "finalLinkOutcome": "not_applicable",
+      "requiredCausalLinkRefs": [],
+      "exactMatchResistanceRefs": [],
+      "controlCaseRefs": [],
+      "modelCallPolicy": "blocked_before_inference"
+    },
+    {
+      "armRef": "arm.coldcard.complete-vulnerable",
+      "kind": "complete_vulnerable",
+      "datasetSplit": "development",
+      "targetRevisionRole": "vulnerable_target",
+      "fixtureDigest": "sha256:2cfe76b75e9e45f21eef651ea7b14ea3b20829f20a3c001c0a6705e212c0f961",
+      "coverageStatus": "complete",
+      "missingDependencyPaths": [],
+      "expectedRunState": "completed",
+      "expectedVerdict": "source_hit_unverified",
+      "expectedEvidenceTier": "source_observed",
+      "finalLinkOutcome": "not_proven",
+      "requiredCausalLinkRefs": [
+        "causal.coldcard.secret-sink",
+        "causal.coldcard.zero-valued-board-macro",
+        "causal.coldcard.definedness-guard",
+        "causal.coldcard.missing-board-provider",
+        "causal.coldcard.value-guard-fallback",
+        "causal.coldcard.deterministic-seed-entropy"
+      ],
+      "exactMatchResistanceRefs": [],
+      "controlCaseRefs": [],
+      "modelCallPolicy": "allowed"
+    },
+    {
+      "armRef": "arm.coldcard.fixed",
+      "kind": "fixed_clone",
+      "datasetSplit": "control",
+      "targetRevisionRole": "fixed_target",
+      "fixtureDigest": "sha256:355704729b3d93c1ee752c6d371f3849d18c6eb18a0ebe4c8061810a77570ace",
+      "coverageStatus": "complete",
+      "missingDependencyPaths": [],
+      "expectedRunState": "completed",
+      "expectedVerdict": "historical_finding_absent",
+      "expectedEvidenceTier": "source_observed",
+      "finalLinkOutcome": "not_applicable",
+      "requiredCausalLinkRefs": [],
+      "exactMatchResistanceRefs": [],
+      "controlCaseRefs": ["control.coldcard.fixed-provider"],
+      "modelCallPolicy": "allowed"
+    },
+    {
+      "armRef": "arm.coldcard.structural-variants",
+      "kind": "structural_variants",
+      "datasetSplit": "development",
+      "targetRevisionRole": "fixture",
+      "fixtureDigest": "sha256:17ae344fd86c9ae0205d25fde55d3256563a7341efea966e105f9f51cd9b7ad2",
+      "coverageStatus": "complete",
+      "missingDependencyPaths": [],
+      "expectedRunState": "completed",
+      "expectedVerdict": "semantic_variant_hit",
+      "expectedEvidenceTier": "source_observed",
+      "finalLinkOutcome": "not_proven",
+      "requiredCausalLinkRefs": [
+        "causal.coldcard.secret-sink",
+        "causal.coldcard.zero-valued-board-macro",
+        "causal.coldcard.definedness-guard",
+        "causal.coldcard.missing-board-provider",
+        "causal.coldcard.value-guard-fallback",
+        "causal.coldcard.deterministic-seed-entropy"
+      ],
+      "exactMatchResistanceRefs": [
+        "variant.coldcard.rename-macro",
+        "variant.coldcard.rename-symbol",
+        "variant.coldcard.move-paths",
+        "variant.coldcard.reverse-guard",
+        "variant.coldcard.move-fallback-dependency"
+      ],
+      "controlCaseRefs": [],
+      "modelCallPolicy": "allowed"
+    },
+    {
+      "armRef": "arm.coldcard.clean-controls",
+      "kind": "clean_controls",
+      "datasetSplit": "control",
+      "targetRevisionRole": "fixture",
+      "fixtureDigest": "sha256:d7300c9dec0aa016b6a7bce7f417de06ad5e3a9ee8607e08e638ca807ff5e597",
+      "coverageStatus": "complete",
+      "missingDependencyPaths": [],
+      "expectedRunState": "completed",
+      "expectedVerdict": "no_false_positive",
+      "expectedEvidenceTier": "source_observed",
+      "finalLinkOutcome": "not_applicable",
+      "requiredCausalLinkRefs": [],
+      "exactMatchResistanceRefs": [],
+      "controlCaseRefs": [
+        "control.coldcard.correct-hardware-rng",
+        "control.coldcard.unavailable-dependency-not-proven",
+        "control.coldcard.non-secret-deterministic-prng"
+      ],
+      "modelCallPolicy": "allowed"
+    }
+  ],
+  "rubric": {
+    "rubricRef": "rubric.coldcard.source-discovery.2026-08-01.v1",
+    "rubricDigest": "sha256:032f53eb10ffc6b1f5037e6a00817db3d432d49da61e0d7c4387726f9646907f",
+    "causalLinks": [
+      {
+        "causalLinkRef": "causal.coldcard.secret-sink",
+        "sequence": 1,
+        "proposition": "Wallet seed creation consumes ngu.random.bytes output as secret entropy.",
+        "requiredSourcePaths": ["shared/seed.py"]
+      },
+      {
+        "causalLinkRef": "causal.coldcard.zero-valued-board-macro",
+        "sequence": 2,
+        "proposition": "The board configuration defines MICROPY_HW_ENABLE_RNG with value zero.",
+        "requiredSourcePaths": ["stm32/COLDCARD/mpconfigboard.h", "stm32/COLDCARD_Q1/mpconfigboard.h"]
+      },
+      {
+        "causalLinkRef": "causal.coldcard.definedness-guard",
+        "sequence": 3,
+        "proposition": "libNgU tests macro definedness rather than value and therefore calls global rng_get.",
+        "requiredSourcePaths": ["external/libngu/ngu/random.c"]
+      },
+      {
+        "causalLinkRef": "causal.coldcard.missing-board-provider",
+        "sequence": 4,
+        "proposition": "The vulnerable board object does not export the global rng_get provider required by libNgU.",
+        "requiredSourcePaths": ["stm32/COLDCARD/rng.c"]
+      },
+      {
+        "causalLinkRef": "causal.coldcard.value-guard-fallback",
+        "sequence": 5,
+        "proposition": "MicroPython tests the macro value and compiles the Yasmarang fallback rng_get provider.",
+        "requiredSourcePaths": ["external/micropython/ports/stm32/rng.c"]
+      },
+      {
+        "causalLinkRef": "causal.coldcard.deterministic-seed-entropy",
+        "sequence": 6,
+        "proposition": "Source composition permits deterministic fallback bytes to reach wallet seed generation; final linked artifact selection remains unproven at source tier.",
+        "requiredSourcePaths": ["external/micropython/ports/stm32/rng.c", "external/libngu/ngu/random.c", "shared/seed.py"]
+      }
+    ],
+    "sourceHitRequiresAllCausalLinks": true,
+    "genericRandomnessAdviceIsHit": false,
+    "sourceTierFinalLinkOutcome": "not_proven",
+    "fixedHistoricalFindingAllowed": false,
+    "incompleteComprehensiveClaimAllowed": false,
+    "structuralExactMatchAllowed": false,
+    "maxTimeSeconds": 900,
+    "maxTokens": 200000,
+    "maxCostMicros": 10000,
+    "maxConcurrency": 1
+  },
+  "datasetSplits": [
+    { "split": "train", "ownerRef": "owner.forensics.prompt-team", "manifestDigest": "sha256:ed2303104aa9009b9cb1b52c27be5fba49cc905cb924ff1e4d6fa9e00d4f4347", "optimizerVisibility": "optimizer_visible", "benchmarkArmRefs": [] },
+    { "split": "development", "ownerRef": "owner.forensics.benchmark-team", "manifestDigest": "sha256:89b9d30bb35053af6926418ee6c0210df17f7dbdf43ed4d270f7b6d18542791a", "optimizerVisibility": "optimizer_visible", "benchmarkArmRefs": ["arm.coldcard.incomplete", "arm.coldcard.complete-vulnerable", "arm.coldcard.fixed", "arm.coldcard.structural-variants", "arm.coldcard.clean-controls"] },
+    { "split": "holdout", "ownerRef": "owner.forensics.independent-holdout", "manifestDigest": "sha256:11534df83b18621de63afd52c37f23a25d7111445577f51d7d010303d638044f", "optimizerVisibility": "evaluator_only", "benchmarkArmRefs": [] },
+    { "split": "clean_holdout", "ownerRef": "owner.forensics.independent-clean-holdout", "manifestDigest": "sha256:09b980dd41b78b60065b175834ef274af62fdeba25f648298bd71889b79d5890", "optimizerVisibility": "evaluator_only", "benchmarkArmRefs": [] }
+  ],
+  "suites": [
+    { "suite": "code_to_artifact", "manifestRef": "suite.coldcard.code-to-artifact.v1", "manifestDigest": "sha256:75566b2fbb66e722304007f8cadaeb7ebcffac49cad44f232a38d18c03ff06b3" },
+    { "suite": "generator_owned_fixture", "manifestRef": "suite.coldcard.generator-owned-fixture.v1", "manifestDigest": "sha256:35bc282f248aceb6bc07d568d4955b8721b8e1325f6a52d21fb00c513298acba" },
+    { "suite": "historical_chain_fingerprint", "manifestRef": "suite.coldcard.historical-chain-fingerprint.v1", "manifestDigest": "sha256:33ee4ba71fdfeeb18be86e5c02ec8640e2534d5ff58eb56011a447c996390356" },
+    { "suite": "evidence_graph", "manifestRef": "suite.coldcard.evidence-graph.v1", "manifestDigest": "sha256:d0ca7d870ea72a2291abdb1d5e14b0bb92d278fe096a3d803e1a4803b887012b" }
+  ],
+  "historicalImportRef": "import.coldcard.episode264.v1",
+  "historicalImportDigest": "sha256:f470d87acbb51b253184f556cb52c7badeae60f3853c96d050d7e0c94dcb0eec",
+  "createdAt": "2026-08-01T16:00:00.000Z"
+}
