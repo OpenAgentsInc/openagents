@@ -771,6 +771,29 @@ describe("Sarah LiveKit generation fence", () => {
     expect(fence.closeReason).toBe("worker_error");
   });
 
+  test("preserves an authoritative close reason when accounting becomes uncertain", async () => {
+    const fence = new SarahGenerationFence();
+    const accounting = new SarahProviderAccounting();
+    fence.settle("provider_disconnect");
+    accounting.observe({ type: "response.created", response: { id: "resp_lost" } }, false);
+    accounting.disconnect();
+    let accountingStatus: "exact" | "uncertain" | undefined;
+
+    await closeAfterProviderAccounting(
+      fence,
+      accounting,
+      async () => undefined,
+      async () => undefined,
+      async (status) => {
+        accountingStatus = status;
+      },
+      async () => undefined,
+    );
+
+    expect(accountingStatus).toBe("uncertain");
+    expect(fence.closeReason).toBe("provider_disconnect");
+  });
+
   test("requires durable terminal usage delivery before accounting is exact", async () => {
     const accounting = new SarahProviderAccounting();
     const done = {

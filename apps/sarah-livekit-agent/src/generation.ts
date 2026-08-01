@@ -984,8 +984,10 @@ export class SarahGenerationFence {
 
   failAccounting(): void {
     if (this.#sealed) return;
-    this.#settled = true;
-    this.#closeReason = "worker_error";
+    if (!this.#settled) {
+      this.#settled = true;
+      this.#closeReason = "worker_error";
+    }
   }
 
   get closeReason() {
