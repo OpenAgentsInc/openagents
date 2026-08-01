@@ -237,6 +237,15 @@ fixture pins all six real gitlinks, classifies the stale bootloader declaration
 and two excluded GPU dependencies, and materializes libNgU, MicroPython,
 ckcc-protocol, and mpy-qr for the complete arm.
 
+The native forensic worker route also exposes a bounded `Observe` command for
+Omega. It synchronizes the admitted turn, validates the exact owner, work unit,
+attachment, and resource generation, then reads the durable event ledger after
+an explicit sequence. Pages must be contiguous and generation-matched. The
+response projects only event refs, kinds, sequence and time metadata, never
+runtime text, credentials, source, findings, or private evidence. An empty page
+explicitly says that silence is not terminal, so reconnect resumes from the
+returned cursor without manufacturing idle or completion truth.
+
 ### 3.2 What the Box and Optibox teardown changes
 
 Adopt the useful resource semantics, not the vendor control plane:

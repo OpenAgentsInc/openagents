@@ -897,6 +897,7 @@ export const makeForensicManagedSandbox = (
 const ForensicRouteTimestamp = S.String.check(
   S.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u),
 );
+const ForensicRouteNonNegativeInteger = S.Number.check(S.isInt(), S.isGreaterThanOrEqualTo(0));
 
 const ForensicWorkerRouteRequestSchema = S.TaggedUnion({
   Admit: {
@@ -927,6 +928,14 @@ const ForensicWorkerRouteRequestSchema = S.TaggedUnion({
   },
   CollectArtifact: {
     placement: ForensicWorkerPlacementSchema,
+    requestedAt: ForensicRouteTimestamp,
+  },
+  Observe: {
+    placement: ForensicWorkerPlacementSchema,
+    commandRef: S.String,
+    idempotencyRef: S.String,
+    afterSequence: ForensicRouteNonNegativeInteger,
+    limit: S.Number.check(S.isInt(), S.isBetween({ minimum: 1, maximum: 256 })),
     requestedAt: ForensicRouteTimestamp,
   },
   Cancel: {
@@ -1059,10 +1068,11 @@ export const makeForensicManagedSandboxRoutes = <Bindings>(
         email: null,
       } satisfies BoxV1Principal;
       const runtime = yield* dependencies.runtime(env);
+      const store = dependencies.store(env);
       const broker = makeManagedSandboxBroker({
         principal,
         policy,
-        store: dependencies.store(env),
+        store,
         runtime,
         now,
       });
@@ -1123,6 +1133,87 @@ export const makeForensicManagedSandboxRoutes = <Bindings>(
         case "CollectArtifact":
           result = yield* forensic.collectArtifact(body.placement, body.requestedAt);
           break;
+        case "Observe": {
+          const placement = body.placement;
+          const inspected = yield* broker.execute(
+            yield* decodeCommand({
+              _tag: "Inspect",
+              schema: "openagents.managed_sandbox_command.v1",
+              commandRef: body.commandRef,
+              requestedByRef,
+              ownerRef: placement.ownerRef,
+              tenantRef: placement.tenantRef,
+              idempotencyRef: body.idempotencyRef,
+              requestedAt: body.requestedAt,
+              sandboxRef: placement.sandboxRef,
+            }),
+          );
+          if (
+            inspected.resource.ownerRef !== placement.ownerRef ||
+            inspected.resource.tenantRef !== placement.tenantRef ||
+            inspected.resource.workUnitRef !== placement.workUnitRef ||
+            inspected.resource.attachmentGeneration !== placement.attachmentGeneration ||
+            inspected.resource.resourceGeneration !== placement.resourceGeneration
+          ) {
+            return yield* recoveryRequired(
+              "forensic observation does not match the admitted worker generation",
+            );
+          }
+          const page = yield* store.readEvents({
+            ownerRef: placement.ownerRef,
+            tenantRef: placement.tenantRef,
+            sandboxRef: placement.sandboxRef,
+            afterSequence: body.afterSequence,
+            limit: body.limit,
+          });
+          const contiguous = page.events.every(
+            (event, index) =>
+              event.sequence === body.afterSequence + index + 1 &&
+              event.resourceGeneration === placement.resourceGeneration,
+          );
+          if (!contiguous || page.nextSequence < body.afterSequence) {
+            return yield* recoveryRequired(
+              "forensic observation returned a gapped or foreign-generation event page",
+            );
+          }
+          result = {
+            schema: "openagents.forensic_worker_observation.v1",
+            placementRef: placement.placementRef,
+            sandboxRef: placement.sandboxRef,
+            resourceGeneration: placement.resourceGeneration,
+            lifecycle: inspected.resource.facts.lifecycle,
+            cleanupComplete: inspected.resource.facts.cleanupComplete,
+            turn:
+              inspected.turn === null
+                ? null
+                : {
+                    turnRef: inspected.turn.turnRef,
+                    status: inspected.turn.status,
+                    lastEventSequence: inspected.turn.lastEventSequence,
+                    createdAt: inspected.turn.createdAt,
+                    ...(inspected.turn.startedAt === undefined
+                      ? {}
+                      : { startedAt: inspected.turn.startedAt }),
+                    ...(inspected.turn.settledAt === undefined
+                      ? {}
+                      : { settledAt: inspected.turn.settledAt }),
+                  },
+            events: page.events.map((event) => ({
+              eventRef: event.eventRef,
+              kind: event._tag,
+              sequence: event.sequence,
+              resourceGeneration: event.resourceGeneration,
+              observedAt: event.observedAt,
+              ...("turnRef" in event ? { turnRef: event.turnRef } : {}),
+            })),
+            afterSequence: page.afterSequence,
+            nextSequence: page.nextSequence,
+            terminalSequence: page.terminalSequence,
+            hasMore: page.nextSequence < page.terminalSequence,
+            silenceIsTerminal: false,
+          };
+          break;
+        }
         case "Cancel":
           result = yield* forensic.cancel(body.placement, {
             commandRef: body.commandRef,

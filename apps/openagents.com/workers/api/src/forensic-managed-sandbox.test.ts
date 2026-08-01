@@ -1,4 +1,7 @@
-import type { ForensicBudget } from "@openagentsinc/forensic-contract";
+import {
+  type ForensicBudget,
+  ForensicWorkerPlacementSchema,
+} from "@openagentsinc/forensic-contract";
 import { ManagedSandboxResourceSchema } from "@openagentsinc/managed-sandbox-contract";
 import { Effect, Schema as S } from "effect";
 import { describe, expect, test } from "vite-plus/test";
@@ -800,6 +803,96 @@ describe("forensic managed sandbox", () => {
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
       error: "runtime_not_admitted",
+    });
+  });
+
+  test("the forensic route replays ordered public-safe events from an exact cursor", async () => {
+    const authority = new BoxV1MemoryAuthority();
+    const memoryRuntime = makeBoxV1MemoryRuntime();
+    const runtime: BoxV1Runtime = {
+      ...memoryRuntime,
+      lifecycle: (input) =>
+        Effect.succeed({
+          ...proof("create", "ready"),
+          operationRef: input.command.commandRef,
+          generation: input.resource.resourceGeneration,
+        }),
+    };
+    const routes = makeForensicManagedSandboxRoutes({
+      authenticateOwner: async () => ({ userId: principal.ownerRef }),
+      enabled: () => true,
+      policy: () => Effect.succeed(policy),
+      profileDigest: () => `sha256:${"b".repeat(64)}`,
+      store: () => authority,
+      runtime: () => Effect.succeed(runtime),
+      assertSourceReady: () => Effect.die("observation does not materialize source"),
+      now: () => new Date("2026-08-01T10:00:00.000Z"),
+    });
+    const admission = await Effect.runPromise(
+      routes.handle(
+        new Request(`https://api.openagents.com${FORENSIC_MANAGED_SANDBOX_PATH}`, {
+          method: "POST",
+          body: JSON.stringify({
+            _tag: "Admit",
+            commandRef: "command.forensic.observe.create",
+            idempotencyRef: "idempotency.forensic.observe.create",
+            workUnitRef: "work.forensic.observe",
+            attachmentRef: "attachment.forensic.observe",
+            placementRef: "placement.forensic.observe",
+            requestedAt: "2026-08-01T10:00:00.000Z",
+          }),
+        }),
+        {},
+        {} as ExecutionContext,
+      ),
+    );
+    expect(admission.status).toBe(200);
+    const admissionBody = (await admission.json()) as Readonly<{ result: unknown }>;
+    const placement = S.decodeUnknownSync(ForensicWorkerPlacementSchema)(admissionBody.result);
+
+    const observe = (commandSuffix: string, afterSequence: number) =>
+      Effect.runPromise(
+        routes.handle(
+          new Request(`https://api.openagents.com${FORENSIC_MANAGED_SANDBOX_PATH}`, {
+            method: "POST",
+            body: JSON.stringify({
+              _tag: "Observe",
+              placement,
+              commandRef: `command.forensic.observe.${commandSuffix}`,
+              idempotencyRef: `idempotency.forensic.observe.${commandSuffix}`,
+              afterSequence,
+              limit: 64,
+              requestedAt: "2026-08-01T10:00:01.000Z",
+            }),
+          }),
+          {},
+          {} as ExecutionContext,
+        ),
+      );
+    const first = await observe("first", 0);
+    expect(first.status).toBe(200);
+    const firstBody = (await first.json()) as Readonly<{
+      result: Readonly<{
+        events: ReadonlyArray<Readonly<Record<string, unknown>>>;
+        nextSequence: number;
+        silenceIsTerminal: boolean;
+      }>;
+    }>;
+    expect(firstBody.result.events.length).toBeGreaterThan(0);
+    expect(firstBody.result.events[0]).toMatchObject({ sequence: 1, kind: "ProvisionRequested" });
+    expect(firstBody.result.events).toContainEqual(expect.objectContaining({ kind: "GuestReady" }));
+    expect(firstBody.result.events[0]).not.toHaveProperty("content");
+    expect(firstBody.result.silenceIsTerminal).toBe(false);
+
+    const reconnect = await observe("reconnect", firstBody.result.nextSequence);
+    expect(reconnect.status).toBe(200);
+    await expect(reconnect.json()).resolves.toMatchObject({
+      result: {
+        events: [],
+        afterSequence: firstBody.result.nextSequence,
+        nextSequence: firstBody.result.nextSequence,
+        silenceIsTerminal: false,
+      },
     });
   });
 });
