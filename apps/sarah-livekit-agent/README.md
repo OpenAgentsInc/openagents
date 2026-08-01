@@ -170,15 +170,19 @@ Its default mode prints the seven active scenarios and executes no network
 request. With `--apply`, a separate owner gate permits it to validate a private
 production observation that remains outside the repository, verify its durable
 unmetered authority captures through a read-only production database query, and
-write one public-safe receipt. It does not inject a fault. Each scenario must reconcile
-exact provider usage, the reserved/charged/released hold, and terminal
-settlement against those database rows. Each capture also requires identical
+write one public-safe receipt. It does not inject a fault. Success,
+cancellation, timeout, and reconnect require exact provider settlement.
+Planned worker crash and SFU loss may instead preserve truthful uncertain
+provider accounting, as provider usage that was in flight when the process or
+transport vanished cannot be reconstructed exactly. Provider disconnect is
+always uncertain. Every scenario reconciles its recorded usage and zero credit
+amounts against the database rows. Each capture also requires identical
 start/end owner balance-state digests, including row presence and update time;
 show one terminal event; show at most one worker generation and one
 provider session; require fresh admission; and carry zero secret, raw-media,
-and transcript findings. Provider disconnect preserves uncertain provider
-accounting and is published with `exactAccounting: false`; its durable capture
-still proves that it created no hold or platform credit mutation. Reconnect must begin after the previous terminal
+and transcript findings. An uncertain row is published with
+`exactAccounting: false`; its durable capture still proves that it created no
+hold or platform credit mutation. Reconnect must begin after the previous terminal
 boundary with a different generation digest and must not revive the settled
 generation. The receipt contains only aggregate counts, amounts, durations,
 and SHA-256 evidence projections. See the production runbook before collecting

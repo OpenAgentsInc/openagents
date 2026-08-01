@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   SARAH_VOICE_MODEL,
   SARAH_VOICE_PROTOCOL_VERSION,
@@ -558,5 +559,95 @@ describe("Sarah LiveKit settlement poll", () => {
         { windowMs: 2_000, intervalMs: 500 },
       ),
     ).rejects.toThrow("failed with HTTP 403 (forbidden)");
+  });
+
+  test("accepts durable zero-credit uncertainty only through the explicit drill opt-in", async () => {
+    const clock = pollClock();
+    const captureDigest = "b".repeat(64);
+    const ledgerDigest = "c".repeat(64);
+    const balanceDigest = "d".repeat(64);
+    const uncertain = {
+      error: "sarah_voice_accounting_uncertain",
+      sessionRef: "session-poll",
+      state: "accounting_uncertain",
+      creditMode: "owner_waived_unmetered",
+      recordedChargeMsat: 0,
+      reservedCreditMsat: 0,
+      holdPreserved: false,
+      noHoldCreated: true,
+      reason: "livekit_worker_heartbeat_expired",
+      unmeteredAuthorityCapture: {
+        schema: "openagents.sarah.unmetered-authority-capture.v1",
+        authority: "owner_waived_unmetered_v1",
+        generation: 7,
+        sessionRefDigest: createHash("sha256").update("session-poll").digest("hex"),
+        startLedgerStateDigest: ledgerDigest,
+        endLedgerStateDigest: ledgerDigest,
+        startBalanceStateDigest: balanceDigest,
+        endBalanceStateDigest: balanceDigest,
+        ledgerMutationCount: 0,
+        captureReceiptRef: `sarah_voice_unmetered_authority:${captureDigest}`,
+        captureDigest,
+      },
+    };
+    const fetch = vi.fn(async () => Response.json(uncertain, { status: 409 }));
+
+    await expect(
+      pollSarahLiveKitSettlement(
+        fetch,
+        clock,
+        { bearer: "poll-bearer", sessionRef: "session-poll", generation: 7 },
+        { windowMs: 2_000, intervalMs: 500 },
+        true,
+      ),
+    ).resolves.toMatchObject({
+      settlement: {
+        state: "accounting_uncertain",
+        creditMode: "owner_waived_unmetered",
+        recordedChargeMsat: 0,
+        reservedCreditMsat: 0,
+        noHoldCreated: true,
+        authorityCaptureDigest: `sha256:${captureDigest}`,
+        exactAccounting: false,
+      },
+    });
+
+    await expect(
+      pollSarahLiveKitSettlement(
+        fetch,
+        pollClock(),
+        { bearer: "poll-bearer", sessionRef: "session-poll", generation: 7 },
+        { windowMs: 2_000, intervalMs: 500 },
+      ),
+    ).rejects.toThrow("failed with HTTP 409");
+  });
+
+  test("rejects uncertain accounting without a durable zero-credit capture", async () => {
+    const fetch = vi.fn(async () =>
+      Response.json(
+        {
+          error: "sarah_voice_accounting_uncertain",
+          sessionRef: "session-poll",
+          state: "accounting_uncertain",
+          creditMode: "owner_waived_unmetered",
+          recordedChargeMsat: 0,
+          reservedCreditMsat: 1,
+          holdPreserved: true,
+          noHoldCreated: false,
+          reason: "livekit_worker_heartbeat_expired",
+        },
+        { status: 409 },
+      ),
+    );
+
+    await expect(
+      pollSarahLiveKitSettlement(
+        fetch,
+        pollClock(),
+        { bearer: "poll-bearer", sessionRef: "session-poll", generation: 7 },
+        { windowMs: 2_000, intervalMs: 500 },
+        true,
+      ),
+    ).rejects.toThrow("omitted durable unmetered authority");
   });
 });

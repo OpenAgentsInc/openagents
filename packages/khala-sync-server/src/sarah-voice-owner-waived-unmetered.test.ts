@@ -135,12 +135,28 @@ describe.skipIf(!hasLocalPostgres())("Sarah voice owner-waived unmetered account
       observedAt: "2026-08-01T12:00:21.000Z",
       replayed: false,
     });
-    await expect(
-      store.sweepExpired("2026-08-01T12:06:00.000Z"),
-    ).resolves.toBe(1);
-    await expect(
-      store.sweepExpired("2026-08-01T12:09:00.000Z"),
-    ).resolves.toBe(1);
+    await expect(store.sweepExpired("2026-08-01T12:06:00.000Z")).resolves.toBe(1);
+    await expect(store.sweepExpired("2026-08-01T12:09:00.000Z")).resolves.toBe(0);
+    const [deadWorkerBoundary] = await sql`
+      SELECT session.state, session.close_reason, session.updated_at,
+        binding.worker_stop_reason, binding.worker_stop_deadline_at,
+        binding.provider_accounting_status,
+        binding.provider_accounting_uncertain_at
+      FROM sarah_realtime_voice_sessions AS session
+      INNER JOIN sarah_livekit_room_bindings AS binding
+        ON binding.session_ref = session.session_ref
+        AND binding.generation = session.generation
+      WHERE session.session_ref = 'voice-unmetered'
+    `;
+    expect(deadWorkerBoundary).toMatchObject({
+      state: "accounting_uncertain",
+      close_reason: "livekit_worker_heartbeat_expired",
+      updated_at: "2026-08-01T12:06:00.000Z",
+      worker_stop_reason: null,
+      worker_stop_deadline_at: null,
+      provider_accounting_status: "uncertain",
+      provider_accounting_uncertain_at: "2026-08-01T12:06:00.000Z",
+    });
     await expect(
       store.readSettlement({
         sessionRef: "voice-unmetered",

@@ -55,7 +55,7 @@ import {
  * a different, client-facing vocabulary. Both are recorded; neither is silently
  * mapped onto the matrix's worker-side reasons.
  */
-export const SARAH_LIVEKIT_DRILL_SCHEMA = "openagents.sarah.livekit-drill-observation.v1" as const;
+export const SARAH_LIVEKIT_DRILL_SCHEMA = "openagents.sarah.livekit-drill-observation.v2" as const;
 
 /** How long the session is held live and generating before the fault. */
 export const SARAH_LIVEKIT_DRILL_DEFAULT_HOLD_MS = 2_000;
@@ -160,14 +160,28 @@ export const SARAH_LIVEKIT_DRILL_INSTRUMENT_SOURCES = ["pod_exec", "managed_prom
 export type SarahLiveKitDrillInstrumentSource =
   (typeof SARAH_LIVEKIT_DRILL_INSTRUMENT_SOURCES)[number];
 
-export type SarahLiveKitDrillSettlement = Readonly<{
-  state: "settled" | "released";
-  creditMode: "metered" | "staging_owner_entitlement" | "owner_waived_unmetered";
-  finalChargeMsat: number;
-  receiptDigest: `sha256:${string}`;
-  terminalObservedAtMs: number;
-  lastNonTerminalObservedAtMs: number;
-}>;
+export type SarahLiveKitDrillSettlement =
+  | Readonly<{
+      state: "settled" | "released";
+      creditMode: "metered" | "staging_owner_entitlement" | "owner_waived_unmetered";
+      finalChargeMsat: number;
+      receiptDigest: `sha256:${string}`;
+      exactAccounting: true;
+      terminalObservedAtMs: number;
+      lastNonTerminalObservedAtMs: number;
+    }>
+  | Readonly<{
+      state: "accounting_uncertain";
+      creditMode: "owner_waived_unmetered";
+      recordedChargeMsat: 0;
+      reservedCreditMsat: 0;
+      noHoldCreated: true;
+      reason: string;
+      authorityCaptureDigest: `sha256:${string}`;
+      exactAccounting: false;
+      terminalObservedAtMs: number;
+      lastNonTerminalObservedAtMs: number;
+    }>;
 
 export type SarahLiveKitDrillObservation = Readonly<{
   schema: typeof SARAH_LIVEKIT_DRILL_SCHEMA;
@@ -402,23 +416,36 @@ export const runSarahLiveKitDrill = async (
     }
     const faultInjectedAtMs = reported ?? faultRequestedAtMs;
 
-    const reading = await pollSarahLiveKitSettlement(http, clock, input.session, {
-      windowMs: observationWindowMs,
-      intervalMs: SARAH_LIVEKIT_SETTLEMENT_POLL_INTERVAL_MS,
-    });
+    const reading = await pollSarahLiveKitSettlement(
+      http,
+      clock,
+      input.session,
+      {
+        windowMs: observationWindowMs,
+        intervalMs: SARAH_LIVEKIT_SETTLEMENT_POLL_INTERVAL_MS,
+      },
+      input.scenario === "planned_worker_crash" || input.scenario === "sfu_loss",
+    );
 
     const mediaLossObservedAtMs = mediaLoss.observedAtMs() ?? null;
     const settlement: SarahLiveKitDrillSettlement | null =
       reading === null
         ? null
-        : {
-            state: reading.settlement.state,
-            creditMode: reading.settlement.creditMode,
-            finalChargeMsat: reading.settlement.finalChargeMsat,
-            receiptDigest: digestSettlementReceipt(reading.settlement.receiptRef),
-            terminalObservedAtMs: reading.terminalObservedAtMs,
-            lastNonTerminalObservedAtMs: reading.lastNonTerminalObservedAtMs,
-          };
+        : reading.settlement.state === "accounting_uncertain"
+          ? {
+              ...reading.settlement,
+              terminalObservedAtMs: reading.terminalObservedAtMs,
+              lastNonTerminalObservedAtMs: reading.lastNonTerminalObservedAtMs,
+            }
+          : {
+              state: reading.settlement.state,
+              creditMode: reading.settlement.creditMode,
+              finalChargeMsat: reading.settlement.finalChargeMsat,
+              receiptDigest: digestSettlementReceipt(reading.settlement.receiptRef),
+              exactAccounting: true,
+              terminalObservedAtMs: reading.terminalObservedAtMs,
+              lastNonTerminalObservedAtMs: reading.lastNonTerminalObservedAtMs,
+            };
     const faultToTerminalMs =
       settlement === null ? null : settlement.terminalObservedAtMs - faultInjectedAtMs;
     const mediaLossDetectedWithinMs =

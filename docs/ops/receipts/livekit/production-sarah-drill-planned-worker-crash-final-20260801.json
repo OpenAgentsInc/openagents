@@ -1,0 +1,49 @@
+{
+  "schema": "openagents.sarah.livekit-drill-observation.v2",
+  "scenario": "planned_worker_crash",
+  "faultAction": "delete_exact_worker_pod",
+  "roomKind": "private",
+  "outcome": "contradicted",
+  "contradictions": [
+    "fault_to_terminal_exceeded_bound"
+  ],
+  "sessionStartedAtMs": 1785624960713,
+  "sessionLiveAtMs": 1785624971912,
+  "holdMs": 90000,
+  "faultInjectedAtMs": 1785625068825,
+  "mediaLossObservedAtMs": null,
+  "controlTerminal": {
+    "atMs": 1785625261046,
+    "kind": "closing",
+    "reason": "session_expired"
+  },
+  "settlement": {
+    "state": "accounting_uncertain",
+    "creditMode": "owner_waived_unmetered",
+    "recordedChargeMsat": 0,
+    "reservedCreditMsat": 0,
+    "noHoldCreated": true,
+    "reason": "livekit_worker_heartbeat_expired",
+    "authorityCaptureDigest": "sha256:ea35fd260a428d09db6304abab911c86a8c40e0cb70970fdc61add1df420a42d",
+    "exactAccounting": false,
+    "terminalObservedAtMs": 1785625324876,
+    "lastNonTerminalObservedAtMs": 1785625324062
+  },
+  "boundMs": 180000,
+  "faultToTerminalMs": 256051,
+  "mediaLossDetectedWithinMs": null,
+  "withinBound": false,
+  "concurrentBillableSessionCount": 1,
+  "instrumentSource": "managed_prometheus",
+  "faultTargetDigest": "sha256:c2d3c4483cf049d09acce44209a36b34accde4faa1034bb4c5b38a9ac0b3ac2c",
+  "workerInstanceDigest": "sha256:c2d3c4483cf049d09acce44209a36b34accde4faa1034bb4c5b38a9ac0b3ac2c",
+  "workerInstanceSurvived": false,
+  "faultDiscoveryMs": 1683,
+  "observationWindowMs": 300000,
+  "settlementPollIntervalMs": 500,
+  "limitations": [
+    "terminal_settlement_instant_is_observed_not_authoritative",
+    "worker_side_terminal_reason_is_not_published_by_the_settlement_authority",
+    "fault_execution_is_delegated_to_the_injector_and_attested_by_digest"
+  ]
+}

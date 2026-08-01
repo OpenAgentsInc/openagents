@@ -1609,32 +1609,47 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
     });
     await store.sweepExpired("2026-07-28T13:01:30.000Z");
     const [connectedSession] = await sql`
-      SELECT state, ticket_digest, connected_at
+      SELECT state, ticket_digest, connected_at, close_reason, updated_at
       FROM sarah_realtime_voice_sessions
       WHERE session_ref = 'voice-livekit-1'
     `;
     expect(connectedSession).toMatchObject({
-      state: "connected",
+      state: "accounting_uncertain",
       ticket_digest: null,
       connected_at: "2026-07-28T13:00:21.500Z",
+      close_reason: "livekit_worker_heartbeat_expired",
+      updated_at: "2026-07-28T13:01:30.000Z",
     });
     const [staleWorker] = await sql`
       SELECT worker_stop_reason, worker_stop_close_reason,
-        worker_stop_requested_at, worker_stop_deadline_at
+        worker_stop_requested_at, worker_stop_deadline_at,
+        provider_accounting_status, provider_accounting_uncertain_at
       FROM sarah_livekit_room_bindings
       WHERE session_ref = ${binding.sessionRef}
         AND generation = ${binding.generation}
     `;
     expect(staleWorker).toMatchObject({
-      worker_stop_reason: "worker_unavailable",
-      worker_stop_close_reason: "livekit_worker_heartbeat_expired",
-      worker_stop_requested_at: "2026-07-28T13:01:30.000Z",
+      worker_stop_reason: null,
+      worker_stop_close_reason: null,
+      worker_stop_requested_at: null,
+      worker_stop_deadline_at: null,
+      provider_accounting_status: "uncertain",
+      provider_accounting_uncertain_at: "2026-07-28T13:01:30.000Z",
     });
-    expect(staleWorker?.worker_stop_deadline_at).toBe("2026-07-28T13:04:00.000Z");
+    await sql`
+      UPDATE sarah_realtime_voice_sessions
+      SET state = 'connected', close_reason = NULL,
+        updated_at = '2026-07-28T13:01:30.250Z'
+      WHERE session_ref = ${binding.sessionRef}
+        AND generation = ${binding.generation}
+    `;
     await sql`
       UPDATE sarah_livekit_room_bindings
       SET worker_stop_reason = NULL, worker_stop_close_reason = NULL,
-        worker_stop_requested_at = NULL, worker_stop_deadline_at = NULL
+        worker_stop_requested_at = NULL, worker_stop_deadline_at = NULL,
+        provider_accounting_status = 'pending',
+        provider_accounting_uncertain_at = NULL,
+        provider_accounting_uncertain_reason = NULL
       WHERE session_ref = ${binding.sessionRef}
         AND generation = ${binding.generation}
     `;

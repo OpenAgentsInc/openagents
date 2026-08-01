@@ -173,10 +173,7 @@ const mutateScenario = (
 describe("Sarah LiveKit terminal failure matrix", () => {
   test("keeps the owner-gated CLI non-mutating and private input outside Git", () => {
     const source = readFileSync(new URL("./failure-matrix-cli.ts", import.meta.url), "utf8");
-    const pathSource = readFileSync(
-      new URL("./failure-matrix-paths.ts", import.meta.url),
-      "utf8",
-    );
+    const pathSource = readFileSync(new URL("./failure-matrix-paths.ts", import.meta.url), "utf8");
     expect(source).toContain("I_ACCEPT_EP263_SARAH_FAILURE_MATRIX");
     expect(pathSource).toContain("private failure-matrix observation must remain outside");
     expect(pathSource).toContain("receipt path must be under docs/ops/receipts/livekit");
@@ -184,6 +181,9 @@ describe("Sarah LiveKit terminal failure matrix", () => {
     expect(source).toContain("must be from the last 24 hours");
     expect(source).toContain("SARAH_FAILURE_MATRIX_EXPECTED_PRODUCTION_DATABASE");
     expect(source).toContain('spawn("psql"');
+    expect(source).toContain(
+      "WHEN session.close_reason = 'livekit_worker_heartbeat_expired' THEN 'worker_error'",
+    );
     expect(source).not.toMatch(/execFile|spawnSync|fetch\(|kubectl|gcloud/u);
   });
 
@@ -295,6 +295,43 @@ describe("Sarah LiveKit terminal failure matrix", () => {
     ).toThrow("truthful uncertain provider accounting");
   });
 
+  test.each(["planned_worker_crash", "sfu_loss"] as const)(
+    "publishes truthful uncertain accounting for abrupt %s loss",
+    (scenarioName) => {
+      const input = mutateScenario(observation(), scenarioName, (scenario) => {
+        scenario["terminalState"] = "accounting_uncertain";
+        scenario["providerAccountingStatus"] = "uncertain";
+      });
+
+      expect(validateSarahLiveKitFailureMatrixObservation(input)).toBe(input);
+      expect(
+        buildSarahLiveKitFailureMatrixReceipt(input).scenarios.find(
+          (scenario) => scenario.scenario === scenarioName,
+        ),
+      ).toMatchObject({
+        terminalState: "accounting_uncertain",
+        providerAccountingStatus: "uncertain",
+        settlementChargeMsat: 0,
+        holdReleasedMsat: 0,
+        noLedgerMutation: true,
+        exactAccounting: false,
+      });
+    },
+  );
+
+  test("keeps success, cancellation, timeout, and reconnect exact-only", () => {
+    for (const scenarioName of ["success", "cancellation", "timeout", "reconnect"] as const) {
+      expect(() =>
+        validateSarahLiveKitFailureMatrixObservation(
+          mutateScenario(observation(), scenarioName, (scenario) => {
+            scenario["terminalState"] = "accounting_uncertain";
+            scenario["providerAccountingStatus"] = "uncertain";
+          }),
+        ),
+      ).toThrow("must have exact released accounting");
+    }
+  });
+
   test("requires live authority evidence for the retired hold-exhaustion row", () => {
     const changedLedger = structuredClone(observation()) as unknown as {
       retiredScenarios: Array<Record<string, unknown>>;
@@ -322,9 +359,7 @@ describe("Sarah LiveKit terminal failure matrix", () => {
 
   test("requires every caller-supplied capture to match production authority rows", () => {
     const input = observation();
-    expect(() => validateSarahLiveKitFailureMatrixAuthorityRows(input, [])).toThrow(
-      "row count",
-    );
+    expect(() => validateSarahLiveKitFailureMatrixAuthorityRows(input, [])).toThrow("row count");
     const captures = [
       ...input.scenarios.map((scenario) => scenario.unmeteredAuthorityCapture),
       input.retiredScenarios[0].unmeteredAuthorityCapture,
@@ -360,6 +395,27 @@ describe("Sarah LiveKit terminal failure matrix", () => {
       };
     });
     expect(() => validateSarahLiveKitFailureMatrixAuthorityRows(input, rows)).not.toThrow();
+    const crashIndex = SARAH_LIVEKIT_FAILURE_SCENARIOS.indexOf("planned_worker_crash");
+    const crashSessionRef = `session-${SARAH_LIVEKIT_FAILURE_SCENARIOS[crashIndex]}`;
+    const crashTerminalAuthorityRef = `sarah_voice_accounting_uncertain:${crashSessionRef}:${crashIndex + 1}`;
+    const uncertainCrash = mutateScenario(input, "planned_worker_crash", (scenario) => {
+      scenario["terminalState"] = "accounting_uncertain";
+      scenario["providerAccountingStatus"] = "uncertain";
+      const identities = scenario["identityDigests"] as Record<string, unknown>;
+      identities["settlement"] = digest(crashTerminalAuthorityRef);
+    });
+    const exactCrashRow = rows[crashIndex]!;
+    rows[crashIndex] = {
+      ...exactCrashRow,
+      sessionState: "accounting_uncertain",
+      providerAccountingStatus: "uncertain",
+      settlementReceiptRef: null,
+      terminalAuthorityRef: crashTerminalAuthorityRef,
+    };
+    expect(() =>
+      validateSarahLiveKitFailureMatrixAuthorityRows(uncertainCrash, rows),
+    ).not.toThrow();
+    rows[crashIndex] = exactCrashRow;
     const disconnectIndex = SARAH_LIVEKIT_FAILURE_SCENARIOS.indexOf("provider_disconnect");
     const disconnectRow = rows[disconnectIndex]!;
     rows[disconnectIndex] = {

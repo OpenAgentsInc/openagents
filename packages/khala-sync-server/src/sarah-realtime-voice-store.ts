@@ -3023,6 +3023,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       generation: number;
       reason: string;
       nowIso: string;
+      workerHeartbeatExpiredBeforeIso?: string;
     }>,
   ): Promise<SarahVoiceSessionRecord> => {
     const rows = (await tx`
@@ -3048,7 +3049,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       );
     }
     const bindings = (await tx`
-      SELECT provider_admitted_at, provider_accounting_status
+      SELECT provider_admitted_at, provider_accounting_status,
+        worker_stop_reason, worker_last_seen_at
       FROM sarah_livekit_room_bindings
       WHERE session_ref = ${input.sessionRef}
         AND generation = ${input.generation}
@@ -3056,6 +3058,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     `) as ReadonlyArray<{
       provider_admitted_at: string | null;
       provider_accounting_status: "pending" | "exact" | "uncertain";
+      worker_stop_reason: SarahVoiceLiveKitWorkerStopReason | null;
+      worker_last_seen_at: string | null;
     }>;
     const binding = first(bindings);
     if (binding === undefined || binding.provider_admitted_at === null) {
@@ -3064,7 +3068,16 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       );
     }
     if (binding.provider_accounting_status === "exact") {
+      if (input.workerHeartbeatExpiredBeforeIso !== undefined) return current;
       throw new SarahVoiceSessionRejectedError("Exact provider accounting cannot become uncertain");
+    }
+    if (
+      input.workerHeartbeatExpiredBeforeIso !== undefined &&
+      (binding.worker_stop_reason !== null ||
+        binding.worker_last_seen_at === null ||
+        binding.worker_last_seen_at > input.workerHeartbeatExpiredBeforeIso)
+    ) {
+      return current;
     }
     await tx`
       UPDATE sarah_livekit_room_bindings
@@ -5794,18 +5807,39 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           const workerUnavailable =
             row.worker_last_seen_at !== null &&
             row.worker_last_seen_at <= workerHeartbeatExpiredBeforeIso;
-          // eslint-disable-next-line no-await-in-loop
-          await sql.begin((tx) =>
-            requestLiveKitWorkerStopInTransaction(tx, {
-              sessionRef: row.session_ref,
-              generation: toSafeInteger(row.generation, "generation"),
-              stopReason: workerUnavailable ? "worker_unavailable" : "session_expired",
-              closeReason: workerUnavailable
-                ? "livekit_worker_heartbeat_expired"
-                : "session_expired",
-              nowIso,
-            }),
-          );
+          if (
+            workerUnavailable &&
+            row.provider_admitted_at !== null &&
+            row.provider_accounting_status !== "exact"
+          ) {
+            // The expired heartbeat proves this worker cannot honor a graceful
+            // stop request. Waiting through a drain deadline would only delay
+            // the same uncertainty boundary while provider usage remains
+            // unknowable.
+            // eslint-disable-next-line no-await-in-loop
+            await sql.begin((tx) =>
+              markLiveKitAccountingUncertainInTransaction(tx, {
+                sessionRef: row.session_ref,
+                generation: toSafeInteger(row.generation, "generation"),
+                reason: "livekit_worker_heartbeat_expired",
+                nowIso,
+                workerHeartbeatExpiredBeforeIso,
+              }),
+            );
+          } else {
+            // eslint-disable-next-line no-await-in-loop
+            await sql.begin((tx) =>
+              requestLiveKitWorkerStopInTransaction(tx, {
+                sessionRef: row.session_ref,
+                generation: toSafeInteger(row.generation, "generation"),
+                stopReason: workerUnavailable ? "worker_unavailable" : "session_expired",
+                closeReason: workerUnavailable
+                  ? "livekit_worker_heartbeat_expired"
+                  : "session_expired",
+                nowIso,
+              }),
+            );
+          }
           processed += 1;
           continue;
         }

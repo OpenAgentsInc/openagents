@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   AudioFrame,
   AudioSource,
@@ -548,6 +549,77 @@ const decodeSettlement = (value: unknown) => {
   }
 };
 
+const RAW_SHA256 = /^[0-9a-f]{64}$/u;
+
+export type SarahLiveKitUncertainAccountingTerminal = Readonly<{
+  state: "accounting_uncertain";
+  creditMode: "owner_waived_unmetered";
+  recordedChargeMsat: 0;
+  reservedCreditMsat: 0;
+  noHoldCreated: true;
+  reason: string;
+  authorityCaptureDigest: `sha256:${string}`;
+  exactAccounting: false;
+}>;
+
+const decodeOwnerWaivedUncertainAccountingTerminal = (
+  value: unknown,
+  scenario: Readonly<{ sessionRef: string; generation?: number }>,
+): SarahLiveKitUncertainAccountingTerminal => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("Sarah uncertain accounting response was invalid");
+  }
+  const body = value as Record<string, unknown>;
+  const capture = body["unmeteredAuthorityCapture"];
+  if (typeof capture !== "object" || capture === null || Array.isArray(capture)) {
+    throw new Error("Sarah uncertain accounting response omitted durable unmetered authority");
+  }
+  const authority = capture as Record<string, unknown>;
+  const sessionRefDigest = createHash("sha256").update(scenario.sessionRef).digest("hex");
+  const captureDigest = authority["captureDigest"];
+  if (
+    body["error"] !== "sarah_voice_accounting_uncertain" ||
+    body["sessionRef"] !== scenario.sessionRef ||
+    body["state"] !== "accounting_uncertain" ||
+    body["creditMode"] !== "owner_waived_unmetered" ||
+    body["recordedChargeMsat"] !== 0 ||
+    body["reservedCreditMsat"] !== 0 ||
+    body["holdPreserved"] !== false ||
+    body["noHoldCreated"] !== true ||
+    typeof body["reason"] !== "string" ||
+    body["reason"].trim() === "" ||
+    authority["schema"] !== "openagents.sarah.unmetered-authority-capture.v1" ||
+    authority["authority"] !== "owner_waived_unmetered_v1" ||
+    !Number.isSafeInteger(authority["generation"]) ||
+    (scenario.generation !== undefined && authority["generation"] !== scenario.generation) ||
+    authority["sessionRefDigest"] !== sessionRefDigest ||
+    typeof authority["startLedgerStateDigest"] !== "string" ||
+    !RAW_SHA256.test(authority["startLedgerStateDigest"]) ||
+    authority["endLedgerStateDigest"] !== authority["startLedgerStateDigest"] ||
+    typeof authority["startBalanceStateDigest"] !== "string" ||
+    !RAW_SHA256.test(authority["startBalanceStateDigest"]) ||
+    authority["endBalanceStateDigest"] !== authority["startBalanceStateDigest"] ||
+    authority["ledgerMutationCount"] !== 0 ||
+    typeof captureDigest !== "string" ||
+    !RAW_SHA256.test(captureDigest) ||
+    authority["captureReceiptRef"] !== `sarah_voice_unmetered_authority:${captureDigest}`
+  ) {
+    throw new Error(
+      "Sarah uncertain accounting response did not prove zero-credit unmetered authority",
+    );
+  }
+  return {
+    state: "accounting_uncertain",
+    creditMode: "owner_waived_unmetered",
+    recordedChargeMsat: 0,
+    reservedCreditMsat: 0,
+    noHoldCreated: true,
+    reason: body["reason"],
+    authorityCaptureDigest: `sha256:${captureDigest}`,
+    exactAccounting: false,
+  };
+};
+
 const observeSarahOutputs = (room: Room, sarahParticipantRef: string, clock: Clock) => {
   const audio = deferred<number>();
   const transcription = deferred<number>();
@@ -694,7 +766,7 @@ export const classifySarahLiveKitScenarioIcePaths = (
  * width of that uncertainty rather than hiding it.
  */
 export type SarahLiveKitSettlementReading = Readonly<{
-  settlement: ReturnType<typeof decodeSettlement>;
+  settlement: ReturnType<typeof decodeSettlement> | SarahLiveKitUncertainAccountingTerminal;
   terminalObservedAtMs: number;
   lastNonTerminalObservedAtMs: number;
 }>;
@@ -716,11 +788,12 @@ export const SARAH_LIVEKIT_SETTLEMENT_POLL_INTERVAL_MS = 500;
 export const pollSarahLiveKitSettlement = async (
   http: Http,
   clock: Clock,
-  scenario: Readonly<{ bearer: string; sessionRef: string }>,
+  scenario: Readonly<{ bearer: string; sessionRef: string; generation?: number }>,
   window: Readonly<{ windowMs: number; intervalMs: number }> = {
     windowMs: SETTLEMENT_TIMEOUT_MS,
     intervalMs: SARAH_LIVEKIT_SETTLEMENT_POLL_INTERVAL_MS,
   },
+  acceptOwnerWaivedAccountingUncertain = false,
 ): Promise<SarahLiveKitSettlementReading | null> => {
   const deadline = clock.now() + window.windowMs;
   let lastNonTerminalObservedAtMs = clock.now();
@@ -742,6 +815,16 @@ export const pollSarahLiveKitSettlement = async (
       const settlement = decodeSettlement(await response.json());
       return { settlement, terminalObservedAtMs: clock.now(), lastNonTerminalObservedAtMs };
     }
+    if (response.status === 409 && acceptOwnerWaivedAccountingUncertain) {
+      // Only abrupt-failure drills opt into this branch. The ordinary success,
+      // cancellation, and timeout paths continue to require an exact receipt.
+      // eslint-disable-next-line no-await-in-loop
+      const settlement = decodeOwnerWaivedUncertainAccountingTerminal(
+        await response.json(),
+        scenario,
+      );
+      return { settlement, terminalObservedAtMs: clock.now(), lastNonTerminalObservedAtMs };
+    }
     if (response.status !== 404) {
       // eslint-disable-next-line no-await-in-loop
       throw await responseError(response, SARAH_VOICE_SETTLEMENT_PATH);
@@ -761,6 +844,9 @@ const readSettlement = async (
 ) => {
   const reading = await pollSarahLiveKitSettlement(http, clock, scenario);
   if (reading === null) throw new Error("Sarah settlement did not become terminal");
+  if (reading.settlement.state === "accounting_uncertain") {
+    throw new Error("Sarah acceptance requires exact terminal accounting");
+  }
   return reading.settlement;
 };
 

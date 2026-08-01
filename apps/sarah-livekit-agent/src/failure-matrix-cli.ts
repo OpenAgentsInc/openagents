@@ -35,7 +35,12 @@ const runPsql = (statement: string): Promise<string> =>
     child.on("error", reject);
     child.on("close", (code) => {
       if (code === 0) resolveOutput(Buffer.concat(output).toString("utf8").trim());
-      else reject(new Error(`psql authority read failed (${Buffer.concat(errors).toString("utf8").trim()})`));
+      else
+        reject(
+          new Error(
+            `psql authority read failed (${Buffer.concat(errors).toString("utf8").trim()})`,
+          ),
+        );
     });
     child.stdin.end(statement);
   });
@@ -67,7 +72,13 @@ const readProductionAuthorityRows = async (
         'sessionState', session.state,
         'creditMode', session.credit_mode,
         'providerAccountingStatus', binding.provider_accounting_status,
-        'closeReason', session.close_reason,
+        'closeReason', CASE
+          WHEN session.close_reason = 'livekit_worker_heartbeat_expired' THEN 'worker_error'
+          WHEN session.close_reason IN ('client_closed', 'user_stop') THEN 'operator_stop'
+          WHEN session.close_reason LIKE 'livekit_worker_%'
+            THEN substring(session.close_reason FROM length('livekit_worker_') + 1)
+          ELSE session.close_reason
+        END,
         'reservedMsat', session.reserved_msat,
         'chargedMsat', session.charged_msat,
         'settlementReceiptRef', session.settlement_receipt_ref,
@@ -196,7 +207,8 @@ const run = async () => {
         requiredOwnerGate: OWNER_GATE,
         scenarios: SARAH_LIVEKIT_FAILURE_SCENARIOS,
         guarantees: [
-          "exact usage, hold, and settlement reconciliation per scenario",
+          "exact settlement or explicitly uncertain abrupt-failure accounting per scenario",
+          "zero hold and ledger mutation under durable owner-waived unmetered authority",
           "one terminal event and one worker/provider generation at a time",
           "fresh generation after reconnect without settled-generation revival",
           "digest-only authority and evidence projection",

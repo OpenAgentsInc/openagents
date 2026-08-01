@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { isUtf8 } from "node:buffer";
+import { createHash, createPrivateKey } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 
@@ -41,7 +42,12 @@ const RAW_MEDIA_EXTENSIONS = new Set([
 const TRANSCRIPT_NAME = /(?:^|[._-])(?:caption|captions|transcript|transcription)(?:[._-]|$)/iu;
 const TRANSCRIPT_PAYLOAD =
   /"(?:caption|captions|transcript|transcription|recognized_text)"\s*:\s*"(?:[^"\\]|\\.)+"/iu;
-const PRIVATE_KEY_MATERIAL = /-----BEGIN (?:EC |OPENSSH |RSA )?PRIVATE KEY-----/u;
+const PRIVATE_KEY_LABELS = Object.freeze([
+  "PRIVATE KEY",
+  "EC PRIVATE KEY",
+  "OPENSSH PRIVATE KEY",
+  "RSA PRIVATE KEY",
+]);
 const MEDIA_SIGNATURES = Object.freeze([
   Buffer.from("OggS"),
   Buffer.from("fLaC"),
@@ -62,6 +68,40 @@ const isWave = (bytes) =>
   bytes.subarray(8, 12).equals(Buffer.from("WAVE"));
 
 const contains = (bytes, needle) => needle.length > 0 && bytes.indexOf(needle) >= 0;
+
+const startsWith = (bytes, prefix) =>
+  bytes.length >= prefix.length && bytes.subarray(0, prefix.length).equals(prefix);
+
+const containsParseablePrivateKey = (bytes) => {
+  if (bytes.includes(0) || !isUtf8(bytes)) return false;
+  const text = bytes.toString("utf8");
+  for (const label of PRIVATE_KEY_LABELS) {
+    const begin = `-----BEGIN ${label}-----`;
+    const end = `-----END ${label}-----`;
+    let searchFrom = 0;
+    while (searchFrom < text.length) {
+      const beginAt = text.indexOf(begin, searchFrom);
+      if (beginAt < 0) break;
+      const endAt = text.indexOf(end, beginAt + begin.length);
+      if (endAt < 0) break;
+      const candidate = text.slice(beginAt, endAt + end.length);
+      try {
+        createPrivateKey(candidate);
+        return true;
+      } catch {
+        // Documentation and binary string tables often contain PEM delimiters.
+      }
+      searchFrom = beginAt + begin.length;
+    }
+  }
+  return false;
+};
+
+const IMMUTABLE_POD_IMAGE_PAYLOAD =
+  /^immutable-image\/sha256\/[0-9a-f]{64}\/[^/]+\/.+/u;
+
+const classifyRetainedPayload = (scope, displayPath) =>
+  scope !== "pods" || !IMMUTABLE_POD_IMAGE_PAYLOAD.test(displayPath);
 
 const exactKeys = (value, keys) =>
   value !== null &&
@@ -184,7 +224,7 @@ const scanObject = ({ bytes, displayPath, scope, secrets, canaries }) => {
   if (contains(bytes, secrets.sarahPrivateKey)) findings += 1;
   if (
     (CLIENT_SCOPES.has(scope) || WORKER_SCOPES.has(scope)) &&
-    PRIVATE_KEY_MATERIAL.test(bytes.toString("utf8"))
+    containsParseablePrivateKey(bytes)
   ) {
     findings += 1;
   }
@@ -192,16 +232,18 @@ const scanObject = ({ bytes, displayPath, scope, secrets, canaries }) => {
     for (const canary of canaries) {
       if (contains(bytes, canary)) findings += 1;
     }
-    if (
-      RAW_MEDIA_EXTENSIONS.has(extension(displayPath)) ||
-      isWave(bytes) ||
-      MEDIA_SIGNATURES.some((signature) => contains(bytes, signature))
-    ) {
-      rawMediaObjects = 1;
-    }
-    const text = bytes.toString("utf8");
-    if (TRANSCRIPT_NAME.test(displayPath) || TRANSCRIPT_PAYLOAD.test(text)) {
-      transcriptObjects = 1;
+    if (classifyRetainedPayload(scope, displayPath)) {
+      if (
+        RAW_MEDIA_EXTENSIONS.has(extension(displayPath)) ||
+        isWave(bytes) ||
+        MEDIA_SIGNATURES.some((signature) => startsWith(bytes, signature))
+      ) {
+        rawMediaObjects = 1;
+      }
+      const text = bytes.toString("utf8");
+      if (TRANSCRIPT_NAME.test(displayPath) || TRANSCRIPT_PAYLOAD.test(text)) {
+        transcriptObjects = 1;
+      }
     }
   }
   return { findings, rawMediaObjects, transcriptObjects };

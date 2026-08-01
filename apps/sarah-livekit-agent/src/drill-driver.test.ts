@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { SARAH_VOICE_SETTLEMENT_PROTOCOL_VERSION } from "@openagentsinc/audio-contract";
 import { describe, expect, test, vi } from "vite-plus/test";
 import type { Room } from "@livekit/rtc-node";
@@ -90,6 +91,36 @@ const settlementBody = () => ({
   receiptRef: "receipt.sarah_voice_settlement.drill",
 });
 
+const uncertainAccountingBody = () => {
+  const captureDigest = "a".repeat(64);
+  const ledgerDigest = "b".repeat(64);
+  const balanceDigest = "c".repeat(64);
+  return {
+    error: "sarah_voice_accounting_uncertain",
+    sessionRef: scenario.sessionRef,
+    state: "accounting_uncertain",
+    creditMode: "owner_waived_unmetered",
+    recordedChargeMsat: 0,
+    reservedCreditMsat: 0,
+    holdPreserved: false,
+    noHoldCreated: true,
+    reason: "livekit_worker_heartbeat_expired",
+    unmeteredAuthorityCapture: {
+      schema: "openagents.sarah.unmetered-authority-capture.v1",
+      authority: "owner_waived_unmetered_v1",
+      generation: scenario.generation,
+      sessionRefDigest: createHash("sha256").update(scenario.sessionRef).digest("hex"),
+      startLedgerStateDigest: ledgerDigest,
+      endLedgerStateDigest: ledgerDigest,
+      startBalanceStateDigest: balanceDigest,
+      endBalanceStateDigest: balanceDigest,
+      ledgerMutationCount: 0,
+      captureReceiptRef: `sarah_voice_unmetered_authority:${captureDigest}`,
+      captureDigest,
+    },
+  };
+};
+
 /**
  * @param settleAfterMs How long after the fault the settlement authority turns
  *   terminal, or `null` for a settlement that never arrives.
@@ -97,6 +128,7 @@ const settlementBody = () => ({
 const harness = (
   options: Readonly<{
     settleAfterMs: number | null;
+    uncertainAccounting?: boolean;
     fault?: SarahLiveKitDrillFaultResult;
     injectFault?: SarahLiveKitDrillInput["injectFault"];
     billableSessions?: number;
@@ -125,7 +157,9 @@ const harness = (
     ) {
       return new Response(JSON.stringify({ error: "not_terminal" }), { status: 404 });
     }
-    return Response.json(settlementBody());
+    return options.uncertainAccounting
+      ? Response.json(uncertainAccountingBody(), { status: 409 })
+      : Response.json(settlementBody());
   });
 
   const session = {
@@ -240,9 +274,39 @@ describe("Sarah LiveKit single-session drill driver", () => {
     expect(observation.concurrentBillableSessionCount).toBe(1);
     expect(observation.withinBound).toBe(true);
     expect(observation.settlement?.state).toBe("released");
-    expect(observation.settlement?.receiptDigest).toMatch(/^sha256:[0-9a-f]{64}$/u);
+    expect(observation.settlement?.exactAccounting).toBe(true);
+    expect(
+      observation.settlement?.state === "released" ? observation.settlement.receiptDigest : null,
+    ).toMatch(/^sha256:[0-9a-f]{64}$/u);
     expect(built.released()).toBe(1);
   });
+
+  test.each(["planned_worker_crash", "sfu_loss"] as const)(
+    "treats durable zero-credit uncertainty as terminal for %s",
+    async (drillScenario) => {
+      const built = harness({
+        settleAfterMs: 4_000,
+        uncertainAccounting: true,
+        overrides: { scenario: drillScenario },
+      });
+      const observation = await run(drillScenario === "sfu_loss" ? withMediaLoss(built) : built);
+
+      expect(observation.outcome).toBe("passed");
+      expect(observation.settlement).toMatchObject({
+        state: "accounting_uncertain",
+        creditMode: "owner_waived_unmetered",
+        recordedChargeMsat: 0,
+        reservedCreditMsat: 0,
+        noHoldCreated: true,
+        exactAccounting: false,
+      });
+      expect(
+        observation.settlement?.state === "accounting_uncertain"
+          ? observation.settlement.authorityCaptureDigest
+          : null,
+      ).toMatch(/^sha256:[0-9a-f]{64}$/u);
+    },
+  );
 
   test("records the fault instant separately from the session start", async () => {
     const built = withMediaLoss(harness({ settleAfterMs: 4_000 }));

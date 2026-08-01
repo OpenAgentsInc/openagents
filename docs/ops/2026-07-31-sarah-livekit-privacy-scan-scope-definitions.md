@@ -253,6 +253,36 @@ Measured collection cost, so the window can be planned rather than discovered:
 About 4 GiB total. Fetch the packaged clients before the window opens, since
 download time counts against the two hours.
 
+### Auditable `pods` export paths
+
+The pod export uses provenance-bearing relative paths:
+
+```text
+immutable-image/sha256/<64-lowercase-hex>/<container>/<image-relative-path>
+runtime/<pod-uid>/<container>/environment/<entry>
+runtime/<pod-uid>/<container>/filesystem/<absolute-path-without-leading-slash>
+runtime/<pod-uid>/<container>/logs/<current-or-previous>.log
+cluster-metadata/<read-only-export>
+```
+
+Populate `immutable-image/` only by independently unpacking the exact deployed
+OCI digest. Never copy a running container's merged filesystem there: writable
+layers, mounts, `/tmp`, environment, and logs are runtime evidence. A legacy
+`fs/` tree, an unpinned image name, or a malformed digest stays subject to the
+full retention classifiers.
+
+The scanner excludes only correctly digest-bound immutable image payloads from
+media and transcript classification. It still compares every pod object with
+the exact `principal.sarah` secret and synthetic canaries and still tests every
+pod object for parseable private-key material. The production OpenAI key keeps
+its existing pod-scope exemption because workers require it. Media signatures
+match at byte zero, not an interior binary string. Generic PEM delimiters count
+only in a NUL-free, valid UTF-8 text object and only when the enclosed material
+parses as a private key; a parseable PEM string embedded in a binary string
+table is not a textual key file. These rules keep the scan fail-closed for
+ambiguous provenance while avoiding findings caused solely by fixtures,
+documentation, and string tables shipped in the immutable image.
+
 ## How the row should read
 
 `privacy_scope_count` on `sarah-livekit-failure` stays `not_observed`. No scan

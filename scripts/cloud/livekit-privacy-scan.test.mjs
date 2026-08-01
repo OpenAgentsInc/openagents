@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import {
   PRIVACY_SCOPE_EXPORT_SCHEMA,
@@ -52,6 +53,7 @@ const scan = (scopeInputs) =>
   });
 
 const addPayload = (directory, name, bytes) => {
+  mkdirSync(dirname(join(directory, name)), { recursive: true });
   writeFileSync(join(directory, name), bytes);
   const manifestPath = join(directory, PRIVACY_SCOPE_MANIFEST);
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -59,6 +61,9 @@ const addPayload = (directory, name, bytes) => {
   manifest.byteCount += Buffer.byteLength(bytes);
   writeFileSync(manifestPath, JSON.stringify(manifest));
 };
+
+const immutablePodPath = (name) =>
+  `immutable-image/sha256/${"b".repeat(64)}/sarah-livekit-agent/${name}`;
 
 test("passes complete clean exports and emits only redacted aggregate evidence", () => {
   const { scopeInputs } = fixture();
@@ -89,6 +94,92 @@ test("rejects Sarah private identity material in a worker pod export", () => {
   const result = scan(scopeInputs);
   assert.equal(result.outcome, "failed");
   assert.ok(result.results.findings > 0);
+});
+
+test("detects only parseable generic PEM private keys", () => {
+  const documentation = fixture();
+  addPayload(
+    documentation.scopeInputs.packaged_clients,
+    "documentation.txt",
+    "Use -----BEGIN PRIVATE KEY----- and -----END PRIVATE KEY----- delimiters.",
+  );
+  assert.equal(scan(documentation.scopeInputs).outcome, "passed");
+
+  const binaryStringTable = fixture();
+  addPayload(
+    binaryStringTable.scopeInputs.pods,
+    immutablePodPath("library.bin"),
+    Buffer.from("\0-----BEGIN RSA PRIVATE KEY-----\0not-a-key\0-----END RSA PRIVATE KEY-----\0"),
+  );
+  assert.equal(scan(binaryStringTable.scopeInputs).outcome, "passed");
+
+  const actualKey = fixture();
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 1024 });
+  const privateKeyPem = Buffer.from(privateKey.export({ format: "pem", type: "pkcs8" }));
+  addPayload(
+    actualKey.scopeInputs.packaged_clients,
+    "embedded-key.pem",
+    privateKeyPem,
+  );
+  const result = scan(actualKey.scopeInputs);
+  assert.equal(result.outcome, "failed");
+  assert.ok(result.results.findings > 0);
+
+  const binaryWrappedKey = fixture();
+  addPayload(
+    binaryWrappedKey.scopeInputs.pods,
+    immutablePodPath("library-with-pem-string.bin"),
+    Buffer.concat([
+      Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0x00]),
+      privateKeyPem,
+      Buffer.from([0xff]),
+    ]),
+  );
+  assert.equal(scan(binaryWrappedKey.scopeInputs).outcome, "passed");
+});
+
+test("treats media signatures as file magic rather than interior binary strings", () => {
+  const interior = fixture();
+  addPayload(
+    interior.scopeInputs.object_storage,
+    "compiled.bin",
+    Buffer.concat([Buffer.from("binary-prefix"), Buffer.from("OggS"), Buffer.from("binary-suffix")]),
+  );
+  assert.equal(scan(interior.scopeInputs).results.rawMediaObjects, 0);
+
+  const leading = fixture();
+  addPayload(leading.scopeInputs.object_storage, "unnamed.bin", Buffer.from("OggSmedia-payload"));
+  assert.equal(scan(leading.scopeInputs).results.rawMediaObjects, 1);
+});
+
+test("excludes digest-bound immutable pod image payload only from retention classification", () => {
+  const immutableImage = fixture();
+  addPayload(
+    immutableImage.scopeInputs.pods,
+    immutablePodPath("fixtures/transcript.wav"),
+    Buffer.from('RIFF0000WAVE{"transcript":"fixture words"}'),
+  );
+  const cleanResult = scan(immutableImage.scopeInputs);
+  assert.equal(cleanResult.results.rawMediaObjects, 0);
+  assert.equal(cleanResult.results.transcriptObjects, 0);
+
+  const immutableSecret = fixture();
+  addPayload(
+    immutableSecret.scopeInputs.pods,
+    immutablePodPath("fixtures/config.bin"),
+    sarahPrivateKey,
+  );
+  assert.ok(scan(immutableSecret.scopeInputs).results.findings > 0);
+
+  const malformedProvenance = fixture();
+  addPayload(
+    malformedProvenance.scopeInputs.pods,
+    "immutable-image/unpinned/agent/fixtures/runtime-transcript.wav",
+    Buffer.from("RIFF0000WAVE"),
+  );
+  const malformedResult = scan(malformedProvenance.scopeInputs);
+  assert.equal(malformedResult.results.rawMediaObjects, 1);
+  assert.equal(malformedResult.results.transcriptObjects, 1);
 });
 
 test("rejects retained canaries, transcript payloads, and raw media in runtime scopes", () => {

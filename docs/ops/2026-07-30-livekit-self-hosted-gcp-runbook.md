@@ -1608,6 +1608,37 @@ objects and payloads, and common retained media formats and signatures.
 - complete bounded trace exports;
 - every in-scope crash, Error Reporting, core, and support artifact.
 
+Use this closed path convention inside the `pods` export so immutable image
+bytes cannot be confused with state retained by a running pod:
+
+```text
+immutable-image/sha256/<64-lowercase-hex>/<container>/<image-relative-path>
+runtime/<pod-uid>/<container>/environment/<entry>
+runtime/<pod-uid>/<container>/filesystem/<absolute-path-without-leading-slash>
+runtime/<pod-uid>/<container>/logs/<current-or-previous>.log
+cluster-metadata/<read-only-export>
+```
+
+Only bytes independently unpacked from the exact deployed OCI digest belong
+under `immutable-image/`. Writable layers, mounted volumes, `/tmp`, process
+environment, and current or previous output belong under `runtime/`; Kubernetes
+descriptions, events, and configuration belong under `cluster-metadata/`.
+Legacy `fs/` paths and malformed or unpinned `immutable-image/` paths receive
+the full retention scan and are never treated as immutable.
+
+Media signatures and transcript names/payloads are retention classifiers, so
+they skip only a correctly digest-bound `immutable-image/` path. The exact
+`principal.sarah` comparison, retention-canary comparisons, and parseable
+private-key detection still inspect every pod-export object; the production
+OpenAI key keeps its existing pod-scope exemption because workers require it.
+This distinction prevents packaged media fixtures and documentation in a pinned image from
+masquerading as runtime retention without creating a secret-scanning blind
+spot. The scanner treats media magic as file magic at byte zero; interior codec
+strings in binaries are not media evidence. Generic PEM detection applies only
+to NUL-free, valid UTF-8 text objects and requires the enclosed block to parse
+as a private key. A parseable PEM string embedded in a binary string table is
+not evidence that the image contains a usable textual key file.
+
 Capture all eight scopes over the same bounded acceptance window into private
 directories outside Git. Each directory must contain at least one payload file
 and `_scope-manifest.json` with this closed schema:
@@ -1673,15 +1704,27 @@ Secret-file inputs remain fixture-only and require the separate
 not a production fallback. If Secret Manager access is unavailable, the scan
 is unavailable; do not copy the values to make the gate pass.
 
-For the six runtime persistence scopes, the same private evidence can also be
-projected through the standalone gate:
+For the six runtime persistence scopes, project the same private scan through
+the closed-schema probe adapter and production acceptance runner. Do not pass
+the raw `openagents.sarah.livekit_privacy_scan.v1` result directly to
+`livekit-acceptance.mjs`; that command requires an
+`openagents.livekit_acceptance_observation.v1` envelope and cannot perform the
+eight-to-six-scope projection.
 
 ```sh
-OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
-node scripts/cloud/livekit-acceptance.mjs \
+node scripts/cloud/livekit-production-plan.mjs \
   --phase secret_scan \
   --bundle infra/livekit/bundle.json \
-  --input <private-scan-observation.json> \
+  --deployed-revision <exact-deployed-40-hex-revision> \
+  --resource-ref livekit-resource-ref://<opaque-production-scope> \
+  --input runtime_secret_scan=<private-privacy-observation.json> \
+  --output <private-secret-scan-plan.json>
+
+OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
+node scripts/cloud/livekit-production-acceptance.mjs \
+  --plan <private-secret-scan-plan.json> \
+  --bundle infra/livekit/bundle.json \
+  --private-observation <private-secret-scan-acceptance-observation.json> \
   --receipt docs/ops/receipts/livekit/production-secret-scan-<UTC>.json \
   --apply
 ```
@@ -2251,7 +2294,7 @@ response that changes the session, generation, digest, or
 `reservedMsat = chargedMsat = 0` without reading or mutating `agent_balances`.
 The remaining-drill CLI no longer accepts the scenario, so it cannot loop
 forever waiting for a condition the owner removed. Historical evidence remains
-in the v1 receipt. A v2 live-proof matrix must bind every active and retired row
+in the v1 receipt. A v3 live-proof matrix must bind every active and retired row
 to a durable runtime capture by session digest and generation. The receipt CLI
 rereads those captures together with session, provider-accounting, usage, close,
 and terminal-receipt authority from the production database. It rejects a
@@ -2259,10 +2302,16 @@ missing, reused, relabeled, or changed capture. The capture binds the owner's
 `agent_balances` row-presence, balance, held amount, and update instant at both
 ends of the run; those digests must be identical. It rejects any nonzero
 reserved, charged, released, or ledger-mutation value. Every
-active v2 scenario likewise requires `owner_waived_unmetered`, nonzero provider
-token evidence, and zero platform credit accounting. `provider_disconnect`
-truthfully remains `accounting_uncertain` with `exactAccounting: false`; every
-other active row must be released with exact provider accounting.
+active v3 scenario likewise requires `owner_waived_unmetered`, nonzero recorded
+provider token evidence, and zero platform credit accounting.
+`provider_disconnect` truthfully remains `accounting_uncertain` with
+`exactAccounting: false`. `planned_worker_crash` and `sfu_loss` may also end
+there when abrupt process or transport loss prevents exact provider usage from
+being recovered; those rows are accepted only with zero hold, zero recorded
+charge, no ledger mutation, and a durable owner-waived unmetered authority
+capture. Success, cancellation, timeout, and reconnect must remain released
+with exact provider accounting. Never invent usage to turn an uncertain
+abrupt-failure row into an exact settlement.
 
 `reconnect` creates a distinct generation-two session only after the first
 session is terminal and its settlement is readable. After fresh admission it

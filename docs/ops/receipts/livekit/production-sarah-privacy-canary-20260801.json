@@ -1,0 +1,44 @@
+{
+  "schema": "openagents.sarah.livekit-drill-observation.v2",
+  "scenario": "cancellation",
+  "faultAction": "client_cancel",
+  "roomKind": "private",
+  "outcome": "passed",
+  "contradictions": [],
+  "sessionStartedAtMs": 1785624482086,
+  "sessionLiveAtMs": 1785624495009,
+  "holdMs": 2000,
+  "faultInjectedAtMs": 1785624499834,
+  "mediaLossObservedAtMs": 1785624503638,
+  "controlTerminal": {
+    "atMs": 1785624499887,
+    "kind": "closing",
+    "reason": "user_stop"
+  },
+  "settlement": {
+    "state": "released",
+    "creditMode": "owner_waived_unmetered",
+    "finalChargeMsat": 0,
+    "receiptDigest": "sha256:7bc6a4326fcab15909e765aaf8e481611b39ae5b8181eb88b7acc95af9aacb12",
+    "exactAccounting": true,
+    "terminalObservedAtMs": 1785624503668,
+    "lastNonTerminalObservedAtMs": 1785624502991
+  },
+  "boundMs": 30000,
+  "faultToTerminalMs": 3834,
+  "mediaLossDetectedWithinMs": 3804,
+  "withinBound": true,
+  "concurrentBillableSessionCount": 1,
+  "instrumentSource": "pod_exec",
+  "faultTargetDigest": null,
+  "workerInstanceDigest": null,
+  "workerInstanceSurvived": null,
+  "faultDiscoveryMs": 0,
+  "observationWindowMs": 60000,
+  "settlementPollIntervalMs": 500,
+  "limitations": [
+    "terminal_settlement_instant_is_observed_not_authoritative",
+    "worker_side_terminal_reason_is_not_published_by_the_settlement_authority",
+    "fault_execution_is_delegated_to_the_injector_and_attested_by_digest"
+  ]
+}

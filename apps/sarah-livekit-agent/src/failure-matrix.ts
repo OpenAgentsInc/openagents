@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 
 export const SARAH_LIVEKIT_FAILURE_MATRIX_SCHEMA =
-  "openagents.sarah.livekit-failure-matrix-observation.v2" as const;
+  "openagents.sarah.livekit-failure-matrix-observation.v3" as const;
 export const SARAH_LIVEKIT_FAILURE_MATRIX_RECEIPT_SCHEMA =
-  "openagents.sarah.livekit-failure-matrix-receipt.v2" as const;
+  "openagents.sarah.livekit-failure-matrix-receipt.v3" as const;
 
 export const SARAH_LIVEKIT_FAILURE_SCENARIOS = [
   "success",
@@ -95,6 +95,12 @@ const ADMITTED_TERMINAL_REASONS = {
   provider_disconnect: ["provider_disconnect"],
   reconnect: ["completed"],
 } as const satisfies Readonly<Record<SarahLiveKitFailureScenario, readonly string[]>>;
+
+const UNCERTAIN_ACCOUNTING_SCENARIOS = new Set<SarahLiveKitFailureScenario>([
+  "planned_worker_crash",
+  "sfu_loss",
+  "provider_disconnect",
+]);
 
 /**
  * The fault each scenario's evidence is only valid for.
@@ -618,6 +624,13 @@ const validateScenario = (
         value.providerAccountingStatus === "uncertain",
       "provider_disconnect must preserve truthful uncertain provider accounting",
     );
+  } else if (UNCERTAIN_ACCOUNTING_SCENARIOS.has(expectedScenario)) {
+    assert(
+      (value.terminalState === "released" && value.providerAccountingStatus === "exact") ||
+        (value.terminalState === "accounting_uncertain" &&
+          value.providerAccountingStatus === "uncertain"),
+      `${expectedScenario} must have exact released accounting or truthful uncertain provider accounting`,
+    );
   } else {
     assert(
       value.terminalState === "released" && value.providerAccountingStatus === "exact",
@@ -852,9 +865,7 @@ export const validateSarahLiveKitFailureMatrixAuthorityRows = (
   );
   assert(rows.length === captures.length, "production authority capture row count is invalid");
   for (const capture of captures) {
-    const matches = rows.filter(
-      (row) => row.captureReceiptRef === capture.captureReceiptRef,
-    );
+    const matches = rows.filter((row) => row.captureReceiptRef === capture.captureReceiptRef);
     assert(matches.length === 1, "production authority capture is missing or duplicated");
     const row = matches[0] as SarahLiveKitUnmeteredAuthorityCaptureRow;
     assert(
@@ -875,8 +886,7 @@ export const validateSarahLiveKitFailureMatrixAuthorityRows = (
       (candidate) =>
         candidate.captureReceiptRef === scenario.unmeteredAuthorityCapture.captureReceiptRef,
     ) as SarahLiveKitUnmeteredAuthorityCaptureRow;
-    const expectedProviderStatus =
-      scenario.scenario === "provider_disconnect" ? "uncertain" : "exact";
+    const expectedProviderStatus = scenario.providerAccountingStatus;
     assert(
       row.sessionState === scenario.terminalState &&
         row.creditMode === scenario.creditMode &&
