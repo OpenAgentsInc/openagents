@@ -78,6 +78,16 @@ rollback receipt, restored pins, terminal room/accounting counts, transport
 switch count, and ordered before/after digests for unrelated services. It does
 not execute a fault or accept an operator-authored pass value.
 
+`scripts/cloud/livekit-rollback-capture.mjs` supplies the private rollback
+capture that adapter consumes. Its baseline mode runs after the drained
+admission receipt and before runtime rollback; its postcheck mode runs after
+the rollback receipt. Both modes are read-only. The postcheck rereads the
+serving Cloud Run admission flag, aggregate database counts, converged
+Kubernetes Deployment pins, and a fixed ordered inventory of the unrelated
+Cloud Run, Cloud SQL, relay, update, and managed-sandbox boundaries. Public
+output contains only opaque digests and bounded counts; credentials, resource
+topology, and raw service observations are never written.
+
 Before runtime rollback,
 `scripts/cloud/livekit-admission-disable.mjs --apply` verifies the serving
 Cloud Run revision has admission disabled and 100% traffic, then reads only

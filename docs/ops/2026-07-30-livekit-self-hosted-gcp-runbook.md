@@ -1848,6 +1848,31 @@ LiveKit bindings and zero `reserved`, `connected`, or
 `accounting_uncertain` LiveKit settlements. An uncertain hold is pending; it
 cannot be omitted or rounded into a drained boundary.
 
+After that boundary is recorded, but before applying the runtime rollback,
+capture the ordered unrelated-service baseline. The collector is read-only and
+requires the same standard libpq variables as the admission collector so it
+can independently confirm that the boundary remains drained. Its file is
+private because it is an intermediate boundary, although it contains only
+revision-bound opaque digests:
+
+```sh
+OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
+PGHOST=127.0.0.1 PGPORT=<proxy-port> PGUSER=<reader> \
+PGPASSWORD='<from the admitted runtime secret path>' PGDATABASE=khala_sync_prod \
+node scripts/cloud/livekit-rollback-capture.mjs \
+  --phase baseline \
+  --bundle <last-healthy-bundle.json> \
+  --deployed-revision <exact-deployed-40-hex-revision> \
+  --admission-receipt <private-admission-disable-receipt.json> \
+  --output <outside-repository/private-rollback-baseline.json> \
+  --apply
+```
+
+The five digest positions are fixed: OpenAgents Cloud Run, Cloud SQL, the
+owned relay, the update service, and the managed-sandbox bridge/control
+boundary. Live resource names, locations, network fields, and service
+configuration never enter the snapshot; only their normalized digests do.
+
 Plan first:
 
 ```sh
@@ -1888,10 +1913,38 @@ Deployment convergence, ready pod count, and one target container image
 digest. A changed addon pin is rejected instead of being rounded into a
 runtime rollback claim.
 
-Project the post-rollback observation:
+Collect and project the post-rollback observation. Use a kubeconfig whose
+minified current context is the exact production LiveKit cluster, reuse the
+database connection boundary from the baseline collection, and supply the
+public runtime rollback receipt emitted by `livekit-gcp-ops.mjs`:
 
-First generate the single-step controlled plan from the private rollback
-capture:
+```sh
+OA_LIVEKIT_OWNER_GATE=I_ACCEPT_EP263_LIVEKIT_GCP_COST \
+KUBECONFIG=<controlled-production-kubeconfig> \
+PGHOST=127.0.0.1 PGPORT=<proxy-port> PGUSER=<reader> \
+PGPASSWORD='<from the admitted runtime secret path>' PGDATABASE=khala_sync_prod \
+node scripts/cloud/livekit-rollback-capture.mjs \
+  --phase postcheck \
+  --bundle <last-healthy-bundle.json> \
+  --deployed-revision <exact-deployed-40-hex-revision> \
+  --admission-receipt <private-admission-disable-receipt.json> \
+  --runtime-receipt docs/ops/receipts/livekit/production-runtime-rollback-<UTC>.json \
+  --before-snapshot <outside-repository/private-rollback-baseline.json> \
+  --output <outside-repository/private-controlled-rollback-capture.json> \
+  --apply
+```
+
+The postcheck independently rereads the serving admission flag; aggregate
+room, settlement, and transport-binding counts; both restored Kubernetes
+Deployments; and the five unrelated-service boundaries. It requires fully
+converged Deployments, exact configuration/server/worker pins, zero active
+rooms, zero pending settlements, zero bindings whose transport is no longer
+`livekit_room_v1`, and byte-for-byte equality of the ordered digest arrays. It
+also requires the admission, baseline, runtime rollback, and postcheck times to
+be ordered. Any missing service, malformed read, changed pin, changed digest,
+or out-of-order boundary fails closed before a capture is written.
+
+Then generate the single-step controlled plan from the private capture:
 
 ```sh
 node scripts/cloud/livekit-controlled-plan.mjs \
