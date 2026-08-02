@@ -1,4 +1,4 @@
-# Entropy-first Comet repository dashboard roadmap
+# Entropy-first Omega repository dashboard roadmap
 
 Status: **delivered in Omega on 2026-08-02; retained as the product and evidence
 boundary.** This roadmap defines a small entropy-only repository analysis
@@ -34,7 +34,7 @@ navigation.
 | ----- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | 1     | [OFR-ENT-01 — Traverse one repository for entropy risks](https://github.com/OpenAgentsInc/omega/issues/199)            | Create one read-only, pinned repository run with a deterministic file manifest and typed entropy observations.     |
 | 2     | [OFR-ENT-02 — Make entropy prompts editable and reruns immutable](https://github.com/OpenAgentsInc/omega/issues/200)   | Let the user edit the prompt while freezing the exact prompt and lineage used by each run.                         |
-| 3     | [OFR-ENT-03 — Show live entropy analysis in the Comet workbench](https://github.com/OpenAgentsInc/omega/issues/201)    | Show file-by-file progress, candidates, failures, cancellation, restore, and prompt A/B changes.                   |
+| 3     | [OFR-ENT-03 — Show live entropy analysis in the Omega workbench](https://github.com/OpenAgentsInc/omega/issues/201)    | Show file-by-file progress, candidates, failures, cancellation, restore, and prompt A/B changes.                   |
 | 4     | [OFR-ENT-04 — Compare one entropy prompt across the 15-project set](https://github.com/OpenAgentsInc/omega/issues/202) | Run one frozen prompt across a versioned, source-aware project catalog and compare results without product grades. |
 
 OFR-ENT-01 through OFR-ENT-03 are the Coldcard vertical slice. OFR-ENT-04 is
@@ -60,7 +60,7 @@ own run evidence and authority.
 
 ## 3. First screen
 
-Keep the existing Comet project sidebar, task tabs, history, and composer. Add
+Keep the existing Omega project sidebar, task tabs, history, and composer. Add
 one workbench region:
 
 ```text

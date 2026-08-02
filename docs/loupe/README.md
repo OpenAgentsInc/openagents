@@ -22,7 +22,7 @@ convention. Do not vendor its code.
 ## Current OpenAgents implementation
 
 The short-term product priority is the smaller
-[entropy-first Comet repository dashboard](2026-08-02-entropy-first-comet-dashboard-roadmap.md):
+[entropy-first Omega repository dashboard](2026-08-02-entropy-first-omega-dashboard-roadmap.md):
 traverse Coldcard read-only, let the user edit the entropy prompt, show live
 file-by-file analysis, preserve immutable reruns, compare prompt A with prompt
 B, and then apply the same source-aware method across the 15-project catalog.
@@ -32,7 +32,7 @@ Omega issues [#199](https://github.com/OpenAgentsInc/omega/issues/199),
 [#202](https://github.com/OpenAgentsInc/omega/issues/202) own that list. All
 four closed on 2026-08-02; the exact Omega `main` commits and evidence boundary
 are recorded in the dashboard roadmap's
-[delivery receipt](2026-08-02-entropy-first-comet-dashboard-roadmap.md#delivery-receipt).
+[delivery receipt](2026-08-02-entropy-first-omega-dashboard-roadmap.md#delivery-receipt).
 The broader forensic bench follows it; it is not a prerequisite and remains
 subject to its separate live-evidence gates.
 
@@ -63,7 +63,7 @@ and the
 [`model-panel and publication-gates audit`](../coldcard/2026-08-02-forensic-model-panel-and-publication-gates-audit.md).
 Those audits inspect the supplied images, correct a missed table row, classify
 the captured Omega failure as a request/tool-contract fault rather than a
-security refusal, and define the first read-only Comet-shaped forensic bench.
+security refusal, and define the first read-only Omega-native forensic bench.
 
 ---
 

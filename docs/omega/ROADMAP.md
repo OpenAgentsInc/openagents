@@ -22,7 +22,7 @@ The implementation order is:
 1. Build the identity-first Omega onboarding journey.
 2. Release a fully branded Omega bootstrap candidate.
 3. Port the current OpenAgents Desktop product.
-4. Prove the Comet-shaped workbench with an entropy-only Coldcard repository
+4. Prove the Omega-native workbench with an entropy-only Coldcard repository
    scan, editable prompt, live file progress, and prompt comparison.
 5. Add selected Buzz workroom and Nostr capabilities.
 6. Make Omega the primary desktop application.
@@ -123,7 +123,7 @@ The old authority path must stop after that cutover.
 8. A UI projection must not become a second durable authority.
 9. A fixture pass must not become a packaged-release claim.
 10. Rust does not gain authority only because it is native code.
-11. Comet can own presentation grammar, but Omega owns application authority.
+11. The interface can own presentation grammar, but Omega owns application authority.
 12. A model output, panel vote, or social post never advances an evidence rung.
 13. Publication remains a separate, default-blocked authority transition.
 14. An entropy scan emits source observations or hypotheses, not a product
@@ -623,7 +623,7 @@ The parity gate requires:
 - security and privacy review
 - independent assurance
 
-### 7.11 Packet OMEGA-OA-11: entropy-first Comet dashboard
+### 7.11 Packet OMEGA-OA-11: entropy-first Omega dashboard
 
 Status: **complete on Omega `main` as of 2026-08-02.** The implementation
 receipts are #199 / `6fd2767b5d`, #200 / `4ebde0f20d`, #201 / `a18287b216`,
@@ -671,7 +671,7 @@ and result inspection pass. Every project row binds a public repository and
 pinned revision where available; unavailable source receives no product grade.
 
 Acceptance is owned by Omega issues #199 through #202 and the
-[entropy-first roadmap](../loupe/2026-08-02-entropy-first-comet-dashboard-roadmap.md).
+[entropy-first roadmap](../loupe/2026-08-02-entropy-first-omega-dashboard-roadmap.md).
 
 ### 7.12 Packet OMEGA-OA-12: broader forensic bench
 

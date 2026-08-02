@@ -170,12 +170,12 @@ The workbench should let an operator attach a URL, redacted capture digest,
 capture time, claimed author, exact proposition, counterclaim, and missing
 evidence. External intake should never be silently converted into a finding.
 
-## 6. Short-term Comet UI implications
+## 6. Short-term Omega UI implications
 
-The simplified Comet-based Omega shell now makes the first evidence boundary
+The Omega shell now makes the first evidence boundary
 visible before it attempts a broad forensic dashboard. The owner-directed
-[entropy-first dashboard](../loupe/2026-08-02-entropy-first-comet-dashboard-roadmap.md)
-landed on 2026-08-02: the left Comet sidebar opens **Forensics**; the workbench
+[entropy-first dashboard](../loupe/2026-08-02-entropy-first-omega-dashboard-roadmap.md)
+landed on 2026-08-02: the Omega sidebar opens **Forensics**; the workbench
 provides an editable entropy prompt, read-only pinned traversal, live file
 states, source observations, prompt A/B comparison, and the sequential
 source-aware 15-product campaign. Omega commits `6fd2767b5d`, `4ebde0f20d`,
@@ -216,6 +216,6 @@ analysis.
 - Treat the Passport assertion and rebuttal as a dispute pending exact evidence.
 - Extend the limitation vocabulary for request and tool-contract failures.
 - Use diverse models to broaden candidate coverage, not to vote on truth.
-- Make the first Comet forensic surface a clear evidence and limitation reader.
+- Make the first Omega forensic surface a clear evidence and limitation reader.
 - Keep live launch, disclosure, and public claims blocked until their separate
   gates have accepted evidence.

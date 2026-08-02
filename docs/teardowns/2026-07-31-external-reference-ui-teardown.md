@@ -1,4 +1,9 @@
-# Comet Teardown — 2026-07-31
+# External multi-device controller teardown — 2026-07-31
+
+Naming note: this document uses the external project's proper name only when
+source attribution or an exact upstream identifier requires it. It is not an
+OpenAgents or Omega product, surface, mode, route, or feature name. The shipped
+application and its primary interface are **Omega**.
 
 Architecture and product audit of the public `zeronsh/comet` repository at an
 exact commit in the local reference clone `~/work/projects/repos/comet`,
@@ -8,9 +13,9 @@ audit was read-only: nothing in either tree was modified, and it did not build
 binaries, start the edge Worker, run a harness against a live Claude or Codex
 CLI, open a Durable Object room, or package a release. Section 7.4.9 is a
 separate 2026-08-01 implementation update that records the first landed
-Comet-first Omega presentation slices and their local verification. [limitation]
+source-informed Omega presentation slices and their local verification. [limitation]
 
-Comet is a multi-device controller for coding agents: start Claude Code or
+The reference project is a multi-device controller for coding agents: start Claude Code or
 Codex on one machine, follow and drive the same session from another, and keep
 the engine running as a daemon after the laptop lid closes. The audited tree is
 a ground-up **Rust + GPUI native rewrite** of an earlier TypeScript/Electron
@@ -25,28 +30,28 @@ the [App for All Work thesis](../allwork/README.md)). This report does not
 re-open the retired Electron desktop path.
 
 UI pixels and the input bar are covered in the companion
-[Comet vs Omega UI deep dive](./2026-07-31-comet-omega-ui-deep-dive.md). That
-report's product judgment: **Comet's composer is the better agent input bar**;
+[external reference UI deep dive](./2026-07-31-external-reference-ui-deep-dive.md). That
+report's product judgment: **The reference project's composer is the better agent input bar**;
 Omega should match its density while keeping MessageEditor and disposition law.
 
-Section 7.4 below evaluates the stronger counterfactual: **make Comet's UI the
+Section 7.4 below evaluates the stronger counterfactual: **make the reference project's UI the
 presentation starting point for Omega and rebuild the Omega workbench inside
 it**. That is feasible, but it is a product-shell rewrite with explicit adapter
 boundaries, not a Cargo dependency swap or a theme change. [source] [inferred]
 
 ## Executive decision
 
-**Comet is the strongest open multi-device agent-controller reference in the
+**The reference project is the strongest open multi-device agent-controller reference in the
 catalog for a headed/headless split, durable offline-tolerant command queue,
 and CRDT session docs over a cloud room fabric.** It is not an IDE, not a
 receipt system, and not a model for OpenAgents production infrastructure.
 
-Omega should **not** adopt Comet's application graph wholesale, replace its
-native agent router with Comet's engine, pin Comet's third-party Zed/GPUI fork,
+Omega should **not** adopt the reference project's application graph wholesale, replace its
+native agent router with the reference project's engine, pin the reference project's third-party Zed/GPUI fork,
 or move session authority onto Cloudflare Durable Objects and WorkOS. Those
 choices collide with Omega's IDE substrate, signed-device authority, and
 Google Cloud production contract. A presentation-only rebuild that source-
-ports Comet's shell into Omega is technically coherent, but it is a large,
+ports the reference project's shell into Omega is technically coherent, but it is a large,
 separately admitted product rewrite; §7.4 specifies that path. [inferred]
 
 Omega **should** harvest selected control laws:
@@ -66,7 +71,7 @@ Omega **should** harvest selected control laws:
    live in per-chat session docs. The sidebar needs one subscription, not N
    tiny rooms.
 5. **Incremental mirror projection.** Diff-driven application into typed
-   structs, not full re-hydration on every CRDT change — Comet's documented
+   structs, not full re-hydration on every CRDT change — the reference project's documented
    fix for the prior O(transcript) re-projection cost.
 
 Those lessons strengthen Omega's multi-device and portable-session path. They
@@ -82,7 +87,7 @@ Omega front door + native loop + ACP attachments
       +-- keep: device enrollment, signed grants, receipts
       +-- keep: Google Cloud / OpenAgents authority planes
       |
-      +-- adapt from Comet:
+      +-- adapt from the reference project:
             detach-not-kill engine lifetime
             durable host-only command ledger
             pure shared view derivations
@@ -91,7 +96,7 @@ Omega front door + native loop + ACP attachments
 
 not recommended
 
-Omega process -> Comet engine as second authority
+Omega process -> the reference project engine as second authority
 Omega sessions -> Cloudflare SessionRoom / DeviceRoom DOs
 Omega identity -> WorkOS as sole product gate
 Omega UI -> pin wingleeio/zed GPUI fork beside OpenAgentsInc/omega
@@ -100,7 +105,7 @@ Omega default -> unattended auto-approve as product policy
 
 ## Summary
 
-Comet makes one bet: **the coding agent session should outlive any single
+The reference project makes one bet: **the coding agent session should outlive any single
 viewport and any single machine.** The engine owns harnesses, journals,
 terminals, worktrees, and Loro docs. The UI is a viewport over typed RPC —
 in-process when convenient, over localhost when a daemon already owns the
@@ -127,7 +132,7 @@ authority and signed device grants. Multi-device control is present as a
 pairing bridge and enrollment store, not as a cloud CRDT room fabric. [source]
 
 The products overlap on "drive Claude/Codex from more than one place." They
-diverge on almost every authority and packaging choice. Comet is a thin
+diverge on almost every authority and packaging choice. The reference project is a thin
 controller around foreign CLIs. Omega is a full IDE that also attaches agents.
 
 ## 1. Snapshot, provenance, and limits
@@ -151,7 +156,7 @@ controller around foreign CLIs. Omega is a full IDE that also attaches agents.
 | Omega audited commit  | `acd0f5324a570ef8de19b188f93c5e487abe760b`                                                       | Current local `main` tip at audit          |
 | Omega product claim   | "Your last IDE"; tracked Zed fork; bootstrap phase                                               | Full IDE + workroom                        |
 
-Selected content digests at the Comet pin:
+Selected content digests at the reference project pin:
 
 | File                | SHA-256                                                            |
 | ------------------- | ------------------------------------------------------------------ |
@@ -189,15 +194,15 @@ This was a source audit. It does not prove live Durable Object hibernation,
 WorkOS production behavior, harness correctness against current Claude/Codex
 CLIs, iOS App Store readiness, macOS notarization, or cryptographic security
 of the room protocol under an adversarial network. The original TypeScript
-comet tree that this rewrite replaces was not cloned. Comet's PARITY matrix
+comet tree that this rewrite replaces was not cloned. The reference project's PARITY matrix
 claims live Claude CLI verification; this audit treats that as author
 testimony encoded in docs, not as a re-run. [limitation]
 
-## 2. What Comet is
+## 2. What the reference project is
 
 ### 2.1 Product thesis
 
-The README positions Comet as: control Claude Code and Codex from any of your
+The README positions the reference project as: control Claude Code and Codex from any of your
 devices. Every device runs a small engine that keeps sessions in sync. Install
 the engine as a daemon on an always-on machine so agents keep working after
 the laptop closes. Day-to-day CLI: `comet login`, `comet status`,
@@ -285,7 +290,7 @@ executor. The host marks processed **before** execute. [source] [schema]
 [test]
 
 Omega's send-during-turn / steer disposition work in `omega_front_door` is the
-right product vocabulary for local UI law. Comet shows how to make those
+right product vocabulary for local UI law. The reference project shows how to make those
 gestures **durable across devices and restarts** without inventing a second
 queue. The harvest is the ledger shape and host rule, not Loro itself.
 [inferred]
@@ -373,7 +378,7 @@ The edge is Cloudflare Workers + Durable Objects + R2:
 
 OpenAgents production infrastructure authority is **Google Cloud only**.
 Cloudflare Workers, Durable Objects, D1, R2, and Wrangler are retired for
-OpenAgents product deploy paths. Comet's edge is excellent evidence for
+OpenAgents product deploy paths. The reference project's edge is excellent evidence for
 **room lifecycle laws** (hibernation hygiene, nudge durability, compaction,
 disaster backup). It is not an admissible deploy target for Omega or
 openagents.com. [source] [inferred]
@@ -392,7 +397,7 @@ openagents.com. [source] [inferred]
 Omega's device bridge and enrollment path use signed proofs, pairing secrets,
 capability grants, and local store fences. That is a different trust model:
 pair devices cryptographically, project bounded surfaces, keep authority on
-the enrolled host. Comet optimizes for "sign into org, rooms just work."
+the enrolled host. The reference project optimizes for "sign into org, rooms just work."
 Omega optimizes for "prove the device and the grant." Both are coherent.
 Only the second matches the OpenAgents identity direction. [source]
 [inferred]
@@ -408,7 +413,7 @@ Only the second matches the OpenAgents identity direction. [source]
 
 [source]
 
-Comet is **not** an editor. There is no Project service, no LSP, no multi-root
+The reference project is **not** an editor. There is no Project service, no LSP, no multi-root
 worktree IDE model, no built-in merge editor. The changes pane is a patch
 viewer over checkout diffs. Terminals are session-scoped PTYs with replay.
 That is enough for supervising a CLI coding agent. It is not enough for
@@ -418,7 +423,7 @@ That is enough for supervising a CLI coding agent. It is not enough for
 
 ### 7.1 Product shape
 
-| Dimension           | Comet (pin above)                                    | Omega (pin above)                                                              |
+| Dimension           | Reference project (pin above)                                    | Omega (pin above)                                                              |
 | ------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------ |
 | Category            | Multi-device coding-agent controller                 | Native IDE + workroom (Zed fork)                                               |
 | Default surface     | Session list + transcript + composer                 | Zero Base thread + full editor substrate available                             |
@@ -436,7 +441,7 @@ That is enough for supervising a CLI coding agent. It is not enough for
 
 ### 7.2 Multi-device specifically
 
-Comet's multi-device path is **cloud-room-first**:
+The reference project's multi-device path is **cloud-room-first**:
 
 1. Engines join DeviceRoom and SessionRoom through the edge.
 2. A remote device writes a `QueueCommand` into the session doc.
@@ -456,32 +461,32 @@ Omega's multi-device path is **pair-and-project**:
 4. Control remains host-centered; the phone is not yet a complete controller
    in the T3 sense.
 
-Comet is ahead on **seamless multi-host session continuity and offline
+The reference project is ahead on **seamless multi-host session continuity and offline
 command queuing**. Omega is ahead on **cryptographic device admission,
 capability grants, and IDE-side work depth**. The product synthesis is not
-"copy Comet's cloud." It is "give Omega Comet's lifetime and ledger laws on
+"copy the reference project's cloud." It is "give Omega the reference project's lifetime and ledger laws on
 Omega's trust rails." [source] [inferred]
 
 ### 7.3 GPUI note
 
-Both products use GPUI. The relationship is not "Comet uses Omega." Comet pins
+Both products use GPUI. The relationship is not "the reference project uses Omega." the reference project pins
 GPUI (and only GPUI/platform/tokio packages) from `wingleeio/zed` at a fixed
 rev, deliberately avoiding Zed's GPL UI/editor crates. Omega **is** the
 OpenAgents tracked Zed fork and owns the full application. Sharing a UI
 toolkit does not share product authority, release identity, or license
-posture. Do not treat Comet as a lightweight Omega. Do not vendor Comet's
+posture. Do not treat the reference project as a lightweight Omega. Do not vendor the reference project's
 GPUI pin into Omega. [source]
 
-### 7.4 Counterfactual: rebuild Omega with Comet's UI first
+### 7.4 Counterfactual: rebuild Omega with the reference project's UI first
 
 This section answers a deliberately stronger question than the harvest
-recommendation above: **what would be required for Comet's UI, rather than
+recommendation above: **what would be required for the reference project's UI, rather than
 Omega's current Workspace and AgentPanel presentation, to become the primary
 desktop experience?**
 
 The technically coherent interpretation is:
 
-- Comet owns the window composition, visual system, navigation density,
+- the reference project owns the window composition, visual system, navigation density,
   session sidebar and tabs, transcript, composer chassis, pickers, motion,
   terminal/diff presentation, and settings vocabulary.
 - Omega continues to own execution and product authority: Project, Editor,
@@ -489,58 +494,58 @@ The technically coherent interpretation is:
   front-door routing, permissions, identity, devices, grants, receipts, and
   the Google Cloud production contract.
 - A new presentation adapter projects Omega entities into the small view model
-  Comet's components expect and translates UI intents back into existing Omega
+  the reference project's components expect and translates UI intents back into existing Omega
   actions. It does not create a second session store, router, engine, or RPC
   authority.
 
-This is **Comet-first presentation on Omega-first authority**. Forking Comet as
+This is **source-informed presentation on Omega-first authority**. Forking the reference project as
 the new application and then importing Omega's backend is the wrong direction:
 Omega's IDE substrate is the larger and more interconnected graph, while
-Comet's presentation is the smaller replaceable layer. [source] [inferred]
+The reference project's presentation is the smaller replaceable layer. [source] [inferred]
 
 #### 7.4.1 Why `comet-ui` cannot simply be added as a dependency
 
 The shared GPUI ancestry makes the rewrite possible, but it does not make the
 crates plug-compatible.
 
-1. **GPUI type identity differs.** Comet pins `gpui`, `gpui_platform`, and
+1. **GPUI type identity differs.** the reference project pins `gpui`, `gpui_platform`, and
    `gpui_tokio` from `wingleeio/zed` at one Git revision. Omega builds the
    in-tree GPUI crates in its tracked Zed fork. Two `Entity<T>`, `Window`,
    `App`, `Element`, and action types compiled from different GPUI packages are
-   different Rust types and cannot share an element tree. Comet UI source must
+   different Rust types and cannot share an element tree. The reference project UI source must
    be rebased onto Omega's in-tree GPUI API; Omega must not carry a second GPUI
    runtime. [source]
 2. **The UI crate is backend-coupled.** `comet-ui` directly depends on
    `comet-proto`, `comet-doc`, `comet-engine`, `comet-rpc`, and `comet-update`.
-   Its `AppState` owns `EngineHandle`, probes a daemon, speaks Comet RPC, and
-   projects Comet `Space`, `Chat`, `Session`, and Loro message types. Those are
+   Its `AppState` owns `EngineHandle`, probes a daemon, speaks the reference project RPC, and
+   projects the reference project `Space`, `Chat`, `Session`, and Loro message types. Those are
    not neutral presentation contracts. [source]
-3. **The shell assumes a controller, not an IDE.** Comet's center is one
+3. **The shell assumes a controller, not an IDE.** the reference project's center is one
    transcript; its right pane is changes; its bottom surface is a
    session-scoped terminal. Omega's `Workspace` owns pane groups, project
    items, editors, docks, toolbars, collaboration state, tasks, debug state,
    and multi-window persistence. Replacing `Workspace::render` removes the
    composition point through which most IDE surfaces appear. [source]
-4. **The domain nouns do not line up.** A Comet space is `(device, folder)`;
+4. **The domain nouns do not line up.** A the reference project space is `(device, folder)`;
    an Omega project may have multiple worktrees, remote roots, language
-   servers, buffers, tasks, and panes. A Comet chat has one host harness;
+   servers, buffers, tasks, and panes. A the reference project chat has one host harness;
    Omega's thread may route to native, ACP, Exo, or other executors with
    explicit send disposition and authority disclosure. A field rename cannot
    reconcile those semantics. [source]
 5. **Several apparently reusable controls replace mature Omega substrates.**
-   Comet owns a hand-rolled input, Markdown renderer, terminal grid, diff
+   the reference project owns a hand-rolled input, Markdown renderer, terminal grid, diff
    viewer, menus, and settings. Omega already has Editor-backed composition,
    accessibility and keymaps, a mature terminal, Git UI, theme extensions,
    and settings infrastructure. Literal replacement creates feature debt that
    is invisible in a screenshot. [source] [inferred]
 
 The required operation is therefore a **source port plus inversion of
-dependencies**: preserve Comet's presentation laws, replace its state root and
+dependencies**: preserve the reference project's presentation laws, replace its state root and
 service calls, and compile every imported element against Omega's GPUI.
 
-#### 7.4.2 Scope: what “all of the Comet UI” would mean
+#### 7.4.2 Scope: what “all of the reference project UI” would mean
 
-Comet's core shell, state, composer, transcript, pickers, attachments, changes,
+The reference project's core shell, state, composer, transcript, pickers, attachments, changes,
 terminal, motion, and theme modules are roughly 21k Rust lines at the audited
 pin, before the remaining Markdown, settings, popover, rail, loader, icon, and
 support modules. The corresponding Omega presentation roots are not one
@@ -549,41 +554,41 @@ replaceable crate: `AgentPanel`, `ConversationView`, `ThreadView`,
 project panel, terminal, Git, search, debugger, settings, and titlebar UI.
 [source]
 
-| Comet surface                                         | Comet-first Omega treatment                                                       | What must remain Omega-owned                                                                                   |
+| Reference-project surface                                         | Source-informed Omega treatment                                                       | What must remain Omega-owned                                                                                   |
 | ----------------------------------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | Window, frost shell, titlebar, sidebar, session tabs  | Port as the new outer composition and navigation language                         | Window persistence, multi-window Project identity, platform menus, release channel                             |
-| Spaces and active-session list                        | Present projects/worktrees/devices through Comet rows and attention sorting       | `Project`, `WorktreeStore`, remote projects, device grants; do not collapse them into Comet docs               |
+| Spaces and active-session list                        | Present projects/worktrees/devices through the reference project rows and attention sorting       | `Project`, `WorktreeStore`, remote projects, device grants; do not collapse them into the reference project docs               |
 | Composer, picker row, attachments, question wizard    | Port the chassis, geometry, state motion, drafts, pickers, and wizard interaction | `MessageEditor` capabilities, mentions/context, voice, executor disclosure, `SendDisposition`, ACP elicitation |
 | Transcript, Markdown, tool groups, message rail       | Port the row model, density, streaming veil, folding, and stick spring            | Omega thread/session entities, ACP part semantics, receipts, queue state, tool authorization                   |
 | Changes pane                                          | Port the information architecture and visual treatment                            | Omega Git store, buffer diffs, staging, conflicts, worktree mutations                                          |
 | Terminal panel                                        | Port panel geometry, tabs, drag/resize behavior, and visual treatment             | Omega terminal entities, task terminals, remote PTYs, shell integration                                        |
 | Settings, accounts, devices, archived sessions        | Port layout and component vocabulary                                              | Omega settings schema, identity, providers, device enrollment, update and account authority                    |
 | Theme, icons, popovers, loaders, motion               | Port into an Omega-owned presentation crate and token layer                       | Theme compatibility policy, accessibility settings, platform conventions                                       |
-| Comet `AppState`, engine bootstrap, RPC, auth, update | **Do not port as application authority**                                          | Replace with Omega projections and command adapters                                                            |
+| the reference project `AppState`, engine bootstrap, RPC, auth, update | **Do not port as application authority**                                          | Replace with Omega projections and command adapters                                                            |
 
-“All” should mean that the visible product grammar comes from Comet, not that
-every Comet implementation is retained when Omega already has the stronger
-primitive. The highest-value example is the composer: a Comet-first product
-can put Omega's Editor-backed `MessageEditor` inside the Comet composer
+“All” should mean that the visible product grammar comes from the reference project, not that
+every the reference project implementation is retained when Omega already has the stronger
+primitive. The highest-value example is the composer: a source-informed product
+can put Omega's Editor-backed `MessageEditor` inside the reference project composer
 chassis. Porting `ComposerInput` literally would require rebuilding mentions,
 project context, creases, keymap behavior, accessibility, voice, and rich paste
-on top of Comet's input before parity. The former preserves Comet's UX; the
-latter preserves more Comet source but is a worse migration. [inferred]
+on top of the reference project's input before parity. The former preserves the reference project's UX; the
+latter preserves more the reference project source but is a worse migration. [inferred]
 
 The same rule applies to terminal and diff: retain Omega's data/control
-entities and render them through Comet-first containers before considering a
+entities and render them through source-informed containers before considering a
 replacement of their low-level emulators or models.
 
 #### 7.4.3 Target architecture
 
-The port needs a narrow presentation model between Comet-derived views and
+The port needs a narrow presentation model between the reference project-derived views and
 Omega's large entity graph:
 
 ```text
 omega binary and application initialization
                 |
                 v
-OmegaCometShell (ported Comet composition, Omega GPUI)
+OmegaShell (ported the reference project composition, Omega GPUI)
   sidebar | tabs | workbench slot | transcript | composer | panes | settings
                 |
                 v
@@ -605,12 +610,12 @@ The new layer should have four explicit contracts:
    archive, rename, switch, move, and create.
 2. **Conversation host.** Stable message rows, streaming deltas, run state,
    queue/disposition, pending elicitation, attachments, and intents for send,
-   steer, enqueue, stop, respond, retry, and approve. This is where Comet's
+   steer, enqueue, stop, respond, retry, and approve. This is where the reference project's
    simple Send/Steer/Stop control is reconciled with Omega's total disposition
    law rather than silently overriding it.
 3. **Workbench host.** A mount point for existing Omega `ItemHandle`/pane
    entities plus commands for editors, search, tasks, Git, terminal, debugger,
-   and project panel. Comet has no equivalent; this slot is the central new
+   and project panel. The reference project has no equivalent; this slot is the central new
    design work required to remain an IDE.
 4. **Platform host.** Menus, keymaps, update status, auth/identity gates,
    settings, notifications, accessibility, and window lifecycle.
@@ -619,13 +624,13 @@ The new layer should have four explicit contracts:
 Omega entities remain canonical. Subscriptions calculate small immutable row
 models and notify only the affected GPUI views. UI commands call existing
 Omega actions/services and return typed success or failure to the shell. No
-Comet Loro doc, `EngineHandle`, or WebSocket loop is required for a local
+The reference project Loro doc, `EngineHandle`, or WebSocket loop is required for a local
 Omega window. [inferred]
 
 For upstream hygiene, the port should live in one obvious presentation area
-(illustrative names: `omega_comet_ui` plus `omega_ui_model`), retain MIT
-provenance for imported Comet files, and record the exact upstream commit.
-Comet updates should arrive as reviewed source-port commits, not as an
+(illustrative names: `omega_ui` plus `omega_ui_model`), retain MIT
+provenance for imported the reference project files, and record the exact upstream commit.
+The reference project updates should arrive as reviewed source-port commits, not as an
 unbounded Git dependency. Once imported into Omega's GPL application, the
 distributed combined work remains subject to Omega's license obligations.
 [source] [inferred]
@@ -633,23 +638,23 @@ distributed combined work remains subject to Omega's license obligations.
 #### 7.4.4 Migration sequence
 
 A flag-day replacement is not credible. The safe path is a strangler migration
-with one window able to select the current or Comet-first shell during the
+with one window able to select the current or source-informed shell during the
 transition.
 
 | Phase                            | Work                                                                                                                                                                                  | Exit criterion                                                                                                                |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| 0. Contract and provenance spike | Pin the Comet source snapshot; inventory assets/licenses; define view models, intents, and non-negotiable Omega workflows; establish the feature flag and comparison scenes           | A written boundary test proves there will be one authority graph and one GPUI runtime                                         |
+| 0. Contract and provenance spike | Pin the reference project source snapshot; inventory assets/licenses; define view models, intents, and non-negotiable Omega workflows; establish the feature flag and comparison scenes           | A written boundary test proves there will be one authority graph and one GPUI runtime                                         |
 | 1. Presentation foundation       | Port theme tokens, fonts, icons, popovers, loaders, frost/opaque platform behavior, motion helpers, reduced-motion handling, and component states onto Omega GPUI                     | Component gallery passes macOS/Linux/Windows rendering and keyboard/focus checks                                              |
 | 2. Shell skeleton                | Port window composition, sidebar, session tabs, navigation history, resize/collapse behavior, and settings route; mount a placeholder workbench slot                                  | Projects and threads can be navigated without mutating duplicate state                                                        |
-| 3. Vertical agent slice          | Connect one real Omega thread to the Comet transcript and composer chassis; map optimistic sends, failures, live-run control, queue disposition, attachments, and common elicitations | A native and an ACP thread complete send/steer-or-enqueue/stop/question flows with honest executor disclosure                 |
+| 3. Vertical agent slice          | Connect one real Omega thread to the reference project transcript and composer chassis; map optimistic sends, failures, live-run control, queue disposition, attachments, and common elicitations | A native and an ACP thread complete send/steer-or-enqueue/stop/question flows with honest executor disclosure                 |
 | 4. IDE workbench                 | Mount Editor/pane entities; add project/worktree navigation, editor tabs, project panel, search, Git changes, terminal/tasks, and drag/drop; preserve command routing                 | A person can open a repository, edit, search, run a task, review a diff, and drive an agent without entering the legacy shell |
-| 5. Secondary surfaces            | Rebuild settings, identity/onboarding, providers, devices, voice, debugger, notifications, command palette, remote projects, and remaining docks in the Comet vocabulary              | The parity ledger has no P0/P1 workflow that requires the old shell                                                           |
-| 6. Hardening and cutover         | Performance, accessibility, IME, multi-window restore, crash/reopen, platform packaging, migration telemetry, visual regression, rollback drills                                      | Comet-first is default for a release train; legacy shell remains a kill switch for at least one train                         |
+| 5. Secondary surfaces            | Rebuild settings, identity/onboarding, providers, devices, voice, debugger, notifications, command palette, remote projects, and remaining docks in the reference project vocabulary              | The parity ledger has no P0/P1 workflow that requires the old shell                                                           |
+| 6. Hardening and cutover         | Performance, accessibility, IME, multi-window restore, crash/reopen, platform packaging, migration telemetry, visual regression, rollback drills                                      | source-informed is default for a release train; legacy shell remains a kill switch for at least one train                         |
 | 7. Retirement                    | Remove duplicate presentation paths only after real-world parity and rollback confidence                                                                                              | Legacy UI state and visual fixtures are deleted without deleting canonical Omega services                                     |
 
 The first meaningful proof is not a static shell screenshot. It is a single
 vertical slice containing **one project, one real editor tab, one real agent
-thread, the Comet composer/transcript, one terminal, and one diff**. That slice
+thread, the reference project composer/transcript, one terminal, and one diff**. That slice
 forces focus routing, Project identity, run authority, and workbench embedding
 to meet before the migration expands. [inferred]
 
@@ -658,11 +663,11 @@ to meet before the migration expands. [inferred]
 | Problem                         | Required decision / mitigation                                                                                                                                                                              |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GPUI/API drift                  | Port onto Omega's in-tree GPUI and add compatibility helpers locally; never compile two GPUI revisions into the window graph                                                                                |
-| Shell ownership                 | Decide that Comet composition replaces `Workspace::render` only after the workbench host can mount existing pane/item entities; until then run behind a window-level flag                                   |
-| Composer fidelity vs capability | Keep Comet geometry and interaction reducer, but use MessageEditor as the text engine unless the project explicitly funds reimplementation of every rich-input feature                                      |
+| Shell ownership                 | Decide that the reference project composition replaces `Workspace::render` only after the workbench host can mount existing pane/item entities; until then run behind a window-level flag                                   |
+| Composer fidelity vs capability | Keep the reference project geometry and interaction reducer, but use MessageEditor as the text engine unless the project explicitly funds reimplementation of every rich-input feature                                      |
 | Transcript model mismatch       | Define a stable presentation enum for user/assistant/tool/error/elicitation/receipt rows; preserve unknown ACP parts and authorization state rather than flattening them to Markdown                        |
 | Actions and focus               | Build an action-routing map before visual work: global, shell, workbench, editor, terminal, and composer contexts need deterministic precedence                                                             |
-| Theme policy                    | Decide whether “all Comet UI” means always-dark Geist or Comet geometry under Omega themes. Supporting both materially expands token and contrast testing                                                   |
+| Theme policy                    | Decide whether “full reference-UI parity” means always-dark Geist or the reference project geometry under Omega themes. Supporting both materially expands token and contrast testing                                                   |
 | Accessibility                   | Audit every imported custom control for semantic role, name, focus order, screen-reader updates, reduced motion, high contrast, IME, and keyboard-only operation; Omega cannot inherit parity by appearance |
 | Platform behavior               | Specify titlebars, menus, shortcuts, blur/opaque surfaces, file dialogs, notifications, and packaging separately for macOS, Linux Wayland/X11, and Windows                                                  |
 | State duplication               | Forbid UI-local canonical copies of threads, projects, permissions, or identity. Draft text and ephemeral animation state are local; durable product state is not                                           |
@@ -670,7 +675,7 @@ to meet before the migration expands. [inferred]
 | Release rollback                | Keep the old shell selectable at process start and ensure both shells read the same stores; rollback must not require data migration                                                                        |
 
 The most dangerous failure mode is a beautiful controller shell that quietly
-narrows Omega into Comet's product model. Every time a Comet noun is simpler
+narrows Omega into the reference project's product model. Every time a the reference project noun is simpler
 than an Omega noun, the adapter must preserve the Omega capability and reveal
 it progressively; it must not erase the capability to make the row model
 cleaner. Consistency is an affordance, but false simplicity is lost authority.
@@ -678,7 +683,7 @@ cleaner. Consistency is an affordance, but false simplicity is lost authority.
 
 #### 7.4.6 Verification and release gates
 
-The migration needs a parity ledger, not subjective “looks like Comet” review.
+The migration needs a parity ledger, not subjective “looks like the reference project” review.
 Minimum gates:
 
 - **Visual:** reference scenes at narrow, default, and wide widths for empty,
@@ -693,7 +698,7 @@ Minimum gates:
   text, clipboard images/files, and every MessageEditor mention/context path.
 - **Authority:** the front door still owns no execution; executor selection and
   fallback remain disclosed; permissions, grants, receipts, and device fences
-  are unchanged; no Comet store becomes canonical.
+  are unchanged; no the reference project store becomes canonical.
 - **Performance:** first paint, idle wakeups, long-transcript scrolling,
   streaming frame time, row invalidation, editor typing latency, memory with
   several projects, and resize behavior are measured against current Omega.
@@ -710,7 +715,7 @@ the execution or cloud planes.
 | Milestone                                            | Approximate effort               | What it buys                                                                                               |
 | ---------------------------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | Boundary spike + visual shell prototype              | 6–10 engineer-weeks              | Validates GPUI rebase, adapters, workbench mount, licensing, and one comparison scene                      |
-| Agent-first alpha                                    | 18–30 cumulative engineer-weeks  | Comet shell + real Omega threads, composer, transcript, basic project/editor slot, terminal/diff           |
+| Agent-first alpha                                    | 18–30 cumulative engineer-weeks  | reference shell + real Omega threads, composer, transcript, basic project/editor slot, terminal/diff           |
 | Daily-driver beta                                    | 45–75 cumulative engineer-weeks  | Core IDE workflows, settings/identity, multi-window, accessibility, platform and persistence hardening     |
 | Full Omega presentation parity and legacy retirement | 80–120 cumulative engineer-weeks | Long-tail panels, remote/debug/task/provider flows, release confidence, deletion of old presentation paths |
 
@@ -724,24 +729,24 @@ a smaller controller. [inferred]
 
 #### 7.4.8 Conditional recommendation
 
-If the product decision is genuinely “Comet UI first,” proceed as a
+If the product decision is genuinely “the reference project UI first,” proceed as a
 presentation fork **inside Omega**, not as an Omega backend transplanted into
-the Comet application and not as a runtime dependency on Comet's engine. Start
+the reference project application and not as a runtime dependency on the reference project's engine. Start
 with the vertical slice above, require one GPUI runtime and one authority graph,
 and keep rollback until parity is demonstrated.
 
-This does not change the control-plane disposition: do not import Comet's
+This does not change the control-plane disposition: do not import the reference project's
 Cloudflare rooms, WorkOS authority, Loro stores, or harness engine. It does
 revise the blanket visual conclusion. Copying isolated styling is not the only
-coherent option; a Comet-first Omega presentation is possible and may produce
+coherent option; a source-informed Omega presentation is possible and may produce
 a calmer product, but it must be funded and governed as an **Omega UI rebuild**,
 not described as a reskin. [inferred]
 
 #### 7.4.9 Implementation update — 2026-08-01
 
-The counterfactual is no longer only a planning exercise. Omega now has an
-additive, process-start Comet presentation mode and the first agent-first
-vertical slice. The current implementation is deliberately narrower than the
+The counterfactual is no longer only a planning exercise. Omega now has a
+primary interface and the first agent-first vertical slice. The current
+implementation is deliberately narrower than the
 full migration described above: it ports the window grammar, conversation
 surface, and interaction density while keeping Omega's existing entities,
 router, editor-backed composer, thread store, and action system authoritative.
@@ -753,54 +758,54 @@ of small commits rather than one source import:
 
 | Omega commit | Landed outcome                                                                                                   |
 | ------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `ab0ce4916e` | Reworked the normal Omega agent composer toward Comet's compact chassis and control density.                     |
+| `ab0ce4916e` | Reworked the normal Omega agent composer toward the reference project's compact chassis and control density.                     |
 | `31a229af1a` | Removed the new-thread/existing-thread composer size divergence and updated the visual fixtures.                 |
-| `fdb19ff03a` | Added sealed process-start Comet mode without making it the default Omega presentation.                          |
-| `2949da292d` | Made clean Comet profiles wait for the real composer instead of exposing an intermediate empty state.            |
-| `2d082a20bd` | Ported the Comet window composition, titlebar, sidebar, session tabs, and main conversation card.                |
+| `fdb19ff03a` | Added sealed primary Omega interface without making it the default Omega presentation.                          |
+| `2949da292d` | Made clean Omega profiles wait for the real composer instead of exposing an intermediate empty state.            |
+| `2d082a20bd` | Ported the reference project window composition, titlebar, sidebar, session tabs, and main conversation card.                |
 | `77f1c87785` | Replaced the provisional gray shell with Omega's Khala blue theme vocabulary.                                    |
-| `ffcfd42660` | Updated the structural delta contracts for the Comet shell and Khala styling.                                    |
-| `ed42dfd346` | Matched the Comet composer more closely, including the integrated executor/model picker treatment.               |
-| `d3f9a9abe4` | Added Comet-mode message rows and grouped tool-call rendering while retaining Omega's font and thread semantics. |
+| `ffcfd42660` | Updated the structural delta contracts for the Omega shell and Khala styling.                                    |
+| `ed42dfd346` | Matched the reference project composer more closely, including the integrated executor/model picker treatment.               |
+| `d3f9a9abe4` | Added primary-interface message rows and grouped tool-call rendering while retaining Omega's font and thread semantics. |
 | `ffec0f0124` | Added active-session-tab close behavior and platform key bindings (`Command-W` on macOS, `Ctrl-W` elsewhere).    |
 | `5901977b17` | Replaced decorative Spaces with real Omega Projects and guaranteed an agent working directory before launch.     |
-| `8a91d98c51` | Ported Comet's settings-navigation shape around Omega's real API Keys and Voice settings pages.                  |
+| `8a91d98c51` | Ported the reference project's settings-navigation shape around Omega's real API Keys and Voice settings pages.                  |
 | `b153c6838a` | Made the titlebar Back and Forward controls walk browser-style session history.                                  |
-| `989adfac0b` | Seeded navigation history from the restored active session on the first Comet render.                            |
+| `989adfac0b` | Seeded navigation history from the restored active session on the first Omega render.                            |
 
 [history] [implementation]
 
 ##### Launch boundary and zero-base baseline
 
-Comet mode is a one-way process-start selection inside the existing Zero Base
-seal. `omega_zero_base::enable_comet_mode()` sets a process-global flag before
+The primary Omega interface is a one-way process-start selection inside the existing Zero Base
+seal. `omega_zero_base::enable_primary_interface()` sets a process-global flag before
 the first window opens; `is_active()` remains true, so the existing action
-admission boundary still applies. The mode does not switch a live window
+admission boundary still applies. The interface does not switch a live window
 between two authority graphs and does not create another thread or project
 store. [source] [implementation]
 
 The launch contract is:
 
 ```sh
-omega --comet --user-data-dir <isolated-user-data-directory>
+omega --primary-interface --user-data-dir <isolated-user-data-directory>
 ```
 
 The local operator convenience alias is:
 
 ```sh
-alias 'omega:comet'='<omega release-fast binary> --comet \
-  --user-data-dir <isolated Omega Comet profile>'
+alias 'omega:primary-interface'='<omega release-fast binary> --primary-interface \
+  --user-data-dir <isolated Omega primary-interface profile>'
 ```
 
 The alias lives in the operator's shell configuration, not in either
 repository. The isolated profile keeps the porting baseline separate from the
 normal installed Omega process. The first version intentionally opened only a
-blank conversation plane and the Comet-style input. Later commits added one
+blank conversation plane and the reference-style input. Later commits added one
 surface at a time. [runtime] [implementation]
 
 ##### Reference-app investigation
 
-The Comet source tree was built and launched in two forms during the port: the
+The reference project source tree was built and launched in two forms during the port: the
 small GPUI development demo and the full desktop application. The exercise
 confirmed that the desktop presentation is GPUI, while its engine, RPC,
 document, harness, update, and edge responsibilities remain separate crates.
@@ -808,12 +813,12 @@ On non-macOS systems the same GPUI element tree targets GPUI's Linux or Windows
 platform backend; macOS blur/frost behavior becomes an opaque, platform-
 appropriate surface where native translucency is unavailable. This is why the
 Omega port treats frost as a platform token and never as a required authority
-or data dependency. No live Comet cloud-room or cross-device claim was
+or data dependency. No live the reference project cloud-room or cross-device claim was
 re-verified by this UI exercise. [source] [runtime] [limitation]
 
 ##### Window, shell, and navigation now landed
 
-The Comet-mode root is rendered by `AgentPanel::render_comet_shell` on Omega's
+The primary-interface root is rendered by `AgentPanel::render_omega_shell` on Omega's
 in-tree GPUI. It now includes:
 
 - a single rounded main card inside the native window;
@@ -822,19 +827,19 @@ in-tree GPUI. It now includes:
   tabs, and the new-session button on one titlebar row;
 - a draggable titlebar surface with native double-click zoom behavior;
 - no extra arbitrary band above the titlebar;
-- a Comet-shaped sidebar with Projects, the current Omega project, recent
-  sessions, attention state, and an Omega/Comet-mode identity footer;
+- an Omega-native sidebar with Projects, the current Omega project, recent
+  sessions, attention state, and an Omega primary-interface identity footer;
 - active and recent session tabs backed by Omega thread rows; and
 - the existing Omega conversation entity mounted as the center content.
 
-The first shell pass used Comet-like neutral grays. The follow-up deliberately
+The first shell pass used the reference project-like neutral grays. The follow-up deliberately
 rejected that color copy and remapped card, sidebar, selected, hover, border,
 text, placeholder, and accent roles to Omega's Khala blue theme. The current
-decision is therefore **Comet geometry under Omega identity**, not literal
-Comet monochrome. The earlier planning question in §7.4.5 is resolved for this
-mode in favor of Khala tokens. [implementation]
+decision is therefore **reference geometry under Omega identity**, not the
+external project's monochrome. The earlier planning question in §7.4.5 is
+resolved for this interface in favor of Khala tokens. [implementation]
 
-The project list remains an Omega projection rather than Comet's full
+The project list remains an Omega projection rather than the reference project's full
 `(device, folder)` Spaces model. Device ownership, remote roots, and
 cross-device presence are still visible gaps rather than implied parity.
 [source] [limitation]
@@ -842,8 +847,8 @@ cross-device presence are still visible gaps rather than implied parity.
 ##### Composer parity now landed
 
 The composer work happened in two layers. First, the ordinary Omega agent
-surface adopted the Comet-sized bar and then fixed the bug where a new thread
-and an existing thread rendered at different heights. Second, Comet mode
+surface adopted reference-sized bar and then fixed the bug where a new thread
+and an existing thread rendered at different heights. Second, the primary Omega interface
 received the closer visual treatment: compact rounded chassis, placeholder,
 bottom-aligned controls, integrated Omega Agent/model picker, microphone,
 attachment/control affordances, and circular send/stop control. [implementation]
@@ -853,44 +858,44 @@ This remains a chassis port over Omega's mature input substrate:
 - `MessageEditor` still owns text editing, mentions, rich context, paste, IME,
   and focus behavior;
 - Omega's executor menu and model state remain canonical even when rendered as
-  Comet-style inline controls;
+  reference-style inline controls;
 - Omega's front-door and `SendDisposition` laws still decide send, steer,
   enqueue, and refusal behavior; and
 - clean profiles wait for the actual composer rather than rendering a false
   but attractive placeholder that cannot send.
 
 The result matches the reference bar much more closely without importing
-Comet's `ComposerInput`, engine handle, drafts store, or picker authority.
+The reference project's `ComposerInput`, engine handle, drafts store, or picker authority.
 Attachments, the paged question-wizard takeover, the exact flip/hysteresis
 reducer, and the complete Send/Steer/Stop morph remain incomplete relative to
-the full Comet implementation. [source] [implementation] [limitation]
+the full the reference project implementation. [source] [implementation] [limitation]
 
 ##### Transcript and tool-call presentation now landed
 
-Comet mode now changes the visual grammar of real Omega thread entries:
+the primary Omega interface now changes the visual grammar of real Omega thread entries:
 
 - user messages render as right-aligned rounded bubbles with a bounded width;
 - assistant Markdown renders as calm full-width prose with reduced container
   chrome;
-- consecutive groupable tool calls collapse into a Comet-style command group;
+- consecutive groupable tool calls collapse into a reference-style command group;
 - individual tool rows retain Omega tool semantics and status;
 - canceled tool calls with no visible result are omitted; and
 - Omega's existing agent font, Markdown renderer, ACP parts, thread entity,
   authorization, and context-menu behavior remain in place.
 
 This is a presentation adapter inside `ThreadView`, not a transcript fork. It
-does not yet implement Comet's MessageRail, paint-only streaming veil,
+does not yet implement the reference project's MessageRail, paint-only streaming veil,
 direction-aware stick spring, or every specialized tool/result visualization.
 [source] [implementation] [limitation]
 
 ##### Session-tab keyboard law now landed
 
 `Command-N` on macOS continues to dispatch Omega's `agent::NewThread` action,
-which opens a fresh message/session in Comet mode. The new
+which opens a fresh message/session in the primary Omega interface. The new
 `omega_workbench::CloseActiveSessionTab` action is bound only in the
-`AgentPanel && CometMode` key context:
+`AgentPanel && OmegaInterface` key context:
 
-- `Command-W` closes the active Comet session tab on macOS;
+- `Command-W` closes the active Omega session tab on macOS;
 - `Ctrl-W` performs the same action on Linux and Windows;
 - focus moves to the next open, non-refused session;
 - closing the last open tab creates a fresh message session; and
@@ -912,37 +917,37 @@ opens project selection instead of allowing a tool run with an absent working
 directory. [source] [implementation]
 
 This closes the immediate tool-call failure that motivated the port without
-adopting Comet's device-room authority. The remaining project work is richer
+adopting the reference project's device-room authority. The remaining project work is richer
 multi-project switching, remote/device roots, worktree selection, and parity
 for folder rename/remove and presence metadata. [implementation] [limitation]
 
 ##### Omega-adapted settings navigation now landed
 
-The Comet-mode identity footer now opens Omega's real settings surface. Omega
-settings use a 256-pixel Comet-shaped navigation sidebar with selected and
+The primary-interface identity footer now opens Omega's real settings surface. Omega
+settings use a 256-pixel Omega-native navigation sidebar with selected and
 hover states, accessible navigation rows, and a bottom Back action. Its entries
 are generated from Omega's existing focused settings pages rather than copied
-from Comet's product schema. At this snapshot those focused pages expose:
+from the reference project's product schema. At this snapshot those focused pages expose:
 
 - **API Keys**, including Omega's provider credentials route; and
 - **Voice**, including the existing Sarah Voice configuration.
 
 The setting values, validation, persistence, and page contents remain owned by
-Omega. This is therefore a port of Comet's settings information architecture
-and navigation grammar, not an import of Comet's Accounts, Devices, Shortcuts,
+Omega. This is therefore a port of the reference project's settings information architecture
+and navigation grammar, not an import of the reference project's Accounts, Devices, Shortcuts,
 Archived Sessions, or update authority. Settings also still open in Omega's
-separate `SettingsWindow`; they are not yet an embedded route inside the Comet
+separate `SettingsWindow`; they are not yet an embedded route inside the Omega
 shell. [source] [implementation] [limitation]
 
 ##### Browser-style titlebar history now landed
 
-Back and Forward are no longer decorative. `CometNavigationHistory` records
+Back and Forward are no longer decorative. `OmegaNavigationHistory` records
 session selection in memory, deduplicates the current entry, walks backward and
 forward like a browser, and truncates the forward branch after a new selection.
 The controls derive disabled state from actually restorable targets and expose
 tooltips, button roles, labels, and `aria-disabled`. Navigation skips missing
 targets, reopens a presentation-closed tab when its durable thread still
-exists, and seeds the restored active session on the first Comet render.
+exists, and seeds the restored active session on the first Omega render.
 [source] [implementation]
 
 The history is intentionally presentation-local. It does not alter Omega's
@@ -959,10 +964,10 @@ opened locally:
 | `cargo check -p agent_ui -p settings_ui -p omega`     | Passed                                                                |
 | `cargo test -p omega_deltas`                          | Passed, 308 tests                                                     |
 | `cargo test -p settings_ui`                           | Passed, 57 tests                                                      |
-| Focused `CometNavigationHistory` unit tests           | Passed, 2 tests                                                       |
+| Focused `OmegaNavigationHistory` unit tests           | Passed, 2 tests                                                       |
 | `./script/clippy` on the changed Omega crates         | Passed                                                                |
 | `cargo build --profile release-fast`                  | Passed                                                                |
-| Release-fast Comet-mode launch with isolated profile  | Opened successfully alongside the untouched installed Omega process   |
+| Release-fast primary-interface launch with isolated profile  | Opened successfully alongside the untouched installed Omega process   |
 | Live Back → Forward walk across two restored sessions | Returned to each expected session and updated control state correctly |
 
 These receipts establish source integration and a bounded local macOS launch.
@@ -977,16 +982,16 @@ complete the “all of Omega UI” rebuild:
 
 | Migration phase from §7.4.4         | 2026-08-01 status                                                                                                                                                                                                                                                                                            |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 0. Contract and provenance spike    | Partial: one GPUI runtime and one Omega authority graph are preserved; a formal import/provenance manifest for copied Comet source is still unnecessary because the implementation currently re-creates the presentation in Omega code rather than importing files.                                          |
+| 0. Contract and provenance spike    | Partial: one GPUI runtime and one Omega authority graph are preserved; a formal import/provenance manifest for copied the reference project source is still unnecessary because the implementation currently re-creates the presentation in Omega code rather than importing files.                                          |
 | 1. Presentation foundation          | Partial: Khala color roles, macOS blur, card/shell states, and core controls exist; a shared motion kit, component gallery, reduced-motion audit, and cross-platform visual baselines remain.                                                                                                                |
 | 2. Shell skeleton                   | Agent-first slice landed: window composition, Projects, guaranteed working directories, sidebar, session tabs, titlebar drag, new/close session, browser-style history, settings entry, and conversation mount work; remote/device projects, resize/collapse parity, and restored multi-window state remain. |
-| 3. Vertical agent slice             | Substantial visual slice landed: real Omega threads use the Comet-shaped composer, message rows, and grouped tools; full attachments, question takeover, disposition morph, optimistic failure return, stick spring, and specialized result parity remain.                                                   |
-| 4. IDE workbench                    | Not started in Comet mode beyond retaining the underlying Omega entities; editor panes, search, Git, terminal/tasks, diff, and drag/drop are not yet mounted in the Comet presentation.                                                                                                                      |
-| 5. Secondary surfaces               | Partial: Comet-shaped settings navigation now exposes Omega's real API Keys and Voice pages. Identity/account, device, onboarding, command-palette, notification, debugger, and remaining settings surfaces are not ported.                                                                                  |
-| 6–7. Hardening, cutover, retirement | Not started; Comet mode is additive and the normal Omega presentation remains the default.                                                                                                                                                                                                                   |
+| 3. Vertical agent slice             | Substantial visual slice landed: real Omega threads use the Omega-native composer, message rows, and grouped tools; full attachments, question takeover, disposition morph, optimistic failure return, stick spring, and specialized result parity remain.                                                   |
+| 4. IDE workbench                    | Not started in the primary Omega interface beyond retaining the underlying Omega entities; editor panes, search, Git, terminal/tasks, diff, and drag/drop are not yet mounted in the primary interface.                                                                                                                      |
+| 5. Secondary surfaces               | Partial: Omega-native settings navigation now exposes Omega's real API Keys and Voice pages. Identity/account, device, onboarding, command-palette, notification, debugger, and remaining settings surfaces are not ported.                                                                                  |
+| 6–7. Hardening, cutover, retirement | Not started; the primary Omega interface is additive and the normal Omega presentation remains the default.                                                                                                                                                                                                                   |
 
 This changes the planning posture in one important way: the high-risk premise
-that Comet's composition could coexist with Omega's GPUI and authority graph
+that the reference project's composition could coexist with Omega's GPUI and authority graph
 has now been demonstrated for the agent surface. It does **not** collapse the
 remaining estimate for a full IDE cutover. The difficult work identified in
 §7.4.5—focus/action routing across editors and terminals, platform parity,
@@ -1018,7 +1023,7 @@ unsafe color. [inferred]
 
 Implementation receipt, 2026-08-02: Omega #199 through #202 closed in order at
 `6fd2767b5d`, `4ebde0f20d`, `a18287b216`, and `15ffc050aa`. The resulting
-Comet-shaped shell keeps the normal sidebar and adds a persistent
+Omega-native shell keeps the normal sidebar and adds a persistent
 **Forensics** entry, one editable prompt, live file traversal and candidate
 detail, immutable prompt comparisons, and the sequential 15-product campaign.
 The implementation preserves this teardown's no-grade and source-availability
@@ -1029,7 +1034,7 @@ boundaries. [implementation]
 The 2026-08-02 Coldcard and Omega-thread audit identifies a smaller, higher-
 value phase-4 proof than mounting a general editor, terminal, and Git surface
 all at once: after the entropy slice, put one read-only forensic case inside the
-Comet-shaped workbench.
+Omega-native workbench.
 The Coldcard fixture already exercises dense, linked evidence, typed
 limitations, disputes, model-panel outcomes, reconciliation, and a publication
 boundary. That makes it a strong test of whether the shell can carry real Omega
@@ -1042,7 +1047,7 @@ copyable exact refs; explicit loading, empty, incomplete, denied, stale, and
 tool-contract-failed states; and a visibly blocked publication gate. Use
 restrained semantic color and the existing typography/tokens. Do not add a
 second workbench rail, a modal-only review path, nested-card chrome for every
-row, or a Comet-owned evidence store. [inferred]
+row, or a presentation-owned evidence store. [inferred]
 
 Live lifecycle controls are a later state of the same surface. Keep Prepare,
 Launch, Cancel, and cleanup disabled until OpenAgents issues #9289 and #9290
@@ -1076,30 +1081,30 @@ shell replicas:
    audits; persisted multi-window restore; performance budgets; and sustained
    daily-driver evidence.
 6. **Cut over only after measured parity.** Keep normal Omega as the default and
-   Comet mode as an additive rollback path until the contract matrix is green;
+   the primary Omega interface as an additive rollback path until the contract matrix is green;
    retire the old shell only after that evidence exists.
 
 The immediate recommendation is therefore the entropy-only Coldcard dashboard,
 in parallel with closing project semantics. Follow it with the broader forensic
 reader, then editor, terminal, and diff integration. More shell polish has lower
-architectural value until real Omega authority survives inside the Comet-first
+architectural value until real Omega authority survives inside source-informed
 composition. [inferred]
 
 ### 7.5 Relationship to other teardowns
 
-| Prior teardown                                                                                                          | How Comet sits relative to it                                                                                                                                                                                                       |
+| Prior teardown                                                                                                          | How the reference project sits relative to it                                                                                                                                                                                                       |
 | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [T3 Code](./2026-07-13-t3-code-teardown.md) + [Omega/T3 gap](./2026-07-27-omega-t3-code-desktop-mobile-gap-analysis.md) | T3 is the multi-client control-plane peer (Effect core, web/desktop/mobile). Comet is the multi-device **daemon+CRDT** peer. T3 owns environment projection; Comet owns detachable engine + doc command queue.                      |
-| [Paseo](./2026-07-17-paseo-teardown.md)                                                                                 | Paseo is the cross-device agent-daemon delivery reference with typed WebSocket protocol. Comet is closer to "cloud CRDT rooms + host executor."                                                                                     |
-| [Amp](./2026-07-16-amp-code-teardown.md)                                                                                | Amp's thread fabric and remote control thesis; Comet implements a concrete open session-doc + device-room version of that class of product.                                                                                         |
-| [Goose / GDK](./2026-07-27-goose-gdk-omega-teardown.md)                                                                 | Goose is an ACP engine Omega may attach. Comet is a multi-device host for Claude/Codex CLIs, not an ACP peer kit.                                                                                                                   |
-| [Superlogical](./2026-07-29-superlogical-teardown.md) + [All Work](../allwork/README.md)                                | Superlogical is a durable-session thesis without public code. Comet is shipped open code for durable multi-device agent sessions — useful evidence for the coordination layer, still not a substitute for Omega as the application. |
+| [T3 Code](./2026-07-13-t3-code-teardown.md) + [Omega/T3 gap](./2026-07-27-omega-t3-code-desktop-mobile-gap-analysis.md) | T3 is the multi-client control-plane peer (Effect core, web/desktop/mobile). The reference project is the multi-device **daemon+CRDT** peer. T3 owns environment projection; the reference project owns detachable engine + doc command queue.                      |
+| [Paseo](./2026-07-17-paseo-teardown.md)                                                                                 | Paseo is the cross-device agent-daemon delivery reference with typed WebSocket protocol. The reference project is closer to "cloud CRDT rooms + host executor."                                                                                     |
+| [Amp](./2026-07-16-amp-code-teardown.md)                                                                                | Amp's thread fabric and remote control thesis; the reference project implements a concrete open session-doc + device-room version of that class of product.                                                                                         |
+| [Goose / GDK](./2026-07-27-goose-gdk-omega-teardown.md)                                                                 | Goose is an ACP engine Omega may attach. The reference project is a multi-device host for Claude/Codex CLIs, not an ACP peer kit.                                                                                                                   |
+| [Superlogical](./2026-07-29-superlogical-teardown.md) + [All Work](../allwork/README.md)                                | Superlogical is a durable-session thesis without public code. The reference project is shipped open code for durable multi-device agent sessions — useful evidence for the coordination layer, still not a substitute for Omega as the application. |
 
 ## 8. Disposition for Omega
 
 ### 8.1 Track
 
-Track Comet as a **high-relevance multi-device controller peer** and as
+Track the reference project as a **high-relevance multi-device controller peer** and as
 evidence for detachable engine lifetime, durable host-only command ledgers,
 shared pure view derivation, and space-as-device-folder indexing.
 
@@ -1107,7 +1112,7 @@ shared pure view derivation, and space-as-device-folder indexing.
 
 | Lesson                      | Omega landing zone (suggested)                                                | Do not import                             |
 | --------------------------- | ----------------------------------------------------------------------------- | ----------------------------------------- |
-| Detach ≠ kill               | effectd / engine supervision; viewport reattach; TUI and mobile as attachers  | Comet binary as sidecar authority         |
+| Detach ≠ kill               | effectd / engine supervision; viewport reattach; TUI and mobile as attachers  | the reference project binary as sidecar authority         |
 | Durable QueueCommand ledger | Sync/thread command log with host executor + processed ledger                 | Loro dependency by default                |
 | Host-only execute           | Explicit chat/thread host device in multi-host map                            | Silent host races                         |
 | Pure `view` module          | Shared projection crate for list order/staleness across desktop/mobile/bridge | Duplicated sort per surface               |
@@ -1123,18 +1128,18 @@ shared pure view derivation, and space-as-device-folder indexing.
 - Unattended auto-approve + silent sandbox escalation as default product
   policy.
 - Pinning `wingleeio/zed` GPUI beside `OpenAgentsInc/omega`.
-- Replacing Omega's native agent router or editor with Comet's thin engine.
-- Claiming E2EE, multi-tenant safety, or receipt-grade audit from Comet's
+- Replacing Omega's native agent router or editor with the reference project's thin engine.
+- Claiming E2EE, multi-tenant safety, or receipt-grade audit from the reference project's
   current doc path.
-- Treating Comet MIT code as a way around Omega's GPL obligations for forked
+- Treating the reference project MIT code as a way around Omega's GPL obligations for forked
   Zed surfaces.
 
 ### 8.4 Decision sentence
 
-**Use Comet as control-plane evidence for multi-device coding-agent sessions.
+**Use the reference project as control-plane evidence for multi-device coding-agent sessions.
 Build the laws into Omega on Omega's identity, IDE, and Google Cloud rails.
-Do not adopt Comet's engine or application authority as the OpenAgents
-desktop. If the product chooses Comet-first presentation, source-port it inside
+Do not adopt the reference project's engine or application authority as the OpenAgents
+desktop. If the product chooses source-informed presentation, source-port it inside
 Omega behind the adapter and cutover plan in §7.4.**
 
 ## 9. Open questions for a later pass
@@ -1147,13 +1152,13 @@ Omega behind the adapter and cutover plan in §7.4.**
    partition and large-transcript load.
 4. Whether Omega should store the durable command ledger in Khala Sync /
    effectd SQLite / a CRDT — product decision, not implied by this teardown.
-5. Cursor harness shape once Comet lands it — only then compare to Omega's
+5. Cursor harness shape once the reference project lands it — only then compare to Omega's
    custom ACP path.
 
 ## 10. Required reading
 
 - This repository: [teardown catalog README](./README.md), [App for All Work](../allwork/README.md), [Omega/T3 gap analysis](./2026-07-27-omega-t3-code-desktop-mobile-gap-analysis.md), [remote-first portable sessions pathway](../sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md)
-- Comet tree: `ARCHITECTURE.md`, `docs/PARITY.md`, `docs/research/feature-inventory.md`, `crates/ui/src/{lib,state,shell,composer,transcript,pickers,changes}.rs`, `crates/doc/src/commands.rs`, `crates/harness/src/codex/mod.rs`, `edge/src/session-room.ts`, `edge/src/device-room.ts`
+- the reference project tree: `ARCHITECTURE.md`, `docs/PARITY.md`, `docs/research/feature-inventory.md`, `crates/ui/src/{lib,state,shell,composer,transcript,pickers,changes}.rs`, `crates/doc/src/commands.rs`, `crates/harness/src/codex/mod.rs`, `edge/src/session-room.ts`, `edge/src/device-room.ts`
 - Omega tree: `README.md`, `crates/workspace/src/workspace.rs`, `crates/agent_ui/src/{agent_panel,message_editor,conversation_view}.rs`, `crates/agent_ui/src/conversation_view/thread_view.rs`, `crates/omega_front_door`, `crates/omega_device_bridge`, `crates/omega_device_enrollment`, `crates/agent_servers`
 
 ---

@@ -332,17 +332,17 @@ provider state labels as process truth remain out of scope.
 
 Add a **Forensics** workbench to an existing Omega repository context.
 
-### 4.0 Short-term Comet sequence
+### 4.0 Short-term Omega sequence
 
 #### 4.0.1 Entropy-first repository dashboard
 
 The owner selected a simpler first product than the full forensic bench. Start
-with one entropy-only repository traversal in the existing Comet-shaped Omega
-task: Coldcard, one visible editable prompt, live file-by-file progress, typed
+with one entropy-only repository traversal in the existing Omega-native task:
+Coldcard, one visible editable prompt, live file-by-file progress, typed
 entropy candidates, and immutable prompt reruns.
 
 The separate
-[entropy-first Comet repository dashboard roadmap](2026-08-02-entropy-first-comet-dashboard-roadmap.md)
+[entropy-first Omega repository dashboard roadmap](2026-08-02-entropy-first-omega-dashboard-roadmap.md)
 owns this list:
 
 1. [OFR-ENT-01](https://github.com/OpenAgentsInc/omega/issues/199) — traverse
@@ -375,7 +375,7 @@ progress, result inspection, and matched reruns first.
 #### 4.0.2 Broader forensic bench
 
 The first visible product slice should mount Omega's existing forensic
-projections inside the simplified Comet-shaped application shell. Comet owns
+projections inside the simplified Omega-native application shell. Omega owns
 presentation; Omega remains the only authority for target state, run intents,
 claims, evidence, review decisions, and publication disposition.
 
@@ -398,7 +398,7 @@ order is:
 
 | ID        | Slice                              | Acceptance                                                                                                                                                                               |
 | --------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OFR-UI-01 | Read-only case reader              | Open the synthetic case from a normal Comet-shaped task; preserve task/sidebar/tab/composer navigation; show exact target, fixture status, proof rung, privacy boundary, and provenance. |
+| OFR-UI-01 | Read-only case reader              | Open the synthetic case from a normal Omega-native task; preserve task/sidebar/tab/composer navigation; show exact target, fixture status, proof rung, privacy boundary, and provenance. |
 | OFR-UI-02 | Preflight and launch states        | Render complete, incomplete, denied, awaiting-profile, and tool-contract-failed states. Keep live prepare/launch controls disabled until #9289 and #9290 have accepted receipts.         |
 | OFR-UI-03 | Evidence queue and claim inspector | Separate findings, hypotheses, limitations, disputes, and reconciliation. Open exact refs; show the missing rung and next mechanical check.                                              |
 | OFR-UI-04 | Model-panel and run matrix         | Show family, role, eligibility, typed outcome, censoring, and disagreement. Never render a majority vote as target truth.                                                                |

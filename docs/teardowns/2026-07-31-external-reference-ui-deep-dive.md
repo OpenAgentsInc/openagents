@@ -1,7 +1,11 @@
-# Comet vs Omega UI deep dive — 2026-07-31
+# External reference UI vs Omega deep dive — 2026-07-31
+
+Naming note: the external project's proper name appears only for pinned source
+attribution. It is not an Omega product or interface name. The application and
+the interface described as ours are both **Omega**.
 
 Companion to the architecture teardown
-[Comet teardown](./2026-07-31-comet-teardown.md). That report covers control
+[external controller teardown](./2026-07-31-external-reference-ui-teardown.md). That report covers control
 plane, multi-device fabric, harnesses, and disposition. This report is about
 **pixels and interaction laws**: the composer (input bar), shell, transcript,
 pickers, and how Omega's Zero Base / agent panel compare.
@@ -10,7 +14,7 @@ Read-only source audit. Pins:
 
 | Tree | Path | Commit |
 | --- | --- | --- |
-| Comet | `~/work/projects/repos/comet` | `e5d8e9fb4c2ffe2350e4114db3bfd89979a2136d` |
+| Reference UI | `~/work/projects/repos/comet` | `e5d8e9fb4c2ffe2350e4114db3bfd89979a2136d` |
 | Omega | `~/work/omega` | `acd0f5324a570ef8de19b188f93c5e487abe760b` |
 
 No builds, live sessions, or screenshot captures. Findings are from source
@@ -20,18 +24,18 @@ structure, pure layout functions with unit tests, and render paths. [source]
 **Implementation follow-up.** This document preserves the original pinned
 comparison. The subsequent Omega implementation receipts, current gap audit,
 and ordered migration plan are maintained in
-[Comet teardown §7.4.9](./2026-07-31-comet-teardown.md#749-implementation-update--2026-08-01).
+[external controller teardown §7.4.9](./2026-07-31-external-reference-ui-teardown.md#749-implementation-update--2026-08-01).
 
 **Naming.** "Ours" means **Omega**, the tracked Zed-fork desktop client — not
 the retired Electron OpenAgents Desktop app.
 
 ## Executive judgment
 
-**Comet's input bar is better as a coding-agent composer.** That is a product
+**The reference UI's input bar is better as a coding-agent composer.** That is a product
 statement about density, motion, and mid-turn controls — not about editor
 power.
 
-Comet designed a purpose-built composer with:
+The reference UI designed a purpose-built composer with:
 
 - pure, unit-tested layout math (compact↔expanded flip with hysteresis),
 - a 180ms height morph that keeps controls pinned to the bottom edge,
@@ -50,7 +54,7 @@ admission surface and stronger as concurrency *law*. It is weaker as a calm
 primary input.
 
 ```text
-Comet composer (winner for "type and drive an agent")
+The reference UI composer (winner for "type and drive an agent")
 
   ┌──────────────────────────────────────────────┐
   │ [thumbs…]                                    │  staged attachments
@@ -73,13 +77,13 @@ Omega composer (winner for "admit project context + multi-lane authority")
 ```
 
 **Harvest direction for Omega:** make the Zero Base / agent composer **feel
-like Comet's bar** while keeping Omega's Editor substrate, disposition law,
+like the reference UI's bar** while keeping Omega's Editor substrate, disposition law,
 and executor disclosure. Do not replace MessageEditor with a hand-rolled
-textarea. Do not copy Comet's monochrome product shell wholesale.
+textarea. Do not copy the reference UI's monochrome product shell wholesale.
 
 ## 1. Scale of the UI code
 
-| Surface | Comet | Omega (agent conversation) |
+| Surface | Reference UI | Omega (agent conversation) |
 | --- | --- | --- |
 | Composer / input | `crates/ui/src/composer.rs` ~3.6k lines (incl. pure math + tests) | `message_editor.rs` ~5.8k; chrome in `thread_view.rs` `render_message_editor` (~large) |
 | Pickers / config chips | `pickers.rs` ~2.8k | executor menu, model selectors, voice admission — split across many modules |
@@ -87,13 +91,13 @@ textarea. Do not copy Comet's monochrome product shell wholesale.
 | Transcript | `transcript.rs` ~2.9k | `thread_view.rs` ~15k |
 | Theme / motion | owned monochrome + `motion.rs` | Zed theme system + ui crate |
 
-Comet's UI is a **small closed product shell**. Omega's agent UI is a **slice
+The reference UI is a **small closed product shell**. Omega's agent UI is a **slice
 of a full IDE**. That asymmetry explains most of the density difference.
 [source] [inferred]
 
 ## 2. The input bar — detailed contrast
 
-### 2.1 What Comet built
+### 2.1 What the reference UI built
 
 Module header (`composer.rs`):
 
@@ -112,7 +116,7 @@ commented product deltas (`omega#99`, `omega#100`, …). [source]
 
 #### Compact ↔ expanded flip
 
-Comet ports the prior Electron composer's geometry exactly:
+The reference UI ports the prior Electron composer's geometry exactly:
 
 | Constant | Value | Role |
 | --- | --- | --- |
@@ -158,18 +162,18 @@ Omega's law is richer and more honest for multi-executor reality:
 - The UI surfaces that as a **queue list** with per-entry "Steer" toggles,
   "Send Now", edit, delete — not as one morphing primary button.
 
-So Omega is **better law**, Comet is **better default gesture**. A user who
-types during a Claude/Codex run in Comet gets the right thing with one Enter.
+So Omega is **better law**, the reference UI is **better default gesture**. A user who
+types during a Claude/Codex run in the reference UI gets the right thing with one Enter.
 In Omega they must understand queue vs steer, and for some executors a steer
 becomes a stated refusal + hold. [source] [inferred]
 
-**Owner-facing claim validated by this audit:** Comet's input bar is better
+**Owner-facing claim validated by this audit:** the reference UI's input bar is better
 for the common path. Omega should absorb that path without discarding
 disposition typing.
 
 #### Question wizard vs elicitation cards
 
-Comet: when the last assistant message has an unresolved `Input` part, the
+The reference UI: when the last assistant message has an unresolved `Input` part, the
 composer **swaps** to a paged wizard (`1/3`): number keys 1–9, single-select
 auto-advances after 220ms, multi-select stays, Back pages back. The panel
 stays answerable even if the run aborted (resume path). A steer prompt that
@@ -184,7 +188,7 @@ fragmented for the common Claude "pick one of four" case. [source]
 
 #### Pickers as composer chips
 
-Comet's expanded actions row is the product configuration surface:
+The reference UI's expanded actions row is the product configuration surface:
 
 | Chip | Role |
 | --- | --- |
@@ -206,12 +210,12 @@ Omega's footer row is **authority and routing**:
 - plus expand control on the field.
 
 That matches Omega Agent as a **router** (front door owns no execution). It
-puts more cognitive load on every keystroke. Comet assumes "you already
+puts more cognitive load on every keystroke. The reference UI assumes "you already
 picked Claude on this space" and keeps chips secondary. [source] [inferred]
 
 #### Attachments and drafts
 
-Comet: paste/drop/picker → staged strip (`size-14` thumbs, wrap height pure
+The reference UI: paste/drop/picker → staged strip (`size-14` thumbs, wrap height pure
 function) → chunked upload to host → `withAttachments` in prompt + inline
 image blocks for Claude. Failure returns text and staged files. Per-chat
 draft map swaps on session change without morph flicker. [source]
@@ -222,7 +226,7 @@ less "staged strip above a pill" product polish. [source]
 
 #### Optimistic send
 
-Comet queues a doc command and echoes the user row immediately; on failure
+The reference UI queues a doc command and echoes the user row immediately; on failure
 restores draft and staged files with a dismissible Notice chip (amber offline /
 red error). [source]
 
@@ -231,9 +235,9 @@ the empty-thread and loading-composer handoff (`OMEGA-DELTA-0122`) is careful
 about not losing text while the executor connects. Less "failure notice as
 first-class chip" chrome. [source]
 
-### 2.2 What Omega already fixed that Comet never had to
+### 2.2 What Omega already fixed that the reference UI never had to
 
-Comet is a single-product shell. Omega absorbed full-window Zero Base and had
+The reference UI is a single-product shell. Omega absorbed full-window Zero Base and had
 to correct IDE inheritance:
 
 | Omega delta (in source comments) | Problem | Fix |
@@ -250,25 +254,25 @@ tall Editor box + authority footer, not a morphing agent bar. [source]
 
 ### 2.3 Scorecard — input bar
 
-| Criterion | Comet | Omega | Prefer |
+| Criterion | Reference UI | Omega | Prefer |
 | --- | --- | --- | --- |
-| Calm default density | compact pill | min ~96px Editor box | **Comet** |
-| Content-driven growth | measured auto-grow + morph | Editor growth + manual expand | **Comet** |
-| Mid-turn send gesture | one button Send/Steer/Stop | queue + steer toggles + dispositions | **Comet** for UX; **Omega** for multi-executor law |
-| Agent questions | composer becomes wizard | elicitation cards | **Comet** for simple picks; **Omega** for general schemas |
+| Calm default density | compact pill | min ~96px Editor box | **The reference UI** |
+| Content-driven growth | measured auto-grow + morph | Editor growth + manual expand | **The reference UI** |
+| Mid-turn send gesture | one button Send/Steer/Stop | queue + steer toggles + dispositions | **The reference UI** for UX; **Omega** for multi-executor law |
+| Agent questions | composer becomes wizard | elicitation cards | **The reference UI** for simple picks; **Omega** for general schemas |
 | Project mentions / creases | path pickers, not in-buffer mentions | first-class Editor mentions | **Omega** |
-| Executor / model honesty | harness chips | front-door disclosure | **Omega** for authority; Comet clearer for dual-CLI product |
-| Pure layout tests | extensive | sparse in chrome path | **Comet** |
-| Attachment strip polish | designed thumbs strip | paste/crease path | **Comet** |
-| Failure recovery in UI | Notice chip + restore draft | generation / queue recovery | **Comet** for bar UX |
-| New-chat configuration | always-expanded + chips + remembered defaults | executor menu + project state | Split: Comet clearer for "start a run" |
+| Executor / model honesty | harness chips | front-door disclosure | **Omega** for authority; the reference UI clearer for dual-CLI product |
+| Pure layout tests | extensive | sparse in chrome path | **The reference UI** |
+| Attachment strip polish | designed thumbs strip | paste/crease path | **The reference UI** |
+| Failure recovery in UI | Notice chip + restore draft | generation / queue recovery | **The reference UI** for bar UX |
+| New-chat configuration | always-expanded + chips + remembered defaults | executor menu + project state | Split: the reference UI clearer for "start a run" |
 
 **Bottom line:** for the thing the user stares at every turn — the input bar —
-Comet wins. Omega wins the surrounding IDE admission surface. [inferred]
+The reference UI wins. Omega wins the surrounding IDE admission surface. [inferred]
 
 ## 3. Shell and navigation
 
-### 3.1 Comet shell
+### 3.1 the reference UI shell
 
 - Sidebar 208–400px (default 256), 200ms width tween, glass edge-fade on scroll.
 - Main header h-11; reserved h-6 status strip so content never jumps.
@@ -289,12 +293,12 @@ Comet wins. Omega wins the surrounding IDE admission surface. [inferred]
 - Agent lives in AgentPanel / conversation view; Zero Base admits a reduced
   action set so legacy editor actions stay unreachable.
 - Threads sidebar and composer executor menu are separate authority surfaces.
-- No Comet-style space-first device+folder sidebar as the primary IA.
+- No the reference UI-style space-first device+folder sidebar as the primary IA.
   [source]
 
 ### 3.3 Shell judgment
 
-Comet's shell is the right shape for **agent supervision product**. Omega's
+The reference UI's shell is the right shape for **agent supervision product**. Omega's
 shell is the right shape for **all work**. Zero Base tries to make Omega feel
 like the former without deleting the latter. The remaining gap is mostly the
 composer density and the missing space-centric multi-host index, not a missing
@@ -302,7 +306,7 @@ file tree. [inferred]
 
 ## 4. Transcript
 
-### 4.1 Comet
+### 4.1 the reference UI
 
 - Virtualized list, block-granularity rows (`msgId#blockId`), stick-to-bottom
   spring with feed-forward streaming (mugen / use-stick-to-bottom lineage).
@@ -324,38 +328,38 @@ file tree. [inferred]
 
 ### 4.3 Transcript judgment
 
-Comet is better at **streaming chat ergonomics**. Omega is better at
-**connecting a message to a buffer, diff, and receipt**. Harvest Comet's
+The reference UI is better at **streaming chat ergonomics**. Omega is better at
+**connecting a message to a buffer, diff, and receipt**. Harvest the reference UI's
 stick/restick and tool-group density into Omega's agent transcript without
 thinning Omega's workbench entry types. [inferred]
 
 ## 5. Motion and theme
 
-| | Comet | Omega |
+| | Reference UI | Omega |
 | --- | --- | --- |
 | Theme | Always-dark monochrome, oklch neutrals, Geist | Full Zed theme system, user themes |
 | Motion kit | Explicit catalog: fade-in, splash-out, pulse, menu-in, resort glide, flip morph | Scattered animations; product polish uneven across agent surfaces |
 | Reduced motion | Honored in morph paths (gap called out in PARITY for some surfaces) | Theme/OS dependent via platform |
 
-Comet's motion is a **parity catalog** with timings ported from the prior
+The reference UI's motion is a **parity catalog** with timings ported from the prior
 product. Omega should not copy the monochrome brand, but should adopt
 **one motion kit** for agent list resort, composer mode changes, and stick
 scroll. [source] [inferred]
 
 ## 6. TUI as a second surface
 
-Comet ships `comet-tui` with **the same pure view module** as the desktop
+The reference UI ships `comet-tui` with **the same pure view module** as the desktop
 (`comet_proto::view`) so row order never diverges, and a fingerprinted
 transcript cache with a no-tick coalescing loop. The TUI never embeds an
 engine. [source]
 
 Omega has no first-party agent TUI peer of Zero Base. Headless work is
 effectd / CLI / remote — not a shared-view TUI. If Omega wants SSH attach
-parity, Comet's "same derivations, no gpui" pattern is the template. [inferred]
+parity, the reference UI's "same derivations, no gpui" pattern is the template. [inferred]
 
 ## 7. Recommended Omega product moves
 
-Ordered by leverage. None of these admit Cloudflare rooms or Comet as a
+Ordered by leverage. None of these admit Cloudflare rooms or the reference UI as a
 dependency. All are UI/interaction packets against Omega source.
 
 ### P0 — Composer density and primary control (input bar)
@@ -364,7 +368,7 @@ dependency. All are UI/interaction packets against Omega source.
    - Keep `MessageEditor` (Editor) as the field.
    - Add measured content height + hysteresis modes: calm one-line/short bar
      when empty/short; expand for multiline and for new-thread config.
-   - Unit-test the pure flip the way Comet does; do not bury it in render.
+   - Unit-test the pure flip the way the reference UI does; do not bury it in render.
 2. **One primary control: Send / Steer / Stop**
    - Map empty+live → stop (cancel generation).
    - Map text+live → **declared** steer-or-enqueue via existing
@@ -380,7 +384,7 @@ dependency. All are UI/interaction packets against Omega source.
 
 4. **Simple question takeover for common schemas**
    - When elicitation is single/multi select with short options, render a
-     Comet-style paged wizard **in the composer slot**; keep full form cards
+     the reference UI-style paged wizard **in the composer slot**; keep full form cards
      for complex ACP schemas.
 5. **Queue as secondary, not primary**
    - Keep the queue for multi-item and edit/send-now power users.
@@ -391,7 +395,7 @@ dependency. All are UI/interaction packets against Omega source.
 6. **Demote executor chrome on Zero Base**
    - Show a single clear "talking to X" chip; put full executor menu one click
      deeper once a default is set.
-   - Remember last executor/model per project (Comet's
+   - Remember last executor/model per project (the reference UI's
      `composer-defaults.json` pattern).
 7. **New-thread always "ready tall"**
    - Empty thread composer should match post-first-message height (Omega
@@ -408,7 +412,7 @@ dependency. All are UI/interaction packets against Omega source.
 ### Explicit non-goals
 
 - Do not hand-roll away Zed Editor (lose mentions, IME depth, accessibility).
-- Do not adopt Comet monochrome as Omega brand.
+- Do not adopt the reference UI monochrome as Omega brand.
 - Do not couple composer polish to Cloudflare session docs.
 - Do not weaken `SendDisposition` total function for a prettier button.
 
@@ -416,18 +420,18 @@ dependency. All are UI/interaction packets against Omega source.
 
 | Architecture harvest | UI harvest here |
 | --- | --- |
-| Detach ≠ kill | TUI / second viewport can look like Comet-tui later |
+| Detach ≠ kill | TUI / second viewport can look like the reference UI-tui later |
 | Durable host-only command ledger | Optimistic send still needs durable queue under the bar |
 | Pure `view` module | Pure `composer_flip` / stick / resort modules |
 | Spaces as device+folder | Sidebar IA; out of scope for input bar P0 |
 
-The architecture report said Comet is not an IDE. This report says **Comet is
+The architecture report said the reference UI is not an IDE. This report says **The reference UI is
 a better agent input product**. Omega should remain the IDE and still ship an
-input bar that feels like Comet's. [inferred]
+input bar that feels like the reference UI's. [inferred]
 
 ## 9. Evidence anchors
 
-### Comet
+### the reference UI
 
 - `crates/ui/src/composer.rs` — flip, morph, SendButtonMode, wizard, drafts
 - `crates/ui/src/pickers.rs` — DraftConfig, traits summary, harness chips
@@ -451,7 +455,7 @@ input bar that feels like Comet's. [inferred]
 
 ## 10. Decision sentence
 
-**Admit the product fact: Comet's composer is the better agent input bar.
+**Admit the product fact: the reference UI's composer is the better agent input bar.
 Plan Omega P0 work to match its density and Send/Steer/Stop primary control
 on top of MessageEditor and existing disposition law. Keep Omega's IDE
 admission, executor honesty, and workbench transcript depth.**

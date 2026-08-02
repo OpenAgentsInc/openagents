@@ -325,11 +325,11 @@ Small samples are provisional. An eligible miss keeps its spent tokens and
 right-censor boundary. A faster candidate cannot win if it weakens any evidence
 or safety gate.
 
-## 8. How to inspect the result in the Comet-shaped Omega bench
+## 8. How to inspect the result in the Omega-native bench
 
 The owner-directed entropy dashboard precedes this full practice-run reader and
 is specified in the
-[entropy-first Comet roadmap](../loupe/2026-08-02-entropy-first-comet-dashboard-roadmap.md).
+[entropy-first Omega roadmap](../loupe/2026-08-02-entropy-first-omega-dashboard-roadmap.md).
 For the broader practice-run surface, mount a read-only case reader in the
 normal Omega task shell. Its sticky header must say whether the case is fixture
 or live, and it must keep target, commit, benchmark arm, completeness, privacy,

@@ -291,12 +291,12 @@ Use the matrix to answer these questions in order:
 5. Did every run stay within budget and clean up?
 6. Only then: was identification faster or cheaper?
 
-## 6. Reading the simplified Comet-first workbench
+## 6. Reading the simplified Omega-first workbench
 
 The short-term product should mount the forensic workbench in Omega's existing
-Comet-shaped task shell. It must reuse the normal project list, task tabs,
+Omega-native task shell. It must reuse the normal project list, task tabs,
 history, and composer, then devote the primary workbench region to the selected
-forensic case. Comet supplies the presentation grammar; Omega projections and
+forensic case. Omega supplies the presentation grammar; Omega projections and
 intents remain the only authority.
 
 Read the case in this order:

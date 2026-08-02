@@ -362,16 +362,16 @@ comparison, and whether a mechanically verified result improves without
 overstating what the workbench knows. It would not itself authorize a run or
 publication.
 
-## Short-term Comet workbench acceptance
+## Short-term Omega workbench acceptance
 
 The owner-directed
-[entropy-first dashboard](../loupe/2026-08-02-entropy-first-comet-dashboard-roadmap.md)
+[entropy-first dashboard](../loupe/2026-08-02-entropy-first-omega-dashboard-roadmap.md)
 precedes this broader evidence interface. It first proves editable prompts,
 repository traversal, live file progress, source observations, and immutable
 rerun comparison without a model panel or publication workflow.
 
 After that slice, the broader presentation should be a read-only case reader
-inside the simplified Comet-shaped Omega shell. It should use Omega projections and
+inside the simplified Omega-native shell. It should use Omega projections and
 intents; it must not create a second forensic authority or copy evidence into a
 presentation-owned store. The first vertical slice should contain:
 

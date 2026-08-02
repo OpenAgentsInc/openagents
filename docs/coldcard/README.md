@@ -40,14 +40,14 @@ Until those dependencies close with accepted receipts:
    — private historical replay and node boundary.
 5. [`2026-08-02-wallet-security-posts-and-omega-thread-audit.md`](2026-08-02-wallet-security-posts-and-omega-thread-audit.md)
    — corrected visual observations, disputed claims, delegation provenance,
-   and Comet UI consequences.
+   and Omega UI consequences.
 6. [`2026-08-02-forensic-model-panel-and-publication-gates-audit.md`](2026-08-02-forensic-model-panel-and-publication-gates-audit.md)
    — diverse model roster, typed fallbacks, independent verification, holdouts,
    and publication gates.
 
 The broader rationale and current product sequence live in the
 [`docs/loupe` entry point](../loupe/README.md), the
-[entropy-first Comet dashboard roadmap](../loupe/2026-08-02-entropy-first-comet-dashboard-roadmap.md),
+[entropy-first Omega dashboard roadmap](../loupe/2026-08-02-entropy-first-omega-dashboard-roadmap.md),
 the
 [forensic roadmap](../loupe/2026-08-01-omega-forensic-analysis-roadmap.md), and
 the
