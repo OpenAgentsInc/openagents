@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-08-02
-- Revision: 140
+- Revision: 141
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: no active `roadmap:sol` product issue. Current work comes from
   an exact live issue or owner-accepted packet. OpenAgentsInc/omega#199 through
@@ -33,8 +33,10 @@ proof, dated plans and analyses are evidence only.
 The owner selected [`Omega`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md), a tracked Zed fork, as the primary Desktop, IDE, and company workroom destination. The new [`Omega roadmap`](../omega/ROADMAP.md) owns the accelerated implementation order. First, release the fully branded `v0.2.0-rc1` bootstrap candidate. Next, port current OpenAgents Desktop behavior. Then add the selected Buzz workroom and Nostr outcomes. The bootstrap release is not a feature-parity or primary-cutover claim. Omega Rust is the application core. Packaged Node 24 and Effect first carry the current product control plane. Bounded packets can move suitable domains to Rust through one-authority cutovers. Existing configured agents, such as Hermes, attach through explicit adapters. They keep their homes, credentials, memory, skills, tools, and sessions. Standard Nostr support is an interoperability boundary, not relay authority. The separate Buzz deployment and standalone relay program stay canceled. Issues #9185 and #9194 through #9204 closed as not planned on 2026-07-23. The current Electron application remains the supported evidence and rollback subject until all cutover gates pass. Omega does not reroute the pending Full Auto release closure. The 2026-08-02 owner reconciliation made the [`entropy-first Coldcard dashboard`](../loupe/2026-08-02-entropy-first-omega-dashboard-roadmap.md) the first Omega-native workbench slice. Omega issues #199 through #202 delivered it in order across commits `6fd2767b5d`, `4ebde0f20d`, `a18287b216`, and `15ffc050aa`: edit one visible prompt, watch read-only repository traversal, inspect source observations, compare immutable reruns, then run the source-aware 15-project campaign. The broader evidence reader follows it; the interface owns presentation, Omega owns authority, and live forensic controls remain unavailable while #9289, #9290, and #9300 are open. Each Omega mutation still needs its issue claim or accepted packet.
 
 **2026-08-02 All Work program.** Omega #208 owns the client program and closes
-last. OpenAgents #9303 first establishes the generated read boundary shared by
-Effect and Rust. Omega #209 through #215 then deliver production visibility,
+last. OpenAgents #9303 delivered the generated Effect/Rust read boundary in
+OpenAgents commits `5a9e3aeb43` and `1ea08b1429`; Omega consumed its immutable
+Rust artifact and proved the real cross-process v2 read in `6e3f67c600`.
+Omega #209 through #215 now deliver production visibility,
 typed routes, Work Index, detail, the Security Work domain, agent delegation,
 and cross-domain planning/review. OpenAgents #9304 and #9305 own signed Nostr
 projections and the generated API/SDK; Omega #216 consumes the signed Workroom

@@ -57,3 +57,12 @@ Omega consumes the generated Rust file, fixtures, and compatibility manifest
 as one digest-bound artifact. Omega-specific adapters map native state to these
 DTOs. A copied or vendored generated file is valid only when its definition and
 artifact digests match the manifest; handwritten Rust mirrors are not allowed.
+
+The first immutable consumer is Omega commit
+`6e3f67c6006b0e98eb57047971777eece2fd0f20`. It pins OpenAgents commit
+`1ea08b1429cbd888875fef195f9b94bef666e70e` and Rust artifact SHA-256
+`298aa826cb7bdf182742251d53c9ab6a436ba8e386fd292a22701a7dec40cefb` in
+`crates/omega_effectd/all-work-contract/SOURCE.json`. Omega's Rust supervisor
+also has an opt-in cross-repository test that starts the pinned TypeScript
+process and negotiates `omega-effectd.v2` before it decodes the typed Work
+Index response.
