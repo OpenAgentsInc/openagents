@@ -1348,6 +1348,7 @@ sequence. The ordered Amp `initial_program` stays unchanged.
     "tracking_policy": "release_or_commit",
     "teardown_refs": [
       "docs/teardowns/linear-agents.md",
+      "docs/teardowns/2026-08-02-linear-api-sdk-all-work-adaptation.md",
       "docs/forge/linear.md"
     ],
     "lessons": [
@@ -1360,7 +1361,13 @@ sequence. The ordered Amp `initial_program` stays unchanged.
       {
         "id": "shared_context_session_and_review",
         "kind": "architecture",
-        "summary": "Attach agent execution to shared product context and return code, evidence, questions, and results to integrated review while Git and OpenAgents retain their own authority.",
+        "summary": "Attach agent execution to shared Organization, portfolio, and Work context and return code, evidence, questions, and results to integrated review while Git and OpenAgents retain their own authority.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "api_vocabulary_and_codegen",
+        "kind": "architecture",
+        "summary": "Adopt the coherent public API resource grammar where semantics match and evaluate selected MIT document, SDK, connection, webhook, error, import, and test generator code with exact attribution; generate from OpenAgents-owned All Work contracts and one Effect/Rust boundary definition instead of adopting the Linear service or generated client.",
         "stance": "adapt_with_stronger_boundaries"
       },
       {
@@ -1385,19 +1392,19 @@ sequence. The ordered Amp `initial_program` stays unchanged.
       {
         "id": "native_product_work_graph",
         "kind": "architecture",
-        "summary": "Port Linear-class planning, accountable delegation, shared agent sessions, recurring workflows, coding, and review into an OpenAgents-owned Product Work graph without a Linear integration or dependency.",
+        "summary": "Port Linear-class planning, accountable delegation, shared Agent Sessions, recurring workflows, coding, and review into an OpenAgents-owned All Work graph without a Linear service or runtime dependency.",
         "stance": "adapt_with_stronger_boundaries"
       },
       {
         "id": "nostr_centric_native_product_collaboration",
         "kind": "protocol",
-        "summary": "Give native Product Spaces, projects, work items, people, agents, sessions, decisions, code changes, and evidence signed Nostr identities and causal projections while OpenAgents retains admission, verification, receipt, release, and settlement authority.",
+        "summary": "Give native Organizations, Teams, Projects, Work and Issue projections, people, agents, Sessions, Decisions, code changes, and evidence signed Nostr identities and causal projections while OpenAgents retains admission, verification, Receipt, release, and settlement authority.",
         "stance": "adapt_with_stronger_boundaries"
       },
       {
         "id": "native_delegated_work_item_first_proof",
         "kind": "evaluation",
-        "summary": "Prove one native human-owned OpenAgents work item delegated to one Agent Member end to end, including signed workroom activity, durable execution, host verification, human disposition, replay, relay outage, and revocation, with Linear completely absent.",
+        "summary": "Prove one native OpenAgents Work object with an Issue projection, human Assignee, and Agent Delegate end to end, including signed Workroom activity, durable execution, host verification, human disposition, replay, relay outage, and revocation, with Linear completely absent.",
         "stance": "study"
       }
     ]

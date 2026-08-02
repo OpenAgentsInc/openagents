@@ -30,6 +30,24 @@ My overall assessment is **8.4/10**:
 | Governance and security maturity |       7/10 |
 | Independent evidence of ROI      |     6.5/10 |
 
+### Public API and SDK source addendum
+
+The product analysis below was originally based on public product behavior.
+The local `linear/linear` checkout now adds direct source evidence: at commit
+`7ef4c5024f88667b2c85057ff4c905676c4a93c2`, Linear publishes its GraphQL
+schema, TypeScript SDK, GraphQL document generator, SDK generator, generated
+test generator, webhook client, error hierarchy, and import tools under the
+MIT License. The pinned schema has 667 object types, 389 input types, 113
+enums, 164 root queries, and 372 root mutations; `@linear/sdk` is version
+`89.0.0` at that snapshot.
+
+This does not make the private application or server implementation open
+source. It does make the API vocabulary and selected codegen/runtime mechanics
+legitimate code-reuse candidates with attribution and provenance. The
+[API/SDK teardown](./2026-08-02-linear-api-sdk-all-work-adaptation.md) records
+the exact pin, digests, domain inventory, reuse boundary, and Effect/Rust
+generation plan.
+
 The central qualification is that **Linear is building an agent control plane, not a general-purpose agent runtime**. It is strongest when Linear already holds the product context and the work can be expressed as issues, projects, documents, code changes, or recurring product-development processes. It is not yet a full multi-agent orchestration engine, deterministic workflow system, or replacement for a durable execution cloud.
 
 ---
@@ -639,10 +657,11 @@ A safe deployment sequence would be:
 
 ## 18. What OpenAgents should take from it
 
-For OpenAgents, Linear is a design reference for a native feature port. The
-target is not a Linear integration or control surface. OpenAgents should own
-the product spaces, planning graph, work items, agent members, sessions,
-workflows, review, and outcome system described in the
+For OpenAgents, Linear is a design and MIT code reference for a native feature
+port. The target is not a Linear integration or control surface. OpenAgents
+should own the Organizations, Teams, portfolio graph, universal Work and Issue
+projections, Agent Members, Agent Sessions, workflows, review, and outcome
+system described in the
 [Nostr-centric native port plan](./2026-08-02-linear-agents-openagents-nostr-adaptation.md).
 
 ### Patterns worth copying directly
@@ -665,6 +684,19 @@ it should not implement a Linear webhook.
 
 **Shared execution.** Runs should belong to a thread or workroom, not to the private local state of the person who started them.
 
+**Coherent API resource grammar.** Adopt `Organization`, `Team`, `Initiative`,
+`Roadmap`, `Project`, `ProjectStatus`, `ProjectMilestone`, `Cycle`, `Issue`,
+`WorkflowState`, `IssueRelation`, `IssueLabel`, `Customer`, `CustomerNeed`,
+`AgentSession`, `AgentActivity`, `AgentSkill`, `Notification`, `Favorite`,
+`Webhook`, `Integration`, and `AuditEntry` where the OpenAgents semantics
+match. `Work` remains the universal root, and Issue is its planning projection
+rather than a second authority.
+
+**Schema-wide generation.** Fork the public MIT document, SDK, connection, and
+test generator architecture. Generate new Effect-native clients and Rust
+boundary bindings from OpenAgents-owned contracts; do not vendor the generated
+Linear service client.
+
 ### Where OpenAgents can go materially beyond Linear
 
 Linear currently offers a primarily vertical, single-agent control layer. OpenAgents can differentiate through:
@@ -685,26 +717,26 @@ Linear currently offers a primarily vertical, single-agent control layer. OpenAg
 The native OpenAgents architecture should be:
 
 ```text
-Native Product Space / project / work item / Loop
+Native Organization / Project / Work with Issue projection / Loop
         ↓
 Accountable human delegates to a native Agent Member
         ↓
-OpenAgents creates one durable Work Session and workroom thread
+OpenAgents creates one durable Agent Session and Workroom Thread
         ↓
 OpenAgents routes work across one or more agents
         ↓
-Plans, questions, actions, artifacts, and results become Work Activities
+Plans, questions, actions, artifacts, and results become Agent Activities
         ↓
-Code, evidence, reviews, and verification attach to the native work item
+Code, evidence, reviews, and verification attach to native Work
         ↓
 The accountable human accepts, rejects, or requests revision in OpenAgents
         ↓
-Receipts and final status close the native session and work item
+Receipts and final status close the native Session and Work
 ```
 
-In that configuration, **OpenAgents owns both the product-development context
-and the durable multi-agent execution, verification, and economics layers.**
-Linear is absent from the runtime architecture.
+In that configuration, **OpenAgents owns the All Work context and the durable
+multi-agent execution, verification, and economics layers.** Linear is absent
+from the runtime architecture.
 
 ---
 
