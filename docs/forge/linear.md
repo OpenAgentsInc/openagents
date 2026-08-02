@@ -14,6 +14,11 @@ implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 Forge implementation routing must respect the separate-private-repo boundary.
 
+**TARGET CLARIFICATION (2026-08-02):** Retain this report as feature evidence
+for the [native OpenAgents Work port](../teardowns/2026-08-02-linear-agents-openagents-nostr-adaptation.md).
+Do not build a Linear integration, Linear-backed review surface, API client, or
+control-plane dependency from it. OpenAgents owns the product-work objects,
+sessions, reviews, and authority; Linear is absent from the target runtime.
 
 Linear Diffs is a **native PR review experience inside Linear**. It pulls GitHub pull request metadata, changed files, checks, comments, review state, and conversation into Linear, then lets reviewers comment, approve, request changes, and merge without switching back to GitHub. Linear’s docs say Diffs keeps PR details, changed files, checks, and comments in sync with GitHub, and that opening a PR in Linear shows details, activity, CI checks, associated comments, and bidirectional updates. ([Linear][2])
 
@@ -408,5 +413,3 @@ The bigger story is that Linear is building an agentic product-development loop:
 [12]: https://linear.app/changelog/2026-06-11-coding-sessions "Coding sessions in Linear – Changelog"
 [13]: https://linear.app/now/reviewing-code-in-the-agent-era "Reviewing code in the agent era - Linear"
 [14]: https://arxiv.org/abs/2605.07769 "Coding Agents Do not Know When to Act"
-
-

@@ -1,1218 +1,1191 @@
-# Linear Agents on OpenAgents: a Nostr-centric first-class adaptation
+# Porting Linear Agents into OpenAgents as a native Nostr-centric product system
 
 - Date: 2026-08-02
 - Lane: Fast Follow research
-- Disposition: recommended target architecture; not implementation authority
-- OpenAgents source pin: `961d8d2297f528d3594680d52affef05da039555`
-- OpenAgents tree pin: `55b524ae36c599cfe6cf41b689d084fba8bef7b4`
-
-## 1. Decision
-
-OpenAgents should support Linear as a first-class product-development context
-and control surface.
-
-The right design is not a Linear clone, a generic MCP wrapper, or a bulk mirror
-of Linear data onto a relay. It is a three-authority composition:
-
-1. **Linear owns Linear objects and permissions.** Linear remains authoritative
-   for its workspaces, teams, projects, issues, comments, documents, Linear
-   agent sessions, and the human accountability visible in Linear.
-2. **OpenAgents owns execution and admission.** OpenAgents remains authoritative
-   for agent identities, capability grants, workrooms, runs, leases, budgets,
-   tool admission, evidence, verification, receipts, and owner disposition.
-3. **Nostr is the signed collaboration and interoperability edge.** It carries
-   portable identities, causal references, bounded context projections,
-   delegations, progress, questions, handoffs, and closeout references. A
-   signature or relay acknowledgement never becomes Linear permission or
-   OpenAgents execution, verification, acceptance, release, payment, or
-   settlement authority.
-
-This is how OpenAgents should adapt Buzz's most important move. Buzz turned a
-Slack-shaped collaboration product into a signed Nostr event graph. OpenAgents
-should make Linear-shaped product work available to people and agents through
-the same signed, portable graph, but retain OpenAgents' stricter authority and
-receipt boundaries.
-
-The shortest product statement is:
-
-> Linear supplies the product context and accountable human surface.
-> OpenAgents supplies the durable multi-agent execution and proof system.
-> Nostr makes the relationship signed, portable, and interoperable.
-
-## 2. What this document does and does not authorize
-
-This is a research-lane artifact under the repository's Fast Follow contract.
-It can recommend target contracts and candidate work packets. It does not:
-
-- authorize implementation, deployment, release, spend, or a public parity
-  claim;
-- change the Sol roadmap or an accepted ProductSpec;
-- create a separate Buzz application, relay product, Forum, Forge, or Linear
-  replacement;
-- make any external repository, product announcement, teardown, signed Nostr
-  event, or relay response authoritative for OpenAgents;
-- grant access to a Linear workspace, repository, provider account, or owner
-  scope; or
-- claim that the proposed complete NIP-29 or Omega workroom program has landed.
-
-Implementation requires a separately admitted issue, accepted plan, or bounded
-work packet, exact owner scope, target-local verification, and current-roadmap
-reconciliation.
-
-## 3. Evidence and freshness
-
-This synthesis is grounded in the repository at the source and tree pins above.
-It does not perform a new live audit of Linear. The current Linear teardown
-contains the repository's public-source research through 2026-07-30. Its
-preview-stage API claims and vendor-reported results must be rechecked before
-implementation.
-
-### 3.1 Primary evidence manifest
-
-| Evidence                                                                                                | SHA-256                                                            | Role                                                                                     |
-| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
-| [`FASTFOLLOW.md`](../../FASTFOLLOW.md)                                                                  | `f337679bb633dea0a299563950901d9c66d022ab2d013d62173b30999f32dae0` | Admitted learning intent and Buzz and Linear lesson selection                            |
-| [`INVARIANTS.md`](../../INVARIANTS.md)                                                                  | `77c8bcb6b8549b17c22aaa2a5886cc26687ab8162321deb366f35defc02e443f` | Current target authority, connector, workroom, infrastructure, and product laws          |
-| [Buzz teardown](./2026-07-21-buzz-teardown.md)                                                          | `25ae1fe51370297725ce621c10939fa95ccfe5cb1f91c7cb66789e937915b7cd` | Commit-pinned Buzz architecture, NIPs, agents, workflows, Git, UI, and security evidence |
-| [Buzz program status](../buzz/README.md)                                                                | `4e830aad20b16bb15e904efc5fe58b0a0ab6a924c260d93ca54ea101bc7daa8d` | Current versus canceled Buzz-derived directions                                          |
-| [Buzz parity recommendation](../buzz/2026-07-24-omega-buzz-full-parity-recommendation.md)               | `960a5800ff1a96d7414bfb63eb78799d20691782561eed50106f66830e243627` | Product vocabulary and parity outcome map                                                |
-| [Buzz UI harvest](../buzz/2026-07-25-collab-ui-harvest-before-retirement.md)                            | `c14da1874f99b642da12cbd09b26e8525120477a973f0ddcd2219d40be23c3f7` | Workroom tree, attention, membership, and presence patterns                              |
-| [Canceled Buzz self-host runbook](../buzz/2026-07-22-buzz-self-host-and-sarah-runbook.md)               | `483fdc8ab05faacbe6e3cf6d7e68c78a98a38891130e47dd4ad7792df68cf68d` | Historical deployment evidence; explicitly not an executable path                        |
-| [Linear Agents teardown](./linear-agents.md)                                                            | `a6430c26b9b532310adc8adbfcd4413b73ac7380ba600ac6742c95b779920583` | Linear agent, session, Loop, triage, code, review, pricing, and governance evidence      |
-| [Linear Diffs report](../forge/linear.md)                                                               | `edd590ea05ffd25eb2340060e71072ced2d8178ae50a27007fe6c21f575f5353` | GitHub-authoritative review and issue-context composition                                |
-| [Sol master roadmap](../sol/MASTER_ROADMAP.md)                                                          | `aecf21c6ceaad43394ee5bb051454341ea6d8cbdf4386147fbf189928f9e3cca` | Current priority, product posture, and retired-path authority                            |
-| [Omega accepted plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md)                     | `6c0a1b84f1c0f428220b2112b0e2a36585e92ec2c4570ef9cc9234d21af56ce1` | Native workroom and supervised Nostr component direction                                 |
-| [Cross-app delegation analysis](../nostr/2026-07-22-full-auto-cross-app-agent-delegation-over-nostr.md) | `9344216c26d1000f20fd5e98e3b2fc185258ebf1c0de26ef4ce760a43f9fc07d` | Ref-only Nostr delegation and authority separation; strategy evidence only               |
-| [Omega NIP-29 specification](../nostr/2026-07-27-omega-nip29-relay-groups-integration-spec.md)          | `7094a9880708c787ae43427f204f451e07ca3c889a92be4633787354ddb3f783` | Proposed relay-qualified room behavior and its limits                                    |
-| [Omega NIP candidates](../omega/2026-07-24-nip-adoption-candidates.md)                                  | `9a383b2553b7dffeba8fb616de128346b46029f2d9f97260d2b175736901f1f8` | Current NIP adoption and deprecation analysis                                            |
-| [Omega Nostr authentication target](../omega/2026-07-30-omega-nostr-authentication-and-onboarding.md)   | `252cb6a72146ff8964c08610c14d99d86d7e3408a04d669e7fee6b8936b27934` | Signer custody, account linking, relay auth, and device enrollment boundaries            |
-
-### 3.2 Current implementation samples
-
-The target is not starting from zero:
-
-| Current surface                                                                                                      | Observed capability                                                                                                                        | Important limit                                                                            |
-| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| [`packages/connector-sidecar`](../../packages/connector-sidecar/src/index.ts)                                        | Verified GitHub webhook envelopes, delivery deduplication, bounded subjects, explicit writeback tools, and fail-closed authority decisions | Provider, object, and tool unions are GitHub-only                                          |
-| [`event-ledger.ts`](../../apps/openagents.com/workers/api/src/event-ledger.ts)                                       | Durable owner-scoped event entries, deduplication, ordering, and public-safe gateway projections                                           | Current source vocabulary does not include Linear                                          |
-| [`agent-definition-webhook-routes.ts`](../../apps/openagents.com/workers/api/src/agent-definition-webhook-routes.ts) | GitHub, Forum, and Slack signature verification and agent-trigger entry points                                                             | No Linear verification or immediate durable acknowledgement path                           |
-| [`packages/khala-sync-client`](../../packages/khala-sync-client/src/live-agent-graph.ts)                             | Cross-client threads, timelines, live agent graphs, conversations, attention, sessions, and control projections                            | Linear concepts and external-source mappings are absent                                    |
-| [`packages/khala-sync-server`](../../packages/khala-sync-server/src/live-agent-graph-projection.ts)                  | Cloud SQL-backed canonical projections, mutation fencing, durable runs, and live graph delivery                                            | No Linear installation or object-link authority                                            |
-| [`packages/nip90`](../../packages/nip90/src/lbr.ts)                                                                  | Public-safe ref-only labor request/result events and content-addressed closeout composition                                                | It is not a Linear connector or permission system                                          |
-| [`packages/public-nostr-chat`](../../packages/public-nostr-chat/src/channel.ts)                                      | Relay-qualified groups, signed event validation, NIP-42, reconnect, cursors, and relay identity checks                                     | Landed product is a narrow public chat, not the proposed complete private workroom system  |
-| OpenAgents Desktop workroom contracts                                                                                | Work packets, dependencies, evidence, verification refs, leases, and owner disposition                                                     | Current Electron surface is retained evidence while Omega is the future native destination |
-| Forge and forge-protocol                                                                                             | Git coordination, review primitives, NIP-34 interop, and Git-object authority                                                              | Linear Diffs is not a Git authority and must not become one here                           |
-
-### 3.3 Fast Follow disposition axes
-
-| Axis                  | Result                                                                                                       |
-| --------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Source freshness      | Repository-current at the pinned commit; Linear API details require live revalidation before build           |
-| Evidence completeness | Complete for the repository's primary Buzz and Linear analyses and the current target contracts used here    |
-| Target fit            | High for accountable delegation, shared sessions, signed identity, causal projections, and integrated review |
-| Implementation state  | Foundations landed; Linear-specific connector, mapping, sessions, writeback, Nostr profile, and UI are gaps  |
-| Verification state    | Architecture reconciled against current code and contracts; no Linear live acceptance exists                 |
-| Disposition           | Recommend an admitted, phased first-class Linear program beginning with one read-mostly end-to-end slice     |
-
-### 3.4 Conflicting Buzz direction
-
-The Buzz corpus contains real document drift. The 2026-07-24 parity
-recommendation describes Buzz parity as a floor and Nostr as the primary
-workroom record. The later 2026-08-02 Sol and Omega roadmaps narrow that
-direction to selected Buzz workroom capabilities and optional standard-Nostr
-interoperability. The later canonical roadmaps control where the two disagree.
-
-This document therefore uses the July Buzz records as design evidence, not
-sequencing or authority. It does not revive the canceled hosted-relay, separate
-Buzz, standalone Forge, or cross-app delegation programs. Already-landed
-NIP-34 claim-ledger, Forge conformance, public NIP-29 chat, and selected Sarah
-Nostr code remain current implementation evidence under their own contracts.
-
-### 3.5 Repository-wide Buzz corpus coverage
-
-The audit triaged every repository path returned by a bounded case-insensitive
-Buzz search outside dependency and Git metadata. The substantive corpus
-included:
-
-- the current authority chain in `AGENTS.md`, `INVARIANTS.md`, `FASTFOLLOW.md`,
-  the Sol roadmap, the Omega roadmap, the Omega accepted plan, and the Forge
-  ProductSpec;
-- the Buzz teardown, all four `docs/buzz/` records, and the retained Nostr-
-  first and Omega strategy analyses;
-- Forge, ngit, Nostr, Sarah, identity, mobile, workroom, LiveKit, Mesh, Armada,
-  Goose, TokenRelay, and related teardown comparisons;
-- Forge conformance fixtures and collaboration admission/projection code;
-- the preserved NIP-34 claim-ledger signer, store, relay, and subscription
-  paths;
-- the complete public NIP-29 chat package and its web/API surfaces; and
-- selected Sarah identity, turn, owner-decryptable memory, persona, and
-  community implementations and fixtures.
-
-Incidental literal matches such as FizzBuzz, the BIP-39 word `buzz`, colloquial
-prose, and administrative manifest entries supplied no Buzz product evidence
-and were excluded after inspection.
-
-## 4. The Buzz lessons that actually transfer
-
-Buzz is useful because its architecture is not “put an AI bot in Slack.” It
-makes people, agents, channels, messages, DMs, workflows, memory, telemetry,
-Git coordination, search, and device behavior members of one signed event
-system.
-
-The transferable part is the protocol shape, not Buzz's product shell.
-
-### 4.1 Adapt directly
-
-| Buzz lesson                                                       | Linear adaptation                                                                                                                               |
-| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| People and agents have separate signed identities                 | Bind each OpenAgents agent profile to its own Nostr identity and its distinct Linear app-user installation identity                             |
-| The agent is a participant, not a hidden bot token                | Show the delegate, session, activity, and result on the Linear issue and in the OpenAgents workroom                                             |
-| Channels are stable shared work contexts                          | Map a Linear workspace, team, or project to an explicit relay-qualified room projection; map an issue to a stable thread/work link              |
-| Signed causal events connect messages, actions, and artifacts     | Project issue changes, delegations, activities, questions, PR refs, and closeouts as bounded causal references                                  |
-| ACP workers are pooled and supervised                             | Route Linear sessions through OpenAgents' admitted runtimes, Pylons, and Agent Computers with typed stall and terminal states                   |
-| One prompt per channel queue prevents overlapping turns           | Fence each Linear agent session and issue-linked run by generation and idempotency key                                                          |
-| Agent memory is owner-decryptable and separately admitted         | Allow Linear-derived memories only through the existing memory admission and NIP-AE policy; never treat issue text as durable memory by default |
-| Live metrics and control are projections, not billing truth       | Use NIP-AO and NIP-AM only as convenience projections; retain exact run and token ledgers in OpenAgents                                         |
-| Approvals and workflow loop prevention are structural             | Separate suggested, approved, dispatched, verified, and accepted states; exclude a Loop's own output from its trigger set                       |
-| Git coordination can be signed while Git objects remain canonical | Link Linear issues and reviews to NIP-34 or Forge coordination, while Git refs, commits, PRs, checks, and merges remain Git-host authoritative  |
-| A shared skill source avoids harness drift                        | Compile OpenAgents Skills and Linear-facing instructions from one versioned source with explicit provider projections                           |
-| Search is a typed operator compiler                               | Compile authorized Linear, workroom, event, and code queries; do not route hidden intent through keyword heuristics                             |
-| Attention is a stable projection                                  | Combine Linear notifications, issue priority, mentions, agent questions, review requests, failures, and receipts in one bounded Inbox model     |
-| Device pairing uses explicit ephemeral exchange                   | Enroll revocable device keys or remote signers; never copy a root `nsec` as the normal mobile path                                              |
-
-### 4.2 Adapt with a stricter boundary
-
-Buzz can treat its relay as the workspace. OpenAgents must not treat a Linear
-projection relay as the authority for Linear or OpenAgents state.
-
-The relay can be authoritative for one NIP-29 room's membership, moderation,
-and event acceptance. That authority is confined to that room. It does not
-grant:
-
-- Linear workspace or team membership;
-- issue read or write permission;
-- repository access;
-- an OpenAgents capability grant;
-- an agent run or tool call;
-- verification, acceptance, merge, release, payout, or settlement; or
-- a hosted OpenAgents session.
-
-The safe adaptation is therefore **Nostr-centric but not relay-sovereign over
-product state**. Every important Linear or OpenAgents object has a signed Nostr
-projection or causal reference when portability helps, but the owning service
-still admits and records the canonical mutation.
-
-### 4.3 Reject
-
-Do not copy:
-
-- Buzz's React/Tauri/Flutter application stack;
-- a second standalone collaboration application;
-- a Buzz deployment or Buzz agent home;
-- relay membership as application authorization;
-- broad credentials in an agent process;
-- root-key copying as device enrollment;
-- custom-kind proliferation before standard NIP composition is exhausted;
-- a valid event signature as proof that an action was authorized or completed;
-- a relay acknowledgement as receipt of a Linear or OpenAgents mutation;
-- session counters as exact usage or billing evidence;
-- NIP-29 `private` as an end-to-end-encryption claim; or
-- a Nostr Git proposal as a merged Git ref.
-
-## 5. Product model
-
-### 5.1 First-class means more than a connector
-
-Linear support is first-class only when all of these are true:
-
-1. A Linear installation is a durable, owner-scoped OpenAgents object with
-   visible health, scopes, revocation, and last-reconciled state.
-2. Linear workspace, team, project, issue, document, comment, and agent-session
-   references, including initiatives, cycles, milestones, dependencies,
-   subissues, labels, customer requests, and SLA state where available, are
-   typed objects, not URLs embedded in prompts.
-3. Human assignee and agent delegate are distinct fields with distinct rights.
-4. A Linear `AgentSession` maps to a durable OpenAgents work context, thread,
-   and bounded run rather than a transient webhook handler.
-5. Plans, progress, questions, actions, errors, artifacts, and results move in
-   both directions through typed projections.
-6. OpenAgents agents can receive explicit Linear-bound grants and can never use
-   a generic provider tool to widen the subject.
-7. The same issue-linked run can be viewed and controlled from Linear,
-   OpenAgents Desktop, Omega, mobile, Pylon, and authorized Nostr clients
-   without creating multiple authorities.
-8. Git review and merge stay tied to the issue context while Git remains the
-   source of truth.
-9. Every delivery, trigger, run, action, writeback, verification, and owner
-   decision has an idempotent receipt chain.
-10. Relay loss, missed webhooks, external API lag, agent crash, and client
-    disconnect produce honest degraded states rather than optimistic success.
-
-### 5.2 Canonical work link
-
-Introduce a stable owner-scoped `LinearWorkLink` contract:
-
-```text
-LinearWorkLink
-  ref
-  ownerScopeRef
-  installationRef
-  linearWorkspaceRef
-  linearTeamRef
-  linearInitiativeRef?
-  linearProjectRef?
-  linearCycleRef?
-  linearMilestoneRef?
-  linearIssueRef
-  linearParentIssueRef?
-  linearSubissueRefs[]
-  linearDependencyRefs[]
-  linearLabelRefs[]
-  linearCustomerRequestRefs[]
-  linearDocumentRefs[]
-  linearAgentSessionRef?
-  humanAssigneeRef?
-  agentDelegateRef?
-  workContextRef
-  threadRef
-  runRef?
-  nostrRoomCoordinate?
-  nostrRootEventRef?
-  repositoryRefs[]
-  pullRequestRefs[]
-  authorityMode
-  sourceVersion
-  projectionGeneration
-  lastReconciledAt
-  receiptRefs[]
-  blockerRefs[]
-```
-
-Identifiers are opaque, stable refs. Display URLs are optional projections and
-must not become identity. A mapping cannot be inferred from title text, issue
-number alone, project name, Nostr tag, or repository branch.
-
-### 5.3 Authority modes
-
-Every link declares one mode. There is no generic bidirectional-sync mode.
-
-| Mode                              | Canonical owner                                            | Permitted projection                                                             |
-| --------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `linear_authoritative`            | Linear owns the issue/project fields and human assignment  | OpenAgents mirrors bounded context and writes only through exact Linear commands |
-| `openagents_authoritative_linked` | OpenAgents owns the workroom/run/packet/verification state | Linear receives issue, session, activity, and result projections                 |
-| `git_authoritative_review`        | Git host owns commit, PR, checks, review, and merge        | Linear and OpenAgents render context and issue subject-bound Git commands        |
-| `imported_snapshot`               | The pinned source snapshot                                 | Read-only research or migration view; no writeback                               |
-
-A user journey can compose multiple modes by field. One field or operation must
-never have two canonical writers.
-
-## 6. Linear capability map
-
-### 6.1 Agent Platform and app users
-
-Linear's app-user model should map to three distinct identities:
-
-1. **Linear installation identity** — the OAuth application and Linear app user
-   that receives sessions and performs allowed Linear actions.
-2. **OpenAgents agent identity** — the durable agent profile, provider/runtime
-   bindings, capabilities, policy, and activity history.
-3. **Nostr agent identity** — the optional signed interoperability identity,
-   with owner attestation and explicit signer custody.
-
-The binding is durable and auditable. None of the three identities implies the
-others. A Linear installation cannot mint an OpenAgents agent. A Nostr public
-key cannot install an app or acquire a Linear team scope. An OpenAgents agent
-cannot sign with a person's key.
-
-### 6.2 Human assignee and agent delegate
-
-This is the most important product primitive to preserve.
-
-```text
-Linear issue
-  accountable human assignee
-  bounded current agent delegate
-  one or more agent sessions
-  exact session state and result
-```
-
-OpenAgents should model the same split:
-
-- `humanAccountableOwnerRef` remains the responsible person or admitted team
-  role;
-- `agentDelegateRef` identifies the current executor;
-- `delegationGrantRef` defines the allowed subject, operations, budget, time,
-  and termination conditions;
-- `runRef` identifies execution;
-- `verificationRef` identifies independent host verification; and
-- `ownerDispositionRef` records acceptance, rejection, or a request for more
-  work.
-
-An agent never becomes a legal, financial, employment, release, or product
-accountability subject merely because Linear shows it as the delegate.
-
-### 6.3 AgentSession and AgentActivity
-
-Map Linear's session and activity surface onto existing OpenAgents semantics:
-
-| Linear object  | OpenAgents meaning                                | Projection rule                                                                              |
-| -------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `AgentSession` | `workContextRef` + `threadRef` + bounded `runRef` | One durable mapping, generation-fenced                                                       |
-| `thought`      | Public-safe progress summary                      | Never expose hidden chain of thought, private prompts, or raw model traces                   |
-| `elicitation`  | Durable pending human interaction                 | Preserve choices, deadline, requesting actor, and resolution                                 |
-| `action`       | Typed tool/action attempt and outcome             | Include exact subject, grant, idempotency, and receipt refs                                  |
-| `response`     | Provider or agent result                          | Never label it verified or accepted without separate records                                 |
-| `error`        | Typed failure or blocker                          | Distinguish retryable, terminal, policy-denied, stale, interrupted, and external-unavailable |
-| plan           | OpenAgents plan or ProductSpec packets            | Preserve step identity and state; do not flatten dependency or verification gates            |
-| session URL    | Deep link to the owning surface                   | Convenience only; never identity or authority                                                |
-
-The ingress handler must acknowledge a valid Linear session webhook quickly,
-durably enqueue the work, and publish a first safe activity within Linear's
-expected responsiveness window. It must not perform the entire agent run before
-responding to the webhook.
-
-### 6.4 Skills
-
-Linear Skills should be projections of versioned OpenAgents skill or procedure
-packages, not a second drifting instruction store.
-
-Each projected skill needs:
-
-- stable skill ref, revision, content digest, source owner, and publication
-  state;
-- intended teams, agents, tools, and subject types;
-- required context and expected output;
-- explicit exclusions and stop conditions;
-- budget and verification policy;
-- compatible Linear activity representation; and
-- a record of the exact revision used by each run.
-
-Provider-specific prompt text is a compiled projection. It is not the skill's
-authority or proof that the procedure was followed.
-
-### 6.5 Guidance
-
-Workspace and team Guidance should become a typed policy and knowledge package
-with explicit precedence:
-
-```text
-repository invariant and ProductSpec
-  > owner-scoped policy
-  > workspace guidance
-  > team guidance
-  > project guidance
-  > issue-specific instruction
-  > agent default
-```
-
-The actual precedence must be selected by the owning product contract. The
-important law is that conflict is visible, deny is fail-closed, and the run
-records the revisions it used. Natural-language Guidance cannot grant a tool,
-widen a repository, change a budget, bypass verification, or override a higher
+- Disposition: recommended native feature-port architecture; not implementation authority
+- OpenAgents source pin: `20a7115694085b04bf9cc9b8bd486599fd26cb87`
+- OpenAgents tree pin: `3e2c01565dbeacb951e7fcf3d0c38bd539637363`
+
+## 1. Correct decision
+
+OpenAgents should **port and independently implement Linear's useful agent-era
+product functionality as native OpenAgents functionality**.
+
+OpenAgents should not integrate with Linear, use Linear as a control surface,
+mirror Linear data, or depend on Linear APIs. There is no Linear OAuth app,
+Linear webhook bridge, Linear connector, Linear object mapping, Linear source
+of truth, or Linear runtime in this architecture.
+
+Linear is source evidence only. The implementation target is an OpenAgents-
+owned product-work system with:
+
+- native product spaces, teams, initiatives, projects, cycles, milestones,
+  work items, subitems, dependencies, labels, documents, decisions, customer
+  signals, and service-level state;
+- native accountable human ownership and bounded agent delegation;
+- native agent sessions, plans, visible activities, questions, actions,
+  artifacts, errors, verification, and human disposition;
+- native Skills, Guidance, Loops, triage intelligence, code intelligence,
+  coding sessions, diffs, Guided Reviews, Inbox, notifications, and analytics;
+- signed human and agent identities;
+- Nostr-centric workrooms, causal threads, portable event projections, private
+  messages, delegations, progress, code coordination, and evidence references;
+  and
+- OpenAgents authority for admission, policy, execution, budgets, evidence,
+  verification, receipts, release, and settlement.
+
+The shortest accurate statement is:
+
+> Build OpenAgents' own Linear-class product-development system. Use Buzz's
+> Nostr-centric collaboration lessons to make every person, agent, workroom,
+> work item, session, decision, code change, and receipt part of one signed
+> causal graph. Do not use Linear to provide any of it.
+
+## 2. What “port” means
+
+Linear is closed-source. “Port” here means a clean, target-native functional
+implementation from public behavior and architecture evidence. It does not
+mean copying Linear code, private APIs, visual assets, trademarks, prompts, or
+proprietary data.
+
+The port has four requirements:
+
+1. **Feature completeness.** Reproduce the useful product behaviors, not only a
+   chat bot or issue list.
+2. **OpenAgents-native semantics.** Use OpenAgents identities, workrooms,
+   ProductSpec packets, runs, grants, budgets, receipts, verification, Sync,
+   Forge, Pylon, and Agent Computer.
+3. **Nostr-centric collaboration.** Give work and agent activity stable signed
+   identities and portable causal projections, as Buzz does for Slack-shaped
+   collaboration.
+4. **Stronger authority.** Keep relay events, model output, provider completion,
+   and UI state separate from admitted commands, verified outcomes, release,
+   payment, and settlement.
+
+The result is not “Linear inside OpenAgents.” It is **OpenAgents Work**—a
+placeholder name for a native product-planning, agent-execution, and review
+system. Product naming is a later decision.
+
+## 3. Authority and evidence status
+
+This document is a Fast Follow research artifact. It recommends an architecture
+and candidate packets. It does not itself admit implementation, change roadmap
+priority, deploy a relay, create a public route, spend money, or make a parity
+claim.
+
+The current Sol and Omega roadmaps select only bounded Buzz-derived outcomes
+and standard Nostr interoperability. Where older Buzz documents describe a
+relay-primary company record, the later roadmaps control. A future decision to
+make signed Nostr events the primary company record would need an explicit
+ProductSpec, migration, authority, retention, privacy, and recovery decision.
+
+This design therefore makes Nostr central to identity, collaboration, causal
+provenance, portability, and interoperability while OpenAgents admission and
+Cloud SQL projections remain canonical for product actions under current
 authority.
 
-### 6.6 Loops
+### 3.1 Source manifest
 
-Linear Loops map well to OpenAgents background agents, but OpenAgents should
-make their runtime contract stronger.
+| Evidence                                       | SHA-256                                                            | Use                                                                                                                 |
+| ---------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| [`FASTFOLLOW.md`](../../FASTFOLLOW.md)         | `62fa235232f77ab54389d40350e9c1281181465a001c5899038024bb88684122` | Admitted learning intent and source/lesson identities                                                               |
+| [`INVARIANTS.md`](../../INVARIANTS.md)         | `77c8bcb6b8549b17c22aaa2a5886cc26687ab8162321deb366f35defc02e443f` | Current product, connector, workroom, authority, infrastructure, and privacy laws                                   |
+| [Buzz teardown](./2026-07-21-buzz-teardown.md) | `25ae1fe51370297725ce621c10939fa95ccfe5cb1f91c7cb66789e937915b7cd` | Signed collaboration, agents, workflows, memory, attention, Git, search, and relay failure evidence                 |
+| [Linear Agents teardown](./linear-agents.md)   | `cc3f2d59ab255e407acd803252d54c23fe93edffbd54fabacef96182ce4760d0` | Native agent, Agent Platform, Skills, Guidance, Loops, triage, code, sessions, governance, and reliability evidence |
+| [Linear Diffs report](../forge/linear.md)      | `8b2235f31b0a6ccd61582e471ac1ff06e7f6211e421c283b108d111410ff2f4b` | Issue-context review, Git authority, Guided Reviews, and agent iteration evidence                                   |
+| [Sol master roadmap](../sol/MASTER_ROADMAP.md) | `aecf21c6ceaad43394ee5bb051454341ea6d8cbdf4386147fbf189928f9e3cca` | Current sequencing and retired-path authority                                                                       |
+| [Omega roadmap](../omega/ROADMAP.md)           | `a7371c6d5a601d3a7c0617293e261a53594e680d00b4ca31d3e2bf9108be37dc` | Current native surface and optional Nostr posture                                                                   |
 
-Each Loop needs:
+### 3.2 Evidence disposition
 
-- immutable draft and published revisions;
-- trigger kind, source, filters, owner scope, and exact subject mapping;
-- normalized source-event digest and dedupe key;
-- explicit agent, skill, tool policy, budget, concurrency, and schedule;
-- confidence or evidence gate before mutation;
-- human ask/approve checkpoints;
-- circuit breakers for repeated failure, cost, time, and external outages;
-- a structural rule excluding the Loop's own writebacks from retriggering it;
-- visible run history, current state, and next eligible time; and
-- pause, drain, resume, revoke, and archive behavior.
+| Axis                | Result                                                                                                       |
+| ------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Source freshness    | Repository-current at the pinned target; upstream product details require revalidation before implementation |
+| Evidence confidence | High for publicly documented product behavior; lower for undisclosed internal implementation details         |
+| Target relevance    | High: OpenAgents already owns agent execution, workrooms, Sync, code, receipts, and Nostr mechanisms         |
+| Portability         | High for product concepts; no source-code portability is claimed                                             |
+| Implementation      | Substrate exists; the native product-work domain and complete UI do not                                      |
+| Verification        | Architecture-only; no native Linear-class acceptance journey exists                                          |
+| Disposition         | Build a native system through separately admitted, end-to-end packets                                        |
 
-The first implementation should be “suggest, ask, then write,” not “mutate all
-matching issues automatically.”
+## 4. What Buzz teaches this port
 
-### 6.7 Triage Intelligence
+Buzz did not bolt a bot onto Slack. It re-expressed Slack-shaped collaboration
+as signed events, Nostr identities, relay-qualified rooms, agent participants,
+private messages, workflows, memory, presence, attention, search, Git
+coordination, and evidence.
 
-Triage is an advisory pipeline before it is an autonomous mutation path.
+OpenAgents should apply that same move to Linear-shaped product work.
+
+### 4.1 Direct adaptations
+
+| Buzz mechanism                      | Native OpenAgents Work adaptation                                                                 |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Human and agent keypairs            | Every person and agent has a separate signed identity and explicit OpenAgents binding             |
+| Channels and forum rooms            | Teams and projects have stable workrooms; initiatives and reviews can have bounded rooms or views |
+| Threads and replies                 | Every work item, decision, review, and session has a causal thread                                |
+| Agent roster and cards              | Agents are first-class product members with capabilities, runtime, state, owner, and activity     |
+| ACP process pool                    | OpenAgents routes sessions through native runtimes, attached agents, Pylons, and Agent Computers  |
+| One prompt in flight per channel    | Each work session is generation-fenced with explicit queue, steer, stop, retry, and replacement   |
+| Owner-decryptable memory            | Durable agent memory is separately admitted and owner-readable through NIP-AE-compatible policy   |
+| Workflow actions and approval gates | Loops compile triggers, conditions, agent steps, tools, approvals, budgets, and terminal fates    |
+| Structural loop prevention          | A Loop's output event classes are excluded from its own trigger graph by construction             |
+| Home/attention view                 | Inbox groups questions, mentions, blocks, failed runs, reviews, verification, and owner decisions |
+| Signed Git events                   | Native work items link to NIP-34/Forge coordination while Git objects remain canonical            |
+| Metrics and live state              | NIP-AO/NIP-AM-compatible projections show activity without becoming billing or verification truth |
+| Search across event history         | Authorized structured search compiles operators over the native work graph and signed projections |
+| Shared skill source                 | One versioned Skill definition compiles to each admitted runtime and client surface               |
+
+### 4.2 Stronger OpenAgents boundaries
+
+Do not copy Buzz's relay as general company-record, command, or receipt
+authority. A Nostr event can prove signer and exact bytes. A relay response can
+prove what that relay accepted. Neither proves:
+
+- the signer had current OpenAgents authority;
+- the work item, project, or membership mutation was admitted;
+- an agent actually ran;
+- a tool was allowed;
+- provider output was correct;
+- verification passed;
+- a human accepted the result;
+- Git merged the code;
+- a release occurred; or
+- payment or settlement happened.
+
+OpenAgents should preserve signed events and relay receipts as evidence while
+its typed admission and verification records decide product meaning.
+
+### 4.3 Repository-wide Buzz disposition
+
+The repository-wide Buzz audit distinguishes what OpenAgents already adapted
+from what remains evidence or was canceled.
+
+Already implemented or preserved:
+
+- hermetic, read-only Forge conformance for pinned Buzz SDK and legacy Desktop
+  NIP-34 dialects; this is fixture evidence, not live Buzz interoperability;
+- the typed NIP-34 claim-ledger projection, signer, verified durable store, and
+  subscription path retained from the canceled hosted-relay program;
+- the standard NIP-29 public Agent Chat reader, relay identity checks, NIP-42
+  authentication, reconnect, pagination, and bounded signer mechanisms; and
+- selected Sarah owner identity, owner-decryptable memory, turn transport,
+  persona, live-state, metric, and community records with their exact Product
+  and Assurance limits.
+
+Useful future outcomes, not complete shipped product:
+
+- Omega-native attention, workrooms, threads, DMs, agent roster, existing-agent
+  attachment, search, code rooms, decisions, governance, and cross-client
+  journeys;
+- complete NIP-29 membership, moderation, branching, multi-relay, and private-
+  workroom behavior; and
+- expanded signed memory and agent protocol promises only after compatible
+  AssuranceSpec admission.
+
+Canceled or rejected:
+
+- a separate Buzz deployment, Buzz client, standalone relay service, or
+  standalone Forge;
+- the July Nostr-primary/full-parity plan where it conflicts with the later Sol
+  and Omega roadmaps;
+- the broad cross-app Nostr delegation program as implementation authority;
+- Buzz's Tauri, Flutter, Postgres, Redis, MinIO, custom voice, and broad ACP
+  product stack; and
+- adoption of Buzz's complete vendor-specific custom-kind registry.
+
+This port consumes the lessons and current OpenAgents implementations. It does
+not restore any canceled Buzz product path.
+
+## 5. Linear functionality to clone natively
+
+### 5.1 Feature parity matrix
+
+| Linear-class capability  | Native OpenAgents capability                       | OpenAgents advantage                                                  |
+| ------------------------ | -------------------------------------------------- | --------------------------------------------------------------------- |
+| Workspace                | Product Space                                      | Signed identities, portable projections, explicit authority           |
+| Teams and subteams       | Teams and scoped workrooms                         | NIP-29-compatible room projection plus OpenAgents grants              |
+| Initiatives and roadmaps | Initiative graph and roadmap views                 | Direct ProductSpec, promise, evidence, and receipt links              |
+| Projects                 | Projects                                           | Native agent team, workroom, budget, verification, and release state  |
+| Cycles and milestones    | Cycles and milestones                              | Typed timeboxes without treating dates as authority                   |
+| Issues and subissues     | Work Items and subitems                            | Work packets, dependencies, acceptance, and execution lineage         |
+| Dependencies             | Typed blocking graph                               | Causal work and verification gates, not text links                    |
+| Documents                | Native Documents and Decisions                     | Versioned authority class, citations, signed projections              |
+| Customer requests        | Customer Signals                                   | Private source provenance and product-impact links                    |
+| Agent app users          | Agent Members                                      | Independent identity, owner attestation, runtime and capability truth |
+| Assignee plus delegate   | Accountable Owner plus Agent Delegate              | Structural grant, budget, lease, verification, and disposition        |
+| AgentSession             | Work Session                                       | Durable workroom/thread/run, placement, recovery, and receipts        |
+| AgentActivity            | Work Activity                                      | Typed safe progress, question, action, result, error, and proof refs  |
+| Skills                   | Skills                                             | One versioned source compiled to every runtime                        |
+| Guidance                 | Guidance Bundles                                   | Explicit precedence, history, audience, and deny behavior             |
+| Loops                    | Loops                                              | Typed triggers, budgets, approvals, circuit breakers, and replay      |
+| Triage Intelligence      | Triage Engine                                      | Evidence/confidence proposals, optional admitted auto-apply           |
+| Code Intelligence        | Code Context                                       | Repo-grant intersection, citations, symbols, commits, PRs, and tests  |
+| Coding Sessions          | Coding Work Sessions                               | Local, Pylon, Agent Computer, managed, or attached runtime placement  |
+| Diffs                    | Work Review                                        | Native Forge/Git projection beside intent, evidence, and verification |
+| Guided Reviews           | Review Guides                                      | Regenerable evidence-linked chapters, never approval authority        |
+| Reviews queue            | Review Inbox                                       | Priority from product graph, owner state, risk, and failed checks     |
+| Pulse and Insights       | Product Pulse and Outcomes                         | Accepted-outcome, rework, cost, quality, and cycle-time metrics       |
+| MCP                      | Typed API, generated client, CLI, and optional MCP | Durable contracts and receipts independent of model transcripts       |
+
+### 5.2 Explicit non-capabilities
+
+This port does not include:
+
+- a Linear connector or import dependency;
+- Linear-compatible OAuth, webhooks, API objects, URLs, or app users;
+- a promise of pixel-identical UI;
+- a copy of Linear's proprietary models or implementation;
+- broad autonomous mutation before product contracts and assurance exist; or
+- a Nostr relay treated as OpenAgents authorization or verification.
+
+## 6. Native domain model
+
+### 6.1 Product Space
+
+`ProductSpace` is the top-level native work boundary.
 
 ```text
-verified Linear issue event
-  -> bounded context fetch under the triggering principal
-  -> classification proposal
-  -> confidence + evidence refs
-  -> human disposition or admitted auto-apply policy
-  -> exact Linear mutation
-  -> canonical response + signed projection + receipt
+ProductSpace
+  ref
+  ownerScopeRef
+  displayProfileRef
+  memberPolicyRef
+  defaultGuidanceBundleRef?
+  defaultWorkroomRef
+  initiativeRefs[]
+  teamRefs[]
+  projectRefs[]
+  nostrIdentityRef?
+  projectionPolicyRef
+  createdAt
+  archivedAt?
 ```
 
-Suggestions should cover duplicate candidates, team, label, priority, project,
-and routing. Each suggestion must expose source refs and confidence. A low-
-confidence result asks or stops. An explanation is useful context, not proof of
-correctness.
+It is an OpenAgents object. A NIP-29 room or other Nostr address can project its
+collaboration context, but does not create the Product Space or its authority.
 
-### 6.8 Code Intelligence
+### 6.2 Planning graph
 
-Linear-linked code intelligence should use the same repository permission
-intersection as execution:
+The planning graph consists of:
+
+- `Initiative` — strategic outcome with owners, evidence, projects, risks, and
+  target horizons;
+- `Project` — bounded deliverable with team, lead, status, scope, milestones,
+  workroom, agents, budget, and verification policy;
+- `Cycle` — a timebox and capacity view;
+- `Milestone` — a meaningful project checkpoint;
+- `WorkItem` — the basic unit of product intent, execution, and disposition;
+- `WorkItemRelation` — parent, subitem, blocks, blocked-by, duplicates,
+  relates-to, supersedes, or caused-by;
+- `CustomerSignal` — private feedback or operational evidence linked to work;
+- `Document` — versioned product or engineering context;
+- `Decision` — an accountable choice with options, evidence, actor, and date;
+  and
+- `Label`, `State`, `Priority`, and `ServiceLevelPolicy` — typed configuration,
+  not arbitrary display strings when they affect behavior.
+
+### 6.3 Work Item
+
+```text
+WorkItem
+  ref
+  productSpaceRef
+  teamRef
+  projectRef?
+  initiativeRefs[]
+  cycleRef?
+  milestoneRef?
+  parentRef?
+  relationRefs[]
+  customerSignalRefs[]
+  documentRefs[]
+  title
+  intentBodyRef
+  stateRef
+  priorityRef
+  labelRefs[]
+  accountableOwnerRef
+  agentDelegateRef?
+  activeWorkSessionRef?
+  workroomRef
+  threadRef
+  repositoryRefs[]
+  acceptanceContractRef?
+  verificationPolicyRef?
+  budgetPolicyRef?
+  evidenceRefs[]
+  resultRefs[]
+  ownerDispositionRef?
+  revision
+  createdAt
+  updatedAt
+  archivedAt?
+```
+
+The body is not authority. Requirements, acceptance, grants, and verification
+use their own typed records.
+
+### 6.4 Accountable owner and agent delegate
+
+The most important Linear behavior to port is the separation between the human
+who remains accountable and the agent doing the current work.
+
+```text
+accountableOwnerRef  -> person or admitted accountable role
+agentDelegateRef     -> current agent executor
+delegationGrantRef   -> subject, tools, budget, time, disclosure, stop policy
+workSessionRef       -> execution and activity
+verificationRef      -> host or independent verification
+ownerDispositionRef  -> accept, reject, revise, defer, or supersede
+```
+
+An agent is a first-class participant, but it does not become a legal person,
+financial owner, release authority, employment principal, or accountable human.
+
+### 6.5 Agent Member
+
+```text
+AgentMember
+  ref
+  profileRef
+  ownerRef
+  nostrPubkey?
+  ownerAttestationRef?
+  runtimeAdapterRefs[]
+  capabilityRefs[]
+  skillRefs[]
+  allowedToolPolicyRef
+  placementPolicyRef
+  memoryPolicyRef
+  budgetPolicyRef
+  currentState
+  activeSessionRefs[]
+  activitySummaryRef
+  revocationRef?
+```
+
+Agents appear in people and agent rosters, mentions, assignment pickers,
+project membership, workroom presence, activity, filters, Inbox, and analytics.
+
+### 6.6 Work Session
+
+`WorkSession` is the native equivalent of the useful AgentSession concept.
+
+```text
+WorkSession
+  ref
+  workItemRef
+  workroomRef
+  threadRef
+  runRef
+  agentRef
+  initiatingActorRef
+  delegationGrantRef
+  contextManifestRef
+  planRef?
+  placementRef
+  requestedRuntimeRef
+  effectiveRuntimeRef
+  budgetRevision
+  generation
+  state
+  activityCursor
+  artifactRefs[]
+  providerResultRef?
+  verificationRef?
+  ownerDispositionRef?
+  blockerRefs[]
+  startedAt
+  terminalAt?
+```
+
+The session survives client disconnect and provider failure. Its state is not a
+transient chat stream.
+
+### 6.7 Work Activity
+
+| Activity kind  | Meaning                                               | Privacy rule                                                    |
+| -------------- | ----------------------------------------------------- | --------------------------------------------------------------- |
+| `progress`     | Safe summary of current work                          | Never expose hidden chain of thought or raw provider trace      |
+| `plan`         | Structured step or plan revision                      | Bind exact revision, actor, and reason                          |
+| `elicitation`  | Question, approval request, or missing input          | Durable, deadline-aware, and answer-fenced                      |
+| `action`       | Typed tool attempt and result                         | Include subject, grant, idempotency, and receipt refs           |
+| `artifact`     | Commit, PR, report, screenshot, document, or evidence | Use digest and access-controlled reference                      |
+| `result`       | Agent or provider result                              | Not verified or accepted by itself                              |
+| `verification` | Test, review, replay, or oracle result                | Preserve producer and verifier distinction                      |
+| `error`        | Typed failure or blocker                              | Distinguish retryable, denied, stale, interrupted, and terminal |
+| `disposition`  | Human or admitted authority decision                  | Separate from agent output and verification                     |
+
+## 7. Nostr-centric work graph
+
+### 7.1 Core rule
+
+Every important native collaboration object has:
+
+- a stable OpenAgents ref;
+- an owner and audience;
+- a typed revision and causal parents;
+- an optional signed Nostr event or addressable projection;
+- exact source and admission refs;
+- an OpenAgents canonical projection; and
+- public-safe evidence and receipt refs where allowed.
+
+Nostr is the default signed interoperability envelope for people, agents,
+workrooms, messages, delegations, portable progress, code coordination, and
+public-safe evidence. OpenAgents still evaluates whether an event has product
+meaning.
+
+### 7.2 Work graph shape
+
+```text
+Product Space identity
+  ├── Team workrooms
+  │   ├── Project workrooms
+  │   │   ├── Work Item thread
+  │   │   │   ├── accountable owner / agent delegate
+  │   │   │   ├── plan and activity
+  │   │   │   ├── questions and answers
+  │   │   │   ├── code and artifact refs
+  │   │   │   ├── review and verification
+  │   │   │   └── owner disposition / closeout
+  │   │   └── Project decisions and milestones
+  │   └── Team documents and guidance
+  ├── Initiatives and roadmap projections
+  ├── Agent roster and signed profiles
+  └── Inbox, search, and outcome projections
+```
+
+### 7.3 Protocol composition
+
+Use standard NIPs before custom kinds. Do not depend on NIP-31 as the fallback
+strategy; the current repository analysis records it as unrecommended.
+
+| Need                           | Candidate protocol                             | Boundary                                                       |
+| ------------------------------ | ---------------------------------------------- | -------------------------------------------------------------- |
+| Event envelope and causal refs | NIP-01 and NIP-10                              | Signature proves key and bytes only                            |
+| Team/project workrooms         | NIP-29                                         | Relay authority is room-scoped, not OpenAgents authority       |
+| Private person/agent exchange  | NIP-17 over NIP-44 and NIP-59                  | Audience and product grants remain explicit                    |
+| Addressable app data           | NIP-78 or another admitted addressable profile | Kind/profile selection requires collision review               |
+| Handler discovery              | NIP-89                                         | Advertisement is not capability admission                      |
+| HTTP proof                     | NIP-98                                         | One exact request, not a general session or permission         |
+| Remote signer                  | NIP-46                                         | Signer consent is separate from product-action admission       |
+| Relay preferences              | NIP-65                                         | Relay selection does not change product authority              |
+| Expiration                     | NIP-40                                         | Best-effort, not guaranteed deletion                           |
+| Code collaboration             | NIP-34                                         | Git objects, refs, checks, and merges remain Git-authoritative |
+| Files and evidence             | Blossom with NIP-94 and NIP-92                 | Digest, access, retention, and audience remain required        |
+| Agent ownership and auth       | Buzz NIP-OA and NIP-AA profiles                | Attestation and bounded auth, never ambient authority          |
+| Agent persona                  | Buzz NIP-AP                                    | Persona is not a grant                                         |
+| Owner-decryptable memory       | Buzz NIP-AE                                    | Separate admission; work text is not memory by default         |
+| Live state and metrics         | Buzz NIP-AO and NIP-AM                         | Projections only, never billing or verification truth          |
+| Agent task request/result      | NIP-90 or OpenAgents NIP-LBR                   | Host admits execution; result is not verification              |
+| Read and attention state       | Buzz NIP-RS pattern                            | User-private projection, not work-item authority               |
+| Reminders and push leases      | Buzz NIP-ER and NIP-PL patterns                | Canonical scheduler/delivery ledgers remain OpenAgents-owned   |
+
+### 7.4 Event admission
+
+```text
+signed event received
+  -> verify bytes, signature, kind/profile, timestamp, audience, and relay
+  -> resolve hosted identity and owner scope
+  -> resolve current Product Space, workroom, subject, and generation
+  -> intersect product grant, role, tool policy, budget, and state transition
+  -> admit or reject exact intent
+  -> persist canonical ProductWorkEvent and projection transaction
+  -> publish Khala Sync delta
+  -> emit safe Nostr outcome/receipt projection
+```
+
+A relay acknowledgement is retained, but canonical state changes only after
+OpenAgents admission.
+
+### 7.5 Privacy
+
+Public or third-party relays receive only public-safe material:
+
+- opaque stable refs;
+- public profiles and explicitly public work;
+- state, causal, schema, revision, and digest fields;
+- bounded public-safe progress;
+- public Git refs; and
+- dereferenceable public receipts.
+
+Do not publish:
+
+- private Product Space, work item, document, customer, or discussion bodies;
+- raw prompts, model traces, chain of thought, provider payloads, or local
+  histories;
+- private repository source, paths, patches, logs, or artifacts;
+- emails, phone numbers, customer identity, credentials, or account metadata;
+- wallet, invoice, payment, or settlement material; or
+- unrestricted bearer URLs.
+
+Private work remains in the admitted OpenAgents store. Where Nostr carriage is
+useful, use explicit audience encryption and still minimize content. NIP-29
+`private` is relay access policy, not end-to-end encryption.
+
+## 8. Native product features
+
+### 8.1 Product planning
+
+The system needs first-class views and commands for:
+
+- initiatives and roadmap horizons;
+- projects, leads, status, scope, risks, milestones, and progress;
+- cycles, team capacity, carryover, and completion;
+- work items, subitems, dependencies, duplicates, and supersession;
+- documents, specifications, decisions, and comments;
+- customer signals linked to product work without exposing customer identity;
+- labels, priorities, service levels, and saved views; and
+- exact history for every field and relation change.
+
+Agent actions use the same commands as people, with a disclosed agent actor and
+grant. No model writes storage directly.
+
+### 8.2 Skills
+
+A `SkillDefinition` is a versioned reusable work procedure:
+
+```text
+SkillDefinition
+  ref
+  ownerScopeRef
+  revision
+  sourceDigest
+  intendedSubjects[]
+  compatibleAgents[]
+  requiredContext[]
+  allowedToolPolicyRef
+  expectedOutputSchemaRef
+  stopConditions[]
+  verificationPolicyRef
+  budgetPolicyRef
+  publicationState
+```
+
+One source compiles to Codex, Claude, ACP, native OpenAgents, and other admitted
+runtimes. Harness text is a projection, not the skill's authority.
+
+### 8.3 Guidance
+
+`GuidanceBundle` stores durable organizational knowledge and operating policy.
+
+Candidate precedence:
+
+```text
+repository invariants and admitted ProductSpec
+  > owner policy
+  > Product Space guidance
+  > team guidance
+  > project guidance
+  > work-item instruction
+  > skill defaults
+  > agent defaults
+```
+
+The owning ProductSpec must select exact precedence. Deny conflicts fail
+closed. A run records every Guidance revision it consumed. Natural language
+cannot grant tools, budgets, repository access, release, or settlement.
+
+### 8.4 Loops
+
+`LoopDefinition` is a native recurring or event-driven agent workflow.
+
+```text
+LoopDefinition
+  ref
+  ownerScopeRef
+  draftRevision
+  publishedRevision
+  triggerSpec
+  conditionSpec
+  agentRef
+  skillRef?
+  guidanceRefs[]
+  toolPolicyRef
+  approvalPolicyRef
+  budgetPolicyRef
+  concurrencyPolicyRef
+  retryPolicyRef
+  circuitBreakerRef
+  selfTriggerExclusionRefs[]
+  state
+  nextEligibleAt?
+  runHistoryRef
+```
+
+Supported triggers can include:
+
+- work item created, changed, moved to triage, blocked, or stale;
+- customer signal received;
+- code check, deployment, incident, or monitoring event;
+- work session completed, failed, or waiting;
+- review requested or changes requested;
+- scheduled time; and
+- signed workroom event from an admitted actor.
+
+Loops start in suggest/ask mode. Automatic mutation requires measured
+confidence, exact tools, bounded subjects, budgets, circuit breakers, and an
+admitted policy revision.
+
+### 8.5 Triage Engine
+
+The native Triage Engine proposes:
+
+- team and project;
+- duplicate relationships;
+- labels and priority;
+- accountable owner and possible agent delegate;
+- issue type and service-level policy;
+- related customer signals, documents, decisions, code, and prior work;
+- whether the item is ready for an agent investigation; and
+- required questions when context is insufficient.
+
+```text
+new native work item
+  -> authorized context retrieval
+  -> classification and duplicate candidates
+  -> confidence + evidence refs
+  -> human disposition or admitted auto-apply policy
+  -> canonical mutation + receipt
+```
+
+The system measures proposal acceptance, correction, false routing, and
+downstream outcome. Explanation is not proof.
+
+### 8.6 Code Context
+
+Code Context links product intent to repositories without making repository
+access ambient.
 
 ```text
 effective code access
-  = OpenAgents owner grant
-  ∩ Linear triggering-principal permission
-  ∩ connector installation scope
+  = owner grant
+  ∩ Product Space and project policy
   ∩ repository-host permission
-  ∩ task-local path and tool policy
+  ∩ work-item repository refs
+  ∩ path/tool policy
+  ∩ runtime containment
 ```
 
-Answers should return file, symbol, commit, PR, and evidence refs. They must not
-copy private source into Linear or Nostr unless the explicit audience and data
-policy permit it. Code search does not grant code mutation.
+Answers return exact file, symbol, commit, PR, issue, test, and evidence refs.
+Search does not grant mutation. Generated summaries retain source revisions and
+can be invalidated when code changes.
 
-### 6.9 Coding Sessions
+### 8.7 Coding Work Sessions
 
-A Linear coding session should become a normal OpenAgents run placement, not a
-special unreceipted cloud path.
-
-The session can run on:
+A work item can launch a native coding session on:
 
 - an owner-local Pylon;
 - an admitted Agent Computer;
 - an admitted managed environment;
-- an attached external agent runtime; or
-- a future separately admitted provider lane.
+- an attached existing agent preserving its home and credentials; or
+- another separately admitted runtime lane.
 
-The run records requested and effective runtime, model, account, workspace,
-commit, containment, tools, grants, budget, and verification. Linear receives
-safe activity and artifact refs. Raw provider events, local paths, credentials,
-private prompts, and private repository material remain on the owning host.
+The session records:
 
-### 6.10 Diffs and Guided Reviews
+- requested and effective agent, runtime, model, account, and placement;
+- repository, branch, pinned commit, worktree, and containment;
+- context manifest, Skills, Guidance, tools, grants, and budget;
+- plan, progress, questions, actions, artifacts, and failures;
+- provider result separately from host verification;
+- PR and review refs; and
+- owner disposition and terminal closeout.
 
-Linear Diffs proves the value of reviewing code beside product intent. The
-OpenAgents design should preserve that outcome without treating Linear as a Git
-forge.
+No private runtime data is copied into a public work event merely to make the
+session visible.
 
-- Git host or OpenAgents Forge owns Git objects, refs, PR state, checks,
-  comments, review state, and merge outcome.
-- Linear owns its issue association and Linear-side review projection.
-- OpenAgents owns the run, evidence, verification, AssuranceSpec evaluation,
-  and owner disposition.
-- Nostr can carry signed NIP-34 coordination, guide refs, review requests, and
-  closeout refs.
+### 8.8 Work Review and Guided Reviews
 
-Guided Reviews should be evidence-linked, regenerable projections. They can
-order a change into conceptual chapters and point to exact diff spans, tests,
-requirements, and risks. They cannot approve, verify, or merge a change.
+The review surface places code beside the native work item and product context.
 
-### 6.11 MCP
+It includes:
 
-Linear MCP is useful for discovery and bounded operator flows. It must not be
-the only integration boundary.
+- changed files and structural diff views;
+- commit, branch, PR, check, review, and merge state from the Git authority;
+- work-item intent, project, customer signals, documents, and decisions;
+- agent plan, actions, evidence, tests, screenshots, and verification;
+- inline comments, replies, reactions, approvals, and change requests under
+  exact user authority;
+- agent follow-up for bounded fixes; and
+- an evidence-linked Guide that groups changes by implementation purpose.
 
-First-class support needs a typed connector because the product requires:
+A Guide is a regenerable explanation. It never approves, verifies, or merges.
+Git objects and refs remain canonical in Git or OpenAgents Forge.
 
-- durable app installation and revocation;
-- verified event ingress;
-- stable subject mapping;
-- exact activity timing;
-- idempotent outbound actions;
-- reconciliation after missed webhooks;
-- agent app-user identity;
-- explicit data redaction; and
-- receipts independent of a model's tool transcript.
+### 8.9 Inbox and notifications
 
-An MCP server can remain an optional interactive adapter over those contracts.
-Generic “call Linear” tools are forbidden. Each tool binds provider, actor,
-subject kind, subject ref, operation, and idempotency key.
+The Inbox is an attention projection, not another work store.
 
-### 6.12 Inbox, notifications, and mobile
+Group attention by stable subject and reason:
 
-Adapt Buzz's attention model and Linear's review queue into one stable Inbox
-projection. Candidate attention classes are:
+- assigned to me;
+- delegated agent active;
+- waiting for my answer or approval;
+- mentioned;
+- blocked or stale;
+- agent failed or exceeded budget;
+- verification completed or disagreed;
+- review requested or checks failed;
+- decision required;
+- Loop paused or circuit-broken; and
+- signer, relay, Sync, runtime, or repository degraded.
 
-- issue assigned to the human;
-- issue delegated to an agent;
-- session waiting for input;
-- agent plan or scope changed;
-- action denied or run stalled;
-- review requested;
-- check failed;
-- verification complete;
-- writeback conflict;
-- owner disposition required; and
-- connector, relay, signer, or runtime degraded.
+Support “by people,” “by agents,” “high-risk,” and “accepted outcome” filters so
+automation does not bury human work.
 
-Mobile should support read, answer, steer, approve or reject where authorized,
-pause, stop, and review. It must use the same commands and receipts as desktop;
-it does not create a mobile authority plane.
+### 8.10 Product Pulse and Insights
 
-### 6.13 Credits and budgets
+Measure outcomes rather than raw agent activity:
 
-Do not copy a pooled credit balance as the only guard.
+- attempted versus accepted work sessions;
+- time from intake to triage, start, verified result, and accepted outcome;
+- human review minutes;
+- rework, rejection, rollback, and incident rate;
+- cost and tokens per accepted result;
+- agent contribution by task class;
+- Loop proposal and auto-apply precision;
+- blocked time and elicitation response time;
+- cycle and project outcome accuracy; and
+- verification disagreement and escaped-defect rates.
 
-Each run must bind:
+NIP-AM and provider counters can enrich views but never replace exact ledgers.
 
-- owner and funding scope;
-- per-run and rolling time/token/cost ceilings;
-- allowed provider accounts and fallback order;
-- retry and failure charging policy;
-- approval threshold;
-- exact usage rows; and
-- terminal budget disposition.
+### 8.11 API, CLI, and MCP
 
-A NIP-AM event, Linear activity, provider counter, or agent claim is a
-projection. It is not billing or settlement truth.
+The native contract should generate:
 
-### 6.14 Product planning and customer context
+- TypeScript clients;
+- headless transport;
+- Pylon JSON commands;
+- web/mobile/Desktop protocol bindings; and
+- an optional MCP adapter.
 
-Linear's advantage is not only issue execution. Its initiatives, roadmaps,
-projects, cycles, milestones, dependencies, subissues, documents, customer
-requests, and SLA signals explain why work matters and what it can block.
+MCP is a client of the native contract, not the product's storage or authority
+boundary. Each command binds actor, Product Space, exact subject, operation,
+expected revision, grant, budget, and idempotency key.
 
-OpenAgents should absorb that graph as typed, permissioned context:
-
-- preserve external object type, stable ref, source version, state, parent,
-  ordered relation, and audience;
-- retain dependency direction and distinguish blocked-by from blocking;
-- bind each summary or context package to the source revisions it used;
-- let planning context rank attention but never silently widen execution;
-- keep customer identities and request bodies out of public receipts and Nostr
-  projections;
-- use product milestones and cycles as scheduling inputs, not proof of urgency
-  or permission; and
-- return accepted outcomes and verified artifact refs to the exact originating
-  issue, project, initiative, and customer-request links.
-
-The first slice does not need to mirror the entire graph. Its schemas must avoid
-an issue-only dead end so later planning and customer context can attach without
-changing identity or authority semantics.
-
-## 7. Nostr profile for Linear-linked work
-
-### 7.1 Design law
-
-Use standard NIPs first, the already selected Buzz companion profiles second,
-and new custom kinds only after an explicit collision and interoperability
-review.
-
-Do not depend on NIP-31 as the fallback strategy. The repository's current NIP
-candidate audit records it as unrecommended upstream. Unknown events must have
-a current, explicit application-handler and compatibility story.
-
-### 7.2 Initial composition
-
-| Need                                        | Protocol candidate                                     | OpenAgents boundary                                                    |
-| ------------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------- |
-| Signed event envelope and causal refs       | NIP-01 and NIP-10                                      | Signature proves key control only                                      |
-| Relay-qualified team/project room           | NIP-29                                                 | Room authority remains relay-scoped                                    |
-| Private person/agent exchange               | NIP-17 over NIP-44 and NIP-59                          | Audience and signer grants remain host-admitted                        |
-| Addressable app-specific mapping projection | NIP-78 or another current standard addressable profile | Canonical `LinearWorkLink` remains in OpenAgents                       |
-| Handler discovery                           | NIP-89                                                 | Advertisement is not capability admission                              |
-| HTTP proof                                  | NIP-98                                                 | Proof binds one request; hosted session and Linear OAuth stay separate |
-| Remote signer                               | NIP-46                                                 | Signer consent does not authorize the product action                   |
-| Relay preferences                           | NIP-65                                                 | Relay choice does not change product authority                         |
-| Event expiration                            | NIP-40                                                 | Best-effort relay deletion is not guaranteed erasure                   |
-| Code coordination                           | NIP-34                                                 | Git objects and refs remain authoritative in Git                       |
-| Files and large evidence                    | Blossom with NIP-94 and NIP-92                         | Signed manifest and digest; private artifacts remain access-controlled |
-| Agent owner proof and auth                  | Buzz NIP-OA and NIP-AA profiles                        | Attestation and session auth remain bounded                            |
-| Agent persona                               | Buzz NIP-AP                                            | Persona is not a capability grant                                      |
-| Owner-decryptable memory                    | Buzz NIP-AE                                            | Separate memory admission; Linear content is not memory by default     |
-| Live status and usage projection            | Buzz NIP-AO and NIP-AM                                 | Never accounting, acceptance, or health authority                      |
-| Ref-only task request/result                | NIP-90 or OpenAgents NIP-LBR                           | Host admits execution; result is not verification                      |
-| Read/attention state                        | Buzz NIP-RS pattern                                    | User-private projection, not canonical issue state                     |
-| Reminder and push hints                     | Buzz NIP-ER and NIP-PL patterns                        | Scheduler and delivery ledgers remain canonical                        |
-| Git signatures                              | Buzz NIP-GS pattern                                    | Complements, never replaces, Git verification                          |
-
-### 7.3 The signed projection graph
-
-The Nostr graph should carry only the minimum useful material:
+## 9. Service architecture
 
 ```text
-relay-qualified project room
-  └── Linear issue root projection
-      ├── accountable owner + bounded delegate refs
-      ├── context digest + authorized source refs
-      ├── delegation request
-      ├── session acknowledgement
-      ├── safe plan/progress events
-      ├── elicitation and answer refs
-      ├── action and artifact receipt refs
-      ├── PR/review/check refs
-      ├── provider result
-      ├── host verification
-      └── owner disposition / closeout
+Native clients and signed Nostr events
+  - Omega / Desktop / web / mobile / Pylon / generated client
+  - people, agents, workrooms, messages, delegations, reviews
+                     |
+                     v
+Product Work command gateway
+  - identity and audience resolution
+  - grant, role, revision, transition, tool, and budget admission
+                     |
+                     v
+Cloud SQL canonical Product Work event + projection transaction
+  - spaces, planning graph, work items, sessions, activities
+  - Skills, Guidance, Loops, triage, attention, review, outcomes
+          |                              |
+          v                              v
+Khala Sync                         Durable Nostr outbox
+  - desktop/web/mobile             - signed safe projections
+  - snapshots/deltas/cursors       - retry and relay receipts
+  - live agent graph               - multi-relay loss accounting
+          |
+          v
+Agent execution and code
+  - native runtime / attached agent / Pylon / Agent Computer
+  - Forge or external Git authority
+  - evidence, verification, owner disposition
 ```
 
-The graph is useful because any authorized client can rebuild chronology and
-provenance from signed events. It is not sufficient to rebuild private Linear
-state or OpenAgents authority from the relay alone.
+### 9.1 Canonical event families
 
-### 7.4 Content policy
+Candidate typed event families:
 
-Default Nostr projection is **ref-only and public-safe**:
+- Product Space created, member changed, policy changed, archived;
+- initiative/project/cycle/milestone created or revised;
+- work item created, classified, related, assigned, delegated, moved, closed,
+  reopened, superseded, or archived;
+- document/decision/customer-signal linked or unlinked;
+- session admitted, started, progressed, waiting, steered, stopped, failed,
+  provider-completed, verified, accepted, rejected, or superseded;
+- Skill/Guidance/Loop drafted, published, paused, revoked, or archived;
+- triage proposed, accepted, edited, rejected, or auto-applied;
+- review requested, commented, approved, changes requested, or merged by the
+  owning Git authority; and
+- receipt/evidence added, invalidated, or superseded.
 
-- opaque owner, workspace, team, project, issue, thread, run, and receipt refs;
-- state and activity kinds;
-- content and artifact digests;
-- bounded summaries approved for the audience;
-- signer, schema, revision, idempotency, and causal refs; and
-- public repository or PR refs only when already public.
+Each event has actor, subject, owner scope, audience, schema version, expected
+revision, idempotency key, causal parents, source refs, and public-safe result.
 
-Never publish these to public or third-party relays:
+### 9.2 Projection law
 
-- Linear OAuth tokens or webhook secrets;
-- raw webhook bodies;
-- private issue, comment, document, customer, or attachment content;
-- workspace or channel names that disclose private organization data;
-- raw prompts, model traces, chain of thought, provider payloads, or session
-  histories;
-- private repository source, paths, patches, logs, or artifact URLs;
-- emails, phone numbers, customer identifiers, or private profile data;
-- provider credentials or account metadata;
-- wallet, payment, invoice, or settlement material; or
-- unrestricted bearer links.
+All clients derive from the same accepted event sequence and cursor. Optimistic
+UI can show a pending intent, but it cannot show a mutation as confirmed before
+the canonical event is admitted. Reconnect must report gaps, truncation, stale
+generation, or partial history explicitly.
 
-NIP-44 encryption protects content from a relay operator under the intended
-key model, but ciphertext metadata, retention, recipient mistakes, key loss,
-and copied relay data remain risks. A NIP-29 `private` tag is access policy, not
-end-to-end encryption.
+## 10. First-class user experience
 
-### 7.5 Identity and permission intersection
+### 10.1 Omega target
 
-For an action originating from a Nostr-linked Linear context:
+Omega is the future native primary surface:
 
 ```text
-effective authority
-  = verified Nostr signer binding
-  ∩ hosted OpenAgents owner/session scope
-  ∩ active OpenAgents capability grant
-  ∩ active Linear installation scope
-  ∩ triggering Linear principal permission
-  ∩ exact mapped subject
-  ∩ operation policy
-  ∩ remaining budget and time
-```
+Navigation
+  Inbox
+  My work
+  Initiatives
+  Projects
+  Cycles
+  Reviews
+  Teams / workrooms
+  People / agents
 
-For a Git action, add the effective Git-host principal and repository policy.
-If any term is missing, stale, or ambiguous, deny or ask.
-
-## 8. Connector and synchronization architecture
-
-```text
-Linear API / webhooks / agent sessions
-                 |
-                 v
-Google Cloud Linear connector
-  - OAuth token broker
-  - signature and replay verification
-  - delivery acknowledgement
-  - object normalizer
-  - reconciliation reader
-                 |
-                 v
-Cloud SQL connector ledger + LinearWorkLink authority
-  - exact refs and source versions
-  - dedupe and generation fencing
-  - trigger decisions
-  - command inbox/outbox
-                 |
-       +---------+----------+
-       |                    |
-       v                    v
-OpenAgents workroom/run     signed Nostr projection outbox
-  - grants and budgets        - room/thread refs
-  - execution and tools       - identity and causal events
-  - evidence/verification     - safe progress/closeout refs
-  - owner disposition         - relay acknowledgements
-       |                    |
-       +---------+----------+
-                 |
-                 v
-subject-bound Linear writeback
-  - app/user actor selection
-  - idempotency and source-version check
-  - canonical Linear response
-  - writeback receipt and reconciliation
-```
-
-### 8.1 Linear to OpenAgents
-
-1. Receive raw bytes and headers on the host-side connector.
-2. Verify the exact Linear signature scheme, timestamp window, installation,
-   and delivery identity before parsing into trusted fields.
-3. Persist a minimal delivery envelope and dedupe key. Do not persist or expose
-   the raw body beyond the bounded verification need.
-4. Return a durable acknowledgement before long-running work.
-5. Normalize the exact object, actor, subject, source version, audience, and
-   source refs.
-6. Resolve the owner-scoped installation and `LinearWorkLink`.
-7. Record stale, duplicate, conflicting, unmapped, or revoked deliveries as
-   typed dispositions.
-8. Evaluate trigger policy and capability intersection.
-9. Start or update an OpenAgents workroom/run only after admission.
-10. Append safe Linear and Nostr projections through their own durable outboxes.
-
-### 8.2 OpenAgents to Linear
-
-1. Accept a typed intent, not a generic provider request.
-2. Bind installation, actor, subject kind, subject ref, operation, expected
-   source version, grant, and idempotency key.
-3. Recheck installation health, current permission, policy, budget, and
-   generation.
-4. Perform the exact external request through the host-side token broker.
-5. Record response status, external operation ref, returned source version,
-   public-safe failure, and reconciliation deadline.
-6. Apply canonical Linear state only from Linear's response or a later verified
-   read, never from the outgoing request.
-7. Emit the OpenAgents receipt and Nostr projection after canonical recording.
-8. Retry only when the operation and provider contract are idempotent. Otherwise
-   reconcile before another attempt.
-
-### 8.3 Missed webhooks and drift
-
-Webhook delivery is acceleration, not the only truth source. The connector
-needs bounded reconciliation by installation and object cursor:
-
-- compare source versions and last-reconciled time;
-- recover missed issues, comments, activities, and session transitions;
-- detect objects deleted or made inaccessible;
-- stop projecting content after scope revocation;
-- preserve tombstones and public-safe loss receipts where allowed; and
-- never ask a user to perturb an external object merely to provoke a webhook.
-
-### 8.4 Deletion and retention
-
-Linear deletion or revoked access must:
-
-1. mark the link inaccessible or tombstoned;
-2. stop new context fetches and writes;
-3. purge derived plaintext caches according to policy;
-4. revoke affected agent context grants;
-5. rebuild search, memory, and attention projections without the source;
-6. publish only allowed tombstone or revocation refs; and
-7. state honestly that Nostr events copied by independent relays or peers may
-   not be erasable.
-
-This is why private Linear bodies should not be placed on public relays, even
-when encrypted.
-
-## 9. First-class user journeys
-
-### 9.1 Install and bind
-
-1. An owner installs the OpenAgents Linear app.
-2. The UI previews requested workspace, team, object, webhook, and write scopes.
-3. The host stores credentials in the credential broker, never the renderer.
-4. The owner binds selected Linear teams/projects to OpenAgents work contexts
-   and optional NIP-29 room coordinates.
-5. A dry-run reconciliation reports accessible objects, missing scopes,
-   ambiguous mappings, and privacy posture.
-6. The owner explicitly publishes the binding revision.
-
-### 9.2 Delegate a Linear issue to an OpenAgents agent
-
-1. The human remains the accountable assignee.
-2. The human selects an OpenAgents app user or invokes an admitted Loop.
-3. Linear creates or updates an `AgentSession` and sends a verified event.
-4. OpenAgents durably acknowledges, resolves the work link, checks the grant,
-   and publishes an initial activity.
-5. The run receives only the authorized context package and repository scope.
-6. OpenAgents streams safe plan, progress, questions, and artifact refs to
-   Linear and the signed Nostr thread.
-7. A result remains `provider_completed` until host verification finishes.
-8. Linear shows the PR or artifact, verification state, and required human
-   disposition.
-9. Acceptance, merge, and release remain separate authorized actions.
-
-### 9.3 Agent asks a question
-
-1. The run creates a durable elicitation with choices, deadline, and blocker.
-2. Linear, OpenAgents clients, and the authorized Nostr thread receive the same
-   projection.
-3. The first valid answer wins under generation fencing.
-4. Other clients converge on the answer receipt.
-5. Timeout follows the declared stop, default, or escalation policy; it never
-   silently invents permission.
-
-### 9.4 Triage a new issue
-
-1. Verified issue delivery enters the owner-private event ledger.
-2. A published Loop revision matches the exact team and filter.
-3. The agent gathers only authorized issue, project, code, and history context.
-4. It publishes a classification and duplicate proposal with confidence and
-   source refs.
-5. A human accepts, edits, or rejects during the first slice.
-6. The connector performs exact subject-bound updates and records their Linear
-   versions.
-
-### 9.5 Review agent-written code
-
-1. The issue links to a Git-host PR and OpenAgents run.
-2. The review surface composes product intent, plan, changed files, tests,
-   checks, evidence, and risk.
-3. A Guide groups the diff by implementation purpose with exact source spans.
-4. Review comments are written under the effective Git user, not an ambient
-   service identity.
-5. Agent follow-up creates a new generation of the same bounded run or a linked
-   run.
-6. Host verification reruns against the resulting commit.
-7. Human approval and merge are distinct receipts.
-
-### 9.6 Relay, connector, or runtime failure
-
-- Relay down: retain canonical Linear/OpenAgents operation, queue or mark the
-  signed projection, and show a Nostr-degraded state.
-- Linear API down: do not claim writeback; retain the intent and reconcile.
-- Webhook delayed: reconciliation catches up by source version.
-- Agent crashed: show interrupted or stalled, preserve activities and
-  artifacts, and require an admitted retry or replacement.
-- Signer unavailable: preserve unsigned draft state; never silently switch
-  identity.
-- Permission revoked: stop context fetch and mutation immediately, revoke
-  dependent grants, and surface the exact blocked subject.
-
-## 10. Surfaces
-
-### 10.1 OpenAgents Desktop now
-
-The retained Desktop can validate the contracts before Omega cutover:
-
-- Linear installation and mapping health;
-- issue-linked workroom header and context rail;
-- human-owner and agent-delegate badges;
-- session plan, activities, elicitation, artifacts, and errors;
-- pause, stop, retry, and owner disposition controls;
-- PR, checks, diff, evidence, and verification refs; and
-- connector, runtime, signer, and relay degradation.
-
-### 10.2 Omega target
-
-Omega is the eventual native first-class surface. It should render the same
-monorepo-owned TypeScript/Effect contracts through its generated local protocol
-and supervised Rust components.
-
-Candidate native structure:
-
-```text
-Project panel
-  Linear
-    My issues
-    Delegated
-    Waiting for me
-    Reviews
-    Projects / teams
-
-Editor center
-  issue / document / diff / guide / artifact
+Center
+  work item / project / document / decision / diff / guide / artifact
 
 Agent panel
-  active Linear-linked session
-  plan + activity + elicitation + controls
+  active Work Session
+  plan / progress / questions / actions / artifacts / controls
 
 Inspector
-  authority + scopes + source versions + receipts + Nostr refs
+  owner / delegate / grants / revisions / evidence / verification / receipts
+  signed Nostr identities and event refs
 ```
 
-This does not authorize an Omega implementation packet. The separate Omega
-repository owns Rust/GPUI implementation and must consume admitted monorepo
-contracts.
+Buzz UI lessons to preserve:
+
+- nested workroom tree;
+- drag, drop, and reparent under typed commands;
+- unread, mentions, questions, and blocked badges;
+- fuzzy person/agent picker;
+- explicit membership and capability inspector;
+- presence and runtime health;
+- compact thread and review navigation; and
+- keyboard-first creation, assignment, delegation, and triage.
+
+### 10.2 Current Desktop proof surface
+
+Before Omega cutover, current Desktop can prove the shared contracts:
+
+- product-space and project navigation;
+- work-item list and detail;
+- human owner and agent delegate;
+- Work Session activity, elicitation, controls, evidence, and disposition;
+- diff, Guide, checks, verification, and receipts; and
+- Sync, runtime, signer, and relay degradation.
+
+This is migration evidence, not a decision to keep two desktop products.
 
 ### 10.3 Web
 
-Web should supply authenticated installation, scope, mapping, health, Loop,
-Guidance, history, and receipt administration through an admitted existing
-surface. Do not create a new public `/linear` product route from this document;
-the root web-surface contract and ProductSpec must admit any route change.
+Web can supply authenticated planning, work-item, document, Inbox, review,
+agent, Loop, Guidance, and administration views only after the web ProductSpec
+admits the route and information architecture. This document does not create a
+new public route.
 
-### 10.4 Pylon and API
+### 10.4 Mobile
 
-Pylon should expose bounded operator commands over the same contracts:
+Mobile uses the same contracts for:
+
+- Inbox and project status;
+- work-item read and edit;
+- answer, approve, reject, steer, pause, and stop;
+- agent/session visibility;
+- review and Guide reading;
+- lightweight diff and artifact inspection; and
+- signed handoff to desktop or Omega.
+
+Mobile is not an independent authority plane.
+
+## 11. Security and reliability
+
+### 11.1 Untrusted work content
+
+Work-item bodies, comments, documents, customer signals, attachments, Nostr
+events, imported logs, and code are untrusted data. They can contain prompt
+injection.
+
+The context compiler labels source, actor, audience, revision, and retrieval
+time. It separates data from authority-bearing instructions and rejects any
+attempt to widen tools, repositories, budgets, identities, disclosure,
+release, or settlement.
+
+### 11.2 Permission intersection
 
 ```text
-pylon linear installations list
-pylon linear mappings list
-pylon linear issue inspect <ref>
-pylon linear session status <ref>
-pylon linear session run <ref>
-pylon linear session closeout <ref>
-pylon linear reconcile --installation <ref>
+effective action authority
+  = hosted identity and owner scope
+  ∩ Product Space membership and role
+  ∩ exact subject grant
+  ∩ agent delegation grant when applicable
+  ∩ tool and transition policy
+  ∩ repository or external-system permission when applicable
+  ∩ current generation and expected revision
+  ∩ remaining time and budget
 ```
 
-Names are illustrative, not a CLI contract. Commands must return public-safe
-typed JSON, never tokens or raw external payloads.
+A Nostr signature or workroom membership is additional evidence, never a
+replacement for this intersection.
 
-## 11. Security and abuse model
+### 11.3 Idempotency and concurrency
 
-### 11.1 Untrusted Linear content
+- Every command has an app-owned idempotency key.
+- Every mutation checks expected revision or generation.
+- Duplicate signed events do not duplicate work.
+- Reused ids with changed payloads are conflicts.
+- One Work Session generation owns an active delegate lease.
+- A replacement or retry produces an explicit successor relation.
+- Loops exclude their own output classes and enforce concurrency limits.
 
-Issue bodies, comments, documents, attachments, customer messages, MCP output,
-and pasted logs are untrusted data. They can contain prompt injection or
-malicious instructions.
+### 11.4 Memory
 
-The context compiler must:
+Product work does not automatically become durable agent memory. Memory
+promotion requires an admitted memory policy, owner-readable representation,
+source refs, audience, retention, revocation, and tombstone behavior. Derived
+embeddings and graphs remain rebuildable projections.
 
-- label source, actor, object, audience, retrieval time, and source version;
-- separate data from authority-bearing instructions;
-- reject requests to widen tools, repositories, identities, budgets, or
-  disclosure;
-- sandbox or exclude attachments by type and policy;
-- retain provenance through summaries; and
-- require an explicit admitted instruction source for mutations.
+### 11.5 Deletion and retention
 
-### 11.2 Credential custody
+Native deletion must purge or tombstone canonical and derived OpenAgents state
+according to policy, revoke dependent grants, rebuild search and memory, and
+record what cannot be erased. Nostr events copied by independent relays or
+peers may survive; the product must never promise global erasure it cannot
+prove.
 
-- OAuth tokens and webhook secrets remain host-side.
-- Desktop, Omega GPUI, web renderer, mobile, agent prompt, Nostr event, logs,
-  receipts, and crash reports receive only public-safe refs and status.
-- Use per-installation rotation and revocation.
-- Distinguish app identity from a connected human Linear identity.
-- Use the least Linear scopes compatible with each operation.
+### 11.6 Failure honesty
 
-### 11.3 Confused-deputy prevention
+- Relay down: canonical OpenAgents work continues; signed projection is queued
+  or marked degraded.
+- Sync gap: client shows last confirmed cursor and gap state.
+- Agent crash: session becomes interrupted or stalled with recovery options.
+- Provider complete but tests fail: provider result stays unverified.
+- Verification disagrees: show both records and require disposition.
+- Git unavailable: do not invent PR, check, review, or merge state.
+- Signer unavailable: retain unsigned draft; do not silently change identity.
+- Budget exhausted: pause or stop under the declared policy.
+- Owner absent: follow the exact timeout/escalation rule; never infer approval.
 
-Every command binds the exact installation, actor, owner scope, team, object,
-operation, source version, grant, and idempotency key. A model cannot supply an
-arbitrary workspace id or tool name and thereby redirect a valid token.
+## 12. Ordered native implementation program
 
-### 11.4 Cross-tenant and cross-team isolation
+These are candidate packets, not admitted implementation issues.
 
-The 2026 Linear access-control incident documented in the Linear teardown is a
-direct product warning. Tests must cover:
+### OAW-00 — Product Work authority and schema freeze
 
-- private team versus workspace-wide objects;
-- guests and restricted members;
-- installation scopes changed after mapping;
-- actor-specific versus app-level reads and writes;
-- same issue identifiers in different workspaces;
-- cached context after access revocation;
-- search and memory results crossing team boundaries; and
-- Nostr room membership that does not match Linear membership.
+Define the native domain vocabulary, event families, state machines, role and
+grant matrix, audience classes, revisions, idempotency, projection rules,
+retention, and receipt semantics.
 
-### 11.5 Replay and duplication
+Exit: conformance fixtures fail closed on unknown actors, subjects, roles,
+events, transitions, revisions, audiences, and authority classes.
 
-Webhook delivery id plus installation and payload digest form the initial
-dedupe identity. A repeated delivery cannot create another run. A changed
-payload under a reused delivery id is a conflict and security signal. All
-outbound actions use app-owned idempotency keys and source-version checks.
+### OAW-01 — Product Space and planning graph
 
-### 11.6 Autonomy and runaway Loops
+Implement Product Space, teams, initiatives, projects, cycles, milestones,
+work items, subitems, relations, labels, documents, decisions, and customer-
+signal refs in Cloud SQL and Khala Sync.
 
-Use per-Loop concurrency, daily run/time/token/cost ceilings, repeated-failure
-circuit breakers, tool deny defaults, confidence gates, and self-trigger
-exclusion. A human can pause or revoke the Loop without waiting for the agent.
+Exit: desktop and a headless client create, edit, relate, archive, reconnect,
+and replay the same graph without optimistic confirmed state.
 
-## 12. Ordered candidate work packets
+### OAW-02 — signed identity and workrooms
 
-These are research candidates, not admitted implementation issues.
+Bind people and Agent Members to explicit identities, add team/project
+workrooms and work-item threads, implement the safe Nostr projection outbox,
+and preserve relay-qualified cursors and loss accounting.
 
-### LNOA-00 — authority and contract freeze
+Exit: two authorized clients rebuild the same signed causal thread; relay loss
+does not change canonical OpenAgents state or leak private content.
 
-Define Linear refs, installation, actor, object, work-link, session, activity,
-trigger, writeback, reconciliation, privacy, and receipt schemas. Name the
-authority owner for every field and operation. Revalidate current Linear API,
-webhook, OAuth, AgentSession, AgentActivity, and rate-limit contracts.
+### OAW-03 — owner, delegate, Work Session, and Work Activity
 
-Exit: conformance fixtures and an authority matrix fail closed on unknown
-providers, objects, actors, scopes, versions, and operations.
+Implement structural accountable owner, agent delegate, delegation grant,
+session, plan, safe activities, elicitation, controls, provider result,
+verification, and owner disposition.
 
-### LNOA-01 — installation and read-only ingress
+Exit: one native work item completes a no-spend owner-local agent journey with
+interrupt, resume, stale generation, denied action, and verification failure.
 
-Implement host-side OAuth custody, installation health, exact webhook
-verification, durable early acknowledgement, delivery dedupe, event-ledger
-normalization, read-only object fetch, and reconciliation.
+### OAW-04 — Skills and Guidance
 
-Exit: one private test workspace can deliver and reconcile issue/comment events
-without a duplicate run or raw-body/token leak.
+Implement versioned Skill definitions, runtime compilation, Guidance Bundles,
+precedence, conflict handling, history, audience, and run manifests.
 
-### LNOA-02 — work links and human/delegate identity
+Exit: every run proves the exact revisions it used; higher-authority deny
+cannot be overridden by lower natural-language instruction.
 
-Land `LinearWorkLink`, subject mapping, source-version fencing, human assignee,
-agent delegate, app-user binding, and revocation behavior.
+### OAW-05 — Inbox, search, and agent roster
 
-Exit: changing assignee, delegate, team access, or installation scope converges
-without collapsing identities or retaining unauthorized context.
+Implement attention reasons, grouping, unread/mentions/questions/reviews,
+person/agent filters, structured authorized search, agent cards, presence, and
+runtime health.
 
-### LNOA-03 — AgentSession and activity bridge
+Exit: a user can find every item requiring action without scanning raw chat or
+provider logs, and no private scope crosses search results.
 
-Map one Linear agent session to a durable OpenAgents workroom/thread/run. Return
-fast acknowledgement, safe progress, elicitation, action, response, and error
-activities. Keep provider completion separate from host verification and owner
-disposition.
+### OAW-06 — Triage Engine
 
-Exit: a bounded no-spend fixture completes end to end with typed failure,
-interrupt, resume, and stale-generation coverage.
+Implement duplicate, team, project, label, priority, owner/delegate, service-
+level, and readiness proposals with confidence, evidence, disposition, and
+measurement.
 
-### LNOA-04 — subject-bound writeback
+Exit: suggest/ask mode is usable and measurable; low-confidence or conflicting
+proposals never mutate automatically.
 
-Add exact tools for comment, issue property suggestion/application, delegate
-state, session activity, and result refs. Use actor-aware scopes, app-owned
-idempotency, outbox, canonical response recording, and reconciliation.
+### OAW-07 — Loops
 
-Exit: retries cannot duplicate comments or mutate the wrong issue; stale and
-revoked writes fail closed.
+Implement immutable draft/published revisions, event and schedule triggers,
+conditions, Skills, Guidance, approvals, budgets, circuit breakers, run
+history, self-trigger exclusion, pause, drain, revoke, and archive.
 
-### LNOA-05 — signed Nostr projection
+Exit: duplicate events, output echoes, retry storms, and external outages do
+not create duplicate or unbounded work.
 
-Define and implement the standard-NIP-first Linear projection profile, signer
-binding, safe content policy, durable outbox, relay receipts, reconnect, and
-rebuild. Reuse NIP-LBR for ref-only delegation where appropriate.
+### OAW-08 — Code Context and Coding Work Sessions
 
-Exit: two authorized clients rebuild the same causal Linear-linked session;
-relay loss does not change canonical Linear/OpenAgents state; private data does
-not enter public fixtures.
+Bind work items to exact repositories, commits, worktrees, context manifests,
+runtimes, agents, budgets, tests, artifacts, and PRs. Integrate Pylon, Agent
+Computer, attached agents, and native verification.
 
-### LNOA-06 — Skills, Guidance, and Triage
+Exit: one native work item reaches a verified PR through an exact pinned
+repository task without private runtime leakage or false completion.
 
-Compile versioned Skills and hierarchical Guidance into run context. Add
-suggest-only triage with confidence, source refs, disposition, and exact
-writeback.
+### OAW-09 — Work Review, diffs, and Guided Reviews
 
-Exit: conflicting Guidance fails closed; suggestion acceptance and rejection
-are measurable; no unapproved low-confidence mutation occurs.
+Implement issue-context diff review, checks, comments, change requests,
+approvals, agent follow-up, evidence-linked Guides, verification, and merge
+disposition under Git authority.
 
-### LNOA-07 — Loops
+Exit: reviewers can move from intent to changed code, proof, feedback, agent
+revision, verification, and merge without losing actor or authority identity.
 
-Add immutable draft/published revisions, Linear triggers, schedules, filters,
-budgets, circuit breakers, run history, self-trigger prevention, and pause/
-drain/revoke.
+### OAW-10 — Product Pulse, cross-client parity, and live acceptance
 
-Exit: duplicate delivery, writeback echo, retry storm, and external outage do
-not cause duplicate or unbounded runs.
+Implement accepted-outcome analytics and the admitted Omega, web, mobile, and
+Pylon surfaces. Exercise recovery, privacy, revocation, relay outage, Sync gap,
+agent failure, budget exhaustion, Git drift, and multi-client control.
 
-### LNOA-08 — coding, diffs, and verification
-
-Bind issue-linked coding sessions to exact repo/commit/verification, project
-safe activity to Linear, associate PRs, render evidence-linked Guided Reviews,
-and preserve Git authority.
-
-Exit: the first end-to-end real repository task reaches a PR, host
-verification, human review, merge disposition, and exact closeout without
-claiming that Linear or Nostr performed the merge.
-
-### LNOA-09 — first-class clients and live acceptance
-
-Ship the admitted Desktop/web contract surface, then Omega and mobile packets.
-Exercise multi-client control, reconnect, missed webhooks, relay failure,
-permission revocation, token rotation, deletion, and accessibility.
-
-Exit: one owner can start in Linear, observe and steer in OpenAgents, answer on
-mobile, review the PR, and close out from any authorized surface with one
-canonical history.
+Exit: one user can capture work, delegate it, observe/steer from another
+client, review verified code, and close the native work item with one canonical
+history and signed portable evidence.
 
 ## 13. First proof to build
 
-The first proof should be deliberately narrow:
+The first proof should demonstrate the corrected objective:
 
-> A human delegates one Linear issue to an OpenAgents app user while remaining
-> the assignee. A verified Linear webhook creates one durable OpenAgents
-> workroom/run. An owner-local Pylon performs a no-spend fixture against a
-> pinned repository and verification command. Safe plans, progress, a question,
-> result, host verification, and closeout refs return to Linear and a signed
-> Nostr thread. Replay, relay outage, and permission revocation do not duplicate
-> work or leak private material.
+> In OpenAgents, a person creates a native Product Space, project, and work
+> item. The person remains accountable and delegates the item to a native Agent
+> Member. One signed workroom thread carries safe plan, progress, a question,
+> answer, artifact, and closeout projections. An owner-local Pylon performs a
+> no-spend fixture against a pinned repository. OpenAgents records provider
+> completion, host verification, and human acceptance separately. Desktop and
+> another client converge through Khala Sync. Relay outage, duplicate events,
+> and revoked authority do not duplicate work or leak private material.
 
-This slice proves the essential architecture before Loops, automatic triage,
-Guided Reviews, broad code intelligence, or spendful execution.
+This proof uses no Linear service, account, API, token, webhook, object, or
+runtime.
 
 ## 14. Acceptance and falsification matrix
 
-| Claim                                   | Required proof                                                                     | Falsifier                                                            |
-| --------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Human accountability is preserved       | Linear and OpenAgents show human owner plus bounded delegate through the full run  | Agent replaces or obscures the accountable human                     |
-| Ingress is authentic and idempotent     | Signed fixture, timestamp/replay tests, one delivery/one run, conflict detection   | Duplicate or forged delivery starts work                             |
-| Permissions do not widen                | Cross-team, guest, revoked-scope, actor, and repository tests                      | Any cached or projected data survives beyond permission              |
-| Session state is honest                 | Provider completion, verification, and owner disposition are separate              | Linear `response` or Nostr result appears as verified/accepted       |
-| Writeback is subject-bound              | Wrong workspace/team/issue/version/actor tests fail closed                         | Valid token mutates an unbound object                                |
-| Nostr is portable but not authoritative | Two-client rebuild plus relay-down operation                                       | Relay event creates a canonical Linear/OpenAgents mutation by itself |
-| Private content stays private           | Redaction tests across event, prompt, log, activity, receipt, relay, and export    | Raw private body, token, path, prompt, or provider data appears      |
-| Git authority remains intact            | PR/ref/check/review/merge reconciled from Git host                                 | Linear or a Guide invents canonical Git state                        |
-| Loops are bounded                       | Budget, concurrency, self-trigger, circuit-breaker, pause, and outage tests        | One event creates an unbounded or recursive run chain                |
-| Recovery is loss-accounted              | Missed webhook, API outage, relay gap, crash, stale generation, and resume tests   | UI shows success or current state without canonical evidence         |
-| Deletion is honest                      | Cache purge, grant revoke, tombstone, and residual-relay disclosure                | Product promises global erasure it cannot prove                      |
-| First-class clients share one model     | Desktop, Omega/mobile target, web, Pylon, and Linear converge on refs and receipts | A client invents its own state or command authority                  |
+| Claim                                       | Required proof                                                                                 | Falsifier                                                             |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Product work is native                      | All objects and commands exist and operate without Linear                                      | Any user journey requires a Linear account, API, object, or connector |
+| Human accountability remains explicit       | Owner and agent delegate remain distinct through execution and review                          | Agent replaces or obscures the accountable person                     |
+| Agents are first-class members              | Signed identity, profile, capabilities, session, activity, filters, and history                | Agent is only an invisible tool invocation                            |
+| Nostr is central but not authority-confused | Signed causal rebuild plus separate admission records                                          | Relay event alone creates canonical work, verification, or acceptance |
+| Sessions are durable and honest             | Disconnect, crash, resume, provider result, verification, and disposition tests                | Provider “done” appears as accepted work                              |
+| Planning graph is complete                  | Projects, cycles, work items, dependencies, documents, decisions, and signals replay correctly | Critical product context survives only in prose or chat               |
+| Skills and Guidance are reproducible        | Exact revisions and precedence appear in run manifest                                          | Runtime prompt drift changes behavior without a revision              |
+| Loops are bounded                           | Budget, concurrency, replay, echo, circuit-breaker, pause, and revoke tests                    | One event produces recursive or unbounded runs                        |
+| Triage is evidence-based                    | Proposal confidence, source refs, disposition, and outcome measurement                         | Unsupported low-confidence mutation occurs                            |
+| Git authority is preserved                  | Commit, PR, check, review, and merge reconcile from Git authority                              | Work UI or Guide invents canonical Git state                          |
+| Private content stays private               | Event, prompt, log, receipt, relay, search, memory, and export redaction tests                 | Private body, token, path, prompt, or source appears publicly         |
+| Clients share one model                     | Desktop, Omega target, web/mobile target, Pylon, and Nostr projection converge                 | A client invents independent state or command authority               |
 
-## 15. Current gaps
+## 15. Current OpenAgents substrate and gaps
 
-### Landed foundations
+### 15.1 Landed substrate
 
-- verified GitHub and Slack webhook patterns;
-- connector event normalization, subject binding, and idempotency vocabulary;
-- owner-private event ledger and public-safe gateway projection;
-- background-agent budgets, tool policy, triggers, and circuit-breaker
-  foundations;
-- stable agent profiles and safe agent cards;
-- durable workrooms, packets, leases, evidence, verification refs, and owner
+- Cloud SQL and Khala Sync canonical projection, snapshots, deltas, cursors,
+  conversations, attention, sessions, and live agent graphs;
+- durable workroom packets, leases, evidence, verification refs, and owner
   disposition;
-- Khala Sync conversations, timelines, attention, coding sessions, live agent
-  graphs, and cross-client projections;
-- Pylon, owner-local execution, managed environment, and agent-computer paths;
-- NIP-29 public chat mechanics, NIP-42 auth, signer boundaries, and relay
-  health behavior;
-- NIP-LBR ref-only labor requests, results, and closeout receipts;
-- NIP-34/Forge coordination with Git-object authority; and
-- Omega Nostr account-link and signer architecture evidence.
+- stable agent profiles, safe agent cards, agent registration, and runtime
+  adapters;
+- background-agent budgets, tool policy, trigger, event-ledger, and circuit-
+  breaker foundations;
+- Pylon, owner-local execution, managed environment, Agent Computer, and
+  attached-agent paths;
+- Forge, Git admission, NIP-34 collaboration, and Git-object authority;
+- NIP-29 public chat mechanics, NIP-42 auth, remote signer restrictions,
+  reconnect, pagination, and relay identity checks;
+- NIP-LBR ref-only requests, results, and content-addressed closeout receipts;
+- selected owner-attested agent identity, owner-decryptable memory, persona,
+  live-state, and metric protocol implementations; and
+- current Desktop, mobile, web, and future Omega surface contracts.
 
-### Missing Linear-specific product
+### 15.2 Missing native product
 
-- Linear OAuth installation, credential custody, refresh, revoke, and health;
-- Linear webhook signature/replay validation and durable early acknowledgement;
-- Linear workspace/team/project/issue/comment/document/session/activity schemas;
-- Linear initiative/cycle/milestone/dependency/subissue/label/customer-request
-  and SLA projections;
-- event-ledger source, migration, reconciliation, and retention behavior;
-- `LinearWorkLink` and source-version authority;
-- human-assignee/agent-delegate structural identity;
-- Linear AgentSession and AgentActivity adapter;
-- Linear-scoped grants and subject-bound writeback tools;
-- Skills and Guidance projection with revision and precedence;
-- Linear Loop trigger/action support and self-trigger prevention;
-- triage confidence/evidence/disposition contracts;
-- code-context permission intersection;
-- issue-linked coding and review composition;
-- Nostr Linear projection profile and content policy;
-- first-class Desktop, Omega, web, mobile, and Pylon surfaces;
-- live external acceptance, outage, drift, deletion, and cross-tenant evidence;
-  and
-- an admitted ProductSpec, AssuranceSpec, roadmap packet, and issue set.
+- Product Space and team domain;
+- initiative, project, cycle, milestone, work-item, relation, label, document,
+  decision, customer-signal, and service-level schemas;
+- complete native planning command and projection families;
+- structural accountable owner and agent delegate on native work;
+- Work Session and Work Activity product contracts;
+- first-class Agent Member roster and project participation;
+- versioned Skills and Guidance product surfaces;
+- complete Loop builder, revisions, history, and safety controls;
+- native Triage Engine and confidence/evidence measurement;
+- issue-linked Code Context and coding-session composition;
+- native diff, review queue, and Guided Review experience;
+- Product Pulse and accepted-outcome analytics;
+- complete signed Product Work Nostr profile and safe projection outbox;
+- native Omega/web/mobile/Desktop/Pylon parity;
+- end-to-end live acceptance and AssuranceSpec; and
+- admitted roadmap packets and implementation issues.
 
-## 16. Non-goals and hard rejections
+## 16. Hard rejections
 
-- Do not reproduce Linear's closed implementation or branding.
-- Do not replace Linear issue/project authority with Cloud SQL or Nostr.
-- Do not make a Nostr relay the OpenAgents workroom, permission, or execution
-  authority.
-- Do not create a second Forum or Forge.
-- Do not restore the canceled Buzz deployment path.
-- Do not put Linear OAuth or private content in Omega, Desktop renderers, agent
-  prompts beyond admitted context, Nostr events, or receipts.
-- Do not make Linear team membership and NIP-29 room membership equivalent.
-- Do not use an agent as the accountable human owner.
-- Do not let an AgentSession or AgentActivity become proof of completion.
-- Do not let a Guide become review approval or verification.
-- Do not implement generic provider tools or ambient organization-wide access.
-- Do not start with autonomous broad triage, issue mutation, or spendful Loops.
-- Do not claim NIP-29 privacy is encryption.
-- Do not claim Nostr deletion is global erasure.
-- Do not treat NIP-90 advertisement or result as provider capability,
-  completion, payment, or settlement authority.
-- Do not add a new public web product route without separate authority.
-- Do not treat this document as an implementation or release receipt.
+- No Linear integration, dependency, connector, import requirement, or source
+  of truth.
+- No attempt to make OpenAgents a thin client for Linear.
+- No copying Linear source code, proprietary assets, prompts, or branding.
+- No separate Buzz application or revival of the canceled Buzz deployment.
+- No second Forum or standalone Forge.
+- No relay as OpenAgents membership, command, work-item, execution,
+  verification, receipt, release, payment, or settlement authority.
+- No NIP-29 `private` claim presented as end-to-end encryption.
+- No agent-as-accountable-human model.
+- No hidden agent identity or ambient service token.
+- No provider result, agent activity, Nostr event, or Guide treated as proof of
+  completion.
+- No natural-language Guidance treated as a capability grant.
+- No broad repository or Product Space access inferred from a work-item body.
+- No autonomous broad triage or Loops before suggest-mode evidence and bounded
+  controls.
+- No raw private work content, prompts, source, credentials, or payment data on
+  public relays or receipts.
+- No claim of global Nostr deletion.
+- No public parity claim until the ProductSpec and AssuranceSpec prove it.
 
 ## 17. Final recommendation
 
-Admit a first-class Linear program after the current roadmap owner selects its
-position. Begin with the single end-to-end delegated-issue proof in section 13.
+Replace the mistaken integration framing completely with a native OpenAgents
+product program.
 
-The enduring opportunity is larger than a connector. Linear has assembled the
-best current vertical model for product context, accountable delegation, shared
-agent sessions, recurring workflows, coding, and integrated review. Buzz shows
-how a collaboration product can become a portable signed event graph.
-OpenAgents already has the pieces Linear and Buzz do not make authoritative:
-durable multi-agent execution, typed grants, budgets, placement, verification,
-receipts, owner disposition, and cross-client workrooms.
+Linear has assembled the strongest current vertical feature set for product
+context, accountable agent delegation, shared sessions, recurring workflows,
+coding, and review. Buzz demonstrates how collaboration can become a signed,
+portable, agent-participatory Nostr graph. OpenAgents already owns the deeper
+execution and authority substrate: multi-agent runtimes, workrooms, placement,
+budgets, grants, receipts, verification, Sync, Forge, Pylon, and Agent Computer.
 
-Composed correctly, Linear becomes a first-class doorway into OpenAgents and
-OpenAgents becomes a first-class execution substrate under Linear. Nostr makes
-that relationship portable and inspectable without pretending that a relay,
-signature, activity, or vendor session is the final authority.
+The correct move is to combine those lessons into OpenAgents' own system:
+
+```text
+Linear-class product functionality
+  + Buzz-class Nostr collaboration
+  + OpenAgents execution, authority, verification, and receipts
+  = native OpenAgents Work
+```
+
+Build the native proof in section 13 first. It must work with Linear completely
+absent.

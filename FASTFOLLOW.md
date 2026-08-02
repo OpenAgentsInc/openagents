@@ -1,7 +1,7 @@
 ---
 fast_follow_spec_format_version: "0.1"
 fast_follow_spec_id: "openagents.fast_follow"
-fast_follow_revision: 8
+fast_follow_revision: 9
 title: "OpenAgents Fast Follow"
 artifact_type: "learning_intent"
 lifecycle_state: "admitted"
@@ -1383,21 +1383,21 @@ sequence. The ordered Amp `initial_program` stays unchanged.
     ],
     "lessons": [
       {
-        "id": "linear_openagents_nostr_authority_split",
+        "id": "native_product_work_graph",
         "kind": "architecture",
-        "summary": "Make Linear the authority for Linear objects and human accountability, OpenAgents the authority for execution and admission, Git hosts the authority for Git state, and Nostr a signed portable collaboration projection rather than a replacement authority.",
+        "summary": "Port Linear-class planning, accountable delegation, shared agent sessions, recurring workflows, coding, and review into an OpenAgents-owned Product Work graph without a Linear integration or dependency.",
         "stance": "adapt_with_stronger_boundaries"
       },
       {
-        "id": "linear_first_class_work_link",
+        "id": "nostr_centric_native_product_collaboration",
         "kind": "protocol",
-        "summary": "Bind every Linear installation, object, actor, agent session, workroom, run, Nostr thread, repository, writeback, and receipt through stable owner-scoped refs, source versions, and one named authority per field.",
-        "stance": "study"
+        "summary": "Give native Product Spaces, projects, work items, people, agents, sessions, decisions, code changes, and evidence signed Nostr identities and causal projections while OpenAgents retains admission, verification, receipt, release, and settlement authority.",
+        "stance": "adapt_with_stronger_boundaries"
       },
       {
-        "id": "delegated_issue_first_proof",
+        "id": "native_delegated_work_item_first_proof",
         "kind": "evaluation",
-        "summary": "Prove one human-owned Linear issue delegated to one OpenAgents agent end to end, including verified ingress, durable run, safe activity, Nostr projection, host verification, human disposition, replay, outage, and revocation behavior before broad autonomy.",
+        "summary": "Prove one native human-owned OpenAgents work item delegated to one Agent Member end to end, including signed workroom activity, durable execution, host verification, human disposition, replay, relay outage, and revocation, with Linear completely absent.",
         "stance": "study"
       }
     ]

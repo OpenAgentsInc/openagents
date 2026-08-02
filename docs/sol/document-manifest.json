@@ -2468,11 +2468,10 @@
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md",
         "docs/teardowns/2026-08-01-hermes-agent-desktop-teardown.md",
-        "docs/teardowns/2026-08-02-linear-agents-openagents-nostr-adaptation.md",
         "docs/teardowns/README.md",
         "docs/transcripts/26X-forkingzed.md"
       ],
-      "inboundSourceCount": 27,
+      "inboundSourceCount": 26,
       "issueLinks": [
         9185,
         9194,

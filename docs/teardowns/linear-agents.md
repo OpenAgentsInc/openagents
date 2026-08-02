@@ -6,14 +6,14 @@
 
 **Linear Agents is the most coherent agent-native product-development system currently on the market.** It is not simply a chatbot added to an issue tracker. Linear has built a layered system that combines:
 
-* a native, workspace-aware **Linear Agent**;
-* a platform where external agents appear as identifiable teammates;
-* reusable **Skills** and organizational guidance;
-* scheduled and event-triggered **Loops**;
-* AI-assisted intake and triage;
-* repository-aware investigation through **Code Intelligence**;
-* cloud coding through **Coding Sessions**;
-* and an integrated code-review surface through **Diffs**.
+- a native, workspace-aware **Linear Agent**;
+- a platform where external agents appear as identifiable teammates;
+- reusable **Skills** and organizational guidance;
+- scheduled and event-triggered **Loops**;
+- AI-assisted intake and triage;
+- repository-aware investigation through **Code Intelligence**;
+- cloud coding through **Coding Sessions**;
+- and an integrated code-review surface through **Diffs**.
 
 Linear’s strategic thesis is that the conventional issue tracker was designed to coordinate human handoffs. When agents can perform planning, investigation, implementation, and parts of review, the valuable product is no longer a queue of tickets—it is the **shared context and control plane through which humans and agents move work to production**. Linear explicitly describes itself as the system that holds feedback, intent, decisions, plans, and code and turns that context into execution. ([Linear][1])
 
@@ -73,17 +73,17 @@ Linear is making a very specific bet:
 
 A coding model can read a ticket and a repository. But a well-informed product-development agent needs considerably more:
 
-* the original customer signal;
-* related requests and previous bugs;
-* the decisions behind the feature;
-* product and technical specifications;
-* project scope and milestones;
-* prior discussion;
-* ownership and organizational conventions;
-* affected customers;
-* telemetry and external evidence;
-* relevant code paths;
-* and the current state of implementation.
+- the original customer signal;
+- related requests and previous bugs;
+- the decisions behind the feature;
+- product and technical specifications;
+- project scope and milestones;
+- prior discussion;
+- ownership and organizational conventions;
+- affected customers;
+- telemetry and external evidence;
+- relevant code paths;
+- and the current state of implementation.
 
 Linear already stores a structured subset of this information. Its product strategy is to make that context usable by any authorized human or agent without requiring someone to reconstruct it manually in a new prompt. In Coding Sessions, for example, the issue, customer signal, product decisions, related work, and surrounding discussion are automatically attached to the coding task. The resulting session is shared with the organization rather than belonging privately to the person who initiated it. ([Linear][5])
 
@@ -109,8 +109,8 @@ This is an excellent design decision.
 
 Many agent products force one of two bad abstractions:
 
-* the agent is merely an invisible tool invoked by a person; or
-* the agent is treated as though it can truly own an organizational obligation.
+- the agent is merely an invisible tool invoked by a person; or
+- the agent is treated as though it can truly own an organizational obligation.
 
 Linear avoids both. The agent has enough identity to be observable, addressable, permissioned, and measurable, but it does not become the accountable party.
 
@@ -137,23 +137,23 @@ Linear Agent is available by default and can be disabled by an administrator. It
 
 Its baseline capabilities include:
 
-* creating and updating issues, projects, milestones, and initiatives;
-* answering questions about workspace data;
-* summarizing projects, cycles, threads, and customer feedback;
-* drafting specifications, documents, and project updates;
-* posting, editing, and deleting its own comments;
-* grouping related issues and extracting shared requirements;
-* and turning conversations in Slack into structured Linear work. ([Linear][3])
+- creating and updating issues, projects, milestones, and initiatives;
+- answering questions about workspace data;
+- summarizing projects, cycles, threads, and customer feedback;
+- drafting specifications, documents, and project updates;
+- posting, editing, and deleting its own comments;
+- grouping related issues and extracting shared requirements;
+- and turning conversations in Slack into structured Linear work. ([Linear][3])
 
 ### Skills
 
 A useful conversation or workflow can be saved as a **Skill**. Skills can be personal or team-shared and invoked manually, such as with a slash command, or selected by Linear Agent when relevant. Linear gives examples such as:
 
-* producing a project from a PRD;
-* triaging issues consistently;
-* summarizing new customer feedback;
-* preparing a weekly focus report;
-* and drafting standardized project updates. ([Linear][7])
+- producing a project from a PRD;
+- triaging issues consistently;
+- summarizing new customer feedback;
+- preparing a weekly focus report;
+- and drafting standardized project updates. ([Linear][7])
 
 Skills are essentially versioned organizational prompts attached to a shared context system. Their value is less “prompt engineering” than **making a useful judgment procedure reusable and inspectable**.
 
@@ -187,13 +187,13 @@ That resembles an organizational policy stack more than an ordinary chatbot syst
 
 A Loop can, for example:
 
-* inspect incoming bugs;
-* research likely root causes;
-* delegate suitable bugs to a coding agent;
-* create follow-up work from incident reports or meeting transcripts;
-* keep specifications or launch plans updated;
-* monitor recently started projects;
-* and notify teams through connected tools.
+- inspect incoming bugs;
+- research likely root causes;
+- delegate suitable bugs to a coding agent;
+- create follow-up work from incident reports or meeting transcripts;
+- keep specifications or launch plans updated;
+- monitor recently started projects;
+- and notify teams through connected tools.
 
 Loops are configured with a trigger, plain-language instructions, optional tools, scope, and permissions. They run at the team or workspace level and provide shared visibility into configuration and previous runs. Changes are drafted and then published, allowing configuration to be reviewed before it becomes active. ([Linear][8])
 
@@ -223,11 +223,11 @@ Loops are best understood as **agentic cron jobs and event handlers**, not a mat
 
 Their instructions are natural language, and the agent applies judgment. That gives them flexibility, but it also means:
 
-* behavior can be nondeterministic;
-* external content can influence the run;
-* retries and partial execution need careful treatment;
-* broad permissions increase potential blast radius;
-* and the same Loop can produce different actions as models change.
+- behavior can be nondeterministic;
+- external content can influence the run;
+- retries and partial execution need careful treatment;
+- broad permissions increase potential blast radius;
+- and the same Loop can produce different actions as models change.
 
 Linear exposes granular Loop permissions and recommends granting only what is needed. Workspace and team owners can control who creates or manages Loops. ([Linear][8])
 
@@ -239,12 +239,12 @@ For serious production use, teams should place Loops behind narrow scopes, expli
 
 Triage Intelligence analyzes incoming issues and suggests:
 
-* destination team;
-* assignee;
-* project;
-* labels;
-* duplicates;
-* and relationships to existing issues.
+- destination team;
+- assignee;
+- project;
+- labels;
+- duplicates;
+- and relationships to existing issues.
 
 Users can accept or decline suggestions and inspect the explanation. Selected property types can also be configured to auto-apply. The system compares a new issue against existing workspace data and historical patterns rather than merely classifying the issue’s text in isolation. It is available on Business and Enterprise plans. ([Linear][9])
 
@@ -294,11 +294,11 @@ Coding Sessions are hosted agentic coding workflows. When an issue is delegated 
 
 The important feature is not that Linear has access to Claude Code or Codex. Many products can invoke those. The advantage is that the coding run begins with the product context already attached and remains a **multiplayer session**:
 
-* teammates can observe progress;
-* add missing context;
-* redirect the implementation;
-* request changes;
-* or take over.
+- teammates can observe progress;
+- add missing context;
+- redirect the implementation;
+- request changes;
+- or take over.
 
 The session belongs to the organization instead of being trapped inside one engineer’s private IDE conversation. ([Linear][5])
 
@@ -308,12 +308,12 @@ Linear Diffs places the PR review beside the issue and discussion that produced 
 
 As of July 30, Linear also supports:
 
-* reviewing and steering coding sessions from mobile;
-* line-specific mobile comments;
-* Guided Reviews on Business and Enterprise;
-* signed commits for coding sessions;
-* GitHub team review assignment;
-* and delegation from Linear into GitHub Copilot’s cloud agent. ([Linear][12])
+- reviewing and steering coding sessions from mobile;
+- line-specific mobile comments;
+- Guided Reviews on Business and Enterprise;
+- signed commits for coding sessions;
+- GitHub team review assignment;
+- and delegation from Linear into GitHub Copilot’s cloud agent. ([Linear][12])
 
 This acknowledges the next obvious bottleneck: once agents generate more code, **review capacity—not implementation capacity—becomes scarce**. Ramp reported that its internal agent accelerated changes but moved the constraint to review. ([Linear][13])
 
@@ -362,14 +362,14 @@ Activities can expose tool parameters and results, while ephemeral thoughts or a
 
 This is a strong protocol design. It creates a standardized, model-independent interface around an arbitrary external runtime:
 
-* stable identity;
-* bounded session;
-* typed state;
-* visible progress;
-* structured plan;
-* user questions;
-* explicit result;
-* and links to external artifacts.
+- stable identity;
+- bounded session;
+- typed state;
+- visible progress;
+- structured plan;
+- user questions;
+- explicit result;
+- and links to external artifacts.
 
 ### What Linear does and does not provide
 
@@ -451,21 +451,21 @@ Task specificity
 
 The strongest current categories are:
 
-* repetitive, scoped maintenance;
-* well-understood issue types;
-* tasks with clear expected output;
-* work that can be tested automatically;
-* changes that produce inspectable diffs;
-* and investigations that remain useful even when the agent cannot safely implement a fix.
+- repetitive, scoped maintenance;
+- well-understood issue types;
+- tasks with clear expected output;
+- work that can be tested automatically;
+- changes that produce inspectable diffs;
+- and investigations that remain useful even when the agent cannot safely implement a fix.
 
 The weakest categories are:
 
-* ambiguous cross-cutting changes;
-* architecture requiring tacit organizational knowledge;
-* UI work with subjective requirements and no visual validation;
-* tasks whose success cannot be tested;
-* production actions with irreversible effects;
-* and open-ended instructions such as “fix everything in triage.”
+- ambiguous cross-cutting changes;
+- architecture requiring tacit organizational knowledge;
+- UI work with subjective requirements and no visual validation;
+- tasks whose success cannot be tested;
+- production actions with irreversible effects;
+- and open-ended instructions such as “fix everything in triage.”
 
 This is not a unique Linear limitation. It is the correct operating reality for present agent systems. Linear deserves credit for documenting the failed broad approach rather than only publishing success cases.
 
@@ -475,9 +475,9 @@ This is not a unique Linear limitation. It is the correct operating reality for 
 
 Linear reports that, as of March 2026:
 
-* coding agents were installed in more than 75% of its enterprise workspaces;
-* agent-completed work had increased fivefold over the preceding three months;
-* and agents authored nearly 25% of new issues. ([Linear][1])
+- coding agents were installed in more than 75% of its enterprise workspaces;
+- agent-completed work had increased fivefold over the preceding three months;
+- and agents authored nearly 25% of new issues. ([Linear][1])
 
 Linear also reported that almost 700 agent-authored PRs were merged internally during the month preceding its June Coding Sessions announcement. It cites Ramp’s internal Inspect agent as authoring more than 60% of Ramp’s merged PRs and Coinbase’s Forge as another custom agent built around Linear context. ([Linear][5])
 
@@ -485,13 +485,13 @@ The Ramp case is particularly informative. Inspect combines Linear product conte
 
 However, these figures should be treated as **company-reported adoption and customer-case-study evidence**, not independent benchmarks. There is not yet enough public evidence to establish:
 
-* defect rate relative to human-written changes;
-* review burden per agent-authored PR;
-* cycle-time improvement after review;
-* total cost per accepted change;
-* percentage of attempted tasks that reach production;
-* rollback or incident rate;
-* or long-term effect on codebase maintainability.
+- defect rate relative to human-written changes;
+- review burden per agent-authored PR;
+- cycle-time improvement after review;
+- total cost per accepted change;
+- percentage of attempted tasks that reach production;
+- rollback or incident rate;
+- or long-term effect on codebase maintainability.
 
 The evidence supports “real use and strong momentum.” It does not yet prove a universal productivity multiple.
 
@@ -593,25 +593,25 @@ Adoption looks real, but independently measured correctness, ROI, and maintenanc
 
 Linear Agents is particularly well suited to a company that:
 
-* already runs product and engineering work through Linear;
-* has GitHub repositories and strong issue-to-PR conventions;
-* captures customer feedback and decisions in structured form;
-* uses Slack or Teams heavily;
-* has repeatable triage and maintenance work;
-* can automatically test agent-generated changes;
-* and is comfortable keeping humans responsible for acceptance and merge.
+- already runs product and engineering work through Linear;
+- has GitHub repositories and strong issue-to-PR conventions;
+- captures customer feedback and decisions in structured form;
+- uses Slack or Teams heavily;
+- has repeatable triage and maintenance work;
+- can automatically test agent-generated changes;
+- and is comfortable keeping humans responsible for acceptance and merge.
 
 ### Poorer fit
 
 It is less suitable as the primary automation platform for an organization that:
 
-* remains deeply dependent on customized Jira workflows;
-* needs on-premises or air-gapped execution;
-* requires deterministic business-process automation;
-* needs strict per-user or per-workflow spend limits;
-* lacks clean product and technical documentation;
-* performs mostly non-software work;
-* or needs autonomous actions whose success cannot be verified.
+- remains deeply dependent on customized Jira workflows;
+- needs on-premises or air-gapped execution;
+- requires deterministic business-process automation;
+- needs strict per-user or per-workflow spend limits;
+- lacks clean product and technical documentation;
+- performs mostly non-software work;
+- or needs autonomous actions whose success cannot be verified.
 
 ---
 
@@ -639,7 +639,11 @@ A safe deployment sequence would be:
 
 ## 18. What OpenAgents should take from it
 
-For OpenAgents, Linear is both a design reference and a potentially valuable control surface.
+For OpenAgents, Linear is a design reference for a native feature port. The
+target is not a Linear integration or control surface. OpenAgents should own
+the product spaces, planning graph, work items, agent members, sessions,
+workflows, review, and outcome system described in the
+[Nostr-centric native port plan](./2026-08-02-linear-agents-openagents-nostr-adaptation.md).
 
 ### Patterns worth copying directly
 
@@ -651,7 +655,11 @@ For OpenAgents, Linear is both a design reference and a potentially valuable con
 
 **Typed visible activities.** Separating reasoning/progress, tool actions, questions, results, and errors produces a much better trust surface than a single streaming transcript.
 
-**Immediate acknowledgment.** Linear’s five-second webhook response and ten-second first-activity expectations recognize that perceived responsiveness is part of agent reliability.
+**Immediate acknowledgment.** Linear’s five-second webhook response and
+ten-second first-activity expectations are useful source evidence that perceived
+responsiveness is part of agent reliability. The native OpenAgents session
+contract should provide its own durable acknowledgment and first safe activity;
+it should not implement a Linear webhook.
 
 **Organizational guidance with precedence and history.** Persistent workspace and team policies should be versioned inputs to every run.
 
@@ -661,40 +669,42 @@ For OpenAgents, Linear is both a design reference and a potentially valuable con
 
 Linear currently offers a primarily vertical, single-agent control layer. OpenAgents can differentiate through:
 
-* dynamic teams of specialist agents;
-* explicit agent-to-agent delegation and handoff;
-* provider rotation and failover;
-* durable runs that survive client and provider failure;
-* typed acceptance contracts;
-* independent grading and replay;
-* artifact and execution receipts;
-* policy-controlled budgets;
-* capability grants;
-* cross-application workrooms;
-* execution across local, cloud, and contributed compute;
-* and settlement tied to accepted outcomes.
+- dynamic teams of specialist agents;
+- explicit agent-to-agent delegation and handoff;
+- provider rotation and failover;
+- durable runs that survive client and provider failure;
+- typed acceptance contracts;
+- independent grading and replay;
+- artifact and execution receipts;
+- policy-controlled budgets;
+- capability grants;
+- cross-application workrooms;
+- execution across local, cloud, and contributed compute;
+- and settlement tied to accepted outcomes.
 
-The natural integration architecture would be:
+The native OpenAgents architecture should be:
 
 ```text
-Linear issue or Loop
+Native Product Space / project / work item / Loop
         ↓
-OpenAgents app user receives AgentSession
+Accountable human delegates to a native Agent Member
         ↓
-Session maps to an OpenAgents durable workroom/run
+OpenAgents creates one durable Work Session and workroom thread
         ↓
 OpenAgents routes work across one or more agents
         ↓
-Plans and major events stream back as AgentActivities
+Plans, questions, actions, artifacts, and results become Work Activities
         ↓
-Artifacts, reports, commits, and PRs attach to Linear
+Code, evidence, reviews, and verification attach to the native work item
         ↓
-Human acceptance occurs in Linear or OpenAgents
+The accountable human accepts, rejects, or requests revision in OpenAgents
         ↓
-Receipts and final status close the run
+Receipts and final status close the native session and work item
 ```
 
-In that configuration, **Linear is the product-development context and human control surface; OpenAgents is the durable multi-agent execution and economics layer underneath it.**
+In that configuration, **OpenAgents owns both the product-development context
+and the durable multi-agent execution, verification, and economics layers.**
+Linear is absent from the runtime architecture.
 
 ---
 
@@ -704,12 +714,12 @@ Linear Agents is not marketing vapor. It is a serious rearchitecture of a produc
 
 Its most important accomplishments are not code generation or chat. They are:
 
-* preserving human accountability while delegating execution;
-* giving agents first-class, permissioned identities;
-* attaching runs to shared organizational context;
-* making agent state and activity visible;
-* connecting intake directly to investigation and implementation;
-* and returning generated work to an integrated human-review surface.
+- preserving human accountability while delegating execution;
+- giving agents first-class, permissioned identities;
+- attaching runs to shared organizational context;
+- making agent state and activity visible;
+- connecting intake directly to investigation and implementation;
+- and returning generated work to an integrated human-review surface.
 
 The product is still young. Its APIs are preview-stage, Loops lack the guarantees of a mature orchestration engine, cost governance is coarse, broad autonomy still fails without careful scoping, and the public performance evidence is primarily self-reported. But the product direction is correct.
 
