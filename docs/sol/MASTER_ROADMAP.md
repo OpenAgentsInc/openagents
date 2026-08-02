@@ -2,17 +2,13 @@
 
 - Class: authority
 - Date: 2026-07-10
-- Updated: 2026-07-25
-- Revision: 136
+- Updated: 2026-08-02
+- Revision: 137
 - Status: canonical OpenAgents implementation roadmap
-- Current queue: the [`open issue unified completion plan`](./2026-07-21-open-issue-unified-completion-plan.md)
-  owns the terminal sequence for #8967, #8979, #9032, #9035, #9041, and
-  #9144. #8978, #9023, and SBX-09 are complete. #9032 and #9041 share one
-  managed checkpoint and movement proof. #9035 does not reopen IDE-14 through IDE-19. Managed RLM stays inside its separate cloud boundary. Distribution,
-  Amp/T3 ledgers, and live defects retain their independent gates. Closed
-  ASSURE-REPO truth lives in execution-order item 9. The owner-approved graph
-  memory program uses #9162 and its ordered #9163-#9166 packets. That program
-  is complete through the inconclusive #9166 evaluation
+- Current queue: no active `roadmap:sol` product issue. Current work comes from
+  an exact live issue or owner-accepted packet. The Omega forensic-bench packet
+  and open acceptance corrections #9289, #9290, and #9300 own the sequence
+  relevant to this revision.
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: live bug issues or exact owner-accepted plans/work packets through
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
@@ -31,7 +27,7 @@ proof, dated plans and analyses are evidence only.
 
 ## Active P0 — Omega primary-surface transition
 
-The owner selected [`Omega`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md), a tracked Zed fork, as the primary Desktop, IDE, and company workroom destination. The new [`Omega roadmap`](../omega/ROADMAP.md) owns the accelerated implementation order. First, release the fully branded `v0.2.0-rc1` bootstrap candidate. Next, port current OpenAgents Desktop behavior. Then add the selected Buzz workroom and Nostr outcomes. The bootstrap release is not a feature-parity or primary-cutover claim. Omega Rust is the application core. Packaged Node 24 and Effect first carry the current product control plane. Bounded packets can move suitable domains to Rust through one-authority cutovers. Existing configured agents, such as Hermes, attach through explicit adapters. They keep their homes, credentials, memory, skills, tools, and sessions. Standard Nostr support is an interoperability boundary, not relay authority. The separate Buzz deployment and standalone relay program stay canceled. Issues #9185 and #9194 through #9204 closed as not planned on 2026-07-23. The current Electron application remains the supported evidence and rollback subject until all cutover gates pass. Omega does not reroute the pending Full Auto release closure.
+The owner selected [`Omega`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md), a tracked Zed fork, as the primary Desktop, IDE, and company workroom destination. The new [`Omega roadmap`](../omega/ROADMAP.md) owns the accelerated implementation order. First, release the fully branded `v0.2.0-rc1` bootstrap candidate. Next, port current OpenAgents Desktop behavior. Then add the selected Buzz workroom and Nostr outcomes. The bootstrap release is not a feature-parity or primary-cutover claim. Omega Rust is the application core. Packaged Node 24 and Effect first carry the current product control plane. Bounded packets can move suitable domains to Rust through one-authority cutovers. Existing configured agents, such as Hermes, attach through explicit adapters. They keep their homes, credentials, memory, skills, tools, and sessions. Standard Nostr support is an interoperability boundary, not relay authority. The separate Buzz deployment and standalone relay program stay canceled. Issues #9185 and #9194 through #9204 closed as not planned on 2026-07-23. The current Electron application remains the supported evidence and rollback subject until all cutover gates pass. Omega does not reroute the pending Full Auto release closure. The 2026-08-02 owner reconciliation makes the fixture-backed Coldcard reader the first evidence-rich Comet-shaped workbench slice: Comet owns presentation, Omega owns forensic authority, publication defaults blocked, and live controls remain unavailable while #9289, #9290, and #9300 are open; the [`forensic roadmap`](../loupe/2026-08-01-omega-forensic-analysis-roadmap.md) owns the detailed sequence and each Omega mutation still needs a current claim or accepted packet.
 
 **2026-07-25 Forge web reconciliation.** The [`Forge ProductSpec`](../../specs/openagents/forge.product-spec.md) and epic #9242 admit the invite-only Nostr and ngit Forge in the single `openagents.com` app. For this web lane, they supersede the 2026-07-23 GitHub-authoritative posture. Invited and migrated repositories use `openagents_git_authoritative`, while unmigrated repositories keep `github_authoritative`. GitHub is a read-only mirror after migration. It remains the repository and claim authority for OpenAgents development until a later admitted claim-ledger cutover. The canceled standalone relay and Forge programs stay canceled. Issues #9243 through #9253 own delivery, and the [`invite-only Forge analysis`](../fable/2026-07-25-nostr-git-forge-invite-only-analysis.md) stays design evidence only.
 
@@ -572,12 +568,9 @@ GitHub before dispatch and age-checked by the offline documentation guard.
 This guarded projection excludes `area:docs`, live issue claims still own
 dispatch and exact plans own dependency order.
 
-| Program                         | Open issues                                            | Owning plan                                                                    |
-| ------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------ |
-| Managed sandboxes               | #9023, #9032, #9033                                    | `2026-07-19-managed-agent-sandboxes-accepted-plan.md`                          |
-| Agent IDE and parity            | #9035, #9041, #9042, #9043, #9044, #9045, #9046, #9047 | `2026-07-21-open-issue-unified-completion-plan.md`                             |
-| VSE engine groundwork           | #9104, #9105, #9106, #9108, #9109                      | `docs/fable/2026-07-20-verifiable-software-engine-gap-analysis-and-roadmap.md` |
-| Full Auto first verifiable mode | #9110, #9111, #9112, #9113, #9114                      | `docs/fable/2026-07-20-full-auto-first-verifiable-mode.md`                     |
+There is no active `roadmap:sol` product issue in the 2026-08-02 live snapshot.
+This empty projection does not close direct issues under other labels and does
+not cancel owner-accepted packet ledgers.
 
 The superseded broad program/client, CUT-27, AUDIO-8, and non-reauthorized PORT
 outcomes remain closed `not planned`, their bodies were not rewritten and
@@ -589,54 +582,24 @@ Closed `wontfix`/not-planned tombstones include #8595, #8610, #8634, #8635,
 
 ## Current execution order
 
-At this snapshot:
+There is no active product issue in the pinned `roadmap:sol` projection. That
+empty label queue does not imply that every direct issue or accepted packet is
+complete.
 
-The pinned `roadmap:sol` projection records the current open product set. The
-following issues and accepted ledgers remain exact successor authority:
-
-1. Preserve the accepted ProductSpec-native MVP and completed AssuranceSpec /
-   Observatory proof baseline, neither needs to be re-proved to start a bounded
-   successor packet.
-2. Continue Full Auto from the completed owner-real development receipt.
-   #8978 completed independent admission. #8979 consumes the dogfood and
-   assurance evidence plus exact signed release identity. Do not reroute
-   these remaining gates into another runtime rewrite.
-3. Complete active SBX-10 through the unified plan. Reuse its checkpoint,
-   fork, ingress, live GCP, cleanup, and owner journey for #9041 without
-   merging the two independent acceptance boundaries.
-4. Retain closed #8980's simulator receipt as bounded first-screen evidence.
-   Remote run control, report review, and physical-device acceptance require
-   their next exact packet, do not infer them from that projection.
-5. Continue #8913's owned release matrix. Native signing/package proof,
-   candidate completeness, promotion, `/download` convergence, and the
-   one-command receipt are one release transaction, platform claims stay
-   independent.
-6. Continue the exact claimed Amp and T3 mobile packets when they do not
-   collide with #8967/#8913 hot contracts. The T3 Desktop harvest is locally
-   complete through its census and now waits on the shared signed-release
-   authority for distribution claims.
-7. After the Wave-0 schemas and receipts stabilize, admit the first trust-layer
-   and web-proof packets from the surface crosswalk: authority manifest /
-   execution receipt, named containment profile, release trust ledger, routing
-   disclosure, and counter attestation. Do not start all vision tracks at once.
-8. Keep #8984 and any supported security, privacy, data-loss,
-   accessibility, outage, or compatibility defect independently claimable,
-   a failing completion gate or first-run path blocks its affected proof rung.
-9. ASSURE-REPO #9055 (#9056-#9060) closed 2026-07-19/20 with inventory,
-   grading, false-green audit, degraded sweep, and drift oracles delivered,
-   no second completion gate, nothing self-admitted. Standing operations
-   continue under VSE-00 #9104: #9105 sweep fidelity (uses #8978), #9106
-   drift, #9108 independent review, #9109 done-condition oracles.
-10. Execute the first-verifiable-mode connection under FAV-00 #9110 in
-    packet order: #9111 readiness-gated routing, #9112 four-lane rotation
-    parity, #9113 Apple FM advisory capacity, #9114 capacity ledger plus
-    concurrency spec revision. No packet forks or outranks #8979.
-
-Completed Node/pnpm/Vite Plus cutover, MVP, and public ProductSpec/
-AssuranceSpec distribution remain accepted infrastructure. They are not the
-current queue. New product work uses #8967/#9023/#8913, the admitted packet
-ledgers, or another explicit owner authority, source analyses and surface specs
-alone cannot dispatch it.
+1. Execute the owner-accepted Omega roadmap through claimed, bounded packets.
+   The first evidence-rich Comet workbench slice is OFR-UI-01, the read-only
+   Coldcard fixture reader.
+2. Correct the live forensic acceptance record in #9289 and #9290, then close
+   #9300 only after the required campaign, holdout, artifact, generator,
+   historical-replay, and evidence-graph receipts exist.
+3. Admit OFR-UI-02 through OFR-UI-05 only as their live dependencies become
+   true. A fixture-backed reader does not enable launch or publication.
+4. Preserve completed ProductSpec, AssuranceSpec, Node/pnpm/Vite Plus, Full
+   Auto, managed-sandbox, IDE, VSE, and FAV evidence at its exact proof rung.
+   A later successor uses a new live issue or exact owner-accepted packet.
+5. Keep supported security, privacy, data-loss, accessibility, outage, and
+   compatibility defects independently claimable. A failure blocks only its
+   affected proof rung unless an owning contract says otherwise.
 
 ## Implementation laws
 

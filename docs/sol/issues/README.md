@@ -29,17 +29,7 @@ dispatch authority.
 
 ## Live issues represented by an owning plan
 
-- [`OpenAgents IDE roadmap`](../../ide/ROADMAP.md) represents the
-  agent-IDE/parity epic and packets #9035, #9041, #9042, #9043, #9044,
-  #9045, #9046, and #9047.
-- [`Managed agent sandboxes accepted plan`](../2026-07-19-managed-agent-sandboxes-accepted-plan.md)
-  represents epic and packets #9023, #9032, and #9033.
-- [`Verifiable-software engine gap analysis`](../../fable/2026-07-20-verifiable-software-engine-gap-analysis-and-roadmap.md)
-  represents the VSE-00 engine-groundwork epic and packets #9104, #9105,
-  #9106, #9108, and #9109, owner-admitted 2026-07-20.
-- [`Full Auto first verifiable mode design`](../../fable/2026-07-20-full-auto-first-verifiable-mode.md)
-  represents the FAV-00 epic and packets #9110, #9111, #9112, #9113, and
-  #9114, owner-directed 2026-07-20.
+None. The previously represented programs are closed and classified below.
 
 The Node/pnpm/Vite Plus program and all folded leaves are closed evidence.
 
@@ -47,6 +37,15 @@ The Node/pnpm/Vite Plus program and all folded leaves are closed evidence.
 
 These are immutable checked-in issue-body/acceptance sources for closed work.
 They are evidence, not ready leaves.
+
+- [`OpenAgents IDE roadmap`](../../ide/ROADMAP.md) — closed agent-IDE/parity
+  epic and packets #9035, #9041, #9042, #9043, #9044, #9045, #9046, and #9047
+- [`Managed agent sandboxes accepted plan`](../2026-07-19-managed-agent-sandboxes-accepted-plan.md)
+  — closed epic and packets #9023, #9032, and #9033
+- [`Verifiable-software engine gap analysis`](../../fable/2026-07-20-verifiable-software-engine-gap-analysis-and-roadmap.md)
+  — closed VSE-00 epic and packets #9104, #9105, #9106, #9108, and #9109
+- [`Full Auto first verifiable mode design`](../../fable/2026-07-20-full-auto-first-verifiable-mode.md)
+  — closed FAV-00 epic and packets #9110, #9111, #9112, #9113, and #9114
 
 - [`ProductSpec-native Codex Workroom MVP closure`](../../mvp/2026-07-13-openagents-codex-workroom-mvp-closure-receipt.md) — #8756
 - [`Node/pnpm/Vite Plus VP-0 baseline`](../2026-07-14-node-pnpm-vite-plus-vp0-baseline.md) — #8794

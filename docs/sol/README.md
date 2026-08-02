@@ -17,14 +17,14 @@ canceled.
 The current Electron application remains the supported release and rollback
 source until the Omega cutover gates pass.
 
-The accepted Desktop Codex Workroom baseline retains its active programs.
-These programs cover Full Auto, P1 managed-agent-sandbox, cross-platform
-release, and the owner-approved packet ledgers for Amp, T3 Desktop, and T3
-mobile.
+The accepted Desktop Codex Workroom baseline retains its proof records and
+owner-approved packet ledgers. The 2026-08-02 live snapshot has no active
+`roadmap:sol` product issue. Current work must come from another exact live
+issue or owner-accepted packet.
 The three 2026-07-17 surface ProductSpecs are results that agree with the roadmap.
 Exact issues and packets continue to control dispatch.
 
-Managed-sandbox epic #9023 is a limited exception to the closed managed-target horizon.
+Managed-sandbox epic #9023 and its projected leaves are closed.
 Portable movement and cross-machine Full Auto admission remain closed.
 Autonomous provider policy, fleet policy, voice, and settlement also remain closed.
 An owner must separately approve these expansions.
@@ -81,12 +81,9 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
   It uses the cited business estimates and current capability brokers.
   Public `/sarah` and the standalone app remain retired.
 - [`2026-07-19-managed-agent-sandboxes-accepted-plan.md`](./2026-07-19-managed-agent-sandboxes-accepted-plan.md)
-  — active owner direction, ProductSpec, and SBX-00..10 issue ledger.
-  It specifies the proof limit for one GCP `SandboxResource`.
-  It also covers the pinned Box v1 facade and IDE-13/17 integration.
-  Sarah's closed broker and bounded mobile and authenticated-web controller
-  components are code-landed in epic #9023. SBX-09 remains the live rollout
-  and independent acceptance gate.
+  — retained owner direction, ProductSpec, and closed SBX-00..10 issue ledger.
+  It specifies the proof limit for one GCP `SandboxResource` and the pinned Box
+  v1 facade. Its receipts remain evidence, not a new live queue.
 - [`2026-07-18-sarah-terminal-history-harness-implementation.md`](./2026-07-18-sarah-terminal-history-harness-implementation.md)
   — current implementation record for Sarah's owner-private terminal history.
   It covers the experience compiler and the limited conversation candidate.

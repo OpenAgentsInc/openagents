@@ -2,8 +2,8 @@
 
 - Class: owner-accepted work-packet ledger
 - Date: 2026-07-23
-- Revised: 2026-07-24
-- Revision: 5
+- Revised: 2026-08-02
+- Revision: 6
 - Status: active initial roadmap
 - Product: Omega, the Zed-based OpenAgents Desktop application
 - Client repository: `OpenAgentsInc/omega`
@@ -22,9 +22,10 @@ The implementation order is:
 1. Build the identity-first Omega onboarding journey.
 2. Release a fully branded Omega bootstrap candidate.
 3. Port the current OpenAgents Desktop product.
-4. Add selected Buzz workroom and Nostr capabilities.
-5. Make Omega the primary desktop application.
-6. Retire the Electron application after a safe migration window.
+4. Prove the Comet-shaped workbench with a fixture-backed forensic case reader.
+5. Add selected Buzz workroom and Nostr capabilities.
+6. Make Omega the primary desktop application.
+7. Retire the Electron application after a safe migration window.
 
 The first target is `v0.2.0-rc1` during the 2026-07-23 owner session.
 The target name is Omega.
@@ -121,6 +122,9 @@ The old authority path must stop after that cutover.
 8. A UI projection must not become a second durable authority.
 9. A fixture pass must not become a packaged-release claim.
 10. Rust does not gain authority only because it is native code.
+11. Comet can own presentation grammar, but Omega owns application authority.
+12. A model output, panel vote, or social post never advances an evidence rung.
+13. Publication remains a separate, default-blocked authority transition.
 
 ## 6. Phase 0: release `v0.2.0-rc1`
 
@@ -616,6 +620,50 @@ The parity gate requires:
 - security and privacy review
 - independent assurance
 
+### 7.11 Packet OMEGA-OA-11: simplified forensic bench
+
+Use the Coldcard fixture as the first evidence-rich workbench mounted in the
+Comet-shaped Omega shell. This packet is a presentation and interaction packet.
+It consumes existing forensic projections and emits existing Omega intents. It
+must not create a second target, run, claim, evidence, review, or publication
+authority.
+
+Deliver the packet in five bounded slices:
+
+1. **OFR-UI-01 — read-only case reader.** Open the synthetic Coldcard case from
+   a normal Omega task. Keep project navigation, task tabs, history, and
+   composer intact. Add a sticky header for target, commit, arm, fixture/live
+   status, completeness, privacy, proof rung, run state, and cleanup truth.
+2. **OFR-UI-02 — preflight and lifecycle states.** Render complete, incomplete,
+   denied, awaiting-profile, request-schema-failed, tool-contract-incompatible,
+   running, cancelled, recovery-required, cleaned, and stale states. Do not
+   enable live Prepare, Launch, Cancel, or cleanup until OpenAgents issues #9289
+   and #9290 have accepted live receipts.
+3. **OFR-UI-03 — evidence queue and claim inspector.** Separate findings,
+   hypotheses, limitations, disputes, and reconciliation. Show exact
+   proposition, provenance, supporting and disputing evidence, missing rung,
+   non-implications, and next mechanical check. Make exact refs copyable.
+4. **OFR-UI-04 — model panel and matched matrix.** Show model family, role,
+   input eligibility, typed outcome, censoring, and disagreement. Do not show a
+   majority vote as target truth.
+5. **OFR-UI-05 — publication gate.** Show evidence, redaction, independent
+   review, disclosure scope, maintainer disposition, and publication authority
+   as distinct blockers. Default the case to private and blocked.
+
+Use one durable workbench region, standard tabs and list/detail interaction,
+restrained semantic color, existing typography and tokens, explicit loading,
+empty, error, stale, and disabled states, keyboard navigation, and reduced-
+motion behavior. Do not add a second left rail, modal-only review, excessive
+card nesting, decorative motion, or a presentation-owned evidence cache.
+
+Acceptance requires fixture projection tests, deterministic visual scenes for
+every named state, keyboard and accessibility checks, restart/restore proof,
+and conformance showing that actions reach the existing Omega authority. Live
+acceptance additionally requires the exact OpenAgents worker, source-delivery,
+campaign, holdout, artifact, generator, replay, and evidence receipts tracked
+by issue #9300. The fixture reader can land before those live gates; it cannot
+close them.
+
 ## 8. Phase 2: add selected Buzz capabilities
 
 Omega will reproduce useful Buzz outcomes.
@@ -1000,7 +1048,14 @@ Do not parallelize two changes to one authority contract.
 
 ## 13. Immediate execution queue
 
-The queue starts now:
+The original queue below records the accepted dependency order. The 2026-08-02
+owner reconciliation sets the next Comet-workbench sequence after the existing
+agent shell: claim one bounded Omega packet for OFR-UI-01, land the read-only
+fixture reader, close the live OpenAgents acceptance gaps, then admit OFR-UI-02
+through OFR-UI-05 as their dependencies become real. Documentation does not
+self-claim Omega code paths.
+
+The full dependency queue is:
 
 1. OMEGA-OID-00: freeze the identity-first contract.
 2. OMEGA-OID-01: isolate Omega application identity and data.
@@ -1014,8 +1069,10 @@ The queue starts now:
 10. OMEGA-OID-09: prove the packaged identity-first journey.
 11. OMEGA-RC1-01 through OMEGA-RC1-07: complete the bootstrap release.
 12. OMEGA-OA-01 through OMEGA-OA-10: close Desktop parity.
-13. OMEGA-BZ-00 through OMEGA-BZ-09: add selected Buzz outcomes.
-14. Complete migration, release, cutover, and retirement.
+13. OMEGA-OA-11 / OFR-UI-01 through OFR-UI-05: prove the simplified forensic
+    workbench without creating a second authority.
+14. OMEGA-BZ-00 through OMEGA-BZ-09: add selected Buzz outcomes.
+15. Complete migration, release, cutover, and retirement.
 
 Only the current ready packet can mutate its owned paths.
 A failed packet stays open with typed evidence.

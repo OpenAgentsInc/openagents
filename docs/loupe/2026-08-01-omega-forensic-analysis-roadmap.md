@@ -5,9 +5,9 @@ research work. It does not itself authorize scanning a third-party target,
 publishing a vulnerability claim, contacting a maintainer, spending beyond an
 admitted budget, or running an exploit outside an owned lab.
 
-Roadmap revision: 6
+Roadmap revision: 7
 
-Date: 2026-08-01
+Date: 2026-08-02
 
 Primary evidence:
 
@@ -30,12 +30,29 @@ Primary evidence:
 
 ## Implementation status
 
-The bounded OFR-001 through OFR-018 implementation program is complete as of
-2026-08-01. The child issues and their acceptance evidence are linked from
-[the master tracker](https://github.com/OpenAgentsInc/openagents/issues/9300).
-This means the product and contract surfaces described below exist and are
-tested; it does not turn the roadmap's safety boundaries into authorization for
-a live target, disclosure, or unknown-key search.
+OFR-001 through OFR-018 produced substantial contract, fixture, adapter,
+deterministic-evaluator, and Omega-projection implementations. Focused tests
+exercise those checked-in surfaces. That implementation inventory is not the
+same as accepted end-to-end operation.
+
+[OpenAgents issue #9300](https://github.com/OpenAgentsInc/openagents/issues/9300)
+was reopened on 2026-08-01 after independent review found that the prior child
+issue states overstated acceptance. In particular, the repository does not yet
+have accepted live GCE worker and private source-delivery receipts, real
+forensic campaigns, untouched holdout results, an admitted artifact build and
+generator-throughput result, frozen historical replay, or the complete live
+evidence graph. The runtime and source-delivery correction gates remain open in
+[issue #9289](https://github.com/OpenAgentsInc/openagents/issues/9289) and
+[issue #9290](https://github.com/OpenAgentsInc/openagents/issues/9290).
+
+Read every status in this roadmap at its narrowest proof rung:
+
+| Rung                     | Current meaning                                                                                                               |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| Implemented              | Source, schema, fixture, adapter, or projection exists in a repository.                                                       |
+| Deterministically tested | A named checked-in test exercises the bounded implementation.                                                                 |
+| Live accepted            | A deployed route produced the required independent receipts. This is still open where #9289, #9290, and #9300 say it is open. |
+| Publicly publishable     | Separate evidence, redaction, disclosure, and publication authority exist. No such general authority is implied here.         |
 
 Use the
 [implementation and operator guide](2026-08-01-omega-forensics-implementation-and-operator-guide.md)
@@ -64,10 +81,11 @@ delivery sequence.
   documented in the
   [Omega Coldcard evidence views](https://github.com/OpenAgentsInc/omega/blob/main/docs/src/development/omega-coldcard-evidence-views.md).
 
-Ongoing expansion beyond these bounded issues—new blinded benchmarks, live
+Ongoing acceptance and expansion beyond these bounded implementations—live
+worker and source delivery, new blinded benchmarks, live
 operational campaigns, maintainer coordination, or automatic remediation—must
 receive its own scope, authority, and acceptance evidence. It is not implied by
-closing the implementation tracker.
+checked-in code or a synthetic fixture.
 
 The first target is the historical, pre-fix Coldcard firmware at
 `bcc2c382a324690a2fcf972c0bac3b79bf923f7b`. The first product is an
@@ -143,12 +161,12 @@ prompt can reason over evidence that was never mounted.
 Omega is the operator surface. It does not need to run untrusted scanners in
 the desktop process.
 
-| Surface | Responsibility |
-| --- | --- |
-| Omega | Target selection, pinned-revision disclosure, prompt editing, run configuration, progress, finding review, source navigation, comparisons, approvals, and receipts. |
-| OpenAgents control plane | Versioned contracts, managed-sandbox admission and lifecycle, benchmark datasets, prompt artifacts, evaluation, optimizer records, release gates, worker dispatch, and durable evidence refs. |
-| OpenAgents Cloud Linux worker | One admitted, disposable GCE VM per forensic run for checkout preparation, dependency materialization, Loupe execution, builds, tests, artifact inspection, and later fuzzing. |
-| Upstream Loupe | Scanner lifecycle, typed finding tools, verdict-before-patch discipline, deduplication, and generally useful checkout or prompt hooks. |
+| Surface                       | Responsibility                                                                                                                                                                                |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Omega                         | Target selection, pinned-revision disclosure, prompt editing, run configuration, progress, finding review, source navigation, comparisons, approvals, and receipts.                           |
+| OpenAgents control plane      | Versioned contracts, managed-sandbox admission and lifecycle, benchmark datasets, prompt artifacts, evaluation, optimizer records, release gates, worker dispatch, and durable evidence refs. |
+| OpenAgents Cloud Linux worker | One admitted, disposable GCE VM per forensic run for checkout preparation, dependency materialization, Loupe execution, builds, tests, artifact inspection, and later fuzzing.                |
+| Upstream Loupe                | Scanner lifecycle, typed finding tools, verdict-before-patch discipline, deduplication, and generally useful checkout or prompt hooks.                                                        |
 
 The macOS Omega application is the console. Bubblewrap scanning remains on
 Linux. For now, every forensic run executes on OpenAgents Cloud's admitted
@@ -167,15 +185,15 @@ mutation or public claims.
 
 The first worker target is deliberately closed:
 
-| Field | Required value |
-| --- | --- |
-| target class | `openagents_managed` |
-| provider | `google_cloud` |
-| adapter | `adapter.oa-codex-control.gce.v1` |
-| isolation | `gce_vm` |
-| profile | `profile.sbx.gce.e2-small.v1` or a later digest-pinned revision admitted specifically for forensics |
-| data posture | `openagents_managed_region` |
-| network | `network-policy-ref://openagents/managed-sandbox/broker-only-v1` |
+| Field        | Required value                                                                                      |
+| ------------ | --------------------------------------------------------------------------------------------------- |
+| target class | `openagents_managed`                                                                                |
+| provider     | `google_cloud`                                                                                      |
+| adapter      | `adapter.oa-codex-control.gce.v1`                                                                   |
+| isolation    | `gce_vm`                                                                                            |
+| profile      | `profile.sbx.gce.e2-small.v1` or a later digest-pinned revision admitted specifically for forensics |
+| data posture | `openagents_managed_region`                                                                         |
+| network      | `network-policy-ref://openagents/managed-sandbox/broker-only-v1`                                    |
 
 Omega requests admission and commands through the native Desktop managed-
 sandbox boundary. `ManagedSandboxService`, the Worker broker, Cloud SQL
@@ -314,6 +332,44 @@ provider state labels as process truth remain out of scope.
 
 Add a **Forensics** workbench to an existing Omega repository context.
 
+### 4.0 Short-term Comet-first forensic bench
+
+The first visible product slice should mount Omega's existing forensic
+projections inside the simplified Comet-shaped application shell. Comet owns
+presentation; Omega remains the only authority for target state, run intents,
+claims, evidence, review decisions, and publication disposition.
+
+```text
+┌ Case: Coldcard / vulnerable / bcc2c382… ─ private ─ not_proven ─ fixture ┐
+│ Evidence  Claims  Limitations  Panel  Publication                         │
+├───────────────────────────────┬───────────────────────────────────────────┤
+│ review queue                  │ selected proposition                      │
+│ source reference              │ supporting + disputing evidence           │
+│ model/tool limitation         │ missing rung + next mechanical check      │
+│ reconciliation drift         │ provenance + non-implications             │
+├───────────────────────────────┴───────────────────────────────────────────┤
+│ input/tool/runtime limits                          Publication: BLOCKED    │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+Use the checked-in Coldcard fixture to ship the reader before live launch is
+available. The short-term order is:
+
+| ID        | Slice                              | Acceptance                                                                                                                                                                               |
+| --------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OFR-UI-01 | Read-only case reader              | Open the synthetic case from a normal Comet-shaped task; preserve task/sidebar/tab/composer navigation; show exact target, fixture status, proof rung, privacy boundary, and provenance. |
+| OFR-UI-02 | Preflight and launch states        | Render complete, incomplete, denied, awaiting-profile, and tool-contract-failed states. Keep live prepare/launch controls disabled until #9289 and #9290 have accepted receipts.         |
+| OFR-UI-03 | Evidence queue and claim inspector | Separate findings, hypotheses, limitations, disputes, and reconciliation. Open exact refs; show the missing rung and next mechanical check.                                              |
+| OFR-UI-04 | Model-panel and run matrix         | Show family, role, eligibility, typed outcome, censoring, and disagreement. Never render a majority vote as target truth.                                                                |
+| OFR-UI-05 | Publication gate                   | Show redaction, independent review, disclosure scope, maintainer decision, and publication authority as separate blockers. Default to private and blocked.                               |
+
+The first slice should be dense but familiar: one durable workbench region,
+standard tabs and lists, restrained semantic color, copyable monospace evidence
+values, explicit loading/empty/error states, keyboard navigation, and no
+decorative motion. It should not introduce a second rail, modal-only evidence
+review, nested cards for every row, or presentation-owned copies of authority
+state.
+
 ### 4.1 Target
 
 The operator sees and confirms:
@@ -417,6 +473,12 @@ differences in causal detail, evidence tier, false positives, latency, token or
 cost use, and missing-input declarations. Divergence is a lead, not noise to
 average away.
 
+The matrix must also retain model refusals, provider-policy restrictions,
+unsupported inputs, request-schema failures, tool-contract incompatibilities,
+abstentions, outages, partial panels, and right-censored arms. These are
+limitations, not misses or clearance. Panel agreement can prioritize a check;
+only the matching deterministic or executed evidence can advance a claim rung.
+
 ### 4.5 Editor-native review
 
 Each result opens the cited file and symbol, the causal-path graph, the proposed
@@ -435,14 +497,14 @@ evaluation series.
 
 ### 5.1 Revisions
 
-| Role | Revision |
-| --- | --- |
+| Role              | Revision                                   |
+| ----------------- | ------------------------------------------ |
 | Vulnerable target | `bcc2c382a324690a2fcf972c0bac3b79bf923f7b` |
-| Fix | `ca72463709f4e3f8964952039d5caf955f566a87` |
-| libNgU | `537519a829259622ea6b0334fbafd6cae852852f` |
-| MicroPython | `4107246f8a080807b62c3b4838e71e812ea68b6f` |
-| ckcc-protocol | `3d1dfa858beb58b8dac37d8c66d7aed2909812f2` |
-| mpy-qr | `11347d83f4eb325b10676a4eb8e17deccfe0df44` |
+| Fix               | `ca72463709f4e3f8964952039d5caf955f566a87` |
+| libNgU            | `537519a829259622ea6b0334fbafd6cae852852f` |
+| MicroPython       | `4107246f8a080807b62c3b4838e71e812ea68b6f` |
+| ckcc-protocol     | `3d1dfa858beb58b8dac37d8c66d7aed2909812f2` |
+| mpy-qr            | `11347d83f4eb325b10676a4eb8e17deccfe0df44` |
 
 ### 5.2 Required arms
 
@@ -501,17 +563,17 @@ immutable finding-event timestamp. It must not rewrite the time of discovery.
 
 #### 5.4.1 Canonical milestones
 
-| Marker | Meaning | Collected from |
-| --- | --- | --- |
-| `T0 request_accepted` | Native forensic command and exact run bytes are durably admitted. | Worker broker command record. |
-| `T1 worker_ready` | The exact live GCE guest, image/profile, isolation, network posture, and forensic driver are observed ready. | Managed-sandbox readiness event and receipt. |
-| `T2 coverage_ready` | The immutable source bundle is mounted and its coverage manifest is terminal. | Source-materializer and preflight receipt. |
-| `T3 analysis_started` | The first discovery turn is structurally accepted. | Native runtime-turn event. |
-| `T4 first_hypothesis` | The first typed forensic hypothesis is recorded. | Forensic event stream. |
-| `T5 first_qualified_identification` | The earliest typed finding later accepted by the frozen vulnerability oracle. | Finding event plus evaluator adjudication. |
-| `T6 first_verified_finding` | Deterministic evidence or an admitted independent verifier confirms the finding. | Evidence or verifier receipt. |
-| `T7 first_reviewed_finding` | A human accepts, corrects, or rejects the finding in Omega. | Review decision event. |
-| `T8 cleanup_observed` | The sandbox is deleted and the zero-residue oracle passes. | Native cleanup receipt. |
+| Marker                              | Meaning                                                                                                      | Collected from                               |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------- |
+| `T0 request_accepted`               | Native forensic command and exact run bytes are durably admitted.                                            | Worker broker command record.                |
+| `T1 worker_ready`                   | The exact live GCE guest, image/profile, isolation, network posture, and forensic driver are observed ready. | Managed-sandbox readiness event and receipt. |
+| `T2 coverage_ready`                 | The immutable source bundle is mounted and its coverage manifest is terminal.                                | Source-materializer and preflight receipt.   |
+| `T3 analysis_started`               | The first discovery turn is structurally accepted.                                                           | Native runtime-turn event.                   |
+| `T4 first_hypothesis`               | The first typed forensic hypothesis is recorded.                                                             | Forensic event stream.                       |
+| `T5 first_qualified_identification` | The earliest typed finding later accepted by the frozen vulnerability oracle.                                | Finding event plus evaluator adjudication.   |
+| `T6 first_verified_finding`         | Deterministic evidence or an admitted independent verifier confirms the finding.                             | Evidence or verifier receipt.                |
+| `T7 first_reviewed_finding`         | A human accepts, corrects, or rejects the finding in Omega.                                                  | Review decision event.                       |
+| `T8 cleanup_observed`               | The sandbox is deleted and the zero-residue oracle passes.                                                   | Native cleanup receipt.                      |
 
 Durations spanning control-plane phases use one server-side clock. Durations
 inside the worker use monotonic elapsed values reported in receipts. Do not
@@ -519,18 +581,18 @@ subtract unsynchronized guest, browser, and control-plane wall clocks.
 
 #### 5.4.2 Speed and lifecycle metrics
 
-| Metric | Definition | Collection | Omega display | Improve toward |
-| --- | --- | --- | --- | --- |
-| Provision latency | `T1 - T0`. | Managed-sandbox command, readiness event, and provision receipt. | Run waterfall: queue plus provision segment. | Lower without weaker readiness. |
-| Input-readiness latency | `T2 - T1`. | Source-bundle and coverage receipts. | Preflight segment with submodule and dependency drill-down. | Lower while completeness stays green. |
-| Time to first hypothesis | `T4 - T3`. Diagnostic only; not a hit. | First typed hypothesis event. | Dashed marker on the analysis timeline. | Lower only when later yield does not regress. |
-| Analysis time to identification | `T5 - T3`. The primary scanner-speed metric. | Runtime start, immutable finding event, and frozen evaluator result. | Primary run card and finding detail. | Lower p50 and tail latency. |
-| End-to-end time to identification | `T5 - T0`. Includes supply and preflight. | Same events plus broker admission. | Primary comparison column and full waterfall. | Lower without hiding infrastructure time. |
-| Time to verification | `T6 - T0` and `T6 - T5`. | Evidence and verifier receipts. | Verification segment beside discovery time. | Lower while verifier independence holds. |
-| Time to reviewed finding | `T7 - T0` and active reviewer minutes. | Explicit Omega review-session and decision events, with idle time separate. | Review queue and finding detail. | Lower operator burden. |
-| Cleanup latency | `T8 - cleanup_requested`. | Stop, delete, and cleanup receipts. | Final lifecycle segment; red until zero residue. | Lower, with 100% observed cleanup. |
-| First-priority-tranche hit | Whether `T5` occurs before the priority tranche closes. | Scheduler tranche event plus qualified finding. | Badge and run-matrix boolean. | Higher hit rate. |
-| Work fraction to identification | Focal-file sessions and ranked tranches started/completed through `T5`, divided by the declared scan plan. | Scheduler plan and session events. | Scan-progress marker at the qualified hit. | Lower fraction with equal or better recall. |
+| Metric                            | Definition                                                                                                 | Collection                                                                  | Omega display                                               | Improve toward                                |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------- |
+| Provision latency                 | `T1 - T0`.                                                                                                 | Managed-sandbox command, readiness event, and provision receipt.            | Run waterfall: queue plus provision segment.                | Lower without weaker readiness.               |
+| Input-readiness latency           | `T2 - T1`.                                                                                                 | Source-bundle and coverage receipts.                                        | Preflight segment with submodule and dependency drill-down. | Lower while completeness stays green.         |
+| Time to first hypothesis          | `T4 - T3`. Diagnostic only; not a hit.                                                                     | First typed hypothesis event.                                               | Dashed marker on the analysis timeline.                     | Lower only when later yield does not regress. |
+| Analysis time to identification   | `T5 - T3`. The primary scanner-speed metric.                                                               | Runtime start, immutable finding event, and frozen evaluator result.        | Primary run card and finding detail.                        | Lower p50 and tail latency.                   |
+| End-to-end time to identification | `T5 - T0`. Includes supply and preflight.                                                                  | Same events plus broker admission.                                          | Primary comparison column and full waterfall.               | Lower without hiding infrastructure time.     |
+| Time to verification              | `T6 - T0` and `T6 - T5`.                                                                                   | Evidence and verifier receipts.                                             | Verification segment beside discovery time.                 | Lower while verifier independence holds.      |
+| Time to reviewed finding          | `T7 - T0` and active reviewer minutes.                                                                     | Explicit Omega review-session and decision events, with idle time separate. | Review queue and finding detail.                            | Lower operator burden.                        |
+| Cleanup latency                   | `T8 - cleanup_requested`.                                                                                  | Stop, delete, and cleanup receipts.                                         | Final lifecycle segment; red until zero residue.            | Lower, with 100% observed cleanup.            |
+| First-priority-tranche hit        | Whether `T5` occurs before the priority tranche closes.                                                    | Scheduler tranche event plus qualified finding.                             | Badge and run-matrix boolean.                               | Higher hit rate.                              |
+| Work fraction to identification   | Focal-file sessions and ranked tranches started/completed through `T5`, divided by the declared scan plan. | Scheduler plan and session events.                                          | Scan-progress marker at the qualified hit.                  | Lower fraction with equal or better recall.   |
 
 Runs with no `T5` are right-censored at their declared time or token budget and
 count as misses. They never receive a zero duration and are never omitted from
@@ -544,21 +606,21 @@ label tail statistics provisional.
 
 #### 5.4.3 Detection and evidence-quality metrics
 
-| Metric | Definition | Collection | Omega display | Improve toward |
-| --- | --- | --- | --- | --- |
-| Qualified hit rate | Runs with at least one `T5` divided by all eligible runs, including misses. | Frozen evaluator over typed findings. | Run-matrix hit percentage with numerator and denominator. | Higher on development and untouched holdout. |
-| Finding precision | Unique qualified vulnerability claims divided by all unique adjudicated vulnerability claims. | Frozen evaluator plus deduplicated typed findings. | Submitted/unique/qualified funnel. | Higher without suppressing difficult true findings. |
-| Recall at fixed time | Fraction of known benchmark vulnerabilities qualified by a fixed elapsed-time budget. | Finding timestamps and benchmark oracle. | Recall-versus-time curve and named `Hit@time` columns. | Curve moves up and left. |
-| Recall at fixed tokens | Fraction qualified before a fixed aggregate token budget. | Finding sequence, provider usage receipts, benchmark oracle. | Recall-versus-token curve and `Hit@tokens`. | Curve moves up and left. |
-| Causal-chain coverage | Required causal links supported by valid evidence divided by all frozen links. | Deterministic Coldcard/fixture evaluator. | Per-link checklist and aggregate percentage. | 100% for a benchmark hit. |
-| Evidence-reference validity | Resolvable, target-bound source and artifact refs divided by submitted refs. | Tree, symbol, build, and artifact resolvers. | Evidence health badge with broken-ref drill-down. | 100%. |
-| Verification rate | Qualified findings with admitted confirming receipts divided by qualified findings. | PoC, invariant, artifact, and verifier receipts. | Finding funnel: submitted → qualified → verified → reviewed. | Higher without circular verification. |
-| Clean-control false-positive rate | Clean controls incorrectly receiving a qualified vulnerability claim. | Frozen clean-control evaluator. | Red matrix column and release-gate failure. | Zero. |
-| Fixed-control regression rate | Runs that still report the historical issue on the fixed commit. | Fixed-revision evaluator. | Dedicated hard-gate column. | Zero. |
-| Duplicate burden | Duplicate submitted findings divided by all submitted findings. | Semantic identity plus deterministic fingerprint. | Collapsed duplicate groups and ratio. | Lower without hiding distinct variants. |
-| Calibration | Agreement between `finding`, `hypothesis`, `not_proven`, and later adjudication. | Typed claim state plus evaluator/reviewer decisions. | Calibration table by confidence/evidence tier. | Better calibrated; unsupported certainty decreases. |
-| Generalization gap | Development hit rate minus blinded holdout hit rate. | Dataset-split identity and scorecards. | Development/holdout paired bars. | Smaller without training on holdout. |
-| Run stability | Agreement of qualified vulnerability identities and causal links across matched repetitions. | Repeated-run groups. | Stability percentage and divergence view. | Higher, while real alternate findings remain visible. |
+| Metric                            | Definition                                                                                    | Collection                                                   | Omega display                                                | Improve toward                                        |
+| --------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | ----------------------------------------------------- |
+| Qualified hit rate                | Runs with at least one `T5` divided by all eligible runs, including misses.                   | Frozen evaluator over typed findings.                        | Run-matrix hit percentage with numerator and denominator.    | Higher on development and untouched holdout.          |
+| Finding precision                 | Unique qualified vulnerability claims divided by all unique adjudicated vulnerability claims. | Frozen evaluator plus deduplicated typed findings.           | Submitted/unique/qualified funnel.                           | Higher without suppressing difficult true findings.   |
+| Recall at fixed time              | Fraction of known benchmark vulnerabilities qualified by a fixed elapsed-time budget.         | Finding timestamps and benchmark oracle.                     | Recall-versus-time curve and named `Hit@time` columns.       | Curve moves up and left.                              |
+| Recall at fixed tokens            | Fraction qualified before a fixed aggregate token budget.                                     | Finding sequence, provider usage receipts, benchmark oracle. | Recall-versus-token curve and `Hit@tokens`.                  | Curve moves up and left.                              |
+| Causal-chain coverage             | Required causal links supported by valid evidence divided by all frozen links.                | Deterministic Coldcard/fixture evaluator.                    | Per-link checklist and aggregate percentage.                 | 100% for a benchmark hit.                             |
+| Evidence-reference validity       | Resolvable, target-bound source and artifact refs divided by submitted refs.                  | Tree, symbol, build, and artifact resolvers.                 | Evidence health badge with broken-ref drill-down.            | 100%.                                                 |
+| Verification rate                 | Qualified findings with admitted confirming receipts divided by qualified findings.           | PoC, invariant, artifact, and verifier receipts.             | Finding funnel: submitted → qualified → verified → reviewed. | Higher without circular verification.                 |
+| Clean-control false-positive rate | Clean controls incorrectly receiving a qualified vulnerability claim.                         | Frozen clean-control evaluator.                              | Red matrix column and release-gate failure.                  | Zero.                                                 |
+| Fixed-control regression rate     | Runs that still report the historical issue on the fixed commit.                              | Fixed-revision evaluator.                                    | Dedicated hard-gate column.                                  | Zero.                                                 |
+| Duplicate burden                  | Duplicate submitted findings divided by all submitted findings.                               | Semantic identity plus deterministic fingerprint.            | Collapsed duplicate groups and ratio.                        | Lower without hiding distinct variants.               |
+| Calibration                       | Agreement between `finding`, `hypothesis`, `not_proven`, and later adjudication.              | Typed claim state plus evaluator/reviewer decisions.         | Calibration table by confidence/evidence tier.               | Better calibrated; unsupported certainty decreases.   |
+| Generalization gap                | Development hit rate minus blinded holdout hit rate.                                          | Dataset-split identity and scorecards.                       | Development/holdout paired bars.                             | Smaller without training on holdout.                  |
+| Run stability                     | Agreement of qualified vulnerability identities and causal links across matched repetitions.  | Repeated-run groups.                                         | Stability percentage and divergence view.                    | Higher, while real alternate findings remain visible. |
 
 Finding count is not a success metric. A prompt that emits more duplicates or
 weak claims must not appear better. Aggregate by adjudicated vulnerability
@@ -572,18 +634,18 @@ false-positive metrics rather than being mislabeled as vulnerability misses.
 
 #### 5.4.4 Token, cost, and work-efficiency metrics
 
-| Metric | Definition | Collection | Omega display | Improve toward |
-| --- | --- | --- | --- | --- |
-| Tokens to identification | Sum of input, cached-input, and output tokens consumed through `T5` across discovery, verifier, and judge turns. Parallel agents all count. When a provider exposes usage only at turn settlement, count the full usage of every turn started before `T5` and mark the value `upper_bound`. | Provider usage receipts joined to native turn and finding sequences. | Primary efficiency column with role and exactness breakdown. | Lower while hit and quality gates hold. |
-| Total run tokens | All provider tokens through structural settlement, grouped by discovery, verification, judging, and failed/retried turns. | Provider usage receipts. | Live budget meter and stacked bar. | Lower for equivalent or better evidence. |
-| Tokens per unique qualified finding | Total run tokens divided by unique qualified vulnerability identities. Misses show the full spent budget and zero yield, not infinity hidden from charts. | Usage receipts plus adjudicated dedup groups. | Efficiency table and trend. | Lower with nonzero qualified yield. |
-| Post-identification tokens | Tokens after `T5`, split into verification, additional discovery, and unproductive work. Turn-level-only usage is marked estimated rather than split as exact. | Turn sequence relative to finding event. | Finding timeline and optimization drill-down. | Remove unproductive tail, retain useful verification/coverage. |
-| Cache utilization | Cached input tokens divided by cache-eligible input tokens, with provider exactness. | Provider usage receipts. | Cache segment in token bar. | Higher when it reduces cost without stale context. |
-| Cost to identification | Provider cost plus measured GCE incremental cost through `T5`. | Provider billing/usage refs and managed-sandbox cost receipts. | USD-micro cost card and matrix column. | Lower subject to quality gates. |
-| Total run cost | All provider, GCE, artifact, and evaluator cost through `T8`. | Native usage, infrastructure, and artifact receipts. | Budget meter and cost waterfall. | Lower with cleanup complete. |
-| Tool work to identification | Tool calls, files opened, dependency boundaries crossed, bytes read, builds, and verifier actions through `T5`. | Bounded forensic-driver tool events. | Evidence-path summary and tool waterfall. | Fewer irrelevant actions, not fewer required dependencies. |
-| Concurrency amplification | Sum of active agent milliseconds divided by analysis wall time, shown beside peak concurrency. | Turn start/settlement events. | Parallelism card. | Use deliberately; lower wall time without uncontrolled token growth. |
-| Worker utilization | Measured running CPU time and memory high-water mark relative to lease time/profile. | GCE and forensic-driver receipts. | Infrastructure detail. | Right-size the admitted profile. |
+| Metric                              | Definition                                                                                                                                                                                                                                                                                  | Collection                                                           | Omega display                                                | Improve toward                                                       |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------- |
+| Tokens to identification            | Sum of input, cached-input, and output tokens consumed through `T5` across discovery, verifier, and judge turns. Parallel agents all count. When a provider exposes usage only at turn settlement, count the full usage of every turn started before `T5` and mark the value `upper_bound`. | Provider usage receipts joined to native turn and finding sequences. | Primary efficiency column with role and exactness breakdown. | Lower while hit and quality gates hold.                              |
+| Total run tokens                    | All provider tokens through structural settlement, grouped by discovery, verification, judging, and failed/retried turns.                                                                                                                                                                   | Provider usage receipts.                                             | Live budget meter and stacked bar.                           | Lower for equivalent or better evidence.                             |
+| Tokens per unique qualified finding | Total run tokens divided by unique qualified vulnerability identities. Misses show the full spent budget and zero yield, not infinity hidden from charts.                                                                                                                                   | Usage receipts plus adjudicated dedup groups.                        | Efficiency table and trend.                                  | Lower with nonzero qualified yield.                                  |
+| Post-identification tokens          | Tokens after `T5`, split into verification, additional discovery, and unproductive work. Turn-level-only usage is marked estimated rather than split as exact.                                                                                                                              | Turn sequence relative to finding event.                             | Finding timeline and optimization drill-down.                | Remove unproductive tail, retain useful verification/coverage.       |
+| Cache utilization                   | Cached input tokens divided by cache-eligible input tokens, with provider exactness.                                                                                                                                                                                                        | Provider usage receipts.                                             | Cache segment in token bar.                                  | Higher when it reduces cost without stale context.                   |
+| Cost to identification              | Provider cost plus measured GCE incremental cost through `T5`.                                                                                                                                                                                                                              | Provider billing/usage refs and managed-sandbox cost receipts.       | USD-micro cost card and matrix column.                       | Lower subject to quality gates.                                      |
+| Total run cost                      | All provider, GCE, artifact, and evaluator cost through `T8`.                                                                                                                                                                                                                               | Native usage, infrastructure, and artifact receipts.                 | Budget meter and cost waterfall.                             | Lower with cleanup complete.                                         |
+| Tool work to identification         | Tool calls, files opened, dependency boundaries crossed, bytes read, builds, and verifier actions through `T5`.                                                                                                                                                                             | Bounded forensic-driver tool events.                                 | Evidence-path summary and tool waterfall.                    | Fewer irrelevant actions, not fewer required dependencies.           |
+| Concurrency amplification           | Sum of active agent milliseconds divided by analysis wall time, shown beside peak concurrency.                                                                                                                                                                                              | Turn start/settlement events.                                        | Parallelism card.                                            | Use deliberately; lower wall time without uncontrolled token growth. |
+| Worker utilization                  | Measured running CPU time and memory high-water mark relative to lease time/profile.                                                                                                                                                                                                        | GCE and forensic-driver receipts.                                    | Infrastructure detail.                                       | Right-size the admitted profile.                                     |
 
 Usage values retain `exact | estimated | unavailable`. Unknown usage is not
 coerced to zero. Raw token counts are comparable only within the same provider
@@ -596,15 +658,15 @@ mixed into a supposedly portable total.
 
 #### 5.4.5 Reliability and human-load metrics
 
-| Metric | Definition and collection | Omega display | Improve toward |
-| --- | --- | --- | --- |
-| Admission and run success | Requested runs reaching `worker_ready`, structural settlement, and `T8`, with refusal reasons separated. Native lifecycle receipts. | Fleet health funnel. | Higher without accepting weaker targets. |
-| Cancellation latency | Cancel intent to runtime interruption, then to `T8`. Command, interrupt, and cleanup events. | Cancellation timeline. | Lower and reliably bounded. |
-| Cleanup success | Runs with observed zero residue divided by all provisioned runs. Cleanup oracle. | Global red/green SLO and per-run receipt link. | 100%; anything else is `recovery_required`. |
-| Budget compliance | Runs staying within token, time, cost, network, and artifact caps. Budget receipts. | Budget bars and hard-gate status. | 100%. |
-| Reviewer minutes per qualified finding | Explicit review-session intervals divided by qualified findings; no keystroke or ambient focus surveillance. Omega review events. | Reviewer workload dashboard. | Lower without rubber-stamping. |
-| Correction and rejection burden | Qualified findings materially corrected or rejected by reviewers. Review decision reasons. | Funnel and reason histogram. | Lower while difficult true findings remain discoverable. |
-| Actionable acceptance rate | Qualified findings accepted for retained regression or remediation work. Review decisions. | Finding funnel. | Higher; never used alone as truth. |
+| Metric                                 | Definition and collection                                                                                                           | Omega display                                  | Improve toward                                           |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | -------------------------------------------------------- |
+| Admission and run success              | Requested runs reaching `worker_ready`, structural settlement, and `T8`, with refusal reasons separated. Native lifecycle receipts. | Fleet health funnel.                           | Higher without accepting weaker targets.                 |
+| Cancellation latency                   | Cancel intent to runtime interruption, then to `T8`. Command, interrupt, and cleanup events.                                        | Cancellation timeline.                         | Lower and reliably bounded.                              |
+| Cleanup success                        | Runs with observed zero residue divided by all provisioned runs. Cleanup oracle.                                                    | Global red/green SLO and per-run receipt link. | 100%; anything else is `recovery_required`.              |
+| Budget compliance                      | Runs staying within token, time, cost, network, and artifact caps. Budget receipts.                                                 | Budget bars and hard-gate status.              | 100%.                                                    |
+| Reviewer minutes per qualified finding | Explicit review-session intervals divided by qualified findings; no keystroke or ambient focus surveillance. Omega review events.   | Reviewer workload dashboard.                   | Lower without rubber-stamping.                           |
+| Correction and rejection burden        | Qualified findings materially corrected or rejected by reviewers. Review decision reasons.                                          | Funnel and reason histogram.                   | Lower while difficult true findings remain discoverable. |
+| Actionable acceptance rate             | Qualified findings accepted for retained regression or remediation work. Review decisions.                                          | Finding funnel.                                | Higher; never used alone as truth.                       |
 
 #### 5.4.6 Collection and projection
 
@@ -635,7 +697,6 @@ paths, prompts, findings, raw model output, topology, and credentials stay in
 the admitted private evidence boundary. Even aggregate publication remains
 default-private until an explicit projection and release policy admits it.
 
-
 OFR-005 implements this evidence boundary in
 `@openagentsinc/forensic-contract`. `ForensicRunEvent.v1` now carries the full
 benchmark, split, arm, repetition, target, source, prompt, model, worker,
@@ -651,14 +712,14 @@ durations, tokens, costs, sample counts, and exactness.
 
 #### 5.4.7 Omega views
 
-| View | What it shows |
-| --- | --- |
-| Live run header | Current phase, elapsed time, token/cost/budget consumption, current tranche, first-hypothesis and qualified-hit markers, worker health, and cleanup state. |
-| Run waterfall | Queue, provision, source materialization, preflight, analysis, verification, review, stop/delete, and cleanup durations with findings and failures placed on the same ordered timeline. |
-| Finding detail | Time and tokens to this finding, causal-link coverage, evidence validity, verification status, duplicate group, and human decision. |
-| Matrix comparison | One row per prompt/model/profile arm; hit rate, misses, p50/p95 identification time, tokens and cost to identification, causal coverage, false positives, cleanup, and sample size. |
-| Trend and Pareto view | Version-over-version curves for recall@time and recall@tokens plus the non-dominated frontier of hit rate, identification latency, tokens, cost, false positives, and reviewer load. |
-| Metric provenance drawer | Exact formula and version, eligibility and censor rules, raw event/receipt refs, exactness, dataset split, sample size, confidence interval, and evaluator revision. |
+| View                     | What it shows                                                                                                                                                                           |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Live run header          | Current phase, elapsed time, token/cost/budget consumption, current tranche, first-hypothesis and qualified-hit markers, worker health, and cleanup state.                              |
+| Run waterfall            | Queue, provision, source materialization, preflight, analysis, verification, review, stop/delete, and cleanup durations with findings and failures placed on the same ordered timeline. |
+| Finding detail           | Time and tokens to this finding, causal-link coverage, evidence validity, verification status, duplicate group, and human decision.                                                     |
+| Matrix comparison        | One row per prompt/model/profile arm; hit rate, misses, p50/p95 identification time, tokens and cost to identification, causal coverage, false positives, cleanup, and sample size.     |
+| Trend and Pareto view    | Version-over-version curves for recall@time and recall@tokens plus the non-dominated frontier of hit rate, identification latency, tokens, cost, false positives, and reviewer load.    |
+| Metric provenance drawer | Exact formula and version, eligibility and censor rules, raw event/receipt refs, exactness, dataset split, sample size, confidence interval, and evaluator revision.                    |
 
 Incomplete runs remain visible in the same interface but never pool with
 complete runs. A user can drill from any aggregate to the exact contributing
@@ -739,16 +800,16 @@ frozen inputs and make correction cheaper, more visible, and harder to avoid.
 Every Coldcard run should render these claims separately. Evidence at one rung
 does not silently promote a later rung.
 
-| Rung | Question | Minimum qualifying evidence | What it still does not prove |
-| --- | --- | --- | --- |
-| Source selection | Can this source tree select the deterministic fallback for a secret consumer? | Resolvable macro, guard, symbol, caller, and sink references in a dependency-complete tree. | Which implementation shipped. |
-| Artifact reality | What did the pinned build compile and link? | Preprocessed source, compiler inputs, archive membership, symbol provider, link map, firmware digest, and an observed fault build. | That the state space is practically searchable. |
-| Generator behavior | What bytes does the selected implementation emit from an exact state and call trace? | Golden vectors from an independently implemented Yasmarang emulator, initialization and reseed traces, retained-width accounting, and mutation controls. | The unknown-state distribution on a real device. |
-| Exploitability | What candidate state space follows from each hardware, firmware, UID, timer, and user-interaction assumption? | A versioned entropy model with exact assumptions, ranges, sensitivity analysis, and measured enumeration and derivation receipts. | Recovery of a particular user's wallet. |
-| Owned-fixture recovery | Does the full seed-to-wallet pipeline recover a known fixture? | A synthetic or explicitly owned device/emulator fixture whose expected xpub or addresses match after replaying the recorded call trace and derivation paths. | Permission to enumerate or query anyone else's keys. |
-| Historical program fingerprint | Which public historical transactions share software-chosen construction habits? | Positive-control matches, negative block ranges, rate-conditioned collision estimates, cluster evidence, and a frozen chain snapshot. | A person's identity, intent, or theft. |
-| Entity grouping | Which collectors or vaults are joined by observed pooling edges? | A provenance-bearing graph with bounded traversal, connected-component derivation, and identity-versus-time clustering kept separate. | That every payer is a distinct victim or that the graph is complete. |
-| Unauthorized taking | Which reported movements were not authorized by their owners? | Victim testimony tied to a transaction, with source provenance and review. | The legal identity of the operator. |
+| Rung                           | Question                                                                                                      | Minimum qualifying evidence                                                                                                                                  | What it still does not prove                                         |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| Source selection               | Can this source tree select the deterministic fallback for a secret consumer?                                 | Resolvable macro, guard, symbol, caller, and sink references in a dependency-complete tree.                                                                  | Which implementation shipped.                                        |
+| Artifact reality               | What did the pinned build compile and link?                                                                   | Preprocessed source, compiler inputs, archive membership, symbol provider, link map, firmware digest, and an observed fault build.                           | That the state space is practically searchable.                      |
+| Generator behavior             | What bytes does the selected implementation emit from an exact state and call trace?                          | Golden vectors from an independently implemented Yasmarang emulator, initialization and reseed traces, retained-width accounting, and mutation controls.     | The unknown-state distribution on a real device.                     |
+| Exploitability                 | What candidate state space follows from each hardware, firmware, UID, timer, and user-interaction assumption? | A versioned entropy model with exact assumptions, ranges, sensitivity analysis, and measured enumeration and derivation receipts.                            | Recovery of a particular user's wallet.                              |
+| Owned-fixture recovery         | Does the full seed-to-wallet pipeline recover a known fixture?                                                | A synthetic or explicitly owned device/emulator fixture whose expected xpub or addresses match after replaying the recorded call trace and derivation paths. | Permission to enumerate or query anyone else's keys.                 |
+| Historical program fingerprint | Which public historical transactions share software-chosen construction habits?                               | Positive-control matches, negative block ranges, rate-conditioned collision estimates, cluster evidence, and a frozen chain snapshot.                        | A person's identity, intent, or theft.                               |
+| Entity grouping                | Which collectors or vaults are joined by observed pooling edges?                                              | A provenance-bearing graph with bounded traversal, connected-component derivation, and identity-versus-time clustering kept separate.                        | That every payer is a distinct victim or that the graph is complete. |
+| Unauthorized taking            | Which reported movements were not authorized by their owners?                                                 | Victim testimony tied to a transaction, with source provenance and review.                                                                                   | The legal identity of the operator.                                  |
 
 Use an explicit claim lattice in the evaluator and UI: `source_flaw`,
 `artifact_selected`, `state_space_model`, `owned_fixture_recovered`,
@@ -828,18 +889,18 @@ an old result.
 
 ### 6.3 What to emulate, extend, and reject
 
-| Reference pattern | OpenAgents treatment |
-| --- | --- |
-| Small hand-maintained evidence seeds; everything else derived. | Emulate with typed evidence inputs and provenance-bearing graph edges whose generated `because` text comes from the same derivation that created the edge. |
-| `victim report -> transaction -> destination -> payers -> onward spend`. | Emulate, but require bounded traversal, explicit change classification, claim-tier transitions, and fixtures for ambiguous multi-output transactions. |
-| Pattern-match candidates remain weaker than victim-confirmed waves. | Emulate as a claim lattice; promotion appends a revision and never erases the earlier weaker provenance. |
-| Positive scanner self-test and resumable JSONL output. | Extend with negative-control ranges, mutation tests, per-rate base-rate estimates, exact integer satoshi arithmetic, block-hash checkpoints, and signed receipts. |
-| Generated frozen dataset drives every UI number. | Extend with immutable raw-input bundles, canonical digests, schema and evaluator revisions, replay tests, and a separate admission gate before projection or publication. |
-| Independent published totals are reconciled, and drift is loud. | Emulate at the publisher's stated precision; never overwrite derived values with quoted totals. Treat external prose as evidence to compare, not numeric input. |
-| Connected components define pooling waves while time gaps define episodes. | Emulate the separation and attach threshold-sensitivity receipts; do not infer one operator merely from temporal proximity. |
-| Public chain habits identify a transaction-building program. | Extend with low-rate collision controls and cluster scoring. Never promote one match to identity, intent, or theft. |
-| Scheduled live refresh preserves the last good build on fetch failure. | Keep the stale-but-honest behavior, but do not make a mutable public endpoint or a bot commit to `main` the evidentiary authority. Generated data remains a candidate until deterministic replay and admission pass. |
-| Screenshots and quotes make the narrative legible. | Store source metadata, bounded excerpts, capture digests, and redaction state. Never ingest, reproduce, or publish a mnemonic, xprv, node credential, or other secret-bearing evidence. |
+| Reference pattern                                                          | OpenAgents treatment                                                                                                                                                                                                 |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Small hand-maintained evidence seeds; everything else derived.             | Emulate with typed evidence inputs and provenance-bearing graph edges whose generated `because` text comes from the same derivation that created the edge.                                                           |
+| `victim report -> transaction -> destination -> payers -> onward spend`.   | Emulate, but require bounded traversal, explicit change classification, claim-tier transitions, and fixtures for ambiguous multi-output transactions.                                                                |
+| Pattern-match candidates remain weaker than victim-confirmed waves.        | Emulate as a claim lattice; promotion appends a revision and never erases the earlier weaker provenance.                                                                                                             |
+| Positive scanner self-test and resumable JSONL output.                     | Extend with negative-control ranges, mutation tests, per-rate base-rate estimates, exact integer satoshi arithmetic, block-hash checkpoints, and signed receipts.                                                    |
+| Generated frozen dataset drives every UI number.                           | Extend with immutable raw-input bundles, canonical digests, schema and evaluator revisions, replay tests, and a separate admission gate before projection or publication.                                            |
+| Independent published totals are reconciled, and drift is loud.            | Emulate at the publisher's stated precision; never overwrite derived values with quoted totals. Treat external prose as evidence to compare, not numeric input.                                                      |
+| Connected components define pooling waves while time gaps define episodes. | Emulate the separation and attach threshold-sensitivity receipts; do not infer one operator merely from temporal proximity.                                                                                          |
+| Public chain habits identify a transaction-building program.               | Extend with low-rate collision controls and cluster scoring. Never promote one match to identity, intent, or theft.                                                                                                  |
+| Scheduled live refresh preserves the last good build on fetch failure.     | Keep the stale-but-honest behavior, but do not make a mutable public endpoint or a bot commit to `main` the evidentiary authority. Generated data remains a candidate until deterministic replay and admission pass. |
+| Screenshots and quotes make the narrative legible.                         | Store source metadata, bounded excerpts, capture digests, and redaction state. Never ingest, reproduce, or publish a mnemonic, xprv, node credential, or other secret-bearing evidence.                              |
 
 Do not copy the reference scanner as the product implementation. Its README
 requires `txindex` while the code treats it as optional, it relies on live
@@ -855,18 +916,18 @@ amounts. A missing negative control, raw digest, or policy receipt produces
 Keep the general qualified-identification metrics in section 5.4 and add these
 stage metrics. None is a reward for finding or spending keys.
 
-| Metric | Collection | Omega display | Improve toward |
-| --- | --- | --- | --- |
-| Time and tokens to each claim rung | First qualifying immutable event for each rung, joined to exact or upper-bound usage receipts. | Evidence-ladder timeline with missing rungs visible. | Earlier and lower only while every rung's gate remains satisfied. |
-| Generator-vector coverage | Required state, reseed, truncation, call-trace, derivation, and mutation vectors passed divided by the frozen vector set. | Reproduction matrix. | 100% on vulnerable and fixed expectations. |
-| State-space model sensitivity | Candidate counts and entropy bounds across frozen UID, timer, call-trace, firmware, and hardware assumptions. | Assumption explorer with interval and changed-input diff. | Narrower justified bounds, not smaller convenient numbers. |
-| Enumeration and derivation efficiency | Candidate states, BIP39 seeds, derivation paths, and synthetic oracle checks per second and per CPU-second, with profile digest. | Throughput and cost panels. | Higher after correctness vectors pass. |
-| Historical scan throughput | Blocks and transactions inspected per second, checkpoint bytes, restart time, and expensive-prevout fraction. | Resumable scan console and range heatmap. | Higher with identical candidate set and receipts. |
-| Fingerprint candidate funnel | Transactions scanned -> cheap candidates -> exact formula matches -> clusters -> evidence-linked waves. | Sankey or staged funnel split by fee regime. | Fewer unsupported promotions; preserve true controls. |
-| False matches per million transactions | Negative-control matches per million eligible transactions, stratified by fee rate, era, script type, and fingerprint revision. | Rate-conditioned precision table and confidence interval. | Lower, especially where normal traffic collides. |
-| Evidence-derivation coverage | Displayed graph nodes and claims with complete source, edge, rule, and explanation provenance. | Evidence graph health overlay. | 100%; orphaned prose is a hard failure. |
-| Reconciliation drift | Difference between independently derived and published transaction, UTXO, and value figures at stated precision. | `MATCH | DRIFT | UNAVAILABLE` ledger. | Exact agreement or an explained retained discrepancy. |
-| Claim correction burden | Claims revised after independent review, time to correction, affected projections, and evidence tier before/after. | Append-only claim history and correction diff. | Faster correction and fewer unsupported high-tier claims. |
+| Metric                                 | Collection                                                                                                                       | Omega display                                             | Improve toward                                                    |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------- | -------------------- | ----------------------------------------------------- |
+| Time and tokens to each claim rung     | First qualifying immutable event for each rung, joined to exact or upper-bound usage receipts.                                   | Evidence-ladder timeline with missing rungs visible.      | Earlier and lower only while every rung's gate remains satisfied. |
+| Generator-vector coverage              | Required state, reseed, truncation, call-trace, derivation, and mutation vectors passed divided by the frozen vector set.        | Reproduction matrix.                                      | 100% on vulnerable and fixed expectations.                        |
+| State-space model sensitivity          | Candidate counts and entropy bounds across frozen UID, timer, call-trace, firmware, and hardware assumptions.                    | Assumption explorer with interval and changed-input diff. | Narrower justified bounds, not smaller convenient numbers.        |
+| Enumeration and derivation efficiency  | Candidate states, BIP39 seeds, derivation paths, and synthetic oracle checks per second and per CPU-second, with profile digest. | Throughput and cost panels.                               | Higher after correctness vectors pass.                            |
+| Historical scan throughput             | Blocks and transactions inspected per second, checkpoint bytes, restart time, and expensive-prevout fraction.                    | Resumable scan console and range heatmap.                 | Higher with identical candidate set and receipts.                 |
+| Fingerprint candidate funnel           | Transactions scanned -> cheap candidates -> exact formula matches -> clusters -> evidence-linked waves.                          | Sankey or staged funnel split by fee regime.              | Fewer unsupported promotions; preserve true controls.             |
+| False matches per million transactions | Negative-control matches per million eligible transactions, stratified by fee rate, era, script type, and fingerprint revision.  | Rate-conditioned precision table and confidence interval. | Lower, especially where normal traffic collides.                  |
+| Evidence-derivation coverage           | Displayed graph nodes and claims with complete source, edge, rule, and explanation provenance.                                   | Evidence graph health overlay.                            | 100%; orphaned prose is a hard failure.                           |
+| Reconciliation drift                   | Difference between independently derived and published transaction, UTXO, and value figures at stated precision.                 | `MATCH                                                    | DRIFT                                                             | UNAVAILABLE` ledger. | Exact agreement or an explained retained discrepancy. |
+| Claim correction burden                | Claims revised after independent review, time to correction, affected projections, and evidence tier before/after.               | Append-only claim history and correction diff.            | Faster correction and fewer unsupported high-tier claims.         |
 
 Add five linked Omega views: an evidence ladder, a source-to-artifact and
 generator trace, an entropy-assumption explorer, a resumable historical-chain
@@ -970,32 +1031,32 @@ a factual source or artifact claim is true when a deterministic check exists.
 
 Names are provisional; the information is not.
 
-| Contract | Required content |
-| --- | --- |
-| `ForensicTargetSnapshot.v1` | Repository, commit, source digest, dirty-state truth, dependency policy, toolchain refs, and authorization refs. |
-| `ColdcardReproductionManifest.v1` | Pinned source and postmortem commits, suite identities, raw-input refs, expected comparison ranges, controls, assumptions, claim-rung gates, disclosure posture, and evaluator revision. |
-| `ForensicSourceBundle.v1` | Exact repository and commit, git tree, declared submodule commits, dependency manifest, private artifact ref, content digest, builder identity, retention, and materialization receipt. |
-| `ForensicCoverageManifest.v1` | Present, absent, excluded, oversized, generated, and dependency paths; coverage status and reasons. |
-| `ForensicScanProfile.v1` | Scope ranking, vulnerability classes, model matrix, prompt artifact, tools, sandbox, network, and budgets. |
-| `ForensicWorkerPlacement.v1` | Owner, tenant, work unit, sandbox and generation refs; exact OpenAgents-managed target, provider, adapter, isolation, region, image/profile digests, network policy, lease, budget, capabilities, admission, readiness, stop, deletion, and cleanup receipt refs. |
-| `ForensicPromptArtifact.v1` | Structured Prompt IR, input/output schemas, examples, parameters, canonical digest, lineage, and compatibility. |
-| `ForensicRun.v1` | Target, profile, worker placement, source bundle, state, timing, usage truth, findings, hypotheses, errors, and native receipt refs. |
-| `ForensicFinding.v1` | Claim, causal steps, source refs, assumptions, severity, evidence tier, PoC, verifier state, and disclosure state. |
-| `ForensicHypothesis.v1` | Suspected mechanism, supporting refs, missing evidence, next check, consequence if true, and expiration state. |
-| `ForensicClaimRecord.v1` | Claim kind, subject, bounded proposition, evidence tier, supporting and refuting refs, assumptions, confidence, author, adjudication, and non-implications. |
-| `ForensicClaimRevision.v1` | Prior claim, appended evidence, old and new tier or disposition, reason, reviewer, affected projections, and correction timestamp; the prior claim remains addressable. |
-| `ForensicEvidenceGraph.v1` | Typed nodes and edges, derivation rule, source claim, bounded traversal policy, generated explanation, component and episode identities, confidence, and completeness limits. |
-| `GeneratorTrace.v1` | Implementation revision, exact initial state, reseed inputs and retained width, ordered call trace, output digest, golden-vector identity, toolchain/profile, and receipt refs. |
-| `EntropyStateModel.v1` | Hardware/firmware class, known and unknown inputs, distributions or ranges, assumptions, candidate-count bounds, sensitivity results, enumeration plan, and independent review. |
-| `HistoricalChainSnapshot.v1` | Network and genesis, block range and hashes, node/source identity class and version, raw response digests, capture time, amount encoding, retention, and materialization receipt. |
-| `TransactionFingerprint.v1` | Software-chosen features, exact arithmetic, eligibility and thresholds, fingerprint revision, positive and negative controls, fee-regime base rates, cluster rule, and known exclusions. |
-| `NodeScanReceipt.v1` | Scan profile, chain snapshot, completed ranges and checkpoints, self-test and negative-control results, raw-hit digest, candidate funnel, resume state, missing-data failures, and worker receipt refs. |
-| `ForensicEvidenceReceipt.v1` | Exact command or tool, immutable inputs, observed result, artifact digests, environment, and timestamp. |
-| `ForensicRunEvent.v1` | Append-only run sequence for lifecycle milestones, tranche, agent role, turn, tool, usage, hypothesis, finding, verification, review, failure, and cleanup refs. |
-| `ForensicMetricDefinition.v1` | Versioned formula, unit, eligible population, censor and miss treatment, exactness rules, dimensions, aggregation, and display metadata. |
-| `ForensicScorecard.v1` | Dataset revision, metric-definition revision, hard-gate results, per-run values, distributions, censor counts, confidence intervals, failures, cost, and event/receipt provenance. |
-| `ForensicPromptPromotion.v1` | Candidate, evaluator, release gate, operator decision, rollback anchor, and active-pointer transition. |
-| `ForensicRunPublicProjection.v1` | Run, source, prompt, model, worker image/profile digests; lifecycle/completeness/cleanup truth; bounded counts, durations, and usage exactness. It excludes repository paths, prompts, findings, topology, credentials, and private evidence. |
+| Contract                          | Required content                                                                                                                                                                                                                                                  |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ForensicTargetSnapshot.v1`       | Repository, commit, source digest, dirty-state truth, dependency policy, toolchain refs, and authorization refs.                                                                                                                                                  |
+| `ColdcardReproductionManifest.v1` | Pinned source and postmortem commits, suite identities, raw-input refs, expected comparison ranges, controls, assumptions, claim-rung gates, disclosure posture, and evaluator revision.                                                                          |
+| `ForensicSourceBundle.v1`         | Exact repository and commit, git tree, declared submodule commits, dependency manifest, private artifact ref, content digest, builder identity, retention, and materialization receipt.                                                                           |
+| `ForensicCoverageManifest.v1`     | Present, absent, excluded, oversized, generated, and dependency paths; coverage status and reasons.                                                                                                                                                               |
+| `ForensicScanProfile.v1`          | Scope ranking, vulnerability classes, model matrix, prompt artifact, tools, sandbox, network, and budgets.                                                                                                                                                        |
+| `ForensicWorkerPlacement.v1`      | Owner, tenant, work unit, sandbox and generation refs; exact OpenAgents-managed target, provider, adapter, isolation, region, image/profile digests, network policy, lease, budget, capabilities, admission, readiness, stop, deletion, and cleanup receipt refs. |
+| `ForensicPromptArtifact.v1`       | Structured Prompt IR, input/output schemas, examples, parameters, canonical digest, lineage, and compatibility.                                                                                                                                                   |
+| `ForensicRun.v1`                  | Target, profile, worker placement, source bundle, state, timing, usage truth, findings, hypotheses, errors, and native receipt refs.                                                                                                                              |
+| `ForensicFinding.v1`              | Claim, causal steps, source refs, assumptions, severity, evidence tier, PoC, verifier state, and disclosure state.                                                                                                                                                |
+| `ForensicHypothesis.v1`           | Suspected mechanism, supporting refs, missing evidence, next check, consequence if true, and expiration state.                                                                                                                                                    |
+| `ForensicClaimRecord.v1`          | Claim kind, subject, bounded proposition, evidence tier, supporting and refuting refs, assumptions, confidence, author, adjudication, and non-implications.                                                                                                       |
+| `ForensicClaimRevision.v1`        | Prior claim, appended evidence, old and new tier or disposition, reason, reviewer, affected projections, and correction timestamp; the prior claim remains addressable.                                                                                           |
+| `ForensicEvidenceGraph.v1`        | Typed nodes and edges, derivation rule, source claim, bounded traversal policy, generated explanation, component and episode identities, confidence, and completeness limits.                                                                                     |
+| `GeneratorTrace.v1`               | Implementation revision, exact initial state, reseed inputs and retained width, ordered call trace, output digest, golden-vector identity, toolchain/profile, and receipt refs.                                                                                   |
+| `EntropyStateModel.v1`            | Hardware/firmware class, known and unknown inputs, distributions or ranges, assumptions, candidate-count bounds, sensitivity results, enumeration plan, and independent review.                                                                                   |
+| `HistoricalChainSnapshot.v1`      | Network and genesis, block range and hashes, node/source identity class and version, raw response digests, capture time, amount encoding, retention, and materialization receipt.                                                                                 |
+| `TransactionFingerprint.v1`       | Software-chosen features, exact arithmetic, eligibility and thresholds, fingerprint revision, positive and negative controls, fee-regime base rates, cluster rule, and known exclusions.                                                                          |
+| `NodeScanReceipt.v1`              | Scan profile, chain snapshot, completed ranges and checkpoints, self-test and negative-control results, raw-hit digest, candidate funnel, resume state, missing-data failures, and worker receipt refs.                                                           |
+| `ForensicEvidenceReceipt.v1`      | Exact command or tool, immutable inputs, observed result, artifact digests, environment, and timestamp.                                                                                                                                                           |
+| `ForensicRunEvent.v1`             | Append-only run sequence for lifecycle milestones, tranche, agent role, turn, tool, usage, hypothesis, finding, verification, review, failure, and cleanup refs.                                                                                                  |
+| `ForensicMetricDefinition.v1`     | Versioned formula, unit, eligible population, censor and miss treatment, exactness rules, dimensions, aggregation, and display metadata.                                                                                                                          |
+| `ForensicScorecard.v1`            | Dataset revision, metric-definition revision, hard-gate results, per-run values, distributions, censor counts, confidence intervals, failures, cost, and event/receipt provenance.                                                                                |
+| `ForensicPromptPromotion.v1`      | Candidate, evaluator, release gate, operator decision, rollback anchor, and active-pointer transition.                                                                                                                                                            |
+| `ForensicRunPublicProjection.v1`  | Run, source, prompt, model, worker image/profile digests; lifecycle/completeness/cleanup truth; bounded counts, durations, and usage exactness. It excludes repository paths, prompts, findings, topology, credentials, and private evidence.                     |
 
 The canonical implementation home is
 [`packages/forensic-contract`](../../packages/forensic-contract/README.md).
@@ -1329,47 +1390,49 @@ Exit gate:
 
 ---
 
-## 10. Issue-ready first sequence
+## 10. Reconciled issue sequence
 
-The first implementation program should be cut in this order:
+OFR-001 through OFR-018 remain the stable decomposition for what was designed
+and checked in. They are not all accepted at the same proof rung. The correct
+next order is:
 
-OFR-001 through OFR-007 now provide the contract lattice, the native disposable
-GCE forensic worker, immutable private source delivery, the frozen Coldcard
-development benchmark, and native metric evidence with a rebuildable
-censor-aware scorecard, plus the authority-bounded configurable Loupe adapter.
-The Loupe verifier boundary now adds ordered independent verdicts, deterministic
-evidence receipts, vulnerable/fixed execution controls, and an explicit
-discovery-only release gate. OFR-013 now adds the bounded offline forensic
-prompt compiler and Blueprint governance records. Candidate identity covers
-Prompt IR, typed schemas, tool policy, examples, parameters, every dataset
-revision, optimizer configuration, and frozen metric/T5/censoring/eligibility
-definitions. Holdout evaluation requires distinct generator/evaluator
-identities, matched baseline populations, fresh OpenAgents Cloud worker and
-source-state evidence, hard gates before Pareto comparison, mechanical
-evidence, and an operator-owned release gate. Activation and rollback are
-append-only transitions. OFR-014 is the next implementation gate; later rows
-remain ordered dependencies, not parallel workstreams.
+1. correct live worker and source-delivery acceptance in #9289 and #9290;
+2. ship OFR-UI-01 as a fixture-backed, read-only Comet workbench slice while
+   live launch remains unavailable;
+3. admit live preflight, launch, cancellation, cleanup, and source delivery
+   only from newly accepted receipts;
+4. run real controlled campaigns with independent verification, fixed and
+   clean controls, and untouched holdouts;
+5. complete admitted artifact, generator-throughput, historical-replay, and
+   evidence-graph receipts; and
+6. add OFR-UI-02 through OFR-UI-05 without weakening the evidence or
+   publication boundaries.
 
-| ID | Work item | Primary home |
-| --- | --- | --- |
-| OFR-001 | Define forensic target, source bundle, coverage, worker placement, prompt, run/event, finding, hypothesis, claim/revision, evidence-graph, reproduction, generator, entropy, chain-snapshot, transaction-fingerprint, node-scan, receipt, metric-definition, and scorecard contracts. | `openagents` |
-| OFR-002 | Admit an image-pinned forensic worker profile on the native OpenAgents managed-sandbox GCE path; prove readiness, refusal of every fallback, cost limits, cancellation, deletion, and zero residue. | OpenAgents Cloud |
-| OFR-003 | Materialize a pinned target and all declared submodules into an immutable private source bundle, deliver it through a scoped capability, and emit the coverage manifest without guest Internet egress. | OpenAgents Cloud / upstream Loupe where general |
-| OFR-004 | Import the Coldcard benchmark arms and frozen rubric. | `openagents` |
-| OFR-005 | Implement native forensic milestone and usage events, the frozen metric registry, evaluator adjudications, rebuildable scorecards, and miss/censor negative controls. | `openagents` + OpenAgents Cloud |
-| OFR-006 | Add a configurable Loupe prompt/profile seam without weakening typed submission. | upstream Loupe or adapter |
-| OFR-007 | Repair and prove the Loupe verifier path, or keep the first release explicitly discovery-only. | upstream Loupe or adapter |
-| OFR-008 | Add Omega Forensics target, OpenAgents-managed placement, and preflight UI. | `omega` |
-| OFR-009 | Launch, interrupt, cancel, clean up, and monitor a native managed-sandbox run from Omega with hard budgets. | `omega` + `openagents` |
-| OFR-010 | Render findings, hypotheses, evidence maps, PoC diffs, source navigation, placement truth, live budgets, run waterfalls, metric provenance, and cleanup status. | `omega` |
-| OFR-011 | Add prompt artifact editor, diff, digest, and candidate save. | `omega` + `openagents` |
-| OFR-012 | Add matched run matrices, recall curves, divergence, retained failures, confidence intervals, Pareto views, and deterministic scorecards. | `omega` + `openagents` |
-| OFR-013 | Add bounded offline prompt compilation and Blueprint release-gate records. | `openagents` |
-| OFR-014 | Build the Coldcard C/C++ artifact witness and fault-build fixtures. | OpenAgents Cloud / `openagents` |
-| OFR-015 | Implement the independent Coldcard PRNG, reseed, call-trace, entropy-state, BIP39, HD-path, mutation, and owned-fixture reproduction suite. | OpenAgents Cloud / `openagents` |
-| OFR-016 | Admit immutable historical block bundles and a private read-only Bitcoin Core capability; implement self-testing, resumable transaction-fingerprint scans and negative-control base-rate measurement. | OpenAgents Cloud / `openagents` |
-| OFR-017 | Implement typed evidence seeds, bounded derivation, evidence graphs, reconciliation, claim lattice, append-only promotion/correction history, and deterministic replay tests. | `openagents` |
-| OFR-018 | Add Omega evidence-ladder, generator trace, entropy explorer, historical scan console, candidate funnel, evidence graph, reconciliation, and correction-history views. | `omega` + `openagents` |
+The table below is a scope ledger, not a completion ledger. Current code and
+tests own implemented truth; issues #9289, #9290, and #9300 own the open
+acceptance state. A later issue or owner-accepted packet must claim each Omega
+UI mutation before work begins.
+
+| ID      | Work item                                                                                                                                                                                                                                                                             | Primary home                                    |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| OFR-001 | Define forensic target, source bundle, coverage, worker placement, prompt, run/event, finding, hypothesis, claim/revision, evidence-graph, reproduction, generator, entropy, chain-snapshot, transaction-fingerprint, node-scan, receipt, metric-definition, and scorecard contracts. | `openagents`                                    |
+| OFR-002 | Admit an image-pinned forensic worker profile on the native OpenAgents managed-sandbox GCE path; prove readiness, refusal of every fallback, cost limits, cancellation, deletion, and zero residue.                                                                                   | OpenAgents Cloud                                |
+| OFR-003 | Materialize a pinned target and all declared submodules into an immutable private source bundle, deliver it through a scoped capability, and emit the coverage manifest without guest Internet egress.                                                                                | OpenAgents Cloud / upstream Loupe where general |
+| OFR-004 | Import the Coldcard benchmark arms and frozen rubric.                                                                                                                                                                                                                                 | `openagents`                                    |
+| OFR-005 | Implement native forensic milestone and usage events, the frozen metric registry, evaluator adjudications, rebuildable scorecards, and miss/censor negative controls.                                                                                                                 | `openagents` + OpenAgents Cloud                 |
+| OFR-006 | Add a configurable Loupe prompt/profile seam without weakening typed submission.                                                                                                                                                                                                      | upstream Loupe or adapter                       |
+| OFR-007 | Repair and prove the Loupe verifier path, or keep the first release explicitly discovery-only.                                                                                                                                                                                        | upstream Loupe or adapter                       |
+| OFR-008 | Add Omega Forensics target, OpenAgents-managed placement, and preflight UI.                                                                                                                                                                                                           | `omega`                                         |
+| OFR-009 | Launch, interrupt, cancel, clean up, and monitor a native managed-sandbox run from Omega with hard budgets.                                                                                                                                                                           | `omega` + `openagents`                          |
+| OFR-010 | Render findings, hypotheses, evidence maps, PoC diffs, source navigation, placement truth, live budgets, run waterfalls, metric provenance, and cleanup status.                                                                                                                       | `omega`                                         |
+| OFR-011 | Add prompt artifact editor, diff, digest, and candidate save.                                                                                                                                                                                                                         | `omega` + `openagents`                          |
+| OFR-012 | Add matched run matrices, recall curves, divergence, retained failures, confidence intervals, Pareto views, and deterministic scorecards.                                                                                                                                             | `omega` + `openagents`                          |
+| OFR-013 | Add bounded offline prompt compilation and Blueprint release-gate records.                                                                                                                                                                                                            | `openagents`                                    |
+| OFR-014 | Build the Coldcard C/C++ artifact witness and fault-build fixtures.                                                                                                                                                                                                                   | OpenAgents Cloud / `openagents`                 |
+| OFR-015 | Implement the independent Coldcard PRNG, reseed, call-trace, entropy-state, BIP39, HD-path, mutation, and owned-fixture reproduction suite.                                                                                                                                           | OpenAgents Cloud / `openagents`                 |
+| OFR-016 | Admit immutable historical block bundles and a private read-only Bitcoin Core capability; implement self-testing, resumable transaction-fingerprint scans and negative-control base-rate measurement.                                                                                 | OpenAgents Cloud / `openagents`                 |
+| OFR-017 | Implement typed evidence seeds, bounded derivation, evidence graphs, reconciliation, claim lattice, append-only promotion/correction history, and deterministic replay tests.                                                                                                         | `openagents`                                    |
+| OFR-018 | Add Omega evidence-ladder, generator trace, entropy explorer, historical scan console, candidate funnel, evidence graph, reconciliation, and correction-history views.                                                                                                                | `omega` + `openagents`                          |
 
 Do not start OFR-013 by restoring the deleted DSE package unchanged. Harvest its
 tested design: typed signatures, Prompt IR, canonical hashes, budgets, receipts,
@@ -1407,7 +1470,7 @@ current Effect, Node, package-manager, and runtime boundaries.
 9. **Detailed is not verified.** Longer explanations, multiple-model agreement,
    and confident severity do not advance evidence tier.
 10. **Public claims require executed evidence and authority.** Rediscovering a
-   known historical bug is not a zero-day track record.
+    known historical bug is not a zero-day track record.
 11. **No scanner monoculture.** Share useful fixes upstream, retain configuration
     diversity, and compare divergence before replacing a working tool.
 12. **Claims do not promote each other.** Source flaw, artifact selection,
@@ -1422,6 +1485,9 @@ current Effect, Node, package-manager, and runtime boundaries.
 ## 12. Decisions this roadmap makes
 
 - Start in Omega with an interactive, configurable Loupe-style lab.
+- Present the first fixture-backed case reader in Omega's simplified Comet
+  shell; keep Omega as the sole authority and keep live controls unavailable
+  until #9289 and #9290 have accepted receipts.
 - Run every initial forensic workload on one disposable, admitted OpenAgents
   Cloud GCE VM through the native managed-sandbox broker, with no fallback.
 - Treat Box semantics as design input and its API as optional compatibility,
@@ -1438,6 +1504,8 @@ current Effect, Node, package-manager, and runtime boundaries.
 - Use offline DSPy/GEPA for candidate generation and Blueprint for governed
   lineage and promotion, not as interchangeable names for one system.
 - Require holdout independence and clean controls before prompt promotion.
+- Use diverse models for coverage and challenge, preserve refusals and tool
+  failures as typed limitations, and never convert panel agreement into proof.
 - Build artifact provenance before claiming final-binary proof.
 - Reproduce the pinned Coldcard postmortem independently as four suites: code-
   to-artifact, generator and owned fixture, historical fingerprint, and
@@ -1450,6 +1518,8 @@ current Effect, Node, package-manager, and runtime boundaries.
   credential-bearing worker.
 - Prefer append-only raw evidence, deterministic derivation, loud drift, claim
   corrections, positive and negative controls, and stale-but-honest projections.
+- Keep publication as a separate, default-blocked decision with its own
+  redaction, independent-review, disclosure, and authority gates.
 - Advance from source candidates to artifact proof, Coldcard reproduction,
   executed evidence, variants, coordination, and proof-carrying remediation in
   that order.

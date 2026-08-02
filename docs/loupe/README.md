@@ -10,8 +10,8 @@ Read at commit `c94aac5` (2026-07-31).
 
 Loupe is the project named on-camera in `docs/transcripts/263.md` ("Bitcoin
 Wallets Under Attack"), where the critique is that it is opt-in and
-bring-your-own-token, so *"the projects most nervous about security, the ones
-that need it most, would be the least likely to opt in."* That episode commits
+bring-your-own-token, so _"the projects most nervous about security, the ones
+that need it most, would be the least likely to opt in."_ That episode commits
 OpenAgents to a "bad cop" white-hat agentic fuzzing operation as the
 complement. This document is the technical read of what Loupe actually is, so
 that any such work starts from the code rather than from the tweet thread.
@@ -21,25 +21,41 @@ convention. Do not vendor its code.
 
 ## Current OpenAgents implementation
 
-The bounded OFR-001 through OFR-018 program that followed this study is now
-implemented. Start with
+The OFR-001 through OFR-018 program that followed this study has substantial
+checked-in contracts, fixtures, adapters, deterministic tests, and Omega
+projections. It is not accepted as a complete live program. OpenAgents issue
+[#9300](https://github.com/OpenAgentsInc/openagents/issues/9300) is open after
+independent review found missing end-to-end evidence; issues
+[#9289](https://github.com/OpenAgentsInc/openagents/issues/9289) and
+[#9290](https://github.com/OpenAgentsInc/openagents/issues/9290) retain the
+live worker and source-delivery correction gates. Start with
 [`Omega forensic analysis: implementation and operator guide`](2026-08-01-omega-forensics-implementation-and-operator-guide.md)
-for the complete component inventory, authority boundary, operator workflow,
+for the component inventory, authority boundary, fixture workflow,
 verification commands, metrics, prompt-iteration loop, and current UI gaps.
 Use the
 [`Omega Coldcard forensic practice-run runbook`](../coldcard/2026-08-01-omega-coldcard-forensic-practice-runbook.md)
 for the first end-to-end benchmark.
 
-Implementation does not mean public availability. The native OpenAgents Cloud
-forensic profile remains default-off unless separately admitted, and every
-third-party run remains private and manual-reporting by default.
+Implementation does not mean live acceptance or public availability. The native
+OpenAgents Cloud forensic profile remains default-off unless separately
+admitted, and every third-party run remains private and manual-reporting by
+default.
+
+For the 2026-08-02 external-observation and UI reconciliation, read the
+[`Coldcard documentation index`](../coldcard/README.md), the
+[`wallet-security posts and Omega-thread audit`](../coldcard/2026-08-02-wallet-security-posts-and-omega-thread-audit.md),
+and the
+[`model-panel and publication-gates audit`](../coldcard/2026-08-02-forensic-model-panel-and-publication-gates-audit.md).
+Those audits inspect the supplied images, correct a missed table row, classify
+the captured Omega failure as a request/tool-contract fault rather than a
+security refusal, and define the first read-only Comet-shaped forensic bench.
 
 ---
 
 ## 1. What it is
 
 A **security-scanning harness for source repositories.** It runs LLM agents
-over a codebase, has each agent *self-validate* its findings by writing a
+over a codebase, has each agent _self-validate_ its findings by writing a
 regression-test proof-of-concept and checking that the diff applies, and
 dispatches confirmed findings to a reporter — GitHub issues, email via
 sendmail, or nothing (manual triage).
@@ -60,11 +76,11 @@ commits, actively developed as of read date.
 
 Three deployable binaries that talk to each other over **mTLS**:
 
-| Binary | Role |
-| --- | --- |
-| `loupe-server` | Long-running daemon. Owns the SQLite DB (repos, jobs, findings, secrets), the scheduler, lease handout, verdict rollup, and reporter dispatch. |
+| Binary         | Role                                                                                                                                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `loupe-server` | Long-running daemon. Owns the SQLite DB (repos, jobs, findings, secrets), the scheduler, lease handout, verdict rollup, and reporter dispatch.                                                          |
 | `loupe-worker` | Stateless fleet. Authenticates with a client cert minted at registration, leases a job, clones the repo into a local cache, runs scanners, submits findings. Doubles as the MCP server via `mcp-serve`. |
-| `loupectl` | Operator CLI on an admin client cert. Register repos, mint worker certs, trigger scans, triage findings. |
+| `loupectl`     | Operator CLI on an admin client cert. Register repos, mint worker certs, trigger scans, triage findings.                                                                                                |
 
 Crates: `loupe-core` (shared types), `loupe-proto` (versioned wire DTOs,
 `X-Loupe-Protocol`), `loupe-tls` (internal CA + cert minting), `loupe-storage`
@@ -119,15 +135,15 @@ dismissed; else any `confirmed` → confirmed and dispatch; else stay
 Two complementary dedup layers, which the README explicitly ranks:
 
 - **Semantic (agent-driven).** The agent calls `query_prior_findings` before
-  each submission. A duplicate suppresses *that one candidate* and the agent
+  each submission. A duplicate suppresses _that one candidate_ and the agent
   continues — so a re-scan still surfaces bugs ranked below an
   already-reported one. Catches paraphrases, refactor-shifted bugs, renames.
 - **Hash (server-side, free).** `blake3(scanner_id | file | normalized_window)`
   with `UNIQUE(repo_id, fingerprint)` and `INSERT OR IGNORE`. Normalization
   lowercases and collapses whitespace, so it survives `cargo fmt`-style edits.
 
-The README calls the hash layer *"the deterministic floor under the agent's
-semantic decisions."* That phrasing is the design in one line: the model's
+The README calls the hash layer _"the deterministic floor under the agent's
+semantic decisions."_ That phrasing is the design in one line: the model's
 judgment is allowed to be fallible because a mechanical check sits underneath
 it.
 
@@ -146,7 +162,7 @@ sharper than anything we currently encode.
 
 A finding that is not submitted through the typed tool does not exist. This is
 the same thesis as `docs/scv/2026-07-31-omega-agent-scv-encoded-practice-analysis.md`
-— *a prose instruction is a request; a typed contract is a fact* — implemented
+— _a prose instruction is a request; a typed contract is a fact_ — implemented
 at the emission boundary rather than the instruction boundary.
 
 ### 4.2 The PoC must fail on HEAD
@@ -155,8 +171,8 @@ The agent must write "a unified diff adding a regression test that **FAILS on
 HEAD** and would pass once the bug is fixed," then call `validate_poc`, which
 runs `git apply --check` against the worktree and returns `{applies, error?}`.
 
-The review surface renders that diff as the primary evidence: *"applying the
-diff against a fresh worktree and running the test should fail on HEAD."*
+The review surface renders that diff as the primary evidence: _"applying the
+diff against a fresh worktree and running the test should fail on HEAD."_
 
 This is the "prove the check can fail" discipline — a claim is only evidence if
 the artifact backing it demonstrably fails on the unfixed state — promoted from
@@ -173,8 +189,8 @@ single-call. The stated reason:
 
 `submit_patch` is phase 2, optional, and only reachable after a `confirmed`
 verdict. The prompt enumerates four conditions under which the agent should
-skip the patch entirely, and states plainly: *"A wrong patch attached to a real
-bug is worse than no patch at all."*
+skip the patch entirely, and states plainly: _"A wrong patch attached to a real
+bug is worse than no patch at all."_
 
 Ordering a commitment before the work that would bias it is a control we do not
 currently have anywhere.
@@ -193,7 +209,7 @@ And the resulting bias is stated explicitly:
 > "a false positive a human can dismiss is better than a false negative dressed
 > as a confident cross-reference check."
 
-Uncertainty must be submitted *and flagged*, not silently resolved. This is the
+Uncertainty must be submitted _and flagged_, not silently resolved. This is the
 exact inverse of the failure mode recorded in
 `docs/omega/2026-07-31-omega-alpha-session-handoff.md` §3.2 and §4.3, where
 receipts asserted properties that were never measured and a hard-coded `true`
@@ -205,8 +221,8 @@ was indistinguishable from an observation.
 > vulnerabilities, and only a small fraction of those should be considered high
 > or critical severity."
 
-Plus a quality gate: no findings for hardening notes, style issues, or *"bugs
-you can't write a regression test for."* Inability to produce falsifiable
+Plus a quality gate: no findings for hardening notes, style issues, or _"bugs
+you can't write a regression test for."_ Inability to produce falsifiable
 evidence is itself the filter.
 
 ### 4.6 Cross-family second opinion
@@ -243,7 +259,7 @@ repo with no tracker: the full scan → verify → approval pipeline runs and
 findings park in `confirmed` for out-of-band triage via `loupectl finding`. That
 is precisely the shape Episode 263 describes for scanning a project you do not
 own and disclosing responsibly. The opt-in critique in the episode is about
-*who runs it against whom*, not a missing capability — a third party can
+_who runs it against whom_, not a missing capability — a third party can
 already point Loupe at any public clone URL and triage privately.
 
 **Constraint that matters for our fleet: macOS cannot run LLM scanning.**
@@ -304,7 +320,7 @@ proceeds, the honest starting points are:
    is speculation.
 2. **The differentiator is not the scanner.** Loupe already has discovery,
    cross-family verification, PoC validation, dedup, and a disclosure path.
-   What Episode 263 identifies as missing is *coordination* — who scans what,
+   What Episode 263 identifies as missing is _coordination_ — who scans what,
    who discloses, and how defenders share results. That maps to Omega's NIP-29
    chat and the Armada interop mentioned in the episode, not to a second
    scanner.

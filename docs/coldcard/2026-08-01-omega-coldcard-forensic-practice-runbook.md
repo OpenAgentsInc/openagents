@@ -5,11 +5,16 @@ Coldcard benchmark.** It uses known historical material, synthetic fixtures,
 and owner-authorized evidence. It is not a disclosure plan, a live-value search,
 or evidence that an unknown vulnerability can be found.
 
-Date: 2026-08-01
+Date: 2026-08-02
 
 Read the system-level
 [Omega forensic implementation and operator guide](../loupe/2026-08-01-omega-forensics-implementation-and-operator-guide.md)
 first. This document narrows that system to the Coldcard practice sequence.
+
+Current state: run the checked-in contract, fixture, adapter, evaluator, and UI
+tests as development evidence. Do not describe the end-to-end live practice run
+as accepted. OpenAgents issue #9300 is open, and issues #9289 and #9290 retain
+the live GCE worker and private source-delivery correction gates.
 
 ## 1. Purpose and success condition
 
@@ -43,15 +48,15 @@ The reproduction manifest is
 
 Important pins:
 
-| Role | Commit |
-| --- | --- |
+| Role                         | Commit                                     |
+| ---------------------------- | ------------------------------------------ |
 | Vulnerable Coldcard firmware | `bcc2c382a324690a2fcf972c0bac3b79bf923f7b` |
-| Fixed Coldcard firmware | `ca72463709f4e3f8964952039d5caf955f566a87` |
-| libNgU | `537519a829259622ea6b0334fbafd6cae852852f` |
-| MicroPython | `4107246f8a080807b62c3b4838e71e812ea68b6f` |
-| ckcc-protocol | `3d1dfa858beb58b8dac37d8c66d7aed2909812f2` |
-| mpy-qr | `11347d83f4eb325b10676a4eb8e17deccfe0df44` |
-| Independent postmortem | `47d8f5543812c8244fa95ed90db957ddcc05200c` |
+| Fixed Coldcard firmware      | `ca72463709f4e3f8964952039d5caf955f566a87` |
+| libNgU                       | `537519a829259622ea6b0334fbafd6cae852852f` |
+| MicroPython                  | `4107246f8a080807b62c3b4838e71e812ea68b6f` |
+| ckcc-protocol                | `3d1dfa858beb58b8dac37d8c66d7aed2909812f2` |
+| mpy-qr                       | `11347d83f4eb325b10676a4eb8e17deccfe0df44` |
+| Independent postmortem       | `47d8f5543812c8244fa95ed90db957ddcc05200c` |
 
 Do not replace these with a branch name or the current default branch. Validate
 the recorded tree and subordinate-file digests before interpreting a result.
@@ -75,13 +80,13 @@ checked-in benchmark and matched matrix, but it is not a fifth button in the
 current native selector. Dispatch it through the benchmark/matrix evaluator
 until Omega exposes that population directly.
 
-| Arm | Purpose | Expected disposition |
-| --- | --- | --- |
-| Incomplete clone | Prove missing dependencies are detected before inference. | `completed_incomplete`, not scored, hypothesis tier, model call blocked. |
-| Complete vulnerable | Find the known six-link source defect. | `source_hit_unverified`, source-observed, final artifact link not proven. |
-| Fixed clone | Prove the historical defect is absent after the fix. | Historical finding absent. |
-| Structural variants | Resist exact macro, symbol, syntax, dependency, and path matching. | Semantic variant hit with the same six-link causal structure. |
-| Clean controls | Measure false positives and incomplete-evidence honesty. | No false positive, or `not_proven` for the intentionally unavailable dependency. |
+| Arm                 | Purpose                                                            | Expected disposition                                                             |
+| ------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| Incomplete clone    | Prove missing dependencies are detected before inference.          | `completed_incomplete`, not scored, hypothesis tier, model call blocked.         |
+| Complete vulnerable | Find the known six-link source defect.                             | `source_hit_unverified`, source-observed, final artifact link not proven.        |
+| Fixed clone         | Prove the historical defect is absent after the fix.               | Historical finding absent.                                                       |
+| Structural variants | Resist exact macro, symbol, syntax, dependency, and path matching. | Semantic variant hit with the same six-link causal structure.                    |
+| Clean controls      | Measure false positives and incomplete-evidence honesty.           | No false positive, or `not_proven` for the intentionally unavailable dependency. |
 
 The structural variants rename the macro and provider, move files, reverse the
 guard shape, and move the fallback dependency. The clean controls include a
@@ -90,7 +95,9 @@ and a deterministic PRNG used only for non-secret UI behavior.
 
 ## 4. Pre-run checklist
 
-Before a cloud run:
+Before a cloud run, first confirm that #9289 and #9290 have closed with accepted
+live receipts. If they have not, use fixture mode and keep **Prepare run** and
+**Launch worker** unavailable. After that gate:
 
 - [ ] The target commit and every required dependency pin match the manifest.
 - [ ] The source materializer reports a complete canonical private bundle for
@@ -266,17 +273,17 @@ recovery-required resource left without an owner.
 Omega displays nine rungs. Each rung has its own evidence gate and explicit
 non-implication.
 
-| Rung | Required evidence | It does not prove |
-| --- | --- | --- |
-| Source flaw | Exact source references and six-link causal path. | Which provider the shipped firmware linked. |
-| Artifact reality | Preprocessed source, compiler inputs, symbol provider, firmware digest, and fault build. | Practical wallet recovery. |
-| Generator behavior | Generator vectors, exact call trace, and verifier receipts. | The complete real-device state space. |
-| Exploitability | Explicit assumption model, entropy interval, sensitivity, and work factor. | That any third-party wallet is recoverable. |
-| Owned-fixture recovery | Authorization, generator trace, and public-material match. | Permission to enumerate live value. |
-| Program fingerprint | Immutable chain snapshot, controls, and measured base rate. | Vendor, person, victim, intent, or theft. |
-| Entity grouping | Evidence graph and versioned pooling edges. | A natural-person identity. |
-| Unauthorized movement | Victim testimony and exact transaction evidence. | The actor's identity. |
-| Identity attribution | Independent identity evidence and review. | Anything beyond the stated evidence and scope. |
+| Rung                   | Required evidence                                                                        | It does not prove                              |
+| ---------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Source flaw            | Exact source references and six-link causal path.                                        | Which provider the shipped firmware linked.    |
+| Artifact reality       | Preprocessed source, compiler inputs, symbol provider, firmware digest, and fault build. | Practical wallet recovery.                     |
+| Generator behavior     | Generator vectors, exact call trace, and verifier receipts.                              | The complete real-device state space.          |
+| Exploitability         | Explicit assumption model, entropy interval, sensitivity, and work factor.               | That any third-party wallet is recoverable.    |
+| Owned-fixture recovery | Authorization, generator trace, and public-material match.                               | Permission to enumerate live value.            |
+| Program fingerprint    | Immutable chain snapshot, controls, and measured base rate.                              | Vendor, person, victim, intent, or theft.      |
+| Entity grouping        | Evidence graph and versioned pooling edges.                                              | A natural-person identity.                     |
+| Unauthorized movement  | Victim testimony and exact transaction evidence.                                         | The actor's identity.                          |
+| Identity attribution   | Independent identity evidence and review.                                                | Anything beyond the stated evidence and scope. |
 
 Stop at the highest supported rung. A missing rung remains visible and cannot
 be inferred from a downstream pattern.
@@ -285,16 +292,16 @@ be inferred from a downstream pattern.
 
 Record these milestones for every eligible run:
 
-| Milestone | Meaning |
-| --- | --- |
-| `T0` | Admission accepted. |
-| `T1` | Exact worker ready. |
-| `T2` | Source bundle and terminal coverage ready. |
-| `T3` | Model work started. |
-| `T4` | First strict typed candidate accepted. |
-| `T5` | First rubric-qualified six-link identification. |
-| `T6` | Independent verification locked and completed. |
-| `T7` | Deletion and zero residue observed. |
+| Milestone | Meaning                                         |
+| --------- | ----------------------------------------------- |
+| `T0`      | Admission accepted.                             |
+| `T1`      | Exact worker ready.                             |
+| `T2`      | Source bundle and terminal coverage ready.      |
+| `T3`      | Model work started.                             |
+| `T4`      | First strict typed candidate accepted.          |
+| `T5`      | First rubric-qualified six-link identification. |
+| `T6`      | Independent verification locked and completed.  |
+| `T7`      | Deletion and zero residue observed.             |
 
 Primary improvement measures are time and tokens to `T5`, with identification
 rate, causal-link coverage, reference validity, false positives, clean-control
@@ -318,9 +325,13 @@ Small samples are provisional. An eligible miss keeps its spent tokens and
 right-censor boundary. A faster candidate cannot win if it weakens any evidence
 or safety gate.
 
-## 8. How to inspect the result in Omega
+## 8. How to inspect the result in the Comet-shaped Omega bench
 
-Read the workbench in this order:
+The first short-term slice is a read-only case reader mounted in the normal
+Omega task shell. Its sticky header must say whether the case is fixture or
+live, and it must keep target, commit, benchmark arm, completeness, privacy,
+proof rung, run state, and cleanup truth visible. Read the workbench in this
+order:
 
 1. **Target and managed worker:** confirm exact repository, commit, coverage,
    GCE placement, image/profile digests, budget, and network posture.
@@ -338,7 +349,14 @@ Read the workbench in this order:
    throughput exactness, candidate funnel, and missing-data failures.
 9. **Provenance and reconciliation:** inspect missing refs, published bounds,
    `MATCH`/`DRIFT`/`UNAVAILABLE`, and append-only corrections.
-10. **Run matrix:** compare qualified populations only after every hard gate.
+10. **Limitations and panel:** distinguish model refusal, provider policy,
+    unsupported input, request-schema failure, tool-contract incompatibility,
+    outage, abstention, disagreement, and right-censored work. Do not use a
+    panel vote as evidence.
+11. **Publication:** confirm that it remains blocked until redaction,
+    independent review, disclosure scope, maintainer decision, and separate
+    publication authority exist.
+12. **Run matrix:** compare qualified populations only after every hard gate.
 
 The first Omega renderer places these sections in one long dock. Exact refs can
 be visually truncated; use the retained projection or source-opening action for
@@ -347,20 +365,23 @@ manually until the planned section navigation and sticky status bar exist.
 
 ## 9. Failure interpretation
 
-| Observation | Interpretation |
-| --- | --- |
-| Incomplete arm reports complete coverage | Materializer or projection defect; invalidate the run. |
-| Complete vulnerable arm misses | Detection miss; retain spent usage and censor boundary. |
-| Vulnerable arm finds only one file or link | Hypothesis or partial source observation, not a qualified hit. |
-| Fixed or clean control hits | False positive; block candidate promotion. |
-| Structural variant misses | Likely exact-match overfitting; block promotion. |
-| Verifier reuses discovery identity | Circular verification; result is not independently verified. |
-| PoC applies but was not executed | Prepared evidence only. |
-| Artifact or provider receipt is absent | Stop below artifact reality. |
-| Node scan lacks a control or prevout | Incomplete scan; do not interpret a zero or rate. |
-| Reconciliation drifts | Preserve both values and investigate; do not overwrite either. |
-| Usage is unavailable | Keep it unavailable; never report zero. |
-| Cleanup cannot be proved | `recovery_required` or cleanup failure; run is not successfully complete. |
+| Observation                                                          | Interpretation                                                                                                                                    |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Incomplete arm reports complete coverage                             | Materializer or projection defect; invalidate the run.                                                                                            |
+| Complete vulnerable arm misses                                       | Detection miss; retain spent usage and censor boundary.                                                                                           |
+| Vulnerable arm finds only one file or link                           | Hypothesis or partial source observation, not a qualified hit.                                                                                    |
+| Fixed or clean control hits                                          | False positive; block candidate promotion.                                                                                                        |
+| Structural variant misses                                            | Likely exact-match overfitting; block promotion.                                                                                                  |
+| Verifier reuses discovery identity                                   | Circular verification; result is not independently verified.                                                                                      |
+| PoC applies but was not executed                                     | Prepared evidence only.                                                                                                                           |
+| Artifact or provider receipt is absent                               | Stop below artifact reality.                                                                                                                      |
+| Node scan lacks a control or prevout                                 | Incomplete scan; do not interpret a zero or rate.                                                                                                 |
+| Reconciliation drifts                                                | Preserve both values and investigate; do not overwrite either.                                                                                    |
+| Usage is unavailable                                                 | Keep it unavailable; never report zero.                                                                                                           |
+| Provider rejects the function/tool declaration before a model result | `request_schema_invalid` and, when applicable, `tool_contract_incompatible`; right-censor the arm. It is not a security refusal or target result. |
+| Model input is summarized without the source image                   | `input_incomplete` for image-specific conclusions; retain the text-only analysis as a narrower observation.                                       |
+| Model panel agrees                                                   | Prioritize the corresponding mechanical check; do not advance the claim rung.                                                                     |
+| Cleanup cannot be proved                                             | `recovery_required` or cleanup failure; run is not successfully complete.                                                                         |
 
 ## 10. Run record
 

@@ -763,8 +763,8 @@ of small commits rather than one source import:
 | `ed42dfd346` | Matched the Comet composer more closely, including the integrated executor/model picker treatment.               |
 | `d3f9a9abe4` | Added Comet-mode message rows and grouped tool-call rendering while retaining Omega's font and thread semantics. |
 | `ffec0f0124` | Added active-session-tab close behavior and platform key bindings (`Command-W` on macOS, `Ctrl-W` elsewhere).    |
-| `5901977b17` | Replaced decorative Spaces with real Omega Projects and guaranteed an agent working directory before launch.    |
-| `8a91d98c51` | Ported Comet's settings-navigation shape around Omega's real API Keys and Voice settings pages.                   |
+| `5901977b17` | Replaced decorative Spaces with real Omega Projects and guaranteed an agent working directory before launch.     |
+| `8a91d98c51` | Ported Comet's settings-navigation shape around Omega's real API Keys and Voice settings pages.                  |
 | `b153c6838a` | Made the titlebar Back and Forward controls walk browser-style session history.                                  |
 | `989adfac0b` | Seeded navigation history from the restored active session on the first Comet render.                            |
 
@@ -954,16 +954,16 @@ persisted cross-window navigation ledger. [implementation] [limitation]
 The combined snapshot was formatted, compiled, linted, tested, built, and
 opened locally:
 
-| Check                                                         | Result at `989adfac0b`                                                |
-| ------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `cargo check -p agent_ui -p settings_ui -p omega`             | Passed                                                                |
-| `cargo test -p omega_deltas`                                  | Passed, 308 tests                                                     |
-| `cargo test -p settings_ui`                                   | Passed, 57 tests                                                      |
-| Focused `CometNavigationHistory` unit tests                    | Passed, 2 tests                                                       |
-| `./script/clippy` on the changed Omega crates                  | Passed                                                                |
-| `cargo build --profile release-fast`                           | Passed                                                                |
-| Release-fast Comet-mode launch with isolated profile          | Opened successfully alongside the untouched installed Omega process   |
-| Live Back → Forward walk across two restored sessions         | Returned to each expected session and updated control state correctly |
+| Check                                                 | Result at `989adfac0b`                                                |
+| ----------------------------------------------------- | --------------------------------------------------------------------- |
+| `cargo check -p agent_ui -p settings_ui -p omega`     | Passed                                                                |
+| `cargo test -p omega_deltas`                          | Passed, 308 tests                                                     |
+| `cargo test -p settings_ui`                           | Passed, 57 tests                                                      |
+| Focused `CometNavigationHistory` unit tests           | Passed, 2 tests                                                       |
+| `./script/clippy` on the changed Omega crates         | Passed                                                                |
+| `cargo build --profile release-fast`                  | Passed                                                                |
+| Release-fast Comet-mode launch with isolated profile  | Opened successfully alongside the untouched installed Omega process   |
+| Live Back → Forward walk across two restored sessions | Returned to each expected session and updated control state correctly |
 
 These receipts establish source integration and a bounded local macOS launch.
 They are not signed package, multi-platform visual, accessibility, release, or
@@ -975,15 +975,15 @@ The current result completes the visual shell skeleton for the agent surface
 and a meaningful part of the vertical conversation slice, but it does not
 complete the “all of Omega UI” rebuild:
 
-| Migration phase from §7.4.4                             | 2026-08-01 status                                                                                                                                                                                                                                                   |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0. Contract and provenance spike                        | Partial: one GPUI runtime and one Omega authority graph are preserved; a formal import/provenance manifest for copied Comet source is still unnecessary because the implementation currently re-creates the presentation in Omega code rather than importing files. |
-| 1. Presentation foundation                              | Partial: Khala color roles, macOS blur, card/shell states, and core controls exist; a shared motion kit, component gallery, reduced-motion audit, and cross-platform visual baselines remain.                                                                       |
-| 2. Shell skeleton                                       | Agent-first slice landed: window composition, Projects, guaranteed working directories, sidebar, session tabs, titlebar drag, new/close session, browser-style history, settings entry, and conversation mount work; remote/device projects, resize/collapse parity, and restored multi-window state remain. |
-| 3. Vertical agent slice                                 | Substantial visual slice landed: real Omega threads use the Comet-shaped composer, message rows, and grouped tools; full attachments, question takeover, disposition morph, optimistic failure return, stick spring, and specialized result parity remain.          |
-| 4. IDE workbench                                        | Not started in Comet mode beyond retaining the underlying Omega entities; editor panes, search, Git, terminal/tasks, diff, and drag/drop are not yet mounted in the Comet presentation.                                                                             |
-| 5. Secondary surfaces                                   | Partial: Comet-shaped settings navigation now exposes Omega's real API Keys and Voice pages. Identity/account, device, onboarding, command-palette, notification, debugger, and remaining settings surfaces are not ported.                                              |
-| 6–7. Hardening, cutover, retirement                     | Not started; Comet mode is additive and the normal Omega presentation remains the default.                                                                                                                                                                          |
+| Migration phase from §7.4.4         | 2026-08-01 status                                                                                                                                                                                                                                                                                            |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 0. Contract and provenance spike    | Partial: one GPUI runtime and one Omega authority graph are preserved; a formal import/provenance manifest for copied Comet source is still unnecessary because the implementation currently re-creates the presentation in Omega code rather than importing files.                                          |
+| 1. Presentation foundation          | Partial: Khala color roles, macOS blur, card/shell states, and core controls exist; a shared motion kit, component gallery, reduced-motion audit, and cross-platform visual baselines remain.                                                                                                                |
+| 2. Shell skeleton                   | Agent-first slice landed: window composition, Projects, guaranteed working directories, sidebar, session tabs, titlebar drag, new/close session, browser-style history, settings entry, and conversation mount work; remote/device projects, resize/collapse parity, and restored multi-window state remain. |
+| 3. Vertical agent slice             | Substantial visual slice landed: real Omega threads use the Comet-shaped composer, message rows, and grouped tools; full attachments, question takeover, disposition morph, optimistic failure return, stick spring, and specialized result parity remain.                                                   |
+| 4. IDE workbench                    | Not started in Comet mode beyond retaining the underlying Omega entities; editor panes, search, Git, terminal/tasks, diff, and drag/drop are not yet mounted in the Comet presentation.                                                                                                                      |
+| 5. Secondary surfaces               | Partial: Comet-shaped settings navigation now exposes Omega's real API Keys and Voice pages. Identity/account, device, onboarding, command-palette, notification, debugger, and remaining settings surfaces are not ported.                                                                                  |
+| 6–7. Hardening, cutover, retirement | Not started; Comet mode is additive and the normal Omega presentation remains the default.                                                                                                                                                                                                                   |
 
 This changes the planning posture in one important way: the high-risk premise
 that Comet's composition could coexist with Omega's GPUI and authority graph
@@ -993,6 +993,31 @@ remaining estimate for a full IDE cutover. The difficult work identified in
 accessibility, durable window/workbench restore, and long-tail surfaces—still
 sits ahead. [implementation] [inferred]
 
+##### Forensics as the first evidence-rich workbench slice
+
+The 2026-08-02 Coldcard and Omega-thread audit identifies a smaller, higher-
+value phase-4 proof than mounting a general editor, terminal, and Git surface
+all at once: put one read-only forensic case inside the Comet-shaped workbench.
+The Coldcard fixture already exercises dense, linked evidence, typed
+limitations, disputes, model-panel outcomes, reconciliation, and a publication
+boundary. That makes it a strong test of whether the shell can carry real Omega
+state without creating presentation-owned authority. [analysis] [inferred]
+
+The first slice should preserve the normal project list, task tabs, history,
+and composer. Its primary region should add a sticky case header; Evidence,
+Claims, Limitations, Panel, and Publication tabs; a queue and claim inspector;
+copyable exact refs; explicit loading, empty, incomplete, denied, stale, and
+tool-contract-failed states; and a visibly blocked publication gate. Use
+restrained semantic color and the existing typography/tokens. Do not add a
+second workbench rail, a modal-only review path, nested-card chrome for every
+row, or a Comet-owned evidence store. [inferred]
+
+Live lifecycle controls are a later state of the same surface. Keep Prepare,
+Launch, Cancel, and cleanup disabled until OpenAgents issues #9289 and #9290
+have accepted live worker and source-delivery receipts. Issue #9300 remains open
+and prevents a fixture-backed UI from being represented as an accepted live
+forensic program. [runtime] [limitation]
+
 ##### Ordered remaining port plan
 
 The next work should advance product capability rather than add more inert
@@ -1001,10 +1026,10 @@ shell replicas:
 1. **Complete project semantics.** Add explicit multi-project switching,
    worktree selection, remote/device roots, and remove/rename flows while
    retaining Omega's project and worktree authorities.
-2. **Mount one real IDE workbench slice.** Put an editor pane, terminal/task
-   surface, and Git diff inside the Comet composition with correct focus,
-   actions, drag/drop, and restore. This is the next decisive proof that the
-   rebuild can carry more than chat.
+2. **Mount one real workbench slice.** Start with the read-only Coldcard
+   forensic case reader, then add editor/source navigation, terminal/task, and
+   Git diff with correct focus, actions, drag/drop, and restore. This is the
+   next decisive proof that the rebuild can carry more than chat.
 3. **Finish conversation interaction parity.** Add staged attachments,
    question-wizard takeover, the complete Send/Steer/Stop transition,
    optimistic failure return-to-draft, streaming stick behavior, and the
@@ -1020,10 +1045,11 @@ shell replicas:
    Comet mode as an additive rollback path until the contract matrix is green;
    retire the old shell only after that evidence exists.
 
-The immediate recommendation is therefore phase 4's first workbench vertical
-slice, in parallel with closing project semantics. More shell polish has lower
-architectural value until editor, terminal, and diff authority survive inside
-the Comet-first composition. [inferred]
+The immediate recommendation is therefore phase 4's fixture-backed forensic
+reader, in parallel with closing project semantics, followed by editor,
+terminal, and diff integration. More shell polish has lower architectural value
+until real Omega authority survives inside the Comet-first composition.
+[inferred]
 
 ### 7.5 Relationship to other teardowns
 

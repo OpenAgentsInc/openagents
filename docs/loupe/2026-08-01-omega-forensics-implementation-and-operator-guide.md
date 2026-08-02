@@ -1,13 +1,14 @@
 # Omega forensic analysis: implementation and operator guide
 
-Status: **implementation and operating guide for the completed OFR-001 through
-OFR-018 development program.** The components described here exist and have
-focused tests. OpenAgents Cloud forensic placement remains default-off unless
-the exact managed profile is admitted. This document does not authorize a scan,
+Status: **implementation inventory and fixture-mode operating guide for
+OFR-001 through OFR-018.** The checked-in components described here have
+focused tests, but the end-to-end live program is not accepted. OpenAgents
+issue #9300 is open, and issues #9289 and #9290 retain the live worker and
+source-delivery correction gates. This document does not authorize a scan,
 publish a vulnerability claim, contact a maintainer, or enable production
 service.
 
-Date: 2026-08-01
+Date: 2026-08-02
 
 Use this document as the entry point for the system that grew from the Loupe
 study and Coldcard experiment. Use the
@@ -15,10 +16,11 @@ study and Coldcard experiment. Use the
 for the first benchmark. The longer rationale and delivery history remain in
 the [forensic-analysis roadmap](2026-08-01-omega-forensic-analysis-roadmap.md).
 
-## 1. What we built
+## 1. What is implemented
 
-We built a bounded forensic-analysis system that joins four previously separate
-concerns:
+The repositories contain a bounded forensic-analysis implementation that joins
+four previously separate concerns at contract, adapter, fixture, evaluator,
+and projection layers:
 
 1. Loupe-style agent discovery with typed findings and an independent verifier;
 2. dependency-complete, immutable source materialization;
@@ -27,9 +29,11 @@ concerns:
 4. an Omega workbench for preflight, prompt candidates, run control, evidence
    review, comparison, and the Coldcard reproduction chain.
 
-The result is not a generic scanner and not an autonomous disclosure bot. It is
-an evidence workbench. Every important transition is typed, every run binds its
-inputs, missing evidence stays missing, and cleanup is part of terminal truth.
+The intended result is not a generic scanner and not an autonomous disclosure
+bot. It is an evidence workbench. The checked-in design types important
+transitions, binds run inputs, retains missing evidence, and makes cleanup part
+of terminal truth. Only a live accepted receipt can prove those properties for
+a deployed run.
 
 ```text
 Omega repository context
@@ -46,18 +50,18 @@ Omega repository context
 
 ### 1.1 Implementation inventory
 
-| Capability | Implementation | What it owns |
-| --- | --- | --- |
-| Canonical contracts | [`packages/forensic-contract/`](../../packages/forensic-contract/) | Strict Effect Schemas, canonical JSON and SHA-256 identity, lifecycle laws, metrics, scorecards, Coldcard reproduction, artifact witness, generator, historical scan, evidence graph, and claim history. |
-| Loupe-style discovery | [`packages/forensic-loupe-adapter/`](../../packages/forensic-loupe-adapter/) | Structured prompt compilation, typed finding and hypothesis lanes, immutable checkout checks, bounded events, and `manual_no_reporting`. |
-| Independent verifier | [`packages/forensic-loupe-adapter/src/verifier.ts`](../../packages/forensic-loupe-adapter/src/verifier.ts) | Distinct verifier identity, verdict-before-PoC ordering, vulnerable/fixed execution receipts, and discovery-only release gating. |
-| Managed worker | [`apps/openagents.com/workers/api/src/forensic-managed-sandbox.ts`](../../apps/openagents.com/workers/api/src/forensic-managed-sandbox.ts) | Admission, dispatch, observation, interrupt, settlement, artifact collection, deletion, and cleanup for one exact GCE worker generation. |
-| Guest workload boundary | [`scripts/cloud/forensic-worker-driver.mjs`](../../scripts/cloud/forensic-worker-driver.mjs) | Allowlisted Linux workload execution under Bubblewrap, bounded I/O, process-group cancellation, and residue checks. |
-| Source materializer | [`apps/openagents.com/workers/api/src/forensic-source-materializer.ts`](../../apps/openagents.com/workers/api/src/forensic-source-materializer.ts) | Commit and tree resolution, gitlink and submodule coverage, private bundle identity, scoped delivery, and removal. |
-| Prompt optimization | [`apps/openagents.com/workers/api/src/blueprint/services/forensic-prompt-compiler.ts`](../../apps/openagents.com/workers/api/src/blueprint/services/forensic-prompt-compiler.ts) | Immutable candidates, bounded offline compilation, holdout isolation, independent evaluation, Blueprint release gates, activation, and rollback records. |
-| Coldcard benchmark | [`fixtures/forensics/coldcard/`](../../fixtures/forensics/coldcard/) | Five development arms, the six-link source rubric, four reproduction suites, frozen controls, dataset splits, and synthetic fixtures. |
-| Node fingerprint tools | [`tools/coldcard/`](../../tools/coldcard/) | Independent, exact-integer, append-only Bitcoin Core fingerprint scanning and base-rate stratification. |
-| Omega domain and renderer | [`omega_forensics`](https://github.com/OpenAgentsInc/omega/tree/main/crates/omega_forensics) and [`forensics_workbench.rs`](https://github.com/OpenAgentsInc/omega/blob/main/crates/agent_ui/src/forensics_workbench.rs) | Renderer-safe projections, preflight, prompt candidates, run lifecycle, review, matrices, and the Coldcard evidence workspace. |
+| Capability                | Implementation                                                                                                                                                                                                           | What it owns                                                                                                                                                                                             |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Canonical contracts       | [`packages/forensic-contract/`](../../packages/forensic-contract/)                                                                                                                                                       | Strict Effect Schemas, canonical JSON and SHA-256 identity, lifecycle laws, metrics, scorecards, Coldcard reproduction, artifact witness, generator, historical scan, evidence graph, and claim history. |
+| Loupe-style discovery     | [`packages/forensic-loupe-adapter/`](../../packages/forensic-loupe-adapter/)                                                                                                                                             | Structured prompt compilation, typed finding and hypothesis lanes, immutable checkout checks, bounded events, and `manual_no_reporting`.                                                                 |
+| Independent verifier      | [`packages/forensic-loupe-adapter/src/verifier.ts`](../../packages/forensic-loupe-adapter/src/verifier.ts)                                                                                                               | Distinct verifier identity, verdict-before-PoC ordering, vulnerable/fixed execution receipts, and discovery-only release gating.                                                                         |
+| Managed worker            | [`apps/openagents.com/workers/api/src/forensic-managed-sandbox.ts`](../../apps/openagents.com/workers/api/src/forensic-managed-sandbox.ts)                                                                               | Admission, dispatch, observation, interrupt, settlement, artifact collection, deletion, and cleanup for one exact GCE worker generation.                                                                 |
+| Guest workload boundary   | [`scripts/cloud/forensic-worker-driver.mjs`](../../scripts/cloud/forensic-worker-driver.mjs)                                                                                                                             | Allowlisted Linux workload execution under Bubblewrap, bounded I/O, process-group cancellation, and residue checks.                                                                                      |
+| Source materializer       | [`apps/openagents.com/workers/api/src/forensic-source-materializer.ts`](../../apps/openagents.com/workers/api/src/forensic-source-materializer.ts)                                                                       | Commit and tree resolution, gitlink and submodule coverage, private bundle identity, scoped delivery, and removal.                                                                                       |
+| Prompt optimization       | [`apps/openagents.com/workers/api/src/blueprint/services/forensic-prompt-compiler.ts`](../../apps/openagents.com/workers/api/src/blueprint/services/forensic-prompt-compiler.ts)                                         | Immutable candidates, bounded offline compilation, holdout isolation, independent evaluation, Blueprint release gates, activation, and rollback records.                                                 |
+| Coldcard benchmark        | [`fixtures/forensics/coldcard/`](../../fixtures/forensics/coldcard/)                                                                                                                                                     | Five development arms, the six-link source rubric, four reproduction suites, frozen controls, dataset splits, and synthetic fixtures.                                                                    |
+| Node fingerprint tools    | [`tools/coldcard/`](../../tools/coldcard/)                                                                                                                                                                               | Independent, exact-integer, append-only Bitcoin Core fingerprint scanning and base-rate stratification.                                                                                                  |
+| Omega domain and renderer | [`omega_forensics`](https://github.com/OpenAgentsInc/omega/tree/main/crates/omega_forensics) and [`forensics_workbench.rs`](https://github.com/OpenAgentsInc/omega/blob/main/crates/agent_ui/src/forensics_workbench.rs) | Renderer-safe projections, preflight, prompt candidates, run lifecycle, review, matrices, and the Coldcard evidence workspace.                                                                           |
 
 OFR-001 through OFR-007 established the OpenAgents contract, worker, source,
 benchmark, metric, adapter, and verifier layers. OFR-008 through OFR-012 added
@@ -65,6 +69,13 @@ the Omega target, lifecycle, review, prompt, and comparison surfaces. OFR-013
 added Blueprint-governed prompt optimization. OFR-014 through OFR-017 added
 the Coldcard artifact, generator, historical-scan, and evidence-graph suites.
 OFR-018 linked that evidence into Omega.
+
+This inventory says where code and fixtures live. It does not say that a live
+worker was admitted, private source was delivered to it, a real campaign ran,
+an untouched holdout stayed blind, a firmware artifact was built, generator
+throughput was measured, a historical replay completed, or an evidence graph
+was independently accepted. Issue #9300 remains the status authority for those
+gaps.
 
 ## 2. The non-negotiable operating model
 
@@ -131,8 +142,10 @@ firewall, ingress, process, and workspace residue. Missing cleanup truth yields
 
 ## 3. How to use the system
 
-There are two supported modes today: deterministic development and an admitted
-live managed run.
+Deterministic development is the supported mode today. The live managed
+sequence below is the intended acceptance procedure, not a statement that the
+route is currently admitted. Keep live controls unavailable until issues #9289
+and #9290 close with the required receipts.
 
 ### 3.1 Deterministic development mode
 
@@ -171,10 +184,12 @@ cargo test -p omega_workbench_state -p omega_workbench_conformance
 ./script/clippy -p omega_forensics -p agent_ui
 ```
 
-### 3.2 Admitted Omega run
+### 3.2 Planned admitted Omega run
 
 Use this sequence only when the native forensic route is deployed, the owner is
-authenticated, and the exact managed profile is enabled.
+authenticated, the exact managed profile is enabled, and issues #9289 and #9290
+have accepted the live worker and source-delivery evidence. At this revision,
+those conditions are not all satisfied.
 
 1. Open an Omega task bound to a Git repository and select **Forensics** from
    the workbench rail.
@@ -276,30 +291,58 @@ Use the matrix to answer these questions in order:
 5. Did every run stay within budget and clean up?
 6. Only then: was identification faster or cheaper?
 
-## 6. Reading the Omega workbench
+## 6. Reading the simplified Comet-first workbench
 
-The workbench contains these logical surfaces even though the first renderer
-places them in one scrollable dock:
+The short-term product should mount the forensic workbench in Omega's existing
+Comet-shaped task shell. It must reuse the normal project list, task tabs,
+history, and composer, then devote the primary workbench region to the selected
+forensic case. Comet supplies the presentation grammar; Omega projections and
+intents remain the only authority.
 
-| Surface | Read it as |
-| --- | --- |
-| Target and preflight | Exact repository, commit, source completeness, placement, and bounds. |
-| Prompt artifacts | Active immutable input, draft lineage, semantic changes, and candidates. |
-| Managed worker | OpenAgents Cloud placement truth and current lifecycle. |
-| Coverage and lifecycle | Whether the result is eligible and whether the worker settled and cleaned up. |
-| Findings | Typed claims with causal links, citations, evidence receipts, PoC refs, and append-only human decisions. |
-| Hypotheses | Unverified leads with explicit missing evidence and next checks. |
-| Run matrix | Matched candidate populations, censored misses, confidence bounds, cost, quality gates, and Pareto status. |
+Read the case in this order:
+
+| Surface                     | Read it as                                                                                                                                       |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Target and preflight        | Exact repository, commit, source completeness, placement, and bounds.                                                                            |
+| Prompt artifacts            | Active immutable input, draft lineage, semantic changes, and candidates.                                                                         |
+| Managed worker              | OpenAgents Cloud placement truth and current lifecycle.                                                                                          |
+| Coverage and lifecycle      | Whether the result is eligible and whether the worker settled and cleaned up.                                                                    |
+| Findings                    | Typed claims with causal links, citations, evidence receipts, PoC refs, and append-only human decisions.                                         |
+| Hypotheses                  | Unverified leads with explicit missing evidence and next checks.                                                                                 |
+| Run matrix                  | Matched candidate populations, censored misses, confidence bounds, cost, quality gates, and Pareto status.                                       |
 | Coldcard evidence workspace | Nine-rung claim ladder, source-to-generator trace, entropy assumptions, private scan, provenance health, reconciliation, and correction history. |
 
+The first fixture-backed slice should expose five stable tabs: **Evidence**,
+**Claims**, **Limitations**, **Panel**, and **Publication**. Keep a sticky case
+header for target, commit, arm, completeness, privacy, proof rung, run state,
+and cleanup truth. Selecting a queue item should open a claim inspector with
+its exact proposition, provenance, supporting and disputing evidence, missing
+rung, non-implications, and next mechanical check.
+
 The renderer receives projections, not the underlying authority. A green label
-does not replace its receipt, and a selected benchmark arm does not prove that
-the corresponding source bundle or worker exists.
+does not replace its receipt, a selected benchmark arm does not prove that the
+corresponding source bundle or worker exists, and a model-panel majority does
+not advance a claim. Loading, empty, incomplete, denied, request-schema-failed,
+tool-contract-incompatible, cancelled, recovery-required, and stale states all
+need explicit presentations.
 
-## 7. Current limitations and next UI work
+## 7. Current limitations and ordered UI work
 
-The implementation program is complete, but the first interface still has
-important usability and proof gaps:
+The implementation inventory is substantial, but the first interface and the
+live proof chain still have important gaps. Work in this order:
+
+1. ship a read-only Coldcard fixture reader in the Comet-shaped task shell;
+2. add complete, incomplete, denied, awaiting-profile, request-schema-failed,
+   and tool-contract-incompatible preflight states;
+3. expose separate evidence, claim, limitation, dispute, and reconciliation
+   queues with a claim inspector and full copyable refs;
+4. render a diverse model panel and matched run matrix without voting semantics;
+5. add a default-blocked publication view with redaction, review, disclosure,
+   maintainer, and authority gates; and
+6. enable prepare, launch, cancel, and cleanup controls only after #9289 and
+   #9290 carry accepted live receipts.
+
+Additional current gaps are:
 
 - existing tasks persisted before OFR-018 can retain a six-surface availability
   list and omit Forensics until repository identity is rebuilt; migrate or
@@ -317,7 +360,8 @@ important usability and proof gaps:
   private Coldcard evidence states; and
 - a live production or staging claim still requires the exact deployed route,
   enabled managed profile, independent admission, budget authority, and
-  cleanup evidence. The checked-in fixtures do not supply those facts.
+  cleanup evidence. The checked-in fixtures do not supply those facts; issue
+  #9300 remains open until the missing end-to-end evidence is accepted.
 
 ## 8. Safety and disclosure boundary
 
@@ -342,6 +386,8 @@ important usability and proof gaps:
 - [Forensic prompt optimization governance](2026-08-01-forensic-prompt-optimization-governance.md)
 - [Coldcard evidence derivation and claim history](2026-08-01-coldcard-evidence-derivation.md)
 - [Coldcard historical fingerprint scan](2026-08-01-coldcard-historical-fingerprint-scan.md)
+- [Coldcard forensic model-panel and publication-gates audit](../coldcard/2026-08-02-forensic-model-panel-and-publication-gates-audit.md)
+- [Wallet-security posts and Omega-thread audit](../coldcard/2026-08-02-wallet-security-posts-and-omega-thread-audit.md)
 - [OpenAgents forensic contracts](../../packages/forensic-contract/README.md)
 - [OpenAgents Loupe adapter](../../packages/forensic-loupe-adapter/README.md)
 - [Coldcard development benchmark](../../fixtures/forensics/coldcard/README.md)
