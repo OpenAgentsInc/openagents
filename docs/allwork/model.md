@@ -148,6 +148,10 @@ authority, freshness, completeness, revisions, cursors, and the
 `omega-effectd.v2` Work read methods. That package owns encoded shape only. It
 does not make this strategy document a lifecycle or storage authority.
 
+The current `@openagentsinc/omega-effectd` adapter serves those methods from
+its durable Full Auto registry. It emits redacted Work summaries and snapshots
+while the Full Auto registry remains the only writable authority.
+
 The first composition stage uses a read-only Work projection with exact source
 refs. Existing lanes retain their authoritative stores. A later schema proposal
 must reconcile those sources before it changes ownership.

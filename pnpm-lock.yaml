@@ -2526,6 +2526,9 @@ importers:
       '@openagentsinc/agent-runtime-schema':
         specifier: 0.2.1-rc.4
         version: 0.2.1-rc.4
+      '@openagentsinc/all-work-contract':
+        specifier: workspace:*
+        version: link:../all-work-contract
       '@openagentsinc/assurance-spec':
         specifier: workspace:*
         version: link:../assurance-spec

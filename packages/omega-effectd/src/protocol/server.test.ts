@@ -1,6 +1,11 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import {
+  decodeProtocolInitializeResult,
+  decodeWorkIndexReadResult,
+  decodeWorkSnapshotReadResult,
+} from "@openagentsinc/all-work-contract";
 import { describe, expect, test } from "vite-plus/test";
 
 import { createOmegaEffectdService } from "../service.ts";
@@ -78,6 +83,71 @@ describe("omega-effectd framed protocol", () => {
         runs.some((run) => run.runRef === created.runRef && run.title === "Recovery proof"),
       ).toBe(true);
       expect(JSON.stringify(listed)).not.toContain("Prove durable truth");
+    });
+  });
+
+  test("negotiates typed All Work v2 reads while explicit v1 remains rollback-only", async () => {
+    await withRoot(async (root) => {
+      const run = openFullAutoRunRegistry(resolveFullAutoRunsPath({ dataRoot: root })).createDraft({
+        title: "All Work process row",
+        objective: "This private objective must not enter the Work Index.",
+        doneCondition: "Typed process reads pass.",
+        objectiveSource: "user",
+        threadRef: "thread:all-work:1",
+      });
+      const service = createOmegaEffectdService({ paths: { dataRoot: root } });
+      const server = createOmegaEffectdFramedServer(
+        service,
+        { dataRoot: root },
+        { hostRequestHandler: makeOmegaEffectdTestHost() },
+      );
+      const initialized = await server.handleLine(
+        request("init-v2", 0, "initialize", {
+          generation: 1,
+          allWork: {
+            supportedVersions: ["omega-effectd.v2", "omega-effectd.v1"],
+            requestedCapabilities: ["work.index.read", "work.snapshot.read"],
+          },
+        }),
+      );
+      expect(initialized?.ok).toBe(true);
+      const allWork = decodeProtocolInitializeResult(
+        (initialized?.result as { allWork: unknown }).allWork,
+      );
+      expect(allWork.selectedVersion).toBe("omega-effectd.v2");
+      expect(allWork.capabilities).toEqual(["work.index.read", "work.snapshot.read"]);
+
+      const indexed = await server.handleLine(request("index", 1, "work.index.read", {}));
+      expect(indexed?.ok).toBe(true);
+      const indexResult = decodeWorkIndexReadResult(indexed?.result);
+      expect(indexResult.items).toHaveLength(1);
+      expect(indexResult.items[0]?.workRef).toBe(`work:${run.runRef}`);
+      expect(JSON.stringify(indexResult)).not.toContain("private objective");
+
+      const snapshot = await server.handleLine(
+        request("snapshot", 1, "work.snapshot.read", { workRef: `work:${run.runRef}` }),
+      );
+      expect(snapshot?.ok).toBe(true);
+      expect(decodeWorkSnapshotReadResult(snapshot?.result).snapshot.threadRefs).toEqual([
+        "thread:all-work:1",
+      ]);
+
+      const legacyRoot = path.join(root, "legacy");
+      const legacy = createOmegaEffectdFramedServer(
+        createOmegaEffectdService({ paths: { dataRoot: legacyRoot } }),
+        { dataRoot: legacyRoot },
+        { hostRequestHandler: makeOmegaEffectdTestHost() },
+      );
+      const legacyInit = await legacy.handleLine(
+        request("init-v1", 0, "initialize", { generation: 1 }),
+      );
+      expect(
+        decodeProtocolInitializeResult((legacyInit?.result as { allWork: unknown }).allWork)
+          .selectedVersion,
+      ).toBe("omega-effectd.v1");
+      const refused = await legacy.handleLine(request("legacy-index", 1, "work.index.read", {}));
+      expect(refused?.ok).toBe(false);
+      expect(refused?.error?.code).toBe("incompatible_version");
     });
   });
 
@@ -182,14 +252,12 @@ describe("omega-effectd framed protocol", () => {
       expect(boundThread).not.toBe(sourceThreadRef);
       expect(handoffResult.transition.sourceThreadRef).toBe(sourceThreadRef);
       expect(handoffResult.transition.targetThreadRef).toBe(boundThread);
-      const threadRegistry = openFullAutoRegistry(
-        resolveFullAutoRegistryPath({ dataRoot: root }),
-      );
-      expect(sourceThreadRef === undefined ? null : threadRegistry.record(sourceThreadRef)).toBeNull();
+      const threadRegistry = openFullAutoRegistry(resolveFullAutoRegistryPath({ dataRoot: root }));
       expect(
-        boundThread === undefined
-          ? undefined
-          : threadRegistry.record(boundThread)?.profile?.lane,
+        sourceThreadRef === undefined ? null : threadRegistry.record(sourceThreadRef),
+      ).toBeNull();
+      expect(
+        boundThread === undefined ? undefined : threadRegistry.record(boundThread)?.profile?.lane,
       ).toBe("claude-local");
 
       const resumed = await server.handleLine(request("5", 1, "resume", { runRef: run.runRef }));
@@ -242,8 +310,9 @@ describe("omega-effectd framed protocol", () => {
 
       const runRef = (started?.result as { run: { runRef: string } }).run.runRef;
       const detail = await server.handleLine(request("3", 1, "get_run", { runRef }));
-      expect((detail?.result as { run: { successfulAttempts: number; state: string } }).run)
-        .toMatchObject({ successfulAttempts: 1, state: "cap_reached" });
+      expect(
+        (detail?.result as { run: { successfulAttempts: number; state: string } }).run,
+      ).toMatchObject({ successfulAttempts: 1, state: "cap_reached" });
       expect(dispatchedTurns).toBe(1);
     });
   });
@@ -633,9 +702,11 @@ describe("omega-effectd framed protocol", () => {
       const runRef = (started?.result as { run: { runRef: string } }).run.runRef;
 
       const detail = await server.handleLine(request("3", 1, "get_run", { runRef }));
-      const run = (detail?.result as {
-        run: { startedAtMs: number | null; updatedAt: string };
-      }).run;
+      const run = (
+        detail?.result as {
+          run: { startedAtMs: number | null; updatedAt: string };
+        }
+      ).run;
 
       // Numeric, and taken from THIS host's clock while the request was in
       // flight -- not a client value and not a parse of anything.
@@ -650,9 +721,11 @@ describe("omega-effectd framed protocol", () => {
       // `list_runs` agrees with `get_run`, so the monitor and the phone cannot
       // hold two opinions about when a run began.
       const listed = await server.handleLine(request("4", 1, "list_runs"));
-      const snapshot = (listed?.result as {
-        runs: ReadonlyArray<{ runRef: string; startedAtMs: number | null }>;
-      }).runs.find((entry) => entry.runRef === runRef);
+      const snapshot = (
+        listed?.result as {
+          runs: ReadonlyArray<{ runRef: string; startedAtMs: number | null }>;
+        }
+      ).runs.find((entry) => entry.runRef === runRef);
       expect(snapshot?.startedAtMs).toBe(run.startedAtMs);
 
       // A Pause and Resume is not a new start. Pausing a run overnight must not
@@ -778,7 +851,9 @@ describe("omega-effectd framed protocol", () => {
       await server.handleLine(request("3", 1, "pause", { runRef }));
       await server.handleLine(request("4", 1, "resume", { runRef }));
       for (let attempt = 0; attempt < 50; attempt += 1) {
-        const polled = await server.handleLine(request(`poll-${attempt}`, 1, "get_run", { runRef }));
+        const polled = await server.handleLine(
+          request(`poll-${attempt}`, 1, "get_run", { runRef }),
+        );
         if ((polled?.result as { run: { state: string } }).run.state === "completed") break;
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
@@ -809,7 +884,9 @@ describe("omega-effectd framed protocol", () => {
       expect(evidence.turnRef).toBe("turn.full-auto.1");
       expect(evidence.changeRef).toBe(`change.${head}`);
       expect(evidence.projectGeneration).toBe("generation.project.00007");
-      expect(evidence.diffSummary).toBe(`since ${base.slice(0, 7)}: 2 files changed, 3 insertions(+)`);
+      expect(evidence.diffSummary).toBe(
+        `since ${base.slice(0, 7)}: 2 files changed, 3 insertions(+)`,
+      );
       expect(evidence.testCommand).toBe("pnpm test");
       expect(evidence.objectiveRef).toBe(`objective.${report.objectiveDigest as string}`);
 
@@ -823,11 +900,7 @@ describe("omega-effectd framed protocol", () => {
 
       // Nothing the client sent reached either record.
       const published = JSON.stringify({ report, receipt, detail });
-      for (const forged of [
-        "client.forged",
-        "generation.project.99999",
-        "999 files changed",
-      ]) {
+      for (const forged of ["client.forged", "generation.project.99999", "999 files changed"]) {
         expect(published).not.toContain(forged);
       }
     });

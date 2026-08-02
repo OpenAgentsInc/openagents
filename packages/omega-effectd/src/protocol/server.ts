@@ -8,6 +8,14 @@
 import { createInterface } from "node:readline";
 
 import {
+  decodeProtocolInitializeRequest,
+  decodeWorkIndexReadRequest,
+  decodeWorkSnapshotReadRequest,
+  negotiateAllWorkProtocol,
+  type ProtocolVersion as AllWorkProtocolVersion,
+} from "@openagentsinc/all-work-contract";
+
+import {
   resolveAgentComputerSessionsPath,
   resolveFullAutoNativeBindingsPath,
   resolveFullAutoProviderHandoffsPath,
@@ -22,6 +30,11 @@ import {
   FULL_AUTO_RUN_ACTIVE_LIMIT,
   openFullAutoRunRegistry,
 } from "../engine/full-auto-run-registry.ts";
+import {
+  AllWorkReadError,
+  readFullAutoWorkIndex,
+  readFullAutoWorkSnapshot,
+} from "../engine/all-work-projection.ts";
 import { openFullAutoRunReportStore } from "../engine/full-auto-run-report.ts";
 import { admitFullAutoRunCompletion } from "../engine/full-auto-completion.ts";
 import {
@@ -99,7 +112,7 @@ import {
   renderFullAutoMissionPrompt,
 } from "../engine/full-auto-mission.ts";
 import type { OmegaEffectdService } from "../service.ts";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { LocalTurnRecordSchema, type LocalTurnRecord } from "../support/local-turn-journal.ts";
 import {
   isOmegaEffectdRequest,
@@ -245,6 +258,7 @@ export const createOmegaEffectdFramedServer = (
 ): OmegaEffectdFramedServer => {
   let generation = 0;
   let initialized = false;
+  let selectedAllWorkVersion: AllWorkProtocolVersion = "omega-effectd.v1";
 
   const runRegistry = openFullAutoRunRegistry(resolveFullAutoRunsPath(paths));
   const registry = openFullAutoRegistry(resolveFullAutoRegistryPath(paths));
@@ -958,7 +972,7 @@ export const createOmegaEffectdFramedServer = (
     params?: unknown;
   }): Promise<OmegaEffectdResponse> => {
     if (request.method === "initialize") {
-      const params = (request.params ?? {}) as { generation?: number };
+      const params = (request.params ?? {}) as { generation?: number; allWork?: unknown };
       if (
         typeof params.generation !== "number" ||
         !Number.isInteger(params.generation) ||
@@ -983,6 +997,40 @@ export const createOmegaEffectdFramedServer = (
         );
       }
       generation = params.generation;
+      let allWorkRequest;
+      try {
+        allWorkRequest = decodeProtocolInitializeRequest(
+          params.allWork ?? {
+            supportedVersions: ["omega-effectd.v1"],
+            requestedCapabilities: [],
+          },
+        );
+      } catch {
+        return respond(
+          request.id,
+          false,
+          undefined,
+          redactedError("invalid_request", "initialize received an invalid All Work profile."),
+        );
+      }
+      const allWork = await Effect.runPromise(
+        Effect.match(negotiateAllWorkProtocol(allWorkRequest), {
+          onFailure: () => null,
+          onSuccess: (result) => result,
+        }),
+      );
+      if (allWork === null) {
+        return respond(
+          request.id,
+          false,
+          undefined,
+          redactedError(
+            "incompatible_version",
+            "No compatible All Work protocol version is available.",
+          ),
+        );
+      }
+      selectedAllWorkVersion = allWork.selectedVersion;
       hostBridge.beginGeneration(generation);
       initialized = true;
       await service.start();
@@ -1025,8 +1073,12 @@ export const createOmegaEffectdFramedServer = (
           "sarah_interrupt_turn",
           "sarah_renew_device_grant",
           "sarah_revoke_device_grant",
+          ...(selectedAllWorkVersion === "omega-effectd.v2"
+            ? (["work.index.read", "work.snapshot.read"] as const)
+            : []),
           "host_bridge",
         ],
+        allWork,
         dataRoot: health.dataRoot,
         activeRunLimit: FULL_AUTO_RUN_ACTIVE_LIMIT,
       };
@@ -1139,6 +1191,70 @@ export const createOmegaEffectdFramedServer = (
         } catch (error) {
           if (error instanceof OmegaEffectdHostBridgeError) throw error;
           return invalidSarahParams(request.id, request.method);
+        }
+      }
+      case "work.index.read": {
+        if (selectedAllWorkVersion !== "omega-effectd.v2") {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "incompatible_version",
+              "work.index.read requires the negotiated omega-effectd.v2 All Work profile.",
+            ),
+          );
+        }
+        try {
+          const params = decodeWorkIndexReadRequest(request.params ?? {});
+          const result = readFullAutoWorkIndex(
+            runRegistry.list(),
+            params,
+            new Date().toISOString(),
+          );
+          return respond(request.id, true, result);
+        } catch (error) {
+          if (error instanceof AllWorkReadError) {
+            return respond(request.id, false, undefined, redactedError(error.code, error.message));
+          }
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", "work.index.read received invalid params."),
+          );
+        }
+      }
+      case "work.snapshot.read": {
+        if (selectedAllWorkVersion !== "omega-effectd.v2") {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "incompatible_version",
+              "work.snapshot.read requires the negotiated omega-effectd.v2 All Work profile.",
+            ),
+          );
+        }
+        try {
+          const params = decodeWorkSnapshotReadRequest(request.params ?? {});
+          const result = readFullAutoWorkSnapshot(
+            runRegistry.list(),
+            params.workRef,
+            new Date().toISOString(),
+          );
+          return respond(request.id, true, result);
+        } catch (error) {
+          if (error instanceof AllWorkReadError) {
+            return respond(request.id, false, undefined, redactedError(error.code, error.message));
+          }
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", "work.snapshot.read received invalid params."),
+          );
         }
       }
       case "health": {

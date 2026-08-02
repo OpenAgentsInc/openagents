@@ -7,6 +7,11 @@
  * stale generations are refused.
  */
 
+import type {
+  ProtocolInitializeRequest as AllWorkProtocolInitializeRequest,
+  ProtocolInitializeResult as AllWorkProtocolInitializeResult,
+} from "@openagentsinc/all-work-contract";
+
 export const OMEGA_EFFECTD_PROTOCOL_SCHEMA = "openagents.omega.effectd.v1" as const;
 export const OMEGA_EFFECTD_SERVICE_VERSION = "0.1.0" as const;
 export const OMEGA_EFFECTD_PROTOCOL_VERSION = 1 as const;
@@ -22,6 +27,11 @@ export type OmegaEffectdProtocolErrorCode =
   | "host_unavailable"
   | "host_timeout"
   | "frame_too_large"
+  | "incompatible_version"
+  | "not_found"
+  | "unavailable"
+  | "stale_cursor"
+  | "gap"
   | "internal";
 
 export type OmegaEffectdProtocolError = Readonly<{
@@ -32,6 +42,7 @@ export type OmegaEffectdProtocolError = Readonly<{
 export type OmegaEffectdInitializeParams = Readonly<{
   generation: number;
   client?: string;
+  allWork?: AllWorkProtocolInitializeRequest;
 }>;
 
 export type OmegaEffectdInitializeResult = Readonly<{
@@ -70,8 +81,11 @@ export type OmegaEffectdInitializeResult = Readonly<{
     | "sarah_interrupt_turn"
     | "sarah_renew_device_grant"
     | "sarah_revoke_device_grant"
+    | "work.index.read"
+    | "work.snapshot.read"
     | "host_bridge"
   >;
+  allWork: AllWorkProtocolInitializeResult;
   dataRoot: string;
   activeRunLimit: number;
 }>;
