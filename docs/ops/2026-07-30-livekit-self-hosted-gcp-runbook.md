@@ -49,9 +49,8 @@ It does not proxy signaling, WebSocket, TCP, UDP, or TURN traffic.
 | Community cap        | two Sarah rooms per community                                                                                      |
 | Idle / lifetime cap  | 120 seconds idle / 1,800 seconds per room generation                                                               |
 
-The room cap is an application refusal limit, not a capacity claim. It becomes
-an admitted capacity only after the matching load observation passes with at
-least 20% spare capacity. The production topology starts with three SFU nodes,
+The room cap is an application refusal limit, not a capacity claim or a launch
+acceptance target. The production topology starts with three SFU nodes,
 one per zone, and retains enough capacity for a zonal failure. An SFU node
 failure terminates its in-flight rooms; it does not migrate their media state.
 
@@ -1196,7 +1195,11 @@ This one naturally selected ICE path per scenario does not replace the forced
 direct-UDP, TCP-fallback, and TURN/TLS packaged Omega matrix. It also does not
 prove UI behavior or uninterrupted media through SFU failure.
 
-### Load
+### Optional load characterization
+
+The owner removed the 20-room load target from the #9284 launch close gate on
+2026-08-02. Use this procedure when establishing a future supported-capacity
+claim; it is not required for basic launch acceptance.
 
 Drive at least 20 simultaneous two-participant rooms with one Sarah worker job
 and one OpenAI Realtime generation per room. Keep private and community room
@@ -2035,8 +2038,13 @@ node scripts/cloud/livekit-acceptance.mjs \
   --apply
 ```
 
-Rollback does not close #9284 by itself. The close gate also needs production
-connectivity, load, failure, secret-scan, cost, and canary-destroy receipts.
+For #9284, owner-approved basic launch acceptance consists of a healthy
+production deployment, a representative end-to-end room connection, an
+observable failure/recovery exercise, a privacy scan, configured budget alerts,
+and working deployment/rollback tooling. The exhaustive connectivity matrix,
+20-room load characterization, detailed billing export, and every destructive
+failure drill remain useful operational follow-ups, but are not issue close
+gates.
 
 ## Receipt handling
 

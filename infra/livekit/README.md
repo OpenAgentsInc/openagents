@@ -234,9 +234,9 @@ No mutable tag is accepted.
 
 ## Capacity limits
 
-The limits in `bundle.json` are admission limits, not source-only capacity
-claims. Twenty concurrent Sarah rooms become admissible only after live load,
-failure, TURN, and settlement acceptance. The server itself limits each room
+The limits in `bundle.json` are admission safeguards, not supported-capacity
+claims or launch acceptance targets. Capacity characterization is independent
+of the #9284 basic launch close gate. The server itself limits each room
 to three participants, permits Opus only, and refuses automatic room creation.
 The OpenAgents control plane owns per-owner, per-community, idle, and maximum
 lifetime enforcement.
