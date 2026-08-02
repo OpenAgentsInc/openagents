@@ -17,6 +17,11 @@ No builds, live sessions, or screenshot captures. Findings are from source
 structure, pure layout functions with unit tests, and render paths. [source]
 [limitation]
 
+**Implementation follow-up.** This document preserves the original pinned
+comparison. The subsequent Omega implementation receipts, current gap audit,
+and ordered migration plan are maintained in
+[Comet teardown §7.4.9](./2026-07-31-comet-teardown.md#749-implementation-update--2026-08-01).
+
 **Naming.** "Ours" means **Omega**, the tracked Zed-fork desktop client — not
 the retired Electron OpenAgents Desktop app.
 
