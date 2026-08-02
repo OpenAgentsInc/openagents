@@ -3,12 +3,17 @@
 - Status: canonical vocabulary
 - Owner: OpenAgents
 - Date: 2026-08-02
-- Scope: current contracts and target product architecture
+- Scope: current contracts and target All Work architecture
 
-This document is the single vocabulary for Omega and the OpenAgents product
-system that Omega presents. It normalizes the current repository models and the
-target Product Work, collaboration, coding, execution, identity, sync, and
-interoperability models into OpenAgents-owned terms.
+This document is the single vocabulary for Omega and the OpenAgents system that
+Omega presents. It normalizes the current repository models and the target All
+Work, collaboration, coding, execution, identity, sync, and interoperability
+models into OpenAgents-owned terms.
+
+The [App for All Work thesis](../allwork/README.md) owns the category direction.
+The companion [All Work model](../allwork/model.md) owns the target core
+vocabulary: Work, Session, Block, Host, Intent, Event, and Receipt. Development
+planning is one domain profile over that model, not the root ontology.
 
 The glossary is a naming authority, not an implementation-status authority.
 Code, tests, ProductSpec, AssuranceSpec, the Omega roadmap, the Sol roadmap,
@@ -32,152 +37,206 @@ its product reach is expected to grow.
 
 ## 2. Canonical model spine
 
-The target product-work relationship is:
+The target All Work relationship is:
 
 ```text
-Product Space
-├── Team
-├── Initiative
-│   └── Project
-│       ├── Cycle
-│       ├── Milestone
-│       └── Work Item
-│           ├── Work Item Relation
-│           ├── Customer Signal
-│           ├── Document / Decision
-│           └── Workroom
-│               └── Thread
-│                   └── Work Session
-│                       └── Run
-│                           └── Work Activity
-│                               ├── Artifact / Evidence
-│                               ├── Verification
-│                               └── Disposition
-└── Product Pulse / Outcome Metric
+Work
+├── objective, owner, context, participants, state, policy, and outcome refs
+├── Session ── runs on ──> Host
+├── Block ── displays or controls part of the Work
+└── history
+      Actor ── submits ──> Intent
+                              │
+                          admission
+                              │
+                            effect
+                           /      \
+                       Event    Receipt
+
+Verification, acceptance, release, and public claims remain separate.
 ```
 
-The Omega application relationship is separate:
+One Work object can represent a repository task, CI job, deployment, incident,
+service change, data job, research task, design review, or another bounded
+outcome. A development-planning profile can group Work without replacing it:
+
+```text
+Initiative → Project → Cycle / Milestone → Work
+                                          ├── Work Relation
+                                          ├── Customer Signal
+                                          ├── Document / Decision
+                                          └── Workroom / Thread
+```
+
+The Omega application relationship is also separate:
 
 ```text
 App → Window → Workspace → Pane Group → Pane → Item
                               │
+Selected Work ──> Block ──────┤
                               ├── Agent Panel / Thread View
                               ├── Project Panel / Editor / Terminal
-                              └── Workroom / Product Work views
+                              └── Workroom / review / evidence views
 
 IDE Project Graph → Work Context → Project Root → Worktree → Project File Ref
-Engine → Host Device → Placement → Agent Runtime → Session → Run → Turn
+Session → Placement → Host → Agent Runtime / process / service
 ```
 
-The separation is intentional. A product `Project` is not an IDE Project Graph;
-a product `Work Item` is not a pane `Item`; a durable `Thread` is not a bounded
-`Session`; and a filesystem `Worktree` is not a product `Workspace`.
+The separation is intentional. Work is not a Project, Session, process, or
+thread. A development `Project` is not an IDE Project Graph; a Work object is
+not a pane `Item`; a durable `Thread` is not a bounded `Session`; and a
+filesystem `Worktree` is not an Omega `Workspace`.
 
 ## 3. Core naming rules
 
-1. Use **Product Space** for the organizational root of product work. Use
-   **Workspace** only for the Omega window/workbench container.
-2. Use **Project** for a product outcome with scope and dates. Use **IDE Project
-   Graph** for the editor's capability graph over repositories and roots.
-3. Use **Work Item** for planned product work. Use **Item** only for a pane-hosted
-   UI object.
-4. Use **Thread** for durable conversational or causal context. Use **Session**
-   for bounded interaction or execution. Use **Run** for one governed execution
-   lifecycle inside a session.
-5. Use **Workroom** for a collaboration container whose membership, threads,
-   work, and agent participation are viewed together. A relay group can project
-   a workroom but does not define its OpenAgents authority.
-6. Use **Command Intent** for a requested mutation and **Command Outcome** for
-   the durable result. Never call transport acceptance an outcome.
-7. Use **Canonical State** for authoritative OpenAgents state and **Projection**
-   for a derived read model. Signed events, local caches, and UI state are not
-   canonical merely because they are durable.
-8. Use **Agent Delegate** for an agent assigned to accountable work. An agent is
-   never the human accountable owner by implication.
-9. Use **Evidence** for produced proof material, **Verification** for an admitted
-   evaluation of evidence, and **Owner Disposition** for the owner's separate
-   acceptance or waiver decision.
-10. A **Capability** describes what an actor or runtime can do. A **Grant**
+1. Use **Work** for the durable top-level object that holds an objective and its
+   complete lifecycle. Do not make Project, Thread, Session, Run, or process the
+   universal root.
+2. Use **Session** for one live or resumable interaction with Work. A restarted
+   process can create a new Session generation without creating new Work.
+3. Use **Block** for a typed view or control surface inside Work. Visibility or
+   interactivity never gives a Block authority.
+4. Use **Host** for the identified placement where a Session or effect can run.
+   Reachability and capability do not grant execution authority.
+5. Use **Intent** for a typed request, **Event** for a durable admitted fact, and
+   **Receipt** for an effect or observation bound to exact evidence. Keep all
+   three distinct.
+6. Use **Workspace** only for the Omega window/workbench container.
+7. Use **Project**, **Initiative**, **Cycle**, and **Milestone** only inside the
+   development-planning profile. Use **IDE Project Graph** for the editor's
+   capability graph over repositories and roots.
+8. Use **Thread** for durable conversational or causal context. A Thread can be
+   attached to Work, but it is not the Work object.
+9. Use **Workroom** for a collaboration container whose membership, threads,
+   Work, and agent participation are viewed together. A relay group can project
+   a Workroom but does not define its OpenAgents authority.
+10. Use **Agent Delegate** for an agent assigned to accountable Work. An agent
+    is never the human accountable owner by implication.
+11. Use **Evidence** for produced proof material, **Verification** for an
+    admitted evaluation of evidence, and **Owner Disposition** for the owner's
+    separate acceptance or waiver decision.
+12. A **Capability** describes what an actor or runtime can do. A **Grant**
     describes what it may do in a named scope. Capability never implies grant.
 
-## 4. Product work and collaboration
+## 4. All Work and collaboration
+
+### 4.1 Common work model
 
 | Term | Status | Definition |
 | --- | --- | --- |
-| **Product Work** | Target | The native OpenAgents system for planning, assigning, executing, reviewing, and learning from product work. It includes human and agent participation without making an external tracker the system of record. |
-| **Product Space** | Target | The top-level tenant or organization container for teams, initiatives, projects, policies, members, and product knowledge. It is not an Omega Workspace. |
-| **Team** | Target | A stable group of people and agent members with a shared work scope, workflow policy, and ownership boundary. |
-| **Initiative** | Target | A strategic collection of projects and outcome metrics. It connects roadmap intent to delivery without serving as an execution session. |
-| **Roadmap** | Current, Target | An ordered statement of intended outcomes and sequencing. A roadmap supplies priority context; it does not by itself grant implementation, release, spend, or external-action authority. |
-| **Project** | Target | A bounded product outcome with owner, team, scope, dates, milestones, work items, documents, and status. It is distinct from an IDE Project Graph. |
-| **Project Status** | Target | A time-stamped health and progress statement for a Project, with author, narrative, risk, and optional outcome metrics. |
-| **Cycle** | Target | A time-boxed planning and delivery interval for a team. Work Items can join a Cycle without changing their identity. |
-| **Milestone** | Target | A named checkpoint within a Project that groups expected Work Item completion or outcome evidence. |
-| **Work Item** | Target | The canonical unit of product work. It has identity, title, description, state, priority, team, accountable owner, delegates, relations, labels, dates, and activity. |
-| **Subitem** | Target | A Work Item whose parent relation decomposes another Work Item. It remains independently addressable and auditable. |
-| **Work Item Relation** | Target | A typed edge between Work Items, such as parent, blocks, blocked-by, related, duplicate, or supersedes. Relations do not silently mutate either endpoint. |
-| **Work State** | Target | The admitted lifecycle state of a Work Item under a team's workflow. State labels are policy data, not executable authority. |
-| **Priority** | Target | The explicit ordering importance of a Work Item. Priority does not override safety, authority, or dependency gates. |
-| **Label** | Target | A scoped classification attached to work, projects, or customer signals. Labels support discovery and automation but do not grant capabilities. |
-| **SLA Policy** | Target | A policy that defines response or resolution expectations for a class of work. Timers derived from it are projections over canonical timestamps. |
-| **Customer Signal** | Target | A normalized request, complaint, observation, or opportunity linked to product work. It preserves source and consent boundaries and is not itself a commitment. |
-| **Document** | Current, Target | Durable authored product knowledge with identity, revision, authorship, and links to work. In the editor, the same word can name the text model behind a Buffer; context must make the layer clear. |
-| **Decision** | Target | A durable record of a choice, its decision maker, context, alternatives, rationale, date, and affected work. A discussion message is not a Decision until recorded as one. |
-| **Outcome Metric** | Target | A named measure used to judge an Initiative or Project outcome. It must carry definition, source, time window, and truth limitations. |
-| **Product Pulse** | Target | A derived overview of projects, work flow, risks, customer signals, and outcome metrics. It is a projection, never a second product-work authority. |
-| **Accountable Owner** | Target, Boundary | The human or explicitly admitted organizational role answerable for a Work Item or Project. Delegation does not remove this accountability. |
-| **Agent Delegate** | Target | An Agent Member assigned bounded work under a Delegation Grant. It can execute and report within scope but does not inherit owner authority. |
-| **Delegation Grant** | Target, Boundary | A revocable, scoped authorization that binds a principal, target work, allowed actions, constraints, issuer, validity, and evidence requirements. |
-| **Agent Member** | Current, Target | An agent represented as a first-class participant in a Product Space, Team, or Workroom, with identity, owner relation, capabilities, and explicit grants. |
-| **Membership** | Current, Target | A scoped relation between a principal and a Product Space, Team, Workroom, or interoperable group. Membership and role labels do not imply arbitrary command capability. |
+| **All Work** | Target | The OpenAgents category and system direction for interactive, automatic, remote, and production work across people, agents, processes, services, and machines. It is broader than any one planning domain. |
+| **Work** | Target | The durable top-level object for an objective and its complete lifecycle. It binds owner, context, participants, state, placement, policy, history, and outcome refs and can continue when a client disconnects. |
+| **Work Domain** | Target | A typed classification that adds domain-specific fields, Blocks, Intents, Events, and evidence rules to Work without replacing the common model. Initial domains include coding, CI, operations, deployments, incidents, data, research, design review, and development planning. |
+| **Objective** | Current, Target | The bounded statement of what Work or a Run is intended to accomplish. It is versioned where changes can invalidate plans, claims, or evidence. |
+| **Work State** | Target | The admitted lifecycle state of Work under its owning lane or domain policy. State labels are policy data, not executable authority. |
+| **Work Relation** | Target | A typed edge between Work objects, such as parent, child, blocks, blocked-by, related, duplicate, or supersedes. Relations do not silently mutate either endpoint. |
+| **Child Work** | Target | Independently addressable Work that decomposes another Work object through a parent relation. It retains its own owner, state, Sessions, evidence, and outcome. |
+| **Session** | Current, Target | One live or resumable interaction with Work. Examples include a human review, agent turn, terminal process, background run, and incident-response period. A Session is not the complete Work object. |
+| **Block** | Current, Target | A typed view or control surface inside Work, such as chat, editor, terminal, diff, plan, review, preview, log, metric, artifact, or receipt. It can display state or submit an Intent but owns no authority because it is visible. |
+| **Host** | Current, Target | The identified placement where a Session or effect can run, including a local machine, remote host, sandbox, Pylon, Agent Computer, CI worker, or production target. Host reachability is not an execution grant. |
+| **Intent** | Current, Target | A typed request to act that binds actor, target, generation, idempotency identity, requested effect, and required authority. Admission is not proof that its effect occurred. |
+| **Event** | Current, Target | A durable admitted fact about the Work lifecycle with stable order and resume rules. An Event is not necessarily an effect Receipt or complete evidence. |
+| **Receipt** | Current, Boundary | A durable record that binds an effect or observation to exact evidence, such as the Intent, Host, generation, result, artifact, or observer. It does not by itself prove verification, acceptance, release, settlement, or a public claim. |
+| **Work History** | Target | The ordered Events, Intents, Receipts, interactions, and explicit gaps associated with Work. A transcript or terminal scrollback is not automatically complete Work History. |
+| **Work Projection** | Target | A common read model over exact source refs from existing lane authorities. The first composition stage is read-only and does not move authority into a new store. |
+| **Work Index** | Target | The cross-lane list of Work projected from native threads, agent Sessions, terminal Sessions, Full Auto Runs, Pylon Assignments, managed environments, and Workrooms. |
+| **Work Inbox** | Target | The attention-oriented Omega view over the Work Index, organized by active, waiting, blocked, failed, completed, stale, and recoverable Work. |
+| **Outcome Record** | Target | The terminal or current synthesis of effects, changes, artifacts, checks, evidence, verification, delivery, acceptance, and remaining uncertainty for Work. These facts stay individually qualified. |
+| **Accepted Outcome** | Target, Boundary | A Work outcome accepted by the authorized party after the required evidence and verification. Generation, process exit, completion, merge, or relay acceptance alone cannot create it. |
+| **Effective Authority Record** | Target, Boundary | The user-facing projection of enforced authority for Work: owner, Host, lane, model class, tool profile, file and network scope, approval policy, device grants, generation, and revocation refs. |
+| **Execution Lane** | Current, Target | The adapter-backed path that performs a class of Work through an agent, person, job system, service, process, or production operation. |
+| **Lane Adapter** | Target | An extension that connects an agent, job system, service, or automation engine to the common Work model and declares capabilities, actions, events, authority needs, failures, and evidence. |
+| **Host Adapter** | Target | An extension that connects a local, remote, sandbox, CI, managed, or production placement to the Host model. |
+| **Block Adapter** | Target | An extension that adds a typed Block and action set for a domain without creating a separate control plane. |
+| **Work API** | Target | The versioned query, command, and subscription surface for listing Work, reading snapshots, resuming from cursors, submitting Intents, answering interactions, controlling Sessions, and fetching bounded outcomes. |
+| **Work SDK** | Target | Client libraries over the Work API plus adapter contracts for lanes, Hosts, and Blocks. No SDK client receives more authority than another interface. |
+
+### 4.2 Common organization and work metadata
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| **Organization** | Target | An administrative scope for people, agents, teams, policy, and Work. It is not the Work object or an Omega Workspace. |
+| **Team** | Target | A stable group of people and Agent Members with a shared Work scope, workflow policy, and ownership boundary. |
+| **Priority** | Target | The explicit ordering importance of Work. Priority does not override safety, authority, or dependency gates. |
+| **Label** | Target | A scoped classification attached to Work or a domain collection. Labels support discovery and automation but do not grant capabilities. |
+| **SLA Policy** | Target | A policy that defines response or resolution expectations for a class of Work. Timers derived from it are projections over canonical timestamps. |
+| **Document** | Current, Target | Durable authored knowledge with identity, revision, authorship, and links to Work. In the editor, the same word can name the text model behind a Buffer; context must make the layer clear. |
+| **Decision** | Target | A durable record of a choice, its decision maker, context, alternatives, rationale, date, and affected Work. A discussion Message is not a Decision until recorded as one. |
+| **Outcome Metric** | Target | A named measure used to judge Work or a domain collection. It must carry definition, source, time window, and truth limitations. |
+| **Work Pulse** | Target | A derived overview of Work flow, outcomes, risk, capacity, cost, quality, domain signals, and outcome metrics. It is a Projection, never a second Work authority. |
+
+### 4.3 Development-planning profile
+
+These terms organize development Work. They do not define the universal Work
+container or imply that every domain must use development-planning structure.
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| **Development Work** | Target | The Work Domain profile for software and product development planning, customer signals, projects, cycles, milestones, coding, and review. |
+| **Initiative** | Target | A strategic collection of Projects and Outcome Metrics in the development-planning profile. It connects Roadmap intent to Work without serving as a Session. |
+| **Roadmap** | Current, Target | An ordered statement of intended outcomes and sequencing. A Roadmap supplies priority context; it does not by itself grant implementation, release, spend, or external-action authority. |
+| **Project** | Target | A development-planning collection with owner, Team, scope, dates, Milestones, Work refs, Documents, and Status Updates. It is not the universal Work object or an IDE Project Graph. |
+| **Project Status** | Target | A Status Update scoped to a development Project, with author, narrative, risk, progress, evidence refs, and optional Outcome Metrics. |
+| **Cycle** | Target | A time-boxed planning and delivery interval for a Team. Work can join a Cycle without changing its identity. |
+| **Milestone** | Target | A named checkpoint within a Project that groups expected Work completion or outcome evidence. |
+| **Customer Signal** | Target | A normalized request, complaint, observation, or opportunity linked to development Work. It preserves source and consent boundaries and is not itself a commitment. |
+
+### 4.4 Ownership and collaboration
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| **Accountable Owner** | Target, Boundary | The human or explicitly admitted organizational role answerable for Work, a Project, or an Initiative. Delegation does not remove this accountability. |
+| **Agent Delegate** | Target | An Agent Member assigned bounded Work under a Delegation Grant. It can execute and report within scope but does not inherit owner authority. |
+| **Delegation Grant** | Target, Boundary | A revocable, scoped authorization that binds a principal, target Work, allowed actions, constraints, issuer, validity, and evidence requirements. |
+| **Participant** | Current, Target | A person, agent, process, or service associated with Work or a Session under a named role and scope. Participation does not imply authority. |
+| **Agent Member** | Current, Target | An agent represented as a first-class participant in an Organization, Team, or Workroom, with identity, owner relation, capabilities, and explicit grants. |
+| **Membership** | Current, Target | A scoped relation between a principal and an Organization, Team, Workroom, or interoperable group. Membership and Role labels do not imply arbitrary command capability. |
 | **Role** | Current, Target | A named bundle of expected responsibilities or presentation labels. Effective authority still comes from policy and grants. |
-| **Workroom** | Current, Target | A collaboration container that combines members, agents, threads, work context, decisions, activity, and optional voice or code surfaces. Its canonical coordinate must identify both OpenAgents scope and any interoperable room. |
-| **Community Workroom** | Current | A membership-scoped Workroom for invited people and their attested agents. It separates community coordination from private owner-agent work. |
+| **Workroom** | Current, Target | A collaboration container that combines members, agents, Threads, Work, Decisions, activity, and optional voice or code Blocks. Its canonical coordinate must identify both OpenAgents scope and any interoperable room. |
+| **Community Workroom** | Current | A membership-scoped Workroom for invited people and their attested agents. It separates community coordination from private owner-agent Work. |
 | **Private Owner Workroom** | Current, Boundary | The private Workroom between an owner and owned agents. Private memory, credentials, raw traces, and owner-only controls stay here unless separately disclosed. |
-| **Two-Room Rule** | Current, Boundary | The rule that private owner-agent work and community collaboration use distinct Workrooms, membership, disclosure, and evidence paths. |
-| **Channel** | Target | A named topical lane within a Workroom. It organizes Threads but does not create a separate work or command authority. |
-| **Thread** | Current, Target | A durable ordered context for messages, events, decisions, and sessions. A Thread can outlive many runtime Sessions and can be viewed on multiple devices. |
-| **Work Item Thread** | Target | The primary Thread attached to a Work Item. It holds discussion and activity views while the Work Item remains the canonical state object. |
-| **Thread Disclosure Intent** | Current, Boundary | A typed request to change who can read a Thread projection. It names the expected visibility revision, audience, administrator access, actor, and idempotency key. |
+| **Two-Room Rule** | Current, Boundary | The rule that private owner-agent Work and community collaboration use distinct Workrooms, Membership, disclosure, and evidence paths. |
+| **Channel** | Target | A named topical lane within a Workroom. It organizes Threads but does not create a separate Work or command authority. |
+| **Thread** | Current, Target | A durable ordered conversational or causal context for Messages, Events, Decisions, and Sessions. A Thread can be attached to Work and outlive many Sessions, but it is not the Work object. |
+| **Work Thread** | Target | The primary Thread attached to Work. It presents discussion and activity while Work remains the durable lifecycle object. |
+| **Thread Disclosure Intent** | Current, Boundary | A typed request to change who can read a Thread Projection. It names the expected visibility revision, audience, administrator access, actor, and idempotency key. |
 | **Thread Disclosure Receipt** | Current, Boundary | The durable result of a Thread Disclosure Intent, including the applied visibility version and exact target. It is required before publication or cross-surface disclosure. |
-| **Thread Visibility Target** | Current, Boundary | The exact audience and administrator-access policy for a Thread, such as owner-only, internet-readable, workspace members, or a named group. It is not inferred from where a link appears. |
-| **Thread Event Authority Relation** | Current, Boundary | A typed relation that records when one Thread event supersedes or reverts another. It preserves terminal authority lineage for export and replay. |
-| **Message** | Current | A user, agent, or system-authored conversational record in a Thread. Messages can reference activities and artifacts; they do not replace those structured records. |
-| **Reaction** | Interop, Target | A lightweight response to a message or event. It is presentation and attention data, not approval or owner disposition. |
-| **Read State** | Current, Interop | A principal-scoped record of what has been seen in a Thread or Workroom. It is private by default and must not become work-state authority. |
-| **Presence** | Current, Interop | Ephemeral availability or activity information for a principal or device. Presence can expire and must never prove durable completion. |
-| **Attention Item** | Current, Target | A derived item that asks a principal to review, answer, approve, recover, or notice something. It retains source and required-action references. |
-| **Attention Inbox** | Current, Target | The principal-scoped projection of Attention Items across runs, interactions, work, and collaboration. |
-| **Review Inbox** | Target | The queue of work, artifacts, decisions, or agent results awaiting review. It is a specialized attention projection, not an approval ledger. |
-| **Reminder** | Current, Interop | A principal-scoped scheduled attention record. Triggering a reminder does not trigger work unless a separate command is admitted. |
+| **Thread Visibility Target** | Current, Boundary | The exact audience and administrator-access policy for a Thread, such as owner-only, internet-readable, Workspace members, or a named group. It is not inferred from where a link appears. |
+| **Thread Event Authority Relation** | Current, Boundary | A typed relation that records when one Thread Event supersedes or reverts another. It preserves terminal authority lineage for export and replay. |
+| **Message** | Current | A user, agent, or system-authored conversational record in a Thread. Messages can reference Work Activities and Artifacts; they do not replace those structured records. |
+| **Reaction** | Interop, Target | A lightweight response to a Message or Event. It is presentation and attention data, not Approval or Owner Disposition. |
+| **Read State** | Current, Interop | A principal-scoped record of what has been seen in a Thread or Workroom. It is private by default and must not become Work State authority. |
+| **Presence** | Current, Interop | Ephemeral availability or activity information for a principal or Device. Presence can expire and must never prove durable completion. |
+| **Attention Item** | Current, Target | A derived item that asks a principal to review, answer, approve, recover, or notice something. It retains source and required-action refs. |
+| **Attention Inbox** | Current, Target | The principal-scoped Projection of Attention Items across Work, Runs, Interactions, and collaboration. |
+| **Review Inbox** | Target | The queue of Work, Artifacts, Decisions, or agent results awaiting review. It is a specialized attention Projection, not an Approval ledger. |
+| **Reminder** | Current, Interop | A principal-scoped scheduled Attention Item. Triggering a Reminder does not trigger Work unless a separate Intent is admitted. |
 
 ## 5. Agent work, sessions, and review
 
 | Term | Status | Definition |
 | --- | --- | --- |
-| **Work Session** | Target | A bounded period in which one or more principals act on a Work Item under explicit context and grants. It links Runs and Work Activities back to the work. |
-| **Run** | Current, Target | One governed execution lifecycle with identity, actor, objective, state, timestamps, bindings, outputs, and receipts. A Run belongs to a Session or other admitted work context. |
-| **Work Activity** | Target | An append-only, typed record of meaningful progress within a Work Session. Activities form the auditable timeline without overloading chat messages. |
+| **Run** | Current, Target | One governed lane-specific execution lifecycle with identity, actor, objective, state, timestamps, bindings, outputs, and Receipts. A Run is projected as or associated with a Session; it is not the universal Work object. |
+| **Work Activity** | Target | An append-only, typed record of meaningful progress within Work or a Session. Activities form an auditable timeline without overloading Messages. |
 | **Progress Activity** | Target | A Work Activity that reports current progress, completed steps, remaining work, or a blocker. |
 | **Plan Activity** | Target | A Work Activity that proposes or revises an execution plan. A proposed plan is not accepted work authority. |
 | **Elicitation Activity** | Target | A Work Activity that asks for missing information or a decision and records the answer relation. |
 | **Action Activity** | Target | A Work Activity that records an attempted or completed bounded action and its Command Outcome reference. |
-| **Artifact Activity** | Target | A Work Activity that publishes or updates an Artifact reference. |
+| **Artifact Activity** | Target | A Work Activity that publishes or updates an Artifact ref. |
 | **Result Activity** | Target | A Work Activity that summarizes a completed result and binds it to outputs and evidence. |
 | **Verification Activity** | Target | A Work Activity that records an admitted verification attempt and its receipt or failure. |
 | **Error Activity** | Target | A Work Activity that records a typed failure, affected scope, retry posture, and recovery reference. |
 | **Disposition Activity** | Target | A Work Activity that records an authorized acceptance, rejection, waiver, cancellation, or supersession. |
 | **Artifact** | Current, Target | A durable output of work, such as a file, patch, build, report, image, recording, or content-addressed blob. It carries provenance and does not prove its own correctness. |
-| **Attachment** | Current | A file or content reference attached to a Message, Session, Work Item, or Artifact. Attachment identity and access are separate from display metadata. |
+| **Attachment** | Current | A file or content ref attached to a Message, Session, Work object, or Artifact. Attachment identity and access are separate from display metadata. |
 | **Skill Definition** | Current, Target | A versioned description of a reusable agent procedure, its triggers, inputs, boundaries, and verification. Availability is not execution authority. |
-| **Guidance Bundle** | Target | Versioned product, team, repository, or workflow instructions supplied to an agent in a known precedence order. |
+| **Guidance Bundle** | Target | Versioned organization, domain, Team, repository, or workflow instructions supplied to an agent in a known precedence order. |
 | **Loop Definition** | Target | A bounded recurring workflow with trigger, selection rule, stop conditions, budget, escalation, and evidence policy. |
 | **Trigger** | Target | A typed event or schedule that makes a workflow eligible to run. Eligibility still requires admission and capacity. |
 | **Triage Engine** | Target | A service that classifies and proposes routing, priority, labels, ownership, and duplicates for incoming work. It emits proposals, not silent authoritative mutations. |
 | **Triage Proposal** | Target | A reviewable suggested change from a Triage Engine, with reasons, confidence, source facts, and expiry. |
-| **Code Context** | Target | A structured link from product work to repositories, revisions, roots, files, symbols, diffs, checks, and coding policy. |
-| **Coding Work Session** | Target | A Work Session specialized for repository work. It binds Work Items, Code Context, Worktrees, coding Sessions, Runs, reviews, and resulting Artifacts. |
-| **Work Review** | Target | A structured evaluation of a Work Item result against requested outcomes, criteria, policy, and evidence. |
+| **Code Context** | Target | A structured link from Work to repositories, revisions, roots, files, symbols, diffs, checks, and coding policy. |
+| **Work Review** | Target | A structured evaluation of a Work outcome against requested outcomes, criteria, policy, and Evidence. |
 | **Review Guide** | Target | A versioned checklist or rubric for a Work Review. It guides the reviewer but cannot manufacture evidence or independence. |
 | **Review Verdict** | Target | The reviewer's typed conclusion, such as approved, changes requested, rejected, or inconclusive, with evidence references. It is distinct from release authority. |
 | **Blocker** | Current, Target | A typed condition that prevents admitted progress. It identifies scope, evidence, owner, and the next falsifiable recovery step when known. |
@@ -222,7 +281,7 @@ a product `Work Item` is not a pane `Item`; a durable `Thread` is not a bounded
 | **Runtime Adapter** | Current, Target | An implementation that maps a provider or agent protocol into OpenAgents runtime, interaction, event, and authority contracts. |
 | **Agent Client Protocol (ACP)** | Current | A protocol for connecting agent runtimes and clients. It is an adapter boundary; OpenAgents still owns product truth and grants. |
 | **Model Context Protocol (MCP)** | Current | A protocol for exposing tools and contextual resources to an agent. Tool discovery does not imply permission to call a tool. |
-| **Provider** | Current | A service or local runtime that supplies models, tools, compute, or agent execution. Provider state is not the product-work system of record. |
+| **Provider** | Current | A service or local runtime that supplies models, tools, compute, or agent execution. Provider state is not the Work system of record. |
 | **Model** | Current | A named inference capability offered by a Provider. A Model is one dependency of an Agent, not the Agent's identity or authority. |
 | **Harness** | Current | The runner integration that launches and controls a coding or agent provider under a shared execution contract. |
 | **Tool** | Current | A typed operation an Agent Runtime can request. A tool has schema, implementation, authority checks, and observable outcomes. |
@@ -285,8 +344,7 @@ a product `Work Item` is not a pane `Item`; a durable `Thread` is not a bounded
 
 | Term | Status | Definition |
 | --- | --- | --- |
-| **Session** | Current | A bounded interaction or execution context with identity, owner scope, host placement, state, attachments, commands, and outcomes. It is not the same as a durable Thread. |
-| **Coding Session** | Current | A Session specialized for repository interaction, with Project, Repository, Worktree, navigation, agent, and runtime references. |
+| **Coding Session** | Current, Target | A Session specialized for repository interaction, with Work, Repository, Worktree, navigation, agent, and runtime refs. It is one Session within coding-domain Work, not the complete Work lifecycle. |
 | **Portable Session** | Current | A synchronized Session whose canonical identity and command lifecycle can survive client disconnection and move between admitted hosts. |
 | **Session Attachment** | Current | A versioned resource reference bound to a Portable Session, with generation and access metadata. |
 | **Attachment Generation** | Current | A monotonic revision of a Session Attachment used to reject stale host or client writes. |
@@ -347,21 +405,21 @@ a product `Work Item` is not a pane `Item`; a durable `Thread` is not a bounded
 
 | Term | Status | Definition |
 | --- | --- | --- |
-| **Omega** | Current, Target | The native OpenAgents desktop destination and product workbench. It combines coding, agents, Product Work, collaboration, sync, identity, and managed execution. |
+| **Omega** | Current, Target | The native OpenAgents application and workbench. It combines All Work navigation, coding, agents, collaboration, sync, identity, managed execution, review, and evidence without limiting Work to one domain. |
 | **Current Desktop** | Current | The supported Electron desktop application that remains in service until Omega meets the admitted cutover gates. |
 | **omega-effectd** | Current | The native companion service that owns extracted Effect workflows such as Full Auto and Agent Computer operations behind a bounded host protocol. |
 | **Host Bridge** | Current | The protocol boundary between Omega's native UI process and omega-effectd or another admitted local service. |
-| **GPUI** | Current | Omega's native Rust UI framework. It supplies application, window, entity, context, rendering, and action primitives; it does not own OpenAgents product truth. |
+| **GPUI** | Current | Omega's native Rust UI framework. It supplies application, window, entity, context, rendering, and action primitives; it does not own OpenAgents Work truth. |
 | **App** | Current | The process-level GPUI application context and service root. |
 | **Window** | Current | One native application window with its own Workspace and focus tree. |
-| **Entity** | Current | A GPUI-owned state object whose mutations and observations occur through framework contexts. It is a UI/runtime ownership primitive, not a Product Work entity category. |
+| **Entity** | Current | A GPUI-owned state object whose mutations and observations occur through framework contexts. It is a UI/runtime ownership primitive, not an All Work record category. |
 | **Context** | Current | The typed GPUI handle used to read, mutate, observe, and schedule work for an Entity or App. It is distinct from agent Context or Code Context. |
-| **Action** | Current | A typed UI command dispatched through focus and keybinding contexts. An Action can request a product Command Intent but is not itself canonical authority. |
+| **Action** | Current | A typed UI command dispatched through focus and keybinding contexts. An Action can request an Intent but is not itself canonical authority. |
 | **Workspace** | Current | The Omega window-level workbench container for panes, items, projects, navigation, dock state, and persisted local layout. |
 | **Workbench** | Current, Target | The user-facing composition of Workspace navigation, agent, code, work, review, and diagnostic surfaces. |
 | **Pane Group** | Current | A layout group containing one or more Panes and split relationships. |
 | **Pane** | Current | A tab container within a Workspace. It hosts pane Items and focus state. |
-| **Item** | Current | A pane-hosted UI object such as an editor, terminal, thread, or settings view. Do not use this word for product work. |
+| **Item** | Current | A pane-hosted UI object such as an editor, terminal, Thread, or settings view. Do not use this word for the universal Work object. |
 | **Navigation History** | Current | Browser-style back and forward history over meaningful Workspace locations and selections. It does not own document history. |
 | **Session Tab** | Current, Target | A pane tab representing an active or retained agent/coding Session, with status and host awareness. |
 | **Zero Base** | Current | Omega's reduced shell mode that prioritizes the agent and essential work surfaces while retaining access to the full workbench. |
@@ -373,12 +431,40 @@ a product `Work Item` is not a pane `Item`; a durable `Thread` is not a bounded
 | **Send** | Current | Add a new user Message or start the next eligible Turn when no incompatible Turn is active. |
 | **Steer** | Current | Add user direction to compatible active work without misrepresenting it as an unrelated new Turn. |
 | **Stop** | Current | Request interruption of active work and expose the resulting runtime state. It is not a completed result. |
-| **IDE Project Graph** | Current | The editor capability graph that coordinates roots, worktrees, buffers, language services, Git, tasks, terminals, remote state, and navigation. It is not a product Project. |
+| **All Work UI Parity** | Target | The requirement that Omega provide the complete planning-and-agent interaction set—navigation, creation, list, board, timeline, roadmap, cycle, calendar, intake, triage, search, saved views, detail, activity, documents, reviews, agent Sessions, and insights—over generic Work and domain extensions rather than a development-only object model. |
+| **Work Navigation** | Target | The persistent navigation system for Work Inbox, My Work, views, reviews, Teams, Workrooms, people, agents, and domain collections. Development domains can add Initiatives, Projects, Cycles, and Milestones. |
+| **My Work** | Target | The principal-scoped view of owned, assigned, delegated, followed, recently touched, or attention-requiring Work. It includes people and agent filters. |
+| **Work List** | Target | A dense tabular or row view of Work with configurable columns, hierarchy, selection, keyboard navigation, and bulk typed Intents. |
+| **Work Board** | Target | A column-and-card view of Work grouped by state, owner, priority, Team, domain, or another typed field. Drag and drop submits typed Intents and never mutates Projection state directly. |
+| **Work Timeline View** | Target | A time-oriented view of Work, dependencies, Milestones, Sessions, Events, and target dates across any domain with meaningful time semantics. |
+| **Roadmap View** | Target | A strategic time-and-dependency view over Initiatives, Projects, Work, and outcome metrics in domains that support portfolio planning. It is not the universal Work container. |
+| **Cycle View** | Target | A planning view over Work assigned to a Cycle, including capacity, carryover, completion, blockers, and outcome evidence. |
+| **Calendar View** | Target | A date-oriented view of scheduled, due, active, or completed Work and Sessions. Calendar placement does not create authority or prove completion. |
+| **Work Detail** | Target | The primary center view for one Work object, including objective, description, state, relations, owner, delegates, Sessions, Threads, Blocks, activity, artifacts, evidence, and outcome. |
+| **Work Inspector** | Target | The side inspector for effective authority, owner, delegates, participants, Host, lane, grants, revisions, source refs, Evidence, Verification, Receipts, cost, and health. |
+| **Activity Feed** | Target | The readable Projection of Work History that combines typed Events, Activities, Messages, decisions, and explicit gaps without presenting chat or provider logs as complete history. |
+| **Saved View** | Target | A named, scoped, shareable query plus visible fields, filters, grouping, sorting, and layout. It is presentation configuration, not a copy of Work. |
+| **View Filter** | Target | A typed predicate over authorized Work Projection fields. Private or inaccessible values cannot leak through counts, suggestions, or result membership. |
+| **View Grouping** | Target | A presentation rule that partitions Work by a typed field or relation, such as state, owner, Team, Host, domain, Project, Cycle, or priority. |
+| **View Sort** | Target | An ordered comparison over authorized Work fields with stable tie-breaking and explicit treatment of missing values. |
+| **Work Search** | Target | Authorized structured and full-text search across Work, Threads, Documents, Decisions, Events, Artifacts, and signed projections. Search results retain authority, freshness, and source refs. |
+| **Command Menu** | Target | The keyboard-first launcher for navigation, creation, assignment, delegation, state change, triage, search, and Block actions. It exposes only Intents supported by the current domain, lane, and grants. |
+| **Quick Create** | Target | The low-friction composer for new Work from any surface, with templates, relationships, context capture, and domain-specific fields. Creation remains a typed Intent. |
+| **Work Template** | Target | A versioned default shape for Work objective, fields, relations, Blocks, Guidance, workflow, and evidence expectations in a named domain. |
+| **Intake Form** | Target | A structured public or scoped entry surface that creates a candidate Work Intent with provenance, consent, validation, and routing context. |
+| **Triage View** | Target | The review surface for new or uncertain Work, duplicate candidates, routing, priority, ownership, questions, and Triage Proposals. Human and auto-apply dispositions remain explicit. |
+| **Reviews View** | Target | The queue and detail system for Work Reviews, Code Reviews, checks, evidence, change requests, Verification, and owner decisions across domains. |
+| **Document View** | Target | The versioned authoring and reading surface for Documents linked to Work, including attribution, history, citations, comments, and agent edits. |
+| **Decision View** | Target | The surface for recording, linking, discussing, and revisiting Decisions without reducing them to ordinary Messages. |
+| **People and Agents View** | Target | The roster and activity surface for people and Agent Members, including identity, Role, membership, capability, grants, Presence, runtime health, contribution, and Work participation. |
+| **Status Update** | Target | A time-stamped narrative and structured health update for Work or a domain collection, with author, risk, progress, evidence refs, and next decisions. |
+| **Work Insights** | Target | Outcome-oriented metrics and drill-down views across Work, including accepted outcomes, time in state, blocked time, review load, rework, cost, quality, and verification disagreement. |
+| **IDE Project Graph** | Current | The editor capability graph that coordinates roots, worktrees, buffers, language services, Git, tasks, terminals, remote state, and navigation. It is not a development Project or the Work object. |
 | **Workspace Service** | Current | A service exposed to Workspace items and actions, such as project, agent, terminal, settings, or navigation capabilities. |
 | **Capability Store** | Current | A focused service interface over a capability domain, such as worktrees, buffers, language services, or agents. It avoids one all-powerful project object. |
 | **Work Context** | Current | The selected repositories, roots, permissions, attachments, environment, and tools available to agent or coding work. It is referenced by ProductSpec Runs and coding Sessions. |
-| **Project Root** | Current | A filesystem or remote root attached to the IDE Project Graph. One product Project can reference several Project Roots. |
-| **Worktree** | Current | A concrete filesystem checkout and branch view used for code work. It is not an organizational Workspace or product Project. |
+| **Project Root** | Current | A filesystem or remote root attached to the IDE Project Graph. One Work object or development Project can reference several Project Roots. |
+| **Worktree** | Current | A concrete filesystem checkout and branch view used for code Work. It is not an Omega Workspace, development Project, or universal Work object. |
 | **Project File Ref** | Current | A stable file reference composed from project/root identity and a normalized relative path, safe to adapt across local and remote placement. |
 | **Buffer** | Current | The shared editable text state for a file or untitled document, including edits, versions, and collaboration hooks. |
 | **Language Buffer** | Current | A Buffer enriched with parsed syntax, language identity, diagnostics, and language-service state. |
@@ -390,7 +476,7 @@ a product `Work Item` is not a pane `Item`; a durable `Thread` is not a bounded
 | **Git Model** | Current | The IDE projection of repositories, branches, status, diffs, commits, and operations. Git remains the authority for Git objects and refs. |
 | **Diff** | Current | A structured comparison between content revisions. A Diff is review input, not proof that a change is correct. |
 | **Terminal** | Current | A pane Item connected to a local or remote process environment under explicit placement and process policy. |
-| **Task** | Current | A configured, repeatable process command launched from the IDE Project Graph. A Task is not a Product Work Item or a Codex task/thread. |
+| **Task** | Current | A configured, repeatable process command launched from the IDE Project Graph. A Task can run inside Work but is not the universal Work object or a Codex task/thread. |
 | **Remote Project** | Current, Target | An IDE Project Graph whose roots, language services, terminals, or tasks execute on a remote host while Omega remains the client. |
 
 ## 12. Diagnostics, experiments, and proof views
@@ -436,7 +522,6 @@ a product `Work Item` is not a pane `Item`; a durable `Thread` is not a bounded
 | **Capability Grant** | Current, Boundary | The policy-backed authorization allowing a principal to use a Capability in a specific scope and time window. |
 | **Command Intent** | Current | A typed request to perform a canonical or external mutation. It includes actor, target, arguments, policy context, and idempotency. |
 | **Command Outcome** | Current | The durable accepted, rejected, failed, interrupted, or completed result of a Command Intent. Transport success is not a Command Outcome. |
-| **Receipt** | Current | A durable, dereferenceable record that binds an action, producer, target, time, inputs, outputs, and relevant authority or evidence. |
 | **Public-Safe Receipt** | Current | A redacted Receipt admitted for public disclosure. It preserves verifiable references without exposing secrets, raw prompts, private traces, or local paths. |
 | **Release** | Current, Boundary | The authorized publication or distribution of a product artifact through a named channel after its release gates pass. Verified work alone is not Release. |
 | **Public Claim** | Current, Boundary | A statement presented externally as product truth. It requires the exact evidence and authority defined by the applicable promise or release contract. |
@@ -485,7 +570,7 @@ a product `Work Item` is not a pane `Item`; a durable `Thread` is not a bounded
 | **Merge** | Current, Boundary | The authorized Git ref mutation that integrates changes. Review approval, signed events, or passing tests do not independently grant Merge. |
 | **Voice Gateway** | Current | The managed boundary that authenticates and authorizes realtime voice access without exposing provider credentials to clients. |
 | **Voice Room** | Current | A realtime media room with participant identity, grants, and lifecycle distinct from the durable Workroom and Thread records it may accompany. |
-| **Participant** | Current | A person, agent, or service present in a Voice Room, with media and identity state. Presence does not imply Workroom membership. |
+| **Voice Participant** | Current | A person, agent, or service present in a Voice Room, with media and identity state. Voice presence does not imply Workroom Membership or Work authority. |
 | **Avatar Stage** | Target | A bounded native spatial view that presents agents, people, activity, and voice without becoming the authority for work or identity. |
 | **Avatar Manifest** | Target | A signed or admitted durable description of an avatar's assets, rig, presentation, provenance, and safety metadata. |
 | **Live Avatar State** | Target | Ephemeral pose, expression, action, and presence data projected into an Avatar Stage. It is not a durable identity record. |
@@ -494,14 +579,18 @@ a product `Work Item` is not a pane `Item`; a durable `Thread` is not a bounded
 
 | Avoid | Use instead | Reason |
 | --- | --- | --- |
-| **Space** by itself | **Product Space**, **Workspace**, or **Workroom** | The unqualified word collapses organizational, window, and collaboration scopes. |
-| **Project** for the editor service graph | **IDE Project Graph** | Product Project is the canonical product-work meaning. |
-| **Workspace** for an organization | **Product Space** | Workspace is reserved for the Omega window/workbench container. |
-| **Task** for product work | **Work Item** | Task remains an IDE process command and is also overloaded in agent clients. |
-| **Item** for product work | **Work Item** | Item is reserved for a pane-hosted UI object. |
+| **Product Work** as the universal system | **All Work** or **Work** | Development planning is one Work Domain, not the scope of the application or common object model. |
+| **Product Space** as the universal root | **Organization**, owner scope, or **Work** | Administrative scope, ownership scope, and Work lifecycle are separate concerns. |
+| **Space** by itself | **Organization**, **Workspace**, or **Workroom** | The unqualified word collapses administrative, window, and collaboration scopes. |
+| **Project** as the universal work object | **Work** | Project belongs to the development-planning profile. Work also covers incidents, deployments, CI, data, research, operations, and other domains. |
+| **Project** for the editor service graph | **IDE Project Graph** | A development Project and the editor capability graph are different models. |
+| **Workspace** for an organization | **Organization** | Workspace is reserved for the Omega window/workbench container. |
+| **Task** as the universal object | **Work** | Task remains an IDE process command and is overloaded in agent clients. |
+| **Work Item** as the universal object | **Work** | The All Work model uses one durable Work object across every domain. |
+| **Item** for Work | **Work** | Item is reserved for a pane-hosted UI object. |
 | **Chat** as the whole work model | **Thread**, **Workroom**, or **Conversation** | Chat hides structured work, sessions, decisions, activity, and authority. |
-| **Agent session** without scope | **Thread**, **Work Session**, **Coding Session**, or **Runtime Session** | The unqualified phrase conflates durable context and bounded execution. |
-| **Job** for canonical product work | **Work Item**, **Assignment**, or **Compute Request** | These terms distinguish product work, internal delegation, and optional market work. |
+| **Agent session** without scope | **Thread**, **Session**, **Coding Session**, or **Run** | The unqualified phrase conflates durable context and bounded interaction or execution. |
+| **Job** as the universal object | **Work**, **Assignment**, or **Compute Request** | These terms distinguish general Work, internal delegation, and optional market work. |
 | **Event is truth** | **Signed Event**, **Canonical Event**, or **Projection** | Origin, validation, and authority must stay visible. |
 | **Accepted** without subject | **Relay accepted**, **admitted**, **owner accepted**, or **released** | Each word names a different authority boundary. |
 | **Verified means shipped** | **Verification Receipt** plus separate **Release** | Verification and release are different decisions. |
@@ -511,37 +600,54 @@ a product `Work Item` is not a pane `Item`; a durable `Thread` is not a bounded
 | **Sync owns state** | **Canonical State** projected through **Khala Sync** | Sync transports and projects authority owned by domain services. |
 | **Relay command** | **Signed command proposal** or **Command Intent** | A relay only transports the record; OpenAgents admits and executes the command. |
 
-## 17. Minimum fields for target Product Work records
+## 17. Minimum fields for target All Work records
 
 These are vocabulary-level minimums, not final schemas.
 
+### 17.1 Common records
+
 | Record | Minimum fields |
 | --- | --- |
-| **Product Space** | `spaceRef`, name, owner policy ref, created time, lifecycle state |
-| **Team** | `teamRef`, `spaceRef`, name, member refs, workflow policy ref |
-| **Initiative** | `initiativeRef`, `spaceRef`, title, owner ref, project refs, outcome metric refs, status |
-| **Project** | `projectRef`, `spaceRef`, team refs, title, owner ref, state, start/target dates, milestone refs |
-| **Cycle** | `cycleRef`, `teamRef`, name, start time, end time, state |
-| **Milestone** | `milestoneRef`, `projectRef`, title, target time, state |
-| **Work Item** | `workItemRef`, `spaceRef`, team ref, project/cycle/milestone refs, title, body, state, priority, accountable owner ref, delegate refs, label refs, relation refs, revision |
-| **Work Item Relation** | `relationRef`, source Work Item ref, relation kind, target Work Item ref, actor ref, created time |
-| **Customer Signal** | `signalRef`, source class/ref, consent class, summary, linked Work Item refs, created time |
+| **Work** | `workRef`, domain, objective ref/revision, owner ref, context refs, participant refs, state, placement refs, policy refs, relation refs, Session refs, Block refs, history cursor, outcome refs, revision |
+| **Session** | `sessionRef`, `workRef`, Session kind, participant refs, Host ref/generation, lane ref, state, started/ended times, attachment refs, Run refs, outcome refs |
+| **Block** | `blockRef`, `workRef`, Block kind, source refs, supported Intent kinds, visibility policy ref, state, revision |
+| **Host** | `hostRef`, owner ref, Host kind, generation, health, capability refs, grant refs, last observed time |
+| **Intent** | `intentRef`, `workRef`, actor ref, target ref, target generation, operation, arguments ref, required authority refs, idempotency key, state, submitted time |
+| **Event** | `eventRef`, `workRef`, sequence, Event kind, actor ref, source ref, payload ref, occurred time, admitted time |
+| **Receipt** | `receiptRef`, `workRef`, Intent/effect/observation refs, producer or observer ref, Host ref/generation, evidence refs, produced time |
+| **Work Relation** | `relationRef`, source Work ref, relation kind, target Work ref, actor ref, created time |
+| **Work Projection** | Work ref, exact lane/source refs, state, Session/Block summaries, Host/authority summary, attention reasons, receipt refs, source cursors, freshness, Projection Issues |
+| **Work Activity** | `activityRef`, `workRef`, Session ref, actor ref, activity kind, body or payload ref, related refs, created time |
+| **Work Review** | `reviewRef`, target refs, reviewer ref, guide ref/revision, Evidence refs, verdict, findings, reviewed time |
+| **Work Pulse** | scope ref, as-of revision/time, source cursor refs, metric rows, risk rows, freshness, Projection Issues |
+| **Agent Member** | `agentMemberRef`, Agent Profile ref, owner relation ref, Membership scope, declared capabilities, grant refs, lifecycle state |
+| **Delegation Grant** | `grantRef`, issuer ref, Agent Member ref, Work scope refs, allowed actions, constraints, valid interval, revocation state |
+
+### 17.2 Development-planning profile records
+
+These records classify or group Work when the development domain needs them.
+They are not required for incidents, deployments, research, data, operations,
+or other Work Domains.
+
+| Record | Minimum fields |
+| --- | --- |
+| **Organization** | `organizationRef`, name, owner policy ref, created time, lifecycle state |
+| **Team** | `teamRef`, `organizationRef`, name, member refs, workflow policy ref |
+| **Initiative** | `initiativeRef`, `organizationRef`, title, owner ref, Project refs, outcome metric refs, status |
+| **Project** | `projectRef`, `organizationRef`, Team refs, title, owner ref, Work refs, state, start/target dates, Milestone refs |
+| **Cycle** | `cycleRef`, `teamRef`, name, Work refs, start time, end time, state |
+| **Milestone** | `milestoneRef`, `projectRef`, title, Work refs, target time, state |
+| **Customer Signal** | `signalRef`, source class/ref, consent class, summary, linked Work refs, created time |
 | **Decision** | `decisionRef`, scope refs, decision maker ref, question, decision, rationale, alternatives, decided time |
-| **Agent Member** | `agentMemberRef`, agent profile ref, owner relation ref, membership scope, declared capabilities, grant refs, lifecycle state |
-| **Delegation Grant** | `grantRef`, issuer ref, agent member ref, work scope refs, allowed actions, constraints, valid interval, revocation state |
-| **Work Session** | `workSessionRef`, Work Item ref, participant refs, Code Context ref, started/ended times, Run refs, state |
-| **Work Activity** | `activityRef`, Work Session ref, Work Item ref, actor ref, activity kind, body or payload ref, related refs, created time |
-| **Work Review** | `reviewRef`, target refs, reviewer ref, guide ref/revision, evidence refs, verdict, findings, reviewed time |
-| **Product Pulse** | scope ref, as-of revision/time, source cursor refs, metric rows, risk rows, freshness and projection issues |
 
 ## 18. Authority summary
 
 | Question | Authority |
 | --- | --- |
-| What work exists and what state is it in? | OpenAgents Product Work canonical service and store |
+| What Work exists and what state is it in? | The existing owning lane today; the target Work Projection composes exact source refs until an admitted authority migration occurs |
 | What may an agent do? | Applicable policy plus an explicit Capability Grant or Delegation Grant |
-| What happened during execution? | Runtime, command, Run, and Work Activity canonical events and receipts |
-| What does the UI show? | Rebuildable projections over canonical and validated interoperable records |
+| What happened during execution? | Runtime, Intent, Event, command, Run, Work Activity, and Receipt records from the owning authorities |
+| What does the UI show? | Rebuildable Blocks and Projections over canonical and validated interoperable records |
 | What did a relay accept? | Relay Receipt only |
 | What did Git accept? | Git objects and refs under repository policy |
 | What proves a ProductSpec criterion? | Evidence Receipt plus admitted Verification Receipt |
