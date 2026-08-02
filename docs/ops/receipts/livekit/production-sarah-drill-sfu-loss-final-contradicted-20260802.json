@@ -1,0 +1,34 @@
+{
+  "schema": "openagents.sarah.livekit-drill-observation.v2",
+  "scenario": "sfu_loss",
+  "faultAction": "delete_exact_sfu_pod",
+  "roomKind": "private",
+  "outcome": "contradicted",
+  "contradictions": [
+    "settlement_not_terminal_within_observation_window"
+  ],
+  "sessionStartedAtMs": 1785629238826,
+  "sessionLiveAtMs": 1785629250805,
+  "holdMs": 90000,
+  "faultInjectedAtMs": 1785629347226,
+  "mediaLossObservedAtMs": 1785629349569,
+  "controlTerminal": null,
+  "settlement": null,
+  "boundMs": 120000,
+  "faultToTerminalMs": null,
+  "mediaLossDetectedWithinMs": 2343,
+  "withinBound": false,
+  "concurrentBillableSessionCount": 1,
+  "instrumentSource": "managed_prometheus",
+  "faultTargetDigest": "sha256:549a297013a8657a4e546e77986fc29b2eebd6a3ed5985bd488b7224efda8845",
+  "workerInstanceDigest": "sha256:9d6bbef5596f66011e72d66c1f44c9edc142f8b30df4a467b2624283f1d5cb3c",
+  "workerInstanceSurvived": true,
+  "faultDiscoveryMs": 1518,
+  "observationWindowMs": 180000,
+  "settlementPollIntervalMs": 500,
+  "limitations": [
+    "terminal_settlement_instant_is_observed_not_authoritative",
+    "worker_side_terminal_reason_is_not_published_by_the_settlement_authority",
+    "fault_execution_is_delegated_to_the_injector_and_attested_by_digest"
+  ]
+}
