@@ -160,7 +160,7 @@ OPENAUTH_ISSUER_URL: "https://auth.openagents.com"
 # not usage.
 #
 # ARITHMETIC AT THESE VALUES:
-#   worst case/day  = GLOBAL_DAILY_LIMIT x DAILY_TOKEN_CEILING
+#   new-cohort/day  = GLOBAL_DAILY_LIMIT x DAILY_TOKEN_CEILING
 #                   = 20 x 50000000 = 1,000,000,000 served tokens/day
 #                     across identities newly admitted by the daily bucket
 #   derived/hour    = IP_HOURLY_LIMIT x DAILY_TOKEN_CEILING
@@ -183,8 +183,8 @@ OPENAUTH_ISSUER_URL: "https://auth.openagents.com"
 # 200k, so raise it in smaller steps than before.
 #
 # EMERGENCY HEADROOM RETUNE (owner direction, 2026-08-02). The observed Omega
-# identity reached the configured 1000000 token ceiling and every hosted model,
-# fallback, and title request failed with
+# identity reached the configured 1000000 token ceiling and repeated hosted
+# model, fallback, and title requests failed with
 # `free_tier_daily_token_ceiling_reached`. DAILY_TOKEN_CEILING goes 1000000 ->
 # 50000000, exactly 50x. GLOBAL_DAILY_LIMIT remains 20, so the newly admitted
 # identity exposure represented by the product above moves 20M -> 1B served
@@ -208,8 +208,10 @@ OPENAUTH_ISSUER_URL: "https://auth.openagents.com"
 #     onboarding; 30/hour removes that refusal.
 # Do not treat the per-IP bucket as spend protection. The x-forwarded-for first
 # hop is client-prependable, so an attacker bypasses it outright.
-# GLOBAL_DAILY_LIMIT x DAILY_TOKEN_CEILING is the only bound that actually
-# protects owner-funded credit.
+# GLOBAL_DAILY_LIMIT x DAILY_TOKEN_CEILING bounds only the cohort newly admitted
+# that UTC day. Returning identities do not consume the creation bucket, so the
+# accumulated cohort has no deployment-wide token ceiling here; the per-identity
+# ceiling is its only token bound.
 #
 # WHO THIS NUMBER APPLIES TO. FREE-TIER identities only — that is, `nostr:`
 # identities with NO active row in `sarah_voice_alpha_memberships`. An
