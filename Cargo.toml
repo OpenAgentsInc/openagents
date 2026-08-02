@@ -6,6 +6,7 @@
 
 [workspace]
 members = [
+    "crates/all-work-contract",
     "crates/oa-desktop-audio",
     "crates/openagents-cloud-contract",
     "crates/oa-codex-control",

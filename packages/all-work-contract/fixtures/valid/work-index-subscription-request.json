@@ -1,0 +1,12 @@
+{
+  "subscriptionRef": "subscription:work-index:1",
+  "afterCursor": null,
+  "filter": {
+    "domains": [
+      "security"
+    ],
+    "states": [
+      "active"
+    ]
+  }
+}

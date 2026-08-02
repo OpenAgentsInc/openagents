@@ -1,0 +1,39 @@
+{
+  "name": "@openagentsinc/all-work-contract",
+  "version": "0.1.0",
+  "private": false,
+  "license": "MIT",
+  "files": [
+    "definition",
+    "fixtures",
+    "generated",
+    "src",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./definition": "./definition/all-work-v1.contract.json",
+    "./json-schema": "./generated/json-schema/all-work-v1.schema.json",
+    "./manifest": "./generated/compatibility.json",
+    "./rust": "./generated/rust/all_work_v1.rs"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "generate": "node scripts/generate.mjs",
+    "check:generated": "node scripts/check-generated.mjs",
+    "test": "vp test --run packages/all-work-contract/test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

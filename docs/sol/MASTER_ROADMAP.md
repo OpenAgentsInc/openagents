@@ -3,13 +3,15 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-08-02
-- Revision: 139
+- Revision: 140
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: no active `roadmap:sol` product issue. Current work comes from
   an exact live issue or owner-accepted packet. OpenAgentsInc/omega#199 through
   OpenAgentsInc/omega#202 closed after delivering the entropy-first Omega slice
   on 2026-08-02; #9289, #9290, and #9300 retain the broader live forensic
-  acceptance corrections.
+  acceptance corrections. The owner-directed All Work program is tracked by
+  OpenAgentsInc/omega#208 through #219 and OpenAgentsInc/openagents#9303 through
+  #9305; it runs in dependency order and closes #208 last.
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: live bug issues or exact owner-accepted plans/work packets through
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
@@ -29,6 +31,16 @@ proof, dated plans and analyses are evidence only.
 ## Active P0 — Omega primary-surface transition
 
 The owner selected [`Omega`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md), a tracked Zed fork, as the primary Desktop, IDE, and company workroom destination. The new [`Omega roadmap`](../omega/ROADMAP.md) owns the accelerated implementation order. First, release the fully branded `v0.2.0-rc1` bootstrap candidate. Next, port current OpenAgents Desktop behavior. Then add the selected Buzz workroom and Nostr outcomes. The bootstrap release is not a feature-parity or primary-cutover claim. Omega Rust is the application core. Packaged Node 24 and Effect first carry the current product control plane. Bounded packets can move suitable domains to Rust through one-authority cutovers. Existing configured agents, such as Hermes, attach through explicit adapters. They keep their homes, credentials, memory, skills, tools, and sessions. Standard Nostr support is an interoperability boundary, not relay authority. The separate Buzz deployment and standalone relay program stay canceled. Issues #9185 and #9194 through #9204 closed as not planned on 2026-07-23. The current Electron application remains the supported evidence and rollback subject until all cutover gates pass. Omega does not reroute the pending Full Auto release closure. The 2026-08-02 owner reconciliation made the [`entropy-first Coldcard dashboard`](../loupe/2026-08-02-entropy-first-omega-dashboard-roadmap.md) the first Omega-native workbench slice. Omega issues #199 through #202 delivered it in order across commits `6fd2767b5d`, `4ebde0f20d`, `a18287b216`, and `15ffc050aa`: edit one visible prompt, watch read-only repository traversal, inspect source observations, compare immutable reruns, then run the source-aware 15-project campaign. The broader evidence reader follows it; the interface owns presentation, Omega owns authority, and live forensic controls remain unavailable while #9289, #9290, and #9300 are open. Each Omega mutation still needs its issue claim or accepted packet.
+
+**2026-08-02 All Work program.** Omega #208 owns the client program and closes
+last. OpenAgents #9303 first establishes the generated read boundary shared by
+Effect and Rust. Omega #209 through #215 then deliver production visibility,
+typed routes, Work Index, detail, the Security Work domain, agent delegation,
+and cross-domain planning/review. OpenAgents #9304 and #9305 own signed Nostr
+projections and the generated API/SDK; Omega #216 consumes the signed Workroom
+slice. Omega #217 through #219 are installed-product accessibility, identity,
+and concise-copy gates. A generated type, fixture, or route label cannot close
+any of those product issues without its named live and installed proof.
 
 **2026-07-25 Forge web reconciliation.** The [`Forge ProductSpec`](../../specs/openagents/forge.product-spec.md) and epic #9242 admit the invite-only Nostr and ngit Forge in the single `openagents.com` app. For this web lane, they supersede the 2026-07-23 GitHub-authoritative posture. Invited and migrated repositories use `openagents_git_authoritative`, while unmigrated repositories keep `github_authoritative`. GitHub is a read-only mirror after migration. It remains the repository and claim authority for OpenAgents development until a later admitted claim-ledger cutover. The canceled standalone relay and Forge programs stay canceled. Issues #9243 through #9253 own delivery, and the [`invite-only Forge analysis`](../fable/2026-07-25-nostr-git-forge-invite-only-analysis.md) stays design evidence only.
 

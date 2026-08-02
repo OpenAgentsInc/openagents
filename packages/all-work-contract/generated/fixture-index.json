@@ -1,0 +1,90 @@
+{
+  "contractRef": "openagents.all_work_boundary.v1",
+  "definitionSha256": "f40c1d09b12103f0247a6354e020ed7322415c8b228e45a8fd3f8d7ccd3294f8",
+  "fixtures": [
+    {
+      "file": "valid/work-summary.json",
+      "schema": "WorkSummary",
+      "valid": true,
+      "canonical": true
+    },
+    {
+      "file": "valid/work-snapshot.json",
+      "schema": "WorkSnapshot",
+      "valid": true,
+      "canonical": false
+    },
+    {
+      "file": "valid/work-index-request-absent.json",
+      "schema": "WorkIndexReadRequest",
+      "valid": true,
+      "canonical": false
+    },
+    {
+      "file": "valid/work-index-request-null.json",
+      "schema": "WorkIndexReadRequest",
+      "valid": true,
+      "canonical": false
+    },
+    {
+      "file": "valid/work-index-subscription-request.json",
+      "schema": "WorkIndexSubscriptionRequest",
+      "valid": true,
+      "canonical": false
+    },
+    {
+      "file": "valid/work-index-subscription-gap.json",
+      "schema": "WorkIndexSubscriptionEvent",
+      "valid": true,
+      "canonical": false
+    },
+    {
+      "file": "valid/request-v2-index.json",
+      "schema": "WorkReadRequestFrame",
+      "valid": true,
+      "canonical": false
+    },
+    {
+      "file": "valid/request-v1-negotiate.json",
+      "schema": "WorkReadRequestFrame",
+      "valid": true,
+      "canonical": false
+    },
+    {
+      "file": "invalid/work-summary-unknown-field.json",
+      "schema": "WorkSummary",
+      "valid": false,
+      "canonical": false
+    },
+    {
+      "file": "invalid/work-summary-unsafe-integer.json",
+      "schema": "WorkSummary",
+      "valid": false,
+      "canonical": false
+    },
+    {
+      "file": "invalid/work-summary-bad-ref.json",
+      "schema": "WorkSummary",
+      "valid": false,
+      "canonical": false
+    },
+    {
+      "file": "invalid/work-summary-unknown-state.json",
+      "schema": "WorkSummary",
+      "valid": false,
+      "canonical": false
+    },
+    {
+      "file": "invalid/work-summary-missing-required-nullable.json",
+      "schema": "WorkSummary",
+      "valid": false,
+      "canonical": false
+    },
+    {
+      "file": "invalid/request-unknown-method.json",
+      "schema": "WorkReadRequestFrame",
+      "valid": false,
+      "canonical": false
+    }
+  ]
+}

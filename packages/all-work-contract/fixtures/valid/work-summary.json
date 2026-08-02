@@ -1,0 +1,44 @@
+{
+  "contractVersion": "openagents.all_work_boundary.v1",
+  "workRef": "work:security:coldcard-1",
+  "title": "Inspect Coldcard entropy",
+  "description": "Read-only forensic analysis",
+  "domain": "security",
+  "workClass": "investigation",
+  "state": "active",
+  "priority": "high",
+  "ownerRef": "principal:owner:1",
+  "assignee": {
+    "kind": "human",
+    "principalRef": "principal:owner:1"
+  },
+  "agentDelegate": null,
+  "portfolio": {
+    "organizationRef": "organization:openagents",
+    "teamRef": "team:security",
+    "projectRef": null
+  },
+  "sourceAuthority": {
+    "kind": "omega_native",
+    "sourceRef": "forensics:case:coldcard-1",
+    "adapterVersion": "forensics-work-v1",
+    "writable": false
+  },
+  "revision": 7,
+  "updatedAt": "2026-08-02T12:00:00Z",
+  "freshness": {
+    "state": "fresh",
+    "observedAt": "2026-08-02T12:00:01Z",
+    "sourceUpdatedAt": "2026-08-02T12:00:00Z"
+  },
+  "completeness": {
+    "state": "complete",
+    "cursor": "cursor:forensics:7",
+    "gapRefs": []
+  },
+  "redaction": {
+    "privacyClass": "private",
+    "redactedFieldCount": 0,
+    "policyRef": "policy:work-private-v1"
+  }
+}

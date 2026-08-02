@@ -1,0 +1,62 @@
+{
+  "contractRef": "openagents.all_work_boundary.v1",
+  "contractVersion": 1,
+  "profileVersion": "openagents.contract_profile.v1",
+  "definitionSha256": "f40c1d09b12103f0247a6354e020ed7322415c8b228e45a8fd3f8d7ccd3294f8",
+  "artifacts": {
+    "effectSha256": "a0d186d384501f54f1ba032599efba5d8187e4f4cc37d835f42c0463f3b1fba8",
+    "rustSha256": "298aa826cb7bdf182742251d53c9ab6a436ba8e386fd292a22701a7dec40cefb",
+    "jsonSchemaSha256": "55f77d0f03fb3180bcd23558b034fb5c5d4d1dfad9973f80a4a2347b386c60b4",
+    "fixtureIndexSha256": "1d192e907c687ebb392a9dd3d41ebf546c06e7dd473c085758571eaf1ece225f"
+  },
+  "protocol": {
+    "supportedVersions": [
+      "omega-effectd.v1",
+      "omega-effectd.v2"
+    ],
+    "v1Posture": "explicit-negotiation-rollback-only",
+    "methods": [
+      {
+        "method": "protocol.initialize",
+        "capability": "baseline",
+        "minimumVersion": "omega-effectd.v1",
+        "params": "ProtocolInitializeRequest",
+        "result": "ProtocolInitializeResult"
+      },
+      {
+        "method": "work.index.read",
+        "capability": "work.index.read",
+        "minimumVersion": "omega-effectd.v2",
+        "params": "WorkIndexReadRequest",
+        "result": "WorkIndexReadResult"
+      },
+      {
+        "method": "work.snapshot.read",
+        "capability": "work.snapshot.read",
+        "minimumVersion": "omega-effectd.v2",
+        "params": "WorkSnapshotReadRequest",
+        "result": "WorkSnapshotReadResult"
+      }
+    ]
+  },
+  "compatibilityPolicy": "same-major-additive-optional-only",
+  "canonicalEncoding": "openagents-canonical-json-v1",
+  "canonicalEncodingRules": [
+    "utf8",
+    "object_keys_sorted_by_unicode_code_point",
+    "arrays_preserve_order",
+    "no_insignificant_whitespace",
+    "safe_integers_only",
+    "absent_fields_omitted",
+    "present_null_encoded_as_null"
+  ],
+  "unknownFieldPolicy": "reject",
+  "unknownVariantPolicy": "reject",
+  "semanticChecks": [
+    "issue_projection_work_ref_matches_snapshot_work_ref",
+    "relations_do_not_mutate_endpoints",
+    "assignee_and_agent_delegate_remain_distinct",
+    "source_authority_revision_and_cursor_are_monotonic_per_source",
+    "receipt_verification_and_owner_disposition_do_not_imply_each_other"
+  ]
+}

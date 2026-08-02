@@ -1,0 +1,32 @@
+{
+  "contractVersion": "openagents.all_work_boundary.v1",
+  "workRef": "1 bad ref",
+  "title": "Bad ref",
+  "domain": "general",
+  "workClass": "task",
+  "state": "active",
+  "priority": "normal",
+  "ownerRef": "principal:owner:1",
+  "assignee": null,
+  "sourceAuthority": {
+    "kind": "omega_native",
+    "sourceRef": "source:test:1",
+    "adapterVersion": "v1",
+    "writable": false
+  },
+  "revision": 1,
+  "updatedAt": "2026-08-02T12:00:00Z",
+  "freshness": {
+    "state": "fresh",
+    "observedAt": "2026-08-02T12:00:00Z"
+  },
+  "completeness": {
+    "state": "complete",
+    "gapRefs": []
+  },
+  "redaction": {
+    "privacyClass": "private",
+    "redactedFieldCount": 0,
+    "policyRef": "policy:test:1"
+  }
+}

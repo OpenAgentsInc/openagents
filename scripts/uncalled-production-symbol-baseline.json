@@ -1861,6 +1861,14 @@
     {
       "ref": "packages/forensic-contract/src/evidence-derivation.ts#claimEvidenceIsIsolatedToRung",
       "reason": "Published claim-rung diagnostic; the Omega evidence-ladder adapter will call it when OFR-018 renders isolated fingerprint, component, unauthorized-movement, and identity gates."
+    },
+    {
+      "ref": "packages/all-work-contract/src/semantic.ts#encodeAllWorkCanonicalJson",
+      "reason": "Published cross-runtime boundary encoder; the first OpenAgents All Work projection publisher admitted after OAW-001 will call it before persistence or transport."
+    },
+    {
+      "ref": "packages/all-work-contract/src/semantic.ts#negotiateAllWorkProtocol",
+      "reason": "Published Effect-side negotiation boundary; the first OpenAgents-hosted All Work protocol adapter admitted after the OAW-001 Omega consumer will call it."
     }
   ]
 }

@@ -54,6 +54,21 @@ for boundary data only. A contract definition produces:
 6. Optionally, a Proto schema and generated binary codecs for a transport that
    has separately selected Protobuf.
 
+## First implementation disposition
+
+OpenAgents issue `#9303` admits the first slice described here. The current
+implementation is `@openagentsinc/all-work-contract` and
+`crates/all-work-contract`. One reviewed Contract Profile definition emits
+Effect Schema/TypeScript, Rust `serde`, canonical JSON Schema, compatibility
+metadata, and shared fixtures. Drift regeneration is part of `check:fast`.
+
+The slice is deliberately read-only. It defines Work summary/snapshot, a
+same-identity Issue projection, distinct Assignee and Agent Delegate shapes,
+source authority, freshness/completeness, revision/cursor rules, and typed
+`omega-effectd.v2` Work read frames. Cross-record identity and protocol
+negotiation stay handwritten beside the generated structure. Existing lane
+stores remain writable authorities.
+
 Do not build that compiler from intuition. First run a bounded bake-off against
 the hardest existing contracts. If a restricted JSON Schema profile can carry
 the required semantics without a lossy round trip, use it as the Contract
@@ -623,31 +638,25 @@ all of it. Separate exact wire identities from product-safe projections and
 local Rust-only types. Migrate one contract family at a time and delete each
 handwritten mirror only after cross-language proof.
 
-## Repository shape if the experiment succeeds
+## Repository shape selected by the first experiment
 
-This analysis does not authorize these paths, but a likely shape is:
+Issue `#9303` admitted this bounded path shape:
 
 ```text
-packages/cross-runtime-contracts/
-  definitions/
-    omega-effectd-v2.contract.json
-    cloud-placement-v2.contract.json
-  schema/
-    openagents-contract-profile.schema.json
-  generated/
-    effect/
-    json-schema/
-    fixtures/
-    manifests/
-  compiler/
-
-crates/openagents-contracts-generated/
-  src/
+packages/all-work-contract/
+  definition/all-work-v1.contract.json
+  src/generated.ts
+  generated/json-schema/
+  generated/rust/
+  generated/compatibility.json
   fixtures/
-  manifests/
+
+crates/all-work-contract/
+  src/lib.rs
+  tests/conformance.rs
 ```
 
-Omega should consume the Rust crate and manifest as immutable, digest-bound
+Omega consumes the Rust artifact and manifest as immutable, digest-bound
 artifacts from an OpenAgents contract release, or regenerate from the exact
 pinned definition with a byte-identical compiler. Omega-specific domain
 adapters remain in Omega. Product semantics remain in the OpenAgents package or

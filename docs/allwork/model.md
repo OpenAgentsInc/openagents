@@ -1,6 +1,6 @@
 # All Work Model
 
-Status: OpenAgents product strategy reference
+Status: OpenAgents product strategy reference with a landed read-only boundary
 
 This document defines a common model for interactive, automatic, remote, and
 production work. It is not an admitted ProductSpec, schema, roadmap item, or
@@ -141,13 +141,16 @@ The model preserves these boundaries:
 
 ## Adoption boundary
 
-These names are product-strategy vocabulary. They are candidate schema names,
-not current schema authority. Existing lane stores, authority contracts,
-ProductSpec, AssuranceSpec, and release gates remain authoritative.
+These names are product-strategy vocabulary. The first structural boundary is
+now current in `@openagentsinc/all-work-contract`: Work summary and snapshot,
+same-identity Issue projection, assignment and delegation refs, source
+authority, freshness, completeness, revisions, cursors, and the
+`omega-effectd.v2` Work read methods. That package owns encoded shape only. It
+does not make this strategy document a lifecycle or storage authority.
 
-The first composition stage can use a read-only Work projection with exact
-source refs. Existing lanes can retain their own authoritative stores. A later
-schema proposal must reconcile those sources before it changes ownership.
+The first composition stage uses a read-only Work projection with exact source
+refs. Existing lanes retain their authoritative stores. A later schema proposal
+must reconcile those sources before it changes ownership.
 
 ## Origin
 

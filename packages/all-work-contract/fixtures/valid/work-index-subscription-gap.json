@@ -1,0 +1,12 @@
+{
+  "event": "gap",
+  "subscriptionRef": "subscription:work-index:1",
+  "cursor": "cursor:forensics:8",
+  "completeness": {
+    "state": "gap",
+    "cursor": "cursor:forensics:8",
+    "gapRefs": [
+      "event:forensics:missing-8"
+    ]
+  }
+}

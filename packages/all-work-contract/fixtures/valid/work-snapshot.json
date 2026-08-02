@@ -1,0 +1,77 @@
+{
+  "summary": {
+    "contractVersion": "openagents.all_work_boundary.v1",
+    "workRef": "work:security:coldcard-1",
+    "title": "Inspect Coldcard entropy",
+    "domain": "security",
+    "workClass": "investigation",
+    "state": "active",
+    "priority": "high",
+    "ownerRef": "principal:owner:1",
+    "assignee": null,
+    "sourceAuthority": {
+      "kind": "omega_native",
+      "sourceRef": "forensics:case:coldcard-1",
+      "adapterVersion": "forensics-work-v1",
+      "writable": false
+    },
+    "revision": 7,
+    "updatedAt": "2026-08-02T12:00:00Z",
+    "freshness": {
+      "state": "fresh",
+      "observedAt": "2026-08-02T12:00:01Z"
+    },
+    "completeness": {
+      "state": "complete",
+      "gapRefs": []
+    },
+    "redaction": {
+      "privacyClass": "private",
+      "redactedFieldCount": 0,
+      "policyRef": "policy:work-private-v1"
+    }
+  },
+  "issue": {
+    "workRef": "work:security:coldcard-1",
+    "identifier": "SEC-1",
+    "state": "active",
+    "revision": 7
+  },
+  "relations": [
+    {
+      "kind": "related",
+      "targetWorkRef": "work:research:entropy-baseline"
+    }
+  ],
+  "threadRefs": [
+    "thread:coldcard-1"
+  ],
+  "sessionRefs": [
+    "session:review:1"
+  ],
+  "agentSessionRefs": [
+    "agent-session:analysis:1"
+  ],
+  "agentActivityRefs": [
+    "agent-activity:analysis:1"
+  ],
+  "runRefs": [
+    "run:forensics:1"
+  ],
+  "intentRefs": [
+    "intent:inspect:1"
+  ],
+  "eventRefs": [
+    "event:forensics:1"
+  ],
+  "receiptRefs": [
+    "receipt:forensics:1"
+  ],
+  "evidenceRefs": [
+    "evidence:entropy:1"
+  ],
+  "verificationRefs": [
+    "verification:entropy:1"
+  ],
+  "ownerDispositionRefs": []
+}

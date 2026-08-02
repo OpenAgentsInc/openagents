@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: OpenAgents
-- Date: 2026-07-24
+- Date: 2026-08-02
 - Audience: product, engineering, release, and assurance teams
 
 Omega is the Zed-based OpenAgents Desktop application.
@@ -111,6 +111,11 @@ Read these documents in this order:
     for the source-pinned path from background identity provisioning to a full
     Rust-first account, signer, recovery, relay-authentication, and
     interoperability product.
+39. Read the
+    [unified Effect/Rust contract analysis](../sol/2026-08-02-effect-rust-unified-contract-models-analysis.md)
+    with the current
+    [`@openagentsinc/all-work-contract`](../../packages/all-work-contract/README.md)
+    generated read boundary before changing any cross-runtime Work shape.
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.

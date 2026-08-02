@@ -1,0 +1,1448 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/schemas/openagents.all_work_boundary.v1.schema.json",
+  "title": "OpenAgents All Work boundary",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/WorkSummary"
+    },
+    {
+      "$ref": "#/$defs/WorkSnapshot"
+    },
+    {
+      "$ref": "#/$defs/IssueProjection"
+    },
+    {
+      "$ref": "#/$defs/ProtocolError"
+    },
+    {
+      "$ref": "#/$defs/ProtocolInitializeRequest"
+    },
+    {
+      "$ref": "#/$defs/ProtocolInitializeResult"
+    },
+    {
+      "$ref": "#/$defs/WorkIndexSubscriptionRequest"
+    },
+    {
+      "$ref": "#/$defs/WorkIndexSubscriptionEvent"
+    },
+    {
+      "$ref": "#/$defs/WorkIndexReadRequest"
+    },
+    {
+      "$ref": "#/$defs/WorkIndexReadResult"
+    },
+    {
+      "$ref": "#/$defs/WorkSnapshotReadRequest"
+    },
+    {
+      "$ref": "#/$defs/WorkSnapshotReadResult"
+    },
+    {
+      "$ref": "#/$defs/WorkReadRequestFrame"
+    },
+    {
+      "$ref": "#/$defs/WorkReadResponseFrame"
+    }
+  ],
+  "$defs": {
+    "ContractVersion": {
+      "type": "string",
+      "title": "ContractVersion",
+      "enum": [
+        "openagents.all_work_boundary.v1"
+      ]
+    },
+    "ProtocolVersion": {
+      "type": "string",
+      "title": "ProtocolVersion",
+      "enum": [
+        "omega-effectd.v1",
+        "omega-effectd.v2"
+      ]
+    },
+    "SafeInteger": {
+      "type": "integer",
+      "title": "SafeInteger",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "x-openagents-integer-representation": "json-safe-integer"
+    },
+    "ContractDigest": {
+      "type": "string",
+      "title": "ContractDigest",
+      "x-openagents-brand": "ContractDigest",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "IsoTimestamp": {
+      "type": "string",
+      "title": "IsoTimestamp",
+      "x-openagents-brand": "IsoTimestamp",
+      "minLength": 20,
+      "maxLength": 32,
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"
+    },
+    "ShortText": {
+      "type": "string",
+      "title": "ShortText",
+      "x-openagents-brand": "ShortText",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "LongText": {
+      "type": "string",
+      "title": "LongText",
+      "x-openagents-brand": "LongText",
+      "minLength": 1,
+      "maxLength": 32000
+    },
+    "WorkRef": {
+      "type": "string",
+      "title": "WorkRef",
+      "x-openagents-brand": "WorkRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "OrganizationRef": {
+      "type": "string",
+      "title": "OrganizationRef",
+      "x-openagents-brand": "OrganizationRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "TeamRef": {
+      "type": "string",
+      "title": "TeamRef",
+      "x-openagents-brand": "TeamRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "InitiativeRef": {
+      "type": "string",
+      "title": "InitiativeRef",
+      "x-openagents-brand": "InitiativeRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "ProjectRef": {
+      "type": "string",
+      "title": "ProjectRef",
+      "x-openagents-brand": "ProjectRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "CycleRef": {
+      "type": "string",
+      "title": "CycleRef",
+      "x-openagents-brand": "CycleRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "ProjectMilestoneRef": {
+      "type": "string",
+      "title": "ProjectMilestoneRef",
+      "x-openagents-brand": "ProjectMilestoneRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "PrincipalRef": {
+      "type": "string",
+      "title": "PrincipalRef",
+      "x-openagents-brand": "PrincipalRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "AgentRef": {
+      "type": "string",
+      "title": "AgentRef",
+      "x-openagents-brand": "AgentRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "DelegationGrantRef": {
+      "type": "string",
+      "title": "DelegationGrantRef",
+      "x-openagents-brand": "DelegationGrantRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "ThreadRef": {
+      "type": "string",
+      "title": "ThreadRef",
+      "x-openagents-brand": "ThreadRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "SessionRef": {
+      "type": "string",
+      "title": "SessionRef",
+      "x-openagents-brand": "SessionRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "AgentSessionRef": {
+      "type": "string",
+      "title": "AgentSessionRef",
+      "x-openagents-brand": "AgentSessionRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "AgentActivityRef": {
+      "type": "string",
+      "title": "AgentActivityRef",
+      "x-openagents-brand": "AgentActivityRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "RunRef": {
+      "type": "string",
+      "title": "RunRef",
+      "x-openagents-brand": "RunRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "IntentRef": {
+      "type": "string",
+      "title": "IntentRef",
+      "x-openagents-brand": "IntentRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "EventRef": {
+      "type": "string",
+      "title": "EventRef",
+      "x-openagents-brand": "EventRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "ReceiptRef": {
+      "type": "string",
+      "title": "ReceiptRef",
+      "x-openagents-brand": "ReceiptRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "EvidenceRef": {
+      "type": "string",
+      "title": "EvidenceRef",
+      "x-openagents-brand": "EvidenceRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "VerificationRef": {
+      "type": "string",
+      "title": "VerificationRef",
+      "x-openagents-brand": "VerificationRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "OwnerDispositionRef": {
+      "type": "string",
+      "title": "OwnerDispositionRef",
+      "x-openagents-brand": "OwnerDispositionRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "SourceRef": {
+      "type": "string",
+      "title": "SourceRef",
+      "x-openagents-brand": "SourceRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "WorkCursor": {
+      "type": "string",
+      "title": "WorkCursor",
+      "x-openagents-brand": "WorkCursor",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/=+-]{0,255}$"
+    },
+    "SubscriptionRef": {
+      "type": "string",
+      "title": "SubscriptionRef",
+      "x-openagents-brand": "SubscriptionRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "WorkDomain": {
+      "type": "string",
+      "title": "WorkDomain",
+      "enum": [
+        "general",
+        "development",
+        "ci",
+        "deployment",
+        "operations",
+        "incident",
+        "research",
+        "security",
+        "design_review",
+        "service_delivery",
+        "data"
+      ]
+    },
+    "WorkClass": {
+      "type": "string",
+      "title": "WorkClass",
+      "enum": [
+        "task",
+        "change",
+        "run",
+        "incident",
+        "review",
+        "case",
+        "investigation",
+        "job",
+        "outcome"
+      ]
+    },
+    "WorkState": {
+      "type": "string",
+      "title": "WorkState",
+      "enum": [
+        "triage",
+        "planned",
+        "active",
+        "waiting",
+        "blocked",
+        "failed",
+        "completed",
+        "canceled",
+        "archived"
+      ]
+    },
+    "WorkPriority": {
+      "type": "string",
+      "title": "WorkPriority",
+      "enum": [
+        "none",
+        "urgent",
+        "high",
+        "normal",
+        "low"
+      ]
+    },
+    "WorkRelationKind": {
+      "type": "string",
+      "title": "WorkRelationKind",
+      "enum": [
+        "parent",
+        "child",
+        "blocks",
+        "blocked_by",
+        "related",
+        "duplicate",
+        "supersedes"
+      ]
+    },
+    "FreshnessState": {
+      "type": "string",
+      "title": "FreshnessState",
+      "enum": [
+        "fresh",
+        "stale",
+        "offline_cached",
+        "unknown"
+      ]
+    },
+    "CompletenessState": {
+      "type": "string",
+      "title": "CompletenessState",
+      "enum": [
+        "complete",
+        "partial",
+        "gap",
+        "truncated",
+        "unknown"
+      ]
+    },
+    "PrivacyClass": {
+      "type": "string",
+      "title": "PrivacyClass",
+      "enum": [
+        "public",
+        "organization",
+        "team",
+        "workroom",
+        "private",
+        "owner_only"
+      ]
+    },
+    "SourceAuthorityKind": {
+      "type": "string",
+      "title": "SourceAuthorityKind",
+      "enum": [
+        "effect_service",
+        "omega_native",
+        "external_adapter",
+        "imported_read_only"
+      ]
+    },
+    "AssigneeKind": {
+      "type": "string",
+      "title": "AssigneeKind",
+      "enum": [
+        "human"
+      ]
+    },
+    "RedactionMetadata": {
+      "type": "object",
+      "title": "RedactionMetadata",
+      "properties": {
+        "privacyClass": {
+          "$ref": "#/$defs/PrivacyClass"
+        },
+        "redactedFieldCount": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "policyRef": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      },
+      "required": [
+        "privacyClass",
+        "redactedFieldCount",
+        "policyRef"
+      ],
+      "additionalProperties": false
+    },
+    "Freshness": {
+      "type": "object",
+      "title": "Freshness",
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/FreshnessState"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "sourceUpdatedAt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IsoTimestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "state",
+        "observedAt"
+      ],
+      "additionalProperties": false
+    },
+    "Completeness": {
+      "type": "object",
+      "title": "Completeness",
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/CompletenessState"
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkCursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gapRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "maxItems": 64
+        }
+      },
+      "required": [
+        "state",
+        "gapRefs"
+      ],
+      "additionalProperties": false
+    },
+    "SourceAuthority": {
+      "type": "object",
+      "title": "SourceAuthority",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/SourceAuthorityKind"
+        },
+        "sourceRef": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "adapterVersion": {
+          "$ref": "#/$defs/ShortText"
+        },
+        "writable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "sourceRef",
+        "adapterVersion",
+        "writable"
+      ],
+      "additionalProperties": false
+    },
+    "HumanAssignee": {
+      "type": "object",
+      "title": "HumanAssignee",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/AssigneeKind"
+        },
+        "principalRef": {
+          "$ref": "#/$defs/PrincipalRef"
+        }
+      },
+      "required": [
+        "kind",
+        "principalRef"
+      ],
+      "additionalProperties": false
+    },
+    "AgentDelegate": {
+      "type": "object",
+      "title": "AgentDelegate",
+      "properties": {
+        "agentRef": {
+          "$ref": "#/$defs/AgentRef"
+        },
+        "delegationGrantRef": {
+          "$ref": "#/$defs/DelegationGrantRef"
+        },
+        "generation": {
+          "$ref": "#/$defs/SafeInteger"
+        }
+      },
+      "required": [
+        "agentRef",
+        "delegationGrantRef",
+        "generation"
+      ],
+      "additionalProperties": false
+    },
+    "PortfolioContext": {
+      "type": "object",
+      "title": "PortfolioContext",
+      "properties": {
+        "organizationRef": {
+          "$ref": "#/$defs/OrganizationRef"
+        },
+        "teamRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TeamRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "initiativeRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InitiativeRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProjectRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cycleRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CycleRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectMilestoneRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProjectMilestoneRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "organizationRef"
+      ],
+      "additionalProperties": false
+    },
+    "WorkRelation": {
+      "type": "object",
+      "title": "WorkRelation",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/WorkRelationKind"
+        },
+        "targetWorkRef": {
+          "$ref": "#/$defs/WorkRef"
+        }
+      },
+      "required": [
+        "kind",
+        "targetWorkRef"
+      ],
+      "additionalProperties": false
+    },
+    "IssueProjection": {
+      "type": "object",
+      "title": "IssueProjection",
+      "properties": {
+        "workRef": {
+          "$ref": "#/$defs/WorkRef"
+        },
+        "identifier": {
+          "$ref": "#/$defs/ShortText"
+        },
+        "state": {
+          "$ref": "#/$defs/WorkState"
+        },
+        "revision": {
+          "$ref": "#/$defs/SafeInteger"
+        }
+      },
+      "required": [
+        "workRef",
+        "identifier",
+        "state",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "WorkSummary": {
+      "type": "object",
+      "title": "WorkSummary",
+      "properties": {
+        "contractVersion": {
+          "$ref": "#/$defs/ContractVersion"
+        },
+        "workRef": {
+          "$ref": "#/$defs/WorkRef"
+        },
+        "title": {
+          "$ref": "#/$defs/ShortText"
+        },
+        "description": {
+          "$ref": "#/$defs/LongText"
+        },
+        "domain": {
+          "$ref": "#/$defs/WorkDomain"
+        },
+        "workClass": {
+          "$ref": "#/$defs/WorkClass"
+        },
+        "state": {
+          "$ref": "#/$defs/WorkState"
+        },
+        "priority": {
+          "$ref": "#/$defs/WorkPriority"
+        },
+        "ownerRef": {
+          "$ref": "#/$defs/PrincipalRef"
+        },
+        "assignee": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HumanAssignee"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "agentDelegate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AgentDelegate"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "portfolio": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PortfolioContext"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sourceAuthority": {
+          "$ref": "#/$defs/SourceAuthority"
+        },
+        "revision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "freshness": {
+          "$ref": "#/$defs/Freshness"
+        },
+        "completeness": {
+          "$ref": "#/$defs/Completeness"
+        },
+        "redaction": {
+          "$ref": "#/$defs/RedactionMetadata"
+        }
+      },
+      "required": [
+        "contractVersion",
+        "workRef",
+        "title",
+        "domain",
+        "workClass",
+        "state",
+        "priority",
+        "ownerRef",
+        "assignee",
+        "sourceAuthority",
+        "revision",
+        "updatedAt",
+        "freshness",
+        "completeness",
+        "redaction"
+      ],
+      "additionalProperties": false
+    },
+    "WorkSnapshot": {
+      "type": "object",
+      "title": "WorkSnapshot",
+      "properties": {
+        "summary": {
+          "$ref": "#/$defs/WorkSummary"
+        },
+        "issue": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IssueProjection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkRelation"
+          },
+          "maxItems": 512
+        },
+        "threadRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ThreadRef"
+          },
+          "maxItems": 512
+        },
+        "sessionRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SessionRef"
+          },
+          "maxItems": 512
+        },
+        "agentSessionRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AgentSessionRef"
+          },
+          "maxItems": 512
+        },
+        "agentActivityRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AgentActivityRef"
+          },
+          "maxItems": 4096
+        },
+        "runRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RunRef"
+          },
+          "maxItems": 512
+        },
+        "intentRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/IntentRef"
+          },
+          "maxItems": 4096
+        },
+        "eventRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EventRef"
+          },
+          "maxItems": 4096
+        },
+        "receiptRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReceiptRef"
+          },
+          "maxItems": 4096
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "maxItems": 4096
+        },
+        "verificationRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VerificationRef"
+          },
+          "maxItems": 512
+        },
+        "ownerDispositionRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OwnerDispositionRef"
+          },
+          "maxItems": 512
+        }
+      },
+      "required": [
+        "summary",
+        "relations",
+        "threadRefs",
+        "sessionRefs",
+        "agentSessionRefs",
+        "agentActivityRefs",
+        "runRefs",
+        "intentRefs",
+        "eventRefs",
+        "receiptRefs",
+        "evidenceRefs",
+        "verificationRefs",
+        "ownerDispositionRefs"
+      ],
+      "additionalProperties": false
+    },
+    "ProtocolCapability": {
+      "type": "string",
+      "title": "ProtocolCapability",
+      "enum": [
+        "work.index.read",
+        "work.snapshot.read"
+      ]
+    },
+    "ProtocolErrorCode": {
+      "type": "string",
+      "title": "ProtocolErrorCode",
+      "enum": [
+        "incompatible_version",
+        "invalid_request",
+        "not_found",
+        "unavailable",
+        "stale_cursor",
+        "gap",
+        "internal"
+      ]
+    },
+    "ProtocolError": {
+      "type": "object",
+      "title": "ProtocolError",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/ProtocolErrorCode"
+        },
+        "message": {
+          "$ref": "#/$defs/ShortText"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "minimumVersion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ],
+      "additionalProperties": false
+    },
+    "ProtocolInitializeRequest": {
+      "type": "object",
+      "title": "ProtocolInitializeRequest",
+      "properties": {
+        "supportedVersions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProtocolVersion"
+          },
+          "minItems": 1,
+          "maxItems": 4
+        },
+        "requestedCapabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProtocolCapability"
+          },
+          "maxItems": 16
+        }
+      },
+      "required": [
+        "supportedVersions",
+        "requestedCapabilities"
+      ],
+      "additionalProperties": false
+    },
+    "ProtocolInitializeResult": {
+      "type": "object",
+      "title": "ProtocolInitializeResult",
+      "properties": {
+        "selectedVersion": {
+          "$ref": "#/$defs/ProtocolVersion"
+        },
+        "contractRef": {
+          "$ref": "#/$defs/ContractVersion"
+        },
+        "contractDigest": {
+          "$ref": "#/$defs/ContractDigest"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProtocolCapability"
+          },
+          "maxItems": 16
+        }
+      },
+      "required": [
+        "selectedVersion",
+        "contractRef",
+        "contractDigest",
+        "capabilities"
+      ],
+      "additionalProperties": false
+    },
+    "WorkIndexFilter": {
+      "type": "object",
+      "title": "WorkIndexFilter",
+      "properties": {
+        "domains": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkDomain"
+          },
+          "maxItems": 32
+        },
+        "states": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkState"
+          },
+          "maxItems": 32
+        },
+        "assigneeRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PrincipalRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "domains",
+        "states"
+      ],
+      "additionalProperties": false
+    },
+    "WorkIndexSubscriptionRequest": {
+      "type": "object",
+      "title": "WorkIndexSubscriptionRequest",
+      "properties": {
+        "subscriptionRef": {
+          "$ref": "#/$defs/SubscriptionRef"
+        },
+        "afterCursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkCursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filter": {
+          "$ref": "#/$defs/WorkIndexFilter"
+        }
+      },
+      "required": [
+        "subscriptionRef"
+      ],
+      "additionalProperties": false
+    },
+    "WorkIndexReadRequest": {
+      "type": "object",
+      "title": "WorkIndexReadRequest",
+      "properties": {
+        "cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkCursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "filter": {
+          "$ref": "#/$defs/WorkIndexFilter"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "WorkIndexReadResult": {
+      "type": "object",
+      "title": "WorkIndexReadResult",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkSummary"
+          },
+          "maxItems": 10000
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkCursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completeness": {
+          "$ref": "#/$defs/Completeness"
+        },
+        "generatedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        }
+      },
+      "required": [
+        "items",
+        "completeness",
+        "generatedAt"
+      ],
+      "additionalProperties": false
+    },
+    "WorkIndexSubscriptionEvent": {
+      "title": "WorkIndexSubscriptionEvent",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "ready"
+            },
+            "subscriptionRef": {
+              "$ref": "#/$defs/SubscriptionRef"
+            },
+            "result": {
+              "$ref": "#/$defs/WorkIndexReadResult"
+            }
+          },
+          "required": [
+            "event",
+            "subscriptionRef",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "upsert"
+            },
+            "subscriptionRef": {
+              "$ref": "#/$defs/SubscriptionRef"
+            },
+            "cursor": {
+              "$ref": "#/$defs/WorkCursor"
+            },
+            "item": {
+              "$ref": "#/$defs/WorkSummary"
+            }
+          },
+          "required": [
+            "event",
+            "subscriptionRef",
+            "cursor",
+            "item"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "remove"
+            },
+            "subscriptionRef": {
+              "$ref": "#/$defs/SubscriptionRef"
+            },
+            "cursor": {
+              "$ref": "#/$defs/WorkCursor"
+            },
+            "workRef": {
+              "$ref": "#/$defs/WorkRef"
+            }
+          },
+          "required": [
+            "event",
+            "subscriptionRef",
+            "cursor",
+            "workRef"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "gap"
+            },
+            "subscriptionRef": {
+              "$ref": "#/$defs/SubscriptionRef"
+            },
+            "cursor": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WorkCursor"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "completeness": {
+              "$ref": "#/$defs/Completeness"
+            }
+          },
+          "required": [
+            "event",
+            "subscriptionRef",
+            "cursor",
+            "completeness"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "WorkSnapshotReadRequest": {
+      "type": "object",
+      "title": "WorkSnapshotReadRequest",
+      "properties": {
+        "workRef": {
+          "$ref": "#/$defs/WorkRef"
+        }
+      },
+      "required": [
+        "workRef"
+      ],
+      "additionalProperties": false
+    },
+    "WorkSnapshotReadResult": {
+      "type": "object",
+      "title": "WorkSnapshotReadResult",
+      "properties": {
+        "snapshot": {
+          "$ref": "#/$defs/WorkSnapshot"
+        }
+      },
+      "required": [
+        "snapshot"
+      ],
+      "additionalProperties": false
+    },
+    "WorkReadRequestFrame": {
+      "title": "WorkReadRequestFrame",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "protocol.initialize"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "params": {
+              "$ref": "#/$defs/ProtocolInitializeRequest"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "work.index.read"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "params": {
+              "$ref": "#/$defs/WorkIndexReadRequest"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "work.snapshot.read"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "params": {
+              "$ref": "#/$defs/WorkSnapshotReadRequest"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "params"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "WorkReadResponseFrame": {
+      "title": "WorkReadResponseFrame",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "protocol.initialize"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "result": {
+              "$ref": "#/$defs/ProtocolInitializeResult"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "work.index.read"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "result": {
+              "$ref": "#/$defs/WorkIndexReadResult"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "work.snapshot.read"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "result": {
+              "$ref": "#/$defs/WorkSnapshotReadResult"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "error"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "error": {
+              "$ref": "#/$defs/ProtocolError"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "error"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "x-openagents": {
+    "profileVersion": "openagents.contract_profile.v1",
+    "contractRef": "openagents.all_work_boundary.v1",
+    "contractVersion": 1,
+    "definitionSha256": "f40c1d09b12103f0247a6354e020ed7322415c8b228e45a8fd3f8d7ccd3294f8",
+    "owningDomain": "all_work_boundary",
+    "authoritativeRuntime": "effect",
+    "relationship": "projection",
+    "canonicalEncoding": "openagents-canonical-json-v1",
+    "canonicalEncodingRules": [
+      "utf8",
+      "object_keys_sorted_by_unicode_code_point",
+      "arrays_preserve_order",
+      "no_insignificant_whitespace",
+      "safe_integers_only",
+      "absent_fields_omitted",
+      "present_null_encoded_as_null"
+    ],
+    "maximumEncodedBytes": 65536,
+    "unknownFieldPolicy": "reject",
+    "unknownVariantPolicy": "reject",
+    "compatibilityPolicy": "same-major-additive-optional-only",
+    "capability": "all_work.read.v1",
+    "minimumProtocolVersion": "omega-effectd.v2",
+    "semanticChecks": [
+      "issue_projection_work_ref_matches_snapshot_work_ref",
+      "relations_do_not_mutate_endpoints",
+      "assignee_and_agent_delegate_remain_distinct",
+      "source_authority_revision_and_cursor_are_monotonic_per_source",
+      "receipt_verification_and_owner_disposition_do_not_imply_each_other"
+    ]
+  }
+}

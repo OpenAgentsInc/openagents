@@ -1,0 +1,11 @@
+{
+  "method": "protocol.initialize",
+  "id": "request-legacy",
+  "version": "omega-effectd.v1",
+  "params": {
+    "supportedVersions": [
+      "omega-effectd.v1"
+    ],
+    "requestedCapabilities": []
+  }
+}
