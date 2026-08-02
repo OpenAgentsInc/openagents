@@ -21,6 +21,7 @@ import {
 } from "./check-sol-docs"
 import {
   buildSolDocumentManifest,
+  defaultUnindexedDisposition,
   serializeSolDocumentManifest,
   SOL_DOCUMENT_MANIFEST_PATH,
 } from "./generate-sol-doc-manifest"
@@ -85,6 +86,15 @@ describe("positive repository fixture", () => {
       "docs/sol/MASTER_ROADMAP.md",
     ])
     expect(first.documents.every((document) => !document.issueLinks.includes(2026))).toBe(true)
+  })
+
+  test("new unindexed Sol prose defaults to non-dispatch analysis", () => {
+    expect(defaultUnindexedDisposition("Sol roadmap")).toEqual({
+      class: "historical-analysis",
+      owner: "Sol roadmap",
+      disposition: "retain-default-analysis",
+      dispatch: false,
+    })
   })
 
   test("a clean reader reaches complete current truth within one hop", () => {

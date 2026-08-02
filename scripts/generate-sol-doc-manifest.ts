@@ -15,6 +15,15 @@ type Disposition = {
   dispatch: boolean
 }
 
+export function defaultUnindexedDisposition(defaultOwner: string): Disposition {
+  return {
+    class: "historical-analysis",
+    owner: defaultOwner,
+    disposition: "retain-default-analysis",
+    dispatch: false,
+  }
+}
+
 const DOCUMENT_CLASSES = new Set([
   "authority", "contract", "index", "current-status", "receipt",
   "historical-analysis", "redirect", "tombstone", "backroom-export",
@@ -202,7 +211,10 @@ function derivedDisposition(
   if (receipts.has(path)) {
     return { class: "receipt", owner: receipts.get(path) ?? "Sol proof", disposition: "retain-evidence", dispatch: false }
   }
-  throw new Error(`unclassified Sol document: ${path}; add declared/index classification or a reviewed policy override`)
+  // New Sol prose is safe and non-dispatch by default. A policy override or
+  // index entry is still available when a document needs a stronger class,
+  // but adding ordinary analysis must not require manual manifest ceremony.
+  return defaultUnindexedDisposition(metadata(markdown, "Owner") ?? policy.defaultOwner)
 }
 
 export function buildSolDocumentManifest(root: string): SolDocumentManifest {
