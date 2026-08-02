@@ -1,9 +1,10 @@
 # Entropy-first Comet repository dashboard roadmap
 
-Status: **owner-directed short-term product list.** This roadmap defines a
-small entropy-only repository analysis inside Omega. It does not authorize a
-generic vulnerability scanner, a third-party disclosure, a product safety
-rating, a live-key search, or publication.
+Status: **delivered in Omega on 2026-08-02; retained as the product and evidence
+boundary.** This roadmap defines a small entropy-only repository analysis
+inside Omega. It does not authorize a generic vulnerability scanner, a
+third-party disclosure, a product safety rating, a live-key search, or
+publication.
 
 Date: 2026-08-02
 
@@ -37,8 +38,25 @@ navigation.
 | 4     | [OFR-ENT-04 — Compare one entropy prompt across the 15-project set](https://github.com/OpenAgentsInc/omega/issues/202) | Run one frozen prompt across a versioned, source-aware project catalog and compare results without product grades. |
 
 OFR-ENT-01 through OFR-ENT-03 are the Coldcard vertical slice. OFR-ENT-04 is
-the first multi-project campaign. Do not start with the 15-project grid before
-one Coldcard run can be inspected and reproduced end to end.
+the first multi-project campaign. They landed in that order, after the
+single-repository contracts and interaction were available for the campaign to
+reuse.
+
+### Delivery receipt
+
+All four implementation issues are closed on Omega `main`:
+
+| Issue | Main commit | Delivered evidence |
+| ----- | ----------- | ------------------ |
+| [#199](https://github.com/OpenAgentsInc/omega/issues/199) | [`6fd2767b5d354d296001c49423bbee73f59cefee`](https://github.com/OpenAgentsInc/omega/commit/6fd2767b5d354d296001c49423bbee73f59cefee) | Deterministic read-only manifest and traversal, typed source observations, cancellation, limitations, and the Coldcard fixture. |
+| [#200](https://github.com/OpenAgentsInc/omega/issues/200) | [`4ebde0f20dc939310462e0693aee382055453d26`](https://github.com/OpenAgentsInc/omega/commit/4ebde0f20dc939310462e0693aee382055453d26) | Visible editable prompt, immutable prompt/run binding, lineage, bounded persistence, reset, and copied-prompt reruns. |
+| [#201](https://github.com/OpenAgentsInc/omega/issues/201) | [`a18287b21641985944b49cb64b1bfed1f8e13c25`](https://github.com/OpenAgentsInc/omega/commit/a18287b21641985944b49cb64b1bfed1f8e13c25) | Persistent left-sidebar **Forensics** entry, live ordered file list, filters, candidate detail, exact source opening, cancellation, restore, and single-repository prompt comparison. |
+| [#202](https://github.com/OpenAgentsInc/omega/issues/202) | [`15ffc050aa3fe4662a9321e08f2e604f95a589a1`](https://github.com/OpenAgentsInc/omega/commit/15ffc050aa3fe4662a9321e08f2e604f95a589a1) | Digest-bound 15-product catalog, sequential isolated checkouts, pause/resume/cancel, partial retention, project drill-down, and exact campaign prompt comparison. |
+
+The implementation tests the contracts and deterministic fixtures. It is not a
+receipt for a completed live 15-project provider campaign, a confirmed
+vulnerability, or a publishable product verdict. Those claims require their
+own run evidence and authority.
 
 ## 3. First screen
 

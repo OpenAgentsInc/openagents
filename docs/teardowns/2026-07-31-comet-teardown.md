@@ -1016,6 +1016,14 @@ Every row must declare its repository, pinned revision, and source eligibility.
 Closed or incomplete source stays unavailable; it does not receive a clean or
 unsafe color. [inferred]
 
+Implementation receipt, 2026-08-02: Omega #199 through #202 closed in order at
+`6fd2767b5d`, `4ebde0f20d`, `a18287b216`, and `15ffc050aa`. The resulting
+Comet-shaped shell keeps the normal sidebar and adds a persistent
+**Forensics** entry, one editable prompt, live file traversal and candidate
+detail, immutable prompt comparisons, and the sequential 15-product campaign.
+The implementation preserves this teardown's no-grade and source-availability
+boundaries. [implementation]
+
 ##### Broader forensics after entropy
 
 The 2026-08-02 Coldcard and Omega-thread audit identifies a smaller, higher-

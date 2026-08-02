@@ -354,6 +354,14 @@ owns this list:
 4. [OFR-ENT-04](https://github.com/OpenAgentsInc/omega/issues/202) — run one
    prompt across the source-aware 15-project catalog.
 
+All four issues closed on 2026-08-02. Omega commits `6fd2767b5d`,
+`4ebde0f20d`, `a18287b216`, and `15ffc050aa` delivered the sequence. The third
+commit adds the persistent left-sidebar **Forensics** entry and live
+single-repository dashboard. The fourth adds the immutable 15-product catalog,
+sequential isolated runner, campaign controls, partial retention, drill-down,
+and exact prompt comparison. This is implementation proof, not a live
+comparative result or product-safety conclusion.
+
 This slice uses Omega's existing repository, task, and agent authorities. It is
 read-only exploratory analysis. It emits source observations and hypotheses,
 not verified vulnerabilities, product grades, disclosures, or publication
@@ -1429,17 +1437,16 @@ OFR-001 through OFR-018 remain the stable decomposition for what was designed
 and checked in. They are not all accepted at the same proof rung. The correct
 next order is:
 
-1. implement Omega issues #199 through #201 as the Coldcard entropy-only
-   traversal, editable prompt, live dashboard, and prompt-comparison slice;
-2. implement Omega issue #202 as the source-aware 15-project entropy campaign;
-3. correct live worker and source-delivery acceptance in #9289 and #9290;
-4. expand into OFR-UI-01 through OFR-UI-05 only after the simpler entropy
-   interaction is usable;
-5. admit live preflight, launch, cancellation, cleanup, and source delivery
+1. preserve the completed Omega #199–#202 entropy slice at its tested proof
+   rung;
+2. correct live worker and source-delivery acceptance in #9289 and #9290;
+3. expand into OFR-UI-01 through OFR-UI-05 through a separately claimed issue
+   or accepted packet;
+4. admit live preflight, launch, cancellation, cleanup, and source delivery
    only from newly accepted receipts;
-6. run real controlled forensic campaigns with independent verification,
+5. run real controlled forensic campaigns with independent verification,
    fixed and clean controls, and untouched holdouts; and
-7. complete admitted artifact, generator-throughput, historical-replay, and
+6. complete admitted artifact, generator-throughput, historical-replay, and
    evidence-graph receipts.
 
 The table below is a scope ledger, not a completion ledger. Current code and

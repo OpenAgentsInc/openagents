@@ -3,12 +3,13 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-08-02
-- Revision: 138
+- Revision: 139
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: no active `roadmap:sol` product issue. Current work comes from
   an exact live issue or owner-accepted packet. OpenAgentsInc/omega#199 through
-  OpenAgentsInc/omega#202 own the entropy-first Comet slice; #9289, #9290, and
-  #9300 retain the broader live forensic acceptance corrections.
+  OpenAgentsInc/omega#202 closed after delivering the entropy-first Comet slice
+  on 2026-08-02; #9289, #9290, and #9300 retain the broader live forensic
+  acceptance corrections.
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: live bug issues or exact owner-accepted plans/work packets through
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
@@ -27,7 +28,7 @@ proof, dated plans and analyses are evidence only.
 
 ## Active P0 — Omega primary-surface transition
 
-The owner selected [`Omega`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md), a tracked Zed fork, as the primary Desktop, IDE, and company workroom destination. The new [`Omega roadmap`](../omega/ROADMAP.md) owns the accelerated implementation order. First, release the fully branded `v0.2.0-rc1` bootstrap candidate. Next, port current OpenAgents Desktop behavior. Then add the selected Buzz workroom and Nostr outcomes. The bootstrap release is not a feature-parity or primary-cutover claim. Omega Rust is the application core. Packaged Node 24 and Effect first carry the current product control plane. Bounded packets can move suitable domains to Rust through one-authority cutovers. Existing configured agents, such as Hermes, attach through explicit adapters. They keep their homes, credentials, memory, skills, tools, and sessions. Standard Nostr support is an interoperability boundary, not relay authority. The separate Buzz deployment and standalone relay program stay canceled. Issues #9185 and #9194 through #9204 closed as not planned on 2026-07-23. The current Electron application remains the supported evidence and rollback subject until all cutover gates pass. Omega does not reroute the pending Full Auto release closure. The 2026-08-02 owner reconciliation makes the [`entropy-first Coldcard dashboard`](../loupe/2026-08-02-entropy-first-comet-dashboard-roadmap.md) the first Comet-shaped workbench slice under Omega issues #199 through #202: edit one visible prompt, watch read-only repository traversal, inspect source observations, compare immutable reruns, then expand to the source-aware 15-project campaign. The broader evidence reader follows it; Comet owns presentation, Omega owns authority, and live forensic controls remain unavailable while #9289, #9290, and #9300 are open. Each Omega mutation still needs its issue claim or accepted packet.
+The owner selected [`Omega`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md), a tracked Zed fork, as the primary Desktop, IDE, and company workroom destination. The new [`Omega roadmap`](../omega/ROADMAP.md) owns the accelerated implementation order. First, release the fully branded `v0.2.0-rc1` bootstrap candidate. Next, port current OpenAgents Desktop behavior. Then add the selected Buzz workroom and Nostr outcomes. The bootstrap release is not a feature-parity or primary-cutover claim. Omega Rust is the application core. Packaged Node 24 and Effect first carry the current product control plane. Bounded packets can move suitable domains to Rust through one-authority cutovers. Existing configured agents, such as Hermes, attach through explicit adapters. They keep their homes, credentials, memory, skills, tools, and sessions. Standard Nostr support is an interoperability boundary, not relay authority. The separate Buzz deployment and standalone relay program stay canceled. Issues #9185 and #9194 through #9204 closed as not planned on 2026-07-23. The current Electron application remains the supported evidence and rollback subject until all cutover gates pass. Omega does not reroute the pending Full Auto release closure. The 2026-08-02 owner reconciliation made the [`entropy-first Coldcard dashboard`](../loupe/2026-08-02-entropy-first-comet-dashboard-roadmap.md) the first Comet-shaped workbench slice. Omega issues #199 through #202 delivered it in order across commits `6fd2767b5d`, `4ebde0f20d`, `a18287b216`, and `15ffc050aa`: edit one visible prompt, watch read-only repository traversal, inspect source observations, compare immutable reruns, then run the source-aware 15-project campaign. The broader evidence reader follows it; Comet owns presentation, Omega owns authority, and live forensic controls remain unavailable while #9289, #9290, and #9300 are open. Each Omega mutation still needs its issue claim or accepted packet.
 
 **2026-07-25 Forge web reconciliation.** The [`Forge ProductSpec`](../../specs/openagents/forge.product-spec.md) and epic #9242 admit the invite-only Nostr and ngit Forge in the single `openagents.com` app. For this web lane, they supersede the 2026-07-23 GitHub-authoritative posture. Invited and migrated repositories use `openagents_git_authoritative`, while unmigrated repositories keep `github_authoritative`. GitHub is a read-only mirror after migration. It remains the repository and claim authority for OpenAgents development until a later admitted claim-ledger cutover. The canceled standalone relay and Forge programs stay canceled. Issues #9243 through #9253 own delivery, and the [`invite-only Forge analysis`](../fable/2026-07-25-nostr-git-forge-invite-only-analysis.md) stays design evidence only.
 
@@ -586,12 +587,12 @@ There is no active product issue in the pinned `roadmap:sol` projection. That
 empty label queue does not imply that every direct issue or accepted packet is
 complete.
 
-1. Execute the owner-accepted Omega roadmap through claimed, bounded packets.
-   OpenAgentsInc/omega#199 through OpenAgentsInc/omega#201 own the Coldcard
-   entropy traversal, visible prompt, dashboard, and prompt comparison.
-   OpenAgentsInc/omega#202 follows with the source-aware 15-project campaign.
-2. Expand into OFR-UI-01 through OFR-UI-05 only after the entropy interaction
-   is usable. The broader fixture reader does not enable launch or publication.
+1. Preserve the completed Omega entropy-first slice from #199 through #202 at
+   its tested proof rung. Its four `main` receipts end at `15ffc050aa`; they do
+   not claim a completed live provider campaign or a verified vulnerability.
+2. Expand into OFR-UI-01 through OFR-UI-05 only through a new claimed issue or
+   accepted packet. The broader fixture reader does not enable launch or
+   publication.
 3. Correct the live forensic acceptance record in #9289 and #9290, then close
    #9300 only after the required campaign, holdout, artifact, generator,
    historical-replay, and evidence-graph receipts exist.

@@ -328,22 +328,25 @@ need explicit presentations.
 
 ## 7. Current limitations and ordered UI work
 
-The implementation inventory is substantial, but the first interface and the
-live proof chain still have important gaps. Work in this order:
+The entropy-first interface is complete on Omega `main` through #199–#202.
+Commit `a18287b216` supplies the persistent left-sidebar **Forensics** entry and
+live single-repository workbench; `15ffc050aa` supplies the sequential
+15-product campaign and project drill-down. These are implementation and
+fixture receipts, not a completed live campaign or accepted vulnerability
+claim.
 
-1. implement the
-   [entropy-first dashboard](2026-08-02-entropy-first-comet-dashboard-roadmap.md)
-   through Omega #199–#202: Coldcard traversal, editable prompt, live file
-   progress, immutable reruns, and the source-aware 15-project campaign;
-2. expand that interaction into the read-only Coldcard evidence reader;
-3. add complete, incomplete, denied, awaiting-profile, request-schema-failed,
+The remaining interface and live proof chain still have important gaps. Work
+in this order:
+
+1. expand the entropy interaction into the read-only Coldcard evidence reader;
+2. add complete, incomplete, denied, awaiting-profile, request-schema-failed,
    and tool-contract-incompatible preflight states;
-4. expose separate evidence, claim, limitation, dispute, and reconciliation
+3. expose separate evidence, claim, limitation, dispute, and reconciliation
    queues with a claim inspector and full copyable refs;
-5. render a diverse model panel and matched run matrix without voting semantics;
-6. add a default-blocked publication view with redaction, review, disclosure,
+4. render a diverse model panel and matched run matrix without voting semantics;
+5. add a default-blocked publication view with redaction, review, disclosure,
    maintainer, and authority gates; and
-7. enable prepare, launch, cancel, and cleanup controls only after #9289 and
+6. enable prepare, launch, cancel, and cleanup controls only after #9289 and
    #9290 carry accepted live receipts.
 
 Additional current gaps are:

@@ -29,8 +29,12 @@ B, and then apply the same source-aware method across the 15-project catalog.
 Omega issues [#199](https://github.com/OpenAgentsInc/omega/issues/199),
 [#200](https://github.com/OpenAgentsInc/omega/issues/200),
 [#201](https://github.com/OpenAgentsInc/omega/issues/201), and
-[#202](https://github.com/OpenAgentsInc/omega/issues/202) own that list. The
-broader forensic bench follows it; it is not a prerequisite.
+[#202](https://github.com/OpenAgentsInc/omega/issues/202) own that list. All
+four closed on 2026-08-02; the exact Omega `main` commits and evidence boundary
+are recorded in the dashboard roadmap's
+[delivery receipt](2026-08-02-entropy-first-comet-dashboard-roadmap.md#delivery-receipt).
+The broader forensic bench follows it; it is not a prerequisite and remains
+subject to its separate live-evidence gates.
 
 The OFR-001 through OFR-018 program that followed this study has substantial
 checked-in contracts, fixtures, adapters, deterministic tests, and Omega

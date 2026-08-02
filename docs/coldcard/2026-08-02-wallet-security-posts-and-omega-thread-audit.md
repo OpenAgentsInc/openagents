@@ -172,12 +172,15 @@ evidence. External intake should never be silently converted into a finding.
 
 ## 6. Short-term Comet UI implications
 
-The simplified Comet-based Omega shell should make the evidence boundary
+The simplified Comet-based Omega shell now makes the first evidence boundary
 visible before it attempts a broad forensic dashboard. The owner-directed
 [entropy-first dashboard](../loupe/2026-08-02-entropy-first-comet-dashboard-roadmap.md)
-comes first: editable entropy prompt, read-only Coldcard traversal, live file
-states, source observations, and prompt A/B comparison. The later broad case
-projection adds these elements:
+landed on 2026-08-02: the left Comet sidebar opens **Forensics**; the workbench
+provides an editable entropy prompt, read-only pinned traversal, live file
+states, source observations, prompt A/B comparison, and the sequential
+source-aware 15-product campaign. Omega commits `6fd2767b5d`, `4ebde0f20d`,
+`a18287b216`, and `15ffc050aa` are the implementation receipts. The later
+broad case projection adds these elements:
 
 1. a sticky case header with target pin, source completeness, worker authority,
    model-panel coverage, run state, cleanup state, and publication state;
@@ -196,6 +199,13 @@ issues #9289 and #9290 have accepted evidence for the exact managed worker and
 source-delivery path. Until then, the UI must show the implemented fixture or
 contract projection as development evidence and render live launch as
 unavailable. It must not use a green fixture state to imply a deployed run.
+
+The delivered campaign deliberately does not reproduce the supplied table's
+red/yellow/green cells. It keeps all 15 product rows, pins eligible public
+source, marks incomplete input explicitly, and reports candidate and
+limitation facts per project. Its deterministic tests prove the interface and
+contract, not the truth of the original posts or a completed live comparative
+analysis.
 
 ## 7. Disposition
 

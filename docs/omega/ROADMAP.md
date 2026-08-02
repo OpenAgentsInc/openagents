@@ -625,6 +625,12 @@ The parity gate requires:
 
 ### 7.11 Packet OMEGA-OA-11: entropy-first Comet dashboard
 
+Status: **complete on Omega `main` as of 2026-08-02.** The implementation
+receipts are #199 / `6fd2767b5d`, #200 / `4ebde0f20d`, #201 / `a18287b216`,
+and #202 / `15ffc050aa`. The packet is complete as a product slice and tested
+contract; this is not evidence that a live campaign found or disproved a
+vulnerability.
+
 Build the smaller owner-directed entropy tool before the full forensic bench.
 The user opens a repository task, edits one visible entropy prompt, runs it,
 watches Omega traverse files, inspects entropy candidates, and compares the
@@ -1097,11 +1103,11 @@ Do not parallelize two changes to one authority contract.
 ## 13. Immediate execution queue
 
 The original queue below records the accepted dependency order. The 2026-08-02
-owner reconciliation sets the next Comet-workbench sequence after the existing
-agent shell: implement Omega #199 through #201 as the Coldcard entropy vertical
-slice, then #202 as the 15-project campaign. Expand into the broader OFR-UI
-bench only after the entropy interaction is usable. Documentation does not
-self-claim Omega code paths.
+entropy sequence is complete on Omega `main`: #199 through #201 delivered the
+Coldcard vertical slice and #202 delivered the 15-project campaign. Expansion
+into the broader OFR-UI bench now requires its own claimed issue or accepted
+packet and must preserve the remaining live forensic gates. Documentation does
+not self-claim Omega code paths.
 
 The full dependency queue is:
 
@@ -1117,8 +1123,9 @@ The full dependency queue is:
 10. OMEGA-OID-09: prove the packaged identity-first journey.
 11. OMEGA-RC1-01 through OMEGA-RC1-07: complete the bootstrap release.
 12. OMEGA-OA-01 through OMEGA-OA-10: close Desktop parity.
-13. OMEGA-OA-11 / OFR-ENT-01 through OFR-ENT-04: ship the entropy-only
-    repository traversal, prompt, dashboard, and 15-project comparison.
+13. **Complete:** OMEGA-OA-11 / OFR-ENT-01 through OFR-ENT-04 shipped the
+    entropy-only repository traversal, prompt, dashboard, and 15-project
+    comparison in Omega commits `6fd2767b5d` through `15ffc050aa`.
 14. OMEGA-OA-12 / OFR-UI-01 through OFR-UI-05: expand into the broader
     forensic bench without creating a second authority.
 15. OMEGA-BZ-00 through OMEGA-BZ-09: add selected Buzz outcomes.
