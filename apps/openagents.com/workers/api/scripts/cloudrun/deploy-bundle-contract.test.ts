@@ -47,6 +47,24 @@ describe('Cloud Run Vite Plus bundle contract', () => {
     },
   )
 
+  test('pins the production Omega daily token ceiling to the owner-directed 50x headroom', () => {
+    const productionEnvironment = readFileSync(
+      fileURLToPath(new URL('env-production.yaml', import.meta.url)),
+      'utf8',
+    )
+    const stagingEnvironment = readFileSync(
+      fileURLToPath(new URL('env-staging.yaml', import.meta.url)),
+      'utf8',
+    )
+
+    expect(productionEnvironment).toContain(
+      'OMEGA_NOSTR_SELF_PROVISION_DAILY_TOKEN_CEILING: "50000000"',
+    )
+    expect(stagingEnvironment).toContain(
+      'OMEGA_NOSTR_SELF_PROVISION_DAILY_TOKEN_CEILING: "50000"',
+    )
+  })
+
   test('packs only the self-contained Node server bundle', () => {
     const deployScript = readFileSync(
       fileURLToPath(new URL('../deploy-cloudrun.sh', import.meta.url)),

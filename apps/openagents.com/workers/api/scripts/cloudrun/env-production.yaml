@@ -161,10 +161,10 @@ OPENAUTH_ISSUER_URL: "https://auth.openagents.com"
 #
 # ARITHMETIC AT THESE VALUES:
 #   worst case/day  = GLOBAL_DAILY_LIMIT x DAILY_TOKEN_CEILING
-#                   = 20 x 1000000 = 20,000,000 served tokens/day
-#                     across ALL self-provisioned identities combined
+#                   = 20 x 50000000 = 1,000,000,000 served tokens/day
+#                     across identities newly admitted by the daily bucket
 #   derived/hour    = IP_HOURLY_LIMIT x DAILY_TOKEN_CEILING
-#                   = 30 x 1000000 = 30,000,000 tokens from one source IP
+#                   = 30 x 50000000 = 1,500,000,000 tokens from one source IP
 #
 # HEADROOM RETUNE (owner direction, 2026-07-31). The free tier was far too
 # restrictive per tester: 200000 tokens/day is a couple of real sessions, and a
@@ -182,15 +182,24 @@ OPENAUTH_ISSUER_URL: "https://auth.openagents.com"
 # touching per-tester room, and each +1 there is now worth 1M/day rather than
 # 200k, so raise it in smaller steps than before.
 #
+# EMERGENCY HEADROOM RETUNE (owner direction, 2026-08-02). The observed Omega
+# identity reached the configured 1000000 token ceiling and every hosted model,
+# fallback, and title request failed with
+# `free_tier_daily_token_ceiling_reached`. DAILY_TOKEN_CEILING goes 1000000 ->
+# 50000000, exactly 50x. GLOBAL_DAILY_LIMIT remains 20, so the newly admitted
+# identity exposure represented by the product above moves 20M -> 1B served
+# tokens/day. This is a production-only override; staging and the compiled
+# fallback stay conservative.
+#
 # WHICH BOUND ACTUALLY BINDS. IP_HOURLY_LIMIT (raised 3 -> 30 earlier on
 # 2026-07-31) still does NOT set total spend exposure: a source IP cannot mint
 # accounts the global daily budget has already spent. At 30/hour one NAT
 # exhausts the global 20/day account budget in the first hour, so
 # GLOBAL_DAILY_LIMIT is the first bound for any multi-tester address and the
-# 30,000,000/hour derivation is unreachable in practice (it would need 30
+# 1,500,000,000/hour derivation is unreachable in practice (it would need 30
 # identities each burning a full day's allowance inside one hour, against a
 # 20-identity/day global budget).
-#   - ONE tester on one IP: bound by DAILY_TOKEN_CEILING (1000000/day). They
+#   - ONE tester on one IP: bound by DAILY_TOKEN_CEILING (50000000/day). They
 #     create exactly one identity, so IP_HOURLY_LIMIT never applies to them.
 #     This ceiling is the only number that moves that tester, which is why it
 #     is the one the owner raised.
@@ -232,7 +241,7 @@ OPENAUTH_ISSUER_URL: "https://auth.openagents.com"
 OMEGA_NOSTR_SELF_PROVISION_ENABLED: "1"
 OMEGA_NOSTR_SELF_PROVISION_GLOBAL_DAILY_LIMIT: "20"
 OMEGA_NOSTR_SELF_PROVISION_IP_HOURLY_LIMIT: "30"
-OMEGA_NOSTR_SELF_PROVISION_DAILY_TOKEN_CEILING: "1000000"
+OMEGA_NOSTR_SELF_PROVISION_DAILY_TOKEN_CEILING: "50000000"
 PUBLIC_NOSTR_CHAT_RELAY_SELF_PUBKEY: "e841147f262799821bbaa2930fcca982a575458f0e043e064a26ed8aba2046ed"
 SARAH_NOSTR_OWNER_PUBKEY: "bcf86577b45042c960c99fe4ac1380a3ef0565ccbdd5c81e3f20f0919fe4fd14"
 SARAH_NOSTR_EXPECTED_PUBKEY: "f7824ac493cb820171a72dd4085880d1bdcc4ba1176ba84e93afddc176ec971d"
