@@ -173,8 +173,11 @@ evidence. External intake should never be silently converted into a finding.
 ## 6. Short-term Comet UI implications
 
 The simplified Comet-based Omega shell should make the evidence boundary
-visible before it attempts a broad forensic dashboard. The first useful slice
-is one read-only Coldcard case projection with these elements:
+visible before it attempts a broad forensic dashboard. The owner-directed
+[entropy-first dashboard](../loupe/2026-08-02-entropy-first-comet-dashboard-roadmap.md)
+comes first: editable entropy prompt, read-only Coldcard traversal, live file
+states, source observations, and prompt A/B comparison. The later broad case
+projection adds these elements:
 
 1. a sticky case header with target pin, source completeness, worker authority,
    model-panel coverage, run state, cleanup state, and publication state;

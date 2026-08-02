@@ -5,7 +5,7 @@ research work. It does not itself authorize scanning a third-party target,
 publishing a vulnerability claim, contacting a maintainer, spending beyond an
 admitted budget, or running an exploit outside an owned lab.
 
-Roadmap revision: 7
+Roadmap revision: 8
 
 Date: 2026-08-02
 
@@ -332,7 +332,39 @@ provider state labels as process truth remain out of scope.
 
 Add a **Forensics** workbench to an existing Omega repository context.
 
-### 4.0 Short-term Comet-first forensic bench
+### 4.0 Short-term Comet sequence
+
+#### 4.0.1 Entropy-first repository dashboard
+
+The owner selected a simpler first product than the full forensic bench. Start
+with one entropy-only repository traversal in the existing Comet-shaped Omega
+task: Coldcard, one visible editable prompt, live file-by-file progress, typed
+entropy candidates, and immutable prompt reruns.
+
+The separate
+[entropy-first Comet repository dashboard roadmap](2026-08-02-entropy-first-comet-dashboard-roadmap.md)
+owns this list:
+
+1. [OFR-ENT-01](https://github.com/OpenAgentsInc/omega/issues/199) — traverse
+   one pinned repository for entropy risks;
+2. [OFR-ENT-02](https://github.com/OpenAgentsInc/omega/issues/200) — edit and
+   freeze prompts, then create immutable reruns;
+3. [OFR-ENT-03](https://github.com/OpenAgentsInc/omega/issues/201) — show live
+   traversal, candidates, failures, cancellation, and prompt A/B changes; and
+4. [OFR-ENT-04](https://github.com/OpenAgentsInc/omega/issues/202) — run one
+   prompt across the source-aware 15-project catalog.
+
+This slice uses Omega's existing repository, task, and agent authorities. It is
+read-only exploratory analysis. It emits source observations and hypotheses,
+not verified vulnerabilities, product grades, disclosures, or publication
+states. Closed or incomplete source remains unavailable instead of becoming a
+clean result.
+
+Do not make the broader forensic console a dependency for OFR-ENT-01 through
+OFR-ENT-04. The entropy slice proves repository traversal, prompt binding, live
+progress, result inspection, and matched reruns first.
+
+#### 4.0.2 Broader forensic bench
 
 The first visible product slice should mount Omega's existing forensic
 projections inside the simplified Comet-shaped application shell. Comet owns
@@ -352,8 +384,9 @@ claims, evidence, review decisions, and publication disposition.
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Use the checked-in Coldcard fixture to ship the reader before live launch is
-available. The short-term order is:
+After the entropy-first list is usable, use the checked-in Coldcard evidence
+fixture to expand the reader toward the broader forensic bench. That later
+order is:
 
 | ID        | Slice                              | Acceptance                                                                                                                                                                               |
 | --------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1396,17 +1429,18 @@ OFR-001 through OFR-018 remain the stable decomposition for what was designed
 and checked in. They are not all accepted at the same proof rung. The correct
 next order is:
 
-1. correct live worker and source-delivery acceptance in #9289 and #9290;
-2. ship OFR-UI-01 as a fixture-backed, read-only Comet workbench slice while
-   live launch remains unavailable;
-3. admit live preflight, launch, cancellation, cleanup, and source delivery
+1. implement Omega issues #199 through #201 as the Coldcard entropy-only
+   traversal, editable prompt, live dashboard, and prompt-comparison slice;
+2. implement Omega issue #202 as the source-aware 15-project entropy campaign;
+3. correct live worker and source-delivery acceptance in #9289 and #9290;
+4. expand into OFR-UI-01 through OFR-UI-05 only after the simpler entropy
+   interaction is usable;
+5. admit live preflight, launch, cancellation, cleanup, and source delivery
    only from newly accepted receipts;
-4. run real controlled campaigns with independent verification, fixed and
-   clean controls, and untouched holdouts;
-5. complete admitted artifact, generator-throughput, historical-replay, and
-   evidence-graph receipts; and
-6. add OFR-UI-02 through OFR-UI-05 without weakening the evidence or
-   publication boundaries.
+6. run real controlled forensic campaigns with independent verification,
+   fixed and clean controls, and untouched holdouts; and
+7. complete admitted artifact, generator-throughput, historical-replay, and
+   evidence-graph receipts.
 
 The table below is a scope ledger, not a completion ledger. Current code and
 tests own implemented truth; issues #9289, #9290, and #9300 own the open
@@ -1484,12 +1518,16 @@ current Effect, Node, package-manager, and runtime boundaries.
 
 ## 12. Decisions this roadmap makes
 
-- Start in Omega with an interactive, configurable Loupe-style lab.
-- Present the first fixture-backed case reader in Omega's simplified Comet
-  shell; keep Omega as the sole authority and keep live controls unavailable
-  until #9289 and #9290 have accepted receipts.
-- Run every initial forensic workload on one disposable, admitted OpenAgents
-  Cloud GCE VM through the native managed-sandbox broker, with no fallback.
+- Start with the smaller entropy-only repository traversal in Omega issues
+  #199 through #202: Coldcard first, an editable visible prompt, live file
+  progress, immutable reruns, and then the source-aware 15-project campaign.
+- Use Omega's existing read-only repository, task, and agent authority for that
+  exploratory entropy slice. Its outputs remain observations or hypotheses.
+- Expand later into the fixture-backed evidence reader and configurable
+  Loupe-style lab; keep Omega as the sole authority and keep live forensic
+  controls unavailable until #9289 and #9290 have accepted receipts.
+- Run every admitted live forensic workload on one disposable OpenAgents Cloud
+  GCE VM through the native managed-sandbox broker, with no fallback.
 - Treat Box semantics as design input and its API as optional compatibility,
   never as Omega's worker authority.
 - Make dependency completeness and honest incomplete states the first gate.

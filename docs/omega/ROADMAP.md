@@ -3,7 +3,7 @@
 - Class: owner-accepted work-packet ledger
 - Date: 2026-07-23
 - Revised: 2026-08-02
-- Revision: 6
+- Revision: 7
 - Status: active initial roadmap
 - Product: Omega, the Zed-based OpenAgents Desktop application
 - Client repository: `OpenAgentsInc/omega`
@@ -22,7 +22,8 @@ The implementation order is:
 1. Build the identity-first Omega onboarding journey.
 2. Release a fully branded Omega bootstrap candidate.
 3. Port the current OpenAgents Desktop product.
-4. Prove the Comet-shaped workbench with a fixture-backed forensic case reader.
+4. Prove the Comet-shaped workbench with an entropy-only Coldcard repository
+   scan, editable prompt, live file progress, and prompt comparison.
 5. Add selected Buzz workroom and Nostr capabilities.
 6. Make Omega the primary desktop application.
 7. Retire the Electron application after a safe migration window.
@@ -125,6 +126,8 @@ The old authority path must stop after that cutover.
 11. Comet can own presentation grammar, but Omega owns application authority.
 12. A model output, panel vote, or social post never advances an evidence rung.
 13. Publication remains a separate, default-blocked authority transition.
+14. An entropy scan emits source observations or hypotheses, not a product
+    grade or verified vulnerability.
 
 ## 6. Phase 0: release `v0.2.0-rc1`
 
@@ -620,10 +623,55 @@ The parity gate requires:
 - security and privacy review
 - independent assurance
 
-### 7.11 Packet OMEGA-OA-11: simplified forensic bench
+### 7.11 Packet OMEGA-OA-11: entropy-first Comet dashboard
 
-Use the Coldcard fixture as the first evidence-rich workbench mounted in the
-Comet-shaped Omega shell. This packet is a presentation and interaction packet.
+Build the smaller owner-directed entropy tool before the full forensic bench.
+The user opens a repository task, edits one visible entropy prompt, runs it,
+watches Omega traverse files, inspects entropy candidates, and compares the
+result with a later prompt revision.
+
+The implementation list is:
+
+1. [OFR-ENT-01 / Omega #199](https://github.com/OpenAgentsInc/omega/issues/199)
+   — one read-only pinned repository traversal, starting with Coldcard;
+2. [OFR-ENT-02 / Omega #200](https://github.com/OpenAgentsInc/omega/issues/200)
+   — visible editable prompt, immutable run binding, and prompt lineage;
+3. [OFR-ENT-03 / Omega #201](https://github.com/OpenAgentsInc/omega/issues/201)
+   — live file queue, selected candidate, failure states, cancellation,
+   restart restore, and prompt A/B comparison; and
+4. [OFR-ENT-04 / Omega #202](https://github.com/OpenAgentsInc/omega/issues/202)
+   — the source-aware 15-project entropy campaign.
+
+Preserve the normal project sidebar, task tabs, history, and composer. Use one
+workbench region with:
+
+- repository, revision, prompt digest, model route, run state, and progress;
+- the editable prompt and Run action;
+- a stable virtualized file list with queued, reading, analyzed, candidate,
+  skipped, failed, and cancelled states;
+- selected candidate details with source refs, suspected entropy mechanism,
+  secret consumer, missing evidence, and next check; and
+- prompt A/B gained, lost, changed, and unchanged candidates.
+
+Use Omega's existing project, worktree, task, agent, and source-navigation
+authorities. The run is read-only. It does not create a new shell, cloud route,
+write permission, report destination, or publication action. An unavailable
+dependency, closed source, unsupported input, request error, tool mismatch, or
+provider failure remains a visible limitation rather than a clean result.
+
+Coldcard is the first complete vertical slice. The 15-project campaign begins
+only after Coldcard traversal, immutable prompt reruns, cancellation, restore,
+and result inspection pass. Every project row binds a public repository and
+pinned revision where available; unavailable source receives no product grade.
+
+Acceptance is owned by Omega issues #199 through #202 and the
+[entropy-first roadmap](../loupe/2026-08-02-entropy-first-comet-dashboard-roadmap.md).
+
+### 7.12 Packet OMEGA-OA-12: broader forensic bench
+
+After the entropy-first dashboard is usable, use the Coldcard evidence fixture
+to expand into the broader forensic workbench. This packet is a presentation
+and interaction packet.
 It consumes existing forensic projections and emits existing Omega intents. It
 must not create a second target, run, claim, evidence, review, or publication
 authority.
@@ -1050,9 +1098,9 @@ Do not parallelize two changes to one authority contract.
 
 The original queue below records the accepted dependency order. The 2026-08-02
 owner reconciliation sets the next Comet-workbench sequence after the existing
-agent shell: claim one bounded Omega packet for OFR-UI-01, land the read-only
-fixture reader, close the live OpenAgents acceptance gaps, then admit OFR-UI-02
-through OFR-UI-05 as their dependencies become real. Documentation does not
+agent shell: implement Omega #199 through #201 as the Coldcard entropy vertical
+slice, then #202 as the 15-project campaign. Expand into the broader OFR-UI
+bench only after the entropy interaction is usable. Documentation does not
 self-claim Omega code paths.
 
 The full dependency queue is:
@@ -1069,10 +1117,12 @@ The full dependency queue is:
 10. OMEGA-OID-09: prove the packaged identity-first journey.
 11. OMEGA-RC1-01 through OMEGA-RC1-07: complete the bootstrap release.
 12. OMEGA-OA-01 through OMEGA-OA-10: close Desktop parity.
-13. OMEGA-OA-11 / OFR-UI-01 through OFR-UI-05: prove the simplified forensic
-    workbench without creating a second authority.
-14. OMEGA-BZ-00 through OMEGA-BZ-09: add selected Buzz outcomes.
-15. Complete migration, release, cutover, and retirement.
+13. OMEGA-OA-11 / OFR-ENT-01 through OFR-ENT-04: ship the entropy-only
+    repository traversal, prompt, dashboard, and 15-project comparison.
+14. OMEGA-OA-12 / OFR-UI-01 through OFR-UI-05: expand into the broader
+    forensic bench without creating a second authority.
+15. OMEGA-BZ-00 through OMEGA-BZ-09: add selected Buzz outcomes.
+16. Complete migration, release, cutover, and retirement.
 
 Only the current ready packet can mutate its owned paths.
 A failed packet stays open with typed evidence.

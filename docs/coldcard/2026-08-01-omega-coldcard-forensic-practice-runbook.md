@@ -327,11 +327,13 @@ or safety gate.
 
 ## 8. How to inspect the result in the Comet-shaped Omega bench
 
-The first short-term slice is a read-only case reader mounted in the normal
-Omega task shell. Its sticky header must say whether the case is fixture or
-live, and it must keep target, commit, benchmark arm, completeness, privacy,
-proof rung, run state, and cleanup truth visible. Read the workbench in this
-order:
+The owner-directed entropy dashboard precedes this full practice-run reader and
+is specified in the
+[entropy-first Comet roadmap](../loupe/2026-08-02-entropy-first-comet-dashboard-roadmap.md).
+For the broader practice-run surface, mount a read-only case reader in the
+normal Omega task shell. Its sticky header must say whether the case is fixture
+or live, and it must keep target, commit, benchmark arm, completeness, privacy,
+proof rung, run state, and cleanup truth visible. Read it in this order:
 
 1. **Target and managed worker:** confirm exact repository, commit, coverage,
    GCE placement, image/profile digests, budget, and network posture.

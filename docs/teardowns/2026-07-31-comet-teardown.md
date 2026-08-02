@@ -993,11 +993,35 @@ remaining estimate for a full IDE cutover. The difficult work identified in
 accessibility, durable window/workbench restore, and long-tail surfaces—still
 sits ahead. [implementation] [inferred]
 
-##### Forensics as the first evidence-rich workbench slice
+##### Entropy analysis as the first workbench slice
+
+The 2026-08-02 owner direction narrows the first workbench proof again. Start
+with a live entropy-only traversal of the pinned Coldcard repository, not the
+full evidence console. The user edits one visible prompt, starts the run,
+watches the file queue advance, inspects source-grounded entropy candidates,
+and reruns the same source with a changed prompt. Omega issues
+[#199](https://github.com/OpenAgentsInc/omega/issues/199) through
+[#202](https://github.com/OpenAgentsInc/omega/issues/202) own the traversal,
+prompt, dashboard, and 15-project campaign. [owner-direction] [inferred]
+
+This slice preserves the normal project list, task tabs, history, and composer.
+Its workbench needs only a repository/run header, visible prompt editor, stable
+file-status list, selected candidate pane, summary counts, Cancel, and prompt
+A/B changes. It should reuse Omega's existing project, task, agent, and source-
+navigation authorities. It should not start with forensic tabs, publication,
+model voting, product grades, or a new execution authority. [inferred]
+
+The 15-project view is a later campaign over the same single-repository run.
+Every row must declare its repository, pinned revision, and source eligibility.
+Closed or incomplete source stays unavailable; it does not receive a clean or
+unsafe color. [inferred]
+
+##### Broader forensics after entropy
 
 The 2026-08-02 Coldcard and Omega-thread audit identifies a smaller, higher-
 value phase-4 proof than mounting a general editor, terminal, and Git surface
-all at once: put one read-only forensic case inside the Comet-shaped workbench.
+all at once: after the entropy slice, put one read-only forensic case inside the
+Comet-shaped workbench.
 The Coldcard fixture already exercises dense, linked evidence, typed
 limitations, disputes, model-panel outcomes, reconciliation, and a publication
 boundary. That makes it a strong test of whether the shell can carry real Omega
@@ -1026,10 +1050,12 @@ shell replicas:
 1. **Complete project semantics.** Add explicit multi-project switching,
    worktree selection, remote/device roots, and remove/rename flows while
    retaining Omega's project and worktree authorities.
-2. **Mount one real workbench slice.** Start with the read-only Coldcard
-   forensic case reader, then add editor/source navigation, terminal/task, and
-   Git diff with correct focus, actions, drag/drop, and restore. This is the
-   next decisive proof that the rebuild can carry more than chat.
+2. **Mount one real workbench slice.** Start with the Coldcard entropy traversal,
+   editable prompt, live file queue, and prompt comparison. Expand next into
+   the read-only forensic case reader, then add editor/source navigation,
+   terminal/task, and Git diff with correct focus, actions, drag/drop, and
+   restore. This is the next decisive proof that the rebuild can carry more
+   than chat.
 3. **Finish conversation interaction parity.** Add staged attachments,
    question-wizard takeover, the complete Send/Steer/Stop transition,
    optimistic failure return-to-draft, streaming stick behavior, and the
@@ -1045,11 +1071,11 @@ shell replicas:
    Comet mode as an additive rollback path until the contract matrix is green;
    retire the old shell only after that evidence exists.
 
-The immediate recommendation is therefore phase 4's fixture-backed forensic
-reader, in parallel with closing project semantics, followed by editor,
-terminal, and diff integration. More shell polish has lower architectural value
-until real Omega authority survives inside the Comet-first composition.
-[inferred]
+The immediate recommendation is therefore the entropy-only Coldcard dashboard,
+in parallel with closing project semantics. Follow it with the broader forensic
+reader, then editor, terminal, and diff integration. More shell polish has lower
+architectural value until real Omega authority survives inside the Comet-first
+composition. [inferred]
 
 ### 7.5 Relationship to other teardowns
 

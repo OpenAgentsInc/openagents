@@ -21,6 +21,17 @@ convention. Do not vendor its code.
 
 ## Current OpenAgents implementation
 
+The short-term product priority is the smaller
+[entropy-first Comet repository dashboard](2026-08-02-entropy-first-comet-dashboard-roadmap.md):
+traverse Coldcard read-only, let the user edit the entropy prompt, show live
+file-by-file analysis, preserve immutable reruns, compare prompt A with prompt
+B, and then apply the same source-aware method across the 15-project catalog.
+Omega issues [#199](https://github.com/OpenAgentsInc/omega/issues/199),
+[#200](https://github.com/OpenAgentsInc/omega/issues/200),
+[#201](https://github.com/OpenAgentsInc/omega/issues/201), and
+[#202](https://github.com/OpenAgentsInc/omega/issues/202) own that list. The
+broader forensic bench follows it; it is not a prerequisite.
+
 The OFR-001 through OFR-018 program that followed this study has substantial
 checked-in contracts, fixtures, adapters, deterministic tests, and Omega
 projections. It is not accepted as a complete live program. OpenAgents issue

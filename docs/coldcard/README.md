@@ -47,6 +47,8 @@ Until those dependencies close with accepted receipts:
 
 The broader rationale and current product sequence live in the
 [`docs/loupe` entry point](../loupe/README.md), the
+[entropy-first Comet dashboard roadmap](../loupe/2026-08-02-entropy-first-comet-dashboard-roadmap.md),
+the
 [forensic roadmap](../loupe/2026-08-01-omega-forensic-analysis-roadmap.md), and
 the
 [implementation/operator guide](../loupe/2026-08-01-omega-forensics-implementation-and-operator-guide.md).

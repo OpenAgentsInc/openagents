@@ -364,8 +364,14 @@ publication.
 
 ## Short-term Comet workbench acceptance
 
-The first useful presentation should be a read-only case reader inside the
-simplified Comet-shaped Omega shell. It should use Omega projections and
+The owner-directed
+[entropy-first dashboard](../loupe/2026-08-02-entropy-first-comet-dashboard-roadmap.md)
+precedes this broader evidence interface. It first proves editable prompts,
+repository traversal, live file progress, source observations, and immutable
+rerun comparison without a model panel or publication workflow.
+
+After that slice, the broader presentation should be a read-only case reader
+inside the simplified Comet-shaped Omega shell. It should use Omega projections and
 intents; it must not create a second forensic authority or copy evidence into a
 presentation-owned store. The first vertical slice should contain:
 
