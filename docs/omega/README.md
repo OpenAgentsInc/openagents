@@ -8,6 +8,11 @@
 Omega is the Zed-based OpenAgents Desktop application.
 It is the primary desktop destination.
 
+Use the [Omega and OpenAgents glossary](./GLOSSARY.md) for canonical names
+across current contracts and target product architecture. It marks each term as
+current, target, boundary, interoperability, or avoided so planned models are
+not mistaken for shipped behavior.
+
 Read these documents in this order:
 
 1. Read the [Omega roadmap](./ROADMAP.md).
