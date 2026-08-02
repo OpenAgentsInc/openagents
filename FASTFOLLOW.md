@@ -1,14 +1,14 @@
 ---
 fast_follow_spec_format_version: "0.1"
 fast_follow_spec_id: "openagents.fast_follow"
-fast_follow_revision: 7
+fast_follow_revision: 8
 title: "OpenAgents Fast Follow"
 artifact_type: "learning_intent"
 lifecycle_state: "admitted"
 author: "OpenAgents"
 linked_target_repo: "OpenAgentsInc/openagents"
 created_at: "2026-07-16T00:00:00Z"
-updated_at: "2026-07-26T00:00:00Z"
+updated_at: "2026-08-02T00:00:00Z"
 ---
 
 # OpenAgents Fast Follow
@@ -1336,6 +1336,69 @@ sequence. The ordered Amp `initial_program` stays unchanged.
         "kind": "architecture",
         "summary": "Study acceptance-gated settlement, transaction-bound outbox work, generation-bound leases, and integer ledgers while keeping OpenAgents authority and execution receipts canonical.",
         "stance": "adapt_with_stronger_boundaries"
+      }
+    ]
+  },
+  {
+    "id": "linear.linear_agents",
+    "title": "Linear Agents",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://linear.app",
+    "tracking_policy": "release_or_commit",
+    "teardown_refs": [
+      "docs/teardowns/linear-agents.md",
+      "docs/forge/linear.md"
+    ],
+    "lessons": [
+      {
+        "id": "human_owner_agent_delegate",
+        "kind": "product_ux",
+        "summary": "Keep the accountable human assignee structurally distinct from a bounded agent delegate and its visible sessions, plans, activities, results, and human disposition.",
+        "stance": "adapt"
+      },
+      {
+        "id": "shared_context_session_and_review",
+        "kind": "architecture",
+        "summary": "Attach agent execution to shared product context and return code, evidence, questions, and results to integrated review while Git and OpenAgents retain their own authority.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "loops_guidance_and_cost_governance",
+        "kind": "security",
+        "summary": "Adapt reusable Skills, hierarchical Guidance, event or schedule Loops, and triage suggestions only with versioned policy, confidence gates, subject-bound tools, exact budgets, circuit breakers, and structural loop prevention.",
+        "stance": "adapt_with_stronger_boundaries"
+      }
+    ]
+  },
+  {
+    "id": "openagents.linear_nostr_synthesis",
+    "title": "Linear Agents on OpenAgents",
+    "role": "local_synthesis",
+    "access": "public_source",
+    "canonical_ref": "repo://docs/teardowns/2026-08-02-linear-agents-openagents-nostr-adaptation.md",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/teardowns/2026-08-02-linear-agents-openagents-nostr-adaptation.md"
+    ],
+    "lessons": [
+      {
+        "id": "linear_openagents_nostr_authority_split",
+        "kind": "architecture",
+        "summary": "Make Linear the authority for Linear objects and human accountability, OpenAgents the authority for execution and admission, Git hosts the authority for Git state, and Nostr a signed portable collaboration projection rather than a replacement authority.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "linear_first_class_work_link",
+        "kind": "protocol",
+        "summary": "Bind every Linear installation, object, actor, agent session, workroom, run, Nostr thread, repository, writeback, and receipt through stable owner-scoped refs, source versions, and one named authority per field.",
+        "stance": "study"
+      },
+      {
+        "id": "delegated_issue_first_proof",
+        "kind": "evaluation",
+        "summary": "Prove one human-owned Linear issue delegated to one OpenAgents agent end to end, including verified ingress, durable run, safe activity, Nostr projection, host verification, human disposition, replay, outage, and revocation behavior before broad autonomy.",
+        "stance": "study"
       }
     ]
   },
