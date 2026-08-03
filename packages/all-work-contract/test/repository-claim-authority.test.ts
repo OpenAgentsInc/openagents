@@ -306,6 +306,85 @@ describe("native Repository Work Claim authority", () => {
     rmSync(directory, { recursive: true, force: true });
   });
 
+  it("fences a revoked grant and a non-holder principal", async () => {
+    const journey = Effect.gen(function* () {
+      const authority = yield* RepositoryClaimAuthority;
+      yield* authority.execute(packet(0, "grant", "work:grant", ["packages/grant"]));
+      yield* authority.execute(
+        request(1, "grant-claim", "2026-08-03T08:01:00Z", {
+          command: "claim_packet",
+          packetRef: "work-packet:grant",
+          claimRef: "repository-claim:grant",
+        }),
+      );
+      // A principal whose write grant was revoked no longer presents the required
+      // capability, so the command is refused before it reaches the ledger.
+      const revoked = yield* attempt(
+        authority.execute({
+          ...request(2, "grant-revoked", "2026-08-03T08:02:00Z", {
+            command: "heartbeat",
+            claimRef: "repository-claim:grant",
+            expectedGeneration: 1,
+            evidenceRefs: ["evidence:grant:revoked"],
+          }),
+          capabilityRef: "capability:repository-claim:revoked",
+        }),
+      );
+      // Holding a valid grant is not holding the claim. Another principal cannot
+      // heartbeat or release work it does not hold except through audited takeover.
+      const foreignBeat = yield* attempt(
+        authority.execute(
+          request(
+            2,
+            "grant-foreign-beat",
+            "2026-08-03T08:03:00Z",
+            {
+              command: "heartbeat",
+              claimRef: "repository-claim:grant",
+              expectedGeneration: 1,
+              evidenceRefs: ["evidence:grant:foreign"],
+            },
+            "principal:omega:intruder",
+          ),
+        ),
+      );
+      const foreignRelease = yield* attempt(
+        authority.execute(
+          request(
+            2,
+            "grant-foreign-release",
+            "2026-08-03T08:04:00Z",
+            {
+              command: "release",
+              claimRef: "repository-claim:grant",
+              expectedGeneration: 1,
+              evidenceRefs: ["evidence:grant:foreign-release"],
+            },
+            "principal:omega:intruder",
+          ),
+        ),
+      );
+      const ledger = yield* authority.read({ repositoryRef: "repository:openagents" });
+      return { revoked, foreignBeat, foreignRelease, ledger };
+    }).pipe(Effect.provide(layer()));
+    const { revoked, foreignBeat, foreignRelease, ledger } = await Effect.runPromise(journey);
+
+    expect(revoked).toMatchObject({
+      ok: false,
+      error: { reason: "forbidden", detail: "capability" },
+    });
+    expect(foreignBeat).toMatchObject({ ok: false, error: { reason: "forbidden" } });
+    expect(foreignRelease).toMatchObject({ ok: false, error: { reason: "forbidden" } });
+    // None of the refused commands moved the ledger or the claim.
+    expect(ledger.ledger.claims[0]).toMatchObject({
+      state: "claimed",
+      holderRef: owner,
+      generation: 1,
+      evidenceRefs: [],
+    });
+    expect(ledger.ledger.audit.map((entry) => entry.kind)).toEqual(["packet_created", "claimed"]);
+  });
+
   it("admits exactly one generation when two clients race for the same packet", async () => {
     const journey = Effect.gen(function* () {
       const authority = yield* RepositoryClaimAuthority;
