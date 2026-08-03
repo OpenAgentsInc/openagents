@@ -152,6 +152,14 @@ export const EvidenceDerivationReportSchema = S.Struct({
   derivationRecords: S.Array(EdgeDerivationRecordSchema).check(S.isMaxLength(1_000_000)),
   graph: ForensicEvidenceGraphSchema,
   graphDigest: Sha256Digest,
+  /**
+   * The digest of what the graph actually says, with none of the labels that
+   * identify the run that produced it. Two configurations that reach the same
+   * nodes, edges, components, and episodes share this digest even though their
+   * graph digests differ, which is what makes a sensitivity receipt able to
+   * distinguish a rule that moved the answer from one that only moved a label.
+   */
+  graphStructureDigest: Sha256Digest,
   inputDigest: Sha256Digest,
   quantityRecords: S.Array(QuantityDerivationRecordSchema).check(
     S.isMinLength(7),
@@ -169,6 +177,17 @@ export const EvidenceDerivationReportSchema = S.Struct({
       S.makeFilter((report) => report.graphDigest === forensicSha256Digest(report.graph), {
         message: "evidence graph digest must bind the exact derived graph",
       }),
+      S.makeFilter(
+        (report) =>
+          report.graphStructureDigest ===
+          forensicSha256Digest({
+            componentRefs: report.graph.componentRefs,
+            edges: report.graph.edges,
+            episodeRefs: report.graph.episodeRefs,
+            nodes: report.graph.nodes,
+          }),
+        { message: "graph structure digest must bind the derived nodes, edges, and groupings" },
+      ),
       S.makeFilter(
         (report) =>
           report.derivationRecords.length === report.graph.edges.length &&
@@ -640,6 +659,12 @@ export const deriveEvidenceGraph = (
     derivationRecords,
     graph,
     graphDigest: forensicSha256Digest(graph),
+    graphStructureDigest: forensicSha256Digest({
+      componentRefs: graph.componentRefs,
+      edges: graph.edges,
+      episodeRefs: graph.episodeRefs,
+      nodes: graph.nodes,
+    }),
     inputDigest,
     quantityRecords: [
       quantityRecord(
@@ -699,10 +724,32 @@ export const EvidenceReconciliationItemSchema = S.Struct({
   metricRef: ForensicRef,
   publishedLowerBound: S.optionalKey(S.String),
   publishedUpperBound: S.optionalKey(S.String),
+  /**
+   * The digest of the immutable bytes the published figure was read from. A
+   * reconciliation is only worth running against a figure somebody else
+   * published and we can point at; without this the "published" column is just
+   * a number the comparison's own author chose.
+   */
+  publishedSourceDigest: Sha256Digest,
   publishedSourceRef: ForensicRef,
   publishedValue: S.optionalKey(S.String),
   status: S.Literals(["MATCH", "DRIFT", "UNAVAILABLE"]),
-});
+}).pipe(
+  S.check(
+    S.makeFilter(
+      (item) =>
+        item.status === "UNAVAILABLE" ||
+        (item.derivedValue !== undefined &&
+          item.publishedValue !== undefined &&
+          item.publishedLowerBound !== undefined &&
+          item.publishedUpperBound !== undefined),
+      {
+        message:
+          "only UNAVAILABLE may omit a derived value, a published value, or the published precision bounds",
+      },
+    ),
+  ),
+);
 export type EvidenceReconciliationItem = typeof EvidenceReconciliationItemSchema.Type;
 
 export const EvidenceReconciliationSchema = S.Struct({
@@ -739,6 +786,7 @@ export const reconcileEvidenceFigures = (input: {
   readonly published: ReadonlyArray<{
     readonly metricRef: string;
     readonly lowerBound?: string;
+    readonly sourceDigest: string;
     readonly upperBound?: string;
     readonly sourceRef: string;
     readonly value?: string;
@@ -771,6 +819,7 @@ export const reconcileEvidenceFigures = (input: {
             : "DRIFT";
       return {
         metricRef: published.metricRef,
+        publishedSourceDigest: published.sourceDigest,
         publishedSourceRef: published.sourceRef,
         status,
         ...(derivedValue === undefined ? {} : { derivedValue }),
@@ -873,14 +922,40 @@ export const claimEvidenceIsIsolatedToRung = (
 
 export const EvidenceGraphSensitivityReceiptSchema = S.Struct({
   baselineGraphDigest: Sha256Digest,
+  baselineStructureDigest: Sha256Digest,
   boundaryRefs: S.Array(ForensicRef).check(S.isMinLength(5), S.isMaxLength(64)),
   receiptRef: ForensicRef,
   variants: S.Array(
     S.Struct({
       configurationDigest: Sha256Digest,
       graphDigest: Sha256Digest,
+      structureDigest: Sha256Digest,
+      /**
+       * Whether moving this boundary moved the answer. Every variant changes
+       * the configuration digest by construction, so a receipt that only
+       * compared graph digests would report sensitivity to every rule,
+       * including the ones this evidence never exercises.
+       */
+      structureMoved: S.Boolean,
       variantRef: ForensicRef,
     }),
   ).check(S.isMinLength(1), S.isMaxLength(128)),
-});
+}).pipe(
+  S.check(
+    S.makeFilter(
+      (receipt) =>
+        receipt.variants.every(
+          (variant) =>
+            variant.structureMoved === (variant.structureDigest !== receipt.baselineStructureDigest),
+        ),
+      { message: "a variant moved the graph exactly when its structure digest differs" },
+    ),
+    S.makeFilter(
+      (receipt) =>
+        new Set(receipt.variants.map((variant) => variant.configurationDigest)).size ===
+        receipt.variants.length,
+      { message: "each sensitivity variant must perturb a distinct configuration" },
+    ),
+  ),
+);
 export type EvidenceGraphSensitivityReceipt = typeof EvidenceGraphSensitivityReceiptSchema.Type;

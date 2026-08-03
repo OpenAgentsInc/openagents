@@ -65,10 +65,30 @@ The pack contains:
   RPC, no node credential in its output; and
 - `historical-import.v1.json`: Episode 264 Arm A as
   `completed_incomplete` and Arm B as an unverified `source_observed` hit.
-- `evidence-derivation-fixture.v1.json`: synthetic victim-report, published-
-  address, program-fingerprint, transaction-flow, change, dust, traversal,
-  shared-input, and temporal-gap inputs for the OFR-017 evidence graph. It is
-  development data only and contains no private keys or live-wallet oracle.
+- `evidence-derivation-fixture.v1.json`: a constructed boundary fixture for the
+  OFR-017 evidence graph — dust exactly at the threshold, an explicit change
+  output, a victim-confirmed report, and a traversal that reaches its bound.
+  Retained deliberately, because real evidence does not supply boundary cases on
+  demand. It is boundary construction, never measurement, and contains no
+  private keys or live-wallet oracle.
+- `evidence-derivation-incident-wave6.v1.json`: the **real** Coldcard wave-6
+  incident, blocks 960,359 and 960,367, extracted read-only from our own
+  archival node. Seeds are thirteen third-party-published addresses at
+  `published_unconfirmed` and thirteen fingerprint candidates carried from the
+  frozen OFR-016 bundles with their content and revision digests. There are no
+  victim reports in it: nobody has reported to us, and a published address is
+  not a victim report. Everything else — spending transactions, destinations,
+  values, components, episodes — is derived from chain records.
+- `extract-incident-transactions.py`: the read-only extractor that produced the
+  incident fixture. It keeps a transaction because the chain says one of its
+  prevouts belongs to a known address, never because the transaction looked like
+  a sweep; and
+- `coldcard-published-figures.v1.json`: independently published figures
+  transcribed from the postmortem author's own dataset at a pinned commit and
+  file digest (`Kelbie/coldcard-rng-postmortem`, `src/data/chain.json`). Nothing
+  in it is vendored and nothing in it is ours; every reconciliation item must
+  name that digest, so the "published" column cannot become a number the
+  comparison's own author chose.
 
 ## Tree digest procedure
 

@@ -1,0 +1,65 @@
+{
+  "figures": [
+    {
+      "lowerBound": "13",
+      "metricRef": "metric.coldcard.wave-6.sweep-transaction-count",
+      "note": "waves[wave=6].sweepTxCount",
+      "sourceDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7",
+      "sourceRef": "source.coldcard-postmortem.chain-json.wave-6",
+      "upperBound": "13",
+      "value": "13"
+    },
+    {
+      "lowerBound": "13",
+      "metricRef": "metric.coldcard.wave-6.spent-utxo-count",
+      "note": "waves[wave=6].utxoCount",
+      "sourceDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7",
+      "sourceRef": "source.coldcard-postmortem.chain-json.wave-6",
+      "upperBound": "13",
+      "value": "13"
+    },
+    {
+      "lowerBound": "13",
+      "metricRef": "metric.coldcard.wave-6.published-address-count",
+      "note": "waves[wave=6].victimAddressCount, an address count and never a victim count",
+      "sourceDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7",
+      "sourceRef": "source.coldcard-postmortem.chain-json.wave-6",
+      "upperBound": "13",
+      "value": "13"
+    },
+    {
+      "lowerBound": "32629041",
+      "metricRef": "metric.coldcard.wave-6.swept-value-sats",
+      "note": "waves[wave=6].sweptSats, the destination-side total after fees",
+      "sourceDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7",
+      "sourceRef": "source.coldcard-postmortem.chain-json.wave-6",
+      "upperBound": "32629041",
+      "value": "32629041"
+    },
+    {
+      "lowerBound": "115964784686",
+      "metricRef": "metric.coldcard.incident.total-swept-sats",
+      "note": "summary.totalSweptSats across blocks 960183-960523, far outside our frozen range",
+      "sourceDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7",
+      "sourceRef": "source.coldcard-postmortem.chain-json.summary",
+      "upperBound": "115964784686",
+      "value": "115964784686"
+    },
+    {
+      "metricRef": "metric.coldcard.incident.victim-count",
+      "note": "the published dataset counts addresses, transactions, and UTXOs; it publishes no victim count, and neither do we",
+      "sourceDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7",
+      "sourceRef": "source.coldcard-postmortem.chain-json.summary"
+    }
+  ],
+  "schema": "openagents.coldcard_published_figures.v1",
+  "source": {
+    "capturedFrom": "https://mempool.space/api",
+    "commit": "f073b134b14041f126144362e6a5e4ec44626264",
+    "fileDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7",
+    "generatedAt": "2026-08-01T17:01:58.016Z",
+    "path": "src/data/chain.json",
+    "repository": "Kelbie/coldcard-rng-postmortem",
+    "vendored": false
+  }
+}

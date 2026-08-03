@@ -1,0 +1,399 @@
+{
+  "chainTransactions": [
+    {
+      "blockHeight": 960367,
+      "inputAddressRefs": [
+        "address.bc1qmn4kefwgkfyt2fgkzwufv3xjsjufepzs88asj2"
+      ],
+      "observedAt": "2026-07-31T08:22:21.000Z",
+      "outputs": [
+        {
+          "addressRef": "address.bc1qn7vtzkcc2m2pm60q096ex26j5v30dytrhfj4gy",
+          "classification": "destination",
+          "outputRef": "output.04ebdc774df620036326142769e7ab79d3af33fc52537daf88daeece225e50ed.0",
+          "valueSats": "1714450"
+        }
+      ],
+      "rawTransactionDigest": "sha256:ce8c41b822da1bf95822c1f67567544692995f76d416e3b9091f699facb095aa",
+      "transactionRef": "transaction.04ebdc774df620036326142769e7ab79d3af33fc52537daf88daeece225e50ed"
+    },
+    {
+      "blockHeight": 960367,
+      "inputAddressRefs": [
+        "address.bc1q0urynatx67crmfeyjandyhcxaprgjh5f4t6ngq"
+      ],
+      "observedAt": "2026-07-31T08:22:21.000Z",
+      "outputs": [
+        {
+          "addressRef": "address.bc1qk7wx4dcng7u0e4rwv9dmcvuea3ywpc5y4tp7da",
+          "classification": "destination",
+          "outputRef": "output.10f1fefdfa767d3bf191a0f67cd8374171b3f45f532348d1ac0b5f1247145931.0",
+          "valueSats": "938892"
+        }
+      ],
+      "rawTransactionDigest": "sha256:d4d92bfae7a94d9e9e9e77ac991fed03ebe393b38f372cf5e91c8a83ac399585",
+      "transactionRef": "transaction.10f1fefdfa767d3bf191a0f67cd8374171b3f45f532348d1ac0b5f1247145931"
+    },
+    {
+      "blockHeight": 960359,
+      "inputAddressRefs": [
+        "address.bc1qdl43xzvchevfhjurgxd765xefw38ht2sg0msd0"
+      ],
+      "observedAt": "2026-07-31T06:38:28.000Z",
+      "outputs": [
+        {
+          "addressRef": "address.bc1qt388s2eg2k2298pmtwcda86khlm25r2ayyjzr8",
+          "classification": "destination",
+          "outputRef": "output.449d23b678f2ee30d5e027387e8b4d9bb766fb503ea19b5cc62a368b15058e50.0",
+          "valueSats": "4999780"
+        }
+      ],
+      "rawTransactionDigest": "sha256:9f39d92ddbc016ddb091f6409c6926c332c96e01d35a70544e65186c67e78a0f",
+      "transactionRef": "transaction.449d23b678f2ee30d5e027387e8b4d9bb766fb503ea19b5cc62a368b15058e50"
+    },
+    {
+      "blockHeight": 960359,
+      "inputAddressRefs": [
+        "address.bc1qvksv709xr5t5rl53t62rjzpdmfes324gkqdvvp"
+      ],
+      "observedAt": "2026-07-31T06:38:28.000Z",
+      "outputs": [
+        {
+          "addressRef": "address.bc1q8g94gg3kdy0epkrhgy9sxjpfwpcf2m3mr7wscz",
+          "classification": "destination",
+          "outputRef": "output.44e622cb32d9e65a99b727f87744ac6d0a5d0c1f4cfdd8af399771502e7ad3f3.0",
+          "valueSats": "5182290"
+        }
+      ],
+      "rawTransactionDigest": "sha256:d4fac91f270e8eed18138c64047741547848eb134cbc82c6b5ecd97f9cfcfcf5",
+      "transactionRef": "transaction.44e622cb32d9e65a99b727f87744ac6d0a5d0c1f4cfdd8af399771502e7ad3f3"
+    },
+    {
+      "blockHeight": 960359,
+      "inputAddressRefs": [
+        "address.bc1qw6khxqdjjyczs9r7jcgyws3xsn2grrx0m9sue9"
+      ],
+      "observedAt": "2026-07-31T06:38:28.000Z",
+      "outputs": [
+        {
+          "addressRef": "address.bc1q53dfk923tp8vjfzsu9ktufsmpf79xwl9pxn9rn",
+          "classification": "destination",
+          "outputRef": "output.497a6d6f0d1485cb4c12bc03112d9e3572ccc47cbb8b5163482cf927369ed14f.0",
+          "valueSats": "999780"
+        }
+      ],
+      "rawTransactionDigest": "sha256:4bfce7df722a65ef30c2ab437cdd0ad33c94a88d454a3fa16dcbebfc790d1f5d",
+      "transactionRef": "transaction.497a6d6f0d1485cb4c12bc03112d9e3572ccc47cbb8b5163482cf927369ed14f"
+    },
+    {
+      "blockHeight": 960367,
+      "inputAddressRefs": [
+        "address.bc1qjt2z2q3h0pj3ztjhymgz8sqg0eyx263wgfe368"
+      ],
+      "observedAt": "2026-07-31T08:22:21.000Z",
+      "outputs": [
+        {
+          "addressRef": "address.bc1qnan6mss4s2nhsrdeauyrt5pke8fmszw6kuc8py",
+          "classification": "destination",
+          "outputRef": "output.528e31f9279d3c938d7caf36b8760628d394c334e85371c843b213387c0ed08d.0",
+          "valueSats": "1067885"
+        }
+      ],
+      "rawTransactionDigest": "sha256:e91342b3dd20c9d17beaadb578f7844eee0e448d56b813c622c19e2c675eb88d",
+      "transactionRef": "transaction.528e31f9279d3c938d7caf36b8760628d394c334e85371c843b213387c0ed08d"
+    },
+    {
+      "blockHeight": 960359,
+      "inputAddressRefs": [
+        "address.bc1qlth7zsk3q40z098gxydjmkym0xqxc4959majc2"
+      ],
+      "observedAt": "2026-07-31T06:38:28.000Z",
+      "outputs": [
+        {
+          "addressRef": "address.bc1qwl67v2zn95yy364pgxnw9r6jrhxpdskktuhq6c",
+          "classification": "destination",
+          "outputRef": "output.5f04988d0f7104aa0e93e12d6249c6edb284735924df7d45e6ecb1670af08823.0",
+          "valueSats": "999780"
+        }
+      ],
+      "rawTransactionDigest": "sha256:2efcdf3bbe855e3448fe12711162a9c81e589a79a84216d94a672fced94454d0",
+      "transactionRef": "transaction.5f04988d0f7104aa0e93e12d6249c6edb284735924df7d45e6ecb1670af08823"
+    },
+    {
+      "blockHeight": 960367,
+      "inputAddressRefs": [
+        "address.bc1qzcu8m0ykfn4ay6dk2axxshuthz720f2rhe7n27"
+      ],
+      "observedAt": "2026-07-31T08:22:21.000Z",
+      "outputs": [
+        {
+          "addressRef": "address.bc1qrn94chxyf069em794qhxgryuu9rmwr3vc5jgnz",
+          "classification": "destination",
+          "outputRef": "output.5f2231199a86a3ebb07187a568ecdd0f57973aec71bf5a0c0da974f650bce17c.0",
+          "valueSats": "413806"
+        }
+      ],
+      "rawTransactionDigest": "sha256:082a31ab4c405617697fc40459c925dcbe3bda20ed01c712ce3cc91daff02161",
+      "transactionRef": "transaction.5f2231199a86a3ebb07187a568ecdd0f57973aec71bf5a0c0da974f650bce17c"
+    },
+    {
+      "blockHeight": 960359,
+      "inputAddressRefs": [
+        "address.bc1q7ljwvnnmy9jxxftzny8r2svtncyvu9rn62ktyk"
+      ],
+      "observedAt": "2026-07-31T06:38:28.000Z",
+      "outputs": [
+        {
+          "addressRef": "address.bc1qnu9pfldt7w405p258yvxqglrvlha463kdjn6qg",
+          "classification": "destination",
+          "outputRef": "output.6132c021c2bafa4e348d5b7bf946a671560580d21ef314f03c43f1102478e86e.0",
+          "valueSats": "4999780"
+        }
+      ],
+      "rawTransactionDigest": "sha256:e7cc1a3395707dafbef1e866aabb754ed1eeab87e11e2109fc7a10a81e6cf591",
+      "transactionRef": "transaction.6132c021c2bafa4e348d5b7bf946a671560580d21ef314f03c43f1102478e86e"
+    },
+    {
+      "blockHeight": 960359,
+      "inputAddressRefs": [
+        "address.bc1qaf8knh9x9hy77dh75jq5rvrgn2zgrntqhgyqf0"
+      ],
+      "observedAt": "2026-07-31T06:38:28.000Z",
+      "outputs": [
+        {
+          "addressRef": "address.bc1q9uktsu2ujvhz7k469mwk35u5wmqsunnyztmchy",
+          "classification": "destination",
+          "outputRef": "output.ab2f2870001025ecae3409dfb48ccfd6f903355cf63119c323d6b69153b33f51.0",
+          "valueSats": "4999780"
+        }
+      ],
+      "rawTransactionDigest": "sha256:b7ab2bfef1265c4a152e74d3e63454594ee08b08e7f75c8c8168b546b5cc5f73",
+      "transactionRef": "transaction.ab2f2870001025ecae3409dfb48ccfd6f903355cf63119c323d6b69153b33f51"
+    },
+    {
+      "blockHeight": 960367,
+      "inputAddressRefs": [
+        "address.bc1q7qm5ssw3eyfqmhhz4usvfgte8egpvwhp3gc72a"
+      ],
+      "observedAt": "2026-07-31T08:22:21.000Z",
+      "outputs": [
+        {
+          "addressRef": "address.bc1q8lz69a2zzkh9z6jrk2g600nec682nq7u80x7v6",
+          "classification": "destination",
+          "outputRef": "output.ac2bcaced5ea0cab2c30fbff5f96d90958cbe8453f5811af35fe42dce02958bb.0",
+          "valueSats": "441154"
+        }
+      ],
+      "rawTransactionDigest": "sha256:ac61385f756aa493d1dc3e6326111729988e33d99908a677697600ccc0ae549b",
+      "transactionRef": "transaction.ac2bcaced5ea0cab2c30fbff5f96d90958cbe8453f5811af35fe42dce02958bb"
+    },
+    {
+      "blockHeight": 960367,
+      "inputAddressRefs": [
+        "address.bc1qtvjqu4pahfls7p5fx76a8fwtqcjkz5tt9pl8nx"
+      ],
+      "observedAt": "2026-07-31T08:22:21.000Z",
+      "outputs": [
+        {
+          "addressRef": "address.bc1qnc3hygnhvxf5qdfvqm35rzvmm7shdsfan6lg4t",
+          "classification": "destination",
+          "outputRef": "output.d317749b5734a5d484e9d97f3df1067945a09ea52abcc3f3284a0c88bde9b848.0",
+          "valueSats": "871884"
+        }
+      ],
+      "rawTransactionDigest": "sha256:938c919224fe6c7cc2f75988294143b74966b16b8fcaddb95b1d5db25afcad11",
+      "transactionRef": "transaction.d317749b5734a5d484e9d97f3df1067945a09ea52abcc3f3284a0c88bde9b848"
+    },
+    {
+      "blockHeight": 960359,
+      "inputAddressRefs": [
+        "address.bc1qq5xyjhevvrfsw2dtghy2mjxtddtd5qegy9yref"
+      ],
+      "observedAt": "2026-07-31T06:38:28.000Z",
+      "outputs": [
+        {
+          "addressRef": "address.bc1qdk4md3wd8mp82wfyhlzv3qhlgv70vv8yvukj70",
+          "classification": "destination",
+          "outputRef": "output.ff746eae46cbc217cb3d07ae50ee7124538caa016ef154c78a6ddb602c38f910.0",
+          "valueSats": "4999780"
+        }
+      ],
+      "rawTransactionDigest": "sha256:d995cade8e50b951806e2c6fa822f4fdc2df44e2c375f3f1c8c061268a80c7a1",
+      "transactionRef": "transaction.ff746eae46cbc217cb3d07ae50ee7124538caa016ef154c78a6ddb602c38f910"
+    }
+  ],
+  "configuration": {
+    "changeRule": "exclude_explicit_change",
+    "componentRule": "shared_input_and_transaction_flow",
+    "configurationDigest": "sha256:a3b3e257b949bf880f3164756c8c1d167a2ced7c56b616ebbe782cd3fcd49536",
+    "dustThresholdSats": "546",
+    "episodeGapSeconds": 3600,
+    "maxTraversalDepth": 2,
+    "minimumSharedInputs": 2,
+    "revisionRef": "revision.coldcard-incident.wave-6.v1"
+  },
+  "generatedAt": "2026-08-03T00:00:00.000Z",
+  "inputRef": "input.coldcard.incident.wave-6.v1",
+  "publishedAddresses": [
+    {
+      "addressRef": "address.bc1q0urynatx67crmfeyjandyhcxaprgjh5f4t6ngq",
+      "publishedClaimRef": "claim.published.coldcard.wave-6.bc1q0urynatx67crmfeyjandyhcxaprgjh5f4t6ngq",
+      "sourceConfidence": "published_unconfirmed",
+      "sourceDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7"
+    },
+    {
+      "addressRef": "address.bc1q7ljwvnnmy9jxxftzny8r2svtncyvu9rn62ktyk",
+      "publishedClaimRef": "claim.published.coldcard.wave-6.bc1q7ljwvnnmy9jxxftzny8r2svtncyvu9rn62ktyk",
+      "sourceConfidence": "published_unconfirmed",
+      "sourceDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7"
+    },
+    {
+      "addressRef": "address.bc1q7qm5ssw3eyfqmhhz4usvfgte8egpvwhp3gc72a",
+      "publishedClaimRef": "claim.published.coldcard.wave-6.bc1q7qm5ssw3eyfqmhhz4usvfgte8egpvwhp3gc72a",
+      "sourceConfidence": "published_unconfirmed",
+      "sourceDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7"
+    },
+    {
+      "addressRef": "address.bc1qaf8knh9x9hy77dh75jq5rvrgn2zgrntqhgyqf0",
+      "publishedClaimRef": "claim.published.coldcard.wave-6.bc1qaf8knh9x9hy77dh75jq5rvrgn2zgrntqhgyqf0",
+      "sourceConfidence": "published_unconfirmed",
+      "sourceDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7"
+    },
+    {
+      "addressRef": "address.bc1qdl43xzvchevfhjurgxd765xefw38ht2sg0msd0",
+      "publishedClaimRef": "claim.published.coldcard.wave-6.bc1qdl43xzvchevfhjurgxd765xefw38ht2sg0msd0",
+      "sourceConfidence": "published_unconfirmed",
+      "sourceDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7"
+    },
+    {
+      "addressRef": "address.bc1qjt2z2q3h0pj3ztjhymgz8sqg0eyx263wgfe368",
+      "publishedClaimRef": "claim.published.coldcard.wave-6.bc1qjt2z2q3h0pj3ztjhymgz8sqg0eyx263wgfe368",
+      "sourceConfidence": "published_unconfirmed",
+      "sourceDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7"
+    },
+    {
+      "addressRef": "address.bc1qlth7zsk3q40z098gxydjmkym0xqxc4959majc2",
+      "publishedClaimRef": "claim.published.coldcard.wave-6.bc1qlth7zsk3q40z098gxydjmkym0xqxc4959majc2",
+      "sourceConfidence": "published_unconfirmed",
+      "sourceDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7"
+    },
+    {
+      "addressRef": "address.bc1qmn4kefwgkfyt2fgkzwufv3xjsjufepzs88asj2",
+      "publishedClaimRef": "claim.published.coldcard.wave-6.bc1qmn4kefwgkfyt2fgkzwufv3xjsjufepzs88asj2",
+      "sourceConfidence": "published_unconfirmed",
+      "sourceDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7"
+    },
+    {
+      "addressRef": "address.bc1qq5xyjhevvrfsw2dtghy2mjxtddtd5qegy9yref",
+      "publishedClaimRef": "claim.published.coldcard.wave-6.bc1qq5xyjhevvrfsw2dtghy2mjxtddtd5qegy9yref",
+      "sourceConfidence": "published_unconfirmed",
+      "sourceDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7"
+    },
+    {
+      "addressRef": "address.bc1qtvjqu4pahfls7p5fx76a8fwtqcjkz5tt9pl8nx",
+      "publishedClaimRef": "claim.published.coldcard.wave-6.bc1qtvjqu4pahfls7p5fx76a8fwtqcjkz5tt9pl8nx",
+      "sourceConfidence": "published_unconfirmed",
+      "sourceDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7"
+    },
+    {
+      "addressRef": "address.bc1qvksv709xr5t5rl53t62rjzpdmfes324gkqdvvp",
+      "publishedClaimRef": "claim.published.coldcard.wave-6.bc1qvksv709xr5t5rl53t62rjzpdmfes324gkqdvvp",
+      "sourceConfidence": "published_unconfirmed",
+      "sourceDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7"
+    },
+    {
+      "addressRef": "address.bc1qw6khxqdjjyczs9r7jcgyws3xsn2grrx0m9sue9",
+      "publishedClaimRef": "claim.published.coldcard.wave-6.bc1qw6khxqdjjyczs9r7jcgyws3xsn2grrx0m9sue9",
+      "sourceConfidence": "published_unconfirmed",
+      "sourceDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7"
+    },
+    {
+      "addressRef": "address.bc1qzcu8m0ykfn4ay6dk2axxshuthz720f2rhe7n27",
+      "publishedClaimRef": "claim.published.coldcard.wave-6.bc1qzcu8m0ykfn4ay6dk2axxshuthz720f2rhe7n27",
+      "sourceConfidence": "published_unconfirmed",
+      "sourceDigest": "sha256:a75c2f222590910c91bd6eca0f5226c4d6302bf4199ff39c8ebf9fb7c9e575e7"
+    }
+  ],
+  "scanCandidates": [
+    {
+      "candidateRef": "candidate.ofr-016.04ebdc774df620036326142769e7ab79d3af33fc52537daf88daeece225e50ed",
+      "fingerprintRevisionDigest": "sha256:9447eef3f4e5de95d7eb4f2e98f36f4af4d4f93523a85d8458d2c126036744fe",
+      "sourceDigest": "sha256:83758b49a99005a44ad529ee0d5d87d1b8dadd643544b865c7a80e9df24400ee",
+      "transactionRef": "transaction.04ebdc774df620036326142769e7ab79d3af33fc52537daf88daeece225e50ed"
+    },
+    {
+      "candidateRef": "candidate.ofr-016.10f1fefdfa767d3bf191a0f67cd8374171b3f45f532348d1ac0b5f1247145931",
+      "fingerprintRevisionDigest": "sha256:9447eef3f4e5de95d7eb4f2e98f36f4af4d4f93523a85d8458d2c126036744fe",
+      "sourceDigest": "sha256:83758b49a99005a44ad529ee0d5d87d1b8dadd643544b865c7a80e9df24400ee",
+      "transactionRef": "transaction.10f1fefdfa767d3bf191a0f67cd8374171b3f45f532348d1ac0b5f1247145931"
+    },
+    {
+      "candidateRef": "candidate.ofr-016.449d23b678f2ee30d5e027387e8b4d9bb766fb503ea19b5cc62a368b15058e50",
+      "fingerprintRevisionDigest": "sha256:9447eef3f4e5de95d7eb4f2e98f36f4af4d4f93523a85d8458d2c126036744fe",
+      "sourceDigest": "sha256:ea72db0f93927b3a93cf8ed6f791b499996ee0cb8a946cb00e643b761ff078ad",
+      "transactionRef": "transaction.449d23b678f2ee30d5e027387e8b4d9bb766fb503ea19b5cc62a368b15058e50"
+    },
+    {
+      "candidateRef": "candidate.ofr-016.44e622cb32d9e65a99b727f87744ac6d0a5d0c1f4cfdd8af399771502e7ad3f3",
+      "fingerprintRevisionDigest": "sha256:9447eef3f4e5de95d7eb4f2e98f36f4af4d4f93523a85d8458d2c126036744fe",
+      "sourceDigest": "sha256:ea72db0f93927b3a93cf8ed6f791b499996ee0cb8a946cb00e643b761ff078ad",
+      "transactionRef": "transaction.44e622cb32d9e65a99b727f87744ac6d0a5d0c1f4cfdd8af399771502e7ad3f3"
+    },
+    {
+      "candidateRef": "candidate.ofr-016.497a6d6f0d1485cb4c12bc03112d9e3572ccc47cbb8b5163482cf927369ed14f",
+      "fingerprintRevisionDigest": "sha256:9447eef3f4e5de95d7eb4f2e98f36f4af4d4f93523a85d8458d2c126036744fe",
+      "sourceDigest": "sha256:ea72db0f93927b3a93cf8ed6f791b499996ee0cb8a946cb00e643b761ff078ad",
+      "transactionRef": "transaction.497a6d6f0d1485cb4c12bc03112d9e3572ccc47cbb8b5163482cf927369ed14f"
+    },
+    {
+      "candidateRef": "candidate.ofr-016.528e31f9279d3c938d7caf36b8760628d394c334e85371c843b213387c0ed08d",
+      "fingerprintRevisionDigest": "sha256:9447eef3f4e5de95d7eb4f2e98f36f4af4d4f93523a85d8458d2c126036744fe",
+      "sourceDigest": "sha256:83758b49a99005a44ad529ee0d5d87d1b8dadd643544b865c7a80e9df24400ee",
+      "transactionRef": "transaction.528e31f9279d3c938d7caf36b8760628d394c334e85371c843b213387c0ed08d"
+    },
+    {
+      "candidateRef": "candidate.ofr-016.5f04988d0f7104aa0e93e12d6249c6edb284735924df7d45e6ecb1670af08823",
+      "fingerprintRevisionDigest": "sha256:9447eef3f4e5de95d7eb4f2e98f36f4af4d4f93523a85d8458d2c126036744fe",
+      "sourceDigest": "sha256:ea72db0f93927b3a93cf8ed6f791b499996ee0cb8a946cb00e643b761ff078ad",
+      "transactionRef": "transaction.5f04988d0f7104aa0e93e12d6249c6edb284735924df7d45e6ecb1670af08823"
+    },
+    {
+      "candidateRef": "candidate.ofr-016.5f2231199a86a3ebb07187a568ecdd0f57973aec71bf5a0c0da974f650bce17c",
+      "fingerprintRevisionDigest": "sha256:9447eef3f4e5de95d7eb4f2e98f36f4af4d4f93523a85d8458d2c126036744fe",
+      "sourceDigest": "sha256:83758b49a99005a44ad529ee0d5d87d1b8dadd643544b865c7a80e9df24400ee",
+      "transactionRef": "transaction.5f2231199a86a3ebb07187a568ecdd0f57973aec71bf5a0c0da974f650bce17c"
+    },
+    {
+      "candidateRef": "candidate.ofr-016.6132c021c2bafa4e348d5b7bf946a671560580d21ef314f03c43f1102478e86e",
+      "fingerprintRevisionDigest": "sha256:9447eef3f4e5de95d7eb4f2e98f36f4af4d4f93523a85d8458d2c126036744fe",
+      "sourceDigest": "sha256:ea72db0f93927b3a93cf8ed6f791b499996ee0cb8a946cb00e643b761ff078ad",
+      "transactionRef": "transaction.6132c021c2bafa4e348d5b7bf946a671560580d21ef314f03c43f1102478e86e"
+    },
+    {
+      "candidateRef": "candidate.ofr-016.ab2f2870001025ecae3409dfb48ccfd6f903355cf63119c323d6b69153b33f51",
+      "fingerprintRevisionDigest": "sha256:9447eef3f4e5de95d7eb4f2e98f36f4af4d4f93523a85d8458d2c126036744fe",
+      "sourceDigest": "sha256:ea72db0f93927b3a93cf8ed6f791b499996ee0cb8a946cb00e643b761ff078ad",
+      "transactionRef": "transaction.ab2f2870001025ecae3409dfb48ccfd6f903355cf63119c323d6b69153b33f51"
+    },
+    {
+      "candidateRef": "candidate.ofr-016.ac2bcaced5ea0cab2c30fbff5f96d90958cbe8453f5811af35fe42dce02958bb",
+      "fingerprintRevisionDigest": "sha256:9447eef3f4e5de95d7eb4f2e98f36f4af4d4f93523a85d8458d2c126036744fe",
+      "sourceDigest": "sha256:83758b49a99005a44ad529ee0d5d87d1b8dadd643544b865c7a80e9df24400ee",
+      "transactionRef": "transaction.ac2bcaced5ea0cab2c30fbff5f96d90958cbe8453f5811af35fe42dce02958bb"
+    },
+    {
+      "candidateRef": "candidate.ofr-016.d317749b5734a5d484e9d97f3df1067945a09ea52abcc3f3284a0c88bde9b848",
+      "fingerprintRevisionDigest": "sha256:9447eef3f4e5de95d7eb4f2e98f36f4af4d4f93523a85d8458d2c126036744fe",
+      "sourceDigest": "sha256:83758b49a99005a44ad529ee0d5d87d1b8dadd643544b865c7a80e9df24400ee",
+      "transactionRef": "transaction.d317749b5734a5d484e9d97f3df1067945a09ea52abcc3f3284a0c88bde9b848"
+    },
+    {
+      "candidateRef": "candidate.ofr-016.ff746eae46cbc217cb3d07ae50ee7124538caa016ef154c78a6ddb602c38f910",
+      "fingerprintRevisionDigest": "sha256:9447eef3f4e5de95d7eb4f2e98f36f4af4d4f93523a85d8458d2c126036744fe",
+      "sourceDigest": "sha256:ea72db0f93927b3a93cf8ed6f791b499996ee0cb8a946cb00e643b761ff078ad",
+      "transactionRef": "transaction.ff746eae46cbc217cb3d07ae50ee7124538caa016ef154c78a6ddb602c38f910"
+    }
+  ],
+  "schema": "openagents.evidence_derivation_input.v1",
+  "victimReports": []
+}
