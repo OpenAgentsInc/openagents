@@ -176,10 +176,21 @@ path.write_text(
 path.chmod(0o755)
 PY
 
+# `--legal-comments=external` writes the bundled packages' inline legal notices
+# beside the bundle. Every file the archive ships is pinned by digest in the
+# manifest, so this one is required rather than optional: if a dependency change
+# ever leaves esbuild with no legal comments to extract, the build stops here and
+# the archive inventory is updated deliberately instead of silently drifting.
+if [[ ! -f "${COMPONENT_ROOT}/dist/omega-effectd.mjs.LEGAL.txt" ]]; then
+  printf 'error: esbuild produced no external legal comments file.\n' >&2
+  exit 1
+fi
+
 source_commit="$(git rev-parse HEAD)"
 source_tree="$(git rev-parse HEAD^{tree})"
 node_binary_sha256="$(shasum -a 256 "${COMPONENT_ROOT}/runtime/bin/node" | awk '{print $1}')"
 service_bundle_sha256="$(shasum -a 256 "${COMPONENT_ROOT}/dist/omega-effectd.mjs" | awk '{print $1}')"
+service_legal_sha256="$(shasum -a 256 "${COMPONENT_ROOT}/dist/omega-effectd.mjs.LEGAL.txt" | awk '{print $1}')"
 wrapper_sha256="$(shasum -a 256 "${COMPONENT_ROOT}/bin/omega-effectd" | awk '{print $1}')"
 notices_sha256="$(shasum -a 256 "${COMPONENT_ROOT}/licenses/THIRD_PARTY_NOTICES.json" | awk '{print $1}')"
 licenses_sha256="$(shasum -a 256 "${COMPONENT_ROOT}/licenses/THIRD_PARTY_LICENSES.txt" | awk '{print $1}')"
@@ -190,6 +201,7 @@ python3 - \
   "${source_tree}" \
   "${node_binary_sha256}" \
   "${service_bundle_sha256}" \
+  "${service_legal_sha256}" \
   "${wrapper_sha256}" \
   "${notices_sha256}" \
   "${licenses_sha256}" <<PY
@@ -203,6 +215,7 @@ import sys
     source_tree,
     node_binary_sha256,
     service_bundle_sha256,
+    service_legal_sha256,
     wrapper_sha256,
     notices_sha256,
     licenses_sha256,
@@ -228,6 +241,7 @@ manifest = {
     "files": {
         "bin/omega-effectd": wrapper_sha256,
         "dist/omega-effectd.mjs": service_bundle_sha256,
+        "dist/omega-effectd.mjs.LEGAL.txt": service_legal_sha256,
         "licenses/THIRD_PARTY_NOTICES.json": notices_sha256,
         "licenses/THIRD_PARTY_LICENSES.txt": licenses_sha256,
     },
