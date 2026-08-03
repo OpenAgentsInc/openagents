@@ -213,11 +213,23 @@
         "pocPolicy": "Use a deterministic invariant or failing regression test when available.",
         "severityPolicy": "Severity follows demonstrated consequence and attacker economics.",
         "contextPolicy": "Prefer the complete pinned tree and retain missing-input truth.",
-        "budgetPolicyRef": "budget.forensic.1"
+        "budgetPolicyRef": "budget.forensic.1",
+        "discoveryWorkflow": {
+          "candidateEnumerationPolicy": "Enumerate plausible candidates before selecting the highest-evidence candidate.",
+          "severityOrderingPolicy": "Inspect the highest plausible security impact first without treating rank as truth.",
+          "priorWorkSearchPolicy": "Search exact occurrences and causal root causes before submitting a finding.",
+          "rootCauseIdentityPolicy": "Identify the causal mechanism independently from file, line, and source-window identity.",
+          "falsifierConstructionPolicy": "State the smallest observation that would disprove each candidate before admission.",
+          "uncertaintyDispositionPolicy": "Route actionable uncertainty to a hypothesis plus limitation and required next check.",
+          "oneFindingPerRootCause": true,
+          "continueAfterDuplicate": true,
+          "excludeStyleAndHardeningNotes": true,
+          "conservativeSeverity": true
+        }
       },
       "exampleRefs": ["example.coldcard.source.flaw"],
       "parameterRefs": ["parameter.effort.high"],
-      "canonicalDigest": "sha256:6cf2b496b836eb3abbea022eb1e90dc8a65e990d853eed71c6fe83e10b042c80",
+      "canonicalDigest": "sha256:7a07baacd729ba007039aac8f60b8a29137997ba017097c0b13c3ab8d973146a",
       "datasetRevisionRef": "dataset.forensic.development.v1",
       "compatibilityRefs": ["compatibility.loupe.adapter.v1"],
       "createdAt": "2026-08-01T12:00:00.000Z"

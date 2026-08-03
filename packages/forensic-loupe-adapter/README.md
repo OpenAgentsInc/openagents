@@ -8,7 +8,10 @@ finding, contact a maintainer, or raise an admitted authority.
 The adapter owns five boundaries:
 
 - prompt artifacts are content-digested, recursively immutable, and retain
-  parent lineage;
+  parent lineage; their optional discovery-workflow profile explicitly owns
+  candidate enumeration, severity order, prior-work search, root-cause
+  identity, falsifiers, uncertainty disposition, duplicate continuation,
+  finding scope, and conservative severity;
 - execution plans inherit source coverage, budgets, network policy, worker
   digests, and tool availability from admitted contracts rather than prompt
   prose;
@@ -23,6 +26,10 @@ The adapter owns five boundaries:
 Incomplete coverage is allowed for explicitly degraded research runs, but it
 remains bound into every output. Missing tools and dependency paths appear in
 the compiled prompt and plan instead of being advertised as available.
+Execution-plan v2 also binds the exact focal unit, tranche, bounded domain
+direction, visible task bytes, and task digest. The domain field remains
+analytic input and cannot expand target, tool, network, budget, reporting,
+disclosure, checkout, or mutation authority.
 
 ## Independent verifier boundary
 

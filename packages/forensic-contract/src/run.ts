@@ -208,6 +208,22 @@ export interface ForensicWorkerPlacement extends S.Schema.Type<
   typeof ForensicWorkerPlacementSchema
 > {}
 
+export const ForensicDiscoveryWorkflowSchema = S.Struct({
+  candidateEnumerationPolicy: LongText,
+  severityOrderingPolicy: LongText,
+  priorWorkSearchPolicy: LongText,
+  rootCauseIdentityPolicy: LongText,
+  falsifierConstructionPolicy: LongText,
+  uncertaintyDispositionPolicy: LongText,
+  oneFindingPerRootCause: S.Boolean,
+  continueAfterDuplicate: S.Boolean,
+  excludeStyleAndHardeningNotes: S.Boolean,
+  conservativeSeverity: S.Boolean,
+}).annotate({ identifier: "ForensicDiscoveryWorkflow" });
+export interface ForensicDiscoveryWorkflow extends S.Schema.Type<
+  typeof ForensicDiscoveryWorkflowSchema
+> {}
+
 export const ForensicPromptIrSchema = S.Struct({
   role: LongText,
   threatModel: LongText,
@@ -223,6 +239,7 @@ export const ForensicPromptIrSchema = S.Struct({
   severityPolicy: LongText,
   contextPolicy: LongText,
   budgetPolicyRef: ForensicRef,
+  discoveryWorkflow: S.optionalKey(ForensicDiscoveryWorkflowSchema),
 });
 export interface ForensicPromptIr extends S.Schema.Type<typeof ForensicPromptIrSchema> {}
 
