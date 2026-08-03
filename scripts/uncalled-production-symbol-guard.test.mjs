@@ -84,6 +84,81 @@ test("fails on a service-interface member only a test calls, and accepts one pro
   assert.equal(run(live).status, 0, run(live).stderr)
 })
 
+// The guard counted mentions in the raw file text until 2026-08-03, so writing
+// a doc comment about a test-only export silenced the guard that exists to find
+// test-only exports. It was found by accident: an agent added a TSDoc `{@link}`
+// while working near a flagged symbol and watched the finding disappear.
+test("a TSDoc link in the declaring file is prose, not the module wiring its own export up", () => {
+  const root = fixture({
+    "packages/store/src/room.ts":
+      "/** Removes a member. See {@link removeRoomMember} for the receipt shape. */\nexport const removeRoomMember = (id: string) => id\n",
+    "packages/store/src/room.test.ts": 'import { removeRoomMember } from "./room"\nremoveRoomMember("a")\n',
+  })
+  const result = run(root)
+  assert.equal(result.status, 1, result.stdout)
+  assert.match(result.stderr, /removeRoomMember/u)
+})
+
+test("a comment or a string in another production module is not a production caller", () => {
+  const commented = fixture({
+    "packages/store/src/room.ts": "export const removeRoomMember = (id: string) => id\n",
+    "packages/store/src/routes.ts": "// TODO: call removeRoomMember once the seat ledger lands.\nexport const routes = []\n",
+    "packages/store/src/room.test.ts": 'import { removeRoomMember } from "./room"\nremoveRoomMember("a")\n',
+  })
+  const commentedResult = run(commented)
+  assert.equal(commentedResult.status, 1, commentedResult.stdout)
+  assert.match(commentedResult.stderr, /removeRoomMember/u)
+
+  const quoted = fixture({
+    "packages/store/src/room.ts": "export const removeRoomMember = (id: string) => id\n",
+    "packages/store/src/audit.ts": 'export const covered = ["removeRoomMember", `removeRoomMember`]\n',
+    "packages/store/src/room.test.ts": 'import { removeRoomMember } from "./room"\nremoveRoomMember("a")\n',
+  })
+  const quotedResult = run(quoted)
+  assert.equal(quotedResult.status, 1, quotedResult.stdout)
+  assert.match(quotedResult.stderr, /removeRoomMember/u)
+})
+
+// `Effect.fn("RoomStore.removeParticipant")` names a span. It reads like a call,
+// it is not one, and it sits beside almost every service member in this repo, so
+// it exempted service members wholesale.
+test("a span name and a comment are not dot-access calls on a service member", () => {
+  const root = fixture({
+    "packages/store/src/store.ts":
+      "export interface RoomStore {\n  readonly removeParticipant: (id: string) => void\n}\n" +
+      'const removeParticipant = Effect.fn("RoomStore.removeParticipant")((id: string) => id)\n' +
+      "// store.removeParticipant is wired up in a later slice.\n",
+    "packages/store/src/store.test.ts": "declare const store: import('./store').RoomStore\nstore.removeParticipant('a')\n",
+  })
+  const result = run(root)
+  assert.equal(result.status, 1, result.stdout)
+  assert.match(result.stderr, /RoomStore\.removeParticipant/u)
+})
+
+// The other half of the fix: masking prose must not eat code. A caller hidden by
+// an over-eager mask fails the build for code that is fine, which is the failure
+// mode that gets a guard deleted rather than fixed.
+test("code that only looks like prose still counts: template substitutions and JSX", () => {
+  const substituted = fixture({
+    "packages/store/src/room.ts": "export const removeRoomMember = (id: string) => id\n",
+    "packages/store/src/routes.ts":
+      'import { removeRoomMember } from "./room"\nexport const line = `removed ${removeRoomMember("a")}`\n',
+    "packages/store/src/room.test.ts": 'import { removeRoomMember } from "./room"\nremoveRoomMember("a")\n',
+  })
+  assert.equal(run(substituted).status, 0, run(substituted).stderr)
+
+  // The apostrophe in JSX text opens a string literal for a plain scanner, which
+  // closes it at the next quote and swallows the `<badge.RoomBadge />` between.
+  const rendered = fixture({
+    "packages/store/src/badge.tsx": "export const RoomBadge = () => <span />\n",
+    "packages/store/src/panel.tsx":
+      'import * as badge from "./badge"\n' +
+      "export const Panel = () => (\n  <div>\n    <p>It's fine</p><badge.RoomBadge title='ok' />\n  </div>\n)\n",
+    "packages/store/src/badge.test.tsx": 'import { RoomBadge } from "./badge"\nRoomBadge()\n',
+  })
+  assert.equal(run(rendered).status, 0, run(rendered).stderr)
+})
+
 test("a baselined finding passes, and stops passing once it is no longer a finding", () => {
   const root = fixture({
     "packages/store/src/room.ts": "export const removeRoomMember = (id: string) => id\n",

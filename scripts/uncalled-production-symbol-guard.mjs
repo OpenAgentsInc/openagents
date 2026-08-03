@@ -34,6 +34,10 @@
 //    interface member and its class implementation live in one file and look like
 //    two mentions of a live symbol.
 //
+// "References it" means code references it. A name written in a comment, a
+// TSDoc `{@link}`, or a string literal is prose about the symbol, not a caller
+// of it, and never satisfies rules 1b, 1c, or 2. See MASKED_TOKENS below.
+//
 // A symbol that nothing references at all — not even a test — is ordinary dead
 // code and is deliberately NOT flagged: lower stakes, far noisier, and already
 // the domain of unused-export tooling. The signal this guard trades on is exactly
@@ -52,6 +56,7 @@
 //   node scripts/uncalled-production-symbol-guard.mjs [root] --prune
 import { globSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import ts from "typescript";
 
 const argv = process.argv.slice(2);
 const root = argv.find((arg) => !arg.startsWith("--")) ?? ".";
@@ -110,6 +115,188 @@ const isTestSource = (file) =>
   /\.(test|spec)\.[cm]?tsx?$/u.test(file) ||
   /(^|\/)test-[^/]*\.[cm]?tsx?$/u.test(file);
 
+// A NAME IN PROSE IS NOT A CALLER.
+//
+// Every rule below asks whether a file mentions an identifier. Until 2026-08-03
+// that question was asked of the raw file text, so a TSDoc `{@link symbol}`, a
+// `// TODO: wire symbol up` note, or the string `"symbol"` counted as a caller
+// and exempted the symbol from the guard. Writing a doc comment about a
+// test-only export was therefore enough to silence the guard that exists to
+// find test-only exports — by accident, and repo-wide. Both directions leaked:
+// a mention in the declaring file satisfied rule 1c, a mention in any other
+// production file satisfied rule 1b, and a `.member` mention satisfied rule 2.
+//
+// So every file is read through TypeScript first, and the spans of comments and
+// of string / template / regular-expression literals are replaced with spaces.
+// Offsets, line breaks, and all remaining code are preserved, so the patterns
+// below see exactly the same source minus its prose.
+//
+// Two readers, because JSX needs a parser and a parser costs too much for the
+// whole tree. `ts.createScanner` cannot read JSX text: the apostrophe in
+// `<p>don't</p>` opens a string literal it closes at the next quote, and the
+// mask slides off by a whole region — 120 of this repo's 391 .tsx files masked
+// differently that way when this landed, one of them swallowing a live
+// `<ManagedSandboxPlacement />` call. So .tsx / .jsx are parsed, which is
+// exact, and everything else is scanned, which is about three times faster
+// across the ~6.3k non-JSX files. The two agreed byte-for-byte on every one of
+// those files. Where the scanner cannot close a token it leaves the text alone:
+// masking on a guess would hide a real caller and fail the build for code that
+// is fine, so the fallback there is the old, permissive behavior.
+const MASKED_TOKENS = new Set([
+  ts.SyntaxKind.SingleLineCommentTrivia,
+  ts.SyntaxKind.MultiLineCommentTrivia,
+  ts.SyntaxKind.StringLiteral,
+  ts.SyntaxKind.NoSubstitutionTemplateLiteral,
+  ts.SyntaxKind.TemplateHead,
+  ts.SyntaxKind.TemplateMiddle,
+  ts.SyntaxKind.TemplateTail,
+  ts.SyntaxKind.RegularExpressionLiteral,
+]);
+
+const TRIVIA_TOKENS = new Set([
+  ts.SyntaxKind.WhitespaceTrivia,
+  ts.SyntaxKind.NewLineTrivia,
+  ts.SyntaxKind.SingleLineCommentTrivia,
+  ts.SyntaxKind.MultiLineCommentTrivia,
+  ts.SyntaxKind.ShebangTrivia,
+  ts.SyntaxKind.ConflictMarkerTrivia,
+]);
+
+// A `/` after one of these is division, never the start of a regular expression.
+// Guessing "regular expression" wrongly would mask live code, so the ambiguous
+// cases resolve to division.
+const DIVISION_AFTER = new Set([
+  ts.SyntaxKind.Identifier,
+  ts.SyntaxKind.PrivateIdentifier,
+  ts.SyntaxKind.NumericLiteral,
+  ts.SyntaxKind.BigIntLiteral,
+  ts.SyntaxKind.StringLiteral,
+  ts.SyntaxKind.NoSubstitutionTemplateLiteral,
+  ts.SyntaxKind.TemplateTail,
+  ts.SyntaxKind.RegularExpressionLiteral,
+  ts.SyntaxKind.CloseParenToken,
+  ts.SyntaxKind.CloseBracketToken,
+  ts.SyntaxKind.CloseBraceToken,
+  ts.SyntaxKind.PlusPlusToken,
+  ts.SyntaxKind.MinusMinusToken,
+  ts.SyntaxKind.ThisKeyword,
+  ts.SyntaxKind.SuperKeyword,
+  ts.SyntaxKind.TrueKeyword,
+  ts.SyntaxKind.FalseKeyword,
+  ts.SyntaxKind.NullKeyword,
+]);
+
+const tokenStart = (scanner) => (scanner.getTokenStart ?? scanner.getTokenPos).call(scanner);
+const tokenEnd = (scanner) => (scanner.getTokenEnd ?? scanner.getTextPos).call(scanner);
+
+const blanked = (text) => {
+  const out = [...text];
+  return {
+    out,
+    // Blank a span in place. Line breaks survive so `^`-anchored patterns and
+    // the interface-block matcher still see the file's real line structure.
+    blank: (start, end) => {
+      for (let at = start; at < end && at < out.length; at += 1) {
+        if (out[at] !== "\n" && out[at] !== "\r") out[at] = " ";
+      }
+    },
+  };
+};
+
+const maskByScanning = (text) => {
+  const scanner = ts.createScanner(
+    ts.ScriptTarget.Latest,
+    false,
+    ts.LanguageVariant.Standard,
+    text,
+  );
+  const { out, blank } = blanked(text);
+  let unterminated = false;
+  scanner.setOnError(() => {
+    unterminated = true;
+  });
+
+  // `${` inside a template literal opens ordinary code, so `}` either closes a
+  // block or resumes the template. Only the scanner's own stack knows which.
+  const braces = [];
+  let previous = ts.SyntaxKind.Unknown;
+
+  for (;;) {
+    unterminated = false;
+    let token = scanner.scan();
+    if (token === ts.SyntaxKind.EndOfFileToken) break;
+
+    if (token === ts.SyntaxKind.OpenBraceToken) {
+      braces.push("block");
+    } else if (token === ts.SyntaxKind.CloseBraceToken) {
+      const resumesTemplate = braces.pop() === "template";
+      if (resumesTemplate) {
+        unterminated = false;
+        token = scanner.reScanTemplateToken(false);
+      }
+    } else if (
+      (token === ts.SyntaxKind.SlashToken || token === ts.SyntaxKind.SlashEqualsToken) &&
+      !DIVISION_AFTER.has(previous)
+    ) {
+      unterminated = false;
+      token = scanner.reScanSlashToken();
+    }
+
+    if (token === ts.SyntaxKind.TemplateHead || token === ts.SyntaxKind.TemplateMiddle) {
+      braces.push("template");
+    }
+
+    if (MASKED_TOKENS.has(token) && !unterminated) blank(tokenStart(scanner), tokenEnd(scanner));
+
+    if (!TRIVIA_TOKENS.has(token)) previous = token;
+  }
+
+  return out.join("");
+};
+
+// JSX path. The parser resolves every literal boundary for us, including JSX
+// text, so the only thing left to find is comments — and outside a literal, a
+// `/` followed by `/` or `*` can only start one, because a regular expression
+// is itself one of the literals the parser already located.
+const maskByParsing = (text, file) => {
+  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, false, ts.ScriptKind.TSX);
+  const literals = [];
+  const visit = (node) => {
+    if (MASKED_TOKENS.has(node.kind) || node.kind === ts.SyntaxKind.JsxText) {
+      literals.push([ts.skipTrivia(text, node.pos), node.end]);
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  literals.sort((left, right) => left[0] - right[0]);
+
+  const { out, blank } = blanked(text);
+  let at = 0;
+  let next = 0;
+  while (at < text.length) {
+    while (next < literals.length && literals[next][1] <= at) next += 1;
+    if (next < literals.length && literals[next][0] <= at) {
+      blank(at, literals[next][1]);
+      at = literals[next][1];
+      continue;
+    }
+    if (text[at] === "/" && (text[at + 1] === "/" || text[at + 1] === "*")) {
+      const toLineEnd = text[at + 1] === "/";
+      const closed = toLineEnd ? text.indexOf("\n", at) : text.indexOf("*/", at + 2);
+      const end = closed < 0 ? text.length : toLineEnd ? closed : closed + 2;
+      blank(at, end);
+      at = end;
+      continue;
+    }
+    at += 1;
+  }
+  return out.join("");
+};
+
+const maskProse = (text, file) =>
+  file.endsWith(".tsx") || file.endsWith(".jsx") ? maskByParsing(text, file) : maskByScanning(text);
+
 const identifierPattern = /[A-Za-z_$][A-Za-z0-9_$]*/gu;
 const dotAccessPattern = /\.([A-Za-z_$][A-Za-z0-9_$]*)/gu;
 
@@ -142,7 +329,7 @@ const collect = () => {
   for (const file of files) {
     let text;
     try {
-      text = readFileSync(join(root, file), "utf8");
+      text = maskProse(readFileSync(join(root, file), "utf8"), file);
     } catch {
       continue;
     }
