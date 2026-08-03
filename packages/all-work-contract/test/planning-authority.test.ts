@@ -93,6 +93,91 @@ describe("All Work planning authority", () => {
     expect(result.receipt.duplicateDeliveries).toBe(1);
   });
 
+  // Reorder, duplicate delivery, comment pagination, deletion/unavailability,
+  // and partial-page gaps each have a falsifier above and below. Close, reopen,
+  // and relation change did not, and they are the three source transitions most
+  // able to fork one Work identity into two.
+  it("reconciles close, reopen, and relation change without duplicating identity", async () => {
+    const omegaPage = bootstrapInput.pages.find(
+      (page) => page.repository === "OpenAgentsInc/omega",
+    );
+    expect(omegaPage).toBeDefined();
+    if (omegaPage === undefined) return;
+    const target = omegaPage.issues[0];
+    const other = omegaPage.issues[1];
+    expect(target).toBeDefined();
+    expect(other).toBeDefined();
+    if (target === undefined || other === undefined) return;
+    const workRef = githubWorkRef(target.repository, target.number);
+
+    const withTarget = (patch: Record<string, unknown>) => ({
+      ...bootstrapInput,
+      pages: bootstrapInput.pages.map((page) =>
+        page.repository === omegaPage.repository
+          ? {
+              ...page,
+              issues: page.issues.map((issue) =>
+                issue.number === target.number ? { ...issue, ...patch } : issue,
+              ),
+            }
+          : page,
+      ),
+    });
+    const only = (graph: PlanningGraph) =>
+      graph.work.filter((work) => work.summary.workRef === workRef);
+
+    const baseline = await Effect.runPromise(
+      reconcileGitHubBootstrap(emptyPlanningGraph(bootstrapInput.fetchedAt), bootstrapInput),
+    );
+
+    const closed = await Effect.runPromise(
+      reconcileGitHubBootstrap(
+        baseline.graph,
+        withTarget({ state: "closed", sourceRevision: "revision-closed" }),
+      ),
+    );
+    expect(closed.graph.work).toHaveLength(34);
+    expect(only(closed.graph)).toHaveLength(1);
+    expect(only(closed.graph)[0]?.summary.state).toBe("completed");
+    expect(closed.receipt).toMatchObject({ imported: 0, updated: 1, unchanged: 33, noOp: false });
+
+    const reopened = await Effect.runPromise(
+      reconcileGitHubBootstrap(
+        closed.graph,
+        withTarget({ state: "open", sourceRevision: "revision-reopened" }),
+      ),
+    );
+    expect(reopened.graph.work).toHaveLength(34);
+    expect(only(reopened.graph)).toHaveLength(1);
+    expect(only(reopened.graph)[0]?.summary.state).toBe("planned");
+    expect(only(reopened.graph)[0]?.summary.revision).toBeGreaterThan(
+      only(closed.graph)[0]?.summary.revision ?? 0,
+    );
+    expect(reopened.receipt).toMatchObject({ imported: 0, updated: 1 });
+
+    const rewired = await Effect.runPromise(
+      reconcileGitHubBootstrap(
+        reopened.graph,
+        withTarget({
+          sourceRevision: "revision-relations",
+          relations: [
+            {
+              kind: "blocked_by",
+              targetRepository: other.repository,
+              targetNumber: other.number,
+            },
+          ],
+        }),
+      ),
+    );
+    expect(rewired.graph.work).toHaveLength(34);
+    expect(only(rewired.graph)).toHaveLength(1);
+    expect(only(rewired.graph)[0]?.relations).toEqual([
+      { kind: "blocked_by", targetWorkRef: githubWorkRef(other.repository, other.number) },
+    ]);
+    expect(rewired.graph.sourceCoordinates).toHaveLength(34);
+  });
+
   it("keeps last-known-good rows across a gap and records later unavailability", async () => {
     const baseline = await Effect.runPromise(
       reconcileGitHubBootstrap(emptyPlanningGraph(bootstrapInput.fetchedAt), bootstrapInput),
