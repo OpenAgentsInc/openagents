@@ -25,30 +25,13 @@ can find the outcome.
   offline durability, React Native lifecycle handling, per-caller
   authorization-view cost, self-hosted high availability, and the Business
   Source License single-instance grant.
-- [`2026-08-03-rust-spacetimedb-nostr-infra-considerations.md`](2026-08-03-rust-spacetimedb-nostr-infra-considerations.md)
-  — **the Rust build plan, FOSS-only** (third same-day revision; owner ruling:
-  no BSL/FSL/SSPL dependencies — SpacetimeDB is excluded, its architecture
-  shapes retained). Selected stack: Postgres (authority + durable log) + NATS
-  Core (fanout/wakeups) + owned Khala Sync grown a Rust client + owned
-  greenfield Rust relay. Track R ships `crates/oa-relay` over the existing
-  Cloud SQL store in weeks (differential conformance against `nostr-effect`,
-  then cutover of `relay.openagents.com`), with NATS multi-gateway fanout and
-  a load-triggered redb/LMDB/Tantivy query projection; Track S builds
-  `khala-sync-rs` for Omega and the invalidate-and-re-execute
-  query-subscription tier from the July owned-sync-engine decision; Track B
-  is a Rust Blossom media store over GCS. §6 (added later on 2026-08-03)
-  recommends standardizing the read path on Electric (Apache-2.0) across
-  TypeScript and Rust — TanStack DB's first-party sync backend on web, a
-  small HTTP shape consumer in Rust — spike-gated, with the hand-rolled tier
-  as fallback. §0.1 records the owner direction that the Rust Nostr infra
-  lives in a new standalone repo (naming shortlist: khaydarin, immortal,
-  neosteel, …). Answers fork-vs-greenfield:
-  greenfield core, `nostr-rs-relay` and Buzz as fixture/technique quarries,
-  rust-nostr as wire-primitive dependency candidate. Surveys and rejects the
-  non-FOSS field (Convex, PowerSync, SurrealDB), maps FOSS references
-  (ElectricSQL, Zero, LiveStore, Replicache), and calls for the FOSS-only
-  rule to land in INVARIANTS on admission. Fourteen ordered candidate
-  packets; no packet waits on a vendor, license, or VM.
+- **The build plan moved:** the Rust Nostr relay is `immortal`
+  (github.com/OpenAgentsInc/immortal — one Rust binary + one Postgres,
+  nothing else, CC0). Its plan lives at
+  [`../nostr/2026-08-03-immortal-relay-build-plan.md`](../nostr/2026-08-03-immortal-relay-build-plan.md).
+  Earlier revisions of that plan (SpacetimeDB-based, then FOSS-substituted)
+  are in Git history at this directory's old
+  `2026-08-03-rust-spacetimedb-nostr-infra-considerations.md` path.
 - [`analysis-nostr-relay.md`](analysis-nostr-relay.md) — external feasibility
   assessment for SpacetimeDB as the backend of a new Rust Nostr relay.
   **Reference only, not implementation authority**, and note that
