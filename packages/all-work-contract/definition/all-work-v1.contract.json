@@ -25,6 +25,9 @@
   "implementedTypes": [
     "WorkSummary",
     "WorkSnapshot",
+    "WorkSessionState",
+    "WorkSessionProjection",
+    "WorkAgentActivityProjection",
     "PlanningGraph",
     "PlanningGraphReadRequest",
     "PlanningGraphReadResult",
@@ -93,6 +96,7 @@
     "delegation_does_not_copy_assignee_or_owner_authority",
     "revocation_fences_new_session_effects_by_generation",
     "agent_activity_preserves_provider_event_and_loss_refs",
+    "work_snapshot_execution_projections_preserve_identity_generation_and_lifecycle",
     "owner_disposition_is_separate_from_completion_and_verification",
     "internal_work_has_exactly_one_writer_per_cutover_generation",
     "native_work_cutover_creates_zero_github_writes",
@@ -582,6 +586,45 @@
       ]
     },
     {
+      "name": "WorkCommandActivityKind",
+      "kind": "enum",
+      "values": ["plan", "progress", "question", "action", "artifact", "error", "interruption", "result"]
+    },
+    {
+      "name": "WorkSessionState",
+      "kind": "enum",
+      "values": ["active", "paused", "stopped", "revoked"]
+    },
+    {
+      "name": "WorkSessionProjection",
+      "kind": "record",
+      "fields": [
+        { "name": "sessionRef", "type": "SessionRef" },
+        { "name": "threadRef", "type": "ThreadRef" },
+        { "name": "agentSessionRef", "type": "AgentSessionRef" },
+        { "name": "runRef", "type": "RunRef" },
+        { "name": "delegationGrantRef", "type": "DelegationGrantRef" },
+        { "name": "generation", "type": "SafeInteger" },
+        { "name": "hostRef", "type": "HostRef" },
+        { "name": "state", "type": "WorkSessionState" }
+      ]
+    },
+    {
+      "name": "WorkAgentActivityProjection",
+      "kind": "record",
+      "fields": [
+        { "name": "activityRef", "type": "AgentActivityRef" },
+        { "name": "sessionRef", "type": "SessionRef" },
+        { "name": "runRef", "type": "RunRef" },
+        { "name": "generation", "type": "SafeInteger" },
+        { "name": "kind", "type": "WorkCommandActivityKind" },
+        { "name": "summary", "type": "ShortText" },
+        { "name": "providerEventRef", "type": { "nullable": "SourceRef" } },
+        { "name": "lossRefs", "type": { "array": "SourceRef", "maxItems": 64 } },
+        { "name": "effectRef", "type": { "nullable": "EffectRef" } }
+      ]
+    },
+    {
       "name": "WorkSnapshot",
       "kind": "record",
       "fields": [
@@ -593,6 +636,14 @@
         { "name": "agentSessionRefs", "type": { "array": "AgentSessionRef", "maxItems": 512 } },
         { "name": "agentActivityRefs", "type": { "array": "AgentActivityRef", "maxItems": 4096 } },
         { "name": "runRefs", "type": { "array": "RunRef", "maxItems": 512 } },
+        {
+          "name": "sessionProjections",
+          "type": { "optional": { "array": "WorkSessionProjection", "maxItems": 512 } }
+        },
+        {
+          "name": "agentActivityProjections",
+          "type": { "optional": { "array": "WorkAgentActivityProjection", "maxItems": 4096 } }
+        },
         { "name": "intentRefs", "type": { "array": "IntentRef", "maxItems": 4096 } },
         { "name": "eventRefs", "type": { "array": "EventRef", "maxItems": 4096 } },
         { "name": "receiptRefs", "type": { "array": "ReceiptRef", "maxItems": 4096 } },
@@ -1409,11 +1460,6 @@
       "name": "WorkCommandControlKind",
       "kind": "enum",
       "values": ["steer", "answer", "pause", "stop", "retry", "dismiss"]
-    },
-    {
-      "name": "WorkCommandActivityKind",
-      "kind": "enum",
-      "values": ["plan", "progress", "question", "action", "artifact", "error", "interruption", "result"]
     },
     {
       "name": "OwnerDispositionDecision",

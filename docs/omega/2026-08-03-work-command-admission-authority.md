@@ -62,15 +62,21 @@ Provider event and explicit loss references are retained with activity facts.
 An admitted activity can name an Effect, but the receipt does not infer an
 Effect from agent completion text.
 
+`WorkSnapshot` now optionally carries the complete portable execution
+projection beside its compatibility reference arrays. Each Session row binds
+Thread, Session, Agent Session, Run, Delegation Grant, Host, generation, and
+active/paused/stopped/revoked lifecycle. Each Agent Activity row binds its
+Session, Run, generation, portable kind and summary, provider event reference,
+explicit loss references, and nullable Effect reference. Semantic validation
+requires every projected identity to exist in the corresponding snapshot ref
+set and rejects duplicate or zero-generation rows. Raw provider payload and
+hidden reasoning do not enter either projection.
+
 ## Remaining Packet E work
 
-This slice defines and implements the OpenAgents-owned shared authority. It
-also routes the separately negotiated method through the packaged
-`omega-effectd` process and stores one private, atomic state record per
-digest-addressed canonical Work identity. `work.snapshot.read` recovers that
-command projection after restart and falls back to planning state before the
-first command. It does not claim that Omega consumes `work.command.execute`
-yet. The next slice must pin the regenerated Rust
-artifact in Omega, bind Work UI commands to the Effective Principal and
-capability request, and prove the installed owner journey. Until then fixture
-controls remain visibly simulated and omega#214 stays open.
+The authority, packaged `omega-effectd` route, private atomic per-Work state,
+restart recovery, and Omega command consumer now exist. The regenerated Rust
+consumer and Omega inspector still need to expose the new Session and Agent
+Activity projection rows. Explicit real Organization membership provisioning,
+the installed owner journey, and its separate human disposition remain open
+gates. Fixture controls remain visibly simulated and omega#214 stays open.

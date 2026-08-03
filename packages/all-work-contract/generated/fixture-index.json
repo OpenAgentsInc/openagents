@@ -1,6 +1,6 @@
 {
   "contractRef": "openagents.all_work_boundary.v1",
-  "definitionSha256": "c6557022965ea9f92450fefcc7e3ef5eb77d43654280b611e9966b7a1fbbe26a",
+  "definitionSha256": "012a5962bc2bea70792014f5b375d78b7afef2bee15408489a729278c641508b",
   "fixtures": [
     {
       "file": "valid/work-summary.json",

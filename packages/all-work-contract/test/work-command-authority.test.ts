@@ -106,6 +106,54 @@ const grant = {
 };
 
 describe("All Work command admission authority", () => {
+  it("projects retained execution state when an older snapshot has only refs", async () => {
+    const legacy = emptyWorkCommandAuthorityState({
+      snapshot: {
+        ...snapshot,
+        threadRefs: ["thread:omega-214"],
+        sessionRefs: ["session:omega-214"],
+        agentSessionRefs: ["agent-session:omega-214"],
+        runRefs: ["run:omega-214"],
+      },
+      organizationRef,
+      authorizedPrincipalRefs: [ownerRef],
+    });
+    const retained = {
+      ...legacy,
+      sessions: [
+        {
+          sessionRef: "session:omega-214",
+          runRef: "run:omega-214",
+          threadRef: "thread:omega-214",
+          agentSessionRef: "agent-session:omega-214",
+          grantRef: grant.grantRef,
+          generation: 1,
+          hostRef: grant.hostRef,
+          state: "revoked" as const,
+        },
+      ],
+    };
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const authority = yield* WorkCommandAuthority;
+        return yield* authority.read;
+      }).pipe(
+        Effect.provide(
+          WorkCommandAuthorityLive.pipe(
+            Layer.provide(inMemoryWorkCommandStateStoreLayer(retained)),
+          ),
+        ),
+      ),
+    );
+
+    expect(result.snapshot.sessionProjections?.[0]).toMatchObject({
+      sessionRef: "session:omega-214",
+      delegationGrantRef: grant.grantRef,
+      generation: 1,
+      state: "revoked",
+    });
+  });
+
   it("refuses delegation before a human assignee is accountable", async () => {
     const attempt = Effect.gen(function* () {
       const authority = yield* WorkCommandAuthority;
@@ -207,9 +255,35 @@ describe("All Work command admission authority", () => {
     expect(result.started.snapshot).toMatchObject({
       sessionRefs: ["session:omega-214"],
       runRefs: ["run:omega-214"],
+      sessionProjections: [
+        {
+          sessionRef: "session:omega-214",
+          threadRef: "thread:omega-214",
+          agentSessionRef: "agent-session:omega-214",
+          runRef: "run:omega-214",
+          delegationGrantRef: grant.grantRef,
+          generation: 1,
+          hostRef: grant.hostRef,
+          state: "active",
+        },
+      ],
     });
     expect(result.activity.receipt.outcome.effectRef).toBe("effect:omega-214:1");
+    expect(result.activity.snapshot.agentActivityProjections).toEqual([
+      {
+        activityRef: "agent-activity:omega-214:progress",
+        sessionRef: "session:omega-214",
+        runRef: "run:omega-214",
+        generation: 1,
+        kind: "progress",
+        summary: "Implemented the shared admission boundary.",
+        providerEventRef: "provider-event:codex:1",
+        lossRefs: ["loss:provider:omitted-internal-frame"],
+        effectRef: "effect:omega-214:1",
+      },
+    ]);
     expect(result.revoked.snapshot.summary.agentDelegate).toBeNull();
+    expect(result.revoked.snapshot.sessionProjections?.[0]?.state).toBe("revoked");
     expect(result.late).toMatchObject({ reason: "stale_generation" });
     expect(result.state.sessions[0]?.state).toBe("revoked");
     expect(result.state.activities[0]).toMatchObject({

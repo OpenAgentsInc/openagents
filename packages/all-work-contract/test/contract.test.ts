@@ -247,6 +247,25 @@ describe("OpenAgents All Work generated boundary", () => {
           : { ...snapshot.issue, workRef: "work:other:1" },
     });
     expect(Effect.runSyncExit(validateWorkSnapshotSemantics(mismatched))._tag).toBe("Failure");
+
+    const mismatchedSession = parseWorkSnapshot({
+      ...snapshot,
+      sessionProjections: [
+        {
+          sessionRef: "session:missing",
+          threadRef: "thread:missing",
+          agentSessionRef: "agent-session:missing",
+          runRef: "run:missing",
+          delegationGrantRef: "delegation-grant:missing",
+          generation: 1,
+          hostRef: "host:missing",
+          state: "revoked",
+        },
+      ],
+    });
+    expect(Effect.runSyncExit(validateWorkSnapshotSemantics(mismatchedSession))._tag).toBe(
+      "Failure",
+    );
   });
 
   it("enforces monotonic revisions and cursor coherence per source authority", () => {

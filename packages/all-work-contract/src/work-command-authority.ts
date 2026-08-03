@@ -21,6 +21,7 @@ import {
   SourceRefSchema,
   ThreadRefSchema,
   type WorkCommand,
+  WorkCommandActivityKindSchema,
   type WorkCommandExecuteRequest,
   WorkCommandExecuteRequestSchema,
   type WorkCommandExecuteResult,
@@ -52,7 +53,7 @@ const WorkCommandActivityFactSchema = S.Struct({
   sessionRef: SessionRefSchema,
   runRef: RunRefSchema,
   generation: SafeIntegerSchema,
-  kind: S.String,
+  kind: WorkCommandActivityKindSchema,
   summary: S.String,
   providerEventRef: S.NullOr(SourceRefSchema),
   lossRefs: S.Array(SourceRefSchema),
@@ -213,6 +214,28 @@ interface Transition {
   readonly reviewRefs: ReadonlyArray<string>;
   readonly effectRef: string | null;
 }
+
+const projectExecutionSnapshot = (
+  snapshot: WorkSnapshot,
+  sessions: ReadonlyArray<WorkCommandSession>,
+  activities: ReadonlyArray<WorkCommandActivityFact>,
+): WorkSnapshot => ({
+  ...snapshot,
+  sessionProjections: sessions.map((session) => ({
+    sessionRef: session.sessionRef,
+    threadRef: session.threadRef,
+    agentSessionRef: session.agentSessionRef,
+    runRef: session.runRef,
+    delegationGrantRef: session.grantRef,
+    generation: session.generation,
+    hostRef: session.hostRef,
+    state: session.state,
+  })),
+  agentActivityProjections: activities.map((activity) => ({ ...activity })),
+});
+
+export const projectWorkCommandSnapshot = (state: WorkCommandAuthorityState): WorkSnapshot =>
+  projectExecutionSnapshot(state.snapshot, state.sessions, state.activities);
 
 const transition = (
   state: WorkCommandAuthorityState,
@@ -422,6 +445,8 @@ const transition = (
     }
   }
 
+  snapshot = projectExecutionSnapshot(snapshot, sessions, activities);
+
   return {
     snapshot,
     authorizedPrincipalRefs,
@@ -481,6 +506,10 @@ export const WorkCommandAuthorityLive = Layer.effect(
             )
           : Effect.succeed(state),
       ),
+      Effect.map((state) => ({
+        ...state,
+        snapshot: projectWorkCommandSnapshot(state),
+      })),
     );
     return WorkCommandAuthority.of({
       read: load,

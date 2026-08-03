@@ -14,6 +14,7 @@ export const AllWorkSemanticErrorCodeSchema = S.Literals([
   "incompatible_version",
   "issue_identity_mismatch",
   "issue_revision_mismatch",
+  "execution_projection_mismatch",
   "work_identity_mismatch",
   "revision_regression",
   "cursor_changed_without_revision",
@@ -148,6 +149,42 @@ export const validateWorkSnapshotSemantics = Effect.fn(
         detail: "Issue projection must use the Work snapshot revision",
       });
     }
+  }
+  const projectedSessions = snapshot.sessionProjections ?? [];
+  const distinctSessions = new Set(projectedSessions.map((session) => session.sessionRef));
+  if (
+    distinctSessions.size !== projectedSessions.length ||
+    projectedSessions.some(
+      (session) =>
+        session.generation === 0 ||
+        !snapshot.sessionRefs.includes(session.sessionRef) ||
+        !snapshot.threadRefs.includes(session.threadRef) ||
+        !snapshot.agentSessionRefs.includes(session.agentSessionRef) ||
+        !snapshot.runRefs.includes(session.runRef),
+    )
+  ) {
+    return yield* new AllWorkSemanticError({
+      code: "execution_projection_mismatch",
+      detail: "Session projections must preserve distinct snapshot identities and generation",
+    });
+  }
+  const projectedActivities = snapshot.agentActivityProjections ?? [];
+  const distinctActivities = new Set(projectedActivities.map((activity) => activity.activityRef));
+  if (
+    distinctActivities.size !== projectedActivities.length ||
+    projectedActivities.some(
+      (activity) =>
+        activity.generation === 0 ||
+        !snapshot.agentActivityRefs.includes(activity.activityRef) ||
+        !snapshot.sessionRefs.includes(activity.sessionRef) ||
+        !snapshot.runRefs.includes(activity.runRef),
+    )
+  ) {
+    return yield* new AllWorkSemanticError({
+      code: "execution_projection_mismatch",
+      detail:
+        "Agent Activity projections must preserve distinct snapshot identities and generation",
+    });
   }
   return snapshot;
 });

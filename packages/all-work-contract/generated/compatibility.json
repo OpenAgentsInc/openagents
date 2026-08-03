@@ -2,12 +2,12 @@
   "contractRef": "openagents.all_work_boundary.v1",
   "contractVersion": 1,
   "profileVersion": "openagents.contract_profile.v1",
-  "definitionSha256": "c6557022965ea9f92450fefcc7e3ef5eb77d43654280b611e9966b7a1fbbe26a",
+  "definitionSha256": "012a5962bc2bea70792014f5b375d78b7afef2bee15408489a729278c641508b",
   "artifacts": {
-    "effectSha256": "056801ffe6c720c77313774ff3dd6613e14aa5c3edfe5a6f26d0cba67fdb00e0",
-    "rustSha256": "83ee03c2af2ae43b1f46b307a135d91ea716b25b6be4a740c0b7cf7db3c6899d",
-    "jsonSchemaSha256": "13e60ec1f9fadd95ca88b6363ffe537e55aef6976f0a615c013c96468f775370",
-    "fixtureIndexSha256": "39a1cd52cd333154d04c6a00e2a774dbdb105af82c25360b6a4e13b81a6b111f"
+    "effectSha256": "8c4f578c2edf63ca53a78254f21a7d4b4a1a37eec027caee0ae646ee5eaed125",
+    "rustSha256": "eedef392837222e2fedb1b18bb132fe015cdb060fb62accd2c85bde3e299d0d6",
+    "jsonSchemaSha256": "43692d5f6032aa2d096a92d3de37b0e957bf607ac18ce19544f93ad7c9f6e375",
+    "fixtureIndexSha256": "b00468c392eb667a080f8e17b4c69612946d88c0e014e57de8cdb75d062245d5"
   },
   "protocol": {
     "supportedVersions": [
@@ -172,6 +172,7 @@
     "delegation_does_not_copy_assignee_or_owner_authority",
     "revocation_fences_new_session_effects_by_generation",
     "agent_activity_preserves_provider_event_and_loss_refs",
+    "work_snapshot_execution_projections_preserve_identity_generation_and_lifecycle",
     "owner_disposition_is_separate_from_completion_and_verification",
     "internal_work_has_exactly_one_writer_per_cutover_generation",
     "native_work_cutover_creates_zero_github_writes",
@@ -240,6 +241,10 @@
     "WorkRelation": "structural_only",
     "IssueProjection": "structural_only",
     "WorkSummary": "implemented",
+    "WorkCommandActivityKind": "structural_only",
+    "WorkSessionState": "implemented",
+    "WorkSessionProjection": "implemented",
+    "WorkAgentActivityProjection": "implemented",
     "WorkSnapshot": "implemented",
     "PlanningResourceRef": "structural_only",
     "SourceUrl": "structural_only",
@@ -306,7 +311,6 @@
     "SignedWorkroomDeliveryReceipt": "structural_only",
     "SignedWorkroomDeliveryResult": "implemented",
     "WorkCommandControlKind": "structural_only",
-    "WorkCommandActivityKind": "structural_only",
     "OwnerDispositionDecision": "structural_only",
     "DelegationGrant": "implemented",
     "WorkCommand": "structural_only",

@@ -3,6 +3,7 @@ import {
   emptyWorkCommandAuthorityState,
   fileWorkCommandStateStoreLayer,
   initializeFileWorkCommandState,
+  projectWorkCommandSnapshot,
   WorkCommandAuthority,
   WorkCommandAuthorityError,
   WorkCommandAuthorityLive,
@@ -66,5 +67,5 @@ export const readAllWorkCommandSnapshot = (dataRoot: string, workRef: string) =>
         detail: "command state contains the wrong Work identity",
       });
     }
-    return state?.snapshot ?? planningSnapshot;
+    return state === null ? planningSnapshot : projectWorkCommandSnapshot(state);
   }).pipe(Effect.provide(fileWorkCommandStateStoreLayer(dataRoot, workRef)));

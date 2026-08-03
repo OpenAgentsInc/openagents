@@ -946,6 +946,134 @@
       ],
       "additionalProperties": false
     },
+    "WorkCommandActivityKind": {
+      "type": "string",
+      "title": "WorkCommandActivityKind",
+      "enum": [
+        "plan",
+        "progress",
+        "question",
+        "action",
+        "artifact",
+        "error",
+        "interruption",
+        "result"
+      ]
+    },
+    "WorkSessionState": {
+      "type": "string",
+      "title": "WorkSessionState",
+      "enum": [
+        "active",
+        "paused",
+        "stopped",
+        "revoked"
+      ]
+    },
+    "WorkSessionProjection": {
+      "type": "object",
+      "title": "WorkSessionProjection",
+      "properties": {
+        "sessionRef": {
+          "$ref": "#/$defs/SessionRef"
+        },
+        "threadRef": {
+          "$ref": "#/$defs/ThreadRef"
+        },
+        "agentSessionRef": {
+          "$ref": "#/$defs/AgentSessionRef"
+        },
+        "runRef": {
+          "$ref": "#/$defs/RunRef"
+        },
+        "delegationGrantRef": {
+          "$ref": "#/$defs/DelegationGrantRef"
+        },
+        "generation": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "hostRef": {
+          "$ref": "#/$defs/HostRef"
+        },
+        "state": {
+          "$ref": "#/$defs/WorkSessionState"
+        }
+      },
+      "required": [
+        "sessionRef",
+        "threadRef",
+        "agentSessionRef",
+        "runRef",
+        "delegationGrantRef",
+        "generation",
+        "hostRef",
+        "state"
+      ],
+      "additionalProperties": false
+    },
+    "WorkAgentActivityProjection": {
+      "type": "object",
+      "title": "WorkAgentActivityProjection",
+      "properties": {
+        "activityRef": {
+          "$ref": "#/$defs/AgentActivityRef"
+        },
+        "sessionRef": {
+          "$ref": "#/$defs/SessionRef"
+        },
+        "runRef": {
+          "$ref": "#/$defs/RunRef"
+        },
+        "generation": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "kind": {
+          "$ref": "#/$defs/WorkCommandActivityKind"
+        },
+        "summary": {
+          "$ref": "#/$defs/ShortText"
+        },
+        "providerEventRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lossRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "maxItems": 64
+        },
+        "effectRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EffectRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "activityRef",
+        "sessionRef",
+        "runRef",
+        "generation",
+        "kind",
+        "summary",
+        "providerEventRef",
+        "lossRefs",
+        "effectRef"
+      ],
+      "additionalProperties": false
+    },
     "WorkSnapshot": {
       "type": "object",
       "title": "WorkSnapshot",
@@ -1004,6 +1132,20 @@
             "$ref": "#/$defs/RunRef"
           },
           "maxItems": 512
+        },
+        "sessionProjections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkSessionProjection"
+          },
+          "maxItems": 512
+        },
+        "agentActivityProjections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkAgentActivityProjection"
+          },
+          "maxItems": 4096
         },
         "intentRefs": {
           "type": "array",
@@ -3323,20 +3465,6 @@
         "stop",
         "retry",
         "dismiss"
-      ]
-    },
-    "WorkCommandActivityKind": {
-      "type": "string",
-      "title": "WorkCommandActivityKind",
-      "enum": [
-        "plan",
-        "progress",
-        "question",
-        "action",
-        "artifact",
-        "error",
-        "interruption",
-        "result"
       ]
     },
     "OwnerDispositionDecision": {
@@ -6106,7 +6234,7 @@
     "profileVersion": "openagents.contract_profile.v1",
     "contractRef": "openagents.all_work_boundary.v1",
     "contractVersion": 1,
-    "definitionSha256": "c6557022965ea9f92450fefcc7e3ef5eb77d43654280b611e9966b7a1fbbe26a",
+    "definitionSha256": "012a5962bc2bea70792014f5b375d78b7afef2bee15408489a729278c641508b",
     "owningDomain": "all_work_boundary",
     "authoritativeRuntime": "effect",
     "relationship": "projection",
@@ -6141,6 +6269,7 @@
       "delegation_does_not_copy_assignee_or_owner_authority",
       "revocation_fences_new_session_effects_by_generation",
       "agent_activity_preserves_provider_event_and_loss_refs",
+      "work_snapshot_execution_projections_preserve_identity_generation_and_lifecycle",
       "owner_disposition_is_separate_from_completion_and_verification",
       "internal_work_has_exactly_one_writer_per_cutover_generation",
       "native_work_cutover_creates_zero_github_writes",
@@ -6209,6 +6338,10 @@
       "WorkRelation": "structural_only",
       "IssueProjection": "structural_only",
       "WorkSummary": "implemented",
+      "WorkCommandActivityKind": "structural_only",
+      "WorkSessionState": "implemented",
+      "WorkSessionProjection": "implemented",
+      "WorkAgentActivityProjection": "implemented",
       "WorkSnapshot": "implemented",
       "PlanningResourceRef": "structural_only",
       "SourceUrl": "structural_only",
@@ -6275,7 +6408,6 @@
       "SignedWorkroomDeliveryReceipt": "structural_only",
       "SignedWorkroomDeliveryResult": "implemented",
       "WorkCommandControlKind": "structural_only",
-      "WorkCommandActivityKind": "structural_only",
       "OwnerDispositionDecision": "structural_only",
       "DelegationGrant": "implemented",
       "WorkCommand": "structural_only",
