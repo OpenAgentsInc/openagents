@@ -63,6 +63,16 @@ const layer = () =>
     ),
   );
 
+type Attempt<A, E> =
+  | { readonly ok: true; readonly value: A }
+  | { readonly ok: false; readonly error: E };
+
+const attempt = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<Attempt<A, E>, never, R> =>
+  effect.pipe(
+    Effect.map((value): Attempt<A, E> => ({ ok: true, value })),
+    Effect.catch((error) => Effect.succeed<Attempt<A, E>>({ ok: false, error })),
+  );
+
 describe("native Repository Work Claim authority", () => {
   it("creates, claims, heartbeats, blocks, reports status, and explicitly releases without GitHub writes", async () => {
     const journey = Effect.gen(function* () {
@@ -294,6 +304,247 @@ describe("native Repository Work Claim authority", () => {
     );
     expect(loaded?.ledger.packets[0]?.packetRef).toBe("work-packet:restart");
     rmSync(directory, { recursive: true, force: true });
+  });
+
+  it("admits exactly one generation when two clients race for the same packet", async () => {
+    const journey = Effect.gen(function* () {
+      const authority = yield* RepositoryClaimAuthority;
+      yield* authority.execute(packet(0, "race2", "work:race2", ["crates/omega_work_index"]));
+      const contend = (id: string, principal: string) =>
+        attempt(
+          authority.execute(
+            request(
+              1,
+              id,
+              "2026-08-03T08:01:00Z",
+              {
+                command: "claim_packet",
+                packetRef: "work-packet:race2",
+                claimRef: `repository-claim:${id}`,
+              },
+              principal,
+            ),
+          ),
+        );
+      const outcomes = yield* Effect.all(
+        [
+          contend("client-a", "principal:omega:client-a"),
+          contend("client-b", "principal:omega:client-b"),
+        ],
+        { concurrency: "unbounded" },
+      );
+      // The loser re-reads the ledger and retries at the fresh revision. A correct
+      // revision must still not manufacture a second concurrent claim generation.
+      const loserIndex = outcomes.findIndex((outcome) => !outcome.ok);
+      const retry = yield* attempt(
+        authority.execute(
+          request(
+            2,
+            "loser-retry",
+            "2026-08-03T08:02:00Z",
+            {
+              command: "claim_packet",
+              packetRef: "work-packet:race2",
+              claimRef: "repository-claim:loser-retry",
+            },
+            "principal:omega:client-b",
+          ),
+        ),
+      );
+      const ledger = yield* authority.read({ repositoryRef: "repository:openagents" });
+      return { outcomes, loserIndex, retry, ledger };
+    }).pipe(Effect.provide(layer()));
+    const { outcomes, loserIndex, retry, ledger } = await Effect.runPromise(journey);
+
+    const admitted = outcomes.filter((outcome) => outcome.ok);
+    const refused = outcomes.filter((outcome) => !outcome.ok);
+    expect(admitted).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    expect(loserIndex).toBeGreaterThanOrEqual(0);
+    // Whether the loser lost at the request revision check or at the compare-and-swap,
+    // the ledger refuses it as a revision conflict rather than silently overwriting.
+    expect(refused[0]).toMatchObject({ ok: false, error: { reason: "revision_conflict" } });
+    expect(retry).toMatchObject({ ok: false, error: { reason: "packet_not_ready" } });
+
+    const claims = ledger.ledger.claims;
+    expect(claims).toHaveLength(1);
+    expect(claims[0]?.generation).toBe(1);
+    expect(claims[0]?.state).toBe("claimed");
+    expect(ledger.ledger.audit.filter((entry) => entry.kind === "claimed")).toHaveLength(1);
+  });
+
+  it("lets two clients hold non-colliding packets concurrently", async () => {
+    const journey = Effect.gen(function* () {
+      const authority = yield* RepositoryClaimAuthority;
+      yield* authority.execute(packet(0, "left", "work:left", ["crates/omega_work_index"]));
+      yield* authority.execute(packet(1, "right", "work:right", ["packages/omega-effectd"]));
+      const claim = (revision: number, id: string, principal: string) =>
+        attempt(
+          authority.execute(
+            request(
+              revision,
+              `concurrent-${id}`,
+              "2026-08-03T08:01:00Z",
+              {
+                command: "claim_packet",
+                packetRef: `work-packet:${id}`,
+                claimRef: `repository-claim:${id}`,
+              },
+              principal,
+            ),
+          ),
+        );
+      const first = yield* Effect.all(
+        [claim(2, "left", "principal:omega:left"), claim(2, "right", "principal:omega:right")],
+        { concurrency: "unbounded" },
+      );
+      // Optimistic revision serializes the writes; the deferred client retries at the
+      // fresh revision and must be admitted, because the packets do not collide.
+      const pending = first.findIndex((outcome) => !outcome.ok);
+      const retried =
+        pending === -1
+          ? null
+          : yield* attempt(
+              authority.execute(
+                request(
+                  3,
+                  `retry-${pending === 0 ? "left" : "right"}`,
+                  "2026-08-03T08:02:00Z",
+                  {
+                    command: "claim_packet",
+                    packetRef: `work-packet:${pending === 0 ? "left" : "right"}`,
+                    claimRef: `repository-claim:${pending === 0 ? "left" : "right"}`,
+                  },
+                  pending === 0 ? "principal:omega:left" : "principal:omega:right",
+                ),
+              ),
+            );
+      const ledger = yield* authority.read({ repositoryRef: "repository:openagents" });
+      return { first, retried, ledger };
+    }).pipe(Effect.provide(layer()));
+    const { retried, ledger } = await Effect.runPromise(journey);
+
+    if (retried !== null) {
+      expect(retried.ok).toBe(true);
+    }
+    const claims = ledger.ledger.claims;
+    expect(claims).toHaveLength(2);
+    expect(claims.every((claim) => claim.state === "claimed" && claim.generation === 1)).toBe(true);
+    expect(new Set(claims.map((claim) => claim.holderRef)).size).toBe(2);
+  });
+
+  it("refuses a reordered command and keeps the event cursor monotonic", async () => {
+    const journey = Effect.gen(function* () {
+      const authority = yield* RepositoryClaimAuthority;
+      yield* authority.execute(packet(0, "order", "work:order", ["packages/order"]));
+      const claimed = yield* authority.execute(
+        request(1, "order-claim", "2026-08-03T08:01:00Z", {
+          command: "claim_packet",
+          packetRef: "work-packet:order",
+          claimRef: "repository-claim:order",
+        }),
+      );
+      const beat = yield* authority.execute(
+        request(2, "order-beat", "2026-08-03T08:02:00Z", {
+          command: "heartbeat",
+          claimRef: "repository-claim:order",
+          expectedGeneration: 1,
+          evidenceRefs: ["evidence:order:one"],
+        }),
+      );
+      // A command that was built against an older revision arrives late.
+      const reordered = yield* attempt(
+        authority.execute(
+          request(1, "order-late", "2026-08-03T08:03:00Z", {
+            command: "status",
+            claimRef: "repository-claim:order",
+            expectedGeneration: 1,
+            detail: "Late status built against a superseded revision.",
+            evidenceRefs: ["evidence:order:late"],
+          }),
+        ),
+      );
+      // A cursor gap (a revision ahead of the ledger) is refused, not buffered.
+      const gap = yield* attempt(
+        authority.execute(
+          request(9, "order-gap", "2026-08-03T08:04:00Z", {
+            command: "status",
+            claimRef: "repository-claim:order",
+            expectedGeneration: 1,
+            detail: "Status built against a revision the ledger never reached.",
+            evidenceRefs: ["evidence:order:gap"],
+          }),
+        ),
+      );
+      return { claimed, beat, reordered, gap };
+    }).pipe(Effect.provide(layer()));
+    const { claimed, beat, reordered, gap } = await Effect.runPromise(journey);
+
+    expect(reordered).toMatchObject({ ok: false, error: { reason: "revision_conflict" } });
+    expect(gap).toMatchObject({ ok: false, error: { reason: "revision_conflict" } });
+    expect(beat.receipt.revision).toBeGreaterThan(claimed.receipt.revision);
+    expect(beat.receipt.previousRevision).toBe(claimed.receipt.revision);
+    expect(claimed.receipt.eventCursor).toBe(`cursor:repository-claim:${claimed.receipt.revision}`);
+    expect(beat.receipt.eventCursor).toBe(`cursor:repository-claim:${beat.receipt.revision}`);
+  });
+
+  it("completes claim, status, and release while every network call fails", async () => {
+    const realFetch = globalThis.fetch;
+    let networkAttempts = 0;
+    // Any attempt to reach GitHub — or any other host — fails hard for the whole
+    // journey. A native claim/status/release that still completes proves the
+    // authority has no GitHub dependency on its critical path.
+    globalThis.fetch = (() => {
+      networkAttempts += 1;
+      throw new Error("GITHUB OUTAGE: network is unavailable");
+    }) as typeof globalThis.fetch;
+    try {
+      // Positive control: the sabotage is real, so `networkAttempts === 0` below
+      // is evidence of no network dependency rather than a no-op assertion.
+      expect(() => globalThis.fetch("https://api.github.com/")).toThrow("GITHUB OUTAGE");
+      networkAttempts = 0;
+      const journey = Effect.gen(function* () {
+        const authority = yield* RepositoryClaimAuthority;
+        yield* authority.execute(packet(0, "outage", "work:outage", ["packages/outage"]));
+        yield* authority.execute(
+          request(1, "outage-claim", "2026-08-03T08:01:00Z", {
+            command: "claim_packet",
+            packetRef: "work-packet:outage",
+            claimRef: "repository-claim:outage",
+          }),
+        );
+        yield* authority.execute(
+          request(2, "outage-status", "2026-08-03T08:02:00Z", {
+            command: "status",
+            claimRef: "repository-claim:outage",
+            expectedGeneration: 1,
+            detail: "Working while GitHub is unreachable.",
+            evidenceRefs: ["evidence:outage:status"],
+          }),
+        );
+        const released = yield* authority.execute(
+          request(3, "outage-release", "2026-08-03T08:03:00Z", {
+            command: "release",
+            claimRef: "repository-claim:outage",
+            expectedGeneration: 1,
+            evidenceRefs: ["evidence:outage:landed"],
+          }),
+        );
+        const ledger = yield* authority.read({ repositoryRef: "repository:openagents" });
+        return { released, ledger };
+      }).pipe(Effect.provide(layer()));
+      const { released, ledger } = await Effect.runPromise(journey);
+
+      expect(released.receipt.admitted).toBe(true);
+      expect(released.receipt.githubWriteCount).toBe(0);
+      expect(ledger.ledger.claims[0]).toMatchObject({
+        state: "released",
+        releaseEvidenceRefs: ["evidence:outage:landed"],
+      });
+      expect(networkAttempts).toBe(0);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
   });
 
   it("keeps GitHub claim comments as inert source-linked history with gap facts", () => {
