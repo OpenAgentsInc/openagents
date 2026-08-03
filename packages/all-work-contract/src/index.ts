@@ -8,6 +8,7 @@ export * from "./repository-claim-authority.ts";
 export * from "./signed-workroom-authority.ts";
 export * from "./signed-workroom-file-store.ts";
 export * from "./signed-workroom-nostr.ts";
+export * from "./signed-workroom-publisher.ts";
 export * from "./strict-bug-candidate-authority.ts";
 export * from "./semantic.ts";
 export * from "./work-command-authority.ts";

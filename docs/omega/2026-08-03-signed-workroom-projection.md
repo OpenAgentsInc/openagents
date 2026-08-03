@@ -13,22 +13,22 @@ generation, exact occurrence timestamp, payload digest, causal parents,
 evidence, supersession, and revocation. The authority recomputes the SHA-256
 event ID and verifies its BIP-340 Schnorr signature.
 
-| Activity kind | Nostr kind |
-| --- | ---: |
-| membership | 32150 |
-| thread | 32151 |
-| mention | 32152 |
-| assignment | 32153 |
-| delegation | 32154 |
-| agent_session | 32155 |
-| agent_activity | 32156 |
-| code_change | 32157 |
-| review | 32158 |
-| decision | 32159 |
-| evidence | 32160 |
-| verification_ref | 32161 |
-| receipt_ref | 32162 |
-| revocation | 32163 |
+| Activity kind    | Nostr kind |
+| ---------------- | ---------: |
+| membership       |      32150 |
+| thread           |      32151 |
+| mention          |      32152 |
+| assignment       |      32153 |
+| delegation       |      32154 |
+| agent_session    |      32155 |
+| agent_activity   |      32156 |
+| code_change      |      32157 |
+| review           |      32158 |
+| decision         |      32159 |
+| evidence         |      32160 |
+| verification_ref |      32161 |
+| receipt_ref      |      32162 |
+| revocation       |      32163 |
 
 This contiguous OpenAgents-owned range is versioned by the projection profile.
 A semantic change requires a new profile and registry update; it cannot reuse a
@@ -70,7 +70,21 @@ requests are idempotent. Their receipts fix
 `relayAcceptanceIsAuthority: false` and `admittedEffect: false` even when all
 configured relays accept the event.
 
-The reducer is not a network publisher. The remaining OAW-009 work includes
-the publisher adapter, purpose-bound non-human actor grants, Omega delivery and
-enqueue UI, and installed two-client outage/replay falsifiers. Test execution
-is deferred to the final omega#208 build gate.
+The network publisher consumes only already-persisted outbox rows. It opens
+bounded WSS connections to the exact targets stored on the row, publishes the
+exact verified NIP-01 event, accepts only a matching relay `OK` frame, and feeds
+accepted, rejected, or unreachable attempts into the revision-safe reducer.
+It retries only targets without a recorded acceptance. Invalid targets and
+missing WebSocket support become typed unreachable attempts without starting a
+network effect. Relay-provided text is not persisted, so an untrusted relay
+cannot inject content or sensitive data into the canonical ledger.
+
+The publisher is an Effect service with an injectable socket constructor. The
+live layer uses the runtime WebSocket implementation. A caller must still
+provide the exact activity actor and delivery capability before any socket is
+opened. Relay acceptance remains transport evidence only, and a revision race
+after publication fails closed so a later retry can reconcile the durable row.
+
+The remaining OAW-009 work includes purpose-bound non-human actor grants,
+Omega delivery and enqueue UI, and installed two-client outage/replay
+falsifiers. Test execution is deferred to the final omega#208 build gate.
