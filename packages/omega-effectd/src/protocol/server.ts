@@ -18,6 +18,7 @@ import {
   decodeWorkIndexReadRequest,
   decodeWorkCommandExecuteRequest,
   decodeWorkSnapshotReadRequest,
+  decodeWorkSnapshotReadResult,
   negotiateAllWorkProtocol,
   RepositoryClaimAuthorityError,
   SignedWorkroomError,
@@ -50,7 +51,7 @@ import {
   bootstrapAllWorkPlanningAuthority,
   readAllWorkPlanningGraph,
 } from "../engine/all-work-planning-authority.ts";
-import { executeAllWorkCommand } from "../engine/all-work-commands.ts";
+import { executeAllWorkCommand, readAllWorkCommandSnapshot } from "../engine/all-work-commands.ts";
 import {
   bootstrapAllWorkRepositoryClaims,
   executeAllWorkRepositoryClaim,
@@ -1325,15 +1326,34 @@ export const createOmegaEffectdFramedServer = (
         }
         try {
           const params = decodeWorkSnapshotReadRequest(request.params ?? {});
-          const result = readFullAutoWorkSnapshot(
-            runRegistry.list(),
-            params.workRef,
-            new Date().toISOString(),
+          try {
+            const result = readFullAutoWorkSnapshot(
+              runRegistry.list(),
+              params.workRef,
+              new Date().toISOString(),
+            );
+            return respond(request.id, true, result);
+          } catch (error) {
+            if (!(error instanceof AllWorkReadError) || error.code !== "not_found") throw error;
+          }
+          const snapshot = await Effect.runPromise(
+            readAllWorkCommandSnapshot(paths.dataRoot, params.workRef),
           );
-          return respond(request.id, true, result);
+          return respond(request.id, true, decodeWorkSnapshotReadResult({ snapshot }));
         } catch (error) {
           if (error instanceof AllWorkReadError) {
             return respond(request.id, false, undefined, redactedError(error.code, error.message));
+          }
+          if (error instanceof WorkCommandAuthorityError) {
+            return respond(
+              request.id,
+              false,
+              undefined,
+              redactedError(
+                error.reason === "work_not_found" ? "not_found" : "unavailable",
+                "The canonical Work snapshot is unavailable.",
+              ),
+            );
           }
           return respond(
             request.id,

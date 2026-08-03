@@ -67,8 +67,10 @@ Effect from agent completion text.
 This slice defines and implements the OpenAgents-owned shared authority. It
 also routes the separately negotiated method through the packaged
 `omega-effectd` process and stores one private, atomic state record per
-digest-addressed canonical Work identity. It does not claim that Omega consumes
-`work.command.execute` yet. The next slice must pin the regenerated Rust
+digest-addressed canonical Work identity. `work.snapshot.read` recovers that
+command projection after restart and falls back to planning state before the
+first command. It does not claim that Omega consumes `work.command.execute`
+yet. The next slice must pin the regenerated Rust
 artifact in Omega, bind Work UI commands to the Effective Principal and
 capability request, and prove the installed owner journey. Until then fixture
 controls remain visibly simulated and omega#214 stays open.

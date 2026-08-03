@@ -6,6 +6,7 @@ import {
   WorkCommandAuthority,
   WorkCommandAuthorityError,
   WorkCommandAuthorityLive,
+  WorkCommandStateStore,
 } from "@openagentsinc/all-work-contract";
 import { Effect, Layer } from "effect";
 
@@ -48,3 +49,22 @@ export const executeAllWorkCommand = (dataRoot: string, input: unknown) => {
     return yield* authority.execute(request);
   }).pipe(Effect.provide(authorityLayer(dataRoot, request.workRef)));
 };
+
+export const readAllWorkCommandSnapshot = (dataRoot: string, workRef: string) =>
+  Effect.gen(function* () {
+    yield* bootstrapAllWorkPlanningAuthority(dataRoot);
+    const graph = yield* readAllWorkPlanningGraph(dataRoot);
+    const planningSnapshot = graph.work.find((candidate) => candidate.summary.workRef === workRef);
+    if (planningSnapshot === undefined) {
+      return yield* new WorkCommandAuthorityError({ reason: "work_not_found", detail: workRef });
+    }
+    const store = yield* WorkCommandStateStore;
+    const state = yield* store.load;
+    if (state !== null && state.snapshot.summary.workRef !== workRef) {
+      return yield* new WorkCommandAuthorityError({
+        reason: "invalid_state",
+        detail: "command state contains the wrong Work identity",
+      });
+    }
+    return state?.snapshot ?? planningSnapshot;
+  }).pipe(Effect.provide(fileWorkCommandStateStoreLayer(dataRoot, workRef)));

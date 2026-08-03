@@ -297,6 +297,15 @@ describe("omega-effectd framed protocol", () => {
 
       const restarted = open();
       await initialize(restarted, 2);
+      const recovered = await restarted.handleLine(
+        request("command-snapshot", 2, "work.snapshot.read", {
+          workRef: "work:github:openagentsinc-omega:214",
+        }),
+      );
+      expect(recovered?.ok).toBe(true);
+      expect(
+        decodeWorkSnapshotReadResult(recovered?.result).snapshot.summary.assignee,
+      ).toMatchObject({ principalRef: "principal:organization:openagents" });
       const unassigned = await restarted.handleLine(
         request(
           "command-unassign",

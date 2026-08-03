@@ -45,6 +45,10 @@ human assignee from owned planning state, then delegates revision,
 idempotency, generation, grant, session, effect, and Owner Disposition checks
 to the shared authority. It never treats a caller-supplied Organization as the
 bootstrap authority and never writes to GitHub.
+`work.snapshot.read` returns that durable command projection for canonical
+planning Work after restart; it falls back to the owned planning snapshot when
+no command record exists. Full Auto Work keeps its existing source-owned read
+path.
 
 The same generation-fenced stream carries `host_request` / `host_response`
 frames for workspace resolution, thread creation, lane readiness, exact-turn
