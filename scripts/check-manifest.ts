@@ -129,6 +129,10 @@ export const fastPolicyTargets: readonly CheckTarget[] = [
     name: "cli-invocability",
     command: ["node", "scripts/cli-invocability-guard.mjs", "."],
   },
+  {
+    name: "documented-route-mounts",
+    command: ["pnpm", "run", "check:documented-route-mounts"],
+  },
 ];
 
 export const completionTargets: readonly CheckTarget[] = [

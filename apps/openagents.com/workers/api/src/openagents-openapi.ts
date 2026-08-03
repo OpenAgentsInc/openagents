@@ -8362,20 +8362,6 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
-  '/api/public/proof/otec': {
-    get: operation({
-      operationId: 'getPublicOtecProof',
-      summary: 'Read OTEC proof closeout',
-      description:
-        'Returns the public-safe proof closeout for the OTEC Site order, including the agent instruction card and first-Site agent challenges.',
-      tags: ['Public Proof'],
-      security: publicRead,
-      responses: {
-        '200': okJson('OTEC proof.', '#/components/schemas/PublicOtecProof'),
-        ...errorResponses(),
-      },
-    }),
-  },
   '/api/public/pylon-stats': {
     get: operation({
       operationId: 'getPublicPylonStats',
@@ -8979,23 +8965,6 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
-  '/api/public/khala-code/plans': {
-    get: operation({
-      operationId: 'getKhalaCodePlanCatalog',
-      summary: 'Read the Khala Code plan catalog',
-      description:
-        'Returns the honest Khala Code plan catalog (khala_code.free_paid_plans.v1): the Episode 245 two-plan structure — Free (pay with data) and Paid (private data: capture opt-out) — with code-accurate terms and the REAL purchasability state. The shipped default: the free plan is the default for everyone, free-plan desktop trace capture is NOT live, and the paid plan is NOT yet purchasable (the purchase seam is flag-gated off by default; when armed it requires settled Stripe Checkout or Spark/MPP Lightning payment before granting the existing paid-privacy entitlement receipt). Read-only, no auth, no secrets; grants no capture, billing, payout, or settlement authority.',
-      tags: ['Public Proof', 'Agents'],
-      security: publicRead,
-      responses: {
-        '200': okJson(
-          'Khala Code plan catalog.',
-          '#/components/schemas/KhalaCodePlanCatalog',
-        ),
-        ...errorResponses(),
-      },
-    }),
-  },
   '/api/public/khala-code/download-counts': {
     get: operation({
       operationId: 'getPublicKhalaCodeDownloadCounts',
@@ -9190,29 +9159,6 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public launch dashboard.',
           '#/components/schemas/PublicLaunchDashboard',
-        ),
-        ...errorResponses(),
-      },
-    }),
-  },
-  '/api/public/nexus-pylon/receipts/{receiptRef}': {
-    get: operation({
-      operationId: 'getPublicNexusPylonReceipt',
-      summary: 'Read public Nexus/Pylon receipt',
-      description:
-        'Returns a public-safe Nexus/Pylon receipt detail and clearly marks whether the record is simulation-only or evidence of real bitcoin movement. Dispatch acceptance is separate from terminal settlement evidence. Artanis admin assignment refs can also resolve here as public closeout receipts with assignment state, digest, verdict, and redacted timestamp displays. Private customer data, raw invoices, preimages, mnemonics, payout targets, and operator notes are excluded.',
-      tags: ['Public Proof', 'Pylon'],
-      security: publicRead,
-      parameters: [
-        pathParam(
-          'receiptRef',
-          'Nexus/Pylon receipt ref or Artanis admin assignment ref.',
-        ),
-      ],
-      responses: {
-        '200': okJson(
-          'Public Nexus/Pylon receipt.',
-          '#/components/schemas/NexusPylonPublicReceipt',
         ),
         ...errorResponses(),
       },
@@ -9896,41 +9842,6 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
-  '/api/operator/nexus-pylon/dashboard': {
-    get: operation({
-      operationId: 'getOperatorNexusPylonDashboard',
-      summary: 'Read operator Nexus/Pylon dashboard',
-      description:
-        'Returns a redacted operator-only Nexus/Pylon status view for classifying Artanis runs, Pylon readiness, assignments, payout intents, payout attempts, settlement status, blocked gates, and release-gate evidence without SSH.',
-      tags: ['Artanis', 'Pylon', 'Operator'],
-      security: adminSession,
-      responses: {
-        '200': okJson(
-          'Operator Nexus/Pylon dashboard.',
-          '#/components/schemas/NexusPylonOperatorDashboard',
-        ),
-        ...errorResponses(),
-      },
-    }),
-  },
-  '/api/operator/nexus-pylon/receipts/{receiptRef}': {
-    get: operation({
-      operationId: 'getOperatorNexusPylonReceipt',
-      summary: 'Read operator Nexus/Pylon receipt',
-      description:
-        'Returns redacted operator detail for a Nexus/Pylon receipt and its settlement status. Raw payment material and wallet secrets are not projected.',
-      tags: ['Artanis', 'Pylon', 'Operator'],
-      security: adminSession,
-      parameters: [pathParam('receiptRef', 'Nexus/Pylon receipt ref.')],
-      responses: {
-        '200': okJson(
-          'Operator Nexus/Pylon receipt.',
-          '#/components/schemas/NexusPylonOperatorReceipt',
-        ),
-        ...errorResponses(),
-      },
-    }),
-  },
   '/api/operator/nexus-pylon/assignments/{assignmentRef}/accepted-work-payouts':
     {
       post: operation({
@@ -10000,40 +9911,6 @@ const paths = (): JsonSchema => ({
         '409': {
           description:
             'Bridge evidence is incomplete or contains non-public-safe refs.',
-          ...jsonContent('#/components/schemas/ErrorResponse'),
-        },
-        ...errorResponses(),
-      },
-    }),
-  },
-  '/api/operator/nexus-pylon/proof-runs': {
-    post: operation({
-      operationId: 'createOperatorNexusPylonAssignmentProofRun',
-      summary: 'Run Artanis/Pylon assignment proof checker',
-      description:
-        'Operator-only route that runs the Artanis/Pylon proof trace checker before and after the Nexus/Pylon settlement bridge. It returns pre/post proof states and a public receipt URL when the bridge succeeds. It does not spend bitcoin, create invoices, mutate Pylons, publish releases, or expose raw payment material.',
-      tags: ['Artanis', 'Pylon', 'Operator'],
-      security: adminSession,
-      parameters: [
-        requiredIdempotencyHeader(
-          'Stable key for idempotently recording and inspecting this assignment proof run.',
-        ),
-      ],
-      requestBody: jsonContent(
-        '#/components/schemas/NexusPylonAssignmentProofRunRequest',
-      ),
-      responses: {
-        '200': okJson(
-          'Existing or successful Nexus/Pylon assignment proof run.',
-          '#/components/schemas/NexusPylonAssignmentProofRunResponse',
-        ),
-        '201': okJson(
-          'Created Nexus/Pylon assignment proof run bridge receipt.',
-          '#/components/schemas/NexusPylonAssignmentProofRunResponse',
-        ),
-        '409': {
-          description:
-            'Proof-run evidence is incomplete or contains non-public-safe refs.',
           ...jsonContent('#/components/schemas/ErrorResponse'),
         },
         ...errorResponses(),
@@ -10422,24 +10299,6 @@ const paths = (): JsonSchema => ({
         '201': okJson(
           'Programmatic agent registration.',
           '#/components/schemas/ProgrammaticAgentRegistration',
-        ),
-        ...errorResponses(),
-      },
-    }),
-  },
-  '/api/keys/free': {
-    post: operation({
-      operationId: 'mintFreeApiKey',
-      summary: 'Mint a free Khala API key',
-      description:
-        'Khala FREE API mode: mints a free, rate-limited oa_agent_ API key in one call with no payment and no owner claim, and returns the raw bearer token once. The key is used as the Authorization: Bearer credential for POST /api/v1/chat/completions. A free-tier key can call the single public model "openagents/khala" (own-infra GPT-OSS / Gemini Flash) WITHOUT a credit balance, within a per-key daily free quota (request and served-token caps that reset each UTC day). Free usage is still receipt-first metered as a zero credit debit. Beyond the daily quota, or for premium lanes, add credits (the normal balance / 402 path). Minting is bounded per client IP per UTC day so there is no unbounded key minting; the raw IP is hashed and never stored or returned, and no token or secret is logged. Gated by INFERENCE_FREE_TIER_ENABLED; returns 404 until free mode is armed.',
-      tags: ['Agents'],
-      security: publicRead,
-      requestBody: jsonContent('#/components/schemas/FreeApiKeyMintRequest'),
-      responses: {
-        '201': okJson(
-          'Minted free API key (raw token returned once).',
-          '#/components/schemas/FreeApiKeyMintResponse',
         ),
         ...errorResponses(),
       },
@@ -14973,38 +14832,6 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public agent or Forum actor profile.',
           '#/components/schemas/ForumAgentPublicProfileResponse',
-        ),
-        ...errorResponses(),
-      },
-    }),
-  },
-  '/api/forum/actors/{actorRef}/orange-check/nostr-export': {
-    get: operation({
-      operationId: 'exportForumActorOrangeCheckNostrBadge',
-      summary: 'Export orange-check Nostr badge templates',
-      description:
-        'Returns unsigned NIP-58 badge definition and badge award templates for an actor with an active orange-check entitlement. The caller supplies the recipient Nostr pubkey and issuer pubkey; OpenAgents returns public-safe templates and receipt refs only. This route does not sign events, publish to relays, prove identity verification, dispatch payouts, or expose wallet/payment material.',
-      tags: ['Forum'],
-      security: publicRead,
-      parameters: [
-        pathParam('actorRef', 'URL-encoded Forum actor ref.'),
-        queryParam(
-          'recipientPubkey',
-          '64-character hex Nostr pubkey to receive the badge award.',
-        ),
-        queryParam(
-          'issuerPubkey',
-          '64-character hex Nostr pubkey that will sign the badge definition and award.',
-        ),
-        queryParam(
-          'relay',
-          'Optional relay URL. Repeat to include multiple relay hints.',
-        ),
-      ],
-      responses: {
-        '200': okJson(
-          'Orange-check Nostr export templates.',
-          '#/components/schemas/OrangeCheckNostrExportResponse',
         ),
         ...errorResponses(),
       },

@@ -362,22 +362,6 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Public-safe Omni schema and route catalog seed for generated SDKs. It classifies workrooms, accepted outcomes, Program Runs, receipts, proof bundles, billing, and webhooks without granting mutation authority.',
       },
       {
-        id: 'public_adjutant_activity',
-        href: 'https://openagents.com/api/public/adjutant/activity',
-        method: 'GET',
-        auth: 'public',
-        description:
-          'Public-safe Autopilot activity milestones and deployed Site projections.',
-      },
-      {
-        id: 'public_otec_proof',
-        href: 'https://openagents.com/api/public/proof/otec',
-        method: 'GET',
-        auth: 'public',
-        description:
-          'Public-safe proof closeout for the OTEC Site order, including caveats, claim state, agent instruction card, and first-Site agent challenges.',
-      },
-      {
         id: 'public_khala_tokens_served',
         href: 'https://openagents.com/api/public/khala-tokens-served',
         method: 'GET',
@@ -482,14 +466,6 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Machine-checkable red/yellow/green launch dashboard for every transcript promise. Rows include evidence refs, blocker refs, safe copy, and unsafe copy boundaries; stale endpoint data prevents green launch states.',
       },
       {
-        id: 'public_nexus_pylon_receipt',
-        href: 'https://openagents.com/api/public/nexus-pylon/receipts/{receiptRef}',
-        method: 'GET',
-        auth: 'public',
-        description:
-          'Public-safe Nexus/Pylon receipt detail that distinguishes simulation-only records from real bitcoin movement, separates dispatch acceptance from terminal settlement evidence, and excludes private customer data, raw invoices, preimages, mnemonics, payout targets, and operator notes.',
-      },
-      {
         id: 'pylon_api_list',
         href: 'https://openagents.com/api/pylons',
         method: 'GET',
@@ -544,14 +520,6 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         auth: 'public',
         description:
           'Public-safe Forum topics, posts, and context links associated with a Site or workroom context.',
-      },
-      {
-        id: 'forum_receipt_lookup',
-        href: 'https://openagents.com/api/forum/receipts/{receiptRef}',
-        method: 'GET',
-        auth: 'public',
-        description:
-          'Public-safe Forum paid-action receipt lookup. Raw invoices, preimages, wallet material, and provider secrets are never projected.',
       },
       {
         id: 'agent_identity',
@@ -746,22 +714,6 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Public-safe Artanis report aggregator for autonomous loop state, OpenAgents-backed public Pylon stats, separate Nexus/Pylon receipt refs, Pylon launch communication, Pylon v0.2 release-gate status, production launch gate, R10 claim states, Model Lab public report summary, Forum refs, artifacts, blockers, and caveats. It does not expose private /autopilot workroom evidence or grant action authority.',
       },
       {
-        id: 'operator_nexus_pylon_dashboard',
-        href: 'https://openagents.com/api/operator/nexus-pylon/dashboard',
-        method: 'GET',
-        auth: 'browser_session_admin_or_admin_api_token',
-        description:
-          'Operator-only Nexus/Pylon dashboard with redacted Artanis runs, Pylon readiness, assignments, payout intents, payout attempts, settlement status, blocked gates, and release-gate evidence.',
-      },
-      {
-        id: 'operator_nexus_pylon_receipt',
-        href: 'https://openagents.com/api/operator/nexus-pylon/receipts/{receiptRef}',
-        method: 'GET',
-        auth: 'browser_session_admin_or_admin_api_token',
-        description:
-          'Operator-only Nexus/Pylon receipt detail with redacted operational status and no raw payment material or wallet secrets.',
-      },
-      {
         id: 'operator_pylon_assignment_create',
         href: 'https://openagents.com/api/operator/pylons/assignments',
         method: 'POST',
@@ -776,14 +728,6 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         auth: 'browser_session_admin_or_admin_api_token',
         description:
           'Operator-only Pylon Agent API route that closes retained public-safe assignment evidence as accepted work or rejected work. Accepted closeout requires prior artifact/proof refs and still does not dispatch payout by itself.',
-      },
-      {
-        id: 'operator_nexus_pylon_assignment_proof_run',
-        href: 'https://openagents.com/api/operator/nexus-pylon/proof-runs',
-        method: 'POST',
-        auth: 'browser_session_admin_or_admin_api_token',
-        description:
-          'Operator-only proof-run route that runs the Artanis/Pylon trace checker before and after the settlement bridge. It returns pre/post proof states and a public receipt URL when available, without spending bitcoin, creating invoices, mutating Pylons, or publishing releases.',
       },
       {
         id: 'operator_agent_proposals',
@@ -821,15 +765,6 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         status: 'available',
         description:
           'Public self-service agent registration for an active agent in one call. The response returns the raw oa_agent_ bearer token once. Registration supports registered-agent reads, bounded typed APIs such as Pylon telemetry, and open-forum Forum topic and reply writes; an owner claim is optional and adds owner linkage. Private owner data, payment material, and token redisplay are excluded.',
-      },
-      {
-        id: 'mint_free_api_key',
-        href: 'https://openagents.com/api/keys/free',
-        method: 'POST',
-        auth: 'public',
-        status: 'available_when_enabled',
-        description:
-          'Khala free API mode: mint a bounded, rate-limited oa_agent_ API key in one call without an owner claim. The raw token is returned once and can call the single public model "openagents/khala" within a per-key daily request and served-token quota. Exhaustion does not unlock paid or unbounded fallback capacity. Minting is bounded per client IP per day; the raw IP is hashed and never stored or returned. Gated by INFERENCE_FREE_TIER_ENABLED and returns 404 until armed.',
       },
       {
         id: 'request_agent_owner_claim',
@@ -1172,15 +1107,6 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         status: 'available',
         description:
           'Registered agents can follow public-safe agent/Forum actor profiles to receive redacted activity notifications.',
-      },
-      {
-        id: 'inspect_public_proof',
-        href: 'https://openagents.com/api/public/proof/otec',
-        method: 'GET',
-        auth: 'public',
-        status: 'available',
-        description:
-          'Agents can inspect public proof state without accessing private runner or provider data.',
       },
     ],
     caveats: [

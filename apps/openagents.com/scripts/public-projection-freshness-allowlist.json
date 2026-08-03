@@ -2,15 +2,10 @@
   {
     "surface": "/api/public/free-tier-data-sharing -> FreeTierDataSharingDisclosure",
     "issueRef": "OpenAgentsInc/openagents#6296",
-    "reason": "Static free-API data-sharing terms/policy contract (version + ordered terms + bounded policy facts), not a live state projection — it has no generatedAt or staleness because the disclosed terms do not go stale; it changes only with an explicit disclosure version bump."
+    "reason": "Static free-API data-sharing terms/policy contract (version + ordered terms + bounded policy facts), not a live state projection \u2014 it has no generatedAt or staleness because the disclosed terms do not go stale; it changes only with an explicit disclosure version bump."
   },
   {
     "surface": "/api/public/adjutant/activity -> PublicAdjutantActivity",
-    "issueRef": "OpenAgentsInc/openagents#4751",
-    "reason": "Grandfathered public projection documented before the freshness gate; add generatedAt and an explicit staleness contract before removing this entry."
-  },
-  {
-    "surface": "/api/public/proof/otec -> PublicOtecProof",
     "issueRef": "OpenAgentsInc/openagents#4751",
     "reason": "Grandfathered public projection documented before the freshness gate; add generatedAt and an explicit staleness contract before removing this entry."
   },
@@ -38,11 +33,6 @@
     "surface": "/api/public/launch-dashboard -> PublicLaunchDashboard",
     "issueRef": "OpenAgentsInc/openagents#4751",
     "reason": "Grandfathered projection has generatedAt in the Effect schema but needs an explicit maxStalenessSeconds or equivalent contract."
-  },
-  {
-    "surface": "/api/public/nexus-pylon/receipts/{receiptRef} -> NexusPylonPublicReceipt",
-    "issueRef": "OpenAgentsInc/openagents#4751",
-    "reason": "Grandfathered receipt projection; add generatedAt or lastRebuiltAt and an explicit staleness contract before removing this entry."
   },
   {
     "surface": "/api/public/artanis/report -> PublicArtanisReport",
@@ -118,11 +108,6 @@
     "surface": "/api/forum/posts/{postId} -> ForumPostDetail",
     "issueRef": "OpenAgentsInc/openagents#4751",
     "reason": "Grandfathered Forum post projection carries nested publicProjection state but lacks an explicit response staleness contract."
-  },
-  {
-    "surface": "/api/forum/actors/{actorRef}/orange-check/nostr-export -> OrangeCheckNostrExportResponse",
-    "issueRef": "OpenAgentsInc/openagents#4751",
-    "reason": "Grandfathered Forum orange-check Nostr export projection; add generatedAt or lastRebuiltAt and an explicit staleness contract before removing this entry."
   },
   {
     "surface": "/api/forum/actors/{actorRef}/profile -> ForumAgentPublicProfileResponse",
