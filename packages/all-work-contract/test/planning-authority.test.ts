@@ -210,4 +210,69 @@ describe("All Work planning authority", () => {
     expect(loaded).toEqual(state);
     rmSync(directory, { recursive: true, force: true });
   });
+
+  // The test above proves the store round-trips a state it was handed. It does
+  // not prove the close criterion, which is about a *restarted authority*:
+  // "Restart/replay preserves optimistic revision, event cursor, idempotency,
+  // and last-known-good state." Nothing carries between the two runs below
+  // except the durable directory, so a second identical command has only the
+  // persisted receipt to recognise itself by.
+  it("resumes revision, cursor, idempotency, and native Work across a restart", async () => {
+    const directory = mkdtempSync(resolve(tmpdir(), "all-work-planning-restart-"));
+    try {
+      const imported = await Effect.runPromise(
+        reconcileGitHubBootstrap(emptyPlanningGraph(bootstrapInput.fetchedAt), bootstrapInput),
+      );
+      await Effect.runPromise(
+        initializeFilePlanningState(directory, stateWithGraph(imported.graph)),
+      );
+
+      const create = {
+        command: "create_work",
+        commandRef: "command:native:restart:1",
+        idempotencyKey: "native-create-work-restart-1",
+        expectedRevision: imported.graph.revision,
+        workRef: "work:native:dogfood:restart-1",
+        identifier: "OA-R1",
+        title: "Native Work that must survive a restart",
+        priority: "high",
+        ownerRef: "principal:owner:1",
+        projectRef: "project:omega-v0.2.0-dogfood",
+        projectMilestoneRef: null,
+        cycleRef: "cycle:v0.2.0-dogfood",
+        workflowStateRef: "workflow:ready",
+        occurredAt: "2026-08-03T06:30:00Z",
+      };
+      const restarted = () =>
+        PlanningAuthorityLive.pipe(Layer.provide(filePlanningStateStoreLayer(directory)));
+
+      const accepted = await Effect.runPromise(
+        Effect.gen(function* () {
+          const authority = yield* PlanningAuthority;
+          return yield* authority.execute(create);
+        }).pipe(Effect.provide(restarted())),
+      );
+      expect(accepted.githubWriteCount).toBe(0);
+      expect(accepted.revision).toBeGreaterThan(imported.graph.revision);
+
+      const after = await Effect.runPromise(
+        Effect.gen(function* () {
+          const authority = yield* PlanningAuthority;
+          const replayed = yield* authority.execute(create);
+          const graph = yield* authority.readGraph;
+          return { replayed, graph };
+        }).pipe(Effect.provide(restarted())),
+      );
+
+      expect(after.replayed).toEqual(accepted);
+      expect(after.graph.revision).toBe(accepted.revision);
+      expect(after.graph.eventCursor).toBe(accepted.eventCursor);
+      expect(
+        after.graph.work.filter((work) => work.summary.workRef === create.workRef),
+      ).toHaveLength(1);
+      expect(after.graph.work).toHaveLength(imported.graph.work.length + 1);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
