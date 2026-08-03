@@ -18,7 +18,9 @@ The generator emits these committed artifacts:
 - positive, negative, absent/null, integer, unknown-field, and compatibility
   fixtures in `fixtures/`; and
 - artifact digests, protocol methods, compatibility posture, and named
-  handwritten semantic checks in `generated/compatibility.json`.
+  handwritten semantic checks in `generated/compatibility.json`. Its
+  per-type `implementationStatus` distinguishes live request-processor types
+  from structural-only future SDK shapes.
 
 Generated code owns structure only. `src/semantic.ts` keeps cross-record rules
 explicit: an Issue projection uses the same Work identity and revision, v1 is
@@ -60,6 +62,16 @@ The Effect-owned implementation is handwritten beside the generated shape:
 The command processor does not write to GitHub. A successful GitHub read grants
 no command, claim, delegation, verification, owner-disposition, release, or
 public-claim authority.
+
+## Repository Work Claim authority
+
+The generated boundary also defines Work Packet, Repository Work Claim, audit,
+read, and execute records. `src/repository-claim-authority.ts` owns their
+Effect command processor, optimistic revision, idempotency, collision checks,
+90-minute-plus-audit takeover law, generation fencing, historical GitHub
+projection, and atomic owner-local state. `repository.claim.read` and
+`repository.claim.execute` are live v2 reference-process methods. Native claim
+receipts always report zero GitHub writes.
 
 Canonical JSON uses `openagents-canonical-json-v1`: UTF-8, object keys sorted
 by Unicode code point, array order retained, safe integers only, absent fields

@@ -19,6 +19,30 @@
       "$ref": "#/$defs/PlanningGraphReadResult"
     },
     {
+      "$ref": "#/$defs/WorkPacket"
+    },
+    {
+      "$ref": "#/$defs/RepositoryWorkClaim"
+    },
+    {
+      "$ref": "#/$defs/RepositoryClaimAudit"
+    },
+    {
+      "$ref": "#/$defs/RepositoryClaimLedger"
+    },
+    {
+      "$ref": "#/$defs/RepositoryClaimExecuteRequest"
+    },
+    {
+      "$ref": "#/$defs/RepositoryClaimExecuteResult"
+    },
+    {
+      "$ref": "#/$defs/RepositoryClaimReadRequest"
+    },
+    {
+      "$ref": "#/$defs/RepositoryClaimReadResult"
+    },
+    {
       "$ref": "#/$defs/IssueProjection"
     },
     {
@@ -76,6 +100,13 @@
       "title": "SafeInteger",
       "minimum": 0,
       "maximum": 9007199254740991,
+      "x-openagents-integer-representation": "json-safe-integer"
+    },
+    "ZeroInteger": {
+      "type": "integer",
+      "title": "ZeroInteger",
+      "minimum": 0,
+      "maximum": 0,
       "x-openagents-integer-representation": "json-safe-integer"
     },
     "ContractDigest": {
@@ -1364,13 +1395,835 @@
       ],
       "additionalProperties": false
     },
+    "WorkPacketRef": {
+      "type": "string",
+      "title": "WorkPacketRef",
+      "x-openagents-brand": "WorkPacketRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "RepositoryRef": {
+      "type": "string",
+      "title": "RepositoryRef",
+      "x-openagents-brand": "RepositoryRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "RepositoryWorkClaimRef": {
+      "type": "string",
+      "title": "RepositoryWorkClaimRef",
+      "x-openagents-brand": "RepositoryWorkClaimRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "ClaimRequestRef": {
+      "type": "string",
+      "title": "ClaimRequestRef",
+      "x-openagents-brand": "ClaimRequestRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "CapabilityRef": {
+      "type": "string",
+      "title": "CapabilityRef",
+      "x-openagents-brand": "CapabilityRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "ClaimEventRef": {
+      "type": "string",
+      "title": "ClaimEventRef",
+      "x-openagents-brand": "ClaimEventRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "IdempotencyKey": {
+      "type": "string",
+      "title": "IdempotencyKey",
+      "x-openagents-brand": "IdempotencyKey",
+      "minLength": 8,
+      "maxLength": 256
+    },
+    "RepositoryWorkClaimState": {
+      "type": "string",
+      "title": "RepositoryWorkClaimState",
+      "enum": [
+        "claimed",
+        "blocked",
+        "released",
+        "superseded"
+      ]
+    },
+    "WorkPacketState": {
+      "type": "string",
+      "title": "WorkPacketState",
+      "enum": [
+        "ready",
+        "claimed",
+        "blocked",
+        "released",
+        "canceled"
+      ]
+    },
+    "RepositoryClaimEventKind": {
+      "type": "string",
+      "title": "RepositoryClaimEventKind",
+      "enum": [
+        "packet_created",
+        "claimed",
+        "heartbeat",
+        "status",
+        "blocked",
+        "released",
+        "stale_takeover",
+        "stale_takeover_refused",
+        "historical_import"
+      ]
+    },
+    "CollisionKind": {
+      "type": "string",
+      "title": "CollisionKind",
+      "enum": [
+        "same_work",
+        "path",
+        "hot_file",
+        "hot_contract",
+        "generated_artifact",
+        "migration",
+        "route_table",
+        "lockfile",
+        "shared_schema"
+      ]
+    },
+    "WorkPacket": {
+      "type": "object",
+      "title": "WorkPacket",
+      "properties": {
+        "packetRef": {
+          "$ref": "#/$defs/WorkPacketRef"
+        },
+        "workRef": {
+          "$ref": "#/$defs/WorkRef"
+        },
+        "repositoryRef": {
+          "$ref": "#/$defs/RepositoryRef"
+        },
+        "title": {
+          "$ref": "#/$defs/ShortText"
+        },
+        "scope": {
+          "$ref": "#/$defs/LongText"
+        },
+        "ownedPaths": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ShortText"
+          },
+          "maxItems": 256
+        },
+        "hotFiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ShortText"
+          },
+          "maxItems": 256
+        },
+        "hotContracts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ShortText"
+          },
+          "maxItems": 256
+        },
+        "verification": {
+          "$ref": "#/$defs/LongText"
+        },
+        "state": {
+          "$ref": "#/$defs/WorkPacketState"
+        },
+        "revision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        }
+      },
+      "required": [
+        "packetRef",
+        "workRef",
+        "repositoryRef",
+        "title",
+        "scope",
+        "ownedPaths",
+        "hotFiles",
+        "hotContracts",
+        "verification",
+        "state",
+        "revision",
+        "createdAt",
+        "updatedAt"
+      ],
+      "additionalProperties": false
+    },
+    "RepositoryWorkClaim": {
+      "type": "object",
+      "title": "RepositoryWorkClaim",
+      "properties": {
+        "claimRef": {
+          "$ref": "#/$defs/RepositoryWorkClaimRef"
+        },
+        "packetRef": {
+          "$ref": "#/$defs/WorkPacketRef"
+        },
+        "workRef": {
+          "$ref": "#/$defs/WorkRef"
+        },
+        "repositoryRef": {
+          "$ref": "#/$defs/RepositoryRef"
+        },
+        "holderRef": {
+          "$ref": "#/$defs/PrincipalRef"
+        },
+        "scope": {
+          "$ref": "#/$defs/LongText"
+        },
+        "ownedPaths": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ShortText"
+          },
+          "maxItems": 256
+        },
+        "hotFiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ShortText"
+          },
+          "maxItems": 256
+        },
+        "hotContracts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ShortText"
+          },
+          "maxItems": 256
+        },
+        "claimedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "lastEvidenceAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "maxItems": 512
+        },
+        "state": {
+          "$ref": "#/$defs/RepositoryWorkClaimState"
+        },
+        "generation": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "revision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "releasedAt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IsoTimestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "releaserRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PrincipalRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "releaseEvidenceRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "maxItems": 512
+        }
+      },
+      "required": [
+        "claimRef",
+        "packetRef",
+        "workRef",
+        "repositoryRef",
+        "holderRef",
+        "scope",
+        "ownedPaths",
+        "hotFiles",
+        "hotContracts",
+        "claimedAt",
+        "lastEvidenceAt",
+        "evidenceRefs",
+        "state",
+        "generation",
+        "revision",
+        "releasedAt",
+        "releaserRef",
+        "releaseEvidenceRefs"
+      ],
+      "additionalProperties": false
+    },
+    "RepositoryClaimAudit": {
+      "type": "object",
+      "title": "RepositoryClaimAudit",
+      "properties": {
+        "eventRef": {
+          "$ref": "#/$defs/ClaimEventRef"
+        },
+        "kind": {
+          "$ref": "#/$defs/RepositoryClaimEventKind"
+        },
+        "packetRef": {
+          "$ref": "#/$defs/WorkPacketRef"
+        },
+        "claimRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RepositoryWorkClaimRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "principalRef": {
+          "$ref": "#/$defs/PrincipalRef"
+        },
+        "generation": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "occurredAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "maxItems": 512
+        },
+        "detail": {
+          "$ref": "#/$defs/ShortText"
+        }
+      },
+      "required": [
+        "eventRef",
+        "kind",
+        "packetRef",
+        "claimRef",
+        "principalRef",
+        "generation",
+        "occurredAt",
+        "evidenceRefs",
+        "detail"
+      ],
+      "additionalProperties": false
+    },
+    "RepositoryClaimLedger": {
+      "type": "object",
+      "title": "RepositoryClaimLedger",
+      "properties": {
+        "contractVersion": {
+          "$ref": "#/$defs/ContractVersion"
+        },
+        "revision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "eventCursor": {
+          "$ref": "#/$defs/WorkCursor"
+        },
+        "packets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkPacket"
+          },
+          "maxItems": 10000
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RepositoryWorkClaim"
+          },
+          "maxItems": 10000
+        },
+        "audit": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RepositoryClaimAudit"
+          },
+          "maxItems": 50000
+        },
+        "completeness": {
+          "$ref": "#/$defs/Completeness"
+        },
+        "freshness": {
+          "$ref": "#/$defs/Freshness"
+        }
+      },
+      "required": [
+        "contractVersion",
+        "revision",
+        "eventCursor",
+        "packets",
+        "claims",
+        "audit",
+        "completeness",
+        "freshness"
+      ],
+      "additionalProperties": false
+    },
+    "RepositoryClaimCommand": {
+      "title": "RepositoryClaimCommand",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "create_packet"
+            },
+            "packetRef": {
+              "$ref": "#/$defs/WorkPacketRef"
+            },
+            "workRef": {
+              "$ref": "#/$defs/WorkRef"
+            },
+            "repositoryRef": {
+              "$ref": "#/$defs/RepositoryRef"
+            },
+            "title": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "scope": {
+              "$ref": "#/$defs/LongText"
+            },
+            "ownedPaths": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ShortText"
+              },
+              "maxItems": 256
+            },
+            "hotFiles": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ShortText"
+              },
+              "maxItems": 256
+            },
+            "hotContracts": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ShortText"
+              },
+              "maxItems": 256
+            },
+            "verification": {
+              "$ref": "#/$defs/LongText"
+            }
+          },
+          "required": [
+            "command",
+            "packetRef",
+            "workRef",
+            "repositoryRef",
+            "title",
+            "scope",
+            "ownedPaths",
+            "hotFiles",
+            "hotContracts",
+            "verification"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "claim_packet"
+            },
+            "packetRef": {
+              "$ref": "#/$defs/WorkPacketRef"
+            },
+            "claimRef": {
+              "$ref": "#/$defs/RepositoryWorkClaimRef"
+            }
+          },
+          "required": [
+            "command",
+            "packetRef",
+            "claimRef"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "heartbeat"
+            },
+            "claimRef": {
+              "$ref": "#/$defs/RepositoryWorkClaimRef"
+            },
+            "expectedGeneration": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "evidenceRefs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/EvidenceRef"
+              },
+              "minItems": 1,
+              "maxItems": 512
+            }
+          },
+          "required": [
+            "command",
+            "claimRef",
+            "expectedGeneration",
+            "evidenceRefs"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "status"
+            },
+            "claimRef": {
+              "$ref": "#/$defs/RepositoryWorkClaimRef"
+            },
+            "expectedGeneration": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "detail": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "evidenceRefs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/EvidenceRef"
+              },
+              "minItems": 1,
+              "maxItems": 512
+            }
+          },
+          "required": [
+            "command",
+            "claimRef",
+            "expectedGeneration",
+            "detail",
+            "evidenceRefs"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "block"
+            },
+            "claimRef": {
+              "$ref": "#/$defs/RepositoryWorkClaimRef"
+            },
+            "expectedGeneration": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "detail": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "evidenceRefs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/EvidenceRef"
+              },
+              "minItems": 1,
+              "maxItems": 512
+            }
+          },
+          "required": [
+            "command",
+            "claimRef",
+            "expectedGeneration",
+            "detail",
+            "evidenceRefs"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "release"
+            },
+            "claimRef": {
+              "$ref": "#/$defs/RepositoryWorkClaimRef"
+            },
+            "expectedGeneration": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "evidenceRefs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/EvidenceRef"
+              },
+              "minItems": 1,
+              "maxItems": 512
+            }
+          },
+          "required": [
+            "command",
+            "claimRef",
+            "expectedGeneration",
+            "evidenceRefs"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "takeover"
+            },
+            "claimRef": {
+              "$ref": "#/$defs/RepositoryWorkClaimRef"
+            },
+            "expectedGeneration": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "auditRef": {
+              "$ref": "#/$defs/EvidenceRef"
+            },
+            "auditFoundActiveWork": {
+              "type": "boolean"
+            },
+            "auditedAt": {
+              "$ref": "#/$defs/IsoTimestamp"
+            }
+          },
+          "required": [
+            "command",
+            "claimRef",
+            "expectedGeneration",
+            "auditRef",
+            "auditFoundActiveWork",
+            "auditedAt"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "RepositoryClaimExecuteRequest": {
+      "type": "object",
+      "title": "RepositoryClaimExecuteRequest",
+      "properties": {
+        "requestRef": {
+          "$ref": "#/$defs/ClaimRequestRef"
+        },
+        "idempotencyKey": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "expectedRevision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "effectivePrincipalRef": {
+          "$ref": "#/$defs/PrincipalRef"
+        },
+        "capabilityRef": {
+          "$ref": "#/$defs/CapabilityRef"
+        },
+        "occurredAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "command": {
+          "$ref": "#/$defs/RepositoryClaimCommand"
+        }
+      },
+      "required": [
+        "requestRef",
+        "idempotencyKey",
+        "expectedRevision",
+        "effectivePrincipalRef",
+        "capabilityRef",
+        "occurredAt",
+        "command"
+      ],
+      "additionalProperties": false
+    },
+    "RepositoryClaimReceipt": {
+      "type": "object",
+      "title": "RepositoryClaimReceipt",
+      "properties": {
+        "requestRef": {
+          "$ref": "#/$defs/ClaimRequestRef"
+        },
+        "idempotencyKey": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "commandDigest": {
+          "$ref": "#/$defs/ContractDigest"
+        },
+        "previousRevision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "revision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "eventCursor": {
+          "$ref": "#/$defs/WorkCursor"
+        },
+        "effectivePrincipalRef": {
+          "$ref": "#/$defs/PrincipalRef"
+        },
+        "claimRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RepositoryWorkClaimRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "acceptedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "admitted": {
+          "type": "boolean"
+        },
+        "refusalReason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ShortText"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "githubWriteCount": {
+          "$ref": "#/$defs/ZeroInteger"
+        }
+      },
+      "required": [
+        "requestRef",
+        "idempotencyKey",
+        "commandDigest",
+        "previousRevision",
+        "revision",
+        "eventCursor",
+        "effectivePrincipalRef",
+        "claimRef",
+        "acceptedAt",
+        "admitted",
+        "refusalReason",
+        "githubWriteCount"
+      ],
+      "additionalProperties": false
+    },
+    "RepositoryClaimExecuteResult": {
+      "type": "object",
+      "title": "RepositoryClaimExecuteResult",
+      "properties": {
+        "ledger": {
+          "$ref": "#/$defs/RepositoryClaimLedger"
+        },
+        "receipt": {
+          "$ref": "#/$defs/RepositoryClaimReceipt"
+        }
+      },
+      "required": [
+        "ledger",
+        "receipt"
+      ],
+      "additionalProperties": false
+    },
+    "RepositoryClaimReadRequest": {
+      "type": "object",
+      "title": "RepositoryClaimReadRequest",
+      "properties": {
+        "afterRevision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "repositoryRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RepositoryRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "RepositoryClaimReadResult": {
+      "type": "object",
+      "title": "RepositoryClaimReadResult",
+      "properties": {
+        "ledger": {
+          "$ref": "#/$defs/RepositoryClaimLedger"
+        }
+      },
+      "required": [
+        "ledger"
+      ],
+      "additionalProperties": false
+    },
     "ProtocolCapability": {
       "type": "string",
       "title": "ProtocolCapability",
       "enum": [
         "work.index.read",
         "work.snapshot.read",
-        "planning.graph.read"
+        "planning.graph.read",
+        "repository.claim.read",
+        "repository.claim.execute"
       ]
     },
     "ProtocolErrorCode": {
@@ -1383,7 +2236,10 @@
         "unavailable",
         "stale_cursor",
         "gap",
-        "internal"
+        "internal",
+        "forbidden",
+        "conflict",
+        "stale_generation"
       ]
     },
     "ProtocolError": {
@@ -1820,6 +2676,54 @@
             "params"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "repository.claim.read"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "params": {
+              "$ref": "#/$defs/RepositoryClaimReadRequest"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "repository.claim.execute"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "params": {
+              "$ref": "#/$defs/RepositoryClaimExecuteRequest"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "params"
+          ],
+          "additionalProperties": false
         }
       ]
     },
@@ -1926,6 +2830,54 @@
           "type": "object",
           "properties": {
             "method": {
+              "const": "repository.claim.read"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "result": {
+              "$ref": "#/$defs/RepositoryClaimReadResult"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "repository.claim.execute"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "result": {
+              "$ref": "#/$defs/RepositoryClaimExecuteResult"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
               "const": "error"
             },
             "id": {
@@ -1953,7 +2905,7 @@
     "profileVersion": "openagents.contract_profile.v1",
     "contractRef": "openagents.all_work_boundary.v1",
     "contractVersion": 1,
-    "definitionSha256": "f41f9e8b44f95936694c74799027fa78b9e35ffe102a1a85e4b86027bb15748b",
+    "definitionSha256": "aa933ba19f0245905ce21c8ed6b90e6279c68b09f3352101a026a10786362535",
     "owningDomain": "all_work_boundary",
     "authoritativeRuntime": "effect",
     "relationship": "projection",
@@ -1979,6 +2931,111 @@
       "assignee_and_agent_delegate_remain_distinct",
       "source_authority_revision_and_cursor_are_monotonic_per_source",
       "receipt_verification_and_owner_disposition_do_not_imply_each_other"
-    ]
+    ],
+    "implementationStatus": {
+      "ContractVersion": "structural_only",
+      "ProtocolVersion": "structural_only",
+      "SafeInteger": "structural_only",
+      "ZeroInteger": "structural_only",
+      "ContractDigest": "structural_only",
+      "IsoTimestamp": "structural_only",
+      "ShortText": "structural_only",
+      "LongText": "structural_only",
+      "WorkRef": "structural_only",
+      "OrganizationRef": "structural_only",
+      "TeamRef": "structural_only",
+      "InitiativeRef": "structural_only",
+      "ProjectRef": "structural_only",
+      "CycleRef": "structural_only",
+      "ProjectMilestoneRef": "structural_only",
+      "PrincipalRef": "structural_only",
+      "AgentRef": "structural_only",
+      "DelegationGrantRef": "structural_only",
+      "ThreadRef": "structural_only",
+      "SessionRef": "structural_only",
+      "AgentSessionRef": "structural_only",
+      "AgentActivityRef": "structural_only",
+      "RunRef": "structural_only",
+      "IntentRef": "structural_only",
+      "EventRef": "structural_only",
+      "ReceiptRef": "structural_only",
+      "EvidenceRef": "structural_only",
+      "VerificationRef": "structural_only",
+      "OwnerDispositionRef": "structural_only",
+      "SourceRef": "structural_only",
+      "WorkCursor": "structural_only",
+      "SubscriptionRef": "structural_only",
+      "WorkDomain": "structural_only",
+      "WorkClass": "structural_only",
+      "WorkState": "structural_only",
+      "WorkPriority": "structural_only",
+      "WorkRelationKind": "structural_only",
+      "FreshnessState": "structural_only",
+      "CompletenessState": "structural_only",
+      "PrivacyClass": "structural_only",
+      "SourceAuthorityKind": "structural_only",
+      "AssigneeKind": "structural_only",
+      "RedactionMetadata": "structural_only",
+      "Freshness": "structural_only",
+      "Completeness": "structural_only",
+      "SourceAuthority": "structural_only",
+      "HumanAssignee": "structural_only",
+      "AgentDelegate": "structural_only",
+      "PortfolioContext": "structural_only",
+      "WorkRelation": "structural_only",
+      "IssueProjection": "structural_only",
+      "WorkSummary": "implemented",
+      "WorkSnapshot": "implemented",
+      "PlanningResourceRef": "structural_only",
+      "SourceUrl": "structural_only",
+      "PlanningResourceKind": "structural_only",
+      "PlanningResource": "structural_only",
+      "SourceCoordinate": "structural_only",
+      "WorkLabelLink": "structural_only",
+      "WorkPlanningLink": "structural_only",
+      "PlanningTextRecordKind": "structural_only",
+      "PlanningTextRecord": "structural_only",
+      "ReleaseScopeLink": "structural_only",
+      "ProjectionIssueKind": "structural_only",
+      "ProjectionIssue": "structural_only",
+      "PlanningGraph": "implemented",
+      "PlanningGraphReadRequest": "implemented",
+      "PlanningGraphReadResult": "implemented",
+      "WorkPacketRef": "structural_only",
+      "RepositoryRef": "structural_only",
+      "RepositoryWorkClaimRef": "structural_only",
+      "ClaimRequestRef": "structural_only",
+      "CapabilityRef": "structural_only",
+      "ClaimEventRef": "structural_only",
+      "IdempotencyKey": "structural_only",
+      "RepositoryWorkClaimState": "structural_only",
+      "WorkPacketState": "structural_only",
+      "RepositoryClaimEventKind": "structural_only",
+      "CollisionKind": "structural_only",
+      "WorkPacket": "implemented",
+      "RepositoryWorkClaim": "implemented",
+      "RepositoryClaimAudit": "implemented",
+      "RepositoryClaimLedger": "implemented",
+      "RepositoryClaimCommand": "structural_only",
+      "RepositoryClaimExecuteRequest": "implemented",
+      "RepositoryClaimReceipt": "implemented",
+      "RepositoryClaimExecuteResult": "implemented",
+      "RepositoryClaimReadRequest": "implemented",
+      "RepositoryClaimReadResult": "implemented",
+      "ProtocolCapability": "structural_only",
+      "ProtocolErrorCode": "structural_only",
+      "ProtocolError": "structural_only",
+      "ProtocolInitializeRequest": "structural_only",
+      "ProtocolInitializeResult": "structural_only",
+      "WorkIndexFilter": "structural_only",
+      "WorkIndexSubscriptionRequest": "structural_only",
+      "WorkIndexReadRequest": "implemented",
+      "WorkIndexReadResult": "implemented",
+      "WorkIndexSubscriptionEvent": "structural_only",
+      "WorkSnapshotReadRequest": "implemented",
+      "WorkSnapshotReadResult": "implemented",
+      "WorkReadRequestFrame": "structural_only",
+      "WorkReadResponseFrame": "structural_only"
+    }
   }
 }

@@ -44,6 +44,7 @@ const FixtureIndexSchema = S.Struct({
         "WorkSnapshotReadResult",
         "WorkReadRequestFrame",
         "WorkReadResponseFrame",
+        "RepositoryClaimExecuteRequest",
       ]),
       valid: S.Boolean,
       canonical: S.Boolean,

@@ -8,12 +8,16 @@
 import { createInterface } from "node:readline";
 
 import {
+  decodeRepositoryClaimExecuteRequest,
+  decodeRepositoryClaimReadRequest,
   decodeProtocolInitializeRequest,
   decodePlanningGraphReadRequest,
   decodePlanningGraphReadResult,
   decodeWorkIndexReadRequest,
   decodeWorkSnapshotReadRequest,
   negotiateAllWorkProtocol,
+  RepositoryClaimAuthorityError,
+  type ProtocolCapability as AllWorkProtocolCapability,
   type ProtocolVersion as AllWorkProtocolVersion,
 } from "@openagentsinc/all-work-contract";
 
@@ -41,6 +45,11 @@ import {
   bootstrapAllWorkPlanningAuthority,
   readAllWorkPlanningGraph,
 } from "../engine/all-work-planning-authority.ts";
+import {
+  bootstrapAllWorkRepositoryClaims,
+  executeAllWorkRepositoryClaim,
+  readAllWorkRepositoryClaims,
+} from "../engine/all-work-repository-claims.ts";
 import { openFullAutoRunReportStore } from "../engine/full-auto-run-report.ts";
 import { admitFullAutoRunCompletion } from "../engine/full-auto-completion.ts";
 import {
@@ -265,6 +274,7 @@ export const createOmegaEffectdFramedServer = (
   let generation = 0;
   let initialized = false;
   let selectedAllWorkVersion: AllWorkProtocolVersion = "omega-effectd.v1";
+  let selectedAllWorkCapabilities: ReadonlyArray<AllWorkProtocolCapability> = [];
 
   const runRegistry = openFullAutoRunRegistry(resolveFullAutoRunsPath(paths));
   const registry = openFullAutoRegistry(resolveFullAutoRegistryPath(paths));
@@ -1037,6 +1047,7 @@ export const createOmegaEffectdFramedServer = (
         );
       }
       selectedAllWorkVersion = allWork.selectedVersion;
+      selectedAllWorkCapabilities = allWork.capabilities;
       if (allWork.capabilities.includes("planning.graph.read")) {
         const planning = await Effect.runPromise(
           Effect.match(bootstrapAllWorkPlanningAuthority(paths.dataRoot), {
@@ -1052,6 +1063,28 @@ export const createOmegaEffectdFramedServer = (
             redactedError(
               "unavailable",
               "The canonical All Work planning authority could not be opened.",
+            ),
+          );
+        }
+      }
+      if (
+        allWork.capabilities.includes("repository.claim.read") ||
+        allWork.capabilities.includes("repository.claim.execute")
+      ) {
+        const claims = await Effect.runPromise(
+          Effect.match(bootstrapAllWorkRepositoryClaims(paths.dataRoot), {
+            onFailure: () => null,
+            onSuccess: (ledger) => ledger,
+          }),
+        );
+        if (claims === null) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "unavailable",
+              "The Repository Work Claim authority could not be opened.",
             ),
           );
         }
@@ -1098,9 +1131,7 @@ export const createOmegaEffectdFramedServer = (
           "sarah_interrupt_turn",
           "sarah_renew_device_grant",
           "sarah_revoke_device_grant",
-          ...(selectedAllWorkVersion === "omega-effectd.v2"
-            ? (["work.index.read", "work.snapshot.read", "planning.graph.read"] as const)
-            : []),
+          ...selectedAllWorkCapabilities,
           "host_bridge",
         ],
         allWork,
@@ -1314,6 +1345,99 @@ export const createOmegaEffectdFramedServer = (
             false,
             undefined,
             redactedError("unavailable", "The canonical planning graph is unavailable."),
+          );
+        }
+      }
+      case "repository.claim.read": {
+        if (!selectedAllWorkCapabilities.includes("repository.claim.read")) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "incompatible_version",
+              "repository.claim.read requires its negotiated omega-effectd.v2 capability.",
+            ),
+          );
+        }
+        try {
+          const params = decodeRepositoryClaimReadRequest(request.params ?? {});
+          const result = await Effect.runPromise(
+            readAllWorkRepositoryClaims(paths.dataRoot, params),
+          );
+          if (params.afterRevision != null && params.afterRevision > result.ledger.revision) {
+            return respond(
+              request.id,
+              false,
+              undefined,
+              redactedError("stale_cursor", "The requested claim revision is ahead."),
+            );
+          }
+          return respond(request.id, true, result);
+        } catch (error) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              error instanceof RepositoryClaimAuthorityError && error.reason === "invalid_request"
+                ? "invalid_request"
+                : "unavailable",
+              "The Repository Work Claim ledger is unavailable.",
+            ),
+          );
+        }
+      }
+      case "repository.claim.execute": {
+        if (!selectedAllWorkCapabilities.includes("repository.claim.execute")) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "incompatible_version",
+              "repository.claim.execute requires its negotiated omega-effectd.v2 capability.",
+            ),
+          );
+        }
+        try {
+          const params = decodeRepositoryClaimExecuteRequest(request.params ?? {});
+          const result = await Effect.runPromise(
+            executeAllWorkRepositoryClaim(paths.dataRoot, params),
+          );
+          return respond(request.id, true, result);
+        } catch (error) {
+          if (error instanceof RepositoryClaimAuthorityError) {
+            const code =
+              error.reason === "forbidden"
+                ? "forbidden"
+                : error.reason === "stale_generation"
+                  ? "stale_generation"
+                  : error.reason === "storage_unavailable"
+                    ? "unavailable"
+                    : error.reason === "packet_not_found" || error.reason === "claim_not_found"
+                      ? "not_found"
+                      : error.reason === "invalid_request" || error.reason === "invalid_state"
+                        ? "invalid_request"
+                        : "conflict";
+            return respond(
+              request.id,
+              false,
+              undefined,
+              redactedError(
+                code,
+                `Repository Work Claim request refused (${error.reason}): ${error.detail}`,
+              ),
+            );
+          }
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "invalid_request",
+              "repository.claim.execute received invalid or unavailable Work state.",
+            ),
           );
         }
       }

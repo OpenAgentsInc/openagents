@@ -9,6 +9,7 @@ const outputRoot = outputFlag >= 0 ? resolve(process.argv[outputFlag + 1] ?? "")
 const definitionPath = resolve(packageRoot, "definition/all-work-v1.contract.json");
 const definitionBytes = await readFile(definitionPath);
 const definition = JSON.parse(definitionBytes.toString("utf8"));
+const implementedTypes = new Set(definition.implementedTypes ?? []);
 const definitionDigest = createHash("sha256").update(definitionBytes).digest("hex");
 
 const generatedHeader = (comment) =>
@@ -42,6 +43,7 @@ const requireType = (name) => {
   if (type === undefined) throw new Error(`unknown contract type: ${name}`);
   return type;
 };
+for (const name of implementedTypes) requireType(name);
 
 const unwrapOptional = (expression) =>
   typeof expression === "object" && expression !== null && "optional" in expression
@@ -403,6 +405,12 @@ const jsonSchema = {
     capability: definition.capability,
     minimumProtocolVersion: definition.minimumProtocolVersion,
     semanticChecks: definition.semanticChecks,
+    implementationStatus: Object.fromEntries(
+      definition.types.map((type) => [
+        type.name,
+        implementedTypes.has(type.name) ? "implemented" : "structural_only",
+      ]),
+    ),
   },
 };
 
@@ -471,5 +479,11 @@ const compatibilityManifest = {
   unknownFieldPolicy: definition.unknownFieldPolicy,
   unknownVariantPolicy: definition.unknownVariantPolicy,
   semanticChecks: definition.semanticChecks,
+  implementationStatus: Object.fromEntries(
+    definition.types.map((type) => [
+      type.name,
+      implementedTypes.has(type.name) ? "implemented" : "structural_only",
+    ]),
+  ),
 };
 await writeOutput("generated/compatibility.json", json(compatibilityManifest));

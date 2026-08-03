@@ -22,6 +22,26 @@
   "compatibilityPolicy": "same-major-additive-optional-only",
   "capability": "all_work.read.v1",
   "minimumProtocolVersion": "omega-effectd.v2",
+  "implementedTypes": [
+    "WorkSummary",
+    "WorkSnapshot",
+    "PlanningGraph",
+    "PlanningGraphReadRequest",
+    "PlanningGraphReadResult",
+    "WorkIndexReadRequest",
+    "WorkIndexReadResult",
+    "WorkSnapshotReadRequest",
+    "WorkSnapshotReadResult",
+    "WorkPacket",
+    "RepositoryWorkClaim",
+    "RepositoryClaimAudit",
+    "RepositoryClaimLedger",
+    "RepositoryClaimExecuteRequest",
+    "RepositoryClaimReceipt",
+    "RepositoryClaimExecuteResult",
+    "RepositoryClaimReadRequest",
+    "RepositoryClaimReadResult"
+  ],
   "semanticChecks": [
     "issue_projection_work_ref_matches_snapshot_work_ref",
     "relations_do_not_mutate_endpoints",
@@ -45,6 +65,12 @@
       "kind": "integer",
       "minimum": 0,
       "maximum": 9007199254740991
+    },
+    {
+      "name": "ZeroInteger",
+      "kind": "integer",
+      "minimum": 0,
+      "maximum": 0
     },
     {
       "name": "ContractDigest",
@@ -600,14 +626,7 @@
     {
       "name": "ProjectionIssueKind",
       "kind": "enum",
-      "values": [
-        "missing",
-        "private",
-        "malformed",
-        "unsupported",
-        "page_gap",
-        "source_unavailable"
-      ]
+      "values": ["missing", "private", "malformed", "unsupported", "page_gap", "source_unavailable"]
     },
     {
       "name": "ProjectionIssue",
@@ -645,9 +664,7 @@
     {
       "name": "PlanningGraphReadRequest",
       "kind": "record",
-      "fields": [
-        { "name": "afterRevision", "type": { "optional": { "nullable": "SafeInteger" } } }
-      ]
+      "fields": [{ "name": "afterRevision", "type": { "optional": { "nullable": "SafeInteger" } } }]
     },
     {
       "name": "PlanningGraphReadResult",
@@ -655,9 +672,326 @@
       "fields": [{ "name": "graph", "type": "PlanningGraph" }]
     },
     {
+      "name": "WorkPacketRef",
+      "kind": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$",
+      "formatClass": "reference"
+    },
+    {
+      "name": "RepositoryRef",
+      "kind": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$",
+      "formatClass": "reference"
+    },
+    {
+      "name": "RepositoryWorkClaimRef",
+      "kind": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$",
+      "formatClass": "reference"
+    },
+    {
+      "name": "ClaimRequestRef",
+      "kind": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$",
+      "formatClass": "reference"
+    },
+    {
+      "name": "CapabilityRef",
+      "kind": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$",
+      "formatClass": "reference"
+    },
+    {
+      "name": "ClaimEventRef",
+      "kind": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$",
+      "formatClass": "reference"
+    },
+    {
+      "name": "IdempotencyKey",
+      "kind": "string",
+      "minLength": 8,
+      "maxLength": 256,
+      "formatClass": "opaque"
+    },
+    {
+      "name": "RepositoryWorkClaimState",
+      "kind": "enum",
+      "values": ["claimed", "blocked", "released", "superseded"]
+    },
+    {
+      "name": "WorkPacketState",
+      "kind": "enum",
+      "values": ["ready", "claimed", "blocked", "released", "canceled"]
+    },
+    {
+      "name": "RepositoryClaimEventKind",
+      "kind": "enum",
+      "values": [
+        "packet_created",
+        "claimed",
+        "heartbeat",
+        "status",
+        "blocked",
+        "released",
+        "stale_takeover",
+        "stale_takeover_refused",
+        "historical_import"
+      ]
+    },
+    {
+      "name": "CollisionKind",
+      "kind": "enum",
+      "values": [
+        "same_work",
+        "path",
+        "hot_file",
+        "hot_contract",
+        "generated_artifact",
+        "migration",
+        "route_table",
+        "lockfile",
+        "shared_schema"
+      ]
+    },
+    {
+      "name": "WorkPacket",
+      "kind": "record",
+      "fields": [
+        { "name": "packetRef", "type": "WorkPacketRef" },
+        { "name": "workRef", "type": "WorkRef" },
+        { "name": "repositoryRef", "type": "RepositoryRef" },
+        { "name": "title", "type": "ShortText" },
+        { "name": "scope", "type": "LongText" },
+        { "name": "ownedPaths", "type": { "array": "ShortText", "maxItems": 256 } },
+        { "name": "hotFiles", "type": { "array": "ShortText", "maxItems": 256 } },
+        { "name": "hotContracts", "type": { "array": "ShortText", "maxItems": 256 } },
+        { "name": "verification", "type": "LongText" },
+        { "name": "state", "type": "WorkPacketState" },
+        { "name": "revision", "type": "SafeInteger" },
+        { "name": "createdAt", "type": "IsoTimestamp" },
+        { "name": "updatedAt", "type": "IsoTimestamp" }
+      ]
+    },
+    {
+      "name": "RepositoryWorkClaim",
+      "kind": "record",
+      "fields": [
+        { "name": "claimRef", "type": "RepositoryWorkClaimRef" },
+        { "name": "packetRef", "type": "WorkPacketRef" },
+        { "name": "workRef", "type": "WorkRef" },
+        { "name": "repositoryRef", "type": "RepositoryRef" },
+        { "name": "holderRef", "type": "PrincipalRef" },
+        { "name": "scope", "type": "LongText" },
+        { "name": "ownedPaths", "type": { "array": "ShortText", "maxItems": 256 } },
+        { "name": "hotFiles", "type": { "array": "ShortText", "maxItems": 256 } },
+        { "name": "hotContracts", "type": { "array": "ShortText", "maxItems": 256 } },
+        { "name": "claimedAt", "type": "IsoTimestamp" },
+        { "name": "lastEvidenceAt", "type": "IsoTimestamp" },
+        { "name": "evidenceRefs", "type": { "array": "EvidenceRef", "maxItems": 512 } },
+        { "name": "state", "type": "RepositoryWorkClaimState" },
+        { "name": "generation", "type": "SafeInteger" },
+        { "name": "revision", "type": "SafeInteger" },
+        { "name": "releasedAt", "type": { "nullable": "IsoTimestamp" } },
+        { "name": "releaserRef", "type": { "nullable": "PrincipalRef" } },
+        { "name": "releaseEvidenceRefs", "type": { "array": "EvidenceRef", "maxItems": 512 } }
+      ]
+    },
+    {
+      "name": "RepositoryClaimAudit",
+      "kind": "record",
+      "fields": [
+        { "name": "eventRef", "type": "ClaimEventRef" },
+        { "name": "kind", "type": "RepositoryClaimEventKind" },
+        { "name": "packetRef", "type": "WorkPacketRef" },
+        { "name": "claimRef", "type": { "nullable": "RepositoryWorkClaimRef" } },
+        { "name": "principalRef", "type": "PrincipalRef" },
+        { "name": "generation", "type": "SafeInteger" },
+        { "name": "occurredAt", "type": "IsoTimestamp" },
+        { "name": "evidenceRefs", "type": { "array": "EvidenceRef", "maxItems": 512 } },
+        { "name": "detail", "type": "ShortText" }
+      ]
+    },
+    {
+      "name": "RepositoryClaimLedger",
+      "kind": "record",
+      "fields": [
+        { "name": "contractVersion", "type": "ContractVersion" },
+        { "name": "revision", "type": "SafeInteger" },
+        { "name": "eventCursor", "type": "WorkCursor" },
+        { "name": "packets", "type": { "array": "WorkPacket", "maxItems": 10000 } },
+        { "name": "claims", "type": { "array": "RepositoryWorkClaim", "maxItems": 10000 } },
+        { "name": "audit", "type": { "array": "RepositoryClaimAudit", "maxItems": 50000 } },
+        { "name": "completeness", "type": "Completeness" },
+        { "name": "freshness", "type": "Freshness" }
+      ]
+    },
+    {
+      "name": "RepositoryClaimCommand",
+      "kind": "taggedUnion",
+      "discriminator": "command",
+      "variants": [
+        {
+          "name": "CreatePacket",
+          "tag": "create_packet",
+          "fields": [
+            { "name": "packetRef", "type": "WorkPacketRef" },
+            { "name": "workRef", "type": "WorkRef" },
+            { "name": "repositoryRef", "type": "RepositoryRef" },
+            { "name": "title", "type": "ShortText" },
+            { "name": "scope", "type": "LongText" },
+            { "name": "ownedPaths", "type": { "array": "ShortText", "maxItems": 256 } },
+            { "name": "hotFiles", "type": { "array": "ShortText", "maxItems": 256 } },
+            { "name": "hotContracts", "type": { "array": "ShortText", "maxItems": 256 } },
+            { "name": "verification", "type": "LongText" }
+          ]
+        },
+        {
+          "name": "ClaimPacket",
+          "tag": "claim_packet",
+          "fields": [
+            { "name": "packetRef", "type": "WorkPacketRef" },
+            { "name": "claimRef", "type": "RepositoryWorkClaimRef" }
+          ]
+        },
+        {
+          "name": "Heartbeat",
+          "tag": "heartbeat",
+          "fields": [
+            { "name": "claimRef", "type": "RepositoryWorkClaimRef" },
+            { "name": "expectedGeneration", "type": "SafeInteger" },
+            {
+              "name": "evidenceRefs",
+              "type": { "array": "EvidenceRef", "minItems": 1, "maxItems": 512 }
+            }
+          ]
+        },
+        {
+          "name": "Status",
+          "tag": "status",
+          "fields": [
+            { "name": "claimRef", "type": "RepositoryWorkClaimRef" },
+            { "name": "expectedGeneration", "type": "SafeInteger" },
+            { "name": "detail", "type": "ShortText" },
+            {
+              "name": "evidenceRefs",
+              "type": { "array": "EvidenceRef", "minItems": 1, "maxItems": 512 }
+            }
+          ]
+        },
+        {
+          "name": "Block",
+          "tag": "block",
+          "fields": [
+            { "name": "claimRef", "type": "RepositoryWorkClaimRef" },
+            { "name": "expectedGeneration", "type": "SafeInteger" },
+            { "name": "detail", "type": "ShortText" },
+            {
+              "name": "evidenceRefs",
+              "type": { "array": "EvidenceRef", "minItems": 1, "maxItems": 512 }
+            }
+          ]
+        },
+        {
+          "name": "Release",
+          "tag": "release",
+          "fields": [
+            { "name": "claimRef", "type": "RepositoryWorkClaimRef" },
+            { "name": "expectedGeneration", "type": "SafeInteger" },
+            {
+              "name": "evidenceRefs",
+              "type": { "array": "EvidenceRef", "minItems": 1, "maxItems": 512 }
+            }
+          ]
+        },
+        {
+          "name": "Takeover",
+          "tag": "takeover",
+          "fields": [
+            { "name": "claimRef", "type": "RepositoryWorkClaimRef" },
+            { "name": "expectedGeneration", "type": "SafeInteger" },
+            { "name": "auditRef", "type": "EvidenceRef" },
+            { "name": "auditFoundActiveWork", "type": "boolean" },
+            { "name": "auditedAt", "type": "IsoTimestamp" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RepositoryClaimExecuteRequest",
+      "kind": "record",
+      "fields": [
+        { "name": "requestRef", "type": "ClaimRequestRef" },
+        { "name": "idempotencyKey", "type": "IdempotencyKey" },
+        { "name": "expectedRevision", "type": "SafeInteger" },
+        { "name": "effectivePrincipalRef", "type": "PrincipalRef" },
+        { "name": "capabilityRef", "type": "CapabilityRef" },
+        { "name": "occurredAt", "type": "IsoTimestamp" },
+        { "name": "command", "type": "RepositoryClaimCommand" }
+      ]
+    },
+    {
+      "name": "RepositoryClaimReceipt",
+      "kind": "record",
+      "fields": [
+        { "name": "requestRef", "type": "ClaimRequestRef" },
+        { "name": "idempotencyKey", "type": "IdempotencyKey" },
+        { "name": "commandDigest", "type": "ContractDigest" },
+        { "name": "previousRevision", "type": "SafeInteger" },
+        { "name": "revision", "type": "SafeInteger" },
+        { "name": "eventCursor", "type": "WorkCursor" },
+        { "name": "effectivePrincipalRef", "type": "PrincipalRef" },
+        { "name": "claimRef", "type": { "nullable": "RepositoryWorkClaimRef" } },
+        { "name": "acceptedAt", "type": "IsoTimestamp" },
+        { "name": "admitted", "type": "boolean" },
+        { "name": "refusalReason", "type": { "nullable": "ShortText" } },
+        { "name": "githubWriteCount", "type": "ZeroInteger" }
+      ]
+    },
+    {
+      "name": "RepositoryClaimExecuteResult",
+      "kind": "record",
+      "fields": [
+        { "name": "ledger", "type": "RepositoryClaimLedger" },
+        { "name": "receipt", "type": "RepositoryClaimReceipt" }
+      ]
+    },
+    {
+      "name": "RepositoryClaimReadRequest",
+      "kind": "record",
+      "fields": [
+        { "name": "afterRevision", "type": { "optional": { "nullable": "SafeInteger" } } },
+        { "name": "repositoryRef", "type": { "optional": { "nullable": "RepositoryRef" } } },
+        { "name": "workRef", "type": { "optional": { "nullable": "WorkRef" } } }
+      ]
+    },
+    {
+      "name": "RepositoryClaimReadResult",
+      "kind": "record",
+      "fields": [{ "name": "ledger", "type": "RepositoryClaimLedger" }]
+    },
+    {
       "name": "ProtocolCapability",
       "kind": "enum",
-      "values": ["work.index.read", "work.snapshot.read", "planning.graph.read"]
+      "values": [
+        "work.index.read",
+        "work.snapshot.read",
+        "planning.graph.read",
+        "repository.claim.read",
+        "repository.claim.execute"
+      ]
     },
     {
       "name": "ProtocolErrorCode",
@@ -669,7 +1003,10 @@
         "unavailable",
         "stale_cursor",
         "gap",
-        "internal"
+        "internal",
+        "forbidden",
+        "conflict",
+        "stale_generation"
       ]
     },
     {
@@ -835,6 +1172,24 @@
             { "name": "version", "type": "ProtocolVersion" },
             { "name": "params", "type": "PlanningGraphReadRequest" }
           ]
+        },
+        {
+          "name": "RepositoryClaimRead",
+          "tag": "repository.claim.read",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "params", "type": "RepositoryClaimReadRequest" }
+          ]
+        },
+        {
+          "name": "RepositoryClaimExecute",
+          "tag": "repository.claim.execute",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "params", "type": "RepositoryClaimExecuteRequest" }
+          ]
         }
       ]
     },
@@ -880,6 +1235,24 @@
           ]
         },
         {
+          "name": "RepositoryClaimRead",
+          "tag": "repository.claim.read",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "result", "type": "RepositoryClaimReadResult" }
+          ]
+        },
+        {
+          "name": "RepositoryClaimExecute",
+          "tag": "repository.claim.execute",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "result", "type": "RepositoryClaimExecuteResult" }
+          ]
+        },
+        {
           "name": "Error",
           "tag": "error",
           "fields": [
@@ -897,6 +1270,14 @@
     "PlanningGraph",
     "PlanningGraphReadRequest",
     "PlanningGraphReadResult",
+    "WorkPacket",
+    "RepositoryWorkClaim",
+    "RepositoryClaimAudit",
+    "RepositoryClaimLedger",
+    "RepositoryClaimExecuteRequest",
+    "RepositoryClaimExecuteResult",
+    "RepositoryClaimReadRequest",
+    "RepositoryClaimReadResult",
     "IssueProjection",
     "ProtocolError",
     "ProtocolInitializeRequest",
@@ -938,6 +1319,20 @@
       "minimumVersion": "omega-effectd.v2",
       "params": "PlanningGraphReadRequest",
       "result": "PlanningGraphReadResult"
+    },
+    {
+      "method": "repository.claim.read",
+      "capability": "repository.claim.read",
+      "minimumVersion": "omega-effectd.v2",
+      "params": "RepositoryClaimReadRequest",
+      "result": "RepositoryClaimReadResult"
+    },
+    {
+      "method": "repository.claim.execute",
+      "capability": "repository.claim.execute",
+      "minimumVersion": "omega-effectd.v2",
+      "params": "RepositoryClaimExecuteRequest",
+      "result": "RepositoryClaimExecuteResult"
     }
   ],
   "fixtures": [
@@ -1262,6 +1657,50 @@
           "privacyClass": "private",
           "redactedFieldCount": 0,
           "policyRef": "policy:test:1"
+        }
+      }
+    },
+    {
+      "file": "valid/repository-claim-execute-request.json",
+      "schema": "RepositoryClaimExecuteRequest",
+      "valid": true,
+      "value": {
+        "requestRef": "claim-request:fixture:1",
+        "idempotencyKey": "repository-claim-fixture-1",
+        "expectedRevision": 0,
+        "effectivePrincipalRef": "principal:omega:local-owner",
+        "capabilityRef": "capability:repository-claim:write",
+        "occurredAt": "2026-08-03T08:00:00Z",
+        "command": {
+          "command": "create_packet",
+          "packetRef": "work-packet:fixture:1",
+          "workRef": "work:omega:224",
+          "repositoryRef": "repository:omega",
+          "title": "Fixture Work Packet",
+          "scope": "Bounded fixture scope.",
+          "ownedPaths": ["crates/omega_work_index"],
+          "hotFiles": [],
+          "hotContracts": ["all-work generated contract"],
+          "verification": "Run the focused fixture verification."
+        }
+      }
+    },
+    {
+      "file": "invalid/repository-claim-empty-heartbeat.json",
+      "schema": "RepositoryClaimExecuteRequest",
+      "valid": false,
+      "value": {
+        "requestRef": "claim-request:fixture:2",
+        "idempotencyKey": "repository-claim-fixture-2",
+        "expectedRevision": 2,
+        "effectivePrincipalRef": "principal:omega:local-owner",
+        "capabilityRef": "capability:repository-claim:write",
+        "occurredAt": "2026-08-03T08:00:00Z",
+        "command": {
+          "command": "heartbeat",
+          "claimRef": "repository-claim:fixture:1",
+          "expectedGeneration": 1,
+          "evidenceRefs": []
         }
       }
     },

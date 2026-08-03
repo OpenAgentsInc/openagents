@@ -2,6 +2,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  decodeRepositoryClaimExecuteResult,
+  decodeRepositoryClaimReadResult,
   decodeProtocolInitializeResult,
   decodePlanningGraphReadResult,
   decodeWorkIndexReadResult,
@@ -163,6 +165,80 @@ describe("omega-effectd framed protocol", () => {
       const refused = await legacy.handleLine(request("legacy-index", 1, "work.index.read", {}));
       expect(refused?.ok).toBe(false);
       expect(refused?.error?.code).toBe("incompatible_version");
+    });
+  });
+
+  test("executes and restarts a native Repository Work Claim through the generated processor", async () => {
+    await withRoot(async (root) => {
+      const open = () =>
+        createOmegaEffectdFramedServer(
+          createOmegaEffectdService({ paths: { dataRoot: root } }),
+          { dataRoot: root },
+          { hostRequestHandler: makeOmegaEffectdTestHost() },
+        );
+      const server = open();
+      const init = await server.handleLine(
+        request("claim-init", 0, "initialize", {
+          generation: 1,
+          allWork: {
+            supportedVersions: ["omega-effectd.v2"],
+            requestedCapabilities: ["repository.claim.read", "repository.claim.execute"],
+          },
+        }),
+      );
+      expect(init?.ok).toBe(true);
+      const execute = async (id: string, expectedRevision: number, command: unknown) => {
+        const response = await server.handleLine(
+          request(id, 1, "repository.claim.execute", {
+            requestRef: `claim-request:${id}`,
+            idempotencyKey: `repository-claim-${id}`,
+            expectedRevision,
+            effectivePrincipalRef: "principal:omega:local-owner",
+            capabilityRef: "capability:repository-claim:write",
+            occurredAt: "2026-08-03T08:00:00Z",
+            command,
+          }),
+        );
+        expect(response?.ok).toBe(true);
+        return decodeRepositoryClaimExecuteResult(response?.result);
+      };
+      await execute("packet", 0, {
+        command: "create_packet",
+        packetRef: "work-packet:omega-224",
+        workRef: "work:github:openagentsinc-omega:224",
+        repositoryRef: "repository:omega",
+        title: "Implement native Repository Work Claims",
+        scope: "Generated-client claim journey.",
+        ownedPaths: ["crates/omega_work_index"],
+        hotFiles: [],
+        hotContracts: ["all-work generated contract"],
+        verification: "Run the focused claim journey.",
+      });
+      const claimed = await execute("claim", 1, {
+        command: "claim_packet",
+        packetRef: "work-packet:omega-224",
+        claimRef: "repository-claim:omega-224",
+      });
+      expect(claimed.ledger.claims[0]).toMatchObject({ state: "claimed", generation: 1 });
+      expect(claimed.receipt.githubWriteCount).toBe(0);
+
+      const restarted = open();
+      await restarted.handleLine(
+        request("restart-init", 0, "initialize", {
+          generation: 2,
+          allWork: {
+            supportedVersions: ["omega-effectd.v2"],
+            requestedCapabilities: ["repository.claim.read"],
+          },
+        }),
+      );
+      const read = await restarted.handleLine(
+        request("claim-read", 2, "repository.claim.read", {}),
+      );
+      expect(read?.ok).toBe(true);
+      const ledger = decodeRepositoryClaimReadResult(read?.result).ledger;
+      expect(ledger.claims[0]?.claimRef).toBe("repository-claim:omega-224");
+      expect(JSON.stringify(ledger)).not.toContain("githubWrite");
     });
   });
 

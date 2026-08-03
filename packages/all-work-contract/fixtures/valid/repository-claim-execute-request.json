@@ -1,0 +1,24 @@
+{
+  "requestRef": "claim-request:fixture:1",
+  "idempotencyKey": "repository-claim-fixture-1",
+  "expectedRevision": 0,
+  "effectivePrincipalRef": "principal:omega:local-owner",
+  "capabilityRef": "capability:repository-claim:write",
+  "occurredAt": "2026-08-03T08:00:00Z",
+  "command": {
+    "command": "create_packet",
+    "packetRef": "work-packet:fixture:1",
+    "workRef": "work:omega:224",
+    "repositoryRef": "repository:omega",
+    "title": "Fixture Work Packet",
+    "scope": "Bounded fixture scope.",
+    "ownedPaths": [
+      "crates/omega_work_index"
+    ],
+    "hotFiles": [],
+    "hotContracts": [
+      "all-work generated contract"
+    ],
+    "verification": "Run the focused fixture verification."
+  }
+}

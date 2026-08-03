@@ -1,0 +1,14 @@
+{
+  "requestRef": "claim-request:fixture:2",
+  "idempotencyKey": "repository-claim-fixture-2",
+  "expectedRevision": 2,
+  "effectivePrincipalRef": "principal:omega:local-owner",
+  "capabilityRef": "capability:repository-claim:write",
+  "occurredAt": "2026-08-03T08:00:00Z",
+  "command": {
+    "command": "heartbeat",
+    "claimRef": "repository-claim:fixture:1",
+    "expectedGeneration": 1,
+    "evidenceRefs": []
+  }
+}

@@ -120,6 +120,10 @@ Read these documents in this order:
     [canonical All Work planning authority implementation](./2026-08-03-canonical-all-work-planning-authority.md)
     before changing the planning store, GitHub bootstrap reconciliation, native
     Work commands, or `planning.graph.read` projection.
+41. Read the
+    [native Repository Work Claim authority](./2026-08-03-native-repository-work-claims.md)
+    before changing Work Packets, collision rules, staleness audits, claim
+    generation, or the claim writer cutover.
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.

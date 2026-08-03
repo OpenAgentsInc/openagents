@@ -32,6 +32,8 @@ export type OmegaEffectdProtocolErrorCode =
   | "unavailable"
   | "stale_cursor"
   | "gap"
+  | "forbidden"
+  | "conflict"
   | "internal";
 
 export type OmegaEffectdProtocolError = Readonly<{
@@ -84,6 +86,8 @@ export type OmegaEffectdInitializeResult = Readonly<{
     | "work.index.read"
     | "work.snapshot.read"
     | "planning.graph.read"
+    | "repository.claim.read"
+    | "repository.claim.execute"
     | "host_bridge"
   >;
   allWork: AllWorkProtocolInitializeResult;
