@@ -1,7 +1,12 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2022", "WebWorker"],
+    // ES2023 because consumed workspace packages (for example
+    // `@openagentsinc/forensic-contract`, which pins `lib: ["ES2023"]`) use
+    // ES2023 array methods such as `toSorted`. This Worker typechecks their
+    // source directly, so an older `lib` here reports errors that are not
+    // defects in this app. Node 24 and workerd both provide ES2023.
+    "lib": ["ES2023", "WebWorker"],
     "noEmit": true,
     // The consumed `@openagentsinc/durable-stream` package uses explicit `.ts`
     // extensions in its internal imports (its own deliberate style). This Worker

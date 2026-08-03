@@ -34,8 +34,11 @@ The deprecated Rust Blueprint workspace is reference material only.
     candidate module refs, scorecards, release gate refs, and evidence-only
     optimizer output.
   - `schemas/forensic-prompt-optimization.ts` models immutable forensic prompt
-    candidates, frozen dataset and metric identities, independent holdout
-    evaluations, and append-only activation or rollback transitions.
+    candidates, frozen dataset and metric identities including the seven frozen
+    Pareto axis bindings, resolved worker and source-state evaluation evidence,
+    independent holdout evaluations with derived per-axis comparisons, and the
+    durable governance state behind append-only activation or rollback
+    transitions.
   - `schemas/simulation.ts` models Simulation Branches, Scenario Forks,
     simulated-only effect isolation, and no-production-effect projections.
   - `schemas/program-registry.ts` models operator-safe Program Registry
@@ -79,6 +82,10 @@ The deprecated Rust Blueprint workspace is reference material only.
 - Future `repositories/`: D1-backed repositories for persisted Blueprint
   records.
 - `repositories/program-runs.ts`: D1-backed Program Run evidence repository.
+- `repositories/forensic-prompt-governance.ts`: Postgres-backed durable active
+  forensic prompt pointer and its append-only transition history, admitted only
+  under compare-and-set on the revision and prior digest the caller observed.
+  It has no production HTTP caller yet.
 - `services/`: Effect services that enforce evidence-only and approval-gated
   behavior. `services/program-run-authority.ts` denies deploy, email, PR,
   spend, source-mutation, and public-claim effects from Program Run authority.

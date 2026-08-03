@@ -477,7 +477,10 @@ export {
 export {
   FORENSIC_PROMPT_CANDIDATE_VERSION,
   FORENSIC_PROMPT_COMPILER_VERSION,
+  FORENSIC_PROMPT_EVALUATION_EVIDENCE_VERSION,
   FORENSIC_PROMPT_EVALUATION_VERSION,
+  FORENSIC_PROMPT_GOVERNANCE_STATE_VERSION,
+  FORENSIC_PROMPT_PARETO_AXES,
   FORENSIC_PROMPT_TRANSITION_VERSION,
   ForensicDatasetSplit,
   type ForensicDatasetSplit as ForensicDatasetSplitType,
@@ -495,22 +498,47 @@ export {
   type ForensicPromptDatasetRevision as ForensicPromptDatasetRevisionType,
   ForensicPromptEvaluation,
   type ForensicPromptEvaluation as ForensicPromptEvaluationType,
+  ForensicPromptEvaluationEvidence,
+  type ForensicPromptEvaluationEvidence as ForensicPromptEvaluationEvidenceType,
+  ForensicPromptGovernanceState,
+  type ForensicPromptGovernanceState as ForensicPromptGovernanceStateType,
+  ForensicPromptMechanicalEvidenceKind,
+  type ForensicPromptMechanicalEvidenceKind as ForensicPromptMechanicalEvidenceKindType,
+  ForensicPromptMechanicalEvidenceReceipt,
+  type ForensicPromptMechanicalEvidenceReceipt as ForensicPromptMechanicalEvidenceReceiptType,
   ForensicPromptMetricFreeze,
   type ForensicPromptMetricFreeze as ForensicPromptMetricFreezeType,
   ForensicPromptOptimizerConfiguration,
   type ForensicPromptOptimizerConfiguration as ForensicPromptOptimizerConfigurationType,
+  ForensicPromptParetoAxis,
+  type ForensicPromptParetoAxis as ForensicPromptParetoAxisType,
+  ForensicPromptParetoAxisBinding,
+  type ForensicPromptParetoAxisBinding as ForensicPromptParetoAxisBindingType,
+  ForensicPromptParetoComparison,
+  type ForensicPromptParetoComparison as ForensicPromptParetoComparisonType,
+  ForensicPromptSourceStateReceipt,
+  type ForensicPromptSourceStateReceipt as ForensicPromptSourceStateReceiptType,
 } from './schemas/forensic-prompt-optimization'
 
 export {
   compileForensicPromptCandidates,
+  forensicPromptTransitionDigestMatches,
   promoteForensicPrompt,
   rollbackForensicPrompt,
   validateForensicPromptEvaluation,
   type CompileForensicPromptCandidatesInput,
   type ForensicPromptCandidateInput,
   type PromoteForensicPromptInput,
+  type RollbackForensicPromptInput,
   type ValidateForensicPromptEvaluationInput,
 } from './services/forensic-prompt-compiler'
+
+export {
+  ForensicPromptGovernanceError,
+  makePostgresForensicPromptGovernanceStore,
+  type ForensicPromptGovernanceSql,
+  type ForensicPromptGovernanceStore,
+} from './repositories/forensic-prompt-governance'
 
 export {
   BlueprintEffectIsolation,

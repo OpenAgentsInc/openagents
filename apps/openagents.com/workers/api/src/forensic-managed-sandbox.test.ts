@@ -13,6 +13,7 @@ import {
   makeForensicManagedSandbox,
   makeForensicManagedSandboxRoutes,
 } from "./forensic-managed-sandbox";
+import { FORENSIC_METRIC_EVIDENCE_LEDGER_VERSION } from "./forensic-metric-evidence";
 import { BoxV1FacadeError } from "./managed-sandbox-box-v1-routes";
 import type {
   BoxV1LifecycleOutcome,
@@ -831,12 +832,16 @@ describe("forensic managed sandbox", () => {
       runtime: () => Effect.succeed(runtime),
       assertSourceReady: () => Effect.die("observation does not materialize source"),
       appendMetricEvidence: (_env, ownerRef, evidence) => {
-        if (!("eventRef" in evidence)) return Effect.die("expected a forensic run event");
-        retainedMetricEvidence.push(evidence);
+        if (typeof evidence !== "object" || evidence === null || !("eventRef" in evidence)) {
+          return Effect.die("expected a forensic run event");
+        }
+        const event = evidence as ForensicRunEvent;
+        retainedMetricEvidence.push(event);
         return Effect.succeed({
+          schema: FORENSIC_METRIC_EVIDENCE_LEDGER_VERSION,
           ownerRef,
-          runRef: (evidence as { runRef: string }).runRef,
-          recordRef: (evidence as { eventRef: string }).eventRef,
+          runRef: event.runRef,
+          recordRef: event.eventRef,
           recordKind: "run_event" as const,
           canonicalDigest: `sha256:${"a".repeat(64)}`,
           duplicate: false,
