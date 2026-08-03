@@ -60,6 +60,10 @@
     "WorkCutoverExecuteResult",
     "WorkCutoverReadRequest",
     "WorkCutoverReadResult",
+    "OrganizationMembership",
+    "OrganizationMembershipLedger",
+    "OrganizationMembershipReadRequest",
+    "OrganizationMembershipReadResult",
     "StrictBugCandidate",
     "StrictBugCandidateLedger",
     "StrictBugCandidateExecuteRequest",
@@ -85,6 +89,8 @@
     "internal_work_has_exactly_one_writer_per_cutover_generation",
     "native_work_cutover_creates_zero_github_writes",
     "legacy_rollback_requires_complete_native_history_reconciliation",
+    "organization_membership_is_explicit_and_not_inferred_from_planning_or_authorization",
+    "organization_membership_reads_are_account_principal_and_generation_fenced",
     "strict_bug_ingress_is_untrusted_until_explicit_disposition",
     "strict_bug_ingress_is_delivery_idempotent_and_public_safe",
     "strict_bug_candidate_admission_does_not_grant_command_authority"
@@ -1584,6 +1590,52 @@
       "fields": [{ "name": "state", "type": "WorkCutoverState" }]
     },
     {
+      "name": "OrganizationMembershipState",
+      "kind": "enum",
+      "values": ["verified", "stale", "revoked"]
+    },
+    {
+      "name": "OrganizationMembership",
+      "kind": "record",
+      "fields": [
+        { "name": "contractVersion", "type": "ContractVersion" },
+        { "name": "membershipRef", "type": "SourceRef" },
+        { "name": "accountRef", "type": "SourceRef" },
+        { "name": "accountGeneration", "type": "SafeInteger" },
+        { "name": "effectivePrincipalRef", "type": "PrincipalRef" },
+        { "name": "organizationRef", "type": "OrganizationRef" },
+        { "name": "displayName", "type": "ShortText" },
+        { "name": "sourceRevision", "type": "SafeInteger" },
+        { "name": "state", "type": "OrganizationMembershipState" },
+        { "name": "observedAt", "type": "IsoTimestamp" }
+      ]
+    },
+    {
+      "name": "OrganizationMembershipLedger",
+      "kind": "record",
+      "fields": [
+        { "name": "contractVersion", "type": "ContractVersion" },
+        { "name": "revision", "type": "SafeInteger" },
+        { "name": "memberships", "type": { "array": "OrganizationMembership", "maxItems": 256 } },
+        { "name": "completeness", "type": "Completeness" },
+        { "name": "freshness", "type": "Freshness" }
+      ]
+    },
+    {
+      "name": "OrganizationMembershipReadRequest",
+      "kind": "record",
+      "fields": [
+        { "name": "accountRef", "type": "SourceRef" },
+        { "name": "accountGeneration", "type": "SafeInteger" },
+        { "name": "effectivePrincipalRef", "type": "PrincipalRef" }
+      ]
+    },
+    {
+      "name": "OrganizationMembershipReadResult",
+      "kind": "record",
+      "fields": [{ "name": "ledger", "type": "OrganizationMembershipLedger" }]
+    },
+    {
       "name": "StrictBugCandidateRef",
       "kind": "string",
       "minLength": 1,
@@ -1762,6 +1814,7 @@
         "work.command.execute",
         "work.cutover.read",
         "work.cutover.execute",
+        "organization.membership.read",
         "strict_bug.candidate.read",
         "strict_bug.candidate.execute"
       ]
@@ -2019,6 +2072,15 @@
           ]
         },
         {
+          "name": "OrganizationMembershipRead",
+          "tag": "organization.membership.read",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "params", "type": "OrganizationMembershipReadRequest" }
+          ]
+        },
+        {
           "name": "StrictBugCandidateRead",
           "tag": "strict_bug.candidate.read",
           "fields": [
@@ -2152,6 +2214,15 @@
           ]
         },
         {
+          "name": "OrganizationMembershipRead",
+          "tag": "organization.membership.read",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "result", "type": "OrganizationMembershipReadResult" }
+          ]
+        },
+        {
           "name": "StrictBugCandidateRead",
           "tag": "strict_bug.candidate.read",
           "fields": [
@@ -2214,6 +2285,10 @@
     "WorkCutoverExecuteResult",
     "WorkCutoverReadRequest",
     "WorkCutoverReadResult",
+    "OrganizationMembership",
+    "OrganizationMembershipLedger",
+    "OrganizationMembershipReadRequest",
+    "OrganizationMembershipReadResult",
     "StrictBugCandidate",
     "StrictBugCandidateLedger",
     "StrictBugCandidateExecuteRequest",
@@ -2318,6 +2393,13 @@
       "minimumVersion": "omega-effectd.v2",
       "params": "WorkCutoverExecuteRequest",
       "result": "WorkCutoverExecuteResult"
+    },
+    {
+      "method": "organization.membership.read",
+      "capability": "organization.membership.read",
+      "minimumVersion": "omega-effectd.v2",
+      "params": "OrganizationMembershipReadRequest",
+      "result": "OrganizationMembershipReadResult"
     },
     {
       "method": "strict_bug.candidate.read",

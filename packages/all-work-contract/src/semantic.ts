@@ -40,6 +40,7 @@ const capabilities = [
   "work.command.execute",
   "work.cutover.read",
   "work.cutover.execute",
+  "organization.membership.read",
   "strict_bug.candidate.read",
   "strict_bug.candidate.execute",
 ] as const;

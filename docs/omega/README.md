@@ -137,6 +137,10 @@ Read these documents in this order:
     [internal GitHub writer refusal boundary](./2026-08-03-internal-github-writer-refusal.md)
     before changing issue creation, internal progress or claim comments,
     completion callbacks, release-feedback callbacks, or writer activation.
+45. Read the
+    [Organization membership authority](./2026-08-03-organization-membership-authority.md)
+    before changing Effective Principal scope, membership provisioning,
+    Organization switching, or Organization-scoped Work command admission.
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.

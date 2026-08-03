@@ -46,6 +46,11 @@ transition is explicit, generation fenced, idempotent, zero-GitHub-write, and
 durable across restart; rollback requires complete native high-water
 reconciliation.
 
+`organization.membership.read` opens the owner-provisioned Organization
+membership ledger and returns only rows matching the exact account,
+account-generation, and Effective Principal fence. Startup creates an empty
+ledger only; it never enrolls the local owner from planning or command state.
+
 `strict_bug.candidate.read` and `strict_bug.candidate.execute` open the durable
 candidate ledger for the retained public GitHub strict-bug form. A verified
 GitHub delivery enters as untrusted and pending. Only the dedicated local

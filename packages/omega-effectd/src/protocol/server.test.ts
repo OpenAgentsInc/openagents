@@ -4,6 +4,8 @@ import path from "node:path";
 import {
   decodeRepositoryClaimExecuteResult,
   decodeRepositoryClaimReadResult,
+  decodeOrganizationMembership,
+  decodeOrganizationMembershipReadResult,
   decodeStrictBugCandidateExecuteResult,
   decodeStrictBugCandidateReadResult,
   decodeProtocolInitializeResult,
@@ -13,7 +15,10 @@ import {
   decodeWorkCutoverExecuteResult,
   decodeWorkCutoverReadResult,
   decodeWorkSnapshotReadResult,
+  makeOrganizationMembershipAuthorityState,
+  provisionFileOrganizationMembershipState,
 } from "@openagentsinc/all-work-contract";
+import { Effect } from "effect";
 import { describe, expect, test } from "vite-plus/test";
 
 import { createOmegaEffectdService } from "../service.ts";
@@ -380,6 +385,71 @@ describe("omega-effectd framed protocol", () => {
         request("cutover-recovered", 2, "work.cutover.read", {}),
       );
       expect(decodeWorkCutoverReadResult(recovered?.result).state.writer).toBe("native_omega");
+    });
+  });
+
+  test("reads only explicitly provisioned Organization membership at the exact identity fence", async () => {
+    await withRoot(async (root) => {
+      const server = createOmegaEffectdFramedServer(
+        createOmegaEffectdService({ paths: { dataRoot: root } }),
+        { dataRoot: root },
+        { hostRequestHandler: makeOmegaEffectdTestHost() },
+      );
+      const initialized = await server.handleLine(
+        request("membership-init", 0, "initialize", {
+          generation: 1,
+          allWork: {
+            supportedVersions: ["omega-effectd.v2"],
+            requestedCapabilities: ["organization.membership.read"],
+          },
+        }),
+      );
+      expect(initialized?.ok).toBe(true);
+
+      await Effect.runPromise(
+        provisionFileOrganizationMembershipState(
+          root,
+          0,
+          makeOrganizationMembershipAuthorityState({
+            revision: 1,
+            observedAt: "2026-08-03T17:30:00Z",
+            memberships: [
+              decodeOrganizationMembership({
+                contractVersion: "openagents.all_work_boundary.v1",
+                membershipRef: "membership:openagents:owner",
+                accountRef: "account:omega:owner",
+                accountGeneration: 4,
+                effectivePrincipalRef: "principal:omega:local-owner",
+                organizationRef: "organization:openagents",
+                displayName: "OpenAgents",
+                sourceRevision: 1,
+                state: "verified",
+                observedAt: "2026-08-03T17:30:00Z",
+              }),
+            ],
+          }),
+        ),
+      );
+      const exact = await server.handleLine(
+        request("membership-read", 1, "organization.membership.read", {
+          accountRef: "account:omega:owner",
+          accountGeneration: 4,
+          effectivePrincipalRef: "principal:omega:local-owner",
+        }),
+      );
+      expect(exact?.ok).toBe(true);
+      expect(decodeOrganizationMembershipReadResult(exact?.result).ledger.memberships).toHaveLength(
+        1,
+      );
+
+      const stale = await server.handleLine(
+        request("membership-stale", 1, "organization.membership.read", {
+          accountRef: "account:omega:owner",
+          accountGeneration: 3,
+          effectivePrincipalRef: "principal:omega:local-owner",
+        }),
+      );
+      expect(decodeOrganizationMembershipReadResult(stale?.result).ledger.memberships).toEqual([]);
     });
   });
 

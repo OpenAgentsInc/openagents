@@ -2,12 +2,12 @@
   "contractRef": "openagents.all_work_boundary.v1",
   "contractVersion": 1,
   "profileVersion": "openagents.contract_profile.v1",
-  "definitionSha256": "2797ea64aba30c5ccc19cf2f4771d47955b126a3d91576f24409ad2d23f47a03",
+  "definitionSha256": "04426ecce7bfd8d1eae3b9e134fd50fe0051f3c27957039a4ca51e68227dcea2",
   "artifacts": {
-    "effectSha256": "5126b0a4b91265b2b9e763405d4352597ca44488dfae5cb9ab0d55942e3d507f",
-    "rustSha256": "cf4a42d8e3b1cb5d366841e16e7cab09b5b376f095fdf7054dea0eae90f1f154",
-    "jsonSchemaSha256": "a246c476136d0e6b9b6ff32ee141ffe8144805b93435f62e8d98ef57aef36e8a",
-    "fixtureIndexSha256": "23af49dfd686ad5718c7f5a52afbf70688527622536ac944ab981b6cc8ea7b2b"
+    "effectSha256": "317f88102f0edfa4f98ede4fe879f69676c725f688075949d1a96daab314b01b",
+    "rustSha256": "f364cd0e9918ea94027373066888995a3bc7614a978d427d898d951f6eb95051",
+    "jsonSchemaSha256": "d507eda40a54fd6fed00d384510992b6a22f5873c53d2cc6bacdf37d109392bb",
+    "fixtureIndexSha256": "0024c823102bef38d2cac27d151c92ca5f0dea292feefeea2abb5c3ba26fd5b0"
   },
   "protocol": {
     "supportedVersions": [
@@ -101,6 +101,13 @@
         "result": "WorkCutoverExecuteResult"
       },
       {
+        "method": "organization.membership.read",
+        "capability": "organization.membership.read",
+        "minimumVersion": "omega-effectd.v2",
+        "params": "OrganizationMembershipReadRequest",
+        "result": "OrganizationMembershipReadResult"
+      },
+      {
         "method": "strict_bug.candidate.read",
         "capability": "strict_bug.candidate.read",
         "minimumVersion": "omega-effectd.v2",
@@ -146,6 +153,8 @@
     "internal_work_has_exactly_one_writer_per_cutover_generation",
     "native_work_cutover_creates_zero_github_writes",
     "legacy_rollback_requires_complete_native_history_reconciliation",
+    "organization_membership_is_explicit_and_not_inferred_from_planning_or_authorization",
+    "organization_membership_reads_are_account_principal_and_generation_fenced",
     "strict_bug_ingress_is_untrusted_until_explicit_disposition",
     "strict_bug_ingress_is_delivery_idempotent_and_public_safe",
     "strict_bug_candidate_admission_does_not_grant_command_authority"
@@ -283,6 +292,11 @@
     "WorkCutoverExecuteResult": "implemented",
     "WorkCutoverReadRequest": "implemented",
     "WorkCutoverReadResult": "implemented",
+    "OrganizationMembershipState": "structural_only",
+    "OrganizationMembership": "implemented",
+    "OrganizationMembershipLedger": "implemented",
+    "OrganizationMembershipReadRequest": "implemented",
+    "OrganizationMembershipReadResult": "implemented",
     "StrictBugCandidateRef": "structural_only",
     "StrictBugSeverity": "structural_only",
     "StrictBugConfirmation": "structural_only",

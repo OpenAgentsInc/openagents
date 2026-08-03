@@ -20,6 +20,7 @@ import {
   decodeWorkCommandExecuteRequest,
   decodeWorkCutoverExecuteRequest,
   decodeWorkCutoverReadRequest,
+  decodeOrganizationMembershipReadRequest,
   decodeStrictBugCandidateExecuteRequest,
   decodeStrictBugCandidateReadRequest,
   decodeWorkSnapshotReadRequest,
@@ -29,6 +30,7 @@ import {
   SignedWorkroomError,
   WorkCommandAuthorityError,
   WorkCutoverAuthorityError,
+  OrganizationMembershipAuthorityError,
   StrictBugCandidateAuthorityError,
   type ProtocolCapability as AllWorkProtocolCapability,
   type ProtocolVersion as AllWorkProtocolVersion,
@@ -64,6 +66,10 @@ import {
   executeAllWorkCutover,
   readAllWorkCutover,
 } from "../engine/all-work-cutover.ts";
+import {
+  bootstrapAllWorkOrganizationMemberships,
+  readAllWorkOrganizationMemberships,
+} from "../engine/all-work-organization-memberships.ts";
 import {
   bootstrapAllWorkRepositoryClaims,
   executeAllWorkRepositoryClaim,
@@ -1138,6 +1144,25 @@ export const createOmegaEffectdFramedServer = (
           );
         }
       }
+      if (allWork.capabilities.includes("organization.membership.read")) {
+        const memberships = await Effect.runPromise(
+          Effect.match(bootstrapAllWorkOrganizationMemberships(paths.dataRoot), {
+            onFailure: () => null,
+            onSuccess: () => true,
+          }),
+        );
+        if (memberships === null) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "unavailable",
+              "The Organization membership authority could not be opened.",
+            ),
+          );
+        }
+      }
       if (
         allWork.capabilities.includes("strict_bug.candidate.read") ||
         allWork.capabilities.includes("strict_bug.candidate.execute")
@@ -1769,6 +1794,40 @@ export const createOmegaEffectdFramedServer = (
             false,
             undefined,
             redactedError("invalid_request", "The internal Work writer transition was refused."),
+          );
+        }
+      }
+      case "organization.membership.read": {
+        if (!selectedAllWorkCapabilities.includes("organization.membership.read")) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "incompatible_version",
+              "organization.membership.read requires its negotiated omega-effectd.v2 capability.",
+            ),
+          );
+        }
+        try {
+          const params = decodeOrganizationMembershipReadRequest(request.params ?? {});
+          return respond(
+            request.id,
+            true,
+            await Effect.runPromise(readAllWorkOrganizationMemberships(paths.dataRoot, params)),
+          );
+        } catch (error) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              error instanceof OrganizationMembershipAuthorityError &&
+                error.reason === "invalid_request"
+                ? "invalid_request"
+                : "unavailable",
+              "The Organization membership authority is unavailable.",
+            ),
           );
         }
       }

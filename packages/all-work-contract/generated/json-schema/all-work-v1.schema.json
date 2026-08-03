@@ -100,6 +100,18 @@
       "$ref": "#/$defs/WorkCutoverReadResult"
     },
     {
+      "$ref": "#/$defs/OrganizationMembership"
+    },
+    {
+      "$ref": "#/$defs/OrganizationMembershipLedger"
+    },
+    {
+      "$ref": "#/$defs/OrganizationMembershipReadRequest"
+    },
+    {
+      "$ref": "#/$defs/OrganizationMembershipReadResult"
+    },
+    {
       "$ref": "#/$defs/StrictBugCandidate"
     },
     {
@@ -3826,6 +3838,131 @@
       ],
       "additionalProperties": false
     },
+    "OrganizationMembershipState": {
+      "type": "string",
+      "title": "OrganizationMembershipState",
+      "enum": [
+        "verified",
+        "stale",
+        "revoked"
+      ]
+    },
+    "OrganizationMembership": {
+      "type": "object",
+      "title": "OrganizationMembership",
+      "properties": {
+        "contractVersion": {
+          "$ref": "#/$defs/ContractVersion"
+        },
+        "membershipRef": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "accountRef": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "accountGeneration": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "effectivePrincipalRef": {
+          "$ref": "#/$defs/PrincipalRef"
+        },
+        "organizationRef": {
+          "$ref": "#/$defs/OrganizationRef"
+        },
+        "displayName": {
+          "$ref": "#/$defs/ShortText"
+        },
+        "sourceRevision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "state": {
+          "$ref": "#/$defs/OrganizationMembershipState"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        }
+      },
+      "required": [
+        "contractVersion",
+        "membershipRef",
+        "accountRef",
+        "accountGeneration",
+        "effectivePrincipalRef",
+        "organizationRef",
+        "displayName",
+        "sourceRevision",
+        "state",
+        "observedAt"
+      ],
+      "additionalProperties": false
+    },
+    "OrganizationMembershipLedger": {
+      "type": "object",
+      "title": "OrganizationMembershipLedger",
+      "properties": {
+        "contractVersion": {
+          "$ref": "#/$defs/ContractVersion"
+        },
+        "revision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "memberships": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OrganizationMembership"
+          },
+          "maxItems": 256
+        },
+        "completeness": {
+          "$ref": "#/$defs/Completeness"
+        },
+        "freshness": {
+          "$ref": "#/$defs/Freshness"
+        }
+      },
+      "required": [
+        "contractVersion",
+        "revision",
+        "memberships",
+        "completeness",
+        "freshness"
+      ],
+      "additionalProperties": false
+    },
+    "OrganizationMembershipReadRequest": {
+      "type": "object",
+      "title": "OrganizationMembershipReadRequest",
+      "properties": {
+        "accountRef": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "accountGeneration": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "effectivePrincipalRef": {
+          "$ref": "#/$defs/PrincipalRef"
+        }
+      },
+      "required": [
+        "accountRef",
+        "accountGeneration",
+        "effectivePrincipalRef"
+      ],
+      "additionalProperties": false
+    },
+    "OrganizationMembershipReadResult": {
+      "type": "object",
+      "title": "OrganizationMembershipReadResult",
+      "properties": {
+        "ledger": {
+          "$ref": "#/$defs/OrganizationMembershipLedger"
+        }
+      },
+      "required": [
+        "ledger"
+      ],
+      "additionalProperties": false
+    },
     "StrictBugCandidateRef": {
       "type": "string",
       "title": "StrictBugCandidateRef",
@@ -4331,6 +4468,7 @@
         "work.command.execute",
         "work.cutover.read",
         "work.cutover.execute",
+        "organization.membership.read",
         "strict_bug.candidate.read",
         "strict_bug.candidate.execute"
       ]
@@ -4982,6 +5120,30 @@
           "type": "object",
           "properties": {
             "method": {
+              "const": "organization.membership.read"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "params": {
+              "$ref": "#/$defs/OrganizationMembershipReadRequest"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
               "const": "strict_bug.candidate.read"
             },
             "id": {
@@ -5323,6 +5485,30 @@
           "type": "object",
           "properties": {
             "method": {
+              "const": "organization.membership.read"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "result": {
+              "$ref": "#/$defs/OrganizationMembershipReadResult"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
               "const": "strict_bug.candidate.read"
             },
             "id": {
@@ -5398,7 +5584,7 @@
     "profileVersion": "openagents.contract_profile.v1",
     "contractRef": "openagents.all_work_boundary.v1",
     "contractVersion": 1,
-    "definitionSha256": "2797ea64aba30c5ccc19cf2f4771d47955b126a3d91576f24409ad2d23f47a03",
+    "definitionSha256": "04426ecce7bfd8d1eae3b9e134fd50fe0051f3c27957039a4ca51e68227dcea2",
     "owningDomain": "all_work_boundary",
     "authoritativeRuntime": "effect",
     "relationship": "projection",
@@ -5435,6 +5621,8 @@
       "internal_work_has_exactly_one_writer_per_cutover_generation",
       "native_work_cutover_creates_zero_github_writes",
       "legacy_rollback_requires_complete_native_history_reconciliation",
+      "organization_membership_is_explicit_and_not_inferred_from_planning_or_authorization",
+      "organization_membership_reads_are_account_principal_and_generation_fenced",
       "strict_bug_ingress_is_untrusted_until_explicit_disposition",
       "strict_bug_ingress_is_delivery_idempotent_and_public_safe",
       "strict_bug_candidate_admission_does_not_grant_command_authority"
@@ -5572,6 +5760,11 @@
       "WorkCutoverExecuteResult": "implemented",
       "WorkCutoverReadRequest": "implemented",
       "WorkCutoverReadResult": "implemented",
+      "OrganizationMembershipState": "structural_only",
+      "OrganizationMembership": "implemented",
+      "OrganizationMembershipLedger": "implemented",
+      "OrganizationMembershipReadRequest": "implemented",
+      "OrganizationMembershipReadResult": "implemented",
       "StrictBugCandidateRef": "structural_only",
       "StrictBugSeverity": "structural_only",
       "StrictBugConfirmation": "structural_only",

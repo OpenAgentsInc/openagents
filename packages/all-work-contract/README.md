@@ -149,6 +149,20 @@ run. Strict bug ingress and exact completion/release callback comments remain
 transport boundaries, not Work or claim authority. Landing this fence does not
 activate `native_omega`.
 
+## Organization membership authority
+
+`organization.membership.read` exposes an explicit owner-provisioned membership
+ledger. A read is fenced by the exact account ref, account generation, and
+Effective Principal. Planning scope, command authorization, NIP-29 group
+membership, fixture data, and legacy billing rows cannot populate this ledger.
+
+The authority initializes empty and therefore grants nothing by startup or
+contract generation. An owner-local provisioner must write a validated higher
+revision to `all-work/organization-memberships.v1.json`. Verified, stale, and
+revoked memberships remain separate source facts. The API is intentionally
+read-only; changing membership is an owner provisioning action, not a Work
+command or UI inference.
+
 ## Strict public bug candidates
 
 `strict_bug.candidate.read` and `strict_bug.candidate.execute` provide the
