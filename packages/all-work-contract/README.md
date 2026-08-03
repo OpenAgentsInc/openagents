@@ -77,8 +77,13 @@ receipts always report zero GitHub writes.
 
 The generated boundary includes causal signed Workroom activity, audience and
 privacy labels, supersession/revocation targets, and a persist-before-publish
-outbox. `src/signed-workroom-authority.ts` admits exact signed bytes only for
-the named Effective Principal and capability, known causal parents, and an
+outbox. `src/signed-workroom-nostr.ts` recomputes the deterministic NIP-01 event
+ID and verifies its BIP-340 Schnorr signature. Direct projection admission
+requires `principal:nostr:<signer-pubkey>`; other actor classes require a future
+purpose-bound grant adapter and fail closed now.
+
+`src/signed-workroom-authority.ts` admits the verified projection only for the
+named Effective Principal and capability, known causal parents, and an
 advancing generation. Its receipt explicitly says that relay acceptance is not
 authority and that the projection does not admit an external effect. See
 `docs/omega/2026-08-03-signed-workroom-projection.md`.

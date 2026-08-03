@@ -11,6 +11,7 @@ import {
   type SignedWorkroomReadResult,
   SignedWorkroomLedgerSchema,
 } from "./generated.ts";
+import { verifySignedWorkroomNostrActivity } from "./signed-workroom-nostr.ts";
 
 export const SIGNED_WORKROOM_WRITE_CAPABILITY = "capability:workroom-activity:enqueue" as const;
 
@@ -26,6 +27,9 @@ export class SignedWorkroomError extends S.TaggedErrorClass<SignedWorkroomError>
       "invalid_audience",
       "invalid_supersession",
       "invalid_revocation",
+      "invalid_event_id",
+      "invalid_signature",
+      "signer_actor_mismatch",
       "storage_unavailable",
     ]),
     detail: S.String,
@@ -127,6 +131,37 @@ const validateCausality = (
   return Effect.void;
 };
 
+const validateSignedProjection = (
+  activity: SignedWorkroomActivity,
+): Effect.Effect<void, SignedWorkroomError> => {
+  const verification = verifySignedWorkroomNostrActivity(activity);
+  switch (verification) {
+    case "valid":
+      return Effect.void;
+    case "event_id_mismatch":
+      return Effect.fail(
+        new SignedWorkroomError({
+          reason: "invalid_event_id",
+          detail: "the NIP-01 event ID does not bind the Workroom projection bytes",
+        }),
+      );
+    case "signature_invalid":
+      return Effect.fail(
+        new SignedWorkroomError({
+          reason: "invalid_signature",
+          detail: "the Workroom projection Schnorr signature is invalid",
+        }),
+      );
+    case "signer_actor_mismatch":
+      return Effect.fail(
+        new SignedWorkroomError({
+          reason: "signer_actor_mismatch",
+          detail: "direct signed projection requires the exact Nostr principal",
+        }),
+      );
+  }
+};
+
 export const enqueueSignedWorkroomActivity = (
   request: SignedWorkroomEnqueueRequest,
   persistedAt: string,
@@ -166,6 +201,7 @@ export const enqueueSignedWorkroomActivity = (
         detail: `event ${request.activity.eventRef} already exists`,
       });
     }
+    yield* validateSignedProjection(request.activity);
     yield* validateAudience(request.activity);
     yield* validateCausality(state.ledger, request.activity);
     const revision = state.ledger.revision + 1;

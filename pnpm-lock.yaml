@@ -1849,6 +1849,9 @@ importers:
 
   packages/all-work-contract:
     dependencies:
+      '@noble/curves':
+        specifier: 1.8.1
+        version: 1.8.1
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
