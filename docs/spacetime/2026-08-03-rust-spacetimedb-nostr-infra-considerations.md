@@ -5,7 +5,10 @@ direction — Rust ASAP, build plan. **Third: owner ruling — FOSS only.
 SpacetimeDB is BSL 1.1, not FOSS, and is excluded. No BSL, FSL, SSPL, or
 otherwise source-available-encumbered dependency may sit in this
 infrastructure.** This revision replaces every SpacetimeDB role with a FOSS
-substitution and keeps everything else.)
+substitution and keeps everything else. Fourth same-day amendment: §6
+standardizes the read path on Electric, and §0.1 records the owner direction
+that this Rust Nostr infra lives in a NEW STANDALONE REPO, not the
+monorepo — naming shortlist there.)
 Status: build plan and roadmap — candidate packets, not yet admitted dispatch
 Grounded at: `5e9c2ac2a0` (current `main`)
 
@@ -23,7 +26,7 @@ in our control."* That call is the FOSS answer; this plan extends it to Rust.
 
 ```text
 Track R — Rust relay (starts now, ships in weeks)
-  R0  crates/oa-relay: greenfield Rust gateway over the EXISTING Cloud SQL
+  R0  greenfield Rust gateway over the EXISTING Cloud SQL
       Postgres event store → replaces the Node host; fixes the measured
       connection-admission limit; zero data migration; Cloud Run deploy;
       differential conformance against nostr-effect on the same database
@@ -35,13 +38,15 @@ Track R — Rust relay (starts now, ships in weeks)
 Track S — state plane (Khala Sync grows a Rust half)
   S0  khala-sync-rs: Rust Khala Sync client crate for Omega
       (same store semantics as the Node/Expo/web-WASM stores)
-  S1  Query-subscription tier v1 on Postgres: invalidate-and-re-execute over
-      recorded read sets, NATS wakeups (the fable doc's chosen v1 split)
+  S1  Read-path standard: Electric shapes over Postgres logical replication
+      (spike-gated, §6) — hand-rolled invalidate-and-re-execute tier is the
+      specified fallback
   S2  All Work hot state rides this plane — no new database
       (presence/ephemeral over NATS, never through a durable store)
 
 Track B — Blossom media store in Rust (independent, needed regardless)
-  B0  crates/oa-blossom: NIP-B7 server over GCS, NIP-98 auth, NIP-94 metadata
+  B0  oa-blossom: NIP-B7 server over GCS, NIP-98 auth, NIP-94 metadata
+  (all of Track R and B live in a NEW standalone repo — §0.1)
 ```
 
 Dropping SpacetimeDB makes the plan **strictly simpler**: no GCE VM, no vendor
@@ -51,6 +56,39 @@ growing archive. Every runtime dependency below is OSI-licensed or owned
 outright, and everything deploys on the surfaces already in production (Cloud
 Run, Cloud SQL, GKE).
 
+### 0.1 A new standalone repo, and its name
+
+Owner direction (2026-08-03): the Rust Nostr infra is **not** part of the
+`openagents` monorepo. It gets its own sibling repo under `OpenAgentsInc`,
+registered in the workspace model like `probe`, `psionic`, and
+`nostr-effect`. Scope of the new repo: the relay workspace (`nostr-domain`,
+gateway, stores, conformance, indexer), the Blossom server, and the Nostr
+outbox publisher daemon. Out of scope: `khala-sync-rs` (sync, not Nostr — it
+lands per the Omega/monorepo decision) and `nostr-effect` (stays the TS
+protocol library and conformance oracle).
+
+Naming: house style is a lowercase single word, and the estate is already
+Protoss-leaning (Khala, Khala Sync, Pylon, Psionic, Artanis, Tassadar).
+Owner asked for hardening connotations ("diamond") tied to the StarCraft
+universe. Shortlist:
+
+| Name | Why | Notes |
+| --- | --- | --- |
+| **`khaydarin`** | The Khaydarin crystal is the substrate that anchors and amplifies the Khala — exactly what this infra is to Khala Sync and the signed record. Deep-lore, unique, zero collisions | Top pick for meaning |
+| **`immortal`** | The Immortal's Hardened Shields are THE hardening mechanic in SC2; "immortal" also reads as uptime | Top pick for hardening |
+| **`neosteel`** | Terran hardened building material ("neosteel frame") — the closest literal analogue to "diamond" | Unique, punchy, greppable |
+| **`archon`** | Merged Templar — raw power; also reads as system-administrator | Common word, minor collisions |
+| **`carrier`** | "Carrier has arrived." — a relay literally carries signed events | Telecom double meaning is apt |
+| **`bunker`** | Terran structure whose whole job is holding the line | Blunt, memorable |
+| **`hyperion`** | Raynor's flagship — endures everything | Used across many franchises |
+| **`purifier`** | Protoss faction; a relay that validates and purifies admission | Slightly long |
+| **`chitin`** | Zerg carapace material — biological hardening | Least obviously SC |
+
+Avoid: `shieldbattery` (existing SC open-source project), `aegis` (prior
+internal Hydra/Aegis authority naming), `oracle`/`sentry` (company
+collisions), `nexus`/`pylon`/`forge`/`khala` (taken in this estate). Until
+the owner picks, this document says "the relay repo."
+
 ## 1. What SpacetimeDB was doing, and the FOSS substitution for each role
 
 | Role STDB was assigned | FOSS replacement | License |
@@ -58,7 +96,7 @@ Run, Cloud SQL, GKE).
 | Relay admission authority (dedup, replaceable heads, tombstones, policy — one transaction) | Postgres, where R0 already puts it. It simply stays there | PostgreSQL License |
 | Committed-event fanout to gateway replicas | NATS Core, `ingest_seq`-keyed; catch-up reads from Postgres; gateways fail closed on gaps | Apache-2.0 |
 | Live typed replicas across Rust/TS clients | Khala Sync — owned — extended with a Rust client for Omega | Ours |
-| Query-subscription with server-computed deltas | Khala Sync query-subscription tier v1: invalidate-and-re-execute on recorded read sets (the Convex lesson the fable doc already selected as the correct v1) | Ours |
+| Query-subscription with server-computed deltas | Electric shapes over logical replication (recommended, spike-gated — §6); hand-rolled invalidate-and-re-execute tier as specified fallback | Apache-2.0 / ours |
 | Hot workroom/All Work operational state | Cloud SQL + Khala Sync scopes (the plane that already exists) | PostgreSQL / ours |
 | Presence and transient signals (event tables) | NATS subjects / the relay's ephemeral lane — no durable store at all | Apache-2.0 |
 | Verse world state (if revived) | Rust region service on the same Postgres + NATS substrate | ours / above |
@@ -89,7 +127,7 @@ reference rather than the substrate:
 
 | Candidate | License | Verdict |
 | --- | --- | --- |
-| **ElectricSQL** | Apache-2.0 | Best-in-class read-path sync over Postgres logical replication; Elixir server, TS client, no Rust client. Steal the HTTP offset-resumable shape protocol and gatekeeper-auth pattern (the fable doc already lists exactly this). Adopting it wholesale would still leave the write path, permissions, and the Rust client to us — the parts that are the actual work |
+| **ElectricSQL** | Apache-2.0 | Best-in-class read-path sync over Postgres logical replication. **Elevated from reference to recommended read-path standard — see §6**, added 2026-08-03 after reviewing the electric.ax docs and our TanStack DB position. Write path, permissions, and local durability remain ours — which is the division of labor Electric itself prescribes |
 | **Zero (Rocicorp)** | Apache-2.0 | Steal the CDC topology (logical replication → single-writer replica → view-syncer readers) and its honest online-optimistic v1 write contract. TS-only, young, and its server would sit exactly where Khala Sync already sits |
 | **LiveStore** | Apache-2.0 | Built on Effect — the closest artifact to Khala Sync's target shape; read its sync provider source before writing ours (fable doc's instruction, still right) |
 | **Replicache** | Apache-2.0 (maintenance) | The canonical push/pull mutation-rebase spec; its "backend strategies" ladder is the roadmap we are already on step 3 of |
@@ -157,11 +195,11 @@ study, port ideas, don't vendor trees.
 
 ### R0: Rust gateway over the existing store (weeks 1–3) — unchanged by the FOSS ruling
 
-New crates in the existing monorepo Cargo workspace (extends the `oa-*` infra
-pattern; does not touch the retired `apps/nostr-relay` path):
+A new Cargo workspace in the relay repo (§0.1 — standalone sibling, not the
+monorepo; the retired `apps/nostr-relay` path stays untouched either way):
 
 ```text
-crates/oa-relay/
+<relay repo>/crates/
 ├── nostr-domain        pure Rust: event classification, replacement address,
 │                       filter matching, deletion semantics, policy vocabulary
 ├── oa-relay-gateway    WebSocket protocol server (axum + tokio-tungstenite):
@@ -292,20 +330,133 @@ region service as the single-writer authority per region. The cycle-3 scope
 boundary (presence/interaction only; business truth in owned projections)
 carries over verbatim.
 
-## 6. Track B — Blossom media store in Rust (weeks 2–4, independent)
+## 6. Standardizing the read path on Electric (TypeScript + Rust)
 
-`crates/oa-blossom`: NIP-B7 server over GCS, NIP-98 auth, NIP-94 metadata.
+Added 2026-08-03 at owner direction, after reviewing the electric.ax docs
+(TanStack integration, intro, HTTP API — fetched this date) against our
+actual client position.
+
+### 6.1 Where we stand
+
+The web app is already TanStack end to end: `apps/openagents.com/apps/start`
+ships `@tanstack/db` 0.6.14 + `@tanstack/react-db`, fed today by the owned
+`@openagentsinc/khala-sync-db-collection` adapter, which bridges the Khala
+Sync client into a TanStack DB `SyncConfig` (confirmed rows in the Khala
+store, optimistic effects in the Khala overlay). No Electric packages are in
+the tree. Meanwhile TanStack DB's first-party sync backend *is* Electric —
+they co-built it, and the electric collection path (`electricCollectionOptions`
+with txid-matched optimistic confirmation) is the ecosystem's paved road.
+
+### 6.2 What Electric actually is, and why it fits unusually well here
+
+Electric (Apache-2.0 — passes the FOSS rule) is a **read-path-only** sync
+engine over Postgres logical replication. Its entire client contract is one
+HTTP endpoint: `GET /v1/shape` with `table`/`where`, an `offset` cursor, a
+shape `handle`, long-poll or SSE live mode, `up-to-date` and `must-refetch`
+control messages, and CDN-grade caching with request collapsing. Writes are
+explicitly out of scope: *"writes flow through your application's existing
+API."*
+
+Three properties line up with decisions this plan already made:
+
+1. **The write boundary is our law already.** Electric's "reads sync, writes
+   go through your API" is exactly the All Work admission gateway / projection
+   law. Adopting Electric changes nothing about authority — it standardizes
+   the half we were going to hand-roll.
+2. **One wire protocol serves both languages.** The shape protocol is plain
+   HTTP + JSON with an offset cursor. The official clients are TypeScript and
+   Elixir, but a Rust consumer is a small fetch loop — a few hundred lines,
+   not a port of a client library. This restructures `khala-sync-rs` (S0):
+   instead of reimplementing the whole TS store contract in Rust, the Rust
+   side becomes **shape consumer + local SQLite materializer + the
+   write/outbox half**. The hardest third of the port disappears into a
+   protocol.
+3. **It deletes most of S1.** The query-subscription tier v1
+   (invalidate-and-re-execute, read-set tracking, NATS invalidation fanout,
+   predicate-grammar restrictions) is us rebuilding what Electric's shape log
+   already does — change→shape matching over logical replication, with
+   resumable offsets and CDN request collapsing that our design would not
+   have had. The fable doc said "steal the HTTP offset-resumable log
+   protocol"; running the engine that ships it is the stronger form of
+   stealing, and it is the same team's protocol either way.
+
+### 6.3 What Electric does not do — the parts that stay Khala Sync
+
+Standardizing on Electric is an evolution of Khala Sync, not a replacement.
+The name keeps meaning the owned sync contract; Electric becomes its read
+transport:
+
+| Concern | Owner after adoption |
+| --- | --- |
+| Write admission, named mutators, rebase, idempotency | Khala Sync / All Work gateway (unchanged) |
+| Durable offline queue + optimistic overlay semantics | Khala Sync client stores (unchanged; TanStack DB overlay is in-memory) |
+| Local durable stores (Node/Expo/web-WASM SQLite, Rust SQLite) | Ours — Electric's client is resume-from-offset, not a persistence layer |
+| Scope taxonomy → shape mapping | Ours: scopes become `table` + `where` on indexed scope columns |
+| Authorization | Ours, via the gatekeeper pattern: clients never hit Electric directly; the API issues shape-scoped grants and proxies `/v1/shape` (Electric's own recommended deployment) |
+| Permission-change fanout | Ours, and it needs a design: Electric has no live permission checks (Figma's LiveGraph does; Electric doesn't). A member removal must invalidate their shapes — handle with a scope-epoch column in the `where` clause so revocation forces `must-refetch` |
+| Presence/ephemeral | NATS, as before — never through the shape log |
+
+### 6.4 Costs and risks, honestly
+
+- **An Elixir service enters the estate.** One container, state rebuildable
+  from Postgres (shape logs are a cache), deployable next to NATS on GKE.
+  Real but bounded; it is the only new runtime this adoption adds.
+- **Young ecosystem at the edges.** TanStack DB is 0.x and the electric
+  collection packages are younger still; our adapter seam
+  (`khala-sync-db-collection`) already isolates the app from this — keep the
+  adapter, swap its feed.
+- **Vendor evolution.** The electric.ax rebrand and Electric Cloud push are
+  visible. Apache-2.0 plus a deliberately simple wire protocol is the exit:
+  if the vendor drifts, the protocol is reimplementable over our own logical
+  replication consumer (Zero's CDC topology is the sketch). The `RelayState`
+  lesson applies: consume Electric behind our adapter seams, never let shape
+  types leak into domain code.
+- **Postgres display-format strings.** Shape values arrive as
+  Postgres-formatted strings; both the TS adapter and the Rust materializer
+  must own one typed decode layer (Effect Schema / serde) — a conformance
+  fixture concern, already our house style.
+- **The relay does not change.** Nostr's wire protocol is its own; R1's NATS
+  fanout stays (push latency beats long-poll for `EOSE`-adjacent delivery).
+  A shape over `nostr_event` keyed by `ingest_seq` is a *possible* future
+  catch-up transport for gateway replicas, noted and not planned.
+
+### 6.5 Verdict and the spike that gates it
+
+**Yes — standardize the read path on Electric across TypeScript and Rust**,
+as the transport under the Khala Sync contract. It aligns the web app with
+its own framework's paved road, collapses the S1 build, halves the Rust
+client port, and adds only FOSS. Gate it with a one-week spike before
+committing packets 9–12 to the new shape:
+
+- Stand up Electric against a Cloud SQL replica; sync one real scope
+  (`fleet_run`) end to end into TanStack DB via `electricCollectionOptions`
+  on web and a minimal Rust shape consumer.
+- Prove the gatekeeper: shape-scoped grant issuance, proxying, and a
+  permission-revocation `must-refetch` via scope-epoch.
+- Prove txid-matched optimistic confirmation against our mutator path.
+- Measure: initial sync bytes/time for a realistic scope, live-mode latency
+  vs the current delivery path, and Electric's replication-slot behavior
+  under our write volume.
+
+Exit green → packets 9–12 execute in their Electric-shaped form (§8 table).
+Exit red on any structural item → fall back to the §5 hand-rolled tier,
+which remains fully specified.
+
+## 7. Track B — Blossom media store in Rust (weeks 2–4, independent)
+
+`oa-blossom` (in the relay repo per §0.1): NIP-B7 server over GCS, NIP-98
+auth, NIP-94 metadata.
 The NIP survey established the need (NIP-44 caps payloads at 64 KB; Full Auto
 evidence does not fit in events). Small, self-contained, no dependency on any
 other track — a good first-blood crate while R0 conformance is being built.
 All FOSS dependencies (axum, GCS client via `google-cloud-rust` or signed
 URLs).
 
-## 7. Packet breakdown (candidate issues, in order)
+## 8. Packet breakdown (candidate issues, in order)
 
 | # | Packet | Track | Depends on |
 | --- | --- | --- | --- |
-| 1 | `oa-relay` workspace scaffold + `nostr-domain` + rust-nostr evaluation | R0 | — |
+| 1 | Create the relay repo (§0.1) + Cargo workspace scaffold + `nostr-domain` + rust-nostr evaluation | R0 | — |
 | 2 | `oa-relay-store-pg`: admission transaction + `ingest_seq` migration | R0 | 1 |
 | 3 | Gateway: NIP-01/11/42, SubscriptionIndex, EOSE handoff, ephemeral lane | R0 | 1 |
 | 4 | Conformance crate: fixture matrix (incl. nostr-rs-relay quarry) + differential runner vs nostr-effect | R0 | 2, 3 |
@@ -313,17 +464,19 @@ URLs).
 | 6 | NATS Core deployment (GKE or small GCE group) + ops runbook | infra | — |
 | 7 | R1 multi-gateway fanout + fail-closed catch-up + chaos gates | R1 | 5, 6 |
 | 8 | `oa-blossom` NIP-B7/98/94 over GCS | B0 | — |
-| 9 | `khala-sync-rs` store crate + shared-fixture conformance | S0 | — |
+| 8b | **Electric spike (§6.5): deploy vs Cloud SQL replica, one real scope on web via `electricCollectionOptions` + minimal Rust shape consumer, gatekeeper + scope-epoch revocation, txid-matched optimistic confirm, measurements** | S1 | — |
+| 9 | `khala-sync-rs`: Rust shape consumer + SQLite materializer + write/outbox half (spike green) — or full store-contract port (fallback) | S0 | 8b |
 | 10 | Omega `SyncRepository` adoption of `khala-sync-rs` | S0 | 9 |
-| 11 | Query-subscription tier v1 (read sets, NATS invalidations, indexed predicates) | S1 | 6 |
+| 11 | Read-path tier: Electric deploy + gatekeeper + scope→shape mapping + `khala-sync-db-collection` fed from shapes (spike green) — or hand-rolled invalidate-and-re-execute tier (fallback, §5) | S1 | 6, 8b |
 | 12 | All Work live scopes over S1 + presence subjects | S2 | 10, 11 |
 | 13 | Nostr outbox publisher daemon (Rust) for All Work safe projections | S2 | 5 |
 | 14 | R2 query/search projection (redb/LMDB + Tantivy) — load-triggered | R2 | 7 |
 
-Packets 1–4, 6, 8, 9 are parallel lanes from day one under the normal claim
-protocol. No packet anywhere waits on a vendor, a license, or a VM.
+Packets 1–4, 6, 8, 8b, and (in fallback form) 9 are parallel lanes from day
+one under the normal claim protocol. No packet anywhere waits on a vendor
+license or a VM; packet 8b is one week and de-risks three others.
 
-## 8. Housekeeping the plan requires (same change, not later)
+## 9. Housekeeping the plan requires (same change, not later)
 
 1. **FOSS-only infrastructure rule becomes written policy.** The owner's
    2026-08-03 ruling — no BSL/FSL/SSPL/source-available runtime dependency in
@@ -332,11 +485,14 @@ protocol. No packet anywhere waits on a vendor, a license, or a VM.
    evaluation applies it as a hard filter *first* (this directory now
    contains three documents that evaluated a BSL product on technical merit
    before license posture — the rule inverts that order permanently).
-2. **Contract updates land with packet 1:** AGENTS/INVARIANTS language for
-   the new Rust surfaces (`crates/oa-relay*`, `oa-blossom`,
-   `khala-sync-rs`); the `nostr-effect`-first routing rule amended to name
-   the Rust relay as the relay implementation home, with `nostr-effect` as TS
-   client library and conformance oracle.
+2. **Repo creation and contract updates land with packet 1:** create the
+   `OpenAgentsInc/<relay repo>` repository (§0.1), register it in the
+   workspace-root contract's Workspace Model, and amend the
+   `nostr-effect`-first routing rule to name it as the relay implementation
+   home, with `nostr-effect` as TS client library and conformance oracle
+   (shared fixture corpus published with digests so the differential runner
+   works cross-repo). `khala-sync-rs` placement is a separate note in the
+   Omega/monorepo lane.
 3. **INVARIANTS line ~137** still names the retired `apps/nostr-relay` as the
    isolated Effect-version exception — delete the vestigial clause in the
    same pass.
@@ -347,7 +503,7 @@ protocol. No packet anywhere waits on a vendor, a license, or a VM.
    `apps/nostr-relay/` and `apps/openagents-world/` in the canonical
    checkout.
 
-## 9. Risks and their handling
+## 10. Risks and their handling
 
 | Risk | Handling |
 | --- | --- |
@@ -356,4 +512,4 @@ protocol. No packet anywhere waits on a vendor, a license, or a VM.
 | `khala-sync-rs` drifts from the TS stores | Shared fixture corpus in CI — the same differential-conformance pattern as the relay; the store contract is the deliverable |
 | Subscription tier v1 re-execution cost | Measured before optimized; v2 (IVM/CDC) is a defined upgrade path, not a rewrite, because scopes and read sets are the stable interface |
 | Silent seam bugs (cycle 3's class) | Differential conformance for the relay; shared-fixture conformance for the sync stores; owned domain boundaries over store rows in every client |
-| Scope creep back toward a vendor substrate | §8.1's written FOSS rule + this directory's audit trail; any future candidate passes the license filter before anyone spends a week on its architecture |
+| Scope creep back toward a vendor substrate | §9.1's written FOSS rule + this directory's audit trail; any future candidate passes the license filter before anyone spends a week on its architecture |

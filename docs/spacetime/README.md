@@ -36,7 +36,13 @@ can find the outcome.
   a load-triggered redb/LMDB/Tantivy query projection; Track S builds
   `khala-sync-rs` for Omega and the invalidate-and-re-execute
   query-subscription tier from the July owned-sync-engine decision; Track B
-  is a Rust Blossom media store over GCS. Answers fork-vs-greenfield:
+  is a Rust Blossom media store over GCS. §6 (added later on 2026-08-03)
+  recommends standardizing the read path on Electric (Apache-2.0) across
+  TypeScript and Rust — TanStack DB's first-party sync backend on web, a
+  small HTTP shape consumer in Rust — spike-gated, with the hand-rolled tier
+  as fallback. §0.1 records the owner direction that the Rust Nostr infra
+  lives in a new standalone repo (naming shortlist: khaydarin, immortal,
+  neosteel, …). Answers fork-vs-greenfield:
   greenfield core, `nostr-rs-relay` and Buzz as fixture/technique quarries,
   rust-nostr as wire-primitive dependency candidate. Surveys and rejects the
   non-FOSS field (Convex, PowerSync, SurrealDB), maps FOSS references
