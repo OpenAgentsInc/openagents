@@ -88,7 +88,24 @@ describe("managed-sandbox guest transport contract", () => {
     expect(driver).toContain("zeroProcess: after.processes.length === 0");
     expect(driver).toContain("zeroScratch: scratchPathsRemaining === 0");
     expect(driver).toContain("observeGuardedProcessesAt");
-    expect(driver).toContain('processObservation: after.supported ? "proc" : "unavailable"');
+    // Only a complete scan may be labelled `proc`. An unprivileged scan is
+    // `partial`, which the Rust validator refuses.
+    expect(driver).toContain('after.supported && after.inaccessible === 0\n        ? "proc"');
+    expect(driver).toContain("forensic_process_observation_incomplete");
+    // The runtime must reach the guest proofs through the narrow sudoers grant.
+    const runtime = readFileSync(
+      resolve(import.meta.dirname, "../../crates/oa-codex-control/src/managed_sandbox_runtime.rs"),
+      "utf8",
+    );
+    expect(runtime).toContain('format!("sudo -n {FORENSIC_WORKER_EXECUTABLE} prepare-stop")');
+    expect(runtime).toContain('format!("sudo -n {FORENSIC_WORKER_EXECUTABLE} usage")');
+    const image = readFileSync(
+      resolve(import.meta.dirname, "build-managed-sandbox-guest-image.sh"),
+      "utf8",
+    );
+    expect(image).toContain("/etc/sudoers.d/openagents-forensic-worker");
+    expect(image).toContain("visudo -c -f /etc/sudoers.d/openagents-forensic-worker");
+    expect(image).not.toContain("openagents ALL=(root) NOPASSWD: ALL");
     expect(driver).not.toContain("process.env");
   });
 

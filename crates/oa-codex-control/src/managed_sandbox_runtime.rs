@@ -344,9 +344,10 @@ struct StopObservation {
 struct ForensicStopProof {
     schema: String,
     driver_ref: String,
-    /// How the guest observed process residue. Only `proc` is a measurement;
-    /// `unavailable` means the guest could not scan `/proc` and the proof
-    /// carries no process evidence at all.
+    /// How the guest observed process residue. Only `proc` is a complete
+    /// measurement. `partial` means some processes were unreadable (an
+    /// unprivileged scan cannot read another user's `/proc/<pid>/fd`), and
+    /// `unavailable` means no scan happened at all. Neither is evidence.
     process_observation: String,
     zero_process: bool,
     zero_scratch: bool,
@@ -3120,7 +3121,7 @@ impl ManagedSandboxProvider for LiveGceManagedSandboxProvider {
             &self.config.project_id,
             &self.config.zone,
             &ownership.resource_name,
-            format!("{FORENSIC_WORKER_EXECUTABLE} prepare-stop"),
+            format!("sudo -n {FORENSIC_WORKER_EXECUTABLE} prepare-stop"),
         ))?;
         let proof: ForensicStopProof = serde_json::from_str(proof_output.trim()).map_err(|_| {
             RuntimeError::new(
@@ -3166,7 +3167,7 @@ impl ManagedSandboxProvider for LiveGceManagedSandboxProvider {
             &self.config.project_id,
             &self.config.zone,
             &ownership.resource_name,
-            format!("{FORENSIC_WORKER_EXECUTABLE} usage"),
+            format!("sudo -n {FORENSIC_WORKER_EXECUTABLE} usage"),
         ))?;
         let usage: ForensicUsageObservation =
             serde_json::from_str(output.trim()).map_err(|_| {
@@ -3507,6 +3508,9 @@ mod tests {
         // Every count is clean, but a guest that could not scan /proc has
         // produced no process evidence at all and must never be admitted.
         assert!(!measured("unavailable").is_authoritative());
+        // Regression for the 2026-08-03 live acceptance: an unprivileged guest
+        // scan is incomplete, and an incomplete scan is not proof of zero.
+        assert!(!measured("partial").is_authoritative());
         assert!(!measured("").is_authoritative());
         assert!(measured("proc").is_authoritative());
 

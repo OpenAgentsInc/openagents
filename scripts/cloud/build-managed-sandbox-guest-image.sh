@@ -101,6 +101,16 @@ rm -f \
   /tmp/managed-sandbox-guest-io.py \
   /tmp/managed-sandbox-guest-checkpoint.py \
   /tmp/forensic-worker-driver.mjs
+# The forensic residue and usage proofs must observe every process, including
+# processes owned by other users. An unprivileged scan gets EACCES on another
+# user's /proc/<pid>/fd, which makes the observation incomplete and is refused.
+# Grant exactly the two read/settle subcommands of exactly that one absolute
+# executable, and nothing else. No shell, no wildcard, no other binary.
+install -o root -g root -m 0440 /dev/stdin /etc/sudoers.d/openagents-forensic-worker <<'SUDOERS'
+openagents ALL=(root) NOPASSWD: /opt/openagents-managed-sandbox/forensic-worker-driver.mjs prepare-stop
+openagents ALL=(root) NOPASSWD: /opt/openagents-managed-sandbox/forensic-worker-driver.mjs usage
+SUDOERS
+visudo -c -f /etc/sudoers.d/openagents-forensic-worker
 cat >/etc/systemd/system/openagents-managed-sandbox-hostkeys.service <<'UNIT'
 [Unit]
 Description=Generate per-guest OpenSSH host keys
@@ -171,6 +181,15 @@ test "$(stat -c '%U:%G:%a' /var/lib/openagents/managed-sandbox-io)" = 'openagent
 test "$(stat -c '%U:%G:%a' /run/openagents-managed-sandbox/io)" = 'openagents:openagents:700'
 test -d /opt/openagents-managed-sandbox/node_modules/@openai/codex-sdk
 test -d /opt/openagents-managed-sandbox/node_modules/@anthropic-ai/claude-agent-sdk
+# The runtime invokes prepare-stop as `openagents` over SSH. Prove here, in the
+# image, that the narrow sudoers grant makes a COMPLETE process observation
+# reachable that way. Without this the guest only fails at live stop time.
+test "$(runuser -u openagents -- sudo -n \
+  /opt/openagents-managed-sandbox/forensic-worker-driver.mjs prepare-stop \
+  | sed -n 's/.*"processObservation":"\([a-z]*\)".*/\1/p')" = 'proc'
+# The grant must not extend to any other subcommand of the same executable.
+! runuser -u openagents -- sudo -n \
+  /opt/openagents-managed-sandbox/forensic-worker-driver.mjs preflight >/dev/null 2>&1
 test "$(runuser -u openagents -- /usr/bin/bwrap \
   --die-with-parent --unshare-net --unshare-pid --unshare-uts --unshare-ipc \
   --ro-bind / / --bind /workspace /workspace --tmpfs /run --proc /proc \

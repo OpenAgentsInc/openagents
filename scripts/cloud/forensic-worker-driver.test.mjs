@@ -21,8 +21,9 @@ import {
 
 // A stand-in for the /proc scan so the guarded-root contract can be exercised
 // off Linux. `supported: true` mirrors a successful guest observation.
-const observing = (processes, processGroups = []) => () => ({
+const observing = (processes, processGroups = [], inaccessible = 0) => () => ({
   supported: true,
+  inaccessible,
   processes,
   processGroups,
 });
@@ -134,6 +135,7 @@ test("a live process under a non-turn guarded root refuses the stop proof", () =
              ...${JSON.stringify(roots)},
              observeGuardedProcesses: () => ({
                supported: true,
+               inaccessible: 0,
                processes: [4242],
                processGroups: [4242],
              }),
@@ -212,8 +214,8 @@ test("residue observed after removal refuses instead of asserting zero", () => {
              // Clean before removal, residue after: exactly the case a literal
              // proof cannot distinguish.
              return call === 1
-               ? { supported: true, processes: [], processGroups: [] }
-               : { supported: true, processes: [909], processGroups: [909] };
+               ? { supported: true, inaccessible: 0, processes: [], processGroups: [] }
+               : { supported: true, inaccessible: 0, processes: [909], processGroups: [909] };
            },
          });`,
       ],
@@ -239,11 +241,44 @@ test("an unavailable process observation is never reported as proc-measured", ()
     mkdirSync(roots.turnRoot, { recursive: true });
     const proof = prepareStopAt({
       ...roots,
-      observeGuardedProcesses: () => ({ supported: false, processes: [], processGroups: [] }),
+      observeGuardedProcesses: () => ({
+        supported: false,
+        inaccessible: 0,
+        processes: [],
+        processGroups: [],
+      }),
     });
     // The Rust validator admits only `proc`, so this proof can never be
     // authoritative even though every count is zero.
     assert.equal(proof.processObservation, "unavailable");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// Regression for the 2026-08-03 live GCE acceptance. The runtime SSHes in as
+// the unprivileged `openagents` user, so reading another user's
+// /proc/<pid>/fd returns EACCES. That made the scan incomplete, and an
+// incomplete scan must never round up to a clean proof.
+test("an incomplete process scan refuses instead of proving zero", () => {
+  const root = mkdtempSync(join(tmpdir(), "oa-forensic-partial-"));
+  const roots = {
+    turnRoot: join(root, "turns"),
+    sourceRoot: join(root, "source"),
+    artifactPath: join(root, "forensic-artifact.tar.zst"),
+    runtimeRoot: join(root, "run"),
+  };
+  try {
+    mkdirSync(roots.turnRoot, { recursive: true });
+    const proof = prepareStopAt({
+      ...roots,
+      // No guarded process found, but three processes were unreadable.
+      observeGuardedProcesses: observing([], [], 3),
+    });
+    // Off Linux the driver cannot refuse on the host's behalf, but it must
+    // still label the observation honestly so the Rust validator refuses it.
+    assert.equal(proof.processObservation, "partial");
+    assert.notEqual(proof.processObservation, "proc");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

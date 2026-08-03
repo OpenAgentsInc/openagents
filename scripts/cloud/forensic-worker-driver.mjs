@@ -75,35 +75,45 @@ const pathIsUnder = (path, root) => path === root || path.startsWith(`${root}/`)
 // is the only observation that survives a descendant escaping its process group
 // with setsid()/setpgid(), so it is what makes "zero process" a measurement
 // rather than an assertion.
+// `inaccessible` counts processes this scan could not inspect. An unprivileged
+// caller gets EACCES/EPERM on another user's `/proc/<pid>/fd`, which makes the
+// observation incomplete rather than clean — an unreadable process is
+// indeterminate, not absent. The live 2026-08-03 acceptance proved this: as
+// root the scan is complete, as `openagents` every other user's process is
+// opaque. The runtime therefore invokes this driver through the narrow sudoers
+// grant, and an incomplete scan is still reported honestly instead of being
+// silently downgraded to zero.
 export const observeGuardedProcessesAt = (roots) => {
   if (process.platform !== "linux" || !existsSync("/proc")) {
-    return { supported: false, processes: [], processGroups: [] };
+    return { supported: false, inaccessible: 0, processes: [], processGroups: [] };
   }
   const processes = [];
   const processGroups = new Set();
   const self = process.pid;
+  let inaccessible = 0;
+  const vanished = (error) => error?.code === "ENOENT" || error?.code === "ESRCH";
   for (const entry of readdirSync("/proc", { withFileTypes: true })) {
     if (!entry.isDirectory() || !/^\d+$/u.test(entry.name)) continue;
     const pid = Number.parseInt(entry.name, 10);
     if (pid === self) continue;
     const references = [`/proc/${pid}/cwd`, `/proc/${pid}/root`, `/proc/${pid}/exe`];
+    let opaque = false;
     try {
       for (const descriptor of readdirSync(`/proc/${pid}/fd`)) {
         references.push(`/proc/${pid}/fd/${descriptor}`);
       }
     } catch (error) {
-      // A process that exits mid-scan is not residue. Any other failure means
-      // the observation is incomplete and must not be reported as clean.
-      if (error?.code !== "ENOENT" && error?.code !== "ESRCH") {
-        return { supported: false, processes: [], processGroups: [] };
-      }
+      // A process that exits mid-scan is not residue. Anything else means this
+      // process could be holding a guarded root without us being able to see it.
+      if (!vanished(error)) opaque = true;
     }
     let referenced = false;
     for (const reference of references) {
       let target;
       try {
         target = readlinkSync(reference);
-      } catch {
+      } catch (error) {
+        if (!vanished(error)) opaque = true;
         continue;
       }
       if (roots.some((root) => pathIsUnder(target, root))) {
@@ -111,22 +121,24 @@ export const observeGuardedProcessesAt = (roots) => {
         break;
       }
     }
-    if (!referenced) continue;
-    processes.push(pid);
-    try {
-      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
-      const close = stat.lastIndexOf(")");
-      const fields = close < 0 ? [] : stat.slice(close + 2).split(" ");
-      const processGroupId = Number.parseInt(fields[2] ?? "", 10);
-      if (Number.isSafeInteger(processGroupId)) processGroups.add(processGroupId);
-    } catch (error) {
-      if (error?.code !== "ENOENT" && error?.code !== "ESRCH") {
-        return { supported: false, processes: [], processGroups: [] };
+    if (referenced) {
+      processes.push(pid);
+      try {
+        const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+        const close = stat.lastIndexOf(")");
+        const fields = close < 0 ? [] : stat.slice(close + 2).split(" ");
+        const processGroupId = Number.parseInt(fields[2] ?? "", 10);
+        if (Number.isSafeInteger(processGroupId)) processGroups.add(processGroupId);
+        else opaque = true;
+      } catch (error) {
+        if (!vanished(error)) opaque = true;
       }
     }
+    if (opaque && !referenced) inaccessible += 1;
   }
   return {
     supported: true,
+    inaccessible,
     processes,
     processGroups: [...processGroups].toSorted((left, right) => left - right),
   };
@@ -317,6 +329,11 @@ export const prepareStopAt = ({
   if (process.platform === "linux" && !after.supported) {
     refuse("forensic_process_observation_unavailable");
   }
+  // A partial scan cannot prove zero process residue. Refuse rather than
+  // report a clean proof built on processes we were not allowed to read.
+  if (process.platform === "linux" && after.inaccessible > 0) {
+    refuse("forensic_process_observation_incomplete");
+  }
   const scratchPathsRemaining = guardedRoots.filter(pathPresent).length;
   const activeProcessGroups = after.processGroups.length;
   if (after.processes.length !== 0) {
@@ -328,7 +345,12 @@ export const prepareStopAt = ({
   return {
     schema: "openagents.forensic_worker_prepare_stop.v1",
     driverRef: DRIVER_REF,
-    processObservation: after.supported ? "proc" : "unavailable",
+    processObservation:
+      after.supported && after.inaccessible === 0
+        ? "proc"
+        : after.supported
+          ? "partial"
+          : "unavailable",
     zeroProcess: after.processes.length === 0 && activeProcessGroups === 0,
     zeroScratch: scratchPathsRemaining === 0,
     activeProcessGroups,
