@@ -25,6 +25,14 @@ can find the outcome.
   offline durability, React Native lifecycle handling, per-caller
   authorization-view cost, self-hosted high availability, and the Business
   Source License single-instance grant.
+- [`analysis-nostr-relay.md`](analysis-nostr-relay.md) — external feasibility
+  assessment for SpacetimeDB as the backend of a new Rust Nostr relay.
+  **Reference only, not implementation authority**, and note that
+  `apps/nostr-relay` is a retired, guard-enforced path. It argues for a Rust
+  gateway owning the NIP protocol with SpacetimeDB owning transactional
+  admission, replacement, and deletion state — explicitly *not* a direct
+  SQLite-to-SpacetimeDB swap, not one SpacetimeDB subscription per Nostr
+  `REQ`, and not ephemeral Nostr traffic through the commit log.
 
 ## Summary of the three cycles
 
