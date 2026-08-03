@@ -164,6 +164,12 @@ const validateGrant = (
   request: WorkCommandExecuteRequest,
   grant: DelegationGrant,
 ): void => {
+  if (state.snapshot.summary.assignee === null) {
+    throw new WorkCommandAuthorityError({
+      reason: "invalid_delegation",
+      detail: "delegation requires an accountable human assignee",
+    });
+  }
   if (state.activeGrant !== null) {
     throw new WorkCommandAuthorityError({
       reason: "delegation_conflict",
@@ -232,6 +238,12 @@ const transition = (
       );
       break;
     case "unassign": {
+      if (state.activeGrant !== null) {
+        throw new WorkCommandAuthorityError({
+          reason: "delegation_conflict",
+          detail: `revoke active grant ${state.activeGrant.grantRef} before unassigning`,
+        });
+      }
       const previousAssigneeRef = snapshot.summary.assignee?.principalRef;
       snapshot = { ...snapshot, summary: { ...snapshot.summary, assignee: null } };
       if (previousAssigneeRef !== undefined && previousAssigneeRef !== snapshot.summary.ownerRef) {

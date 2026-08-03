@@ -103,11 +103,14 @@ delegation, revocation, agent-session activity and control, artifacts,
 verification, and Owner Disposition. The handwritten
 `src/work-command-authority.ts` processor requires an explicit Organization,
 Effective Principal, capability, expected revision, generation, and
-idempotency key. It keeps human assignment separate from agent delegation,
-fences late effects after revocation, retains provider-event and loss refs, and
-returns exact zero-GitHub-write receipts. Repository claim and lease refs are a
-conditional pair; collision and takeover authority remains with the native
-Repository Work Claim service. See the
+idempotency key. It requires a human Assignee before delegation, keeps that
+assignment separate from the Agent Delegate, and refuses to unassign the
+accountable human while a grant remains active. Revocation must clear the
+delegate and fence its Session generation before unassignment can proceed. The
+processor retains provider-event and loss refs and returns exact
+zero-GitHub-write receipts. Repository claim and lease refs are a conditional
+pair; collision and takeover authority remains with the native Repository Work
+Claim service. See the
 [authority record](../../docs/omega/2026-08-03-work-command-admission-authority.md).
 `src/work-command-file-store.ts` persists one atomic, private state record per
 digest-addressed canonical Work identity; the host remains responsible for its

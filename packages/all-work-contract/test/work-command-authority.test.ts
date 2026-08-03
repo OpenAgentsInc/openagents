@@ -106,6 +106,19 @@ const grant = {
 };
 
 describe("All Work command admission authority", () => {
+  it("refuses delegation before a human assignee is accountable", async () => {
+    const attempt = Effect.gen(function* () {
+      const authority = yield* WorkCommandAuthority;
+      return yield* authority
+        .execute(request(7, "delegate-unassigned", { command: "delegate", grant }))
+        .pipe(Effect.flip);
+    }).pipe(Effect.provide(layer()));
+
+    await expect(Effect.runPromise(attempt)).resolves.toMatchObject({
+      reason: "invalid_delegation",
+    });
+  });
+
   it("keeps assignee and delegate separate and fences activity after revocation", async () => {
     const journey = Effect.gen(function* () {
       const authority = yield* WorkCommandAuthority;
@@ -118,6 +131,9 @@ describe("All Work command admission authority", () => {
       const delegated = yield* authority.execute(
         request(8, "delegate", { command: "delegate", grant }),
       );
+      const unassignWhileDelegated = yield* authority
+        .execute(request(9, "unassign-active-delegation", { command: "unassign" }))
+        .pipe(Effect.flip);
       const started = yield* authority.execute(
         request(9, "start", {
           command: "start_agent_session",
@@ -169,7 +185,16 @@ describe("All Work command admission authority", () => {
         )
         .pipe(Effect.flip);
       const state = yield* authority.read;
-      return { assigned, delegated, started, activity, revoked, late, state };
+      return {
+        assigned,
+        delegated,
+        unassignWhileDelegated,
+        started,
+        activity,
+        revoked,
+        late,
+        state,
+      };
     }).pipe(Effect.provide(layer()));
 
     const result = await Effect.runPromise(journey);
@@ -178,6 +203,7 @@ describe("All Work command admission authority", () => {
       assignee: { principalRef: ownerRef },
       agentDelegate: { agentRef: grant.agentRef, generation: 1 },
     });
+    expect(result.unassignWhileDelegated).toMatchObject({ reason: "delegation_conflict" });
     expect(result.started.snapshot).toMatchObject({
       sessionRefs: ["session:omega-214"],
       runRefs: ["run:omega-214"],
