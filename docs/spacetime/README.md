@@ -26,18 +26,23 @@ can find the outcome.
   authorization-view cost, self-hosted high availability, and the Business
   Source License single-instance grant.
 - [`2026-08-03-rust-spacetimedb-nostr-infra-considerations.md`](2026-08-03-rust-spacetimedb-nostr-infra-considerations.md)
-  — **the Rust/SpacetimeDB build plan** (rewritten 2026-08-03 at owner
-  direction: Rust is the decided direction). Three parallel tracks: R0 ships a
-  greenfield Rust relay gateway over the existing Cloud SQL store in weeks
-  (differential conformance against `nostr-effect`, then cutover of
-  `relay.openagents.com`), R1/R2 move admission and fanout onto a SpacetimeDB
-  module with Postgres demoted to the historical query projection; Track S
-  stands up the pinned STDB VM, starts the Clockwork license conversation day
-  1, and builds the `openagents-core` workroom/All Work hot-state plane with
-  Omega on the native Rust SDK; Track B is a Rust Blossom media store over
-  GCS. Answers fork-vs-greenfield: greenfield core, with `nostr-rs-relay` and
-  Buzz as fixture/technique quarries and rust-nostr as the wire-primitive
-  dependency candidate. Fourteen ordered candidate packets with exit gates.
+  — **the Rust build plan, FOSS-only** (third same-day revision; owner ruling:
+  no BSL/FSL/SSPL dependencies — SpacetimeDB is excluded, its architecture
+  shapes retained). Selected stack: Postgres (authority + durable log) + NATS
+  Core (fanout/wakeups) + owned Khala Sync grown a Rust client + owned
+  greenfield Rust relay. Track R ships `crates/oa-relay` over the existing
+  Cloud SQL store in weeks (differential conformance against `nostr-effect`,
+  then cutover of `relay.openagents.com`), with NATS multi-gateway fanout and
+  a load-triggered redb/LMDB/Tantivy query projection; Track S builds
+  `khala-sync-rs` for Omega and the invalidate-and-re-execute
+  query-subscription tier from the July owned-sync-engine decision; Track B
+  is a Rust Blossom media store over GCS. Answers fork-vs-greenfield:
+  greenfield core, `nostr-rs-relay` and Buzz as fixture/technique quarries,
+  rust-nostr as wire-primitive dependency candidate. Surveys and rejects the
+  non-FOSS field (Convex, PowerSync, SurrealDB), maps FOSS references
+  (ElectricSQL, Zero, LiveStore, Replicache), and calls for the FOSS-only
+  rule to land in INVARIANTS on admission. Fourteen ordered candidate
+  packets; no packet waits on a vendor, license, or VM.
 - [`analysis-nostr-relay.md`](analysis-nostr-relay.md) — external feasibility
   assessment for SpacetimeDB as the backend of a new Rust Nostr relay.
   **Reference only, not implementation authority**, and note that
