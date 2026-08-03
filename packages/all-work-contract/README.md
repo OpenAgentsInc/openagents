@@ -1,8 +1,8 @@
 # OpenAgents All Work contract
 
-`@openagentsinc/all-work-contract` owns the encoded boundary for All Work reads
-and the first OpenAgents-owned planning authority. It does not replace native
-Effect and Rust domain models.
+`@openagentsinc/all-work-contract` owns the encoded boundary for All Work reads,
+the OpenAgents-owned planning authority, and the shared Work command admission
+authority. It does not replace native Effect and Rust domain models.
 
 The reviewed source is
 [`definition/all-work-v1.contract.json`](./definition/all-work-v1.contract.json).
@@ -90,6 +90,20 @@ Effect and Rust conformance tests compare the same committed byte vector.
 The Effect export `encodeAllWorkCanonicalJson` and Rust export
 `canonical_json_bytes` enforce that encoding; the Effect encoder also enforces
 the boundary byte limit.
+
+## Work command admission
+
+The generated boundary defines `work.command.execute` for assignment,
+delegation, revocation, agent-session activity and control, artifacts,
+verification, and Owner Disposition. The handwritten
+`src/work-command-authority.ts` processor requires an explicit Organization,
+Effective Principal, capability, expected revision, generation, and
+idempotency key. It keeps human assignment separate from agent delegation,
+fences late effects after revocation, retains provider-event and loss refs, and
+returns exact zero-GitHub-write receipts. Repository claim and lease refs are a
+conditional pair; collision and takeover authority remains with the native
+Repository Work Claim service. See the
+[authority record](../../docs/omega/2026-08-03-work-command-admission-authority.md).
 
 ## Generate and verify
 

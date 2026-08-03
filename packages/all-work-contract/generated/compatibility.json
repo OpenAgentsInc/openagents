@@ -2,12 +2,12 @@
   "contractRef": "openagents.all_work_boundary.v1",
   "contractVersion": 1,
   "profileVersion": "openagents.contract_profile.v1",
-  "definitionSha256": "e504e3084007e8bddab99e9703f1f62c6bf62e1aa7a9f612de75fb522848b628",
+  "definitionSha256": "2f3119cf7822fe9bd770d2c97f913d609dd49e8918fb3ea4c7df9662d20492c4",
   "artifacts": {
-    "effectSha256": "08847c372ad83958dbaadb7cc829a5062f8beb7316c6a41eba17761485ff2eb6",
-    "rustSha256": "832ddf5eaa5f0d9a0c5a5400e8d4450642d6b3d55df8311e074d401f3a09a9b6",
-    "jsonSchemaSha256": "3a8ed0775b525c52481a3c47336517bcb7cd58caf5d1e36675521396266ae551",
-    "fixtureIndexSha256": "d0cbf1b9e5c95a327f2e15cc79d60b74808bbb938e3a7521acc9e83710fa5c3b"
+    "effectSha256": "81048fd44c00aa58246d9fee9da8491d5f0084067f1a4ada8b7896f9a27d1d3d",
+    "rustSha256": "87fe5a88e669276672027464635f484a2a01de218424a2c063e8502602abe985",
+    "jsonSchemaSha256": "4d5116b40aeb8e6239f2e43a6b3602b3dc8b55114d953a5956e314101972e948",
+    "fixtureIndexSha256": "872ca9fa5a09ae75990a8ba69aeb5c5e74374a6e31751671f74005f989a87049"
   },
   "protocol": {
     "supportedVersions": [
@@ -71,6 +71,13 @@
         "minimumVersion": "omega-effectd.v2",
         "params": "SignedWorkroomEnqueueRequest",
         "result": "SignedWorkroomEnqueueResult"
+      },
+      {
+        "method": "work.command.execute",
+        "capability": "work.command.execute",
+        "minimumVersion": "omega-effectd.v2",
+        "params": "WorkCommandExecuteRequest",
+        "result": "WorkCommandExecuteResult"
       }
     ]
   },
@@ -95,7 +102,12 @@
     "receipt_verification_and_owner_disposition_do_not_imply_each_other",
     "signed_workroom_event_proves_signer_and_bytes_only",
     "relay_acceptance_is_transport_evidence_only",
-    "workroom_audience_and_privacy_are_closed_allowlist_compatible"
+    "workroom_audience_and_privacy_are_closed_allowlist_compatible",
+    "work_command_effective_principal_and_organization_are_explicit",
+    "delegation_does_not_copy_assignee_or_owner_authority",
+    "revocation_fences_new_session_effects_by_generation",
+    "agent_activity_preserves_provider_event_and_loss_refs",
+    "owner_disposition_is_separate_from_completion_and_verification"
   ],
   "implementationStatus": {
     "ContractVersion": "structural_only",
@@ -128,6 +140,11 @@
     "VerificationRef": "structural_only",
     "OwnerDispositionRef": "structural_only",
     "SourceRef": "structural_only",
+    "HostRef": "structural_only",
+    "LeaseRef": "structural_only",
+    "EffectRef": "structural_only",
+    "DiffRef": "structural_only",
+    "WorkReviewRef": "structural_only",
     "WorkCursor": "structural_only",
     "SubscriptionRef": "structural_only",
     "WorkDomain": "structural_only",
@@ -203,6 +220,15 @@
     "SignedWorkroomEnqueueRequest": "implemented",
     "SignedWorkroomEnqueueReceipt": "structural_only",
     "SignedWorkroomEnqueueResult": "implemented",
+    "WorkCommandControlKind": "structural_only",
+    "WorkCommandActivityKind": "structural_only",
+    "OwnerDispositionDecision": "structural_only",
+    "DelegationGrant": "implemented",
+    "WorkCommand": "structural_only",
+    "WorkCommandExecuteRequest": "implemented",
+    "WorkCommandOutcome": "structural_only",
+    "WorkCommandReceipt": "implemented",
+    "WorkCommandExecuteResult": "implemented",
     "ProtocolCapability": "structural_only",
     "ProtocolErrorCode": "structural_only",
     "ProtocolError": "structural_only",

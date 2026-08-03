@@ -124,6 +124,11 @@ Read these documents in this order:
     [native Repository Work Claim authority](./2026-08-03-native-repository-work-claims.md)
     before changing Work Packets, collision rules, staleness audits, claim
     generation, or the claim writer cutover.
+42. Read the
+    [All Work command admission authority](./2026-08-03-work-command-admission-authority.md)
+    before changing assignment, delegation, revocation, Agent Session control,
+    provider activity, effect, review, verification, or Owner Disposition
+    commands.
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.

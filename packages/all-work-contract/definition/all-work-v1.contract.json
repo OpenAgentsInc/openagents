@@ -47,7 +47,11 @@
     "SignedWorkroomReadRequest",
     "SignedWorkroomReadResult",
     "SignedWorkroomEnqueueRequest",
-    "SignedWorkroomEnqueueResult"
+    "SignedWorkroomEnqueueResult",
+    "DelegationGrant",
+    "WorkCommandExecuteRequest",
+    "WorkCommandReceipt",
+    "WorkCommandExecuteResult"
   ],
   "semanticChecks": [
     "issue_projection_work_ref_matches_snapshot_work_ref",
@@ -57,7 +61,12 @@
     "receipt_verification_and_owner_disposition_do_not_imply_each_other",
     "signed_workroom_event_proves_signer_and_bytes_only",
     "relay_acceptance_is_transport_evidence_only",
-    "workroom_audience_and_privacy_are_closed_allowlist_compatible"
+    "workroom_audience_and_privacy_are_closed_allowlist_compatible",
+    "work_command_effective_principal_and_organization_are_explicit",
+    "delegation_does_not_copy_assignee_or_owner_authority",
+    "revocation_fences_new_session_effects_by_generation",
+    "agent_activity_preserves_provider_event_and_loss_refs",
+    "owner_disposition_is_separate_from_completion_and_verification"
   ],
   "types": [
     {
@@ -282,6 +291,46 @@
     },
     {
       "name": "SourceRef",
+      "kind": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$",
+      "formatClass": "reference"
+    },
+    {
+      "name": "HostRef",
+      "kind": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$",
+      "formatClass": "reference"
+    },
+    {
+      "name": "LeaseRef",
+      "kind": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$",
+      "formatClass": "reference"
+    },
+    {
+      "name": "EffectRef",
+      "kind": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$",
+      "formatClass": "reference"
+    },
+    {
+      "name": "DiffRef",
+      "kind": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$",
+      "formatClass": "reference"
+    },
+    {
+      "name": "WorkReviewRef",
       "kind": "string",
       "minLength": 1,
       "maxLength": 160,
@@ -1165,6 +1214,190 @@
       ]
     },
     {
+      "name": "WorkCommandControlKind",
+      "kind": "enum",
+      "values": ["steer", "answer", "pause", "stop", "retry", "dismiss"]
+    },
+    {
+      "name": "WorkCommandActivityKind",
+      "kind": "enum",
+      "values": ["plan", "progress", "question", "action", "artifact", "error", "interruption", "result"]
+    },
+    {
+      "name": "OwnerDispositionDecision",
+      "kind": "enum",
+      "values": ["accepted", "needs_changes", "rejected"]
+    },
+    {
+      "name": "DelegationGrant",
+      "kind": "record",
+      "fields": [
+        { "name": "grantRef", "type": "DelegationGrantRef" },
+        { "name": "agentRef", "type": "AgentRef" },
+        { "name": "issuedBy", "type": "PrincipalRef" },
+        { "name": "generation", "type": "SafeInteger" },
+        { "name": "capabilityRefs", "type": { "array": "CapabilityRef", "minItems": 1, "maxItems": 64 } },
+        { "name": "toolRefs", "type": { "array": "SourceRef", "maxItems": 128 } },
+        { "name": "hostRef", "type": "HostRef" },
+        { "name": "budgetLimit", "type": "SafeInteger" },
+        { "name": "expiresAt", "type": "IsoTimestamp" },
+        { "name": "privacyClass", "type": "PrivacyClass" },
+        { "name": "evidenceRequired", "type": "boolean" },
+        { "name": "claimRef", "type": { "nullable": "RepositoryWorkClaimRef" } },
+        { "name": "leaseRef", "type": { "nullable": "LeaseRef" } }
+      ]
+    },
+    {
+      "name": "WorkCommand",
+      "kind": "taggedUnion",
+      "discriminator": "command",
+      "variants": [
+        {
+          "name": "Assign",
+          "tag": "assign",
+          "fields": [{ "name": "assignee", "type": "HumanAssignee" }]
+        },
+        {
+          "name": "Unassign",
+          "tag": "unassign",
+          "fields": []
+        },
+        {
+          "name": "Delegate",
+          "tag": "delegate",
+          "fields": [{ "name": "grant", "type": "DelegationGrant" }]
+        },
+        {
+          "name": "Revoke",
+          "tag": "revoke",
+          "fields": [
+            { "name": "grantRef", "type": "DelegationGrantRef" },
+            { "name": "expectedGeneration", "type": "SafeInteger" },
+            { "name": "reason", "type": "ShortText" }
+          ]
+        },
+        {
+          "name": "StartAgentSession",
+          "tag": "start_agent_session",
+          "fields": [
+            { "name": "threadRef", "type": "ThreadRef" },
+            { "name": "sessionRef", "type": "SessionRef" },
+            { "name": "agentSessionRef", "type": "AgentSessionRef" },
+            { "name": "runRef", "type": "RunRef" },
+            { "name": "grantRef", "type": "DelegationGrantRef" },
+            { "name": "expectedGeneration", "type": "SafeInteger" },
+            { "name": "hostRef", "type": "HostRef" }
+          ]
+        },
+        {
+          "name": "RecordActivity",
+          "tag": "record_activity",
+          "fields": [
+            { "name": "activityRef", "type": "AgentActivityRef" },
+            { "name": "sessionRef", "type": "SessionRef" },
+            { "name": "runRef", "type": "RunRef" },
+            { "name": "expectedGeneration", "type": "SafeInteger" },
+            { "name": "kind", "type": "WorkCommandActivityKind" },
+            { "name": "summary", "type": "ShortText" },
+            { "name": "providerEventRef", "type": { "nullable": "SourceRef" } },
+            { "name": "lossRefs", "type": { "array": "SourceRef", "maxItems": 64 } },
+            { "name": "effectRef", "type": { "nullable": "EffectRef" } }
+          ]
+        },
+        {
+          "name": "ControlSession",
+          "tag": "control_session",
+          "fields": [
+            { "name": "control", "type": "WorkCommandControlKind" },
+            { "name": "sessionRef", "type": "SessionRef" },
+            { "name": "expectedGeneration", "type": "SafeInteger" },
+            { "name": "body", "type": { "nullable": "LongText" } }
+          ]
+        },
+        {
+          "name": "AttachDiff",
+          "tag": "attach_diff",
+          "fields": [{ "name": "diffRef", "type": "DiffRef" }]
+        },
+        {
+          "name": "AttachReview",
+          "tag": "attach_review",
+          "fields": [{ "name": "reviewRef", "type": "WorkReviewRef" }]
+        },
+        {
+          "name": "AttachEvidence",
+          "tag": "attach_evidence",
+          "fields": [{ "name": "evidenceRef", "type": "EvidenceRef" }]
+        },
+        {
+          "name": "AttachVerification",
+          "tag": "attach_verification",
+          "fields": [{ "name": "verificationRef", "type": "VerificationRef" }]
+        },
+        {
+          "name": "OwnerDisposition",
+          "tag": "owner_disposition",
+          "fields": [
+            { "name": "dispositionRef", "type": "OwnerDispositionRef" },
+            { "name": "decision", "type": "OwnerDispositionDecision" },
+            { "name": "verificationRefs", "type": { "array": "VerificationRef", "maxItems": 64 } },
+            { "name": "summary", "type": "ShortText" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "WorkCommandExecuteRequest",
+      "kind": "record",
+      "fields": [
+        { "name": "intentRef", "type": "IntentRef" },
+        { "name": "idempotencyKey", "type": "IdempotencyKey" },
+        { "name": "expectedRevision", "type": "SafeInteger" },
+        { "name": "effectivePrincipalRef", "type": "PrincipalRef" },
+        { "name": "organizationRef", "type": "OrganizationRef" },
+        { "name": "capabilityRef", "type": "CapabilityRef" },
+        { "name": "workRef", "type": "WorkRef" },
+        { "name": "occurredAt", "type": "IsoTimestamp" },
+        { "name": "command", "type": "WorkCommand" }
+      ]
+    },
+    {
+      "name": "WorkCommandOutcome",
+      "kind": "record",
+      "fields": [
+        { "name": "admitted", "type": "boolean" },
+        { "name": "eventRef", "type": { "nullable": "EventRef" } },
+        { "name": "effectRef", "type": { "nullable": "EffectRef" } },
+        { "name": "refusalReason", "type": { "nullable": "ShortText" } }
+      ]
+    },
+    {
+      "name": "WorkCommandReceipt",
+      "kind": "record",
+      "fields": [
+        { "name": "intentRef", "type": "IntentRef" },
+        { "name": "idempotencyKey", "type": "IdempotencyKey" },
+        { "name": "commandDigest", "type": "ContractDigest" },
+        { "name": "workRef", "type": "WorkRef" },
+        { "name": "previousRevision", "type": "SafeInteger" },
+        { "name": "revision", "type": "SafeInteger" },
+        { "name": "eventCursor", "type": "WorkCursor" },
+        { "name": "effectivePrincipalRef", "type": "PrincipalRef" },
+        { "name": "organizationRef", "type": "OrganizationRef" },
+        { "name": "acceptedAt", "type": "IsoTimestamp" },
+        { "name": "outcome", "type": "WorkCommandOutcome" },
+        { "name": "githubWriteCount", "type": "ZeroInteger" }
+      ]
+    },
+    {
+      "name": "WorkCommandExecuteResult",
+      "kind": "record",
+      "fields": [
+        { "name": "snapshot", "type": "WorkSnapshot" },
+        { "name": "receipt", "type": "WorkCommandReceipt" }
+      ]
+    },
+    {
       "name": "ProtocolCapability",
       "kind": "enum",
       "values": [
@@ -1174,7 +1407,8 @@
         "repository.claim.read",
         "repository.claim.execute",
         "workroom.activity.read",
-        "workroom.activity.enqueue"
+        "workroom.activity.enqueue",
+        "work.command.execute"
       ]
     },
     {
@@ -1392,6 +1626,15 @@
             { "name": "version", "type": "ProtocolVersion" },
             { "name": "params", "type": "SignedWorkroomEnqueueRequest" }
           ]
+        },
+        {
+          "name": "WorkCommandExecute",
+          "tag": "work.command.execute",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "params", "type": "WorkCommandExecuteRequest" }
+          ]
         }
       ]
     },
@@ -1473,6 +1716,15 @@
           ]
         },
         {
+          "name": "WorkCommandExecute",
+          "tag": "work.command.execute",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "result", "type": "WorkCommandExecuteResult" }
+          ]
+        },
+        {
           "name": "Error",
           "tag": "error",
           "fields": [
@@ -1505,6 +1757,10 @@
     "SignedWorkroomReadResult",
     "SignedWorkroomEnqueueRequest",
     "SignedWorkroomEnqueueResult",
+    "DelegationGrant",
+    "WorkCommandExecuteRequest",
+    "WorkCommandReceipt",
+    "WorkCommandExecuteResult",
     "IssueProjection",
     "ProtocolError",
     "ProtocolInitializeRequest",
@@ -1574,6 +1830,13 @@
       "minimumVersion": "omega-effectd.v2",
       "params": "SignedWorkroomEnqueueRequest",
       "result": "SignedWorkroomEnqueueResult"
+    },
+    {
+      "method": "work.command.execute",
+      "capability": "work.command.execute",
+      "minimumVersion": "omega-effectd.v2",
+      "params": "WorkCommandExecuteRequest",
+      "result": "WorkCommandExecuteResult"
     }
   ],
   "fixtures": [

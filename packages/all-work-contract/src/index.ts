@@ -6,3 +6,4 @@ export * from "./repository-claim-authority.ts";
 export * from "./signed-workroom-authority.ts";
 export * from "./signed-workroom-file-store.ts";
 export * from "./semantic.ts";
+export * from "./work-command-authority.ts";

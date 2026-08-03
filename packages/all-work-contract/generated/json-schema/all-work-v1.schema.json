@@ -64,6 +64,18 @@
       "$ref": "#/$defs/SignedWorkroomEnqueueResult"
     },
     {
+      "$ref": "#/$defs/DelegationGrant"
+    },
+    {
+      "$ref": "#/$defs/WorkCommandExecuteRequest"
+    },
+    {
+      "$ref": "#/$defs/WorkCommandReceipt"
+    },
+    {
+      "$ref": "#/$defs/WorkCommandExecuteResult"
+    },
+    {
       "$ref": "#/$defs/IssueProjection"
     },
     {
@@ -332,6 +344,46 @@
       "type": "string",
       "title": "SourceRef",
       "x-openagents-brand": "SourceRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "HostRef": {
+      "type": "string",
+      "title": "HostRef",
+      "x-openagents-brand": "HostRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "LeaseRef": {
+      "type": "string",
+      "title": "LeaseRef",
+      "x-openagents-brand": "LeaseRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "EffectRef": {
+      "type": "string",
+      "title": "EffectRef",
+      "x-openagents-brand": "EffectRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "DiffRef": {
+      "type": "string",
+      "title": "DiffRef",
+      "x-openagents-brand": "DiffRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "WorkReviewRef": {
+      "type": "string",
+      "title": "WorkReviewRef",
+      "x-openagents-brand": "WorkReviewRef",
       "minLength": 1,
       "maxLength": 160,
       "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
@@ -2684,6 +2736,600 @@
       ],
       "additionalProperties": false
     },
+    "WorkCommandControlKind": {
+      "type": "string",
+      "title": "WorkCommandControlKind",
+      "enum": [
+        "steer",
+        "answer",
+        "pause",
+        "stop",
+        "retry",
+        "dismiss"
+      ]
+    },
+    "WorkCommandActivityKind": {
+      "type": "string",
+      "title": "WorkCommandActivityKind",
+      "enum": [
+        "plan",
+        "progress",
+        "question",
+        "action",
+        "artifact",
+        "error",
+        "interruption",
+        "result"
+      ]
+    },
+    "OwnerDispositionDecision": {
+      "type": "string",
+      "title": "OwnerDispositionDecision",
+      "enum": [
+        "accepted",
+        "needs_changes",
+        "rejected"
+      ]
+    },
+    "DelegationGrant": {
+      "type": "object",
+      "title": "DelegationGrant",
+      "properties": {
+        "grantRef": {
+          "$ref": "#/$defs/DelegationGrantRef"
+        },
+        "agentRef": {
+          "$ref": "#/$defs/AgentRef"
+        },
+        "issuedBy": {
+          "$ref": "#/$defs/PrincipalRef"
+        },
+        "generation": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "capabilityRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CapabilityRef"
+          },
+          "minItems": 1,
+          "maxItems": 64
+        },
+        "toolRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "maxItems": 128
+        },
+        "hostRef": {
+          "$ref": "#/$defs/HostRef"
+        },
+        "budgetLimit": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "privacyClass": {
+          "$ref": "#/$defs/PrivacyClass"
+        },
+        "evidenceRequired": {
+          "type": "boolean"
+        },
+        "claimRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RepositoryWorkClaimRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "leaseRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LeaseRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "grantRef",
+        "agentRef",
+        "issuedBy",
+        "generation",
+        "capabilityRefs",
+        "toolRefs",
+        "hostRef",
+        "budgetLimit",
+        "expiresAt",
+        "privacyClass",
+        "evidenceRequired",
+        "claimRef",
+        "leaseRef"
+      ],
+      "additionalProperties": false
+    },
+    "WorkCommand": {
+      "title": "WorkCommand",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "assign"
+            },
+            "assignee": {
+              "$ref": "#/$defs/HumanAssignee"
+            }
+          },
+          "required": [
+            "command",
+            "assignee"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "unassign"
+            }
+          },
+          "required": [
+            "command"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "delegate"
+            },
+            "grant": {
+              "$ref": "#/$defs/DelegationGrant"
+            }
+          },
+          "required": [
+            "command",
+            "grant"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "revoke"
+            },
+            "grantRef": {
+              "$ref": "#/$defs/DelegationGrantRef"
+            },
+            "expectedGeneration": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "reason": {
+              "$ref": "#/$defs/ShortText"
+            }
+          },
+          "required": [
+            "command",
+            "grantRef",
+            "expectedGeneration",
+            "reason"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "start_agent_session"
+            },
+            "threadRef": {
+              "$ref": "#/$defs/ThreadRef"
+            },
+            "sessionRef": {
+              "$ref": "#/$defs/SessionRef"
+            },
+            "agentSessionRef": {
+              "$ref": "#/$defs/AgentSessionRef"
+            },
+            "runRef": {
+              "$ref": "#/$defs/RunRef"
+            },
+            "grantRef": {
+              "$ref": "#/$defs/DelegationGrantRef"
+            },
+            "expectedGeneration": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "hostRef": {
+              "$ref": "#/$defs/HostRef"
+            }
+          },
+          "required": [
+            "command",
+            "threadRef",
+            "sessionRef",
+            "agentSessionRef",
+            "runRef",
+            "grantRef",
+            "expectedGeneration",
+            "hostRef"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "record_activity"
+            },
+            "activityRef": {
+              "$ref": "#/$defs/AgentActivityRef"
+            },
+            "sessionRef": {
+              "$ref": "#/$defs/SessionRef"
+            },
+            "runRef": {
+              "$ref": "#/$defs/RunRef"
+            },
+            "expectedGeneration": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "kind": {
+              "$ref": "#/$defs/WorkCommandActivityKind"
+            },
+            "summary": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "providerEventRef": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SourceRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "lossRefs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SourceRef"
+              },
+              "maxItems": 64
+            },
+            "effectRef": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/EffectRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "command",
+            "activityRef",
+            "sessionRef",
+            "runRef",
+            "expectedGeneration",
+            "kind",
+            "summary",
+            "providerEventRef",
+            "lossRefs",
+            "effectRef"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "control_session"
+            },
+            "control": {
+              "$ref": "#/$defs/WorkCommandControlKind"
+            },
+            "sessionRef": {
+              "$ref": "#/$defs/SessionRef"
+            },
+            "expectedGeneration": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "body": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/LongText"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "command",
+            "control",
+            "sessionRef",
+            "expectedGeneration",
+            "body"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "attach_diff"
+            },
+            "diffRef": {
+              "$ref": "#/$defs/DiffRef"
+            }
+          },
+          "required": [
+            "command",
+            "diffRef"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "attach_review"
+            },
+            "reviewRef": {
+              "$ref": "#/$defs/WorkReviewRef"
+            }
+          },
+          "required": [
+            "command",
+            "reviewRef"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "attach_evidence"
+            },
+            "evidenceRef": {
+              "$ref": "#/$defs/EvidenceRef"
+            }
+          },
+          "required": [
+            "command",
+            "evidenceRef"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "attach_verification"
+            },
+            "verificationRef": {
+              "$ref": "#/$defs/VerificationRef"
+            }
+          },
+          "required": [
+            "command",
+            "verificationRef"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "owner_disposition"
+            },
+            "dispositionRef": {
+              "$ref": "#/$defs/OwnerDispositionRef"
+            },
+            "decision": {
+              "$ref": "#/$defs/OwnerDispositionDecision"
+            },
+            "verificationRefs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/VerificationRef"
+              },
+              "maxItems": 64
+            },
+            "summary": {
+              "$ref": "#/$defs/ShortText"
+            }
+          },
+          "required": [
+            "command",
+            "dispositionRef",
+            "decision",
+            "verificationRefs",
+            "summary"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "WorkCommandExecuteRequest": {
+      "type": "object",
+      "title": "WorkCommandExecuteRequest",
+      "properties": {
+        "intentRef": {
+          "$ref": "#/$defs/IntentRef"
+        },
+        "idempotencyKey": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "expectedRevision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "effectivePrincipalRef": {
+          "$ref": "#/$defs/PrincipalRef"
+        },
+        "organizationRef": {
+          "$ref": "#/$defs/OrganizationRef"
+        },
+        "capabilityRef": {
+          "$ref": "#/$defs/CapabilityRef"
+        },
+        "workRef": {
+          "$ref": "#/$defs/WorkRef"
+        },
+        "occurredAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "command": {
+          "$ref": "#/$defs/WorkCommand"
+        }
+      },
+      "required": [
+        "intentRef",
+        "idempotencyKey",
+        "expectedRevision",
+        "effectivePrincipalRef",
+        "organizationRef",
+        "capabilityRef",
+        "workRef",
+        "occurredAt",
+        "command"
+      ],
+      "additionalProperties": false
+    },
+    "WorkCommandOutcome": {
+      "type": "object",
+      "title": "WorkCommandOutcome",
+      "properties": {
+        "admitted": {
+          "type": "boolean"
+        },
+        "eventRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EventRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "effectRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EffectRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "refusalReason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ShortText"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "admitted",
+        "eventRef",
+        "effectRef",
+        "refusalReason"
+      ],
+      "additionalProperties": false
+    },
+    "WorkCommandReceipt": {
+      "type": "object",
+      "title": "WorkCommandReceipt",
+      "properties": {
+        "intentRef": {
+          "$ref": "#/$defs/IntentRef"
+        },
+        "idempotencyKey": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "commandDigest": {
+          "$ref": "#/$defs/ContractDigest"
+        },
+        "workRef": {
+          "$ref": "#/$defs/WorkRef"
+        },
+        "previousRevision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "revision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "eventCursor": {
+          "$ref": "#/$defs/WorkCursor"
+        },
+        "effectivePrincipalRef": {
+          "$ref": "#/$defs/PrincipalRef"
+        },
+        "organizationRef": {
+          "$ref": "#/$defs/OrganizationRef"
+        },
+        "acceptedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "outcome": {
+          "$ref": "#/$defs/WorkCommandOutcome"
+        },
+        "githubWriteCount": {
+          "$ref": "#/$defs/ZeroInteger"
+        }
+      },
+      "required": [
+        "intentRef",
+        "idempotencyKey",
+        "commandDigest",
+        "workRef",
+        "previousRevision",
+        "revision",
+        "eventCursor",
+        "effectivePrincipalRef",
+        "organizationRef",
+        "acceptedAt",
+        "outcome",
+        "githubWriteCount"
+      ],
+      "additionalProperties": false
+    },
+    "WorkCommandExecuteResult": {
+      "type": "object",
+      "title": "WorkCommandExecuteResult",
+      "properties": {
+        "snapshot": {
+          "$ref": "#/$defs/WorkSnapshot"
+        },
+        "receipt": {
+          "$ref": "#/$defs/WorkCommandReceipt"
+        }
+      },
+      "required": [
+        "snapshot",
+        "receipt"
+      ],
+      "additionalProperties": false
+    },
     "ProtocolCapability": {
       "type": "string",
       "title": "ProtocolCapability",
@@ -2694,7 +3340,8 @@
         "repository.claim.read",
         "repository.claim.execute",
         "workroom.activity.read",
-        "workroom.activity.enqueue"
+        "workroom.activity.enqueue",
+        "work.command.execute"
       ]
     },
     "ProtocolErrorCode": {
@@ -3243,6 +3890,30 @@
             "params"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "work.command.execute"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "params": {
+              "$ref": "#/$defs/WorkCommandExecuteRequest"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "params"
+          ],
+          "additionalProperties": false
         }
       ]
     },
@@ -3445,6 +4116,30 @@
           "type": "object",
           "properties": {
             "method": {
+              "const": "work.command.execute"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "result": {
+              "$ref": "#/$defs/WorkCommandExecuteResult"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
               "const": "error"
             },
             "id": {
@@ -3472,7 +4167,7 @@
     "profileVersion": "openagents.contract_profile.v1",
     "contractRef": "openagents.all_work_boundary.v1",
     "contractVersion": 1,
-    "definitionSha256": "e504e3084007e8bddab99e9703f1f62c6bf62e1aa7a9f612de75fb522848b628",
+    "definitionSha256": "2f3119cf7822fe9bd770d2c97f913d609dd49e8918fb3ea4c7df9662d20492c4",
     "owningDomain": "all_work_boundary",
     "authoritativeRuntime": "effect",
     "relationship": "projection",
@@ -3500,7 +4195,12 @@
       "receipt_verification_and_owner_disposition_do_not_imply_each_other",
       "signed_workroom_event_proves_signer_and_bytes_only",
       "relay_acceptance_is_transport_evidence_only",
-      "workroom_audience_and_privacy_are_closed_allowlist_compatible"
+      "workroom_audience_and_privacy_are_closed_allowlist_compatible",
+      "work_command_effective_principal_and_organization_are_explicit",
+      "delegation_does_not_copy_assignee_or_owner_authority",
+      "revocation_fences_new_session_effects_by_generation",
+      "agent_activity_preserves_provider_event_and_loss_refs",
+      "owner_disposition_is_separate_from_completion_and_verification"
     ],
     "implementationStatus": {
       "ContractVersion": "structural_only",
@@ -3533,6 +4233,11 @@
       "VerificationRef": "structural_only",
       "OwnerDispositionRef": "structural_only",
       "SourceRef": "structural_only",
+      "HostRef": "structural_only",
+      "LeaseRef": "structural_only",
+      "EffectRef": "structural_only",
+      "DiffRef": "structural_only",
+      "WorkReviewRef": "structural_only",
       "WorkCursor": "structural_only",
       "SubscriptionRef": "structural_only",
       "WorkDomain": "structural_only",
@@ -3608,6 +4313,15 @@
       "SignedWorkroomEnqueueRequest": "implemented",
       "SignedWorkroomEnqueueReceipt": "structural_only",
       "SignedWorkroomEnqueueResult": "implemented",
+      "WorkCommandControlKind": "structural_only",
+      "WorkCommandActivityKind": "structural_only",
+      "OwnerDispositionDecision": "structural_only",
+      "DelegationGrant": "implemented",
+      "WorkCommand": "structural_only",
+      "WorkCommandExecuteRequest": "implemented",
+      "WorkCommandOutcome": "structural_only",
+      "WorkCommandReceipt": "implemented",
+      "WorkCommandExecuteResult": "implemented",
       "ProtocolCapability": "structural_only",
       "ProtocolErrorCode": "structural_only",
       "ProtocolError": "structural_only",
