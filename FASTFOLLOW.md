@@ -1,14 +1,14 @@
 ---
 fast_follow_spec_format_version: "0.1"
 fast_follow_spec_id: "openagents.fast_follow"
-fast_follow_revision: 9
+fast_follow_revision: 10
 title: "OpenAgents Fast Follow"
 artifact_type: "learning_intent"
 lifecycle_state: "admitted"
 author: "OpenAgents"
 linked_target_repo: "OpenAgentsInc/openagents"
 created_at: "2026-07-16T00:00:00Z"
-updated_at: "2026-08-02T00:00:00Z"
+updated_at: "2026-08-03T00:00:00Z"
 ---
 
 # OpenAgents Fast Follow
@@ -422,6 +422,8 @@ sequence. The ordered Amp `initial_program` stays unchanged.
       "docs/teardowns/2026-07-17-t3-code-openagents-mobile-component-gap-analysis.md",
       "docs/teardowns/2026-07-17-t3-code-openagents-mobile-controller-gap-analysis.md",
       "docs/teardowns/2026-07-27-omega-t3-code-desktop-mobile-gap-analysis.md",
+      "docs/teardowns/2026-07-27-t3-code-desktop-mobile-component-cloud-architecture-audit.md",
+      "docs/teardowns/2026-07-27-t3-code-server-projection-consistency-architecture.md",
       "docs/teardowns/2026-07-27-t3-code-sidebar-v2-replication-analysis.md"
     ],
     "lessons": [
@@ -1336,6 +1338,174 @@ sequence. The ordered Amp `initial_program` stays unchanged.
         "kind": "architecture",
         "summary": "Study acceptance-gated settlement, transaction-bound outbox work, generation-bound leases, and integer ledgers while keeping OpenAgents authority and execution receipts canonical.",
         "stance": "adapt_with_stronger_boundaries"
+      }
+    ]
+  },
+  {
+    "id": "superlogical.superlogical",
+    "title": "Superlogical",
+    "role": "upstream",
+    "access": "public_artifact",
+    "canonical_ref": "https://www.superlogical.com/",
+    "tracking_policy": "manual_snapshot",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-29-superlogical-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "durable_attachable_work_session",
+        "kind": "product_ux",
+        "summary": "Track an announced durable work-session thesis in which a session is a product object that clients attach to without rebuilding context, a phone supervises and steers the same work, and placement is part of session identity.",
+        "stance": "study"
+      },
+      {
+        "id": "announcement_without_artifact",
+        "kind": "evaluation",
+        "summary": "Reject treating a launch announcement with no published build, repository, protocol, security design, or price as justification for a ProductSpec, AssuranceSpec, roadmap, or implementation change, and keep the boundary that a terminal session is not a work receipt, reconnect is not durable command admission, scrollback is not an event log, and a process exit is not an accepted deliverable.",
+        "stance": "reject"
+      }
+    ]
+  },
+  {
+    "id": "soapbox_pub.armada",
+    "title": "Soapbox Armada",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/soapbox-pub/armada",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-30-armada-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "explicit_replaceable_list_publish",
+        "kind": "reliability",
+        "summary": "Never republish a user replaceable list from an empty or failed read, because an empty read is indistinguishable from a failure and silently clobbers follow, mute, relay, and membership state.",
+        "stance": "adapt"
+      },
+      {
+        "id": "store_first_wire_and_blind_media_broker",
+        "kind": "architecture",
+        "summary": "Admit wire events into the durable store before any view invalidation, and keep the media token broker blind to community membership so media infrastructure never becomes membership authority.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "sealed_plane_and_renderer_secret_storage",
+        "kind": "security",
+        "summary": "Reject a sealed relay membership plane as release or acceptance authority, and reject renderer local storage of secret keys as a desktop secret model, because a sandboxed renderer and a custom scheme are not an operating-system key vault.",
+        "stance": "reject"
+      }
+    ]
+  },
+  {
+    "id": "livekit.livekit",
+    "title": "LiveKit realtime media",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/livekit/livekit",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-30-livekit-armada-buzz-zed-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "separate_room_and_media_identities",
+        "kind": "protocol",
+        "summary": "Keep product room, membership subject, media room, and media participant as four distinct identities, because treating a media participant as product membership collapses admission, privacy, and reconnect semantics.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "media_token_minting_is_the_boundary",
+        "kind": "security",
+        "summary": "Specify credential audience, subject, room, grants, generation, expiry, revocation, reconnect, and broker knowledge before selecting any realtime media component, and keep signed chat separate from media frame encryption because a signature does not encrypt a media frame.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "self_hosted_sfu_operations_plane",
+        "kind": "architecture",
+        "summary": "Treat a self-hosted selective forwarding unit as a new cluster, host-network, cache, and relay operations plane rather than a removed authority plane, and keep media reachability outside command, receipt, acceptance, and release authority.",
+        "stance": "adapt_with_stronger_boundaries"
+      }
+    ]
+  },
+  {
+    "id": "zeronsh.comet",
+    "title": "External multi-device controller reference",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/zeronsh/comet",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-31-external-reference-ui-teardown.md",
+      "docs/teardowns/2026-07-31-external-reference-ui-deep-dive.md"
+    ],
+    "lessons": [
+      {
+        "id": "detach_is_not_kill",
+        "kind": "architecture",
+        "summary": "Keep a supervised engine that outlives any one window or terminal viewport, so closing a surface detaches from work instead of ending sessions, documents, and device presence.",
+        "stance": "adapt"
+      },
+      {
+        "id": "host_only_durable_command_ledger",
+        "kind": "reliability",
+        "summary": "Append run, steer, interrupt, and respond commands to a durable append-only per-device ledger with dedupe, expiry, and supersede rules, and mark an entry processed on the host before execution.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "shared_pure_view_derivation",
+        "kind": "architecture",
+        "summary": "Derive sort order, staleness gating, grouping, and boot readiness in one pure tested module shared by every surface, and apply incremental diffs into typed structures instead of re-projecting the whole transcript.",
+        "stance": "adapt"
+      },
+      {
+        "id": "single_primary_composer_control",
+        "kind": "product_ux",
+        "summary": "Study one send, steer, and stop control with unit-tested compact and expanded composer geometry, a question wizard takeover for short option sets, and optimistic send that returns to draft on failure, without weakening the typed send disposition into a silent cancel-then-send path.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "render_parts_are_not_end_to_end_encryption",
+        "kind": "security",
+        "summary": "Reject describing render-only synced tool parts as end-to-end confidentiality, and reject a hosted room fabric, a single external identity provider, or unattended auto-approval as the session, admission, and containment authority.",
+        "stance": "reject"
+      }
+    ]
+  },
+  {
+    "id": "nousresearch.hermes_agent",
+    "title": "Nous Research Hermes Agent and Desktop",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/NousResearch/hermes-agent",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/teardowns/2026-08-01-hermes-agent-desktop-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "desktop_supervises_a_local_agent_service",
+        "kind": "architecture",
+        "summary": "Keep agent state and execution in a supervised, authenticated, profile-scoped local service that the renderer reaches over a typed protocol, so the presentation layer stays an untrusted client.",
+        "stance": "adapt"
+      },
+      {
+        "id": "durable_lineage_and_exact_provider_replay",
+        "kind": "reliability",
+        "summary": "Hold a stable session lineage for route, drafts, panes, and identity while the model tip advances through compaction or resume, and persist display content separately from the exact provider payload to preserve replay fidelity and prompt-cache prefixes.",
+        "stance": "adapt"
+      },
+      {
+        "id": "governed_instruction_mutation",
+        "kind": "security",
+        "summary": "Treat memories, skills, and project instructions as governed durable state with proposal, diff, provenance, scope, expiry, and rollback, because background rewrites of future model context are as consequential as file changes and need the same visibility.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "agent_written_code_in_the_trusted_renderer",
+        "kind": "security",
+        "summary": "Reject loading agent-written scripts into the trusted renderer realm, reject treating a broad preload bridge as low risk because sandbox flags are set, reject equating an optional container backend with universal sandboxing, and reject coupling application updates to a mutable source checkout.",
+        "stance": "reject"
       }
     ]
   },

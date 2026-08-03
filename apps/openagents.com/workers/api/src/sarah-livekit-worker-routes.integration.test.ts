@@ -655,9 +655,20 @@ describe.skipIf(!hasLocalPostgres())("Sarah LiveKit production worker route life
       WHERE source.session_ref = 'voice-livekit-route-1'
     `;
 
+    // The crashed worker's heartbeat has already expired, so the first sweep
+    // converges the session straight to `accounting_uncertain` instead of
+    // requesting a graceful stop it cannot honor. Waiting through the
+    // stop-drain deadline would only delay the same uncertainty boundary, so
+    // the later sweeps find nothing left to process.
     expect(await store.sweepExpired("2026-07-28T13:10:00.000Z")).toBe(1);
+    expect(
+      await store.readSettlement({
+        sessionRef: "voice-livekit-crash-1",
+        ownerUserId: "user-livekit-route",
+      }),
+    ).toMatchObject({ state: "accounting_uncertain" });
     expect(await store.sweepExpired("2026-07-28T13:12:29.999Z")).toBe(0);
-    expect(await store.sweepExpired("2026-07-28T13:12:30.000Z")).toBe(1);
+    expect(await store.sweepExpired("2026-07-28T13:12:30.000Z")).toBe(0);
 
     const settlement = await store.readSettlement({
       sessionRef: "voice-livekit-crash-1",

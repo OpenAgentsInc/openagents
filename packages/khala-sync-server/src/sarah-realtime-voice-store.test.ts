@@ -1621,7 +1621,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       updated_at: "2026-07-28T13:01:30.000Z",
     });
     const [staleWorker] = await sql`
-      SELECT worker_stop_reason, worker_stop_close_reason,
+      SELECT state, worker_stop_reason, worker_stop_close_reason,
         worker_stop_requested_at, worker_stop_deadline_at,
         provider_accounting_status, provider_accounting_uncertain_at
       FROM sarah_livekit_room_bindings
@@ -1629,6 +1629,9 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         AND generation = ${binding.generation}
     `;
     expect(staleWorker).toMatchObject({
+      // The same transition that opens `accounting_uncertain` stages the room
+      // binding for cleanup, so an unreconciled hold never strands a live room.
+      state: "cleanup_ready",
       worker_stop_reason: null,
       worker_stop_close_reason: null,
       worker_stop_requested_at: null,
@@ -1645,7 +1648,8 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
     `;
     await sql`
       UPDATE sarah_livekit_room_bindings
-      SET worker_stop_reason = NULL, worker_stop_close_reason = NULL,
+      SET state = 'active',
+        worker_stop_reason = NULL, worker_stop_close_reason = NULL,
         worker_stop_requested_at = NULL, worker_stop_deadline_at = NULL,
         provider_accounting_status = 'pending',
         provider_accounting_uncertain_at = NULL,

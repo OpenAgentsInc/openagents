@@ -178,5 +178,10 @@ describe("openagents-desktop build", () => {
     } finally {
       rmSync(workspaceRoot, { recursive: true, force: true })
     }
-  }, 60_000)
+    // No inline timeout: this test shells out to `cargo build -p oa-desktop-audio`
+    // and `xcrun swift build -c release`, whose caches live outside the worktree.
+    // In a fresh worktree both are cold, and under the sweep's 8-way worker
+    // contention that alone exceeds a one-minute budget. Inherit the root
+    // project's 240s `testTimeout`, which exists for exactly this case.
+  })
 })
