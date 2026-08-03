@@ -1,15 +1,19 @@
 import {
   decodeSignedWorkroomDeliveryRequest,
+  decodeSignedWorkroomCommitRequest,
   decodeSignedWorkroomEnqueueRequest,
+  decodeSignedWorkroomPrepareRequest,
   decodeSignedWorkroomReadRequest,
   decodeSignedWorkroomPublishRequest,
   deliverSignedWorkroomActivity,
+  commitSignedWorkroomActivity,
   emptySignedWorkroomState,
   enqueueSignedWorkroomActivity,
   fileSignedWorkroomStateStoreLayer,
   initializeFileSignedWorkroomState,
   makeSignedWorkroomRelayPublisherLayer,
   publishSignedWorkroomOutbox,
+  prepareSignedWorkroomActivity,
   readSignedWorkroomActivity,
   SignedWorkroomStateStore,
 } from "@openagentsinc/all-work-contract";
@@ -17,6 +21,14 @@ import { Effect } from "effect";
 
 const withStore = <A, E>(dataRoot: string, effect: Effect.Effect<A, E, SignedWorkroomStateStore>) =>
   effect.pipe(Effect.provide(fileSignedWorkroomStateStoreLayer(dataRoot)));
+
+export const configuredSignedWorkroomRelayUrls = (
+  value = process.env.OPENAGENTS_OMEGA_SIGNED_WORKROOM_RELAYS ?? "",
+): ReadonlyArray<string> =>
+  value
+    .split(",")
+    .map((relayUrl) => relayUrl.trim())
+    .filter((relayUrl) => relayUrl.length > 0);
 
 export const bootstrapAllWorkSignedWorkroom = Effect.fn(
   "OmegaEffectd.bootstrapAllWorkSignedWorkroom",
@@ -49,7 +61,32 @@ export const enqueueAllWorkSignedWorkroom = (dataRoot: string, input: unknown) =
   Effect.gen(function* () {
     yield* bootstrapAllWorkSignedWorkroom(dataRoot);
     const request = decodeSignedWorkroomEnqueueRequest(input);
-    return yield* enqueueSignedWorkroomActivity(request, request.activity.occurredAt);
+    return yield* enqueueSignedWorkroomActivity(
+      { ...request, relayUrls: configuredSignedWorkroomRelayUrls() },
+      request.activity.occurredAt,
+    );
+  }).pipe(Effect.provide(fileSignedWorkroomStateStoreLayer(dataRoot)));
+
+export const prepareAllWorkSignedWorkroom = (dataRoot: string, input: unknown) =>
+  Effect.gen(function* () {
+    yield* bootstrapAllWorkSignedWorkroom(dataRoot);
+    const request = decodeSignedWorkroomPrepareRequest(input);
+    return yield* prepareSignedWorkroomActivity(
+      request,
+      new Date().toISOString(),
+      configuredSignedWorkroomRelayUrls(),
+    );
+  }).pipe(Effect.provide(fileSignedWorkroomStateStoreLayer(dataRoot)));
+
+export const commitAllWorkSignedWorkroom = (dataRoot: string, input: unknown) =>
+  Effect.gen(function* () {
+    yield* bootstrapAllWorkSignedWorkroom(dataRoot);
+    const request = decodeSignedWorkroomCommitRequest(input);
+    return yield* commitSignedWorkroomActivity(
+      request,
+      new Date().toISOString(),
+      configuredSignedWorkroomRelayUrls(),
+    );
   }).pipe(Effect.provide(fileSignedWorkroomStateStoreLayer(dataRoot)));
 
 export const deliverAllWorkSignedWorkroom = (dataRoot: string, input: unknown) =>

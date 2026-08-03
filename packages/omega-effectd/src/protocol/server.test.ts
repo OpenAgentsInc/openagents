@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   decodeRepositoryClaimExecuteResult,
   decodeRepositoryClaimReadResult,
+  decodeSignedWorkroomPrepareResult,
   decodeOrganizationMembership,
   decodeOrganizationMembershipReadResult,
   decodeStrictBugCandidateExecuteResult,
@@ -284,6 +285,69 @@ describe("omega-effectd framed protocol", () => {
       expect(missing?.ok).toBe(false);
       expect(missing?.error?.code).toBe("not_found");
     });
+  });
+
+  test("prepares exact Workroom signing bytes from server-owned relay policy", async () => {
+    const previous = process.env.OPENAGENTS_OMEGA_SIGNED_WORKROOM_RELAYS;
+    process.env.OPENAGENTS_OMEGA_SIGNED_WORKROOM_RELAYS =
+      "wss://relay.two,wss://relay.example,wss://relay.two";
+    try {
+      await withRoot(async (root) => {
+        const server = createOmegaEffectdFramedServer(
+          createOmegaEffectdService({ paths: { dataRoot: root } }),
+          { dataRoot: root },
+          { hostRequestHandler: makeOmegaEffectdTestHost() },
+        );
+        const initialized = await server.handleLine(
+          request("prepare-init", 0, "initialize", {
+            generation: 1,
+            allWork: {
+              supportedVersions: ["omega-effectd.v2"],
+              requestedCapabilities: ["workroom.activity.prepare", "workroom.activity.commit"],
+            },
+          }),
+        );
+        expect(initialized?.ok).toBe(true);
+        const occurredAt = new Date().toISOString();
+        const prepared = await server.handleLine(
+          request("prepare", 1, "workroom.activity.prepare", {
+            idempotencyKey: "prepare-workroom-process-1",
+            effectivePrincipalRef: `principal:nostr:${"1".repeat(64)}`,
+            capabilityRef: "capability:workroom-activity:prepare",
+            signerPubkey: "1".repeat(64),
+            workroomRef: "workroom:omega:208",
+            workRef: "work:github:openagentsinc-omega:216",
+            kind: "thread",
+            audience: "workroom",
+            privacyClass: "workroom",
+            causalParentRefs: [],
+            occurredAt,
+            payloadDigest: "d".repeat(64),
+            evidenceRefs: [],
+            supersedesEventRef: null,
+            revokesEventRef: null,
+          }),
+        );
+        expect(prepared?.ok).toBe(true);
+        const result = decodeSignedWorkroomPrepareResult(prepared?.result);
+        expect(result.preparation).toMatchObject({
+          expectedRevision: 0,
+          activity: {
+            actorRef: `principal:nostr:${"1".repeat(64)}`,
+            revision: 1,
+            generation: 1,
+          },
+        });
+        expect(result.preparation).not.toHaveProperty("relayUrls");
+        expect(JSON.parse(result.preparation.unsignedEventJson)).toMatchObject({
+          pubkey: "1".repeat(64),
+          content: "",
+        });
+      });
+    } finally {
+      if (previous === undefined) delete process.env.OPENAGENTS_OMEGA_SIGNED_WORKROOM_RELAYS;
+      else process.env.OPENAGENTS_OMEGA_SIGNED_WORKROOM_RELAYS = previous;
+    }
   });
 
   test("executes and restarts a generation-fenced All Work command", async () => {

@@ -91,6 +91,13 @@ advancing generation. Its receipt explicitly says that relay acceptance is not
 authority and that the projection does not admit an external effect. See
 `docs/omega/2026-08-03-signed-workroom-projection.md`.
 
+External custody uses generated `workroom.activity.prepare` and
+`workroom.activity.commit` methods. Prepare assigns the canonical direct actor,
+revision, generation, event ref, unsigned NIP-01 JSON, expiry, and server relay
+policy digest. Commit accepts only the exact returned preparation and matching
+signed event, then invokes the same persist-before-publish reducer. Secret key
+material and relay selection never enter the client request.
+
 The `workroom.activity.deliver` method records unique attempts only for the
 relay targets already persisted with the signed event. Accepted, rejected, and
 unreachable facts advance the same optimistic ledger revision. Partial success

@@ -2,12 +2,12 @@
   "contractRef": "openagents.all_work_boundary.v1",
   "contractVersion": 1,
   "profileVersion": "openagents.contract_profile.v1",
-  "definitionSha256": "513432ed4d7deee1a8511f59b86cc1958d33cc32b76b314ebb0b901500dfb56d",
+  "definitionSha256": "c6557022965ea9f92450fefcc7e3ef5eb77d43654280b611e9966b7a1fbbe26a",
   "artifacts": {
-    "effectSha256": "3b6dee1ea88d5f151535d4ea56aec6015ba7b0c07bb4fbedddcb422738ffad42",
-    "rustSha256": "97edd7447145d7d52140e60549b465dfe5f3440a0b9f1748f20ad9469b54e560",
-    "jsonSchemaSha256": "ebc3e9c3c179035f2ac6203c646e8c5fb5ecb52c78dc9abbd478a4718880a203",
-    "fixtureIndexSha256": "5369c0a80412b0a8db6bd906cfdbcb82a1a23cddebf409ef21398533d32ce477"
+    "effectSha256": "056801ffe6c720c77313774ff3dd6613e14aa5c3edfe5a6f26d0cba67fdb00e0",
+    "rustSha256": "83ee03c2af2ae43b1f46b307a135d91ea716b25b6be4a740c0b7cf7db3c6899d",
+    "jsonSchemaSha256": "13e60ec1f9fadd95ca88b6363ffe537e55aef6976f0a615c013c96468f775370",
+    "fixtureIndexSha256": "39a1cd52cd333154d04c6a00e2a774dbdb105af82c25360b6a4e13b81a6b111f"
   },
   "protocol": {
     "supportedVersions": [
@@ -64,6 +64,20 @@
         "minimumVersion": "omega-effectd.v2",
         "params": "SignedWorkroomReadRequest",
         "result": "SignedWorkroomReadResult"
+      },
+      {
+        "method": "workroom.activity.prepare",
+        "capability": "workroom.activity.prepare",
+        "minimumVersion": "omega-effectd.v2",
+        "params": "SignedWorkroomPrepareRequest",
+        "result": "SignedWorkroomPrepareResult"
+      },
+      {
+        "method": "workroom.activity.commit",
+        "capability": "workroom.activity.commit",
+        "minimumVersion": "omega-effectd.v2",
+        "params": "SignedWorkroomCommitRequest",
+        "result": "SignedWorkroomEnqueueResult"
       },
       {
         "method": "workroom.activity.enqueue",
@@ -150,6 +164,8 @@
     "source_authority_revision_and_cursor_are_monotonic_per_source",
     "receipt_verification_and_owner_disposition_do_not_imply_each_other",
     "signed_workroom_event_proves_signer_and_bytes_only",
+    "signed_workroom_preparation_owns_canonical_unsigned_bytes_and_relay_policy",
+    "signed_workroom_commit_accepts_only_the_exact_prepared_signed_event",
     "relay_acceptance_is_transport_evidence_only",
     "workroom_audience_and_privacy_are_closed_allowlist_compatible",
     "work_command_effective_principal_and_organization_are_explicit",
@@ -270,6 +286,7 @@
     "SignedWorkroomProjectionProfile": "structural_only",
     "SignedWorkroomActivityKind": "structural_only",
     "SignedWorkroomOutboxState": "structural_only",
+    "SignedWorkroomActivityDraft": "implemented",
     "SignedWorkroomActivity": "implemented",
     "SignedWorkroomDeliveryOutcome": "structural_only",
     "SignedWorkroomDeliveryAttempt": "structural_only",
@@ -277,6 +294,10 @@
     "SignedWorkroomLedger": "implemented",
     "SignedWorkroomReadRequest": "implemented",
     "SignedWorkroomReadResult": "implemented",
+    "SignedWorkroomPrepareRequest": "implemented",
+    "SignedWorkroomPreparation": "implemented",
+    "SignedWorkroomPrepareResult": "implemented",
+    "SignedWorkroomCommitRequest": "implemented",
     "SignedWorkroomEnqueueRequest": "implemented",
     "SignedWorkroomEnqueueReceipt": "structural_only",
     "SignedWorkroomEnqueueResult": "implemented",

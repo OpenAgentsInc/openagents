@@ -4,11 +4,15 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   decodeSignedWorkroomDeliveryRequest,
+  decodeSignedWorkroomCommitRequest,
   decodeSignedWorkroomEnqueueRequest,
+  decodeSignedWorkroomPrepareRequest,
+  commitSignedWorkroomActivity,
   deliverSignedWorkroomActivity,
   emptySignedWorkroomState,
   enqueueSignedWorkroomActivity,
   makeSignedWorkroomActorGrantResolverLayer,
+  prepareSignedWorkroomActivity,
   signedWorkroomNostrEventId,
   SignedWorkroomStateStore,
   type SignedWorkroomActivity,
@@ -89,6 +93,26 @@ const deliveryRequest = (overrides: Record<string, unknown> = {}) =>
     ...overrides,
   });
 
+const prepareRequest = (overrides: Record<string, unknown> = {}) =>
+  decodeSignedWorkroomPrepareRequest({
+    idempotencyKey: "signed-workroom-prepare-1",
+    effectivePrincipalRef: actorRef,
+    capabilityRef: "capability:workroom-activity:prepare",
+    signerPubkey,
+    workroomRef: "workroom:omega:208",
+    workRef: "work:github:openagentsinc-omega:216",
+    kind: "thread",
+    audience: "workroom",
+    privacyClass: "workroom",
+    causalParentRefs: [],
+    occurredAt: "2026-08-03T10:00:00Z",
+    payloadDigest: "d".repeat(64),
+    evidenceRefs: [],
+    supersedesEventRef: null,
+    revokesEventRef: null,
+    ...overrides,
+  });
+
 const harness = (initial = emptySignedWorkroomState("2026-08-03T09:59:00Z")) => {
   let state: SignedWorkroomState | null = initial;
   const layer = Layer.succeed(
@@ -115,7 +139,21 @@ const harness = (initial = emptySignedWorkroomState("2026-08-03T09:59:00Z")) => 
     );
   const deliver = (value = deliveryRequest()) =>
     Effect.runPromise(deliverSignedWorkroomActivity(value).pipe(Effect.provide(layer)));
-  return { deliver, execute, executeGranted, state: () => state };
+  const prepare = (value = prepareRequest(), relays = ["wss://relay.example"]) =>
+    Effect.runPromise(
+      prepareSignedWorkroomActivity(value, "2026-08-03T10:00:01Z", relays).pipe(
+        Effect.provide(layer),
+      ),
+    );
+  const commit = (
+    value: ReturnType<typeof decodeSignedWorkroomCommitRequest>,
+    persistedAt = "2026-08-03T10:00:02Z",
+    relays = ["wss://relay.example"],
+  ) =>
+    Effect.runPromise(
+      commitSignedWorkroomActivity(value, persistedAt, relays).pipe(Effect.provide(layer)),
+    );
+  return { commit, deliver, execute, executeGranted, prepare, state: () => state };
 };
 
 describe("signed Workroom authority", () => {
@@ -135,6 +173,72 @@ describe("signed Workroom authority", () => {
     expect(result.receipt.relayAcceptanceIsAuthority).toBe(false);
     expect(result.receipt.admittedEffect).toBe(false);
     expect(value.state()?.ledger.outbox[0]?.state).toBe("pending");
+  });
+  it("prepares canonical bytes and commits only their exact enrolled signature", async () => {
+    const value = harness();
+    const prepared = await value.prepare();
+    const template = JSON.parse(prepared.preparation.unsignedEventJson) as Record<string, unknown>;
+    const eventId = signedWorkroomNostrEventId(prepared.preparation.activity);
+    const signature = Buffer.from(
+      schnorr.sign(Uint8Array.from(Buffer.from(eventId, "hex")), secretKey),
+    ).toString("hex");
+    const commit = decodeSignedWorkroomCommitRequest({
+      idempotencyKey: "signed-workroom-commit-1",
+      effectivePrincipalRef: actorRef,
+      capabilityRef: "capability:workroom-activity:commit",
+      preparation: prepared.preparation,
+      signedEventJson: JSON.stringify({ id: eventId, ...template, sig: signature }),
+    });
+    const result = await value.commit(commit);
+    expect(result.receipt).toMatchObject({
+      eventRef: prepared.preparation.activity.eventRef,
+      persistedBeforePublish: true,
+      relayAcceptanceIsAuthority: false,
+      admittedEffect: false,
+    });
+    expect(result.ledger.outbox[0]?.relayUrls).toEqual(["wss://relay.example"]);
+    expect(result.ledger.activities[0]?.nostrEventId).toBe(eventId);
+    await expect(
+      harness().commit(
+        decodeSignedWorkroomCommitRequest({
+          ...commit,
+          signedEventJson: JSON.stringify({
+            id: eventId,
+            ...template,
+            content: "substituted",
+            sig: signature,
+          }),
+        }),
+      ),
+    ).rejects.toMatchObject({ reason: "invalid_preparation" });
+  });
+  it("fences preparation expiry, direct identity, and server relay policy", async () => {
+    const value = harness();
+    await expect(
+      value.prepare(prepareRequest({ effectivePrincipalRef: "principal:other" })),
+    ).rejects.toMatchObject({ reason: "forbidden" });
+    await expect(value.prepare(prepareRequest(), [])).rejects.toMatchObject({
+      reason: "relay_policy_unavailable",
+    });
+    const prepared = await value.prepare();
+    const template = JSON.parse(prepared.preparation.unsignedEventJson) as Record<string, unknown>;
+    const eventId = signedWorkroomNostrEventId(prepared.preparation.activity);
+    const signature = Buffer.from(
+      schnorr.sign(Uint8Array.from(Buffer.from(eventId, "hex")), secretKey),
+    ).toString("hex");
+    const commit = decodeSignedWorkroomCommitRequest({
+      idempotencyKey: "signed-workroom-commit-expired",
+      effectivePrincipalRef: actorRef,
+      capabilityRef: "capability:workroom-activity:commit",
+      preparation: prepared.preparation,
+      signedEventJson: JSON.stringify({ id: eventId, ...template, sig: signature }),
+    });
+    await expect(value.commit(commit, "2026-08-03T10:05:01Z")).rejects.toMatchObject({
+      reason: "preparation_expired",
+    });
+    await expect(
+      value.commit(commit, "2026-08-03T10:00:02Z", ["wss://different.example"]),
+    ).rejects.toMatchObject({ reason: "invalid_preparation" });
   });
   it("records exact multi-relay failures and converges after an idempotent retry", async () => {
     const value = harness();

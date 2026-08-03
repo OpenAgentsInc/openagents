@@ -11,12 +11,17 @@ import {
   PrivacyClassSchema,
   SafeIntegerSchema,
   type SignedWorkroomActivity,
+  type SignedWorkroomActivityDraft,
   SignedWorkroomActivityKindSchema,
+  type SignedWorkroomCommitRequest,
   type SignedWorkroomDeliveryRequest,
   type SignedWorkroomDeliveryResult,
   type SignedWorkroomEnqueueRequest,
   type SignedWorkroomEnqueueResult,
   type SignedWorkroomLedger,
+  type SignedWorkroomPreparation,
+  type SignedWorkroomPrepareRequest,
+  type SignedWorkroomPrepareResult,
   type SignedWorkroomReadRequest,
   type SignedWorkroomReadResult,
   SignedWorkroomLedgerSchema,
@@ -24,9 +29,15 @@ import {
   WorkroomRefSchema,
   WorkRefSchema,
 } from "./generated.ts";
-import { verifySignedWorkroomNostrActivity } from "./signed-workroom-nostr.ts";
+import {
+  signedWorkroomNostrEventId,
+  signedWorkroomNostrTemplate,
+  verifySignedWorkroomNostrActivity,
+} from "./signed-workroom-nostr.ts";
 
 export const SIGNED_WORKROOM_WRITE_CAPABILITY = "capability:workroom-activity:enqueue" as const;
+export const SIGNED_WORKROOM_PREPARE_CAPABILITY = "capability:workroom-activity:prepare" as const;
+export const SIGNED_WORKROOM_COMMIT_CAPABILITY = "capability:workroom-activity:commit" as const;
 export const SIGNED_WORKROOM_DELIVERY_CAPABILITY = "capability:workroom-activity:deliver" as const;
 export const SIGNED_WORKROOM_PUBLISH_CAPABILITY = "capability:workroom-activity:publish" as const;
 
@@ -45,6 +56,9 @@ export class SignedWorkroomError extends S.TaggedErrorClass<SignedWorkroomError>
       "invalid_event_id",
       "invalid_signature",
       "invalid_projection_profile",
+      "invalid_preparation",
+      "preparation_expired",
+      "relay_policy_unavailable",
       "signer_actor_mismatch",
       "actor_grant_required",
       "invalid_actor_grant",
@@ -150,6 +164,27 @@ export class SignedWorkroomStateStore extends Context.Service<
 const digest = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
+const SIGNED_WORKROOM_PREPARATION_WINDOW_MS = 5 * 60 * 1_000;
+
+const normalizeRelayPolicy = (
+  relayUrls: ReadonlyArray<string>,
+): Effect.Effect<ReadonlyArray<string>, SignedWorkroomError> => {
+  const normalized = [...new Set(relayUrls)].sort();
+  return normalized.length > 0 &&
+    normalized.length <= 16 &&
+    normalized.every((relayUrl) => relayUrl.length <= 256 && relayUrl.startsWith("wss://"))
+    ? Effect.succeed(normalized)
+    : Effect.fail(
+        new SignedWorkroomError({
+          reason: "relay_policy_unavailable",
+          detail: "signed Workroom relay policy requires one to sixteen distinct WSS targets",
+        }),
+      );
+};
+
+const preparationRef = (preparation: Omit<SignedWorkroomPreparation, "preparationRef">): string =>
+  `receipt:signed-workroom-preparation:${digest(preparation)}`;
+
 export const emptySignedWorkroomLedger = (observedAt: string): SignedWorkroomLedger =>
   decodeSignedWorkroomLedger({
     contractVersion: "openagents.all_work_boundary.v1",
@@ -167,7 +202,7 @@ export const emptySignedWorkroomState = (observedAt: string): SignedWorkroomStat
 });
 
 const validateAudience = (
-  activity: SignedWorkroomActivity,
+  activity: Pick<SignedWorkroomActivity, "audience" | "privacyClass">,
 ): Effect.Effect<void, SignedWorkroomError> =>
   activity.audience === activity.privacyClass
     ? Effect.void
@@ -180,7 +215,16 @@ const validateAudience = (
 
 const validateCausality = (
   ledger: SignedWorkroomLedger,
-  activity: SignedWorkroomActivity,
+  activity: Pick<
+    SignedWorkroomActivity,
+    | "actorRef"
+    | "causalParentRefs"
+    | "generation"
+    | "kind"
+    | "revokesEventRef"
+    | "supersedesEventRef"
+    | "workroomRef"
+  >,
 ): Effect.Effect<void, SignedWorkroomError> => {
   const byRef = new Map(ledger.activities.map((value) => [value.eventRef, value]));
   const missing = activity.causalParentRefs.find((value) => !byRef.has(value));
@@ -421,6 +465,208 @@ export const validateSignedWorkroomState = (
     }
   });
 
+export const prepareSignedWorkroomActivity = (
+  request: SignedWorkroomPrepareRequest,
+  preparedAt: string,
+  relayUrls: ReadonlyArray<string>,
+): Effect.Effect<SignedWorkroomPrepareResult, SignedWorkroomError, SignedWorkroomStateStore> =>
+  Effect.gen(function* () {
+    const store = yield* SignedWorkroomStateStore;
+    const state = (yield* store.load) ?? emptySignedWorkroomState(preparedAt);
+    yield* validateSignedWorkroomState(state);
+    const normalizedRelayUrls = yield* normalizeRelayPolicy(relayUrls);
+    const directPrincipalRef = `principal:nostr:${request.signerPubkey}`;
+    if (
+      request.capabilityRef !== SIGNED_WORKROOM_PREPARE_CAPABILITY ||
+      request.effectivePrincipalRef !== directPrincipalRef
+    ) {
+      return yield* new SignedWorkroomError({
+        reason: "forbidden",
+        detail: "this preparation profile requires the enrolled direct Nostr principal",
+      });
+    }
+    const preparedTime = Date.parse(preparedAt);
+    const occurredTime = Date.parse(request.occurredAt);
+    if (
+      !Number.isFinite(preparedTime) ||
+      !Number.isFinite(occurredTime) ||
+      Math.abs(preparedTime - occurredTime) > SIGNED_WORKROOM_PREPARATION_WINDOW_MS
+    ) {
+      return yield* new SignedWorkroomError({
+        reason: "invalid_preparation",
+        detail: "the signed Workroom occurrence is outside the bounded preparation window",
+      });
+    }
+    const superseded =
+      request.supersedesEventRef === null
+        ? undefined
+        : state.ledger.activities.find(
+            (activity) => activity.eventRef === request.supersedesEventRef,
+          );
+    const revoked =
+      request.revokesEventRef === null
+        ? undefined
+        : state.ledger.activities.find((activity) => activity.eventRef === request.revokesEventRef);
+    const generation = Math.max(superseded?.generation ?? 0, revoked?.generation ?? 0) + 1;
+    const activity: SignedWorkroomActivityDraft = {
+      projectionProfile: "openagents.signed-workroom.v2",
+      eventRef: `signed-workroom-event:${digest({ request, revision: state.ledger.revision + 1 })}`,
+      signerPubkey: request.signerPubkey,
+      actorRef: directPrincipalRef,
+      actorGrantRef: null,
+      actorGrantGeneration: null,
+      workroomRef: request.workroomRef,
+      workRef: request.workRef,
+      kind: request.kind,
+      audience: request.audience,
+      privacyClass: request.privacyClass,
+      causalParentRefs: request.causalParentRefs,
+      revision: state.ledger.revision + 1,
+      generation,
+      occurredAt: request.occurredAt,
+      payloadDigest: request.payloadDigest,
+      evidenceRefs: request.evidenceRefs,
+      supersedesEventRef: request.supersedesEventRef,
+      revokesEventRef: request.revokesEventRef,
+    };
+    yield* validateAudience(activity);
+    yield* validateCausality(state.ledger, activity);
+    const unsignedEventJson = JSON.stringify(signedWorkroomNostrTemplate(activity));
+    const unsignedPreparation = {
+      expectedRevision: state.ledger.revision,
+      activity,
+      unsignedEventJson,
+      relayPolicyDigest: digest(normalizedRelayUrls),
+      expiresAt: new Date(occurredTime + SIGNED_WORKROOM_PREPARATION_WINDOW_MS).toISOString(),
+    };
+    const preparation: SignedWorkroomPreparation = {
+      preparationRef: preparationRef(unsignedPreparation),
+      ...unsignedPreparation,
+    };
+    return { preparation };
+  });
+
+interface SignedNostrEventWire {
+  readonly id: string;
+  readonly pubkey: string;
+  readonly created_at: number;
+  readonly kind: number;
+  readonly tags: ReadonlyArray<ReadonlyArray<string>>;
+  readonly content: string;
+  readonly sig: string;
+}
+
+const decodeExactSignedNostrEvent = (
+  input: string,
+): Effect.Effect<SignedNostrEventWire, SignedWorkroomError> =>
+  Effect.try({
+    try: () => {
+      const value: unknown = JSON.parse(input);
+      if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error();
+      const record = value as Record<string, unknown>;
+      if (
+        Object.keys(record).sort().join(",") !== "content,created_at,id,kind,pubkey,sig,tags" ||
+        typeof record.id !== "string" ||
+        typeof record.pubkey !== "string" ||
+        typeof record.created_at !== "number" ||
+        !Number.isSafeInteger(record.created_at) ||
+        typeof record.kind !== "number" ||
+        !Number.isSafeInteger(record.kind) ||
+        !Array.isArray(record.tags) ||
+        !record.tags.every(
+          (tag) => Array.isArray(tag) && tag.every((value) => typeof value === "string"),
+        ) ||
+        typeof record.content !== "string" ||
+        typeof record.sig !== "string"
+      ) {
+        throw new Error();
+      }
+      return record as unknown as SignedNostrEventWire;
+    },
+    catch: () =>
+      new SignedWorkroomError({
+        reason: "invalid_preparation",
+        detail: "the signer returned a malformed NIP-01 event",
+      }),
+  });
+
+export const commitSignedWorkroomActivity = (
+  request: SignedWorkroomCommitRequest,
+  persistedAt: string,
+  relayUrls: ReadonlyArray<string>,
+): Effect.Effect<SignedWorkroomEnqueueResult, SignedWorkroomError, SignedWorkroomStateStore> =>
+  Effect.gen(function* () {
+    const normalizedRelayUrls = yield* normalizeRelayPolicy(relayUrls);
+    const preparation = request.preparation;
+    const { preparationRef: suppliedPreparationRef, ...unsignedPreparation } = preparation;
+    const directPrincipalRef = `principal:nostr:${preparation.activity.signerPubkey}`;
+    if (
+      request.capabilityRef !== SIGNED_WORKROOM_COMMIT_CAPABILITY ||
+      request.effectivePrincipalRef !== directPrincipalRef ||
+      preparation.activity.actorRef !== directPrincipalRef
+    ) {
+      return yield* new SignedWorkroomError({
+        reason: "forbidden",
+        detail: "this commit profile requires the enrolled direct Nostr principal",
+      });
+    }
+    if (
+      suppliedPreparationRef !== preparationRef(unsignedPreparation) ||
+      preparation.relayPolicyDigest !== digest(normalizedRelayUrls) ||
+      preparation.unsignedEventJson !==
+        JSON.stringify(signedWorkroomNostrTemplate(preparation.activity))
+    ) {
+      return yield* new SignedWorkroomError({
+        reason: "invalid_preparation",
+        detail: "the signed Workroom preparation or relay policy changed before commit",
+      });
+    }
+    const persistedTime = Date.parse(persistedAt);
+    const expiresTime = Date.parse(preparation.expiresAt);
+    if (
+      !Number.isFinite(persistedTime) ||
+      !Number.isFinite(expiresTime) ||
+      persistedTime > expiresTime
+    ) {
+      return yield* new SignedWorkroomError({
+        reason: "preparation_expired",
+        detail: "the signed Workroom preparation expired before commit",
+      });
+    }
+    const signed = yield* decodeExactSignedNostrEvent(request.signedEventJson);
+    const expected = signedWorkroomNostrTemplate(preparation.activity);
+    const expectedEventId = signedWorkroomNostrEventId(preparation.activity);
+    if (
+      signed.id !== expectedEventId ||
+      signed.pubkey !== expected.pubkey ||
+      signed.created_at !== expected.created_at ||
+      signed.kind !== expected.kind ||
+      digest(signed.tags) !== digest(expected.tags) ||
+      signed.content !== expected.content
+    ) {
+      return yield* new SignedWorkroomError({
+        reason: "invalid_preparation",
+        detail: "the signer returned different bytes than the OpenAgents preparation",
+      });
+    }
+    const activity: SignedWorkroomActivity = {
+      ...preparation.activity,
+      nostrEventId: signed.id,
+      signature: signed.sig,
+    };
+    return yield* enqueueSignedWorkroomActivity(
+      {
+        idempotencyKey: request.idempotencyKey,
+        expectedRevision: preparation.expectedRevision,
+        effectivePrincipalRef: request.effectivePrincipalRef,
+        capabilityRef: SIGNED_WORKROOM_WRITE_CAPABILITY,
+        activity,
+        relayUrls: normalizedRelayUrls,
+      },
+      persistedAt,
+    );
+  });
+
 export const enqueueSignedWorkroomActivity = (
   request: SignedWorkroomEnqueueRequest,
   persistedAt: string,
@@ -429,7 +675,8 @@ export const enqueueSignedWorkroomActivity = (
     const store = yield* SignedWorkroomStateStore;
     const state = (yield* store.load) ?? emptySignedWorkroomState(persistedAt);
     yield* validateSignedWorkroomState(state);
-    const requestDigest = digest(request);
+    const normalizedRelayUrls = yield* normalizeRelayPolicy(request.relayUrls);
+    const requestDigest = digest({ ...request, relayUrls: normalizedRelayUrls });
     const replay = state.idempotency[request.idempotencyKey];
     if (replay !== undefined) {
       if (replay.digest !== requestDigest) {
@@ -483,7 +730,7 @@ export const enqueueSignedWorkroomActivity = (
           activity: request.activity,
           canonicalPersistedAt: persistedAt,
           state: "pending",
-          relayUrls: [...new Set(request.relayUrls)].sort(),
+          relayUrls: normalizedRelayUrls,
           acceptedRelayUrls: [],
           deliveryAttempts: [],
           attemptCount: 0,

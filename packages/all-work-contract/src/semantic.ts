@@ -35,6 +35,8 @@ const capabilities = [
   "repository.claim.read",
   "repository.claim.execute",
   "workroom.activity.read",
+  "workroom.activity.prepare",
+  "workroom.activity.commit",
   "workroom.activity.enqueue",
   "workroom.activity.deliver",
   "workroom.activity.publish",

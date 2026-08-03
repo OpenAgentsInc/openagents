@@ -58,6 +58,21 @@
       "$ref": "#/$defs/SignedWorkroomReadResult"
     },
     {
+      "$ref": "#/$defs/SignedWorkroomActivityDraft"
+    },
+    {
+      "$ref": "#/$defs/SignedWorkroomPrepareRequest"
+    },
+    {
+      "$ref": "#/$defs/SignedWorkroomPreparation"
+    },
+    {
+      "$ref": "#/$defs/SignedWorkroomPrepareResult"
+    },
+    {
+      "$ref": "#/$defs/SignedWorkroomCommitRequest"
+    },
+    {
       "$ref": "#/$defs/SignedWorkroomEnqueueRequest"
     },
     {
@@ -2440,6 +2455,134 @@
         "revoked"
       ]
     },
+    "SignedWorkroomActivityDraft": {
+      "type": "object",
+      "title": "SignedWorkroomActivityDraft",
+      "properties": {
+        "projectionProfile": {
+          "$ref": "#/$defs/SignedWorkroomProjectionProfile"
+        },
+        "eventRef": {
+          "$ref": "#/$defs/SignedProjectionEventRef"
+        },
+        "signerPubkey": {
+          "$ref": "#/$defs/NostrPublicKey"
+        },
+        "actorRef": {
+          "$ref": "#/$defs/PrincipalRef"
+        },
+        "actorGrantRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DelegationGrantRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "actorGrantGeneration": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workroomRef": {
+          "$ref": "#/$defs/WorkroomRef"
+        },
+        "workRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/SignedWorkroomActivityKind"
+        },
+        "audience": {
+          "$ref": "#/$defs/WorkroomAudience"
+        },
+        "privacyClass": {
+          "$ref": "#/$defs/PrivacyClass"
+        },
+        "causalParentRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SignedProjectionEventRef"
+          },
+          "maxItems": 64
+        },
+        "revision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "generation": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "occurredAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "payloadDigest": {
+          "$ref": "#/$defs/ContractDigest"
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "maxItems": 256
+        },
+        "supersedesEventRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SignedProjectionEventRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revokesEventRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SignedProjectionEventRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "projectionProfile",
+        "eventRef",
+        "signerPubkey",
+        "actorRef",
+        "actorGrantRef",
+        "actorGrantGeneration",
+        "workroomRef",
+        "workRef",
+        "kind",
+        "audience",
+        "privacyClass",
+        "causalParentRefs",
+        "revision",
+        "generation",
+        "occurredAt",
+        "payloadDigest",
+        "evidenceRefs",
+        "supersedesEventRef",
+        "revokesEventRef"
+      ],
+      "additionalProperties": false
+    },
     "SignedWorkroomActivity": {
       "type": "object",
       "title": "SignedWorkroomActivity",
@@ -2778,6 +2921,179 @@
       },
       "required": [
         "ledger"
+      ],
+      "additionalProperties": false
+    },
+    "SignedWorkroomPrepareRequest": {
+      "type": "object",
+      "title": "SignedWorkroomPrepareRequest",
+      "properties": {
+        "idempotencyKey": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "effectivePrincipalRef": {
+          "$ref": "#/$defs/PrincipalRef"
+        },
+        "capabilityRef": {
+          "$ref": "#/$defs/CapabilityRef"
+        },
+        "signerPubkey": {
+          "$ref": "#/$defs/NostrPublicKey"
+        },
+        "workroomRef": {
+          "$ref": "#/$defs/WorkroomRef"
+        },
+        "workRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/SignedWorkroomActivityKind"
+        },
+        "audience": {
+          "$ref": "#/$defs/WorkroomAudience"
+        },
+        "privacyClass": {
+          "$ref": "#/$defs/PrivacyClass"
+        },
+        "causalParentRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SignedProjectionEventRef"
+          },
+          "maxItems": 64
+        },
+        "occurredAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "payloadDigest": {
+          "$ref": "#/$defs/ContractDigest"
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "maxItems": 256
+        },
+        "supersedesEventRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SignedProjectionEventRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revokesEventRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SignedProjectionEventRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "idempotencyKey",
+        "effectivePrincipalRef",
+        "capabilityRef",
+        "signerPubkey",
+        "workroomRef",
+        "workRef",
+        "kind",
+        "audience",
+        "privacyClass",
+        "causalParentRefs",
+        "occurredAt",
+        "payloadDigest",
+        "evidenceRefs",
+        "supersedesEventRef",
+        "revokesEventRef"
+      ],
+      "additionalProperties": false
+    },
+    "SignedWorkroomPreparation": {
+      "type": "object",
+      "title": "SignedWorkroomPreparation",
+      "properties": {
+        "preparationRef": {
+          "$ref": "#/$defs/ReceiptRef"
+        },
+        "expectedRevision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "activity": {
+          "$ref": "#/$defs/SignedWorkroomActivityDraft"
+        },
+        "unsignedEventJson": {
+          "$ref": "#/$defs/LongText"
+        },
+        "relayPolicyDigest": {
+          "$ref": "#/$defs/ContractDigest"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        }
+      },
+      "required": [
+        "preparationRef",
+        "expectedRevision",
+        "activity",
+        "unsignedEventJson",
+        "relayPolicyDigest",
+        "expiresAt"
+      ],
+      "additionalProperties": false
+    },
+    "SignedWorkroomPrepareResult": {
+      "type": "object",
+      "title": "SignedWorkroomPrepareResult",
+      "properties": {
+        "preparation": {
+          "$ref": "#/$defs/SignedWorkroomPreparation"
+        }
+      },
+      "required": [
+        "preparation"
+      ],
+      "additionalProperties": false
+    },
+    "SignedWorkroomCommitRequest": {
+      "type": "object",
+      "title": "SignedWorkroomCommitRequest",
+      "properties": {
+        "idempotencyKey": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "effectivePrincipalRef": {
+          "$ref": "#/$defs/PrincipalRef"
+        },
+        "capabilityRef": {
+          "$ref": "#/$defs/CapabilityRef"
+        },
+        "preparation": {
+          "$ref": "#/$defs/SignedWorkroomPreparation"
+        },
+        "signedEventJson": {
+          "$ref": "#/$defs/LongText"
+        }
+      },
+      "required": [
+        "idempotencyKey",
+        "effectivePrincipalRef",
+        "capabilityRef",
+        "preparation",
+        "signedEventJson"
       ],
       "additionalProperties": false
     },
@@ -4522,6 +4838,8 @@
         "repository.claim.read",
         "repository.claim.execute",
         "workroom.activity.read",
+        "workroom.activity.prepare",
+        "workroom.activity.commit",
         "workroom.activity.enqueue",
         "workroom.activity.deliver",
         "workroom.activity.publish",
@@ -4597,7 +4915,7 @@
           "items": {
             "$ref": "#/$defs/ProtocolCapability"
           },
-          "maxItems": 16
+          "maxItems": 32
         }
       },
       "required": [
@@ -4624,7 +4942,7 @@
           "items": {
             "$ref": "#/$defs/ProtocolCapability"
           },
-          "maxItems": 16
+          "maxItems": 32
         }
       },
       "required": [
@@ -5060,6 +5378,54 @@
           "type": "object",
           "properties": {
             "method": {
+              "const": "workroom.activity.prepare"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "params": {
+              "$ref": "#/$defs/SignedWorkroomPrepareRequest"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "workroom.activity.commit"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "params": {
+              "$ref": "#/$defs/SignedWorkroomCommitRequest"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
               "const": "workroom.activity.enqueue"
             },
             "id": {
@@ -5449,6 +5815,54 @@
           "type": "object",
           "properties": {
             "method": {
+              "const": "workroom.activity.prepare"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "result": {
+              "$ref": "#/$defs/SignedWorkroomPrepareResult"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "workroom.activity.commit"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "result": {
+              "$ref": "#/$defs/SignedWorkroomEnqueueResult"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
               "const": "workroom.activity.enqueue"
             },
             "id": {
@@ -5692,7 +6106,7 @@
     "profileVersion": "openagents.contract_profile.v1",
     "contractRef": "openagents.all_work_boundary.v1",
     "contractVersion": 1,
-    "definitionSha256": "513432ed4d7deee1a8511f59b86cc1958d33cc32b76b314ebb0b901500dfb56d",
+    "definitionSha256": "c6557022965ea9f92450fefcc7e3ef5eb77d43654280b611e9966b7a1fbbe26a",
     "owningDomain": "all_work_boundary",
     "authoritativeRuntime": "effect",
     "relationship": "projection",
@@ -5719,6 +6133,8 @@
       "source_authority_revision_and_cursor_are_monotonic_per_source",
       "receipt_verification_and_owner_disposition_do_not_imply_each_other",
       "signed_workroom_event_proves_signer_and_bytes_only",
+      "signed_workroom_preparation_owns_canonical_unsigned_bytes_and_relay_policy",
+      "signed_workroom_commit_accepts_only_the_exact_prepared_signed_event",
       "relay_acceptance_is_transport_evidence_only",
       "workroom_audience_and_privacy_are_closed_allowlist_compatible",
       "work_command_effective_principal_and_organization_are_explicit",
@@ -5839,6 +6255,7 @@
       "SignedWorkroomProjectionProfile": "structural_only",
       "SignedWorkroomActivityKind": "structural_only",
       "SignedWorkroomOutboxState": "structural_only",
+      "SignedWorkroomActivityDraft": "implemented",
       "SignedWorkroomActivity": "implemented",
       "SignedWorkroomDeliveryOutcome": "structural_only",
       "SignedWorkroomDeliveryAttempt": "structural_only",
@@ -5846,6 +6263,10 @@
       "SignedWorkroomLedger": "implemented",
       "SignedWorkroomReadRequest": "implemented",
       "SignedWorkroomReadResult": "implemented",
+      "SignedWorkroomPrepareRequest": "implemented",
+      "SignedWorkroomPreparation": "implemented",
+      "SignedWorkroomPrepareResult": "implemented",
+      "SignedWorkroomCommitRequest": "implemented",
       "SignedWorkroomEnqueueRequest": "implemented",
       "SignedWorkroomEnqueueReceipt": "structural_only",
       "SignedWorkroomEnqueueResult": "implemented",

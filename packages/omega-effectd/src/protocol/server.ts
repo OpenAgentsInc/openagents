@@ -11,7 +11,9 @@ import {
   decodeRepositoryClaimExecuteRequest,
   decodeRepositoryClaimReadRequest,
   decodeSignedWorkroomDeliveryRequest,
+  decodeSignedWorkroomCommitRequest,
   decodeSignedWorkroomEnqueueRequest,
+  decodeSignedWorkroomPrepareRequest,
   decodeSignedWorkroomPublishRequest,
   decodeSignedWorkroomReadRequest,
   decodeProtocolInitializeRequest,
@@ -78,8 +80,10 @@ import {
 } from "../engine/all-work-repository-claims.ts";
 import {
   bootstrapAllWorkSignedWorkroom,
+  commitAllWorkSignedWorkroom,
   deliverAllWorkSignedWorkroom,
   enqueueAllWorkSignedWorkroom,
+  prepareAllWorkSignedWorkroom,
   publishAllWorkSignedWorkroom,
   readAllWorkSignedWorkroom,
 } from "../engine/all-work-signed-workroom.ts";
@@ -1186,6 +1190,8 @@ export const createOmegaEffectdFramedServer = (
       }
       if (
         allWork.capabilities.includes("workroom.activity.read") ||
+        allWork.capabilities.includes("workroom.activity.prepare") ||
+        allWork.capabilities.includes("workroom.activity.commit") ||
         allWork.capabilities.includes("workroom.activity.enqueue") ||
         allWork.capabilities.includes("workroom.activity.deliver") ||
         allWork.capabilities.includes("workroom.activity.publish")
@@ -1601,6 +1607,78 @@ export const createOmegaEffectdFramedServer = (
           );
         }
       }
+      case "workroom.activity.prepare": {
+        if (!selectedAllWorkCapabilities.includes("workroom.activity.prepare")) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "incompatible_version",
+              "workroom.activity.prepare requires its negotiated omega-effectd.v2 capability.",
+            ),
+          );
+        }
+        try {
+          const params = decodeSignedWorkroomPrepareRequest(request.params ?? {});
+          const result = await Effect.runPromise(
+            prepareAllWorkSignedWorkroom(paths.dataRoot, params),
+          );
+          return respond(request.id, true, result);
+        } catch (error) {
+          const code =
+            error instanceof SignedWorkroomError
+              ? error.reason === "forbidden"
+                ? "forbidden"
+                : error.reason === "storage_unavailable" ||
+                    error.reason === "relay_policy_unavailable"
+                  ? "unavailable"
+                  : "conflict"
+              : "invalid_request";
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(code, "The signed Workroom preparation was refused."),
+          );
+        }
+      }
+      case "workroom.activity.commit": {
+        if (!selectedAllWorkCapabilities.includes("workroom.activity.commit")) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "incompatible_version",
+              "workroom.activity.commit requires its negotiated omega-effectd.v2 capability.",
+            ),
+          );
+        }
+        try {
+          const params = decodeSignedWorkroomCommitRequest(request.params ?? {});
+          const result = await Effect.runPromise(
+            commitAllWorkSignedWorkroom(paths.dataRoot, params),
+          );
+          return respond(request.id, true, result);
+        } catch (error) {
+          const code =
+            error instanceof SignedWorkroomError
+              ? error.reason === "forbidden"
+                ? "forbidden"
+                : error.reason === "storage_unavailable" ||
+                    error.reason === "relay_policy_unavailable"
+                  ? "unavailable"
+                  : "conflict"
+              : "invalid_request";
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(code, "The signed Workroom commit was refused."),
+          );
+        }
+      }
       case "workroom.activity.enqueue": {
         if (!selectedAllWorkCapabilities.includes("workroom.activity.enqueue")) {
           return respond(
@@ -1624,7 +1702,8 @@ export const createOmegaEffectdFramedServer = (
             error instanceof SignedWorkroomError
               ? error.reason === "forbidden"
                 ? "forbidden"
-                : error.reason === "storage_unavailable"
+                : error.reason === "storage_unavailable" ||
+                    error.reason === "relay_policy_unavailable"
                   ? "unavailable"
                   : "conflict"
               : "invalid_request";

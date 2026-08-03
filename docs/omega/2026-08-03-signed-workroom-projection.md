@@ -1,7 +1,7 @@
 # Signed Workroom projection boundary
 
 The generated All Work contract now carries signed Workroom activity, durable
-outbox records, a ledger, and read/enqueue requests and receipts. Activity
+outbox records, a ledger, and read/prepare/commit/enqueue requests and receipts. Activity
 preserves signer, Nostr event identity and signature, actor, optional actor
 grant and generation, Workroom and Work, audience/privacy, causal parents,
 generation, and supersession or revocation.
@@ -14,6 +14,19 @@ generation, exact occurrence timestamp, payload digest, causal parents,
 evidence, optional actor grant and grant generation, supersession, and
 revocation. The authority recomputes the SHA-256
 event ID and verifies its BIP-340 Schnorr signature.
+
+The external signing lane is two phase. `workroom.activity.prepare` accepts a
+bounded projection intent and the enrolled signer public key. OpenAgents, not
+the client, assigns the canonical event ref, ledger revision, generation,
+direct actor, v2 profile, exact unsigned NIP-01 JSON, preparation expiry, and a
+digest of the configured relay policy. The client signs those exact bytes in
+its own custody. `workroom.activity.commit` accepts the returned preparation
+and signed event JSON, recomputes the preparation ref, relay-policy digest,
+unsigned template, and event ID, then verifies the signature through normal
+admission before it calls the persist-before-publish reducer. A substituted
+tag, content byte, author, kind, timestamp, event ID, signature, principal,
+relay policy, or expired preparation fails closed. Private key material never
+crosses the process boundary.
 
 | Activity kind    | Nostr kind |
 | ---------------- | ---------: |
@@ -51,6 +64,15 @@ Effective Principal and enqueue capability, a closed audience/privacy match,
 known causal parents, advancing generations, and unique event/idempotency
 identities. It persists the exact signed projection and relay targets in a
 pending canonical outbox before publication.
+
+The first generated prepare/commit profile admits direct enrolled Nostr
+principals only. Non-human actor signing still requires the separate
+authoritative grant resolver and provisioning path; the client cannot attach a
+grant through this direct lane. omega-effectd reads its server-owned relay set
+from `OPENAGENTS_OMEGA_SIGNED_WORKROOM_RELAYS` as a comma-separated list of one
+to sixteen distinct `wss://` targets. An absent or invalid policy makes prepare
+and commit unavailable. The legacy enqueue method also replaces client relay
+input with that configured set before reduction.
 
 Every decoded durable state is revalidated before read-side use or mutation.
 The ledger revision must reconcile with unique canonical event identities,
@@ -99,6 +121,6 @@ The lower-level `workroom.activity.deliver` reducer remains an internal
 transport-fact boundary. Relay acceptance remains transport evidence only, and a revision race
 after publication fails closed so a later retry can reconcile the durable row.
 
-The remaining OAW-009 work includes Omega grant provisioning, enqueue/publish
-UI, and installed two-client outage/replay
+The remaining OAW-009 work includes Omega consumption through enrolled custody,
+non-human grant provisioning, and installed two-client outage/replay
 falsifiers. Test execution is deferred to the final omega#208 build gate.

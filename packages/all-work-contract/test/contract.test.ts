@@ -173,6 +173,68 @@ describe("OpenAgents All Work generated boundary", () => {
     ).toThrow();
   });
 
+  it("negotiates two-phase Workroom signing without moving custody or relay policy to clients", () => {
+    const negotiated = Effect.runSync(
+      negotiateAllWorkProtocol({
+        supportedVersions: ["omega-effectd.v2"],
+        requestedCapabilities: ["workroom.activity.prepare", "workroom.activity.commit"],
+      }),
+    );
+    expect(negotiated.capabilities).toEqual([
+      "workroom.activity.prepare",
+      "workroom.activity.commit",
+    ]);
+    expect(
+      parseWorkReadRequestFrame({
+        method: "workroom.activity.prepare",
+        id: "prepare-1",
+        version: "omega-effectd.v2",
+        params: {
+          idempotencyKey: "prepare-workroom-1",
+          effectivePrincipalRef: `principal:nostr:${"1".repeat(64)}`,
+          capabilityRef: "capability:workroom-activity:prepare",
+          signerPubkey: "1".repeat(64),
+          workroomRef: "workroom:omega:208",
+          workRef: "work:github:openagentsinc-omega:216",
+          kind: "thread",
+          audience: "workroom",
+          privacyClass: "workroom",
+          causalParentRefs: [],
+          occurredAt: "2026-08-03T10:00:00Z",
+          payloadDigest: "d".repeat(64),
+          evidenceRefs: [],
+          supersedesEventRef: null,
+          revokesEventRef: null,
+        },
+      }),
+    ).toMatchObject({ method: "workroom.activity.prepare" });
+    expect(() =>
+      parseWorkReadRequestFrame({
+        method: "workroom.activity.prepare",
+        id: "prepare-relay-forged",
+        version: "omega-effectd.v2",
+        params: {
+          idempotencyKey: "prepare-workroom-forged",
+          effectivePrincipalRef: `principal:nostr:${"1".repeat(64)}`,
+          capabilityRef: "capability:workroom-activity:prepare",
+          signerPubkey: "1".repeat(64),
+          workroomRef: "workroom:omega:208",
+          workRef: null,
+          kind: "thread",
+          audience: "workroom",
+          privacyClass: "workroom",
+          causalParentRefs: [],
+          occurredAt: "2026-08-03T10:00:00Z",
+          payloadDigest: "d".repeat(64),
+          evidenceRefs: [],
+          supersedesEventRef: null,
+          revokesEventRef: null,
+          relayUrls: ["wss://hostile.example"],
+        },
+      }),
+    ).toThrow();
+  });
+
   it("enforces same-identity Issue projection semantics outside generated structure", () => {
     const snapshot = parseWorkSnapshot(readJson("fixtures/valid/work-snapshot.json"));
     expect(Effect.runSyncExit(validateWorkSnapshotSemantics(snapshot))._tag).toBe("Success");
