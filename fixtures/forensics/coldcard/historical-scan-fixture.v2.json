@@ -1,0 +1,246 @@
+{
+  "bundles": [
+    {
+      "bundleDigest": "sha256:02e9bab52deaccdb4225e640b9831a537a3cba6aa7f9080e117e75d070886005",
+      "bundleFile": "historical-bundle-960189.v1.json.gz",
+      "canonicalBytesDigest": "sha256:c83515b593982554c5774c983504e763596c82aa4f21385f1cefd3563a256637",
+      "compressedBytesDigest": "sha256:3cb90855d940abbf82a5d9e707a658009e78023c2521bf158f14bb01169f03f2",
+      "definition": {
+        "allowedSequences": [
+          4294967293,
+          4294967295
+        ],
+        "definitionRef": "fingerprint.coldcard.transaction-builder.narrowed.960189-960189",
+        "eligibleInputTypes": [
+          "p2wpkh",
+          "p2sh_p2wpkh",
+          "p2pkh"
+        ],
+        "feeRateMaximum": 1000,
+        "feeRateMinimum": 1,
+        "fixedOverheadVbytes": 42,
+        "inputVbytes": {
+          "p2pkh": 148,
+          "p2sh_p2wpkh": 91,
+          "p2wpkh": 68
+        },
+        "knownPositiveControls": [
+          {
+            "expectedFeeRateSatsPerVbyte": 30,
+            "transactionRef": "transaction.2fe075cf0ec799f3529ed6a28e0a08b45fe1fc9bd93c3f33bdbc42d5bff4f736"
+          }
+        ],
+        "mutationControls": [
+          {
+            "fixedOverheadVbytesDelta": 1,
+            "mutationRef": "mutation.fee-table.overhead-plus-one"
+          },
+          {
+            "fixedOverheadVbytesDelta": -1,
+            "mutationRef": "mutation.fee-table.overhead-minus-one"
+          }
+        ],
+        "negativeControlBlockRefs": [],
+        "requiredLocktime": 0,
+        "requiredOutputCount": 1,
+        "requiredOutputScriptType": "p2wpkh",
+        "requiredVersion": 2,
+        "revisionDigest": "sha256:9447eef3f4e5de95d7eb4f2e98f36f4af4d4f93523a85d8458d2c126036744fe"
+      },
+      "endHeight": 960189,
+      "reportRef": "report.coldcard.historical.960189-960189",
+      "startHeight": 960189
+    },
+    {
+      "bundleDigest": "sha256:ea72db0f93927b3a93cf8ed6f791b499996ee0cb8a946cb00e643b761ff078ad",
+      "bundleFile": "historical-bundle-960359.v1.json.gz",
+      "canonicalBytesDigest": "sha256:50f997ff8ded77182f7de4d0b9532501820b98f0217d28bcce403a20a2a4181e",
+      "compressedBytesDigest": "sha256:7a839133b577d785bb7874279da672e6a4da9f6a4f89cfd6673a7ee1c1a3c3a9",
+      "definition": {
+        "allowedSequences": [
+          4294967293,
+          4294967295
+        ],
+        "definitionRef": "fingerprint.coldcard.transaction-builder.narrowed.960359-960359",
+        "eligibleInputTypes": [
+          "p2wpkh",
+          "p2sh_p2wpkh",
+          "p2pkh"
+        ],
+        "feeRateMaximum": 1000,
+        "feeRateMinimum": 1,
+        "fixedOverheadVbytes": 42,
+        "inputVbytes": {
+          "p2pkh": 148,
+          "p2sh_p2wpkh": 91,
+          "p2wpkh": 68
+        },
+        "knownPositiveControls": [
+          {
+            "expectedFeeRateSatsPerVbyte": 2,
+            "transactionRef": "transaction.44e622cb32d9e65a99b727f87744ac6d0a5d0c1f4cfdd8af399771502e7ad3f3"
+          }
+        ],
+        "mutationControls": [
+          {
+            "fixedOverheadVbytesDelta": 1,
+            "mutationRef": "mutation.fee-table.overhead-plus-one"
+          },
+          {
+            "fixedOverheadVbytesDelta": -1,
+            "mutationRef": "mutation.fee-table.overhead-minus-one"
+          }
+        ],
+        "negativeControlBlockRefs": [],
+        "requiredLocktime": 0,
+        "requiredOutputCount": 1,
+        "requiredOutputScriptType": "p2wpkh",
+        "requiredVersion": 2,
+        "revisionDigest": "sha256:9447eef3f4e5de95d7eb4f2e98f36f4af4d4f93523a85d8458d2c126036744fe"
+      },
+      "endHeight": 960359,
+      "reportRef": "report.coldcard.historical.960359-960359",
+      "startHeight": 960359
+    },
+    {
+      "bundleDigest": "sha256:83758b49a99005a44ad529ee0d5d87d1b8dadd643544b865c7a80e9df24400ee",
+      "bundleFile": "historical-bundle-960365-960367.v1.json.gz",
+      "canonicalBytesDigest": "sha256:1a91cd81c5266008d382b18ba4677b70d682582f9b713365ef3cac62c50dedb6",
+      "compressedBytesDigest": "sha256:13fe226330160999c5f6f605eb5cc16ba1b81b3414fbca94774aff166af394f9",
+      "definition": {
+        "allowedSequences": [
+          4294967293,
+          4294967295
+        ],
+        "definitionRef": "fingerprint.coldcard.transaction-builder.narrowed.960365-960367",
+        "eligibleInputTypes": [
+          "p2wpkh",
+          "p2sh_p2wpkh",
+          "p2pkh"
+        ],
+        "feeRateMaximum": 1000,
+        "feeRateMinimum": 1,
+        "fixedOverheadVbytes": 42,
+        "inputVbytes": {
+          "p2pkh": 148,
+          "p2sh_p2wpkh": 91,
+          "p2wpkh": 68
+        },
+        "knownPositiveControls": [
+          {
+            "expectedFeeRateSatsPerVbyte": 2,
+            "transactionRef": "transaction.04ebdc774df620036326142769e7ab79d3af33fc52537daf88daeece225e50ed"
+          },
+          {
+            "expectedFeeRateSatsPerVbyte": 2,
+            "transactionRef": "transaction.10f1fefdfa767d3bf191a0f67cd8374171b3f45f532348d1ac0b5f1247145931"
+          },
+          {
+            "expectedFeeRateSatsPerVbyte": 2,
+            "transactionRef": "transaction.528e31f9279d3c938d7caf36b8760628d394c334e85371c843b213387c0ed08d"
+          },
+          {
+            "expectedFeeRateSatsPerVbyte": 2,
+            "transactionRef": "transaction.5f2231199a86a3ebb07187a568ecdd0f57973aec71bf5a0c0da974f650bce17c"
+          },
+          {
+            "expectedFeeRateSatsPerVbyte": 2,
+            "transactionRef": "transaction.ac2bcaced5ea0cab2c30fbff5f96d90958cbe8453f5811af35fe42dce02958bb"
+          },
+          {
+            "expectedFeeRateSatsPerVbyte": 2,
+            "transactionRef": "transaction.d317749b5734a5d484e9d97f3df1067945a09ea52abcc3f3284a0c88bde9b848"
+          }
+        ],
+        "mutationControls": [
+          {
+            "fixedOverheadVbytesDelta": 1,
+            "mutationRef": "mutation.fee-table.overhead-plus-one"
+          },
+          {
+            "fixedOverheadVbytesDelta": -1,
+            "mutationRef": "mutation.fee-table.overhead-minus-one"
+          }
+        ],
+        "negativeControlBlockRefs": [],
+        "requiredLocktime": 0,
+        "requiredOutputCount": 1,
+        "requiredOutputScriptType": "p2wpkh",
+        "requiredVersion": 2,
+        "revisionDigest": "sha256:9447eef3f4e5de95d7eb4f2e98f36f4af4d4f93523a85d8458d2c126036744fe"
+      },
+      "endHeight": 960367,
+      "reportRef": "report.coldcard.historical.960365-960367",
+      "startHeight": 960365
+    }
+  ],
+  "capability": {
+    "arbitraryEndpointAllowed": false,
+    "capabilityRef": "capability.bitcoin-core.read-only.oa-bitcoind",
+    "externalIpVisibleToGuest": false,
+    "guestNetwork": "none",
+    "methods": [
+      "getblockchaininfo",
+      "getblockhash",
+      "getblock",
+      "getrawtransaction"
+    ],
+    "nodeIdentityDigest": "sha256:0c1caf9187ea987c8bd4c2adc681aee656704423117c7cf1bc3ee255bec58dd5",
+    "schema": "openagents.private_bitcoin_core_capability.v1",
+    "secretDelivery": "broker_bound_not_guest_visible",
+    "serverBindingRef": "binding.bitcoin-core.oa-bitcoind.private",
+    "walletRpcAllowed": false
+  },
+  "narrowedRevision": {
+    "allowedSequences": [
+      4294967293,
+      4294967295
+    ],
+    "eligibleInputTypes": [
+      "p2wpkh",
+      "p2sh_p2wpkh",
+      "p2pkh"
+    ],
+    "feeRateMaximum": 1000,
+    "feeRateMinimum": 1,
+    "fixedOverheadVbytes": 42,
+    "inputVbytes": {
+      "p2pkh": 148,
+      "p2sh_p2wpkh": 91,
+      "p2wpkh": 68
+    },
+    "requiredLocktime": 0,
+    "requiredOutputCount": 1,
+    "requiredOutputScriptType": "p2wpkh",
+    "requiredVersion": 2,
+    "ruleRef": "fingerprint.coldcard.transaction-builder.narrowed.v1",
+    "uniformInputType": true
+  },
+  "publishedRevision": {
+    "coinbaseExcluded": true,
+    "eligibleInputTypes": [
+      "p2wpkh",
+      "p2sh_p2wpkh",
+      "p2pkh"
+    ],
+    "feeRateMaximum": 1000,
+    "feeRateMinimum": 1,
+    "fixedOverheadVbytes": 42,
+    "inputVbytes": {
+      "p2pkh": 148,
+      "p2sh_p2wpkh": 91,
+      "p2wpkh": 68
+    },
+    "requiredLocktime": 0,
+    "ruleRef": "fingerprint.coldcard.transaction-builder.published.v1"
+  },
+  "schema": "openagents.coldcard_historical_scan_fixture.v2",
+  "workerProfile": {
+    "extractorDigest": "sha256:d5341d664b7c5558004bf24422ed17f37763f50318eb5bd79e9fff0a2724f27a",
+    "extractorPath": "fixtures/forensics/coldcard/extract-historical-bundle.py",
+    "nodeInstance": "oa-bitcoind",
+    "runtime": "node",
+    "sourceIdentityDigest": "sha256:0c1caf9187ea987c8bd4c2adc681aee656704423117c7cf1bc3ee255bec58dd5"
+  },
+  "workerProfileDigest": "sha256:b1dd2849be29367d9c2fc8a18bb116047787332b9c740fdfc5789a4bdb6cc7c5"
+}

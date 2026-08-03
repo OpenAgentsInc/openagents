@@ -160,8 +160,13 @@ Self-test first, per OFR-016: **all eight published known-positive vectors
 reproduce** — seven at exactly 2 sat/vB, one at exactly 30 sat/vB. No wide scan
 was allowed to run until that passed.
 
-Raw artifacts (currently node-local at `/var/tmp/ccscan`, and the first thing
-§5.1 should freeze into a content-addressed bundle):
+Raw artifacts. These were node-local when this section was written. They are
+now frozen content-addressed in Cloud Storage under
+`gs://openagentsgemini-oa-artifacts/forensics/coldcard/ofr-016/wide-scan-2026-08-01/sha256-<digest>/`,
+and the per-block eligibility and match counts they fold to are checked into
+the repository as `fixtures/forensics/coldcard/historical-wide-scan-ledger.v1.json`,
+where the §9.1 table below is recomputed from the retained counts rather than
+asserted:
 
 | File | SHA-256 |
 | --- | --- |
@@ -485,9 +490,12 @@ already owned.
 
 Three follow-ups, in priority order:
 
-1. **Freeze the artifacts.** The raw hits in §9 live in node-local scratch and
-   should become content-addressed bundles with their block-hash checkpoints, so
-   the measurement survives the machine.
+1. ~~**Freeze the artifacts.**~~ Done 2026-08-03 under OFR-016. The raw hit and
+   per-block stat files are content-addressed in Cloud Storage, the 1,701-block
+   per-block ledger with its block hashes is checked into the repository, and
+   blocks 960,189 / 960,359 / 960,365-960,367 are frozen as content-addressed
+   bundles carrying all eight published known positives. The measurement no
+   longer depends on the machine.
 2. **Reconcile the overshoot discrepancy.** Either the published mechanism is
    overstated or the reference size table differs from the documented one. It is
    cheap to settle and it affects how the fingerprint is described.

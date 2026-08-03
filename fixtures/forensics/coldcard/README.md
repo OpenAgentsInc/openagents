@@ -39,11 +39,30 @@ The pack contains:
   drift and proves nothing about the target's generator.
   `admitColdcardGeneratorEvidence` refuses the file. It contains no mnemonic,
   xprv, or live value oracle input; and
-- `historical-scan-fixture.v1.json`: a content-addressed four-block synthetic
-  bundle with one frozen positive, one negative range, one wider collision,
-  exact satoshi fees, a private read-only capability, and resumable checkpoints.
-  It contains no RPC endpoint, cookie, credential, wallet method, or live-wallet
-  query; and
+- `historical-scan-fixture.v2.json` plus the three
+  `historical-bundle-*.v1.json.gz` files: **frozen mainnet chain data**, not a
+  synthetic scenario. Blocks 960,189, 960,359, and 960,365-960,367 were
+  extracted read-only from our own archival Bitcoin Core node (`oa-bitcoind`,
+  unpruned, `txindex=1`, `disablewallet=1`) with
+  `extract-historical-bundle.py`, using only `getblockchaininfo`,
+  `getblockhash`, `getblock`, and `getrawtransaction`. Between them the blocks
+  carry all eight known-positive transactions the Coldcard postmortem
+  published; the fixture pins each bundle's content digest, its uncompressed
+  canonical-byte digest, and its compressed-byte digest, so the checked-in
+  bytes cannot drift from what the node answered. The capability record holds
+  no RPC endpoint, cookie, credential, wallet method, external IP, or
+  live-wallet query — only an opaque node-identity digest and server binding
+  ref; and
+- `historical-wide-scan-ledger.v1.json`: the per-block record of the
+  1,701-block, 7,122,744-transaction scan run on the same node on 2026-08-01,
+  with the block hash, eligible-transaction count, match count, and
+  prevout-error count for every block, folded into three eras and a fee-rate
+  histogram. Its per-million figures are recomputed from those counts rather
+  than asserted, and each era pins the digest of the append-only raw artifact
+  it was folded from; and
+- `extract-historical-bundle.py`: the read-only extractor that produced the
+  bundles. Exact integer satoshi arithmetic throughout, no float, no wallet
+  RPC, no node credential in its output; and
 - `historical-import.v1.json`: Episode 264 Arm A as
   `completed_incomplete` and Arm B as an unverified `source_observed` hit.
 - `evidence-derivation-fixture.v1.json`: synthetic victim-report, published-
@@ -72,6 +91,35 @@ Schemas reject any suite that also places one of those refs in its source or
 evaluator inputs. Coldcard and its visible variants remain optimizer-visible
 development data. The two evaluator-only holdout descriptors have different
 owners and digests and contain no Coldcard arm refs.
+
+## Frozen chain evidence, and what it cannot carry
+
+The bundles and the wide-scan ledger are real mainnet data, which changes what
+a green test proves and what it does not.
+
+It proves that the published fingerprint reproduces from chain bytes nobody in
+this repository controls, that a one-vbyte perturbation of the fee table
+destroys every published positive, and that the false-match denominator is high
+enough to bound what the fingerprint can support: 2,820-6,154 per million at
+2 sat/vB and 24-701 per million at 30 sat/vB.
+
+It does not prove that any matched transaction is a theft, an attacker
+transaction, or connected to Coldcard at all. Every match is a program-
+similarity candidate. The claim ceiling on every report and on the ledger is
+`program_similarity_only`, and it is the schema that enforces it.
+
+The three bundles are scanned under a *narrowed* fingerprint revision (version
+2, single P2WPKH output, uniform table-listed input type, observed sequences).
+The wide-scan ledger was produced under the *published* revision, which applies
+only the non-coinbase, zero-locktime, table-typed, exact-integer-rate rule.
+Both revision objects are carried in `historical-scan-fixture.v2.json` and both
+digests are bound to the artifacts that used them, so the two numbers are never
+silently compared.
+
+The raw append-only hit files behind the ledger are 62 MB and stay out of the
+repository. They are frozen content-addressed under
+`gs://openagentsgemini-oa-artifacts/forensics/coldcard/ofr-016/`, keyed by the
+same SHA-256 digests the ledger records.
 
 The historical import deliberately has no numeric wall-time or token value:
 the source record did not preserve them. `unavailable` carries a reason and no

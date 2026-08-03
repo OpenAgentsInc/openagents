@@ -14,6 +14,8 @@ export const HISTORICAL_SCAN_REPORT_VERSION =
   "openagents.historical_fingerprint_scan_report.v1" as const;
 export const PRIVATE_BITCOIN_CORE_CAPABILITY_VERSION =
   "openagents.private_bitcoin_core_capability.v1" as const;
+export const HISTORICAL_WIDE_SCAN_LEDGER_VERSION =
+  "openagents.historical_wide_scan_ledger.v1" as const;
 
 const SatoshiString = S.String.check(S.isPattern(/^(?:0|[1-9][0-9]*)$/));
 const OpaqueServerBindingRef = S.String.check(S.isPattern(/^binding\.[A-Za-z0-9][A-Za-z0-9._-]*$/));
@@ -129,6 +131,28 @@ export const HistoricalBlockBundleSchema = S.Struct({
   .annotate({ identifier: "HistoricalBlockBundle" });
 export type HistoricalBlockBundle = typeof HistoricalBlockBundleSchema.Type;
 
+/**
+ * A fee-table mutation control.
+ *
+ * A block-range negative control cannot discriminate on real chain data: the
+ * exact-integer fee rule fires somewhere in essentially every mainnet block, so
+ * "this block contains no hit" is either unsatisfiable or fitted. The control
+ * that does discriminate perturbs the fee table itself. If the published
+ * fingerprint is a real property of the transaction builder rather than an
+ * arithmetic coincidence, shifting the fixed overhead by a single vbyte must
+ * stop every known positive from reproducing its expected rate.
+ */
+export const HistoricalMutationControlSchema = S.Struct({
+  fixedOverheadVbytesDelta: S.Number.check(
+    S.isInt(),
+    S.makeFilter((delta) => delta !== 0, {
+      message: "a mutation control must actually perturb the fee table",
+    }),
+  ),
+  mutationRef: ForensicRef,
+});
+export type HistoricalMutationControl = typeof HistoricalMutationControlSchema.Type;
+
 export const HistoricalFingerprintDefinitionSchema = S.Struct({
   allowedSequences: S.Array(NonNegativeInteger).check(S.isMinLength(1), S.isMaxLength(16)),
   definitionRef: ForensicRef,
@@ -147,7 +171,11 @@ export const HistoricalFingerprintDefinitionSchema = S.Struct({
   knownPositiveControls: S.Array(
     S.Struct({ expectedFeeRateSatsPerVbyte: PositiveInteger, transactionRef: ForensicRef }),
   ).check(S.isMinLength(1), S.isMaxLength(256)),
-  negativeControlBlockRefs: S.Array(ForensicRef).check(S.isMinLength(1), S.isMaxLength(256)),
+  mutationControls: S.Array(HistoricalMutationControlSchema).check(
+    S.isMinLength(1),
+    S.isMaxLength(8),
+  ),
+  negativeControlBlockRefs: S.Array(ForensicRef).check(S.isMaxLength(256)),
   requiredLocktime: NonNegativeInteger,
   requiredOutputCount: PositiveInteger,
   requiredOutputScriptType: S.Literal("p2wpkh"),
@@ -222,6 +250,25 @@ export const HistoricalBaseRateSchema = S.Struct({
 );
 export type HistoricalBaseRate = typeof HistoricalBaseRateSchema.Type;
 
+export const HistoricalMutationControlResultSchema = S.Struct({
+  bundleHits: NonNegativeInteger,
+  fixedOverheadVbytesDelta: S.Number.check(S.isInt()),
+  knownPositiveSurvivors: NonNegativeInteger,
+  mutationRef: ForensicRef,
+  status: S.Literals(["passed", "failed"]),
+}).pipe(
+  S.check(
+    S.makeFilter(
+      (result) => (result.status === "passed") === (result.knownPositiveSurvivors === 0),
+      {
+        message:
+          "a mutation control passes exactly when no known positive survives the perturbed fee table",
+      },
+    ),
+  ),
+);
+export type HistoricalMutationControlResult = typeof HistoricalMutationControlResultSchema.Type;
+
 export const HistoricalFingerprintScanReportSchema = S.Struct({
   schema: S.Literal(HISTORICAL_SCAN_REPORT_VERSION),
   baseRates: S.Array(HistoricalBaseRateSchema).check(S.isMaxLength(10_000)),
@@ -232,6 +279,8 @@ export const HistoricalFingerprintScanReportSchema = S.Struct({
   expensiveResolutionRefs: S.Array(ForensicRef).check(S.isMaxLength(1_000_000)),
   fingerprintRevisionDigest: Sha256Digest,
   missingDataRefs: S.Array(ForensicRef).check(S.isMaxLength(1_000_000)),
+  mutationControlResults: S.Array(HistoricalMutationControlResultSchema).check(S.isMaxLength(8)),
+  mutationControlStatus: S.Literals(["passed", "failed", "not_run"]),
   negativeControlStatus: S.Literals(["passed", "failed", "not_run"]),
   normalizedOutputDigest: Sha256Digest,
   outcome: S.Literals(["succeeded", "failed", "inconclusive"]),
@@ -277,9 +326,20 @@ export const HistoricalFingerprintScanReportSchema = S.Struct({
       ),
       S.makeFilter(
         (report) =>
+          report.mutationControlResults.length === 0
+            ? report.mutationControlStatus === "not_run"
+            : report.mutationControlStatus ===
+              (report.mutationControlResults.every((result) => result.status === "passed")
+                ? "passed"
+                : "failed"),
+        { message: "mutation control status must fold its per-mutation results" },
+      ),
+      S.makeFilter(
+        (report) =>
           report.outcome !== "succeeded" ||
           (report.selfTestStatus === "passed" &&
-            report.negativeControlStatus === "passed" &&
+            report.mutationControlStatus === "passed" &&
+            report.negativeControlStatus !== "failed" &&
             report.missingDataRefs.length === 0 &&
             report.cheapCandidateRefs.length === report.expensiveResolutionRefs.length &&
             report.cheapCandidateRefs.every(
@@ -303,6 +363,7 @@ const inputVbytes = (
 const cheapMatch = (
   transaction: HistoricalScanTransaction,
   definition: HistoricalFingerprintDefinition,
+  fixedOverheadVbytesDelta = 0,
 ):
   | Readonly<{ estimatedVbytes: number; feeRate: number; inputType: HistoricalRawHit["inputType"] }>
   | undefined => {
@@ -322,7 +383,10 @@ const cheapMatch = (
     return undefined;
   if (!definition.eligibleInputTypes.includes(inputType)) return undefined;
   const estimatedVbytes =
-    definition.fixedOverheadVbytes + inputVbytes(definition, inputType) * transaction.inputs.length;
+    definition.fixedOverheadVbytes +
+    fixedOverheadVbytesDelta +
+    inputVbytes(definition, inputType) * transaction.inputs.length;
+  if (estimatedVbytes <= 0) return undefined;
   const fee = BigInt(transaction.feeSats);
   const estimate = BigInt(estimatedVbytes);
   if (fee <= 0n || fee % estimate !== 0n) return undefined;
@@ -365,6 +429,38 @@ const rawHit = (
 
 const blockRef = (block: HistoricalScanBlock): string => `block.${block.height}`;
 
+/**
+ * Raw hits are appended in block-then-transaction order, but the report and
+ * every checkpoint digest must be independent of the order a particular run
+ * happened to walk. Real blocks carry many hits each, so without this a resume
+ * rebuilt the same hits in a different order and its checkpoint digest stopped
+ * matching. Canonicalise once, and both the live scan and the resumed scan
+ * commit to the same bytes.
+ */
+const canonicalHits = (hits: ReadonlyArray<HistoricalRawHit>): Array<HistoricalRawHit> =>
+  [...new Map(hits.map((hit) => [hit.txid, hit])).values()].toSorted(
+    (left, right) =>
+      left.blockHeight - right.blockHeight || left.txid.localeCompare(right.txid),
+  );
+
+/**
+ * The denominator has to be the population the fingerprint could actually have
+ * selected. This is the same eligibility predicate `cheapMatch` applies before
+ * it looks at a fee, so a base rate cannot be diluted by transactions the rule
+ * was never able to match.
+ */
+const eligibleInputType = (
+  transaction: HistoricalScanTransaction,
+  definition: HistoricalFingerprintDefinition,
+): HistoricalRawHit["inputType"] | undefined => {
+  const observed = new Set(transaction.inputs.map((input) => input.inputType));
+  if (observed.size !== 1) return undefined;
+  const inputType = transaction.inputs[0]?.inputType;
+  if (inputType !== "p2wpkh" && inputType !== "p2sh_p2wpkh" && inputType !== "p2pkh")
+    return undefined;
+  return definition.eligibleInputTypes.includes(inputType) ? inputType : undefined;
+};
+
 const baseRates = (
   blocks: ReadonlyArray<HistoricalScanBlock>,
   hits: ReadonlyArray<HistoricalRawHit>,
@@ -384,9 +480,9 @@ const baseRates = (
   for (const block of blocks) {
     const eraRef = `era.block-${Math.floor(block.height / 100_000) * 100_000}`;
     for (const transaction of block.transactions) {
+      const inputType = eligibleInputType(transaction, definition);
+      if (inputType === undefined) continue;
       const match = cheapMatch(transaction, definition);
-      const inputType = transaction.inputs[0]?.inputType;
-      if (inputType !== "p2wpkh" && inputType !== "p2sh_p2wpkh" && inputType !== "p2pkh") continue;
       const feeRateRef = match === undefined ? "fee-rate.non-match" : `fee-rate.${match.feeRate}`;
       const key = `${eraRef}|${feeRateRef}|${inputType}`;
       const current = strata.get(key) ?? {
@@ -460,7 +556,7 @@ export const runHistoricalFingerprintScan = (
     if (
       block?.blockHash !== lastCheckpoint.blockHash ||
       lastCheckpoint.fingerprintRevisionDigest !== definition.revisionDigest ||
-      lastCheckpoint.rawHitsDigest !== forensicSha256Digest(rawHits)
+      lastCheckpoint.rawHitsDigest !== forensicSha256Digest(canonicalHits(rawHits))
     )
       throw new Error(
         "resume checkpoint does not bind the current bundle, fingerprint, and raw hits",
@@ -489,11 +585,15 @@ export const runHistoricalFingerprintScan = (
       expensiveResolutionRefs: [],
       fingerprintRevisionDigest: definition.revisionDigest,
       missingDataRefs: ["missing.self-test-positive"],
+      mutationControlResults: [],
+      mutationControlStatus: "not_run",
       negativeControlStatus: "not_run",
-      normalizedOutputDigest: forensicSha256Digest(rawHits.map((hit) => hit.txid).toSorted()),
+      normalizedOutputDigest: forensicSha256Digest(
+        canonicalHits(rawHits).map((hit) => hit.txid).toSorted(),
+      ),
       outcome: "failed",
-      rawHits,
-      rawHitsDigest: forensicSha256Digest(rawHits),
+      rawHits: canonicalHits(rawHits),
+      rawHitsDigest: forensicSha256Digest(canonicalHits(rawHits)),
       reportRef: input.reportRef,
       scannedTransactions: 0,
       selfTestStatus: "failed",
@@ -531,7 +631,7 @@ export const runHistoricalFingerprintScan = (
       completedHeight: block.height,
       fingerprintRevisionDigest: definition.revisionDigest,
       ...(priorCheckpointDigest === undefined ? {} : { priorCheckpointDigest }),
-      rawHitsDigest: forensicSha256Digest(rawHits),
+      rawHitsDigest: forensicSha256Digest(canonicalHits(rawHits)),
     };
     const checkpoint = strictDecode(HistoricalScanCheckpointSchema, {
       ...checkpointValue,
@@ -541,15 +641,53 @@ export const runHistoricalFingerprintScan = (
     priorCheckpointDigest = checkpoint.checkpointDigest;
   }
 
+  const bundleBlockRefs = new Set(bundle.blocks.map(blockRef));
   const negativeRefs = new Set(definition.negativeControlBlockRefs);
-  const negativeControlFailed = rawHits.some((hit) => {
-    const block = bundle.blocks.find((candidate) => candidate.height === hit.blockHeight);
-    return block !== undefined && negativeRefs.has(blockRef(block));
-  });
-  const deduplicatedHits = [...new Map(rawHits.map((hit) => [hit.txid, hit])).values()].sort(
-    (left, right) => left.blockHeight - right.blockHeight || left.txid.localeCompare(right.txid),
+  // A declared negative control that the bundle does not contain can never be
+  // observed, so it must fail rather than pass by silence.
+  const unresolvedNegativeControl = [...negativeRefs].some(
+    (reference) => !bundleBlockRefs.has(reference),
   );
-  const outcome = missingDataRefs.length > 0 || negativeControlFailed ? "failed" : "succeeded";
+  const negativeControlFailed =
+    unresolvedNegativeControl ||
+    rawHits.some((hit) => {
+      const block = bundle.blocks.find((candidate) => candidate.height === hit.blockHeight);
+      return block !== undefined && negativeRefs.has(blockRef(block));
+    });
+  const negativeControlStatus =
+    negativeRefs.size === 0 ? "not_run" : negativeControlFailed ? "failed" : "passed";
+
+  const mutationControlResults = definition.mutationControls.map((mutation) => {
+    const survivors = definition.knownPositiveControls.filter((control) => {
+      const transaction = transactions.find(
+        (candidate) => candidate.transactionRef === control.transactionRef,
+      );
+      if (transaction === undefined) return false;
+      const match = cheapMatch(transaction, definition, mutation.fixedOverheadVbytesDelta);
+      return match?.feeRate === control.expectedFeeRateSatsPerVbyte;
+    }).length;
+    const bundleHits = transactions.filter(
+      (transaction) =>
+        transaction.prevoutDataStatus === "complete" &&
+        cheapMatch(transaction, definition, mutation.fixedOverheadVbytesDelta) !== undefined,
+    ).length;
+    return strictDecode(HistoricalMutationControlResultSchema, {
+      bundleHits,
+      fixedOverheadVbytesDelta: mutation.fixedOverheadVbytesDelta,
+      knownPositiveSurvivors: survivors,
+      mutationRef: mutation.mutationRef,
+      status: survivors === 0 ? "passed" : "failed",
+    });
+  });
+  const mutationControlStatus = mutationControlResults.every((result) => result.status === "passed")
+    ? "passed"
+    : "failed";
+
+  const deduplicatedHits = canonicalHits(rawHits);
+  const outcome =
+    missingDataRefs.length > 0 || negativeControlFailed || mutationControlStatus !== "passed"
+      ? "failed"
+      : "succeeded";
   return strictDecode(HistoricalFingerprintScanReportSchema, {
     schema: HISTORICAL_SCAN_REPORT_VERSION,
     baseRates: baseRates(bundle.blocks, deduplicatedHits, definition),
@@ -560,7 +698,9 @@ export const runHistoricalFingerprintScan = (
     expensiveResolutionRefs,
     fingerprintRevisionDigest: definition.revisionDigest,
     missingDataRefs,
-    negativeControlStatus: negativeControlFailed ? "failed" : "passed",
+    mutationControlResults,
+    mutationControlStatus,
+    negativeControlStatus,
     normalizedOutputDigest: forensicSha256Digest(
       deduplicatedHits.map((hit) => hit.txid).toSorted(),
     ),
@@ -577,3 +717,166 @@ export const runHistoricalFingerprintScan = (
     workerProfileDigest: input.workerProfileDigest,
   });
 };
+
+/**
+ * Wide-scan ledger.
+ *
+ * A frozen block bundle is small enough to check into the repository and
+ * replay in a test, which is what makes the scanner's behaviour verifiable. It
+ * is far too small to carry a base rate. The denominator that says how much the
+ * fingerprint means comes from millions of transactions, and that measurement
+ * has to survive as evidence rather than as a sentence in a document.
+ *
+ * This ledger is that evidence: the per-block eligibility and match counts a
+ * scan actually observed, with the block hashes it observed them at, folded
+ * into era totals and a fee-rate histogram whose per-million figures must
+ * rebuild exactly from the counts. Every era also pins the digest of the raw
+ * append-only artifacts it was folded from, so a reader can recompute the whole
+ * table instead of trusting it.
+ */
+export const HistoricalWideScanBlockRowSchema = S.Struct({
+  blockHash: Sha256Digest,
+  eligibleTransactions: NonNegativeInteger,
+  height: NonNegativeInteger,
+  matches: NonNegativeInteger,
+  prevoutErrors: NonNegativeInteger,
+}).pipe(
+  S.check(
+    S.makeFilter((row) => row.matches <= row.eligibleTransactions, {
+      message: "a block cannot match more transactions than it made eligible",
+    }),
+  ),
+);
+export type HistoricalWideScanBlockRow = typeof HistoricalWideScanBlockRowSchema.Type;
+
+export const HistoricalWideScanRateRowSchema = S.Struct({
+  feeRateSatsPerVbyte: PositiveInteger,
+  matches: PositiveInteger,
+  matchesPerMillion: S.Number.check(S.isFinite(), S.isGreaterThanOrEqualTo(0)),
+});
+export type HistoricalWideScanRateRow = typeof HistoricalWideScanRateRowSchema.Type;
+
+export const HistoricalWideScanEraSchema = S.Struct({
+  blocks: S.Array(HistoricalWideScanBlockRowSchema).check(
+    S.isMinLength(1),
+    S.isMaxLength(100_000),
+  ),
+  eligibleTransactions: NonNegativeInteger,
+  endHeight: NonNegativeInteger,
+  eraRef: ForensicRef,
+  matches: NonNegativeInteger,
+  matchesByFeeRate: S.Array(HistoricalWideScanRateRowSchema).check(S.isMaxLength(1_000)),
+  matchesPerMillion: S.Number.check(S.isFinite(), S.isGreaterThanOrEqualTo(0)),
+  prevoutErrors: NonNegativeInteger,
+  purpose: S.Literals(["incident_window", "pre_wave_window", "negative_control_era"]),
+  rawHitsArtifactDigest: Sha256Digest,
+  scanLedgerArtifactDigest: Sha256Digest,
+  startHeight: NonNegativeInteger,
+}).pipe(
+  S.check(
+    S.makeFilter(
+      (era) =>
+        era.endHeight >= era.startHeight &&
+        era.blocks.length === era.endHeight - era.startHeight + 1 &&
+        era.blocks.every((row, index) => row.height === era.startHeight + index) &&
+        new Set(era.blocks.map((row) => row.blockHash)).size === era.blocks.length,
+      { message: "a wide-scan era must densely cover its range with distinct block hashes" },
+    ),
+    S.makeFilter(
+      (era) =>
+        era.eligibleTransactions ===
+          era.blocks.reduce((total, row) => total + row.eligibleTransactions, 0) &&
+        era.matches === era.blocks.reduce((total, row) => total + row.matches, 0) &&
+        era.prevoutErrors === era.blocks.reduce((total, row) => total + row.prevoutErrors, 0),
+      { message: "wide-scan era totals must fold their retained per-block rows" },
+    ),
+    S.makeFilter(
+      (era) =>
+        era.matchesPerMillion ===
+        (era.eligibleTransactions === 0
+          ? 0
+          : (era.matches * 1_000_000) / era.eligibleTransactions),
+      { message: "wide-scan era rate must derive from its exact counts" },
+    ),
+    S.makeFilter(
+      (era) =>
+        era.matchesByFeeRate.every(
+          (row, index) =>
+            (index === 0 ||
+              era.matchesByFeeRate[index - 1]!.feeRateSatsPerVbyte < row.feeRateSatsPerVbyte) &&
+            row.matchesPerMillion ===
+              (era.eligibleTransactions === 0
+                ? 0
+                : (row.matches * 1_000_000) / era.eligibleTransactions),
+        ) &&
+        era.matchesByFeeRate.reduce((total, row) => total + row.matches, 0) <= era.matches,
+      {
+        message:
+          "wide-scan fee-rate rows must be ascending, bounded by era matches, and derive their own per-million rate",
+      },
+    ),
+  ),
+);
+export type HistoricalWideScanEra = typeof HistoricalWideScanEraSchema.Type;
+
+export const HistoricalWideScanLedgerSchema = S.Struct({
+  schema: S.Literal(HISTORICAL_WIDE_SCAN_LEDGER_VERSION),
+  blocks: NonNegativeInteger,
+  capabilityRef: ForensicRef,
+  capturedAt: ForensicTimestamp,
+  eligibleTransactions: NonNegativeInteger,
+  eras: S.Array(HistoricalWideScanEraSchema).check(S.isMinLength(1), S.isMaxLength(16)),
+  fingerprintRevisionDigest: Sha256Digest,
+  ledgerRef: ForensicRef,
+  matches: NonNegativeInteger,
+  network: S.Literal("mainnet"),
+  prevoutErrors: NonNegativeInteger,
+  selfTestStatus: S.Literals(["passed", "failed", "not_run"]),
+  similarityClaimCeiling: S.Literal("program_similarity_only"),
+  sourceIdentityDigest: Sha256Digest,
+})
+  .pipe(
+    S.check(
+      S.makeFilter(
+        (ledger) =>
+          ledger.blocks === ledger.eras.reduce((total, era) => total + era.blocks.length, 0) &&
+          ledger.eligibleTransactions ===
+            ledger.eras.reduce((total, era) => total + era.eligibleTransactions, 0) &&
+          ledger.matches === ledger.eras.reduce((total, era) => total + era.matches, 0) &&
+          ledger.prevoutErrors ===
+            ledger.eras.reduce((total, era) => total + era.prevoutErrors, 0),
+        { message: "wide-scan ledger totals must fold their eras" },
+      ),
+      S.makeFilter(
+        (ledger) =>
+          ledger.eras.every((era, index) =>
+            ledger.eras.every(
+              (other, otherIndex) =>
+                index === otherIndex ||
+                other.endHeight < era.startHeight ||
+                other.startHeight > era.endHeight,
+            ),
+          ) && new Set(ledger.eras.map((era) => era.eraRef)).size === ledger.eras.length,
+        { message: "wide-scan eras must be distinct and non-overlapping" },
+      ),
+      S.makeFilter(
+        (ledger) => ledger.selfTestStatus === "passed" || ledger.matches === 0,
+        {
+          message:
+            "a wide-scan ledger may only carry matches when its known-positive self-test passed",
+        },
+      ),
+      S.makeFilter(
+        (ledger) => ledger.prevoutErrors === 0 || ledger.matches === 0,
+        {
+          message:
+            "a wide-scan ledger with missing prevout data cannot report a credible match count",
+        },
+      ),
+    ),
+  )
+  .annotate({ identifier: "HistoricalWideScanLedger" });
+export type HistoricalWideScanLedger = typeof HistoricalWideScanLedgerSchema.Type;
+
+export const validateHistoricalWideScanLedger = (input: unknown): HistoricalWideScanLedger =>
+  strictDecode(HistoricalWideScanLedgerSchema, input);

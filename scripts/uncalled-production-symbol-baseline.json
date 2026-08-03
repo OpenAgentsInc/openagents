@@ -1783,6 +1783,10 @@
       "reason": "Published deterministic historical scanner; the native forensic worker route will call it after immutable bundle or private brokered Bitcoin Core materialization on an admitted OpenAgents Cloud worker."
     },
     {
+      "ref": "packages/forensic-contract/src/historical-scan.ts#validateHistoricalWideScanLedger",
+      "reason": "Published wide-scan ledger validator; the same native forensic worker route that calls runHistoricalFingerprintScan will call it when a wide scan on an admitted worker persists its per-block eligibility and match ledger, alongside the 2026-08-01 ledger it already gates in fixtures."
+    },
+    {
       "ref": "packages/forensic-contract/src/coldcard-generator.ts#LIBNGU_INITIAL_YASMARANG_STATE",
       "reason": "Published pinned libngu initial state; the native forensic worker vector builder will use it for admitted vulnerable and mutation reproductions."
     },
