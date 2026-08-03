@@ -13,17 +13,76 @@ import {
   CommitSha,
   ForensicRef,
   ForensicTimestamp,
+  NonEmptyBoundedRefs,
   NonNegativeInteger,
   PositiveInteger,
   Sha256Digest,
 } from "./primitives.ts";
 import { GENERATOR_TRACE_VERSION, GeneratorTraceSchema } from "./reproduction.ts";
 
-export const COLDCARD_GENERATOR_VECTOR_VERSION = "openagents.coldcard_generator_vector.v1" as const;
+export const COLDCARD_GENERATOR_VECTOR_VERSION = "openagents.coldcard_generator_vector.v2" as const;
 export const COLDCARD_OWNED_FIXTURE_RECEIPT_VERSION =
-  "openagents.coldcard_owned_fixture_receipt.v1" as const;
+  "openagents.coldcard_owned_fixture_receipt.v2" as const;
 export const FORENSIC_WORK_FACTOR_ESTIMATE_VERSION =
-  "openagents.forensic_work_factor_estimate.v1" as const;
+  "openagents.forensic_work_factor_estimate.v2" as const;
+
+const PositiveIntegerString = S.String.check(S.isPattern(/^[1-9][0-9]*$/));
+
+/**
+ * How a generator artifact — a frozen vector, a throughput measurement, a
+ * work-factor estimate — reached this repository.
+ *
+ * `conformance_vector` is a checked-in exercise of the schema and the
+ * reproduction code. It says nothing about any Coldcard firmware. Only an
+ * `admitted_worker_run`, bound to one exact OpenAgents Cloud managed-sandbox
+ * generation, guest image digest, and its emitted receipts, can carry an
+ * acceptance-level generator claim.
+ */
+export const ForensicGeneratorProvenanceSchema = S.Union([
+  S.Struct({
+    conformanceNoteRef: ForensicRef,
+    kind: S.Literal("conformance_vector"),
+  }),
+  S.Struct({
+    guestImageDigest: Sha256Digest,
+    isolationClass: S.Literal("gce_vm"),
+    kind: S.Literal("admitted_worker_run"),
+    providerKind: S.Literal("live_gce"),
+    receiptRefs: NonEmptyBoundedRefs,
+    resourceGeneration: PositiveInteger,
+    sandboxRef: ForensicRef,
+  }),
+]);
+export type ForensicGeneratorProvenance = typeof ForensicGeneratorProvenanceSchema.Type;
+
+/**
+ * Where a frozen vector's expected digests came from.
+ *
+ * `self_generated` means this repository's own reproduction produced them. Such
+ * a vector is a regression lock against drift in our code; it is NOT evidence
+ * that our code matches the target, because nothing outside our code was
+ * consulted. Only `independent_implementation` (a second implementation not
+ * derived from ours) or `target_execution` (output captured from the target
+ * itself) can support a fidelity claim, and the admission gate below enforces
+ * that distinction.
+ */
+export const GoldenVectorSourceSchema = S.Union([
+  S.Struct({
+    kind: S.Literal("self_generated"),
+    producedByRef: ForensicRef,
+  }),
+  S.Struct({
+    implementationRef: ForensicRef,
+    kind: S.Literal("independent_implementation"),
+    sourceDigest: Sha256Digest,
+  }),
+  S.Struct({
+    kind: S.Literal("target_execution"),
+    targetFirmwareRef: ForensicRef,
+    transcriptDigest: Sha256Digest,
+  }),
+]);
+export type GoldenVectorSource = typeof GoldenVectorSourceSchema.Type;
 
 const UINT32_MODULUS = 0x1_0000_0000n;
 
@@ -238,8 +297,10 @@ export const ColdcardGeneratorVectorSchema = S.Struct({
     "mutated_call_trace",
     "mutated_reseed_truncation",
   ]),
+  goldenVectorSource: GoldenVectorSourceSchema,
   initialStateDigest: Sha256Digest,
   outputLength: PositiveInteger,
+  provenance: ForensicGeneratorProvenanceSchema,
   retainedReseedWidthBits: NonNegativeInteger,
   vectorRef: ForensicRef,
   workerProfileDigest: Sha256Digest,
@@ -319,25 +380,59 @@ const candidateCountFromDimensions = (
   return [...candidatesByGroup.values()].reduce((product, count) => product * count, 1n);
 };
 
+/**
+ * A throughput observation, recorded as what was counted rather than as a rate.
+ *
+ * The audit that reopened OFR-015 called out a literal `250000` candidates per
+ * second sitting next to a synthetic receipt ref. A rate is a conclusion; this
+ * schema stores the two quantities a harness can actually observe — how many
+ * candidates it evaluated and how long that took — and
+ * {@link deriveCandidatesPerSecond} computes the rate. There is no field in
+ * which a caller can write a rate it did not measure.
+ */
+export const ForensicThroughputMeasurementSchema = S.Struct({
+  candidatesEvaluated: PositiveIntegerString,
+  elapsedNanoseconds: PositiveIntegerString,
+  harnessRef: ForensicRef,
+  measurementRef: ForensicRef,
+  provenance: ForensicGeneratorProvenanceSchema,
+  receiptRefs: BoundedRefs,
+}).pipe(
+  S.check(
+    S.makeFilter(
+      (measurement) =>
+        (BigInt(measurement.candidatesEvaluated) * 1_000_000_000n) /
+          BigInt(measurement.elapsedNanoseconds) >=
+        1n,
+      { message: "a throughput measurement must resolve to at least one candidate per second" },
+    ),
+  ),
+);
+export type ForensicThroughputMeasurement = typeof ForensicThroughputMeasurementSchema.Type;
+
+const deriveCandidatesPerSecond = (measurement: ForensicThroughputMeasurement): bigint =>
+  (BigInt(measurement.candidatesEvaluated) * 1_000_000_000n) /
+  BigInt(measurement.elapsedNanoseconds);
+
 export const ForensicWorkFactorEstimateSchema = S.Struct({
   schema: S.Literal(FORENSIC_WORK_FACTOR_ESTIMATE_VERSION),
   assumptionRefs: S.Array(ForensicRef).check(S.isMinLength(1), S.isMaxLength(128)),
-  candidateCount: S.String.check(S.isPattern(/^[1-9][0-9]*$/)),
+  candidateCount: PositiveIntegerString,
   candidateCountBits: S.Number.check(S.isFinite(), S.isGreaterThanOrEqualTo(0)),
   combinationRule: S.Literal("multiply_groups_max_correlated_dimension"),
   dimensions: S.Array(
     S.Struct({
       assumptionRef: ForensicRef,
-      candidateCount: S.String.check(S.isPattern(/^[1-9][0-9]*$/)),
+      candidateCount: PositiveIntegerString,
       correlationGroupRef: ForensicRef,
     }),
   ).check(S.isMinLength(1), S.isMaxLength(128)),
   estimateRef: ForensicRef,
   firmwareRef: ForensicRef,
   hardwareClassRef: ForensicRef,
-  measuredCandidatesPerSecond: S.String.check(S.isPattern(/^[1-9][0-9]*$/)),
-  projectedSecondsCeiling: S.String.check(S.isPattern(/^[1-9][0-9]*$/)),
-  throughputReceiptRef: ForensicRef,
+  measuredCandidatesPerSecond: PositiveIntegerString,
+  projectedSecondsCeiling: PositiveIntegerString,
+  throughputMeasurement: ForensicThroughputMeasurementSchema,
   workerProfileDigest: Sha256Digest,
 }).pipe(
   S.check(
@@ -356,6 +451,15 @@ export const ForensicWorkFactorEstimateSchema = S.Struct({
           estimate.dimensions.some((dimension) => dimension.assumptionRef === reference),
         ),
       { message: "work-factor assumptions and dimensions must match exactly" },
+    ),
+    S.makeFilter(
+      (estimate) =>
+        estimate.measuredCandidatesPerSecond ===
+        deriveCandidatesPerSecond(estimate.throughputMeasurement).toString(),
+      {
+        message:
+          "work-factor throughput must derive from the counted candidates and elapsed time of its measurement",
+      },
     ),
     S.makeFilter(
       (estimate) => {
@@ -389,12 +493,15 @@ export const calculateForensicWorkFactor = (input: {
   readonly estimateRef: string;
   readonly firmwareRef: string;
   readonly hardwareClassRef: string;
-  readonly measuredCandidatesPerSecond: string;
-  readonly throughputReceiptRef: string;
+  readonly throughputMeasurement: ForensicThroughputMeasurement;
   readonly workerProfileDigest: string;
 }): ForensicWorkFactorEstimate => {
   const candidateCount = candidateCountFromDimensions(input.dimensions);
-  const throughput = BigInt(input.measuredCandidatesPerSecond);
+  const measurement = strictDecode(
+    ForensicThroughputMeasurementSchema,
+    input.throughputMeasurement,
+  );
+  const throughput = deriveCandidatesPerSecond(measurement);
   if (candidateCount <= 0n || throughput <= 0n) {
     throw new Error("work-factor candidate count and measured throughput must be positive");
   }
@@ -408,9 +515,9 @@ export const calculateForensicWorkFactor = (input: {
     estimateRef: input.estimateRef,
     firmwareRef: input.firmwareRef,
     hardwareClassRef: input.hardwareClassRef,
-    measuredCandidatesPerSecond: input.measuredCandidatesPerSecond,
+    measuredCandidatesPerSecond: throughput.toString(),
     projectedSecondsCeiling: ((candidateCount + throughput - 1n) / throughput).toString(),
-    throughputReceiptRef: input.throughputReceiptRef,
+    throughputMeasurement: measurement,
     workerProfileDigest: input.workerProfileDigest,
   });
 };
@@ -479,16 +586,28 @@ export const reproduceColdcardOwnedFixture = (
   if (input.derivationPaths.length === 0 || input.derivationPaths.length > 128) {
     throw new Error("Coldcard owned fixture requires a bounded derivation-path set");
   }
+  const entropyHex = bytesToHex(input.generatorExecution.bytes);
   const mnemonic = entropyToMnemonic(input.generatorExecution.bytes, wordlist);
   const seed = mnemonicToSeedSync(mnemonic, "");
+  const seedHex = bytesToHex(seed);
   const master = HDKey.fromMasterSeed(seed);
   const account = master.derive("m/84'/0'/0'").publicExtendedKey;
   const addresses = publicAddresses(seed, input.derivationPaths);
   const publicMaterialDigest = forensicSha256Digest({ account, addresses });
   const addressSetDigest = forensicSha256Digest(addresses);
+  const words = mnemonic.split(" ");
+  const secretMaterial = [
+    mnemonic,
+    entropyHex,
+    seedHex,
+    master.privateExtendedKey,
+    ...words
+      .slice(0, Math.max(0, words.length - 3))
+      .map((_, index) => words.slice(index, index + 4).join(" ")),
+  ].filter((value) => value.length >= 16);
   seed.fill(0);
   input.generatorExecution.bytes.fill(0);
-  return strictDecode(ColdcardOwnedFixtureReceiptSchema, {
+  const receipt = strictDecode(ColdcardOwnedFixtureReceiptSchema, {
     schema: COLDCARD_OWNED_FIXTURE_RECEIPT_VERSION,
     addressSetDigest,
     artifactWitnessReportRef: input.artifactWitnessReportRef,
@@ -511,6 +630,82 @@ export const reproduceColdcardOwnedFixture = (
     retainedSecretMaterial: false,
     workerProfileDigest: input.workerProfileDigest,
   });
+  // `retainedSecretMaterial: false` above is a claim until it is checked. Check
+  // it: serialize the receipt that is about to be returned and refuse to return
+  // it if it contains the mnemonic, any four consecutive mnemonic words, the
+  // generated entropy, the derived seed, or the master xprv.
+  const serialized = JSON.stringify(receipt);
+  if (secretMaterial.some((value) => serialized.includes(value))) {
+    throw new Error("Coldcard owned fixture receipt would retain secret material");
+  }
+  return receipt;
+};
+
+export type ColdcardGeneratorEvidenceAdmission =
+  | Readonly<{ _tag: "Admitted"; vectorRefs: ReadonlyArray<string> }>
+  | Readonly<{ _tag: "Refused"; blockerRef: string }>;
+
+const REQUIRED_VECTOR_CLASSES: ReadonlyArray<ColdcardGeneratorVector["fixtureClass"]> = [
+  "vulnerable",
+  "partially_mitigated",
+  "fixed",
+  "mutated_guard",
+  "mutated_provider",
+  "mutated_initialization",
+  "mutated_call_trace",
+  "mutated_reseed_truncation",
+];
+
+/**
+ * Decide whether a generator corpus may carry an acceptance-level claim about
+ * the target's behavior.
+ *
+ * Passing every frozen vector proves our reproduction did not drift. It does
+ * not prove our reproduction matches the Coldcard generator, and it does not
+ * become such a proof by being run again. This gate is what separates the two:
+ * it refuses vectors whose expected digests we produced ourselves, and it
+ * refuses anything that did not run on an admitted OpenAgents Cloud worker.
+ */
+export const admitColdcardGeneratorEvidence = (input: {
+  readonly estimate: ForensicWorkFactorEstimate;
+  readonly vectors: ReadonlyArray<ColdcardGeneratorVector>;
+}): ColdcardGeneratorEvidenceAdmission => {
+  const { estimate, vectors } = input;
+  if (
+    vectors.length !== REQUIRED_VECTOR_CLASSES.length ||
+    REQUIRED_VECTOR_CLASSES.some(
+      (fixtureClass) =>
+        vectors.filter((vector) => vector.fixtureClass === fixtureClass).length !== 1,
+    )
+  ) {
+    return { _tag: "Refused", blockerRef: "blocker.coldcard_generator.mutation_matrix_incomplete" };
+  }
+  if (vectors.some((vector) => vector.goldenVectorSource.kind === "self_generated")) {
+    return {
+      _tag: "Refused",
+      blockerRef: "blocker.coldcard_generator.golden_vector_not_independently_sourced",
+    };
+  }
+  const admitted = vectors.flatMap((vector) =>
+    vector.provenance.kind === "admitted_worker_run" ? [vector.provenance] : [],
+  );
+  if (
+    admitted.length !== vectors.length ||
+    estimate.throughputMeasurement.provenance.kind !== "admitted_worker_run"
+  ) {
+    return { _tag: "Refused", blockerRef: "blocker.coldcard_generator.provenance_not_admitted" };
+  }
+  if (
+    new Set([...vectors.map((vector) => vector.workerProfileDigest), estimate.workerProfileDigest])
+      .size !== 1 ||
+    new Set([
+      ...admitted.map((provenance) => provenance.guestImageDigest),
+      estimate.throughputMeasurement.provenance.guestImageDigest,
+    ]).size !== 1
+  ) {
+    return { _tag: "Refused", blockerRef: "blocker.coldcard_generator.worker_profile_drift" };
+  }
+  return { _tag: "Admitted", vectorRefs: vectors.map((vector) => vector.vectorRef) };
 };
 
 export const buildColdcardGeneratorTrace = (input: {

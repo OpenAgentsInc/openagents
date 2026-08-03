@@ -1799,6 +1799,10 @@
       "reason": "Published frozen-vector evaluator; the native forensic worker route will call it for vulnerable, fixed, and mutation suites on admitted OpenAgents Cloud workers."
     },
     {
+      "ref": "packages/forensic-contract/src/coldcard-generator.ts#admitColdcardGeneratorEvidence",
+      "reason": "Published generator-evidence admission gate for OFR-015; the forensic evaluator route will call it once golden vectors are sourced independently of our own reproduction and a throughput measurement exists from an admitted OpenAgents Cloud worker. It currently refuses the checked-in corpus, which is the honest state."
+    },
+    {
       "ref": "packages/forensic-contract/src/coldcard-generator.ts#reproduceColdcardOwnedFixture",
       "reason": "Published secret-safe reproduction boundary; the forensic evaluator route will call it only for synthetic or explicitly owner-authorized fixtures after the OpenAgents Cloud execution adapter lands."
     },

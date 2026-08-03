@@ -28,7 +28,16 @@ The package owns:
 - an independent uint32 Yasmarang transition, libngu/provider combiner,
   32-bit reseed truncation, target-compatible uniform retry, keypad shuffle
   trace, frozen mutation-vector evaluator, explicit work-factor calculator,
-  and synthetic/owner-authorized public-material reproduction receipt;
+  and synthetic/owner-authorized public-material reproduction receipt. A
+  work-factor throughput is derived from a counted measurement — candidates
+  evaluated over elapsed nanoseconds — and cannot be written in as a rate. A
+  frozen vector records where its expected digests came from, and the
+  generator-evidence admission gate refuses vectors this repository generated
+  itself as well as anything that did not run on an admitted worker. The
+  owned-fixture reproduction refuses to return a receipt that contains the
+  mnemonic, any four consecutive mnemonic words, the generated entropy, the
+  derived seed, or the master xprv, so its `retainedSecretMaterial: false` is
+  a checked result rather than a stamp;
 - immutable historical block bundles, a broker-bound private read-only Bitcoin
   Core capability, exact-integer two-phase fingerprint scanning, self-test and
   negative-control gates, append-only checkpoints, deterministic resume, and

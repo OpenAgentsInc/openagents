@@ -231,8 +231,7 @@ describe("Coldcard artifact witness", () => {
     const admit = (capture: (typeof fixture.cases)[number]["capture"], suffix: string) => ({
       ...capture,
       provenance: {
-        guestImageDigest:
-          "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        guestImageDigest: "sha256:1111111111111111111111111111111111111111111111111111111111111111",
         isolationClass: "gce_vm" as const,
         kind: "admitted_worker_run" as const,
         providerKind: "live_gce" as const,

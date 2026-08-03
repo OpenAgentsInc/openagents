@@ -30,9 +30,15 @@ The pack contains:
   generation, guest image digest, and its emitted receipts; and
 - `generator-vectors.v1.json`: frozen vulnerable, 32-bit-reseeded, approved-
   provider, and guard/provider/initialization/call-trace/reseed mutation
-  vectors, plus a synthetic public-material match and an explicit measured-
-  throughput work-factor input. It contains no mnemonic, xprv, or live value
-  oracle input; and
+  vectors, plus a synthetic public-material match and a work-factor throughput
+  measurement recorded as a candidate count over an elapsed interval rather
+  than as a written-in rate. Every vector declares
+  `goldenVectorSource.kind = "self_generated"` and
+  `provenance.kind = "conformance_vector"`: their expected digests came from
+  the reproduction they test, so passing them locks our generator against
+  drift and proves nothing about the target's generator.
+  `admitColdcardGeneratorEvidence` refuses the file. It contains no mnemonic,
+  xprv, or live value oracle input; and
 - `historical-scan-fixture.v1.json`: a content-addressed four-block synthetic
   bundle with one frozen positive, one negative range, one wider collision,
   exact satoshi fees, a private read-only capability, and resumable checkpoints.
