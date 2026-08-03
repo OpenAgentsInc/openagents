@@ -344,6 +344,10 @@ struct StopObservation {
 struct ForensicStopProof {
     schema: String,
     driver_ref: String,
+    /// How the guest observed process residue. Only `proc` is a measurement;
+    /// `unavailable` means the guest could not scan `/proc` and the proof
+    /// carries no process evidence at all.
+    process_observation: String,
     zero_process: bool,
     zero_scratch: bool,
     active_process_groups: u64,
@@ -354,6 +358,7 @@ impl ForensicStopProof {
     fn is_authoritative(&self) -> bool {
         self.schema == "openagents.forensic_worker_prepare_stop.v1"
             && self.driver_ref == FORENSIC_WORKER_DRIVER_REF
+            && self.process_observation == "proc"
             && self.zero_process
             && self.zero_scratch
             && self.active_process_groups == 0
@@ -3485,6 +3490,46 @@ mod tests {
         assert!(!observation.runtime_residue_is_clean());
         observation.zero_scratch = true;
         assert!(observation.runtime_residue_is_clean());
+    }
+
+    #[test]
+    fn a_stop_proof_without_a_measured_process_observation_is_not_authoritative() {
+        let measured = |observation: &str| ForensicStopProof {
+            schema: "openagents.forensic_worker_prepare_stop.v1".to_string(),
+            driver_ref: FORENSIC_WORKER_DRIVER_REF.to_string(),
+            process_observation: observation.to_string(),
+            zero_process: true,
+            zero_scratch: true,
+            active_process_groups: 0,
+            scratch_paths_remaining: 0,
+        };
+
+        // Every count is clean, but a guest that could not scan /proc has
+        // produced no process evidence at all and must never be admitted.
+        assert!(!measured("unavailable").is_authoritative());
+        assert!(!measured("").is_authoritative());
+        assert!(measured("proc").is_authoritative());
+
+        // A measured observation that still reports residue stays refused.
+        let mut residual = measured("proc");
+        residual.active_process_groups = 1;
+        assert!(!residual.is_authoritative());
+    }
+
+    #[test]
+    fn a_stop_proof_missing_the_process_observation_field_fails_to_parse() {
+        // `deny_unknown_fields` plus a required field means a guest running the
+        // pre-correction driver, which emitted hardcoded literals and no
+        // observation label, cannot satisfy this contract.
+        let legacy = serde_json::json!({
+            "schema": "openagents.forensic_worker_prepare_stop.v1",
+            "driverRef": FORENSIC_WORKER_DRIVER_REF,
+            "zeroProcess": true,
+            "zeroScratch": true,
+            "activeProcessGroups": 0,
+            "scratchPathsRemaining": 0,
+        });
+        assert!(serde_json::from_value::<ForensicStopProof>(legacy).is_err());
     }
 
     #[test]

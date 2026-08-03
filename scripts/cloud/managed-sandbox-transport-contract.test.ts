@@ -80,8 +80,15 @@ describe("managed-sandbox guest transport contract", () => {
     expect(driver).toContain('const NETWORK_ROOT = "/sys/class/net"');
     expect(driver).toContain("const SOURCE_ROOT = `${WORKSPACE}/source`");
     expect(driver).not.toContain("networkBytes: sourceBytes + artifactBytes");
-    expect(driver).toContain("zeroProcess: true");
-    expect(driver).toContain("zeroScratch: true");
+    // `zeroProcess`/`zeroScratch` must be derived from a post-removal
+    // observation, never emitted as literal `true`. Asserting the literals here
+    // is what previously kept the hardcoded proof green.
+    expect(driver).not.toContain("zeroProcess: true");
+    expect(driver).not.toContain("zeroScratch: true");
+    expect(driver).toContain("zeroProcess: after.processes.length === 0");
+    expect(driver).toContain("zeroScratch: scratchPathsRemaining === 0");
+    expect(driver).toContain("observeGuardedProcessesAt");
+    expect(driver).toContain('processObservation: after.supported ? "proc" : "unavailable"');
     expect(driver).not.toContain("process.env");
   });
 

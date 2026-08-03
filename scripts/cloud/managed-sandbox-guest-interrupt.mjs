@@ -16,9 +16,11 @@ const fail = (reason) => {
 
 const sleep = (millis) => new Promise((resolve) => setTimeout(resolve, millis));
 
-const processGroupMembers = (processGroupId) => {
+// Read every live process as (pid, processGroupId, sessionId). Zombies are
+// excluded: they hold no resources and cannot be signalled.
+const liveProcesses = () => {
   if (process.platform !== "linux" || !existsSync("/proc")) fail("linux_proc_required");
-  const members = [];
+  const observed = [];
   for (const entry of readdirSync("/proc", { withFileTypes: true })) {
     if (!entry.isDirectory() || !/^\d+$/u.test(entry.name)) continue;
     try {
@@ -27,16 +29,52 @@ const processGroupMembers = (processGroupId) => {
       if (close < 0) fail("process_stat_invalid");
       const fields = stat.slice(close + 2).split(" ");
       const state = fields[0];
-      const observedProcessGroupId = Number.parseInt(fields[2] ?? "", 10);
-      if (observedProcessGroupId === processGroupId && state !== "Z") {
-        members.push(Number.parseInt(entry.name, 10));
+      if (state === "Z") continue;
+      const processGroupId = Number.parseInt(fields[2] ?? "", 10);
+      const sessionId = Number.parseInt(fields[3] ?? "", 10);
+      if (!Number.isSafeInteger(processGroupId) || !Number.isSafeInteger(sessionId)) {
+        fail("process_stat_invalid");
       }
+      observed.push({ pid: Number.parseInt(entry.name, 10), processGroupId, sessionId });
     } catch (error) {
       if (error?.code !== "ENOENT") fail("process_observation_failed");
     }
   }
-  return members;
+  return observed;
 };
+
+const processGroupMembers = (processGroupId) =>
+  liveProcesses()
+    .filter((observed) => observed.processGroupId === processGroupId)
+    .map((observed) => observed.pid);
+
+// A descendant that calls setpgid() leaves the process group and therefore
+// survives `kill(-pgid)` unseen. It stays in the session, so the session is
+// what exposes it. Sessions observed before the signal are the ones that
+// belong to this turn.
+// Both selectors are pure over an observed process table so they can be
+// falsified on any platform; production passes the live /proc reading.
+export const sessionsIn = (processes, processGroupId) => [
+  ...new Set(
+    processes
+      .filter((observed) => observed.processGroupId === processGroupId)
+      .map((observed) => observed.sessionId),
+  ),
+];
+
+export const escapedDescendantsIn = (processes, processGroupId, sessions, selfPid) =>
+  processes.filter(
+    (observed) =>
+      observed.processGroupId !== processGroupId &&
+      sessions.includes(observed.sessionId) &&
+      observed.pid !== selfPid &&
+      observed.sessionId !== 0,
+  );
+
+const sessionsOf = (processGroupId) => sessionsIn(liveProcesses(), processGroupId);
+
+const escapedDescendants = (processGroupId, sessions) =>
+  escapedDescendantsIn(liveProcesses(), processGroupId, sessions, process.pid);
 
 const waitForExit = async (processGroupId) => {
   const deadline = Date.now() + WAIT_MILLIS;
@@ -60,6 +98,9 @@ export const interruptProcessGroup = async (processGroupId) => {
     fail("process_group_identity_invalid");
   }
   let escalatedToSigkill = false;
+  // Capture the sessions while the group is still intact, so a descendant that
+  // leaves the group afterwards is still attributable to this turn.
+  const sessions = sessionsOf(processGroupId);
   if (processGroupMembers(processGroupId).length > 0) {
     signal(processGroupId, "SIGTERM");
     if (!(await waitForExit(processGroupId))) {
@@ -68,11 +109,37 @@ export const interruptProcessGroup = async (processGroupId) => {
       if (!(await waitForExit(processGroupId))) fail("process_group_still_active");
     }
   }
+
+  // Signal anything that escaped the group but remains in an observed session,
+  // then measure. Every field below is the final observation, not an assertion
+  // that the wait loop above must have succeeded.
+  for (const escapee of escapedDescendants(processGroupId, sessions)) {
+    try {
+      process.kill(escapee.pid, "SIGKILL");
+    } catch (error) {
+      if (error?.code !== "ESRCH") fail("escaped_descendant_signal_failed");
+    }
+  }
+  const deadline = Date.now() + WAIT_MILLIS;
+  let remaining = escapedDescendants(processGroupId, sessions);
+  while (remaining.length > 0 && Date.now() < deadline) {
+    await sleep(POLL_MILLIS);
+    remaining = escapedDescendants(processGroupId, sessions);
+  }
+  const groupRemaining = processGroupMembers(processGroupId).length;
+  const descendantsRemaining = remaining.length;
+  if (groupRemaining !== 0) fail("process_group_still_active");
+  if (descendantsRemaining !== 0) fail("escaped_descendants_still_active");
+
+  // The emitted shape is unchanged: consumers pin `zeroProcessGroup: true` and
+  // `descendantsRemaining: 0`. What changed is that both are now the measured
+  // result of the observations above rather than literals, and the refusals
+  // above guarantee the pinned values can only be reached honestly.
   return {
     schemaVersion: "openagents.managed_sandbox_interrupt_proof.v1",
     processGroupId,
-    zeroProcessGroup: true,
-    descendantsRemaining: 0,
+    zeroProcessGroup: groupRemaining === 0,
+    descendantsRemaining,
     escalatedToSigkill,
   };
 };

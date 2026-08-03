@@ -361,6 +361,41 @@ source object, coverage, deterministic bundle, delivery receipt, and
 zero-residue rules are specified in
 `openagents.forensic_source_bundle.v1.md`.
 
+### Guest residue and interrupt proofs are measurements
+
+`forensic-worker-driver.mjs prepare-stop` and `managed-sandbox-guest-interrupt.mjs`
+produce the process and scratch evidence that the runtime consumes before it
+admits a stop or an interrupt. Every field in those proofs is a value observed
+after the removal or the signal. None of them may be emitted as a literal.
+
+- The liveness gate covers all four guarded roots — the turn root, the source
+  root, the artifact path, and `/run/openagents-managed-sandbox` — not only the
+  turn root. A process holding any guarded root refuses the stop.
+- Process residue is observed through `/proc`, by resolving each live process's
+  working directory, filesystem root, executable, and open descriptors against
+  the guarded roots. That observation is what survives a descendant leaving its
+  process group through `setsid()` or `setpgid()`; a process-group signal alone
+  cannot see such a descendant.
+- `prepare-stop` carries `processObservation`. Only `proc` denotes a real
+  measurement. A guest that cannot scan `/proc` reports `unavailable`, and
+  `ForensicStopProof::is_authoritative` refuses it even when every count is
+  zero. On Linux an unavailable observation refuses outright.
+- Scratch residue is measured with `lstat`, not `exists`. A dangling symlink is
+  residue; a check that resolves symlinks would report it as absent.
+- The interrupt proof signals the process group, waits for exit, escalates to
+  `SIGKILL`, then signals and re-measures descendants that left the group but
+  remain in an observed session. `zeroProcessGroup` and `descendantsRemaining`
+  are the final measured values, and a nonzero result refuses rather than
+  reporting a clean interrupt.
+
+Residual limit, stated rather than assumed: a descendant that establishes a new
+session with `setsid()` leaves both the process group and the session, so the
+session scan alone cannot see it. The guarded-root `/proc` observation in
+`prepare-stop` is what covers that case, because such a process still holds a
+guarded path. A process that has escaped the session *and* released every
+guarded reference is outside both oracles; closing that gap requires cgroup
+membership and is not claimed here.
+
 The live provider is default-off and requires the control VM metadata identity.
 It refuses a downloadable service-account key.
 The legacy fake GCE and fake Cloud-VM lanes remain test tools and cannot return

@@ -7,6 +7,7 @@ import {
   lstatSync,
   readFileSync,
   readdirSync,
+  readlinkSync,
   rmSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -55,6 +56,81 @@ export const workloadIsLiveAt = (directory) =>
     : existsSync(join(directory, "pid"))
       ? liveIdentifier(join(directory, "pid"), false)
       : !basename(directory).startsWith("io-");
+
+// A residue check must not follow symlinks: `existsSync` resolves them, so a
+// dangling symlink left behind after removal would be reported as clean.
+const pathPresent = (path) => {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const pathIsUnder = (path, root) => path === root || path.startsWith(`${root}/`);
+
+// Observe every live process that still references a guarded root through its
+// working directory, filesystem root, executable, or any open descriptor. This
+// is the only observation that survives a descendant escaping its process group
+// with setsid()/setpgid(), so it is what makes "zero process" a measurement
+// rather than an assertion.
+export const observeGuardedProcessesAt = (roots) => {
+  if (process.platform !== "linux" || !existsSync("/proc")) {
+    return { supported: false, processes: [], processGroups: [] };
+  }
+  const processes = [];
+  const processGroups = new Set();
+  const self = process.pid;
+  for (const entry of readdirSync("/proc", { withFileTypes: true })) {
+    if (!entry.isDirectory() || !/^\d+$/u.test(entry.name)) continue;
+    const pid = Number.parseInt(entry.name, 10);
+    if (pid === self) continue;
+    const references = [`/proc/${pid}/cwd`, `/proc/${pid}/root`, `/proc/${pid}/exe`];
+    try {
+      for (const descriptor of readdirSync(`/proc/${pid}/fd`)) {
+        references.push(`/proc/${pid}/fd/${descriptor}`);
+      }
+    } catch (error) {
+      // A process that exits mid-scan is not residue. Any other failure means
+      // the observation is incomplete and must not be reported as clean.
+      if (error?.code !== "ENOENT" && error?.code !== "ESRCH") {
+        return { supported: false, processes: [], processGroups: [] };
+      }
+    }
+    let referenced = false;
+    for (const reference of references) {
+      let target;
+      try {
+        target = readlinkSync(reference);
+      } catch {
+        continue;
+      }
+      if (roots.some((root) => pathIsUnder(target, root))) {
+        referenced = true;
+        break;
+      }
+    }
+    if (!referenced) continue;
+    processes.push(pid);
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+      const close = stat.lastIndexOf(")");
+      const fields = close < 0 ? [] : stat.slice(close + 2).split(" ");
+      const processGroupId = Number.parseInt(fields[2] ?? "", 10);
+      if (Number.isSafeInteger(processGroupId)) processGroups.add(processGroupId);
+    } catch (error) {
+      if (error?.code !== "ENOENT" && error?.code !== "ESRCH") {
+        return { supported: false, processes: [], processGroups: [] };
+      }
+    }
+  }
+  return {
+    supported: true,
+    processes,
+    processGroups: [...processGroups].toSorted((left, right) => left - right),
+  };
+};
 
 const fileSize = (path) => {
   if (!existsSync(path)) return { bytes: 0, exact: true };
@@ -206,28 +282,57 @@ const usage = () => {
   });
 };
 
-export const prepareStopAt = ({ turnRoot, sourceRoot, artifactPath, runtimeRoot }) => {
-  const scratchDirectories = directories(turnRoot, true);
-  if (scratchDirectories.some(workloadIsLiveAt)) {
+export const prepareStopAt = ({
+  turnRoot,
+  sourceRoot,
+  artifactPath,
+  runtimeRoot,
+  observeGuardedProcesses = observeGuardedProcessesAt,
+}) => {
+  const guardedRoots = [turnRoot, sourceRoot, artifactPath, runtimeRoot];
+
+  // The turn-directory scan only covers recorded pid/pgid files beneath
+  // `turnRoot`. The guarded-root observation additionally covers the source,
+  // artifact, and runtime roots, which were previously removed with no
+  // liveness check at all.
+  if (directories(turnRoot, true).some(workloadIsLiveAt)) {
     refuse("forensic_process_still_active");
   }
+  const before = observeGuardedProcesses(guardedRoots);
+  if (process.platform === "linux" && !before.supported) {
+    refuse("forensic_process_observation_unavailable");
+  }
+  if (before.processes.length !== 0) {
+    refuse("forensic_process_still_active");
+  }
+
   rmSync(turnRoot, { recursive: true, force: true });
   rmSync(sourceRoot, { recursive: true, force: true });
   rmSync(artifactPath, { recursive: true, force: true });
   rmSync(runtimeRoot, { recursive: true, force: true });
-  const scratchPathsRemaining = [turnRoot, sourceRoot, artifactPath, runtimeRoot].filter(
-    existsSync,
-  );
-  if (scratchPathsRemaining.length !== 0) {
+
+  // Re-observe after removal. These counts are the proof; they are never
+  // assumed from the fact that removal returned without throwing.
+  const after = observeGuardedProcesses(guardedRoots);
+  if (process.platform === "linux" && !after.supported) {
+    refuse("forensic_process_observation_unavailable");
+  }
+  const scratchPathsRemaining = guardedRoots.filter(pathPresent).length;
+  const activeProcessGroups = after.processGroups.length;
+  if (after.processes.length !== 0) {
+    refuse("forensic_process_still_active");
+  }
+  if (scratchPathsRemaining !== 0) {
     refuse("forensic_scratch_still_present");
   }
   return {
     schema: "openagents.forensic_worker_prepare_stop.v1",
     driverRef: DRIVER_REF,
-    zeroProcess: true,
-    zeroScratch: true,
-    activeProcessGroups: 0,
-    scratchPathsRemaining: 0,
+    processObservation: after.supported ? "proc" : "unavailable",
+    zeroProcess: after.processes.length === 0 && activeProcessGroups === 0,
+    zeroScratch: scratchPathsRemaining === 0,
+    activeProcessGroups,
+    scratchPathsRemaining,
   };
 };
 
