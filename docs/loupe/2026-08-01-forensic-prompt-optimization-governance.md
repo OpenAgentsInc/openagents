@@ -60,6 +60,13 @@ time, tokens, cost, false positives, and reviewer load — to a frozen metric re
 and an explicit direction before any result exists. Because the bindings sit
 inside the frozen metric digest, they cannot be chosen after results are known.
 
+Every bound metric ref must be one the frozen forensic metric registry
+(`registry.openagents.forensic.metrics.2026-08-01.v1`) actually defines.
+Without that check an evaluator could bind an axis to a ref it invented, supply
+values for that same invented ref in its own scorecard, and obtain a
+`dominates` verdict computed entirely over its own assertion — which is the
+thing a derived comparison exists to remove.
+
 The evaluation aggregates each bound metric across the retained runs of the
 baseline and candidate holdout scorecards and derives the verdict. `dominates`
 means no axis is worse and at least one is better. An axis with no available
@@ -113,12 +120,86 @@ canonical identity, holdout isolation, honest optimizer naming, resolved worker
 and source evidence, derived Pareto verdicts, self-promotion denial, guarded
 rollback, durable append-only history, stale-read conflicts, and storage drift.
 
-Two limits are deliberate and should not be read as covered:
+## Operator route
 
-- The governance store has no production HTTP caller yet. The durable authority
-  and its migration exist and are tested, but nothing in a request path reads or
-  writes them.
-- No untouched-holdout campaign has been run. The mechanism that would admit a
-  winning candidate is in place; the claim that a specific candidate improved an
-  untouched holdout without regressing the clean holdout or any hard gate is not
-  evidenced by anything in this repository.
+`GET` and `POST /api/blueprint/forensic-prompt-governance` are the production
+caller for the durable store, implemented in
+`apps/openagents.com/workers/api/src/blueprint-forensic-prompt-governance-routes.ts`
+and mounted from the API worker route table. Both methods require the admin API
+token.
+
+`GET ?ownerRef=<ref>` returns the owner's active pointer, revision, and
+append-only history. `POST` carries `{ownerRef, decision, transitionRef,
+operatorDecisionRef, operatorIdentityRef}` plus, for `promote`, the candidate,
+the evaluation, the release gate, and the evaluation ref.
+
+Two properties are deliberate. The decision is computed on the server: the route
+reads the durable state, runs `promoteForensicPrompt` or
+`rollbackForensicPrompt` against exactly that state, and appends under
+compare-and-set on the revision it read. A caller cannot hand in a pre-sealed
+transition and skip the gate. And `decidedAt` comes from the server clock, so a
+decision cannot be backdated into the append-only history. A gate refusal is
+reported as `422 refused` with its exact reason, a stale read as `409`,
+unconfigured or unreachable storage as `503`, and storage drift found on read as
+`500`.
+
+## Why no campaign has run
+
+The remaining acceptance criterion — a winning candidate improves an untouched
+holdout without regressing the clean holdout or any hard gate — is a claim about
+a real campaign. It is not evidenced, and as of 2026-08-03 it is not runnable.
+The blockers are specific, and each is owned elsewhere:
+
+- **There is no untouched holdout.** `fixtures/forensics/coldcard/dataset-splits.v1.json`
+  declares `holdout` and `clean_holdout` as evaluator-only descriptors with
+  empty `benchmarkArmRefs`, pointing at
+  `dataset.private.untouched-security-holdout.v1` and
+  `dataset.private.clean-security-holdout.v1`. No examples, digests, or source
+  trees exist for either. The only real forensic corpus is the five Coldcard
+  arms, which the benchmark manifest declares `development` and `control` —
+  optimizer-visible by construction. Promoting them to a holdout would destroy
+  the boundary the gate exists to protect, so it must not be done.
+- **Nothing produces a scorecard.** `rebuildForensicScorecard` has no production
+  caller, and `LoupeForensicBackend` has no implementation outside a test fake,
+  so no code path turns a prompt plus an example into retained runs. There is
+  also no evaluator that emits `ForensicEvaluatorAdjudication` from a submitted
+  finding; the six-link causal rubric exists only as prose.
+- **Two of the seven axes cannot resolve.** `rebuildForensicScorecard` never
+  emits a per-run value for `metric.causal_chain_coverage.v1` or
+  `metric.cost_to_identification.v1`; cost appears only as a scorecard-level
+  field. Both are defined in the frozen registry, so they are legal bindings,
+  but any scorecard the repository's own projector builds would report those two
+  axes `unavailable`, the derived status would be `insufficient_evidence`, and
+  promotion would refuse. This is a real blocker for a future campaign, not a
+  hypothetical one.
+- **The live worker path is not accepted.** The forensic managed-sandbox
+  dispatch route exists and is gated on `MANAGED_SANDBOX_BROKER_ENABLED` and a
+  configured runtime, but issues #9289 and #9290 do not carry accepted live
+  receipts, and the operator guide holds launch controls behind them.
+
+The one real forensic run in the tree,
+`fixtures/forensics/coldcard/historical-import.v1.json` (Episode 264), does not
+close the gap either. It is a single pair of runs on the optimizer-visible
+development arms, executed by an external tool with verification disabled, with
+one prompt rather than a baseline and a candidate, and with wall time and token
+usage both `unavailable`. The gate would refuse it on the holdout boundary, the
+matched-population requirement, and `insufficient_evidence`.
+
+Recommendation: the campaign claim belongs to the live program gate on
+[#9300](https://github.com/OpenAgentsInc/openagents/issues/9300), which already
+owns live campaigns and downstream evidence. This document's scope is the
+promotion mechanism, and that mechanism is derived rather than asserted.
+
+## Remaining limits
+
+These should not be read as covered:
+
+- No untouched-holdout campaign has been run, for the reasons above. The
+  mechanism that would admit a winning candidate is in place; the claim that a
+  specific candidate improved an untouched holdout without regressing the clean
+  holdout or any hard gate is not evidenced by anything in this repository.
+- The DSPy/GEPA honesty guard requires only a non-empty caller-supplied
+  `integrationReceiptRefs` array. It constrains naming; it does not evidence a
+  tested integration.
+- Resolved worker and source evidence is structural validation of typed records
+  submitted by the evaluator, not a lookup against a live placement authority.

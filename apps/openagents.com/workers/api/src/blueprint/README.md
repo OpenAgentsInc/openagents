@@ -85,7 +85,9 @@ The deprecated Rust Blueprint workspace is reference material only.
 - `repositories/forensic-prompt-governance.ts`: Postgres-backed durable active
   forensic prompt pointer and its append-only transition history, admitted only
   under compare-and-set on the revision and prior digest the caller observed.
-  It has no production HTTP caller yet.
+  Its production caller is `GET`/`POST /api/blueprint/forensic-prompt-governance`
+  in `src/blueprint-forensic-prompt-governance-routes.ts`, which computes the
+  promotion or rollback server-side from the state it just read.
 - `services/`: Effect services that enforce evidence-only and approval-gated
   behavior. `services/program-run-authority.ts` denies deploy, email, PR,
   spend, source-mutation, and public-claim effects from Program Run authority.
@@ -112,8 +114,9 @@ The deprecated Rust Blueprint workspace is reference material only.
   promotion.
   `services/forensic-prompt-compiler.ts` compiles a bounded offline candidate
   set, keeps evaluator-only holdouts hidden from generation, requires fresh
-  OpenAgents Cloud evaluation evidence, and prevents generators from promoting
-  their own candidates.
+  OpenAgents Cloud evaluation evidence, binds every Pareto axis to a metric the
+  frozen forensic metric registry defines, and prevents generators from
+  promoting their own candidates.
 - Future `exports/`: generated JSON Schema and OpenAPI artifacts for agents
   and Rust consumers.
 - `fixtures/`: retained fixtures and release-gate examples. The first seeded

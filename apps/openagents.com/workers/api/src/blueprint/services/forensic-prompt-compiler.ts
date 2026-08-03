@@ -1,5 +1,7 @@
 import { Schema as S } from "effect";
 
+import { FROZEN_FORENSIC_METRIC_REGISTRY } from "@openagentsinc/forensic-contract/metrics";
+
 import {
   FORENSIC_FINDING_VERSION,
   FORENSIC_HYPOTHESIS_VERSION,
@@ -43,6 +45,10 @@ const assertDistinct = (label: string, values: ReadonlyArray<string>): void => {
   if (new Set(values).size !== values.length) throw new Error(`${label} must be distinct`);
 };
 
+const FROZEN_METRIC_REFS: ReadonlySet<string> = new Set(
+  FROZEN_FORENSIC_METRIC_REGISTRY.definitions.map((definition) => definition.metricRef),
+);
+
 const assertFrozenParetoAxes = (metricFreeze: ForensicPromptMetricFreeze): void => {
   const declared = metricFreeze.paretoAxes.map((binding) => binding.axis);
   if (
@@ -61,6 +67,17 @@ const assertFrozenParetoAxes = (metricFreeze: ForensicPromptMetricFreeze): void 
     "Pareto axis metric refs",
     metricFreeze.paretoAxes.map((binding) => binding.metricRef),
   );
+  // Without this, an axis could be bound to a metric ref that no frozen
+  // definition owns. The whole comparison is then computed over values the
+  // reporter invented and also supplied in its own scorecard, which is exactly
+  // the assertion the derived Pareto verdict exists to remove.
+  for (const binding of metricFreeze.paretoAxes) {
+    if (!FROZEN_METRIC_REFS.has(binding.metricRef)) {
+      throw new Error(
+        `Pareto axis ${binding.axis} must bind a metric the frozen forensic metric registry defines`,
+      );
+    }
+  }
 };
 
 /**

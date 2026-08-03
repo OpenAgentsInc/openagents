@@ -2007,10 +2007,6 @@
       "reason": "Published forensic contract API; OFR-003 will call it from the durable run lifecycle authority when that issue lands."
     },
     {
-      "ref": "packages/forensic-contract/src/metrics.ts#FROZEN_FORENSIC_METRIC_REGISTRY",
-      "reason": "Published frozen forensic metric catalog; OFR-008 and OFR-012 will consume it in Omega metric provenance and matched run matrices."
-    },
-    {
       "ref": "packages/forensic-contract/src/metrics.ts#rebuildForensicScorecard",
       "reason": "Published deterministic forensic projector; OFR-012 will call it from retained run-matrix evidence when the Omega comparison path lands."
     },

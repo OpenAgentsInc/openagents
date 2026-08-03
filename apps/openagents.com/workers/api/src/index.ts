@@ -316,8 +316,17 @@ import {
   type OpenAgentsWorkerEnv,
   ThreadFileArtifacts,
 } from './bindings'
+import {
+  BLUEPRINT_FORENSIC_PROMPT_GOVERNANCE_PATH,
+  makeBlueprintForensicPromptGovernanceRoutes,
+} from './blueprint-forensic-prompt-governance-routes'
 import { makeBlueprintProbeContributionRoutes } from './blueprint-probe-contribution-routes'
 import { makeBlueprintRoutes } from './blueprint-routes'
+import {
+  ForensicPromptGovernanceError,
+  makePostgresForensicPromptGovernanceStore,
+  type ForensicPromptGovernanceStore,
+} from './blueprint/repositories/forensic-prompt-governance'
 import {
   listBlueprintActionSubmissions,
   recordBlueprintActionSubmissionProposal,
@@ -10305,6 +10314,69 @@ const blueprintRoutes = makeBlueprintRoutes<Env>({
     (await requireAdminApiToken(request, env)),
 })
 
+/**
+ * Each governed read and append opens and closes its own Cloud SQL connection,
+ * the same shape the forensic metric-evidence ledger uses. Two connections per
+ * decision are safe because the append is admitted only under compare-and-set
+ * on the revision and prior digest that the read observed.
+ */
+const withForensicPromptGovernanceSql = <A>(
+  env: Env,
+  use: (
+    store: ForensicPromptGovernanceStore,
+  ) => Effect.Effect<A, ForensicPromptGovernanceError>,
+): Effect.Effect<A, ForensicPromptGovernanceError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const connectionString = env.KHALA_SYNC_DB?.connectionString
+
+      if (connectionString === undefined) {
+        throw new Error(
+          'Forensic prompt governance storage is not configured',
+        )
+      }
+
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+
+      try {
+        return await Effect.runPromise(
+          use(makePostgresForensicPromptGovernanceStore(client.sql)).pipe(
+            Effect.map(value => ({ ok: true as const, value })),
+            Effect.catch(error =>
+              Effect.succeed({ error, ok: false as const }),
+            ),
+          ),
+        )
+      } finally {
+        await client.end()
+      }
+    },
+    catch: () =>
+      new ForensicPromptGovernanceError({
+        code: 'storage_unavailable',
+        message: 'forensic prompt governance storage is unavailable',
+        retryable: true,
+      }),
+  }).pipe(
+    Effect.flatMap(result =>
+      result.ok ? Effect.succeed(result.value) : Effect.fail(result.error),
+    ),
+  )
+
+const blueprintForensicPromptGovernanceRoutes =
+  makeBlueprintForensicPromptGovernanceRoutes<Env>({
+    nowIso: currentIsoTimestamp,
+    requireAdminApiToken,
+    store: env => ({
+      append: (ownerRef, transition, expectedRevision) =>
+        withForensicPromptGovernanceSql(env, store =>
+          store.append(ownerRef, transition, expectedRevision),
+        ),
+      read: ownerRef =>
+        withForensicPromptGovernanceSql(env, store => store.read(ownerRef)),
+    }),
+  })
+
 const blueprintProbeContributionRoutes =
   makeBlueprintProbeContributionRoutes<Env>({
     listContributions: env =>
@@ -15579,6 +15651,11 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: '/api/blueprint/contracts',
     handler: (request, env) =>
       blueprintRoutes.handleBlueprintContractExportApi(request, env),
+  },
+  {
+    path: BLUEPRINT_FORENSIC_PROMPT_GOVERNANCE_PATH,
+    handler: (request, env) =>
+      blueprintForensicPromptGovernanceRoutes.handle(request, env),
   },
   {
     path: '/api/blueprint/tassadar-modules',
