@@ -40,14 +40,24 @@
     "RepositoryClaimReceipt",
     "RepositoryClaimExecuteResult",
     "RepositoryClaimReadRequest",
-    "RepositoryClaimReadResult"
+    "RepositoryClaimReadResult",
+    "SignedWorkroomActivity",
+    "SignedWorkroomOutboxRecord",
+    "SignedWorkroomLedger",
+    "SignedWorkroomReadRequest",
+    "SignedWorkroomReadResult",
+    "SignedWorkroomEnqueueRequest",
+    "SignedWorkroomEnqueueResult"
   ],
   "semanticChecks": [
     "issue_projection_work_ref_matches_snapshot_work_ref",
     "relations_do_not_mutate_endpoints",
     "assignee_and_agent_delegate_remain_distinct",
     "source_authority_revision_and_cursor_are_monotonic_per_source",
-    "receipt_verification_and_owner_disposition_do_not_imply_each_other"
+    "receipt_verification_and_owner_disposition_do_not_imply_each_other",
+    "signed_workroom_event_proves_signer_and_bytes_only",
+    "relay_acceptance_is_transport_evidence_only",
+    "workroom_audience_and_privacy_are_closed_allowlist_compatible"
   ],
   "types": [
     {
@@ -983,6 +993,178 @@
       "fields": [{ "name": "ledger", "type": "RepositoryClaimLedger" }]
     },
     {
+      "name": "NostrEventId",
+      "kind": "string",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[a-f0-9]{64}$",
+      "formatClass": "nostr_event_id"
+    },
+    {
+      "name": "NostrPublicKey",
+      "kind": "string",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[a-f0-9]{64}$",
+      "formatClass": "nostr_public_key"
+    },
+    {
+      "name": "NostrSignature",
+      "kind": "string",
+      "minLength": 128,
+      "maxLength": 128,
+      "pattern": "^[a-f0-9]{128}$",
+      "formatClass": "nostr_signature"
+    },
+    {
+      "name": "WorkroomRef",
+      "kind": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$",
+      "formatClass": "reference"
+    },
+    {
+      "name": "SignedProjectionEventRef",
+      "kind": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$",
+      "formatClass": "reference"
+    },
+    {
+      "name": "WorkroomAudience",
+      "kind": "enum",
+      "values": ["public", "organization", "team", "workroom", "private", "owner_only"]
+    },
+    {
+      "name": "SignedWorkroomActivityKind",
+      "kind": "enum",
+      "values": [
+        "membership",
+        "thread",
+        "mention",
+        "assignment",
+        "delegation",
+        "agent_session",
+        "agent_activity",
+        "code_change",
+        "review",
+        "decision",
+        "evidence",
+        "verification_ref",
+        "receipt_ref",
+        "revocation"
+      ]
+    },
+    {
+      "name": "SignedWorkroomOutboxState",
+      "kind": "enum",
+      "values": ["pending", "publishing", "accepted", "failed", "superseded", "revoked"]
+    },
+    {
+      "name": "SignedWorkroomActivity",
+      "kind": "record",
+      "fields": [
+        { "name": "eventRef", "type": "SignedProjectionEventRef" },
+        { "name": "nostrEventId", "type": "NostrEventId" },
+        { "name": "signerPubkey", "type": "NostrPublicKey" },
+        { "name": "signature", "type": "NostrSignature" },
+        { "name": "actorRef", "type": "PrincipalRef" },
+        { "name": "workroomRef", "type": "WorkroomRef" },
+        { "name": "workRef", "type": { "nullable": "WorkRef" } },
+        { "name": "kind", "type": "SignedWorkroomActivityKind" },
+        { "name": "audience", "type": "WorkroomAudience" },
+        { "name": "privacyClass", "type": "PrivacyClass" },
+        {
+          "name": "causalParentRefs",
+          "type": { "array": "SignedProjectionEventRef", "maxItems": 64 }
+        },
+        { "name": "revision", "type": "SafeInteger" },
+        { "name": "generation", "type": "SafeInteger" },
+        { "name": "occurredAt", "type": "IsoTimestamp" },
+        { "name": "payloadDigest", "type": "ContractDigest" },
+        { "name": "evidenceRefs", "type": { "array": "EvidenceRef", "maxItems": 256 } },
+        { "name": "supersedesEventRef", "type": { "nullable": "SignedProjectionEventRef" } },
+        { "name": "revokesEventRef", "type": { "nullable": "SignedProjectionEventRef" } }
+      ]
+    },
+    {
+      "name": "SignedWorkroomOutboxRecord",
+      "kind": "record",
+      "fields": [
+        { "name": "activity", "type": "SignedWorkroomActivity" },
+        { "name": "canonicalPersistedAt", "type": "IsoTimestamp" },
+        { "name": "state", "type": "SignedWorkroomOutboxState" },
+        { "name": "relayUrls", "type": { "array": "ShortText", "maxItems": 16 } },
+        { "name": "acceptedRelayUrls", "type": { "array": "ShortText", "maxItems": 16 } },
+        { "name": "attemptCount", "type": "SafeInteger" },
+        { "name": "lastAttemptAt", "type": { "nullable": "IsoTimestamp" } },
+        { "name": "lastError", "type": { "nullable": "ShortText" } }
+      ]
+    },
+    {
+      "name": "SignedWorkroomLedger",
+      "kind": "record",
+      "fields": [
+        { "name": "contractVersion", "type": "ContractVersion" },
+        { "name": "revision", "type": "SafeInteger" },
+        { "name": "eventCursor", "type": "WorkCursor" },
+        { "name": "activities", "type": { "array": "SignedWorkroomActivity", "maxItems": 50000 } },
+        { "name": "outbox", "type": { "array": "SignedWorkroomOutboxRecord", "maxItems": 10000 } },
+        { "name": "completeness", "type": "Completeness" },
+        { "name": "freshness", "type": "Freshness" }
+      ]
+    },
+    {
+      "name": "SignedWorkroomReadRequest",
+      "kind": "record",
+      "fields": [
+        { "name": "afterRevision", "type": { "optional": { "nullable": "SafeInteger" } } },
+        { "name": "workroomRef", "type": { "optional": { "nullable": "WorkroomRef" } } },
+        { "name": "workRef", "type": { "optional": { "nullable": "WorkRef" } } }
+      ]
+    },
+    {
+      "name": "SignedWorkroomReadResult",
+      "kind": "record",
+      "fields": [{ "name": "ledger", "type": "SignedWorkroomLedger" }]
+    },
+    {
+      "name": "SignedWorkroomEnqueueRequest",
+      "kind": "record",
+      "fields": [
+        { "name": "idempotencyKey", "type": "IdempotencyKey" },
+        { "name": "expectedRevision", "type": "SafeInteger" },
+        { "name": "effectivePrincipalRef", "type": "PrincipalRef" },
+        { "name": "capabilityRef", "type": "CapabilityRef" },
+        { "name": "activity", "type": "SignedWorkroomActivity" },
+        { "name": "relayUrls", "type": { "array": "ShortText", "maxItems": 16 } }
+      ]
+    },
+    {
+      "name": "SignedWorkroomEnqueueReceipt",
+      "kind": "record",
+      "fields": [
+        { "name": "idempotencyKey", "type": "IdempotencyKey" },
+        { "name": "previousRevision", "type": "SafeInteger" },
+        { "name": "revision", "type": "SafeInteger" },
+        { "name": "eventCursor", "type": "WorkCursor" },
+        { "name": "eventRef", "type": "SignedProjectionEventRef" },
+        { "name": "persistedBeforePublish", "type": "boolean" },
+        { "name": "relayAcceptanceIsAuthority", "type": "boolean" },
+        { "name": "admittedEffect", "type": "boolean" }
+      ]
+    },
+    {
+      "name": "SignedWorkroomEnqueueResult",
+      "kind": "record",
+      "fields": [
+        { "name": "ledger", "type": "SignedWorkroomLedger" },
+        { "name": "receipt", "type": "SignedWorkroomEnqueueReceipt" }
+      ]
+    },
+    {
       "name": "ProtocolCapability",
       "kind": "enum",
       "values": [
@@ -990,7 +1172,9 @@
         "work.snapshot.read",
         "planning.graph.read",
         "repository.claim.read",
-        "repository.claim.execute"
+        "repository.claim.execute",
+        "workroom.activity.read",
+        "workroom.activity.enqueue"
       ]
     },
     {
@@ -1190,6 +1374,24 @@
             { "name": "version", "type": "ProtocolVersion" },
             { "name": "params", "type": "RepositoryClaimExecuteRequest" }
           ]
+        },
+        {
+          "name": "SignedWorkroomRead",
+          "tag": "workroom.activity.read",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "params", "type": "SignedWorkroomReadRequest" }
+          ]
+        },
+        {
+          "name": "SignedWorkroomEnqueue",
+          "tag": "workroom.activity.enqueue",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "params", "type": "SignedWorkroomEnqueueRequest" }
+          ]
         }
       ]
     },
@@ -1253,6 +1455,24 @@
           ]
         },
         {
+          "name": "SignedWorkroomRead",
+          "tag": "workroom.activity.read",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "result", "type": "SignedWorkroomReadResult" }
+          ]
+        },
+        {
+          "name": "SignedWorkroomEnqueue",
+          "tag": "workroom.activity.enqueue",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "result", "type": "SignedWorkroomEnqueueResult" }
+          ]
+        },
+        {
           "name": "Error",
           "tag": "error",
           "fields": [
@@ -1278,6 +1498,13 @@
     "RepositoryClaimExecuteResult",
     "RepositoryClaimReadRequest",
     "RepositoryClaimReadResult",
+    "SignedWorkroomActivity",
+    "SignedWorkroomOutboxRecord",
+    "SignedWorkroomLedger",
+    "SignedWorkroomReadRequest",
+    "SignedWorkroomReadResult",
+    "SignedWorkroomEnqueueRequest",
+    "SignedWorkroomEnqueueResult",
     "IssueProjection",
     "ProtocolError",
     "ProtocolInitializeRequest",
@@ -1333,6 +1560,20 @@
       "minimumVersion": "omega-effectd.v2",
       "params": "RepositoryClaimExecuteRequest",
       "result": "RepositoryClaimExecuteResult"
+    },
+    {
+      "method": "workroom.activity.read",
+      "capability": "workroom.activity.read",
+      "minimumVersion": "omega-effectd.v2",
+      "params": "SignedWorkroomReadRequest",
+      "result": "SignedWorkroomReadResult"
+    },
+    {
+      "method": "workroom.activity.enqueue",
+      "capability": "workroom.activity.enqueue",
+      "minimumVersion": "omega-effectd.v2",
+      "params": "SignedWorkroomEnqueueRequest",
+      "result": "SignedWorkroomEnqueueResult"
     }
   ],
   "fixtures": [

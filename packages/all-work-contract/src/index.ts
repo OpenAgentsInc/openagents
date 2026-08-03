@@ -3,4 +3,6 @@ export * from "./github-bootstrap.ts";
 export * from "./planning-authority.ts";
 export * from "./planning-file-store.ts";
 export * from "./repository-claim-authority.ts";
+export * from "./signed-workroom-authority.ts";
+export * from "./signed-workroom-file-store.ts";
 export * from "./semantic.ts";

@@ -2,12 +2,12 @@
   "contractRef": "openagents.all_work_boundary.v1",
   "contractVersion": 1,
   "profileVersion": "openagents.contract_profile.v1",
-  "definitionSha256": "aa933ba19f0245905ce21c8ed6b90e6279c68b09f3352101a026a10786362535",
+  "definitionSha256": "e504e3084007e8bddab99e9703f1f62c6bf62e1aa7a9f612de75fb522848b628",
   "artifacts": {
-    "effectSha256": "642d2d3c81eec241bd9908dd4b3fa7e2af31144100206da149660dc13eaca6e6",
-    "rustSha256": "3d6ba1402f2681ea5c1a34d6c0d191e82bff3285ca64bdc9f0fbd71ab7624ecc",
-    "jsonSchemaSha256": "dd77ae28118133c326b4d377dc82103db5f45ea870788dab05a21a378861df58",
-    "fixtureIndexSha256": "688c356bd58a5deecbcb0f0983fa017dd0264cf78ba5195667a2e5b17105f95f"
+    "effectSha256": "08847c372ad83958dbaadb7cc829a5062f8beb7316c6a41eba17761485ff2eb6",
+    "rustSha256": "2fa857cfd6f52c51723e7572b8f682a8251fc5f046e0a873a3ccb894b8d7f7ca",
+    "jsonSchemaSha256": "3a8ed0775b525c52481a3c47336517bcb7cd58caf5d1e36675521396266ae551",
+    "fixtureIndexSha256": "d0cbf1b9e5c95a327f2e15cc79d60b74808bbb938e3a7521acc9e83710fa5c3b"
   },
   "protocol": {
     "supportedVersions": [
@@ -57,6 +57,20 @@
         "minimumVersion": "omega-effectd.v2",
         "params": "RepositoryClaimExecuteRequest",
         "result": "RepositoryClaimExecuteResult"
+      },
+      {
+        "method": "workroom.activity.read",
+        "capability": "workroom.activity.read",
+        "minimumVersion": "omega-effectd.v2",
+        "params": "SignedWorkroomReadRequest",
+        "result": "SignedWorkroomReadResult"
+      },
+      {
+        "method": "workroom.activity.enqueue",
+        "capability": "workroom.activity.enqueue",
+        "minimumVersion": "omega-effectd.v2",
+        "params": "SignedWorkroomEnqueueRequest",
+        "result": "SignedWorkroomEnqueueResult"
       }
     ]
   },
@@ -78,7 +92,10 @@
     "relations_do_not_mutate_endpoints",
     "assignee_and_agent_delegate_remain_distinct",
     "source_authority_revision_and_cursor_are_monotonic_per_source",
-    "receipt_verification_and_owner_disposition_do_not_imply_each_other"
+    "receipt_verification_and_owner_disposition_do_not_imply_each_other",
+    "signed_workroom_event_proves_signer_and_bytes_only",
+    "relay_acceptance_is_transport_evidence_only",
+    "workroom_audience_and_privacy_are_closed_allowlist_compatible"
   ],
   "implementationStatus": {
     "ContractVersion": "structural_only",
@@ -170,6 +187,22 @@
     "RepositoryClaimExecuteResult": "implemented",
     "RepositoryClaimReadRequest": "implemented",
     "RepositoryClaimReadResult": "implemented",
+    "NostrEventId": "structural_only",
+    "NostrPublicKey": "structural_only",
+    "NostrSignature": "structural_only",
+    "WorkroomRef": "structural_only",
+    "SignedProjectionEventRef": "structural_only",
+    "WorkroomAudience": "structural_only",
+    "SignedWorkroomActivityKind": "structural_only",
+    "SignedWorkroomOutboxState": "structural_only",
+    "SignedWorkroomActivity": "implemented",
+    "SignedWorkroomOutboxRecord": "implemented",
+    "SignedWorkroomLedger": "implemented",
+    "SignedWorkroomReadRequest": "implemented",
+    "SignedWorkroomReadResult": "implemented",
+    "SignedWorkroomEnqueueRequest": "implemented",
+    "SignedWorkroomEnqueueReceipt": "structural_only",
+    "SignedWorkroomEnqueueResult": "implemented",
     "ProtocolCapability": "structural_only",
     "ProtocolErrorCode": "structural_only",
     "ProtocolError": "structural_only",

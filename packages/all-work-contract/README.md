@@ -73,6 +73,16 @@ projection, and atomic owner-local state. `repository.claim.read` and
 `repository.claim.execute` are live v2 reference-process methods. Native claim
 receipts always report zero GitHub writes.
 
+## Signed Workroom projections
+
+The generated boundary includes causal signed Workroom activity, audience and
+privacy labels, supersession/revocation targets, and a persist-before-publish
+outbox. `src/signed-workroom-authority.ts` admits exact signed bytes only for
+the named Effective Principal and capability, known causal parents, and an
+advancing generation. Its receipt explicitly says that relay acceptance is not
+authority and that the projection does not admit an external effect. See
+`docs/omega/2026-08-03-signed-workroom-projection.md`.
+
 Canonical JSON uses `openagents-canonical-json-v1`: UTF-8, object keys sorted
 by Unicode code point, array order retained, safe integers only, absent fields
 omitted, present null encoded as `null`, and no insignificant whitespace. The
