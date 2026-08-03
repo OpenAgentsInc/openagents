@@ -2,12 +2,12 @@
   "contractRef": "openagents.all_work_boundary.v1",
   "contractVersion": 1,
   "profileVersion": "openagents.contract_profile.v1",
-  "definitionSha256": "2f3119cf7822fe9bd770d2c97f913d609dd49e8918fb3ea4c7df9662d20492c4",
+  "definitionSha256": "287a9c3803c15e73743d0b452b79c5755b1fdd34fb42882a6ccb1125f2c5250b",
   "artifacts": {
-    "effectSha256": "81048fd44c00aa58246d9fee9da8491d5f0084067f1a4ada8b7896f9a27d1d3d",
-    "rustSha256": "87fe5a88e669276672027464635f484a2a01de218424a2c063e8502602abe985",
-    "jsonSchemaSha256": "4d5116b40aeb8e6239f2e43a6b3602b3dc8b55114d953a5956e314101972e948",
-    "fixtureIndexSha256": "872ca9fa5a09ae75990a8ba69aeb5c5e74374a6e31751671f74005f989a87049"
+    "effectSha256": "25b36928005c58c23f8312541fbb64a34fe53e11766aaebe6bc060928357e031",
+    "rustSha256": "cf7c01d7d03553cbd1766b563f93e9d39d3cd5b3fae102ce36b7fc649a2d6dc2",
+    "jsonSchemaSha256": "88e33324be509dd94e7bf06002f9275ed2b9f70f2cfcd2de56769f580b27d1cf",
+    "fixtureIndexSha256": "08ad2115604e32f7cdf67f99f2273ec5646f2ec5f30a62622114605b5bb511d0"
   },
   "protocol": {
     "supportedVersions": [
@@ -71,6 +71,13 @@
         "minimumVersion": "omega-effectd.v2",
         "params": "SignedWorkroomEnqueueRequest",
         "result": "SignedWorkroomEnqueueResult"
+      },
+      {
+        "method": "workroom.activity.deliver",
+        "capability": "workroom.activity.deliver",
+        "minimumVersion": "omega-effectd.v2",
+        "params": "SignedWorkroomDeliveryRequest",
+        "result": "SignedWorkroomDeliveryResult"
       },
       {
         "method": "work.command.execute",
@@ -213,6 +220,8 @@
     "SignedWorkroomActivityKind": "structural_only",
     "SignedWorkroomOutboxState": "structural_only",
     "SignedWorkroomActivity": "implemented",
+    "SignedWorkroomDeliveryOutcome": "structural_only",
+    "SignedWorkroomDeliveryAttempt": "structural_only",
     "SignedWorkroomOutboxRecord": "implemented",
     "SignedWorkroomLedger": "implemented",
     "SignedWorkroomReadRequest": "implemented",
@@ -220,6 +229,9 @@
     "SignedWorkroomEnqueueRequest": "implemented",
     "SignedWorkroomEnqueueReceipt": "structural_only",
     "SignedWorkroomEnqueueResult": "implemented",
+    "SignedWorkroomDeliveryRequest": "implemented",
+    "SignedWorkroomDeliveryReceipt": "structural_only",
+    "SignedWorkroomDeliveryResult": "implemented",
     "WorkCommandControlKind": "structural_only",
     "WorkCommandActivityKind": "structural_only",
     "OwnerDispositionDecision": "structural_only",

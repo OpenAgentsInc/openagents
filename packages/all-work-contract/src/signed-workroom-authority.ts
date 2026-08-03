@@ -4,6 +4,8 @@ import { Context, Effect, Schema as S } from "effect";
 import {
   decodeSignedWorkroomLedger,
   type SignedWorkroomActivity,
+  type SignedWorkroomDeliveryRequest,
+  type SignedWorkroomDeliveryResult,
   type SignedWorkroomEnqueueRequest,
   type SignedWorkroomEnqueueResult,
   type SignedWorkroomLedger,
@@ -14,6 +16,7 @@ import {
 import { verifySignedWorkroomNostrActivity } from "./signed-workroom-nostr.ts";
 
 export const SIGNED_WORKROOM_WRITE_CAPABILITY = "capability:workroom-activity:enqueue" as const;
+export const SIGNED_WORKROOM_DELIVERY_CAPABILITY = "capability:workroom-activity:deliver" as const;
 
 export class SignedWorkroomError extends S.TaggedErrorClass<SignedWorkroomError>()(
   "SignedWorkroomError",
@@ -30,6 +33,8 @@ export class SignedWorkroomError extends S.TaggedErrorClass<SignedWorkroomError>
       "invalid_event_id",
       "invalid_signature",
       "signer_actor_mismatch",
+      "outbox_not_found",
+      "invalid_delivery",
       "invalid_state",
       "storage_unavailable",
     ]),
@@ -172,11 +177,16 @@ export const validateSignedWorkroomState = (
     );
     if (
       activitiesByRef.size !== state.ledger.activities.length ||
-      state.ledger.revision !== state.ledger.activities.length
+      state.ledger.revision < state.ledger.activities.length ||
+      state.ledger.activities.some(
+        (activity, index, activities) =>
+          activity.revision > state.ledger.revision ||
+          (index > 0 && activity.revision <= activities[index - 1]!.revision),
+      )
     ) {
       return yield* new SignedWorkroomError({
         reason: "invalid_state",
-        detail: "signed Workroom revision and event identities do not reconcile",
+        detail: "signed Workroom revision is behind its unique canonical activities",
       });
     }
     for (const activity of state.ledger.activities) {
@@ -189,6 +199,38 @@ export const validateSignedWorkroomState = (
         return yield* new SignedWorkroomError({
           reason: "invalid_state",
           detail: "signed Workroom outbox does not match canonical activity",
+        });
+      }
+      const deliveryAttempts = record.deliveryAttempts;
+      const latestAttemptAt = deliveryAttempts
+        .map((attempt) => attempt.attemptedAt)
+        .sort()
+        .at(-1);
+      const acceptedAttemptRelayUrls = [
+        ...new Set(
+          deliveryAttempts
+            .filter((attempt) => attempt.outcome === "accepted")
+            .map((attempt) => attempt.relayUrl),
+        ),
+      ].sort();
+      if (
+        new Set(record.relayUrls).size !== record.relayUrls.length ||
+        new Set(record.acceptedRelayUrls).size !== record.acceptedRelayUrls.length ||
+        record.acceptedRelayUrls.some((relayUrl) => !record.relayUrls.includes(relayUrl)) ||
+        deliveryAttempts.some((attempt) => !record.relayUrls.includes(attempt.relayUrl)) ||
+        acceptedAttemptRelayUrls.length !== record.acceptedRelayUrls.length ||
+        acceptedAttemptRelayUrls.some(
+          (relayUrl, index) => relayUrl !== record.acceptedRelayUrls[index],
+        ) ||
+        record.attemptCount !== deliveryAttempts.length ||
+        (latestAttemptAt ?? null) !== record.lastAttemptAt ||
+        (record.state === "accepted" &&
+          record.relayUrls.some((relayUrl) => !record.acceptedRelayUrls.includes(relayUrl))) ||
+        (record.attemptCount === 0) !== (record.lastAttemptAt === null)
+      ) {
+        return yield* new SignedWorkroomError({
+          reason: "invalid_state",
+          detail: `signed Workroom outbox delivery facts do not reconcile for ${record.activity.eventRef}`,
         });
       }
     }
@@ -228,6 +270,12 @@ export const enqueueSignedWorkroomActivity = (
         detail: `expected ${request.expectedRevision}, found ${state.ledger.revision}`,
       });
     }
+    if (request.activity.revision !== state.ledger.revision + 1) {
+      return yield* new SignedWorkroomError({
+        reason: "revision_conflict",
+        detail: `signed activity revision ${request.activity.revision} does not advance ledger ${state.ledger.revision}`,
+      });
+    }
     if (state.ledger.activities.some((value) => value.eventRef === request.activity.eventRef)) {
       return yield* new SignedWorkroomError({
         reason: "duplicate_event",
@@ -252,6 +300,7 @@ export const enqueueSignedWorkroomActivity = (
           state: "pending",
           relayUrls: [...new Set(request.relayUrls)].sort(),
           acceptedRelayUrls: [],
+          deliveryAttempts: [],
           attemptCount: 0,
           lastAttemptAt: null,
           lastError: null,
@@ -269,6 +318,142 @@ export const enqueueSignedWorkroomActivity = (
         eventCursor,
         eventRef: request.activity.eventRef,
         persistedBeforePublish: true,
+        relayAcceptanceIsAuthority: false,
+        admittedEffect: false,
+      },
+    };
+    yield* store.save(state.ledger.revision, {
+      ledger,
+      idempotency: {
+        ...state.idempotency,
+        [request.idempotencyKey]: { digest: requestDigest, result },
+      },
+    });
+    return result;
+  });
+
+export const deliverSignedWorkroomActivity = (
+  request: SignedWorkroomDeliveryRequest,
+): Effect.Effect<SignedWorkroomDeliveryResult, SignedWorkroomError, SignedWorkroomStateStore> =>
+  Effect.gen(function* () {
+    const store = yield* SignedWorkroomStateStore;
+    const state = yield* store.load;
+    if (state === null) {
+      return yield* new SignedWorkroomError({
+        reason: "outbox_not_found",
+        detail: request.eventRef,
+      });
+    }
+    yield* validateSignedWorkroomState(state);
+    const requestDigest = digest(request);
+    const replay = state.idempotency[request.idempotencyKey];
+    if (replay !== undefined) {
+      if (replay.digest !== requestDigest) {
+        return yield* new SignedWorkroomError({
+          reason: "idempotency_conflict",
+          detail: "idempotency key was reused with different delivery facts",
+        });
+      }
+      return replay.result as SignedWorkroomDeliveryResult;
+    }
+    if (request.capabilityRef !== SIGNED_WORKROOM_DELIVERY_CAPABILITY) {
+      return yield* new SignedWorkroomError({
+        reason: "forbidden",
+        detail: "effective principal lacks the signed Workroom delivery capability",
+      });
+    }
+    if (request.expectedRevision !== state.ledger.revision) {
+      return yield* new SignedWorkroomError({
+        reason: "revision_conflict",
+        detail: `expected ${request.expectedRevision}, found ${state.ledger.revision}`,
+      });
+    }
+    const recordIndex = state.ledger.outbox.findIndex(
+      (record) => record.activity.eventRef === request.eventRef,
+    );
+    const record = state.ledger.outbox[recordIndex];
+    if (record === undefined) {
+      return yield* new SignedWorkroomError({
+        reason: "outbox_not_found",
+        detail: request.eventRef,
+      });
+    }
+    if (request.effectivePrincipalRef !== record.activity.actorRef) {
+      return yield* new SignedWorkroomError({
+        reason: "forbidden",
+        detail: "only the admitted activity actor can record delivery in this profile",
+      });
+    }
+    if (["accepted", "superseded", "revoked"].includes(record.state)) {
+      return yield* new SignedWorkroomError({
+        reason: "invalid_delivery",
+        detail: `outbox record is terminal in ${record.state}`,
+      });
+    }
+    const attemptedRelayUrls = request.attempts.map((attempt) => attempt.relayUrl);
+    if (
+      new Set(attemptedRelayUrls).size !== attemptedRelayUrls.length ||
+      attemptedRelayUrls.some((relayUrl) => !record.relayUrls.includes(relayUrl)) ||
+      record.deliveryAttempts.length + request.attempts.length > 10_000
+    ) {
+      return yield* new SignedWorkroomError({
+        reason: "invalid_delivery",
+        detail: "delivery attempts must be unique configured relay targets",
+      });
+    }
+
+    const acceptedRelayUrls = [
+      ...new Set([
+        ...record.acceptedRelayUrls,
+        ...request.attempts
+          .filter((attempt) => attempt.outcome === "accepted")
+          .map((attempt) => attempt.relayUrl),
+      ]),
+    ].sort();
+    const allAccepted = record.relayUrls.every((relayUrl) => acceptedRelayUrls.includes(relayUrl));
+    const failedAttempts = request.attempts.filter((attempt) => attempt.outcome !== "accepted");
+    const outboxState = allAccepted
+      ? ("accepted" as const)
+      : failedAttempts.length > 0
+        ? ("failed" as const)
+        : ("publishing" as const);
+    const lastAttemptAt = request.attempts
+      .map((attempt) => attempt.attemptedAt)
+      .sort()
+      .at(-1)!;
+    const lastFailure = failedAttempts.at(-1);
+    const updatedRecord = {
+      ...record,
+      state: outboxState,
+      acceptedRelayUrls,
+      deliveryAttempts: [...record.deliveryAttempts, ...request.attempts],
+      attemptCount: record.attemptCount + request.attempts.length,
+      lastAttemptAt,
+      lastError:
+        lastFailure === undefined
+          ? null
+          : (lastFailure.detail ?? `${lastFailure.outcome}: ${lastFailure.relayUrl}`),
+    };
+    const revision = state.ledger.revision + 1;
+    const eventCursor = `cursor:signed-workroom:${revision}`;
+    const ledger = decodeSignedWorkroomLedger({
+      ...state.ledger,
+      revision,
+      eventCursor,
+      outbox: state.ledger.outbox.map((candidate, index) =>
+        index === recordIndex ? updatedRecord : candidate,
+      ),
+      freshness: { state: "fresh", observedAt: lastAttemptAt },
+    });
+    const result: SignedWorkroomDeliveryResult = {
+      ledger,
+      receipt: {
+        idempotencyKey: request.idempotencyKey,
+        previousRevision: state.ledger.revision,
+        revision,
+        eventCursor,
+        eventRef: request.eventRef,
+        outboxState,
         relayAcceptanceIsAuthority: false,
         admittedEffect: false,
       },

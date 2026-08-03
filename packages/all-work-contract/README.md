@@ -88,6 +88,12 @@ advancing generation. Its receipt explicitly says that relay acceptance is not
 authority and that the projection does not admit an external effect. See
 `docs/omega/2026-08-03-signed-workroom-projection.md`.
 
+The `workroom.activity.deliver` method records unique attempts only for the
+relay targets already persisted with the signed event. Accepted, rejected, and
+unreachable facts advance the same optimistic ledger revision. Partial success
+remains visible through the exact accepted-relay set, failed targets remain
+retryable, and a delivery receipt still admits no external effect or authority.
+
 Canonical JSON uses `openagents-canonical-json-v1`: UTF-8, object keys sorted
 by Unicode code point, array order retained, safe integers only, absent fields
 omitted, present null encoded as `null`, and no insignificant whitespace. The

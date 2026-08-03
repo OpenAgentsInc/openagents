@@ -10,6 +10,7 @@ import { createInterface } from "node:readline";
 import {
   decodeRepositoryClaimExecuteRequest,
   decodeRepositoryClaimReadRequest,
+  decodeSignedWorkroomDeliveryRequest,
   decodeSignedWorkroomEnqueueRequest,
   decodeSignedWorkroomReadRequest,
   decodeProtocolInitializeRequest,
@@ -59,6 +60,7 @@ import {
 } from "../engine/all-work-repository-claims.ts";
 import {
   bootstrapAllWorkSignedWorkroom,
+  deliverAllWorkSignedWorkroom,
   enqueueAllWorkSignedWorkroom,
   readAllWorkSignedWorkroom,
 } from "../engine/all-work-signed-workroom.ts";
@@ -1103,7 +1105,8 @@ export const createOmegaEffectdFramedServer = (
       }
       if (
         allWork.capabilities.includes("workroom.activity.read") ||
-        allWork.capabilities.includes("workroom.activity.enqueue")
+        allWork.capabilities.includes("workroom.activity.enqueue") ||
+        allWork.capabilities.includes("workroom.activity.deliver")
       ) {
         const workroom = await Effect.runPromise(
           Effect.match(bootstrapAllWorkSignedWorkroom(paths.dataRoot), {
@@ -1548,6 +1551,43 @@ export const createOmegaEffectdFramedServer = (
             false,
             undefined,
             redactedError(code, "The signed Workroom activity was refused."),
+          );
+        }
+      }
+      case "workroom.activity.deliver": {
+        if (!selectedAllWorkCapabilities.includes("workroom.activity.deliver")) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "incompatible_version",
+              "workroom.activity.deliver requires its negotiated omega-effectd.v2 capability.",
+            ),
+          );
+        }
+        try {
+          const params = decodeSignedWorkroomDeliveryRequest(request.params ?? {});
+          const result = await Effect.runPromise(
+            deliverAllWorkSignedWorkroom(paths.dataRoot, params),
+          );
+          return respond(request.id, true, result);
+        } catch (error) {
+          const code =
+            error instanceof SignedWorkroomError
+              ? error.reason === "forbidden"
+                ? "forbidden"
+                : error.reason === "storage_unavailable"
+                  ? "unavailable"
+                  : error.reason === "outbox_not_found"
+                    ? "not_found"
+                    : "conflict"
+              : "invalid_request";
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(code, "The signed Workroom delivery facts were refused."),
           );
         }
       }

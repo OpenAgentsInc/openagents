@@ -3,7 +3,9 @@ import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  decodeSignedWorkroomDeliveryRequest,
   decodeSignedWorkroomEnqueueRequest,
+  deliverSignedWorkroomActivity,
   emptySignedWorkroomState,
   enqueueSignedWorkroomActivity,
   signedWorkroomNostrEventId,
@@ -18,9 +20,7 @@ const actorRef = `principal:nostr:${signerPubkey}`;
 
 type UnsignedActivity = Omit<SignedWorkroomActivity, "nostrEventId" | "signature">;
 
-const activity = (
-  overrides: Partial<SignedWorkroomActivity> = {},
-): SignedWorkroomActivity => {
+const activity = (overrides: Partial<SignedWorkroomActivity> = {}): SignedWorkroomActivity => {
   const {
     nostrEventId: overriddenEventId,
     signature: overriddenSignature,
@@ -67,6 +67,24 @@ const request = (overrides: Record<string, unknown> = {}) =>
     ...overrides,
   });
 
+const deliveryRequest = (overrides: Record<string, unknown> = {}) =>
+  decodeSignedWorkroomDeliveryRequest({
+    idempotencyKey: "signed-workroom-delivery-1",
+    expectedRevision: 1,
+    effectivePrincipalRef: actorRef,
+    capabilityRef: "capability:workroom-activity:deliver",
+    eventRef: "signed-event:workroom:1",
+    attempts: [
+      {
+        relayUrl: "wss://relay.example",
+        outcome: "accepted",
+        attemptedAt: "2026-08-03T10:00:02Z",
+        detail: null,
+      },
+    ],
+    ...overrides,
+  });
+
 const harness = (initial = emptySignedWorkroomState("2026-08-03T09:59:00Z")) => {
   let state: SignedWorkroomState | null = initial;
   const layer = Layer.succeed(
@@ -84,7 +102,9 @@ const harness = (initial = emptySignedWorkroomState("2026-08-03T09:59:00Z")) => 
     Effect.runPromise(
       enqueueSignedWorkroomActivity(value, "2026-08-03T10:00:01Z").pipe(Effect.provide(layer)),
     );
-  return { execute, state: () => state };
+  const deliver = (value = deliveryRequest()) =>
+    Effect.runPromise(deliverSignedWorkroomActivity(value).pipe(Effect.provide(layer)));
+  return { deliver, execute, state: () => state };
 };
 
 describe("signed Workroom authority", () => {
@@ -104,6 +124,86 @@ describe("signed Workroom authority", () => {
     expect(result.receipt.relayAcceptanceIsAuthority).toBe(false);
     expect(result.receipt.admittedEffect).toBe(false);
     expect(value.state()?.ledger.outbox[0]?.state).toBe("pending");
+  });
+  it("records exact multi-relay failures and converges after an idempotent retry", async () => {
+    const value = harness();
+    await value.execute(request({ relayUrls: ["wss://relay.example", "wss://relay.two"] }));
+    const failed = await value.deliver(
+      deliveryRequest({
+        attempts: [
+          {
+            relayUrl: "wss://relay.example",
+            outcome: "accepted",
+            attemptedAt: "2026-08-03T10:00:02Z",
+            detail: null,
+          },
+          {
+            relayUrl: "wss://relay.two",
+            outcome: "unreachable",
+            attemptedAt: "2026-08-03T10:00:03Z",
+            detail: "relay outage",
+          },
+        ],
+      }),
+    );
+    expect(failed.receipt).toMatchObject({
+      outboxState: "failed",
+      relayAcceptanceIsAuthority: false,
+      admittedEffect: false,
+    });
+    expect(failed.ledger.outbox[0]).toMatchObject({
+      acceptedRelayUrls: ["wss://relay.example"],
+      attemptCount: 2,
+      lastError: "relay outage",
+    });
+    const retry = deliveryRequest({
+      idempotencyKey: "signed-workroom-delivery-2",
+      expectedRevision: 2,
+      attempts: [
+        {
+          relayUrl: "wss://relay.two",
+          outcome: "accepted",
+          attemptedAt: "2026-08-03T10:00:04Z",
+          detail: null,
+        },
+      ],
+    });
+    const accepted = await value.deliver(retry);
+    expect(accepted.receipt.outboxState).toBe("accepted");
+    expect(accepted.ledger.outbox[0]?.acceptedRelayUrls).toEqual([
+      "wss://relay.example",
+      "wss://relay.two",
+    ]);
+    expect(accepted.ledger.outbox[0]?.deliveryAttempts).toEqual([
+      expect.objectContaining({ relayUrl: "wss://relay.example", outcome: "accepted" }),
+      expect.objectContaining({ relayUrl: "wss://relay.two", outcome: "unreachable" }),
+      expect.objectContaining({ relayUrl: "wss://relay.two", outcome: "accepted" }),
+    ]);
+    expect(await value.deliver(retry)).toEqual(accepted);
+  });
+  it("refuses unconfigured relays, stale revisions, and a different delivery principal", async () => {
+    const value = harness();
+    await value.execute();
+    await expect(
+      value.deliver(
+        deliveryRequest({
+          attempts: [
+            {
+              relayUrl: "wss://hostile.example",
+              outcome: "accepted",
+              attemptedAt: "2026-08-03T10:00:02Z",
+              detail: null,
+            },
+          ],
+        }),
+      ),
+    ).rejects.toMatchObject({ reason: "invalid_delivery" });
+    await expect(value.deliver(deliveryRequest({ expectedRevision: 0 }))).rejects.toMatchObject({
+      reason: "revision_conflict",
+    });
+    await expect(
+      value.deliver(deliveryRequest({ effectivePrincipalRef: "principal:other" })),
+    ).rejects.toMatchObject({ reason: "forbidden" });
   });
   it("replays one idempotent result and rejects changed bytes", async () => {
     const value = harness();
@@ -129,14 +229,10 @@ describe("signed Workroom authority", () => {
   it("rejects changed projection bytes, invalid signatures, and signer actor substitution", async () => {
     const signed = activity();
     await expect(
-      harness().execute(
-        request({ activity: { ...signed, payloadDigest: "e".repeat(64) } }),
-      ),
+      harness().execute(request({ activity: { ...signed, payloadDigest: "e".repeat(64) } })),
     ).rejects.toMatchObject({ reason: "invalid_event_id" });
     await expect(
-      harness().execute(
-        request({ activity: { ...signed, signature: "0".repeat(128) } }),
-      ),
+      harness().execute(request({ activity: { ...signed, signature: "0".repeat(128) } })),
     ).rejects.toMatchObject({ reason: "invalid_signature" });
     await expect(
       harness().execute(request({ activity: activity({ actorRef: "principal:other" }) })),

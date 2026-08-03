@@ -64,6 +64,12 @@
       "$ref": "#/$defs/SignedWorkroomEnqueueResult"
     },
     {
+      "$ref": "#/$defs/SignedWorkroomDeliveryRequest"
+    },
+    {
+      "$ref": "#/$defs/SignedWorkroomDeliveryResult"
+    },
+    {
       "$ref": "#/$defs/DelegationGrant"
     },
     {
@@ -2482,6 +2488,47 @@
       ],
       "additionalProperties": false
     },
+    "SignedWorkroomDeliveryOutcome": {
+      "type": "string",
+      "title": "SignedWorkroomDeliveryOutcome",
+      "enum": [
+        "accepted",
+        "rejected",
+        "unreachable"
+      ]
+    },
+    "SignedWorkroomDeliveryAttempt": {
+      "type": "object",
+      "title": "SignedWorkroomDeliveryAttempt",
+      "properties": {
+        "relayUrl": {
+          "$ref": "#/$defs/ShortText"
+        },
+        "outcome": {
+          "$ref": "#/$defs/SignedWorkroomDeliveryOutcome"
+        },
+        "attemptedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ShortText"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "relayUrl",
+        "outcome",
+        "attemptedAt",
+        "detail"
+      ],
+      "additionalProperties": false
+    },
     "SignedWorkroomOutboxRecord": {
       "type": "object",
       "title": "SignedWorkroomOutboxRecord",
@@ -2508,6 +2555,13 @@
             "$ref": "#/$defs/ShortText"
           },
           "maxItems": 16
+        },
+        "deliveryAttempts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SignedWorkroomDeliveryAttempt"
+          },
+          "maxItems": 10000
         },
         "attemptCount": {
           "$ref": "#/$defs/SafeInteger"
@@ -2539,6 +2593,7 @@
         "state",
         "relayUrls",
         "acceptedRelayUrls",
+        "deliveryAttempts",
         "attemptCount",
         "lastAttemptAt",
         "lastError"
@@ -2728,6 +2783,102 @@
         },
         "receipt": {
           "$ref": "#/$defs/SignedWorkroomEnqueueReceipt"
+        }
+      },
+      "required": [
+        "ledger",
+        "receipt"
+      ],
+      "additionalProperties": false
+    },
+    "SignedWorkroomDeliveryRequest": {
+      "type": "object",
+      "title": "SignedWorkroomDeliveryRequest",
+      "properties": {
+        "idempotencyKey": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "expectedRevision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "effectivePrincipalRef": {
+          "$ref": "#/$defs/PrincipalRef"
+        },
+        "capabilityRef": {
+          "$ref": "#/$defs/CapabilityRef"
+        },
+        "eventRef": {
+          "$ref": "#/$defs/SignedProjectionEventRef"
+        },
+        "attempts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SignedWorkroomDeliveryAttempt"
+          },
+          "minItems": 1,
+          "maxItems": 16
+        }
+      },
+      "required": [
+        "idempotencyKey",
+        "expectedRevision",
+        "effectivePrincipalRef",
+        "capabilityRef",
+        "eventRef",
+        "attempts"
+      ],
+      "additionalProperties": false
+    },
+    "SignedWorkroomDeliveryReceipt": {
+      "type": "object",
+      "title": "SignedWorkroomDeliveryReceipt",
+      "properties": {
+        "idempotencyKey": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "previousRevision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "revision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "eventCursor": {
+          "$ref": "#/$defs/WorkCursor"
+        },
+        "eventRef": {
+          "$ref": "#/$defs/SignedProjectionEventRef"
+        },
+        "outboxState": {
+          "$ref": "#/$defs/SignedWorkroomOutboxState"
+        },
+        "relayAcceptanceIsAuthority": {
+          "type": "boolean"
+        },
+        "admittedEffect": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "idempotencyKey",
+        "previousRevision",
+        "revision",
+        "eventCursor",
+        "eventRef",
+        "outboxState",
+        "relayAcceptanceIsAuthority",
+        "admittedEffect"
+      ],
+      "additionalProperties": false
+    },
+    "SignedWorkroomDeliveryResult": {
+      "type": "object",
+      "title": "SignedWorkroomDeliveryResult",
+      "properties": {
+        "ledger": {
+          "$ref": "#/$defs/SignedWorkroomLedger"
+        },
+        "receipt": {
+          "$ref": "#/$defs/SignedWorkroomDeliveryReceipt"
         }
       },
       "required": [
@@ -3341,6 +3492,7 @@
         "repository.claim.execute",
         "workroom.activity.read",
         "workroom.activity.enqueue",
+        "workroom.activity.deliver",
         "work.command.execute"
       ]
     },
@@ -3895,6 +4047,30 @@
           "type": "object",
           "properties": {
             "method": {
+              "const": "workroom.activity.deliver"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "params": {
+              "$ref": "#/$defs/SignedWorkroomDeliveryRequest"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
               "const": "work.command.execute"
             },
             "id": {
@@ -4116,6 +4292,30 @@
           "type": "object",
           "properties": {
             "method": {
+              "const": "workroom.activity.deliver"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "result": {
+              "$ref": "#/$defs/SignedWorkroomDeliveryResult"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
               "const": "work.command.execute"
             },
             "id": {
@@ -4167,7 +4367,7 @@
     "profileVersion": "openagents.contract_profile.v1",
     "contractRef": "openagents.all_work_boundary.v1",
     "contractVersion": 1,
-    "definitionSha256": "2f3119cf7822fe9bd770d2c97f913d609dd49e8918fb3ea4c7df9662d20492c4",
+    "definitionSha256": "287a9c3803c15e73743d0b452b79c5755b1fdd34fb42882a6ccb1125f2c5250b",
     "owningDomain": "all_work_boundary",
     "authoritativeRuntime": "effect",
     "relationship": "projection",
@@ -4306,6 +4506,8 @@
       "SignedWorkroomActivityKind": "structural_only",
       "SignedWorkroomOutboxState": "structural_only",
       "SignedWorkroomActivity": "implemented",
+      "SignedWorkroomDeliveryOutcome": "structural_only",
+      "SignedWorkroomDeliveryAttempt": "structural_only",
       "SignedWorkroomOutboxRecord": "implemented",
       "SignedWorkroomLedger": "implemented",
       "SignedWorkroomReadRequest": "implemented",
@@ -4313,6 +4515,9 @@
       "SignedWorkroomEnqueueRequest": "implemented",
       "SignedWorkroomEnqueueReceipt": "structural_only",
       "SignedWorkroomEnqueueResult": "implemented",
+      "SignedWorkroomDeliveryRequest": "implemented",
+      "SignedWorkroomDeliveryReceipt": "structural_only",
+      "SignedWorkroomDeliveryResult": "implemented",
       "WorkCommandControlKind": "structural_only",
       "WorkCommandActivityKind": "structural_only",
       "OwnerDispositionDecision": "structural_only",

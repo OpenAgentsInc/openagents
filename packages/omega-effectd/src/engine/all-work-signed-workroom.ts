@@ -1,6 +1,8 @@
 import {
+  decodeSignedWorkroomDeliveryRequest,
   decodeSignedWorkroomEnqueueRequest,
   decodeSignedWorkroomReadRequest,
+  deliverSignedWorkroomActivity,
   emptySignedWorkroomState,
   enqueueSignedWorkroomActivity,
   fileSignedWorkroomStateStoreLayer,
@@ -45,4 +47,11 @@ export const enqueueAllWorkSignedWorkroom = (dataRoot: string, input: unknown) =
     yield* bootstrapAllWorkSignedWorkroom(dataRoot);
     const request = decodeSignedWorkroomEnqueueRequest(input);
     return yield* enqueueSignedWorkroomActivity(request, request.activity.occurredAt);
+  }).pipe(Effect.provide(fileSignedWorkroomStateStoreLayer(dataRoot)));
+
+export const deliverAllWorkSignedWorkroom = (dataRoot: string, input: unknown) =>
+  Effect.gen(function* () {
+    yield* bootstrapAllWorkSignedWorkroom(dataRoot);
+    const request = decodeSignedWorkroomDeliveryRequest(input);
+    return yield* deliverSignedWorkroomActivity(request);
   }).pipe(Effect.provide(fileSignedWorkroomStateStoreLayer(dataRoot)));

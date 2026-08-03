@@ -59,7 +59,18 @@ owner acceptance, or release.
 
 The owner-local durable file adapter uses atomic replacement and optimistic
 revision checks, so restart and stale writers cannot silently drop pending
-outbox rows. The remaining OAW-009 work includes the publisher adapter,
-multi-relay delivery reducer, purpose-bound non-human actor grants, Omega
+outbox rows. The typed delivery reducer accepts unique attempts only for the
+relay targets already persisted in that outbox row. It records accepted,
+rejected, and unreachable results, preserves the exact accepted-relay subset,
+retains the bounded per-relay attempt history, keeps partial or failed delivery
+retryable, and advances the same optimistic ledger revision without changing
+the signed activity bytes. The durable reader migrates pre-delivery pending
+rows by adding an empty attempt history before strict validation. Delivery
+requests are idempotent. Their receipts fix
+`relayAcceptanceIsAuthority: false` and `admittedEffect: false` even when all
+configured relays accept the event.
+
+The reducer is not a network publisher. The remaining OAW-009 work includes
+the publisher adapter, purpose-bound non-human actor grants, Omega delivery and
 enqueue UI, and installed two-client outage/replay falsifiers. Test execution
 is deferred to the final omega#208 build gate.

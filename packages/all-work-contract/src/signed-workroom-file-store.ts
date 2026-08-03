@@ -19,6 +19,25 @@ const error = (detail: string) =>
 const notFound = (cause: unknown): boolean =>
   typeof cause === "object" && cause !== null && Reflect.get(cause, "code") === "ENOENT";
 
+const migratePreDeliveryOutbox = (input: unknown): unknown => {
+  if (typeof input !== "object" || input === null) return input;
+  const ledger = Reflect.get(input, "ledger");
+  if (typeof ledger !== "object" || ledger === null) return input;
+  const outbox = Reflect.get(ledger, "outbox");
+  if (!Array.isArray(outbox)) return input;
+  return {
+    ...input,
+    ledger: {
+      ...ledger,
+      outbox: outbox.map((record) =>
+        typeof record === "object" && record !== null && !Object.hasOwn(record, "deliveryAttempts")
+          ? { ...record, deliveryAttempts: [] }
+          : record,
+      ),
+    },
+  };
+};
+
 const readState = (
   filePath: string,
 ): Effect.Effect<SignedWorkroomState | null, SignedWorkroomError> =>
@@ -30,7 +49,7 @@ const readState = (
       Effect.try({ try: () => JSON.parse(contents), catch: () => error("json") }),
     ),
     Effect.flatMap((input) =>
-      S.decodeUnknownEffect(SignedWorkroomStateSchema)(input, {
+      S.decodeUnknownEffect(SignedWorkroomStateSchema)(migratePreDeliveryOutbox(input), {
         onExcessProperty: "error",
       }).pipe(Effect.mapError(() => error("decode"))),
     ),
