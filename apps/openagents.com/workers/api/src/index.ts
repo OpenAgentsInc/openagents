@@ -655,6 +655,7 @@ import {
   renderDiscoverySurface,
 } from './inference/discovery-surfaces'
 import { handleDispatchFailureTelemetryReadout } from './inference/dispatch-failure-telemetry-routes'
+import { handleFreeTierDataSharingDisclosureApi } from './inference/free-tier-data-sharing-routes'
 import {
   matchDurableReadRequest,
   routeDurableInferenceReadRequest,
@@ -13619,6 +13620,15 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // registry is literal.
     path: '/api/public/revenue-loop/first-dollar-evidence/:bundleRef',
     handler: () => Effect.succeed(notFound()),
+  },
+  {
+    // The live `data.free_tier_capture_disclosure.v1` promise names this exact
+    // route as its verification method, and the OpenAPI document has always
+    // declared it. It was exported and never mounted, so the verification the
+    // promise states could not be performed (#9306). Read-only, no auth, no
+    // database, no secrets: it re-projects the static disclosure object.
+    path: '/api/public/free-tier-data-sharing',
+    handler: request => handleFreeTierDataSharingDisclosureApi(request),
   },
   {
     path: '/api/public/product-promises/transitions',

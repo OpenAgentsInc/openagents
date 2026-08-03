@@ -1,0 +1,340 @@
+{
+  "schema": "openagents.loupe_verification_live_run.v1",
+  "runRef": "run.coldcard.loupe-verification.1bc230758696d848",
+  "note": "Live OFR-007 acceptance evidence. The mechanical tier was measured on an admitted sandbox, the initial verdict was then written to the durable first-verdict ledger, and only afterwards did the vulnerable and fixed control tests execute inside two further admitted sandboxes. Every sandbox ref, generation, receipt ref, image digest and lease window below was observed by the orchestrating process from managed-sandbox runtime receipts, never reported by a guest.",
+  "detector": {
+    "detectorRef": "detector.coldcard.provider-provenance.v1",
+    "detectorDigest": "sha256:538ae35ebe456e8291137644f6115cee1a8ebc0f8819ea06f11a4b75612fa58b",
+    "description": "Exits 0 when the linker resolved rng_get to the board's hardware-TRNG object and MicroPython's deterministic fallback object contributes no symbol to the enumerated inventory; exits 1 otherwise. This is a provenance check over measured link and symbol evidence, never a statistical test of generator output."
+  },
+  "plan": {
+    "schema": "openagents.loupe_verification_plan.v1",
+    "verificationRef": "verification.coldcard.rng-fallback.live.v1",
+    "runRef": "run.coldcard.loupe-verification.1bc230758696d848",
+    "findingRef": "finding.coldcard.rng-fallback.v1",
+    "findingDigest": "sha256:03ab2c2be77f40af437e5b1f08b8b8a6e7ea709f7f9c0c64df330533b851af76",
+    "discoveryActorRef": "actor.discovery.ofr014.artifact-witness.v1",
+    "verifierActorRef": "actor.verifier.ofr007.loupe.v1",
+    "evidenceProvenance": "admitted_worker_run",
+    "sourceBundleRef": "target.coldcard.vulnerable",
+    "sourceBundleDigest": "sha256:bf8b7e47456c60c9a5937b38e0d2a7bf21745f77c30ea28ff7e689378713ea3a",
+    "dependencyManifestDigest": "sha256:daa2acbcf5fe268943f9baab0a3c534cd7065e41c40206e7049451862bcae08c",
+    "vulnerableTargetDigest": "sha256:bf8b7e47456c60c9a5937b38e0d2a7bf21745f77c30ea28ff7e689378713ea3a",
+    "fixedTargetDigest": "sha256:1081fdc9bca26ddda5fac9e26ba1926020bcd44f1f3936322bee06e993258bbb",
+    "workerImageDigest": "sha256:f79d6a8a9685832f057d1c641d0fdc11c928ed7bef9102c30b240c83b6635d4b",
+    "workerProfileDigest": "sha256:8b0b4d6bd5fefaf26687bc6bf128f2cc79eb6d234ef383e42ff0e368a4f0f23c",
+    "admittedWorkers": [
+      {
+        "workerRef": "worker.coldcard.mechanical.127183aecf33effb0f11",
+        "sandboxRef": "sandbox.ofr007.mechanical.127183aecf33effb0f11",
+        "resourceGeneration": 1,
+        "placementRef": "placement.coldcard.db093adae92f0ee91854"
+      },
+      {
+        "workerRef": "worker.coldcard.control-vulnerable.68a67442c4f36710a7f0",
+        "sandboxRef": "sandbox.ofr007.control-vulnerable.68a67442c4f36710a7f0",
+        "resourceGeneration": 1,
+        "placementRef": "placement.coldcard.87977f04ee067ef77500"
+      },
+      {
+        "workerRef": "worker.coldcard.control-fixed.f0da2592f3323e6f0390",
+        "sandboxRef": "sandbox.ofr007.control-fixed.f0da2592f3323e6f0390",
+        "resourceGeneration": 1,
+        "placementRef": "placement.coldcard.a23f64eee7a706c2a9fb"
+      }
+    ],
+    "createdAt": "2026-08-03T20:24:05.318Z"
+  },
+  "initialVerdict": {
+    "schema": "openagents.loupe_initial_verdict.v1",
+    "verdictRef": "verdict.ofr007.9194a847dfbf91efbe83d40e",
+    "verificationRef": "verification.coldcard.rng-fallback.live.v1",
+    "findingDigest": "sha256:03ab2c2be77f40af437e5b1f08b8b8a6e7ea709f7f9c0c64df330533b851af76",
+    "verifierActorRef": "actor.verifier.ofr007.loupe.v1",
+    "outcome": "confirmed",
+    "evidenceReceiptRefs": [
+      "receipt.ofr007.mechanical.1.b17abf2ab44a5c82",
+      "receipt.ofr007.mechanical.2.4202c88220e7bc87",
+      "receipt.ofr007.mechanical.3.a50710a0c5655048"
+    ],
+    "rationaleDigest": "sha256:bf7c64d36e3e8c9fe15c03705ddb153c942540ebea698ba8cd7727d17d3ad75c",
+    "lockedAt": "2026-08-03T20:29:07.013Z"
+  },
+  "mechanicalEvidence": [
+    {
+      "schema": "openagents.loupe_verification_evidence.v1",
+      "receiptRef": "receipt.ofr007.mechanical.1.b17abf2ab44a5c82",
+      "verificationRef": "verification.coldcard.rng-fallback.live.v1",
+      "sequence": 1,
+      "operation": "source_ref_resolved",
+      "evidenceTier": "source_observed",
+      "subjectRef": "target.coldcard.vulnerable",
+      "commandDigest": "sha256:b6084d565e7522ec0f0cdea2a8b0005488e4057925dcb4586d0aca20704d4b87",
+      "inputDigests": [
+        "sha256:bf8b7e47456c60c9a5937b38e0d2a7bf21745f77c30ea28ff7e689378713ea3a",
+        "sha256:daa2acbcf5fe268943f9baab0a3c534cd7065e41c40206e7049451862bcae08c"
+      ],
+      "outcome": "succeeded",
+      "resultDigest": "sha256:c92e13644fcf9a465ad1e3ec020074cb5953a05ab2737f2af9dd1296371ee87a",
+      "environmentDigest": "sha256:67788aa874235d89bc7d995ad6b9c7323af59cd11cf5b2c64c7039c4692fecd1",
+      "workerRef": "worker.coldcard.mechanical.127183aecf33effb0f11",
+      "workerReceiptRef": "receipt-ref://sha256/7a6e832521c2114983b0154c807ebc4286ce15bb160b41d232befb1dc859b109",
+      "observedAt": "2026-08-03T20:24:05.318Z"
+    },
+    {
+      "schema": "openagents.loupe_verification_evidence.v1",
+      "receiptRef": "receipt.ofr007.mechanical.2.4202c88220e7bc87",
+      "verificationRef": "verification.coldcard.rng-fallback.live.v1",
+      "sequence": 2,
+      "operation": "macro_value_observed",
+      "evidenceTier": "source_observed",
+      "subjectRef": "macro.MICROPY_HW_ENABLE_RNG",
+      "commandDigest": "sha256:b139f79a8319de58f381c016dbaeee1f7038caa6710449278cf3976734e2b7e8",
+      "inputDigests": [
+        "sha256:bf8b7e47456c60c9a5937b38e0d2a7bf21745f77c30ea28ff7e689378713ea3a",
+        "sha256:daa2acbcf5fe268943f9baab0a3c534cd7065e41c40206e7049451862bcae08c"
+      ],
+      "outcome": "succeeded",
+      "resultDigest": "sha256:ac493abf7dc8503405f4e787b8f1785ec1a113f4402b77c578e6b3806e78744f",
+      "environmentDigest": "sha256:67788aa874235d89bc7d995ad6b9c7323af59cd11cf5b2c64c7039c4692fecd1",
+      "workerRef": "worker.coldcard.mechanical.127183aecf33effb0f11",
+      "workerReceiptRef": "receipt-ref://sha256/7a6e832521c2114983b0154c807ebc4286ce15bb160b41d232befb1dc859b109",
+      "observedAt": "2026-08-03T20:24:05.318Z"
+    },
+    {
+      "schema": "openagents.loupe_verification_evidence.v1",
+      "receiptRef": "receipt.ofr007.mechanical.3.a50710a0c5655048",
+      "verificationRef": "verification.coldcard.rng-fallback.live.v1",
+      "sequence": 3,
+      "operation": "symbol_provider_resolved",
+      "evidenceTier": "source_observed",
+      "subjectRef": "symbol.linked.rng_get",
+      "commandDigest": "sha256:7ca5cf0bdb138cf625d4dbd0b43cbbd1b1008ad4e611e69ba50dacb9e8fd2a57",
+      "inputDigests": [
+        "sha256:bf8b7e47456c60c9a5937b38e0d2a7bf21745f77c30ea28ff7e689378713ea3a",
+        "sha256:daa2acbcf5fe268943f9baab0a3c534cd7065e41c40206e7049451862bcae08c"
+      ],
+      "outcome": "succeeded",
+      "resultDigest": "sha256:a5ac456472d98db6d24bd6fa7a6c5ee77b566eb2228849085a47de00c9433ea5",
+      "environmentDigest": "sha256:67788aa874235d89bc7d995ad6b9c7323af59cd11cf5b2c64c7039c4692fecd1",
+      "workerRef": "worker.coldcard.mechanical.127183aecf33effb0f11",
+      "workerReceiptRef": "receipt-ref://sha256/7a6e832521c2114983b0154c807ebc4286ce15bb160b41d232befb1dc859b109",
+      "observedAt": "2026-08-03T20:24:05.318Z"
+    }
+  ],
+  "controlEvidence": [
+    {
+      "schema": "openagents.loupe_verification_evidence.v1",
+      "receiptRef": "receipt.ofr007.poc.a6666f4cf9360704",
+      "verificationRef": "verification.coldcard.rng-fallback.live.v1",
+      "sequence": 4,
+      "operation": "poc_applied",
+      "evidenceTier": "artifact_observed",
+      "subjectRef": "detector.coldcard.provider-provenance.v1",
+      "commandDigest": "sha256:538ae35ebe456e8291137644f6115cee1a8ebc0f8819ea06f11a4b75612fa58b",
+      "inputDigests": [
+        "sha256:bf8b7e47456c60c9a5937b38e0d2a7bf21745f77c30ea28ff7e689378713ea3a",
+        "sha256:daa2acbcf5fe268943f9baab0a3c534cd7065e41c40206e7049451862bcae08c"
+      ],
+      "outcome": "succeeded",
+      "resultDigest": "sha256:538ae35ebe456e8291137644f6115cee1a8ebc0f8819ea06f11a4b75612fa58b",
+      "environmentDigest": "sha256:67788aa874235d89bc7d995ad6b9c7323af59cd11cf5b2c64c7039c4692fecd1",
+      "workerRef": "worker.coldcard.control-vulnerable.68a67442c4f36710a7f0",
+      "workerReceiptRef": "receipt-ref://sha256/d8d3a5cee45af645e8278aba6e3213499f0ddbba9eaef1085f769b817eab1596",
+      "observedAt": "2026-08-03T20:39:55.325Z"
+    },
+    {
+      "schema": "openagents.loupe_verification_evidence.v1",
+      "receiptRef": "receipt.ofr007.control.vulnerable.87977f04ee067ef7",
+      "verificationRef": "verification.coldcard.rng-fallback.live.v1",
+      "sequence": 5,
+      "operation": "control_test_observed",
+      "evidenceTier": "executed",
+      "subjectRef": "target.coldcard.vulnerable",
+      "commandDigest": "sha256:538ae35ebe456e8291137644f6115cee1a8ebc0f8819ea06f11a4b75612fa58b",
+      "inputDigests": [
+        "sha256:bf8b7e47456c60c9a5937b38e0d2a7bf21745f77c30ea28ff7e689378713ea3a"
+      ],
+      "outcome": "succeeded",
+      "resultDigest": "sha256:a82dd27bc05f273b7fc5dffb0022b8894e0ca156e8d9b9af9a3de74b230e1694",
+      "environmentDigest": "sha256:67788aa874235d89bc7d995ad6b9c7323af59cd11cf5b2c64c7039c4692fecd1",
+      "workerRef": "worker.coldcard.control-vulnerable.68a67442c4f36710a7f0",
+      "workerReceiptRef": "receipt-ref://sha256/d8d3a5cee45af645e8278aba6e3213499f0ddbba9eaef1085f769b817eab1596",
+      "controlRevision": "vulnerable",
+      "expectedTestOutcome": "failure",
+      "observedTermination": {
+        "status": "observed",
+        "exitStatus": 1
+      },
+      "observedAt": "2026-08-03T20:39:55.325Z"
+    },
+    {
+      "schema": "openagents.loupe_verification_evidence.v1",
+      "receiptRef": "receipt.ofr007.control.fixed.a23f64eee7a706c2",
+      "verificationRef": "verification.coldcard.rng-fallback.live.v1",
+      "sequence": 6,
+      "operation": "control_test_observed",
+      "evidenceTier": "executed",
+      "subjectRef": "target.coldcard.fixed",
+      "commandDigest": "sha256:538ae35ebe456e8291137644f6115cee1a8ebc0f8819ea06f11a4b75612fa58b",
+      "inputDigests": [
+        "sha256:1081fdc9bca26ddda5fac9e26ba1926020bcd44f1f3936322bee06e993258bbb"
+      ],
+      "outcome": "succeeded",
+      "resultDigest": "sha256:3b4fd2257747ede4cdee80d63ba7f449d751ef83f981c98b93b9b0e4ca5626ae",
+      "environmentDigest": "sha256:67788aa874235d89bc7d995ad6b9c7323af59cd11cf5b2c64c7039c4692fecd1",
+      "workerRef": "worker.coldcard.control-fixed.f0da2592f3323e6f0390",
+      "workerReceiptRef": "receipt-ref://sha256/650b25e385c75762b6d8ee742c3e00e6d7335bb98f98e94e8b6687c232f6a6ef",
+      "controlRevision": "fixed",
+      "expectedTestOutcome": "success",
+      "observedTermination": {
+        "status": "observed",
+        "exitStatus": 0,
+        "resultArtifactDigest": "sha256:09a6b69673d87c192008a0008a85d43fd43c24b165dbe9ef306ed04e877f9de4"
+      },
+      "observedAt": "2026-08-03T20:53:22.001Z"
+    }
+  ],
+  "admittedWorkerReceipts": [
+    {
+      "schema": "openagents.loupe_admitted_worker_receipt.v1",
+      "receiptRef": "receipt-ref://sha256/7a6e832521c2114983b0154c807ebc4286ce15bb160b41d232befb1dc859b109",
+      "sandboxRef": "sandbox.ofr007.mechanical.127183aecf33effb0f11",
+      "resourceGeneration": 1,
+      "placementRef": "placement.coldcard.db093adae92f0ee91854",
+      "imageDigest": "sha256:f79d6a8a9685832f057d1c641d0fdc11c928ed7bef9102c30b240c83b6635d4b",
+      "profileDigest": "sha256:8b0b4d6bd5fefaf26687bc6bf128f2cc79eb6d234ef383e42ff0e368a4f0f23c",
+      "lifecycleState": "admitted",
+      "exact": true,
+      "observedAt": "2026-08-03T20:19:06.695Z",
+      "expiresAt": "2026-08-03T21:19:06.695Z"
+    },
+    {
+      "schema": "openagents.loupe_admitted_worker_receipt.v1",
+      "receiptRef": "receipt-ref://sha256/d8d3a5cee45af645e8278aba6e3213499f0ddbba9eaef1085f769b817eab1596",
+      "sandboxRef": "sandbox.ofr007.control-vulnerable.68a67442c4f36710a7f0",
+      "resourceGeneration": 1,
+      "placementRef": "placement.coldcard.87977f04ee067ef77500",
+      "imageDigest": "sha256:f79d6a8a9685832f057d1c641d0fdc11c928ed7bef9102c30b240c83b6635d4b",
+      "profileDigest": "sha256:8b0b4d6bd5fefaf26687bc6bf128f2cc79eb6d234ef383e42ff0e368a4f0f23c",
+      "lifecycleState": "admitted",
+      "exact": true,
+      "observedAt": "2026-08-03T20:33:58.930Z",
+      "expiresAt": "2026-08-03T21:33:58.930Z"
+    },
+    {
+      "schema": "openagents.loupe_admitted_worker_receipt.v1",
+      "receiptRef": "receipt-ref://sha256/650b25e385c75762b6d8ee742c3e00e6d7335bb98f98e94e8b6687c232f6a6ef",
+      "sandboxRef": "sandbox.ofr007.control-fixed.f0da2592f3323e6f0390",
+      "resourceGeneration": 1,
+      "placementRef": "placement.coldcard.a23f64eee7a706c2a9fb",
+      "imageDigest": "sha256:f79d6a8a9685832f057d1c641d0fdc11c928ed7bef9102c30b240c83b6635d4b",
+      "profileDigest": "sha256:8b0b4d6bd5fefaf26687bc6bf128f2cc79eb6d234ef383e42ff0e368a4f0f23c",
+      "lifecycleState": "admitted",
+      "exact": true,
+      "observedAt": "2026-08-03T20:47:21.068Z",
+      "expiresAt": "2026-08-03T21:47:21.068Z"
+    }
+  ],
+  "runs": [
+    {
+      "role": "mechanical",
+      "variant": "vulnerable",
+      "sandboxRef": "sandbox.ofr007.mechanical.127183aecf33effb0f11",
+      "resourceGeneration": 1,
+      "receiptRefs": [
+        "receipt-ref://sha256/7a6e832521c2114983b0154c807ebc4286ce15bb160b41d232befb1dc859b109",
+        "receipt-ref://sha256/69c416ad40be3c71ab91c471d7f3e417ced9d913771e0b98734d300019e056c2",
+        "receipt-ref://sha256/46c0790bb1e7d26ebe328db27df5739f99e0c64ab0f7ead5939992cb7b0d6227"
+      ],
+      "capturedAt": "2026-08-03T20:24:05.318Z",
+      "captureDigest": "sha256:bb36fcd219f4175e0d6210dca8be7c7dd94838f5390a83d0c0d7a7101635bfaa",
+      "targetCommit": "bcc2c382a324690a2fcf972c0bac3b79bf923f7b",
+      "sourceBundleDigest": "sha256:bf8b7e47456c60c9a5937b38e0d2a7bf21745f77c30ea28ff7e689378713ea3a",
+      "buildExitStatus": 0,
+      "measuredCostMicrousd": 5478
+    },
+    {
+      "role": "control_vulnerable",
+      "variant": "vulnerable",
+      "sandboxRef": "sandbox.ofr007.control-vulnerable.68a67442c4f36710a7f0",
+      "resourceGeneration": 1,
+      "receiptRefs": [
+        "receipt-ref://sha256/d8d3a5cee45af645e8278aba6e3213499f0ddbba9eaef1085f769b817eab1596",
+        "receipt-ref://sha256/5b713c7c2c71f01b5e4e1f4b927a931b8e8680f67790b9b9f1a06a33c9b59cdf",
+        "receipt-ref://sha256/63c7e17f42b6a1a5c49c8e61234b0060a9be096bffa6a6e16e3da3727b9b97e0"
+      ],
+      "capturedAt": "2026-08-03T20:39:06.317Z",
+      "captureDigest": "sha256:9761bd6038d85fb05bbf81b3221c1ce27888411699f0b3157997e8f39b49b26b",
+      "targetCommit": "bcc2c382a324690a2fcf972c0bac3b79bf923f7b",
+      "sourceBundleDigest": "sha256:bf8b7e47456c60c9a5937b38e0d2a7bf21745f77c30ea28ff7e689378713ea3a",
+      "buildExitStatus": 0,
+      "measuredCostMicrousd": 6140,
+      "detectorExitStatus": 1,
+      "detectorObservedAt": "2026-08-03T20:39:55.325Z",
+      "detectorReport": {
+        "schema": "openagents.loupe_provider_provenance_report.v1",
+        "captureRef": "capture.coldcard.vulnerable",
+        "targetCommit": "bcc2c382a324690a2fcf972c0bac3b79bf923f7b",
+        "sourceBundleDigest": "sha256:bf8b7e47456c60c9a5937b38e0d2a7bf21745f77c30ea28ff7e689378713ea3a",
+        "approvedProviderRef": "provider.object.boards/COLDCARD_MK4/rng.o",
+        "observedProviderRefs": [
+          "provider.object.rng.o"
+        ],
+        "forbiddenProviderRef": "provider.object.rng.o",
+        "observedForbiddenSymbolCount": 6,
+        "observedForbiddenSymbolSample": [
+          "symbol.defined.d.1",
+          "symbol.defined.dat.0",
+          "symbol.defined.n.2",
+          "symbol.defined.pad.3",
+          "symbol.defined.rng_get",
+          "symbol.defined.seeded.4"
+        ],
+        "enumeratedSymbolCount": 13458,
+        "approvedProviderLinked": false,
+        "fallbackAbsent": false,
+        "satisfied": false
+      }
+    },
+    {
+      "role": "control_fixed",
+      "variant": "fixed",
+      "sandboxRef": "sandbox.ofr007.control-fixed.f0da2592f3323e6f0390",
+      "resourceGeneration": 1,
+      "receiptRefs": [
+        "receipt-ref://sha256/650b25e385c75762b6d8ee742c3e00e6d7335bb98f98e94e8b6687c232f6a6ef",
+        "receipt-ref://sha256/800507a9b84c43fd2e42fae8ba7ebcd3f80db521ea30963281dd13ed56c60568",
+        "receipt-ref://sha256/b6726dea6346e0217039dea95d38c57be2c4d2ebd48aee049b3866ae7fdcf667"
+      ],
+      "capturedAt": "2026-08-03T20:52:33.328Z",
+      "captureDigest": "sha256:da404cc8de33bae90589276951e52665ba03bd3d1354c7e1391a191a786953dd",
+      "targetCommit": "ca72463709f4e3f8964952039d5caf955f566a87",
+      "sourceBundleDigest": "sha256:1081fdc9bca26ddda5fac9e26ba1926020bcd44f1f3936322bee06e993258bbb",
+      "buildExitStatus": 0,
+      "measuredCostMicrousd": 5706,
+      "detectorExitStatus": 0,
+      "detectorObservedAt": "2026-08-03T20:53:22.001Z",
+      "detectorReport": {
+        "schema": "openagents.loupe_provider_provenance_report.v1",
+        "captureRef": "capture.coldcard.fixed",
+        "targetCommit": "ca72463709f4e3f8964952039d5caf955f566a87",
+        "sourceBundleDigest": "sha256:1081fdc9bca26ddda5fac9e26ba1926020bcd44f1f3936322bee06e993258bbb",
+        "approvedProviderRef": "provider.object.boards/COLDCARD_MK4/rng.o",
+        "observedProviderRefs": [
+          "provider.object.boards/COLDCARD_MK4/rng.o"
+        ],
+        "forbiddenProviderRef": "provider.object.rng.o",
+        "observedForbiddenSymbolCount": 0,
+        "observedForbiddenSymbolSample": [],
+        "enumeratedSymbolCount": 13453,
+        "approvedProviderLinked": true,
+        "fallbackAbsent": true,
+        "satisfied": true
+      },
+      "detectorReportDigest": "sha256:09a6b69673d87c192008a0008a85d43fd43c24b165dbe9ef306ed04e877f9de4"
+    }
+  ],
+  "completedAt": "2026-08-03T20:58:46.771Z",
+  "totalMeasuredCostMicrousd": 17324
+}

@@ -470,8 +470,30 @@ deeply immutable initial verdict, and permits PoC/control work only after that
 lock. A confirmed result requires an admitted-worker PoC receipt plus observed
 failure on the immutable vulnerable target and success on the immutable fixed
 target. Discovery plans, envelopes, and results remain explicitly
-`discovery_only`; a separate six-part release-gate record is the only artifact
+`discovery_only`; a separate seven-part release-gate record is the only artifact
 that can become eligible for `independent_verification` integration.
+
+Three further boundaries close the acceptance audit that reopened OFR-007. A
+plan declares its evidence provenance, and a `conformance_vector` can never
+leave the verifier as `confirmed` or `independently_verified`; under
+`admitted_worker_run` every receipt, mechanical included, must resolve through
+the admitted-worker lifecycle authority against one of the plan's enumerated
+admitted workers. Control evidence reports an observed termination and the
+verifier derives the outcome, so a producer cannot assert the verdict it is
+being checked for, and a clean exit that kept no result artifact is
+`not_observed` rather than a pass. The initial verdict is committed through a
+required compare-and-set first-verdict ledger, so exactly-once holds across
+processes rather than within one call.
+
+The acceptance evidence is a live run, not a fixture:
+`scripts/cloud/coldcard-loupe-verification-live.ts` builds the pinned
+vulnerable Coldcard MK4 tree on an admitted `live_gce` sandbox, locks the
+verdict in the checked-in ledger, and only then executes the
+provider-provenance detector inside two further admitted sandboxes. The
+detector exits 1 on the vulnerable target, whose linker resolved `rng_get` to
+MicroPython's deterministic fallback object, and 0 on the fixed target, whose
+`rng_get` comes from the board's hardware-TRNG object with no fallback symbol
+anywhere in the enumerated inventory.
 
 ### 4.3 Two output lanes
 

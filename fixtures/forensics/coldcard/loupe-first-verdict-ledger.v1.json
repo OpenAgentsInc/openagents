@@ -1,0 +1,20 @@
+{
+  "schema": "openagents.loupe_first_verdict_ledger.v1",
+  "verdicts": {
+    "verification.coldcard.rng-fallback.live.v1": {
+      "schema": "openagents.loupe_initial_verdict.v1",
+      "verdictRef": "verdict.ofr007.9194a847dfbf91efbe83d40e",
+      "verificationRef": "verification.coldcard.rng-fallback.live.v1",
+      "findingDigest": "sha256:03ab2c2be77f40af437e5b1f08b8b8a6e7ea709f7f9c0c64df330533b851af76",
+      "verifierActorRef": "actor.verifier.ofr007.loupe.v1",
+      "outcome": "confirmed",
+      "evidenceReceiptRefs": [
+        "receipt.ofr007.mechanical.1.b17abf2ab44a5c82",
+        "receipt.ofr007.mechanical.2.4202c88220e7bc87",
+        "receipt.ofr007.mechanical.3.a50710a0c5655048"
+      ],
+      "rationaleDigest": "sha256:bf7c64d36e3e8c9fe15c03705ddb153c942540ebea698ba8cd7727d17d3ad75c",
+      "lockedAt": "2026-08-03T20:29:07.013Z"
+    }
+  }
+}

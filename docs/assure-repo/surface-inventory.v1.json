@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:0a12722dc561e2083a26108caf9bda0a699b0ed7ea50f3950947cf85d5b53887",
+  "sourceDigest": "sha256:5129a204908e6a65592dea7cf508837edb7f96a1c885618dc4cb064cd0bbbda3",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -2312,7 +2312,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/forensic-loupe-adapter (2 tracked test files)"
+          "ref": "packages/forensic-loupe-adapter (3 tracked test files)"
         }
       ],
       "obligation": {

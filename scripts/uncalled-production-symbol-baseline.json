@@ -545,7 +545,6 @@
     "apps/openagents.com/workers/api/src/inference/card-credit-provenance.ts#parseCardCreditGrantContextRef",
     "apps/openagents.com/workers/api/src/inference/coding-workflow-classifier.ts#fleetWorkerKindForCodingWorkflowClass",
     "apps/openagents.com/workers/api/src/inference/durable-inference-proxy.ts#reconstructCompletion",
-    "apps/openagents.com/workers/api/src/inference/free-tier-data-sharing-routes.ts#handleFreeTierDataSharingDisclosureApi",
     "apps/openagents.com/workers/api/src/inference/gym/agentcl.ts#assessAgentClLearningClaimGate",
     "apps/openagents.com/workers/api/src/inference/gym/agentcl.ts#runAgentClVertexRunnerLoop",
     "apps/openagents.com/workers/api/src/inference/gym/experiment.ts#BUNDLED_GYM_EXPERIMENT",

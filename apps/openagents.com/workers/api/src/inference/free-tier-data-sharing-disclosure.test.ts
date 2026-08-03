@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -104,5 +107,29 @@ describe('free-tier data-sharing disclosure (#6296)', () => {
       ),
     )
     expect(denied.status).toBe(405)
+  })
+})
+
+// The disclosure route was exported and imported by nothing, so
+// `GET /api/public/free-tier-data-sharing` answered 404 in production while a
+// live `yellow` promise named that exact route as its verification method
+// (#9306). Everything else about the disclosure was correct, which is why it
+// stayed invisible: the module, its tests, the OpenAPI declaration and the
+// registry entry all agreed, and none of them was the router.
+describe('free-tier data-sharing disclosure route registration', () => {
+  const workerEntrypoint = readFileSync(
+    fileURLToPath(new URL('../index.ts', import.meta.url)),
+    'utf8',
+  )
+
+  test('the route the promise cites for verification is mounted on the worker', () => {
+    const evidenceRef = 'route:/api/public/free-tier-data-sharing'
+    const routePath = evidenceRef.slice('route:'.length)
+
+    expect(
+      readFileSync(fileURLToPath(new URL('../product-promises.ts', import.meta.url)), 'utf8'),
+    ).toContain(`'${evidenceRef}'`)
+    expect(workerEntrypoint).toContain(`path: '${routePath}',`)
+    expect(workerEntrypoint).toContain('handleFreeTierDataSharingDisclosureApi')
   })
 })
