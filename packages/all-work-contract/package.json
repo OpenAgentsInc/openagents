@@ -15,6 +15,8 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
+    "./forensic-prior-work-authority": "./src/forensic-prior-work-authority.ts",
+    "./forensic-prior-work-file-store": "./src/forensic-prior-work-file-store.ts",
     "./bootstrap/v0.2.0": "./bootstrap/v0.2.0-github-source.json",
     "./definition": "./definition/all-work-v1.contract.json",
     "./json-schema": "./generated/json-schema/all-work-v1.schema.json",

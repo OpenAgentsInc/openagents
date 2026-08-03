@@ -20,8 +20,10 @@ import {
   makeAllWorkClient,
   makeOrganizationMembershipAuthorityState,
   provisionFileOrganizationMembershipState,
+  ForensicPriorWorkQueryResultSchema,
+  ForensicPriorWorkRecordSchema,
 } from "@openagentsinc/all-work-contract";
-import { Effect } from "effect";
+import { Effect, Schema as S } from "effect";
 import { describe, expect, test } from "vite-plus/test";
 
 import { createOmegaEffectdService } from "../service.ts";
@@ -640,6 +642,94 @@ describe("omega-effectd framed protocol", () => {
         }),
       );
       expect(decodeOrganizationMembershipReadResult(stale?.result).ledger.memberships).toEqual([]);
+    });
+  });
+
+  test("serves durable audience-filtered forensic prior Work across daemon restart", async () => {
+    await withRoot(async (root) => {
+      const open = () =>
+        createOmegaEffectdFramedServer(
+          createOmegaEffectdService({ paths: { dataRoot: root } }),
+          { dataRoot: root },
+          { hostRequestHandler: makeOmegaEffectdTestHost() },
+        );
+      const initialize = (server: ReturnType<typeof open>, generation: number) =>
+        server.handleLine(
+          request(`forensic-init-${generation}`, 0, "initialize", {
+            generation,
+            allWork: { supportedVersions: ["omega-effectd.v2"], requestedCapabilities: [] },
+          }),
+        );
+      const submission = {
+        workRef: "work:forensic:server:1",
+        repositoryRef: "repository:openagents",
+        revision: "f".repeat(40),
+        path: "packages/example/src/entropy.ts",
+        symbol: "collectEntropy",
+        startLine: 12,
+        endLine: 18,
+        sourceWindowDigest: `sha256:${"a".repeat(64)}`,
+        mechanismClass: "mechanism:entropy:unseeded-fallback",
+        causalMechanism: "An unseeded fallback reaches key generation",
+        affectedBehavior: "A key can be generated from insufficient entropy",
+        securityBoundary: "entropy provider to key generator",
+        causalChainSummary: "provider guard -> fallback -> key generation",
+        promptRefs: ["prompt:forensics:server"],
+        sourceRefs: ["source:openagents:entropy"],
+        evidenceRefs: ["evidence:openagents:trace"],
+        audience: {
+          visibility: "organization",
+          organizationRef: "organization:openagents",
+          principalRef: null,
+        },
+        disposition: "confirmed",
+        actorRef: "principal:omega:local-owner",
+        submittedAt: "2026-08-03T20:30:00Z",
+        idempotencyRef: "idempotency:forensic:server:1",
+      };
+      const server = open();
+      expect((await initialize(server, 1))?.ok).toBe(true);
+      const submitted = await server.handleLine(
+        request("forensic-submit", 1, "forensics.prior_work.submit", submission),
+      );
+      expect(submitted?.ok).toBe(true);
+      expect(
+        S.decodeUnknownSync(ForensicPriorWorkRecordSchema)(submitted?.result).workRefs,
+      ).toEqual(["work:forensic:server:1"]);
+
+      const query = {
+        queryRef: "query:forensic:server:1",
+        principalRef: "principal:omega:local-owner",
+        organizationRefs: ["organization:openagents"],
+        includePublic: true,
+        mode: "exact",
+        exactRef: "work:forensic:server:1",
+        text: null,
+        dispositionFilter: ["confirmed"],
+        cursor: null,
+        limit: 10,
+      };
+      const restarted = open();
+      expect((await initialize(restarted, 2))?.ok).toBe(true);
+      const restored = await restarted.handleLine(
+        request("forensic-query", 2, "forensics.prior_work.query", query),
+      );
+      const result = S.decodeUnknownSync(ForensicPriorWorkQueryResultSchema)(restored?.result);
+      expect(result.matches).toHaveLength(1);
+      expect(result.receipt.authorizedPopulationComplete).toBe(true);
+
+      const isolated = await restarted.handleLine(
+        request("forensic-query-isolated", 2, "forensics.prior_work.query", {
+          ...query,
+          queryRef: "query:forensic:server:isolated",
+          principalRef: "principal:outsider",
+          organizationRefs: [],
+          includePublic: false,
+        }),
+      );
+      expect(
+        S.decodeUnknownSync(ForensicPriorWorkQueryResultSchema)(isolated?.result).matches,
+      ).toEqual([]);
     });
   });
 

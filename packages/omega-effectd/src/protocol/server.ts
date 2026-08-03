@@ -36,6 +36,7 @@ import {
   WorkCutoverAuthorityError,
   OrganizationMembershipAuthorityError,
   StrictBugCandidateAuthorityError,
+  ForensicPriorWorkAuthorityError,
   type ProtocolCapability as AllWorkProtocolCapability,
   type ProtocolVersion as AllWorkProtocolVersion,
 } from "@openagentsinc/all-work-contract";
@@ -94,6 +95,13 @@ import {
   executeAllWorkStrictBugCandidate,
   readAllWorkStrictBugCandidates,
 } from "../engine/all-work-strict-bug-candidates.ts";
+import {
+  bootstrapAllWorkForensicPriorWork,
+  disposeAllWorkForensicPriorWork,
+  queryAllWorkForensicPriorWork,
+  relateAllWorkForensicPriorWork,
+  submitAllWorkForensicPriorWork,
+} from "../engine/all-work-forensic-prior-work.ts";
 import { openFullAutoRunReportStore } from "../engine/full-auto-run-report.ts";
 import { admitFullAutoRunCompletion } from "../engine/full-auto-completion.ts";
 import {
@@ -1191,6 +1199,22 @@ export const createOmegaEffectdFramedServer = (
           );
         }
       }
+      if (allWork.selectedVersion === "omega-effectd.v2") {
+        const priorWork = await Effect.runPromise(
+          Effect.match(bootstrapAllWorkForensicPriorWork(paths.dataRoot), {
+            onFailure: () => null,
+            onSuccess: () => true,
+          }),
+        );
+        if (priorWork === null) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("unavailable", "The forensic prior-work authority could not be opened."),
+          );
+        }
+      }
       if (
         allWork.capabilities.includes("workroom.activity.read") ||
         allWork.capabilities.includes("workroom.activity.prepare") ||
@@ -2063,6 +2087,68 @@ export const createOmegaEffectdFramedServer = (
             false,
             undefined,
             redactedError("invalid_request", "The strict bug candidate request was refused."),
+          );
+        }
+      }
+      case "forensics.prior_work.query":
+      case "forensics.prior_work.submit":
+      case "forensics.prior_work.relate":
+      case "forensics.prior_work.dispose": {
+        if (selectedAllWorkVersion !== "omega-effectd.v2") {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "incompatible_version",
+              `${request.method} requires negotiated omega-effectd.v2.`,
+            ),
+          );
+        }
+        try {
+          const result =
+            request.method === "forensics.prior_work.query"
+              ? await Effect.runPromise(
+                  queryAllWorkForensicPriorWork(paths.dataRoot, request.params ?? {}),
+                )
+              : request.method === "forensics.prior_work.submit"
+                ? await Effect.runPromise(
+                    submitAllWorkForensicPriorWork(paths.dataRoot, request.params ?? {}),
+                  )
+                : request.method === "forensics.prior_work.relate"
+                  ? await Effect.runPromise(
+                      relateAllWorkForensicPriorWork(paths.dataRoot, request.params ?? {}),
+                    )
+                  : await Effect.runPromise(
+                      disposeAllWorkForensicPriorWork(paths.dataRoot, request.params ?? {}),
+                    );
+          return respond(request.id, true, result);
+        } catch (error) {
+          if (error instanceof ForensicPriorWorkAuthorityError) {
+            const code =
+              error.reason === "forbidden"
+                ? "forbidden"
+                : error.reason === "storage_unavailable"
+                  ? "unavailable"
+                  : error.reason === "work_not_found"
+                    ? "not_found"
+                    : error.reason === "cursor_stale" ||
+                        error.reason === "revision_conflict" ||
+                        error.reason === "idempotency_conflict"
+                      ? "conflict"
+                      : "invalid_request";
+            return respond(
+              request.id,
+              false,
+              undefined,
+              redactedError(code, `Forensic prior-work request refused (${error.reason}).`),
+            );
+          }
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", "The forensic prior-work request was refused."),
           );
         }
       }
