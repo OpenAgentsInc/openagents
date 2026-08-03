@@ -21,6 +21,11 @@ convention. Do not vendor its code.
 
 ## Current OpenAgents implementation
 
+For the current source-level reconciliation, including the exact upstream
+prompt and runtime behavior, Omega's implemented task paths, stale-document
+corrections, and a keep/modify/reject absorption plan, read
+[`Loupe versus OpenAgents: prompt, source, and runtime gap assessment`](2026-08-03-loupe-openagents-prompt-and-runtime-gap-assessment.md).
+
 The short-term product priority is the smaller
 [entropy-first Omega repository dashboard](2026-08-02-entropy-first-omega-dashboard-roadmap.md):
 traverse Coldcard read-only, let the user edit the entropy prompt, show live
