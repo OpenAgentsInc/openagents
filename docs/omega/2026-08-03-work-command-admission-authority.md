@@ -2,8 +2,8 @@
 
 Date: 2026-08-03
 
-Status: first canonical Effect slice implemented; Omega host and installed
-journey are not yet complete
+Status: canonical Effect slice and packaged OpenAgents host seam implemented;
+Omega consumer and installed journey are not yet complete
 
 Issue: [omega#214](https://github.com/OpenAgentsInc/omega/issues/214), Packet E
 
@@ -65,8 +65,10 @@ Effect from agent completion text.
 ## Remaining Packet E work
 
 This slice defines and implements the OpenAgents-owned shared authority. It
-does not claim that Omega consumes `work.command.execute` yet. The next slice
-must pin the regenerated Rust artifact in Omega, expose the method through the
-owned `omega-effectd` host, bind Work UI commands to the Effective Principal and
+also routes the separately negotiated method through the packaged
+`omega-effectd` process and stores one private, atomic state record per
+digest-addressed canonical Work identity. It does not claim that Omega consumes
+`work.command.execute` yet. The next slice must pin the regenerated Rust
+artifact in Omega, bind Work UI commands to the Effective Principal and
 capability request, and prove the installed owner journey. Until then fixture
 controls remain visibly simulated and omega#214 stays open.

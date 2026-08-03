@@ -16,10 +16,12 @@ import {
   decodePlanningGraphReadRequest,
   decodePlanningGraphReadResult,
   decodeWorkIndexReadRequest,
+  decodeWorkCommandExecuteRequest,
   decodeWorkSnapshotReadRequest,
   negotiateAllWorkProtocol,
   RepositoryClaimAuthorityError,
   SignedWorkroomError,
+  WorkCommandAuthorityError,
   type ProtocolCapability as AllWorkProtocolCapability,
   type ProtocolVersion as AllWorkProtocolVersion,
 } from "@openagentsinc/all-work-contract";
@@ -48,6 +50,7 @@ import {
   bootstrapAllWorkPlanningAuthority,
   readAllWorkPlanningGraph,
 } from "../engine/all-work-planning-authority.ts";
+import { executeAllWorkCommand } from "../engine/all-work-commands.ts";
 import {
   bootstrapAllWorkRepositoryClaims,
   executeAllWorkRepositoryClaim,
@@ -1525,6 +1528,54 @@ export const createOmegaEffectdFramedServer = (
             false,
             undefined,
             redactedError(code, "The signed Workroom activity was refused."),
+          );
+        }
+      }
+      case "work.command.execute": {
+        if (!selectedAllWorkCapabilities.includes("work.command.execute")) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "incompatible_version",
+              "work.command.execute requires its negotiated omega-effectd.v2 capability.",
+            ),
+          );
+        }
+        try {
+          const params = decodeWorkCommandExecuteRequest(request.params ?? {});
+          const result = await Effect.runPromise(executeAllWorkCommand(paths.dataRoot, params));
+          return respond(request.id, true, result);
+        } catch (error) {
+          if (error instanceof WorkCommandAuthorityError) {
+            const code =
+              error.reason === "principal_forbidden" ||
+              error.reason === "capability_forbidden" ||
+              error.reason === "owner_disposition_forbidden" ||
+              error.reason === "organization_mismatch"
+                ? "forbidden"
+                : error.reason === "stale_generation"
+                  ? "stale_generation"
+                  : error.reason === "storage_unavailable"
+                    ? "unavailable"
+                    : error.reason === "work_not_found" || error.reason === "session_not_found"
+                      ? "not_found"
+                      : error.reason === "invalid_command" || error.reason === "invalid_state"
+                        ? "invalid_request"
+                        : "conflict";
+            return respond(
+              request.id,
+              false,
+              undefined,
+              redactedError(code, `Work command refused (${error.reason}): ${error.detail}`),
+            );
+          }
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", "work.command.execute received invalid Work state."),
           );
         }
       }

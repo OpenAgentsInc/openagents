@@ -104,6 +104,9 @@ returns exact zero-GitHub-write receipts. Repository claim and lease refs are a
 conditional pair; collision and takeover authority remains with the native
 Repository Work Claim service. See the
 [authority record](../../docs/omega/2026-08-03-work-command-admission-authority.md).
+`src/work-command-file-store.ts` persists one atomic, private state record per
+digest-addressed canonical Work identity; the host remains responsible for its
+single-writer lease.
 
 ## Generate and verify
 

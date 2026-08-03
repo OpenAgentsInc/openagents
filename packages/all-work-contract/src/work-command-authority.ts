@@ -198,6 +198,7 @@ const validateGrant = (
 
 interface Transition {
   readonly snapshot: WorkSnapshot;
+  readonly authorizedPrincipalRefs: ReadonlyArray<string>;
   readonly activeGrant: DelegationGrant | null;
   readonly lastGrantGeneration: number;
   readonly sessions: ReadonlyArray<WorkCommandSession>;
@@ -213,6 +214,7 @@ const transition = (
 ): Transition => {
   const command: WorkCommand = request.command;
   let snapshot: WorkSnapshot = state.snapshot;
+  let authorizedPrincipalRefs = state.authorizedPrincipalRefs;
   let activeGrant = state.activeGrant;
   let lastGrantGeneration = state.lastGrantGeneration;
   let sessions = state.sessions;
@@ -224,10 +226,21 @@ const transition = (
   switch (command.command) {
     case "assign":
       snapshot = { ...snapshot, summary: { ...snapshot.summary, assignee: command.assignee } };
+      authorizedPrincipalRefs = appendUnique(
+        authorizedPrincipalRefs,
+        command.assignee.principalRef,
+      );
       break;
-    case "unassign":
+    case "unassign": {
+      const previousAssigneeRef = snapshot.summary.assignee?.principalRef;
       snapshot = { ...snapshot, summary: { ...snapshot.summary, assignee: null } };
+      if (previousAssigneeRef !== undefined && previousAssigneeRef !== snapshot.summary.ownerRef) {
+        authorizedPrincipalRefs = authorizedPrincipalRefs.filter(
+          (principalRef) => principalRef !== previousAssigneeRef,
+        );
+      }
       break;
+    }
     case "delegate":
       validateGrant(state, request, command.grant);
       activeGrant = command.grant;
@@ -399,6 +412,7 @@ const transition = (
 
   return {
     snapshot,
+    authorizedPrincipalRefs,
     activeGrant,
     lastGrantGeneration,
     sessions,
@@ -568,6 +582,7 @@ export const WorkCommandAuthorityLive = Layer.effect(
           const next = yield* stateDecode({
             ...state,
             snapshot: result.snapshot,
+            authorizedPrincipalRefs: applied.authorizedPrincipalRefs,
             activeGrant: applied.activeGrant,
             lastGrantGeneration: applied.lastGrantGeneration,
             sessions: applied.sessions,

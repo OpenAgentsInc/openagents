@@ -90,6 +90,7 @@ export type OmegaEffectdInitializeResult = Readonly<{
     | "repository.claim.execute"
     | "workroom.activity.read"
     | "workroom.activity.enqueue"
+    | "work.command.execute"
     | "host_bridge"
   >;
   allWork: AllWorkProtocolInitializeResult;

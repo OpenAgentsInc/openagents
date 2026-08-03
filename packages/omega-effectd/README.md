@@ -30,13 +30,21 @@ Framed protocol schema: `openagents.omega.effectd.v1` (stdio JSON lines).
 Initialization also negotiates the digest-bound All Work capability profile.
 Legacy clients that omit `allWork` select `omega-effectd.v1` explicitly and
 cannot call Work methods. Clients that negotiate `omega-effectd.v2` can call
-`work.index.read`, `work.snapshot.read`, and `planning.graph.read`. These
+`work.index.read`, `work.snapshot.read`, `planning.graph.read`, and separately
+negotiated claim, signed Workroom, and `work.command.execute` methods. These
 methods decode and encode generated `@openagentsinc/all-work-contract` types.
 The first Work adapter projects durable Full Auto runs without objective or
 done-condition text. The planning method opens the Effect-owned persistent
 planning authority, idempotently reconciles the checked-in v0.2.0 bootstrap,
 and returns its generated graph. Neither read creates a second writable Work
 store, and the GitHub bootstrap grants no command authority.
+
+`work.command.execute` opens one durable, digest-addressed command state per
+canonical Work. The service derives the Organization and authorized owner or
+human assignee from owned planning state, then delegates revision,
+idempotency, generation, grant, session, effect, and Owner Disposition checks
+to the shared authority. It never treats a caller-supplied Organization as the
+bootstrap authority and never writes to GitHub.
 
 The same generation-fenced stream carries `host_request` / `host_response`
 frames for workspace resolution, thread creation, lane readiness, exact-turn

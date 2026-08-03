@@ -7,6 +7,7 @@ import {
   decodeProtocolInitializeResult,
   decodePlanningGraphReadResult,
   decodeWorkIndexReadResult,
+  decodeWorkCommandExecuteResult,
   decodeWorkSnapshotReadResult,
 } from "@openagentsinc/all-work-contract";
 import { describe, expect, test } from "vite-plus/test";
@@ -239,6 +240,75 @@ describe("omega-effectd framed protocol", () => {
       const ledger = decodeRepositoryClaimReadResult(read?.result).ledger;
       expect(ledger.claims[0]?.claimRef).toBe("repository-claim:omega-224");
       expect(JSON.stringify(ledger)).not.toContain("githubWrite");
+    });
+  });
+
+  test("executes and restarts a generation-fenced All Work command", async () => {
+    await withRoot(async (root) => {
+      const open = () =>
+        createOmegaEffectdFramedServer(
+          createOmegaEffectdService({ paths: { dataRoot: root } }),
+          { dataRoot: root },
+          { hostRequestHandler: makeOmegaEffectdTestHost() },
+        );
+      const initialize = async (server: ReturnType<typeof open>, generation: number) => {
+        const initialized = await server.handleLine(
+          request(`command-init-${generation}`, 0, "initialize", {
+            generation,
+            allWork: {
+              supportedVersions: ["omega-effectd.v2"],
+              requestedCapabilities: ["work.command.execute"],
+            },
+          }),
+        );
+        expect(initialized?.ok).toBe(true);
+      };
+      const commandRequest = (expectedRevision: number, id: string, command: unknown) => ({
+        intentRef: `intent:${id}`,
+        idempotencyKey: `work-command-${id}`,
+        expectedRevision,
+        effectivePrincipalRef: "principal:organization:openagents",
+        organizationRef: "organization:openagents",
+        capabilityRef: "capability:work-command:execute",
+        workRef: "work:github:openagentsinc-omega:214",
+        occurredAt: `2026-08-03T11:0${expectedRevision}:00Z`,
+        command,
+      });
+
+      const server = open();
+      await initialize(server, 1);
+      const assigned = await server.handleLine(
+        request(
+          "command-assign",
+          1,
+          "work.command.execute",
+          commandRequest(1, "assign", {
+            command: "assign",
+            assignee: { kind: "human", principalRef: "principal:organization:openagents" },
+          }),
+        ),
+      );
+      expect(assigned?.ok).toBe(true);
+      const assignedResult = decodeWorkCommandExecuteResult(assigned?.result);
+      expect(assignedResult.snapshot.summary.assignee?.principalRef).toBe(
+        "principal:organization:openagents",
+      );
+      expect(assignedResult.receipt.githubWriteCount).toBe(0);
+
+      const restarted = open();
+      await initialize(restarted, 2);
+      const unassigned = await restarted.handleLine(
+        request(
+          "command-unassign",
+          2,
+          "work.command.execute",
+          commandRequest(2, "unassign", { command: "unassign" }),
+        ),
+      );
+      expect(unassigned?.ok).toBe(true);
+      expect(
+        decodeWorkCommandExecuteResult(unassigned?.result).snapshot.summary.assignee,
+      ).toBeNull();
     });
   });
 
