@@ -6,6 +6,60 @@
 - Source commit: `be342ea7525ac50fbf836978dcd1ba6714345f42`
 - Status: complete
 
+## RC.12 replacement
+
+The next Omega candidate must use
+[`omega-effectd-v0.1.0-rc.12`](https://github.com/OpenAgentsInc/openagents/releases/tag/omega-effectd-v0.1.0-rc.12).
+RC.12 supersedes RC.10, and every release before it, because RC.10 predates the
+entire All Work boundary. Against RC.10, `initialize` succeeds, the `allWork`
+negotiation block Omega sends is silently discarded, and all eighteen
+capabilities `OmegaEffectdSupervisor::start` requests answer `unknown_method`:
+`planning.graph.read`, `work.index.read`, `work.snapshot.read`,
+`work.command.execute`, `workroom.activity.{read,prepare,commit,enqueue,deliver,publish}`,
+`repository.claim.{read,execute}`, `work.cutover.{read,execute}`,
+`organization.membership.read`, and `strict_bug.candidate.{read,execute}`.
+Every installed All Work journey was therefore unreachable. Because the
+negotiation is advisory, the failure surfaced once per call site as a generic
+unknown method, and three separate Omega issues were diagnosed as three
+different causes for it.
+
+RC.11 carried the same served surface but is superseded: its component manifest
+did not name the `dist/omega-effectd.mjs.LEGAL.txt` file its archive ships, so
+`script/bundle-omega-rc` rejects it at staging as an unexpected archive entry.
+No Omega candidate pinned RC.11.
+
+| Field | Value |
+| --- | --- |
+| Source commit | `43c090a191e779a97f0abe9cf7f14d9ff8317e91` |
+| Source tree | `d77915cfe228a3b85d8241c03b8b2cba56579e0d` |
+| Archive | `omega-effectd-v0.1.0-macos-arm64.tar.gz` |
+| Archive SHA-256 | `7b4b34501aa9b53755413188ab67166fe7309ef9d12b59777bbd3644c21f1fdd` |
+| Manifest SHA-256 | `8f2760ba3a127b9141da747fd0015df96999aca573c0f6f454bc50b714f29f32` |
+
+Two clean builds produced identical archive, sidecar, and manifest bytes. The
+package type check and all 271 tests passed. The repository fast guard passed at
+the source commit, which is on `main`. A clean GitHub prerelease download matched
+the local archive, sidecar, and manifest bytes, and the release tag resolves to
+the exact source commit.
+
+Omega's `script/prove-packaged-all-work-surface` reports PASS against RC.12 and
+FAIL against the RC.10 component installed at `/Applications/Omega.app`.
+`script/bundle-omega-rc --dry-run` accepts the downloaded RC.12 asset against
+the repinned constants and rejects the RC.10 archive placed under the same pin.
+Omega repinned in `9e430bab90`.
+
+The component build gate now catches this class at the producing end. The build
+smoke drives the packaged component the way `OmegaEffectdSupervisor` does, one
+request at a time correlated by id, negotiates the eighteen capabilities, fails
+when any is withheld, and performs one real `planning.graph.read`. That
+assertion was mutation-tested against the real RC.10 component, which it
+rejects. Two source changes were needed to build at all: `@noble/curves` became
+a production dependency of `@openagentsinc/omega-effectd`, because the signed
+Workroom path bundles it through `@openagentsinc/all-work-contract` and
+`pnpm licenses list --prod` does not traverse workspace links, and the external
+legal-comments file esbuild then emitted is pinned by digest in the component
+manifest.
+
 ## RC.8 replacement
 
 The next Omega candidate must use
