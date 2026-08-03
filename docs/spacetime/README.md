@@ -25,6 +25,17 @@ can find the outcome.
   offline durability, React Native lifecycle handling, per-caller
   authorization-view cost, self-hosted high availability, and the Business
   Source License single-instance grant.
+- [`2026-08-03-rust-spacetimedb-nostr-infra-considerations.md`](2026-08-03-rust-spacetimedb-nostr-infra-considerations.md)
+  — own analysis grounded in the current repo: whether the Nostr relay, sync
+  layer, workroom state plane, or All Work event store should be rebuilt on
+  Rust/SpacetimeDB. Recommends **no** on all four now (the measured relay
+  bottleneck is connection admission, not storage; Khala Sync already owns the
+  capability SpacetimeDB sells; the managed-relay commercial wedge collides
+  with the BSL license; the Verse is the only real fit and is a current
+  non-goal), decouples the Rust decision from the SpacetimeDB decision, lists
+  the host-agnostic ideas worth taking from the external assessments
+  (`ingest_seq`, query-engine seam, ephemeral bypass, conformance fixtures),
+  and defines falsifiable reopening gates.
 - [`analysis-nostr-relay.md`](analysis-nostr-relay.md) — external feasibility
   assessment for SpacetimeDB as the backend of a new Rust Nostr relay.
   **Reference only, not implementation authority**, and note that
