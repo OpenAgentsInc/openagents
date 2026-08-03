@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { forensicSha256Digest, strictDecode } from "@openagentsinc/forensic-contract";
 
 import {
+  LOUPE_ADMITTED_WORKER_RECEIPT_VERSION,
   LOUPE_INITIAL_VERDICT_VERSION,
   LOUPE_VERIFICATION_EVIDENCE_VERSION,
   LOUPE_VERIFICATION_PLAN_VERSION,
@@ -14,6 +15,7 @@ import {
   type LoupeVerificationBackend,
   type LoupeVerificationEvidence,
   type LoupeVerificationPlan,
+  type ResolveAdmittedWorkerReceipt,
 } from "../src/verifier.ts";
 
 const digest = (character: string) => `sha256:${character.repeat(64)}`;
@@ -35,9 +37,46 @@ const plan = (overrides: Record<string, unknown> = {}): LoupeVerificationPlan =>
     workerImageDigest: digest("6"),
     workerProfileDigest: digest("7"),
     workerPlacementRef: "placement.gce.forensic.coldcard.v1",
+    workerSandboxRef: "sandbox.live_gce.forensic.coldcard.v1",
+    workerResourceGeneration: 7,
     createdAt: "2026-08-01T16:00:00.000Z",
     ...overrides,
   });
+
+/**
+ * The admitted-worker lifecycle authority every honest verification injects.
+ * It knows exactly the receipt refs this plan's worker actually emitted.
+ */
+const admittedWorkerReceipt = (
+  verificationPlan: LoupeVerificationPlan,
+  receiptRef: string,
+  overrides: Record<string, unknown> = {},
+) => ({
+  schema: LOUPE_ADMITTED_WORKER_RECEIPT_VERSION,
+  receiptRef,
+  sandboxRef: verificationPlan.workerSandboxRef,
+  resourceGeneration: verificationPlan.workerResourceGeneration,
+  placementRef: verificationPlan.workerPlacementRef,
+  imageDigest: verificationPlan.workerImageDigest,
+  profileDigest: verificationPlan.workerProfileDigest,
+  lifecycleState: "admitted",
+  exact: true,
+  observedAt: "2026-08-01T16:00:00.000Z",
+  expiresAt: "2026-08-01T17:00:00.000Z",
+  ...overrides,
+});
+
+const KNOWN_WORKER_RECEIPT_REFS = ["worker.receipt.4", "worker.receipt.5", "worker.receipt.6"];
+
+const workerAuthority =
+  (
+    verificationPlan: LoupeVerificationPlan,
+    overrides: Record<string, unknown> = {},
+  ): ResolveAdmittedWorkerReceipt =>
+  async (_receivedPlan, workerReceiptRef) =>
+    KNOWN_WORKER_RECEIPT_REFS.includes(workerReceiptRef)
+      ? admittedWorkerReceipt(verificationPlan, workerReceiptRef, overrides)
+      : undefined;
 
 const workerEnvironmentDigest = (verificationPlan: LoupeVerificationPlan) =>
   forensicSha256Digest({
@@ -141,6 +180,7 @@ const backend = (
     timeline.push("poc_and_controls");
     return controls;
   },
+  resolveAdmittedWorkerReceipt: workerAuthority(verificationPlan),
 });
 
 describe("Loupe forensic verifier", () => {
@@ -199,6 +239,9 @@ describe("Loupe forensic verifier", () => {
           applyPocAndRunControls: async () => {
             throw new Error("unreachable");
           },
+          resolveAdmittedWorkerReceipt: async () => {
+            throw new Error("unreachable");
+          },
         },
         "2026-08-01T16:00:07.000Z",
       ),
@@ -222,6 +265,7 @@ describe("Loupe forensic verifier", () => {
             throw new Error("unreachable");
           },
           applyPocAndRunControls: async () => [],
+          resolveAdmittedWorkerReceipt: workerAuthority(verificationPlan),
         },
         "2026-08-01T16:00:07.000Z",
       ),
@@ -303,6 +347,129 @@ describe("Loupe forensic verifier", () => {
         "2026-08-01T16:00:07.000Z",
       ),
     ).rejects.toThrow("requires source-ref, macro, and symbol-provider evidence");
+  });
+
+  describe("admitted-worker receipt resolution", () => {
+    const executeWith = async (
+      verificationPlan: LoupeVerificationPlan,
+      resolveAdmittedWorkerReceipt: LoupeVerificationBackend["resolveAdmittedWorkerReceipt"],
+    ) =>
+      executeLoupeVerification(
+        verificationPlan,
+        { ...backend(verificationPlan, []), resolveAdmittedWorkerReceipt },
+        "2026-08-01T16:00:07.000Z",
+      );
+
+    it("refuses an arbitrary well-formed worker receipt ref the authority never emitted", async () => {
+      const verificationPlan = plan();
+      const forged = controlEvidence(verificationPlan).map((receipt) =>
+        strictDecode(LoupeVerificationEvidenceSchema, {
+          ...receipt,
+          workerReceiptRef: "worker.receipt.forged.by.the.session",
+        }),
+      );
+      await expect(
+        executeLoupeVerification(
+          verificationPlan,
+          backend(verificationPlan, [], "confirmed", forged),
+          "2026-08-01T16:00:07.000Z",
+        ),
+      ).rejects.toThrow("cannot resolve");
+    });
+
+    it("refuses when the authority does not know the cited receipt", async () => {
+      const verificationPlan = plan();
+      await expect(executeWith(verificationPlan, async () => undefined)).rejects.toThrow(
+        "cannot resolve",
+      );
+    });
+
+    it("refuses a receipt bound to a different resource generation", async () => {
+      const verificationPlan = plan();
+      await expect(
+        executeWith(
+          verificationPlan,
+          workerAuthority(verificationPlan, { resourceGeneration: 8 }),
+        ),
+      ).rejects.toThrow("admitted sandbox and resource generation");
+    });
+
+    it("refuses a receipt bound to a different sandbox", async () => {
+      const verificationPlan = plan();
+      await expect(
+        executeWith(
+          verificationPlan,
+          workerAuthority(verificationPlan, { sandboxRef: "sandbox.live_gce.other.v1" }),
+        ),
+      ).rejects.toThrow("admitted sandbox and resource generation");
+    });
+
+    it("refuses a receipt bound to a different admitted worker environment", async () => {
+      const verificationPlan = plan();
+      await expect(
+        executeWith(
+          verificationPlan,
+          workerAuthority(verificationPlan, { placementRef: "placement.gce.forensic.other.v1" }),
+        ),
+      ).rejects.toThrow("admitted worker environment");
+    });
+
+    it.each(["released", "revoked", "expired"] as const)(
+      "refuses a receipt whose lifecycle state is %s",
+      async (lifecycleState) => {
+        const verificationPlan = plan();
+        await expect(
+          executeWith(verificationPlan, workerAuthority(verificationPlan, { lifecycleState })),
+        ).rejects.toThrow("admitted lifecycle state");
+      },
+    );
+
+    it("refuses a receipt that had already expired when the evidence was observed", async () => {
+      const verificationPlan = plan();
+      await expect(
+        executeWith(
+          verificationPlan,
+          workerAuthority(verificationPlan, { expiresAt: "2026-08-01T16:00:04.000Z" }),
+        ),
+      ).rejects.toThrow("expired worker receipt");
+    });
+
+    it("refuses evidence observed before the receipt that authorizes it", async () => {
+      const verificationPlan = plan();
+      await expect(
+        executeWith(
+          verificationPlan,
+          workerAuthority(verificationPlan, {
+            observedAt: "2026-08-01T16:30:00.000Z",
+            expiresAt: "2026-08-01T17:00:00.000Z",
+          }),
+        ),
+      ).rejects.toThrow("cannot precede the worker receipt");
+    });
+
+    it("refuses an authority that substitutes a different receipt for the requested ref", async () => {
+      const verificationPlan = plan();
+      await expect(
+        executeWith(verificationPlan, async () =>
+          admittedWorkerReceipt(verificationPlan, "worker.receipt.substituted"),
+        ),
+      ).rejects.toThrow("exact requested worker receipt");
+    });
+
+    it("refuses a verification with no injected lifecycle authority instead of accepting the ref", async () => {
+      const verificationPlan = plan();
+      const { resolveAdmittedWorkerReceipt: _omitted, ...withoutAuthority } = backend(
+        verificationPlan,
+        [],
+      );
+      await expect(
+        executeLoupeVerification(
+          verificationPlan,
+          withoutAuthority as unknown as LoupeVerificationBackend,
+          "2026-08-01T16:00:07.000Z",
+        ),
+      ).rejects.toThrow("injected admitted-worker lifecycle authority");
+    });
   });
 
   it("binds all receipts to immutable source, dependency, target, and worker inputs", () => {

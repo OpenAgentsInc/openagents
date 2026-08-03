@@ -18,6 +18,8 @@ export const LOUPE_INITIAL_VERDICT_VERSION = "openagents.loupe_initial_verdict.v
 export const LOUPE_VERIFICATION_RESULT_VERSION = "openagents.loupe_verification_result.v1" as const;
 export const LOUPE_VERIFICATION_RELEASE_GATE_VERSION =
   "openagents.loupe_verification_release_gate.v1" as const;
+export const LOUPE_ADMITTED_WORKER_RECEIPT_VERSION =
+  "openagents.loupe_admitted_worker_receipt.v1" as const;
 
 const VerificationOutcome = S.Literals(["confirmed", "dismissed", "inconclusive"]);
 const ControlRevision = S.Literals(["vulnerable", "fixed"]);
@@ -39,6 +41,8 @@ export const LoupeVerificationPlanSchema = S.Struct({
   workerImageDigest: Sha256Digest,
   workerProfileDigest: Sha256Digest,
   workerPlacementRef: ForensicRef,
+  workerSandboxRef: ForensicRef,
+  workerResourceGeneration: PositiveInteger,
   createdAt: ForensicTimestamp,
 })
   .pipe(
@@ -53,6 +57,51 @@ export const LoupeVerificationPlanSchema = S.Struct({
   )
   .annotate({ identifier: "LoupeVerificationPlan" });
 export interface LoupeVerificationPlan extends S.Schema.Type<typeof LoupeVerificationPlanSchema> {}
+
+/**
+ * The lifecycle-authority record a `workerReceiptRef` must resolve to.
+ *
+ * This mirrors the receipt the managed-sandbox authority actually emits
+ * (`ManagedSandboxRuntimeReceipt` in `crates/oa-codex-control`, surfaced as the
+ * forensic worker receipts in the Cloud Run forensic managed-sandbox facade).
+ * `ForensicRef` only constrains a ref's shape, so the verifier must resolve the
+ * ref through an authority instead of accepting any well-formed string.
+ */
+export const LoupeAdmittedWorkerReceiptSchema = S.Struct({
+  schema: S.Literal(LOUPE_ADMITTED_WORKER_RECEIPT_VERSION),
+  receiptRef: ForensicRef,
+  sandboxRef: ForensicRef,
+  resourceGeneration: PositiveInteger,
+  placementRef: ForensicRef,
+  imageDigest: Sha256Digest,
+  profileDigest: Sha256Digest,
+  lifecycleState: S.Literals(["admitted", "released", "revoked", "expired"]),
+  exact: S.Boolean,
+  observedAt: ForensicTimestamp,
+  expiresAt: ForensicTimestamp,
+})
+  .pipe(
+    S.check(
+      S.makeFilter((receipt) => Date.parse(receipt.expiresAt) > Date.parse(receipt.observedAt), {
+        message: "an admitted-worker receipt must expire after it was observed",
+      }),
+    ),
+  )
+  .annotate({ identifier: "LoupeAdmittedWorkerReceipt" });
+export interface LoupeAdmittedWorkerReceipt extends S.Schema.Type<
+  typeof LoupeAdmittedWorkerReceiptSchema
+> {}
+
+/**
+ * Injected boundary that resolves a worker receipt ref against the admitted
+ * worker lifecycle authority. Return `undefined` for a ref the authority does
+ * not know. There is deliberately no default implementation: a verification
+ * without this boundary refuses instead of accepting an unresolved ref.
+ */
+export type ResolveAdmittedWorkerReceipt = (
+  plan: LoupeVerificationPlan,
+  workerReceiptRef: string,
+) => Promise<unknown>;
 
 const EvidenceOperation = S.Literals([
   "source_ref_resolved",
@@ -95,7 +144,7 @@ export const LoupeVerificationEvidenceSchema = S.Struct({
             receipt.outcome === "succeeded"),
         {
           message:
-            "PoC application is artifact evidence and requires a successful admitted-worker receipt",
+            "PoC application is artifact evidence and requires a successful worker receipt ref, which the verifier resolves against the admitted-worker authority",
         },
       ),
       S.makeFilter(
@@ -109,7 +158,7 @@ export const LoupeVerificationEvidenceSchema = S.Struct({
             receipt.observedTestOutcome !== "not_run"),
         {
           message:
-            "executed control evidence requires a worker receipt, revision, expectation, and observed test outcome",
+            "executed control evidence requires a worker receipt ref, revision, expectation, and observed test outcome, with the ref resolved by the verifier against the admitted-worker authority",
         },
       ),
       S.makeFilter(
@@ -174,6 +223,7 @@ export const LoupeVerificationResultSchema = S.Struct({
   vulnerableControlPassed: S.Boolean,
   fixedControlPassed: S.Boolean,
   circularVerificationRejected: S.Literal(true),
+  admittedWorkerReceiptsResolved: S.Literal(true),
   completionAuthority: S.Literal("adapter_atomic_result"),
   productMode: S.Literal("discovery_only"),
   completedAt: ForensicTimestamp,
@@ -276,6 +326,12 @@ export interface LoupeVerificationBackend {
     plan: LoupeVerificationPlan,
     lockedVerdict: LoupeInitialVerdict,
   ) => Promise<ReadonlyArray<unknown>>;
+  /**
+   * Required. Resolves an evidence `workerReceiptRef` against the admitted
+   * worker lifecycle authority. A missing implementation refuses the whole
+   * verification, it does not fall back to accepting the raw ref.
+   */
+  readonly resolveAdmittedWorkerReceipt: ResolveAdmittedWorkerReceipt;
 }
 
 const REQUIRED_MECHANICAL_OPERATIONS = [
@@ -347,6 +403,64 @@ const decodeEvidence = (
   return evidence;
 };
 
+/**
+ * Fails closed for every evidence receipt that carries a `workerReceiptRef`.
+ *
+ * A ref is admitted only when the injected authority resolves it to the exact
+ * requested receipt, that receipt is still in the `admitted` lifecycle state,
+ * it is exact, it binds the plan's sandbox, resource generation, placement, and
+ * worker environment, and it was observed before, and expires after, the
+ * evidence it authorizes. Unresolvable, unknown, forged, expired,
+ * wrong-generation, and wrong-sandbox refs all refuse.
+ */
+const requireAdmittedWorkerReceipts = async (
+  plan: LoupeVerificationPlan,
+  evidence: ReadonlyArray<LoupeVerificationEvidence>,
+  resolve: ResolveAdmittedWorkerReceipt,
+): Promise<void> => {
+  for (const receipt of evidence) {
+    const workerReceiptRef = receipt.workerReceiptRef;
+    if (workerReceiptRef === undefined) continue;
+    const resolved = await resolve(plan, workerReceiptRef);
+    if (resolved === undefined || resolved === null) {
+      throw new Error(
+        "verification evidence cites a worker receipt the admitted-worker authority cannot resolve",
+      );
+    }
+    const admitted = strictDecode(LoupeAdmittedWorkerReceiptSchema, resolved);
+    if (admitted.receiptRef !== workerReceiptRef) {
+      throw new Error("admitted-worker resolution must return the exact requested worker receipt");
+    }
+    if (admitted.lifecycleState !== "admitted" || !admitted.exact) {
+      throw new Error(
+        "verification evidence requires an exact worker receipt in the admitted lifecycle state",
+      );
+    }
+    if (
+      admitted.sandboxRef !== plan.workerSandboxRef ||
+      admitted.resourceGeneration !== plan.workerResourceGeneration
+    ) {
+      throw new Error(
+        "a worker receipt must bind the exact admitted sandbox and resource generation of its plan",
+      );
+    }
+    if (
+      admitted.placementRef !== plan.workerPlacementRef ||
+      admitted.imageDigest !== plan.workerImageDigest ||
+      admitted.profileDigest !== plan.workerProfileDigest
+    ) {
+      throw new Error("a worker receipt must bind the admitted worker environment of its plan");
+    }
+    const observedAt = Date.parse(receipt.observedAt);
+    if (Date.parse(admitted.observedAt) > observedAt) {
+      throw new Error("verification evidence cannot precede the worker receipt that authorizes it");
+    }
+    if (Date.parse(admitted.expiresAt) <= observedAt) {
+      throw new Error("verification evidence cannot cite an expired worker receipt");
+    }
+  }
+};
+
 const mechanicalEvidenceIsComplete = (evidence: ReadonlyArray<LoupeVerificationEvidence>) =>
   evidence.length === REQUIRED_MECHANICAL_OPERATIONS.length &&
   evidence.every(
@@ -361,7 +475,14 @@ export const executeLoupeVerification = async (
   completedAt: string,
 ): Promise<LoupeVerificationResult> => {
   const plan = deepFreeze(strictDecode(LoupeVerificationPlanSchema, untrustedPlan));
+  const resolveAdmittedWorkerReceipt = backend.resolveAdmittedWorkerReceipt;
+  if (typeof resolveAdmittedWorkerReceipt !== "function") {
+    throw new Error(
+      "verification requires an injected admitted-worker lifecycle authority to resolve worker receipts",
+    );
+  }
   const mechanicalEvidence = decodeEvidence(plan, await backend.collectMechanicalEvidence(plan));
+  await requireAdmittedWorkerReceipts(plan, mechanicalEvidence, resolveAdmittedWorkerReceipt);
   if (
     mechanicalEvidence.some((receipt) => !REQUIRED_MECHANICAL_OPERATION_SET.has(receipt.operation))
   ) {
@@ -397,6 +518,7 @@ export const executeLoupeVerification = async (
     controlEvidence = decodeEvidence(plan, [...mechanicalEvidence, ...returned]).slice(
       mechanicalEvidence.length,
     );
+    await requireAdmittedWorkerReceipts(plan, controlEvidence, resolveAdmittedWorkerReceipt);
     const pocReceipts = controlEvidence.filter((receipt) => receipt.operation === "poc_applied");
     const vulnerableReceipts = controlEvidence.filter(
       (receipt) =>
@@ -493,6 +615,7 @@ export const executeLoupeVerification = async (
       vulnerableControlPassed,
       fixedControlPassed,
       circularVerificationRejected: true,
+      admittedWorkerReceiptsResolved: true,
       completionAuthority: "adapter_atomic_result",
       productMode: "discovery_only",
       completedAt,
@@ -558,4 +681,5 @@ export const loupeForensicVerifier = Object.freeze({
   initialVerdictSchema: LoupeInitialVerdictSchema,
   resultSchema: LoupeVerificationResultSchema,
   releaseGateSchema: LoupeVerificationReleaseGateSchema,
+  admittedWorkerReceiptSchema: LoupeAdmittedWorkerReceiptSchema,
 });
