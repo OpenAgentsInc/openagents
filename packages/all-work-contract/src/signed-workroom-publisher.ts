@@ -9,6 +9,7 @@ import {
 import {
   deliverSignedWorkroomActivity,
   SIGNED_WORKROOM_DELIVERY_CAPABILITY,
+  SIGNED_WORKROOM_PUBLISH_CAPABILITY,
   SignedWorkroomError,
   SignedWorkroomStateStore,
   validateSignedWorkroomAdmission,
@@ -243,7 +244,7 @@ export const publishSignedWorkroomOutbox = (
       });
     }
     if (
-      request.capabilityRef !== SIGNED_WORKROOM_DELIVERY_CAPABILITY ||
+      request.capabilityRef !== SIGNED_WORKROOM_PUBLISH_CAPABILITY ||
       request.effectivePrincipalRef !== record.activity.actorRef
     ) {
       return yield* new SignedWorkroomError({
@@ -277,6 +278,7 @@ export const publishSignedWorkroomOutbox = (
     return yield* deliverSignedWorkroomActivity(
       decodeSignedWorkroomDeliveryRequest({
         ...request,
+        capabilityRef: SIGNED_WORKROOM_DELIVERY_CAPABILITY,
         expectedRevision: state.ledger.revision,
         attempts,
       }),

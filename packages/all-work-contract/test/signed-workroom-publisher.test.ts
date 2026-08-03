@@ -156,7 +156,7 @@ describe("signed Workroom relay publisher", () => {
           idempotencyKey: "publish-publisher-1",
           eventRef: signedActivity().eventRef,
           effectivePrincipalRef: "principal:other",
-          capabilityRef: "capability:workroom-activity:deliver",
+          capabilityRef: "capability:workroom-activity:publish",
         }).pipe(Effect.provide(value.storeLayer), Effect.provide(publisherLayer())),
       ),
     ).rejects.toMatchObject({ reason: "forbidden" });
@@ -204,7 +204,7 @@ describe("signed Workroom relay publisher", () => {
         idempotencyKey: "delivery-publisher-retry",
         eventRef: activity.eventRef,
         effectivePrincipalRef: actorRef,
-        capabilityRef: "capability:workroom-activity:deliver",
+        capabilityRef: "capability:workroom-activity:publish",
       }).pipe(Effect.provide(value.storeLayer), Effect.provide(publisherLayer())),
     );
     expect(FakeRelaySocket.instances.map((socket) => socket.relayUrl)).toEqual([

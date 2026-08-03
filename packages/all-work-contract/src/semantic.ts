@@ -37,6 +37,7 @@ const capabilities = [
   "workroom.activity.read",
   "workroom.activity.enqueue",
   "workroom.activity.deliver",
+  "workroom.activity.publish",
   "work.command.execute",
   "work.cutover.read",
   "work.cutover.execute",

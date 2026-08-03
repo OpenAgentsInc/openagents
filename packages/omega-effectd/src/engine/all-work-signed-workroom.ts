@@ -2,11 +2,14 @@ import {
   decodeSignedWorkroomDeliveryRequest,
   decodeSignedWorkroomEnqueueRequest,
   decodeSignedWorkroomReadRequest,
+  decodeSignedWorkroomPublishRequest,
   deliverSignedWorkroomActivity,
   emptySignedWorkroomState,
   enqueueSignedWorkroomActivity,
   fileSignedWorkroomStateStoreLayer,
   initializeFileSignedWorkroomState,
+  makeSignedWorkroomRelayPublisherLayer,
+  publishSignedWorkroomOutbox,
   readSignedWorkroomActivity,
   SignedWorkroomStateStore,
 } from "@openagentsinc/all-work-contract";
@@ -55,3 +58,13 @@ export const deliverAllWorkSignedWorkroom = (dataRoot: string, input: unknown) =
     const request = decodeSignedWorkroomDeliveryRequest(input);
     return yield* deliverSignedWorkroomActivity(request);
   }).pipe(Effect.provide(fileSignedWorkroomStateStoreLayer(dataRoot)));
+
+export const publishAllWorkSignedWorkroom = (dataRoot: string, input: unknown) =>
+  Effect.gen(function* () {
+    yield* bootstrapAllWorkSignedWorkroom(dataRoot);
+    const request = decodeSignedWorkroomPublishRequest(input);
+    return yield* publishSignedWorkroomOutbox(request);
+  }).pipe(
+    Effect.provide(fileSignedWorkroomStateStoreLayer(dataRoot)),
+    Effect.provide(makeSignedWorkroomRelayPublisherLayer()),
+  );

@@ -252,6 +252,40 @@ describe("omega-effectd framed protocol", () => {
     });
   });
 
+  test("negotiates real Workroom publication and refuses a missing durable outbox row", async () => {
+    await withRoot(async (root) => {
+      const server = createOmegaEffectdFramedServer(
+        createOmegaEffectdService({ paths: { dataRoot: root } }),
+        { dataRoot: root },
+        { hostRequestHandler: makeOmegaEffectdTestHost() },
+      );
+      const initialized = await server.handleLine(
+        request("publish-init", 0, "initialize", {
+          generation: 1,
+          allWork: {
+            supportedVersions: ["omega-effectd.v2"],
+            requestedCapabilities: ["workroom.activity.publish"],
+          },
+        }),
+      );
+      expect(initialized?.ok).toBe(true);
+      const allWork = decodeProtocolInitializeResult(
+        (initialized?.result as { allWork: unknown }).allWork,
+      );
+      expect(allWork.capabilities).toEqual(["workroom.activity.publish"]);
+      const missing = await server.handleLine(
+        request("publish-missing", 1, "workroom.activity.publish", {
+          idempotencyKey: "publish-missing-1",
+          effectivePrincipalRef: "principal:nostr:fixture",
+          capabilityRef: "capability:workroom-activity:publish",
+          eventRef: "signed-event:missing",
+        }),
+      );
+      expect(missing?.ok).toBe(false);
+      expect(missing?.error?.code).toBe("not_found");
+    });
+  });
+
   test("executes and restarts a generation-fenced All Work command", async () => {
     await withRoot(async (root) => {
       const open = () =>

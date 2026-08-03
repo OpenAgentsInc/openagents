@@ -50,6 +50,7 @@
     "SignedWorkroomEnqueueResult",
     "SignedWorkroomDeliveryRequest",
     "SignedWorkroomDeliveryResult",
+    "SignedWorkroomPublishRequest",
     "DelegationGrant",
     "WorkCommandExecuteRequest",
     "WorkCommandReceipt",
@@ -1292,6 +1293,16 @@
       ]
     },
     {
+      "name": "SignedWorkroomPublishRequest",
+      "kind": "record",
+      "fields": [
+        { "name": "idempotencyKey", "type": "IdempotencyKey" },
+        { "name": "effectivePrincipalRef", "type": "PrincipalRef" },
+        { "name": "capabilityRef", "type": "CapabilityRef" },
+        { "name": "eventRef", "type": "SignedProjectionEventRef" }
+      ]
+    },
+    {
       "name": "SignedWorkroomDeliveryReceipt",
       "kind": "record",
       "fields": [
@@ -1828,6 +1839,7 @@
         "workroom.activity.read",
         "workroom.activity.enqueue",
         "workroom.activity.deliver",
+        "workroom.activity.publish",
         "work.command.execute",
         "work.cutover.read",
         "work.cutover.execute",
@@ -2062,6 +2074,15 @@
           ]
         },
         {
+          "name": "SignedWorkroomPublish",
+          "tag": "workroom.activity.publish",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "params", "type": "SignedWorkroomPublishRequest" }
+          ]
+        },
+        {
           "name": "WorkCommandExecute",
           "tag": "work.command.execute",
           "fields": [
@@ -2204,6 +2225,15 @@
           ]
         },
         {
+          "name": "SignedWorkroomPublish",
+          "tag": "workroom.activity.publish",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "result", "type": "SignedWorkroomDeliveryResult" }
+          ]
+        },
+        {
           "name": "WorkCommandExecute",
           "tag": "work.command.execute",
           "fields": [
@@ -2292,6 +2322,7 @@
     "SignedWorkroomEnqueueResult",
     "SignedWorkroomDeliveryRequest",
     "SignedWorkroomDeliveryResult",
+    "SignedWorkroomPublishRequest",
     "DelegationGrant",
     "WorkCommandExecuteRequest",
     "WorkCommandReceipt",
@@ -2388,6 +2419,13 @@
       "capability": "workroom.activity.deliver",
       "minimumVersion": "omega-effectd.v2",
       "params": "SignedWorkroomDeliveryRequest",
+      "result": "SignedWorkroomDeliveryResult"
+    },
+    {
+      "method": "workroom.activity.publish",
+      "capability": "workroom.activity.publish",
+      "minimumVersion": "omega-effectd.v2",
+      "params": "SignedWorkroomPublishRequest",
       "result": "SignedWorkroomDeliveryResult"
     },
     {

@@ -2,12 +2,12 @@
   "contractRef": "openagents.all_work_boundary.v1",
   "contractVersion": 1,
   "profileVersion": "openagents.contract_profile.v1",
-  "definitionSha256": "818f7960246a0811d8193523afd83197183f9defccf507e31991624f65f7d1e8",
+  "definitionSha256": "513432ed4d7deee1a8511f59b86cc1958d33cc32b76b314ebb0b901500dfb56d",
   "artifacts": {
-    "effectSha256": "ab2c7e1d7922ede2edc7a835fcbdaea3f0da30f63ed0d8736023de44aef03b13",
-    "rustSha256": "b3da995bbe8301ab4a5401759f67627ead83d377ee477a27f4a050aab9c5b8bb",
-    "jsonSchemaSha256": "c863dc66ad41ada484434572455fa395f473a6c0a3e8cce6963ad84547b0ed44",
-    "fixtureIndexSha256": "68e424ee99d100384b500d0f5923e8c7592b0a75eaccd6856dee70f173079e45"
+    "effectSha256": "3b6dee1ea88d5f151535d4ea56aec6015ba7b0c07bb4fbedddcb422738ffad42",
+    "rustSha256": "97edd7447145d7d52140e60549b465dfe5f3440a0b9f1748f20ad9469b54e560",
+    "jsonSchemaSha256": "ebc3e9c3c179035f2ac6203c646e8c5fb5ecb52c78dc9abbd478a4718880a203",
+    "fixtureIndexSha256": "5369c0a80412b0a8db6bd906cfdbcb82a1a23cddebf409ef21398533d32ce477"
   },
   "protocol": {
     "supportedVersions": [
@@ -77,6 +77,13 @@
         "capability": "workroom.activity.deliver",
         "minimumVersion": "omega-effectd.v2",
         "params": "SignedWorkroomDeliveryRequest",
+        "result": "SignedWorkroomDeliveryResult"
+      },
+      {
+        "method": "workroom.activity.publish",
+        "capability": "workroom.activity.publish",
+        "minimumVersion": "omega-effectd.v2",
+        "params": "SignedWorkroomPublishRequest",
         "result": "SignedWorkroomDeliveryResult"
       },
       {
@@ -274,6 +281,7 @@
     "SignedWorkroomEnqueueReceipt": "structural_only",
     "SignedWorkroomEnqueueResult": "implemented",
     "SignedWorkroomDeliveryRequest": "implemented",
+    "SignedWorkroomPublishRequest": "implemented",
     "SignedWorkroomDeliveryReceipt": "structural_only",
     "SignedWorkroomDeliveryResult": "implemented",
     "WorkCommandControlKind": "structural_only",

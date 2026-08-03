@@ -28,6 +28,7 @@ import { verifySignedWorkroomNostrActivity } from "./signed-workroom-nostr.ts";
 
 export const SIGNED_WORKROOM_WRITE_CAPABILITY = "capability:workroom-activity:enqueue" as const;
 export const SIGNED_WORKROOM_DELIVERY_CAPABILITY = "capability:workroom-activity:deliver" as const;
+export const SIGNED_WORKROOM_PUBLISH_CAPABILITY = "capability:workroom-activity:publish" as const;
 
 export class SignedWorkroomError extends S.TaggedErrorClass<SignedWorkroomError>()(
   "SignedWorkroomError",

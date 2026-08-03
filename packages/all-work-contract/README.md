@@ -96,6 +96,10 @@ relay targets already persisted with the signed event. Accepted, rejected, and
 unreachable facts advance the same optimistic ledger revision. Partial success
 remains visible through the exact accepted-relay set, failed targets remain
 retryable, and a delivery receipt still admits no external effect or authority.
+The supervised `workroom.activity.publish` method instead requires the
+separate publish capability, loads the durable outbox row itself, publishes
+only its unresolved configured targets, and reduces matching relay receipts
+through that delivery boundary. A client cannot supply its own relay outcome.
 
 Canonical JSON uses `openagents-canonical-json-v1`: UTF-8, object keys sorted
 by Unicode code point, array order retained, safe integers only, absent fields

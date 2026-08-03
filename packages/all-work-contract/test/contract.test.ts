@@ -136,6 +136,43 @@ describe("OpenAgents All Work generated boundary", () => {
     expect(Effect.runSyncExit(validateWorkReadRequestFrame(invalidV1Read))._tag).toBe("Failure");
   });
 
+  it("negotiates the publisher without accepting caller-supplied relay outcomes", () => {
+    const negotiated = Effect.runSync(
+      negotiateAllWorkProtocol({
+        supportedVersions: ["omega-effectd.v2"],
+        requestedCapabilities: ["workroom.activity.publish"],
+      }),
+    );
+    expect(negotiated.capabilities).toEqual(["workroom.activity.publish"]);
+    expect(
+      parseWorkReadRequestFrame({
+        method: "workroom.activity.publish",
+        id: "publish-1",
+        version: "omega-effectd.v2",
+        params: {
+          idempotencyKey: "publish-workroom-1",
+          effectivePrincipalRef: "principal:nostr:fixture",
+          capabilityRef: "capability:workroom-activity:publish",
+          eventRef: "signed-event:workroom:1",
+        },
+      }),
+    ).toMatchObject({ method: "workroom.activity.publish" });
+    expect(() =>
+      parseWorkReadRequestFrame({
+        method: "workroom.activity.publish",
+        id: "publish-forged",
+        version: "omega-effectd.v2",
+        params: {
+          idempotencyKey: "publish-workroom-forged",
+          effectivePrincipalRef: "principal:nostr:fixture",
+          capabilityRef: "capability:workroom-activity:publish",
+          eventRef: "signed-event:workroom:1",
+          attempts: [{ relayUrl: "wss://hostile.example", outcome: "accepted" }],
+        },
+      }),
+    ).toThrow();
+  });
+
   it("enforces same-identity Issue projection semantics outside generated structure", () => {
     const snapshot = parseWorkSnapshot(readJson("fixtures/valid/work-snapshot.json"));
     expect(Effect.runSyncExit(validateWorkSnapshotSemantics(snapshot))._tag).toBe("Success");

@@ -12,6 +12,7 @@ import {
   decodeRepositoryClaimReadRequest,
   decodeSignedWorkroomDeliveryRequest,
   decodeSignedWorkroomEnqueueRequest,
+  decodeSignedWorkroomPublishRequest,
   decodeSignedWorkroomReadRequest,
   decodeProtocolInitializeRequest,
   decodePlanningGraphReadRequest,
@@ -79,6 +80,7 @@ import {
   bootstrapAllWorkSignedWorkroom,
   deliverAllWorkSignedWorkroom,
   enqueueAllWorkSignedWorkroom,
+  publishAllWorkSignedWorkroom,
   readAllWorkSignedWorkroom,
 } from "../engine/all-work-signed-workroom.ts";
 import {
@@ -1185,7 +1187,8 @@ export const createOmegaEffectdFramedServer = (
       if (
         allWork.capabilities.includes("workroom.activity.read") ||
         allWork.capabilities.includes("workroom.activity.enqueue") ||
-        allWork.capabilities.includes("workroom.activity.deliver")
+        allWork.capabilities.includes("workroom.activity.deliver") ||
+        allWork.capabilities.includes("workroom.activity.publish")
       ) {
         const workroom = await Effect.runPromise(
           Effect.match(bootstrapAllWorkSignedWorkroom(paths.dataRoot), {
@@ -1667,6 +1670,46 @@ export const createOmegaEffectdFramedServer = (
             false,
             undefined,
             redactedError(code, "The signed Workroom delivery facts were refused."),
+          );
+        }
+      }
+      case "workroom.activity.publish": {
+        if (!selectedAllWorkCapabilities.includes("workroom.activity.publish")) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "incompatible_version",
+              "workroom.activity.publish requires its negotiated omega-effectd.v2 capability.",
+            ),
+          );
+        }
+        try {
+          const params = decodeSignedWorkroomPublishRequest(request.params ?? {});
+          const result = await Effect.runPromise(
+            publishAllWorkSignedWorkroom(paths.dataRoot, params),
+          );
+          return respond(request.id, true, result);
+        } catch (error) {
+          const code =
+            error instanceof SignedWorkroomError
+              ? error.reason === "forbidden" ||
+                error.reason === "actor_grant_required" ||
+                error.reason === "invalid_actor_grant" ||
+                error.reason === "stale_actor_grant"
+                ? "forbidden"
+                : error.reason === "storage_unavailable"
+                  ? "unavailable"
+                  : error.reason === "outbox_not_found"
+                    ? "not_found"
+                    : "conflict"
+              : "invalid_request";
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(code, "The signed Workroom publication was refused."),
           );
         }
       }

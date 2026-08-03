@@ -91,6 +91,7 @@ export type OmegaEffectdInitializeResult = Readonly<{
     | "workroom.activity.read"
     | "workroom.activity.enqueue"
     | "workroom.activity.deliver"
+    | "workroom.activity.publish"
     | "work.command.execute"
     | "host_bridge"
   >;

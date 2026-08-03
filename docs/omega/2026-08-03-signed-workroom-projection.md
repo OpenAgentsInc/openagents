@@ -91,11 +91,14 @@ network effect. Relay-provided text is not persisted, so an untrusted relay
 cannot inject content or sensitive data into the canonical ledger.
 
 The publisher is an Effect service with an injectable socket constructor. The
-live layer uses the runtime WebSocket implementation. A caller must still
-provide the exact activity actor and delivery capability before any socket is
-opened. Relay acceptance remains transport evidence only, and a revision race
+live layer uses the runtime WebSocket implementation. The generated
+`workroom.activity.publish` method requires the exact activity actor and the
+separate publish capability before any socket is opened. It loads the outbox
+row and relay set itself; the client cannot submit an accepted delivery fact.
+The lower-level `workroom.activity.deliver` reducer remains an internal
+transport-fact boundary. Relay acceptance remains transport evidence only, and a revision race
 after publication fails closed so a later retry can reconcile the durable row.
 
-The remaining OAW-009 work includes Omega grant provisioning, delivery and
-enqueue UI, and installed two-client outage/replay
+The remaining OAW-009 work includes Omega grant provisioning, enqueue/publish
+UI, and installed two-client outage/replay
 falsifiers. Test execution is deferred to the final omega#208 build gate.
