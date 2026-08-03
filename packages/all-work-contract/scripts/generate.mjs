@@ -303,7 +303,7 @@ const rustType = (type) => {
     const matches = type.variants
       .map((variant) => {
         const names = variant.fields.map((field) => rustFieldName(field.name));
-        const pattern = names.length === 0 ? "" : ` { ${names.join(", ")} }`;
+        const pattern = names.length === 0 ? " {}" : ` { ${names.join(", ")} }`;
         const checks = names.map((name) => `${name}.validate()?;`).join(" ");
         return `            Self::${variant.name}${pattern} => { ${checks} Ok(()) }`;
       })

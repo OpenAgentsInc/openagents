@@ -4645,7 +4645,7 @@ impl ContractValidate for WorkCommand {
                 assignee.validate()?;
                 Ok(())
             }
-            Self::Unassign => Ok(()),
+            Self::Unassign {} => Ok(()),
             Self::Delegate { grant } => {
                 grant.validate()?;
                 Ok(())
