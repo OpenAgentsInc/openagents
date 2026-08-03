@@ -284,7 +284,7 @@ const rustType = (type) => {
             const payloadType = ["params", "result", "error", "item"].includes(field.name)
               ? `Box<${fieldType}>`
               : fieldType;
-            return `${attributes.map((attribute) => `        ${attribute}`).join("\n")}\n        ${rustFieldName(field.name)}: ${payloadType},`;
+            return `${attributes.map((attribute) => `        ${attribute}`).join("\n")}\n        pub ${rustFieldName(field.name)}: ${payloadType},`;
           })
           .join("\n");
         return `    #[serde(rename = ${quote(variant.tag)})]\n    ${variant.name} {\n${fields}\n    },`;

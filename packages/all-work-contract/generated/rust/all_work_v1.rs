@@ -2831,83 +2831,83 @@ pub enum RepositoryClaimCommand {
     #[serde(rename = "create_packet")]
     CreatePacket {
         #[serde(rename = "packetRef")]
-        packet_ref: WorkPacketRef,
+        pub packet_ref: WorkPacketRef,
         #[serde(rename = "workRef")]
-        work_ref: WorkRef,
+        pub work_ref: WorkRef,
         #[serde(rename = "repositoryRef")]
-        repository_ref: RepositoryRef,
+        pub repository_ref: RepositoryRef,
         #[serde(rename = "title")]
-        title: ShortText,
+        pub title: ShortText,
         #[serde(rename = "scope")]
-        scope: LongText,
+        pub scope: LongText,
         #[serde(rename = "ownedPaths")]
-        owned_paths: Vec<ShortText>,
+        pub owned_paths: Vec<ShortText>,
         #[serde(rename = "hotFiles")]
-        hot_files: Vec<ShortText>,
+        pub hot_files: Vec<ShortText>,
         #[serde(rename = "hotContracts")]
-        hot_contracts: Vec<ShortText>,
+        pub hot_contracts: Vec<ShortText>,
         #[serde(rename = "verification")]
-        verification: LongText,
+        pub verification: LongText,
     },
     #[serde(rename = "claim_packet")]
     ClaimPacket {
         #[serde(rename = "packetRef")]
-        packet_ref: WorkPacketRef,
+        pub packet_ref: WorkPacketRef,
         #[serde(rename = "claimRef")]
-        claim_ref: RepositoryWorkClaimRef,
+        pub claim_ref: RepositoryWorkClaimRef,
     },
     #[serde(rename = "heartbeat")]
     Heartbeat {
         #[serde(rename = "claimRef")]
-        claim_ref: RepositoryWorkClaimRef,
+        pub claim_ref: RepositoryWorkClaimRef,
         #[serde(rename = "expectedGeneration")]
-        expected_generation: SafeInteger,
+        pub expected_generation: SafeInteger,
         #[serde(rename = "evidenceRefs")]
-        evidence_refs: Vec<EvidenceRef>,
+        pub evidence_refs: Vec<EvidenceRef>,
     },
     #[serde(rename = "status")]
     Status {
         #[serde(rename = "claimRef")]
-        claim_ref: RepositoryWorkClaimRef,
+        pub claim_ref: RepositoryWorkClaimRef,
         #[serde(rename = "expectedGeneration")]
-        expected_generation: SafeInteger,
+        pub expected_generation: SafeInteger,
         #[serde(rename = "detail")]
-        detail: ShortText,
+        pub detail: ShortText,
         #[serde(rename = "evidenceRefs")]
-        evidence_refs: Vec<EvidenceRef>,
+        pub evidence_refs: Vec<EvidenceRef>,
     },
     #[serde(rename = "block")]
     Block {
         #[serde(rename = "claimRef")]
-        claim_ref: RepositoryWorkClaimRef,
+        pub claim_ref: RepositoryWorkClaimRef,
         #[serde(rename = "expectedGeneration")]
-        expected_generation: SafeInteger,
+        pub expected_generation: SafeInteger,
         #[serde(rename = "detail")]
-        detail: ShortText,
+        pub detail: ShortText,
         #[serde(rename = "evidenceRefs")]
-        evidence_refs: Vec<EvidenceRef>,
+        pub evidence_refs: Vec<EvidenceRef>,
     },
     #[serde(rename = "release")]
     Release {
         #[serde(rename = "claimRef")]
-        claim_ref: RepositoryWorkClaimRef,
+        pub claim_ref: RepositoryWorkClaimRef,
         #[serde(rename = "expectedGeneration")]
-        expected_generation: SafeInteger,
+        pub expected_generation: SafeInteger,
         #[serde(rename = "evidenceRefs")]
-        evidence_refs: Vec<EvidenceRef>,
+        pub evidence_refs: Vec<EvidenceRef>,
     },
     #[serde(rename = "takeover")]
     Takeover {
         #[serde(rename = "claimRef")]
-        claim_ref: RepositoryWorkClaimRef,
+        pub claim_ref: RepositoryWorkClaimRef,
         #[serde(rename = "expectedGeneration")]
-        expected_generation: SafeInteger,
+        pub expected_generation: SafeInteger,
         #[serde(rename = "auditRef")]
-        audit_ref: EvidenceRef,
+        pub audit_ref: EvidenceRef,
         #[serde(rename = "auditFoundActiveWork")]
-        audit_found_active_work: bool,
+        pub audit_found_active_work: bool,
         #[serde(rename = "auditedAt")]
-        audited_at: IsoTimestamp,
+        pub audited_at: IsoTimestamp,
     },
 }
 
@@ -3425,37 +3425,37 @@ pub enum WorkIndexSubscriptionEvent {
     #[serde(rename = "ready")]
     Ready {
         #[serde(rename = "subscriptionRef")]
-        subscription_ref: SubscriptionRef,
+        pub subscription_ref: SubscriptionRef,
         #[serde(rename = "result")]
-        result: Box<WorkIndexReadResult>,
+        pub result: Box<WorkIndexReadResult>,
     },
     #[serde(rename = "upsert")]
     Upsert {
         #[serde(rename = "subscriptionRef")]
-        subscription_ref: SubscriptionRef,
+        pub subscription_ref: SubscriptionRef,
         #[serde(rename = "cursor")]
-        cursor: WorkCursor,
+        pub cursor: WorkCursor,
         #[serde(rename = "item")]
-        item: Box<WorkSummary>,
+        pub item: Box<WorkSummary>,
     },
     #[serde(rename = "remove")]
     Remove {
         #[serde(rename = "subscriptionRef")]
-        subscription_ref: SubscriptionRef,
+        pub subscription_ref: SubscriptionRef,
         #[serde(rename = "cursor")]
-        cursor: WorkCursor,
+        pub cursor: WorkCursor,
         #[serde(rename = "workRef")]
-        work_ref: WorkRef,
+        pub work_ref: WorkRef,
     },
     #[serde(rename = "gap")]
     Gap {
         #[serde(rename = "subscriptionRef")]
-        subscription_ref: SubscriptionRef,
+        pub subscription_ref: SubscriptionRef,
         #[serde(with = "required_nullable")]
         #[serde(rename = "cursor")]
-        cursor: Nullable<WorkCursor>,
+        pub cursor: Nullable<WorkCursor>,
         #[serde(rename = "completeness")]
-        completeness: Completeness,
+        pub completeness: Completeness,
     },
 }
 
@@ -3538,56 +3538,56 @@ pub enum WorkReadRequestFrame {
     #[serde(rename = "protocol.initialize")]
     Initialize {
         #[serde(rename = "id")]
-        id: ShortText,
+        pub id: ShortText,
         #[serde(rename = "version")]
-        version: ProtocolVersion,
+        pub version: ProtocolVersion,
         #[serde(rename = "params")]
-        params: Box<ProtocolInitializeRequest>,
+        pub params: Box<ProtocolInitializeRequest>,
     },
     #[serde(rename = "work.index.read")]
     WorkIndexRead {
         #[serde(rename = "id")]
-        id: ShortText,
+        pub id: ShortText,
         #[serde(rename = "version")]
-        version: ProtocolVersion,
+        pub version: ProtocolVersion,
         #[serde(rename = "params")]
-        params: Box<WorkIndexReadRequest>,
+        pub params: Box<WorkIndexReadRequest>,
     },
     #[serde(rename = "work.snapshot.read")]
     WorkSnapshotRead {
         #[serde(rename = "id")]
-        id: ShortText,
+        pub id: ShortText,
         #[serde(rename = "version")]
-        version: ProtocolVersion,
+        pub version: ProtocolVersion,
         #[serde(rename = "params")]
-        params: Box<WorkSnapshotReadRequest>,
+        pub params: Box<WorkSnapshotReadRequest>,
     },
     #[serde(rename = "planning.graph.read")]
     PlanningGraphRead {
         #[serde(rename = "id")]
-        id: ShortText,
+        pub id: ShortText,
         #[serde(rename = "version")]
-        version: ProtocolVersion,
+        pub version: ProtocolVersion,
         #[serde(rename = "params")]
-        params: Box<PlanningGraphReadRequest>,
+        pub params: Box<PlanningGraphReadRequest>,
     },
     #[serde(rename = "repository.claim.read")]
     RepositoryClaimRead {
         #[serde(rename = "id")]
-        id: ShortText,
+        pub id: ShortText,
         #[serde(rename = "version")]
-        version: ProtocolVersion,
+        pub version: ProtocolVersion,
         #[serde(rename = "params")]
-        params: Box<RepositoryClaimReadRequest>,
+        pub params: Box<RepositoryClaimReadRequest>,
     },
     #[serde(rename = "repository.claim.execute")]
     RepositoryClaimExecute {
         #[serde(rename = "id")]
-        id: ShortText,
+        pub id: ShortText,
         #[serde(rename = "version")]
-        version: ProtocolVersion,
+        pub version: ProtocolVersion,
         #[serde(rename = "params")]
-        params: Box<RepositoryClaimExecuteRequest>,
+        pub params: Box<RepositoryClaimExecuteRequest>,
     },
 }
 
@@ -3664,65 +3664,65 @@ pub enum WorkReadResponseFrame {
     #[serde(rename = "protocol.initialize")]
     Initialize {
         #[serde(rename = "id")]
-        id: ShortText,
+        pub id: ShortText,
         #[serde(rename = "version")]
-        version: ProtocolVersion,
+        pub version: ProtocolVersion,
         #[serde(rename = "result")]
-        result: Box<ProtocolInitializeResult>,
+        pub result: Box<ProtocolInitializeResult>,
     },
     #[serde(rename = "work.index.read")]
     WorkIndexRead {
         #[serde(rename = "id")]
-        id: ShortText,
+        pub id: ShortText,
         #[serde(rename = "version")]
-        version: ProtocolVersion,
+        pub version: ProtocolVersion,
         #[serde(rename = "result")]
-        result: Box<WorkIndexReadResult>,
+        pub result: Box<WorkIndexReadResult>,
     },
     #[serde(rename = "work.snapshot.read")]
     WorkSnapshotRead {
         #[serde(rename = "id")]
-        id: ShortText,
+        pub id: ShortText,
         #[serde(rename = "version")]
-        version: ProtocolVersion,
+        pub version: ProtocolVersion,
         #[serde(rename = "result")]
-        result: Box<WorkSnapshotReadResult>,
+        pub result: Box<WorkSnapshotReadResult>,
     },
     #[serde(rename = "planning.graph.read")]
     PlanningGraphRead {
         #[serde(rename = "id")]
-        id: ShortText,
+        pub id: ShortText,
         #[serde(rename = "version")]
-        version: ProtocolVersion,
+        pub version: ProtocolVersion,
         #[serde(rename = "result")]
-        result: Box<PlanningGraphReadResult>,
+        pub result: Box<PlanningGraphReadResult>,
     },
     #[serde(rename = "repository.claim.read")]
     RepositoryClaimRead {
         #[serde(rename = "id")]
-        id: ShortText,
+        pub id: ShortText,
         #[serde(rename = "version")]
-        version: ProtocolVersion,
+        pub version: ProtocolVersion,
         #[serde(rename = "result")]
-        result: Box<RepositoryClaimReadResult>,
+        pub result: Box<RepositoryClaimReadResult>,
     },
     #[serde(rename = "repository.claim.execute")]
     RepositoryClaimExecute {
         #[serde(rename = "id")]
-        id: ShortText,
+        pub id: ShortText,
         #[serde(rename = "version")]
-        version: ProtocolVersion,
+        pub version: ProtocolVersion,
         #[serde(rename = "result")]
-        result: Box<RepositoryClaimExecuteResult>,
+        pub result: Box<RepositoryClaimExecuteResult>,
     },
     #[serde(rename = "error")]
     Error {
         #[serde(rename = "id")]
-        id: ShortText,
+        pub id: ShortText,
         #[serde(rename = "version")]
-        version: ProtocolVersion,
+        pub version: ProtocolVersion,
         #[serde(rename = "error")]
-        error: Box<ProtocolError>,
+        pub error: Box<ProtocolError>,
     },
 }
 
