@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   decodeProtocolInitializeResult,
+  decodePlanningGraphReadResult,
   decodeWorkIndexReadResult,
   decodeWorkSnapshotReadResult,
 } from "@openagentsinc/all-work-contract";
@@ -106,7 +107,7 @@ describe("omega-effectd framed protocol", () => {
           generation: 1,
           allWork: {
             supportedVersions: ["omega-effectd.v2", "omega-effectd.v1"],
-            requestedCapabilities: ["work.index.read", "work.snapshot.read"],
+            requestedCapabilities: ["work.index.read", "work.snapshot.read", "planning.graph.read"],
           },
         }),
       );
@@ -115,7 +116,21 @@ describe("omega-effectd framed protocol", () => {
         (initialized?.result as { allWork: unknown }).allWork,
       );
       expect(allWork.selectedVersion).toBe("omega-effectd.v2");
-      expect(allWork.capabilities).toEqual(["work.index.read", "work.snapshot.read"]);
+      expect(allWork.capabilities).toEqual([
+        "work.index.read",
+        "work.snapshot.read",
+        "planning.graph.read",
+      ]);
+
+      const planning = await server.handleLine(request("planning", 1, "planning.graph.read", {}));
+      expect(planning?.ok).toBe(true);
+      const planningResult = decodePlanningGraphReadResult(planning?.result);
+      expect(planningResult.graph.work).toHaveLength(28);
+      expect(
+        planningResult.graph.work.filter((work) => work.summary.state === "completed"),
+      ).toHaveLength(6);
+      expect(planningResult.graph.sourceCoordinates).toHaveLength(28);
+      expect(planningResult.graph.releaseScopeLinks).toHaveLength(10);
 
       const indexed = await server.handleLine(request("index", 1, "work.index.read", {}));
       expect(indexed?.ok).toBe(true);

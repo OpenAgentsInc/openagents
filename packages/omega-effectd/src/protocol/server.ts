@@ -9,6 +9,8 @@ import { createInterface } from "node:readline";
 
 import {
   decodeProtocolInitializeRequest,
+  decodePlanningGraphReadRequest,
+  decodePlanningGraphReadResult,
   decodeWorkIndexReadRequest,
   decodeWorkSnapshotReadRequest,
   negotiateAllWorkProtocol,
@@ -35,6 +37,10 @@ import {
   readFullAutoWorkIndex,
   readFullAutoWorkSnapshot,
 } from "../engine/all-work-projection.ts";
+import {
+  bootstrapAllWorkPlanningAuthority,
+  readAllWorkPlanningGraph,
+} from "../engine/all-work-planning-authority.ts";
 import { openFullAutoRunReportStore } from "../engine/full-auto-run-report.ts";
 import { admitFullAutoRunCompletion } from "../engine/full-auto-completion.ts";
 import {
@@ -1031,6 +1037,25 @@ export const createOmegaEffectdFramedServer = (
         );
       }
       selectedAllWorkVersion = allWork.selectedVersion;
+      if (allWork.capabilities.includes("planning.graph.read")) {
+        const planning = await Effect.runPromise(
+          Effect.match(bootstrapAllWorkPlanningAuthority(paths.dataRoot), {
+            onFailure: () => null,
+            onSuccess: (graph) => graph,
+          }),
+        );
+        if (planning === null) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "unavailable",
+              "The canonical All Work planning authority could not be opened.",
+            ),
+          );
+        }
+      }
       hostBridge.beginGeneration(generation);
       initialized = true;
       await service.start();
@@ -1074,7 +1099,7 @@ export const createOmegaEffectdFramedServer = (
           "sarah_renew_device_grant",
           "sarah_revoke_device_grant",
           ...(selectedAllWorkVersion === "omega-effectd.v2"
-            ? (["work.index.read", "work.snapshot.read"] as const)
+            ? (["work.index.read", "work.snapshot.read", "planning.graph.read"] as const)
             : []),
           "host_bridge",
         ],
@@ -1254,6 +1279,41 @@ export const createOmegaEffectdFramedServer = (
             false,
             undefined,
             redactedError("invalid_request", "work.snapshot.read received invalid params."),
+          );
+        }
+      }
+      case "planning.graph.read": {
+        if (selectedAllWorkVersion !== "omega-effectd.v2") {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "incompatible_version",
+              "planning.graph.read requires the negotiated omega-effectd.v2 All Work profile.",
+            ),
+          );
+        }
+        try {
+          const params = decodePlanningGraphReadRequest(request.params ?? {});
+          const graph = await Effect.runPromise(readAllWorkPlanningGraph(paths.dataRoot));
+          if (params.afterRevision !== undefined && params.afterRevision !== null) {
+            if (params.afterRevision > graph.revision) {
+              return respond(
+                request.id,
+                false,
+                undefined,
+                redactedError("stale_cursor", "The requested planning revision is ahead."),
+              );
+            }
+          }
+          return respond(request.id, true, decodePlanningGraphReadResult({ graph }));
+        } catch {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("unavailable", "The canonical planning graph is unavailable."),
           );
         }
       }

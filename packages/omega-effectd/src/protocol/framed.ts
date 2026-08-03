@@ -83,6 +83,7 @@ export type OmegaEffectdInitializeResult = Readonly<{
     | "sarah_revoke_device_grant"
     | "work.index.read"
     | "work.snapshot.read"
+    | "planning.graph.read"
     | "host_bridge"
   >;
   allWork: AllWorkProtocolInitializeResult;

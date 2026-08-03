@@ -100,6 +100,7 @@ process and negotiates `omega-effectd.v2` before it decodes the typed Work
 Index response.
 
 The additive `planning.graph.read` method is the generated seam for the
-canonical planning projection. An Omega consumer must pin the definition and
-Rust artifact digests together. It must not decode the development fixture as
-live authority.
+canonical planning projection. The OpenAgents `omega-effectd` reference process
+opens the durable Effect authority and serves this method after v2 negotiation.
+An Omega consumer must pin the definition and Rust artifact digests together.
+It must not decode the development fixture as live authority.

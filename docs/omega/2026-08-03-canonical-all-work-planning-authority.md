@@ -58,6 +58,13 @@ values.
 
 ## Verification state
 
+`packages/omega-effectd` now opens the durable authority during negotiated v2
+initialization and serves it through `planning.graph.read`. The method decodes
+the generated request, loads the persisted graph, rejects an ahead-of-authority
+revision, and encodes the generated result. Authored in-process and real-stdio
+tests require all 28 Work rows, six completed rows, Source Coordinates, Release
+Scope Links, and the reconciliation digest.
+
 The implementation includes authored contract, golden bootstrap, duplicate and
 pagination, gap and unavailability, native create/update/idempotency, and
 durable restart tests. Per the sequential #208 execution instruction, these

@@ -6,6 +6,7 @@ import { createInterface } from "node:readline";
 
 import {
   decodeProtocolInitializeResult,
+  decodePlanningGraphReadResult,
   decodeWorkIndexReadResult,
   decodeWorkSnapshotReadResult,
 } from "@openagentsinc/all-work-contract";
@@ -67,7 +68,7 @@ test("the omega-effectd process serves typed All Work v2 index and snapshot read
         generation: 1,
         allWork: {
           supportedVersions: ["omega-effectd.v2", "omega-effectd.v1"],
-          requestedCapabilities: ["work.index.read", "work.snapshot.read"],
+          requestedCapabilities: ["work.index.read", "work.snapshot.read", "planning.graph.read"],
         },
       },
     });
@@ -105,6 +106,21 @@ test("the omega-effectd process serves typed All Work v2 index and snapshot read
     expect(decodeWorkSnapshotReadResult(snapshot.result).snapshot.threadRefs).toEqual([
       "thread:process:1",
     ]);
+
+    send({
+      schema: OMEGA_EFFECTD_PROTOCOL_SCHEMA,
+      kind: "request",
+      id: "planning",
+      generation: 1,
+      method: "planning.graph.read",
+      params: {},
+    });
+    const planning = await readResponse();
+    expect(planning.ok).toBe(true);
+    const graph = decodePlanningGraphReadResult(planning.result).graph;
+    expect(graph.work).toHaveLength(28);
+    expect(graph.sourceCoordinates).toHaveLength(28);
+    expect(graph.reconciliationDigest).toMatch(/^[a-f0-9]{64}$/u);
 
     child.stdin.end();
     await new Promise<void>((resolveExit, rejectExit) => {
