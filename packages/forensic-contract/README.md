@@ -37,7 +37,10 @@ The package owns:
   evaluated over elapsed nanoseconds — and cannot be written in as a rate. A
   frozen vector records where its expected digests came from, and the
   generator-evidence admission gate refuses vectors this repository generated
-  itself as well as anything that did not run on an admitted worker. The
+  itself as well as anything that did not run on an admitted worker. The frozen
+  corpus now satisfies that gate: its expected values are produced by compiling
+  libngu's own `ngu/random.c` verbatim on an admitted worker, and
+  `test/coldcard-generator-live.test.ts` binds the corpus to that capture. The
   owned-fixture reproduction refuses to return a receipt that contains the
   mnemonic, any four consecutive mnemonic words, the generated entropy, the
   derived seed, or the master xprv, so its `retainedSecretMaterial: false` is

@@ -47,17 +47,24 @@ The pack contains:
   for this set, and `packages/forensic-contract/test/coldcard-artifact-witness-live.test.ts`
   also checks that the same assertions applied to the wrong build are
   violated, so the file cannot become a rubber stamp; and
-- `generator-vectors.v1.json`: frozen vulnerable, 32-bit-reseeded, approved-
-  provider, and guard/provider/initialization/call-trace/reseed mutation
-  vectors, plus a synthetic public-material match and a work-factor throughput
-  measurement recorded as a candidate count over an elapsed interval rather
-  than as a written-in rate. Every vector declares
-  `goldenVectorSource.kind = "self_generated"` and
-  `provenance.kind = "conformance_vector"`: their expected digests came from
-  the reproduction they test, so passing them locks our generator against
-  drift and proves nothing about the target's generator.
-  `admitColdcardGeneratorEvidence` refuses the file. It contains no mnemonic,
-  xprv, or live value oracle input; and
+- `generator-vectors.v1.json` and `generator-live-capture.v1.json.gz`: frozen
+  vulnerable, 32-bit-reseeded, approved-provider, and
+  guard/provider/initialization/call-trace/reseed mutation vectors, plus a
+  synthetic public-material match and a work-factor throughput measurement
+  recorded as a candidate count over an elapsed interval rather than as a
+  written-in rate. Every vector's expected digests were produced by libngu's
+  own `ngu/random.c` at commit `537519a8` — the submodule revision both pinned
+  Coldcard firmware trees carry — compiled verbatim and executed inside an
+  admitted `live_gce` managed sandbox, so `goldenVectorSource.kind` is
+  `independent_implementation` and `provenance.kind` is `admitted_worker_run`.
+  The `.gz` file is that capture: per vector it holds the target pass through
+  the pinned `my_random_bytes` and `_rand_below`, a single-step mirror of the
+  same compiled functions, and the agreement between them, which the guest
+  requires before it will emit a vector at all.
+  `packages/forensic-contract/test/coldcard-generator-live.test.ts` repackages
+  the capture and refuses any drift between it and the corpus, and
+  `admitColdcardGeneratorEvidence` now admits the file. It contains no
+  mnemonic, xprv, or live value oracle input; and
 - `historical-scan-fixture.v2.json` plus the three
   `historical-bundle-*.v1.json.gz` files: **frozen mainnet chain data**, not a
   synthetic scenario. Blocks 960,189, 960,359, and 960,365-960,367 were

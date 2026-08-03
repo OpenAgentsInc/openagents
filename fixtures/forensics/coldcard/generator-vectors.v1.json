@@ -1,6 +1,6 @@
 {
   "schema": "openagents.coldcard_generator_vectors.v1",
-  "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "workerProfileDigest": "sha256:8b0b4d6bd5fefaf26687bc6bf128f2cc79eb6d234ef383e42ff0e368a4f0f23c",
   "vectors": [
     {
       "schema": "openagents.coldcard_generator_vector.v2",
@@ -12,14 +12,24 @@
       "callTraceDigest": "sha256:485b4dd3dfed3709ece37e133cb5d892f0997efd622101b07f6ba143b7da4e64",
       "expectedShuffleDigest": "sha256:a0feea12f3275c7b9f29790f053671e0aba648c8e64a8e393e7d7e48eb59142b",
       "retainedReseedWidthBits": 0,
-      "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "workerProfileDigest": "sha256:8b0b4d6bd5fefaf26687bc6bf128f2cc79eb6d234ef383e42ff0e368a4f0f23c",
       "goldenVectorSource": {
-        "kind": "self_generated",
-        "producedByRef": "implementation.openagents.independent-yasmarang.v1"
+        "implementationRef": "implementation.libngu.ngu-random-c.537519a8",
+        "kind": "independent_implementation",
+        "sourceDigest": "sha256:812585e47b2f9251693280c95b5e58558cbd564d62e4398b17388f9cb5198abb"
       },
       "provenance": {
-        "conformanceNoteRef": "note.coldcard_generator.conformance_vector_not_target_evidence",
-        "kind": "conformance_vector"
+        "guestImageDigest": "sha256:f79d6a8a9685832f057d1c641d0fdc11c928ed7bef9102c30b240c83b6635d4b",
+        "isolationClass": "gce_vm",
+        "kind": "admitted_worker_run",
+        "providerKind": "live_gce",
+        "receiptRefs": [
+          "receipt-ref://sha256/859a6e41b8cc061c4d5b5dd0646b00f5e8ef4c5f79517e11d2d4218fa38d3040",
+          "receipt-ref://sha256/8420d6bfc23fb7c45f2c2292a4347e638ecd37669e723cece2729b5ad5dedce3",
+          "receipt-ref://sha256/fbf40bb1989c52636d77446e24b691770a324cf5abd7474074a338e04814473a"
+        ],
+        "resourceGeneration": 1,
+        "sandboxRef": "sandbox.ofr015.generator.f49011302a06f042761c"
       }
     },
     {
@@ -32,14 +42,24 @@
       "callTraceDigest": "sha256:27d2e4bcb58125eddec68075bb4ff5b1da22a02ed66ac1b87c94d9f6e864e03f",
       "expectedShuffleDigest": "sha256:b78886523e293d8099cdff0940fe0a61a1a30dbee58aedad58cbd1c660e08068",
       "retainedReseedWidthBits": 32,
-      "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "workerProfileDigest": "sha256:8b0b4d6bd5fefaf26687bc6bf128f2cc79eb6d234ef383e42ff0e368a4f0f23c",
       "goldenVectorSource": {
-        "kind": "self_generated",
-        "producedByRef": "implementation.openagents.independent-yasmarang.v1"
+        "implementationRef": "implementation.libngu.ngu-random-c.537519a8",
+        "kind": "independent_implementation",
+        "sourceDigest": "sha256:812585e47b2f9251693280c95b5e58558cbd564d62e4398b17388f9cb5198abb"
       },
       "provenance": {
-        "conformanceNoteRef": "note.coldcard_generator.conformance_vector_not_target_evidence",
-        "kind": "conformance_vector"
+        "guestImageDigest": "sha256:f79d6a8a9685832f057d1c641d0fdc11c928ed7bef9102c30b240c83b6635d4b",
+        "isolationClass": "gce_vm",
+        "kind": "admitted_worker_run",
+        "providerKind": "live_gce",
+        "receiptRefs": [
+          "receipt-ref://sha256/859a6e41b8cc061c4d5b5dd0646b00f5e8ef4c5f79517e11d2d4218fa38d3040",
+          "receipt-ref://sha256/8420d6bfc23fb7c45f2c2292a4347e638ecd37669e723cece2729b5ad5dedce3",
+          "receipt-ref://sha256/fbf40bb1989c52636d77446e24b691770a324cf5abd7474074a338e04814473a"
+        ],
+        "resourceGeneration": 1,
+        "sandboxRef": "sandbox.ofr015.generator.f49011302a06f042761c"
       }
     },
     {
@@ -52,14 +72,24 @@
       "callTraceDigest": "sha256:ce9eb16c347f65e0ed8651e80904d2dc6fafdebbd090e771dd22dba42dfcb3e3",
       "expectedShuffleDigest": "sha256:6557ffb0d545bc4ec372799374ee98fe4bf7bbbd43876e445c43861266eb7700",
       "retainedReseedWidthBits": 0,
-      "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "workerProfileDigest": "sha256:8b0b4d6bd5fefaf26687bc6bf128f2cc79eb6d234ef383e42ff0e368a4f0f23c",
       "goldenVectorSource": {
-        "kind": "self_generated",
-        "producedByRef": "implementation.openagents.independent-yasmarang.v1"
+        "implementationRef": "implementation.libngu.ngu-random-c.537519a8",
+        "kind": "independent_implementation",
+        "sourceDigest": "sha256:812585e47b2f9251693280c95b5e58558cbd564d62e4398b17388f9cb5198abb"
       },
       "provenance": {
-        "conformanceNoteRef": "note.coldcard_generator.conformance_vector_not_target_evidence",
-        "kind": "conformance_vector"
+        "guestImageDigest": "sha256:f79d6a8a9685832f057d1c641d0fdc11c928ed7bef9102c30b240c83b6635d4b",
+        "isolationClass": "gce_vm",
+        "kind": "admitted_worker_run",
+        "providerKind": "live_gce",
+        "receiptRefs": [
+          "receipt-ref://sha256/859a6e41b8cc061c4d5b5dd0646b00f5e8ef4c5f79517e11d2d4218fa38d3040",
+          "receipt-ref://sha256/8420d6bfc23fb7c45f2c2292a4347e638ecd37669e723cece2729b5ad5dedce3",
+          "receipt-ref://sha256/fbf40bb1989c52636d77446e24b691770a324cf5abd7474074a338e04814473a"
+        ],
+        "resourceGeneration": 1,
+        "sandboxRef": "sandbox.ofr015.generator.f49011302a06f042761c"
       }
     },
     {
@@ -72,14 +102,24 @@
       "callTraceDigest": "sha256:86d9bd77e5d37c12a9674edfe0739fac78d0c41481125b294559e3a817b62a38",
       "expectedShuffleDigest": "sha256:ab2504c5eb2a2ddcaeb37898da4de3ae80c801bfcfff78bda4ad89be7a882780",
       "retainedReseedWidthBits": 0,
-      "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "workerProfileDigest": "sha256:8b0b4d6bd5fefaf26687bc6bf128f2cc79eb6d234ef383e42ff0e368a4f0f23c",
       "goldenVectorSource": {
-        "kind": "self_generated",
-        "producedByRef": "implementation.openagents.independent-yasmarang.v1"
+        "implementationRef": "implementation.libngu.ngu-random-c.537519a8",
+        "kind": "independent_implementation",
+        "sourceDigest": "sha256:812585e47b2f9251693280c95b5e58558cbd564d62e4398b17388f9cb5198abb"
       },
       "provenance": {
-        "conformanceNoteRef": "note.coldcard_generator.conformance_vector_not_target_evidence",
-        "kind": "conformance_vector"
+        "guestImageDigest": "sha256:f79d6a8a9685832f057d1c641d0fdc11c928ed7bef9102c30b240c83b6635d4b",
+        "isolationClass": "gce_vm",
+        "kind": "admitted_worker_run",
+        "providerKind": "live_gce",
+        "receiptRefs": [
+          "receipt-ref://sha256/859a6e41b8cc061c4d5b5dd0646b00f5e8ef4c5f79517e11d2d4218fa38d3040",
+          "receipt-ref://sha256/8420d6bfc23fb7c45f2c2292a4347e638ecd37669e723cece2729b5ad5dedce3",
+          "receipt-ref://sha256/fbf40bb1989c52636d77446e24b691770a324cf5abd7474074a338e04814473a"
+        ],
+        "resourceGeneration": 1,
+        "sandboxRef": "sandbox.ofr015.generator.f49011302a06f042761c"
       }
     },
     {
@@ -92,14 +132,24 @@
       "callTraceDigest": "sha256:bf49bde2270c8551f4d4bf2864a4b71c3b0d35d12d951a3a1670e2b3d29ec2ec",
       "expectedShuffleDigest": "sha256:c88200cbcf8fc297366451d4c56ab23bb46eb6cf016676f77cd6792e09d88506",
       "retainedReseedWidthBits": 0,
-      "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "workerProfileDigest": "sha256:8b0b4d6bd5fefaf26687bc6bf128f2cc79eb6d234ef383e42ff0e368a4f0f23c",
       "goldenVectorSource": {
-        "kind": "self_generated",
-        "producedByRef": "implementation.openagents.independent-yasmarang.v1"
+        "implementationRef": "implementation.libngu.ngu-random-c.537519a8",
+        "kind": "independent_implementation",
+        "sourceDigest": "sha256:812585e47b2f9251693280c95b5e58558cbd564d62e4398b17388f9cb5198abb"
       },
       "provenance": {
-        "conformanceNoteRef": "note.coldcard_generator.conformance_vector_not_target_evidence",
-        "kind": "conformance_vector"
+        "guestImageDigest": "sha256:f79d6a8a9685832f057d1c641d0fdc11c928ed7bef9102c30b240c83b6635d4b",
+        "isolationClass": "gce_vm",
+        "kind": "admitted_worker_run",
+        "providerKind": "live_gce",
+        "receiptRefs": [
+          "receipt-ref://sha256/859a6e41b8cc061c4d5b5dd0646b00f5e8ef4c5f79517e11d2d4218fa38d3040",
+          "receipt-ref://sha256/8420d6bfc23fb7c45f2c2292a4347e638ecd37669e723cece2729b5ad5dedce3",
+          "receipt-ref://sha256/fbf40bb1989c52636d77446e24b691770a324cf5abd7474074a338e04814473a"
+        ],
+        "resourceGeneration": 1,
+        "sandboxRef": "sandbox.ofr015.generator.f49011302a06f042761c"
       }
     },
     {
@@ -112,14 +162,24 @@
       "callTraceDigest": "sha256:9a82dc731e75a66341a9a9a82f163aa46cd1ac2d6fabe690e5ffa0b1c5d2ada2",
       "expectedShuffleDigest": "sha256:4a4508bd02b52e03332bd71176412aa62ef538bb49c4e762461a6ea4ddb041e6",
       "retainedReseedWidthBits": 0,
-      "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "workerProfileDigest": "sha256:8b0b4d6bd5fefaf26687bc6bf128f2cc79eb6d234ef383e42ff0e368a4f0f23c",
       "goldenVectorSource": {
-        "kind": "self_generated",
-        "producedByRef": "implementation.openagents.independent-yasmarang.v1"
+        "implementationRef": "implementation.libngu.ngu-random-c.537519a8",
+        "kind": "independent_implementation",
+        "sourceDigest": "sha256:812585e47b2f9251693280c95b5e58558cbd564d62e4398b17388f9cb5198abb"
       },
       "provenance": {
-        "conformanceNoteRef": "note.coldcard_generator.conformance_vector_not_target_evidence",
-        "kind": "conformance_vector"
+        "guestImageDigest": "sha256:f79d6a8a9685832f057d1c641d0fdc11c928ed7bef9102c30b240c83b6635d4b",
+        "isolationClass": "gce_vm",
+        "kind": "admitted_worker_run",
+        "providerKind": "live_gce",
+        "receiptRefs": [
+          "receipt-ref://sha256/859a6e41b8cc061c4d5b5dd0646b00f5e8ef4c5f79517e11d2d4218fa38d3040",
+          "receipt-ref://sha256/8420d6bfc23fb7c45f2c2292a4347e638ecd37669e723cece2729b5ad5dedce3",
+          "receipt-ref://sha256/fbf40bb1989c52636d77446e24b691770a324cf5abd7474074a338e04814473a"
+        ],
+        "resourceGeneration": 1,
+        "sandboxRef": "sandbox.ofr015.generator.f49011302a06f042761c"
       }
     },
     {
@@ -132,14 +192,24 @@
       "callTraceDigest": "sha256:9ab5816ead3bb65147c2e5cdd730cd0a55ff9f6f638c8b15120f6b93e83824c9",
       "expectedShuffleDigest": "sha256:0cfe8caa4e5c91d9ffc6c3fc69317f63abd7dff0cfaf17d772bbc8f927e74783",
       "retainedReseedWidthBits": 0,
-      "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "workerProfileDigest": "sha256:8b0b4d6bd5fefaf26687bc6bf128f2cc79eb6d234ef383e42ff0e368a4f0f23c",
       "goldenVectorSource": {
-        "kind": "self_generated",
-        "producedByRef": "implementation.openagents.independent-yasmarang.v1"
+        "implementationRef": "implementation.libngu.ngu-random-c.537519a8",
+        "kind": "independent_implementation",
+        "sourceDigest": "sha256:812585e47b2f9251693280c95b5e58558cbd564d62e4398b17388f9cb5198abb"
       },
       "provenance": {
-        "conformanceNoteRef": "note.coldcard_generator.conformance_vector_not_target_evidence",
-        "kind": "conformance_vector"
+        "guestImageDigest": "sha256:f79d6a8a9685832f057d1c641d0fdc11c928ed7bef9102c30b240c83b6635d4b",
+        "isolationClass": "gce_vm",
+        "kind": "admitted_worker_run",
+        "providerKind": "live_gce",
+        "receiptRefs": [
+          "receipt-ref://sha256/859a6e41b8cc061c4d5b5dd0646b00f5e8ef4c5f79517e11d2d4218fa38d3040",
+          "receipt-ref://sha256/8420d6bfc23fb7c45f2c2292a4347e638ecd37669e723cece2729b5ad5dedce3",
+          "receipt-ref://sha256/fbf40bb1989c52636d77446e24b691770a324cf5abd7474074a338e04814473a"
+        ],
+        "resourceGeneration": 1,
+        "sandboxRef": "sandbox.ofr015.generator.f49011302a06f042761c"
       }
     },
     {
@@ -152,14 +222,24 @@
       "callTraceDigest": "sha256:8d83d019e5292372d0ca439ad0baf9d56070044eeb21ea946609056981d321b8",
       "expectedShuffleDigest": "sha256:8f3ea450576a03eb39414485d8d817138e22896bad8fccf522e3392bf145912e",
       "retainedReseedWidthBits": 32,
-      "workerProfileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "workerProfileDigest": "sha256:8b0b4d6bd5fefaf26687bc6bf128f2cc79eb6d234ef383e42ff0e368a4f0f23c",
       "goldenVectorSource": {
-        "kind": "self_generated",
-        "producedByRef": "implementation.openagents.independent-yasmarang.v1"
+        "implementationRef": "implementation.libngu.ngu-random-c.537519a8",
+        "kind": "independent_implementation",
+        "sourceDigest": "sha256:812585e47b2f9251693280c95b5e58558cbd564d62e4398b17388f9cb5198abb"
       },
       "provenance": {
-        "conformanceNoteRef": "note.coldcard_generator.conformance_vector_not_target_evidence",
-        "kind": "conformance_vector"
+        "guestImageDigest": "sha256:f79d6a8a9685832f057d1c641d0fdc11c928ed7bef9102c30b240c83b6635d4b",
+        "isolationClass": "gce_vm",
+        "kind": "admitted_worker_run",
+        "providerKind": "live_gce",
+        "receiptRefs": [
+          "receipt-ref://sha256/859a6e41b8cc061c4d5b5dd0646b00f5e8ef4c5f79517e11d2d4218fa38d3040",
+          "receipt-ref://sha256/8420d6bfc23fb7c45f2c2292a4347e638ecd37669e723cece2729b5ad5dedce3",
+          "receipt-ref://sha256/fbf40bb1989c52636d77446e24b691770a324cf5abd7474074a338e04814473a"
+        ],
+        "resourceGeneration": 1,
+        "sandboxRef": "sandbox.ofr015.generator.f49011302a06f042761c"
       }
     }
   ],
@@ -207,19 +287,30 @@
       "assumption.call-trace-frozen"
     ],
     "throughputMeasurement": {
-      "candidatesEvaluated": "2500000",
-      "elapsedNanoseconds": "10000000000",
-      "harnessRef": "harness.coldcard.conformance-throughput-placeholder",
-      "measurementRef": "measurement.coldcard.conformance-throughput-placeholder",
+      "candidatesEvaluated": "201637888",
+      "elapsedNanoseconds": "20000003915",
+      "harnessRef": "harness.coldcard.generator-candidate-search.v1",
+      "measurementRef": "measurement.coldcard.generator-stage-candidate-throughput.f49011302a06f042761c",
       "provenance": {
-        "conformanceNoteRef": "note.coldcard_generator.conformance_vector_not_target_evidence",
-        "kind": "conformance_vector"
+        "guestImageDigest": "sha256:f79d6a8a9685832f057d1c641d0fdc11c928ed7bef9102c30b240c83b6635d4b",
+        "isolationClass": "gce_vm",
+        "kind": "admitted_worker_run",
+        "providerKind": "live_gce",
+        "receiptRefs": [
+          "receipt-ref://sha256/859a6e41b8cc061c4d5b5dd0646b00f5e8ef4c5f79517e11d2d4218fa38d3040",
+          "receipt-ref://sha256/8420d6bfc23fb7c45f2c2292a4347e638ecd37669e723cece2729b5ad5dedce3",
+          "receipt-ref://sha256/fbf40bb1989c52636d77446e24b691770a324cf5abd7474074a338e04814473a"
+        ],
+        "resourceGeneration": 1,
+        "sandboxRef": "sandbox.ofr015.generator.f49011302a06f042761c"
       },
       "receiptRefs": [
-        "receipt.openagents-cloud.synthetic-throughput.v1"
+        "receipt-ref://sha256/859a6e41b8cc061c4d5b5dd0646b00f5e8ef4c5f79517e11d2d4218fa38d3040",
+        "receipt-ref://sha256/8420d6bfc23fb7c45f2c2292a4347e638ecd37669e723cece2729b5ad5dedce3",
+        "receipt-ref://sha256/fbf40bb1989c52636d77446e24b691770a324cf5abd7474074a338e04814473a"
       ]
     }
   },
-  "conformanceNoteRef": "note.coldcard_generator.conformance_vector_not_target_evidence",
-  "provenanceNote": "Every vector in this file is a conformance vector whose expected digests were produced by this repository's own reproduction (goldenVectorSource.kind = self_generated), and the throughput measurement is a placeholder that restates a previously published rate as a count over an interval. Nothing here was captured from Coldcard firmware or measured on an admitted OpenAgents Cloud worker. admitColdcardGeneratorEvidence refuses this corpus. The vectors are a regression lock against drift in our own generator; they are not evidence that our generator matches the target."
+  "provenanceNote": "Every expected digest in this file was produced by the pinned libngu generator source ngu/random.c (sha256 812585e47b2f9251693280c95b5e58558cbd564d62e4398b17388f9cb5198abb, libngu commit 537519a829259622ea6b0334fbafd6cae852852f, the submodule revision both pinned Coldcard firmware trees carry), compiled verbatim and executed inside an admitted OpenAgents Cloud live_gce managed sandbox on guest image sha256:f79d6a8a9685832f057d1c641d0fdc11c928ed7bef9102c30b240c83b6635d4b. goldenVectorSource.kind is independent_implementation: the expected values did not come from this repository's TypeScript reproduction. Per vector the guest ran two passes - the target source's own my_random_bytes and _rand_below, and a single-step mirror of the same compiled functions - and refused to emit a vector unless both agreed on output bytes, shuffle selections and final generator state. Provenance was stamped outside the guest from managed-sandbox runtime receipts, because a guest cannot attest to its own admission. What these vectors still do not prove is that the shipped firmware binary behaves like its own source: that is the artifact witness rung (OFR-014), which is a separate claim ref.",
+  "throughputNote": "The measurement counts generator-stage candidates only. One candidate seeds the pinned fallback provider from one (unique id ^ SysTick, RTC->TR, RTC->SSR) triple, runs the pinned generator to a 32 byte wallet entropy draw, and compares an 8 byte prefix. Downstream BIP39 and BIP32 derivation, which a real key search also pays per candidate, is NOT included and is far more expensive than the generator stage. projectedSecondsCeiling therefore bounds the generator stage of a search on this worker profile; total attacker time on the same profile is longer, not shorter."
 }

@@ -26,8 +26,8 @@ import { BoundedRefs, ForensicRef, Sha256Digest } from "../src/primitives.ts";
 
 const FixtureSchema = S.Struct({
   schema: S.Literal("openagents.coldcard_generator_vectors.v1"),
-  conformanceNoteRef: S.String,
   provenanceNote: S.String,
+  throughputNote: S.String,
   syntheticFixture: S.Struct({
     authorizationRef: ForensicRef,
     derivationPaths: S.Array(S.String).check(S.isMinLength(1), S.isMaxLength(128)),
@@ -61,6 +61,15 @@ const fixture = strictDecode(
     ),
   ),
 );
+
+/**
+ * sha256 of `ngu/random.c` at libngu commit
+ * `537519a829259622ea6b0334fbafd6cae852852f`, the submodule revision both
+ * pinned Coldcard firmware trees carry. Every frozen vector's expected digests
+ * were produced by that file, compiled verbatim on an admitted worker.
+ */
+const PINNED_LIBNGU_RANDOM_C_DIGEST =
+  "sha256:812585e47b2f9251693280c95b5e58558cbd564d62e4398b17388f9cb5198abb";
 
 const yasmarangState = (pad: number, n: number, d: number, dat: number): YasmarangState => ({
   pad: pad >>> 0,
@@ -140,13 +149,14 @@ const stateFor = (
  *
  * It shares no operations with the implementation under test: modulus instead
  * of `>>> 0`, explicit BigInt multiplication instead of `Math.imul`, explicit
- * rotate arithmetic instead of shift-and-add. It therefore falsifies the class
- * of defect the frozen vectors cannot — a wrong-but-self-consistent uint32
- * operation, which would simply be baked into every self-generated digest.
+ * rotate arithmetic instead of shift-and-add. It catches a wrong-but-self-
+ * consistent uint32 operation, which a self-generated digest would simply bake
+ * in.
  *
- * It does NOT make our reproduction independent of the target. Both
- * transcriptions are ours. See the OFR-015 issue notes for what independence
- * would actually require.
+ * Both transcriptions are still ours, so this is not independence from the
+ * target. Independence comes from the frozen corpus itself, whose expected
+ * values are produced by compiling libngu's own `ngu/random.c` on an admitted
+ * worker; see `coldcard-generator-live.test.ts`.
  */
 const M32 = 1n << 32n;
 const rotateLeft32 = (value: bigint, bits: bigint): bigint =>
@@ -259,7 +269,12 @@ describe("independent Coldcard generator reproduction", () => {
       workerProfileDigest: fixture.workerProfileDigest,
     });
     expect(estimate.candidateCount).toBe("1800000000000");
-    expect(estimate.projectedSecondsCeiling).toBe("7200000");
+    // 201,637,888 candidates in 20.000003915 s on the admitted e2-small
+    // profile: 10,081,892 candidates per second, so 178,538 s for the whole
+    // candidate space at the generator stage. The previous published figure
+    // was a hand-written 250,000 per second and 7,200,000 s, which no
+    // measurement supported in either direction.
+    expect(estimate.projectedSecondsCeiling).toBe("178538");
     expect(estimate.candidateCountBits).toBeCloseTo(40.71, 2);
     expect(estimate.assumptionRefs).toEqual(fixture.workFactor.assumptionRefs);
     expect(() =>
@@ -277,7 +292,7 @@ describe("independent Coldcard generator reproduction", () => {
       workerProfileDigest: fixture.workerProfileDigest,
     });
     // The rate is a quotient of the two observed quantities, never an input.
-    expect(estimate.measuredCandidatesPerSecond).toBe("250000");
+    expect(estimate.measuredCandidatesPerSecond).toBe("10081892");
     expect(() =>
       strictDecode(ForensicWorkFactorEstimateSchema, {
         ...estimate,
@@ -291,94 +306,104 @@ describe("independent Coldcard generator reproduction", () => {
       estimateRef: "estimate.coldcard.synthetic.v1",
       throughputMeasurement: {
         ...fixture.workFactor.throughputMeasurement,
-        elapsedNanoseconds: "5000000000",
+        elapsedNanoseconds: "10000001957",
       },
       workerProfileDigest: fixture.workerProfileDigest,
     });
-    expect(faster.measuredCandidatesPerSecond).toBe("500000");
-    expect(faster.projectedSecondsCeiling).toBe("3600000");
+    expect(faster.measuredCandidatesPerSecond).toBe("20163784");
+    expect(faster.projectedSecondsCeiling).toBe("89269");
   });
 
-  it("refuses the checked-in corpus as evidence about the target generator", () => {
-    // This is the honest state of OFR-015. Every frozen vector's expected
-    // digests were produced by the implementation they test, and no vector or
-    // measurement ran on an admitted worker. Passing them proves our generator
-    // did not drift; it does not prove our generator matches the Coldcard one.
+  it("admits the checked-in corpus, which was sourced from the pinned target generator", () => {
+    // The expected digests in the corpus were produced by libngu's own
+    // `ngu/random.c` at the commit both pinned Coldcard firmware trees carry,
+    // compiled verbatim and run inside an admitted OpenAgents Cloud sandbox.
+    // Passing them is therefore evidence that this reproduction agrees with the
+    // target generator source, not only that it has not drifted from itself.
     const estimate = calculateForensicWorkFactor({
       ...fixture.workFactor,
-      estimateRef: "estimate.coldcard.synthetic.v1",
+      estimateRef: "estimate.coldcard.libngu-sourced.v1",
       workerProfileDigest: fixture.workerProfileDigest,
     });
-    expect(
-      fixture.vectors.every((vector) => vector.goldenVectorSource.kind === "self_generated"),
-    ).toBe(true);
+    for (const vector of fixture.vectors) {
+      expect(vector.goldenVectorSource).toEqual({
+        implementationRef: "implementation.libngu.ngu-random-c.537519a8",
+        kind: "independent_implementation",
+        sourceDigest: PINNED_LIBNGU_RANDOM_C_DIGEST,
+      });
+      expect(vector.provenance.kind).toBe("admitted_worker_run");
+    }
+    expect(estimate.throughputMeasurement.provenance.kind).toBe("admitted_worker_run");
     expect(admitColdcardGeneratorEvidence({ estimate, vectors: fixture.vectors })).toMatchObject({
+      _tag: "Admitted",
+      vectorRefs: fixture.vectors.map((vector) => vector.vectorRef),
+    });
+  });
+
+  it("still refuses a corpus that loses its source, its worker, or a class", () => {
+    // Each falsifier below removes exactly one property of the admitted corpus
+    // and must be refused for its own reason. Admission is not sticky.
+    const estimate = calculateForensicWorkFactor({
+      ...fixture.workFactor,
+      estimateRef: "estimate.coldcard.libngu-sourced.v1",
+      workerProfileDigest: fixture.workerProfileDigest,
+    });
+    const selfGenerated = fixture.vectors.map((vector, index) =>
+      index === 0
+        ? {
+            ...vector,
+            goldenVectorSource: {
+              kind: "self_generated" as const,
+              producedByRef: "implementation.openagents.independent-yasmarang.v1",
+            },
+          }
+        : vector,
+    );
+    expect(admitColdcardGeneratorEvidence({ estimate, vectors: selfGenerated })).toMatchObject({
       _tag: "Refused",
       blockerRef: "blocker.coldcard_generator.golden_vector_not_independently_sourced",
     });
 
-    // Independently sourced vectors that still never ran on an admitted worker
-    // are refused for the second, separate reason.
-    const independent = fixture.vectors.map((vector) => ({
-      ...vector,
-      goldenVectorSource: {
-        implementationRef: "implementation.test.exact-modular-transcription",
-        kind: "independent_implementation" as const,
-        sourceDigest: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    // A corpus captured from a real worker whose THROUGHPUT was not is refused:
+    // the measurement is part of the claim, not a decoration on it.
+    const unmeasured = calculateForensicWorkFactor({
+      ...fixture.workFactor,
+      estimateRef: "estimate.coldcard.libngu-sourced.v1",
+      throughputMeasurement: {
+        ...fixture.workFactor.throughputMeasurement,
+        provenance: {
+          conformanceNoteRef: "note.coldcard_generator.conformance_vector_not_target_evidence",
+          kind: "conformance_vector" as const,
+        },
       },
-    }));
-    expect(admitColdcardGeneratorEvidence({ estimate, vectors: independent })).toMatchObject({
+      workerProfileDigest: fixture.workerProfileDigest,
+    });
+    expect(
+      admitColdcardGeneratorEvidence({ estimate: unmeasured, vectors: fixture.vectors }),
+    ).toMatchObject({
       _tag: "Refused",
       blockerRef: "blocker.coldcard_generator.provenance_not_admitted",
     });
-  });
 
-  it("admits an independently sourced corpus that ran on one admitted worker", () => {
-    // Evaluator unit test only. The admitted provenance and independent source
-    // below are constructed in-test to exercise the gate's success path; they
-    // are not receipts and prove nothing about any firmware.
-    const guestImageDigest =
-      "sha256:1111111111111111111111111111111111111111111111111111111111111111";
-    const provenance = {
-      guestImageDigest,
-      isolationClass: "gce_vm" as const,
-      kind: "admitted_worker_run" as const,
-      providerKind: "live_gce" as const,
-      receiptRefs: ["receipt.test.coldcard-generator"],
-      resourceGeneration: 1,
-      sandboxRef: "sandbox-ref://test/coldcard-generator",
-    };
-    const estimate = calculateForensicWorkFactor({
-      ...fixture.workFactor,
-      estimateRef: "estimate.coldcard.synthetic.v1",
-      throughputMeasurement: { ...fixture.workFactor.throughputMeasurement, provenance },
-      workerProfileDigest: fixture.workerProfileDigest,
-    });
-    const vectors = fixture.vectors.map((vector) => ({
-      ...vector,
-      goldenVectorSource: {
-        kind: "target_execution" as const,
-        targetFirmwareRef: "firmware.coldcard.vulnerable.bcc2c382",
-        transcriptDigest: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-      },
-      provenance,
-    }));
-    expect(admitColdcardGeneratorEvidence({ estimate, vectors })).toMatchObject({
-      _tag: "Admitted",
-    });
-    expect(admitColdcardGeneratorEvidence({ estimate, vectors: vectors.slice(1) })).toMatchObject({
+    expect(
+      admitColdcardGeneratorEvidence({ estimate, vectors: fixture.vectors.slice(1) }),
+    ).toMatchObject({
       _tag: "Refused",
       blockerRef: "blocker.coldcard_generator.mutation_matrix_incomplete",
     });
+
     expect(
       admitColdcardGeneratorEvidence({
         estimate,
-        vectors: vectors.map((vector, index) =>
+        vectors: fixture.vectors.map((vector, index) =>
           index === 0
             ? {
                 ...vector,
                 provenance: {
-                  ...provenance,
+                  ...(vector.provenance as Extract<
+                    (typeof fixture.vectors)[number]["provenance"],
+                    { kind: "admitted_worker_run" }
+                  >),
                   guestImageDigest:
                     "sha256:2222222222222222222222222222222222222222222222222222222222222222",
                 },
@@ -389,6 +414,21 @@ describe("independent Coldcard generator reproduction", () => {
     ).toMatchObject({
       _tag: "Refused",
       blockerRef: "blocker.coldcard_generator.worker_profile_drift",
+    });
+
+    // The third source kind the gate accepts is capture from the target
+    // firmware itself. Nothing in this repository has one yet; this only keeps
+    // the union member exercised.
+    const targetExecution = fixture.vectors.map((vector) => ({
+      ...vector,
+      goldenVectorSource: {
+        kind: "target_execution" as const,
+        targetFirmwareRef: "firmware.coldcard.vulnerable.bcc2c382",
+        transcriptDigest: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      },
+    }));
+    expect(admitColdcardGeneratorEvidence({ estimate, vectors: targetExecution })).toMatchObject({
+      _tag: "Admitted",
     });
   });
 
