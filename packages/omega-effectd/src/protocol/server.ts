@@ -10,6 +10,8 @@ import { createInterface } from "node:readline";
 import {
   decodeRepositoryClaimExecuteRequest,
   decodeRepositoryClaimReadRequest,
+  decodeSignedWorkroomEnqueueRequest,
+  decodeSignedWorkroomReadRequest,
   decodeProtocolInitializeRequest,
   decodePlanningGraphReadRequest,
   decodePlanningGraphReadResult,
@@ -17,6 +19,7 @@ import {
   decodeWorkSnapshotReadRequest,
   negotiateAllWorkProtocol,
   RepositoryClaimAuthorityError,
+  SignedWorkroomError,
   type ProtocolCapability as AllWorkProtocolCapability,
   type ProtocolVersion as AllWorkProtocolVersion,
 } from "@openagentsinc/all-work-contract";
@@ -50,6 +53,11 @@ import {
   executeAllWorkRepositoryClaim,
   readAllWorkRepositoryClaims,
 } from "../engine/all-work-repository-claims.ts";
+import {
+  bootstrapAllWorkSignedWorkroom,
+  enqueueAllWorkSignedWorkroom,
+  readAllWorkSignedWorkroom,
+} from "../engine/all-work-signed-workroom.ts";
 import { openFullAutoRunReportStore } from "../engine/full-auto-run-report.ts";
 import { admitFullAutoRunCompletion } from "../engine/full-auto-completion.ts";
 import {
@@ -1089,6 +1097,25 @@ export const createOmegaEffectdFramedServer = (
           );
         }
       }
+      if (
+        allWork.capabilities.includes("workroom.activity.read") ||
+        allWork.capabilities.includes("workroom.activity.enqueue")
+      ) {
+        const workroom = await Effect.runPromise(
+          Effect.match(bootstrapAllWorkSignedWorkroom(paths.dataRoot), {
+            onFailure: () => null,
+            onSuccess: (ledger) => ledger,
+          }),
+        );
+        if (workroom === null) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("unavailable", "The signed Workroom projection could not be opened."),
+          );
+        }
+      }
       hostBridge.beginGeneration(generation);
       initialized = true;
       await service.start();
@@ -1438,6 +1465,66 @@ export const createOmegaEffectdFramedServer = (
               "invalid_request",
               "repository.claim.execute received invalid or unavailable Work state.",
             ),
+          );
+        }
+      }
+      case "workroom.activity.read": {
+        if (!selectedAllWorkCapabilities.includes("workroom.activity.read")) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "incompatible_version",
+              "workroom.activity.read requires its negotiated omega-effectd.v2 capability.",
+            ),
+          );
+        }
+        try {
+          const params = decodeSignedWorkroomReadRequest(request.params ?? {});
+          const result = await Effect.runPromise(readAllWorkSignedWorkroom(paths.dataRoot, params));
+          return respond(request.id, true, result);
+        } catch {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("unavailable", "The signed Workroom projection is unavailable."),
+          );
+        }
+      }
+      case "workroom.activity.enqueue": {
+        if (!selectedAllWorkCapabilities.includes("workroom.activity.enqueue")) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "incompatible_version",
+              "workroom.activity.enqueue requires its negotiated omega-effectd.v2 capability.",
+            ),
+          );
+        }
+        try {
+          const params = decodeSignedWorkroomEnqueueRequest(request.params ?? {});
+          const result = await Effect.runPromise(
+            enqueueAllWorkSignedWorkroom(paths.dataRoot, params),
+          );
+          return respond(request.id, true, result);
+        } catch (error) {
+          const code =
+            error instanceof SignedWorkroomError
+              ? error.reason === "forbidden"
+                ? "forbidden"
+                : error.reason === "storage_unavailable"
+                  ? "unavailable"
+                  : "conflict"
+              : "invalid_request";
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(code, "The signed Workroom activity was refused."),
           );
         }
       }
