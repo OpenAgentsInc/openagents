@@ -273,26 +273,130 @@ printf '%s  %s\n' "${artifact_sha256}" "${ARTIFACT_NAME}" \
 
 mkdir -p "${WORK_DIR}/smoke"
 tar -xzf "${ARTIFACT_PATH}" -C "${WORK_DIR}/smoke"
-smoke_output="$(
-  printf '%s\n%s\n' \
-    '{"schema":"openagents.omega.effectd.v1","kind":"request","id":"init-1","generation":0,"method":"initialize","params":{"generation":7}}' \
-    '{"schema":"openagents.omega.effectd.v1","kind":"request","id":"health-1","generation":7,"method":"health"}' \
-  | OPENAGENTS_OMEGA_EFFECTD_DATA_ROOT="${WORK_DIR}/data" \
-      "${WORK_DIR}/smoke/omega-effectd/bin/omega-effectd"
-)"
 
-python3 - "${smoke_output}" <<'PY'
+# The smoke drives the packaged component the way the Rust supervisor does:
+# one request at a time, each response read before the next request is written.
+# Responses are correlated by id, never by arrival order — `serveStdio` handles
+# lines concurrently, so a pipelined request can be answered before an earlier
+# one that awaited.
+#
+# The All Work assertion is the point of the gate, not decoration. A component
+# whose `initialize` discards the `allWork` block ships a service that answers
+# `unknown_method` to every All Work method, which reads at each call site as a
+# defect in whichever feature asked. Refuse to produce that archive here.
+OPENAGENTS_OMEGA_EFFECTD_DATA_ROOT="${WORK_DIR}/data" \
+python3 - "${WORK_DIR}/smoke/omega-effectd/bin/omega-effectd" <<'PY'
 import json
+import subprocess
 import sys
 
-lines = [json.loads(line) for line in sys.argv[1].splitlines() if line.strip()]
-if len(lines) != 2:
-    raise SystemExit("component smoke did not return two protocol responses")
-initialize, health = lines
+wrapper = sys.argv[1]
+
+# Exactly the set `OmegaEffectdSupervisor::start` requests in the Omega repo
+# (`crates/omega_effectd/src/supervisor.rs`).
+REQUESTED = [
+    "work.index.read",
+    "work.index.subscribe",
+    "work.snapshot.read",
+    "planning.graph.read",
+    "repository.claim.read",
+    "repository.claim.execute",
+    "workroom.activity.read",
+    "workroom.activity.prepare",
+    "workroom.activity.commit",
+    "workroom.activity.enqueue",
+    "workroom.activity.deliver",
+    "workroom.activity.publish",
+    "work.command.execute",
+    "work.cutover.read",
+    "work.cutover.execute",
+    "organization.membership.read",
+    "strict_bug.candidate.read",
+    "strict_bug.candidate.execute",
+]
+
+child = subprocess.Popen(
+    [wrapper],
+    stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+    text=True,
+)
+
+
+def call(frame):
+    child.stdin.write(json.dumps(frame) + "\n")
+    child.stdin.flush()
+    while True:
+        line = child.stdout.readline()
+        if not line:
+            raise SystemExit(f"component closed stdout before answering {frame['id']}")
+        try:
+            response = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if response.get("kind") == "response" and response.get("id") == frame["id"]:
+            return response
+
+
+initialize = call(
+    {
+        "schema": "openagents.omega.effectd.v1",
+        "kind": "request",
+        "id": "init-1",
+        "generation": 0,
+        "method": "initialize",
+        "params": {
+            "generation": 7,
+            "allWork": {
+                "supportedVersions": ["omega-effectd.v2", "omega-effectd.v1"],
+                "requestedCapabilities": REQUESTED,
+            },
+        },
+    }
+)
 if initialize.get("ok") is not True or initialize.get("result", {}).get("generation") != 7:
-    raise SystemExit("component initialize smoke failed")
+    raise SystemExit(f"component initialize smoke failed: {json.dumps(initialize)}")
+
+all_work = (initialize.get("result") or {}).get("allWork")
+if all_work is None:
+    raise SystemExit(
+        "component initialize discarded the All Work negotiation block; "
+        "this component cannot serve any All Work method"
+    )
+granted = all_work.get("capabilities") or []
+withheld = [capability for capability in REQUESTED if capability not in granted]
+if withheld:
+    raise SystemExit(f"component withheld All Work capabilities: {withheld}")
+
+health = call(
+    {
+        "schema": "openagents.omega.effectd.v1",
+        "kind": "request",
+        "id": "health-1",
+        "generation": 7,
+        "method": "health",
+    }
+)
 if health.get("ok") is not True or health.get("result", {}).get("status") != "running":
-    raise SystemExit("component health smoke failed")
+    raise SystemExit(f"component health smoke failed: {json.dumps(health)}")
+
+# One real All Work read over the wire, so an absent boundary is visible as a
+# served method and not only as a negotiated name.
+planning = call(
+    {
+        "schema": "openagents.omega.effectd.v1",
+        "kind": "request",
+        "id": "planning-1",
+        "generation": 7,
+        "method": "planning.graph.read",
+        "params": {"afterRevision": None},
+    }
+)
+if planning.get("ok") is not True:
+    raise SystemExit(f"component planning.graph.read smoke failed: {json.dumps(planning)}")
+
+child.stdin.close()
+child.wait(timeout=30)
 PY
 
 printf 'omega-effectd component ready\n'
