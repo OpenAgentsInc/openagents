@@ -6,14 +6,15 @@ import {
   CommitSha,
   ForensicRef,
   ForensicTimestamp,
+  NonEmptyBoundedRefs,
   NonNegativeInteger,
   PositiveInteger,
   Sha256Digest,
   ShortText,
 } from "./primitives.ts";
 
-export const ARTIFACT_WITNESS_CAPTURE_VERSION = "openagents.artifact_witness_capture.v1" as const;
-export const ARTIFACT_WITNESS_REPORT_VERSION = "openagents.artifact_witness_report.v1" as const;
+export const ARTIFACT_WITNESS_CAPTURE_VERSION = "openagents.artifact_witness_capture.v2" as const;
+export const ARTIFACT_WITNESS_REPORT_VERSION = "openagents.artifact_witness_report.v2" as const;
 
 export const ArtifactWitnessResult = S.Literals(["satisfied", "violated", "not_proven"]);
 export type ArtifactWitnessResult = typeof ArtifactWitnessResult.Type;
@@ -86,23 +87,80 @@ export const RetainedWidthObservationSchema = S.Struct({
 });
 export type RetainedWidthObservation = typeof RetainedWidthObservationSchema.Type;
 
+export const SymbolInventoryEntrySchema = S.Struct({
+  definedInArtifactRef: ForensicRef,
+  providerRef: ForensicRef,
+  symbolName: ForensicRef,
+});
+export type SymbolInventoryEntry = typeof SymbolInventoryEntrySchema.Type;
+
+/**
+ * How a capture reached this repository.
+ *
+ * A `conformance_vector` is a checked-in schema/evaluator exercise. It is never
+ * evidence about any real firmware, and the Coldcard suite gate below refuses
+ * it. Only an `admitted_worker_run` — a capture bound to one exact OpenAgents
+ * Cloud managed-sandbox generation, guest image, and its emitted receipts —
+ * can carry an acceptance-level claim about a build.
+ */
+export const ArtifactWitnessProvenanceSchema = S.Union([
+  S.Struct({
+    conformanceNoteRef: ForensicRef,
+    kind: S.Literal("conformance_vector"),
+  }),
+  S.Struct({
+    guestImageDigest: Sha256Digest,
+    isolationClass: S.Literal("gce_vm"),
+    kind: S.Literal("admitted_worker_run"),
+    providerKind: S.Literal("live_gce"),
+    receiptRefs: NonEmptyBoundedRefs,
+    resourceGeneration: PositiveInteger,
+    sandboxRef: ForensicRef,
+  }),
+]);
+export type ArtifactWitnessProvenance = typeof ArtifactWitnessProvenanceSchema.Type;
+
+/**
+ * The observed termination of the build process.
+ *
+ * The capture reports the exit status it saw; it does not report whether the
+ * build "succeeded". That conclusion is derived by {@link deriveBuildOutcome},
+ * which additionally requires a linked firmware image before it will call an
+ * exit-zero build successful.
+ */
+export const BuildTerminationSchema = S.Union([
+  S.Struct({
+    buildLogArtifactRef: ForensicRef,
+    exitStatus: NonNegativeInteger,
+    status: S.Literal("observed"),
+  }),
+  S.Struct({
+    status: S.Literal("unobserved"),
+    unavailableReasonRef: ForensicRef,
+  }),
+]);
+export type BuildTermination = typeof BuildTerminationSchema.Type;
+
 export const ArtifactWitnessCaptureSchema = S.Struct({
   schema: S.Literal(ARTIFACT_WITNESS_CAPTURE_VERSION),
   artifacts: S.Array(BuildArtifactSchema).check(S.isMinLength(1), S.isMaxLength(10_000)),
   buildConfigurationDigest: Sha256Digest,
-  buildOutcome: S.Literals(["succeeded", "failed"]),
-  callGraphComplete: S.Boolean,
+  buildTermination: BuildTerminationSchema,
   callEdges: S.Array(ArtifactCallEdgeSchema).check(S.isMaxLength(10_000)),
+  callGraphSourceArtifactRefs: S.Array(ForensicRef).check(S.isMaxLength(10_000)),
   captureRef: ForensicRef,
   capturedAt: ForensicTimestamp,
   faultMutationRef: S.optionalKey(ForensicRef),
   macroObservations: S.Array(PreprocessedMacroObservationSchema).check(S.isMaxLength(10_000)),
+  provenance: ArtifactWitnessProvenanceSchema,
   sourceBundleDigest: Sha256Digest,
-  symbolInventoryComplete: S.Boolean,
+  symbolInventory: S.Array(SymbolInventoryEntrySchema).check(S.isMaxLength(100_000)),
+  symbolInventorySourceArtifactRefs: S.Array(ForensicRef).check(S.isMaxLength(10_000)),
   symbolProviders: S.Array(SymbolProviderObservationSchema).check(S.isMaxLength(10_000)),
   targetCommit: CommitSha,
   targetSnapshotRef: ForensicRef,
   toolchainDigest: Sha256Digest,
+  unresolvedIndirectCallSites: NonNegativeInteger,
   variant: ArtifactWitnessVariant,
   widthObservations: S.Array(RetainedWidthObservationSchema).check(S.isMaxLength(10_000)),
   workerPlacementRef: ForensicRef,
@@ -145,7 +203,17 @@ export const ArtifactWitnessCaptureSchema = S.Struct({
             ) &&
             [...capture.callEdges, ...capture.widthObservations].every((observation) =>
               observation.evidenceArtifactRefs.every((reference) => available.has(reference)),
-            )
+            ) &&
+            capture.symbolInventory.every((entry) => {
+              const kind = available.get(entry.definedInArtifactRef);
+              return kind === "object" || kind === "archive";
+            }) &&
+            capture.symbolInventorySourceArtifactRefs.every((reference) =>
+              available.has(reference),
+            ) &&
+            capture.callGraphSourceArtifactRefs.every((reference) => available.has(reference)) &&
+            (capture.buildTermination.status !== "observed" ||
+              available.get(capture.buildTermination.buildLogArtifactRef) === "build_log")
           );
         },
         { message: "artifact observations must bind available artifacts of the required kind" },
@@ -154,6 +222,64 @@ export const ArtifactWitnessCaptureSchema = S.Struct({
   )
   .annotate({ identifier: "ArtifactWitnessCapture" });
 export type ArtifactWitnessCapture = typeof ArtifactWitnessCaptureSchema.Type;
+
+export const DerivedBuildOutcome = S.Literals(["succeeded", "failed", "not_observed"]);
+export type DerivedBuildOutcome = typeof DerivedBuildOutcome.Type;
+
+const availableKinds = (capture: ArtifactWitnessCapture): ReadonlySet<BuildArtifactKind> =>
+  new Set(
+    capture.artifacts
+      .filter((artifact) => artifact.status === "available")
+      .map((artifact) => artifact.kind),
+  );
+
+const availableRefsOfKind = (
+  capture: ArtifactWitnessCapture,
+  kinds: ReadonlyArray<BuildArtifactKind>,
+): ReadonlyArray<string> =>
+  capture.artifacts
+    .filter((artifact) => artifact.status === "available" && kinds.includes(artifact.kind))
+    .map((artifact) => artifact.artifactRef);
+
+/**
+ * Derive the build outcome from what the capture actually contains.
+ *
+ * An exit status of zero is not by itself a successful build: a build that
+ * produced no firmware image did not build the firmware. A capture cannot
+ * assert `succeeded` — it can only report the exit status it observed and the
+ * artifacts it collected, and this function decides.
+ */
+const deriveBuildOutcome = (capture: ArtifactWitnessCapture): DerivedBuildOutcome => {
+  if (capture.buildTermination.status !== "observed") return "not_observed";
+  if (capture.buildTermination.exitStatus !== 0) return "failed";
+  return availableKinds(capture).has("firmware") ? "succeeded" : "not_observed";
+};
+
+/**
+ * A symbol inventory is complete only when it enumerates symbols and its
+ * declared sources cover every linked artifact the capture collected. An empty
+ * inventory, or one read from a subset of the objects/archives/tables/maps that
+ * are present, cannot prove that a forbidden symbol is absent.
+ */
+const deriveSymbolInventoryComplete = (capture: ArtifactWitnessCapture): boolean => {
+  const required = availableRefsOfKind(capture, ["object", "archive", "symbol_table", "link_map"]);
+  if (capture.symbolInventory.length === 0 || required.length === 0) return false;
+  const sources = new Set(capture.symbolInventorySourceArtifactRefs);
+  return required.every((reference) => sources.has(reference));
+};
+
+/**
+ * A call graph is complete only when every collected object contributed to it
+ * and no indirect call site was left unresolved. One unresolved indirect call
+ * is enough to make non-reachability unprovable.
+ */
+const deriveCallGraphComplete = (capture: ArtifactWitnessCapture): boolean => {
+  if (capture.unresolvedIndirectCallSites !== 0) return false;
+  const required = availableRefsOfKind(capture, ["object", "link_map"]);
+  if (required.length === 0) return false;
+  const sources = new Set(capture.callGraphSourceArtifactRefs);
+  return required.every((reference) => sources.has(reference));
+};
 
 const AssertionBase = {
   assertionRef: ForensicRef,
@@ -235,8 +361,12 @@ export const ArtifactWitnessReportSchema = S.Struct({
   schema: S.Literal(ARTIFACT_WITNESS_REPORT_VERSION),
   captureDigest: Sha256Digest,
   captureRef: ForensicRef,
+  derivedBuildOutcome: DerivedBuildOutcome,
+  derivedCallGraphComplete: S.Boolean,
+  derivedSymbolInventoryComplete: S.Boolean,
   evaluatedAt: ForensicTimestamp,
   overallResult: ArtifactWitnessResult,
+  provenanceKind: S.Literals(["conformance_vector", "admitted_worker_run"]),
   results: S.Array(ArtifactWitnessAssertionResultSchema).check(
     S.isMinLength(1),
     S.isMaxLength(256),
@@ -280,26 +410,14 @@ const result = (
   });
 };
 
-const availableArtifactRefs = (
-  capture: ArtifactWitnessCapture,
-  kinds: ReadonlyArray<BuildArtifactKind>,
-): ReadonlyArray<string> =>
-  capture.artifacts
-    .filter((artifact) => artifact.status === "available" && kinds.includes(artifact.kind))
-    .map((artifact) => artifact.artifactRef);
-
 const evaluateAssertion = (
   capture: ArtifactWitnessCapture,
   assertion: ArtifactWitnessAssertion,
 ): ArtifactWitnessAssertionResult => {
   const requiredKinds = REQUIRED_KINDS[assertion.kind];
-  const availableKinds = new Set(
-    capture.artifacts
-      .filter((artifact) => artifact.status === "available")
-      .map((artifact) => artifact.kind),
-  );
-  const missingKinds = requiredKinds.filter((kind) => !availableKinds.has(kind));
-  const evidenceRefs = availableArtifactRefs(capture, requiredKinds);
+  const present = availableKinds(capture);
+  const missingKinds = requiredKinds.filter((kind) => !present.has(kind));
+  const evidenceRefs = availableRefsOfKind(capture, requiredKinds);
   if (missingKinds.length > 0) {
     return result(
       assertion,
@@ -360,7 +478,7 @@ const evaluateAssertion = (
       );
     }
     case "forbidden_symbol_absent": {
-      if (!capture.symbolInventoryComplete) {
+      if (!deriveSymbolInventoryComplete(capture)) {
         return result(
           assertion,
           "not_proven",
@@ -368,10 +486,10 @@ const evaluateAssertion = (
           evidenceRefs,
         );
       }
-      const forbidden = capture.symbolProviders.find(
-        (candidate) =>
-          candidate.symbolName === assertion.forbiddenSymbolName ||
-          candidate.providerRef === assertion.forbiddenProviderRef,
+      const forbidden = capture.symbolInventory.find(
+        (entry) =>
+          entry.symbolName === assertion.forbiddenSymbolName ||
+          entry.providerRef === assertion.forbiddenProviderRef,
       );
       return result(
         assertion,
@@ -388,7 +506,7 @@ const evaluateAssertion = (
           candidate.fromSymbol === assertion.sourceSymbol &&
           candidate.toSymbol === assertion.sinkSymbol,
       );
-      if (edge === undefined && !capture.callGraphComplete) {
+      if (edge === undefined && !deriveCallGraphComplete(capture)) {
         return result(
           assertion,
           "not_proven",
@@ -449,12 +567,21 @@ const evaluateAssertion = (
     }
     case "fault_build_fails": {
       const mutationMatches = capture.faultMutationRef === assertion.expectedMutationRef;
+      const outcome = deriveBuildOutcome(capture);
+      if (outcome === "not_observed") {
+        return result(
+          assertion,
+          "not_proven",
+          "reason.artifact_witness.build_termination_not_observed",
+          evidenceRefs,
+        );
+      }
+      const failedClosed =
+        capture.variant === "fault_build" && mutationMatches && outcome === "failed";
       return result(
         assertion,
-        capture.variant === "fault_build" && mutationMatches && capture.buildOutcome === "failed"
-          ? "satisfied"
-          : "violated",
-        capture.variant === "fault_build" && mutationMatches && capture.buildOutcome === "failed"
+        failedClosed ? "satisfied" : "violated",
+        failedClosed
           ? "reason.artifact_witness.fault_build_failed_closed"
           : "reason.artifact_witness.fault_build_did_not_fail_closed",
         evidenceRefs,
@@ -491,8 +618,12 @@ export const evaluateArtifactWitness = (
     schema: ARTIFACT_WITNESS_REPORT_VERSION,
     captureDigest: forensicSha256Digest(capture),
     captureRef: capture.captureRef,
+    derivedBuildOutcome: deriveBuildOutcome(capture),
+    derivedCallGraphComplete: deriveCallGraphComplete(capture),
+    derivedSymbolInventoryComplete: deriveSymbolInventoryComplete(capture),
     evaluatedAt: input.evaluatedAt,
     overallResult,
+    provenanceKind: capture.provenance.kind,
     results,
     statisticalOutputTestsAdmissibleForProvenance: false,
     statisticalOutputTestRefs: input.statisticalOutputTestRefs ?? [],
@@ -521,18 +652,25 @@ export const evaluateColdcardArtifactWitnessSuite = (
   ) {
     return { _tag: "Refused", blockerRef: "blocker.artifact_witness.variant_matrix_incomplete" };
   }
+  const admitted = captures.flatMap((capture) =>
+    capture.provenance.kind === "admitted_worker_run" ? [capture.provenance] : [],
+  );
+  if (admitted.length !== captures.length) {
+    return { _tag: "Refused", blockerRef: "blocker.artifact_witness.provenance_not_admitted" };
+  }
   if (
     captures.some((capture) =>
       capture.variant === "fault_build"
-        ? capture.buildOutcome !== "failed"
-        : capture.buildOutcome !== "succeeded",
+        ? deriveBuildOutcome(capture) !== "failed"
+        : deriveBuildOutcome(capture) !== "succeeded",
     )
   ) {
     return { _tag: "Refused", blockerRef: "blocker.artifact_witness.build_outcome_invalid" };
   }
   if (
     new Set(captures.map((capture) => capture.workerProfileDigest)).size !== 1 ||
-    new Set(captures.map((capture) => capture.toolchainDigest)).size !== 1
+    new Set(captures.map((capture) => capture.toolchainDigest)).size !== 1 ||
+    new Set(admitted.map((provenance) => provenance.guestImageDigest)).size !== 1
   ) {
     return { _tag: "Refused", blockerRef: "blocker.artifact_witness.worker_profile_drift" };
   }

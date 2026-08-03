@@ -20,8 +20,14 @@ The pack contains:
   silently present; and
 - `artifact-witness-fixtures.v1.json`: deterministic vulnerable, fixed, and
   provider-removal fault-build capture fixtures for the OFR-014 evaluator.
-  Their digests are conformance fixture values, not claims that a production
-  firmware build ran outside the admitted OpenAgents Cloud worker path; and
+  Every capture in the file declares `provenance.kind = "conformance_vector"`,
+  so it exercises the schema and the evaluator and nothing else. Its digests
+  are placeholders, no Coldcard firmware build produced them, and
+  `evaluateColdcardArtifactWitnessSuite` refuses the file with
+  `blocker.artifact_witness.provenance_not_admitted`. An acceptance-level
+  artifact-witness claim requires captures whose provenance is an
+  `admitted_worker_run` bound to one exact OpenAgents Cloud managed-sandbox
+  generation, guest image digest, and its emitted receipts; and
 - `generator-vectors.v1.json`: frozen vulnerable, 32-bit-reseeded, approved-
   provider, and guard/provider/initialization/call-trace/reseed mutation
   vectors, plus a synthetic public-material match and an explicit measured-

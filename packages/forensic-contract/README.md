@@ -16,7 +16,15 @@ The package owns:
 - the C/C++ artifact-witness capture, assertion, result, and report shapes,
   plus a deterministic evaluator for preprocessed macros, compiler inputs,
   linked symbol providers, secret-sink reachability, retained widths,
-  truncation, and fail-closed fault builds;
+  truncation, and fail-closed fault builds. A capture reports observations,
+  never verdicts: build outcome, call-graph completeness, and symbol-inventory
+  completeness are derived by the evaluator from the collected artifacts,
+  the observed exit status, the enumerated inventory and its declared sources,
+  and the unresolved indirect call-site count. A capture also declares its
+  provenance, and only an `admitted_worker_run` bound to one exact OpenAgents
+  Cloud managed-sandbox generation, guest image digest, and its receipts can
+  pass `evaluateColdcardArtifactWitnessSuite`; a `conformance_vector` is
+  refused;
 - an independent uint32 Yasmarang transition, libngu/provider combiner,
   32-bit reseed truncation, target-compatible uniform retry, keypad shuffle
   trace, frozen mutation-vector evaluator, explicit work-factor calculator,
