@@ -44,6 +44,12 @@ known causal parents, advancing generations, and unique event/idempotency
 identities. It persists the exact signed projection and relay targets in a
 pending canonical outbox before publication.
 
+Every decoded durable state is revalidated before read-side use or mutation.
+The ledger revision must reconcile with unique canonical event identities,
+every stored activity and outbox record must pass event-ID/signature/actor
+verification, and each outbox copy must match its canonical activity exactly.
+Schema-valid but cryptographically invalid historical state fails closed.
+
 The receipt fixes `persistedBeforePublish: true`,
 `relayAcceptanceIsAuthority: false`, and `admittedEffect: false`. A signature
 proves signer and the serialized projection bytes, including the payload

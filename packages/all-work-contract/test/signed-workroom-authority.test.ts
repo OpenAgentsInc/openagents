@@ -142,4 +142,25 @@ describe("signed Workroom authority", () => {
       harness().execute(request({ activity: activity({ actorRef: "principal:other" }) })),
     ).rejects.toMatchObject({ reason: "signer_actor_mismatch" });
   });
+  it("revalidates canonical state before replay or append", async () => {
+    const first = harness();
+    await first.execute();
+    const stored = first.state();
+    if (stored === null) throw new Error("missing signed Workroom state");
+    const tampered: SignedWorkroomState = {
+      ...stored,
+      ledger: {
+        ...stored.ledger,
+        activities: [
+          {
+            ...stored.ledger.activities[0]!,
+            signature: "0".repeat(128),
+          },
+        ],
+      },
+    };
+    await expect(harness(tampered).execute()).rejects.toMatchObject({
+      reason: "invalid_signature",
+    });
+  });
 });

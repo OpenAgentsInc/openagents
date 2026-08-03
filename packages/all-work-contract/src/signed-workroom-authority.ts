@@ -30,6 +30,7 @@ export class SignedWorkroomError extends S.TaggedErrorClass<SignedWorkroomError>
       "invalid_event_id",
       "invalid_signature",
       "signer_actor_mismatch",
+      "invalid_state",
       "storage_unavailable",
     ]),
     detail: S.String,
@@ -131,7 +132,7 @@ const validateCausality = (
   return Effect.void;
 };
 
-const validateSignedProjection = (
+export const validateSignedWorkroomProjection = (
   activity: SignedWorkroomActivity,
 ): Effect.Effect<void, SignedWorkroomError> => {
   const verification = verifySignedWorkroomNostrActivity(activity);
@@ -162,6 +163,37 @@ const validateSignedProjection = (
   }
 };
 
+export const validateSignedWorkroomState = (
+  state: SignedWorkroomState,
+): Effect.Effect<void, SignedWorkroomError> =>
+  Effect.gen(function* () {
+    const activitiesByRef = new Map(
+      state.ledger.activities.map((activity) => [activity.eventRef, activity]),
+    );
+    if (
+      activitiesByRef.size !== state.ledger.activities.length ||
+      state.ledger.revision !== state.ledger.activities.length
+    ) {
+      return yield* new SignedWorkroomError({
+        reason: "invalid_state",
+        detail: "signed Workroom revision and event identities do not reconcile",
+      });
+    }
+    for (const activity of state.ledger.activities) {
+      yield* validateSignedWorkroomProjection(activity);
+    }
+    for (const record of state.ledger.outbox) {
+      yield* validateSignedWorkroomProjection(record.activity);
+      const canonical = activitiesByRef.get(record.activity.eventRef);
+      if (canonical === undefined || digest(canonical) !== digest(record.activity)) {
+        return yield* new SignedWorkroomError({
+          reason: "invalid_state",
+          detail: "signed Workroom outbox does not match canonical activity",
+        });
+      }
+    }
+  });
+
 export const enqueueSignedWorkroomActivity = (
   request: SignedWorkroomEnqueueRequest,
   persistedAt: string,
@@ -169,6 +201,7 @@ export const enqueueSignedWorkroomActivity = (
   Effect.gen(function* () {
     const store = yield* SignedWorkroomStateStore;
     const state = (yield* store.load) ?? emptySignedWorkroomState(persistedAt);
+    yield* validateSignedWorkroomState(state);
     const requestDigest = digest(request);
     const replay = state.idempotency[request.idempotencyKey];
     if (replay !== undefined) {
@@ -201,7 +234,7 @@ export const enqueueSignedWorkroomActivity = (
         detail: `event ${request.activity.eventRef} already exists`,
       });
     }
-    yield* validateSignedProjection(request.activity);
+    yield* validateSignedWorkroomProjection(request.activity);
     yield* validateAudience(request.activity);
     yield* validateCausality(state.ledger, request.activity);
     const revision = state.ledger.revision + 1;

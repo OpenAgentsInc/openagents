@@ -8,6 +8,7 @@ import {
   type SignedWorkroomState,
   SignedWorkroomStateSchema,
   SignedWorkroomStateStore,
+  validateSignedWorkroomState,
 } from "./signed-workroom-authority.ts";
 
 export const signedWorkroomStatePath = (rootDir: string): string =>
@@ -33,6 +34,7 @@ const readState = (
         onExcessProperty: "error",
       }).pipe(Effect.mapError(() => error("decode"))),
     ),
+    Effect.flatMap((state) => validateSignedWorkroomState(state).pipe(Effect.map(() => state))),
     Effect.catch((cause) =>
       cause.detail === "not_found" ? Effect.succeed(null) : Effect.fail(cause),
     ),
