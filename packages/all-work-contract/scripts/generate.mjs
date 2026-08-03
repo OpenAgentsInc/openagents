@@ -241,20 +241,27 @@ const rustType = (type) => {
       .flatMap((field) => {
         const expression = field.type;
         const actual = unwrapOptional(expression);
+        const optional = isOptional(expression);
         const checks = [];
         if (typeof actual === "object" && actual !== null && "array" in actual) {
           if (actual.minItems !== undefined) {
-            const minimumCheck =
+            const presentMinimumCheck =
               actual.minItems === 1
                 ? `self.${rustFieldName(field.name)}.is_empty()`
                 : `self.${rustFieldName(field.name)}.len() < ${actual.minItems}`;
+            const minimumCheck = optional
+              ? `self.${rustFieldName(field.name)}.as_ref().is_some_and(|values| ${presentMinimumCheck.replace(`self.${rustFieldName(field.name)}`, "values")})`
+              : presentMinimumCheck;
             checks.push(
               `        if ${minimumCheck} { return Err(ContractValidationError::new(${quote(`${type.name}.${field.name}`)}, "array is shorter than minItems")); }`,
             );
           }
           if (actual.maxItems !== undefined) {
+            const maximumCheck = optional
+              ? `self.${rustFieldName(field.name)}.as_ref().is_some_and(|values| values.len() > ${actual.maxItems})`
+              : `self.${rustFieldName(field.name)}.len() > ${actual.maxItems}`;
             checks.push(
-              `        if self.${rustFieldName(field.name)}.len() > ${actual.maxItems} { return Err(ContractValidationError::new(${quote(`${type.name}.${field.name}`)}, "array is longer than maxItems")); }`,
+              `        if ${maximumCheck} { return Err(ContractValidationError::new(${quote(`${type.name}.${field.name}`)}, "array is longer than maxItems")); }`,
             );
           }
         }

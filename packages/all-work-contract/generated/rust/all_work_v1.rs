@@ -1991,14 +1991,22 @@ impl ContractValidate for WorkSnapshot {
             ));
         }
         self.run_refs.validate()?;
-        if self.session_projections.len() > 512 {
+        if self
+            .session_projections
+            .as_ref()
+            .is_some_and(|values| values.len() > 512)
+        {
             return Err(ContractValidationError::new(
                 "WorkSnapshot.sessionProjections",
                 "array is longer than maxItems",
             ));
         }
         self.session_projections.validate()?;
-        if self.agent_activity_projections.len() > 4096 {
+        if self
+            .agent_activity_projections
+            .as_ref()
+            .is_some_and(|values| values.len() > 4096)
+        {
             return Err(ContractValidationError::new(
                 "WorkSnapshot.agentActivityProjections",
                 "array is longer than maxItems",
