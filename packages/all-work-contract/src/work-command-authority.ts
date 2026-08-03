@@ -655,19 +655,24 @@ export const inMemoryWorkCommandStateStoreLayer = (
       return WorkCommandStateStore.of({
         load: Ref.get(state),
         save: (expectedRevision, next) =>
-          Ref.modify(state, (current) =>
-            current.snapshot.summary.revision !== expectedRevision
-              ? [
-                  Effect.fail(
+          Ref.modify(state, (current) => [
+            {
+              saved: current.snapshot.summary.revision === expectedRevision,
+              found: current.snapshot.summary.revision,
+            },
+            current.snapshot.summary.revision === expectedRevision ? next : current,
+          ]).pipe(
+            Effect.flatMap(({ saved, found }) =>
+              saved
+                ? Effect.void
+                : Effect.fail(
                     new WorkCommandAuthorityError({
                       reason: "revision_conflict",
-                      detail: `expected ${expectedRevision}, found ${current.snapshot.summary.revision}`,
+                      detail: `expected ${expectedRevision}, found ${found}`,
                     }),
                   ),
-                  current,
-                ]
-              : [Effect.void, next],
-          ).pipe(Effect.flatten),
+            ),
+          ),
       });
     }),
   );

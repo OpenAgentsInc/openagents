@@ -11,6 +11,8 @@ It uses the restricted OpenAgents Contract Profile described in
 The generator emits these committed artifacts:
 
 - Effect Schema codecs and TypeScript types in `src/generated.ts`;
+- a typed Effect client, implemented-method manifest, strict test builders, and
+  fresh fixture factories in `src/client.generated.ts`;
 - Rust `serde` types and structural validators in
   `generated/rust/all_work_v1.rs`;
 - canonical JSON Schema in
@@ -22,12 +24,21 @@ The generator emits these committed artifacts:
   per-type `implementationStatus` distinguishes live request-processor types
   from structural-only future SDK shapes.
 
+The TypeScript SDK exports only methods whose request and result types have
+`implemented` status. Structural-only resource shapes stay available for
+contract review, but they do not appear as callable production methods. Wire
+DTOs use structural TypeScript types with strict constrained schemas at every
+boundary; Rust keeps validated newtypes. This avoids unsafe casts and keeps
+generated clients usable without weakening runtime validation.
+
 Generated code owns structure only. `src/semantic.ts` keeps cross-record rules
 explicit: an Issue projection uses the same Work identity and revision, v1 is
 an explicit rollback negotiation, Work reads require `omega-effectd.v2`, and
 successive projections from one source cannot regress revision or change a
-cursor without a revision advance. The boundary also defines typed Work-index
-subscription request/event envelopes without claiming a production transport.
+cursor without a revision advance. The supervised reference process serves the
+typed `work.index.subscribe` boundary: it returns a ready snapshot and resume
+cursor, an empty ready event for an unchanged cursor, a typed error for an
+invalid cursor, and an explicit gap when history is unavailable.
 Neither layer grants admission, delegation, verification, acceptance, release,
 settlement, or public-claim authority.
 
@@ -204,6 +215,8 @@ pnpm --dir packages/all-work-contract check:generated
 pnpm --dir packages/all-work-contract typecheck
 pnpm --dir packages/all-work-contract test
 cargo test -p openagents-all-work-contract
+pnpm --dir packages/omega-effectd typecheck
+pnpm exec vp test --root packages/omega-effectd --config vitest.config.ts --run src/protocol/server.test.ts src/protocol/all-work-process.test.ts
 ```
 
 `check:generated` runs offline, regenerates into a temporary directory, checks
@@ -231,3 +244,15 @@ canonical planning projection. The OpenAgents `omega-effectd` reference process
 opens the durable Effect authority and serves this method after v2 negotiation.
 An Omega consumer must pin the definition and Rust artifact digests together.
 It must not decode the development fixture as live authority.
+
+## Source and license inventory
+
+The generator and TypeScript client in this package are OpenAgents-authored and
+licensed under the package's MIT license. They contain no copied generator,
+client, or runtime component. The implementation evaluated the pinned Linear
+GraphQL schema only for MIT-licensed resource vocabulary and client-shape
+patterns, as recorded in
+`docs/omega/2026-08-02-v0.2.0-all-work-dogfooding-plan.md`. Linear is not a
+runtime, schema endpoint, account, service dependency, or authority. Runtime
+dependencies remain the package manifest's pinned `effect` and
+`@noble/curves` packages under the repository license inventory.

@@ -768,19 +768,21 @@ export const inMemoryRepositoryClaimStateStoreLayer = (
       return RepositoryClaimStateStore.of({
         load: Ref.get(state),
         save: (expectedRevision, next) =>
-          Ref.modify(state, (current) =>
-            current.ledger.revision !== expectedRevision
-              ? [
-                  Effect.fail(
+          Ref.modify(state, (current) => [
+            { saved: current.ledger.revision === expectedRevision, found: current.ledger.revision },
+            current.ledger.revision === expectedRevision ? next : current,
+          ]).pipe(
+            Effect.flatMap(({ saved, found }) =>
+              saved
+                ? Effect.void
+                : Effect.fail(
                     new RepositoryClaimAuthorityError({
                       reason: "revision_conflict",
-                      detail: `expected ${expectedRevision}, found ${current.ledger.revision}`,
+                      detail: `expected ${expectedRevision}, found ${found}`,
                     }),
                   ),
-                  current,
-                ]
-              : [Effect.void, next],
-          ).pipe(Effect.flatten),
+            ),
+          ),
       });
     }),
   );

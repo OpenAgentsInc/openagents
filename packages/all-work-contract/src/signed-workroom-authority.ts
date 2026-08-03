@@ -687,9 +687,10 @@ export const enqueueSignedWorkroomActivity = (
       }
       return replay.result as SignedWorkroomEnqueueResult;
     }
+    const signerPrincipalRef = `principal:nostr:${request.activity.signerPubkey}`;
     if (
       request.capabilityRef !== SIGNED_WORKROOM_WRITE_CAPABILITY ||
-      request.effectivePrincipalRef !== request.activity.actorRef
+      request.effectivePrincipalRef !== signerPrincipalRef
     ) {
       return yield* new SignedWorkroomError({
         reason: "forbidden",

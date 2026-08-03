@@ -39,6 +39,8 @@ export type OmegaEffectdProtocolErrorCode =
 export type OmegaEffectdProtocolError = Readonly<{
   code: OmegaEffectdProtocolErrorCode;
   message: string;
+  retryable?: boolean;
+  minimumVersion?: "omega-effectd.v1" | "omega-effectd.v2" | null;
 }>;
 
 export type OmegaEffectdInitializeParams = Readonly<{
@@ -84,6 +86,7 @@ export type OmegaEffectdInitializeResult = Readonly<{
     | "sarah_renew_device_grant"
     | "sarah_revoke_device_grant"
     | "work.index.read"
+    | "work.index.subscribe"
     | "work.snapshot.read"
     | "planning.graph.read"
     | "repository.claim.read"
@@ -95,6 +98,11 @@ export type OmegaEffectdInitializeResult = Readonly<{
     | "workroom.activity.deliver"
     | "workroom.activity.publish"
     | "work.command.execute"
+    | "work.cutover.read"
+    | "work.cutover.execute"
+    | "organization.membership.read"
+    | "strict_bug.candidate.read"
+    | "strict_bug.candidate.execute"
     | "host_bridge"
   >;
   allWork: AllWorkProtocolInitializeResult;

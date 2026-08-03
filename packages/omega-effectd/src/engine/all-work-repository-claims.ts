@@ -12,7 +12,10 @@ import {
 } from "@openagentsinc/all-work-contract";
 import { Effect, Layer } from "effect";
 
-import { readAllWorkPlanningGraph } from "./all-work-planning-authority.ts";
+import {
+  bootstrapAllWorkPlanningAuthority,
+  readAllWorkPlanningGraph,
+} from "./all-work-planning-authority.ts";
 
 const withStore = <A, E>(
   dataRoot: string,
@@ -21,6 +24,13 @@ const withStore = <A, E>(
 
 const authorityLayer = (dataRoot: string) =>
   RepositoryClaimAuthorityLive.pipe(Layer.provide(fileRepositoryClaimStateStoreLayer(dataRoot)));
+
+type BootstrapComment = Readonly<{
+  id: string;
+  authorRef: string;
+  createdAt: string;
+  body: string;
+}>;
 
 export const bootstrapAllWorkRepositoryClaims = Effect.fn(
   "OmegaEffectd.bootstrapAllWorkRepositoryClaims",
@@ -37,7 +47,7 @@ export const bootstrapAllWorkRepositoryClaims = Effect.fn(
       if (state === null) return yield* Effect.fail(new Error("claim state is not initialized"));
       const comments = bootstrapInput.pages.flatMap((page) =>
         page.issues.flatMap((issue) =>
-          issue.comments.map((comment) => ({
+          issue.comments.map((comment: BootstrapComment) => ({
             sourceRef: `evidence:github-comment:${comment.id}`,
             workRef: githubWorkRef(issue.repository, issue.number),
             repositoryRef: `repository:${issue.repository.split("/").at(-1)?.toLowerCase() ?? "unknown"}`,
@@ -78,9 +88,11 @@ export const executeAllWorkRepositoryClaim = (dataRoot: string, input: unknown) 
   Effect.gen(function* () {
     yield* bootstrapAllWorkRepositoryClaims(dataRoot);
     const request = decodeRepositoryClaimExecuteRequest(input);
-    if (request.command.command === "create_packet") {
+    const command = request.command;
+    if (command.command === "create_packet") {
+      yield* bootstrapAllWorkPlanningAuthority(dataRoot);
       const graph = yield* readAllWorkPlanningGraph(dataRoot);
-      if (!graph.work.some((work) => work.summary.workRef === request.command.workRef)) {
+      if (!graph.work.some((work) => work.summary.workRef === command.workRef)) {
         return yield* Effect.fail(new Error("Work Packet references unknown canonical Work"));
       }
     }

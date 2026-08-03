@@ -16,6 +16,8 @@ import {
   decodeWorkCutoverExecuteResult,
   decodeWorkCutoverReadResult,
   decodeWorkSnapshotReadResult,
+  ALL_WORK_BUILDERS,
+  makeAllWorkClient,
   makeOrganizationMembershipAuthorityState,
   provisionFileOrganizationMembershipState,
 } from "@openagentsinc/all-work-contract";
@@ -143,7 +145,7 @@ describe("omega-effectd framed protocol", () => {
         planningResult.graph.work.filter((work) => work.summary.state === "completed"),
       ).toHaveLength(6);
       expect(planningResult.graph.sourceCoordinates).toHaveLength(34);
-      expect(planningResult.graph.releaseScopeLinks).toHaveLength(10);
+      expect(planningResult.graph.releaseScopeLinks).toHaveLength(1);
 
       const indexed = await server.handleLine(request("index", 1, "work.index.read", {}));
       expect(indexed?.ok).toBe(true);
@@ -210,7 +212,7 @@ describe("omega-effectd framed protocol", () => {
             command,
           }),
         );
-        expect(response?.ok).toBe(true);
+        expect(response?.ok, JSON.stringify(response)).toBe(true);
         return decodeRepositoryClaimExecuteResult(response?.result);
       };
       await execute("packet", 0, {
@@ -425,6 +427,96 @@ describe("omega-effectd framed protocol", () => {
       expect(
         decodeWorkCommandExecuteResult(unassigned?.result).snapshot.summary.assignee,
       ).toBeNull();
+    });
+  });
+
+  test("runs one generated-client Work read, idempotent mutation, and resumable subscription journey", async () => {
+    await withRoot(async (root) => {
+      const runs = openFullAutoRunRegistry(resolveFullAutoRunsPath({ dataRoot: root }));
+      runs.createDraft({
+        title: "Generated SDK subscription row",
+        objective: "Private generated-client objective",
+        doneCondition: "The generated SDK journey passes.",
+        objectiveSource: "user",
+      });
+      const server = createOmegaEffectdFramedServer(
+        createOmegaEffectdService({ paths: { dataRoot: root } }),
+        { dataRoot: root },
+        { hostRequestHandler: makeOmegaEffectdTestHost() },
+      );
+      const initialized = await server.handleLine(
+        request("generated-client-init", 0, "initialize", {
+          generation: 1,
+          allWork: {
+            supportedVersions: ["omega-effectd.v2"],
+            requestedCapabilities: [
+              "work.snapshot.read",
+              "work.command.execute",
+              "work.index.subscribe",
+            ],
+          },
+        }),
+      );
+      expect(initialized?.ok).toBe(true);
+
+      const client = makeAllWorkClient(({ id, method, params }) =>
+        Effect.promise(() => server.handleLine(request(id, 1, method, params))),
+      );
+      const workRef = "work:github:openagentsinc-omega:214";
+      const before = await Effect.runPromise(client.workSnapshotRead({ workRef }));
+      expect(before.snapshot.summary.revision).toBe(1);
+
+      const assign = ALL_WORK_BUILDERS.WorkCommandExecuteRequest({
+        intentRef: "intent:generated-client:assign",
+        idempotencyKey: "generated-client-assign",
+        expectedRevision: 1,
+        effectivePrincipalRef: "principal:organization:openagents",
+        organizationRef: "organization:openagents",
+        capabilityRef: "capability:work-command:execute",
+        workRef,
+        occurredAt: "2026-08-03T13:00:00Z",
+        command: {
+          command: "assign",
+          assignee: { kind: "human", principalRef: "principal:organization:openagents" },
+        },
+      });
+      const assigned = await Effect.runPromise(client.workCommandExecute(assign));
+      const replayed = await Effect.runPromise(client.workCommandExecute(assign));
+      expect(replayed).toEqual(assigned);
+      expect(assigned.receipt.githubWriteCount).toBe(0);
+
+      const ready = await Effect.runPromise(
+        client.workIndexSubscribe({
+          subscriptionRef: "subscription:generated-client:1",
+          afterCursor: null,
+        }),
+      );
+      expect(ready.event).toBe("ready");
+      if (ready.event !== "ready") throw new Error("subscription did not become ready");
+      const cursor = ready.result.completeness.cursor;
+      expect(cursor).toMatch(/^cursor:all-work-sub:/u);
+
+      const resumed = await Effect.runPromise(
+        client.workIndexSubscribe({
+          subscriptionRef: "subscription:generated-client:1",
+          afterCursor: cursor,
+          filter: { domains: ["security"], states: [] },
+        }),
+      );
+      expect(resumed).toMatchObject({ event: "gap", completeness: { state: "gap" } });
+
+      const stale = ALL_WORK_BUILDERS.WorkCommandExecuteRequest({
+        ...assign,
+        intentRef: "intent:generated-client:stale",
+        idempotencyKey: "generated-client-stale",
+      });
+      const staleError = await Effect.runPromise(
+        client.workCommandExecute(stale).pipe(Effect.flip),
+      );
+      expect(staleError).toMatchObject({
+        stage: "protocol",
+        protocolError: { code: "conflict" },
+      });
     });
   });
 

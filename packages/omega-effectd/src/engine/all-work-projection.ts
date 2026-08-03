@@ -2,11 +2,14 @@ import { createHash } from "node:crypto";
 
 import {
   decodeWorkIndexReadResult,
+  decodeWorkIndexSubscriptionEvent,
   decodeWorkSnapshotReadResult,
   decodeWorkSummary,
   encodeAllWorkCanonicalJson,
   type WorkIndexReadRequest,
   type WorkIndexReadResult,
+  type WorkIndexSubscriptionEvent,
+  type WorkIndexSubscriptionRequest,
   type WorkSnapshotReadResult,
   type WorkState,
   type WorkSummary,
@@ -155,6 +158,63 @@ export const readFullAutoWorkIndex = (
       gapRefs: [],
     },
     generatedAt: observedAt,
+  });
+};
+
+const subscriptionCursor = (
+  result: WorkIndexReadResult,
+  request: WorkIndexSubscriptionRequest,
+): string =>
+  `cursor:all-work-sub:${createHash("sha256")
+    .update(
+      encodeAllWorkCanonicalJson({
+        filter: request.filter ?? null,
+        items: result.items.map((item) => ({ workRef: item.workRef, revision: item.revision })),
+      }),
+    )
+    .digest("hex")}`;
+
+export const readFullAutoWorkIndexSubscription = (
+  runs: ReadonlyArray<FullAutoRun>,
+  request: WorkIndexSubscriptionRequest,
+  observedAt: string,
+): WorkIndexSubscriptionEvent => {
+  const current = readFullAutoWorkIndex(
+    runs,
+    { filter: request.filter, limit: 10_000 },
+    observedAt,
+  );
+  const cursor = subscriptionCursor(current, request);
+  const result = decodeWorkIndexReadResult({
+    ...current,
+    completeness: { ...current.completeness, cursor },
+  });
+  if (request.afterCursor === undefined || request.afterCursor === null) {
+    return decodeWorkIndexSubscriptionEvent({
+      event: "ready",
+      subscriptionRef: request.subscriptionRef,
+      result,
+    });
+  }
+  if (!request.afterCursor.startsWith("cursor:all-work-sub:")) {
+    throw new AllWorkReadError("stale_cursor", "The subscription cursor is not an All Work cursor");
+  }
+  if (request.afterCursor === cursor) {
+    return decodeWorkIndexSubscriptionEvent({
+      event: "ready",
+      subscriptionRef: request.subscriptionRef,
+      result: { ...result, items: [] },
+    });
+  }
+  return decodeWorkIndexSubscriptionEvent({
+    event: "gap",
+    subscriptionRef: request.subscriptionRef,
+    cursor,
+    completeness: {
+      state: "gap",
+      cursor,
+      gapRefs: ["event:all-work:resume-gap"],
+    },
   });
 };
 

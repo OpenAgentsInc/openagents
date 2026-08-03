@@ -1,5 +1,5 @@
-import { describe, expect, it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
+import { describe, expect, it } from "vite-plus/test";
 
 import {
   emptyWorkCutoverAuthorityState,
@@ -39,8 +39,11 @@ const request = (
 const layer = () =>
   WorkCutoverAuthorityLive.pipe(Layer.provide(inMemoryWorkCutoverStateStoreLayer(initial())));
 
+const effectIt = (name: string, test: () => Effect.Effect<void, unknown, never>) =>
+  it(name, () => Effect.runPromise(test()));
+
 describe("WorkCutoverAuthority", () => {
-  it.effect("activates explicitly and refuses rollback with a native history gap", () =>
+  effectIt("activates explicitly and refuses rollback with a native history gap", () =>
     Effect.gen(function* () {
       const authority = yield* WorkCutoverAuthority;
       const activated = yield* authority.execute(
@@ -85,7 +88,7 @@ describe("WorkCutoverAuthority", () => {
     }).pipe(Effect.provide(layer())),
   );
 
-  it.effect("fences stale generations and unauthorized principals before mutation", () =>
+  effectIt("fences stale generations and unauthorized principals before mutation", () =>
     Effect.gen(function* () {
       const authority = yield* WorkCutoverAuthority;
       const stale = yield* Effect.flip(

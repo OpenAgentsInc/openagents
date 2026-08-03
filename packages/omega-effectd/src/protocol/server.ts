@@ -20,6 +20,7 @@ import {
   decodePlanningGraphReadRequest,
   decodePlanningGraphReadResult,
   decodeWorkIndexReadRequest,
+  decodeWorkIndexSubscriptionRequest,
   decodeWorkCommandExecuteRequest,
   decodeWorkCutoverExecuteRequest,
   decodeWorkCutoverReadRequest,
@@ -57,6 +58,7 @@ import {
 import {
   AllWorkReadError,
   readFullAutoWorkIndex,
+  readFullAutoWorkIndexSubscription,
   readFullAutoWorkSnapshot,
 } from "../engine/all-work-projection.ts";
 import {
@@ -224,6 +226,7 @@ const redactedError = (
 ): OmegaEffectdProtocolError => ({
   code,
   message: redactDiagnosticText(message),
+  retryable: code === "unavailable" || code === "host_timeout" || code === "gap",
 });
 
 export type OmegaEffectdFramedServer = Readonly<{
@@ -1400,6 +1403,38 @@ export const createOmegaEffectdFramedServer = (
             false,
             undefined,
             redactedError("invalid_request", "work.index.read received invalid params."),
+          );
+        }
+      }
+      case "work.index.subscribe": {
+        if (!selectedAllWorkCapabilities.includes("work.index.subscribe")) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "incompatible_version",
+              "work.index.subscribe requires its negotiated omega-effectd.v2 capability.",
+            ),
+          );
+        }
+        try {
+          const params = decodeWorkIndexSubscriptionRequest(request.params ?? {});
+          const result = readFullAutoWorkIndexSubscription(
+            runRegistry.list(),
+            params,
+            new Date().toISOString(),
+          );
+          return respond(request.id, true, result);
+        } catch (error) {
+          if (error instanceof AllWorkReadError) {
+            return respond(request.id, false, undefined, redactedError(error.code, error.message));
+          }
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", "work.index.subscribe received invalid params."),
           );
         }
       }

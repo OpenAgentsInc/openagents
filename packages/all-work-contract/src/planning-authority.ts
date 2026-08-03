@@ -313,7 +313,7 @@ const updateNativeSnapshot = (
     summary: {
       ...snapshot.summary,
       title: command.title ?? snapshot.summary.title,
-      ...(description === undefined ? { description: undefined } : { description }),
+      ...(description === undefined ? {} : { description }),
       state,
       priority: command.priority ?? snapshot.summary.priority,
       revision: nextRevision,
@@ -557,19 +557,21 @@ export const inMemoryPlanningStateStoreLayer = (
       return PlanningStateStore.of({
         load: Ref.get(state),
         save: (expectedRevision, next) =>
-          Ref.modify(state, (current) =>
-            current.graph.revision !== expectedRevision
-              ? [
-                  Effect.fail(
+          Ref.modify(state, (current) => [
+            { saved: current.graph.revision === expectedRevision, found: current.graph.revision },
+            current.graph.revision === expectedRevision ? next : current,
+          ]).pipe(
+            Effect.flatMap(({ saved, found }) =>
+              saved
+                ? Effect.void
+                : Effect.fail(
                     new PlanningAuthorityError({
                       reason: "revision_conflict",
-                      detail: `expected ${expectedRevision}, found ${current.graph.revision}`,
+                      detail: `expected ${expectedRevision}, found ${found}`,
                     }),
                   ),
-                  current,
-                ]
-              : [Effect.void, next],
-          ).pipe(Effect.flatten),
+            ),
+          ),
       });
     }),
   );

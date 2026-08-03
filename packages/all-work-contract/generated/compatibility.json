@@ -2,12 +2,13 @@
   "contractRef": "openagents.all_work_boundary.v1",
   "contractVersion": 1,
   "profileVersion": "openagents.contract_profile.v1",
-  "definitionSha256": "012a5962bc2bea70792014f5b375d78b7afef2bee15408489a729278c641508b",
+  "definitionSha256": "df850124a53029e549f4f8281c77ee9d8c583e617d2adcc36f0be7abe8bca654",
   "artifacts": {
-    "effectSha256": "8c4f578c2edf63ca53a78254f21a7d4b4a1a37eec027caee0ae646ee5eaed125",
-    "rustSha256": "7a8e88104a1f452de1d18028def0d4d8a24ab517ee3848e035307fa17f638e43",
-    "jsonSchemaSha256": "43692d5f6032aa2d096a92d3de37b0e957bf607ac18ce19544f93ad7c9f6e375",
-    "fixtureIndexSha256": "b00468c392eb667a080f8e17b4c69612946d88c0e014e57de8cdb75d062245d5"
+    "effectSha256": "ffd2db628e6a27e421e4b393ab49de8ee9ae141be23bfe622cde44371a3c7609",
+    "typescriptClientSha256": "e586849c0dce0ce446dc6df6234f3c7ac9931cace34e96908f43e7b7267e430e",
+    "rustSha256": "ecb0ebf3f237a48b50f76b54c2785abcb76e041145c47fce273f22af5f28faa7",
+    "jsonSchemaSha256": "2307a83aa6d3a8f032523cf208014b702d453755458b52e3e8b2971a2f0154e9",
+    "fixtureIndexSha256": "ba7cf390d70c84ea5150c542198e50121d341b6a8603c0d8f9bdbd38c2d54d0c"
   },
   "protocol": {
     "supportedVersions": [
@@ -29,6 +30,13 @@
         "minimumVersion": "omega-effectd.v2",
         "params": "WorkIndexReadRequest",
         "result": "WorkIndexReadResult"
+      },
+      {
+        "method": "work.index.subscribe",
+        "capability": "work.index.subscribe",
+        "minimumVersion": "omega-effectd.v2",
+        "params": "WorkIndexSubscriptionRequest",
+        "result": "WorkIndexSubscriptionEvent"
       },
       {
         "method": "work.snapshot.read",
@@ -349,10 +357,10 @@
     "ProtocolInitializeRequest": "structural_only",
     "ProtocolInitializeResult": "structural_only",
     "WorkIndexFilter": "structural_only",
-    "WorkIndexSubscriptionRequest": "structural_only",
+    "WorkIndexSubscriptionRequest": "implemented",
     "WorkIndexReadRequest": "implemented",
     "WorkIndexReadResult": "implemented",
-    "WorkIndexSubscriptionEvent": "structural_only",
+    "WorkIndexSubscriptionEvent": "implemented",
     "WorkSnapshotReadRequest": "implemented",
     "WorkSnapshotReadResult": "implemented",
     "WorkReadRequestFrame": "structural_only",

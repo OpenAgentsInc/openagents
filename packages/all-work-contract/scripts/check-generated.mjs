@@ -39,6 +39,7 @@ try {
     );
   const expectedFiles = [
     "src/generated.ts",
+    "src/client.generated.ts",
     "generated/rust/all_work_v1.rs",
     "generated/json-schema/all-work-v1.schema.json",
     "generated/fixture-index.json",
@@ -51,6 +52,7 @@ try {
     ...(await walk(resolve(packageRoot, "generated"))).map((path) => `generated/${path}`),
     ...(await walk(resolve(packageRoot, "fixtures"))).map((path) => `fixtures/${path}`),
     "src/generated.ts",
+    "src/client.generated.ts",
   ].sort();
 
   if (JSON.stringify(actualGeneratedFiles) !== JSON.stringify(expectedFiles)) {

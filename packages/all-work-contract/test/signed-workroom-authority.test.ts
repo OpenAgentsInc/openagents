@@ -322,8 +322,9 @@ describe("signed Workroom authority", () => {
   });
   it("replays one idempotent result and rejects changed bytes", async () => {
     const value = harness();
-    const first = await value.execute();
-    expect(await value.execute()).toEqual(first);
+    const input = request();
+    const first = await value.execute(input);
+    expect(await value.execute(input)).toEqual(first);
     await expect(
       value.execute(request({ relayUrls: ["wss://other.example"] })),
     ).rejects.toMatchObject({ reason: "idempotency_conflict" });

@@ -102,6 +102,7 @@ export const initializeFileWorkCommandState = (
 ): Effect.Effect<void, WorkCommandAuthorityError> => {
   const filePath = workCommandAuthorityStatePath(rootDir, workRef);
   return readUnknown(filePath).pipe(
+    Effect.flatMap((input) => (input === null ? Effect.succeed(null) : decodeState(input))),
     Effect.flatMap((current) => {
       if (current !== null && current.snapshot.summary.workRef !== workRef) {
         return Effect.fail(

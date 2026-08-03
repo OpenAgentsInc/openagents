@@ -1,5 +1,5 @@
-import { describe, expect, it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
+import { describe, expect, it } from "vite-plus/test";
 
 import {
   makeOrganizationMembershipAuthorityState,
@@ -38,8 +38,11 @@ const layer = (initial: OrganizationMembershipAuthorityState) =>
     ),
   );
 
+const effectIt = (name: string, test: () => Effect.Effect<void, unknown, never>) =>
+  it(name, () => Effect.runPromise(test()));
+
 describe("OrganizationMembershipAuthority", () => {
-  it.effect("returns only an exact account, principal, and generation match", () =>
+  effectIt("returns only an exact account, principal, and generation match", () =>
     Effect.gen(function* () {
       const authority = yield* OrganizationMembershipAuthority;
       const result = yield* authority.read({
@@ -59,12 +62,15 @@ describe("OrganizationMembershipAuthority", () => {
   );
 
   it("refuses duplicate membership identities before persistence", () => {
-    expect(() =>
+    try {
       makeOrganizationMembershipAuthorityState({
         revision: 2,
         observedAt: "2026-08-03T17:31:00Z",
         memberships: [membership, membership],
-      }),
-    ).toThrow(/duplicate_membership/u);
+      });
+      throw new Error("duplicate membership was accepted");
+    } catch (error) {
+      expect(error).toMatchObject({ reason: "invalid_state", detail: "duplicate_membership" });
+    }
   });
 });

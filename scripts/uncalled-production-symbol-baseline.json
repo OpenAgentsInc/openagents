@@ -1861,6 +1861,90 @@
     {
       "ref": "packages/forensic-contract/src/evidence-derivation.ts#claimEvidenceIsIsolatedToRung",
       "reason": "Published claim-rung diagnostic; the Omega evidence-ladder adapter will call it when OFR-018 renders isolated fingerprint, component, unauthorized-movement, and identity gates."
+    },
+    {
+      "ref": "packages/all-work-contract/src/client.generated.ts#ALL_WORK_FIXTURE_FACTORIES",
+      "reason": "Published generated SDK test-builder API; downstream All Work client conformance suites will call it when they adopt the v0.2 contract package."
+    },
+    {
+      "ref": "packages/all-work-contract/src/client.generated.ts#AllWorkClient.workCommandExecute",
+      "reason": "Published generated SDK method; Omega and other All Work clients will call it after they adopt the v0.2 client package."
+    },
+    {
+      "ref": "packages/all-work-contract/src/client.generated.ts#AllWorkClient.workIndexRead",
+      "reason": "Published generated SDK method; Omega and other All Work clients will call it after they adopt the v0.2 client package."
+    },
+    {
+      "ref": "packages/all-work-contract/src/client.generated.ts#AllWorkClient.workIndexSubscribe",
+      "reason": "Published generated SDK method; Omega and other All Work clients will call it after they adopt the v0.2 client package."
+    },
+    {
+      "ref": "packages/all-work-contract/src/client.generated.ts#AllWorkClient.workSnapshotRead",
+      "reason": "Published generated SDK method; Omega and other All Work clients will call it after they adopt the v0.2 client package."
+    },
+    {
+      "ref": "packages/all-work-contract/src/client.generated.ts#makeAllWorkClient",
+      "reason": "Published generated SDK constructor; Omega and other All Work clients will call it after they adopt the v0.2 client package."
+    },
+    {
+      "ref": "packages/all-work-contract/src/generated.ts#decodeOrganizationMembership",
+      "reason": "Published generated contract decoder; the Omega organization-membership client will call it when that generated read path replaces its current server-only conformance fixture."
+    },
+    {
+      "ref": "packages/all-work-contract/src/generated.ts#decodeOrganizationMembershipReadResult",
+      "reason": "Published generated contract decoder; the Omega organization-membership client will call it when that generated read path replaces its current server-only conformance fixture."
+    },
+    {
+      "ref": "packages/all-work-contract/src/generated.ts#decodeRepositoryClaimExecuteResult",
+      "reason": "Published generated contract decoder; the Omega repository-claim client will call it when that generated command path replaces its current server-only conformance fixture."
+    },
+    {
+      "ref": "packages/all-work-contract/src/generated.ts#decodeRepositoryClaimReadResult",
+      "reason": "Published generated contract decoder; the Omega repository-claim client will call it when that generated read path replaces its current server-only conformance fixture."
+    },
+    {
+      "ref": "packages/all-work-contract/src/generated.ts#decodeSignedWorkroomPrepareResult",
+      "reason": "Published generated contract decoder; the Omega signed-workroom client will call it when the #9304 projection lane adopts the generated client."
+    },
+    {
+      "ref": "packages/all-work-contract/src/generated.ts#decodeWorkCutoverExecuteResult",
+      "reason": "Published generated contract decoder; the Omega cutover client will call it when that generated command path replaces its current server-only conformance fixture."
+    },
+    {
+      "ref": "packages/all-work-contract/src/generated.ts#decodeWorkCutoverReadResult",
+      "reason": "Published generated contract decoder; the Omega cutover client will call it when that generated read path replaces its current server-only conformance fixture."
+    },
+    {
+      "ref": "packages/all-work-contract/src/organization-membership-authority.ts#provisionFileOrganizationMembershipState",
+      "reason": "Intentional operator provisioning API; the installed Omega bootstrap will call it when non-human organization grant provisioning moves out of its current conformance fixture."
+    },
+    {
+      "ref": "packages/all-work-contract/src/planning-authority.ts#inMemoryPlanningStateStoreLayer",
+      "reason": "Intentional in-memory adapter for downstream All Work SDK consumers; package and integration conformance suites call it instead of production persistence."
+    },
+    {
+      "ref": "packages/all-work-contract/src/planning-authority.ts#PlanningAuthorityLive",
+      "reason": "Published composable Effect layer; downstream All Work hosts will provide it when they adopt the planning authority outside the repository reference process."
+    },
+    {
+      "ref": "packages/all-work-contract/src/repository-claim-authority.ts#inMemoryRepositoryClaimStateStoreLayer",
+      "reason": "Intentional in-memory adapter for downstream All Work SDK consumers; package and integration conformance suites call it instead of production persistence."
+    },
+    {
+      "ref": "packages/all-work-contract/src/signed-workroom-authority.ts#makeSignedWorkroomActorGrantResolverLayer",
+      "reason": "Published authority adapter constructor; Omega's #9304 signed-workroom projection will call it when installed non-human grant provisioning is connected."
+    },
+    {
+      "ref": "packages/all-work-contract/src/strict-bug-candidate-authority.ts#inMemoryStrictBugCandidateStateStoreLayer",
+      "reason": "Intentional in-memory adapter for downstream All Work SDK consumers; package and integration conformance suites call it instead of production persistence."
+    },
+    {
+      "ref": "packages/all-work-contract/src/work-command-authority.ts#inMemoryWorkCommandStateStoreLayer",
+      "reason": "Intentional in-memory adapter for downstream All Work SDK consumers; package and integration conformance suites call it instead of production persistence."
+    },
+    {
+      "ref": "packages/all-work-contract/src/work-cutover-authority.ts#inMemoryWorkCutoverStateStoreLayer",
+      "reason": "Intentional in-memory adapter for downstream All Work SDK consumers; package and integration conformance suites call it instead of production persistence."
     }
   ]
 }

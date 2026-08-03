@@ -1,5 +1,5 @@
-import { describe, expect, it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
+import { describe, expect, it } from "vite-plus/test";
 
 import {
   emptyStrictBugCandidateAuthorityState,
@@ -61,8 +61,11 @@ const ingest = (evidence = "Public error: request returned 500") => ({
   },
 });
 
+const effectIt = (name: string, test: () => Effect.Effect<void, unknown, never>) =>
+  it(name, () => Effect.runPromise(test()));
+
 describe("StrictBugCandidateAuthority", () => {
-  it.effect("ingests an untrusted candidate and requires explicit triage disposition", () =>
+  effectIt("ingests an untrusted candidate and requires explicit triage disposition", () =>
     Effect.gen(function* () {
       const authority = yield* StrictBugCandidateAuthority;
       const received = yield* authority.execute(ingest());
@@ -100,7 +103,7 @@ describe("StrictBugCandidateAuthority", () => {
     }).pipe(Effect.provide(layer())),
   );
 
-  it.effect("rejects secret-shaped candidate content before persistence", () =>
+  effectIt("rejects secret-shaped candidate content before persistence", () =>
     Effect.gen(function* () {
       const authority = yield* StrictBugCandidateAuthority;
       const refusal = yield* Effect.flip(authority.execute(ingest("bearer secret-value")));
@@ -109,7 +112,7 @@ describe("StrictBugCandidateAuthority", () => {
     }).pipe(Effect.provide(layer())),
   );
 
-  it.effect("requires every strict bug form confirmation", () =>
+  effectIt("requires every strict bug form confirmation", () =>
     Effect.gen(function* () {
       const authority = yield* StrictBugCandidateAuthority;
       const request = ingest();

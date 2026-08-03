@@ -31,6 +31,7 @@ export class AllWorkSemanticError extends S.TaggedErrorClass<AllWorkSemanticErro
 
 const capabilities = [
   "work.index.read",
+  "work.index.subscribe",
   "work.snapshot.read",
   "planning.graph.read",
   "repository.claim.read",

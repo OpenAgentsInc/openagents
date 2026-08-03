@@ -120,10 +120,10 @@ const effectType = (type) => {
     if (type.maxLength !== undefined) checks.push(`S.isMaxLength(${type.maxLength})`);
     if (type.pattern !== undefined) checks.push(`S.isPattern(${regexLiteral(type.pattern)})`);
     const checked = checks.length === 0 ? "S.String" : `S.String.check(${checks.join(", ")})`;
-    return `export const ${type.name}Schema = ${checked}.pipe(S.brand(${quote(type.name)})).annotate({ identifier: ${quote(type.name)} })\nexport type ${type.name} = typeof ${type.name}Schema.Type\n`;
+    return `export const ${type.name}Schema = ${checked}.annotate({ identifier: ${quote(type.name)} })\nexport type ${type.name} = typeof ${type.name}Schema.Type\n`;
   }
   if (type.kind === "integer") {
-    return `export const ${type.name}Schema = S.Number.check(S.isInt(), S.isGreaterThanOrEqualTo(${type.minimum}), S.isLessThanOrEqualTo(${type.maximum})).pipe(S.brand(${quote(type.name)})).annotate({ identifier: ${quote(type.name)} })\nexport type ${type.name} = typeof ${type.name}Schema.Type\n`;
+    return `export const ${type.name}Schema = S.Number.check(S.isInt(), S.isGreaterThanOrEqualTo(${type.minimum}), S.isLessThanOrEqualTo(${type.maximum})).annotate({ identifier: ${quote(type.name)} })\nexport type ${type.name} = typeof ${type.name}Schema.Type\n`;
   }
   if (type.kind === "enum") {
     return `export const ${type.name}Schema = S.Literals([${type.values.map(quote).join(", ")}]).annotate({ identifier: ${quote(type.name)} })\nexport type ${type.name} = typeof ${type.name}Schema.Type\n`;
@@ -160,6 +160,160 @@ const effectDecoders = definition.roots
   )
   .join("\n");
 const effectSource = `${generatedHeader("//")}\nimport { Schema as S } from "effect"\n\nexport const ALL_WORK_CONTRACT_REF = ${quote(definition.contractRef)} as const\nexport const ALL_WORK_CONTRACT_DEFINITION_SHA256 = ${quote(definitionDigest)} as const\nexport const ALL_WORK_MAX_ENCODED_BYTES = ${definition.maximumEncodedBytes} as const\n\n${effectSchemas}\nexport const ALL_WORK_CONTRACT_SCHEMAS = {\n${effectRootMap}\n} as const\n\nexport type AllWorkContractSchemaName = keyof typeof ALL_WORK_CONTRACT_SCHEMAS\n\nconst STRICT_DECODE_OPTIONS = { onExcessProperty: "error" } as const\n\n${effectDecoders}\n`;
+
+const methodName = (method) =>
+  method.method
+    .split(/[^A-Za-z0-9]+/u)
+    .map((part, index) =>
+      index === 0 ? part : `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`,
+    )
+    .join("");
+const productionMethods = definition.methods.filter(
+  (method) =>
+    method.method === "protocol.initialize" ||
+    (implementedTypes.has(method.params) && implementedTypes.has(method.result)),
+);
+const clientSchemaImports = [
+  ...new Set([
+    "ProtocolErrorSchema",
+    ...[...implementedTypes]
+      .filter((name) => definition.roots.includes(name))
+      .map((name) => `${name}Schema`),
+    ...new Set(
+      productionMethods.flatMap((method) => [`${method.params}Schema`, `${method.result}Schema`]),
+    ),
+  ]),
+].sort();
+const clientTypeImports = [
+  ...new Set(productionMethods.flatMap((method) => [method.params, method.result])),
+].sort();
+const clientInterface = productionMethods
+  .map(
+    (method) =>
+      `  readonly ${methodName(method)}: (params: ${method.params}) => Effect.Effect<${method.result}, AllWorkClientError>`,
+  )
+  .join("\n");
+const clientMethods = productionMethods
+  .map(
+    (method) =>
+      `    ${methodName(method)}: (params) => call(${quote(method.method)}, ${method.params}Schema, ${method.result}Schema, params),`,
+  )
+  .join("\n");
+const methodManifest = productionMethods
+  .map(
+    (method) =>
+      `  ${quote(method.method)}: { capability: ${quote(method.capability)}, minimumVersion: ${quote(method.minimumVersion)}, params: ${quote(method.params)}, result: ${quote(method.result)} },`,
+  )
+  .join("\n");
+const builderEntries = [...implementedTypes]
+  .filter((name) => definition.roots.includes(name))
+  .map(
+    (name) =>
+      `  ${quote(name)}: (input: unknown) => S.decodeUnknownSync(${name}Schema)(input, STRICT_DECODE_OPTIONS),`,
+  )
+  .join("\n");
+const fixtureFactories = definition.fixtures
+  .filter((fixture) => fixture.valid === true && implementedTypes.has(fixture.schema))
+  .map(
+    (fixture) =>
+      `  ${quote(fixture.file)}: () => ALL_WORK_BUILDERS[${quote(fixture.schema)}](${JSON.stringify(fixture.value)}),`,
+  )
+  .join("\n");
+const clientSource = `${generatedHeader("//")}
+import { Effect, Schema as S } from "effect"
+
+import {
+${clientSchemaImports.map((name) => `  ${name},`).join("\n")}
+} from "./generated.ts"
+import type {
+${clientTypeImports.map((name) => `  ${name},`).join("\n")}
+} from "./generated.ts"
+
+const STRICT_DECODE_OPTIONS = { onExcessProperty: "error" } as const
+
+export const ALL_WORK_PRODUCTION_METHODS = {
+${methodManifest}
+} as const
+
+export const ALL_WORK_IMPLEMENTED_TYPE_NAMES = ${JSON.stringify([...implementedTypes].sort())} as const
+
+export const ALL_WORK_BUILDERS = {
+${builderEntries}
+} as const
+
+export const ALL_WORK_FIXTURE_FACTORIES = {
+${fixtureFactories}
+} as const
+
+export type AllWorkClientRequest = Readonly<{
+  id: string
+  method: keyof typeof ALL_WORK_PRODUCTION_METHODS
+  version: "omega-effectd.v1" | "omega-effectd.v2"
+  params: unknown
+}>
+
+export type AllWorkClientTransport = (
+  request: AllWorkClientRequest,
+) => Effect.Effect<unknown, unknown, never>
+
+export class AllWorkClientError extends S.TaggedErrorClass<AllWorkClientError>()(
+  "AllWorkClientError",
+  {
+    method: S.String,
+    stage: S.Literals(["params", "transport", "response", "protocol"]),
+    detail: S.String,
+    protocolError: S.optionalKey(ProtocolErrorSchema),
+  },
+) {}
+
+export interface AllWorkClient {
+${clientInterface}
+}
+
+export const makeAllWorkClient = (
+  transport: AllWorkClientTransport,
+  options: Readonly<{
+    version?: "omega-effectd.v1" | "omega-effectd.v2"
+    makeRequestId?: () => string
+  }> = {},
+): AllWorkClient => {
+  const version = options.version ?? "omega-effectd.v2"
+  let nextRequestId = 0
+  const makeRequestId = options.makeRequestId ?? (() => "all-work-" + String(++nextRequestId))
+
+  const call = <Params, Result>(
+    method: keyof typeof ALL_WORK_PRODUCTION_METHODS,
+    paramsSchema: S.Codec<Params, unknown, never, never>,
+    resultSchema: S.Codec<Result, unknown, never, never>,
+    input: Params,
+  ): Effect.Effect<Result, AllWorkClientError> =>
+    Effect.gen(function* () {
+      const params = yield* S.decodeUnknownEffect(paramsSchema)(input, STRICT_DECODE_OPTIONS).pipe(
+        Effect.mapError(() => new AllWorkClientError({ method, stage: "params", detail: "Request parameters did not match the generated contract." })),
+      )
+      const response = yield* transport({ id: makeRequestId(), method, version, params }).pipe(
+        Effect.mapError(() => new AllWorkClientError({ method, stage: "transport", detail: "The All Work transport failed." })),
+      )
+      if (response === null || typeof response !== "object" || Array.isArray(response)) {
+        return yield* new AllWorkClientError({ method, stage: "response", detail: "The All Work response envelope was invalid." })
+      }
+      const envelope = response as { readonly ok?: unknown; readonly result?: unknown; readonly error?: unknown }
+      if (envelope.ok !== true) {
+        const protocolError = yield* S.decodeUnknownEffect(ProtocolErrorSchema)(envelope.error, STRICT_DECODE_OPTIONS).pipe(
+          Effect.mapError(() => new AllWorkClientError({ method, stage: "response", detail: "The All Work error envelope was invalid." })),
+        )
+        return yield* new AllWorkClientError({ method, stage: "protocol", detail: protocolError.message, protocolError })
+      }
+      return yield* S.decodeUnknownEffect(resultSchema)(envelope.result, STRICT_DECODE_OPTIONS).pipe(
+        Effect.mapError(() => new AllWorkClientError({ method, stage: "response", detail: "The All Work result did not match the generated contract." })),
+      )
+    })
+
+  return {
+${clientMethods}
+  }
+}
+`;
 
 const rustName = (value) => {
   const words = value.split(/[^A-Za-z0-9]+/u).filter(Boolean);
@@ -449,16 +603,23 @@ for (const fixture of definition.fixtures) {
 }
 
 await writeOutput("src/generated.ts", effectSource);
+await writeOutput("src/client.generated.ts", clientSource);
 await writeOutput("generated/rust/all_work_v1.rs", rustSource);
 const effectPath = resolve(outputRoot, "src/generated.ts");
+const clientPath = resolve(outputRoot, "src/client.generated.ts");
 const rustPath = resolve(outputRoot, "generated/rust/all_work_v1.rs");
 execFileSync(resolve(packageRoot, "node_modules/.bin/vp"), ["fmt", effectPath], {
   cwd: packageRoot,
   stdio: "pipe",
 });
+execFileSync(resolve(packageRoot, "node_modules/.bin/vp"), ["fmt", clientPath], {
+  cwd: packageRoot,
+  stdio: "pipe",
+});
 execFileSync("rustfmt", ["--edition", "2021", rustPath], { stdio: "pipe" });
-const [effectContents, rustContents] = await Promise.all([
+const [effectContents, clientContents, rustContents] = await Promise.all([
   readFile(effectPath, "utf8"),
+  readFile(clientPath, "utf8"),
   readFile(rustPath, "utf8"),
 ]);
 const schemaContents = await writeOutput(
@@ -474,6 +635,7 @@ const compatibilityManifest = {
   definitionSha256: definitionDigest,
   artifacts: {
     effectSha256: sha256(effectContents),
+    typescriptClientSha256: sha256(clientContents),
     rustSha256: sha256(rustContents),
     jsonSchemaSha256: sha256(schemaContents),
     fixtureIndexSha256: sha256(fixtureIndexContents),

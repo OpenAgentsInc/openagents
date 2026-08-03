@@ -30,7 +30,7 @@ const snapshot = decodeWorkSnapshot({
     portfolio: { organizationRef },
     sourceAuthority: {
       kind: "imported_read_only",
-      sourceRef: "github:OpenAgentsInc/omega#214",
+      sourceRef: "github:OpenAgentsInc/omega:214",
       adapterVersion: "github-bootstrap-v1",
       writable: false,
     },

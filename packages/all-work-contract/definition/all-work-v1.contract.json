@@ -31,6 +31,8 @@
     "PlanningGraph",
     "PlanningGraphReadRequest",
     "PlanningGraphReadResult",
+    "WorkIndexSubscriptionRequest",
+    "WorkIndexSubscriptionEvent",
     "WorkIndexReadRequest",
     "WorkIndexReadResult",
     "WorkSnapshotReadRequest",
@@ -1959,6 +1961,7 @@
       "kind": "enum",
       "values": [
         "work.index.read",
+        "work.index.subscribe",
         "work.snapshot.read",
         "planning.graph.read",
         "repository.claim.read",
@@ -2140,6 +2143,15 @@
           ]
         },
         {
+          "name": "WorkIndexSubscribe",
+          "tag": "work.index.subscribe",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "params", "type": "WorkIndexSubscriptionRequest" }
+          ]
+        },
+        {
           "name": "WorkSnapshotRead",
           "tag": "work.snapshot.read",
           "fields": [
@@ -2306,6 +2318,15 @@
             { "name": "id", "type": "ShortText" },
             { "name": "version", "type": "ProtocolVersion" },
             { "name": "result", "type": "WorkIndexReadResult" }
+          ]
+        },
+        {
+          "name": "WorkIndexSubscribe",
+          "tag": "work.index.subscribe",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "result", "type": "WorkIndexSubscriptionEvent" }
           ]
         },
         {
@@ -2541,6 +2562,13 @@
       "minimumVersion": "omega-effectd.v2",
       "params": "WorkIndexReadRequest",
       "result": "WorkIndexReadResult"
+    },
+    {
+      "method": "work.index.subscribe",
+      "capability": "work.index.subscribe",
+      "minimumVersion": "omega-effectd.v2",
+      "params": "WorkIndexSubscriptionRequest",
+      "result": "WorkIndexSubscriptionEvent"
     },
     {
       "method": "work.snapshot.read",
