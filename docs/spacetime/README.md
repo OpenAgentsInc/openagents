@@ -17,6 +17,14 @@ can find the outcome.
 - [`2026-08-03-spacetimedb-historical-usage-audit.md`](2026-08-03-spacetimedb-historical-usage-audit.md)
   — full audit: all three adoption cycles, the production deployment and its
   decommission, current state, and six findings.
+- [`analysis.md`](analysis.md) — external feasibility assessment for a
+  prospective fourth adoption on a Rust/Zed desktop + TanStack web + React
+  Native mobile stack. **Reference only, not implementation authority**, and
+  not an adoption decision. It scores SpacetimeDB well as a hot collaborative
+  state plane and poorly as a complete backend, and gates any commitment on
+  offline durability, React Native lifecycle handling, per-caller
+  authorization-view cost, self-hosted high availability, and the Business
+  Source License single-instance grant.
 
 ## Summary of the three cycles
 
