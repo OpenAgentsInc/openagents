@@ -26,16 +26,18 @@ can find the outcome.
   authorization-view cost, self-hosted high availability, and the Business
   Source License single-instance grant.
 - [`2026-08-03-rust-spacetimedb-nostr-infra-considerations.md`](2026-08-03-rust-spacetimedb-nostr-infra-considerations.md)
-  — own analysis grounded in the current repo: whether the Nostr relay, sync
-  layer, workroom state plane, or All Work event store should be rebuilt on
-  Rust/SpacetimeDB. Recommends **no** on all four now (the measured relay
-  bottleneck is connection admission, not storage; Khala Sync already owns the
-  capability SpacetimeDB sells; the managed-relay commercial wedge collides
-  with the BSL license; the Verse is the only real fit and is a current
-  non-goal), decouples the Rust decision from the SpacetimeDB decision, lists
-  the host-agnostic ideas worth taking from the external assessments
-  (`ingest_seq`, query-engine seam, ephemeral bypass, conformance fixtures),
-  and defines falsifiable reopening gates.
+  — **the Rust/SpacetimeDB build plan** (rewritten 2026-08-03 at owner
+  direction: Rust is the decided direction). Three parallel tracks: R0 ships a
+  greenfield Rust relay gateway over the existing Cloud SQL store in weeks
+  (differential conformance against `nostr-effect`, then cutover of
+  `relay.openagents.com`), R1/R2 move admission and fanout onto a SpacetimeDB
+  module with Postgres demoted to the historical query projection; Track S
+  stands up the pinned STDB VM, starts the Clockwork license conversation day
+  1, and builds the `openagents-core` workroom/All Work hot-state plane with
+  Omega on the native Rust SDK; Track B is a Rust Blossom media store over
+  GCS. Answers fork-vs-greenfield: greenfield core, with `nostr-rs-relay` and
+  Buzz as fixture/technique quarries and rust-nostr as the wire-primitive
+  dependency candidate. Fourteen ordered candidate packets with exit gates.
 - [`analysis-nostr-relay.md`](analysis-nostr-relay.md) — external feasibility
   assessment for SpacetimeDB as the backend of a new Rust Nostr relay.
   **Reference only, not implementation authority**, and note that

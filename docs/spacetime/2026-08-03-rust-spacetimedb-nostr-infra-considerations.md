@@ -1,395 +1,381 @@
-# Rebuilding the Nostr Relay and Adjacent Infra in Rust/SpacetimeDB: Considerations, Practicalities, and a Roadmap
+# Rust/SpacetimeDB Build Plan: Nostr Relay and Core Infra
 
-Date: 2026-08-03
-Author: repository analysis (Claude), commissioned by the owner
-Status: **own analysis — recommendation, not implementation authority.** Nothing
-here dispatches work, admits a packet, or changes roadmap priority.
-Grounded at: `f5f5e3c85f` (current `main`)
+Date: 2026-08-03 (rewritten same day at owner direction: Rust is the decided
+direction — this is the path forward, not a should-we assessment)
+Status: build plan and roadmap — candidate packets, not yet admitted dispatch
+Grounded at: `35faceea7a` (current `main`)
 
-Companions in this directory:
+Companions: [`analysis-nostr-relay.md`](analysis-nostr-relay.md) (relay
+architecture this plan executes), [`analysis.md`](analysis.md) (client/state
+model), [`2026-08-03-spacetimedb-historical-usage-audit.md`](2026-08-03-spacetimedb-historical-usage-audit.md)
+(prior cycles — mined here for reusable assets and cutover technique, and for
+the specific operational mistakes this plan must not repeat).
 
-- [`2026-08-03-spacetimedb-historical-usage-audit.md`](2026-08-03-spacetimedb-historical-usage-audit.md) — the three prior adoption/removal cycles
-- [`analysis.md`](analysis.md) — external assessment: SpacetimeDB for the Rust/Zed + TanStack + React Native stack
-- [`analysis-nostr-relay.md`](analysis-nostr-relay.md) — external assessment: SpacetimeDB as a Nostr relay backend
+## 0. The plan in one page
 
-Evidence base beyond those: the Buzz teardown
-(`docs/teardowns/2026-07-21-buzz-teardown.md`), the Linear All Work adaptation
-(`docs/teardowns/2026-08-02-linear-agents-openagents-nostr-adaptation.md`), the
-sovereign relay audit
-(`docs/omega/2026-07-25-web-omega-mobile-workroom-and-sovereign-relay-audit.md`),
-the NIP adoption survey (`docs/omega/2026-07-24-nip-adoption-candidates.md`),
-the owned relay deploy runbook
-(`docs/ops/2026-07-24-owned-nostr-relay-deploy.md`), the Sarah Nostr cutover
-stage machine (`docs/omega/2026-07-24-sarah-nostr-cutover.md`), the Omega
-roadmap (`docs/omega/ROADMAP.md`), and root `INVARIANTS.md`.
+Three tracks, ordered so Rust ships immediately and nothing waits on a vendor
+conversation:
 
-## 0. The question, stated correctly
+```text
+Track R — Rust relay (starts now, ships in weeks)
+  R0  crates/oa-relay: greenfield Rust gateway over the EXISTING Cloud SQL
+      event store → replaces the Node host; fixes the measured
+      connection-admission limit; zero data migration; Cloud Run deploy;
+      differential conformance against nostr-effect on the same database
+  R1  SpacetimeDB module owns admission + committed-event fanout (shadow)
+  R2  Cutover: STDB = hot authority; Postgres = historical query projection
+      (it never dies — it becomes the RelayQueryEngine backend, which the
+      relay needs anyway)
 
-The two external assessments answer *"could SpacetimeDB do this job?"* and both
-answer yes with conditions. That was worth knowing, but it is not the decision.
-The decision is:
+Track S — SpacetimeDB substrate (starts now, in parallel)
+  S0  GCE VM + systemd + pinned 2.7.1 + backup/restore drill + runbook
+  S1  License resolution with Clockwork Labs (the long pole — start day 1)
+  S2  openagents-core database: workroom / All Work hot state, Omega on the
+      native Rust SDK, web/mobile on the TS SDK
 
-> Given what OpenAgents has already built, measured, mandated, and retired —
-> should any of the Nostr relay, the sync layer, the workroom state plane, or
-> the All Work event store be rebuilt on Rust/SpacetimeDB, and if not now, what
-> would have to become true first?
+Track B — Blossom media store in Rust (independent, needed regardless)
+  B0  crates/oa-blossom: NIP-B7 server over GCS — the artifact layer the NIP
+      survey already flagged as required for Full Auto evidence
+```
 
-My answer, in one paragraph: **do not rebuild the relay or any sync-adjacent
-infrastructure on SpacetimeDB now.** The measured relay bottleneck is not a
-database problem; the one capability SpacetimeDB uniquely sells is the one
-OpenAgents has already built twice in-house and runs today; the commercial
-relay product the roadmap actually wants is the use-case SpacetimeDB's license
-most directly threatens; and a fourth adoption would have the shape of cycle 1
-(replacing a working in-house sync lane — the worst-fit cycle), not cycle 3
-(greenfield world state — the best-fit one). Separately, **"Rust" and
-"SpacetimeDB" are independent decisions that `analysis-nostr-relay.md`
-couples**, and decoupling them dissolves most of the apparent tension. What
-*should* be taken from the assessments is a short list of host-agnostic
-architecture ideas (§6) and a set of falsifiable reopening gates (§7).
+The sequencing principle: **the Rust rewrite does not wait for SpacetimeDB,
+and SpacetimeDB does not block on the relay.** R0 is pure Rust against
+infrastructure that already exists and is already load-proven. The STDB pieces
+join through a trait seam (`RelayState`) when the VM, module, and license are
+ready. If any STDB item slips, Rust relay progress is unaffected.
 
-## 1. Ground truth: the Nostr estate as it exists today
+## 1. Fork `nostr-rs-relay` or greenfield?
 
-Any honest analysis has to start from how much already exists, because the
-external assessments were written as if for a greenfield.
+**Greenfield. Quarry `nostr-rs-relay` for fixtures and edge cases; do not fork
+it.** The decision follows from measuring what a fork would actually carry
+versus what we would keep.
 
-**A live, load-proven owned relay.** `relay.openagents.com` runs the
-`nostr-effect` Node 24 host (pinned `7707334`) on Cloud Run against a Cloud
-SQL Postgres event store, with NIP-42 auth and NIP-11 advertisement. The
-2026-07-25 load proof accepted 3,710/3,710 events with zero rejections across
-10–120 concurrent sockets, sustained ~185 events/second *as a floor* (still
-rising at 120 connections), and survived a forced revision restart with
-durable read-back. Its measured failure mode is **connection admission** —
-connect p99 rose to 7,065 ms at 120 sockets while publish p99 stayed near
-637 ms and acceptance held at 100%
-(`docs/ops/2026-07-24-owned-nostr-relay-deploy.md` §9.5).
+What our relay must be, given the opinionation this plan encodes:
 
-**A protocol library far ahead of the product.** `nostr-effect` implements the
-full committed standard set (NIP-01, 09, 11, 17, 29, 32, 34, 40, 42, 44, 46,
-58, 59, 65, 70, 77, 85, 86), all fifteen Buzz custom NIPs, and every Tier-1/2
-candidate in the adoption survey. The survey's headline: *"the library is far
-ahead of the product… the cost is wiring and a decision, not a protocol
-implementation"* (`docs/omega/2026-07-24-nip-adoption-candidates.md` §1).
+- a **gateway/store split** behind a `RelayState` trait, so Postgres and the
+  SpacetimeDB module are swappable backends;
+- **multi-gateway fanout** off a committed, `ingest_seq`-ordered feed, with
+  fail-closed catch-up;
+- **admission as one transaction** (dedup, replaceable heads, tombstones,
+  policy, entitlements) that later moves into STDB reducers unchanged;
+- **typed OpenAgents projections** (agent profiles, work units, receipts)
+  written in the same admission transaction;
+- an **indexed `SubscriptionIndex`** rather than per-connection linear filter
+  scans;
+- **differential conformance against `nostr-effect`** as a build gate;
+- Buzz-profile custom NIPs and our policy/entitlement model.
 
-**A working local-first sync layer.** `@openagentsinc/khala-sync-client`
-provides one local-store core across Node SQLite, Expo SQLite, and web
-SQLite-WASM (SharedWorker + OPFS + Web Locks): confirmed state, cursors,
-tombstones, an offline queue, optimistic overlays, rebase, and typed transport
-failures. This matters enormously for the SpacetimeDB question, because
-**durable offline behavior is precisely what `analysis.md` scores 3/10
-natively and says you must build yourself** — and OpenAgents already built it.
+Now measure `nostr-rs-relay` (v0.10.0) against that list. Its architecture is
+the opposite shape on every load-bearing axis: the `NostrRepo` trait is
+explicitly a *streaming-SQL-query* interface (its core read operation is
+"convert Nostr filters to dynamic SQL, stream rows through a channel"); its
+live path is a single **process-local** Tokio broadcast — no cross-instance
+fanout exists; each connection linearly scans its own subscription list per
+event; SQLite is the primary store with PostgreSQL still experimental; its
+in-memory filter code **still contains prefix matching that current NIP-01
+removed**; and its payment/admission logic is coupled directly to relay
+storage. `analysis-nostr-relay.md` §16 lists the replace-column, and it is the
+entire core: `NostrRepo`, the SQL query generators, the writer channel, the
+global broadcast, the migration machinery, the monolithic server ownership.
 
-**A settled authority doctrine.** The Omega roadmap partitions the planes:
-Nostr owns the Sarah conversation record on the owned relay (post-cutover;
-stage machine admitted, production flag off), Khala Sync keeps that role for
-every other surface, and — invariant, repeated across every document — *relay
-acceptance is never an OpenAgents admission; a signed event proves key and
-bytes, never permission, execution, or truth.* The All Work architecture
-(`…linear-agents-openagents-nostr-adaptation.md` §9) fixes the pipeline:
-command gateway → Cloud SQL canonical event + projection transaction → Khala
-Sync deltas + a durable Nostr outbox with retry and per-relay loss accounting.
+A fork where you replace the repository trait, the storage engines, the query
+planner, the live path, the subscription model, and the policy coupling is not
+a fork — it is a greenfield build wearing someone else's directory layout,
+paying three real costs for zero structural benefit: you inherit an
+architecture that fights the `RelayState` seam (the whole point of R0→R2 is a
+storage swap the upstream shape cannot express); upstream pulls become
+worthless after week one because the diff is the codebase; and every future
+contributor has to learn which half of the tree is live versus vestigial.
 
-**A commercial direction for the relay itself.** The sovereign relay audit
-recommends a *managed private workroom relay* as the first commercial wedge —
-dedicated database per design partner, signed export and offline verification,
-then a customer-operated deployment kit, then a hybrid plane
-(`…sovereign-relay-audit.md` §12).
+What `nostr-rs-relay` *is* excellent for — and this is real value, taken
+deliberately (MIT, with attribution):
 
-**Standing fences.** `apps/nostr-relay` and `apps/openagents-world` are
-retired, guard-enforced paths (`scripts/google-cloud-authority-guard.mjs`);
-Google Cloud is the sole infrastructure authority; the workspace contract
-routes Nostr primitive work to `nostr-effect` first ("use `nostr-effect`
-directly or extend it first instead of rebuilding parallel Nostr
-primitives"); reviving Cloudflare or SpacetimeDB world-service authority is an
-explicit Omega non-goal; and new Rust surfaces in this monorepo require
-explicit owner direction, with the Cloud crates and `oa-desktop-audio` as the
-only current exceptions.
-
-**Three prior SpacetimeDB cycles**, all removed, none rejected on merits —
-with the durable output each time being the *contract*, not the host (the
-historical audit's §7).
-
-## 2. Rust ≠ SpacetimeDB: decouple the decisions
-
-`analysis-nostr-relay.md` presents one bundled proposal — a Rust gateway over a
-SpacetimeDB module. But the bundle hides that its two halves have independent
-justifications and independent costs:
-
-| Motive | What actually satisfies it | Needs SpacetimeDB? |
-| --- | --- | --- |
-| Relay performance / connection admission | More gateway instances, session affinity, an indexed subscription matcher | No — gateway concern |
-| Rust for the relay hot path | A Rust gateway or a Buzz-shaped Rust relay (Axum + Postgres + Redis, proven in the teardown) | No |
-| Transactional admission (dedup, replaceable heads, tombstones) | A single-writer transaction — Postgres does this today in `nostr-effect` | No |
-| Historical `REQ` queries | An indexed relational/KV store — the assessment itself concludes this must live *outside* SpacetimeDB (its Choice C) | No |
-| Multi-gateway committed-event fanout | A monotonic `ingest_seq` + LISTEN/NOTIFY or the existing outbox pattern | No |
-| Live typed client replicas across Rust/TS clients | SpacetimeDB's actual differentiator | **Yes — but Khala Sync already occupies this role** |
-| One shared transactional world state (MMO-shape) | SpacetimeDB's other differentiator | Yes — but the Verse is a non-goal today |
-
-Read this way, the striking result is that **every relay-shaped motive is
-satisfiable without the vendor**, on stacks the repo already runs or has
-already proven (Buzz's relay is exactly the Rust-relay existence proof:
-Axum, `spawn_blocking` Schnorr verification, idempotent Postgres insert with
-`ON CONFLICT DO NOTHING`, Redis pub/sub fanout, generated-column FTS — plus
-TLA+ runtime conformance, which is *more* formal assurance than SpacetimeDB
-offers). The two motives that genuinely need SpacetimeDB are exactly the two
-the current roadmap has either already solved in-house or explicitly fenced
-off.
-
-## 3. Candidate-by-candidate assessment
-
-### 3.1 The Nostr relay — do not rebuild on SpacetimeDB
-
-Four reasons, in decreasing order of decisiveness.
-
-**(a) The measured bottleneck is upstream of the database.** The load proof
-shows the relay degrading on *connection admission* while writes stay fast and
-100% accepted. `analysis-nostr-relay.md`'s architecture puts connection
-handling in the gateway on both the current and proposed stacks — so the
-component SpacetimeDB would replace is the component that is not the problem.
-The scaling lever named in the runbook (instances, concurrency, session
-affinity) is available on Cloud Run today.
-
-**(b) The commercial wedge collides with the license.** The BSL 1.1
-Additional Use Grant permits production use with *no more than one instance*
-and prohibits providing a "Database Service." The sovereign relay audit's
-recommended product is a **managed relay service with a dedicated database per
-design partner**, followed by a **customer-operated deployment kit**. On
-SpacetimeDB that is: multiple production instances (per-partner isolation),
-operated as a service, plus shipping customers a kit to run their own — three
-separate collisions with the grant, or at minimum three questions for
-Clockwork Labs and counsel *before the first design partner signs*. On
-Postgres these questions do not exist. A commercial roadmap should not carry a
-licensing dependency in its critical path when the alternative is the stack
-already deployed.
-
-**(c) Hosting shape regresses to the pattern that killed cycle 3.**
-SpacetimeDB is a stateful, in-memory, persistent-disk singleton — it cannot
-run on Cloud Run, which is the repo's deployment surface for the relay today.
-It means a GCE VM with systemd, nginx, certificates, disk management, and an
-operator runbook: *precisely* the `spacetimedb-world-1` operational lane whose
-seam count the cycle-3 post-mortem cited as the reason to leave, and whose
-cleanup left the dangling DNS record in Finding 1 of the historical audit. The
-current relay redeploys as a Cloud Run revision and proved durable read-back
-across a forced restart during its first load test.
-
-**(d) It would be a parallel Nostr primitive.** The workspace contract routes
-relay/NIP/event work through `nostr-effect` first. A Rust SpacetimeDB module
-implementing NIP-01/09/40/42 admission semantics is a second implementation of
-what `nostr-effect` already implements and serves — reintroducing the exact
-dual-implementation drift the contract rule exists to prevent (and which the
-Buzz teardown lists among its own weaknesses).
-
-What *is* worth doing on the relay is in §6.
-
-### 3.2 The sync layer / workroom hot-state plane — do not; this is the cycle-1 trap
-
-This is where `analysis.md` is most enthusiastic (9/10 Rust desktop, 9/10
-online sync), and where the repo's own history is most instructive. Cycle 1
-failed not because SpacetimeDB couldn't carry sync, but because **replacing a
-working in-house sync lane with a vendor equivalent is a lateral move that
-adds a vendor, a module toolchain, and a deployment surface to reimplement
-guarantees the system already has** (historical audit §7). In February that
-working lane was Khala's `(topic, seq)` transport. Today it is Khala Sync —
-more capable than the 2026-02 lane, with the offline/outbox/rebase layer that
-SpacetimeDB *still* lacks natively (its own open feature request, cited in
-`analysis.md`, asks for exactly this).
-
-Adding SpacetimeDB here would create a **third** synchronization plane
-alongside Khala Sync and the Nostr record — while the settled doctrine
-partitions exactly two. Every document from the cycle-1 plan ("no long-term
-dual-primary sync planes") through the Buzz teardown ("the system must define
-one direction of authority… not accept both a database row and a relay event
-as independent truth") warns against precisely this.
-
-The Rust-desktop-fit argument deserves one honest concession: Omega is a
-Zed-fork, and `analysis.md` is right that SpacetimeDB's Rust SDK would remove
-the generated-TS-binding seam that produced cycle 3's silent-empty-world bug.
-But Omega already consumes Khala Sync projections and signed Nostr events
-through owned typed contracts, and the seam-bug class is addressed by owning
-the contract — which the repo now does — not only by changing databases.
-
-### 3.3 The All Work event store — do not; the projection law already picked its shape
-
-The Linear adaptation's service architecture is: admission gateway → **Cloud
-SQL canonical Work Event + projection transaction** → Khala Sync + durable
-Nostr outbox, with the projection law ("all clients derive from the same
-accepted event sequence and cursor; optimistic UI cannot show a mutation as
-confirmed before admission"). This is reducer-shaped discipline implemented in
-Effect over Postgres. Substituting SpacetimeDB would buy atomic-transaction
-semantics the design already has, at the cost of the license, the VM, the
-memory ceiling on an archive that grows with every Work Event forever (the
-never-compacted commit log is `analysis-nostr-relay.md`'s own §14 warning),
-and a migration of the one store the whole product's authority model now
-points at. There is no version of this trade that wins.
-
-### 3.4 The Verse — the only genuine fit, and it is fenced off
-
-The historical audit's assessment stands: multiplayer world state was the one
-workload where SpacetimeDB earned its keep (21 tables, 27 reducers,
-server-enforced movement limits, live in five days). If the Verse revives, a
-cycle-3-shaped bounded adoption — presence and interaction only, business
-truth stays in owned projections — is the only SpacetimeDB proposal in this
-document I would take seriously. But the Omega 3D avatar harvest audit
-currently specifies **Nostr-primary presence with optional cache or fanout
-acceleration** and lists reviving SpacetimeDB world authority as a non-goal.
-That is an owner decision, already made, and the ephemeral-presence path
-(NIP-38 statuses, ephemeral kinds over the gateway bus — both surveyed and
-implemented in `nostr-effect`) is a coherent alternative. §7 records what
-would reopen this.
-
-## 4. The Buzz lesson, applied to this question
-
-Buzz is the strongest available evidence that a *relay can be the workspace* —
-and the teardown's central decision was to adopt the protocol profile and
-**reject the relay event log as product authority**. The four-posture ladder
-it establishes (signed protocol edge → signed projection bus → admitted
-collaboration input → relay as workspace) is the right frame for SpacetimeDB
-too, because SpacetimeDB-as-substrate is structurally the fourth posture with
-the relay swapped for a database: it makes the synchronized store the product
-authority. OpenAgents chose the second posture — signed projections from a
-canonical store — for Nostr, deliberately, twice (Buzz teardown §6.9.3; Linear
-adaptation §3). Choosing the fourth posture for SpacetimeDB while refusing it
-for Nostr would be architecturally incoherent: it would grant a BSL-licensed
-in-memory database the authority position the team denied to an open,
-exportable, signed event log.
-
-One more Buzz datum worth keeping visible: Buzz achieved runtime formal
-conformance (TLA+ trace replay against `MultiTenantRelay.tla`) on a plain
-Rust/Axum/Postgres relay. Formal assurance of relay semantics — the thing that
-would genuinely raise trust in a rebuilt relay — is available without any
-database migration, and aligns with the workspace invariant discipline
-("narrow the production contract, model the bounded state space, run the
-checker").
-
-## 5. Practicalities inventory
-
-For completeness, the full cost surface a Rust/SpacetimeDB rebuild would have
-to carry — most items sourced from the repo's own prior evidence:
-
-| Practicality | Reality |
+| Take | Into |
 | --- | --- |
-| License | BSL 1.1, one production instance, no "Database Service"; per-tenant relay product and customer kit both implicated; Enterprise/BYO-GCP conversation is a prerequisite, not a follow-up |
-| Hosting | GCE VM (stateful, in-memory, persistent disk, WebSocket) — Cloud Run ineligible; resurrects the cycle-3 ops lane incl. certificate, disk, and decommission hygiene (see the dangling-DNS finding) |
-| Memory ceiling | Hot state must fit host RAM; a relay archive and an All Work event log both grow unboundedly; commit log is never compacted |
-| Rust surface policy | New Rust in this monorepo needs explicit owner direction; module could live in the Omega repo, but relay semantics belong to `nostr-effect` per the workspace routing rule |
-| Client release trains | Module schema is a wire contract across Omega, web, and mobile with lagging store releases; N/N−1 dual-write migration discipline required (`analysis.md` §9) |
-| Naming hygiene | The Khala→Spacetime rename produced self-contradictory ADRs in cycle 1; "Khala" is now load-bearing again (`packages/khala-sync*`); any adoption must never rename existing planes |
-| Guard updates | `google-cloud-authority-guard.mjs`, the retired-path list, and INVARIANTS would all need deliberate amendment — these are policy changes, not incidental edits |
-| Version churn | 2.7 broke TS-generated API casing; 2.7.1 shipped reconnect/migration/auth fixes — pin everything, own a compat layer |
-| Team stack | The conversion contract is Node/pnpm/Vite Plus/Effect; a Rust module + Rust SDK client path re-splits the stack the 2026-06-09 rebuild unified |
+| Protocol parsing and canonical-event validation tests | `oa-relay-conformance` fixtures |
+| Filter-matching test corpus (minus prefix cases) | `nostr-domain` tests |
+| Replaceable/deletion edge-case fixtures, incl. hidden-then-arrives | conformance matrix |
+| NIP-42 challenge/timing behavior and its tests | gateway auth module tests |
+| WebSocket edge-case handling (oversized frames, slow clients) | gateway hardening checklist |
+| Rate-limit and query-budget concepts, Prometheus metric names | gateway + ops parity |
+| Its hand-written SQLite query-planner heuristics | `RelayQueryEngine` design notes for the R2 indexer |
 
-## 6. What to take from the assessments — without the vendor
+Two more inputs settle it. First, **Buzz's relay is the closer architectural
+reference** for what we are building — Axum, multi-tenant, agent-native,
+idempotent Postgres insert, connection semaphore/heartbeat discipline, runtime
+TLA+ conformance — and we already hold a deep teardown of it; nobody proposes
+forking Buzz either, because reference-not-substrate is the established
+pattern. Second, the wire-primitive layer (event/filter/tag types, Schnorr,
+NIP serialization) doesn't need to come from either codebase: the MIT
+`rust-nostr` crates are the standard dependency for exactly that, evaluated in
+packet 1 — a dependency, not a fork, with domain rules staying owned in
+`nostr-domain` regardless.
 
-The external documents contain real engineering that should not be lost when
-their headline recommendation is declined. Each of these is host-agnostic and
-lands on the current stack:
+So the formula is: **rust-nostr as a wire-primitive dependency (pending week-1
+evaluation), `nostr-rs-relay` and Buzz as fixture/technique quarries, and an
+owned greenfield core** whose shape is the `RelayState`/`RelayQueryEngine`
+seams this plan needs. That is also the posture the workspace already applies
+to every reference repo in `projects/`: study, port ideas, don't vendor trees.
 
-1. **A monotonic `ingest_seq` in the relay's Postgres store.** The single best
-   idea in `analysis-nostr-relay.md`. It gives gateway catch-up after
-   disconnect, a race-free historical/`EOSE`/live handoff boundary, and
-   deterministic multi-replica fanout — and it directly addresses the deploy
-   runbook's *unverified* item: NIP-77 and subscription fanout under two
-   instances (§9.4). This is the highest-value relay hardening available.
-2. **The `RelayQueryEngine` seam.** Formalize the bounded query interface
-   (filters, cursor, budget: max events/rows/bytes/deadline) inside
-   `nostr-effect`'s relay core, so the historical-query engine can later be
-   swapped (Postgres today; LMDB/Tantivy projection if a public relay ever
-   demands it) without touching admission or the gateway.
-3. **Ephemeral bypass as an invariant.** Kinds 20000–29999 must never reach
-   the durable store — enforce it in the relay core with a test, not as a
-   convention. (Buzz's relay routes ephemeral kinds before the insert; same
-   shape.)
-4. **Admission as one transaction.** Dedup, replaceable-head compare
-   (timestamp then lexicographic event-ID tie), and tombstone application —
-   including the deletion-before-event resurrection case — atomically in the
-   Postgres store, with the conformance fixtures `analysis-nostr-relay.md`
-   §17 enumerates. Most of this exists in `nostr-effect`; the fixture matrix
-   is the missing part worth porting from the assessment verbatim.
-5. **A gateway-level indexed `SubscriptionIndex`** (by ID/author/kind/tag,
-   broad, authenticated-recipient) replacing linear per-connection filter
-   scans — relevant the moment the workroom product brings real concurrent
-   subscription counts, and independent of any storage decision.
-6. **Contract-first, always.** The one lesson all three cycles agree on: the
-   durable artifact is the typed contract (`world-contract` survived two
-   hosts; `(stream_id, seq)` survived its transport twice). The All Work
-   event families and the relay admission semantics should live as
-   host-agnostic schema + fixture packages from day one, so that *any* future
-   host decision — including a SpacetimeDB one — is an implementation swap,
-   not a rewrite.
+## 2. What we build on (assets already in hand)
 
-## 7. Falsifiable reopening gates
+| Asset | Use in this plan |
+| --- | --- |
+| `relay.openagents.com` Cloud SQL Postgres event store | R0's storage backend as-is; later the historical query projection. Zero migration to start |
+| `nostr-effect` (full NIP set incl. 15 Buzz NIPs) | Conformance oracle: differential-test the Rust relay against it on identical inputs; remains the TS client library |
+| Buzz relay teardown (`docs/teardowns/2026-07-21-buzz-teardown.md`) | Proven Rust relay shapes: `spawn_blocking` Schnorr verify, `ON CONFLICT DO NOTHING` idempotent insert, connection semaphore, heartbeat/slow-client policy, generated-column FTS, TLA+ runtime conformance |
+| `nostr-rs-relay` (MIT) | Fixture and edge-case quarry per §1 — not a fork base |
+| `analysis-nostr-relay.md` §§4–10, 16 | The gateway/module split, schema, reducer semantics, EOSE handoff, crate layout — adopted below nearly verbatim |
+| Cycle-1 parity harness concept (`scripts/spacetime/parity-chaos-gate.sh`, recoverable at `9b2b978949`) | Template for the R1 shadow parity gate |
+| Cycle-3 GCP runbook (recoverable at `3ee0785f51^`) | Base for the S0 VM runbook — with its recorded defects fixed (sudo-broken wrapper, missing decommission checklist) |
+| Load-proof harness (`packages/sarah` load-proof) | Reused as the Rust relay's acceptance benchmark; current floor to beat: 185 ev/s, connect p99 7,065 ms at 120 sockets |
+| All Work event families (`docs/teardowns/2026-08-02-linear-agents…` §9) | The S2 table model's source of truth |
+| Khala Sync client (Node/Expo/web stores) | Stays serving existing surfaces; new All Work hot state lands on STDB greenfield — no migration of live data, one-way ratchet per object family |
 
-To keep this from becoming a fourth undocumented verdict (the failure mode
-Finding 2 of the historical audit records), here is what would legitimately
-reopen the SpacetimeDB question. **All gates in a group must hold.**
+## 3. Track R — the Rust relay
 
-**Gate group A — Verse revival (cycle-3 shape, the only strong fit):**
-- A1. The owner reopens real-time world/presence as a product surface, and the
-  Nostr-primary presence design measurably fails it (position-update rates or
-  interaction volumes that signed-event or ephemeral-bus paths cannot carry).
-- A2. Scope is presence/interaction only; business, training, and settlement
-  truth stay in owned projections (the cycle-3 boundary that held).
-- A3. An Enterprise/BYO-GCP license resolves the instance-count and
-  Database-Service questions in writing.
-- A4. The typed contract exists first, in an owned package, with the
-  SpacetimeDB module as one host behind it.
+### R0: Rust gateway over the existing store (weeks 1–3)
 
-**Gate group B — relay (weak fit; expect this never to fire):**
-- B1. The Postgres store fails admission-transaction throughput *after* the
-  `ingest_seq` + gateway-index work of §6, at measured load, with the failure
-  in the store rather than admission or fanout.
-- B2. The commercial relay product's licensing posture is resolved for
-  per-tenant instances and the customer kit.
-- B3. A GCE stateful ops lane is accepted by the owner as a standing cost,
-  with decommission hygiene specified up front (the DNS lesson).
+New crates in the existing monorepo Cargo workspace (the workspace already
+carries `oa-*` infra crates; this extends that pattern — it does not touch the
+retired `apps/nostr-relay` path):
 
-**Gate group C — any adoption at all:**
-- C1. A ProductSpec and admitted packet exist naming SpacetimeDB, per current
-  authority rules — no adoption arrives as a side effect of an audit or
-  assessment, which is how cycles 1 and 2 arrived.
-- C2. The historical audit and this document are cited in that packet, so the
-  fourth adoption starts from the record of the first three.
+```text
+crates/oa-relay/
+├── nostr-domain        pure Rust: event classification, replacement address,
+│                       filter matching, deletion semantics, policy vocabulary
+├── oa-relay-gateway    WebSocket protocol server (axum + tokio-tungstenite):
+│                       NIP-01 framing, NIP-11, NIP-42 per-connection auth,
+│                       SubscriptionIndex, rate limits, backpressure,
+│                       historical/live EOSE handoff, ephemeral fanout
+├── oa-relay-store-pg   RelayState + RelayQueryEngine over Cloud SQL (sqlx),
+│                       admission as ONE transaction: dedup, replaceable-head
+│                       compare (created_at then event-id tie), tombstones incl.
+│                       deletion-before-event, ingest_seq assignment
+└── oa-relay-conformance NIP fixture matrix (analysis-nostr-relay §17, plus the
+                        nostr-rs-relay quarry) + differential runner vs
+                        nostr-effect on shared Postgres
+```
 
-## 8. Recommended roadmap
+Key decisions, made now so nobody relitigates them mid-build:
 
-Near term (relay hardening, current stack — candidate packets, not dispatch):
+1. **Greenfield core, per §1.** rust-nostr evaluated as the wire-primitive
+   dependency in week 1; domain rules (replacement, deletion, policy) stay
+   owned in `nostr-domain` either way, so the semantics have one home.
+2. **Schema:** R0 reads/writes the existing event tables so the TS and Rust
+   relays can run against the same database simultaneously. The only additive
+   migration is `ingest_seq BIGSERIAL` + the compound indexes from
+   `analysis-nostr-relay.md` §10 that are missing.
+3. **`RelayState` is a trait from day 1** — `oa-relay-store-pg` is the first
+   impl, the STDB module client is the second. The gateway never knows which
+   is behind it. This is the seam that makes R1/R2 a swap, not a rewrite.
+4. **Ephemeral kinds (20000–29999) never touch the store.** In-process
+   broadcast for the single-gateway deploy; the bus becomes NATS Core only
+   when gateway replicas > 1 requires it.
+5. **Conformance is differential.** Every fixture runs against both
+   `nostr-effect` and the Rust relay; divergence is a build failure. This is
+   how we get the TS library's five months of NIP correctness into the Rust
+   relay for free — and it is the direct answer to cycle 3's silent-seam bug
+   class.
 
-1. `ingest_seq` in the `nostr-effect` Postgres store + gateway catch-up +
-   two-instance fanout verification (closes runbook §9.4's open item).
-2. NIP-11/NIP-42 advertisement mismatch (already tracked as
-   `OpenAgentsInc/nostr-effect#169`) and the conformance fixture matrix from
-   `analysis-nostr-relay.md` §17 ported into the relay test suite.
-3. The `RelayQueryEngine` + budget seam, and the ephemeral-bypass invariant
-   test.
+Deploy: Cloud Run (the gateway is stateless; the store is Cloud SQL — no VM
+needed for R0), shadow hostname first (`relay-rs.openagents.com` or internal),
+then the production cutover below.
 
-Mid term (product, already directionally admitted elsewhere):
+**R0 exit gates (ready-gates, all measurable):**
 
-4. The All Work durable Nostr outbox exactly as the Linear adaptation
-   specifies — signed safe projections, retry, per-relay loss accounting —
-   over Cloud SQL canonical state. This, not a database swap, is what makes
-   the Nostr estate real for work objects.
-5. The sovereign relay wedge on the current stack, where per-tenant isolation
-   is a Cloud SQL database per partner — no license questions, one deploy
-   surface, and export/portability proofs as designed.
+- Conformance matrix green, differential vs `nostr-effect`: duplicate races,
+  replaceable same-timestamp tie, addressable `d`-tags, deletion-before-event,
+  NIP-40 expiry, NIP-42/70 enforcement, filter AND/OR/limit/order.
+- Load proof exceeds the current floor: ≥3× events/second and connect p99
+  under 1 s at 120 sockets (the Node host's measured failure point).
+- Race-free EOSE proven under concurrent publish (the buffered-handoff test).
+- Forced-restart durability read-back, same as the 2026-07-25 proof.
 
-Long term:
+**R0 cutover:** point `relay.openagents.com` at the Rust gateway; keep the
+Node revision warm for one week as rollback; then retire it. Decommission
+checklist written *before* cutover — DNS records, certificates, old revisions
+— because the historical audit's Finding 1 (a dangling A record on a released
+IP) is the exact class of loose end this plan does not leave.
 
-6. Revisit only through §7's gates. If Gate group A ever fires, the adoption
-   is Verse-shaped, contract-first, Omega-hosted on the Rust SDK — and scoped
-   so that removing it a fourth time, if it comes to that, is once again
-   cheap.
+### R1: SpacetimeDB module in shadow (weeks 3–6, gated on S0)
 
-## 9. Incidental findings
+`modules/nostr-relay-stdb` (Rust, per `analysis-nostr-relay.md` §10):
+`nostr_event` (with `ingest_seq`, `reverse_created_at`, `address_key`),
+`nostr_indexed_tag` (denormalized compound indexes), `replaceable_head`,
+`deletion_tombstone`, relay policy/entitlement tables, `admit_event` reducer
+family, scheduled cleanup, and the `CommittedNostrEvent` event table for
+gateway fanout.
 
-1. **INVARIANTS.md line ~137 names `apps/nostr-relay` as the current isolated
-   Effect-version exception** ("through `nostr-effect@0.0.12` only") while the
-   same file and the infrastructure guard record `apps/nostr-relay` as a
-   deleted, retired path, and the deploy runbook (Option A) places the relay
-   host in the `nostr-effect` repository. The exception clause appears
-   vestigial and worth a cleanup pass so the invariant text stops naming a
-   path the guard forbids.
-2. The stray untracked `node_modules` directories at both retired paths
-   (`apps/nostr-relay/`, `apps/openagents-world/`) noted in the earlier
-   analyses remain present in the canonical checkout.
-3. The NIP-31 divergence (both the parity plan and the memory audit still
-   cite an upstream-unrecommended NIP as fallback guidance) is already
-   recorded in the NIP adoption survey §6 and still needs its decision.
+The gateway gains `oa-relay-store-stdb`: the second `RelayState` impl over the
+STDB Rust SDK — admission via reducer call, live feed via the event table,
+catch-up via `ingest_seq` range reads.
+
+Shadow mode: gateway dual-writes both stores; a parity daemon (pattern ported
+from the cycle-1 parity-chaos gate) compares admission outcomes, head states,
+and sequences continuously. Divergence pages; no silent drift.
+
+### R2: authority cutover (weeks 6–8)
+
+- STDB module becomes admission authority and the live fanout source.
+- Postgres demotes to the **historical query projection**: a `relay-indexer`
+  consumes the committed sequence and maintains the `RelayQueryEngine`
+  backend. This is `analysis-nostr-relay.md`'s own Choice C — the relay needs
+  a dedicated query store *regardless*, so Postgres is not discarded; it is
+  reassigned to the job it is best at (arbitrary NIP-01 filter queries,
+  NIP-45 counts, NIP-50 search feed, NIP-77 sorted index).
+- Multi-gateway: replicas share the committed feed; each keeps its own
+  `SubscriptionIndex`; a gateway that cannot catch up fails closed (drops its
+  sockets) rather than serving gaps.
+
+**R2 exit gates:** two-gateway cross-delivery with no missing/duplicate
+events; STDB restart replay time measured and within the recovery objective;
+restore-from-snapshot drill passed; commit-log archival to GCS running;
+rollback path (re-promote Postgres) rehearsed once for real.
+
+## 4. Track S — the SpacetimeDB substrate
+
+### S0: the VM, done right this time (week 1, parallel)
+
+One GCE instance, one production STDB process, multiple databases —
+`nostr-relay`, `openagents-core`, later `verse`:
+
+```text
+Project openagentsgemini, us-central1-a
+Instance  oa-spacetime-1   (start e2-standard-8; watch RSS, resize deliberately)
+Disk      oa-spacetime-data-1 (200 GB pd-ssd, /stdb)
+Binary    pinned 2.7.1 exactly (2.7 broke TS codegen casing — pin everything)
+Service   systemd; nginx exposes ONLY /v1/database/*/subscribe + /v1/identity
+Access    IAP SSH for publish/admin; loopback listener
+Backups   disk snapshots (scheduled) + commit-log segment upload to GCS
+Monitoring RAM, disk, commit-log growth rate, reducer p99, subscriber lag
+```
+
+Runbook is the cycle-3 runbook rebased with its recorded defects fixed, plus
+two sections it lacked: a **restore drill** (executed, not documented-only,
+before any production traffic) and a **decommission checklist** (DNS, static
+IP, certs, disks) written on day 1.
+
+### S1: license resolution (day 1, longest lead time)
+
+BSL 1.1 permits one production instance and prohibits offering a "Database
+Service." Execution consequences, handled as engineering constraints:
+
+- One production instance is what S0 deploys — compliant as-is for everything
+  in this plan's first two months.
+- The Enterprise/BYO-GCP conversation with Clockwork Labs starts immediately,
+  because two roadmap items eventually exceed the grant: an active standby for
+  the relay, and the sovereign-relay commercial offering (per-tenant
+  instances / customer-operated kit). Neither is needed in the first eight
+  weeks; both are needed after. Owner action: authorize the outreach.
+  Recorded in `NEEDS_OWNER.md` when this plan is admitted.
+- Until terms exist, the per-tenant sovereign offering ships on the Postgres
+  lane (dedicated Cloud SQL database per partner — already the audit's
+  recommended isolation) and moves to per-tenant STDB only under signed terms.
+
+### S2: `openagents-core` — the product hot-state plane (weeks 4–8)
+
+The workroom / All Work hot state, as one STDB database, modeled from the
+Linear-adaptation event families and the `analysis.md` §12 table sketch:
+
+```text
+workspace / team / member / capability_grant
+work / issue projection / thread / message metadata
+agent / agent_run / run_activity (append-only, ingest-sequenced)
+approval / decision / operation_receipt
+worker / worker_lease / pending_job
+presence + transient signals via event tables
+```
+
+Consumption:
+
+- **Omega first.** The Rust SDK client lands in the Omega repo behind an owned
+  domain-model boundary (the `SyncRepository` layering from `analysis.md` §2
+  — generated rows never leak into GPUI code). This is the payoff of the
+  whole plan: the primary surface gets typed, live, transactional state in
+  its native language with no codegen seam.
+- Web (`apps/start`) and mobile via the TS SDK; mobile gets the connection
+  controller (`AppState`/NetInfo/foreground-reconnect/outbox) that
+  `analysis.md` §2 specifies — that adapter is part of this track, not an
+  afterthought.
+- **Authority boundary is unchanged:** the All Work admission gateway still
+  admits commands; reducers are the mutation path for hot state; Cloud SQL
+  remains the canonical Work Event archive per the projection law; the
+  durable Nostr outbox still publishes signed safe projections. STDB is the
+  live operational plane, not a new source of settlement/billing/release
+  truth — same boundary cycle 3 proved workable (presence/interaction in
+  STDB, business truth in owned projections).
+- **Data placement rule (memory ceiling, enforced from day 1):** hot
+  operational rows in STDB; full archives, raw traces, and large artifacts in
+  Cloud SQL/GCS with digest references. Run activities carry `artifact_ref`,
+  never payloads. Streamed model output batches into bounded rows, never
+  per-token transactions.
+- **Khala Sync:** keeps every surface it serves today. New All Work objects
+  are greenfield on STDB — no live-data migration, no dual authority per
+  object family, each later port is its own bounded packet. The Sarah Nostr
+  cutover proceeds on its existing stage machine, untouched.
+
+## 5. Track B — Blossom media store in Rust (weeks 2–4, independent)
+
+`crates/oa-blossom`: NIP-B7 server over GCS, NIP-98 auth, NIP-94 metadata.
+The NIP survey already established the need (NIP-44 caps payloads at 64 KB;
+Full Auto evidence — diffs, logs, test output — does not fit in events). This
+is a small, clean, self-contained Rust service with no STDB dependency: a good
+first-blood crate for the relay team while R0 conformance is being built, and
+it completes the artifact story that both the relay and All Work reference.
+
+## 6. Packet breakdown (candidate issues, in order)
+
+| # | Packet | Track | Depends on |
+| --- | --- | --- | --- |
+| 1 | `oa-relay` workspace scaffold + `nostr-domain` + rust-nostr evaluation | R0 | — |
+| 2 | `oa-relay-store-pg`: admission transaction + `ingest_seq` migration | R0 | 1 |
+| 3 | Gateway: NIP-01/11/42, SubscriptionIndex, EOSE handoff, ephemeral bus | R0 | 1 |
+| 4 | Conformance crate: fixture matrix (incl. nostr-rs-relay quarry) + differential runner vs nostr-effect | R0 | 2, 3 |
+| 5 | Shadow deploy + load proof + R0 cutover of `relay.openagents.com` | R0 | 4 |
+| 6 | `oa-spacetime-1` VM, runbook, backup + restore drill | S0 | — |
+| 7 | Clockwork license outreach (owner-gated) | S1 | — |
+| 8 | `oa-blossom` NIP-B7/98/94 over GCS | B0 | — |
+| 9 | `nostr-relay-stdb` module + `oa-relay-store-stdb` + parity daemon | R1 | 5, 6 |
+| 10 | R2 cutover: STDB authority, Postgres → query projection, indexer | R2 | 9 |
+| 11 | `openagents-core` schema + reducers + Omega Rust SDK client | S2 | 6 |
+| 12 | Web/mobile TS SDK integration + mobile connection controller | S2 | 11 |
+| 13 | Nostr outbox publisher daemon (Rust) for All Work safe projections | S2 | 11 |
+| 14 | Verse revival on the same instance (owner-gated; cycle-3 scope) | — | 10, 11 |
+
+Packets 1–8 have no cross-dependencies beyond what is listed and can run as
+parallel lanes under the normal claim protocol. Admission of the plan itself
+is one owner decision; each packet then lands end-to-end with its own
+verification.
+
+## 7. Housekeeping the plan requires (same change, not later)
+
+1. **Contract updates land with packet 1:** AGENTS/INVARIANTS language for the
+   new Rust surfaces (`crates/oa-relay*`, `oa-blossom`, the STDB module) —
+   the owner's Rust direction is the authority; the docs must say so, so no
+   future agent treats the crates as policy violations. The
+   `nostr-effect`-first routing rule gets amended to name the Rust relay as
+   the relay implementation home, with `nostr-effect` as TS client library
+   and conformance oracle.
+2. **INVARIANTS line ~137** still names the retired `apps/nostr-relay` as the
+   isolated Effect-version exception — delete the vestigial clause in the
+   same pass.
+3. **Naming discipline:** the vendor is "SpacetimeDB"/"STDB" in every
+   document, never "Spacetime" bare — cycle 1's Khala/Spacetime rename left
+   ADRs reading "doctrine moves from Spacetime to Spacetime," and "Khala" is
+   load-bearing again today. No renames of existing planes, ever, as part of
+   this program.
+4. **Stray dirs:** remove the untracked `node_modules` at
+   `apps/nostr-relay/` and `apps/openagents-world/` in the canonical checkout.
+
+## 8. Risks and their handling
+
+| Risk | Handling |
+| --- | --- |
+| STDB memory ceiling on a growing relay archive | R2 makes Postgres the archive/query store; STDB holds the hot operational set with expiry sweeps — the split is the architecture, not a mitigation bolted on |
+| License terms arrive slower than the build | Nothing in weeks 1–8 needs more than one instance; the sovereign per-tenant offering has a Postgres lane until terms sign |
+| Module schema migrations vs three shipped clients | Schema-as-wire-contract discipline from `analysis.md` §9: additive first, dual-write window, N/N−1 client tests in CI, bindings generated in CI for Rust and TS on every module change |
+| Version churn (2.7 casing break) | Everything pinned together: host, module, Rust SDK, TS SDK, CLI; upgrades are their own tested packet |
+| VM as single failure domain | Measured restart-replay time + snapshot/commit-log archival + rehearsed restore before production authority; standby instance follows the license resolution |
+| Silent generated-binding seams (cycle 3's bug class) | Differential conformance against `nostr-effect` for the relay; owned domain-model boundary over generated rows for clients; both are exit gates, not aspirations |
+| Fourth-cycle drift (build fast, delete faster) | Every packet lands with its contract in an owned package; the historical audit showed contracts are what survive — so the contracts are the deliverable and hosts stay swappable behind them |
