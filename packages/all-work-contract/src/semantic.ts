@@ -177,7 +177,13 @@ export const validateWorkSnapshotSemantics = Effect.fn(
         activity.generation === 0 ||
         !snapshot.agentActivityRefs.includes(activity.activityRef) ||
         !snapshot.sessionRefs.includes(activity.sessionRef) ||
-        !snapshot.runRefs.includes(activity.runRef),
+        !snapshot.runRefs.includes(activity.runRef) ||
+        !projectedSessions.some(
+          (session) =>
+            session.sessionRef === activity.sessionRef &&
+            session.runRef === activity.runRef &&
+            session.generation === activity.generation,
+        ),
     )
   ) {
     return yield* new AllWorkSemanticError({
