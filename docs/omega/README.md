@@ -129,6 +129,10 @@ Read these documents in this order:
     before changing assignment, delegation, revocation, Agent Session control,
     provider activity, effect, review, verification, or Owner Disposition
     commands.
+43. Read the
+    [strict bug candidate ingress boundary](./2026-08-03-strict-bug-candidate-ingress.md)
+    before changing the final public GitHub bug-form exception, webhook
+    transport, untrusted candidate triage, or candidate-to-Work provenance.
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.

@@ -46,6 +46,14 @@ transition is explicit, generation fenced, idempotent, zero-GitHub-write, and
 durable across restart; rollback requires complete native high-water
 reconciliation.
 
+`strict_bug.candidate.read` and `strict_bug.candidate.execute` open the durable
+candidate ledger for the retained public GitHub strict-bug form. A verified
+GitHub delivery enters as untrusted and pending. Only the dedicated local
+triage principal can reject it or link it to canonical Work, and neither path
+writes back to GitHub or grants Work command authority. The service does not
+verify GitHub webhooks itself; its caller must provide a signature-verification
+evidence ref from the eventual production transport adapter.
+
 `work.command.execute` opens one durable, digest-addressed command state per
 canonical Work. The service derives the Organization and authorized owner or
 human assignee from owned planning state, then delegates revision,

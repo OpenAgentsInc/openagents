@@ -138,6 +138,24 @@ covers that high-water mark. The Effect authority owns idempotency and atomic
 owner-local persistence. This landed boundary does not activate the cutover;
 the packaged two-client journey and policy/tool switch remain separate gates.
 
+## Strict public bug candidates
+
+`strict_bug.candidate.read` and `strict_bug.candidate.execute` provide the
+typed ingress and triage boundary for the final public GitHub strict-bug form.
+A preverified GitHub transport adapter must supply the exact issue source,
+delivery identity, and signature-verification evidence. The authority accepts
+only issues in `OpenAgentsInc/openagents` or `OpenAgentsInc/omega`, rejects
+secret-shaped or private-path content, deduplicates source and delivery refs,
+derives the ingress idempotency key from the delivery ref, and persists every
+report as an untrusted `pending` candidate.
+
+Admission is a separate owner-local triage command. A non-rejected disposition
+must link the candidate to canonical Work, but that link does not grant Work
+command authority. Both ingress and triage return idempotent receipts whose
+GitHub-write count is structurally zero. This boundary does not install or
+claim a production GitHub webhook adapter; it is the canonical destination
+that such a signature-verifying adapter must call.
+
 ## Generate and verify
 
 ```bash

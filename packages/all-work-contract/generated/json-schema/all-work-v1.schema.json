@@ -100,6 +100,27 @@
       "$ref": "#/$defs/WorkCutoverReadResult"
     },
     {
+      "$ref": "#/$defs/StrictBugCandidate"
+    },
+    {
+      "$ref": "#/$defs/StrictBugCandidateLedger"
+    },
+    {
+      "$ref": "#/$defs/StrictBugCandidateExecuteRequest"
+    },
+    {
+      "$ref": "#/$defs/StrictBugCandidateReceipt"
+    },
+    {
+      "$ref": "#/$defs/StrictBugCandidateExecuteResult"
+    },
+    {
+      "$ref": "#/$defs/StrictBugCandidateReadRequest"
+    },
+    {
+      "$ref": "#/$defs/StrictBugCandidateReadResult"
+    },
+    {
       "$ref": "#/$defs/IssueProjection"
     },
     {
@@ -3805,6 +3826,496 @@
       ],
       "additionalProperties": false
     },
+    "StrictBugCandidateRef": {
+      "type": "string",
+      "title": "StrictBugCandidateRef",
+      "x-openagents-brand": "StrictBugCandidateRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "StrictBugSeverity": {
+      "type": "string",
+      "title": "StrictBugSeverity",
+      "enum": [
+        "s0",
+        "s1",
+        "s2",
+        "s3"
+      ]
+    },
+    "StrictBugConfirmation": {
+      "type": "string",
+      "title": "StrictBugConfirmation",
+      "enum": [
+        "specific_reproducible_bug",
+        "searched_existing_reports",
+        "sensitive_material_removed",
+        "exact_reproduction_and_evidence",
+        "malformed_report_policy_understood"
+      ]
+    },
+    "StrictBugDisposition": {
+      "type": "string",
+      "title": "StrictBugDisposition",
+      "enum": [
+        "pending",
+        "admitted",
+        "rejected",
+        "duplicate",
+        "linked"
+      ]
+    },
+    "StrictBugCandidate": {
+      "type": "object",
+      "title": "StrictBugCandidate",
+      "properties": {
+        "contractVersion": {
+          "$ref": "#/$defs/ContractVersion"
+        },
+        "candidateRef": {
+          "$ref": "#/$defs/StrictBugCandidateRef"
+        },
+        "sourceRef": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "deliveryRef": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "repositoryRef": {
+          "$ref": "#/$defs/RepositoryRef"
+        },
+        "issueNumber": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "sourceUrl": {
+          "$ref": "#/$defs/SourceUrl"
+        },
+        "title": {
+          "$ref": "#/$defs/ShortText"
+        },
+        "affectedSurface": {
+          "$ref": "#/$defs/ShortText"
+        },
+        "actualBehavior": {
+          "$ref": "#/$defs/LongText"
+        },
+        "expectedBehavior": {
+          "$ref": "#/$defs/LongText"
+        },
+        "reproductionSteps": {
+          "$ref": "#/$defs/LongText"
+        },
+        "publicSafeEvidence": {
+          "$ref": "#/$defs/LongText"
+        },
+        "severity": {
+          "$ref": "#/$defs/StrictBugSeverity"
+        },
+        "environment": {
+          "$ref": "#/$defs/LongText"
+        },
+        "safetyRedaction": {
+          "$ref": "#/$defs/LongText"
+        },
+        "requiredConfirmations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StrictBugConfirmation"
+          },
+          "maxItems": 5
+        },
+        "reporterRef": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "attachmentRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "maxItems": 32
+        },
+        "signatureVerificationRef": {
+          "$ref": "#/$defs/EvidenceRef"
+        },
+        "untrusted": {
+          "type": "boolean"
+        },
+        "disposition": {
+          "$ref": "#/$defs/StrictBugDisposition"
+        },
+        "linkedWorkRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dispositionReceiptRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReceiptRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "revision": {
+          "$ref": "#/$defs/SafeInteger"
+        }
+      },
+      "required": [
+        "contractVersion",
+        "candidateRef",
+        "sourceRef",
+        "deliveryRef",
+        "repositoryRef",
+        "issueNumber",
+        "sourceUrl",
+        "title",
+        "affectedSurface",
+        "actualBehavior",
+        "expectedBehavior",
+        "reproductionSteps",
+        "publicSafeEvidence",
+        "severity",
+        "environment",
+        "safetyRedaction",
+        "requiredConfirmations",
+        "reporterRef",
+        "attachmentRefs",
+        "signatureVerificationRef",
+        "untrusted",
+        "disposition",
+        "linkedWorkRef",
+        "dispositionReceiptRef",
+        "observedAt",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "StrictBugCandidateCommand": {
+      "title": "StrictBugCandidateCommand",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "ingest"
+            },
+            "candidateRef": {
+              "$ref": "#/$defs/StrictBugCandidateRef"
+            },
+            "sourceRef": {
+              "$ref": "#/$defs/SourceRef"
+            },
+            "deliveryRef": {
+              "$ref": "#/$defs/SourceRef"
+            },
+            "repositoryRef": {
+              "$ref": "#/$defs/RepositoryRef"
+            },
+            "issueNumber": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "sourceUrl": {
+              "$ref": "#/$defs/SourceUrl"
+            },
+            "title": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "affectedSurface": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "actualBehavior": {
+              "$ref": "#/$defs/LongText"
+            },
+            "expectedBehavior": {
+              "$ref": "#/$defs/LongText"
+            },
+            "reproductionSteps": {
+              "$ref": "#/$defs/LongText"
+            },
+            "publicSafeEvidence": {
+              "$ref": "#/$defs/LongText"
+            },
+            "severity": {
+              "$ref": "#/$defs/StrictBugSeverity"
+            },
+            "environment": {
+              "$ref": "#/$defs/LongText"
+            },
+            "safetyRedaction": {
+              "$ref": "#/$defs/LongText"
+            },
+            "requiredConfirmations": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/StrictBugConfirmation"
+              },
+              "maxItems": 5
+            },
+            "reporterRef": {
+              "$ref": "#/$defs/SourceRef"
+            },
+            "attachmentRefs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SourceRef"
+              },
+              "maxItems": 32
+            },
+            "signatureVerificationRef": {
+              "$ref": "#/$defs/EvidenceRef"
+            }
+          },
+          "required": [
+            "command",
+            "candidateRef",
+            "sourceRef",
+            "deliveryRef",
+            "repositoryRef",
+            "issueNumber",
+            "sourceUrl",
+            "title",
+            "affectedSurface",
+            "actualBehavior",
+            "expectedBehavior",
+            "reproductionSteps",
+            "publicSafeEvidence",
+            "severity",
+            "environment",
+            "safetyRedaction",
+            "requiredConfirmations",
+            "reporterRef",
+            "attachmentRefs",
+            "signatureVerificationRef"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "const": "dispose"
+            },
+            "candidateRef": {
+              "$ref": "#/$defs/StrictBugCandidateRef"
+            },
+            "expectedCandidateRevision": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "disposition": {
+              "$ref": "#/$defs/StrictBugDisposition"
+            },
+            "linkedWorkRef": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WorkRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "dispositionReceiptRef": {
+              "$ref": "#/$defs/ReceiptRef"
+            }
+          },
+          "required": [
+            "command",
+            "candidateRef",
+            "expectedCandidateRevision",
+            "disposition",
+            "linkedWorkRef",
+            "dispositionReceiptRef"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "StrictBugCandidateLedger": {
+      "type": "object",
+      "title": "StrictBugCandidateLedger",
+      "properties": {
+        "contractVersion": {
+          "$ref": "#/$defs/ContractVersion"
+        },
+        "revision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "eventCursor": {
+          "$ref": "#/$defs/WorkCursor"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StrictBugCandidate"
+          },
+          "maxItems": 10000
+        },
+        "completeness": {
+          "$ref": "#/$defs/Completeness"
+        },
+        "freshness": {
+          "$ref": "#/$defs/Freshness"
+        }
+      },
+      "required": [
+        "contractVersion",
+        "revision",
+        "eventCursor",
+        "candidates",
+        "completeness",
+        "freshness"
+      ],
+      "additionalProperties": false
+    },
+    "StrictBugCandidateExecuteRequest": {
+      "type": "object",
+      "title": "StrictBugCandidateExecuteRequest",
+      "properties": {
+        "intentRef": {
+          "$ref": "#/$defs/IntentRef"
+        },
+        "idempotencyKey": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "expectedRevision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "effectivePrincipalRef": {
+          "$ref": "#/$defs/PrincipalRef"
+        },
+        "capabilityRef": {
+          "$ref": "#/$defs/CapabilityRef"
+        },
+        "occurredAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "githubWriteCount": {
+          "$ref": "#/$defs/ZeroInteger"
+        },
+        "command": {
+          "$ref": "#/$defs/StrictBugCandidateCommand"
+        }
+      },
+      "required": [
+        "intentRef",
+        "idempotencyKey",
+        "expectedRevision",
+        "effectivePrincipalRef",
+        "capabilityRef",
+        "occurredAt",
+        "githubWriteCount",
+        "command"
+      ],
+      "additionalProperties": false
+    },
+    "StrictBugCandidateReceipt": {
+      "type": "object",
+      "title": "StrictBugCandidateReceipt",
+      "properties": {
+        "intentRef": {
+          "$ref": "#/$defs/IntentRef"
+        },
+        "idempotencyKey": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "commandDigest": {
+          "$ref": "#/$defs/ContractDigest"
+        },
+        "candidateRef": {
+          "$ref": "#/$defs/StrictBugCandidateRef"
+        },
+        "previousRevision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "revision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "eventCursor": {
+          "$ref": "#/$defs/WorkCursor"
+        },
+        "effectivePrincipalRef": {
+          "$ref": "#/$defs/PrincipalRef"
+        },
+        "acceptedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "githubWriteCount": {
+          "$ref": "#/$defs/ZeroInteger"
+        }
+      },
+      "required": [
+        "intentRef",
+        "idempotencyKey",
+        "commandDigest",
+        "candidateRef",
+        "previousRevision",
+        "revision",
+        "eventCursor",
+        "effectivePrincipalRef",
+        "acceptedAt",
+        "githubWriteCount"
+      ],
+      "additionalProperties": false
+    },
+    "StrictBugCandidateExecuteResult": {
+      "type": "object",
+      "title": "StrictBugCandidateExecuteResult",
+      "properties": {
+        "ledger": {
+          "$ref": "#/$defs/StrictBugCandidateLedger"
+        },
+        "receipt": {
+          "$ref": "#/$defs/StrictBugCandidateReceipt"
+        }
+      },
+      "required": [
+        "ledger",
+        "receipt"
+      ],
+      "additionalProperties": false
+    },
+    "StrictBugCandidateReadRequest": {
+      "type": "object",
+      "title": "StrictBugCandidateReadRequest",
+      "properties": {
+        "candidateRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StrictBugCandidateRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "StrictBugCandidateReadResult": {
+      "type": "object",
+      "title": "StrictBugCandidateReadResult",
+      "properties": {
+        "ledger": {
+          "$ref": "#/$defs/StrictBugCandidateLedger"
+        }
+      },
+      "required": [
+        "ledger"
+      ],
+      "additionalProperties": false
+    },
     "ProtocolCapability": {
       "type": "string",
       "title": "ProtocolCapability",
@@ -3819,7 +4330,9 @@
         "workroom.activity.deliver",
         "work.command.execute",
         "work.cutover.read",
-        "work.cutover.execute"
+        "work.cutover.execute",
+        "strict_bug.candidate.read",
+        "strict_bug.candidate.execute"
       ]
     },
     "ProtocolErrorCode": {
@@ -4464,6 +4977,54 @@
             "params"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "strict_bug.candidate.read"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "params": {
+              "$ref": "#/$defs/StrictBugCandidateReadRequest"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "strict_bug.candidate.execute"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "params": {
+              "$ref": "#/$defs/StrictBugCandidateExecuteRequest"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "params"
+          ],
+          "additionalProperties": false
         }
       ]
     },
@@ -4762,6 +5323,54 @@
           "type": "object",
           "properties": {
             "method": {
+              "const": "strict_bug.candidate.read"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "result": {
+              "$ref": "#/$defs/StrictBugCandidateReadResult"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "strict_bug.candidate.execute"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "result": {
+              "$ref": "#/$defs/StrictBugCandidateExecuteResult"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
               "const": "error"
             },
             "id": {
@@ -4789,7 +5398,7 @@
     "profileVersion": "openagents.contract_profile.v1",
     "contractRef": "openagents.all_work_boundary.v1",
     "contractVersion": 1,
-    "definitionSha256": "1c2c6414f05fc2bf0c8a2e56ac124e366d107e126236790a33e05b68ced298e6",
+    "definitionSha256": "2797ea64aba30c5ccc19cf2f4771d47955b126a3d91576f24409ad2d23f47a03",
     "owningDomain": "all_work_boundary",
     "authoritativeRuntime": "effect",
     "relationship": "projection",
@@ -4825,7 +5434,10 @@
       "owner_disposition_is_separate_from_completion_and_verification",
       "internal_work_has_exactly_one_writer_per_cutover_generation",
       "native_work_cutover_creates_zero_github_writes",
-      "legacy_rollback_requires_complete_native_history_reconciliation"
+      "legacy_rollback_requires_complete_native_history_reconciliation",
+      "strict_bug_ingress_is_untrusted_until_explicit_disposition",
+      "strict_bug_ingress_is_delivery_idempotent_and_public_safe",
+      "strict_bug_candidate_admission_does_not_grant_command_authority"
     ],
     "implementationStatus": {
       "ContractVersion": "structural_only",
@@ -4960,6 +5572,18 @@
       "WorkCutoverExecuteResult": "implemented",
       "WorkCutoverReadRequest": "implemented",
       "WorkCutoverReadResult": "implemented",
+      "StrictBugCandidateRef": "structural_only",
+      "StrictBugSeverity": "structural_only",
+      "StrictBugConfirmation": "structural_only",
+      "StrictBugDisposition": "structural_only",
+      "StrictBugCandidate": "implemented",
+      "StrictBugCandidateCommand": "structural_only",
+      "StrictBugCandidateLedger": "implemented",
+      "StrictBugCandidateExecuteRequest": "implemented",
+      "StrictBugCandidateReceipt": "implemented",
+      "StrictBugCandidateExecuteResult": "implemented",
+      "StrictBugCandidateReadRequest": "implemented",
+      "StrictBugCandidateReadResult": "implemented",
       "ProtocolCapability": "structural_only",
       "ProtocolErrorCode": "structural_only",
       "ProtocolError": "structural_only",

@@ -20,6 +20,8 @@ import {
   decodeWorkCommandExecuteRequest,
   decodeWorkCutoverExecuteRequest,
   decodeWorkCutoverReadRequest,
+  decodeStrictBugCandidateExecuteRequest,
+  decodeStrictBugCandidateReadRequest,
   decodeWorkSnapshotReadRequest,
   decodeWorkSnapshotReadResult,
   negotiateAllWorkProtocol,
@@ -27,6 +29,7 @@ import {
   SignedWorkroomError,
   WorkCommandAuthorityError,
   WorkCutoverAuthorityError,
+  StrictBugCandidateAuthorityError,
   type ProtocolCapability as AllWorkProtocolCapability,
   type ProtocolVersion as AllWorkProtocolVersion,
 } from "@openagentsinc/all-work-contract";
@@ -72,6 +75,11 @@ import {
   enqueueAllWorkSignedWorkroom,
   readAllWorkSignedWorkroom,
 } from "../engine/all-work-signed-workroom.ts";
+import {
+  bootstrapAllWorkStrictBugCandidates,
+  executeAllWorkStrictBugCandidate,
+  readAllWorkStrictBugCandidates,
+} from "../engine/all-work-strict-bug-candidates.ts";
 import { openFullAutoRunReportStore } from "../engine/full-auto-run-report.ts";
 import { admitFullAutoRunCompletion } from "../engine/full-auto-completion.ts";
 import {
@@ -1131,6 +1139,25 @@ export const createOmegaEffectdFramedServer = (
         }
       }
       if (
+        allWork.capabilities.includes("strict_bug.candidate.read") ||
+        allWork.capabilities.includes("strict_bug.candidate.execute")
+      ) {
+        const candidates = await Effect.runPromise(
+          Effect.match(bootstrapAllWorkStrictBugCandidates(paths.dataRoot), {
+            onFailure: () => null,
+            onSuccess: () => true,
+          }),
+        );
+        if (candidates === null) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("unavailable", "The strict bug candidate ledger could not be opened."),
+          );
+        }
+      }
+      if (
         allWork.capabilities.includes("workroom.activity.read") ||
         allWork.capabilities.includes("workroom.activity.enqueue") ||
         allWork.capabilities.includes("workroom.activity.deliver")
@@ -1742,6 +1769,84 @@ export const createOmegaEffectdFramedServer = (
             false,
             undefined,
             redactedError("invalid_request", "The internal Work writer transition was refused."),
+          );
+        }
+      }
+      case "strict_bug.candidate.read": {
+        if (!selectedAllWorkCapabilities.includes("strict_bug.candidate.read")) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "incompatible_version",
+              "strict_bug.candidate.read requires its negotiated omega-effectd.v2 capability.",
+            ),
+          );
+        }
+        try {
+          const params = decodeStrictBugCandidateReadRequest(request.params ?? {});
+          return respond(
+            request.id,
+            true,
+            await Effect.runPromise(readAllWorkStrictBugCandidates(paths.dataRoot, params)),
+          );
+        } catch {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("unavailable", "The strict bug candidate ledger is unavailable."),
+          );
+        }
+      }
+      case "strict_bug.candidate.execute": {
+        if (!selectedAllWorkCapabilities.includes("strict_bug.candidate.execute")) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "incompatible_version",
+              "strict_bug.candidate.execute requires its negotiated omega-effectd.v2 capability.",
+            ),
+          );
+        }
+        try {
+          const params = decodeStrictBugCandidateExecuteRequest(request.params ?? {});
+          return respond(
+            request.id,
+            true,
+            await Effect.runPromise(executeAllWorkStrictBugCandidate(paths.dataRoot, params)),
+          );
+        } catch (error) {
+          if (error instanceof StrictBugCandidateAuthorityError) {
+            const code =
+              error.reason === "forbidden"
+                ? "forbidden"
+                : error.reason === "storage_unavailable"
+                  ? "unavailable"
+                  : error.reason === "candidate_not_found"
+                    ? "not_found"
+                    : error.reason === "invalid_request" ||
+                        error.reason === "invalid_state" ||
+                        error.reason === "unsafe_content" ||
+                        error.reason === "invalid_source" ||
+                        error.reason === "invalid_disposition"
+                      ? "invalid_request"
+                      : "conflict";
+            return respond(
+              request.id,
+              false,
+              undefined,
+              redactedError(code, `Strict bug candidate request refused (${error.reason}).`),
+            );
+          }
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", "The strict bug candidate request was refused."),
           );
         }
       }

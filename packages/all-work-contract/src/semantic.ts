@@ -40,6 +40,8 @@ const capabilities = [
   "work.command.execute",
   "work.cutover.read",
   "work.cutover.execute",
+  "strict_bug.candidate.read",
+  "strict_bug.candidate.execute",
 ] as const;
 
 const compareUnicodeCodePoints = (left: string, right: string): number => {

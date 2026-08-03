@@ -2,12 +2,12 @@
   "contractRef": "openagents.all_work_boundary.v1",
   "contractVersion": 1,
   "profileVersion": "openagents.contract_profile.v1",
-  "definitionSha256": "1c2c6414f05fc2bf0c8a2e56ac124e366d107e126236790a33e05b68ced298e6",
+  "definitionSha256": "2797ea64aba30c5ccc19cf2f4771d47955b126a3d91576f24409ad2d23f47a03",
   "artifacts": {
-    "effectSha256": "aa4e9cd9ef369639053b6be6f4878dd252e7b33c701fafd1f0e7c946814e58de",
-    "rustSha256": "ed7ea095093012304e0027e3a7f14a00e1d8bfcb952e184159dcbf4f7cba49e3",
-    "jsonSchemaSha256": "a088e495fbbb81713e9aa8835fcf6a83a7b32258c0e040098997fc614720b6a0",
-    "fixtureIndexSha256": "18eb19d1e5de772e1916907a2e780f093444b71cda3992aa276a15f493d6de95"
+    "effectSha256": "5126b0a4b91265b2b9e763405d4352597ca44488dfae5cb9ab0d55942e3d507f",
+    "rustSha256": "cf4a42d8e3b1cb5d366841e16e7cab09b5b376f095fdf7054dea0eae90f1f154",
+    "jsonSchemaSha256": "a246c476136d0e6b9b6ff32ee141ffe8144805b93435f62e8d98ef57aef36e8a",
+    "fixtureIndexSha256": "23af49dfd686ad5718c7f5a52afbf70688527622536ac944ab981b6cc8ea7b2b"
   },
   "protocol": {
     "supportedVersions": [
@@ -99,6 +99,20 @@
         "minimumVersion": "omega-effectd.v2",
         "params": "WorkCutoverExecuteRequest",
         "result": "WorkCutoverExecuteResult"
+      },
+      {
+        "method": "strict_bug.candidate.read",
+        "capability": "strict_bug.candidate.read",
+        "minimumVersion": "omega-effectd.v2",
+        "params": "StrictBugCandidateReadRequest",
+        "result": "StrictBugCandidateReadResult"
+      },
+      {
+        "method": "strict_bug.candidate.execute",
+        "capability": "strict_bug.candidate.execute",
+        "minimumVersion": "omega-effectd.v2",
+        "params": "StrictBugCandidateExecuteRequest",
+        "result": "StrictBugCandidateExecuteResult"
       }
     ]
   },
@@ -131,7 +145,10 @@
     "owner_disposition_is_separate_from_completion_and_verification",
     "internal_work_has_exactly_one_writer_per_cutover_generation",
     "native_work_cutover_creates_zero_github_writes",
-    "legacy_rollback_requires_complete_native_history_reconciliation"
+    "legacy_rollback_requires_complete_native_history_reconciliation",
+    "strict_bug_ingress_is_untrusted_until_explicit_disposition",
+    "strict_bug_ingress_is_delivery_idempotent_and_public_safe",
+    "strict_bug_candidate_admission_does_not_grant_command_authority"
   ],
   "implementationStatus": {
     "ContractVersion": "structural_only",
@@ -266,6 +283,18 @@
     "WorkCutoverExecuteResult": "implemented",
     "WorkCutoverReadRequest": "implemented",
     "WorkCutoverReadResult": "implemented",
+    "StrictBugCandidateRef": "structural_only",
+    "StrictBugSeverity": "structural_only",
+    "StrictBugConfirmation": "structural_only",
+    "StrictBugDisposition": "structural_only",
+    "StrictBugCandidate": "implemented",
+    "StrictBugCandidateCommand": "structural_only",
+    "StrictBugCandidateLedger": "implemented",
+    "StrictBugCandidateExecuteRequest": "implemented",
+    "StrictBugCandidateReceipt": "implemented",
+    "StrictBugCandidateExecuteResult": "implemented",
+    "StrictBugCandidateReadRequest": "implemented",
+    "StrictBugCandidateReadResult": "implemented",
     "ProtocolCapability": "structural_only",
     "ProtocolErrorCode": "structural_only",
     "ProtocolError": "structural_only",

@@ -59,7 +59,14 @@
     "WorkCutoverReceipt",
     "WorkCutoverExecuteResult",
     "WorkCutoverReadRequest",
-    "WorkCutoverReadResult"
+    "WorkCutoverReadResult",
+    "StrictBugCandidate",
+    "StrictBugCandidateLedger",
+    "StrictBugCandidateExecuteRequest",
+    "StrictBugCandidateReceipt",
+    "StrictBugCandidateExecuteResult",
+    "StrictBugCandidateReadRequest",
+    "StrictBugCandidateReadResult"
   ],
   "semanticChecks": [
     "issue_projection_work_ref_matches_snapshot_work_ref",
@@ -77,7 +84,10 @@
     "owner_disposition_is_separate_from_completion_and_verification",
     "internal_work_has_exactly_one_writer_per_cutover_generation",
     "native_work_cutover_creates_zero_github_writes",
-    "legacy_rollback_requires_complete_native_history_reconciliation"
+    "legacy_rollback_requires_complete_native_history_reconciliation",
+    "strict_bug_ingress_is_untrusted_until_explicit_disposition",
+    "strict_bug_ingress_is_delivery_idempotent_and_public_safe",
+    "strict_bug_candidate_admission_does_not_grant_command_authority"
   ],
   "types": [
     {
@@ -1574,6 +1584,170 @@
       "fields": [{ "name": "state", "type": "WorkCutoverState" }]
     },
     {
+      "name": "StrictBugCandidateRef",
+      "kind": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$",
+      "formatClass": "reference"
+    },
+    {
+      "name": "StrictBugSeverity",
+      "kind": "enum",
+      "values": ["s0", "s1", "s2", "s3"]
+    },
+    {
+      "name": "StrictBugConfirmation",
+      "kind": "enum",
+      "values": [
+        "specific_reproducible_bug",
+        "searched_existing_reports",
+        "sensitive_material_removed",
+        "exact_reproduction_and_evidence",
+        "malformed_report_policy_understood"
+      ]
+    },
+    {
+      "name": "StrictBugDisposition",
+      "kind": "enum",
+      "values": ["pending", "admitted", "rejected", "duplicate", "linked"]
+    },
+    {
+      "name": "StrictBugCandidate",
+      "kind": "record",
+      "fields": [
+        { "name": "contractVersion", "type": "ContractVersion" },
+        { "name": "candidateRef", "type": "StrictBugCandidateRef" },
+        { "name": "sourceRef", "type": "SourceRef" },
+        { "name": "deliveryRef", "type": "SourceRef" },
+        { "name": "repositoryRef", "type": "RepositoryRef" },
+        { "name": "issueNumber", "type": "SafeInteger" },
+        { "name": "sourceUrl", "type": "SourceUrl" },
+        { "name": "title", "type": "ShortText" },
+        { "name": "affectedSurface", "type": "ShortText" },
+        { "name": "actualBehavior", "type": "LongText" },
+        { "name": "expectedBehavior", "type": "LongText" },
+        { "name": "reproductionSteps", "type": "LongText" },
+        { "name": "publicSafeEvidence", "type": "LongText" },
+        { "name": "severity", "type": "StrictBugSeverity" },
+        { "name": "environment", "type": "LongText" },
+        { "name": "safetyRedaction", "type": "LongText" },
+        { "name": "requiredConfirmations", "type": { "array": "StrictBugConfirmation", "maxItems": 5 } },
+        { "name": "reporterRef", "type": "SourceRef" },
+        { "name": "attachmentRefs", "type": { "array": "SourceRef", "maxItems": 32 } },
+        { "name": "signatureVerificationRef", "type": "EvidenceRef" },
+        { "name": "untrusted", "type": "boolean" },
+        { "name": "disposition", "type": "StrictBugDisposition" },
+        { "name": "linkedWorkRef", "type": { "nullable": "WorkRef" } },
+        { "name": "dispositionReceiptRef", "type": { "nullable": "ReceiptRef" } },
+        { "name": "observedAt", "type": "IsoTimestamp" },
+        { "name": "revision", "type": "SafeInteger" }
+      ]
+    },
+    {
+      "name": "StrictBugCandidateCommand",
+      "kind": "taggedUnion",
+      "discriminator": "command",
+      "variants": [
+        {
+          "name": "Ingest",
+          "tag": "ingest",
+          "fields": [
+            { "name": "candidateRef", "type": "StrictBugCandidateRef" },
+            { "name": "sourceRef", "type": "SourceRef" },
+            { "name": "deliveryRef", "type": "SourceRef" },
+            { "name": "repositoryRef", "type": "RepositoryRef" },
+            { "name": "issueNumber", "type": "SafeInteger" },
+            { "name": "sourceUrl", "type": "SourceUrl" },
+            { "name": "title", "type": "ShortText" },
+            { "name": "affectedSurface", "type": "ShortText" },
+            { "name": "actualBehavior", "type": "LongText" },
+            { "name": "expectedBehavior", "type": "LongText" },
+            { "name": "reproductionSteps", "type": "LongText" },
+            { "name": "publicSafeEvidence", "type": "LongText" },
+            { "name": "severity", "type": "StrictBugSeverity" },
+            { "name": "environment", "type": "LongText" },
+            { "name": "safetyRedaction", "type": "LongText" },
+            { "name": "requiredConfirmations", "type": { "array": "StrictBugConfirmation", "maxItems": 5 } },
+            { "name": "reporterRef", "type": "SourceRef" },
+            { "name": "attachmentRefs", "type": { "array": "SourceRef", "maxItems": 32 } },
+            { "name": "signatureVerificationRef", "type": "EvidenceRef" }
+          ]
+        },
+        {
+          "name": "Dispose",
+          "tag": "dispose",
+          "fields": [
+            { "name": "candidateRef", "type": "StrictBugCandidateRef" },
+            { "name": "expectedCandidateRevision", "type": "SafeInteger" },
+            { "name": "disposition", "type": "StrictBugDisposition" },
+            { "name": "linkedWorkRef", "type": { "nullable": "WorkRef" } },
+            { "name": "dispositionReceiptRef", "type": "ReceiptRef" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "StrictBugCandidateLedger",
+      "kind": "record",
+      "fields": [
+        { "name": "contractVersion", "type": "ContractVersion" },
+        { "name": "revision", "type": "SafeInteger" },
+        { "name": "eventCursor", "type": "WorkCursor" },
+        { "name": "candidates", "type": { "array": "StrictBugCandidate", "maxItems": 10000 } },
+        { "name": "completeness", "type": "Completeness" },
+        { "name": "freshness", "type": "Freshness" }
+      ]
+    },
+    {
+      "name": "StrictBugCandidateExecuteRequest",
+      "kind": "record",
+      "fields": [
+        { "name": "intentRef", "type": "IntentRef" },
+        { "name": "idempotencyKey", "type": "IdempotencyKey" },
+        { "name": "expectedRevision", "type": "SafeInteger" },
+        { "name": "effectivePrincipalRef", "type": "PrincipalRef" },
+        { "name": "capabilityRef", "type": "CapabilityRef" },
+        { "name": "occurredAt", "type": "IsoTimestamp" },
+        { "name": "githubWriteCount", "type": "ZeroInteger" },
+        { "name": "command", "type": "StrictBugCandidateCommand" }
+      ]
+    },
+    {
+      "name": "StrictBugCandidateReceipt",
+      "kind": "record",
+      "fields": [
+        { "name": "intentRef", "type": "IntentRef" },
+        { "name": "idempotencyKey", "type": "IdempotencyKey" },
+        { "name": "commandDigest", "type": "ContractDigest" },
+        { "name": "candidateRef", "type": "StrictBugCandidateRef" },
+        { "name": "previousRevision", "type": "SafeInteger" },
+        { "name": "revision", "type": "SafeInteger" },
+        { "name": "eventCursor", "type": "WorkCursor" },
+        { "name": "effectivePrincipalRef", "type": "PrincipalRef" },
+        { "name": "acceptedAt", "type": "IsoTimestamp" },
+        { "name": "githubWriteCount", "type": "ZeroInteger" }
+      ]
+    },
+    {
+      "name": "StrictBugCandidateExecuteResult",
+      "kind": "record",
+      "fields": [
+        { "name": "ledger", "type": "StrictBugCandidateLedger" },
+        { "name": "receipt", "type": "StrictBugCandidateReceipt" }
+      ]
+    },
+    {
+      "name": "StrictBugCandidateReadRequest",
+      "kind": "record",
+      "fields": [{ "name": "candidateRef", "type": { "optional": { "nullable": "StrictBugCandidateRef" } } }]
+    },
+    {
+      "name": "StrictBugCandidateReadResult",
+      "kind": "record",
+      "fields": [{ "name": "ledger", "type": "StrictBugCandidateLedger" }]
+    },
+    {
       "name": "ProtocolCapability",
       "kind": "enum",
       "values": [
@@ -1587,7 +1761,9 @@
         "workroom.activity.deliver",
         "work.command.execute",
         "work.cutover.read",
-        "work.cutover.execute"
+        "work.cutover.execute",
+        "strict_bug.candidate.read",
+        "strict_bug.candidate.execute"
       ]
     },
     {
@@ -1841,6 +2017,24 @@
             { "name": "version", "type": "ProtocolVersion" },
             { "name": "params", "type": "WorkCutoverExecuteRequest" }
           ]
+        },
+        {
+          "name": "StrictBugCandidateRead",
+          "tag": "strict_bug.candidate.read",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "params", "type": "StrictBugCandidateReadRequest" }
+          ]
+        },
+        {
+          "name": "StrictBugCandidateExecute",
+          "tag": "strict_bug.candidate.execute",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "params", "type": "StrictBugCandidateExecuteRequest" }
+          ]
         }
       ]
     },
@@ -1958,6 +2152,24 @@
           ]
         },
         {
+          "name": "StrictBugCandidateRead",
+          "tag": "strict_bug.candidate.read",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "result", "type": "StrictBugCandidateReadResult" }
+          ]
+        },
+        {
+          "name": "StrictBugCandidateExecute",
+          "tag": "strict_bug.candidate.execute",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "result", "type": "StrictBugCandidateExecuteResult" }
+          ]
+        },
+        {
           "name": "Error",
           "tag": "error",
           "fields": [
@@ -2002,6 +2214,13 @@
     "WorkCutoverExecuteResult",
     "WorkCutoverReadRequest",
     "WorkCutoverReadResult",
+    "StrictBugCandidate",
+    "StrictBugCandidateLedger",
+    "StrictBugCandidateExecuteRequest",
+    "StrictBugCandidateReceipt",
+    "StrictBugCandidateExecuteResult",
+    "StrictBugCandidateReadRequest",
+    "StrictBugCandidateReadResult",
     "IssueProjection",
     "ProtocolError",
     "ProtocolInitializeRequest",
@@ -2099,6 +2318,20 @@
       "minimumVersion": "omega-effectd.v2",
       "params": "WorkCutoverExecuteRequest",
       "result": "WorkCutoverExecuteResult"
+    },
+    {
+      "method": "strict_bug.candidate.read",
+      "capability": "strict_bug.candidate.read",
+      "minimumVersion": "omega-effectd.v2",
+      "params": "StrictBugCandidateReadRequest",
+      "result": "StrictBugCandidateReadResult"
+    },
+    {
+      "method": "strict_bug.candidate.execute",
+      "capability": "strict_bug.candidate.execute",
+      "minimumVersion": "omega-effectd.v2",
+      "params": "StrictBugCandidateExecuteRequest",
+      "result": "StrictBugCandidateExecuteResult"
     }
   ],
   "fixtures": [
