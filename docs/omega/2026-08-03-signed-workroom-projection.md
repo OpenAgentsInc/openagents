@@ -66,13 +66,20 @@ identities. It persists the exact signed projection and relay targets in a
 pending canonical outbox before publication.
 
 The first generated prepare/commit profile admits direct enrolled Nostr
-principals only. Non-human actor signing still requires the separate
-authoritative grant resolver and provisioning path; the client cannot attach a
-grant through this direct lane. omega-effectd reads its server-owned relay set
-from `OPENAGENTS_OMEGA_SIGNED_WORKROOM_RELAYS` as a comma-separated list of one
-to sixteen distinct `wss://` targets. An absent or invalid policy makes prepare
-and commit unavailable. The legacy enqueue method also replaces client relay
-input with that configured set before reduction.
+principals only. Non-human actor signing uses the separate owner-local actor
+grant ledger. Its provisioning operation requires an exact prior revision and
+stores the next complete grant set with atomic replacement. The live resolver
+reloads that ledger for admission and publication, so a revoked or superseded
+grant fences later projection use without a process restart. The client cannot
+attach or provision a grant through the direct signing lane.
+
+omega-effectd selects a server-owned relay set for the exact activity audience.
+`OPENAGENTS_OMEGA_SIGNED_WORKROOM_RELAYS_<AUDIENCE>` contains one to sixteen
+distinct `wss://` targets for that closed audience. The legacy unsuffixed
+variable applies only to `workroom`; it cannot route `private` or `owner_only`
+events. An absent or invalid audience policy makes prepare, commit, or enqueue
+unavailable. The client cannot supply relay targets or change audience after
+preparation.
 
 Every decoded durable state is revalidated before read-side use or mutation.
 The ledger revision must reconcile with unique canonical event identities,
@@ -121,6 +128,10 @@ The lower-level `workroom.activity.deliver` reducer remains an internal
 transport-fact boundary. Relay acceptance remains transport evidence only, and a revision race
 after publication fails closed so a later retry can reconcile the durable row.
 
-The remaining OAW-009 work includes Omega consumption through enrolled custody,
-non-human grant provisioning, and installed two-client outage/replay
-falsifiers. Test execution is deferred to the final omega#208 build gate.
+The acceptance suite creates one Work chain for assignment, delegation, Agent
+Session, activity, evidence, verification, and human decision projections. It
+rejects a reordered child, replays duplicate requests exactly, retains a relay
+outage, retries only the unresolved target, reloads the durable state, and
+compares two client projections. Private payload text never enters the event or
+read model; only its digest crosses the boundary. The generated client also
+performs the prepare and commit handshake against the live reference process.

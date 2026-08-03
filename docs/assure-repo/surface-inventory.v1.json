@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:6aed22ca09690431ffc0669f3f61d645bc0a218e37113b24774b6463771c06f0",
+  "sourceDigest": "sha256:c966996f24292b204bf8fae510bbf33c94a0aa8951a339e22fd27e280d620d85",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -1884,7 +1884,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/all-work-contract (12 tracked test files)"
+          "ref": "packages/all-work-contract (13 tracked test files)"
         }
       ],
       "obligation": {
@@ -2680,7 +2680,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/omega-effectd (33 tracked test files)"
+          "ref": "packages/omega-effectd (34 tracked test files)"
         }
       ],
       "obligation": {

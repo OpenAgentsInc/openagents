@@ -9,6 +9,7 @@ export * from "./planning-authority.ts";
 export * from "./planning-file-store.ts";
 export * from "./repository-claim-authority.ts";
 export * from "./signed-workroom-authority.ts";
+export * from "./signed-workroom-actor-grant-store.ts";
 export * from "./signed-workroom-file-store.ts";
 export * from "./signed-workroom-nostr.ts";
 export * from "./signed-workroom-publisher.ts";

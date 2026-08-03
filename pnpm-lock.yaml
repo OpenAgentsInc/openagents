@@ -2560,6 +2560,9 @@ importers:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
     devDependencies:
+      '@noble/curves':
+        specifier: 1.8.1
+        version: 1.8.1
       esbuild:
         specifier: 0.25.12
         version: 0.25.12

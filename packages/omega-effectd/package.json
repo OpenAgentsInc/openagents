@@ -48,6 +48,7 @@
     "effect": "catalog:"
   },
   "devDependencies": {
+    "@noble/curves": "1.8.1",
     "esbuild": "0.25.12",
     "typescript": "catalog:"
   },

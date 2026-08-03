@@ -1,4 +1,5 @@
 import { schnorr } from "@noble/curves/secp256k1";
+import { createHash } from "node:crypto";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -7,14 +8,17 @@ import {
   decodeSignedWorkroomCommitRequest,
   decodeSignedWorkroomEnqueueRequest,
   decodeSignedWorkroomPrepareRequest,
+  decodeSignedWorkroomReadRequest,
   commitSignedWorkroomActivity,
   deliverSignedWorkroomActivity,
   emptySignedWorkroomState,
   enqueueSignedWorkroomActivity,
   makeSignedWorkroomActorGrantResolverLayer,
   prepareSignedWorkroomActivity,
+  readSignedWorkroomActivity,
   signedWorkroomNostrEventId,
   SignedWorkroomStateStore,
+  validateSignedWorkroomState,
   type SignedWorkroomActivity,
   type SignedWorkroomState,
 } from "../src/index.ts";
@@ -420,5 +424,126 @@ describe("signed Workroom authority", () => {
     await expect(harness(tampered).execute()).rejects.toMatchObject({
       reason: "invalid_signature",
     });
+  });
+  it("converges two clients across reorder, duplicate delivery, outage, and reconnect", async () => {
+    const value = harness();
+    const privatePayload =
+      "private prompt with credential sk-example-not-a-real-secret and native provider event";
+    const payloadDigest = createHash("sha256").update(privatePayload).digest("hex");
+    const kinds = [
+      "assignment",
+      "delegation",
+      "agent_session",
+      "agent_activity",
+      "evidence",
+      "verification_ref",
+      "decision",
+    ] as const;
+
+    await expect(
+      value.execute(
+        request({
+          idempotencyKey: "signed-workroom-reordered",
+          activity: activity({
+            eventRef: "signed-event:journey:agent-session",
+            kind: "agent_session",
+            causalParentRefs: ["signed-event:journey:delegation"],
+            payloadDigest,
+          }),
+        }),
+      ),
+    ).rejects.toMatchObject({ reason: "causal_gap" });
+
+    let parent: string | null = null;
+    let finalInput: ReturnType<typeof request> | null = null;
+    for (const [index, kind] of kinds.entries()) {
+      const eventRef = `signed-event:journey:${kind}`;
+      const input = request({
+        idempotencyKey: `signed-workroom-journey-${index + 1}`,
+        expectedRevision: index,
+        activity: activity({
+          eventRef,
+          kind,
+          causalParentRefs: parent === null ? [] : [parent],
+          revision: index + 1,
+          generation: index + 1,
+          payloadDigest,
+        }),
+        relayUrls: ["wss://relay.one", "wss://relay.two"],
+      });
+      const result = await value.execute(input);
+      expect(result.receipt).toMatchObject({
+        persistedBeforePublish: true,
+        relayAcceptanceIsAuthority: false,
+        admittedEffect: false,
+      });
+      if (index === 0) expect(await value.execute(input)).toEqual(result);
+      parent = eventRef;
+      finalInput = input;
+    }
+    if (finalInput === null || parent === null) throw new Error("journey did not create events");
+
+    const outage = await value.deliver(
+      deliveryRequest({
+        idempotencyKey: "signed-workroom-journey-outage",
+        expectedRevision: kinds.length,
+        eventRef: parent,
+        attempts: [
+          {
+            relayUrl: "wss://relay.one",
+            outcome: "accepted",
+            attemptedAt: "2026-08-03T10:00:02Z",
+            detail: null,
+          },
+          {
+            relayUrl: "wss://relay.two",
+            outcome: "unreachable",
+            attemptedAt: "2026-08-03T10:00:03Z",
+            detail: "relay outage",
+          },
+        ],
+      }),
+    );
+    expect(outage.receipt).toMatchObject({
+      outboxState: "failed",
+      relayAcceptanceIsAuthority: false,
+      admittedEffect: false,
+    });
+    const retry = deliveryRequest({
+      idempotencyKey: "signed-workroom-journey-retry",
+      expectedRevision: kinds.length + 1,
+      eventRef: parent,
+      attempts: [
+        {
+          relayUrl: "wss://relay.two",
+          outcome: "accepted",
+          attemptedAt: "2026-08-03T10:00:04Z",
+          detail: null,
+        },
+      ],
+    });
+    const recovered = await value.deliver(retry);
+    expect(recovered.receipt.outboxState).toBe("accepted");
+    expect(await value.deliver(retry)).toEqual(recovered);
+
+    const persisted = value.state();
+    if (persisted === null) throw new Error("journey state was not persisted");
+    await Effect.runPromise(validateSignedWorkroomState(persisted));
+    const readRequest = decodeSignedWorkroomReadRequest({
+      afterRevision: null,
+      workroomRef: "workroom:omega:208",
+      workRef: "work:github:openagentsinc-omega:216",
+    });
+    const clientA = readSignedWorkroomActivity(persisted, readRequest);
+    const reconnected = JSON.parse(JSON.stringify(persisted)) as SignedWorkroomState;
+    await Effect.runPromise(validateSignedWorkroomState(reconnected));
+    const clientB = readSignedWorkroomActivity(reconnected, readRequest);
+    expect(clientB).toEqual(clientA);
+    expect(clientA.ledger.activities.map((event) => event.kind)).toEqual(kinds);
+    expect(JSON.stringify(clientA)).not.toContain(privatePayload);
+    expect(clientA.ledger.activities.every((event) => event.payloadDigest === payloadDigest)).toBe(
+      true,
+    );
+    expect(finalInput.activity.workRef).toBe("work:github:openagentsinc-omega:216");
   });
 });

@@ -1883,6 +1883,22 @@
       "reason": "Published generated SDK method; Omega and other All Work clients will call it after they adopt the v0.2 client package."
     },
     {
+      "ref": "packages/all-work-contract/src/client.generated.ts#AllWorkClient.workroomActivityCommit",
+      "reason": "Published generated SDK method; TypeScript All Work clients will call it when they adopt the v0.2 signed Workroom client used by Omegas installed Rust consumer."
+    },
+    {
+      "ref": "packages/all-work-contract/src/client.generated.ts#AllWorkClient.workroomActivityEnqueue",
+      "reason": "Published generated SDK method; TypeScript All Work hosts will call it for granted non-human projection admission after adopting the v0.2 package."
+    },
+    {
+      "ref": "packages/all-work-contract/src/client.generated.ts#AllWorkClient.workroomActivityPrepare",
+      "reason": "Published generated SDK method; TypeScript All Work clients will call it when they adopt the v0.2 signed Workroom client used by Omegas installed Rust consumer."
+    },
+    {
+      "ref": "packages/all-work-contract/src/client.generated.ts#AllWorkClient.workroomActivityPublish",
+      "reason": "Published generated SDK method; TypeScript All Work clients will call it when they adopt the v0.2 signed Workroom publication flow used by Omegas installed Rust consumer."
+    },
+    {
       "ref": "packages/all-work-contract/src/client.generated.ts#makeAllWorkClient",
       "reason": "Published generated SDK constructor; Omega and other All Work clients will call it after they adopt the v0.2 client package."
     },
@@ -1903,10 +1919,6 @@
       "reason": "Published generated contract decoder; the Omega repository-claim client will call it when that generated read path replaces its current server-only conformance fixture."
     },
     {
-      "ref": "packages/all-work-contract/src/generated.ts#decodeSignedWorkroomPrepareResult",
-      "reason": "Published generated contract decoder; the Omega signed-workroom client will call it when the #9304 projection lane adopts the generated client."
-    },
-    {
       "ref": "packages/all-work-contract/src/generated.ts#decodeWorkCutoverExecuteResult",
       "reason": "Published generated contract decoder; the Omega cutover client will call it when that generated command path replaces its current server-only conformance fixture."
     },
@@ -1917,6 +1929,10 @@
     {
       "ref": "packages/all-work-contract/src/organization-membership-authority.ts#provisionFileOrganizationMembershipState",
       "reason": "Intentional operator provisioning API; the installed Omega bootstrap will call it when non-human organization grant provisioning moves out of its current conformance fixture."
+    },
+    {
+      "ref": "packages/all-work-contract/src/signed-workroom-actor-grant-store.ts#provisionFileSignedWorkroomActorGrantState",
+      "reason": "Intentional owner-local provisioning API; installed Omega operators call it to replace the complete signed Workroom actor-grant ledger under an optimistic revision fence."
     },
     {
       "ref": "packages/all-work-contract/src/planning-authority.ts#inMemoryPlanningStateStoreLayer",

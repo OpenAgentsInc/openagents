@@ -1687,7 +1687,10 @@ export const createOmegaEffectdFramedServer = (
         } catch (error) {
           const code =
             error instanceof SignedWorkroomError
-              ? error.reason === "forbidden"
+              ? error.reason === "forbidden" ||
+                error.reason === "actor_grant_required" ||
+                error.reason === "invalid_actor_grant" ||
+                error.reason === "stale_actor_grant"
                 ? "forbidden"
                 : error.reason === "storage_unavailable" ||
                     error.reason === "relay_policy_unavailable"
@@ -1759,7 +1762,10 @@ export const createOmegaEffectdFramedServer = (
         } catch (error) {
           const code =
             error instanceof SignedWorkroomError
-              ? error.reason === "forbidden"
+              ? error.reason === "forbidden" ||
+                error.reason === "actor_grant_required" ||
+                error.reason === "invalid_actor_grant" ||
+                error.reason === "stale_actor_grant"
                 ? "forbidden"
                 : error.reason === "storage_unavailable" ||
                     error.reason === "relay_policy_unavailable"

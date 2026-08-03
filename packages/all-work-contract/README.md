@@ -95,6 +95,10 @@ actors require an authoritative `purpose:signed-workroom:project-activity`
 grant that binds the signer, actor, exact Workroom and Work, event kinds,
 audience/privacy, validity interval, evidence, and generation. Missing,
 expired, revoked, superseded, or scope-mismatched grants fail closed.
+`src/signed-workroom-actor-grant-store.ts` supplies the owner-local durable
+grant ledger. Provisioning uses an optimistic revision fence, and the live
+resolver reloads the current fact before admission or publication so a
+revocation takes effect without restarting the process.
 
 `src/signed-workroom-authority.ts` admits the verified projection only for the
 named Effective Principal and capability, known causal parents, and an
@@ -108,6 +112,11 @@ revision, generation, event ref, unsigned NIP-01 JSON, expiry, and server relay
 policy digest. Commit accepts only the exact returned preparation and matching
 signed event, then invokes the same persist-before-publish reducer. Secret key
 material and relay selection never enter the client request.
+
+Relay policy is audience-scoped. The reference process reads
+`OPENAGENTS_OMEGA_SIGNED_WORKROOM_RELAYS_<AUDIENCE>` for each closed audience.
+The legacy unsuffixed variable applies only to `workroom`; it cannot route a
+private or owner-only projection to the Workroom relay set.
 
 The `workroom.activity.deliver` method records unique attempts only for the
 relay targets already persisted with the signed event. Accepted, rejected, and

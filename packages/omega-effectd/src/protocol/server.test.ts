@@ -1,10 +1,10 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { schnorr } from "@noble/curves/secp256k1";
 import {
   decodeRepositoryClaimExecuteResult,
   decodeRepositoryClaimReadResult,
-  decodeSignedWorkroomPrepareResult,
   decodeOrganizationMembership,
   decodeOrganizationMembershipReadResult,
   decodeStrictBugCandidateExecuteResult,
@@ -17,11 +17,16 @@ import {
   decodeWorkCutoverReadResult,
   decodeWorkSnapshotReadResult,
   ALL_WORK_BUILDERS,
+  emptySignedWorkroomActorGrantState,
+  initializeFileSignedWorkroomActorGrantState,
   makeAllWorkClient,
+  makeSignedWorkroomActorGrantState,
   makeOrganizationMembershipAuthorityState,
   provisionFileOrganizationMembershipState,
   ForensicPriorWorkQueryResultSchema,
   ForensicPriorWorkRecordSchema,
+  provisionFileSignedWorkroomActorGrantState,
+  signedWorkroomNostrEventId,
 } from "@openagentsinc/all-work-contract";
 import { Effect, Schema as S } from "effect";
 import { describe, expect, test } from "vite-plus/test";
@@ -291,7 +296,7 @@ describe("omega-effectd framed protocol", () => {
     });
   });
 
-  test("prepares exact Workroom signing bytes from server-owned relay policy", async () => {
+  test("commits exact Workroom signing bytes through the generated client", async () => {
     const previous = process.env.OPENAGENTS_OMEGA_SIGNED_WORKROOM_RELAYS;
     process.env.OPENAGENTS_OMEGA_SIGNED_WORKROOM_RELAYS =
       "wss://relay.two,wss://relay.example,wss://relay.two";
@@ -312,13 +317,18 @@ describe("omega-effectd framed protocol", () => {
           }),
         );
         expect(initialized?.ok).toBe(true);
+        const client = makeAllWorkClient(({ id, method, params }) =>
+          Effect.promise(() => server.handleLine(request(id, 1, method, params))),
+        );
+        const secretKey = Uint8Array.from([...Array(31).fill(0), 1]);
+        const signerPubkey = Buffer.from(schnorr.getPublicKey(secretKey)).toString("hex");
         const occurredAt = new Date().toISOString();
-        const prepared = await server.handleLine(
-          request("prepare", 1, "workroom.activity.prepare", {
+        const result = await Effect.runPromise(
+          client.workroomActivityPrepare({
             idempotencyKey: "prepare-workroom-process-1",
-            effectivePrincipalRef: `principal:nostr:${"1".repeat(64)}`,
+            effectivePrincipalRef: `principal:nostr:${signerPubkey}`,
             capabilityRef: "capability:workroom-activity:prepare",
-            signerPubkey: "1".repeat(64),
+            signerPubkey,
             workroomRef: "workroom:omega:208",
             workRef: "work:github:openagentsinc-omega:216",
             kind: "thread",
@@ -332,20 +342,179 @@ describe("omega-effectd framed protocol", () => {
             revokesEventRef: null,
           }),
         );
-        expect(prepared?.ok).toBe(true);
-        const result = decodeSignedWorkroomPrepareResult(prepared?.result);
         expect(result.preparation).toMatchObject({
           expectedRevision: 0,
           activity: {
-            actorRef: `principal:nostr:${"1".repeat(64)}`,
+            actorRef: `principal:nostr:${signerPubkey}`,
             revision: 1,
             generation: 1,
           },
         });
         expect(result.preparation).not.toHaveProperty("relayUrls");
-        expect(JSON.parse(result.preparation.unsignedEventJson)).toMatchObject({
-          pubkey: "1".repeat(64),
+        const template = JSON.parse(result.preparation.unsignedEventJson) as Record<
+          string,
+          unknown
+        >;
+        expect(template).toMatchObject({
+          pubkey: signerPubkey,
           content: "",
+        });
+        const eventId = signedWorkroomNostrEventId(result.preparation.activity);
+        const signature = Buffer.from(
+          schnorr.sign(Uint8Array.from(Buffer.from(eventId, "hex")), secretKey),
+        ).toString("hex");
+        const committed = await Effect.runPromise(
+          client.workroomActivityCommit({
+            idempotencyKey: "commit-workroom-process-1",
+            effectivePrincipalRef: `principal:nostr:${signerPubkey}`,
+            capabilityRef: "capability:workroom-activity:commit",
+            preparation: result.preparation,
+            signedEventJson: JSON.stringify({ id: eventId, ...template, sig: signature }),
+          }),
+        );
+        expect(committed.receipt).toMatchObject({
+          persistedBeforePublish: true,
+          relayAcceptanceIsAuthority: false,
+          admittedEffect: false,
+        });
+      });
+    } finally {
+      if (previous === undefined) delete process.env.OPENAGENTS_OMEGA_SIGNED_WORKROOM_RELAYS;
+      else process.env.OPENAGENTS_OMEGA_SIGNED_WORKROOM_RELAYS = previous;
+    }
+  });
+
+  test("loads and revokes a non-human Workroom actor grant in the live process", async () => {
+    const previous = process.env.OPENAGENTS_OMEGA_SIGNED_WORKROOM_RELAYS;
+    process.env.OPENAGENTS_OMEGA_SIGNED_WORKROOM_RELAYS = "wss://relay.example";
+    try {
+      await withRoot(async (root) => {
+        const now = new Date();
+        const occurredAt = now.toISOString();
+        const validFrom = new Date(now.getTime() - 60_000).toISOString();
+        const expiresAt = new Date(now.getTime() + 60 * 60_000).toISOString();
+        const secretKey = Uint8Array.from([...Array(31).fill(0), 1]);
+        const signerPubkey = Buffer.from(schnorr.getPublicKey(secretKey)).toString("hex");
+        const signerPrincipalRef = `principal:nostr:${signerPubkey}`;
+        const actorRef = "principal:agent:omega-coder";
+        const grant = {
+          grantRef: "delegation-grant:omega-216:3",
+          issuerPrincipalRef: signerPrincipalRef,
+          actorRef,
+          signerPubkey,
+          purpose: "purpose:signed-workroom:project-activity" as const,
+          workroomRef: "workroom:omega:208",
+          workRef: "work:github:openagentsinc-omega:216",
+          activityKinds: ["agent_activity" as const],
+          audiences: ["workroom" as const],
+          privacyClasses: ["workroom" as const],
+          generation: 3,
+          validFrom,
+          expiresAt,
+          state: "active" as const,
+          evidenceRefs: ["evidence:actor-grant:omega-216:3"],
+        };
+        await Effect.runPromise(
+          initializeFileSignedWorkroomActorGrantState(
+            root,
+            emptySignedWorkroomActorGrantState(validFrom),
+          ),
+        );
+        await Effect.runPromise(
+          provisionFileSignedWorkroomActorGrantState(
+            root,
+            0,
+            makeSignedWorkroomActorGrantState({
+              revision: 1,
+              updatedAt: occurredAt,
+              grants: [grant],
+            }),
+          ),
+        );
+
+        const unsigned = {
+          projectionProfile: "openagents.signed-workroom.v2" as const,
+          eventRef: "signed-event:generated-client:agent-activity",
+          signerPubkey,
+          actorRef,
+          actorGrantRef: grant.grantRef,
+          actorGrantGeneration: grant.generation,
+          workroomRef: grant.workroomRef,
+          workRef: grant.workRef,
+          kind: "agent_activity" as const,
+          audience: "workroom" as const,
+          privacyClass: "workroom" as const,
+          causalParentRefs: [],
+          revision: 1,
+          generation: 3,
+          occurredAt,
+          payloadDigest: "e".repeat(64),
+          evidenceRefs: grant.evidenceRefs,
+          supersedesEventRef: null,
+          revokesEventRef: null,
+        };
+        const nostrEventId = signedWorkroomNostrEventId(unsigned);
+        const activity = {
+          ...unsigned,
+          nostrEventId,
+          signature: Buffer.from(
+            schnorr.sign(Uint8Array.from(Buffer.from(nostrEventId, "hex")), secretKey),
+          ).toString("hex"),
+        };
+        const server = createOmegaEffectdFramedServer(
+          createOmegaEffectdService({ paths: { dataRoot: root } }),
+          { dataRoot: root },
+          { hostRequestHandler: makeOmegaEffectdTestHost() },
+        );
+        await server.handleLine(
+          request("grant-init", 0, "initialize", {
+            generation: 1,
+            allWork: {
+              supportedVersions: ["omega-effectd.v2"],
+              requestedCapabilities: ["workroom.activity.enqueue", "workroom.activity.publish"],
+            },
+          }),
+        );
+        const client = makeAllWorkClient(({ id, method, params }) =>
+          Effect.promise(() => server.handleLine(request(id, 1, method, params))),
+        );
+        const enqueued = await Effect.runPromise(
+          client.workroomActivityEnqueue({
+            idempotencyKey: "generated-client-agent-enqueue",
+            expectedRevision: 0,
+            effectivePrincipalRef: signerPrincipalRef,
+            capabilityRef: "capability:workroom-activity:enqueue",
+            activity,
+            relayUrls: ["wss://client-supplied.example"],
+          }),
+        );
+        expect(enqueued.receipt.persistedBeforePublish).toBe(true);
+        expect(enqueued.ledger.outbox[0]?.relayUrls).toEqual(["wss://relay.example"]);
+
+        await Effect.runPromise(
+          provisionFileSignedWorkroomActorGrantState(
+            root,
+            1,
+            makeSignedWorkroomActorGrantState({
+              revision: 2,
+              updatedAt: new Date(now.getTime() + 1_000).toISOString(),
+              grants: [{ ...grant, state: "revoked" }],
+            }),
+          ),
+        );
+        const refused = await Effect.runPromise(
+          client
+            .workroomActivityPublish({
+              idempotencyKey: "generated-client-agent-publish",
+              effectivePrincipalRef: actorRef,
+              capabilityRef: "capability:workroom-activity:publish",
+              eventRef: activity.eventRef,
+            })
+            .pipe(Effect.flip),
+        );
+        expect(refused).toMatchObject({
+          stage: "protocol",
+          protocolError: { code: "forbidden" },
         });
       });
     } finally {

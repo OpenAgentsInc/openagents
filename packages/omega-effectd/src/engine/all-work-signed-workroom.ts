@@ -8,14 +8,18 @@ import {
   deliverSignedWorkroomActivity,
   commitSignedWorkroomActivity,
   emptySignedWorkroomState,
+  emptySignedWorkroomActorGrantState,
   enqueueSignedWorkroomActivity,
+  fileSignedWorkroomActorGrantResolverLayer,
   fileSignedWorkroomStateStoreLayer,
+  initializeFileSignedWorkroomActorGrantState,
   initializeFileSignedWorkroomState,
   makeSignedWorkroomRelayPublisherLayer,
   publishSignedWorkroomOutbox,
   prepareSignedWorkroomActivity,
   readSignedWorkroomActivity,
   SignedWorkroomStateStore,
+  type WorkroomAudience,
 } from "@openagentsinc/all-work-contract";
 import { Effect } from "effect";
 
@@ -23,9 +27,14 @@ const withStore = <A, E>(dataRoot: string, effect: Effect.Effect<A, E, SignedWor
   effect.pipe(Effect.provide(fileSignedWorkroomStateStoreLayer(dataRoot)));
 
 export const configuredSignedWorkroomRelayUrls = (
-  value = process.env.OPENAGENTS_OMEGA_SIGNED_WORKROOM_RELAYS ?? "",
+  audience: WorkroomAudience = "workroom",
+  environment: Readonly<Record<string, string | undefined>> = process.env,
 ): ReadonlyArray<string> =>
-  value
+  (
+    environment[`OPENAGENTS_OMEGA_SIGNED_WORKROOM_RELAYS_${audience.toUpperCase()}`] ??
+    (audience === "workroom" ? environment.OPENAGENTS_OMEGA_SIGNED_WORKROOM_RELAYS : "") ??
+    ""
+  )
     .split(",")
     .map((relayUrl) => relayUrl.trim())
     .filter((relayUrl) => relayUrl.length > 0);
@@ -36,6 +45,10 @@ export const bootstrapAllWorkSignedWorkroom = Effect.fn(
   yield* initializeFileSignedWorkroomState(
     dataRoot,
     emptySignedWorkroomState("2026-08-03T10:00:00Z"),
+  );
+  yield* initializeFileSignedWorkroomActorGrantState(
+    dataRoot,
+    emptySignedWorkroomActorGrantState("2026-08-03T10:00:00Z"),
   );
   return yield* withStore(
     dataRoot,
@@ -62,10 +75,16 @@ export const enqueueAllWorkSignedWorkroom = (dataRoot: string, input: unknown) =
     yield* bootstrapAllWorkSignedWorkroom(dataRoot);
     const request = decodeSignedWorkroomEnqueueRequest(input);
     return yield* enqueueSignedWorkroomActivity(
-      { ...request, relayUrls: configuredSignedWorkroomRelayUrls() },
+      {
+        ...request,
+        relayUrls: configuredSignedWorkroomRelayUrls(request.activity.audience),
+      },
       request.activity.occurredAt,
     );
-  }).pipe(Effect.provide(fileSignedWorkroomStateStoreLayer(dataRoot)));
+  }).pipe(
+    Effect.provide(fileSignedWorkroomStateStoreLayer(dataRoot)),
+    Effect.provide(fileSignedWorkroomActorGrantResolverLayer(dataRoot)),
+  );
 
 export const prepareAllWorkSignedWorkroom = (dataRoot: string, input: unknown) =>
   Effect.gen(function* () {
@@ -74,7 +93,7 @@ export const prepareAllWorkSignedWorkroom = (dataRoot: string, input: unknown) =
     return yield* prepareSignedWorkroomActivity(
       request,
       new Date().toISOString(),
-      configuredSignedWorkroomRelayUrls(),
+      configuredSignedWorkroomRelayUrls(request.audience),
     );
   }).pipe(Effect.provide(fileSignedWorkroomStateStoreLayer(dataRoot)));
 
@@ -85,7 +104,7 @@ export const commitAllWorkSignedWorkroom = (dataRoot: string, input: unknown) =>
     return yield* commitSignedWorkroomActivity(
       request,
       new Date().toISOString(),
-      configuredSignedWorkroomRelayUrls(),
+      configuredSignedWorkroomRelayUrls(request.preparation.activity.audience),
     );
   }).pipe(Effect.provide(fileSignedWorkroomStateStoreLayer(dataRoot)));
 
@@ -103,5 +122,6 @@ export const publishAllWorkSignedWorkroom = (dataRoot: string, input: unknown) =
     return yield* publishSignedWorkroomOutbox(request);
   }).pipe(
     Effect.provide(fileSignedWorkroomStateStoreLayer(dataRoot)),
+    Effect.provide(fileSignedWorkroomActorGrantResolverLayer(dataRoot)),
     Effect.provide(makeSignedWorkroomRelayPublisherLayer()),
   );
