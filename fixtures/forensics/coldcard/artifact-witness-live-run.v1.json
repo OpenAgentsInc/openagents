@@ -1,0 +1,76 @@
+{
+  "schema": "openagents.coldcard_artifact_witness_live_run.v1",
+  "runRef": "run.coldcard.artifact-witness.2026-08-03",
+  "note": "Assertions evaluated against the three real Coldcard MK4 firmware builds recorded in artifact-witness-live-captures.v1.json.gz. Those captures were produced by scripts/cloud/coldcard-build-driver.mjs inside admitted OpenAgents Cloud live_gce managed sandboxes; they are measurements, not conformance values. Every ref below is a name the driver derives from the build itself: object paths are relative to the MicroPython stm32 port build directory, and symbol names are the names the linker and nm reported.",
+  "toolchain": {
+    "cross": "arm-none-eabi-gcc 12.2.1 (Debian package gcc-arm-none-eabi 15:12.2.rel1-1)",
+    "board": "COLDCARD_MK4",
+    "makeTarget": "make -f MK-Makefile DEBUG_BUILD=0 V=1 all"
+  },
+  "pinnedRevisions": {
+    "vulnerable": "bcc2c382a324690a2fcf972c0bac3b79bf923f7b",
+    "fixed": "ca72463709f4e3f8964952039d5caf955f566a87"
+  },
+  "faultMutation": {
+    "mutationRef": "mutation.coldcard.board-rng-get-provider-removed",
+    "target": "stm32/COLDCARD_MK4/rng.c",
+    "description": "Delete the approved hardware-TRNG provider `uint32_t rng_get(void) { return rng_get_or_fault(); }` that the fixed commit added. Nothing else changes, so a non-zero exit can only come from removing that provider."
+  },
+  "witnessVersionRef": "witness.openagents.artifact-witness.v2",
+  "assertions": {
+    "vulnerable": [
+      {
+        "assertionRef": "assertion.coldcard.vulnerable.rng-guard-macro",
+        "description": "The board configuration compiled with MICROPY_HW_ENABLE_RNG set to (0), which is the switch that routes MicroPython's stm32 rng.c into its non-hardware branch.",
+        "kind": "preprocessed_macro_value",
+        "macroName": "macro.MICROPY_HW_ENABLE_RNG",
+        "expectedValue": "(0)"
+      },
+      {
+        "assertionRef": "assertion.coldcard.vulnerable.rng-get-provider",
+        "description": "The linker resolved rng_get to MicroPython's own stm32 rng.o, that is, to the deterministic fallback generator rather than to the board's hardware TRNG object.",
+        "kind": "symbol_provider",
+        "symbolName": "symbol.linked.rng_get",
+        "expectedProviderRef": "provider.object.rng.o"
+      },
+      {
+        "assertionRef": "assertion.coldcard.vulnerable.seed-path-reaches-rng-get",
+        "description": "libngu's random_uint32, which supplies seed material, calls rng_get directly. The edge is a relocation in libngu/random.o, not an inference from source.",
+        "kind": "source_to_secret_sink",
+        "sourceSymbol": "symbol.linked.random_uint32",
+        "sinkSymbol": "symbol.linked.rng_get"
+      }
+    ],
+    "fixed": [
+      {
+        "assertionRef": "assertion.coldcard.fixed.rng-guard-macro",
+        "description": "The guard macro is still (0) after the fix. The fix does not change the macro; it stops the upstream translation unit from providing rng_get at all.",
+        "kind": "preprocessed_macro_value",
+        "macroName": "macro.MICROPY_HW_ENABLE_RNG",
+        "expectedValue": "(0)"
+      },
+      {
+        "assertionRef": "assertion.coldcard.fixed.rng-get-provider",
+        "description": "The linker resolved rng_get to the board's own rng.o, which returns rng_get_or_fault() from the hardware TRNG.",
+        "kind": "symbol_provider",
+        "symbolName": "symbol.linked.rng_get",
+        "expectedProviderRef": "provider.object.boards/COLDCARD_MK4/rng.o"
+      },
+      {
+        "assertionRef": "assertion.coldcard.fixed.fallback-provider-absent",
+        "description": "MicroPython's stm32 rng.o contributes no symbol to the fixed link, and the fallback generator's seed state is absent from the whole enumerated inventory. This is the same condition the upstream rng-code-check target enforces, re-derived from nm output.",
+        "kind": "forbidden_symbol_absent",
+        "forbiddenProviderRef": "provider.object.rng.o",
+        "forbiddenSymbolName": "symbol.defined.seeded.4"
+      }
+    ],
+    "fault_build": [
+      {
+        "assertionRef": "assertion.coldcard.fault.build-fails-closed",
+        "description": "Removing the approved provider makes the firmware link fail. The observed exit status is non-zero and no firmware image was produced.",
+        "kind": "fault_build_fails",
+        "expectedMutationRef": "mutation.coldcard.board-rng-get-provider-removed"
+      }
+    ]
+  }
+}

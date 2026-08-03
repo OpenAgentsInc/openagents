@@ -11,6 +11,11 @@ Builds the immutable SBX-09 GCE guest image with Node.js 24,
 @openai/codex-sdk@0.144.3, @anthropic-ai/claude-agent-sdk@0.3.172, and the
 OpenAgents guest drivers, including the forensic worker preflight. Default mode
 is dry-run.
+
+With --with-coldcard-toolchain the image additionally carries a pinned
+arm-none-eabi cross toolchain and the two pinned Coldcard firmware trees the
+OFR-014 artifact witness builds. That toolchain is what lets a build actually
+run inside an admitted guest instead of being described by a fixture.
 USAGE
 }
 
@@ -18,11 +23,13 @@ project=""
 zone="us-central1-a"
 image_name=""
 apply="false"
+coldcard="false"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --project) project="${2:-}"; shift 2 ;;
     --zone) zone="${2:-}"; shift 2 ;;
     --image-name) image_name="${2:-}"; shift 2 ;;
+    --with-coldcard-toolchain) coldcard="true"; shift ;;
     --apply) apply="true"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -36,6 +43,15 @@ if [[ ! "$image_name" =~ ^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$ ]]; then
   echo "image name is not a valid immutable GCE image name" >&2
   exit 2
 fi
+
+# Pinned Coldcard artifact-witness inputs (openagents #9296, OFR-014).
+# The toolchain is pinned by exact package version, not by "whatever apt has":
+# the artifact-witness suite refuses a matrix whose three builds do not share
+# one toolchain digest, so a floating compiler would silently break the gate.
+COLDCARD_VULNERABLE_COMMIT="bcc2c382a324690a2fcf972c0bac3b79bf923f7b"
+COLDCARD_FIXED_COMMIT="ca72463709f4e3f8964952039d5caf955f566a87"
+COLDCARD_GCC_VERSION="12.2.1"
+COLDCARD_TOOLCHAIN_PACKAGES="gcc-arm-none-eabi=15:12.2.rel1-1 binutils-arm-none-eabi=2.40-2+18+b1 libnewlib-arm-none-eabi=3.3.0-1.3+deb12u1 libstdc++-arm-none-eabi-newlib=15:12.2.rel1-1+23"
 
 revision="$(git rev-parse HEAD)"
 stamp="$(date -u +%Y%m%d%H%M%S)-$$"
@@ -146,6 +162,51 @@ printf '%s\n' \
   'PermitRootLogin no' \
   'AllowUsers openagents' \
   >/etc/ssh/sshd_config.d/90-openagents-managed-sandbox.conf
+SETUP
+
+# The Coldcard artifact-witness toolchain is a separate, opt-in layer so the
+# default managed-sandbox guest stays small. It is appended before the image
+# cleanup below, not after, or apt state and caches would survive into the seal.
+if [[ "$coldcard" == "true" ]]; then
+  cat >>"$setup_file" <<SETUP_COLDCARD_PINS
+COLDCARD_VULNERABLE_COMMIT='${COLDCARD_VULNERABLE_COMMIT}'
+COLDCARD_FIXED_COMMIT='${COLDCARD_FIXED_COMMIT}'
+COLDCARD_TOOLCHAIN_PACKAGES='${COLDCARD_TOOLCHAIN_PACKAGES}'
+SETUP_COLDCARD_PINS
+  cat >>"$setup_file" <<'SETUP_COLDCARD'
+# shellcheck disable=SC2086
+apt-get install -y --no-install-recommends $COLDCARD_TOOLCHAIN_PACKAGES \
+  autoconf automake build-essential libffi-dev libtool make pkg-config python3-dev
+install -o root -g root -m 0755 /tmp/coldcard-build-driver.mjs \
+  /opt/openagents-managed-sandbox/coldcard-build-driver.mjs
+rm -f /tmp/coldcard-build-driver.mjs
+install -d -o root -g root -m 0755 /opt/coldcard
+# Both pinned trees are materialized and 'make setup' is completed here, at
+# image build time. A guest runs with the network unshared, so anything not
+# baked in now can never be fetched later.
+for pinned in "vulnerable:$COLDCARD_VULNERABLE_COMMIT" "fixed:$COLDCARD_FIXED_COMMIT"; do
+  name="${pinned%%:*}"
+  commit="${pinned##*:}"
+  rm -rf "/tmp/coldcard-${name}"
+  git clone -q --no-checkout https://github.com/Coldcard/firmware.git "/tmp/coldcard-${name}"
+  git -C "/tmp/coldcard-${name}" checkout -q "$commit"
+  git -C "/tmp/coldcard-${name}" submodule update -q --init --depth 1 \
+    external/micropython external/libngu external/ckcc-protocol external/mpy-qr
+  ( cd "/tmp/coldcard-${name}/stm32" && make -f MK-Makefile setup >/dev/null )
+  mv "/tmp/coldcard-${name}" "/opt/coldcard/${name}"
+done
+printf '{"vulnerable":{"commitSha":"%s","repository":"%s"},"fixed":{"commitSha":"%s","repository":"%s"}}\n' \
+  "$COLDCARD_VULNERABLE_COMMIT" https://github.com/Coldcard/firmware.git \
+  "$COLDCARD_FIXED_COMMIT" https://github.com/Coldcard/firmware.git \
+  >/opt/coldcard/pins.json
+chown -R root:root /opt/coldcard
+# The build copies these trees as the unprivileged workload user, and git's
+# pack directories are owner-read-only by default.
+chmod -R a+rX /opt/coldcard
+SETUP_COLDCARD
+fi
+
+cat >>"$setup_file" <<'SETUP'
 npm cache clean --force >/dev/null 2>&1 || true
 apt-get clean
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
@@ -203,8 +264,41 @@ find /etc/ssh -maxdepth 1 -type f -name 'ssh_host_*_key' -size +0c | grep -q .
 /usr/sbin/iptables -C OUTPUT -d 169.254.169.254/32 -m owner --uid-owner openagents -j REJECT
 curl -fsS -H 'Metadata-Flavor: Google' \
   http://metadata.google.internal/computeMetadata/v1/instance/name >/dev/null
-printf 'OA_MSB_IMAGE_SMOKE_READY\n' >/dev/ttyS0
 SMOKE
+
+# The Coldcard checks run before the ready marker is printed, so an image that
+# lacks a working cross toolchain or a pinned tree can never be admitted.
+if [[ "$coldcard" == "true" ]]; then
+  cat >>"$smoke_file" <<SMOKE_COLDCARD
+test -x /opt/openagents-managed-sandbox/coldcard-build-driver.mjs
+test -x /usr/bin/arm-none-eabi-gcc
+test -x /usr/bin/arm-none-eabi-nm
+test -x /usr/bin/arm-none-eabi-objdump
+test -x /usr/bin/arm-none-eabi-objcopy
+test -x /usr/bin/arm-none-eabi-ar
+test -x /usr/bin/make
+test "\$(/usr/bin/arm-none-eabi-gcc -dumpversion)" = '${COLDCARD_GCC_VERSION}'
+test "\$(git -C /opt/coldcard/vulnerable rev-parse HEAD)" = '${COLDCARD_VULNERABLE_COMMIT}'
+test "\$(git -C /opt/coldcard/fixed rev-parse HEAD)" = '${COLDCARD_FIXED_COMMIT}'
+test -s /opt/coldcard/pins.json
+test -x /opt/coldcard/vulnerable/external/micropython/mpy-cross/mpy-cross
+test -x /opt/coldcard/fixed/external/micropython/mpy-cross/mpy-cross
+test -f /opt/coldcard/vulnerable/external/libngu/ngu/random.c
+test -f /opt/coldcard/fixed/stm32/COLDCARD_MK4/rng.c
+# The workload user must be able to read the trees it will copy, and it must
+# still be unable to write into the pinned originals.
+runuser -u openagents -- test -r /opt/coldcard/vulnerable/.git/HEAD
+! runuser -u openagents -- touch /opt/coldcard/vulnerable/.oa-write-probe 2>/dev/null
+# Prove the cross compiler actually emits Cortex-M4 code in this image.
+runuser -u openagents -- sh -c 'cd /tmp && printf "int oa_probe(void){return 1;}" >oa-probe.c && /usr/bin/arm-none-eabi-gcc -mthumb -mcpu=cortex-m4 -c oa-probe.c -o oa-probe.o && /usr/bin/arm-none-eabi-nm --defined-only oa-probe.o | grep -q " T oa_probe" && rm -f oa-probe.c oa-probe.o'
+SMOKE_COLDCARD
+fi
+
+# The ready marker is always appended last, so every check above it must pass
+# before the builder is allowed to admit the image.
+cat >>"$smoke_file" <<'SMOKE_READY'
+printf 'OA_MSB_IMAGE_SMOKE_READY\n' >/dev/ttyS0
+SMOKE_READY
 
 if [[ "$apply" != "true" ]]; then
   cat <<SUMMARY
@@ -215,6 +309,7 @@ Managed-sandbox guest image dry run
   revision: $revision
   builder:  $builder
   SDKs:     codex 0.144.3; claude-agent 0.3.172
+  coldcard: $coldcard${coldcard:+ (gcc $COLDCARD_GCC_VERSION; $COLDCARD_VULNERABLE_COMMIT / $COLDCARD_FIXED_COMMIT)}
 SUMMARY
   exit 0
 fi
@@ -285,6 +380,12 @@ gcloud compute scp \
   scripts/cloud/forensic-worker-driver.mjs \
   "openagents@${builder}:/tmp/forensic-worker-driver.mjs" \
   --project "$project" --zone "$zone" --quiet
+if [[ "$coldcard" == "true" ]]; then
+  gcloud compute scp \
+    scripts/cloud/coldcard-build-driver.mjs \
+    "openagents@${builder}:/tmp/coldcard-build-driver.mjs" \
+    --project "$project" --zone "$zone" --quiet
+fi
 gcloud compute scp "$setup_file" "openagents@${builder}:/tmp/setup.sh" \
   --project "$project" --zone "$zone" --quiet
 gcloud compute ssh "openagents@${builder}" \
@@ -347,4 +448,5 @@ Managed-sandbox guest image built
   sourceRevision:$revision
   bootSmoke:     private DHCP + startup + hostkeys + metadata guard passed
   SDKs:          codex 0.144.3; claude-agent 0.3.172
+  coldcard:      $coldcard${coldcard:+ (gcc $COLDCARD_GCC_VERSION; $COLDCARD_VULNERABLE_COMMIT / $COLDCARD_FIXED_COMMIT)}
 SUMMARY

@@ -24,7 +24,11 @@ The package owns:
   provenance, and only an `admitted_worker_run` bound to one exact OpenAgents
   Cloud managed-sandbox generation, guest image digest, and its receipts can
   pass `evaluateColdcardArtifactWitnessSuite`; a `conformance_vector` is
-  refused;
+  refused. Three real Coldcard MK4 firmware builds now satisfy that gate:
+  their captures live in `fixtures/forensics/coldcard/artifact-witness-live-*`
+  and are exercised by `test/coldcard-artifact-witness-live.test.ts`, which
+  also checks that the same assertions applied to the wrong build are
+  violated;
 - an independent uint32 Yasmarang transition, libngu/provider combiner,
   32-bit reseed truncation, target-compatible uniform retry, keypad shuffle
   trace, frozen mutation-vector evaluator, explicit work-factor calculator,

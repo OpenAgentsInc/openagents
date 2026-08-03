@@ -28,6 +28,25 @@ The pack contains:
   artifact-witness claim requires captures whose provenance is an
   `admitted_worker_run` bound to one exact OpenAgents Cloud managed-sandbox
   generation, guest image digest, and its emitted receipts; and
+
+- `artifact-witness-live-run.v1.json` plus
+  `artifact-witness-live-captures.v1.json.gz`: **three real Coldcard MK4
+  firmware builds**, not conformance values. Each capture was produced by
+  `scripts/cloud/coldcard-build-driver.mjs` running inside its own admitted
+  OpenAgents Cloud `live_gce` managed sandbox on guest image
+  `oa-msb-guest-coldcard-9296-v2`, which carries `arm-none-eabi-gcc 12.2.1`
+  and the two pinned firmware trees. The run file holds the per-variant
+  assertions and the toolchain and mutation description; the gzipped file
+  holds the captures themselves, including every artifact digest, the
+  enumerated symbol inventory of every object the link consumed, the measured
+  call edges, and the preprocessed macro value. The provenance block on each
+  capture is stamped by
+  `scripts/cloud/coldcard-artifact-witness-live.ts` from the managed-sandbox
+  runtime receipts it observed, never by the guest: a guest cannot attest to
+  its own admission. `evaluateColdcardArtifactWitnessSuite` returns `Verified`
+  for this set, and `packages/forensic-contract/test/coldcard-artifact-witness-live.test.ts`
+  also checks that the same assertions applied to the wrong build are
+  violated, so the file cannot become a rubber stamp; and
 - `generator-vectors.v1.json`: frozen vulnerable, 32-bit-reseeded, approved-
   provider, and guard/provider/initialization/call-trace/reseed mutation
   vectors, plus a synthetic public-material match and a work-factor throughput

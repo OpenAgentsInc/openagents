@@ -1258,9 +1258,16 @@ command evidence; provider claims only from object, archive, symbol-table, and
 link-map evidence; and absence claims only from a complete symbol inventory.
 Missing required artifacts return `not_proven`, and statistical output tests
 are recorded only as inadmissible diagnostics. The checked-in vulnerable,
-fixed, and provider-removal cases are conformance/fault fixtures; a real capture
-must still arrive from the admitted OpenAgents Cloud profile with its own
-content-addressed bytes and receipts.
+fixed, and provider-removal cases in `artifact-witness-fixtures.v1.json` remain
+conformance/fault fixtures that the suite gate refuses. Alongside them,
+`artifact-witness-live-captures.v1.json.gz` now holds three real Coldcard MK4
+firmware builds — vulnerable, fixed, and a provider-removal fault build that
+exits non-zero — each measured inside its own admitted OpenAgents Cloud
+`live_gce` managed sandbox on one guest image that carries a pinned
+`arm-none-eabi-gcc` and both pinned firmware trees. Those captures carry
+`provenance.kind = "admitted_worker_run"` with the run generation, guest image
+digest, and receipt refs, and `evaluateColdcardArtifactWitnessSuite` returns
+`Verified` for them.
 
 Deliver for one C/C++ embedded build pipeline:
 
