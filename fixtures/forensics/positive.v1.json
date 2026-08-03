@@ -551,6 +551,19 @@
       "costMicros": 250000,
       "recordedAt": "2026-08-01T12:05:00.000Z"
     },
+    "openagents.forensic_reviewer_burden_receipt.v1": {
+      "schema": "openagents.forensic_reviewer_burden_receipt.v1",
+      "receiptRef": "receipt.reviewer.burden.1",
+      "runRef": "run.forensic.coldcard.1",
+      "reviewerActorRef": "actor.forensic.independent-reviewer",
+      "reviewEventRef": "event.review.recorded.1",
+      "reviewEventSequence": 8,
+      "duration": { "milliseconds": 60000, "exactness": "exact" },
+      "correctionCount": 1,
+      "rejectionCount": 0,
+      "reasonRefs": ["reason.review.source-correction"],
+      "recordedAt": "2026-08-01T12:08:00.000Z"
+    },
     "openagents.forensic_evaluator_adjudication.v1": {
       "schema": "openagents.forensic_evaluator_adjudication.v1",
       "adjudicationRef": "adjudication.finding.coldcard.1",

@@ -37,22 +37,23 @@ same as accepted end-to-end operation.
 
 [OpenAgents issue #9300](https://github.com/OpenAgentsInc/openagents/issues/9300)
 was reopened on 2026-08-01 after independent review found that the prior child
-issue states overstated acceptance. In particular, the repository does not yet
-have accepted live GCE worker and private source-delivery receipts, real
+issue states overstated acceptance. OFR-002 and OFR-003 are now code-complete
+with focused worker and source-delivery verification. OFR-005 now persists
+native metric evidence in an owner-scoped append-only Cloud SQL ledger. The
+repository still does not claim real
 forensic campaigns, untouched holdout results, an admitted artifact build and
 generator-throughput result, frozen historical replay, or the complete live
-evidence graph. The runtime and source-delivery correction gates remain open in
-[issue #9289](https://github.com/OpenAgentsInc/openagents/issues/9289) and
-[issue #9290](https://github.com/OpenAgentsInc/openagents/issues/9290).
+evidence graph. [Issue #9300](https://github.com/OpenAgentsInc/openagents/issues/9300)
+remains the authority for those live campaign and downstream evidence gates.
 
 Read every status in this roadmap at its narrowest proof rung:
 
-| Rung                     | Current meaning                                                                                                               |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| Implemented              | Source, schema, fixture, adapter, or projection exists in a repository.                                                       |
-| Deterministically tested | A named checked-in test exercises the bounded implementation.                                                                 |
-| Live accepted            | A deployed route produced the required independent receipts. This is still open where #9289, #9290, and #9300 say it is open. |
-| Publicly publishable     | Separate evidence, redaction, disclosure, and publication authority exist. No such general authority is implied here.         |
+| Rung                     | Current meaning                                                                                                                     |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Implemented              | Source, schema, fixture, adapter, or projection exists in a repository.                                                             |
+| Deterministically tested | A named checked-in test exercises the bounded implementation.                                                                       |
+| Live accepted            | A deployed route produced the required independent receipts. This remains open for the campaigns and later evidence named by #9300. |
+| Publicly publishable     | Separate evidence, redaction, disclosure, and publication authority exist. No such general authority is implied here.               |
 
 Use the
 [implementation and operator guide](2026-08-01-omega-forensics-implementation-and-operator-guide.md)

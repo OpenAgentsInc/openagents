@@ -1,4 +1,8 @@
 import {
+  ForensicEvaluatorAdjudicationSchema,
+  ForensicProviderUsageReceiptSchema,
+  ForensicReviewerBurdenReceiptSchema,
+  ForensicRunEventSchema,
   FORENSIC_WORKER_PLACEMENT_VERSION,
   type ForensicBudget,
   ForensicBudgetSchema,
@@ -27,6 +31,10 @@ import {
   type ManagedSandboxBrokerResult,
   makeManagedSandboxBroker,
 } from "./managed-sandbox-broker";
+import type {
+  ForensicMetricEvidenceAppend,
+  ForensicMetricRunEvidence,
+} from "./forensic-metric-evidence";
 
 const FORENSIC_DRIVER_REF = "driver.openagents.forensic-worker.v1";
 const FORENSIC_PROFILE_REF = "profile.sbx.gce.e2-small.v1";
@@ -955,6 +963,17 @@ const ForensicWorkerRouteRequestSchema = S.TaggedUnion({
     reasonRef: S.String,
     requestedAt: ForensicRouteTimestamp,
   },
+  RecordMetricEvidence: {
+    evidence: S.Union([
+      ForensicRunEventSchema,
+      ForensicProviderUsageReceiptSchema,
+      ForensicEvaluatorAdjudicationSchema,
+      ForensicReviewerBurdenReceiptSchema,
+    ]),
+  },
+  ReadMetricEvidence: {
+    runRef: S.String,
+  },
 });
 
 type ForensicAuthenticatedOwner = Readonly<{
@@ -980,6 +999,16 @@ export type ForensicManagedSandboxRouteDependencies<Bindings> = Readonly<{
     Readonly<{ expiresAt: string; release: Effect.Effect<void, BoxV1FacadeError> }>,
     BoxV1FacadeError
   >;
+  appendMetricEvidence: (
+    env: Bindings,
+    ownerRef: string,
+    evidence: unknown,
+  ) => Effect.Effect<ForensicMetricEvidenceAppend, BoxV1FacadeError>;
+  readMetricEvidence: (
+    env: Bindings,
+    ownerRef: string,
+    runRef: string,
+  ) => Effect.Effect<ForensicMetricRunEvidence, BoxV1FacadeError>;
   now?: (() => Date) | undefined;
 }>;
 
@@ -1234,6 +1263,12 @@ export const makeForensicManagedSandboxRoutes = <Bindings>(
             reasonRef: body.reasonRef,
             requestedAt: body.requestedAt,
           });
+          break;
+        case "RecordMetricEvidence":
+          result = yield* dependencies.appendMetricEvidence(env, owner.userId, body.evidence);
+          break;
+        case "ReadMetricEvidence":
+          result = yield* dependencies.readMetricEvidence(env, owner.userId, body.runRef);
           break;
       }
       return routeJson({ result }, {}, owner.decorateResponseHeaders);

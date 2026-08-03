@@ -9,7 +9,7 @@ The package owns:
 
 - target, source-bundle, coverage, profile, worker-placement, prompt, run,
   event, finding, hypothesis, receipt, metric-registry, provider-usage,
-  evaluator-adjudication, scorecard, and promotion shapes;
+  evaluator-adjudication, reviewer-burden, scorecard, and promotion shapes;
 - the Coldcard reproduction, generator, entropy, historical-chain,
   transaction-fingerprint, node-scan, evidence-graph, and claim-revision
   shapes;
@@ -62,6 +62,8 @@ The implementation deliberately keeps these facts separate:
 - fixed, clean, incomplete, development, and holdout populations cannot pool;
 - evaluator timing cannot replace the original content-digested finding time;
 - scorecards rebuild event and receipt digests from retained evidence; and
+- reviewer time, corrections, and rejections require a typed receipt bound to
+  a retained `review_recorded` event; and
 - postmortem comparison outputs cannot become derivation or evaluator inputs,
   and Coldcard development arms cannot enter evaluator-only holdouts.
 - missing build artifacts become `not_proven`, complete symbol inventories are

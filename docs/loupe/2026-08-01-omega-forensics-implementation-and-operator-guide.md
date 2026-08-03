@@ -58,6 +58,7 @@ Omega repository context
 | Managed worker            | [`apps/openagents.com/workers/api/src/forensic-managed-sandbox.ts`](../../apps/openagents.com/workers/api/src/forensic-managed-sandbox.ts)                                                                               | Admission, dispatch, observation, interrupt, settlement, artifact collection, deletion, and cleanup for one exact GCE worker generation.                                                                 |
 | Guest workload boundary   | [`scripts/cloud/forensic-worker-driver.mjs`](../../scripts/cloud/forensic-worker-driver.mjs)                                                                                                                             | Allowlisted Linux workload execution under Bubblewrap, bounded I/O, process-group cancellation, and residue checks.                                                                                      |
 | Source materializer       | [`apps/openagents.com/workers/api/src/forensic-source-materializer.ts`](../../apps/openagents.com/workers/api/src/forensic-source-materializer.ts)                                                                       | Commit and tree resolution, gitlink and submodule coverage, private bundle identity, scoped delivery, and removal.                                                                                       |
+| Native metric ledger      | [`apps/openagents.com/workers/api/src/forensic-metric-evidence.ts`](../../apps/openagents.com/workers/api/src/forensic-metric-evidence.ts)                                                                               | Owner-scoped append-only run events, provider usage, evaluator adjudications, reviewer-burden receipts, Cloud SQL persistence, and exact run evidence reads.                                             |
 | Prompt optimization       | [`apps/openagents.com/workers/api/src/blueprint/services/forensic-prompt-compiler.ts`](../../apps/openagents.com/workers/api/src/blueprint/services/forensic-prompt-compiler.ts)                                         | Immutable candidates, bounded offline compilation, holdout isolation, independent evaluation, Blueprint release gates, activation, and rollback records.                                                 |
 | Coldcard benchmark        | [`fixtures/forensics/coldcard/`](../../fixtures/forensics/coldcard/)                                                                                                                                                     | Five development arms, the six-link source rubric, four reproduction suites, frozen controls, dataset splits, and synthetic fixtures.                                                                    |
 | Node fingerprint tools    | [`tools/coldcard/`](../../tools/coldcard/)                                                                                                                                                                               | Independent, exact-integer, append-only Bitcoin Core fingerprint scanning and base-rate stratification.                                                                                                  |
@@ -69,6 +70,16 @@ the Omega target, lifecycle, review, prompt, and comparison surfaces. OFR-013
 added Blueprint-governed prompt optimization. OFR-014 through OFR-017 added
 the Coldcard artifact, generator, historical-scan, and evidence-graph suites.
 OFR-018 linked that evidence into Omega.
+
+OFR-005 now has a native evidence store behind the authenticated Forensics
+route. `RecordMetricEvidence` strictly decodes and persists one event, usage
+receipt, adjudication, or reviewer-burden receipt. `ReadMetricEvidence` returns
+only the authenticated owner's exact run. Event sequences are dense and
+append-only. Reusing a record reference with different bytes is a conflict.
+Provider usage stays `exact | estimated | upper_bound | unavailable`, and a
+reviewer-burden receipt must bind a retained `review_recorded` event before its
+time, correction count, or rejection count enters a scorecard. See
+[`2026-08-03-native-forensic-metric-evidence-ledger.md`](./2026-08-03-native-forensic-metric-evidence-ledger.md).
 
 This inventory says where code and fixtures live. It does not say that a live
 worker was admitted, private source was delivered to it, a real campaign ran,

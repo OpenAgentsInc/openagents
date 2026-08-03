@@ -28,6 +28,8 @@ export const FORENSIC_PROVIDER_USAGE_RECEIPT_VERSION =
   "openagents.forensic_provider_usage_receipt.v1" as const;
 export const FORENSIC_EVALUATOR_ADJUDICATION_VERSION =
   "openagents.forensic_evaluator_adjudication.v1" as const;
+export const FORENSIC_REVIEWER_BURDEN_RECEIPT_VERSION =
+  "openagents.forensic_reviewer_burden_receipt.v1" as const;
 
 export const ForensicMetricDefinitionSchema = S.Struct({
   schema: S.Literal(FORENSIC_METRIC_DEFINITION_VERSION),
@@ -168,6 +170,34 @@ export const ForensicEvaluatorAdjudicationSchema = S.Struct({
   .annotate({ identifier: "ForensicEvaluatorAdjudication" });
 export interface ForensicEvaluatorAdjudication extends S.Schema.Type<
   typeof ForensicEvaluatorAdjudicationSchema
+> {}
+
+const ReviewerDurationSchema = S.Union([
+  S.Struct({
+    milliseconds: NonNegativeInteger,
+    exactness: S.Literals(["exact", "estimated", "upper_bound"]),
+  }),
+  S.Struct({
+    exactness: S.Literal("unavailable"),
+    unavailableReasonRef: ForensicRef,
+  }),
+]);
+
+export const ForensicReviewerBurdenReceiptSchema = S.Struct({
+  schema: S.Literal(FORENSIC_REVIEWER_BURDEN_RECEIPT_VERSION),
+  receiptRef: ForensicRef,
+  runRef: ForensicRef,
+  reviewerActorRef: ForensicRef,
+  reviewEventRef: ForensicRef,
+  reviewEventSequence: PositiveInteger,
+  duration: ReviewerDurationSchema,
+  correctionCount: NonNegativeInteger,
+  rejectionCount: NonNegativeInteger,
+  reasonRefs: NonEmptyBoundedRefs,
+  recordedAt: ForensicTimestamp,
+}).annotate({ identifier: "ForensicReviewerBurdenReceipt" });
+export interface ForensicReviewerBurdenReceipt extends S.Schema.Type<
+  typeof ForensicReviewerBurdenReceiptSchema
 > {}
 
 export const MetricValueSchema = S.Struct({
@@ -479,6 +509,10 @@ export const ANALYSIS_TIME_TO_IDENTIFICATION_METRIC_REF =
 export const TOKENS_TO_IDENTIFICATION_METRIC_REF = "metric.tokens_to_identification.v1" as const;
 export const TOTAL_RUN_TOKENS_METRIC_REF = "metric.total_run_tokens.v1" as const;
 export const CONTROL_FALSE_POSITIVE_METRIC_REF = "metric.control_false_positive.v1" as const;
+export const REVIEWER_MINUTES_PER_QUALIFIED_FINDING_METRIC_REF =
+  "metric.reviewer_minutes_per_qualified_finding.v1" as const;
+export const CORRECTION_REJECTION_BURDEN_METRIC_REF =
+  "metric.correction_rejection_burden.v1" as const;
 
 const REQUIRED_PROJECTOR_METRICS = [
   QUALIFIED_HIT_METRIC_REF,
@@ -486,6 +520,8 @@ const REQUIRED_PROJECTOR_METRICS = [
   TOKENS_TO_IDENTIFICATION_METRIC_REF,
   TOTAL_RUN_TOKENS_METRIC_REF,
   CONTROL_FALSE_POSITIVE_METRIC_REF,
+  REVIEWER_MINUTES_PER_QUALIFIED_FINDING_METRIC_REF,
+  CORRECTION_REJECTION_BURDEN_METRIC_REF,
 ] as const;
 
 type FrozenMetricSpec = readonly [
@@ -803,7 +839,7 @@ const FROZEN_METRIC_SPECS: ReadonlyArray<FrozenMetricSpec> = [
     "Runs within frozen time, token, cost, network, and artifact caps divided by all runs.",
   ],
   [
-    "metric.reviewer_minutes_per_qualified_finding.v1",
+    REVIEWER_MINUTES_PER_QUALIFIED_FINDING_METRIC_REF,
     "Reviewer minutes per qualified finding",
     "milliseconds",
     "population.reviewed",
@@ -811,7 +847,7 @@ const FROZEN_METRIC_SPECS: ReadonlyArray<FrozenMetricSpec> = [
     "Explicit bounded active-review intervals divided by unique qualified findings.",
   ],
   [
-    "metric.correction_rejection_burden.v1",
+    CORRECTION_REJECTION_BURDEN_METRIC_REF,
     "Correction and rejection burden",
     "ratio",
     "population.reviewed",
@@ -932,6 +968,7 @@ export interface ForensicScorecardRunInput {
   readonly events: ReadonlyArray<ForensicRunEvent>;
   readonly usageReceipts: ReadonlyArray<ForensicProviderUsageReceipt>;
   readonly adjudications: ReadonlyArray<ForensicEvaluatorAdjudication>;
+  readonly reviewerBurdenReceipts?: ReadonlyArray<ForensicReviewerBurdenReceipt>;
   readonly retainedReceiptDigests: ReadonlyArray<string>;
   readonly failureRefs: ReadonlyArray<string>;
 }
@@ -1047,6 +1084,23 @@ const deriveRun = (
   const adjudications = input.adjudications.map((adjudication) =>
     strictDecode(ForensicEvaluatorAdjudicationSchema, adjudication),
   );
+  const reviewerBurdenReceipts = (input.reviewerBurdenReceipts ?? []).map((receipt) =>
+    strictDecode(ForensicReviewerBurdenReceiptSchema, receipt),
+  );
+  if (
+    new Set(reviewerBurdenReceipts.map((receipt) => receipt.receiptRef)).size !==
+      reviewerBurdenReceipts.length ||
+    reviewerBurdenReceipts.some((receipt) => {
+      const event = events.find(
+        (candidate) =>
+          candidate.eventRef === receipt.reviewEventRef &&
+          candidate.sequence === receipt.reviewEventSequence,
+      );
+      return receipt.runRef !== input.runRef || event?.kind !== "review_recorded";
+    })
+  ) {
+    throw new Error("reviewer burden receipts must bind unique retained review events");
+  }
   if (
     new Set(adjudications.map((adjudication) => adjudication.adjudicationRef)).size !==
     adjudications.length
@@ -1105,6 +1159,75 @@ const deriveRun = (
       sourceReceiptRefs: [],
     }),
   ];
+  const unavailableReviewerReceipt = reviewerBurdenReceipts.find(
+    (receipt) => receipt.duration.exactness === "unavailable",
+  );
+  const reviewerReceiptRefs = reviewerBurdenReceipts.map((receipt) => receipt.receiptRef);
+  const reviewerEventRefs = reviewerBurdenReceipts.map((receipt) => receipt.reviewEventRef);
+  values.push(
+    strictDecode(
+      MetricValueSchema,
+      reviewerBurdenReceipts.length === 0 || unavailableReviewerReceipt !== undefined
+        ? metricUnavailable(
+            REVIEWER_MINUTES_PER_QUALIFIED_FINDING_METRIC_REF,
+            unavailableReviewerReceipt?.duration.exactness === "unavailable"
+              ? unavailableReviewerReceipt.duration.unavailableReasonRef
+              : "unavailable.reviewer_burden.missing",
+            reviewerEventRefs,
+            reviewerReceiptRefs,
+          )
+        : qualified.length === 0
+          ? metricUnavailable(
+              REVIEWER_MINUTES_PER_QUALIFIED_FINDING_METRIC_REF,
+              "unavailable.reviewer_burden.no_qualified_finding",
+              reviewerEventRefs,
+              reviewerReceiptRefs,
+            )
+          : {
+              metricRef: REVIEWER_MINUTES_PER_QUALIFIED_FINDING_METRIC_REF,
+              numericValue:
+                reviewerBurdenReceipts.reduce(
+                  (total, receipt) =>
+                    total +
+                    (receipt.duration.exactness === "unavailable"
+                      ? 0
+                      : receipt.duration.milliseconds),
+                  0,
+                ) / qualified.length,
+              exactness: reviewerBurdenReceipts.some(
+                (receipt) => receipt.duration.exactness === "upper_bound",
+              )
+                ? "upper_bound"
+                : reviewerBurdenReceipts.some(
+                      (receipt) => receipt.duration.exactness === "estimated",
+                    )
+                  ? "estimated"
+                  : "exact",
+              sourceEventRefs: reviewerEventRefs,
+              sourceReceiptRefs: reviewerReceiptRefs,
+            },
+    ),
+    strictDecode(
+      MetricValueSchema,
+      reviewerBurdenReceipts.length === 0
+        ? metricUnavailable(
+            CORRECTION_REJECTION_BURDEN_METRIC_REF,
+            "unavailable.reviewer_burden.missing",
+            [],
+            [],
+          )
+        : {
+            metricRef: CORRECTION_REJECTION_BURDEN_METRIC_REF,
+            numericValue: reviewerBurdenReceipts.reduce(
+              (total, receipt) => total + receipt.correctionCount + receipt.rejectionCount,
+              0,
+            ),
+            exactness: "exact",
+            sourceEventRefs: reviewerEventRefs,
+            sourceReceiptRefs: reviewerReceiptRefs,
+          },
+    ),
+  );
 
   if (firstQualified === undefined || analysisStarted === undefined) {
     values.push(
@@ -1255,6 +1378,7 @@ export const rebuildForensicScorecard = (
     }, new Map<string, { datasetSplit: ScorecardRun["datasetSplit"]; population: ScorecardPopulation; runCount: number; hitCount: number; missCount: number; censorCount: number }>()),
   ).map(([, group]) => group);
   const usageReceipts = input.runs.flatMap((run) => run.usageReceipts);
+  const reviewerBurdenReceipts = input.runs.flatMap((run) => run.reviewerBurdenReceipts ?? []);
   const hasUnavailableCost =
     usageReceipts.length === 0 ||
     usageReceipts.some(
@@ -1293,7 +1417,11 @@ export const rebuildForensicScorecard = (
     eventDigest: forensicSha256Digest(
       input.runs.flatMap((run) => [...run.events, ...run.adjudications]),
     ),
-    receiptDigest: forensicSha256Digest([...usageReceipts, ...retainedReceiptDigests]),
+    receiptDigest: forensicSha256Digest([
+      ...usageReceipts,
+      ...reviewerBurdenReceipts,
+      ...retainedReceiptDigests,
+    ]),
     generatedAt: input.generatedAt,
   });
 };

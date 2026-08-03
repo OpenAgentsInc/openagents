@@ -4,12 +4,14 @@ import { forensicCanonicalJson, forensicSha256Digest, strictDecode } from "../sr
 import {
   ANALYSIS_TIME_TO_IDENTIFICATION_METRIC_REF,
   CONTROL_FALSE_POSITIVE_METRIC_REF,
+  CORRECTION_REJECTION_BURDEN_METRIC_REF,
   FROZEN_FORENSIC_METRIC_REGISTRY,
   FORENSIC_EVALUATOR_ADJUDICATION_VERSION,
   FORENSIC_METRIC_DEFINITION_VERSION,
   FORENSIC_METRIC_REGISTRY_VERSION,
   FORENSIC_PROVIDER_USAGE_RECEIPT_VERSION,
   QUALIFIED_HIT_METRIC_REF,
+  REVIEWER_MINUTES_PER_QUALIFIED_FINDING_METRIC_REF,
   TOKENS_TO_IDENTIFICATION_METRIC_REF,
   TOTAL_RUN_TOKENS_METRIC_REF,
   ForensicEvaluatorAdjudicationSchema,
@@ -29,7 +31,7 @@ const evaluatorRevisionDigest = digest("9");
 
 const definition = (
   metricRef: string,
-  unit: "boolean" | "milliseconds" | "tokens",
+  unit: "boolean" | "count" | "milliseconds" | "tokens",
 ): ForensicMetricDefinition => ({
   schema: FORENSIC_METRIC_DEFINITION_VERSION,
   metricRef,
@@ -53,6 +55,8 @@ const definitions = [
   definition(TOKENS_TO_IDENTIFICATION_METRIC_REF, "tokens"),
   definition(TOTAL_RUN_TOKENS_METRIC_REF, "tokens"),
   definition(CONTROL_FALSE_POSITIVE_METRIC_REF, "boolean"),
+  definition(REVIEWER_MINUTES_PER_QUALIFIED_FINDING_METRIC_REF, "milliseconds"),
+  definition(CORRECTION_REJECTION_BURDEN_METRIC_REF, "count"),
 ];
 
 const registry = strictDecode(ForensicMetricRegistrySchema, {

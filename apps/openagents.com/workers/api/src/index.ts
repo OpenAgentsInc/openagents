@@ -498,6 +498,10 @@ import {
   makeForensicManagedSandboxRoutes,
 } from './forensic-managed-sandbox'
 import {
+  ForensicMetricEvidenceError,
+  makePostgresForensicMetricEvidenceStore,
+} from './forensic-metric-evidence'
+import {
   FORENSIC_SOURCE_MATERIALIZATION_PATH,
   ForensicSourceMaterializationError,
   coldcardBuildConfigGeneratedInputRegistration,
@@ -12897,6 +12901,80 @@ const forensicManagedSandboxRoutes = makeForensicManagedSandboxRoutes<Env>({
   profileDigest: env => env.OA_MANAGED_SANDBOX_PROFILE_DIGEST,
   store: managedSandboxBoxV1StoreForEnv,
   runtime: managedSandboxBoxV1RuntimeForEnv,
+  appendMetricEvidence: (env, ownerRef, evidence) =>
+    Effect.tryPromise({
+      try: async () => {
+        const connectionString = env.KHALA_SYNC_DB?.connectionString
+        if (connectionString === undefined) {
+          throw new Error('Forensic metric evidence storage is not configured')
+        }
+        const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+        try {
+          return await Effect.runPromise(
+            makePostgresForensicMetricEvidenceStore(client.sql).append(
+              ownerRef,
+              evidence,
+            ),
+          )
+        } finally {
+          await client.end()
+        }
+      },
+      catch: error =>
+        new BoxV1FacadeError({
+          code:
+            error instanceof ForensicMetricEvidenceError && !error.retryable
+              ? 'conflict'
+              : 'upstream_unavailable',
+          status:
+            error instanceof ForensicMetricEvidenceError && !error.retryable
+              ? 409
+              : 503,
+          message:
+            error instanceof ForensicMetricEvidenceError
+              ? error.message
+              : 'Forensic metric evidence storage is unavailable',
+          retryable:
+            !(error instanceof ForensicMetricEvidenceError) || error.retryable,
+        }),
+    }),
+  readMetricEvidence: (env, ownerRef, runRef) =>
+    Effect.tryPromise({
+      try: async () => {
+        const connectionString = env.KHALA_SYNC_DB?.connectionString
+        if (connectionString === undefined) {
+          throw new Error('Forensic metric evidence storage is not configured')
+        }
+        const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+        try {
+          return await Effect.runPromise(
+            makePostgresForensicMetricEvidenceStore(client.sql).readRun(
+              ownerRef,
+              runRef,
+            ),
+          )
+        } finally {
+          await client.end()
+        }
+      },
+      catch: error =>
+        new BoxV1FacadeError({
+          code:
+            error instanceof ForensicMetricEvidenceError && !error.retryable
+              ? 'conflict'
+              : 'upstream_unavailable',
+          status:
+            error instanceof ForensicMetricEvidenceError && !error.retryable
+              ? 409
+              : 503,
+          message:
+            error instanceof ForensicMetricEvidenceError
+              ? error.message
+              : 'Forensic metric evidence storage is unavailable',
+          retryable:
+            !(error instanceof ForensicMetricEvidenceError) || error.retryable,
+        }),
+    }),
   assertSourceReady: (env, binding) =>
     Effect.gen(function* () {
       const policy = yield* managedSandboxBoxV1PolicyForEnv(env)

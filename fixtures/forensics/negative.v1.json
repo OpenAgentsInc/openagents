@@ -31,6 +31,7 @@
     "openagents.forensic_metric_definition.v1",
     "openagents.forensic_metric_registry.v1",
     "openagents.forensic_provider_usage_receipt.v1",
+    "openagents.forensic_reviewer_burden_receipt.v1",
     "openagents.forensic_evaluator_adjudication.v1",
     "openagents.forensic_scorecard.v1",
     "openagents.forensic_prompt_promotion.v1",

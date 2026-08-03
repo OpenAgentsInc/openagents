@@ -1,5 +1,6 @@
 import {
   type ForensicBudget,
+  type ForensicRunEvent,
   ForensicWorkerPlacementSchema,
 } from "@openagentsinc/forensic-contract";
 import { ManagedSandboxResourceSchema } from "@openagentsinc/managed-sandbox-contract";
@@ -789,6 +790,8 @@ describe("forensic managed sandbox", () => {
       },
       runtime: () => Effect.die("runtime must not run while disabled"),
       assertSourceReady: () => Effect.die("authority must not run while disabled"),
+      appendMetricEvidence: () => Effect.die("metrics must not run while disabled"),
+      readMetricEvidence: () => Effect.die("metrics must not run while disabled"),
     });
     const response = await Effect.runPromise(
       routes.handle(
@@ -818,6 +821,7 @@ describe("forensic managed sandbox", () => {
           generation: input.resource.resourceGeneration,
         }),
     };
+    const retainedMetricEvidence: Array<ForensicRunEvent> = [];
     const routes = makeForensicManagedSandboxRoutes({
       authenticateOwner: async () => ({ userId: principal.ownerRef }),
       enabled: () => true,
@@ -826,6 +830,31 @@ describe("forensic managed sandbox", () => {
       store: () => authority,
       runtime: () => Effect.succeed(runtime),
       assertSourceReady: () => Effect.die("observation does not materialize source"),
+      appendMetricEvidence: (_env, ownerRef, evidence) => {
+        if (!("eventRef" in evidence)) return Effect.die("expected a forensic run event");
+        retainedMetricEvidence.push(evidence);
+        return Effect.succeed({
+          ownerRef,
+          runRef: (evidence as { runRef: string }).runRef,
+          recordRef: (evidence as { eventRef: string }).eventRef,
+          recordKind: "run_event" as const,
+          canonicalDigest: `sha256:${"a".repeat(64)}`,
+          duplicate: false,
+          persisted: true as const,
+        });
+      },
+      readMetricEvidence: (_env, ownerRef, requestedRunRef) =>
+        Effect.succeed({
+          schema: "openagents.forensic_metric_evidence_ledger.v1" as const,
+          ownerRef,
+          runRef: requestedRunRef,
+          events: retainedMetricEvidence,
+          usageReceipts: [],
+          adjudications: [],
+          reviewerBurdenReceipts: [],
+          eventDigest: `sha256:${"b".repeat(64)}`,
+          receiptDigest: `sha256:${"c".repeat(64)}`,
+        }),
       now: () => new Date("2026-08-01T10:00:00.000Z"),
     });
     const admission = await Effect.runPromise(
@@ -893,6 +922,64 @@ describe("forensic managed sandbox", () => {
         nextSequence: firstBody.result.nextSequence,
         silenceIsTerminal: false,
       },
+    });
+
+    const runRef = "run.forensic.route-metrics";
+    const metricRecord = {
+      schema: "openagents.forensic_run_event.v1",
+      eventRef: "event.forensic.route-metrics.1",
+      runRef,
+      sequence: 1,
+      kind: "request_accepted",
+      actorRef: principal.actorRef,
+      metricContext: {
+        benchmarkRevisionDigest: `sha256:${"1".repeat(64)}`,
+        datasetSplit: "development",
+        armRef: "arm.coldcard.complete-vulnerable",
+        repetition: 1,
+        targetDigest: `sha256:${"2".repeat(64)}`,
+        sourceBundleDigest: `sha256:${"3".repeat(64)}`,
+        promptDigest: `sha256:${"4".repeat(64)}`,
+        modelDigest: `sha256:${"5".repeat(64)}`,
+        modelParametersDigest: `sha256:${"6".repeat(64)}`,
+        workerImageDigest: `sha256:${"7".repeat(64)}`,
+        workerProfileDigest: `sha256:${"8".repeat(64)}`,
+        sandboxRef: placement.sandboxRef,
+        resourceGeneration: placement.resourceGeneration,
+        evaluatorRevisionDigest: `sha256:${"9".repeat(64)}`,
+      },
+      relatedRefs: [],
+      detailRefs: [],
+      clock: "control_plane_server",
+      observedAt: "2026-08-01T10:00:00.000Z",
+    };
+    const recordResponse = await Effect.runPromise(
+      routes.handle(
+        new Request(`https://api.openagents.com${FORENSIC_MANAGED_SANDBOX_PATH}`, {
+          method: "POST",
+          body: JSON.stringify({ _tag: "RecordMetricEvidence", evidence: metricRecord }),
+        }),
+        {},
+        {} as ExecutionContext,
+      ),
+    );
+    expect(recordResponse.status).toBe(200);
+    await expect(recordResponse.json()).resolves.toMatchObject({
+      result: { recordRef: metricRecord.eventRef, persisted: true, duplicate: false },
+    });
+    const readResponse = await Effect.runPromise(
+      routes.handle(
+        new Request(`https://api.openagents.com${FORENSIC_MANAGED_SANDBOX_PATH}`, {
+          method: "POST",
+          body: JSON.stringify({ _tag: "ReadMetricEvidence", runRef }),
+        }),
+        {},
+        {} as ExecutionContext,
+      ),
+    );
+    expect(readResponse.status).toBe(200);
+    await expect(readResponse.json()).resolves.toMatchObject({
+      result: { ownerRef: principal.ownerRef, runRef, events: [metricRecord] },
     });
   });
 });
