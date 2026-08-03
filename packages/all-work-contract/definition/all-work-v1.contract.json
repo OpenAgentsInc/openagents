@@ -16,7 +16,7 @@
     "absent_fields_omitted",
     "present_null_encoded_as_null"
   ],
-  "maximumEncodedBytes": 65536,
+  "maximumEncodedBytes": 2097152,
   "unknownFieldPolicy": "reject",
   "unknownVariantPolicy": "reject",
   "compatibilityPolicy": "same-major-additive-optional-only",
@@ -485,9 +485,179 @@
       ]
     },
     {
+      "name": "PlanningResourceRef",
+      "kind": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$",
+      "formatClass": "reference"
+    },
+    {
+      "name": "SourceUrl",
+      "kind": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^https://[^ ]+$",
+      "formatClass": "text"
+    },
+    {
+      "name": "PlanningResourceKind",
+      "kind": "enum",
+      "values": [
+        "organization",
+        "team",
+        "initiative",
+        "project_status",
+        "project",
+        "project_milestone",
+        "cycle",
+        "workflow_state",
+        "label",
+        "document",
+        "project_update",
+        "custom_view",
+        "notification",
+        "release_pipeline",
+        "release_stage",
+        "release_planning_record"
+      ]
+    },
+    {
+      "name": "PlanningResource",
+      "kind": "record",
+      "fields": [
+        { "name": "resourceRef", "type": "PlanningResourceRef" },
+        { "name": "kind", "type": "PlanningResourceKind" },
+        { "name": "name", "type": "ShortText" },
+        { "name": "description", "type": { "optional": "LongText" } },
+        { "name": "parentRef", "type": { "optional": { "nullable": "PlanningResourceRef" } } },
+        { "name": "state", "type": { "optional": "ShortText" } },
+        { "name": "revision", "type": "SafeInteger" },
+        { "name": "updatedAt", "type": "IsoTimestamp" }
+      ]
+    },
+    {
+      "name": "SourceCoordinate",
+      "kind": "record",
+      "fields": [
+        { "name": "workRef", "type": "WorkRef" },
+        { "name": "sourceRef", "type": "SourceRef" },
+        { "name": "repository", "type": "ShortText" },
+        { "name": "identifier", "type": "ShortText" },
+        { "name": "url", "type": "SourceUrl" },
+        { "name": "sourceRevision", "type": "ShortText" },
+        { "name": "fetchedAt", "type": "IsoTimestamp" },
+        { "name": "available", "type": "boolean" }
+      ]
+    },
+    {
+      "name": "WorkLabelLink",
+      "kind": "record",
+      "fields": [
+        { "name": "workRef", "type": "WorkRef" },
+        { "name": "labelRef", "type": "PlanningResourceRef" }
+      ]
+    },
+    {
+      "name": "WorkPlanningLink",
+      "kind": "record",
+      "fields": [
+        { "name": "workRef", "type": "WorkRef" },
+        { "name": "projectRef", "type": { "nullable": "ProjectRef" } },
+        { "name": "projectMilestoneRef", "type": { "nullable": "ProjectMilestoneRef" } },
+        { "name": "cycleRef", "type": { "nullable": "CycleRef" } },
+        { "name": "workflowStateRef", "type": { "nullable": "PlanningResourceRef" } },
+        { "name": "releasePlanningRecordRef", "type": { "nullable": "PlanningResourceRef" } }
+      ]
+    },
+    {
+      "name": "PlanningTextRecordKind",
+      "kind": "enum",
+      "values": ["comment", "document", "project_update"]
+    },
+    {
+      "name": "PlanningTextRecord",
+      "kind": "record",
+      "fields": [
+        { "name": "recordRef", "type": "PlanningResourceRef" },
+        { "name": "kind", "type": "PlanningTextRecordKind" },
+        { "name": "workRef", "type": { "optional": { "nullable": "WorkRef" } } },
+        { "name": "resourceRef", "type": { "optional": { "nullable": "PlanningResourceRef" } } },
+        { "name": "body", "type": "LongText" },
+        { "name": "authorRef", "type": "PrincipalRef" },
+        { "name": "createdAt", "type": "IsoTimestamp" },
+        { "name": "sourceRef", "type": { "optional": { "nullable": "SourceRef" } } }
+      ]
+    },
+    {
+      "name": "ReleaseScopeLink",
+      "kind": "record",
+      "fields": [
+        { "name": "releasePlanningRecordRef", "type": "PlanningResourceRef" },
+        { "name": "workRef", "type": "WorkRef" }
+      ]
+    },
+    {
+      "name": "ProjectionIssueKind",
+      "kind": "enum",
+      "values": [
+        "missing",
+        "private",
+        "malformed",
+        "unsupported",
+        "page_gap",
+        "source_unavailable"
+      ]
+    },
+    {
+      "name": "ProjectionIssue",
+      "kind": "record",
+      "fields": [
+        { "name": "issueRef", "type": "PlanningResourceRef" },
+        { "name": "kind", "type": "ProjectionIssueKind" },
+        { "name": "sourceRef", "type": { "nullable": "SourceRef" } },
+        { "name": "detail", "type": "ShortText" },
+        { "name": "observedAt", "type": "IsoTimestamp" }
+      ]
+    },
+    {
+      "name": "PlanningGraph",
+      "kind": "record",
+      "fields": [
+        { "name": "contractVersion", "type": "ContractVersion" },
+        { "name": "graphRef", "type": "PlanningResourceRef" },
+        { "name": "revision", "type": "SafeInteger" },
+        { "name": "eventCursor", "type": "WorkCursor" },
+        { "name": "reconciliationDigest", "type": "ContractDigest" },
+        { "name": "generatedAt", "type": "IsoTimestamp" },
+        { "name": "resources", "type": { "array": "PlanningResource", "maxItems": 10000 } },
+        { "name": "work", "type": { "array": "WorkSnapshot", "maxItems": 10000 } },
+        { "name": "planningLinks", "type": { "array": "WorkPlanningLink", "maxItems": 10000 } },
+        { "name": "labelLinks", "type": { "array": "WorkLabelLink", "maxItems": 10000 } },
+        { "name": "textRecords", "type": { "array": "PlanningTextRecord", "maxItems": 50000 } },
+        { "name": "releaseScopeLinks", "type": { "array": "ReleaseScopeLink", "maxItems": 10000 } },
+        { "name": "sourceCoordinates", "type": { "array": "SourceCoordinate", "maxItems": 10000 } },
+        { "name": "projectionIssues", "type": { "array": "ProjectionIssue", "maxItems": 10000 } },
+        { "name": "completeness", "type": "Completeness" },
+        { "name": "freshness", "type": "Freshness" }
+      ]
+    },
+    {
+      "name": "PlanningGraphReadRequest",
+      "kind": "record",
+      "fields": [
+        { "name": "afterRevision", "type": { "optional": { "nullable": "SafeInteger" } } }
+      ]
+    },
+    {
+      "name": "PlanningGraphReadResult",
+      "kind": "record",
+      "fields": [{ "name": "graph", "type": "PlanningGraph" }]
+    },
+    {
       "name": "ProtocolCapability",
       "kind": "enum",
-      "values": ["work.index.read", "work.snapshot.read"]
+      "values": ["work.index.read", "work.snapshot.read", "planning.graph.read"]
     },
     {
       "name": "ProtocolErrorCode",
@@ -656,6 +826,15 @@
             { "name": "version", "type": "ProtocolVersion" },
             { "name": "params", "type": "WorkSnapshotReadRequest" }
           ]
+        },
+        {
+          "name": "PlanningGraphRead",
+          "tag": "planning.graph.read",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "params", "type": "PlanningGraphReadRequest" }
+          ]
         }
       ]
     },
@@ -692,6 +871,15 @@
           ]
         },
         {
+          "name": "PlanningGraphRead",
+          "tag": "planning.graph.read",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "result", "type": "PlanningGraphReadResult" }
+          ]
+        },
+        {
           "name": "Error",
           "tag": "error",
           "fields": [
@@ -706,6 +894,9 @@
   "roots": [
     "WorkSummary",
     "WorkSnapshot",
+    "PlanningGraph",
+    "PlanningGraphReadRequest",
+    "PlanningGraphReadResult",
     "IssueProjection",
     "ProtocolError",
     "ProtocolInitializeRequest",
@@ -740,6 +931,13 @@
       "minimumVersion": "omega-effectd.v2",
       "params": "WorkSnapshotReadRequest",
       "result": "WorkSnapshotReadResult"
+    },
+    {
+      "method": "planning.graph.read",
+      "capability": "planning.graph.read",
+      "minimumVersion": "omega-effectd.v2",
+      "params": "PlanningGraphReadRequest",
+      "result": "PlanningGraphReadResult"
     }
   ],
   "fixtures": [

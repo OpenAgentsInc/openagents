@@ -10,6 +10,15 @@
       "$ref": "#/$defs/WorkSnapshot"
     },
     {
+      "$ref": "#/$defs/PlanningGraph"
+    },
+    {
+      "$ref": "#/$defs/PlanningGraphReadRequest"
+    },
+    {
+      "$ref": "#/$defs/PlanningGraphReadResult"
+    },
+    {
       "$ref": "#/$defs/IssueProjection"
     },
     {
@@ -877,12 +886,491 @@
       ],
       "additionalProperties": false
     },
+    "PlanningResourceRef": {
+      "type": "string",
+      "title": "PlanningResourceRef",
+      "x-openagents-brand": "PlanningResourceRef",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]{0,159}$"
+    },
+    "SourceUrl": {
+      "type": "string",
+      "title": "SourceUrl",
+      "x-openagents-brand": "SourceUrl",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^https://[^ ]+$"
+    },
+    "PlanningResourceKind": {
+      "type": "string",
+      "title": "PlanningResourceKind",
+      "enum": [
+        "organization",
+        "team",
+        "initiative",
+        "project_status",
+        "project",
+        "project_milestone",
+        "cycle",
+        "workflow_state",
+        "label",
+        "document",
+        "project_update",
+        "custom_view",
+        "notification",
+        "release_pipeline",
+        "release_stage",
+        "release_planning_record"
+      ]
+    },
+    "PlanningResource": {
+      "type": "object",
+      "title": "PlanningResource",
+      "properties": {
+        "resourceRef": {
+          "$ref": "#/$defs/PlanningResourceRef"
+        },
+        "kind": {
+          "$ref": "#/$defs/PlanningResourceKind"
+        },
+        "name": {
+          "$ref": "#/$defs/ShortText"
+        },
+        "description": {
+          "$ref": "#/$defs/LongText"
+        },
+        "parentRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlanningResourceRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/ShortText"
+        },
+        "revision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        }
+      },
+      "required": [
+        "resourceRef",
+        "kind",
+        "name",
+        "revision",
+        "updatedAt"
+      ],
+      "additionalProperties": false
+    },
+    "SourceCoordinate": {
+      "type": "object",
+      "title": "SourceCoordinate",
+      "properties": {
+        "workRef": {
+          "$ref": "#/$defs/WorkRef"
+        },
+        "sourceRef": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "repository": {
+          "$ref": "#/$defs/ShortText"
+        },
+        "identifier": {
+          "$ref": "#/$defs/ShortText"
+        },
+        "url": {
+          "$ref": "#/$defs/SourceUrl"
+        },
+        "sourceRevision": {
+          "$ref": "#/$defs/ShortText"
+        },
+        "fetchedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "available": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "workRef",
+        "sourceRef",
+        "repository",
+        "identifier",
+        "url",
+        "sourceRevision",
+        "fetchedAt",
+        "available"
+      ],
+      "additionalProperties": false
+    },
+    "WorkLabelLink": {
+      "type": "object",
+      "title": "WorkLabelLink",
+      "properties": {
+        "workRef": {
+          "$ref": "#/$defs/WorkRef"
+        },
+        "labelRef": {
+          "$ref": "#/$defs/PlanningResourceRef"
+        }
+      },
+      "required": [
+        "workRef",
+        "labelRef"
+      ],
+      "additionalProperties": false
+    },
+    "WorkPlanningLink": {
+      "type": "object",
+      "title": "WorkPlanningLink",
+      "properties": {
+        "workRef": {
+          "$ref": "#/$defs/WorkRef"
+        },
+        "projectRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProjectRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectMilestoneRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProjectMilestoneRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cycleRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CycleRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workflowStateRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlanningResourceRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "releasePlanningRecordRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlanningResourceRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "workRef",
+        "projectRef",
+        "projectMilestoneRef",
+        "cycleRef",
+        "workflowStateRef",
+        "releasePlanningRecordRef"
+      ],
+      "additionalProperties": false
+    },
+    "PlanningTextRecordKind": {
+      "type": "string",
+      "title": "PlanningTextRecordKind",
+      "enum": [
+        "comment",
+        "document",
+        "project_update"
+      ]
+    },
+    "PlanningTextRecord": {
+      "type": "object",
+      "title": "PlanningTextRecord",
+      "properties": {
+        "recordRef": {
+          "$ref": "#/$defs/PlanningResourceRef"
+        },
+        "kind": {
+          "$ref": "#/$defs/PlanningTextRecordKind"
+        },
+        "workRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resourceRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlanningResourceRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "body": {
+          "$ref": "#/$defs/LongText"
+        },
+        "authorRef": {
+          "$ref": "#/$defs/PrincipalRef"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "sourceRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "recordRef",
+        "kind",
+        "body",
+        "authorRef",
+        "createdAt"
+      ],
+      "additionalProperties": false
+    },
+    "ReleaseScopeLink": {
+      "type": "object",
+      "title": "ReleaseScopeLink",
+      "properties": {
+        "releasePlanningRecordRef": {
+          "$ref": "#/$defs/PlanningResourceRef"
+        },
+        "workRef": {
+          "$ref": "#/$defs/WorkRef"
+        }
+      },
+      "required": [
+        "releasePlanningRecordRef",
+        "workRef"
+      ],
+      "additionalProperties": false
+    },
+    "ProjectionIssueKind": {
+      "type": "string",
+      "title": "ProjectionIssueKind",
+      "enum": [
+        "missing",
+        "private",
+        "malformed",
+        "unsupported",
+        "page_gap",
+        "source_unavailable"
+      ]
+    },
+    "ProjectionIssue": {
+      "type": "object",
+      "title": "ProjectionIssue",
+      "properties": {
+        "issueRef": {
+          "$ref": "#/$defs/PlanningResourceRef"
+        },
+        "kind": {
+          "$ref": "#/$defs/ProjectionIssueKind"
+        },
+        "sourceRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "detail": {
+          "$ref": "#/$defs/ShortText"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        }
+      },
+      "required": [
+        "issueRef",
+        "kind",
+        "sourceRef",
+        "detail",
+        "observedAt"
+      ],
+      "additionalProperties": false
+    },
+    "PlanningGraph": {
+      "type": "object",
+      "title": "PlanningGraph",
+      "properties": {
+        "contractVersion": {
+          "$ref": "#/$defs/ContractVersion"
+        },
+        "graphRef": {
+          "$ref": "#/$defs/PlanningResourceRef"
+        },
+        "revision": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "eventCursor": {
+          "$ref": "#/$defs/WorkCursor"
+        },
+        "reconciliationDigest": {
+          "$ref": "#/$defs/ContractDigest"
+        },
+        "generatedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PlanningResource"
+          },
+          "maxItems": 10000
+        },
+        "work": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkSnapshot"
+          },
+          "maxItems": 10000
+        },
+        "planningLinks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkPlanningLink"
+          },
+          "maxItems": 10000
+        },
+        "labelLinks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkLabelLink"
+          },
+          "maxItems": 10000
+        },
+        "textRecords": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PlanningTextRecord"
+          },
+          "maxItems": 50000
+        },
+        "releaseScopeLinks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReleaseScopeLink"
+          },
+          "maxItems": 10000
+        },
+        "sourceCoordinates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceCoordinate"
+          },
+          "maxItems": 10000
+        },
+        "projectionIssues": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProjectionIssue"
+          },
+          "maxItems": 10000
+        },
+        "completeness": {
+          "$ref": "#/$defs/Completeness"
+        },
+        "freshness": {
+          "$ref": "#/$defs/Freshness"
+        }
+      },
+      "required": [
+        "contractVersion",
+        "graphRef",
+        "revision",
+        "eventCursor",
+        "reconciliationDigest",
+        "generatedAt",
+        "resources",
+        "work",
+        "planningLinks",
+        "labelLinks",
+        "textRecords",
+        "releaseScopeLinks",
+        "sourceCoordinates",
+        "projectionIssues",
+        "completeness",
+        "freshness"
+      ],
+      "additionalProperties": false
+    },
+    "PlanningGraphReadRequest": {
+      "type": "object",
+      "title": "PlanningGraphReadRequest",
+      "properties": {
+        "afterRevision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "PlanningGraphReadResult": {
+      "type": "object",
+      "title": "PlanningGraphReadResult",
+      "properties": {
+        "graph": {
+          "$ref": "#/$defs/PlanningGraph"
+        }
+      },
+      "required": [
+        "graph"
+      ],
+      "additionalProperties": false
+    },
     "ProtocolCapability": {
       "type": "string",
       "title": "ProtocolCapability",
       "enum": [
         "work.index.read",
-        "work.snapshot.read"
+        "work.snapshot.read",
+        "planning.graph.read"
       ]
     },
     "ProtocolErrorCode": {
@@ -1308,6 +1796,30 @@
             "params"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "planning.graph.read"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "params": {
+              "$ref": "#/$defs/PlanningGraphReadRequest"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "params"
+          ],
+          "additionalProperties": false
         }
       ]
     },
@@ -1390,6 +1902,30 @@
           "type": "object",
           "properties": {
             "method": {
+              "const": "planning.graph.read"
+            },
+            "id": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "version": {
+              "$ref": "#/$defs/ProtocolVersion"
+            },
+            "result": {
+              "$ref": "#/$defs/PlanningGraphReadResult"
+            }
+          },
+          "required": [
+            "method",
+            "id",
+            "version",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
               "const": "error"
             },
             "id": {
@@ -1417,7 +1953,7 @@
     "profileVersion": "openagents.contract_profile.v1",
     "contractRef": "openagents.all_work_boundary.v1",
     "contractVersion": 1,
-    "definitionSha256": "f40c1d09b12103f0247a6354e020ed7322415c8b228e45a8fd3f8d7ccd3294f8",
+    "definitionSha256": "f41f9e8b44f95936694c74799027fa78b9e35ffe102a1a85e4b86027bb15748b",
     "owningDomain": "all_work_boundary",
     "authoritativeRuntime": "effect",
     "relationship": "projection",
@@ -1431,7 +1967,7 @@
       "absent_fields_omitted",
       "present_null_encoded_as_null"
     ],
-    "maximumEncodedBytes": 65536,
+    "maximumEncodedBytes": 2097152,
     "unknownFieldPolicy": "reject",
     "unknownVariantPolicy": "reject",
     "compatibilityPolicy": "same-major-additive-optional-only",

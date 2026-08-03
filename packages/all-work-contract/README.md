@@ -1,8 +1,8 @@
 # OpenAgents All Work contract
 
-`@openagentsinc/all-work-contract` owns the encoded boundary for the first
-read-only All Work composition slice. It does not own Work lifecycle policy or
-replace native Effect and Rust domain models.
+`@openagentsinc/all-work-contract` owns the encoded boundary for All Work reads
+and the first OpenAgents-owned planning authority. It does not replace native
+Effect and Rust domain models.
 
 The reviewed source is
 [`definition/all-work-v1.contract.json`](./definition/all-work-v1.contract.json).
@@ -28,6 +28,38 @@ cursor without a revision advance. The boundary also defines typed Work-index
 subscription request/event envelopes without claiming a production transport.
 Neither layer grants admission, delegation, verification, acceptance, release,
 settlement, or public-claim authority.
+
+## Planning authority
+
+`PlanningGraph` is the generated cross-runtime read model. It carries typed
+planning resources, same-identity Work/Issue snapshots, planning and label
+links, public-safe text records, Release Scope Links, Source Coordinates,
+Projection Issues, freshness, completeness, a revision, an event cursor, and a
+reconciliation digest. Release Planning Record resources are planning metadata.
+They are never canonical Releases, Release Candidates, approvals, or
+publication authority.
+
+The Effect-owned implementation is handwritten beside the generated shape:
+
+- `src/planning-authority.ts` owns native create, update, triage, relation,
+  comment, and planning commands. It requires optimistic revision and an
+  idempotency key, records a zero-GitHub-write receipt, and refuses native
+  mutation of imported read-only Work.
+- `src/planning-file-store.ts` validates the versioned state and atomically
+  replaces the owner-local JSON record. A multi-process host supplies its normal
+  single-writer lease; stale revisions fail closed.
+- `src/github-bootstrap.ts` reconciles bounded, public-safe GitHub pages into
+  stable Work identities. GitHub supplies source observations only. Missing
+  pages become explicit gaps; a complete later observation can mark a retained
+  last-known-good row unavailable without deleting its identity.
+- `bootstrap/v0.2.0-github-source.json` is the digestible initial import corpus:
+  22 open rows, six closed foundation rows, 42 planning resources, and 36 typed
+  relations from the accepted dogfood snapshot. Importing the same corpus again
+  is a no-op.
+
+The command processor does not write to GitHub. A successful GitHub read grants
+no command, claim, delegation, verification, owner-disposition, release, or
+public-claim authority.
 
 Canonical JSON uses `openagents-canonical-json-v1`: UTF-8, object keys sorted
 by Unicode code point, array order retained, safe integers only, absent fields
@@ -66,3 +98,8 @@ The first immutable consumer is Omega commit
 also has an opt-in cross-repository test that starts the pinned TypeScript
 process and negotiates `omega-effectd.v2` before it decodes the typed Work
 Index response.
+
+The additive `planning.graph.read` method is the generated seam for the
+canonical planning projection. An Omega consumer must pin the definition and
+Rust artifact digests together. It must not decode the development fixture as
+live authority.

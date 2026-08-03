@@ -116,6 +116,10 @@ Read these documents in this order:
     with the current
     [`@openagentsinc/all-work-contract`](../../packages/all-work-contract/README.md)
     generated read boundary before changing any cross-runtime Work shape.
+40. Read the
+    [canonical All Work planning authority implementation](./2026-08-03-canonical-all-work-planning-authority.md)
+    before changing the planning store, GitHub bootstrap reconciliation, native
+    Work commands, or `planning.graph.read` projection.
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.

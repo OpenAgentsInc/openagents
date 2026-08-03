@@ -1,0 +1,1191 @@
+{
+  "bootstrapRef": "github-bootstrap:omega-v0.2.0:2026-08-03",
+  "fetchedAt": "2026-08-03T05:00:00Z",
+  "expectedRepositories": [
+    "OpenAgentsInc/omega",
+    "OpenAgentsInc/openagents"
+  ],
+  "pages": [
+    {
+      "repository": "OpenAgentsInc/omega",
+      "page": 1,
+      "cursor": null,
+      "nextCursor": null,
+      "complete": true,
+      "issues": [
+        {
+          "repository": "OpenAgentsInc/omega",
+          "number": 160,
+          "title": "Cut and verify the Omega 0.2.0 candidate",
+          "state": "open",
+          "priority": "high",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:160:open",
+          "url": "https://github.com/OpenAgentsInc/omega/issues/160",
+          "labels": [
+            "release"
+          ],
+          "comments": [],
+          "relations": [],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:candidate-launch-proof",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": "release-planning:omega-0.2.0"
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/omega",
+          "number": 208,
+          "title": "Make Omega the first-class All Work client",
+          "state": "open",
+          "priority": "high",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:208:open",
+          "url": "https://github.com/OpenAgentsInc/omega/issues/208",
+          "labels": [
+            "all-work"
+          ],
+          "comments": [],
+          "relations": [],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": null,
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:in-progress",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/omega",
+          "number": 214,
+          "title": "Separate Assignee, Agent Delegate, Thread, Session, and Run in Omega",
+          "state": "open",
+          "priority": "high",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:214:open",
+          "url": "https://github.com/OpenAgentsInc/omega/issues/214",
+          "labels": [
+            "all-work"
+          ],
+          "comments": [],
+          "relations": [
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/omega",
+              "targetNumber": 215
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/omega",
+              "targetNumber": 216
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/omega",
+              "targetNumber": 218
+            }
+          ],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:agentic-execution-loop",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/omega",
+          "number": 215,
+          "title": "Add Linear-class portfolio, planning, triage, and review UI for any Work Domain",
+          "state": "open",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:215:open",
+          "url": "https://github.com/OpenAgentsInc/omega/issues/215",
+          "labels": [
+            "all-work"
+          ],
+          "comments": [],
+          "relations": [],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:planning-projections-sdk",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/omega",
+          "number": 216,
+          "title": "Integrate signed Work and Workroom activity into Omega",
+          "state": "open",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:216:open",
+          "url": "https://github.com/OpenAgentsInc/omega/issues/216",
+          "labels": [
+            "all-work"
+          ],
+          "comments": [],
+          "relations": [],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:planning-projections-sdk",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/omega",
+          "number": 217,
+          "title": "Restore a complete macOS accessibility tree for installed Omega",
+          "state": "open",
+          "priority": "urgent",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:217:open",
+          "url": "https://github.com/OpenAgentsInc/omega/issues/217",
+          "labels": [
+            "accessibility",
+            "s0"
+          ],
+          "comments": [],
+          "relations": [],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:candidate-launch-proof",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/omega",
+          "number": 218,
+          "title": "Show effective principal and Organization identity in Omega",
+          "state": "open",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:218:open",
+          "url": "https://github.com/OpenAgentsInc/omega/issues/218",
+          "labels": [
+            "all-work"
+          ],
+          "comments": [],
+          "relations": [],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:agentic-execution-loop",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/omega",
+          "number": 219,
+          "title": "Enforce concise Omega copy and non-text status cues",
+          "state": "open",
+          "priority": "high",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:219:open",
+          "url": "https://github.com/OpenAgentsInc/omega/issues/219",
+          "labels": [
+            "copy",
+            "s2"
+          ],
+          "comments": [],
+          "relations": [],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:candidate-launch-proof",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/omega",
+          "number": 209,
+          "title": "Hide unimplemented and fixture-only production destinations",
+          "state": "closed",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:209:closed",
+          "url": "https://github.com/OpenAgentsInc/omega/issues/209",
+          "labels": [],
+          "comments": [],
+          "relations": [],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:all-work-foundation",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:done",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/omega",
+          "number": 210,
+          "title": "Add typed entity routes and correct repository/thread terminology",
+          "state": "closed",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:210:closed",
+          "url": "https://github.com/OpenAgentsInc/omega/issues/210",
+          "labels": [],
+          "comments": [],
+          "relations": [],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:all-work-foundation",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:done",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/omega",
+          "number": 211,
+          "title": "Project a read-only Work Index into Inbox and My Work",
+          "state": "closed",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:211:closed",
+          "url": "https://github.com/OpenAgentsInc/omega/issues/211",
+          "labels": [],
+          "comments": [],
+          "relations": [],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:all-work-foundation",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:done",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/omega",
+          "number": 212,
+          "title": "Build Work/Issue detail and inspector surfaces",
+          "state": "closed",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:212:closed",
+          "url": "https://github.com/OpenAgentsInc/omega/issues/212",
+          "labels": [],
+          "comments": [],
+          "relations": [],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:all-work-foundation",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:done",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/omega",
+          "number": 213,
+          "title": "Normalize Forensics as the first Security Work domain",
+          "state": "closed",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:213:closed",
+          "url": "https://github.com/OpenAgentsInc/omega/issues/213",
+          "labels": [],
+          "comments": [],
+          "relations": [],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:all-work-foundation",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:done",
+            "releasePlanningRecordRef": null
+          }
+        }
+      ]
+    },
+    {
+      "repository": "OpenAgentsInc/openagents",
+      "page": 1,
+      "cursor": null,
+      "nextCursor": null,
+      "complete": true,
+      "issues": [
+        {
+          "repository": "OpenAgentsInc/openagents",
+          "number": 9304,
+          "title": "Define signed Nostr Work and Workroom projections",
+          "state": "open",
+          "priority": "high",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9304:open",
+          "url": "https://github.com/OpenAgentsInc/openagents/issues/9304",
+          "labels": [
+            "all-work"
+          ],
+          "comments": [],
+          "relations": [
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/omega",
+              "targetNumber": 216
+            }
+          ],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:planning-projections-sdk",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/openagents",
+          "number": 9305,
+          "title": "Generate the All Work API and SDK from owned contracts",
+          "state": "open",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9305:open",
+          "url": "https://github.com/OpenAgentsInc/openagents/issues/9305",
+          "labels": [
+            "all-work"
+          ],
+          "comments": [],
+          "relations": [],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:planning-projections-sdk",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/openagents",
+          "number": 9289,
+          "title": "Admit the OpenAgents Cloud forensic worker",
+          "state": "open",
+          "priority": "high",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9289:open",
+          "url": "https://github.com/OpenAgentsInc/openagents/issues/9289",
+          "labels": [
+            "security"
+          ],
+          "comments": [],
+          "relations": [
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9290
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9292
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9293
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9294
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9296
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9297
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9298
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9300
+            }
+          ],
+          "planning": {
+            "projectRef": "project:forensics-security-work",
+            "projectMilestoneRef": "milestone:live-evidence-completion",
+            "cycleRef": null,
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/openagents",
+          "number": 9290,
+          "title": "Materialize immutable forensic source bundles",
+          "state": "open",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9290:open",
+          "url": "https://github.com/OpenAgentsInc/openagents/issues/9290",
+          "labels": [
+            "security"
+          ],
+          "comments": [],
+          "relations": [
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9291
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9293
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9300
+            }
+          ],
+          "planning": {
+            "projectRef": "project:forensics-security-work",
+            "projectMilestoneRef": "milestone:live-evidence-completion",
+            "cycleRef": null,
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/openagents",
+          "number": 9291,
+          "title": "Import the Coldcard forensic benchmark",
+          "state": "open",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9291:open",
+          "url": "https://github.com/OpenAgentsInc/openagents/issues/9291",
+          "labels": [
+            "security"
+          ],
+          "comments": [],
+          "relations": [
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9292
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9294
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9295
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9296
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9297
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9298
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9299
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9300
+            }
+          ],
+          "planning": {
+            "projectRef": "project:forensics-security-work",
+            "projectMilestoneRef": "milestone:live-evidence-completion",
+            "cycleRef": null,
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/openagents",
+          "number": 9292,
+          "title": "Measure forensic identification quality and efficiency",
+          "state": "open",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9292:open",
+          "url": "https://github.com/OpenAgentsInc/openagents/issues/9292",
+          "labels": [
+            "security"
+          ],
+          "comments": [],
+          "relations": [
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9295
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9300
+            }
+          ],
+          "planning": {
+            "projectRef": "project:forensics-security-work",
+            "projectMilestoneRef": "milestone:live-evidence-completion",
+            "cycleRef": null,
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/openagents",
+          "number": 9293,
+          "title": "Add a configurable Loupe forensic adapter",
+          "state": "open",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9293:open",
+          "url": "https://github.com/OpenAgentsInc/openagents/issues/9293",
+          "labels": [
+            "security"
+          ],
+          "comments": [],
+          "relations": [
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9294
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9295
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9300
+            }
+          ],
+          "planning": {
+            "projectRef": "project:forensics-security-work",
+            "projectMilestoneRef": "milestone:live-evidence-completion",
+            "cycleRef": null,
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/openagents",
+          "number": 9294,
+          "title": "Repair and prove the Loupe verification path",
+          "state": "open",
+          "priority": "high",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9294:open",
+          "url": "https://github.com/OpenAgentsInc/openagents/issues/9294",
+          "labels": [
+            "security"
+          ],
+          "comments": [],
+          "relations": [
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9300
+            }
+          ],
+          "planning": {
+            "projectRef": "project:forensics-security-work",
+            "projectMilestoneRef": "milestone:live-evidence-completion",
+            "cycleRef": null,
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/openagents",
+          "number": 9295,
+          "title": "Compile and govern optimized forensic prompts",
+          "state": "open",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9295:open",
+          "url": "https://github.com/OpenAgentsInc/openagents/issues/9295",
+          "labels": [
+            "security"
+          ],
+          "comments": [],
+          "relations": [
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9300
+            }
+          ],
+          "planning": {
+            "projectRef": "project:forensics-security-work",
+            "projectMilestoneRef": "milestone:live-evidence-completion",
+            "cycleRef": null,
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/openagents",
+          "number": 9296,
+          "title": "Build the Coldcard artifact witness",
+          "state": "open",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9296:open",
+          "url": "https://github.com/OpenAgentsInc/openagents/issues/9296",
+          "labels": [
+            "security"
+          ],
+          "comments": [],
+          "relations": [
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9297
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9300
+            }
+          ],
+          "planning": {
+            "projectRef": "project:forensics-security-work",
+            "projectMilestoneRef": "milestone:live-evidence-completion",
+            "cycleRef": null,
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/openagents",
+          "number": 9297,
+          "title": "Reproduce the Coldcard generator and owned fixture",
+          "state": "open",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9297:open",
+          "url": "https://github.com/OpenAgentsInc/openagents/issues/9297",
+          "labels": [
+            "security"
+          ],
+          "comments": [],
+          "relations": [
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9300
+            }
+          ],
+          "planning": {
+            "projectRef": "project:forensics-security-work",
+            "projectMilestoneRef": "milestone:live-evidence-completion",
+            "cycleRef": null,
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/openagents",
+          "number": 9298,
+          "title": "Scan frozen chain data for Coldcard fingerprints",
+          "state": "open",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9298:open",
+          "url": "https://github.com/OpenAgentsInc/openagents/issues/9298",
+          "labels": [
+            "security"
+          ],
+          "comments": [],
+          "relations": [
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9299
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9300
+            }
+          ],
+          "planning": {
+            "projectRef": "project:forensics-security-work",
+            "projectMilestoneRef": "milestone:live-evidence-completion",
+            "cycleRef": null,
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/openagents",
+          "number": 9299,
+          "title": "Derive the Coldcard evidence graph and claim history",
+          "state": "open",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9299:open",
+          "url": "https://github.com/OpenAgentsInc/openagents/issues/9299",
+          "labels": [
+            "security"
+          ],
+          "comments": [],
+          "relations": [
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/openagents",
+              "targetNumber": 9300
+            }
+          ],
+          "planning": {
+            "projectRef": "project:forensics-security-work",
+            "projectMilestoneRef": "milestone:live-evidence-completion",
+            "cycleRef": null,
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/openagents",
+          "number": 9300,
+          "title": "Track the Omega forensic analysis roadmap",
+          "state": "open",
+          "priority": "high",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9300:open",
+          "url": "https://github.com/OpenAgentsInc/openagents/issues/9300",
+          "labels": [
+            "security"
+          ],
+          "comments": [],
+          "relations": [],
+          "planning": {
+            "projectRef": "project:forensics-security-work",
+            "projectMilestoneRef": "milestone:live-evidence-completion",
+            "cycleRef": null,
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/openagents",
+          "number": 9303,
+          "title": "Generate the owned All Work boundary for Effect and Rust",
+          "state": "closed",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T05:00:00Z",
+          "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9303:closed",
+          "url": "https://github.com/OpenAgentsInc/openagents/issues/9303",
+          "labels": [],
+          "comments": [],
+          "relations": [],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:all-work-foundation",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:done",
+            "releasePlanningRecordRef": null
+          }
+        }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "resourceRef": "organization:openagentsinc",
+      "kind": "organization",
+      "name": "OpenAgentsInc",
+      "parentRef": null,
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "team:omega",
+      "kind": "team",
+      "name": "Omega",
+      "parentRef": "organization:openagentsinc",
+      "state": "OMEGA",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "initiative:omega-all-work-client",
+      "kind": "initiative",
+      "name": "Omega as the first-class All Work client",
+      "parentRef": "organization:openagentsinc",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "project-status:started",
+      "kind": "project_status",
+      "name": "Started",
+      "parentRef": null,
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "project:omega-v0.2.0-dogfood",
+      "kind": "project",
+      "name": "Omega v0.2.0 dogfood",
+      "parentRef": "initiative:omega-all-work-client",
+      "state": "project-status:started",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "project:forensics-security-work",
+      "kind": "project",
+      "name": "Forensics Security Work",
+      "parentRef": "initiative:omega-all-work-client",
+      "state": "project-status:started",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "milestone:all-work-foundation",
+      "kind": "project_milestone",
+      "name": "All Work foundation",
+      "parentRef": "project:omega-v0.2.0-dogfood",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "milestone:agentic-execution-loop",
+      "kind": "project_milestone",
+      "name": "Agentic execution loop",
+      "parentRef": "project:omega-v0.2.0-dogfood",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "milestone:planning-projections-sdk",
+      "kind": "project_milestone",
+      "name": "Planning, projections, and SDK",
+      "parentRef": "project:omega-v0.2.0-dogfood",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "milestone:candidate-launch-proof",
+      "kind": "project_milestone",
+      "name": "Candidate and launch proof",
+      "parentRef": "project:omega-v0.2.0-dogfood",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "milestone:live-evidence-completion",
+      "kind": "project_milestone",
+      "name": "Live evidence completion",
+      "parentRef": "project:forensics-security-work",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "cycle:v0.2.0-dogfood",
+      "kind": "cycle",
+      "name": "v0.2.0 dogfood",
+      "parentRef": "project:omega-v0.2.0-dogfood",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "workflow:backlog",
+      "kind": "workflow_state",
+      "name": "Backlog",
+      "parentRef": "team:omega",
+      "state": "backlog",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "workflow:ready",
+      "kind": "workflow_state",
+      "name": "Ready",
+      "parentRef": "team:omega",
+      "state": "unstarted",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "workflow:in-progress",
+      "kind": "workflow_state",
+      "name": "In Progress",
+      "parentRef": "team:omega",
+      "state": "started",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "workflow:in-review",
+      "kind": "workflow_state",
+      "name": "In Review",
+      "parentRef": "team:omega",
+      "state": "started",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "workflow:verification",
+      "kind": "workflow_state",
+      "name": "Verification",
+      "parentRef": "team:omega",
+      "state": "started",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "workflow:done",
+      "kind": "workflow_state",
+      "name": "Done",
+      "parentRef": "team:omega",
+      "state": "completed",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "workflow:canceled",
+      "kind": "workflow_state",
+      "name": "Canceled",
+      "parentRef": "team:omega",
+      "state": "canceled",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "label:all-work",
+      "kind": "label",
+      "name": "All Work",
+      "parentRef": "team:omega",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "label:release",
+      "kind": "label",
+      "name": "Release",
+      "parentRef": "team:omega",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "label:accessibility",
+      "kind": "label",
+      "name": "Accessibility",
+      "parentRef": "team:omega",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "label:copy",
+      "kind": "label",
+      "name": "Copy",
+      "parentRef": "team:omega",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "label:security",
+      "kind": "label",
+      "name": "Security",
+      "parentRef": "team:omega",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "label:s0",
+      "kind": "label",
+      "name": "S0",
+      "parentRef": "team:omega",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "label:s2",
+      "kind": "label",
+      "name": "S2",
+      "parentRef": "team:omega",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "document:dogfood-plan",
+      "kind": "document",
+      "name": "Omega v0.2.0 All Work dogfooding plan",
+      "description": "https://github.com/OpenAgentsInc/openagents/blob/72e78764da28b1120ae72d85bc25c0330335e578/docs/omega/2026-08-02-v0.2.0-all-work-dogfooding-plan.md",
+      "parentRef": "project:omega-v0.2.0-dogfood",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "project-update:dogfood-snapshot",
+      "kind": "project_update",
+      "name": "Fresh candidate required; All Work dogfood is adjacent to the narrow v0.2.0 release gate.",
+      "parentRef": "project:omega-v0.2.0-dogfood",
+      "state": "at_risk",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "project-update:security-snapshot",
+      "kind": "project_update",
+      "name": "Adjacent Security Work remains outside the v0.2.0 release scope.",
+      "parentRef": "project:forensics-security-work",
+      "state": "blocked",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "view:critical-path",
+      "kind": "custom_view",
+      "name": "v0.2.0 critical path",
+      "description": "releaseScope=true OR blocks>0",
+      "parentRef": "project:omega-v0.2.0-dogfood",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "view:unassigned",
+      "kind": "custom_view",
+      "name": "Unassigned",
+      "description": "assignee=null",
+      "parentRef": "project:omega-v0.2.0-dogfood",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "view:blocked",
+      "kind": "custom_view",
+      "name": "Blocked",
+      "description": "blockedBy>0",
+      "parentRef": "project:omega-v0.2.0-dogfood",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "view:agent-active",
+      "kind": "custom_view",
+      "name": "Agent active",
+      "description": "agentSession.status=active",
+      "parentRef": "project:omega-v0.2.0-dogfood",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "view:needs-owner",
+      "kind": "custom_view",
+      "name": "Needs owner",
+      "description": "ownerDisposition=needs_owner",
+      "parentRef": "project:omega-v0.2.0-dogfood",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "view:in-review",
+      "kind": "custom_view",
+      "name": "In review",
+      "description": "state=in_review",
+      "parentRef": "project:omega-v0.2.0-dogfood",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "view:verification",
+      "kind": "custom_view",
+      "name": "Verification",
+      "description": "state=verification",
+      "parentRef": "project:omega-v0.2.0-dogfood",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "release-pipeline:omega-desktop",
+      "kind": "release_pipeline",
+      "name": "Omega desktop",
+      "parentRef": "organization:openagentsinc",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "release-stage:dogfood",
+      "kind": "release_stage",
+      "name": "Dogfood",
+      "parentRef": "release-pipeline:omega-desktop",
+      "state": "started",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "release-stage:candidate",
+      "kind": "release_stage",
+      "name": "Candidate",
+      "parentRef": "release-pipeline:omega-desktop",
+      "state": "planned",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "release-stage:verification",
+      "kind": "release_stage",
+      "name": "Verification",
+      "parentRef": "release-pipeline:omega-desktop",
+      "state": "planned",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "release-stage:published",
+      "kind": "release_stage",
+      "name": "Published",
+      "parentRef": "release-pipeline:omega-desktop",
+      "state": "planned",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    },
+    {
+      "resourceRef": "release-planning:omega-0.2.0",
+      "kind": "release_planning_record",
+      "name": "Omega 0.2.0",
+      "description": "Target version 0.2.0; planning only, canonical release authority: false.",
+      "parentRef": "project:omega-v0.2.0-dogfood",
+      "state": "release-stage:dogfood",
+      "revision": 1,
+      "updatedAt": "2026-08-03T05:00:00Z"
+    }
+  ]
+}

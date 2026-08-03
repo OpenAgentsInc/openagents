@@ -28,7 +28,7 @@ export class AllWorkSemanticError extends S.TaggedErrorClass<AllWorkSemanticErro
   },
 ) {}
 
-const capabilities = ["work.index.read", "work.snapshot.read"] as const;
+const capabilities = ["work.index.read", "work.snapshot.read", "planning.graph.read"] as const;
 
 const compareUnicodeCodePoints = (left: string, right: string): number => {
   const leftPoints = Array.from(left, (value) => value.codePointAt(0) ?? 0);
