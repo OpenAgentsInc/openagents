@@ -2520,6 +2520,9 @@ importers:
       '@effect-native/core':
         specifier: workspace:*
         version: link:../../apps/openagents.com/packages/effect-native-core
+      '@noble/curves':
+        specifier: 1.8.1
+        version: 1.8.1
       '@openagentsinc/agent-harness-contract':
         specifier: 0.2.1-rc.4
         version: 0.2.1-rc.4
@@ -2560,9 +2563,6 @@ importers:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
     devDependencies:
-      '@noble/curves':
-        specifier: 1.8.1
-        version: 1.8.1
       esbuild:
         specifier: 0.25.12
         version: 0.25.12
