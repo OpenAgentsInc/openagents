@@ -19,19 +19,36 @@ const error = (detail: string) =>
 const notFound = (cause: unknown): boolean =>
   typeof cause === "object" && cause !== null && Reflect.get(cause, "code") === "ENOENT";
 
-const migratePreDeliveryOutbox = (input: unknown): unknown => {
+const migrateActivity = (input: unknown): unknown =>
+  typeof input === "object" && input !== null
+    ? {
+        projectionProfile:
+          Reflect.get(input, "projectionProfile") ?? "openagents.signed-workroom.v1",
+        ...input,
+        actorGrantRef: Reflect.get(input, "actorGrantRef") ?? null,
+        actorGrantGeneration: Reflect.get(input, "actorGrantGeneration") ?? null,
+      }
+    : input;
+
+const migratePreActorGrantOutbox = (input: unknown): unknown => {
   if (typeof input !== "object" || input === null) return input;
   const ledger = Reflect.get(input, "ledger");
   if (typeof ledger !== "object" || ledger === null) return input;
+  const activities = Reflect.get(ledger, "activities");
   const outbox = Reflect.get(ledger, "outbox");
   if (!Array.isArray(outbox)) return input;
   return {
     ...input,
     ledger: {
       ...ledger,
+      activities: Array.isArray(activities) ? activities.map(migrateActivity) : activities,
       outbox: outbox.map((record) =>
-        typeof record === "object" && record !== null && !Object.hasOwn(record, "deliveryAttempts")
-          ? { ...record, deliveryAttempts: [] }
+        typeof record === "object" && record !== null
+          ? {
+              ...record,
+              activity: migrateActivity(Reflect.get(record, "activity")),
+              deliveryAttempts: Reflect.get(record, "deliveryAttempts") ?? [],
+            }
           : record,
       ),
     },
@@ -49,7 +66,7 @@ const readState = (
       Effect.try({ try: () => JSON.parse(contents), catch: () => error("json") }),
     ),
     Effect.flatMap((input) =>
-      S.decodeUnknownEffect(SignedWorkroomStateSchema)(migratePreDeliveryOutbox(input), {
+      S.decodeUnknownEffect(SignedWorkroomStateSchema)(migratePreActorGrantOutbox(input), {
         onExcessProperty: "error",
       }).pipe(Effect.mapError(() => error("decode"))),
     ),

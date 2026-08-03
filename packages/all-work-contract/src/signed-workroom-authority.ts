@@ -1,9 +1,17 @@
 import { createHash } from "node:crypto";
-import { Context, Effect, Schema as S } from "effect";
+import { Context, Effect, Layer, Option, Schema as S } from "effect";
 
 import {
   decodeSignedWorkroomLedger,
+  DelegationGrantRefSchema,
+  EvidenceRefSchema,
+  IsoTimestampSchema,
+  NostrPublicKeySchema,
+  PrincipalRefSchema,
+  PrivacyClassSchema,
+  SafeIntegerSchema,
   type SignedWorkroomActivity,
+  SignedWorkroomActivityKindSchema,
   type SignedWorkroomDeliveryRequest,
   type SignedWorkroomDeliveryResult,
   type SignedWorkroomEnqueueRequest,
@@ -12,6 +20,9 @@ import {
   type SignedWorkroomReadRequest,
   type SignedWorkroomReadResult,
   SignedWorkroomLedgerSchema,
+  WorkroomAudienceSchema,
+  WorkroomRefSchema,
+  WorkRefSchema,
 } from "./generated.ts";
 import { verifySignedWorkroomNostrActivity } from "./signed-workroom-nostr.ts";
 
@@ -32,7 +43,11 @@ export class SignedWorkroomError extends S.TaggedErrorClass<SignedWorkroomError>
       "invalid_revocation",
       "invalid_event_id",
       "invalid_signature",
+      "invalid_projection_profile",
       "signer_actor_mismatch",
+      "actor_grant_required",
+      "invalid_actor_grant",
+      "stale_actor_grant",
       "outbox_not_found",
       "invalid_delivery",
       "invalid_state",
@@ -41,6 +56,76 @@ export class SignedWorkroomError extends S.TaggedErrorClass<SignedWorkroomError>
     detail: S.String,
   },
 ) {}
+
+export const SIGNED_WORKROOM_ACTOR_GRANT_PURPOSE =
+  "purpose:signed-workroom:project-activity" as const;
+
+export const SignedWorkroomActorGrantSchema = S.Struct({
+  grantRef: DelegationGrantRefSchema,
+  issuerPrincipalRef: PrincipalRefSchema,
+  actorRef: PrincipalRefSchema,
+  signerPubkey: NostrPublicKeySchema,
+  purpose: S.Literal(SIGNED_WORKROOM_ACTOR_GRANT_PURPOSE),
+  workroomRef: WorkroomRefSchema,
+  workRef: S.NullOr(WorkRefSchema),
+  activityKinds: S.Array(SignedWorkroomActivityKindSchema).check(
+    S.isMinLength(1),
+    S.isMaxLength(14),
+  ),
+  audiences: S.Array(WorkroomAudienceSchema).check(S.isMinLength(1), S.isMaxLength(6)),
+  privacyClasses: S.Array(PrivacyClassSchema).check(S.isMinLength(1), S.isMaxLength(6)),
+  generation: SafeIntegerSchema,
+  validFrom: IsoTimestampSchema,
+  expiresAt: IsoTimestampSchema,
+  state: S.Literals(["active", "revoked", "superseded"]),
+  evidenceRefs: S.Array(EvidenceRefSchema).check(S.isMinLength(1), S.isMaxLength(64)),
+}).annotate({ identifier: "SignedWorkroomActorGrant" });
+export interface SignedWorkroomActorGrant extends S.Schema.Type<
+  typeof SignedWorkroomActorGrantSchema
+> {}
+
+export interface SignedWorkroomActorGrantResolverShape {
+  readonly resolve: (
+    grantRef: string,
+  ) => Effect.Effect<SignedWorkroomActorGrant | null, SignedWorkroomError>;
+}
+
+export class SignedWorkroomActorGrantResolver extends Context.Service<
+  SignedWorkroomActorGrantResolver,
+  SignedWorkroomActorGrantResolverShape
+>()("SignedWorkroomAuthority.ActorGrantResolver") {}
+
+export const makeSignedWorkroomActorGrantResolverLayer = (
+  grants: ReadonlyArray<unknown>,
+): Layer.Layer<SignedWorkroomActorGrantResolver, SignedWorkroomError> =>
+  Layer.effect(
+    SignedWorkroomActorGrantResolver,
+    Effect.gen(function* () {
+      const decoded = yield* Effect.forEach(grants, (grant) =>
+        S.decodeUnknownEffect(SignedWorkroomActorGrantSchema)(grant, {
+          onExcessProperty: "error",
+        }).pipe(
+          Effect.mapError(
+            () =>
+              new SignedWorkroomError({
+                reason: "invalid_actor_grant",
+                detail: "actor grant authority returned an invalid fact",
+              }),
+          ),
+        ),
+      );
+      const byRef = new Map(decoded.map((grant) => [grant.grantRef, grant]));
+      if (byRef.size !== decoded.length) {
+        return yield* new SignedWorkroomError({
+          reason: "invalid_actor_grant",
+          detail: "actor grant authority returned duplicate grant refs",
+        });
+      }
+      return SignedWorkroomActorGrantResolver.of({
+        resolve: (grantRef) => Effect.succeed(byRef.get(grantRef) ?? null),
+      });
+    }),
+  );
 
 export const SignedWorkroomStateSchema = S.Struct({
   ledger: SignedWorkroomLedgerSchema,
@@ -158,15 +243,112 @@ export const validateSignedWorkroomProjection = (
           detail: "the Workroom projection Schnorr signature is invalid",
         }),
       );
-    case "signer_actor_mismatch":
-      return Effect.fail(
-        new SignedWorkroomError({
-          reason: "signer_actor_mismatch",
-          detail: "direct signed projection requires the exact Nostr principal",
-        }),
-      );
   }
 };
+
+const isSupportedGrantedActor = (actorRef: string): boolean =>
+  ["principal:agent:", "principal:device:", "principal:organization:"].some(
+    (prefix) => actorRef.startsWith(prefix) && actorRef.length > prefix.length,
+  );
+
+const validateActorBindingShape = (
+  activity: SignedWorkroomActivity,
+): Effect.Effect<"direct" | "granted", SignedWorkroomError> => {
+  const directActorRef = `principal:nostr:${activity.signerPubkey}`;
+  const actorGrantRef = activity.actorGrantRef ?? null;
+  const actorGrantGeneration = activity.actorGrantGeneration ?? null;
+  if (activity.actorRef === directActorRef) {
+    return actorGrantRef === null && actorGrantGeneration === null
+      ? Effect.succeed("direct" as const)
+      : Effect.fail(
+          new SignedWorkroomError({
+            reason: "invalid_actor_grant",
+            detail: "direct Nostr actors cannot attach an actor grant",
+          }),
+        );
+  }
+  if (
+    !isSupportedGrantedActor(activity.actorRef) ||
+    activity.projectionProfile !== "openagents.signed-workroom.v2" ||
+    actorGrantRef === null ||
+    actorGrantGeneration === null
+  ) {
+    return Effect.fail(
+      new SignedWorkroomError({
+        reason: "signer_actor_mismatch",
+        detail: "non-direct actors require a bound agent, device, or organization grant",
+      }),
+    );
+  }
+  return Effect.succeed("granted" as const);
+};
+
+export const validateSignedWorkroomAdmission = (
+  activity: SignedWorkroomActivity,
+  admittedAt: string,
+  options?: Readonly<{ allowLegacyDirectReplay?: boolean }>,
+): Effect.Effect<void, SignedWorkroomError> =>
+  Effect.gen(function* () {
+    yield* validateSignedWorkroomProjection(activity);
+    const binding = yield* validateActorBindingShape(activity);
+    if (
+      activity.projectionProfile !== "openagents.signed-workroom.v2" &&
+      !(binding === "direct" && options?.allowLegacyDirectReplay === true)
+    ) {
+      return yield* new SignedWorkroomError({
+        reason: "invalid_projection_profile",
+        detail: "new signed Workroom admission requires the current projection profile",
+      });
+    }
+    if (binding === "direct") return;
+    const resolver = yield* Effect.serviceOption(SignedWorkroomActorGrantResolver);
+    if (Option.isNone(resolver)) {
+      return yield* new SignedWorkroomError({
+        reason: "actor_grant_required",
+        detail: "authoritative actor grant resolver is unavailable",
+      });
+    }
+    const grant = yield* resolver.value.resolve(activity.actorGrantRef!);
+    if (grant === null || grant.state !== "active") {
+      return yield* new SignedWorkroomError({
+        reason: "stale_actor_grant",
+        detail: "actor grant is absent, revoked, or superseded",
+      });
+    }
+    const admittedTime = Date.parse(admittedAt);
+    const occurredTime = Date.parse(activity.occurredAt);
+    const validFrom = Date.parse(grant.validFrom);
+    const expiresAt = Date.parse(grant.expiresAt);
+    const scopeMatches =
+      grant.grantRef === activity.actorGrantRef &&
+      grant.generation === activity.actorGrantGeneration &&
+      grant.actorRef === activity.actorRef &&
+      grant.signerPubkey === activity.signerPubkey &&
+      grant.workroomRef === activity.workroomRef &&
+      grant.workRef === activity.workRef &&
+      grant.activityKinds.includes(activity.kind) &&
+      grant.audiences.includes(activity.audience) &&
+      grant.privacyClasses.includes(activity.privacyClass) &&
+      grant.evidenceRefs.every((evidenceRef) => activity.evidenceRefs.includes(evidenceRef));
+    if (!scopeMatches) {
+      return yield* new SignedWorkroomError({
+        reason: "invalid_actor_grant",
+        detail: "actor grant does not match the signed activity scope",
+      });
+    }
+    if (
+      !Number.isFinite(admittedTime) ||
+      admittedTime < validFrom ||
+      admittedTime >= expiresAt ||
+      occurredTime < validFrom ||
+      occurredTime >= expiresAt
+    ) {
+      return yield* new SignedWorkroomError({
+        reason: "stale_actor_grant",
+        detail: "actor grant is not valid at occurrence and admission time",
+      });
+    }
+  });
 
 export const validateSignedWorkroomState = (
   state: SignedWorkroomState,
@@ -191,9 +373,11 @@ export const validateSignedWorkroomState = (
     }
     for (const activity of state.ledger.activities) {
       yield* validateSignedWorkroomProjection(activity);
+      yield* validateActorBindingShape(activity);
     }
     for (const record of state.ledger.outbox) {
       yield* validateSignedWorkroomProjection(record.activity);
+      yield* validateActorBindingShape(record.activity);
       const canonical = activitiesByRef.get(record.activity.eventRef);
       if (canonical === undefined || digest(canonical) !== digest(record.activity)) {
         return yield* new SignedWorkroomError({
@@ -282,7 +466,7 @@ export const enqueueSignedWorkroomActivity = (
         detail: `event ${request.activity.eventRef} already exists`,
       });
     }
-    yield* validateSignedWorkroomProjection(request.activity);
+    yield* validateSignedWorkroomAdmission(request.activity, persistedAt);
     yield* validateAudience(request.activity);
     yield* validateCausality(state.ledger, request.activity);
     const revision = state.ledger.revision + 1;

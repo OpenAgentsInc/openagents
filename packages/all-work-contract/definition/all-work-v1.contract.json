@@ -1114,6 +1114,11 @@
       "values": ["public", "organization", "team", "workroom", "private", "owner_only"]
     },
     {
+      "name": "SignedWorkroomProjectionProfile",
+      "kind": "enum",
+      "values": ["openagents.signed-workroom.v1", "openagents.signed-workroom.v2"]
+    },
+    {
       "name": "SignedWorkroomActivityKind",
       "kind": "enum",
       "values": [
@@ -1142,11 +1147,23 @@
       "name": "SignedWorkroomActivity",
       "kind": "record",
       "fields": [
+        {
+          "name": "projectionProfile",
+          "type": { "optional": "SignedWorkroomProjectionProfile" }
+        },
         { "name": "eventRef", "type": "SignedProjectionEventRef" },
         { "name": "nostrEventId", "type": "NostrEventId" },
         { "name": "signerPubkey", "type": "NostrPublicKey" },
         { "name": "signature", "type": "NostrSignature" },
         { "name": "actorRef", "type": "PrincipalRef" },
+        {
+          "name": "actorGrantRef",
+          "type": { "optional": { "nullable": "DelegationGrantRef" } }
+        },
+        {
+          "name": "actorGrantGeneration",
+          "type": { "optional": { "nullable": "SafeInteger" } }
+        },
         { "name": "workroomRef", "type": "WorkroomRef" },
         { "name": "workRef", "type": { "nullable": "WorkRef" } },
         { "name": "kind", "type": "SignedWorkroomActivityKind" },

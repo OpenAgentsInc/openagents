@@ -8,6 +8,7 @@ import {
   deliverSignedWorkroomActivity,
   emptySignedWorkroomState,
   enqueueSignedWorkroomActivity,
+  makeSignedWorkroomActorGrantResolverLayer,
   signedWorkroomNostrEventId,
   SignedWorkroomStateStore,
   type SignedWorkroomActivity,
@@ -27,9 +28,12 @@ const activity = (overrides: Partial<SignedWorkroomActivity> = {}): SignedWorkro
     ...projectionOverrides
   } = overrides;
   const unsigned = {
+    projectionProfile: "openagents.signed-workroom.v2" as const,
     eventRef: "signed-event:workroom:1",
     signerPubkey,
     actorRef,
+    actorGrantRef: null,
+    actorGrantGeneration: null,
     workroomRef: "workroom:omega:208",
     workRef: "work:github:openagentsinc-omega:216",
     kind: "thread" as const,
@@ -102,9 +106,16 @@ const harness = (initial = emptySignedWorkroomState("2026-08-03T09:59:00Z")) => 
     Effect.runPromise(
       enqueueSignedWorkroomActivity(value, "2026-08-03T10:00:01Z").pipe(Effect.provide(layer)),
     );
+  const executeGranted = (value: ReturnType<typeof request>, grants: ReadonlyArray<unknown>) =>
+    Effect.runPromise(
+      enqueueSignedWorkroomActivity(value, "2026-08-03T10:00:01Z").pipe(
+        Effect.provide(layer),
+        Effect.provide(makeSignedWorkroomActorGrantResolverLayer(grants)),
+      ),
+    );
   const deliver = (value = deliveryRequest()) =>
     Effect.runPromise(deliverSignedWorkroomActivity(value).pipe(Effect.provide(layer)));
-  return { deliver, execute, state: () => state };
+  return { deliver, execute, executeGranted, state: () => state };
 };
 
 describe("signed Workroom authority", () => {
@@ -114,7 +125,7 @@ describe("signed Workroom authority", () => {
       "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
     );
     expect(signed.nostrEventId).toBe(
-      "5d1a030445b5deb18d67ba8a2629780bfdbc6133b11e1841f920c8557e0548ab",
+      "48b3f44d3931b0a71ee53f5c52ecaf9fd25a804a0d34f3874e5e760ab1d75b9e",
     );
   });
   it("persists exact signed bytes before publish", async () => {
@@ -215,6 +226,11 @@ describe("signed Workroom authority", () => {
   });
   it("fails closed on audience, causality, and principal mismatch", async () => {
     await expect(
+      harness().execute(
+        request({ activity: activity({ projectionProfile: "openagents.signed-workroom.v1" }) }),
+      ),
+    ).rejects.toMatchObject({ reason: "invalid_projection_profile" });
+    await expect(
       harness().execute(request({ activity: activity({ privacyClass: "owner_only" }) })),
     ).rejects.toMatchObject({ reason: "invalid_audience" });
     await expect(
@@ -237,6 +253,47 @@ describe("signed Workroom authority", () => {
     await expect(
       harness().execute(request({ activity: activity({ actorRef: "principal:other" }) })),
     ).rejects.toMatchObject({ reason: "signer_actor_mismatch" });
+  });
+  it("admits non-human actors only through an exact current purpose-bound grant", async () => {
+    const agentActivity = activity({
+      actorRef: "principal:agent:omega-coder",
+      actorGrantRef: "delegation-grant:omega-216:3",
+      actorGrantGeneration: 3,
+      evidenceRefs: ["evidence:actor-grant:omega-216:3"],
+    });
+    const grant = {
+      grantRef: "delegation-grant:omega-216:3",
+      issuerPrincipalRef: actorRef,
+      actorRef: "principal:agent:omega-coder",
+      signerPubkey,
+      purpose: "purpose:signed-workroom:project-activity",
+      workroomRef: "workroom:omega:208",
+      workRef: "work:github:openagentsinc-omega:216",
+      activityKinds: ["thread"],
+      audiences: ["workroom"],
+      privacyClasses: ["workroom"],
+      generation: 3,
+      validFrom: "2026-08-03T09:00:00Z",
+      expiresAt: "2026-08-03T11:00:00Z",
+      state: "active",
+      evidenceRefs: ["evidence:actor-grant:omega-216:3"],
+    } as const;
+    const input = request({ activity: agentActivity });
+    await expect(harness().execute(input)).rejects.toMatchObject({
+      reason: "actor_grant_required",
+    });
+    await expect(harness().executeGranted(input, [grant])).resolves.toMatchObject({
+      receipt: { persistedBeforePublish: true, admittedEffect: false },
+    });
+    await expect(
+      harness().executeGranted(input, [{ ...grant, state: "revoked" }]),
+    ).rejects.toMatchObject({ reason: "stale_actor_grant" });
+    await expect(
+      harness().executeGranted(input, [{ ...grant, expiresAt: "2026-08-03T09:30:00Z" }]),
+    ).rejects.toMatchObject({ reason: "stale_actor_grant" });
+    await expect(
+      harness().executeGranted(input, [{ ...grant, activityKinds: ["decision"] }]),
+    ).rejects.toMatchObject({ reason: "invalid_actor_grant" });
   });
   it("revalidates canonical state before replay or append", async () => {
     const first = harness();

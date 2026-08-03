@@ -79,8 +79,11 @@ The generated boundary includes causal signed Workroom activity, audience and
 privacy labels, supersession/revocation targets, and a persist-before-publish
 outbox. `src/signed-workroom-nostr.ts` recomputes the deterministic NIP-01 event
 ID and verifies its BIP-340 Schnorr signature. Direct projection admission
-requires `principal:nostr:<signer-pubkey>`; other actor classes require a future
-purpose-bound grant adapter and fail closed now.
+requires `principal:nostr:<signer-pubkey>`. Agent, device, and organization
+actors require an authoritative `purpose:signed-workroom:project-activity`
+grant that binds the signer, actor, exact Workroom and Work, event kinds,
+audience/privacy, validity interval, evidence, and generation. Missing,
+expired, revoked, superseded, or scope-mismatched grants fail closed.
 
 `src/signed-workroom-authority.ts` admits the verified projection only for the
 named Effective Principal and capability, known causal parents, and an

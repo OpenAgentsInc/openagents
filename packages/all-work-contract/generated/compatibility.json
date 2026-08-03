@@ -2,12 +2,12 @@
   "contractRef": "openagents.all_work_boundary.v1",
   "contractVersion": 1,
   "profileVersion": "openagents.contract_profile.v1",
-  "definitionSha256": "04426ecce7bfd8d1eae3b9e134fd50fe0051f3c27957039a4ca51e68227dcea2",
+  "definitionSha256": "818f7960246a0811d8193523afd83197183f9defccf507e31991624f65f7d1e8",
   "artifacts": {
-    "effectSha256": "317f88102f0edfa4f98ede4fe879f69676c725f688075949d1a96daab314b01b",
-    "rustSha256": "f364cd0e9918ea94027373066888995a3bc7614a978d427d898d951f6eb95051",
-    "jsonSchemaSha256": "d507eda40a54fd6fed00d384510992b6a22f5873c53d2cc6bacdf37d109392bb",
-    "fixtureIndexSha256": "0024c823102bef38d2cac27d151c92ca5f0dea292feefeea2abb5c3ba26fd5b0"
+    "effectSha256": "ab2c7e1d7922ede2edc7a835fcbdaea3f0da30f63ed0d8736023de44aef03b13",
+    "rustSha256": "b3da995bbe8301ab4a5401759f67627ead83d377ee477a27f4a050aab9c5b8bb",
+    "jsonSchemaSha256": "c863dc66ad41ada484434572455fa395f473a6c0a3e8cce6963ad84547b0ed44",
+    "fixtureIndexSha256": "68e424ee99d100384b500d0f5923e8c7592b0a75eaccd6856dee70f173079e45"
   },
   "protocol": {
     "supportedVersions": [
@@ -260,6 +260,7 @@
     "WorkroomRef": "structural_only",
     "SignedProjectionEventRef": "structural_only",
     "WorkroomAudience": "structural_only",
+    "SignedWorkroomProjectionProfile": "structural_only",
     "SignedWorkroomActivityKind": "structural_only",
     "SignedWorkroomOutboxState": "structural_only",
     "SignedWorkroomActivity": "implemented",

@@ -25,9 +25,12 @@ type UnsignedActivity = Omit<SignedWorkroomActivity, "nostrEventId" | "signature
 
 const signedActivity = (): SignedWorkroomActivity => {
   const unsigned: UnsignedActivity = {
+    projectionProfile: "openagents.signed-workroom.v2",
     eventRef: "signed-event:workroom:publisher-1",
     signerPubkey,
     actorRef,
+    actorGrantRef: null,
+    actorGrantGeneration: null,
     workroomRef: "workroom:omega:208",
     workRef: "work:github:openagentsinc-omega:216",
     kind: "agent_activity",

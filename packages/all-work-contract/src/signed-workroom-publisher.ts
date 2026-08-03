@@ -11,6 +11,7 @@ import {
   SIGNED_WORKROOM_DELIVERY_CAPABILITY,
   SignedWorkroomError,
   SignedWorkroomStateStore,
+  validateSignedWorkroomAdmission,
   validateSignedWorkroomState,
 } from "./signed-workroom-authority.ts";
 import { signedWorkroomNostrTemplate } from "./signed-workroom-nostr.ts";
@@ -256,6 +257,9 @@ export const publishSignedWorkroomOutbox = (
         detail: `outbox record is terminal in ${record.state}`,
       });
     }
+    yield* validateSignedWorkroomAdmission(record.activity, new Date().toISOString(), {
+      allowLegacyDirectReplay: true,
+    });
     const unresolvedRelayUrls = record.relayUrls.filter(
       (relayUrl) => !record.acceptedRelayUrls.includes(relayUrl),
     );

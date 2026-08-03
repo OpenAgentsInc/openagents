@@ -3,7 +3,8 @@ import { schnorr } from "@noble/curves/secp256k1";
 
 import type { SignedWorkroomActivity, SignedWorkroomActivityKind } from "./generated.ts";
 
-export const SIGNED_WORKROOM_NOSTR_PROFILE = "openagents.signed-workroom.v1" as const;
+export const SIGNED_WORKROOM_NOSTR_PROFILE = "openagents.signed-workroom.v2" as const;
+export const LEGACY_SIGNED_WORKROOM_NOSTR_PROFILE = "openagents.signed-workroom.v1" as const;
 
 const kinds: Record<SignedWorkroomActivityKind, number> = {
   membership: 32150,
@@ -46,7 +47,7 @@ export const signedWorkroomNostrTemplate = (
   if (!Number.isFinite(occurredAt)) throw new Error("invalid Workroom occurrence time");
   const tags: Array<ReadonlyArray<string>> = [
     ["d", activity.eventRef],
-    ["projection", SIGNED_WORKROOM_NOSTR_PROFILE],
+    ["projection", activity.projectionProfile ?? LEGACY_SIGNED_WORKROOM_NOSTR_PROFILE],
     ["actor", activity.actorRef],
     ["workroom", activity.workroomRef],
     ["audience", activity.audience],
@@ -56,6 +57,12 @@ export const signedWorkroomNostrTemplate = (
     ["occurred-at", activity.occurredAt],
     ["payload", activity.payloadDigest],
   ];
+  const actorGrantRef = activity.actorGrantRef ?? null;
+  const actorGrantGeneration = activity.actorGrantGeneration ?? null;
+  if (actorGrantRef !== null && actorGrantGeneration !== null) {
+    tags.push(["actor-grant", actorGrantRef]);
+    tags.push(["actor-grant-generation", String(actorGrantGeneration)]);
+  }
   if (activity.workRef !== null) tags.push(["work", activity.workRef]);
   for (const parentRef of activity.causalParentRefs) tags.push(["parent", parentRef]);
   for (const evidenceRef of activity.evidenceRefs) tags.push(["evidence", evidenceRef]);
@@ -82,9 +89,7 @@ export const signedWorkroomNostrEventId = (activity: ProjectionBytes): string =>
 
 export const verifySignedWorkroomNostrActivity = (
   activity: SignedWorkroomActivity,
-): "valid" | "event_id_mismatch" | "signature_invalid" | "signer_actor_mismatch" => {
-  const expectedActorRef = `principal:nostr:${activity.signerPubkey}`;
-  if (activity.actorRef !== expectedActorRef) return "signer_actor_mismatch";
+): "valid" | "event_id_mismatch" | "signature_invalid" => {
   const expectedEventId = signedWorkroomNostrEventId(activity);
   if (activity.nostrEventId !== expectedEventId) return "event_id_mismatch";
   try {
