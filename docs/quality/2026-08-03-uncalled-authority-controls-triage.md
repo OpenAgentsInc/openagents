@@ -175,7 +175,8 @@ occurring, so this is not an undisclosed privacy capture:
   `x-oa-emit-trace` opt-in emits a trace.
 
 Severity: **S2**. A supported agent-discovery path is broken and an active
-promise's stated verification cannot be performed. Filed as a strict bug.
+promise's stated verification cannot be performed. Filed as strict bug
+[#9306](https://github.com/OpenAgentsInc/openagents/issues/9306).
 
 ### Adjacent, deliberately not filed as an issue
 
