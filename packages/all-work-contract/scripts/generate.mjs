@@ -284,7 +284,10 @@ const rustType = (type) => {
             const payloadType = ["params", "result", "error", "item"].includes(field.name)
               ? `Box<${fieldType}>`
               : fieldType;
-            return `${attributes.map((attribute) => `        ${attribute}`).join("\n")}\n        pub ${rustFieldName(field.name)}: ${payloadType},`;
+            // Rust enum variant fields inherit the enum's visibility. An explicit
+            // visibility qualifier here is illegal (E0449), while callers can
+            // still construct fields on a public enum variant directly.
+            return `${attributes.map((attribute) => `        ${attribute}`).join("\n")}\n        ${rustFieldName(field.name)}: ${payloadType},`;
           })
           .join("\n");
         return `    #[serde(rename = ${quote(variant.tag)})]\n    ${variant.name} {\n${fields}\n    },`;
