@@ -9,3 +9,4 @@ export * from "./signed-workroom-nostr.ts";
 export * from "./semantic.ts";
 export * from "./work-command-authority.ts";
 export * from "./work-command-file-store.ts";
+export * from "./work-cutover-authority.ts";

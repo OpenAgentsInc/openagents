@@ -18,12 +18,15 @@ import {
   decodePlanningGraphReadResult,
   decodeWorkIndexReadRequest,
   decodeWorkCommandExecuteRequest,
+  decodeWorkCutoverExecuteRequest,
+  decodeWorkCutoverReadRequest,
   decodeWorkSnapshotReadRequest,
   decodeWorkSnapshotReadResult,
   negotiateAllWorkProtocol,
   RepositoryClaimAuthorityError,
   SignedWorkroomError,
   WorkCommandAuthorityError,
+  WorkCutoverAuthorityError,
   type ProtocolCapability as AllWorkProtocolCapability,
   type ProtocolVersion as AllWorkProtocolVersion,
 } from "@openagentsinc/all-work-contract";
@@ -53,6 +56,11 @@ import {
   readAllWorkPlanningGraph,
 } from "../engine/all-work-planning-authority.ts";
 import { executeAllWorkCommand, readAllWorkCommandSnapshot } from "../engine/all-work-commands.ts";
+import {
+  bootstrapAllWorkCutoverAuthority,
+  executeAllWorkCutover,
+  readAllWorkCutover,
+} from "../engine/all-work-cutover.ts";
 import {
   bootstrapAllWorkRepositoryClaims,
   executeAllWorkRepositoryClaim,
@@ -1104,6 +1112,25 @@ export const createOmegaEffectdFramedServer = (
         }
       }
       if (
+        allWork.capabilities.includes("work.cutover.read") ||
+        allWork.capabilities.includes("work.cutover.execute")
+      ) {
+        const cutover = await Effect.runPromise(
+          Effect.match(bootstrapAllWorkCutoverAuthority(paths.dataRoot), {
+            onFailure: () => null,
+            onSuccess: () => true,
+          }),
+        );
+        if (cutover === null) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("unavailable", "The internal Work writer ledger could not be opened."),
+          );
+        }
+      }
+      if (
         allWork.capabilities.includes("workroom.activity.read") ||
         allWork.capabilities.includes("workroom.activity.enqueue") ||
         allWork.capabilities.includes("workroom.activity.deliver")
@@ -1636,6 +1663,85 @@ export const createOmegaEffectdFramedServer = (
             false,
             undefined,
             redactedError("invalid_request", "work.command.execute received invalid Work state."),
+          );
+        }
+      }
+      case "work.cutover.read": {
+        if (!selectedAllWorkCapabilities.includes("work.cutover.read")) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "incompatible_version",
+              "work.cutover.read requires its negotiated omega-effectd.v2 capability.",
+            ),
+          );
+        }
+        try {
+          const params = decodeWorkCutoverReadRequest(request.params ?? {});
+          return respond(
+            request.id,
+            true,
+            await Effect.runPromise(readAllWorkCutover(paths.dataRoot, params)),
+          );
+        } catch (error) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              error instanceof WorkCutoverAuthorityError && error.reason === "invalid_request"
+                ? "invalid_request"
+                : "unavailable",
+              "The internal Work writer ledger is unavailable.",
+            ),
+          );
+        }
+      }
+      case "work.cutover.execute": {
+        if (!selectedAllWorkCapabilities.includes("work.cutover.execute")) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "incompatible_version",
+              "work.cutover.execute requires its negotiated omega-effectd.v2 capability.",
+            ),
+          );
+        }
+        try {
+          const params = decodeWorkCutoverExecuteRequest(request.params ?? {});
+          return respond(
+            request.id,
+            true,
+            await Effect.runPromise(executeAllWorkCutover(paths.dataRoot, params)),
+          );
+        } catch (error) {
+          if (error instanceof WorkCutoverAuthorityError) {
+            const code =
+              error.reason === "forbidden"
+                ? "forbidden"
+                : error.reason === "stale_generation"
+                  ? "stale_generation"
+                  : error.reason === "storage_unavailable"
+                    ? "unavailable"
+                    : error.reason === "invalid_request" || error.reason === "invalid_state"
+                      ? "invalid_request"
+                      : "conflict";
+            return respond(
+              request.id,
+              false,
+              undefined,
+              redactedError(code, `Internal Work writer transition refused (${error.reason}).`),
+            );
+          }
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", "The internal Work writer transition was refused."),
           );
         }
       }

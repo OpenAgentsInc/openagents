@@ -34,6 +34,12 @@ const capabilities = [
   "planning.graph.read",
   "repository.claim.read",
   "repository.claim.execute",
+  "workroom.activity.read",
+  "workroom.activity.enqueue",
+  "workroom.activity.deliver",
+  "work.command.execute",
+  "work.cutover.read",
+  "work.cutover.execute",
 ] as const;
 
 const compareUnicodeCodePoints = (left: string, right: string): number => {

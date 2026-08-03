@@ -8,6 +8,8 @@ import {
   decodePlanningGraphReadResult,
   decodeWorkIndexReadResult,
   decodeWorkCommandExecuteResult,
+  decodeWorkCutoverExecuteResult,
+  decodeWorkCutoverReadResult,
   decodeWorkSnapshotReadResult,
 } from "@openagentsinc/all-work-contract";
 import { describe, expect, test } from "vite-plus/test";
@@ -128,11 +130,11 @@ describe("omega-effectd framed protocol", () => {
       const planning = await server.handleLine(request("planning", 1, "planning.graph.read", {}));
       expect(planning?.ok).toBe(true);
       const planningResult = decodePlanningGraphReadResult(planning?.result);
-      expect(planningResult.graph.work).toHaveLength(28);
+      expect(planningResult.graph.work).toHaveLength(34);
       expect(
         planningResult.graph.work.filter((work) => work.summary.state === "completed"),
       ).toHaveLength(6);
-      expect(planningResult.graph.sourceCoordinates).toHaveLength(28);
+      expect(planningResult.graph.sourceCoordinates).toHaveLength(34);
       expect(planningResult.graph.releaseScopeLinks).toHaveLength(10);
 
       const indexed = await server.handleLine(request("index", 1, "work.index.read", {}));
@@ -318,6 +320,64 @@ describe("omega-effectd framed protocol", () => {
       expect(
         decodeWorkCommandExecuteResult(unassigned?.result).snapshot.summary.assignee,
       ).toBeNull();
+    });
+  });
+
+  test("keeps the canonical Work writer in shadow until an explicit zero-GitHub-write cutover", async () => {
+    await withRoot(async (root) => {
+      const open = () =>
+        createOmegaEffectdFramedServer(
+          createOmegaEffectdService({ paths: { dataRoot: root } }),
+          { dataRoot: root },
+          { hostRequestHandler: makeOmegaEffectdTestHost() },
+        );
+      const initialize = (server: ReturnType<typeof open>, generation: number) =>
+        server.handleLine(
+          request(`cutover-init-${generation}`, 0, "initialize", {
+            generation,
+            allWork: {
+              supportedVersions: ["omega-effectd.v2"],
+              requestedCapabilities: ["work.cutover.read", "work.cutover.execute"],
+            },
+          }),
+        );
+      const server = open();
+      expect((await initialize(server, 1))?.ok).toBe(true);
+      const shadow = await server.handleLine(request("cutover-read", 1, "work.cutover.read", {}));
+      expect(shadow?.ok).toBe(true);
+      const state = decodeWorkCutoverReadResult(shadow?.result).state;
+      expect(state).toMatchObject({ writer: "legacy_github", revision: 1, generation: 1 });
+
+      const activated = await server.handleLine(
+        request("cutover-activate", 1, "work.cutover.execute", {
+          intentRef: "intent:cutover:activate",
+          idempotencyKey: "work-cutover-activate",
+          expectedRevision: 1,
+          expectedGeneration: 1,
+          effectivePrincipalRef: "principal:omega:local-owner",
+          organizationRef: "organization:openagents",
+          capabilityRef: "capability:work-cutover:write",
+          occurredAt: "2026-08-03T12:00:00Z",
+          githubWriteCount: 0,
+          command: {
+            command: "activate_native",
+            sourceDigest: state.sourceDigest,
+            reconciledCursor: state.sourceCursor,
+            receiptRef: "receipt:cutover:packaged-journey",
+          },
+        }),
+      );
+      expect(activated?.ok).toBe(true);
+      const result = decodeWorkCutoverExecuteResult(activated?.result);
+      expect(result.state).toMatchObject({ writer: "native_omega", generation: 2 });
+      expect(result.receipt.githubWriteCount).toBe(0);
+
+      const restarted = open();
+      expect((await initialize(restarted, 2))?.ok).toBe(true);
+      const recovered = await restarted.handleLine(
+        request("cutover-recovered", 2, "work.cutover.read", {}),
+      );
+      expect(decodeWorkCutoverReadResult(recovered?.result).state.writer).toBe("native_omega");
     });
   });
 

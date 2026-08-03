@@ -118,8 +118,8 @@ test("the omega-effectd process serves typed All Work v2 index and snapshot read
     const planning = await readResponse();
     expect(planning.ok).toBe(true);
     const graph = decodePlanningGraphReadResult(planning.result).graph;
-    expect(graph.work).toHaveLength(28);
-    expect(graph.sourceCoordinates).toHaveLength(28);
+    expect(graph.work).toHaveLength(34);
+    expect(graph.sourceCoordinates).toHaveLength(34);
     expect(graph.reconciliationDigest).toMatch(/^[a-f0-9]{64}$/u);
 
     child.stdin.end();

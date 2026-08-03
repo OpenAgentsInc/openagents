@@ -34,17 +34,17 @@ const stateWithGraph = (graph: PlanningGraph) =>
   });
 
 describe("All Work planning authority", () => {
-  it("imports the exact 22 open and six closed dogfood rows once", async () => {
+  it("imports the exact 28 open and six closed dogfood rows once", async () => {
     const first = await Effect.runPromise(
       reconcileGitHubBootstrap(emptyPlanningGraph(bootstrapInput.fetchedAt), bootstrapInput),
     );
-    expect(first.graph.work).toHaveLength(28);
+    expect(first.graph.work).toHaveLength(34);
     expect(first.graph.work.filter((work) => work.summary.state === "completed")).toHaveLength(6);
-    expect(first.graph.work.filter((work) => work.summary.state !== "completed")).toHaveLength(22);
-    expect(first.graph.sourceCoordinates).toHaveLength(28);
-    expect(first.graph.work.flatMap((work) => work.relations)).toHaveLength(36);
+    expect(first.graph.work.filter((work) => work.summary.state !== "completed")).toHaveLength(28);
+    expect(first.graph.sourceCoordinates).toHaveLength(34);
+    expect(first.graph.work.flatMap((work) => work.relations)).toHaveLength(46);
     expect(first.receipt).toMatchObject({
-      imported: 28,
+      imported: 34,
       updated: 0,
       unchanged: 0,
       noOp: false,
@@ -56,7 +56,7 @@ describe("All Work planning authority", () => {
     expect(second.receipt).toMatchObject({
       imported: 0,
       updated: 0,
-      unchanged: 28,
+      unchanged: 34,
       noOp: true,
       githubWriteCount: 0,
     });
@@ -88,7 +88,7 @@ describe("All Work planning authority", () => {
     const result = await Effect.runPromise(
       reconcileGitHubBootstrap(emptyPlanningGraph(bootstrapInput.fetchedAt), batch),
     );
-    expect(result.graph.work).toHaveLength(28);
+    expect(result.graph.work).toHaveLength(34);
     expect(result.graph.textRecords).toHaveLength(1);
     expect(result.receipt.duplicateDeliveries).toBe(1);
   });

@@ -54,10 +54,10 @@ The Effect-owned implementation is handwritten beside the generated shape:
   stable Work identities. GitHub supplies source observations only. Missing
   pages become explicit gaps; a complete later observation can mark a retained
   last-known-good row unavailable without deleting its identity.
-- `bootstrap/v0.2.0-github-source.json` is the digestible initial import corpus:
-  22 open rows, six closed foundation rows, 42 planning resources, and 36 typed
-  relations from the accepted dogfood snapshot. Importing the same corpus again
-  is a no-op.
+- `bootstrap/v0.2.0-github-source.json` is the digestible final bootstrap
+  corpus: 28 open rows, six closed foundation rows, 42 planning resources, and
+  46 typed relations from the accepted dogfood snapshot. Importing the same
+  corpus again is a no-op.
 
 The command processor does not write to GitHub. A successful GitHub read grants
 no command, claim, delegation, verification, owner-disposition, release, or
@@ -121,6 +121,22 @@ Claim service. See the
 `src/work-command-file-store.ts` persists one atomic, private state record per
 digest-addressed canonical Work identity; the host remains responsible for its
 single-writer lease.
+
+## Internal Work writer cutover
+
+`work.cutover.read` and `work.cutover.execute` expose the canonical,
+generation-fenced writer ledger. It starts in `legacy_github` shadow mode and
+cannot activate from import, startup, tests, or a rendered screen. Activation
+requires the exact reconciled source digest and cursor, an authorized Effective
+Principal, the dedicated capability, optimistic revision and generation, an
+explicit receipt reference, and a generated request whose GitHub-write count is
+structurally zero.
+
+While `native_omega` is active, every native event must advance the retained
+high-water cursor. Rollback refuses unless its reconciliation cursor exactly
+covers that high-water mark. The Effect authority owns idempotency and atomic
+owner-local persistence. This landed boundary does not activate the cutover;
+the packaged two-client journey and policy/tool switch remain separate gates.
 
 ## Generate and verify
 

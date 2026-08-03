@@ -1,10 +1,7 @@
 {
-  "bootstrapRef": "github-bootstrap:omega-v0.2.0:2026-08-03",
-  "fetchedAt": "2026-08-03T05:00:00Z",
-  "expectedRepositories": [
-    "OpenAgentsInc/omega",
-    "OpenAgentsInc/openagents"
-  ],
+  "bootstrapRef": "github-bootstrap:omega-v0.2.0:2026-08-03T09:15:00Z",
+  "fetchedAt": "2026-08-03T09:15:00Z",
+  "expectedRepositories": ["OpenAgentsInc/omega", "OpenAgentsInc/openagents"],
   "pages": [
     {
       "repository": "OpenAgentsInc/omega",
@@ -22,9 +19,7 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:160:open",
           "url": "https://github.com/OpenAgentsInc/omega/issues/160",
-          "labels": [
-            "release"
-          ],
+          "labels": ["release"],
           "comments": [],
           "relations": [],
           "planning": {
@@ -44,9 +39,7 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:208:open",
           "url": "https://github.com/OpenAgentsInc/omega/issues/208",
-          "labels": [
-            "all-work"
-          ],
+          "labels": ["all-work"],
           "comments": [],
           "relations": [],
           "planning": {
@@ -66,9 +59,7 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:214:open",
           "url": "https://github.com/OpenAgentsInc/omega/issues/214",
-          "labels": [
-            "all-work"
-          ],
+          "labels": ["all-work"],
           "comments": [],
           "relations": [
             {
@@ -104,9 +95,7 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:215:open",
           "url": "https://github.com/OpenAgentsInc/omega/issues/215",
-          "labels": [
-            "all-work"
-          ],
+          "labels": ["all-work"],
           "comments": [],
           "relations": [],
           "planning": {
@@ -126,9 +115,7 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:216:open",
           "url": "https://github.com/OpenAgentsInc/omega/issues/216",
-          "labels": [
-            "all-work"
-          ],
+          "labels": ["all-work"],
           "comments": [],
           "relations": [],
           "planning": {
@@ -148,10 +135,7 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:217:open",
           "url": "https://github.com/OpenAgentsInc/omega/issues/217",
-          "labels": [
-            "accessibility",
-            "s0"
-          ],
+          "labels": ["accessibility", "s0"],
           "comments": [],
           "relations": [],
           "planning": {
@@ -171,9 +155,7 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:218:open",
           "url": "https://github.com/OpenAgentsInc/omega/issues/218",
-          "labels": [
-            "all-work"
-          ],
+          "labels": ["all-work"],
           "comments": [],
           "relations": [],
           "planning": {
@@ -193,10 +175,139 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "989b5fe73078aa850ef64e466bcb15b100ee83e2:219:open",
           "url": "https://github.com/OpenAgentsInc/omega/issues/219",
-          "labels": [
-            "copy",
-            "s2"
+          "labels": ["copy", "s2"],
+          "comments": [],
+          "relations": [],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:candidate-launch-proof",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/omega",
+          "number": 220,
+          "title": "Add the v0.2.0 All Work release-planning fixture graph",
+          "state": "open",
+          "priority": "high",
+          "updatedAt": "2026-08-03T09:15:00Z",
+          "sourceRevision": "c3f0ecc42981bb45ad9d369fe6c13a17c300e31b:220:open",
+          "url": "https://github.com/OpenAgentsInc/omega/issues/220",
+          "labels": ["all-work"],
+          "comments": [],
+          "relations": [
+            { "kind": "blocks", "targetRepository": "OpenAgentsInc/omega", "targetNumber": 221 },
+            { "kind": "blocks", "targetRepository": "OpenAgentsInc/omega", "targetNumber": 223 }
           ],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:planning-projections-sdk",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/omega",
+          "number": 221,
+          "title": "Render the v0.2.0 dogfood project across Omega planning screens",
+          "state": "open",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T09:15:00Z",
+          "sourceRevision": "c3f0ecc42981bb45ad9d369fe6c13a17c300e31b:221:open",
+          "url": "https://github.com/OpenAgentsInc/omega/issues/221",
+          "labels": ["all-work"],
+          "comments": [],
+          "relations": [
+            { "kind": "blocks", "targetRepository": "OpenAgentsInc/omega", "targetNumber": 223 }
+          ],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:planning-projections-sdk",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/omega",
+          "number": 222,
+          "title": "Back the dogfood graph with canonical All Work planning state",
+          "state": "open",
+          "priority": "high",
+          "updatedAt": "2026-08-03T09:15:00Z",
+          "sourceRevision": "c3f0ecc42981bb45ad9d369fe6c13a17c300e31b:222:open",
+          "url": "https://github.com/OpenAgentsInc/omega/issues/222",
+          "labels": ["all-work"],
+          "comments": [],
+          "relations": [
+            { "kind": "blocks", "targetRepository": "OpenAgentsInc/omega", "targetNumber": 223 },
+            { "kind": "blocks", "targetRepository": "OpenAgentsInc/omega", "targetNumber": 224 }
+          ],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:planning-projections-sdk",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/omega",
+          "number": 223,
+          "title": "Refresh the dogfood planning graph through the owned All Work client",
+          "state": "open",
+          "priority": "normal",
+          "updatedAt": "2026-08-03T09:15:00Z",
+          "sourceRevision": "c3f0ecc42981bb45ad9d369fe6c13a17c300e31b:223:open",
+          "url": "https://github.com/OpenAgentsInc/omega/issues/223",
+          "labels": ["all-work"],
+          "comments": [],
+          "relations": [
+            { "kind": "blocks", "targetRepository": "OpenAgentsInc/omega", "targetNumber": 225 }
+          ],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:planning-projections-sdk",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/omega",
+          "number": 224,
+          "title": "Move Repository Work Claims and work packets into Omega",
+          "state": "open",
+          "priority": "high",
+          "updatedAt": "2026-08-03T09:15:00Z",
+          "sourceRevision": "c3f0ecc42981bb45ad9d369fe6c13a17c300e31b:224:open",
+          "url": "https://github.com/OpenAgentsInc/omega/issues/224",
+          "labels": ["all-work"],
+          "comments": [],
+          "relations": [
+            { "kind": "blocks", "targetRepository": "OpenAgentsInc/omega", "targetNumber": 225 }
+          ],
+          "planning": {
+            "projectRef": "project:omega-v0.2.0-dogfood",
+            "projectMilestoneRef": "milestone:agentic-execution-loop",
+            "cycleRef": "cycle:v0.2.0-dogfood",
+            "workflowStateRef": "workflow:ready",
+            "releasePlanningRecordRef": null
+          }
+        },
+        {
+          "repository": "OpenAgentsInc/omega",
+          "number": 225,
+          "title": "Cut internal Work and Repository Work Claims over from GitHub to Omega",
+          "state": "open",
+          "priority": "high",
+          "updatedAt": "2026-08-03T09:15:00Z",
+          "sourceRevision": "c3f0ecc42981bb45ad9d369fe6c13a17c300e31b:225:open",
+          "url": "https://github.com/OpenAgentsInc/omega/issues/225",
+          "labels": ["all-work"],
           "comments": [],
           "relations": [],
           "planning": {
@@ -325,15 +436,18 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9304:open",
           "url": "https://github.com/OpenAgentsInc/openagents/issues/9304",
-          "labels": [
-            "all-work"
-          ],
+          "labels": ["all-work"],
           "comments": [],
           "relations": [
             {
               "kind": "blocks",
               "targetRepository": "OpenAgentsInc/omega",
               "targetNumber": 216
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/omega",
+              "targetNumber": 224
             }
           ],
           "planning": {
@@ -353,11 +467,20 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9305:open",
           "url": "https://github.com/OpenAgentsInc/openagents/issues/9305",
-          "labels": [
-            "all-work"
-          ],
+          "labels": ["all-work"],
           "comments": [],
-          "relations": [],
+          "relations": [
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/omega",
+              "targetNumber": 223
+            },
+            {
+              "kind": "blocks",
+              "targetRepository": "OpenAgentsInc/omega",
+              "targetNumber": 224
+            }
+          ],
           "planning": {
             "projectRef": "project:omega-v0.2.0-dogfood",
             "projectMilestoneRef": "milestone:planning-projections-sdk",
@@ -375,9 +498,7 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9289:open",
           "url": "https://github.com/OpenAgentsInc/openagents/issues/9289",
-          "labels": [
-            "security"
-          ],
+          "labels": ["security"],
           "comments": [],
           "relations": [
             {
@@ -438,9 +559,7 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9290:open",
           "url": "https://github.com/OpenAgentsInc/openagents/issues/9290",
-          "labels": [
-            "security"
-          ],
+          "labels": ["security"],
           "comments": [],
           "relations": [
             {
@@ -476,9 +595,7 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9291:open",
           "url": "https://github.com/OpenAgentsInc/openagents/issues/9291",
-          "labels": [
-            "security"
-          ],
+          "labels": ["security"],
           "comments": [],
           "relations": [
             {
@@ -539,9 +656,7 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9292:open",
           "url": "https://github.com/OpenAgentsInc/openagents/issues/9292",
-          "labels": [
-            "security"
-          ],
+          "labels": ["security"],
           "comments": [],
           "relations": [
             {
@@ -572,9 +687,7 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9293:open",
           "url": "https://github.com/OpenAgentsInc/openagents/issues/9293",
-          "labels": [
-            "security"
-          ],
+          "labels": ["security"],
           "comments": [],
           "relations": [
             {
@@ -610,9 +723,7 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9294:open",
           "url": "https://github.com/OpenAgentsInc/openagents/issues/9294",
-          "labels": [
-            "security"
-          ],
+          "labels": ["security"],
           "comments": [],
           "relations": [
             {
@@ -638,9 +749,7 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9295:open",
           "url": "https://github.com/OpenAgentsInc/openagents/issues/9295",
-          "labels": [
-            "security"
-          ],
+          "labels": ["security"],
           "comments": [],
           "relations": [
             {
@@ -666,9 +775,7 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9296:open",
           "url": "https://github.com/OpenAgentsInc/openagents/issues/9296",
-          "labels": [
-            "security"
-          ],
+          "labels": ["security"],
           "comments": [],
           "relations": [
             {
@@ -699,9 +806,7 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9297:open",
           "url": "https://github.com/OpenAgentsInc/openagents/issues/9297",
-          "labels": [
-            "security"
-          ],
+          "labels": ["security"],
           "comments": [],
           "relations": [
             {
@@ -727,9 +832,7 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9298:open",
           "url": "https://github.com/OpenAgentsInc/openagents/issues/9298",
-          "labels": [
-            "security"
-          ],
+          "labels": ["security"],
           "comments": [],
           "relations": [
             {
@@ -760,9 +863,7 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9299:open",
           "url": "https://github.com/OpenAgentsInc/openagents/issues/9299",
-          "labels": [
-            "security"
-          ],
+          "labels": ["security"],
           "comments": [],
           "relations": [
             {
@@ -788,9 +889,7 @@
           "updatedAt": "2026-08-03T05:00:00Z",
           "sourceRevision": "2b3ca74b051ad12f259aed573716d84540564ef6:9300:open",
           "url": "https://github.com/OpenAgentsInc/openagents/issues/9300",
-          "labels": [
-            "security"
-          ],
+          "labels": ["security"],
           "comments": [],
           "relations": [],
           "planning": {

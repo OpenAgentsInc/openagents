@@ -53,7 +53,13 @@
     "DelegationGrant",
     "WorkCommandExecuteRequest",
     "WorkCommandReceipt",
-    "WorkCommandExecuteResult"
+    "WorkCommandExecuteResult",
+    "WorkCutoverState",
+    "WorkCutoverExecuteRequest",
+    "WorkCutoverReceipt",
+    "WorkCutoverExecuteResult",
+    "WorkCutoverReadRequest",
+    "WorkCutoverReadResult"
   ],
   "semanticChecks": [
     "issue_projection_work_ref_matches_snapshot_work_ref",
@@ -68,7 +74,10 @@
     "delegation_does_not_copy_assignee_or_owner_authority",
     "revocation_fences_new_session_effects_by_generation",
     "agent_activity_preserves_provider_event_and_loss_refs",
-    "owner_disposition_is_separate_from_completion_and_verification"
+    "owner_disposition_is_separate_from_completion_and_verification",
+    "internal_work_has_exactly_one_writer_per_cutover_generation",
+    "native_work_cutover_creates_zero_github_writes",
+    "legacy_rollback_requires_complete_native_history_reconciliation"
   ],
   "types": [
     {
@@ -1456,6 +1465,115 @@
       ]
     },
     {
+      "name": "WorkWriter",
+      "kind": "enum",
+      "values": ["legacy_github", "native_omega"]
+    },
+    {
+      "name": "WorkCutoverCommand",
+      "kind": "taggedUnion",
+      "discriminator": "command",
+      "variants": [
+        {
+          "name": "BindShadow",
+          "tag": "bind_shadow",
+          "fields": [
+            { "name": "sourceDigest", "type": "ContractDigest" },
+            { "name": "sourceCursor", "type": "WorkCursor" }
+          ]
+        },
+        {
+          "name": "ActivateNative",
+          "tag": "activate_native",
+          "fields": [
+            { "name": "sourceDigest", "type": "ContractDigest" },
+            { "name": "reconciledCursor", "type": "WorkCursor" },
+            { "name": "receiptRef", "type": "ReceiptRef" }
+          ]
+        },
+        {
+          "name": "RecordNativeWrite",
+          "tag": "record_native_write",
+          "fields": [{ "name": "eventCursor", "type": "WorkCursor" }]
+        },
+        {
+          "name": "RollbackLegacy",
+          "tag": "rollback_legacy",
+          "fields": [
+            { "name": "reconciledNativeCursor", "type": "WorkCursor" },
+            { "name": "receiptRef", "type": "ReceiptRef" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "WorkCutoverState",
+      "kind": "record",
+      "fields": [
+        { "name": "contractVersion", "type": "ContractVersion" },
+        { "name": "organizationRef", "type": "OrganizationRef" },
+        { "name": "authorizedPrincipalRefs", "type": { "array": "PrincipalRef", "maxItems": 64 } },
+        { "name": "revision", "type": "SafeInteger" },
+        { "name": "generation", "type": "SafeInteger" },
+        { "name": "writer", "type": "WorkWriter" },
+        { "name": "sourceDigest", "type": "ContractDigest" },
+        { "name": "sourceCursor", "type": "WorkCursor" },
+        { "name": "nativeHighWatermark", "type": { "nullable": "WorkCursor" } },
+        { "name": "activationReceiptRef", "type": { "nullable": "ReceiptRef" } },
+        { "name": "rollbackReceiptRef", "type": { "nullable": "ReceiptRef" } }
+      ]
+    },
+    {
+      "name": "WorkCutoverExecuteRequest",
+      "kind": "record",
+      "fields": [
+        { "name": "intentRef", "type": "IntentRef" },
+        { "name": "idempotencyKey", "type": "IdempotencyKey" },
+        { "name": "expectedRevision", "type": "SafeInteger" },
+        { "name": "expectedGeneration", "type": "SafeInteger" },
+        { "name": "effectivePrincipalRef", "type": "PrincipalRef" },
+        { "name": "organizationRef", "type": "OrganizationRef" },
+        { "name": "capabilityRef", "type": "CapabilityRef" },
+        { "name": "occurredAt", "type": "IsoTimestamp" },
+        { "name": "githubWriteCount", "type": "ZeroInteger" },
+        { "name": "command", "type": "WorkCutoverCommand" }
+      ]
+    },
+    {
+      "name": "WorkCutoverReceipt",
+      "kind": "record",
+      "fields": [
+        { "name": "intentRef", "type": "IntentRef" },
+        { "name": "idempotencyKey", "type": "IdempotencyKey" },
+        { "name": "commandDigest", "type": "ContractDigest" },
+        { "name": "previousRevision", "type": "SafeInteger" },
+        { "name": "revision", "type": "SafeInteger" },
+        { "name": "generation", "type": "SafeInteger" },
+        { "name": "writer", "type": "WorkWriter" },
+        { "name": "effectivePrincipalRef", "type": "PrincipalRef" },
+        { "name": "acceptedAt", "type": "IsoTimestamp" },
+        { "name": "githubWriteCount", "type": "ZeroInteger" }
+      ]
+    },
+    {
+      "name": "WorkCutoverExecuteResult",
+      "kind": "record",
+      "fields": [
+        { "name": "state", "type": "WorkCutoverState" },
+        { "name": "receipt", "type": "WorkCutoverReceipt" }
+      ]
+    },
+    {
+      "name": "WorkCutoverReadRequest",
+      "kind": "record",
+      "fields": []
+    },
+    {
+      "name": "WorkCutoverReadResult",
+      "kind": "record",
+      "fields": [{ "name": "state", "type": "WorkCutoverState" }]
+    },
+    {
       "name": "ProtocolCapability",
       "kind": "enum",
       "values": [
@@ -1467,7 +1585,9 @@
         "workroom.activity.read",
         "workroom.activity.enqueue",
         "workroom.activity.deliver",
-        "work.command.execute"
+        "work.command.execute",
+        "work.cutover.read",
+        "work.cutover.execute"
       ]
     },
     {
@@ -1703,6 +1823,24 @@
             { "name": "version", "type": "ProtocolVersion" },
             { "name": "params", "type": "WorkCommandExecuteRequest" }
           ]
+        },
+        {
+          "name": "WorkCutoverRead",
+          "tag": "work.cutover.read",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "params", "type": "WorkCutoverReadRequest" }
+          ]
+        },
+        {
+          "name": "WorkCutoverExecute",
+          "tag": "work.cutover.execute",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "params", "type": "WorkCutoverExecuteRequest" }
+          ]
         }
       ]
     },
@@ -1802,6 +1940,24 @@
           ]
         },
         {
+          "name": "WorkCutoverRead",
+          "tag": "work.cutover.read",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "result", "type": "WorkCutoverReadResult" }
+          ]
+        },
+        {
+          "name": "WorkCutoverExecute",
+          "tag": "work.cutover.execute",
+          "fields": [
+            { "name": "id", "type": "ShortText" },
+            { "name": "version", "type": "ProtocolVersion" },
+            { "name": "result", "type": "WorkCutoverExecuteResult" }
+          ]
+        },
+        {
           "name": "Error",
           "tag": "error",
           "fields": [
@@ -1840,6 +1996,12 @@
     "WorkCommandExecuteRequest",
     "WorkCommandReceipt",
     "WorkCommandExecuteResult",
+    "WorkCutoverState",
+    "WorkCutoverExecuteRequest",
+    "WorkCutoverReceipt",
+    "WorkCutoverExecuteResult",
+    "WorkCutoverReadRequest",
+    "WorkCutoverReadResult",
     "IssueProjection",
     "ProtocolError",
     "ProtocolInitializeRequest",
@@ -1923,6 +2085,20 @@
       "minimumVersion": "omega-effectd.v2",
       "params": "WorkCommandExecuteRequest",
       "result": "WorkCommandExecuteResult"
+    },
+    {
+      "method": "work.cutover.read",
+      "capability": "work.cutover.read",
+      "minimumVersion": "omega-effectd.v2",
+      "params": "WorkCutoverReadRequest",
+      "result": "WorkCutoverReadResult"
+    },
+    {
+      "method": "work.cutover.execute",
+      "capability": "work.cutover.execute",
+      "minimumVersion": "omega-effectd.v2",
+      "params": "WorkCutoverExecuteRequest",
+      "result": "WorkCutoverExecuteResult"
     }
   ],
   "fixtures": [

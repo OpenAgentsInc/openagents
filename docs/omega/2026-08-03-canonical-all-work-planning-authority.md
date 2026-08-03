@@ -42,9 +42,9 @@ The process host remains responsible for its existing single-writer lease.
 
 ## Bootstrap and loss accounting
 
-The checked-in v0.2.0 bootstrap input contains the accepted snapshot's exact 22
-open rows and six closed foundation rows. It also contains 42 planning resources
-and 36 typed relations. Stable Work identity derives from repository and issue
+The checked-in v0.2.0 bootstrap input contains the accepted final snapshot's
+exact 28 open rows and six closed foundation rows. It also contains 42 planning
+resources and 46 typed relations. Stable Work identity derives from repository and issue
 number; Issue is a same-identity projection.
 
 Reconciliation sorts delivery order, merges duplicate issue deliveries and
@@ -62,7 +62,7 @@ values.
 initialization and serves it through `planning.graph.read`. The method decodes
 the generated request, loads the persisted graph, rejects an ahead-of-authority
 revision, and encodes the generated result. Authored in-process and real-stdio
-tests require all 28 Work rows, six completed rows, Source Coordinates, Release
+tests require all 34 Work rows, six completed rows, Source Coordinates, Release
 Scope Links, and the reconciliation digest.
 
 The implementation includes authored contract, golden bootstrap, duplicate and

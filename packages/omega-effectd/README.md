@@ -31,13 +31,20 @@ Initialization also negotiates the digest-bound All Work capability profile.
 Legacy clients that omit `allWork` select `omega-effectd.v1` explicitly and
 cannot call Work methods. Clients that negotiate `omega-effectd.v2` can call
 `work.index.read`, `work.snapshot.read`, `planning.graph.read`, and separately
-negotiated claim, signed Workroom, and `work.command.execute` methods. These
+negotiated claim, signed Workroom, Work command, and Work cutover methods. These
 methods decode and encode generated `@openagentsinc/all-work-contract` types.
 The first Work adapter projects durable Full Auto runs without objective or
 done-condition text. The planning method opens the Effect-owned persistent
 planning authority, idempotently reconciles the checked-in v0.2.0 bootstrap,
 and returns its generated graph. Neither read creates a second writable Work
 store, and the GitHub bootstrap grants no command authority.
+
+`work.cutover.read` and `work.cutover.execute` open the OpenAgents-owned
+one-writer ledger. The bootstrap only binds the current planning digest and
+cursor in legacy shadow mode. It never activates native authority. An admitted
+transition is explicit, generation fenced, idempotent, zero-GitHub-write, and
+durable across restart; rollback requires complete native high-water
+reconciliation.
 
 `work.command.execute` opens one durable, digest-addressed command state per
 canonical Work. The service derives the Organization and authorized owner or
