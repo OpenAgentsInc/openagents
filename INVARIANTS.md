@@ -1323,6 +1323,11 @@ come from the Freerange teardown
   untrusted candidate. Exact source-thread completion and release callbacks
   remain bounded transport. These exceptions grant no Work, claim, command,
   release, or public-claim authority.
+- Strict-bug webhook ingress verifies `X-Hub-Signature-256` over the exact raw
+  bounded body before parsing, accepts only an opened strict-form issue in the
+  two admitted public repositories, and forwards only a typed normalized
+  command to the single candidate authority. Delivery replay must refuse a
+  second execute effect. Missing secret or gateway configuration fails closed.
 
 ## Product Promise Claims
 

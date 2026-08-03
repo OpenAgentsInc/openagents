@@ -84,6 +84,10 @@ import {
   handleAgentDefinitionWebhookRequest,
   verifyAgentDefinitionForumEventSource,
 } from './agent-definition-webhook-routes'
+import {
+  handleStrictBugGitHubWebhookRequest,
+  makeStrictBugCandidateHttpGateway,
+} from './strict-bug-webhook-routes'
 import { makeAgentGoalRoutes } from './agent-goal-routes'
 import {
   handleProgrammaticAgentHome,
@@ -15794,6 +15798,25 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
           triggerStore: makeAgentDefinitionTriggerStoreForEnv(env),
         }),
       ),
+  },
+  {
+    path: '/v1/work/webhooks/github/strict-bugs',
+    handler: (request, env) => {
+      const config = env as Env & {
+        STRICT_BUG_GITHUB_WEBHOOK_SECRET?: string
+        STRICT_BUG_CANDIDATE_INGRESS_URL?: string
+        STRICT_BUG_CANDIDATE_INGRESS_TOKEN?: string
+      }
+      return Effect.promise(() =>
+        handleStrictBugGitHubWebhookRequest(request, {
+          githubSecret: config.STRICT_BUG_GITHUB_WEBHOOK_SECRET,
+          gateway: makeStrictBugCandidateHttpGateway({
+            endpoint: config.STRICT_BUG_CANDIDATE_INGRESS_URL,
+            token: config.STRICT_BUG_CANDIDATE_INGRESS_TOKEN,
+          }),
+        }),
+      )
+    },
   },
   {
     path: '/v1/agent-definitions/webhooks/github/completions',

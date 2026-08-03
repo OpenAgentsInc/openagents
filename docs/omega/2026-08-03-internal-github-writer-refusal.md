@@ -70,7 +70,8 @@ authority; it does not create canonical Work and grants no command authority.
 
 ## Remaining #225 gates
 
-- Install the signature-verifying GitHub transport for strict bug candidates.
+- Configure and prove the signature-verifying strict-bug transport against the
+  reachable owner-authority gateway.
 - Prove the packaged two-client journey against one owner-local authority.
 - Activate only after source reconciliation and capture the activation receipt.
 - Prove rollback against the native high-water cursor.

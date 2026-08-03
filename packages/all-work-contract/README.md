@@ -153,8 +153,11 @@ activate `native_omega`.
 
 `strict_bug.candidate.read` and `strict_bug.candidate.execute` provide the
 typed ingress and triage boundary for the final public GitHub strict-bug form.
-A preverified GitHub transport adapter must supply the exact issue source,
-delivery identity, and signature-verification evidence. The authority accepts
+A preverified GitHub transport adapter supplies the exact issue source,
+delivery identity, and signature-verification evidence. The OpenAgents API
+adapter lives in `strict-bug-webhook-routes.ts`; its live secret, reachable
+authority gateway, GitHub registration, and installed receipt remain deployment
+gates. The authority accepts
 only issues in `OpenAgentsInc/openagents` or `OpenAgentsInc/omega`, rejects
 secret-shaped or private-path content, deduplicates source and delivery refs,
 derives the ingress idempotency key from the delivery ref, and persists every
@@ -163,9 +166,7 @@ report as an untrusted `pending` candidate.
 Admission is a separate owner-local triage command. A non-rejected disposition
 must link the candidate to canonical Work, but that link does not grant Work
 command authority. Both ingress and triage return idempotent receipts whose
-GitHub-write count is structurally zero. This boundary does not install or
-claim a production GitHub webhook adapter; it is the canonical destination
-that such a signature-verifying adapter must call.
+GitHub-write count is structurally zero.
 
 ## Generate and verify
 
