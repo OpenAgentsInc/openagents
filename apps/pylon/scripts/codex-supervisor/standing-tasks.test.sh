@@ -126,5 +126,16 @@ else
   ok "missing gh fails soft (no recreation)"
 fi
 
+# --- native Omega writer refuses GitHub recreation ------------------------
+printf '%s' '[{"number":6710,"title":"standing backstop burn","state":"CLOSED"}]' > "$STUB_DIR/list.json"
+: > "$CREATE_LOG"
+if OPENAGENTS_INTERNAL_WORK_WRITER=native_omega sup_recreate_closed_standing_tasks >/dev/null 2>&1; then
+  bad "native Omega writer must refuse standing-task GitHub recreation"
+else
+  ok "native Omega writer routes standing-task creation away from GitHub"
+fi
+[ ! -s "$CREATE_LOG" ] && ok "native writer refusal happens before gh issue create" \
+  || bad "native writer called gh issue create: $(cat "$CREATE_LOG")"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

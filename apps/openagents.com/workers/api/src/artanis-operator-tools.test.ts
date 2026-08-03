@@ -2076,6 +2076,35 @@ describe('open_unsupported_request_issue (owner-gated GitHub issue + ledger link
     expect(openedIssues).toEqual([])
   })
 
+  test('native Omega writer activation refuses before injected GitHub seams run', async () => {
+    const openedIssues: Array<unknown> = []
+    const tool = makeArtanisOpenUnsupportedRequestIssueTool({
+      internalGitHubWriteDecision: () => ({
+        allowed: false,
+        operation: 'internal_issue_create',
+        reason: 'native_writer_active',
+        route: 'omega',
+        writer: 'native_omega',
+      }),
+      isOwnerApproved: () => Effect.succeed(true),
+      opener: input => {
+        openedIssues.push(input)
+        return Effect.succeed({ kind: 'rejected', reason: 'must_not_run' })
+      },
+      reader: async () => [needsIssueRow],
+      writer: async () => needsIssueRow,
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({ ref: 'khala_unsupported:ur_issue6394' }),
+    )
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('internal_work_writer_is_native_omega_use_omega')
+    expect(result.plan).toContain('create canonical Work through Omega')
+    expect(openedIssues).toEqual([])
+  })
+
   test('a non-needs_issue ref is honest absence and does not open an issue', async () => {
     const openedIssues: Array<unknown> = []
     const tool = makeArtanisOpenUnsupportedRequestIssueTool({

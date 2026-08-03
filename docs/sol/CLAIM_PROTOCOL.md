@@ -14,11 +14,14 @@
 ## Purpose
 
 Parallel agents should increase completed integration, not duplicate the same
-issue or collide through a shared schema. The live GitHub issue set is the
-normal cross-session claim ledger. When no valid feature issue can exist under
-repository policy, the exact accepted plan or work packet and its recorded
-claim state are the ledger. The root coordinator is the ledger within one
-Codex collaboration session.
+issue or collide through a shared schema. The active internal Work writer owns
+the normal cross-session claim ledger. Before the All Work cutover, this is the
+live GitHub issue set. After the canonical cutover ledger records
+`native_omega`, agents use native Work Packets and Repository Work Claims
+through Omega and must not create internal GitHub issues or claim comments.
+When no valid feature issue can exist before cutover, the exact accepted plan
+or work packet and its recorded claim state are the ledger. The root
+coordinator is the ledger within one Codex collaboration session.
 
 ## Same-session claims
 
@@ -36,9 +39,11 @@ keys, route tables, and other cross-lane contracts.
 
 ## Cross-session claim comment
 
-Before you change files in an independent Codex tab/session, post this to the live
-issue. If feature issues are prohibited, record the same fields in the owner
-accepted plan/work packet before the implementation commit:
+Before you change files in an independent Codex tab/session, record this in the
+active claim ledger. In `legacy_github`, post it to the live issue. In
+`native_omega`, create or update the Repository Work Claim through Omega. If
+feature issues are prohibited before cutover, record the same fields in the
+owner-accepted plan/work packet before the implementation commit:
 
 ```text
 CLAIM
@@ -59,9 +64,10 @@ Do not claim an entire epic when the actual unit is one leaf.
 ## Autonomy self-claims
 
 A Full Auto run with autonomy enabled does not wait for a GitHub issue before it
-acts. The live GitHub issue set is the normal cross-session ledger. It is not
-the only valid ledger. This contract already permits an exact accepted plan or
-work packet as the ledger when repository policy prohibits a feature issue.
+acts. The active internal Work writer owns the normal cross-session ledger. It
+is not the only valid ledger. This contract already permits an exact accepted
+plan or work packet as the ledger when repository policy prohibits a feature
+issue before cutover.
 
 A self-claim is that work packet. The run emits it. It is not a new GitHub
 issue. A self-selected action is a valid basis to act when all of these are

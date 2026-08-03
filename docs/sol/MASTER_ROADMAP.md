@@ -2,8 +2,8 @@
 
 - Class: authority
 - Date: 2026-07-10
-- Updated: 2026-08-02
-- Revision: 141
+- Updated: 2026-08-03
+- Revision: 142
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: no active `roadmap:sol` product issue. Current work comes from
   an exact live issue or owner-accepted packet. OpenAgentsInc/omega#199 through
@@ -43,6 +43,13 @@ projections and the generated API/SDK; Omega #216 consumes the signed Workroom
 slice. Omega #217 through #219 are installed-product accessibility, identity,
 and concise-copy gates. A generated type, fixture, or route label cannot close
 any of those product issues without its named live and installed proof.
+
+OpenAgents commits through `1a7d624c5e` plus the current #225 implementation
+provide the single-writer ledger, strict public-bug candidate destination, and
+internal GitHub writer refusal boundary without activation. `legacy_github`
+remains the current writer. The signature-verifying transport, packaged
+two-client journey, activation and rollback receipts, and final installed gate
+remain required.
 
 **2026-07-25 Forge web reconciliation.** The [`Forge ProductSpec`](../../specs/openagents/forge.product-spec.md) and epic #9242 admit the invite-only Nostr and ngit Forge in the single `openagents.com` app. For this web lane, they supersede the 2026-07-23 GitHub-authoritative posture. Invited and migrated repositories use `openagents_git_authoritative`, while unmigrated repositories keep `github_authoritative`. GitHub is a read-only mirror after migration. It remains the repository and claim authority for OpenAgents development until a later admitted claim-ledger cutover. The canceled standalone relay and Forge programs stay canceled. Issues #9243 through #9253 own delivery, and the [`invite-only Forge analysis`](../fable/2026-07-25-nostr-git-forge-invite-only-analysis.md) stays design evidence only.
 

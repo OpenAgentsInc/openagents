@@ -136,7 +136,18 @@ While `native_omega` is active, every native event must advance the retained
 high-water cursor. Rollback refuses unless its reconciliation cursor exactly
 covers that high-water mark. The Effect authority owns idempotency and atomic
 owner-local persistence. This landed boundary does not activate the cutover;
-the packaged two-client journey and policy/tool switch remain separate gates.
+the packaged two-client journey remains a separate gate.
+
+`src/internal-github-write-policy.ts` is the shared refusal boundary for
+retained internal GitHub issue and claim writers. Owner-local processes resolve
+the durable ledger through `OPENAGENTS_OMEGA_EFFECTD_DATA_ROOT`; remote or
+hosted writers receive the same state through
+`OPENAGENTS_INTERNAL_WORK_WRITER`. Missing signals retain preactivation
+`legacy_github` behavior, malformed or conflicting signals fail closed, and
+`native_omega` routes canonical Work to Omega before a GitHub mutation seam can
+run. Strict bug ingress and exact completion/release callback comments remain
+transport boundaries, not Work or claim authority. Landing this fence does not
+activate `native_omega`.
 
 ## Strict public bug candidates
 

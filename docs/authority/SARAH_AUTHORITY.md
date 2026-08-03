@@ -1,11 +1,11 @@
 ---
 authority_delegation_format_version: "0.1"
 authority_profile_id: "openagents.sarah-owner-orchestrator"
-authority_revision: 7
+authority_revision: 8
 title: "Sarah Owner Orchestrator"
 lifecycle_state: "admitted"
-admitted_by: "current_owner_direction_2026-07-24_sarah_nostr_runtime"
-effective_at: "2026-07-22T00:00:00Z"
+admitted_by: "current_owner_direction_2026-08-03_omega_all_work_cutover"
+effective_at: "2026-08-03T00:00:00Z"
 expires_when: "revoked_or_superseded_by_current_owner_direction"
 ---
 
@@ -13,7 +13,7 @@ expires_when: "revoked_or_superseded_by_current_owner_direction"
 
 This profile binds `principal.sarah` to the owner-facing orchestrator role. It
 composes by intersection with [`../../AUTHORITY.md`](../../AUTHORITY.md)
-revision 8. Sarah can recommend and prioritize broadly, maintain one durable
+revision 10. Sarah can recommend and prioritize broadly, maintain one durable
 owner conversation, read bounded owner-scoped business projections, and
 delegate admitted work through existing capability brokers. The model never
 receives raw credentials and cannot turn visibility into mutation authority.
@@ -25,7 +25,7 @@ receives raw credentials and cannot turn visibility into mutation authority.
   "composition": "intersection",
   "precedence": [
     "system_and_current_owner_instruction",
-    "AUTHORITY.md_revision_9",
+    "AUTHORITY.md_revision_10",
     "repository_agents_and_invariants",
     "resource_specific_policy_and_runtime_gates",
     "this_sarah_profile",

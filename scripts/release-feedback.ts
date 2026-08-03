@@ -21,6 +21,7 @@ import {
   assertOpenAgentsReleaseUrl,
   releaseCommunicationMarker,
 } from "./release-communications.js";
+import { assertInternalGitHubWriteAllowed } from "../packages/all-work-contract/src/internal-github-write-policy.js";
 
 export type ParsedTesterFeedback = Readonly<{
   result: "pass" | "blocked" | "unstructured";
@@ -547,6 +548,7 @@ export const createReleaseFeedbackPort = (
       : { number: row.number, url: row.url };
   },
   createIssue: async (input) => {
+    assertInternalGitHubWriteAllowed("internal_issue_create");
     const args = ["issue", "create", "--repo", repo, "--title", input.title, "--body-file", "-"];
     for (const label of input.labels) args.push("--label", label);
     const url = execFileSync("gh", args, {

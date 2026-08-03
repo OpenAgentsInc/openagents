@@ -1308,6 +1308,22 @@ come from the Freerange teardown
   Declaration") and `apps/openagents.com/scripts/check-zero-debt-architecture.mjs`
   (epic #4751).
 
+## One Internal Work Writer
+
+- The canonical `work.cutover` ledger selects exactly one internal Work and
+  Repository Work Claim writer. `legacy_github` remains active until an
+  authorized activation records `native_omega`; source imports, startup,
+  fixtures, rendered UI, and environment configuration cannot activate it.
+- After `native_omega` activation, internal issue creation, internal progress
+  comments, and claim comments must refuse before a GitHub mutation and route
+  to canonical Work through Omega. Conflicting or malformed writer state fails
+  closed.
+- GitHub remains repository, pull-request, check, review, merge, release,
+  source, and provenance transport. The strict public bug form creates only an
+  untrusted candidate. Exact source-thread completion and release callbacks
+  remain bounded transport. These exceptions grant no Work, claim, command,
+  release, or public-claim authority.
+
 ## Product Promise Claims
 
 - User-facing and agent-facing product claims belong in the product-promises

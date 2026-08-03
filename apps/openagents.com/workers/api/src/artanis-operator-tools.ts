@@ -56,6 +56,11 @@ import {
   formatArtanisTokenPaceLine,
 } from './artanis-token-pace'
 import { openAgentsOpenApiDocument } from './openagents-openapi'
+import {
+  assertInternalGitHubWriteAllowed,
+  decideInternalGitHubWrite,
+  type InternalGitHubWriteDecision,
+} from '../../../../../packages/all-work-contract/src/internal-github-write-policy.js'
 
 // ---------------------------------------------------------------------------
 // #6365 — repo-read tools (public OpenAgentsInc/openagents only).
@@ -2692,6 +2697,7 @@ export type ArtanisOpenUnsupportedRequestIssueConfig = Readonly<{
   writer?: ArtanisUnsupportedRequestWriter | undefined
   opener?: ArtanisUnsupportedRequestIssueOpener | undefined
   isOwnerApproved?: (() => Effect.Effect<boolean>) | undefined
+  internalGitHubWriteDecision?: (() => InternalGitHubWriteDecision) | undefined
   maxScan?: number | undefined
 }>
 
@@ -2712,6 +2718,14 @@ export const makeArtanisGithubIssueOpener = (
 
   return input =>
     Effect.gen(function* () {
+      try {
+        assertInternalGitHubWriteAllowed('internal_issue_create')
+      } catch {
+        return {
+          kind: 'rejected',
+          reason: 'internal_work_writer_is_native_omega_use_omega',
+        }
+      }
       if (token === undefined || token === '') {
         return { kind: 'rejected', reason: 'github_issue_token_not_configured' }
       }
@@ -3102,6 +3116,24 @@ export const makeArtanisOpenUnsupportedRequestIssueTool = (
         }
 
         const plan = buildUnsupportedRequestIssuePlan(ref.value)
+        try {
+          const decision =
+            config.internalGitHubWriteDecision?.() ??
+            decideInternalGitHubWrite('internal_issue_create')
+          if (!decision.allowed) {
+            return {
+              outcome: 'deferred',
+              plan: `${plan}\n\nRoute: create canonical Work through Omega.`,
+              reason: 'internal_work_writer_is_native_omega_use_omega',
+            }
+          }
+        } catch {
+          return {
+            outcome: 'deferred',
+            plan,
+            reason: 'internal_work_writer_policy_unavailable',
+          }
+        }
         if (config.reader === undefined) {
           return { outcome: 'deferred', plan, reason: 'reader_not_wired' }
         }

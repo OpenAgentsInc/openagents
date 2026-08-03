@@ -1,11 +1,11 @@
 ---
 authority_delegation_format_version: "0.1"
 authority_profile_id: "openagents.owner-delegated-autonomy"
-authority_revision: 9
+authority_revision: 10
 title: "OpenAgents Owner-Delegated Autonomous Delivery"
 lifecycle_state: "admitted"
-admitted_by: "current_owner_direction_2026-07-25_omega_independent_reviewer"
-effective_at: "2026-07-25T00:00:00Z"
+admitted_by: "current_owner_direction_2026-08-03_omega_all_work_cutover"
+effective_at: "2026-08-03T00:00:00Z"
 expires_when: "revoked_or_superseded_by_current_owner_direction"
 ---
 
@@ -142,6 +142,21 @@ specification names it.
 
 The design and its falsifiers live in
 [`docs/assurance/2026-07-25-sarah-as-independent-reviewer-spec.md`](docs/assurance/2026-07-25-sarah-as-independent-reviewer-spec.md).
+
+Revision 10 admits the owner-directed All Work writer cutover. The canonical
+`work.cutover` ledger selects exactly one internal Work and Repository Work
+Claim writer. While it records `legacy_github`, existing GitHub issue and claim
+operation remains admitted. After an authorized activation records
+`native_omega`, agents and internal tools must create and update canonical Work
+through Omega and must refuse new internal GitHub issues, internal progress
+comments, and claim comments.
+
+This revision does not itself activate the cutover. GitHub remains repository,
+pull-request, check, review, merge, release, source, and provenance transport.
+It also retains the strict public bug form as untrusted candidate ingress and
+exact source-thread completion or release callbacks as bounded transport. None
+of those retained paths grants Work, claim, command, release, or public-claim
+authority.
 
 It does not grant unlimited company authority. It grants the exact reversible,
 evidence-bound actions below, under conservative bootstrap budgets. Current
@@ -311,7 +326,7 @@ higher authority. The format and resolution laws live in
   {"id": "condition.managed_sandbox_scope", "rule": "Resolve the exact authenticated owner, tenant, program, work unit, sandbox, target, immutable image digest, profile, lease/TTL, budget, capability refs, idempotency identity, expected version, and generation through the typed managed-sandbox broker before effects."},
   {"id": "condition.managed_sandbox_budget", "rule": "The requested lease, capacity, and measured incremental cost must remain within both the sandbox budget and condition.cloud_budget; exhaustion, unavailable capacity, or unmeasurable required cost refuses or stops with a receipt."},
   {"id": "condition.managed_sandbox_runtime_admission", "rule": "Contract vocabulary alone grants no mutation. The exact broker and Google Cloud target profile must be deployed, healthy, independently admitted, and able to emit native lifecycle, revoke, budget, and cleanup receipts; otherwise every managed-sandbox mutation refuses without provider effects."},
-  {"id": "condition.clean_claim", "rule": "Honor the live claim ledger and hot-contract protocol; do not displace another active owner."},
+  {"id": "condition.clean_claim", "rule": "Honor the claim ledger selected by the canonical internal Work writer and the hot-contract protocol; do not displace another active owner. After native_omega activation, use native Repository Work Claims through Omega and refuse internal GitHub issue or claim writes."},
   {"id": "condition.verification", "rule": "Run proof proportional to risk and preserve exact failing or passing receipts; never round up an evidence tier."},
   {"id": "condition.redaction", "rule": "No raw secrets, private prompts, customer data, owner-private traces, or unbounded tool output in public artifacts."},
   {"id": "condition.rollback", "rule": "Production, release, cloud, and data mutations require a tested or documented rollback and a bounded target."},
@@ -328,7 +343,7 @@ higher authority. The format and resolution laws live in
   {"id": "condition.stable_release_gate", "rule": "Stable-channel publication or promotion still requires a current explicit owner direction naming that stable release. Revision 2 standing autonomy covers RC, canary, staging, and rollback only."},
   {"id": "condition.autonomous_rc_only", "rule": "Unattended publication is limited to a strictly newer RC whose artifact class and limitations are explicit. GitHub is a non-authoritative candidate mirror and cannot substitute for signed update-feed admission."},
   {"id": "condition.release_impact", "rule": "Select release work from changed product paths after the release route is chosen. Web-only, mobile-OTA-eligible, and release-infrastructure-only changes must not manufacture a Desktop version or Windows build. Any Desktop renderer, host, native, shared-closure, or lockfile change requires the complete five-target Desktop matrix until a separately signed renderer-OTA contract with compatibility, first-launch health, and rollback is admitted."},
-  {"id": "condition.release_communication", "rule": "Release messages are bounded, idempotent, public-safe, and limited to linked GitHub issues, explicitly requested tester handles, and the Forum release-candidates topic. Candidate replies may be acknowledged or converted into linked feedback issues; no bulk direct messaging or impersonation is allowed."},
+  {"id": "condition.release_communication", "rule": "Release messages are bounded, idempotent, public-safe, and limited to linked GitHub issues, explicitly requested tester handles, and the Forum release-candidates topic. Candidate replies may be acknowledged through their exact source thread. A new internal follow-up issue is permitted only while legacy_github is the canonical Work writer; after native_omega activation the follow-up must route to canonical Work through Omega. No bulk direct messaging or impersonation is allowed."},
   {"id": "condition.release_attribution", "rule": "Every release and changelog records trigger kind, trigger actor, release actor role, source feedback, profile revision, program, grant, and evidence refs. Historical releases must not be retroactively attributed to a newer grant."},
   {"id": "condition.public_claim_evidence", "rule": "A public promise transition must use the existing typed registry and all named verification gates must be green."}
 ]

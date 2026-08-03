@@ -65,9 +65,13 @@ and documentation reconciliation that can proceed alongside the primary lane.
 - Before declaring completion, reconcile every child result against current
   `origin/main`, a spawned agent or passing child test is not itself the final
   integration receipt.
-- Across independent Codex tabs/sessions, the live Sol GitHub issue is the
-  normal claim ledger. When repository policy prohibits a feature issue, an
-  exact owner-accepted plan/work packet is the ledger instead. Follow
+- Across independent Codex tabs/sessions, the active internal Work writer owns
+  the normal claim ledger. Before the All Work cutover, that writer is the live
+  Sol GitHub issue. After the canonical cutover ledger records `native_omega`,
+  use the native Work Packet and Repository Work Claim through Omega and do not
+  create internal GitHub issues or claim comments. When repository policy
+  prohibits a feature issue before cutover, an exact owner-accepted plan/work
+  packet is the ledger instead. Follow
   `docs/sol/CLAIM_PROTOCOL.md` before mutation, including hot files **and hot
   contracts**, a claim becomes stale only after 90 minutes without evidence
   plus an explicit process/worktree audit. Same-session claims remain owned by

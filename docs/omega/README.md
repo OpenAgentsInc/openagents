@@ -133,6 +133,10 @@ Read these documents in this order:
     [strict bug candidate ingress boundary](./2026-08-03-strict-bug-candidate-ingress.md)
     before changing the final public GitHub bug-form exception, webhook
     transport, untrusted candidate triage, or candidate-to-Work provenance.
+44. Read the
+    [internal GitHub writer refusal boundary](./2026-08-03-internal-github-writer-refusal.md)
+    before changing issue creation, internal progress or claim comments,
+    completion callbacks, release-feedback callbacks, or writer activation.
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.

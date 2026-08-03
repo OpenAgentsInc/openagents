@@ -30,6 +30,9 @@
 : "${SUP_STANDING_TASK_LIMIT:=200}"
 : "${SUP_GH_TIMEOUT_SECS:=15}"
 
+# shellcheck source=internal-github-write-policy.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/internal-github-write-policy.sh"
+
 # Defensive fallback for standalone use; codex-supervisor.sh sources lockout.sh
 # (which defines sup_run_timeout) before this file.
 if ! command -v sup_run_timeout >/dev/null 2>&1; then
@@ -118,6 +121,10 @@ for t,n in sorted(closed.items(), key=lambda kv: kv[1]):
 #   Idempotent across runs (keyed on title). rc 1 when gh is missing.
 sup_recreate_closed_standing_tasks() {
   command -v "$SUP_GH_BIN" >/dev/null 2>&1 || return 1
+  sup_assert_internal_github_write_allowed "internal_issue_create" || {
+    sup_standing_log "native Omega Work writer active; standing-task GitHub recreation refused"
+    return 1
+  }
   local created=0 src
   while IFS= read -r src; do
     [ -n "$src" ] || continue

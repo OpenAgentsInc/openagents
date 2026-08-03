@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { basename, join } from "node:path"
 
 import { Effect } from "effect"
+import { assertInternalGitHubWriteAllowed } from "../../all-work-contract/src/internal-github-write-policy.js"
 
 import {
   khalaCodeQaMetricBudgets,
@@ -555,8 +556,9 @@ const runGhIssueCreate = async (input: {
   readonly labels: readonly string[]
   readonly repo: string
   readonly title: string
-}): Promise<string> =>
-  await new Promise((resolve, reject) => {
+}): Promise<string> => {
+  assertInternalGitHubWriteAllowed("internal_issue_create")
+  return await new Promise((resolve, reject) => {
     const args = [
       "issue",
       "create",
@@ -588,6 +590,7 @@ const runGhIssueCreate = async (input: {
       }
     })
   })
+}
 
 const main = async (): Promise<void> => {
   const args = parseArgs(process.argv.slice(2))

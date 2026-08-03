@@ -19,6 +19,7 @@ import { realpathSync } from "node:fs"
 import path from "node:path"
 import { spawnSync } from "node:child_process"
 import { workspaceGitEnvironment } from "./git-process-environment.ts"
+import { assertInternalGitHubWriteAllowed } from "../../../packages/all-work-contract/src/internal-github-write-policy.ts"
 
 import {
   decodeGitGithubRequest,
@@ -643,6 +644,11 @@ const runGitGithub = (rawRoot: string | null, request: GitGithubRequest): GitGit
     case "issueCreate": {
       const title = request.title.trim()
       if (title === "") return gitGithubError("issueCreate", "invalid_request", "An issue needs a title.")
+      try {
+        assertInternalGitHubWriteAllowed("internal_issue_create")
+      } catch {
+        return gitGithubError("issueCreate", "operation_failed", "Internal Work is now created through Omega.")
+      }
       const gate = ghGate(root)
       if (gate !== null) return gitGithubError("issueCreate", gate, ghErrorMessage(gate))
       const out = runBinary(

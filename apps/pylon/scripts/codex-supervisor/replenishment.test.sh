@@ -131,5 +131,15 @@ limited="$(sup_ensure_replenishment_issues | tr '\n' ' ')"
 [ "$limited" = "8001 " ] && ok "SUP_REPLENISHMENT_MAX_CREATE bounds one pass" \
   || bad "limited replenishment returned '$limited'"
 
+: > "$WORK/gh-state/create.log"
+if OPENAGENTS_INTERNAL_WORK_WRITER=native_omega \
+  sup_replenishment_create_issue "native refusal" "audit" "must use Omega" >/dev/null 2>&1; then
+  bad "native Omega writer must refuse replenishment GitHub issue creation"
+else
+  ok "native Omega writer routes replenishment creation away from GitHub"
+fi
+[ ! -s "$WORK/gh-state/create.log" ] && ok "native refusal happens before replenishment gh call" \
+  || bad "native writer called replenishment gh issue create"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -20,6 +20,9 @@
 : "${SUP_REPLENISHMENT_MAX_CREATE:=3}"
 : "${SUP_REPLENISHMENT_LOCK_TTL_SECS:=120}"
 
+# shellcheck source=internal-github-write-policy.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/internal-github-write-policy.sh"
+
 if ! command -v sup_file_mtime >/dev/null 2>&1; then
   sup_file_mtime() {
     stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0
@@ -124,6 +127,7 @@ sup_replenishment_create_issue() {
   local title="$1" kind="$2" body="$3"
   [ -n "$title" ] && [ -n "$body" ] || return 1
   command -v "$SUP_GH_BIN" >/dev/null 2>&1 || return 1
+  sup_assert_internal_github_write_allowed "internal_issue_create" || return 1
 
   local labels=() label
   while IFS= read -r label; do

@@ -22,6 +22,7 @@ import {
   type GitHubIssueForMarchingOrders,
   proposeMarchingOrderIssues,
 } from '../src/marching-orders-agent'
+import { assertInternalGitHubWriteAllowed } from '../../../../../packages/all-work-contract/src/internal-github-write-policy.js'
 
 const args = process.argv.slice(2)
 
@@ -156,6 +157,7 @@ const commentOnIssue = async (
   issueNumber: number,
   body: string,
 ): Promise<unknown> => {
+  assertInternalGitHubWriteAllowed('internal_issue_comment')
   const response = await fetch(
     `https://api.github.com/repos/${repo}/issues/${issueNumber}/comments`,
     {

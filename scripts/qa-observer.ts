@@ -33,6 +33,8 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { assertInternalGitHubWriteAllowed } from "../packages/all-work-contract/src/internal-github-write-policy.js";
+
 import {
   OBSERVER_CHECK_REGISTRY,
   decodeObserverRegistry,
@@ -572,11 +574,15 @@ export const runObserver = async (argv: readonly string[]): Promise<number> => {
       continue;
     }
     try {
+      assertInternalGitHubWriteAllowed("internal_issue_create");
       const existing = findOpenDriftIssue(result.id);
       const command =
         existing === undefined
           ? createCommand
           : buildDriftIssueCommentCommand(existing, result, runAt);
+      if (existing !== undefined) {
+        assertInternalGitHubWriteAllowed("internal_issue_comment");
+      }
       console.log(
         `sustained drift on ${result.id} — filing via: ${renderCommand(command.slice(0, 6))} …`,
       );

@@ -108,10 +108,10 @@ describe("OpenAgents AuthorityDelegationSpec 0.1 root profile", () => {
     expect(readFrontmatterString("authority_profile_id")).toBe(
       "openagents.owner-delegated-autonomy",
     );
-    expect(readFrontmatterInteger("authority_revision")).toBe(9);
+    expect(readFrontmatterInteger("authority_revision")).toBe(10);
     expect(readFrontmatterString("lifecycle_state")).toBe("admitted");
     expect(readFrontmatterString("admitted_by")).toBe(
-      "current_owner_direction_2026-07-25_omega_independent_reviewer",
+      "current_owner_direction_2026-08-03_omega_all_work_cutover",
     );
     expect(order).toMatchObject({
       authority_may_amplify: false,
