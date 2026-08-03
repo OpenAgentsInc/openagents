@@ -359,6 +359,64 @@ describe("All Work forensic prior-work authority", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("replays a stable cursor and query receipt after reopening the durable store", async () => {
+    const root = mkdtempSync(resolve(tmpdir(), "forensic-prior-work-cursor-"));
+    try {
+      await Effect.runPromise(
+        initializeFileForensicPriorWorkState(root, emptyForensicPriorWorkState()),
+      );
+      const fileLayer = () =>
+        ForensicPriorWorkAuthorityLive.pipe(
+          Layer.provide(fileForensicPriorWorkStateStoreLayer(root)),
+        );
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const authority = yield* ForensicPriorWorkAuthority;
+          yield* authority.submit(submission());
+          yield* authority.submit(
+            submission({
+              workRef: "work:forensic:coldcard:second-root",
+              mechanismClass: "mechanism:entropy:buffer-truncation",
+              causalMechanism: "An entropy buffer is truncated before seed derivation",
+              affectedBehavior: "Entropy bytes are missing from the derived wallet seed",
+              idempotencyRef: "idempotency:forensic:second-root",
+            }),
+          );
+        }).pipe(Effect.provide(fileLayer())),
+      );
+      const first = await Effect.runPromise(
+        Effect.gen(function* () {
+          const authority = yield* ForensicPriorWorkAuthority;
+          return yield* authority.query(query({ limit: 1 }));
+        }).pipe(Effect.provide(fileLayer())),
+      );
+      expect(first.matches).toHaveLength(1);
+      expect(first.nextCursor).not.toBeNull();
+
+      const restartedPage = await Effect.runPromise(
+        Effect.gen(function* () {
+          const authority = yield* ForensicPriorWorkAuthority;
+          return yield* authority.query(query({ limit: 1, cursor: first.nextCursor }));
+        }).pipe(Effect.provide(fileLayer())),
+      );
+      const replayedFirst = await Effect.runPromise(
+        Effect.gen(function* () {
+          const authority = yield* ForensicPriorWorkAuthority;
+          return yield* authority.query(query({ limit: 1 }));
+        }).pipe(Effect.provide(fileLayer())),
+      );
+      expect(restartedPage.matches).toHaveLength(1);
+      expect(restartedPage.receipt.stateRevision).toBe(first.receipt.stateRevision);
+      expect(replayedFirst.receipt.receiptRef).toBe(first.receipt.receiptRef);
+      expect(
+        new Set([first.matches[0]?.record.recordRef, restartedPage.matches[0]?.record.recordRef])
+          .size,
+      ).toBe(2);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
