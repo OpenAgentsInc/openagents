@@ -106,12 +106,14 @@ NIP-SKL (skills gate what a Delegate may load).
 
 ### Layer 0 — Foundation
 
-| NIP | Name | Tentative kinds |
-| --- | --- | --- |
-| NIP-WK | Work | 32170-32179 |
-| NIP-WI | Work Intents and Admission | 32180-32189 |
-| NIP-EV | Evidence, Verification, and Dispositions | 32190-32199 |
-| NIP-OT | Organizations and Teams | 32100-32109 |
+Layer 0 is drafted. The four spec files live beside this index.
+
+| NIP | Name | Tentative kinds | Draft |
+| --- | --- | --- | --- |
+| NIP-WK | Work | 32170-32179 | [`WK.md`](WK.md) |
+| NIP-WI | Work Intents and Admission | 32180-32189 | [`WI.md`](WI.md) |
+| NIP-EV | Evidence, Verification, and Dispositions | 32190-32199 | [`EV.md`](EV.md) |
+| NIP-OT | Organizations and Teams | 32100-32109 | [`OT.md`](OT.md) |
 
 **NIP-WK — Work.** The root object. An addressable Work record binds
 objective ref, Work Domain, Work Class, owner ref, state, revision,

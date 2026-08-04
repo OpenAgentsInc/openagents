@@ -22,7 +22,14 @@ liquidity pool.
 [`PROPOSED.md`](PROPOSED.md) indexes the proposed next wave: the All Work NIP
 program that encodes the Linear-class planning, agent delegation, coding,
 review, evidence, and outcome system on Nostr, in the spirit of the Block Buzz
-extension NIPs.
+extension NIPs. Its layer-0 foundation is drafted:
+
+| Spec | Role | Kinds (tentative) | File |
+| --- | --- | --- | --- |
+| NIP-WK | Work root object | 32170-32173 | [`WK.md`](WK.md) |
+| NIP-WI | Work Intents and Admission | 32180-32182 | [`WI.md`](WI.md) |
+| NIP-EV | Evidence, Verification, Dispositions | 32190-32193 | [`EV.md`](EV.md) |
+| NIP-OT | Organizations and Teams | 32100-32104 | [`OT.md`](OT.md) |
 
 ## Per-spec summaries
 
