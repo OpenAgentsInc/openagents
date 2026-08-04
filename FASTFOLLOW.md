@@ -1,14 +1,14 @@
 ---
 fast_follow_spec_format_version: "0.1"
 fast_follow_spec_id: "openagents.fast_follow"
-fast_follow_revision: 10
+fast_follow_revision: 11
 title: "OpenAgents Fast Follow"
 artifact_type: "learning_intent"
 lifecycle_state: "admitted"
 author: "OpenAgents"
 linked_target_repo: "OpenAgentsInc/openagents"
 created_at: "2026-07-16T00:00:00Z"
-updated_at: "2026-08-03T00:00:00Z"
+updated_at: "2026-08-03T12:00:00Z"
 ---
 
 # OpenAgents Fast Follow
@@ -1576,6 +1576,73 @@ sequence. The ordered Amp `initial_program` stays unchanged.
         "kind": "evaluation",
         "summary": "Prove one native OpenAgents Work object with an Issue projection, human Assignee, and Agent Delegate end to end, including signed Workroom activity, durable execution, host verification, human disposition, replay, relay outage, and revocation, with Linear completely absent.",
         "stance": "study"
+      }
+    ]
+  },
+  {
+    "id": "boltzexchange.boltz",
+    "title": "Boltz Exchange non-custodial Bitcoin layer swaps",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/boltzexchange",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/teardowns/2026-08-03-boltz-ecosystem-nostr-rebuild-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "client_reverifies_wire_data",
+        "kind": "security",
+        "summary": "Re-derive every operator-supplied lockup script, address, invoice, and contract address locally before acting on it, and keep the published verification checklist executable as tests, because the documented trust model treats an operator response as untrusted until the client reproduces it.",
+        "stance": "adapt"
+      },
+      {
+        "id": "cooperative_path_with_independent_timeout_exit",
+        "kind": "protocol",
+        "summary": "Study the paired exit design where a cooperative signature path is the normal route and an independent timeout path always stays available, so peer silence, relay loss, or operator outage degrades to a slower refund instead of loss.",
+        "stance": "study"
+      },
+      {
+        "id": "named_lifecycle_states_and_per_rail_watchers",
+        "kind": "architecture",
+        "summary": "Name every lifecycle state explicitly and keep the long-running per-rail watchers that advance work on external events separate from the admission API, because the watcher rather than the request handler is the engine of a cross-rail state machine.",
+        "stance": "adapt"
+      },
+      {
+        "id": "state_machine_library_over_raw_api",
+        "kind": "reliability",
+        "summary": "Keep value-moving integrations behind one reviewed state-machine library instead of letting each caller drive the raw HTTP surface, because the documented failure modes live in the edge and recovery paths rather than the happy path.",
+        "stance": "adapt"
+      },
+      {
+        "id": "bound_source_risk_before_destination_lock",
+        "kind": "reliability",
+        "summary": "Study the reverse-swap ordering where a held invoice bounds source-side risk before the destination side is locked, together with the explicit unconfirmed-transaction policy that fails closed rather than assuming settlement.",
+        "stance": "study"
+      },
+      {
+        "id": "swap_secrets_never_on_public_events",
+        "kind": "security",
+        "summary": "Keep preimages, refund and claim private keys, secret signing nonces, wallet seeds, node credentials, and full invoice strings out of public events and publish only refs and digests, which matches the exclusion rules the existing OpenAgents Nostr drafts already state.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "multi_provider_discovery_candidate",
+        "kind": "protocol",
+        "summary": "Study a multi-provider discovery, private negotiation, and evidence plane composed from existing official Nostr NIPs as an alternative to one operator API, while the sketched swap event kinds stay unreserved candidates that require the normal draft process before any wire use.",
+        "stance": "study"
+      },
+      {
+        "id": "agpl_operator_is_evidence_not_dependency",
+        "kind": "architecture",
+        "summary": "Reject adopting the AGPL operator backend or web application as a runtime dependency or a second payment authority, reject a single operator REST surface as the only discovery plane, and reject replacing current OpenAgents settlement authority with a swap operator instance.",
+        "stance": "reject"
+      },
+      {
+        "id": "liquidity_claims_are_not_budgets",
+        "kind": "economics",
+        "summary": "Reject treating provider capacity announcements as grants or budgets, public zap receipts as swap finality, or a partner referral program as the default protocol fee model, because an advertisement and a social receipt are neither authority nor proof of settlement.",
+        "stance": "reject"
       }
     ]
   },
