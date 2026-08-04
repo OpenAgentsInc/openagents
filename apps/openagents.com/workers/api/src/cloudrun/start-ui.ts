@@ -115,6 +115,10 @@ export const startUiContentType = (filePath: string): string => {
 export const isDiamondHandsPath = (pathname: string): boolean =>
   pathname === '/dh' || pathname === '/dh/' || pathname.startsWith('/dh/')
 
+export const diamondHandsDeploymentEnabled = (
+  configured = process.env['OPENAGENTS_DIAMOND_HANDS_ENABLED'],
+): boolean => configured === 'true'
+
 export const diamondHandsResponseHeaders = (
   pathname: string,
 ): Readonly<Record<string, string>> =>
@@ -166,6 +170,9 @@ const serveExactClientAsset = async (
 ): Promise<Response | undefined> => {
   if (request.method !== 'GET' && request.method !== 'HEAD') return undefined
   const url = new URL(request.url)
+  if (isDiamondHandsPath(url.pathname) && !diamondHandsDeploymentEnabled()) {
+    return undefined
+  }
   const filePath = exactClientFile(url.pathname)
   if (filePath === null) return undefined
   try {

@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 
 import {
+  diamondHandsDeploymentEnabled,
   diamondHandsResponseHeaders,
   isDiamondHandsPath,
   startUiAssetRelativePath,
@@ -8,6 +10,21 @@ import {
 } from './start-ui'
 
 describe('Operation Diamond Hands static GPUI document', () => {
+  test('fails closed unless a fresh deployment explicitly enables it', () => {
+    expect(diamondHandsDeploymentEnabled(undefined)).toBe(false)
+    expect(diamondHandsDeploymentEnabled('false')).toBe(false)
+    expect(diamondHandsDeploymentEnabled('1')).toBe(false)
+    expect(diamondHandsDeploymentEnabled('true')).toBe(true)
+
+    const productionEnvironment = readFileSync(
+      new URL('../../scripts/cloudrun/env-production.yaml', import.meta.url),
+      'utf8',
+    )
+    expect(productionEnvironment).not.toContain(
+      'OPENAGENTS_DIAMOND_HANDS_ENABLED',
+    )
+  })
+
   test.each([
     '/dh',
     '/dh/',

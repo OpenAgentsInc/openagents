@@ -383,6 +383,8 @@ generated wasm, route integration, and direct NIP-11/WebSocket browser proof
 were completed, then the owner stood down before relay records were published
 or `/dh` was deployed. Preserve the implementation for other GPUI-on-web work;
 do not ship this project surface without a new owner decision.
+The preserved Cloud Run adapter gates the document and all `/dh/` assets on
+`OPENAGENTS_DIAMOND_HANDS_ENABLED=true`; production intentionally omits it.
 
 The first visible result is deliberately smaller than the full hardening
 projection. `/dh` renders the Project's NIP-OT Organization, one NIP-PG

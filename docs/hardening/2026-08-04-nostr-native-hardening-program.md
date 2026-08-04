@@ -21,6 +21,12 @@
 > proof, and route infrastructure remain on `main` for later reuse. `/dh` must
 > not be deployed and the roadmap below must not resume without a new owner
 > decision.
+>
+> The preserved server adapter requires
+> `OPENAGENTS_DIAMOND_HANDS_ENABLED=true` before it will serve the document or
+> any `/dh/` asset. The committed production environment intentionally omits
+> that value, making stand-down the fail-closed default across later unrelated
+> deployments.
 
 Episodes 263–265 established three things:
 

@@ -9,7 +9,9 @@ protocol drafts, relay/client contracts, and reusable GPUI/wasm infrastructure
 remain as historical and technical material. Do not deploy `/dh`, publish
 Operation Diamond Hands records, or continue the forensics program without a
 new owner decision. No `/dh` production deployment or relay publication
-occurred.
+occurred. The preserved Cloud Run adapter also fails closed unless
+`OPENAGENTS_DIAMOND_HANDS_ENABLED` is exactly `true`; production declares no
+such value, so an unrelated future deployment cannot expose the page.
 
 | Document                                                                                       | Contents                                                                                                                                                                                                                                                                        |
 | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
