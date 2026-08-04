@@ -354,11 +354,14 @@ notification never triggers Work.
 
 ### Layer 4 — Hosts, outcomes, and public trust
 
-| NIP | Name | Tentative kinds |
-| --- | --- | --- |
-| NIP-HP | Hosts and Placement | 39560-39579 |
-| NIP-OC | Outcome Closeout | 39580-39589 |
-| NIP-PP | Product Promises | 32440-32449 |
+Layer 4 is drafted. With it, all 25 proposed NIPs have spec files beside
+this index.
+
+| NIP | Name | Tentative kinds | Draft |
+| --- | --- | --- | --- |
+| NIP-HP | Hosts and Placement | 39560-39579 | [`HP.md`](HP.md) |
+| NIP-OC | Outcome Closeout | 39580-39589 | [`OC.md`](OC.md) |
+| NIP-PP | Product Promises | 32440-32449 | [`PP.md`](PP.md) |
 
 **NIP-HP — Hosts and Placement.** Host records (identity, kind, owner,
 generation, health, capability refs, grant refs, last-observed time) for

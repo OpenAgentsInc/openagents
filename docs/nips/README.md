@@ -22,8 +22,7 @@ liquidity pool.
 [`PROPOSED.md`](PROPOSED.md) indexes the proposed next wave: the All Work NIP
 program that encodes the Linear-class planning, agent delegation, coding,
 review, evidence, and outcome system on Nostr, in the spirit of the Block Buzz
-extension NIPs. Its foundation (layer 0), planning (layer 1), and
-agents-and-execution (layer 2) waves are drafted:
+extension NIPs. All five layers are drafted:
 
 | Spec | Role | Kinds (tentative) | File |
 | --- | --- | --- | --- |
@@ -45,6 +44,13 @@ agents-and-execution (layer 2) waves are drafted:
 | NIP-CC | Code Context and Coding Sessions | 32310-32311 | [`CC.md`](CC.md) |
 | NIP-RV | Reviews | 32320-32322 | [`RV.md`](RV.md) |
 | NIP-WA | Workroom Activity | 32150-32163 (pinned) | [`WA.md`](WA.md) |
+| NIP-GB | Guidance Bundles | 32330-32331 | [`GB.md`](GB.md) |
+| NIP-AL | Automation Loops | 32340-32341 | [`AL.md`](AL.md) |
+| NIP-TP | Triage Proposals | 32350 | [`TP.md`](TP.md) |
+| NIP-AT | Attention and Notifications | 32360-32361 | [`AT.md`](AT.md) |
+| NIP-HP | Hosts and Placement | 39560-39562 | [`HP.md`](HP.md) |
+| NIP-OC | Outcome Closeout | 39580-39581 | [`OC.md`](OC.md) |
+| NIP-PP | Product Promises | 32440-32442 | [`PP.md`](PP.md) |
 
 ## Per-spec summaries
 
@@ -377,6 +383,43 @@ self-encrypted Notification Subscriptions that can suppress delivery but
 never widen authorization. Dismissing an item changes nothing about its
 subject, and the Block lane keeps its jobs: NIP-RS read state, NIP-ER
 reminders, NIP-PL push wake-ups with no content transiting platform push.
+
+### NIP-HP — Hosts and Placement (proposed layer 4)
+
+Where work runs, on kinds `39560-39562`: owner-signed Host Records for
+every placement class (local machine through production target) with
+generation fencing and observed-not-assumed health, owner-signed Capacity
+Statements with counted slots, flexibility classes, and freshness, and
+authority-signed Dispatch Decisions binding the exact policy revision and
+input refs. The three boundaries hold everywhere: reachability is not an
+execution grant, a capacity advertisement is not a Dispatch Decision, and
+a decision is not proof the work ran. Extends the NIP-TRN node-record
+pattern to general Work.
+
+### NIP-OC — Outcome Closeout (proposed layer 4)
+
+The terminal economics, on kinds `39580-39581`: Accepted Outcomes exist
+only by derivation from an admitted `accepted` Owner Disposition, carry
+receipt-backed contributor and component attribution through the NIP-EV
+graph, and label every economic value with its provenance rung
+(modeled through settled, never inferred upward). Closeouts reconcile
+every ending — accepted, rejected, cancelled, refunded — so acceptance
+rate, rework, cost per accepted outcome, and accepted-outcomes-per-
+kilowatt-hour are computable from the wire by any authorized reader.
+Settlement stays with its designated ledger; this NIP only references it.
+
+### NIP-PP — Product Promises (proposed layer 4)
+
+The public trust registry, on kinds `32440-32442`: one Product Promise
+record per named capability with claim text, scope, state
+(green/yellow/red/degraded/planned), evidence and blocker refs, and
+outside-verification guidance; dense append-only Promise Transitions that
+are evidence-gated upward and deliberately fast downward; and a
+digest-bearing Registry Head that lets any reader prove they hold the
+complete registry and detect omission. Nothing but an authority-signed
+transition changes a state — roadmaps, marketing, screenshots, and demos
+inherit nothing. Makes the live `openagents.com/promises` contract
+portable and independently verifiable.
 
 ## How the specs fit together
 
