@@ -4,8 +4,8 @@ Status: **living evidence log** (social + independent technical re-checks).
 This is **not** a claim that theft-complicity is proven. It is a structured place
 to park what is observed, what was re-verified, and what remains open.
 
-Last updated: 2026-08-04 (fourth pass: official technical backgrounder first-person
-claims, Block provider-log lead, more prior-notice posts, jamesob May 2025 detail).
+Last updated: 2026-08-04 (fifth pass: DocHex RFC6979 AI speculation post + thread;
+steelman guilt / non-guilt readings; speculative scenario map).
 
 ## How to read this
 
@@ -485,6 +485,181 @@ CTO-as-integrator; identity of the blog “I” is not cryptographically signed 
 the HTML. Treat as **probable staff voice**, likely Gray given ownership of TRNG
 code and migration, unless Coinkite attributes authorship otherwise.
 
+### E23 — CTO `@DocHex` post (~4 days before this note): AI / RFC6979 speculation
+
+**Primary post**
+
+| Field | Value |
+| --- | --- |
+| Author | `@DocHex` (bio: Co-Founder Coinkite. Programmer.) |
+| Time | **2026-07-30T20:24:37.000Z** |
+| ID | [2082925350732870062](https://x.com/DocHex/status/2082925350732870062) |
+| Text | “I wonder if a smart AI has found a hole in **RFC6979**? That would be bad.” |
+| Link in post | [RFC 6979](https://datatracker.ietf.org/doc/html/rfc6979) (deterministic ECDSA nonces) |
+| Metrics (probe) | ~13 likes, ~8 replies, ~3 RTs |
+
+**Timeline context (same calendar day as disclosure window)**
+
+| UTC (approx) | Event |
+| --- | --- |
+| ~2026-07-30 01:36 | Mass drain wave often cited as incident start (prior docs / media) |
+| 2026-07-30 (blog) | Coinkite security advisory + technical backgrounder published |
+| 2026-07-30 22:50 | `@COLDCARDwallet` Mk3 advisory tweet (early “Mk4/Q/Mk5 not affected”) |
+| **2026-07-30 20:24** | **This `@DocHex` RFC6979 / AI speculation** |
+| 2026-07-30 21:06 | `@MartyBent` RTs the DocHex post |
+| 2026-07-30 21:56 | `@darosior` reply (below) |
+| 2026-07-31+ | Expanding model scope, hotfixes, identity discourse |
+
+So the post is **not** “weeks before anything happened.” It lands **during day-0 of the public crisis**, from the CTO’s personal account, while product accounts are issuing advisories.
+
+**What RFC6979 is (and is not)**
+
+- RFC6979 specifies **deterministic ECDSA/DSA nonces** from private key + message (hedges classic nonce reuse).
+- A real break in RFC6979 would be a **global ECDSA catastrophe**, not a Coldcard-only seed issue.
+- Later community clarification (e.g. `@MrHodl` citing `@Rob1Ham`,
+  [2084470259357024379](https://x.com/MrHodl/status/2084470259357024379)): the known Coldcard
+  defect is **seed entropy**, and **does not** by itself break normal ECDSA spending that uses
+  RFC6979 nonces. DocHex’s hypothesis and the actual bug class **do not match**.
+
+**Immediate technical reply in-thread**
+
+`@darosior` ([2082948440720359924](https://x.com/darosior/status/2082948440720359924), ~27 likes):
+
+> “Smells more like an **entropy fuckup**, and a dumb LLM orchestration of the exploit
+> (stop scanning at a specific index, etc)”
+
+That reply is directionally aligned with what became the public root-cause story
+(weak seed entropy + automated search), while DocHex pointed at **nonce standards**.
+
+**Later replies on the same conversation** (days after; tone is accountability / rage,
+not technical refinement): e.g. calls for prison, “didn’t you ruin everyone’s life,”
+“feature or a bug?” linking hodlonaut CTO-authorship posts, “care to comment?” with
+screenshots ([conversation_id search](https://x.com/DocHex/status/2082925350732870062)).
+No `@DocHex` follow-up correcting RFC6979 → entropy found in the recent-search window.
+
+**How to use this as evidence (careful)**
+
+| Reading | Support |
+| --- | --- |
+| CTO was **actively thinking about AI finding crypto bugs** on incident day | Direct text |
+| CTO’s **first public personal hypothesis was wrong class** (RFC6979 vs seed RNG) | Text + darosior + later RFC6979 clarifications |
+| Post is **proof of inside job / advance knowledge of entropy bug** | **Not established** — could be general AI-crypto anxiety or bad early theory |
+| Post is **misdirection** away from seed RNG | Speculative; no evidence of deliberate diversion beyond wrong guess |
+| Silence after correct replies | Behavioral observation only |
+
+**Adjacent DocHex behavior in the same ~7-day window:** almost all other posts are
+**RTs** of official COLDCARD / migration / clarification content (E6, E14). This
+RFC6979 tweet is one of the only **original** security-adjacent posts from `@DocHex`
+in the sample (the other non-RT is a hardware reply about soldered memory, Jul 29).
+
+---
+
+## Steelman: readings that pull toward **guilt / bad faith**
+
+These are **strongest fair constructions** of the “something darker than oops”
+side. They are **not verdicts**. Steelman means: give the case its best form,
+then still separate fact from leap.
+
+### Steelman posts / voices (guilt-leaning)
+
+| Voice | Link | Steelman point |
+| --- | --- | --- |
+| `@jamesob` | [2084640418918957430](https://x.com/jamesob/status/2084640418918957430) | Public nym for security-critical code “has no reasonable explanation”; May 2025 concern shrugged off |
+| `@jamesob` | [2084620229389197453](https://x.com/jamesob/status/2084620229389197453) | switck ≈ DocHex; same person dismissed prior report |
+| `@zherbert` | [2084647957526167853](https://x.com/zherbert/status/2084647957526167853) | Multi-channel identity verification (GPG + phone digits claim) |
+| `@AtlantisPleb` | [2084660832596570417](https://x.com/AtlantisPleb/status/2084660832596570417) | Migration advice is “logical if complicit”; who else knew? |
+| `@hodlonaut` | [2084633601845363006](https://x.com/hodlonaut/status/2084633601845363006) | Authorship + post-attack messaging inconsistency |
+| `@Zenul_Abidin` | [2083756420843839872](https://x.com/Zenul_Abidin/status/2083756420843839872) | Years of sparse drains + blocked reporter → long knowledge |
+| `@BlockUnmasked` | [2083210091671568874](https://x.com/BlockUnmasked/status/2083210091671568874) | 2024 entropy theory reported to manufacturer + agencies |
+| Official 2021 def. | [1447213375398846473](https://x.com/COLDCARDwallet/status/1447213375398846473) | Vendor defined “retirement attack” as planted entropy bug |
+| Grok / public | [2084661432960880793](https://x.com/CyberTruckRonin/status/2084661432960880793) style | Facts of identity + bug are real; framing must stay precise |
+
+### Best-form guilt narrative (speculative assembly)
+
+1. **Control of the defect surface:** Gray’s key signs switck libngu work; Gray
+   authors firmware “First pass w/ libNgU” under real email (E3–E5). Not a
+   random junior PR.
+2. **Opacity:** security-critical work under a sparse nym while also committing
+   as real name on the same repo looks like intentional identity separation
+   (jamesob’s “no reasonable explanation”).
+3. **Possible prior signals ignored:** May 2025 report; 2022–2024 victim claims;
+   official “unaware until today” (E17) then looks self-serving if tickets exist.
+4. **Cultural tell:** official account joking about retirement attacks (E10).
+5. **Incident-day cognition:** RFC6979 AI post (E23) shows CTO thinking about
+   AI-discovered crypto breaks the same day — steelman guilt reading: he knew
+   AI-scale search was the threat model and floated a **broader** scary theory
+   while the **local** bug was seed RNG.
+6. **Comms pattern:** personal silence on nym/GPG; “united front”; early wrong
+   model scope (H).
+
+**Hardest leap still required for theft guilt:** joining the above to **control
+of drain keys / proceeds**. Without that, the steelman peaks at **reckless
+opacity + ignored warnings + catastrophic negligence**, not proven heist.
+
+---
+
+## Steelman: readings that pull toward **non-guilt / tragic negligence**
+
+### Steelman posts / voices (non-guilt or “competence failure”)
+
+| Voice | Link | Steelman point |
+| --- | --- | --- |
+| Official tech blog | [entropy-technical-backgrounder](https://blog.coinkite.com/entropy-technical-backgrounder/) | Complex integration bug; “I didn’t know” PRNG in tree; AI review missed it; open source assumed attacker AI path |
+| `@afilini` | [2083477163957694524](https://x.com/afilini/status/2083477163957694524) | MicroPython PRNG is normal upstream fallback; bug is **accidentally using it**, not inventing evil PRNG in Coldcard |
+| `@afilini` | [2083483878887399594](https://x.com/afilini/status/2083483878887399594) | Auditing fallback would be ignored if you **wrongly assumed** you weren’t on that path |
+| `@darosior` (on E23) | [2082948440720359924](https://x.com/darosior/status/2082948440720359924) | Entropy + LLM orchestration — external attacker pattern, not RFC6979 |
+| `@zherbert` (even while identity-hunting) | [2084638910970220754](https://x.com/zherbert/status/2084638910970220754) | “Still think it is likely just **incompetence / negligence**” unless identity raises flags |
+| `@CyberTruckRonin` | [2084661432960880793](https://x.com/CyberTruckRonin/status/2084661432960880793) | Identity facts can be true without “evil maid” / intentional plant framing |
+| Dice / multisig survivors | many; e.g. diceroll reports | Mitigation paths worked as designed for users who BYOE |
+| Inventory destroy + hotfixes | official posts | Consistent with damage control, not only with cover-up |
+
+### Best-form non-guilt narrative (speculative assembly)
+
+1. **Composition bug is a classic integration failure:** same symbol names,
+   `#ifndef` vs value, submodule PRNG — exactly the sort of thing that survives
+   partial review (E17 “binary had TRNG, wrong `rng_get` linked”).
+2. **Nym use can be privacy / old habit / side project** without theft intent;
+   still bad OPSEC, but not a completed crime theory. Gray also commits under
+   **real name** on the same repos (hurts “pure burner” story).
+3. **“Unaware until today”** can mean unaware of **this root cause**, even if
+   sparse unexplained drains existed and were mis-triaged (malware / user error
+   assumptions).
+4. **RFC6979 post (E23):** a senior engineer under stress free-associates to
+   the scariest AI-crypto failure mode he knows (deterministic nonces). Wrong,
+   but human. darosior corrects within ~90 minutes.
+5. **Migration advice** is mandatory under active exploitation whether or not
+   staff are saints.
+6. **Open source + AI:** vendor’s own theory that attackers used AI on public
+   firmware is consistent with third-party discovery, not insider monopoly.
+
+**Hardest gap for pure innocence of process:** years of open defect, empty
+commit subjects, shrugged May 2025 report claim, and dual identity still demand
+a **governance / culture** indictment even if theft is false.
+
+---
+
+## Speculative scenarios (explicitly labeled)
+
+These are **interpretation sketches**, not findings. Ordered from “more
+consistent with current public evidence” to “requires bigger leaps.”
+
+| # | Scenario | Fits well | Fits poorly / needs extra facts | Guilt flavor |
+| --- | --- | --- | --- | --- |
+| **S1** | **Tragic integration negligence** — competent-enough team ships libNgU migration, wrong RNG linked, nobody does end-to-end seed-path proof; AI later cheapens exploit | E17 mechanism; open source age; afilini; GPG identity as OPSEC mess not heist | Prior-notice claims if primary tickets show clear RNG root cause was known | Low theft guilt; high product guilt |
+| **S2** | **Negligence + defensive denial** — sparse early drains misfiled; May 2025 report soft-pedaled; “unaware” is institutional face-saving | E12/E18 vs E17 tension; studentofthings “unrelated” reply pattern | Still no ticket PDFs | Medium process guilt |
+| **S3** | **Reckless opacity** — dual identity + empty commits + joke culture (retirement attack) without plan to steal; when AI era arrives, external actors cash the option | E3–E5, E10, E15; external attacker ops E19 | Why real-name firmware commits then? | High reputation guilt; theft unproven |
+| **S4** | **Informed non-fix + hope it ages out** — someone inside understood weakness risk after signals, chose not to force migration (business / reputation), no personal drain | Prior-notice steelman | Contradicts E17 “unaware”; needs smoking-gun internal docs | Moral/civil exposure |
+| **S5** | **Inside-assisted exploit** — staff or ex-staff uses knowledge of weak seed space; may or may not be original 2021 author | Control of code knowledge; timing theories | No on-chain link; Block provider lead looks like external paid analytics user | Criminal if true |
+| **S6** | **Long-game intentional plant (retirement attack realized)** — entropy bug designed for later retrieval | E10 joke; dual nym; disaster scale | E17 first-person “didn’t know PRNG in tree”; real-name migration; upstream MicroPython PRNG not invented in-house; empty “x” commits look more chaotic than crafty | Maximum allegation; **weakest fit** to full public technical record without new evidence |
+| **S7** | **RFC6979 post as tell** — E23 is subconscious / half-aware comment about AI finding *their* bug | Same-day timing; AI theme matches E17 attacker theory | Wrong vulnerability class; darosior correction; low engagement | Weak as standalone proof |
+| **S8** | **RFC6979 post as honest wrong theory** — CTO genuinely hypothesized nonce break under AI pressure | Wrong class + quick community correction | — | Non-guilt on this artifact |
+
+**Working preference under current public set (still speculative):**  
+**S1–S3** are the least strained. **S5–S6** remain the ones social media treats as
+“the story,” but they still lack the single decisive bridge (staff ↔ drain
+proceeds or contemporaneous intent docs). **E23 alone** is closer to **S7/S8**
+than to S6.
+
 ---
 
 ## Synthesis (evidence, not verdict)
@@ -511,6 +686,8 @@ code and migration, unless Coinkite attributes authorship otherwise.
    Rob1Ham red team, fee-race victims, provider-log matching.
 9. **Official first-person ownership** of zeroed `MICROPY_HW_ENABLE_RNG` and
    wrong seed path, plus **“unaware until today”** (E17 / I).
+10. **Incident-day CTO personal post** wondering if AI found an **RFC6979** hole
+    (E23) — wrong bug class relative to seed entropy; darosior replies entropy.
 
 ### What the evidence does **not** yet support
 
@@ -562,6 +739,7 @@ git log -1 --format=fuller FETCH_HEAD
 cargo run -p x_api -- search 'from:_PyBlock_ (DocHex OR Switck)' --max-results 20
 cargo run -p x_api -- post 2084660832596570417
 cargo run -p x_api -- post 1447213375398846473   # official retirement-attack definition
+cargo run -p x_api -- post 2082925350732870062   # DocHex RFC6979 / AI speculation (day 0)
 
 # D) Official advisory + technical deep dive (HTML)
 curl -fsS https://blog.coinkite.com/coldcard-mk3-seed-generation-warning/ | head
