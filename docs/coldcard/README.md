@@ -48,6 +48,9 @@ Until those dependencies close with accepted receipts:
    — live X API recent-search snapshot of Coldcard discourse (external
    observation only). Access path:
    [`../grok/2026-08-04-x-api-and-xai-x-search-access.md`](../grok/2026-08-04-x-api-and-xai-x-search-access.md).
+8. [`2026-08-04-cto-inside-job-thesis-analysis.md`](2026-08-04-cto-inside-job-thesis-analysis.md)
+   — morning “CTO / inside job” thesis: linked posts, GPG/switck identity
+   check, and which claims hold vs overreach.
 
 The broader rationale and current product sequence live in the
 [`docs/loupe` entry point](../loupe/README.md), the
