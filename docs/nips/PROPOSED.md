@@ -107,8 +107,9 @@ what a Delegate may load).
   beside SA's exact 39200-39203, 39210-39213, 39220-39221, 39230-39231, and
   39260 kinds; AC's 39240-39246; and TRN's 39500-39530 allocations.
 - NIP-MKT owns the collision-reviewed addressable block `39600-39699`:
-  `39600-39609` are the drafted base and `39610-39699` remain unallocated
-  until each focused profile passes a new registry and three-lane review.
+  `39600-39609` are the drafted base, MKT-SWP allocates `39610`, MKT-PFI
+  allocates `39630`, and the remaining kinds stay unallocated until each
+  focused profile passes a new registry and three-lane review.
 - Append-only streams either use unique-`d` addressable events (the
   signed-workroom precedent) or a regular-kind block chosen at drafting time.
 - Each drafted NIP reserves the exact kinds in its specification after a
@@ -122,12 +123,12 @@ what a Delegate may load).
 
 Layer 0 is drafted. The four spec files live beside this index.
 
-| NIP | Name | Reserved kinds | Draft |
-| --- | --- | --- | --- |
-| NIP-WK | Work | 32170-32179 | [`WK.md`](WK.md) |
-| NIP-WI | Work Intents and Admission | 32180-32189 | [`WI.md`](WI.md) |
-| NIP-EV | Evidence, Verification, and Dispositions | 32190-32199 | [`EV.md`](EV.md) |
-| NIP-OT | Organizations and Teams | 32100-32109 | [`OT.md`](OT.md) |
+| NIP    | Name                                     | Reserved kinds | Draft            |
+| ------ | ---------------------------------------- | -------------- | ---------------- |
+| NIP-WK | Work                                     | 32170-32179    | [`WK.md`](WK.md) |
+| NIP-WI | Work Intents and Admission               | 32180-32189    | [`WI.md`](WI.md) |
+| NIP-EV | Evidence, Verification, and Dispositions | 32190-32199    | [`EV.md`](EV.md) |
+| NIP-OT | Organizations and Teams                  | 32100-32109    | [`OT.md`](OT.md) |
 
 **NIP-WK — Work.** The root object. An addressable Work record binds
 objective ref, Work Domain, Work Class, owner ref, state, revision,
@@ -175,15 +176,15 @@ capability, and a generation change fences stale membership
 
 Layer 1 is drafted. The seven spec files live beside this index.
 
-| NIP | Name | Reserved kinds | Draft |
-| --- | --- | --- | --- |
-| NIP-PI | Project Issue | 32200-32209 | [`PI.md`](PI.md) |
-| NIP-WR | Work Relations | 32210-32214 | [`WR.md`](WR.md) |
-| NIP-WS | Workflow States and Labels | 32215-32219 | [`WS.md`](WS.md) |
-| NIP-PG | Planning Graph | 32220-32239 | [`PG.md`](PG.md) |
-| NIP-RP | Release Planning | 32240-32249 | [`RP.md`](RP.md) |
-| NIP-DD | Documents and Decisions | 32250-32259 | [`DD.md`](DD.md) |
-| NIP-CN | Customers and Needs | 32260-32266, 32268-32269 | [`CN.md`](CN.md) |
+| NIP    | Name                       | Reserved kinds           | Draft            |
+| ------ | -------------------------- | ------------------------ | ---------------- |
+| NIP-PI | Project Issue              | 32200-32209              | [`PI.md`](PI.md) |
+| NIP-WR | Work Relations             | 32210-32214              | [`WR.md`](WR.md) |
+| NIP-WS | Workflow States and Labels | 32215-32219              | [`WS.md`](WS.md) |
+| NIP-PG | Planning Graph             | 32220-32239              | [`PG.md`](PG.md) |
+| NIP-RP | Release Planning           | 32240-32249              | [`RP.md`](RP.md) |
+| NIP-DD | Documents and Decisions    | 32250-32259              | [`DD.md`](DD.md) |
+| NIP-CN | Customers and Needs        | 32260-32266, 32268-32269 | [`CN.md`](CN.md) |
 
 **NIP-PI — Project Issue.** The Issue projection of Work: team-scoped
 identifier, title, description ref, Workflow State ref, priority, label refs,
@@ -241,15 +242,15 @@ commitment, grant, or Work State.
 
 Layer 2 is drafted. The seven spec files live beside this index.
 
-| NIP | Name | Reserved kinds | Draft |
-| --- | --- | --- | --- |
-| NIP-AD | Assignment and Delegation | 32270-32279 | [`AD.md`](AD.md) |
-| NIP-AS | Agent Sessions | 32280-32289 | [`AS.md`](AS.md) |
-| NIP-AV | Agent Activity | 32290-32299 | [`AV.md`](AV.md) |
-| NIP-RC | Repository Work Claims | 32300-32309 | [`RC.md`](RC.md) |
-| NIP-CC | Code Context and Coding Sessions | 32310-32319 | [`CC.md`](CC.md) |
-| NIP-RV | Reviews | 32320-32329 | [`RV.md`](RV.md) |
-| NIP-WA | Workroom Activity | 32150-32163 (pinned) | [`WA.md`](WA.md) |
+| NIP    | Name                             | Reserved kinds       | Draft            |
+| ------ | -------------------------------- | -------------------- | ---------------- |
+| NIP-AD | Assignment and Delegation        | 32270-32279          | [`AD.md`](AD.md) |
+| NIP-AS | Agent Sessions                   | 32280-32289          | [`AS.md`](AS.md) |
+| NIP-AV | Agent Activity                   | 32290-32299          | [`AV.md`](AV.md) |
+| NIP-RC | Repository Work Claims           | 32300-32309          | [`RC.md`](RC.md) |
+| NIP-CC | Code Context and Coding Sessions | 32310-32319          | [`CC.md`](CC.md) |
+| NIP-RV | Reviews                          | 32320-32329          | [`RV.md`](RV.md) |
+| NIP-WA | Workroom Activity                | 32150-32163 (pinned) | [`WA.md`](WA.md) |
 
 **NIP-AD — Assignment and Delegation.** The structural Assignee/Delegate
 split, which is the single most important Linear behavior to port. An
@@ -323,12 +324,12 @@ implementation already exists.
 
 Layer 3 is drafted. The four spec files live beside this index.
 
-| NIP | Name | Reserved kinds | Draft |
-| --- | --- | --- | --- |
-| NIP-GB | Guidance Bundles | 32330-32339 | [`GB.md`](GB.md) |
-| NIP-AL | Automation Loops | 32340-32349 | [`AL.md`](AL.md) |
-| NIP-TP | Triage Proposals | 32350-32359 | [`TP.md`](TP.md) |
-| NIP-AT | Attention and Notifications | 32360-32369 | [`AT.md`](AT.md) |
+| NIP    | Name                        | Reserved kinds | Draft            |
+| ------ | --------------------------- | -------------- | ---------------- |
+| NIP-GB | Guidance Bundles            | 32330-32339    | [`GB.md`](GB.md) |
+| NIP-AL | Automation Loops            | 32340-32349    | [`AL.md`](AL.md) |
+| NIP-TP | Triage Proposals            | 32350-32359    | [`TP.md`](TP.md) |
+| NIP-AT | Attention and Notifications | 32360-32369    | [`AT.md`](AT.md) |
 
 **NIP-GB — Guidance Bundles.** Versioned organization, team, project,
 repository, and workflow guidance with an explicit precedence chain and
@@ -371,11 +372,11 @@ notification never triggers Work.
 Layer 4 is drafted. With it, all 25 proposed NIPs have spec files beside
 this index.
 
-| NIP | Name | Reserved kinds | Draft |
-| --- | --- | --- | --- |
-| NIP-HP | Hosts and Placement | 39560-39579 | [`HP.md`](HP.md) |
-| NIP-OC | Outcome Closeout | 39580-39589 | [`OC.md`](OC.md) |
-| NIP-PP | Product Promises | 32440-32449 | [`PP.md`](PP.md) |
+| NIP    | Name                | Reserved kinds | Draft            |
+| ------ | ------------------- | -------------- | ---------------- |
+| NIP-HP | Hosts and Placement | 39560-39579    | [`HP.md`](HP.md) |
+| NIP-OC | Outcome Closeout    | 39580-39589    | [`OC.md`](OC.md) |
+| NIP-PP | Product Promises    | 32440-32449    | [`PP.md`](PP.md) |
 
 **NIP-HP — Hosts and Placement.** Host records (identity, kind, owner,
 generation, health, capability refs, grant refs, last-observed time) for
@@ -410,10 +411,12 @@ hardening-application NIPs counted by this index. It shares their authority,
 privacy, evidence, and loss-accounting laws without turning a bilateral
 market into Organization-owned Work.
 
-| NIP | Name | Reserved block | Draft |
-| --- | --- | --- | --- |
-| NIP-MKT | Negotiated Markets base | 39600-39609 | [`MKT.md`](MKT.md) |
-| MKT profiles | SWP, P2P, PFI, MINT, LSP, later focused profiles | 39610-39699 (unallocated) | separately drafted |
+| NIP                | Name                                           | Reserved block              | Draft                      |
+| ------------------ | ---------------------------------------------- | --------------------------- | -------------------------- |
+| NIP-MKT            | Negotiated Markets base                        | 39600-39609                 | [`MKT.md`](MKT.md)         |
+| MKT-SWP            | Bitcoin and Lightning Atomic Swaps             | 39610; 39611-39619 retained | [`MKT-SWP.md`](MKT-SWP.md) |
+| MKT-PFI            | Credentialed Provider and Fiat Interfaces      | 39630; 39631-39639 retained | [`MKT-PFI.md`](MKT-PFI.md) |
+| Later MKT profiles | P2P, MINT, LSP, intent, later focused profiles | remaining 39610-39699 kinds | separately drafted         |
 
 NIP-MKT standardizes public provider/offering discovery and the private,
 signed RFQ → Quote → Order → Status/Cancel → Close spine. It defines exact
@@ -431,10 +434,11 @@ MKT-PFI (tbDEX-style provider/credential flows), MKT-MINT (Cashu/Fedimint),
 and MKT-LSP (Lightning liquidity services). MKT-RISK waits for a real
 guarantor or underwriter with reserves, claims, and settlement authority.
 
-The allocation review found no `39600-39699` claims in the pinned official,
-Block, or OpenAgents lanes or the official registry-of-kinds when checked on
-2026-08-04; official `39701` is the nearest higher assignment. Every profile
-allocation still requires a fresh external-registry and three-lane check.
+The MKT-SWP/MKT-PFI allocation review found no conflicting `39610-39699`
+claim at official NIPs `c5387757`, Block Buzz `56003ebf`, OpenAgents
+`1c9a957a`, or registry-of-kinds `2483e752`. It allocated only `39610` and
+`39630`; every later profile allocation still requires a fresh registry and
+three-lane check.
 
 ## Applications: the hardening program
 
@@ -447,13 +451,13 @@ collision-free parallel scanning, Evidence and Verification with enforced
 producer/verifier separation) and adds five drafted NIPs for the security
 domain concerns the general Work model does not cover:
 
-| NIP | Name | Reserved block | Draft |
-| --- | --- | --- | --- |
-| NIP-SP | Scan Profiles and Pre-Registration | 32450-32459 | [`SP.md`](SP.md) |
-| NIP-SC | Source Completeness and Coverage | 32460-32469 | [`SC.md`](SC.md) |
-| NIP-FD | Findings, Verdicts, and Disclosure | 32470-32479 | [`FD.md`](FD.md) |
-| NIP-SI | Security Invariants and Regression Watch | 32480-32489 | [`SI.md`](SI.md) |
-| NIP-BT | Bounties and Contribution Credit | 32490-32499 | [`BT.md`](BT.md) |
+| NIP    | Name                                     | Reserved block | Draft            |
+| ------ | ---------------------------------------- | -------------- | ---------------- |
+| NIP-SP | Scan Profiles and Pre-Registration       | 32450-32459    | [`SP.md`](SP.md) |
+| NIP-SC | Source Completeness and Coverage         | 32460-32469    | [`SC.md`](SC.md) |
+| NIP-FD | Findings, Verdicts, and Disclosure       | 32470-32479    | [`FD.md`](FD.md) |
+| NIP-SI | Security Invariants and Regression Watch | 32480-32489    | [`SI.md`](SI.md) |
+| NIP-BT | Bounties and Contribution Credit         | 32490-32499    | [`BT.md`](BT.md) |
 
 Those five extend the addressable neighborhood to `32450-32499`. They remain
 application drafts: the hardening roadmap separately owns implementation,

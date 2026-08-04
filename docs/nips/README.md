@@ -20,63 +20,66 @@ hardening rails against the same event model.
 > heads, immutable private records, wrapped transport) has a first relay
 > implementation in [Immortal](https://github.com/OpenAgentsInc/immortal)
 > with a fixture corpus and machine-readable contract export. Focused
-> profiles (MKT-SWP and the rest of `39610-39699`) remain drafts in
-> progress; no executable profile is implemented anywhere yet.
+> MKT-SWP and MKT-PFI are complete upstream drafts with collision-reviewed
+> profile kinds; the remaining profile families are still being drafted. No
+> executable profile is implemented anywhere yet.
 
-| Spec | Market stream | Kinds | File |
-| --- | --- | --- | --- |
-| NIP-MKT | Negotiated-market base; public discovery, private signed execution control | 39600-39609; 39610-39699 reserved for profiles | [`MKT.md`](MKT.md) |
-| NIP-DS | Data market; core forward, DS-DVM compatibility only | 30404-30407, legacy 5960/6960 | [`DS.md`](DS.md) |
-| NIP-LBR | Labor market; v1 compatibility profile | legacy 5930-5936, 6930-6936, 7000 | [`LBR.md`](LBR.md) |
-| NIP-SKL | Skills registry | 33400/33401, 33410/33411 | [`SKL.md`](SKL.md) |
-| NIP-SA | Sovereign agents | 39200-39203, 39210-39213, 39220-39221, 39230-39231, 39260 | [`SA.md`](SA.md) |
-| NIP-AC | Agent credit | 39240-39246 | [`AC.md`](AC.md) |
-| NIP-TRN | Training | 39500-39530 | [`TRN.md`](TRN.md) |
+| Spec    | Market stream                                                              | Kinds                                                     | File                       |
+| ------- | -------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------- |
+| NIP-MKT | Negotiated-market base; public discovery, private signed execution control | 39600-39609; profile block 39610-39699                    | [`MKT.md`](MKT.md)         |
+| MKT-SWP | BTC/Lightning submarine, reverse, and chain swaps                          | 39610                                                     | [`MKT-SWP.md`](MKT-SWP.md) |
+| MKT-PFI | Credentialed provider/fiat-interface negotiation                           | 39630                                                     | [`MKT-PFI.md`](MKT-PFI.md) |
+| NIP-DS  | Data market; core forward, DS-DVM compatibility only                       | 30404-30407, legacy 5960/6960                             | [`DS.md`](DS.md)           |
+| NIP-LBR | Labor market; v1 compatibility profile                                     | legacy 5930-5936, 6930-6936, 7000                         | [`LBR.md`](LBR.md)         |
+| NIP-SKL | Skills registry                                                            | 33400/33401, 33410/33411                                  | [`SKL.md`](SKL.md)         |
+| NIP-SA  | Sovereign agents                                                           | 39200-39203, 39210-39213, 39220-39221, 39230-39231, 39260 | [`SA.md`](SA.md)           |
+| NIP-AC  | Agent credit                                                               | 39240-39246                                               | [`AC.md`](AC.md)           |
+| NIP-TRN | Training                                                                   | 39500-39530                                               | [`TRN.md`](TRN.md)         |
 
 [`PROPOSED.md`](PROPOSED.md) indexes the proposed next wave: the All Work NIP
 program that encodes the Linear-class planning, agent delegation, coding,
 review, evidence, and outcome system on Nostr, in the spirit of the Block Buzz
 extension NIPs. All five layers are drafted:
 
-| Spec | Role | Reserved kinds | File |
-| --- | --- | --- | --- |
-| NIP-WK | Work root object | 32170-32173 | [`WK.md`](WK.md) |
-| NIP-WI | Work Intents and Admission | 32180-32182 | [`WI.md`](WI.md) |
-| NIP-EV | Evidence, Verification, Dispositions | 32190-32193 | [`EV.md`](EV.md) |
-| NIP-OT | Organizations and Teams | 32100-32104 | [`OT.md`](OT.md) |
-| NIP-PI | Project Issue projection | 32200 | [`PI.md`](PI.md) |
-| NIP-WR | Work Relations | 32210 | [`WR.md`](WR.md) |
-| NIP-WS | Workflow States and Labels | 32215-32217 | [`WS.md`](WS.md) |
-| NIP-PG | Planning Graph | 32220-32227 | [`PG.md`](PG.md) |
-| NIP-RP | Release Planning | 32240-32243 | [`RP.md`](RP.md) |
-| NIP-DD | Documents and Decisions | 32250-32252 | [`DD.md`](DD.md) |
-| NIP-CN | Customers and Needs | 32260-32262 | [`CN.md`](CN.md) |
-| NIP-AD | Assignment and Delegation | 32270-32271 | [`AD.md`](AD.md) |
-| NIP-AS | Agent Sessions | 32280 | [`AS.md`](AS.md) |
-| NIP-AV | Agent Activity | 32290 | [`AV.md`](AV.md) |
-| NIP-RC | Repository Work Claims | 32300-32302 | [`RC.md`](RC.md) |
-| NIP-CC | Code Context and Coding Sessions | 32310-32311 | [`CC.md`](CC.md) |
-| NIP-RV | Reviews | 32320-32322 | [`RV.md`](RV.md) |
-| NIP-WA | Workroom Activity | 32150-32163 (pinned) | [`WA.md`](WA.md) |
-| NIP-GB | Guidance Bundles | 32330-32331 | [`GB.md`](GB.md) |
-| NIP-AL | Automation Loops | 32340-32341 | [`AL.md`](AL.md) |
-| NIP-TP | Triage Proposals | 32350 | [`TP.md`](TP.md) |
-| NIP-AT | Attention and Notifications | 32360-32361 | [`AT.md`](AT.md) |
-| NIP-HP | Hosts and Placement | 39560-39562 | [`HP.md`](HP.md) |
-| NIP-OC | Outcome Closeout | 39580-39581 | [`OC.md`](OC.md) |
-| NIP-PP | Product Promises | 32440-32442 | [`PP.md`](PP.md) |
+| Spec   | Role                                 | Reserved kinds       | File             |
+| ------ | ------------------------------------ | -------------------- | ---------------- |
+| NIP-WK | Work root object                     | 32170-32173          | [`WK.md`](WK.md) |
+| NIP-WI | Work Intents and Admission           | 32180-32182          | [`WI.md`](WI.md) |
+| NIP-EV | Evidence, Verification, Dispositions | 32190-32193          | [`EV.md`](EV.md) |
+| NIP-OT | Organizations and Teams              | 32100-32104          | [`OT.md`](OT.md) |
+| NIP-PI | Project Issue projection             | 32200                | [`PI.md`](PI.md) |
+| NIP-WR | Work Relations                       | 32210                | [`WR.md`](WR.md) |
+| NIP-WS | Workflow States and Labels           | 32215-32217          | [`WS.md`](WS.md) |
+| NIP-PG | Planning Graph                       | 32220-32227          | [`PG.md`](PG.md) |
+| NIP-RP | Release Planning                     | 32240-32243          | [`RP.md`](RP.md) |
+| NIP-DD | Documents and Decisions              | 32250-32252          | [`DD.md`](DD.md) |
+| NIP-CN | Customers and Needs                  | 32260-32262          | [`CN.md`](CN.md) |
+| NIP-AD | Assignment and Delegation            | 32270-32271          | [`AD.md`](AD.md) |
+| NIP-AS | Agent Sessions                       | 32280                | [`AS.md`](AS.md) |
+| NIP-AV | Agent Activity                       | 32290                | [`AV.md`](AV.md) |
+| NIP-RC | Repository Work Claims               | 32300-32302          | [`RC.md`](RC.md) |
+| NIP-CC | Code Context and Coding Sessions     | 32310-32311          | [`CC.md`](CC.md) |
+| NIP-RV | Reviews                              | 32320-32322          | [`RV.md`](RV.md) |
+| NIP-WA | Workroom Activity                    | 32150-32163 (pinned) | [`WA.md`](WA.md) |
+| NIP-GB | Guidance Bundles                     | 32330-32331          | [`GB.md`](GB.md) |
+| NIP-AL | Automation Loops                     | 32340-32341          | [`AL.md`](AL.md) |
+| NIP-TP | Triage Proposals                     | 32350                | [`TP.md`](TP.md) |
+| NIP-AT | Attention and Notifications          | 32360-32361          | [`AT.md`](AT.md) |
+| NIP-HP | Hosts and Placement                  | 39560-39562          | [`HP.md`](HP.md) |
+| NIP-OC | Outcome Closeout                     | 39580-39581          | [`OC.md`](OC.md) |
+| NIP-PP | Product Promises                     | 32440-32442          | [`PP.md`](PP.md) |
 
 The Bitcoin OSS hardening application adds five drafted protocol modules.
 They remain design records until an implementation decision, fixtures, and
 runtime evidence land:
 
-| Spec | Role | Reserved kinds | File |
-| --- | --- | --- | --- |
-| NIP-SP | Scan Profiles and Pre-Registration | 32450-32451 | [`SP.md`](SP.md) |
-| NIP-SC | Source Completeness and Coverage | 32460-32462 | [`SC.md`](SC.md) |
-| NIP-FD | Findings, Verdicts, and Disclosure | 32470-32473 | [`FD.md`](FD.md) |
-| NIP-SI | Security Invariants and Regression Watch | 32480-32482 | [`SI.md`](SI.md) |
-| NIP-BT | Bounties and Contribution Credit | 32490-32492 | [`BT.md`](BT.md) |
+| Spec   | Role                                     | Reserved kinds | File             |
+| ------ | ---------------------------------------- | -------------- | ---------------- |
+| NIP-SP | Scan Profiles and Pre-Registration       | 32450-32451    | [`SP.md`](SP.md) |
+| NIP-SC | Source Completeness and Coverage         | 32460-32462    | [`SC.md`](SC.md) |
+| NIP-FD | Findings, Verdicts, and Disclosure       | 32470-32473    | [`FD.md`](FD.md) |
+| NIP-SI | Security Invariants and Regression Watch | 32480-32482    | [`SI.md`](SI.md) |
+| NIP-BT | Bounties and Contribution Credit         | 32490-32492    | [`BT.md`](BT.md) |
 
 ## Per-spec summaries
 
@@ -89,9 +92,9 @@ NIP-59 gift wraps hide negotiation metadata while a signed inner event keeps
 each term independently verifiable. Exact event IDs bind terms; unique `d`
 values provide idempotency; dense per-signer Status sequences expose gaps and
 forks; expiry never implies consent; and Close is a claim rather than
-settlement. The collision-reviewed base uses `39600-39609` and reserves
-`39610-39699` for separately drafted MKT-SWP, MKT-P2P, MKT-PFI, MKT-MINT,
-MKT-LSP, and other profiles. Profiles own assets, custody, reservation
+settlement. The collision-reviewed base uses `39600-39609`; the profile block
+allocates `39610` to MKT-SWP and `39630` to MKT-PFI, with all other kinds
+pending separately reviewed profiles. Profiles own assets, custody, reservation
 physics, credentials, rail evidence, finality, disputes, refunds, and
 recovery. Relays may validate, route, reserve provider-signed capacity, run
 timers, and verify evidence while remaining noncustodial; they never inherit
@@ -99,6 +102,25 @@ wallet or settlement authority. v0.1 adds the mandatory
 coordinator-independent recovery floor for profiles, the profile
 field-vocabulary laws, and an informative implementation record (the
 Immortal relay base).
+
+### MKT-SWP — Bitcoin and Lightning Atomic Swaps
+
+Defines the BTC/Lightning v1 swap contract over the NIP-MKT negotiation spine:
+submarine, reverse, and chain lifecycles; verify-before-fund rules; reservation
+proof classes; timeout ladders; external evidence and finality authorities;
+and coordinator-independent claim/refund exits. Private immutable `kind:39610`
+binds the accepted Order, exact rail verifier inputs, and exit-package
+commitments without carrying seeds, preimages, private keys, or node
+credentials. The remaining `39611-39619` family is unallocated.
+
+### MKT-PFI — Credentialed Provider and Fiat Interfaces
+
+Defines quote-first/credentials-later on/off-ramp negotiation with encrypted
+credential references, reversible-rail risk classes, explicit guarantee and
+recourse authorities, settlement evidence, chargeback handling, and no PII on
+relays. Public `kind:39630` is a provider-signed, digest-pinned Qualification
+Policy with a closed no-PII schema; all credential presentations and private
+terms remain inside recipient-gated records or off-relay stores.
 
 ### NIP-DS — Datasets
 

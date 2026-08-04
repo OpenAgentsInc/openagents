@@ -74,19 +74,21 @@ Historical truth stays historical truth.
 
 ## Replacement map
 
-| Existing use | Current wire | Forward direction |
-| --- | --- | --- |
-| Agentic labor | NIP-LBR v1 over `5934`/`6934`/`7000` | Standalone NIP-LBR v2 microstandard: request, quote, acceptance, progress, delivery, verification, close; kinds reserved only after review |
-| Dataset access | NIP-DS core plus optional DS-DVM `5960`/`6960`/`7000` | Keep DS core addressable listing/offer/access-contract kinds; replace DS-DVM with a DS-specific private negotiation profile |
-| Skill search | NIP-SKL manifests plus NIP-90 search | Query manifests directly; use NIP-51 lists, NIP-89 handlers, NIP-99 listings, and a focused private capability-RFQ profile if needed |
-| Compute/inference | Generic DVM jobs | Separate compute microstandard with model/input privacy, deterministic parameters, metering, cancellation, evidence, and streaming semantics |
-| Liquidity/swaps | Previously proposed as another DVM-style service | [NIP-MKT](MKT.md) negotiated-market base plus MKT-SWP/P2P/PFI/MINT/LSP profiles; never NIP-90 |
-| Public receipts | `kind:7000` plus app projections | Use the owning microstandard's close event plus NIP-EV/NIP-OC evidence and outcome references |
+| Existing use      | Current wire                                          | Forward direction                                                                                                                            |
+| ----------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agentic labor     | NIP-LBR v1 over `5934`/`6934`/`7000`                  | Standalone NIP-LBR v2 microstandard: request, quote, acceptance, progress, delivery, verification, close; kinds reserved only after review   |
+| Dataset access    | NIP-DS core plus optional DS-DVM `5960`/`6960`/`7000` | Keep DS core addressable listing/offer/access-contract kinds; replace DS-DVM with a DS-specific private negotiation profile                  |
+| Skill search      | NIP-SKL manifests plus NIP-90 search                  | Query manifests directly; use NIP-51 lists, NIP-89 handlers, NIP-99 listings, and a focused private capability-RFQ profile if needed         |
+| Compute/inference | Generic DVM jobs                                      | Separate compute microstandard with model/input privacy, deterministic parameters, metering, cancellation, evidence, and streaming semantics |
+| Liquidity/swaps   | Previously proposed as another DVM-style service      | [NIP-MKT](MKT.md) negotiated-market base plus MKT-SWP/P2P/PFI/MINT/LSP profiles; never NIP-90                                                |
+| Public receipts   | `kind:7000` plus app projections                      | Use the owning microstandard's close event plus NIP-EV/NIP-OC evidence and outcome references                                                |
 
 NIP-MKT is now a drafted OpenAgents NIP with collision-reviewed base kinds
-`39600-39609` and `39610-39699` held unallocated for separately reviewed
-profiles. It is not an official numbered NIP or an admitted runtime product
-claim. `NIP-LBR v2` remains a candidate design label with no allocated kinds.
+`39600-39609`. Its separately reviewed profile drafts allocate `39610` to
+[MKT-SWP](MKT-SWP.md) and `39630` to [MKT-PFI](MKT-PFI.md); every other kind
+in `39610-39699` remains unallocated. Those upstream drafts are not an
+official numbered NIP or an admitted executable-profile claim. `NIP-LBR v2`
+remains a candidate design label with no allocated kinds.
 
 ## Common negotiated-market spine
 
