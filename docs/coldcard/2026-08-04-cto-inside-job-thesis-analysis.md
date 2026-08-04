@@ -11,7 +11,7 @@ This is **not** a legal finding and **not** a public product claim. It records
 what public evidence supports, what is open, and what single artifact would
 change each claim’s status.
 
-Last updated: 2026-08-04 (Fable-directed restructure + forensic closes).
+Last updated: 2026-08-04 (switck X archive, Galaxy collectors, public RNG PoC).
 
 ---
 

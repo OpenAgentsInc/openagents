@@ -957,3 +957,73 @@ Reporter chronology (recent posts):
 Local HTTP 200 snapshots + sha256 digests for key URLs recorded in
 [`receipts/2026-08-04-cto-thesis-archive-index.md`](receipts/2026-08-04-cto-thesis-archive-index.md).
 
+
+
+---
+
+## E25 — Full `@switck` X timeline archive (API, 2026-08-04)
+
+**Receipt:** [`receipts/2026-08-04-switck-x-archive.json`](receipts/2026-08-04-switck-x-archive.json)
+
+- Endpoint: `GET /2/users/1157857508775608320/tweets` (max 100)
+- Returned **52** posts (account metrics said **54** lifetime — 2 missing or
+  deleted / pagination edge)
+- Account created **2019-08-04**; last post in archive **2022-03-20**
+- Bio: "Cypher all the things. She/he/his/hers." Location "Cyberspace"
+
+### Material posts (identity / Coldcard adjacency)
+
+| Time (UTC) | ID | Text (summary) |
+| --- | --- | --- |
+| 2019-08-04 | [1157858788185202688](https://x.com/switck/status/1157858788185202688) | "#defcon seems like a good time to **start a new identity**. Follow me!" |
+| 2020-10-16 | [1317230987294740480](https://x.com/switck/status/1317230987294740480) | "**Thanks for merge @DocHex** ... I'm making yet another bitcoin library. **Could be useful on @COLDCARDwallet someday.**" |
+| 2020-10-21 | [1318909664281636867](https://x.com/switck/status/1318909664281636867) | "i made a useful thing" (link) |
+| 2021-01-26 | [1354124727699255301](https://x.com/switck/status/1354124727699255301) | "writing **crypto code** that passes test vectors on first try is a superpower" |
+| 2021-04-30 | [1388281293536854016](https://x.com/switck/status/1388281293536854016) | RT official **COLDCARD Firmware v4.1.0** (in-window of vulnerable generation era) |
+
+The 2020-10-16 post is the primary source behind the viral "Could be useful on
+Coldcard someday" flag (AtlantisPleb quote chain). Under claim **A/B** (switck
+signing key = Gray), this is **self-referential roleplay or dual-account
+performance** thanking `@DocHex` for a merge while building lib-adjacent work
+explicitly aimed at Coldcard. Under a pure third-party-nym theory, it is a
+contractor thanking the CTO—still a tight Coinkite adjacency.
+
+**DEFCON 2019 birth of the nym** supports intentional alternate identity, not
+by itself theft intent.
+
+### E26 — Public Mk3 RNG PoC repository (keyspace arm)
+
+GitHub search hit (2026-08-04):  
+[HenryqueBrito/coldcard-mk3-rng-poc](https://github.com/HenryqueBrito/coldcard-mk3-rng-poc)
+— described as educational PoC of Coldcard Mk3 RNG failure (Yasmarang).
+
+**Status:** candidate input for on-chain Arm 1 (review license, reproduce,
+compare addresses). Not yet executed/verified in this repo.
+
+### E27 — Galaxy public collector addresses + loss framing
+
+Receipt: [`receipts/2026-08-04-galaxy-public-attacker-addresses.md`](receipts/2026-08-04-galaxy-public-attacker-addresses.md)
+
+Seven bech32 addresses published as Waves 1–2 monitoring set with ~1,158 BTC
+at post time; later threads raise high-confidence totals toward **~1,596 BTC**
+and unconfirmed paths toward ~2k BTC. Galaxy states data is from chain patterns
+plus victim reports and that they have **not** brute-forced entropy to confirm
+every victim address.
+
+**Use:** watch list + ledger seed. **Not** staff attribution.
+
+### E28 — studentofthings clarification (process culture)
+
+Additional posts reinforce E24d:
+
+- [2084312571457249599](https://x.com/studentofthings/status/2084312571457249599):
+  RNG "discovered but not analyzed to see how bad"; "wasn't negligence or
+  deceit, just effort that got no attention."
+- [2084037746075611343](https://x.com/studentofthings/status/2084037746075611343):
+  different critical bug patched without public credit; stopped submitting
+  remaining bugs including unfinished RNG analysis.
+
+**Status:** weakens "they were told this exact drain bug and ignored it" for
+*this* researcher; strengthens "broken acknowledgment culture delayed more
+eyes on the code."
+

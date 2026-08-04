@@ -1,0 +1,980 @@
+{
+  "account": "switck",
+  "account_id": "1157857508775608320",
+  "retrieved": "2026-08-04",
+  "api": "GET /2/users/:id/tweets max_results=100",
+  "note": "API returned 52 of ~54 lifetime posts (product limit/pagination). Public text only.",
+  "count": 52,
+  "posts": [
+    {
+      "id": "1157858788185202688",
+      "created_at": "2019-08-04T03:40:21.000Z",
+      "text": "#defcon seems like a good time to start a new identity. Follow me!",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 2,
+        "reply_count": 0,
+        "retweet_count": 2
+      },
+      "url": "https://x.com/switck/status/1157858788185202688",
+      "referenced_tweets": null
+    },
+    {
+      "id": "1159619751330701312",
+      "created_at": "2019-08-09T00:17:48.000Z",
+      "text": "RT @jedisct1: Here\u2019s why Nintendo Switch consoles keep frying\nhttps://t.co/vFuz6iDpXn",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 5
+      },
+      "url": "https://x.com/switck/status/1159619751330701312",
+      "referenced_tweets": [
+        {
+          "id": "1157783039516336128",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1159620218727084033",
+      "created_at": "2019-08-09T00:19:39.000Z",
+      "text": "RT @jedisct1: AMD Ryzen 7 3700X is such a hit it almost outsold Intel\u2019s entire CPU range\nhttps://t.co/FO34suXRlS",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 2
+      },
+      "url": "https://x.com/switck/status/1159620218727084033",
+      "referenced_tweets": [
+        {
+          "id": "1157669224589987840",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1159647304003067906",
+      "created_at": "2019-08-09T02:07:17.000Z",
+      "text": "RT @TWMacKenzie: Hi all. Lost my wallet at #Blackhat today. Black leather breast wallet with my passport in it. Please help!",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 68
+      },
+      "url": "https://x.com/switck/status/1159647304003067906",
+      "referenced_tweets": [
+        {
+          "id": "1159602705184251904",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1161098414169501699",
+      "created_at": "2019-08-13T02:13:28.000Z",
+      "text": "RT @HydeNS33k: For those asking, I\u2019m around if you wanna chat. I\u2019m the human in a sundress with silver hair. I know I\u2019m human because my ba\u2026",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 11
+      },
+      "url": "https://x.com/switck/status/1161098414169501699",
+      "referenced_tweets": [
+        {
+          "id": "1160255822657515520",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1173275546186334211",
+      "created_at": "2019-09-15T16:41:03.000Z",
+      "text": "Thinking of getting one of these... too obvious? https://t.co/vMw9jPHBea",
+      "public_metrics": {
+        "bookmark_count": 1,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 3,
+        "reply_count": 0,
+        "retweet_count": 1
+      },
+      "url": "https://x.com/switck/status/1173275546186334211",
+      "referenced_tweets": null
+    },
+    {
+      "id": "1194831105012228097",
+      "created_at": "2019-11-14T04:15:08.000Z",
+      "text": "RT @mattblaze: For the umpteenzillionth time: I have literally never, ever, recommended or suggested in any way that I think ballot marking\u2026",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 6
+      },
+      "url": "https://x.com/switck/status/1194831105012228097",
+      "referenced_tweets": [
+        {
+          "id": "1192517341852176389",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1194831319613747201",
+      "created_at": "2019-11-14T04:16:00.000Z",
+      "text": "RT @gabsmashh: people ask how i stay motivated. motivation is overrated. no amount of motivation would have gotten me through a grueling de\u2026",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 76
+      },
+      "url": "https://x.com/switck/status/1194831319613747201",
+      "referenced_tweets": [
+        {
+          "id": "1184157746603552770",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1197727956594020352",
+      "created_at": "2019-11-22T04:06:12.000Z",
+      "text": "RT @gabsmashh: *asks santa to bring legos*\n--me, a 28-year-old",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 7
+      },
+      "url": "https://x.com/switck/status/1197727956594020352",
+      "referenced_tweets": [
+        {
+          "id": "1197522455788707840",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1197728263541592067",
+      "created_at": "2019-11-22T04:07:25.000Z",
+      "text": "RT @starstrickenSF: 4 years ago I got a 0 on a quantum physics exam. i met with my professor fearing i needed to change my major &amp; quit phy\u2026",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 13056
+      },
+      "url": "https://x.com/switck/status/1197728263541592067",
+      "referenced_tweets": [
+        {
+          "id": "1197278309043671041",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1201558595164237824",
+      "created_at": "2019-12-02T17:47:47.000Z",
+      "text": "RT @lilmiquela: The best part of being a robot?? Finding a glitch in your software that lets you hack @amazon on #CyberMonday and get 1,000\u2026",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 8
+      },
+      "url": "https://x.com/switck/status/1201558595164237824",
+      "referenced_tweets": [
+        {
+          "id": "1201546891978133504",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1201559682642411521",
+      "created_at": "2019-12-02T17:52:06.000Z",
+      "text": "RT @NicolasDorier: If you are more likely to die from law enforcement than from a terrorist, using terrorism as an excuse to expand law enf\u2026",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 30
+      },
+      "url": "https://x.com/switck/status/1201559682642411521",
+      "referenced_tweets": [
+        {
+          "id": "1201435454404354048",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1291501958466068480",
+      "created_at": "2020-08-06T22:30:36.000Z",
+      "text": "One year passes. My hermit lifestyle is on trend at last!",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 0
+      },
+      "url": "https://x.com/switck/status/1291501958466068480",
+      "referenced_tweets": null
+    },
+    {
+      "id": "1291502288968851459",
+      "created_at": "2020-08-06T22:31:55.000Z",
+      "text": "RT @pierre_rochard: Buy bitcoin before your enemies do.",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 123
+      },
+      "url": "https://x.com/switck/status/1291502288968851459",
+      "referenced_tweets": [
+        {
+          "id": "1291479227523575808",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1291502332249808898",
+      "created_at": "2020-08-06T22:32:05.000Z",
+      "text": "RT @hodlonaut: To all the Dollar Millionaires in the world:\n\nNo. You can never own one Bitcoin each. There's not enough of them.",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 123
+      },
+      "url": "https://x.com/switck/status/1291502332249808898",
+      "referenced_tweets": [
+        {
+          "id": "1291370367987187713",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1291502736828174345",
+      "created_at": "2020-08-06T22:33:42.000Z",
+      "text": "RT @_sn0ww: Awww ya. I'm ready for @defcon #DEFCONSafeMode https://t.co/tHmYAhMzif",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 2
+      },
+      "url": "https://x.com/switck/status/1291502736828174345",
+      "referenced_tweets": [
+        {
+          "id": "1291436674476457985",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1291611196584534017",
+      "created_at": "2020-08-07T05:44:40.000Z",
+      "text": "Wrote this years ago, sharing today. https://t.co/L4JLOihVTd",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 0
+      },
+      "url": "https://x.com/switck/status/1291611196584534017",
+      "referenced_tweets": null
+    },
+    {
+      "id": "1293749445423767553",
+      "created_at": "2020-08-13T03:21:19.000Z",
+      "text": "RT @btcpioneer: BREAKING: The Ethereum Monetary Policy.",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 7
+      },
+      "url": "https://x.com/switck/status/1293749445423767553",
+      "referenced_tweets": [
+        {
+          "id": "1291594124974600194",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1311304844377042944",
+      "created_at": "2020-09-30T14:00:12.000Z",
+      "text": "Savoring the morning excitement of cutting it close w/ time based OTP",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 0
+      },
+      "url": "https://x.com/switck/status/1311304844377042944",
+      "referenced_tweets": null
+    },
+    {
+      "id": "1316052215195467777",
+      "created_at": "2020-10-13T16:24:33.000Z",
+      "text": "So tired of these arrogant american companies controlling everything we see online. Bring back p2p!",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 0
+      },
+      "url": "https://x.com/switck/status/1316052215195467777",
+      "referenced_tweets": null
+    },
+    {
+      "id": "1317230987294740480",
+      "created_at": "2020-10-16T22:28:34.000Z",
+      "text": "Thanks for merge @DocHex ... I\u2019m making yet another bitcoin library. Could be useful on @COLDCARDwallet someday.",
+      "public_metrics": {
+        "bookmark_count": 3,
+        "impression_count": 0,
+        "like_count": 1,
+        "quote_count": 5,
+        "reply_count": 1,
+        "retweet_count": 1
+      },
+      "url": "https://x.com/switck/status/1317230987294740480",
+      "referenced_tweets": null
+    },
+    {
+      "id": "1317289591091695616",
+      "created_at": "2020-10-17T02:21:27.000Z",
+      "text": "RT @rjames_BTC: If you bought through a KYC exchange, the State has a claim on 30% of your #bitcoin in perpetuity via capital gains tax.\n\nI\u2026",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 19
+      },
+      "url": "https://x.com/switck/status/1317289591091695616",
+      "referenced_tweets": [
+        {
+          "id": "1317227150076866562",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1318909664281636867",
+      "created_at": "2020-10-21T13:39:02.000Z",
+      "text": "i made a useful thing https://t.co/nEbGlDvcfd",
+      "public_metrics": {
+        "bookmark_count": 5,
+        "impression_count": 0,
+        "like_count": 1,
+        "quote_count": 1,
+        "reply_count": 4,
+        "retweet_count": 0
+      },
+      "url": "https://x.com/switck/status/1318909664281636867",
+      "referenced_tweets": null
+    },
+    {
+      "id": "1320369108224016385",
+      "created_at": "2020-10-25T14:18:21.000Z",
+      "text": "RT @dmpsim: A simple python (and micropython) module to work with BIP32 path templates: https://t.co/bHqt1i3jE1",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 3
+      },
+      "url": "https://x.com/switck/status/1320369108224016385",
+      "referenced_tweets": [
+        {
+          "id": "1320299559453659136",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1320369266319855617",
+      "created_at": "2020-10-25T14:18:59.000Z",
+      "text": "@dmpsim mmm. tenting fingers",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 0
+      },
+      "url": "https://x.com/switck/status/1320369266319855617",
+      "referenced_tweets": [
+        {
+          "id": "1320307779815591936",
+          "type": "replied_to"
+        }
+      ]
+    },
+    {
+      "id": "1321279519395848197",
+      "created_at": "2020-10-28T02:36:00.000Z",
+      "text": "@nvk time to get off twitter if u think that. Trump kills.",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 0
+      },
+      "url": "https://x.com/switck/status/1321279519395848197",
+      "referenced_tweets": [
+        {
+          "id": "1321274575016087554",
+          "type": "replied_to"
+        }
+      ]
+    },
+    {
+      "id": "1321280315005034500",
+      "created_at": "2020-10-28T02:39:09.000Z",
+      "text": "RT @elonmusk: Jack in the Box should do double duty as a sperm donor clinic \u2014 name is \ud83d\udc4c",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 10869
+      },
+      "url": "https://x.com/switck/status/1321280315005034500",
+      "referenced_tweets": [
+        {
+          "id": "1321275062998257665",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1324357657747181570",
+      "created_at": "2020-11-05T14:27:25.000Z",
+      "text": "my genitals are very racist",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 0
+      },
+      "url": "https://x.com/switck/status/1324357657747181570",
+      "referenced_tweets": null
+    },
+    {
+      "id": "1334240859802529793",
+      "created_at": "2020-12-02T20:59:44.000Z",
+      "text": "2**256 timelines https://t.co/vyOX9ILAQe https://t.co/lCVKE9PtpN",
+      "public_metrics": {
+        "bookmark_count": 1,
+        "impression_count": 0,
+        "like_count": 2,
+        "quote_count": 0,
+        "reply_count": 4,
+        "retweet_count": 3
+      },
+      "url": "https://x.com/switck/status/1334240859802529793",
+      "referenced_tweets": [
+        {
+          "id": "1334211427100454915",
+          "type": "quoted"
+        }
+      ]
+    },
+    {
+      "id": "1346463084148371458",
+      "created_at": "2021-01-05T14:26:29.000Z",
+      "text": "got https://t.co/gUHAVj2Ycx",
+      "public_metrics": {
+        "bookmark_count": 2,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 0
+      },
+      "url": "https://x.com/switck/status/1346463084148371458",
+      "referenced_tweets": null
+    },
+    {
+      "id": "1349777798689382402",
+      "created_at": "2021-01-14T17:57:59.000Z",
+      "text": "itch scratched https://t.co/0uUpWx09mv",
+      "public_metrics": {
+        "bookmark_count": 6,
+        "impression_count": 0,
+        "like_count": 8,
+        "quote_count": 5,
+        "reply_count": 9,
+        "retweet_count": 2
+      },
+      "url": "https://x.com/switck/status/1349777798689382402",
+      "referenced_tweets": [
+        {
+          "id": "1349764862449250307",
+          "type": "quoted"
+        }
+      ]
+    },
+    {
+      "id": "1349824833467674625",
+      "created_at": "2021-01-14T21:04:53.000Z",
+      "text": "RT @sarahzhang: Yes distributing the COVID-19 vaccines in 2021 is complicated but have you considered how Spain got the smallpox vaccine ac\u2026",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 943
+      },
+      "url": "https://x.com/switck/status/1349824833467674625",
+      "referenced_tweets": [
+        {
+          "id": "1349433968203083780",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1354124727699255301",
+      "created_at": "2021-01-26T17:51:08.000Z",
+      "text": "writing crypto code that passes test vectors on first try is a superpower (feels good too)",
+      "public_metrics": {
+        "bookmark_count": 9,
+        "impression_count": 0,
+        "like_count": 5,
+        "quote_count": 10,
+        "reply_count": 12,
+        "retweet_count": 7
+      },
+      "url": "https://x.com/switck/status/1354124727699255301",
+      "referenced_tweets": null
+    },
+    {
+      "id": "1387900068993413120",
+      "created_at": "2021-04-29T22:42:17.000Z",
+      "text": "What would the #Bitcoin price be now if shitcoins had not happened? https://t.co/hKEgpvpanL",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 1,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 0
+      },
+      "url": "https://x.com/switck/status/1387900068993413120",
+      "referenced_tweets": null
+    },
+    {
+      "id": "1388279888663166977",
+      "created_at": "2021-04-30T23:51:33.000Z",
+      "text": "RT @WholesomeMeme: https://t.co/3neObfs4J6",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 2029
+      },
+      "url": "https://x.com/switck/status/1388279888663166977",
+      "referenced_tweets": [
+        {
+          "id": "1388266920764485633",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1388281293536854016",
+      "created_at": "2021-04-30T23:57:08.000Z",
+      "text": "RT @COLDCARDwallet: COLDCARD Firmware v4.1.0 \ud83c\udf44\u23eb\n\n-NEW feature: https://t.co/rCFxTDLWFu\n-NEW support for BIP-48 derivations when exporting @\u2026",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 50
+      },
+      "url": "https://x.com/switck/status/1388281293536854016",
+      "referenced_tweets": [
+        {
+          "id": "1387828438510223367",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1388281724157693953",
+      "created_at": "2021-04-30T23:58:50.000Z",
+      "text": "RT @michaeltleong: Why is CoinKite one of the only bitcoin companies out there right now improving plausible deniability?",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 2
+      },
+      "url": "https://x.com/switck/status/1388281724157693953",
+      "referenced_tweets": [
+        {
+          "id": "1387865447815532545",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1413662939144392704",
+      "created_at": "2021-07-10T00:54:43.000Z",
+      "text": "RT @ZubyMusic: 20 Things I've Learned (Or Had Confirmed) About Humanity During The 'Pandemic' (THREAD):\n\n1/ Most people would rather be in\u2026",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 22746
+      },
+      "url": "https://x.com/switck/status/1413662939144392704",
+      "referenced_tweets": [
+        {
+          "id": "1412012537986568193",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1413662968743702528",
+      "created_at": "2021-07-10T00:54:50.000Z",
+      "text": "RT @ZubyMusic: 2/ At least 20% of the population has strong authoritarian tendencies, which will emerge under the right conditions.",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 1510
+      },
+      "url": "https://x.com/switck/status/1413662968743702528",
+      "referenced_tweets": [
+        {
+          "id": "1412012539987255301",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1413662991132905473",
+      "created_at": "2021-07-10T00:54:56.000Z",
+      "text": "RT @ZubyMusic: 3/ Fear of death is only rivalled by the fear of social disapproval. The latter could be stronger.",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 1773
+      },
+      "url": "https://x.com/switck/status/1413662991132905473",
+      "referenced_tweets": [
+        {
+          "id": "1412012542076010497",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1413663004000931844",
+      "created_at": "2021-07-10T00:54:59.000Z",
+      "text": "RT @ZubyMusic: 4/ Propaganda is just as effective in the modern day as it was 100 years ago. Access to limitless information has not made t\u2026",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 2686
+      },
+      "url": "https://x.com/switck/status/1413663004000931844",
+      "referenced_tweets": [
+        {
+          "id": "1412012544361963523",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1413663204706856960",
+      "created_at": "2021-07-10T00:55:47.000Z",
+      "text": "RT @ZubyMusic: 20/ It's easier to fool a person than to convince them that they have been fooled.",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 1908
+      },
+      "url": "https://x.com/switck/status/1413663204706856960",
+      "referenced_tweets": [
+        {
+          "id": "1412012579665362945",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1413663317508476929",
+      "created_at": "2021-07-10T00:56:14.000Z",
+      "text": "RT @MsHodl: If you don\u2019t see the value in having the ability to access a financial asset like #Bitcoin, in a permission-less way\u2026 it\u2019s prob\u2026",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 82
+      },
+      "url": "https://x.com/switck/status/1413663317508476929",
+      "referenced_tweets": [
+        {
+          "id": "1413628028735811589",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1413663991780548608",
+      "created_at": "2021-07-10T00:58:54.000Z",
+      "text": "RT @MarkBFadel: https://t.co/OK9yksfXZA",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 33
+      },
+      "url": "https://x.com/switck/status/1413663991780548608",
+      "referenced_tweets": [
+        {
+          "id": "1413618619225882625",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1430363862025519104",
+      "created_at": "2021-08-25T02:58:14.000Z",
+      "text": "RT @BitcoinMemeHub: We really running out of good #bitcoin critics. The previous good ones are now all bitcoiners themselves \ud83e\udd37\u200d\u2642\ufe0f https://t\u2026",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 34
+      },
+      "url": "https://x.com/switck/status/1430363862025519104",
+      "referenced_tweets": [
+        {
+          "id": "1430349105335767047",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1430363903964364800",
+      "created_at": "2021-08-25T02:58:24.000Z",
+      "text": "RT @DocumentingBTC: Major companies such as Fidelity Investments and more recently BlackRock, the world\u2019s largest asset manager, have taken\u2026",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 127
+      },
+      "url": "https://x.com/switck/status/1430363903964364800",
+      "referenced_tweets": [
+        {
+          "id": "1430352521319567364",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1430364315052347398",
+      "created_at": "2021-08-25T03:00:02.000Z",
+      "text": "@ForbesCrypto @shafiunmiraz0 @adam3us @ninabambysheva feels like consolidation \ud83d\ude41",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 0
+      },
+      "url": "https://x.com/switck/status/1430364315052347398",
+      "referenced_tweets": [
+        {
+          "id": "1430168014364815372",
+          "type": "replied_to"
+        }
+      ]
+    },
+    {
+      "id": "1434876333180563458",
+      "created_at": "2021-09-06T13:49:11.000Z",
+      "text": "RT @WholesomeMeme: https://t.co/LDz2YjbI8H",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 2381
+      },
+      "url": "https://x.com/switck/status/1434876333180563458",
+      "referenced_tweets": [
+        {
+          "id": "1434871506782208008",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1434876969175425031",
+      "created_at": "2021-09-06T13:51:42.000Z",
+      "text": "RT @CryptoCloaks: Tomorrow we buy $30. \ud83d\udcaa\n#ElSalvador",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 13
+      },
+      "url": "https://x.com/switck/status/1434876969175425031",
+      "referenced_tweets": [
+        {
+          "id": "1434854037048934403",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1434877068072955907",
+      "created_at": "2021-09-06T13:52:06.000Z",
+      "text": "RT @WholesomeMeme: https://t.co/vSLyXf6eJn",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 11525
+      },
+      "url": "https://x.com/switck/status/1434877068072955907",
+      "referenced_tweets": [
+        {
+          "id": "1434850113130844163",
+          "type": "retweeted"
+        }
+      ]
+    },
+    {
+      "id": "1470918969364205575",
+      "created_at": "2021-12-15T00:49:45.000Z",
+      "text": "another day im glad i dont do Java",
+      "public_metrics": {
+        "bookmark_count": 0,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 0
+      },
+      "url": "https://x.com/switck/status/1470918969364205575",
+      "referenced_tweets": null
+    },
+    {
+      "id": "1505355319035277314",
+      "created_at": "2022-03-20T01:27:30.000Z",
+      "text": "I like my coffee like my women: bitter.",
+      "public_metrics": {
+        "bookmark_count": 1,
+        "impression_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "reply_count": 0,
+        "retweet_count": 0
+      },
+      "url": "https://x.com/switck/status/1505355319035277314",
+      "referenced_tweets": null
+    }
+  ]
+}

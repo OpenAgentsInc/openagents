@@ -26,7 +26,10 @@ See
 | TZ consistency switck vs Gray | **Done E24b** |
 | switck/firmware fork vs upstream chronology | **Done E24c** |
 | studentofthings credit / official reply | **Nuanced E24d** |
-| Full switck X 54-post archive | **Open** (0 in recent search; need full timeline) |
+| Full switck X 54-post archive | **Done enough** — 52/54 in `receipts/2026-08-04-switck-x-archive.json` |
+| “Thanks @DocHex… Coldcard someday” primary | **Captured** E25 |
+| Galaxy collector address receipt | **Done** E27 |
+| Public Mk3 RNG PoC review/reproduce | **Open** (repo found) |
 | Retry Wayback saves for failed URLs | **Open** |
 | Import scgbckbone public keys and confirm Good on their 2 commits | Optional polish |
 

@@ -110,10 +110,10 @@ attribution later.
 
 ---
 
-## Current status (2026-08-04)
+## Current status (2026-08-04, continued)
 
 | Arm | Status |
 | --- | --- |
-| Arm 1 keyspace reproduction | **Planned** — not executed in this pass |
-| Arm 2 prior-victim membership | **Blocked on addresses** + Arm 1 |
-| Arm 3 ledger ingest | **Partial** — Kelbie/Galaxy cited; no new JSON receipt this pass |
+| Arm 1 keyspace reproduction | **Planned** — public educational PoC candidate noted: [HenryqueBrito/coldcard-mk3-rng-poc](https://github.com/HenryqueBrito/coldcard-mk3-rng-poc) (Yasmarang Mk3). Review license + reproduce before trust. |
+| Arm 2 prior-victim membership | **Blocked on victim addresses** + Arm 1 |
+| Arm 3 ledger ingest | **Partial** — public Galaxy collector set recorded in [`receipts/2026-08-04-galaxy-public-attacker-addresses.md`](receipts/2026-08-04-galaxy-public-attacker-addresses.md); Kelbie still separate |

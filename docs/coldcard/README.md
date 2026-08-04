@@ -59,6 +59,10 @@ Until those dependencies close with accepted receipts:
      — lanes and checkboxes.
    - [`receipts/2026-08-04-cto-thesis-archive-index.md`](receipts/2026-08-04-cto-thesis-archive-index.md)
      — local snapshot digests for cited URLs.
+   - [`receipts/2026-08-04-switck-x-archive.json`](receipts/2026-08-04-switck-x-archive.json)
+     — `@switck` X timeline dump (52 posts).
+   - [`receipts/2026-08-04-galaxy-public-attacker-addresses.md`](receipts/2026-08-04-galaxy-public-attacker-addresses.md)
+     — Galaxy Waves 1–2 monitor addresses (public).
 
 The broader rationale and current product sequence live in the
 [`docs/loupe` entry point](../loupe/README.md), the
