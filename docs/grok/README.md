@@ -32,6 +32,7 @@ Sync ASAP analysis.
 | **`grok-cli-as-third-harness.md`** | **Adapter-level design: ACP, schema, fleet, Sync, EN UI** |
 | **`receipts/mh-3-4-status.md`** | **MH-3/MH-4 implementation + live RL concurrency receipts** |
 | **`2026-07-21-open-issues-audit-and-asap-sequence.md`** | **All open GitHub issues (bodies + comments), blocker taxonomy, and ASAP parallel sequence** |
+| **`2026-08-04-x-api-and-xai-x-search-access.md`** | **X API v2 vs xAI `x_search`: live probe, credentials env, Omega `x_api` fold-in** |
 
 CLI operator reference (separate folder): `docs/grok-cli/`.
 

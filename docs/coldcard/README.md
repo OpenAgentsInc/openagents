@@ -44,6 +44,10 @@ Until those dependencies close with accepted receipts:
 6. [`2026-08-02-forensic-model-panel-and-publication-gates-audit.md`](2026-08-02-forensic-model-panel-and-publication-gates-audit.md)
    — diverse model roster, typed fallbacks, independent verification, holdouts,
    and publication gates.
+7. [`2026-08-04-x-posts-recent-summary.md`](2026-08-04-x-posts-recent-summary.md)
+   — live X API recent-search snapshot of Coldcard discourse (external
+   observation only). Access path:
+   [`../grok/2026-08-04-x-api-and-xai-x-search-access.md`](../grok/2026-08-04-x-api-and-xai-x-search-access.md).
 
 The broader rationale and current product sequence live in the
 [`docs/loupe` entry point](../loupe/README.md), the
