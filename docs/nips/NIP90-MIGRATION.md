@@ -80,11 +80,13 @@ Historical truth stays historical truth.
 | Dataset access | NIP-DS core plus optional DS-DVM `5960`/`6960`/`7000` | Keep DS core addressable listing/offer/access-contract kinds; replace DS-DVM with a DS-specific private negotiation profile |
 | Skill search | NIP-SKL manifests plus NIP-90 search | Query manifests directly; use NIP-51 lists, NIP-89 handlers, NIP-99 listings, and a focused private capability-RFQ profile if needed |
 | Compute/inference | Generic DVM jobs | Separate compute microstandard with model/input privacy, deterministic parameters, metering, cancellation, evidence, and streaming semantics |
-| Liquidity/swaps | Previously proposed as another DVM-style service | NIP-MKT negotiated-market base plus MKT-SWP/P2P/PFI/MINT/LSP profiles; never NIP-90 |
+| Liquidity/swaps | Previously proposed as another DVM-style service | [NIP-MKT](MKT.md) negotiated-market base plus MKT-SWP/P2P/PFI/MINT/LSP profiles; never NIP-90 |
 | Public receipts | `kind:7000` plus app projections | Use the owning microstandard's close event plus NIP-EV/NIP-OC evidence and outcome references |
 
-The names `NIP-MKT` and `NIP-LBR v2` are candidate design labels, not allocated
-official NIP numbers or admitted runtime work.
+NIP-MKT is now a drafted OpenAgents NIP with collision-reviewed base kinds
+`39600-39609` and `39610-39699` held unallocated for separately reviewed
+profiles. It is not an official numbered NIP or an admitted runtime product
+claim. `NIP-LBR v2` remains a candidate design label with no allocated kinds.
 
 ## Common negotiated-market spine
 
@@ -96,11 +98,32 @@ Offering → private RFQ → signed Quote → signed Order/Acceptance
          → sequenced Status/Evidence → terminal Close
 ```
 
-The shared part should specify correlation, idempotency, expiry, quote
-reservation, cancellation, sequencing, privacy, error envelopes, and evidence
-references. Each use-case profile defines its own payload, authority,
-verification, and settlement laws. Shared code may implement envelope helpers;
-shared protocol semantics stop at the narrow spine.
+[NIP-MKT](MKT.md) now specifies the market form of that shared part:
+correlation, idempotency, expiry, quote reservation, cancellation, sequencing,
+privacy, recovery, and evidence references. It uses public Provider
+Profile/Offering heads and independently signed private records transported
+inside NIP-59 gift wraps. Each focused profile defines its own payload,
+authority, custody, verification, and settlement laws.
+
+Labor, data, and compute may reuse envelope helpers or the narrow spine only
+through their owning microstandards. They do not silently become MKT profiles,
+and MKT does not absorb their identity, delivery, acceptance, or outcome
+semantics.
+
+## Translation into NIP-MKT
+
+Legacy market history is projected, never upgraded in place. A translator
+into a focused NIP-MKT profile must:
+
+1. name the source protocol and revision and preserve the exact source digest;
+2. name a deterministic mapping version and the target profile descriptor;
+3. list every dropped, defaulted, inferred, or ambiguous field;
+4. retain `legacy:nip90` or the corresponding source provenance; and
+5. fail closed when the source cannot represent the target signers,
+   reservation, custody, state, evidence, or settlement authority.
+
+A translation does not acquire the NIP-MKT signatures, reservation,
+idempotency, custody, or settlement meaning that the source never had.
 
 ## Document migration rules
 

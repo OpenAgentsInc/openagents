@@ -15,14 +15,16 @@ hardening rails against the same event model.
 > microstandards. Existing OpenAgents NIP-90 events and receipts remain
 > readable and verifiable, but the profiles are frozen for new design. See
 > [`NIP90-MIGRATION.md`](NIP90-MIGRATION.md) for the compatibility policy and
-> the NIP-LBR v2, DS-private, compute, and NIP-MKT replacement map.
+> the NIP-LBR v2, DS-private, compute, and NIP-MKT replacement map. NIP-MKT
+> is now drafted as the forward negotiated-market base.
 
 | Spec | Market stream | Kinds | File |
 | --- | --- | --- | --- |
+| NIP-MKT | Negotiated-market base; public discovery, private signed execution control | 39600-39609; 39610-39699 reserved for profiles | [`MKT.md`](MKT.md) |
 | NIP-DS | Data market; core forward, DS-DVM compatibility only | 30404-30407, legacy 5960/6960 | [`DS.md`](DS.md) |
 | NIP-LBR | Labor market; v1 compatibility profile | legacy 5930-5936, 6930-6936, 7000 | [`LBR.md`](LBR.md) |
 | NIP-SKL | Skills registry | 33400/33401, 33410/33411 | [`SKL.md`](SKL.md) |
-| NIP-SA | Sovereign agents | 39200-39260 | [`SA.md`](SA.md) |
+| NIP-SA | Sovereign agents | 39200-39203, 39210-39213, 39220-39221, 39230-39231, 39260 | [`SA.md`](SA.md) |
 | NIP-AC | Agent credit | 39240-39246 | [`AC.md`](AC.md) |
 | NIP-TRN | Training | 39500-39530 | [`TRN.md`](TRN.md) |
 
@@ -72,6 +74,23 @@ runtime evidence land:
 | NIP-BT | Bounties and Contribution Credit | 32490-32492 | [`BT.md`](BT.md) |
 
 ## Per-spec summaries
+
+### NIP-MKT — Negotiated Markets
+
+The forward common control plane for provider markets: public Provider
+Profiles, Offerings, and digest-pinned Profile Descriptors lead into private,
+independently signed RFQ, Quote, Order, Status, Cancel, and Close records.
+NIP-59 gift wraps hide negotiation metadata while a signed inner event keeps
+each term independently verifiable. Exact event IDs bind terms; unique `d`
+values provide idempotency; dense per-signer Status sequences expose gaps and
+forks; expiry never implies consent; and Close is a claim rather than
+settlement. The collision-reviewed base uses `39600-39609` and reserves
+`39610-39699` for separately drafted MKT-SWP, MKT-P2P, MKT-PFI, MKT-MINT,
+MKT-LSP, and other profiles. Profiles own assets, custody, reservation
+physics, credentials, rail evidence, finality, disputes, refunds, and
+recovery. Relays may validate, route, reserve provider-signed capacity, run
+timers, and verify evidence while remaining noncustodial; they never inherit
+wallet or settlement authority.
 
 ### NIP-DS — Datasets
 
@@ -506,8 +525,9 @@ SKL is the shared identity and trust substrate: SA skill licenses and AC
 credit scopes both pin exact SKL manifest versions. Existing SA tick results
 may cite AC settlement receipts and legacy NIP-90 job results so historical
 cost remains auditable. Future envelopes and results cite the owning
-use-case-specific microstandard. AC can fund admitted L402 resources, skill
-invocations, and market orders without making its settlement authority part
-of their wire. TRN closeouts can link AC receipts for training rewards. DS and
-LBR retain NIP-90 read compatibility while their next versions own separate
-data and labor state machines.
+use-case-specific microstandard. NIP-MKT supplies the negotiated-market spine
+without absorbing DS, LBR, TRN, SKL, SA, or AC authority. AC can fund an exact
+MKT Order, L402 resource, or skill invocation without making its settlement
+authority part of their wire. TRN closeouts can link AC receipts for training
+rewards. DS and LBR retain NIP-90 read compatibility while their next
+versions own separate data and labor state machines.

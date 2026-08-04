@@ -33,7 +33,10 @@ This NIP reserves:
 | 32260 | Addressable | Customer |
 | 32261 | Addressable (unique `d`) | Customer Need |
 | 32262 | Addressable (unique `d`) | Customer Signal |
-| 32263-32269 | — | Reserved for future NIP-CN use |
+| 32263-32266, 32268-32269 | — | Reserved for future NIP-CN use |
+
+`kind:32267` is excluded because the official registry assigns it to Software
+Application. NIP-CN does not claim or reinterpret that kind.
 
 All are authority-signed, mutated through NIP-WI intents
 (`customer.create`, `customer.update`, `need.link`, `signal.record`).

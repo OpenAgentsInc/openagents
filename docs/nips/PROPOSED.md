@@ -9,7 +9,8 @@ claim.
 
 NIP-90 is a historical compatibility surface, not the forward common market
 protocol. New market work uses focused microstandards under
-[`NIP90-MIGRATION.md`](NIP90-MIGRATION.md); references below describe
+[`NIP90-MIGRATION.md`](NIP90-MIGRATION.md), beginning with the drafted
+[NIP-MKT negotiated-market base](MKT.md); references below describe
 interoperability or source history unless a narrower spec says otherwise.
 
 ## Philosophy
@@ -84,16 +85,18 @@ These NIPs compose with, and do not duplicate:
 - **Block NIPs:** NIP-OA/AA (agent ownership and relay admission), NIP-AE
   (agent memory), NIP-AO/AM (live telemetry and turn metrics), NIP-AP
   (personas), NIP-RS (read state), NIP-ER (reminders), NIP-PL (push leases).
-- **Existing OpenAgents NIPs:** NIP-SKL (skills), NIP-SA (sovereign agents),
-  NIP-AC (credit), NIP-LBR (labor market), NIP-DS (datasets), NIP-TRN
-  (training).
+- **Existing OpenAgents NIPs:** NIP-MKT (negotiated markets), NIP-SKL
+  (skills), NIP-SA (sovereign agents), NIP-AC (credit), NIP-LBR (labor
+  market), NIP-DS (datasets), NIP-TRN (training).
 
-The existing six OpenAgents NIPs are the open-market layer (selling skills,
-labor, data, credit, training coordination to strangers). The NIPs proposed
-here are the workspace layer: how one Organization plans, delegates,
-executes, reviews, and accepts its own Work. The two layers meet at NIP-LBR
-(external labor fulfills internal Work), NIP-AC (credit funds Work), and
-NIP-SKL (skills gate what a Delegate may load).
+The seven OpenAgents market/economics NIPs are the open-market layer:
+negotiated provider services, skills, labor, data, credit, sovereign agents,
+and training coordination among strangers. The NIPs proposed here are the
+workspace layer: how one Organization plans, delegates, executes, reviews,
+and accepts its own Work. The two layers meet at NIP-MKT (a private market
+Order can fulfill or fund Work), NIP-LBR (external labor fulfills internal
+Work), NIP-AC (credit funds an exact order/outcome), and NIP-SKL (skills gate
+what a Delegate may load).
 
 ## Kind allocation strategy
 
@@ -101,8 +104,11 @@ NIP-SKL (skills gate what a Delegate may load).
   neighborhood. `32150-32163` is already pinned by
   `openagents.signed-workroom.v2` and must not be reused.
 - Agent-economics records that extend the NIP-SA neighborhood use `39xxx`
-  beside the existing 39200-39260 (SA), 39240-39246 (AC), and 39500-39530
-  (TRN) reservations.
+  beside SA's exact 39200-39203, 39210-39213, 39220-39221, 39230-39231, and
+  39260 kinds; AC's 39240-39246; and TRN's 39500-39530 allocations.
+- NIP-MKT owns the collision-reviewed addressable block `39600-39699`:
+  `39600-39609` are the drafted base and `39610-39699` remain unallocated
+  until each focused profile passes a new registry and three-lane review.
 - Append-only streams either use unique-`d` addressable events (the
   signed-workroom precedent) or a regular-kind block chosen at drafting time.
 - Each drafted NIP reserves the exact kinds in its specification after a
@@ -177,7 +183,7 @@ Layer 1 is drafted. The seven spec files live beside this index.
 | NIP-PG | Planning Graph | 32220-32239 | [`PG.md`](PG.md) |
 | NIP-RP | Release Planning | 32240-32249 | [`RP.md`](RP.md) |
 | NIP-DD | Documents and Decisions | 32250-32259 | [`DD.md`](DD.md) |
-| NIP-CN | Customers and Needs | 32260-32269 | [`CN.md`](CN.md) |
+| NIP-CN | Customers and Needs | 32260-32266, 32268-32269 | [`CN.md`](CN.md) |
 
 **NIP-PI — Project Issue.** The Issue projection of Work: team-scoped
 identifier, title, description ref, Workflow State ref, priority, label refs,
@@ -396,6 +402,39 @@ blocker refs, verification guidance, and transition receipts. Registry
 transitions are authority-signed; marketing copy, screenshots, or individual
 receipts cannot silently flip a state. Makes the existing
 `openagents.com/promises` contract portable and independently verifiable.
+
+## Market microstandards
+
+The forward market program is separate from the 25 All Work NIPs and five
+hardening-application NIPs counted by this index. It shares their authority,
+privacy, evidence, and loss-accounting laws without turning a bilateral
+market into Organization-owned Work.
+
+| NIP | Name | Reserved block | Draft |
+| --- | --- | --- | --- |
+| NIP-MKT | Negotiated Markets base | 39600-39609 | [`MKT.md`](MKT.md) |
+| MKT profiles | SWP, P2P, PFI, MINT, LSP, later focused profiles | 39610-39699 (unallocated) | separately drafted |
+
+NIP-MKT standardizes public provider/offering discovery and the private,
+signed RFQ → Quote → Order → Status/Cancel → Close spine. It defines exact
+correlation, idempotency, expiry, quote reservation classes, sequencing,
+recovery, NIP-59 transport, public receipt redaction, and noncustodial relay
+boundaries. It does not define assets, custody, wallet actions, credentials,
+or finality.
+
+Profiles own the physical and legal market: assets and units; exact capacity
+and reservation meaning; custody dimensions; credential and eligibility
+rules; rail-specific transitions; evidence verification; cancellation,
+dispute, refund, and recovery; and the actual settlement authority. Expected
+profiles are MKT-SWP (Boltz-class swaps), MKT-P2P (NIP-69 and peer rails),
+MKT-PFI (tbDEX-style provider/credential flows), MKT-MINT (Cashu/Fedimint),
+and MKT-LSP (Lightning liquidity services). MKT-RISK waits for a real
+guarantor or underwriter with reserves, claims, and settlement authority.
+
+The allocation review found no `39600-39699` claims in the pinned official,
+Block, or OpenAgents lanes or the official registry-of-kinds when checked on
+2026-08-04; official `39701` is the nearest higher assignment. Every profile
+allocation still requires a fresh external-registry and three-lane check.
 
 ## Applications: the hardening program
 
