@@ -709,15 +709,19 @@ than to S6.
 3. Blockchain-services provider name / LE trail if public (E19).
 4. Full `switck` X archive; remaining non-Gray libngu sigs.
 5. Direct `@DocHex`/`@nvk` statement on GPG/nym.
-6. **X API credits depleted** mid fourth pass — refill before more live X pulls.
+6. Full thread archive if DocHex ever replies to E23 / nym questions.
+
+See **steelman guilt / non-guilt** sections and **scenarios S1–S8** (speculative).
 
 Summary:
 
 > **Strong evidence Gray controlled switck signing + real-name seed migration.
 > Official tech blog admits first-person RNG-path mistakes and claims unawareness
 > until disclosure, while third parties allege years of ignored drains. Early
-> advisory under-scoped models. Still open: intentional theft design, staff role
-> in 2026 drains, and reconciling “unaware” with prior-notice claims.**
+> advisory under-scoped models. On day 0 the CTO speculated about AI breaking
+> RFC6979 (wrong class vs entropy; darosior replied entropy). Least-strained
+> readings stay negligence/opacity (S1–S3); intentional long-game theft (S6)
+> still needs a proceeds or intent bridge.**
 
 ---
 
