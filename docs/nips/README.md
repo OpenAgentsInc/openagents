@@ -120,6 +120,58 @@ find the accepted checkpoint lineage and continue. The TRN-DiLoCo profile
 covers local-update rounds, weighted aggregation, and checkpoint promotion
 for periodically synchronized training.
 
+### NIP-WK — Work (proposed layer 0)
+
+The root object of the All Work program. An authority-signed Work Record
+head (`32170`) carries domain, state, revision, owner, and participant/
+planning/session/outcome refs for one bounded objective in any Work Domain.
+Append-only Work Events (`32171`) use unique-`d` addressable records with a
+dense sequence so a missing number is an explicit, displayed gap. Versioned
+digest-bound Objectives (`32172`) let plans and evidence name the exact
+intent revision they were made against, and the Outcome Record (`32173`)
+indexes evidence, verification, disposition, and settlement refs without
+becoming a verdict. Only the Organization's declared authority key makes
+these kinds canonical; participants change Work through NIP-WI.
+
+### NIP-WI — Work Intents and Admission (proposed layer 0)
+
+The command wire: a client-signed event is a proposal with product meaning
+only after an authority-signed admission exists. Work Intents (`32180`)
+bind actor, operation, idempotency key, argument digest, expected revision,
+generation, and expiry. Admission Results (`32181`) answer exactly one
+intent with `admitted` (accepted revision plus resulting Work Event refs)
+or `refused` (typed reason codes), under five laws: fail closed, idempotent
+replay, one decision per intent, full provenance chain, and no inference
+from silence. Work Candidates (`32182`) carry untrusted public intake —
+the strict-bug pattern — which becomes Work only through an explicit
+triage admission.
+
+### NIP-EV — Evidence, Verification, and Dispositions (proposed layer 0)
+
+The trust wire. Producer-signed Evidence Receipts (`32190`) bind exact
+bytes to criteria by digest. Verification Receipts (`32191`) record an
+executed evaluation under a named policy, with a hard independence floor:
+the verifier key must differ from every evaluated producer key, and model
+agreement is never verification. Owner Dispositions (`32192`) record the
+accountable human's separate accept/reject/waive decision with explicit
+per-criterion waivers, and Receipt Edges (`32193`) connect the records
+into a traversable receipt graph. The proof-rung ladder is normative:
+evidence, then verification, then acceptance, then release, then
+settlement — and no rung implies the next.
+
+### NIP-OT — Organizations and Teams (proposed layer 0)
+
+The administrative scope and the trust bootstrap. The Organization Record
+(`32100`) declares the All Work authority pubkey that makes every other
+record canonical, with a two-sided key-rotation rule. Team Records
+(`32101`) carry workflow policy and workroom refs; Membership Projections
+(`32102`) bind principals to scopes with generation fencing, tombstoned
+revocation, and NIP-OA attestation refs for agent members; Role
+Definitions (`32103`) are display vocabulary that grants nothing; and
+Workroom Bindings (`32104`) connect scopes to relay-qualified NIP-29
+groups while stating plainly that relay `private` is access policy, not
+encryption. Membership is visibility, never capability.
+
 ## How the specs fit together
 
 SKL is the shared identity and trust substrate: SA skill licenses and AC
