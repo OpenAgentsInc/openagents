@@ -159,15 +159,17 @@ capability, and a generation change fences stale membership
 
 ### Layer 1 — Planning (the Linear half)
 
-| NIP | Name | Tentative kinds |
-| --- | --- | --- |
-| NIP-PI | Project Issue | 32200-32209 |
-| NIP-WR | Work Relations | 32210-32214 |
-| NIP-WS | Workflow States and Labels | 32215-32219 |
-| NIP-PG | Planning Graph | 32220-32239 |
-| NIP-RP | Release Planning | 32240-32249 |
-| NIP-DD | Documents and Decisions | 32250-32259 |
-| NIP-CN | Customers and Needs | 32260-32269 |
+Layer 1 is drafted. The seven spec files live beside this index.
+
+| NIP | Name | Tentative kinds | Draft |
+| --- | --- | --- | --- |
+| NIP-PI | Project Issue | 32200-32209 | [`PI.md`](PI.md) |
+| NIP-WR | Work Relations | 32210-32214 | [`WR.md`](WR.md) |
+| NIP-WS | Workflow States and Labels | 32215-32219 | [`WS.md`](WS.md) |
+| NIP-PG | Planning Graph | 32220-32239 | [`PG.md`](PG.md) |
+| NIP-RP | Release Planning | 32240-32249 | [`RP.md`](RP.md) |
+| NIP-DD | Documents and Decisions | 32250-32259 | [`DD.md`](DD.md) |
+| NIP-CN | Customers and Needs | 32260-32269 | [`CN.md`](CN.md) |
 
 **NIP-PI — Project Issue.** The Issue projection of Work: team-scoped
 identifier, title, description ref, Workflow State ref, priority, label refs,
