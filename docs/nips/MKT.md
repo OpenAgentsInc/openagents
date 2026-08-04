@@ -550,6 +550,41 @@ Every executable profile defines:
 10. errors, unsupported-version behavior, and loss accounting; and
 11. positive, negative, replay, fork, expiry, privacy, and recovery fixtures.
 
+### Coordinator-independent recovery
+
+Item 6's recovery definition has a mandatory floor. Every executable
+profile MUST define, and fixture, a coordinator-independent terminal path:
+both parties reach a correct terminal state — completed, refunded, or
+unilaterally exited — using only their persisted signed records, a direct
+or relay-agnostic counterparty channel, and the external rail, with no
+market relay handler, provider API, or other coordinator alive. Where the
+rail supports it, the profile requires a pre-signed or pre-derived
+unilateral-exit artifact to be produced and retained before funds move.
+The Boltz and Satora coordinator outages of 2026-08 are the motivating
+record: in both, the settlement rail kept working while the coordination
+service did not.
+
+### Profile field vocabulary
+
+Profiles SHOULD follow these field laws unless they record a reason not
+to:
+
+- an asset's identity is a collision-resistant asset identifier; a market
+  is identified by its asset-ID pair. Tickers and display names are
+  unverified labels and MUST NOT be used for matching, grouping, or
+  pricing;
+- amounts are canonical decimal strings of the asset's atomic unit
+  (`^(0|[1-9][0-9]*)$` bounded by the profile), never JSON numbers, which
+  lose integer precision past 2^53;
+- a direction or side a provider does not serve is disabled explicitly,
+  never implied by omission;
+- an advertised fee or spread is a fill promise constrained by the
+  profile's evidence rules, not a proven fact; and
+- when an external price feed is part of quoted terms, the Quote pins the
+  exact feed URL and value-extraction rule both parties use. Pricing from
+  a substitute feed is a term violation, and a feed never acquires
+  settlement authority.
+
 Custody is described by independent dimensions, not one reassuring score. At
 minimum profiles disclose `funds_control`, `execution_control`,
 `settlement_authority`, `reversibility`, `recourse`, and
@@ -561,7 +596,11 @@ remaining noncustodial.
 Expected focused profiles include:
 
 - **MKT-SWP** — Boltz-class submarine, reverse, and chain swaps with scripts,
-  trees, invoices, timeouts, claim/refund paths, and chain/Lightning proof;
+  trees, invoices, timeouts, claim/refund paths, and chain/Lightning proof.
+  The draft SHOULD reserve cross-chain contract-leg vocabulary (chain
+  identifier, contract address, token asset ID, claim/refund signature
+  mode, confirmation policy as a quoted term) so an EVM-leg extension can
+  land without a breaking revision;
 - **MKT-P2P** — NIP-69-compatible peer discovery and profile-defined escrow,
   reputation, fiat, or cash rails;
 - **MKT-PFI** — tbDEX-style provider discovery, qualification, credentials,
@@ -574,6 +613,16 @@ Expected focused profiles include:
 An **MKT-RISK** profile is valid only with an actual guarantor/underwriter,
 reserves, coverage, exclusions, claims, adjudication, and settlement. A model
 score or receipt count is not insurance.
+
+One market shape is deliberately not covered by the base: the maker-funded
+standing offer that any counterparty may fill without negotiation, with
+terms enforced by a covenant or equivalent rail construct (the Arkade
+intent/solver model). That shape needs no RFQ/Quote exchange because the
+rail carries the term enforcement this base provides through signed
+records. Whether it becomes an MKT-INTENT profile, folds into MKT-P2P, or
+stays rail-native is an open profile-drafting decision; a profile claiming
+it MUST NOT relabel a standing offer as a Quote or an anonymous fill as an
+Order.
 
 DS, LBR, compute, training, and future markets keep their own domain
 primitives; spine reuse must not erase distinct verification or settlement.
@@ -650,6 +699,24 @@ recovery loss, and settlement overclaim.
 - **Profile supply chain:** descriptors are data, not code. Pin digests,
   allowlist authorities, sandbox adapters, and display unsupported revisions.
 
+## Implementations
+
+This section is informative and records interoperability evidence, not
+authority.
+
+- **Immortal relay** (<https://github.com/OpenAgentsInc/immortal>) —
+  implements the base as of 2026-08-04: public discovery-head validation
+  (`39600-39603`), immutable-by-contract admission for `39604-39609`,
+  bare-private-publication rejection, recipient-gated wrapped transport on
+  every read surface, rate limits, a fixture corpus covering the relay and
+  client conformance cases, and a deterministic machine-readable contract
+  export (`immortal contract`) for SDK generation. It repeated and
+  recorded the `39600-39699` collision review before admitting the kinds,
+  advertises the nonnumeric `nip-mkt` extension only under authenticated
+  recipient transport, and implements **no executable profile** — base
+  discovery and transport only. Its server contract and adoption record
+  live in that repository under `docs/protocol/`.
+
 ## References
 
 - NIP-01, NIP-09, NIP-17, NIP-32, NIP-39, NIP-40, NIP-42, NIP-44,
@@ -661,9 +728,26 @@ recovery loss, and settlement overclaim.
 - [Nostr registry of event kinds](https://github.com/nostr-protocol/registry-of-kinds)
 - [`NIP90-MIGRATION.md`](NIP90-MIGRATION.md)
 - `docs/teardowns/2026-08-03-boltz-ecosystem-nostr-rebuild-teardown.md`
-- `docs/teardowns/2026-08-04-tbdex-protocol-teardown-and-market-synthesis.md`
+- `docs/teardowns/2026-08-04-tbdex-liquidity-protocol-teardown.md`
+- `docs/teardowns/2026-08-04-satora-lendaswap-outage-teardown.md`
+- `docs/teardowns/2026-08-04-ark-solver-mostro-cashu-rails-teardown.md`
 
 ## Changelog
+
+**v0.1 (2026-08-04)**
+
+- No change to base kinds, tag grammar, content envelope, transport, or
+  relay admission rules; the implemented base is unaffected.
+- Profile contract: added the mandatory coordinator-independent recovery
+  floor (motivated by the Boltz and Satora coordinator outages) and the
+  profile field-vocabulary laws (asset-ID pair identity, decimal-string
+  amounts, explicit side-disable, fee-as-promise, pinned price feeds).
+- Expected profiles: MKT-SWP notes reserved cross-chain contract-leg
+  vocabulary; recorded the maker-funded intent-market shape as an open
+  profile-drafting decision outside the base.
+- Added the informative Implementations section (Immortal relay base) and
+  the Satora and market-rails teardown references; corrected the tbDEX
+  teardown filename.
 
 **v0 (2026-08-04)**
 

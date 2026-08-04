@@ -16,7 +16,12 @@ hardening rails against the same event model.
 > readable and verifiable, but the profiles are frozen for new design. See
 > [`NIP90-MIGRATION.md`](NIP90-MIGRATION.md) for the compatibility policy and
 > the NIP-LBR v2, DS-private, compute, and NIP-MKT replacement map. NIP-MKT
-> is now drafted as the forward negotiated-market base.
+> is drafted as the forward negotiated-market base, and its base (discovery
+> heads, immutable private records, wrapped transport) has a first relay
+> implementation in [Immortal](https://github.com/OpenAgentsInc/immortal)
+> with a fixture corpus and machine-readable contract export. Focused
+> profiles (MKT-SWP and the rest of `39610-39699`) remain drafts in
+> progress; no executable profile is implemented anywhere yet.
 
 | Spec | Market stream | Kinds | File |
 | --- | --- | --- | --- |
@@ -90,7 +95,10 @@ MKT-LSP, and other profiles. Profiles own assets, custody, reservation
 physics, credentials, rail evidence, finality, disputes, refunds, and
 recovery. Relays may validate, route, reserve provider-signed capacity, run
 timers, and verify evidence while remaining noncustodial; they never inherit
-wallet or settlement authority.
+wallet or settlement authority. v0.1 adds the mandatory
+coordinator-independent recovery floor for profiles, the profile
+field-vocabulary laws, and an informative implementation record (the
+Immortal relay base).
 
 ### NIP-DS — Datasets
 
