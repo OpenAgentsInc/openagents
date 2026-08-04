@@ -107,9 +107,10 @@ what a Delegate may load).
   beside SA's exact 39200-39203, 39210-39213, 39220-39221, 39230-39231, and
   39260 kinds; AC's 39240-39246; and TRN's 39500-39530 allocations.
 - NIP-MKT owns the collision-reviewed addressable block `39600-39699`:
-  `39600-39609` are the drafted base, MKT-SWP allocates `39610`, MKT-PFI
-  allocates `39630`, and the remaining kinds stay unallocated until each
-  focused profile passes a new registry and three-lane review.
+  `39600-39609` are the drafted base; MKT-SWP/P2P/PFI/MINT/LSP/INTENT allocate
+  `39610`/`39620`/`39630`/`39640`/`39650`/`39660`; family gaps stay
+  unallocated until a later revision passes a new registry and three-lane
+  review.
 - Append-only streams either use unique-`d` addressable events (the
   signed-workroom precedent) or a regular-kind block chosen at drafting time.
 - Each drafted NIP reserves the exact kinds in its specification after a
@@ -411,12 +412,16 @@ hardening-application NIPs counted by this index. It shares their authority,
 privacy, evidence, and loss-accounting laws without turning a bilateral
 market into Organization-owned Work.
 
-| NIP                | Name                                           | Reserved block              | Draft                      |
-| ------------------ | ---------------------------------------------- | --------------------------- | -------------------------- |
-| NIP-MKT            | Negotiated Markets base                        | 39600-39609                 | [`MKT.md`](MKT.md)         |
-| MKT-SWP            | Bitcoin and Lightning Atomic Swaps             | 39610; 39611-39619 retained | [`MKT-SWP.md`](MKT-SWP.md) |
-| MKT-PFI            | Credentialed Provider and Fiat Interfaces      | 39630; 39631-39639 retained | [`MKT-PFI.md`](MKT-PFI.md) |
-| Later MKT profiles | P2P, MINT, LSP, intent, later focused profiles | remaining 39610-39699 kinds | separately drafted         |
+| NIP        | Name                                      | Reserved block              | Draft                            |
+| ---------- | ----------------------------------------- | --------------------------- | -------------------------------- |
+| NIP-MKT    | Negotiated Markets base                   | 39600-39609                 | [`MKT.md`](MKT.md)               |
+| MKT-SWP    | Bitcoin and Lightning Atomic Swaps        | 39610; 39611-39619 retained | [`MKT-SWP.md`](MKT-SWP.md)       |
+| MKT-P2P    | Peer-to-Peer Bitcoin Trades               | 39620; 39621-39629 retained | [`MKT-P2P.md`](MKT-P2P.md)       |
+| MKT-PFI    | Credentialed Provider and Fiat Interfaces | 39630; 39631-39639 retained | [`MKT-PFI.md`](MKT-PFI.md)       |
+| MKT-MINT   | Cashu and Fedimint Routes                 | 39640; 39641-39649 retained | [`MKT-MINT.md`](MKT-MINT.md)     |
+| MKT-LSP    | Lightning Service Providers               | 39650; 39651-39659 retained | [`MKT-LSP.md`](MKT-LSP.md)       |
+| MKT-INTENT | Maker-Funded Covenant Intents             | 39660; 39661-39669 retained | [`MKT-INTENT.md`](MKT-INTENT.md) |
+| Later      | Separately reviewed profiles              | remaining 39670-39699 kinds | separately drafted               |
 
 NIP-MKT standardizes public provider/offering discovery and the private,
 signed RFQ → Quote → Order → Status/Cancel → Close spine. It defines exact
@@ -431,14 +436,16 @@ rules; rail-specific transitions; evidence verification; cancellation,
 dispute, refund, and recovery; and the actual settlement authority. Expected
 profiles are MKT-SWP (Boltz-class swaps), MKT-P2P (NIP-69 and peer rails),
 MKT-PFI (tbDEX-style provider/credential flows), MKT-MINT (Cashu/Fedimint),
-and MKT-LSP (Lightning liquidity services). MKT-RISK waits for a real
-guarantor or underwriter with reserves, claims, and settlement authority.
+MKT-LSP (Lightning liquidity services), and MKT-INTENT (maker-funded covenant
+offers). MKT-RISK waits for a guarantor or underwriter with reserves, claims,
+and settlement authority.
 
-The MKT-SWP/MKT-PFI allocation review found no conflicting `39610-39699`
-claim at official NIPs `c5387757`, Block Buzz `56003ebf`, OpenAgents
-`1c9a957a`, or registry-of-kinds `2483e752`. It allocated only `39610` and
-`39630`; every later profile allocation still requires a fresh registry and
-three-lane check.
+The MKT-P2P/MINT/LSP/INTENT allocation review found no conflicting claim in
+their families at official NIPs `c5387757`, Block Buzz `540b5892`,
+OpenAgents `2d9b1463`, or registry-of-kinds `2483e752`. The OpenAgents lane
+already contained only the prior `39610` SWP and `39630` PFI allocations. The
+new review allocated `39620`, `39640`, `39650`, and `39660`; every later
+allocation still requires a fresh registry and three-lane check.
 
 ## Applications: the hardening program
 

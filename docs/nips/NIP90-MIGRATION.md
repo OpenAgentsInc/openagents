@@ -85,10 +85,12 @@ Historical truth stays historical truth.
 
 NIP-MKT is now a drafted OpenAgents NIP with collision-reviewed base kinds
 `39600-39609`. Its separately reviewed profile drafts allocate `39610` to
-[MKT-SWP](MKT-SWP.md) and `39630` to [MKT-PFI](MKT-PFI.md); every other kind
-in `39610-39699` remains unallocated. Those upstream drafts are not an
-official numbered NIP or an admitted executable-profile claim. `NIP-LBR v2`
-remains a candidate design label with no allocated kinds.
+[MKT-SWP](MKT-SWP.md), `39620` to [MKT-P2P](MKT-P2P.md), `39630` to
+[MKT-PFI](MKT-PFI.md), `39640` to [MKT-MINT](MKT-MINT.md), `39650` to
+[MKT-LSP](MKT-LSP.md), and `39660` to [MKT-INTENT](MKT-INTENT.md). The gaps in
+those families and `39670-39699` remain unallocated. Those upstream drafts are
+not an official numbered NIP or an admitted executable-profile claim.
+`NIP-LBR v2` remains a candidate design label with no allocated kinds.
 
 ## Common negotiated-market spine
 

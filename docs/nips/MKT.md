@@ -133,22 +133,31 @@ executed an order, received funds, refunded a counterparty, or settled.
 
 This NIP reserves these collision-reviewed addressable kinds:
 
-| Kind        | Type                    | Description                               | Publication                        |
-| ----------- | ----------------------- | ----------------------------------------- | ---------------------------------- |
-| 39600       | Addressable head        | Provider Profile                          | public                             |
-| 39601       | Addressable head        | Offering                                  | public                             |
-| 39602       | Addressable head        | Market Profile Descriptor                 | public                             |
-| 39603       | Addressable, unique `d` | Public Market Receipt                     | public, optional                   |
-| 39604       | Addressable, unique `d` | RFQ                                       | private signed record              |
-| 39605       | Addressable, unique `d` | Quote                                     | private signed record              |
-| 39606       | Addressable, unique `d` | Order                                     | private signed record              |
-| 39607       | Addressable, unique `d` | Status                                    | private signed record              |
-| 39608       | Addressable, unique `d` | Cancel                                    | private signed record              |
-| 39609       | Addressable, unique `d` | Close                                     | private signed record              |
-| 39610       | Addressable, unique `d` | MKT-SWP Swap Contract                     | private signed record, NIP-59 only |
-| 39611-39629 | —                       | Reserved for separately reviewed profiles | unallocated                        |
-| 39630       | Addressable head        | MKT-PFI Qualification Policy              | public, no PII                     |
-| 39631-39699 | —                       | Reserved for separately reviewed profiles | unallocated                        |
+| Kind        | Type                     | Description                               | Publication                        |
+| ----------- | ------------------------ | ----------------------------------------- | ---------------------------------- |
+| 39600       | Addressable head         | Provider Profile                          | public                             |
+| 39601       | Addressable head         | Offering                                  | public                             |
+| 39602       | Addressable head         | Market Profile Descriptor                 | public                             |
+| 39603       | Addressable, unique `d`  | Public Market Receipt                     | public, optional                   |
+| 39604       | Addressable, unique `d`  | RFQ                                       | private signed record              |
+| 39605       | Addressable, unique `d`  | Quote                                     | private signed record              |
+| 39606       | Addressable, unique `d`  | Order                                     | private signed record              |
+| 39607       | Addressable, unique `d`  | Status                                    | private signed record              |
+| 39608       | Addressable, unique `d`  | Cancel                                    | private signed record              |
+| 39609       | Addressable, unique `d`  | Close                                     | private signed record              |
+| 39610       | Addressable, unique `d`  | MKT-SWP Swap Contract                     | private signed record, NIP-59 only |
+| 39611-39619 | —                        | Reserved for later MKT-SWP revisions      | unallocated                        |
+| 39620       | Addressable, unique `d`  | MKT-P2P Resolution                        | private signed record, NIP-59 only |
+| 39621-39629 | —                        | Reserved for later MKT-P2P revisions      | unallocated                        |
+| 39630       | Addressable head         | MKT-PFI Qualification Policy              | public, no PII                     |
+| 39631-39639 | —                        | Reserved for later MKT-PFI revisions      | unallocated                        |
+| 39640       | Addressable, unique `d`  | MKT-MINT Route Contract                   | private signed record, NIP-59 only |
+| 39641-39649 | —                        | Reserved for later MKT-MINT revisions     | unallocated                        |
+| 39650       | Addressable, unique `d`  | MKT-LSP Service Contract                  | private signed record, NIP-59 only |
+| 39651-39659 | —                        | Reserved for later MKT-LSP revisions      | unallocated                        |
+| 39660       | Addressable, derived `d` | MKT-INTENT Covenant Intent                | public                             |
+| 39661-39669 | —                        | Reserved for later MKT-INTENT revisions   | unallocated                        |
+| 39670-39699 | —                        | Reserved for separately reviewed profiles | unallocated                        |
 
 NIP-01 makes every `30000 <= kind < 40000` event addressable. The private
 records use a new, unique `d` for every logical message and are
@@ -158,7 +167,9 @@ an existing `(pubkey, kind, d)` even if a generic relay would select a newer
 head.
 
 Public heads, including `kind:39630`, intentionally use stable `d` values and
-NIP-01 replacement. Private profile kinds such as `kind:39610` inherit the
+NIP-01 replacement. MKT-INTENT derives `d` from its canonical content so a
+changed public intent cannot replace prior terms under the same address.
+Private profile kinds `39610`, `39620`, `39640`, and `39650` inherit the
 unique-`d`, immutable-by-contract, and NIP-59-only rules from the base private
 records.
 
@@ -175,6 +186,16 @@ MKT-SWP and MKT-PFI repeated that review immediately before allocating
 `1c9a957ab8275e23e7952af2395d36c681b5246d`, and registry-of-kinds
 `2483e752146d171524dcb10dffd06de2aa271bf3`. No source assigned a kind in
 `39610-39699`; the only matches were this NIP's reservation text.
+
+MKT-P2P, MKT-MINT, MKT-LSP, and MKT-INTENT repeated the review immediately
+before allocating `39620`, `39640`, `39650`, and `39660`. The reviewed
+revisions were official NIPs
+`c53877571f96eb423661fc23c620d629d37b8f19`, Block Buzz
+`540b58920cef205b838da8be8442aae62bceaaa5`, this OpenAgents tree at
+`2d9b1463be6fb1ceac60c4bfabcb7b10f168d060`, and registry-of-kinds
+`2483e752146d171524dcb10dffd06de2aa271bf3`. The OpenAgents lane contained
+only the prior `39610` and `39630` profile allocations; no source assigned a
+kind in the four new families.
 
 ## Common grammar
 
@@ -743,12 +764,26 @@ authority.
 - [`NIP90-MIGRATION.md`](NIP90-MIGRATION.md)
 - [`MKT-SWP.md`](MKT-SWP.md)
 - [`MKT-PFI.md`](MKT-PFI.md)
+- [`MKT-P2P.md`](MKT-P2P.md)
+- [`MKT-MINT.md`](MKT-MINT.md)
+- [`MKT-LSP.md`](MKT-LSP.md)
+- [`MKT-INTENT.md`](MKT-INTENT.md)
 - `docs/teardowns/2026-08-03-boltz-ecosystem-nostr-rebuild-teardown.md`
 - `docs/teardowns/2026-08-04-tbdex-liquidity-protocol-teardown.md`
 - `docs/teardowns/2026-08-04-satora-lendaswap-outage-teardown.md`
 - `docs/teardowns/2026-08-04-ark-solver-mostro-cashu-rails-teardown.md`
 
 ## Changelog
+
+**v0.3 (2026-08-04)**
+
+- Recorded the fresh collision review for the P2P, mint, Lightning-liquidity,
+  and covenant-intent profile families.
+- Allocated private immutable `kind:39620` to MKT-P2P Resolution,
+  `kind:39640` to the MKT-MINT Route Contract, and `kind:39650` to the MKT-LSP
+  Service Contract; allocated public derived-`d` `kind:39660` to the
+  MKT-INTENT Covenant Intent.
+- Linked the four profile contracts and retained every unassigned family gap.
 
 **v0.2 (2026-08-04)**
 

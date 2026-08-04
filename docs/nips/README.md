@@ -20,21 +20,25 @@ hardening rails against the same event model.
 > heads, immutable private records, wrapped transport) has a first relay
 > implementation in [Immortal](https://github.com/OpenAgentsInc/immortal)
 > with a fixture corpus and machine-readable contract export. Focused
-> MKT-SWP and MKT-PFI are complete upstream drafts with collision-reviewed
-> profile kinds; the remaining profile families are still being drafted. No
-> executable profile is implemented anywhere yet.
+> MKT-SWP, MKT-P2P, MKT-PFI, MKT-MINT, MKT-LSP, and MKT-INTENT are complete
+> upstream drafts with collision-reviewed profile kinds. No executable
+> profile is implemented anywhere yet.
 
-| Spec    | Market stream                                                              | Kinds                                                     | File                       |
-| ------- | -------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------- |
-| NIP-MKT | Negotiated-market base; public discovery, private signed execution control | 39600-39609; profile block 39610-39699                    | [`MKT.md`](MKT.md)         |
-| MKT-SWP | BTC/Lightning submarine, reverse, and chain swaps                          | 39610                                                     | [`MKT-SWP.md`](MKT-SWP.md) |
-| MKT-PFI | Credentialed provider/fiat-interface negotiation                           | 39630                                                     | [`MKT-PFI.md`](MKT-PFI.md) |
-| NIP-DS  | Data market; core forward, DS-DVM compatibility only                       | 30404-30407, legacy 5960/6960                             | [`DS.md`](DS.md)           |
-| NIP-LBR | Labor market; v1 compatibility profile                                     | legacy 5930-5936, 6930-6936, 7000                         | [`LBR.md`](LBR.md)         |
-| NIP-SKL | Skills registry                                                            | 33400/33401, 33410/33411                                  | [`SKL.md`](SKL.md)         |
-| NIP-SA  | Sovereign agents                                                           | 39200-39203, 39210-39213, 39220-39221, 39230-39231, 39260 | [`SA.md`](SA.md)           |
-| NIP-AC  | Agent credit                                                               | 39240-39246                                               | [`AC.md`](AC.md)           |
-| NIP-TRN | Training                                                                   | 39500-39530                                               | [`TRN.md`](TRN.md)         |
+| Spec       | Market stream                                                              | Kinds                                                     | File                             |
+| ---------- | -------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------- |
+| NIP-MKT    | Negotiated-market base; public discovery, private signed execution control | 39600-39609; profile block 39610-39699                    | [`MKT.md`](MKT.md)               |
+| MKT-SWP    | BTC/Lightning submarine, reverse, and chain swaps                          | 39610                                                     | [`MKT-SWP.md`](MKT-SWP.md)       |
+| MKT-P2P    | NIP-69/Mostro-compatible peer trades and dispute resolution                | 39620                                                     | [`MKT-P2P.md`](MKT-P2P.md)       |
+| MKT-PFI    | Credentialed provider/fiat-interface negotiation                           | 39630                                                     | [`MKT-PFI.md`](MKT-PFI.md)       |
+| MKT-MINT   | Cashu mint/melt and Fedimint gateway negotiation                           | 39640                                                     | [`MKT-MINT.md`](MKT-MINT.md)     |
+| MKT-LSP    | LSPS1 channel purchase and LSPS2 just-in-time liquidity                    | 39650                                                     | [`MKT-LSP.md`](MKT-LSP.md)       |
+| MKT-INTENT | Maker-funded, any-filler covenant intents                                  | 39660                                                     | [`MKT-INTENT.md`](MKT-INTENT.md) |
+| NIP-DS     | Data market; core forward, DS-DVM compatibility only                       | 30404-30407, legacy 5960/6960                             | [`DS.md`](DS.md)                 |
+| NIP-LBR    | Labor market; v1 compatibility profile                                     | legacy 5930-5936, 6930-6936, 7000                         | [`LBR.md`](LBR.md)               |
+| NIP-SKL    | Skills registry                                                            | 33400/33401, 33410/33411                                  | [`SKL.md`](SKL.md)               |
+| NIP-SA     | Sovereign agents                                                           | 39200-39203, 39210-39213, 39220-39221, 39230-39231, 39260 | [`SA.md`](SA.md)                 |
+| NIP-AC     | Agent credit                                                               | 39240-39246                                               | [`AC.md`](AC.md)                 |
+| NIP-TRN    | Training                                                                   | 39500-39530                                               | [`TRN.md`](TRN.md)               |
 
 [`PROPOSED.md`](PROPOSED.md) indexes the proposed next wave: the All Work NIP
 program that encodes the Linear-class planning, agent delegation, coding,
@@ -92,13 +96,14 @@ NIP-59 gift wraps hide negotiation metadata while a signed inner event keeps
 each term independently verifiable. Exact event IDs bind terms; unique `d`
 values provide idempotency; dense per-signer Status sequences expose gaps and
 forks; expiry never implies consent; and Close is a claim rather than
-settlement. The collision-reviewed base uses `39600-39609`; the profile block
-allocates `39610` to MKT-SWP and `39630` to MKT-PFI, with all other kinds
-pending separately reviewed profiles. Profiles own assets, custody, reservation
-physics, credentials, rail evidence, finality, disputes, refunds, and
-recovery. Relays may validate, route, reserve provider-signed capacity, run
-timers, and verify evidence while remaining noncustodial; they never inherit
-wallet or settlement authority. v0.1 adds the mandatory
+settlement. The collision-reviewed base uses `39600-39609`; focused profiles
+allocate `39610` to MKT-SWP, `39620` to MKT-P2P, `39630` to MKT-PFI, `39640`
+to MKT-MINT, `39650` to MKT-LSP, and `39660` to MKT-INTENT. Family gaps remain
+unallocated. Profiles own assets, custody, reservation physics, credentials,
+rail evidence, finality, disputes, refunds, and recovery. Relays may validate,
+route, reserve provider-signed capacity, run timers, and verify evidence while
+remaining noncustodial; they never inherit wallet or settlement authority.
+v0.1 adds the mandatory
 coordinator-independent recovery floor for profiles, the profile
 field-vocabulary laws, and an informative implementation record (the
 Immortal relay base).
@@ -121,6 +126,30 @@ recourse authorities, settlement evidence, chargeback handling, and no PII on
 relays. Public `kind:39630` is a provider-signed, digest-pinned Qualification
 Policy with a closed no-PII schema; all credential presentations and private
 terms remain inside recipient-gated records or off-relay stores.
+
+### MKT-P2P — Peer-to-Peer Bitcoin Trades
+
+Bridges NIP-69 and Mostro lifecycle semantics into NIP-MKT without replacing
+their public order network. Private `kind:39620` carries a solver or appeal
+arbiter Resolution under the exact authority set pinned in the Quote.
+
+### MKT-MINT — Cashu and Fedimint Routes
+
+Keeps NIP-87 and the native Cashu/Fedimint protocols authoritative while a
+bilateral private `kind:39640` Route Contract binds the post-Order native
+quote, custody terms, verifier inputs, external effects, and recovery package.
+
+### MKT-LSP — Lightning Service Providers
+
+Maps bLIP-50/51/52 channel-purchase and JIT-liquidity terms onto NIP-MKT.
+Client and LSP sign matching private `kind:39650` Service Contracts before
+payment, preimage release, or funding.
+
+### MKT-INTENT — Covenant Intents
+
+Defines a public maker-funded, any-filler, zero-interactivity market shape.
+Public `kind:39660` derives its address from canonical terms; the external
+constraint rail remains execution and settlement authority.
 
 ### NIP-DS — Datasets
 
