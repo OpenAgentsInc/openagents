@@ -2,6 +2,8 @@
 
 #[cfg(target_family = "wasm")]
 mod web_app {
+    use std::time::Duration;
+
     use gpui::prelude::*;
     use gpui::{
         App, Bounds, Context, Font, FontWeight, Pixels, Task, Window, WindowBounds, WindowOptions,
@@ -9,27 +11,30 @@ mod web_app {
     };
     use theme::{ActiveTheme as _, ThemeSettingsProvider, UiDensity};
     use ui::{
-        Button, ButtonCommon as _, ButtonStyle, Chip, Clickable as _, Color, Divider, Indicator,
-        Label, LabelCommon as _, LabelSize, h_flex, v_flex,
+        Button, ButtonCommon as _, ButtonStyle, Clickable as _, Color, Indicator, Label,
+        LabelCommon as _, LabelSize, h_flex, v_flex,
     };
     use wasm_bindgen::{JsCast as _, JsValue};
     use wasm_bindgen_futures::JsFuture;
     use web_sys::{Request, RequestInit, Response, console};
+    use web_time::{SystemTime, UNIX_EPOCH};
 
     const RELAY_URL: &str = "https://relay.openagents.com";
 
-    const ENERGY_BLUE: u32 = 0x3a7bff;
+    // Terminal palette: black void, amber command surfaces, market green/red.
+    const VOID: u32 = 0x000000;
+    const PANEL: u32 = 0x0a0a08;
+    const RAISED: u32 = 0x12110c;
+    const HAIRLINE: u32 = 0x2a2417;
+    const AMBER: u32 = 0xff9f0a;
+    const AMBER_DIM: u32 = 0xb8770e;
+    const BODY: u32 = 0xd8d4c8;
+    const SECONDARY: u32 = 0x9a958a;
+    const FAINT: u32 = 0x6a665c;
+    const GREEN: u32 = 0x2fd575;
+    const RED: u32 = 0xff4d42;
+    const CYAN: u32 = 0x4fd0ff;
     const SOFT_BLUE: u32 = 0x8fb6ff;
-    const VOID: u32 = 0x05070d;
-    const SURFACE: u32 = 0x0c0f13;
-    const RAISED: u32 = 0x11161d;
-    const BODY: u32 = 0xc9d2dd;
-    const SECONDARY: u32 = 0xaeb9c6;
-    const FAINT: u32 = 0x7e8a98;
-    const HAIRLINE: u32 = 0x1d2530;
-    const AMBER: u32 = 0xd9a52c;
-    const GREEN: u32 = 0x3fbf7f;
-    const RED: u32 = 0xd96a6a;
 
     struct WebThemeSettings {
         ui_font: Font,
@@ -46,67 +51,65 @@ mod web_app {
         }
 
         fn ui_font_size(&self, _cx: &App) -> Pixels {
-            px(14.)
-        }
-
-        fn buffer_font_size(&self, _cx: &App) -> Pixels {
             px(13.)
         }
 
+        fn buffer_font_size(&self, _cx: &App) -> Pixels {
+            px(12.)
+        }
+
         fn ui_density(&self, _cx: &App) -> UiDensity {
-            UiDensity::Default
+            UiDensity::Compact
         }
     }
 
-    // The exact UI-facing values from Omega's Aiur theme at the pinned commit,
-    // embedded so the browser build does not pull the native-only
-    // theme_settings filesystem stack.
-    const AIUR_JSON: &str = r##"{
+    // Terminal-tuned surface values applied over Omega's theme machinery.
+    const TERMINAL_JSON: &str = r##"{
       "themes": [{
         "style": {
-          "border": "#1f2b45ff",
-          "border.variant": "#16203aff",
-          "border.focused": "#60a5faff",
-          "elevated_surface.background": "#141f36ff",
-          "surface.background": "#0b1220ff",
-          "background": "#0b1220ff",
-          "panel.background": "#0b1220ff",
-          "editor.background": "#05070dff",
-          "element.background": "#141f36ff",
-          "element.hover": "#8fb3ff14",
-          "element.active": "#8fb3ff21",
-          "element.selected": "#3b82f629",
-          "ghost_element.hover": "#8fb3ff14",
-          "ghost_element.selected": "#3b82f629",
-          "text": "#eef3ffff",
-          "text.muted": "#a9b1d6ff",
-          "text.placeholder": "#8990adff",
-          "text.disabled": "#55648aff",
-          "text.accent": "#3b82f6ff",
-          "icon": "#eef3ffff",
-          "icon.muted": "#a9b1d6ff",
-          "icon.accent": "#3b82f6ff",
-          "status_bar.background": "#0b1220ff",
-          "title_bar.background": "#0b1220ff",
-          "toolbar.background": "#05070dff",
-          "tab_bar.background": "#0b1220ff",
-          "tab.active_background": "#05070dff",
-          "tab.inactive_background": "#0b1220ff"
+          "border": "#2a2417ff",
+          "border.variant": "#1c1810ff",
+          "border.focused": "#ff9f0aff",
+          "elevated_surface.background": "#12110cff",
+          "surface.background": "#0a0a08ff",
+          "background": "#000000ff",
+          "panel.background": "#0a0a08ff",
+          "editor.background": "#000000ff",
+          "element.background": "#12110cff",
+          "element.hover": "#ff9f0a14",
+          "element.active": "#ff9f0a21",
+          "element.selected": "#ff9f0a29",
+          "ghost_element.hover": "#ff9f0a14",
+          "ghost_element.selected": "#ff9f0a29",
+          "text": "#d8d4c8ff",
+          "text.muted": "#9a958aff",
+          "text.placeholder": "#6a665cff",
+          "text.disabled": "#4c483fff",
+          "text.accent": "#ff9f0aff",
+          "icon": "#d8d4c8ff",
+          "icon.muted": "#9a958aff",
+          "icon.accent": "#ff9f0aff",
+          "status_bar.background": "#0a0a08ff",
+          "title_bar.background": "#0a0a08ff",
+          "toolbar.background": "#000000ff",
+          "tab_bar.background": "#0a0a08ff",
+          "tab.active_background": "#000000ff",
+          "tab.inactive_background": "#0a0a08ff"
         }
       }]
     }"##;
 
     // ------------------------------------------------------------------
-    // Demo data. Every value below is synthetic and labeled DEMO in the UI.
-    // Shapes follow NIP-MKT v0.1 (kinds 39600-39609) and the drafted
-    // MKT-SWP submarine-swap profile vocabulary.
+    // Demo data. Every market value is synthetic and labeled DEMO. Shapes
+    // follow NIP-MKT v0.1 (kinds 39600-39609) and the MKT-SWP draft.
     // ------------------------------------------------------------------
 
     struct DemoProvider {
         name: &'static str,
         short_key: &'static str,
         status: &'static str,
-        note: &'static str,
+        class: &'static str,
+        reservation: &'static str,
     }
 
     const PROVIDERS: [DemoProvider; 3] = [
@@ -114,57 +117,33 @@ mod web_app {
             name: "aurora-lp",
             short_key: "npub1aur…9f2k",
             status: "active",
-            note: "firm quotes · hard reservations · noncustodial atomic path",
+            class: "firm",
+            reservation: "hard",
         },
         DemoProvider {
             name: "meridian-swaps",
             short_key: "npub1mer…x0q4",
             status: "active",
-            note: "indicative quotes · soft reservations",
+            class: "indicative",
+            reservation: "soft",
         },
         DemoProvider {
             name: "southpaw-liquidity",
             short_key: "npub1sth…77vd",
             status: "paused",
-            note: "offerings retained; not quoting — status honesty on display",
+            class: "—",
+            reservation: "—",
         },
     ];
 
-    struct DemoOffering {
-        provider: usize,
+    struct PriceRow {
         pair: &'static str,
-        asset_ids: &'static str,
-        direction: &'static str,
-        bounds: &'static str,
-        profile: &'static str,
+        rail: &'static str,
+        base_bps: i64,
+        bps: i64,
+        delta: i64,
+        providers: u32,
     }
-
-    const OFFERINGS: [DemoOffering; 3] = [
-        DemoOffering {
-            provider: 0,
-            pair: "BTC (on-chain) → BTC (Lightning)",
-            asset_ids: "id pair: btc / btc-ln — tickers are labels, never identity",
-            direction: "submarine swap",
-            bounds: "10,000 – 2,000,000 sat (decimal-string atomic units)",
-            profile: "mkt-swp v1 (draft)",
-        },
-        DemoOffering {
-            provider: 1,
-            pair: "BTC (Lightning) → BTC (on-chain)",
-            asset_ids: "id pair: btc-ln / btc",
-            direction: "reverse swap",
-            bounds: "25,000 – 900,000 sat",
-            profile: "mkt-swp v1 (draft)",
-        },
-        DemoOffering {
-            provider: 2,
-            pair: "BTC (on-chain) → USDT (demo)",
-            asset_ids: "id pair: btc / usdt-demo",
-            direction: "chain swap",
-            bounds: "provider paused — not quotable",
-            profile: "mkt-swp-evm (reserved)",
-        },
-    ];
 
     struct DemoQuote {
         provider: usize,
@@ -182,44 +161,44 @@ mod web_app {
             provider: 0,
             kind: "firm",
             reservation: "hard",
-            reservation_proof: "provider-signed reserve (covenant proof class reserved)",
-            price: "100,000 sat in → 99,610 sat out (DEMO)",
-            fee: "39 bps · fee is a fill promise, not a fact",
-            expiry: "expires 45 s after issue (NIP-40; frozen for demo)",
-            custody: "funds_control: self · execution: script · exit: unilateral",
+            reservation_proof: "provider-signed reserve (covenant class reserved)",
+            price: "100,000 sat in → 99,610 sat out",
+            fee: "39 bps · a fill promise, not a fact",
+            expiry: "expires 45 s after issue (NIP-40)",
+            custody: "funds: self · execution: script · exit: unilateral",
         },
         DemoQuote {
             provider: 1,
             kind: "indicative",
             reservation: "soft",
-            reservation_proof: "no capacity committed — requires provider re-accept",
-            price: "100,000 sat in → 99,655 sat out (DEMO)",
-            fee: "34 bps · cheaper, but nothing is reserved",
-            expiry: "expires 120 s after issue (NIP-40; frozen for demo)",
-            custody: "funds_control: self · execution: script · exit: unilateral",
+            reservation_proof: "no capacity committed — needs provider re-accept",
+            price: "100,000 sat in → 99,655 sat out",
+            fee: "34 bps · cheaper, nothing reserved",
+            expiry: "expires 120 s after issue (NIP-40)",
+            custody: "funds: self · execution: script · exit: unilateral",
         },
     ];
 
     const VERIFY_STEPS: [(&str, &str); 5] = [
         (
-            "Lock script / Taproot tree",
-            "rebuilt locally from quoted terms; matches committed template",
+            "LOCK SCRIPT / TAPROOT TREE",
+            "rebuilt locally; matches committed template",
         ),
         (
-            "Amounts",
-            "output amounts equal accepted Quote terms (decimal-string sats)",
+            "AMOUNTS",
+            "outputs equal accepted Quote terms (decimal-string sats)",
         ),
         (
-            "Payment hash binding",
-            "SHA-256 preimage hash couples both legs; no substitute hash",
+            "PAYMENT HASH",
+            "SHA-256 preimage couples both legs; no substitute",
         ),
         (
-            "Timelocks",
-            "refund CLTV clears the claim window with the profile margin",
+            "TIMELOCKS",
+            "refund CLTV clears the claim window with margin",
         ),
         (
-            "Claim and refund paths",
-            "cooperative key path plus unilateral script-path exit both verified",
+            "CLAIM + REFUND PATHS",
+            "cooperative key path and unilateral exit verified",
         ),
     ];
 
@@ -239,7 +218,7 @@ mod web_app {
             state: "accepted",
             rung: "claim",
             rung_color: SOFT_BLUE,
-            detail: "firm quote + conforming order → protocol-effective",
+            detail: "firm quote + conforming order",
         },
         TimelineRow {
             signer: "provider",
@@ -247,7 +226,7 @@ mod web_app {
             state: "funding_observed",
             rung: "measured",
             rung_color: AMBER,
-            detail: "lock output seen; observation, not verification",
+            detail: "lock output seen; not verification",
         },
         TimelineRow {
             signer: "provider",
@@ -263,7 +242,7 @@ mod web_app {
             state: "sequence gap",
             rung: "gap",
             rung_color: RED,
-            detail: "seq 3 never arrived — rendered as a gap, never papered over",
+            detail: "seq 3 never arrived — shown, never papered over",
         },
         TimelineRow {
             signer: "provider",
@@ -271,7 +250,7 @@ mod web_app {
             state: "completed",
             rung: "claim",
             rung_color: SOFT_BLUE,
-            detail: "a claim until evidence upgrades it — never auto-settled",
+            detail: "a claim until evidence upgrades it",
         },
         TimelineRow {
             signer: "requester",
@@ -279,7 +258,7 @@ mod web_app {
             state: "completed",
             rung: "verified",
             rung_color: GREEN,
-            detail: "requester verified preimage + claim path locally",
+            detail: "preimage + claim path verified locally",
         },
     ];
 
@@ -293,32 +272,103 @@ mod web_app {
         Closed,
     }
 
+    impl Stage {
+        fn index(self) -> usize {
+            match self {
+                Stage::Market => 0,
+                Stage::Rfq => 1,
+                Stage::Quotes => 2,
+                Stage::Verify => 3,
+                Stage::Timeline => 4,
+                Stage::Closed => 5,
+            }
+        }
+    }
+
     enum RelayProbe {
         Checking,
         Online { name: String, mkt: bool },
         Unreachable(String),
     }
 
-    pub struct MarketDemo {
+    struct TapeEvent {
+        clock: String,
+        kind: &'static str,
+        kind_color: u32,
+        text: String,
+    }
+
+    pub struct MarketTerminal {
         stage: Stage,
         selected_quote: Option<usize>,
         verify_done: usize,
         verifying: bool,
         timeline_shown: usize,
         relay: RelayProbe,
+        clock: String,
+        prices: Vec<PriceRow>,
+        tape: Vec<TapeEvent>,
+        wraps_relayed: u64,
+        sessions_closed: u64,
+        rng: u64,
         _tasks: Vec<Task<()>>,
     }
 
-    impl MarketDemo {
+    fn format_clock(now_secs: u64) -> String {
+        let secs = now_secs % 86_400;
+        format!(
+            "{:02}:{:02}:{:02} UTC",
+            secs / 3600,
+            (secs % 3600) / 60,
+            secs % 60
+        )
+    }
+
+    fn now_secs() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.as_secs())
+            .unwrap_or(0)
+    }
+
+    impl MarketTerminal {
         pub fn new(cx: &mut Context<Self>) -> Self {
-            let task = cx.spawn(async move |this, cx| {
+            let probe = cx.spawn(async move |this, cx| {
                 let probe = probe_relay().await;
                 this.update(cx, |this, cx| {
+                    let line = match &probe {
+                        RelayProbe::Online { name, mkt } => format!(
+                            "NIP-11 OK — {name}{}",
+                            if *mkt { " · nip-mkt advertised" } else { "" }
+                        ),
+                        RelayProbe::Unreachable(reason) => {
+                            format!("NIP-11 probe failed — {reason}")
+                        }
+                        RelayProbe::Checking => "NIP-11 probe pending".to_owned(),
+                    };
+                    this.push_tape("RELAY", CYAN, line, cx);
                     this.relay = probe;
                     cx.notify();
                 })
                 .ok();
             });
+
+            let ticker = cx.spawn(async move |this, cx| {
+                loop {
+                    cx.background_executor()
+                        .timer(Duration::from_millis(1000))
+                        .await;
+                    let alive = this
+                        .update(cx, |this, cx| {
+                            this.tick(cx);
+                        })
+                        .is_ok();
+                    if !alive {
+                        break;
+                    }
+                }
+            });
+
             Self {
                 stage: Stage::Market,
                 selected_quote: None,
@@ -326,8 +376,125 @@ mod web_app {
                 verifying: false,
                 timeline_shown: 0,
                 relay: RelayProbe::Checking,
-                _tasks: vec![task],
+                clock: format_clock(now_secs()),
+                prices: vec![
+                    PriceRow {
+                        pair: "BTC / BTC-LN",
+                        rail: "submarine",
+                        base_bps: 39,
+                        bps: 39,
+                        delta: 0,
+                        providers: 2,
+                    },
+                    PriceRow {
+                        pair: "BTC-LN / BTC",
+                        rail: "reverse",
+                        base_bps: 34,
+                        bps: 34,
+                        delta: 0,
+                        providers: 2,
+                    },
+                    PriceRow {
+                        pair: "BTC / L-BTC",
+                        rail: "chain",
+                        base_bps: 25,
+                        bps: 25,
+                        delta: 0,
+                        providers: 1,
+                    },
+                    PriceRow {
+                        pair: "BTC / USDT*",
+                        rail: "evm (reserved)",
+                        base_bps: 52,
+                        bps: 52,
+                        delta: 0,
+                        providers: 0,
+                    },
+                ],
+                tape: vec![TapeEvent {
+                    clock: format_clock(now_secs()),
+                    kind: "BOOT",
+                    kind_color: AMBER,
+                    text: "terminal online — seeded DEMO market loaded".to_owned(),
+                }],
+                wraps_relayed: 4_182,
+                sessions_closed: 137,
+                rng: 0x9e37_79b9_7f4a_7c15,
+                _tasks: vec![probe, ticker],
             }
+        }
+
+        fn next_rng(&mut self) -> u64 {
+            // Deterministic LCG: the walk is fake and reproducible on purpose.
+            self.rng = self
+                .rng
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            self.rng
+        }
+
+        fn tick(&mut self, cx: &mut Context<Self>) {
+            self.clock = format_clock(now_secs());
+            for index in 0..self.prices.len() {
+                let roll = self.next_rng();
+                let step = (roll % 5) as i64 - 2;
+                let row = &mut self.prices[index];
+                if row.providers == 0 {
+                    continue;
+                }
+                let base = row.base_bps;
+                let next = (row.bps + step).clamp(base - 6, base + 6);
+                row.delta = next - row.bps;
+                row.bps = next;
+            }
+            let roll = self.next_rng();
+            if roll % 4 == 0 {
+                self.wraps_relayed += 1 + (roll % 3);
+                let samples: [(&str, u32, &str); 4] = [
+                    (
+                        "WRAP",
+                        SOFT_BLUE,
+                        "kind 1059 gift wrap relayed (contents opaque)",
+                    ),
+                    (
+                        "HEAD",
+                        AMBER_DIM,
+                        "offering 39601 head refreshed: aurora-lp btc/btc-ln",
+                    ),
+                    (
+                        "HEAD",
+                        AMBER_DIM,
+                        "provider 39600 heartbeat: meridian-swaps active",
+                    ),
+                    (
+                        "WRAP",
+                        SOFT_BLUE,
+                        "kind 1059 gift wrap relayed to npub1mer…x0q4",
+                    ),
+                ];
+                let pick = &samples[(roll as usize / 7) % samples.len()];
+                self.push_tape(pick.0, pick.1, format!("{} [DEMO]", pick.2), cx);
+            }
+            cx.notify();
+        }
+
+        fn push_tape(
+            &mut self,
+            kind: &'static str,
+            kind_color: u32,
+            text: String,
+            _cx: &mut Context<Self>,
+        ) {
+            self.tape.insert(
+                0,
+                TapeEvent {
+                    clock: format_clock(now_secs()),
+                    kind,
+                    kind_color,
+                    text,
+                },
+            );
+            self.tape.truncate(24);
         }
 
         fn reset(&mut self, cx: &mut Context<Self>) {
@@ -336,6 +503,7 @@ mod web_app {
             self.verify_done = 0;
             self.verifying = false;
             self.timeline_shown = 0;
+            self.push_tape("SESS", FAINT, "session reset".to_owned(), cx);
             cx.notify();
         }
 
@@ -346,25 +514,26 @@ mod web_app {
             self.stage = Stage::Verify;
             self.verify_done = 0;
             self.verifying = true;
+            self.push_tape(
+                "ORDR",
+                GREEN,
+                "order 39606 signed — quote terms committed by event id [DEMO]".to_owned(),
+                cx,
+            );
             cx.notify();
             let task = cx.spawn(async move |this, cx| {
                 for step in 0..VERIFY_STEPS.len() {
-                    // A bounded busy loop on the background executor paces the
-                    // checklist so viewers watch each verification land. The
-                    // real engine does real script/amount/hash/timelock work
-                    // here (immortal M12 #12).
-                    let spun = cx
-                        .background_spawn(async move {
-                            let mut acc: u64 = 0;
-                            for i in 0..14_000_000u64 {
-                                acc = acc.wrapping_add(i ^ (step as u64));
-                            }
-                            acc
-                        })
+                    cx.background_executor()
+                        .timer(Duration::from_millis(650))
                         .await;
-                    let _ = spun;
                     this.update(cx, |this, cx| {
                         this.verify_done = step + 1;
+                        this.push_tape(
+                            "VRFY",
+                            GREEN,
+                            format!("{} — ok", VERIFY_STEPS[step].0.to_lowercase()),
+                            cx,
+                        );
                         cx.notify();
                     })
                     .ok();
@@ -380,282 +549,486 @@ mod web_app {
 
         fn advance_timeline(&mut self, cx: &mut Context<Self>) {
             if self.timeline_shown < TIMELINE.len() {
+                let row = &TIMELINE[self.timeline_shown];
+                let line = match row.seq {
+                    Some(seq) => format!("status 39607 seq {seq}: {} [DEMO]", row.state),
+                    None => "status seq 3 missing — gap surfaced [DEMO]".to_owned(),
+                };
+                let color = if row.seq.is_none() { RED } else { SOFT_BLUE };
+                self.push_tape("STAT", color, line, cx);
                 self.timeline_shown += 1;
             }
             if self.timeline_shown == TIMELINE.len() {
                 self.stage = Stage::Closed;
+                self.sessions_closed += 1;
+                self.push_tape(
+                    "CLSE",
+                    AMBER,
+                    "close 39609 outcome=completed · public receipt 39603 [DEMO]".to_owned(),
+                    cx,
+                );
             }
             cx.notify();
         }
     }
 
-    fn section_title(text: &'static str) -> impl IntoElement {
+    // ------------------------------------------------------------------
+    // Render helpers
+    // ------------------------------------------------------------------
+
+    fn mono(text: impl Into<gpui::SharedString>, color: u32) -> Label {
         Label::new(text)
             .size(LabelSize::XSmall)
-            .color(Color::Custom(rgb(FAINT).into()))
+            .color(Color::Custom(rgb(color).into()))
     }
 
-    fn demo_chip() -> impl IntoElement {
-        div()
-            .px_2()
-            .py_0p5()
-            .rounded_sm()
-            .bg(rgb(0x2a1f0a))
+    fn panel_frame(title: &'static str, right: Option<String>) -> gpui::Div {
+        v_flex()
+            .bg(rgb(PANEL))
             .border_1()
-            .border_color(rgb(AMBER))
+            .border_color(rgb(HAIRLINE))
             .child(
-                Label::new("DEMO — no funds exist on this surface")
-                    .size(LabelSize::XSmall)
-                    .color(Color::Custom(rgb(AMBER).into())),
+                h_flex()
+                    .justify_between()
+                    .items_center()
+                    .px_2()
+                    .py_1()
+                    .bg(rgb(RAISED))
+                    .border_b_1()
+                    .border_color(rgb(HAIRLINE))
+                    .child(
+                        Label::new(title)
+                            .size(LabelSize::XSmall)
+                            .weight(FontWeight::BOLD)
+                            .color(Color::Custom(rgb(AMBER).into())),
+                    )
+                    .child(mono(right.unwrap_or_default(), FAINT)),
             )
     }
 
-    fn rung_chip(rung: &'static str, color: u32) -> impl IntoElement {
+    fn tag(text: &'static str, color: u32) -> impl IntoElement {
         div()
-            .px_2()
-            .py_0p5()
+            .px_1p5()
             .rounded_sm()
             .border_1()
             .border_color(rgb(color))
-            .child(
-                Label::new(rung)
-                    .size(LabelSize::XSmall)
-                    .color(Color::Custom(rgb(color).into())),
-            )
+            .child(mono(text, color))
     }
 
     fn key_value(key: &'static str, value: String, value_color: u32) -> impl IntoElement {
         h_flex()
             .gap_2()
             .items_start()
-            .child(
-                div().min_w(px(120.)).child(
-                    Label::new(key)
-                        .size(LabelSize::XSmall)
-                        .color(Color::Custom(rgb(FAINT).into())),
-                ),
-            )
-            .child(
-                Label::new(value)
-                    .size(LabelSize::XSmall)
-                    .color(Color::Custom(rgb(value_color).into())),
-            )
+            .child(div().min_w(px(96.)).child(mono(key, FAINT)))
+            .child(mono(value, value_color))
     }
 
-    fn card() -> gpui::Div {
-        v_flex()
-            .gap_2()
-            .p_4()
-            .rounded_md()
-            .bg(rgb(SURFACE))
-            .border_1()
-            .border_color(rgb(HAIRLINE))
-    }
-
-    impl MarketDemo {
-        fn render_header(&self, _cx: &mut Context<Self>) -> impl IntoElement {
-            let relay = match &self.relay {
-                RelayProbe::Checking => h_flex().gap_2().child(
-                    Label::new("checking relay.openagents.com…")
-                        .size(LabelSize::XSmall)
-                        .color(Color::Custom(rgb(FAINT).into())),
+    impl MarketTerminal {
+        fn render_top_bar(&self, _cx: &mut Context<Self>) -> impl IntoElement {
+            let (relay_dot, relay_text, relay_color) = match &self.relay {
+                RelayProbe::Checking => (Color::Muted, "RELAY: PROBING".to_owned(), FAINT),
+                RelayProbe::Online { mkt, .. } => (
+                    Color::Success,
+                    format!(
+                        "RELAY: LIVE NIP-11{}",
+                        if *mkt { " · NIP-MKT" } else { "" }
+                    ),
+                    GREEN,
                 ),
-                RelayProbe::Online { name, mkt } => h_flex()
-                    .gap_2()
-                    .child(Indicator::dot().color(Color::Success))
-                    .child(
-                        Label::new(format!(
-                            "{name} — live NIP-11 · {}",
-                            if *mkt {
-                                "nip-mkt advertised"
-                            } else {
-                                "nip-mkt not advertised"
-                            }
-                        ))
-                        .size(LabelSize::XSmall)
-                        .color(Color::Custom(rgb(SECONDARY).into())),
-                    ),
-                RelayProbe::Unreachable(reason) => h_flex()
-                    .gap_2()
-                    .child(Indicator::dot().color(Color::Warning))
-                    .child(
-                        Label::new(format!("relay unreachable — {reason}"))
-                            .size(LabelSize::XSmall)
-                            .color(Color::Custom(rgb(FAINT).into())),
-                    ),
+                RelayProbe::Unreachable(_) => {
+                    (Color::Warning, "RELAY: UNREACHABLE".to_owned(), RED)
+                }
             };
-            v_flex()
-                .gap_2()
+            h_flex()
+                .justify_between()
+                .items_center()
+                .px_3()
+                .py_1p5()
+                .bg(rgb(RAISED))
+                .border_b_1()
+                .border_color(rgb(AMBER_DIM))
                 .child(
                     h_flex()
-                        .justify_between()
+                        .gap_3()
+                        .items_center()
+                        .child(
+                            Label::new("OPENAGENTS MARKETS")
+                                .size(LabelSize::Small)
+                                .weight(FontWeight::EXTRA_BOLD)
+                                .color(Color::Custom(rgb(AMBER).into())),
+                        )
+                        .child(mono("<OAMKT>", AMBER_DIM))
+                        .child(mono("NEGOTIATED SWAPS · NIP-MKT v0.1", SECONDARY)),
+                )
+                .child(
+                    h_flex()
+                        .gap_3()
                         .items_center()
                         .child(
                             h_flex()
-                                .gap_3()
+                                .gap_1p5()
                                 .items_center()
-                                .child(
-                                    Label::new("OPENAGENTS MARKETS")
-                                        .size(LabelSize::Large)
-                                        .weight(FontWeight::SEMIBOLD)
-                                        .color(Color::Custom(rgb(0xffffff).into())),
-                                )
-                                .child(
-                                    Label::new("swap demo · NIP-MKT v0.1")
-                                        .size(LabelSize::Small)
-                                        .color(Color::Custom(rgb(SOFT_BLUE).into())),
-                                ),
+                                .child(Indicator::dot().color(relay_dot))
+                                .child(mono(relay_text, relay_color)),
                         )
-                        .child(demo_chip()),
+                        .child(mono(self.clock.clone(), BODY))
+                        .child(
+                            div()
+                                .px_2()
+                                .py_0p5()
+                                .bg(rgb(0x2a1f0a))
+                                .border_1()
+                                .border_color(rgb(AMBER))
+                                .child(mono("DEMO — NO FUNDS ON THIS SURFACE", AMBER)),
+                        ),
                 )
-                .child(h_flex().justify_between().child(relay).child(
-                    Label::new("rendered by Omega's GPUI design system on WebGPU/WASM")
-                        .size(LabelSize::XSmall)
-                        .color(Color::Custom(rgb(FAINT).into())),
-                ))
         }
 
-        fn render_market(&self, cx: &mut Context<Self>) -> impl IntoElement {
-            let mut providers = v_flex().gap_2();
-            for provider in PROVIDERS.iter() {
-                let active = provider.status == "active";
-                providers = providers.child(
-                    card()
+        fn render_stage_strip(&self, cx: &mut Context<Self>) -> impl IntoElement {
+            const STAGES: [&str; 6] = [
+                "1 MARKET", "2 RFQ", "3 QUOTES", "4 VERIFY", "5 SESSION", "6 CLOSE",
+            ];
+            let current = self.stage.index();
+            let mut strip = h_flex().gap_1().items_center().px_3().py_1().bg(rgb(VOID));
+            for (index, label) in STAGES.iter().enumerate() {
+                let active = index == current;
+                let reached = index <= current;
+                strip = strip.child(
+                    div()
+                        .px_2()
+                        .py_0p5()
+                        .bg(rgb(if active { AMBER } else { PANEL }))
+                        .border_1()
+                        .border_color(rgb(if reached { AMBER_DIM } else { HAIRLINE }))
                         .child(
-                            h_flex()
-                                .justify_between()
-                                .items_center()
-                                .child(
-                                    h_flex()
-                                        .gap_2()
-                                        .items_center()
-                                        .child(Indicator::dot().color(if active {
-                                            Color::Success
-                                        } else {
-                                            Color::Warning
-                                        }))
-                                        .child(
-                                            Label::new(provider.name)
-                                                .size(LabelSize::Small)
-                                                .weight(FontWeight::SEMIBOLD)
-                                                .color(Color::Custom(rgb(BODY).into())),
-                                        )
-                                        .child(
-                                            Label::new(provider.short_key)
-                                                .size(LabelSize::XSmall)
-                                                .color(Color::Custom(rgb(FAINT).into())),
-                                        ),
-                                )
-                                .child(Chip::new(provider.status)),
-                        )
-                        .child(
-                            Label::new(provider.note)
+                            Label::new(*label)
                                 .size(LabelSize::XSmall)
-                                .color(Color::Custom(rgb(SECONDARY).into())),
+                                .weight(FontWeight::BOLD)
+                                .color(Color::Custom(
+                                    rgb(if active {
+                                        VOID
+                                    } else if reached {
+                                        AMBER_DIM
+                                    } else {
+                                        FAINT
+                                    })
+                                    .into(),
+                                )),
                         ),
                 );
             }
+            strip.child(div().flex_1()).child(
+                Button::new("reset-top", "RESET")
+                    .style(ButtonStyle::Outlined)
+                    .on_click(cx.listener(|this, _event, _window, cx| this.reset(cx))),
+            )
+        }
 
-            let mut offerings = v_flex().gap_2();
-            for offering in OFFERINGS.iter() {
-                let provider = &PROVIDERS[offering.provider];
-                offerings = offerings.child(
-                    card()
+        fn render_market_watch(&self, _cx: &mut Context<Self>) -> impl IntoElement {
+            let mut rows = v_flex();
+            rows = rows.child(
+                h_flex()
+                    .px_2()
+                    .py_0p5()
+                    .border_b_1()
+                    .border_color(rgb(HAIRLINE))
+                    .child(div().w(px(104.)).child(mono("PAIR", FAINT)))
+                    .child(div().w(px(56.)).child(mono("SPREAD", FAINT)))
+                    .child(div().w(px(40.)).child(mono("Δ", FAINT)))
+                    .child(div().w(px(34.)).child(mono("LP", FAINT))),
+            );
+            for row in &self.prices {
+                let (delta_text, delta_color) = if row.providers == 0 {
+                    ("—".to_owned(), FAINT)
+                } else if row.delta > 0 {
+                    (format!("+{}", row.delta), RED)
+                } else if row.delta < 0 {
+                    (format!("{}", row.delta), GREEN)
+                } else {
+                    ("·".to_owned(), FAINT)
+                };
+                rows = rows.child(
+                    h_flex()
+                        .px_2()
+                        .py_1()
+                        .border_b_1()
+                        .border_color(rgb(0x14120c))
                         .child(
-                            h_flex()
-                                .justify_between()
-                                .items_center()
-                                .child(
-                                    Label::new(offering.pair)
-                                        .size(LabelSize::Small)
-                                        .weight(FontWeight::SEMIBOLD)
-                                        .color(Color::Custom(rgb(BODY).into())),
-                                )
-                                .child(Chip::new(offering.direction)),
+                            div().w(px(104.)).child(
+                                v_flex()
+                                    .child(mono(row.pair, BODY))
+                                    .child(mono(row.rail, FAINT)),
+                            ),
                         )
-                        .child(key_value("provider", provider.name.into(), SECONDARY))
-                        .child(key_value("identity", offering.asset_ids.into(), FAINT))
-                        .child(key_value("bounds", offering.bounds.into(), SECONDARY))
-                        .child(key_value("profile", offering.profile.into(), SOFT_BLUE)),
+                        .child(div().w(px(56.)).child(mono(
+                            if row.providers == 0 {
+                                "n/a".to_owned()
+                            } else {
+                                format!("{} bps", row.bps)
+                            },
+                            if row.providers == 0 { FAINT } else { AMBER },
+                        )))
+                        .child(div().w(px(40.)).child(mono(delta_text, delta_color)))
+                        .child(div().w(px(34.)).child(mono(
+                            format!("{}", row.providers),
+                            if row.providers == 0 { FAINT } else { SECONDARY },
+                        ))),
                 );
             }
+            panel_frame("MARKET WATCH", Some("seeded · DEMO".into()))
+                .child(rows)
+                .child(div().px_2().py_1().child(mono(
+                    "spread = best advertised fee; a fill promise, never a fact",
+                    FAINT,
+                )))
+        }
 
+        fn render_network(&self, _cx: &mut Context<Self>) -> impl IntoElement {
+            let relay_line = match &self.relay {
+                RelayProbe::Checking => ("probing…".to_owned(), FAINT),
+                RelayProbe::Online { name, mkt } => (
+                    format!(
+                        "{name}{}",
+                        if *mkt { " · nip-mkt" } else { " · nip-mkt off" }
+                    ),
+                    GREEN,
+                ),
+                RelayProbe::Unreachable(reason) => (reason.clone(), RED),
+            };
+            panel_frame("NETWORK", Some("1 relay probed live".into())).child(
+                v_flex()
+                    .px_2()
+                    .py_1()
+                    .gap_1()
+                    .child(key_value("relay", relay_line.0, relay_line.1))
+                    .child(key_value(
+                        "wraps",
+                        format!("{} relayed (DEMO counter)", self.wraps_relayed),
+                        BODY,
+                    ))
+                    .child(key_value(
+                        "sessions",
+                        format!("{} closed (DEMO counter)", self.sessions_closed),
+                        BODY,
+                    ))
+                    .child(key_value(
+                        "custody",
+                        "relay holds zero funds, keys, preimages".to_owned(),
+                        SECONDARY,
+                    ))
+                    .child(key_value(
+                        "law",
+                        "relay acceptance proves transport only".to_owned(),
+                        AMBER_DIM,
+                    )),
+            )
+        }
+
+        fn render_providers(&self, _cx: &mut Context<Self>) -> impl IntoElement {
+            let mut rows = v_flex();
+            rows = rows.child(
+                h_flex()
+                    .px_2()
+                    .py_0p5()
+                    .border_b_1()
+                    .border_color(rgb(HAIRLINE))
+                    .child(div().w(px(128.)).child(mono("PROVIDER", FAINT)))
+                    .child(div().w(px(64.)).child(mono("STATUS", FAINT)))
+                    .child(div().w(px(70.)).child(mono("QUOTES", FAINT)))
+                    .child(div().w(px(56.)).child(mono("RESV", FAINT))),
+            );
+            for provider in PROVIDERS.iter() {
+                let active = provider.status == "active";
+                rows = rows.child(
+                    h_flex()
+                        .px_2()
+                        .py_1()
+                        .border_b_1()
+                        .border_color(rgb(0x14120c))
+                        .child(
+                            div().w(px(128.)).child(
+                                v_flex()
+                                    .child(mono(provider.name, BODY))
+                                    .child(mono(provider.short_key, FAINT)),
+                            ),
+                        )
+                        .child(
+                            div().w(px(64.)).child(
+                                h_flex()
+                                    .gap_1()
+                                    .items_center()
+                                    .child(Indicator::dot().color(if active {
+                                        Color::Success
+                                    } else {
+                                        Color::Warning
+                                    }))
+                                    .child(mono(
+                                        provider.status,
+                                        if active { GREEN } else { AMBER },
+                                    )),
+                            ),
+                        )
+                        .child(div().w(px(70.)).child(mono(provider.class, SECONDARY)))
+                        .child(div().w(px(56.)).child(mono(
+                            provider.reservation,
+                            if provider.reservation == "hard" {
+                                GREEN
+                            } else if provider.reservation == "soft" {
+                                AMBER
+                            } else {
+                                FAINT
+                            },
+                        ))),
+                );
+            }
+            panel_frame("PROVIDERS · KIND 39600", Some("3 heads".into())).child(rows)
+        }
+
+        fn render_tape(&self, _cx: &mut Context<Self>) -> impl IntoElement {
+            let mut rows = v_flex();
+            for event in &self.tape {
+                rows = rows.child(
+                    h_flex()
+                        .px_2()
+                        .py_0p5()
+                        .gap_2()
+                        .items_start()
+                        .border_b_1()
+                        .border_color(rgb(0x100e09))
+                        .child(div().min_w(px(72.)).child(mono(event.clock.clone(), FAINT)))
+                        .child(div().min_w(px(38.)).child(mono(event.kind, event.kind_color)))
+                        .child(mono(event.text.clone(), SECONDARY)),
+                );
+            }
+            panel_frame("EVENT TAPE", Some("newest first".into())).child(
+                div()
+                    .id("tape-scroll")
+                    .h(px(240.))
+                    .overflow_y_scroll()
+                    .child(rows),
+            )
+        }
+
+        fn render_session_market(&self, cx: &mut Context<Self>) -> impl IntoElement {
             v_flex()
-                .gap_4()
+                .px_3()
+                .py_2()
+                .gap_2()
+                .child(mono(
+                    "Public discovery is live on relays: Provider Profiles (39600) and \
+                     Offerings (39601) are signed addressable events any client verifies \
+                     itself. Run the flow below — one negotiated swap session, every \
+                     protocol law visible.",
+                    SECONDARY,
+                ))
                 .child(
-                    Label::new(
-                        "Public discovery: Provider Profiles (kind 39600) and Offerings \
-                         (kind 39601) are signed addressable events any relay can serve \
-                         and any client can verify. This demo renders a seeded market.",
-                    )
-                    .size(LabelSize::Small)
-                    .color(Color::Custom(rgb(SECONDARY).into())),
+                    v_flex()
+                        .gap_1()
+                        .child(key_value(
+                            "offering",
+                            "BTC (on-chain) → BTC (Lightning) · submarine".into(),
+                            BODY,
+                        ))
+                        .child(key_value(
+                            "identity",
+                            "id pair btc / btc-ln — tickers are labels, never identity".into(),
+                            FAINT,
+                        ))
+                        .child(key_value(
+                            "bounds",
+                            "10,000 – 2,000,000 sat (decimal-string atomic units)".into(),
+                            SECONDARY,
+                        ))
+                        .child(key_value("profile", "mkt-swp v1 (draft)".into(), CYAN)),
                 )
-                .child(section_title("PROVIDERS"))
-                .child(providers)
-                .child(section_title("OFFERINGS"))
-                .child(offerings)
                 .child(
-                    h_flex().pt_2().child(
-                        Button::new("send-rfq", "Send demo RFQ for 100,000 sat →")
+                    h_flex().pt_1().child(
+                        Button::new("send-rfq", "SEND DEMO RFQ · 100,000 SAT →")
                             .style(ButtonStyle::Filled)
                             .on_click(cx.listener(|this, _event, _window, cx| {
                                 this.stage = Stage::Rfq;
+                                this.push_tape(
+                                    "RFQ",
+                                    CYAN,
+                                    "rfq 39604 sealed in per-recipient 1059 wraps [DEMO]"
+                                        .to_owned(),
+                                    cx,
+                                );
                                 cx.notify();
                             })),
                     ),
                 )
         }
 
-        fn render_rfq(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        fn render_session_rfq(&self, cx: &mut Context<Self>) -> impl IntoElement {
             v_flex()
-                .gap_4()
+                .px_3()
+                .py_2()
+                .gap_2()
+                .child(mono(
+                    "PRIVATE RFQ (KIND 39604) — SENT. A fully signed event sealed inside \
+                     a NIP-59 gift wrap per recipient. Relays see an opaque wrap: no \
+                     amounts, pairs, or counterparties leak, and neither provider learns \
+                     who else was asked.",
+                    BODY,
+                ))
                 .child(
-                    card()
-                        .child(section_title("PRIVATE RFQ (KIND 39604) — SENT"))
-                        .child(
-                            Label::new(
-                                "The RFQ is a fully signed event sealed inside a NIP-59 gift \
-                                 wrap per recipient. Relays see an opaque wrap addressed to \
-                                 each provider — no amounts, pairs, or counterparties leak. \
-                                 Each provider gets its own wrap and cannot see who else \
-                                 was asked.",
-                            )
-                            .size(LabelSize::Small)
-                            .color(Color::Custom(rgb(BODY).into())),
-                        )
-                        .child(key_value("session", "d41c…9a03 (random 32-byte id)".into(), FAINT))
+                    v_flex()
+                        .gap_1()
+                        .child(key_value(
+                            "session",
+                            "d41c…9a03 (random 32-byte id)".into(),
+                            FAINT,
+                        ))
                         .child(key_value("amount", "100,000 sat (DEMO)".into(), SECONDARY))
                         .child(key_value(
                             "recipients",
-                            "aurora-lp, meridian-swaps (separate wraps)".into(),
+                            "aurora-lp · meridian-swaps (separate wraps)".into(),
                             SECONDARY,
                         ))
                         .child(key_value(
                             "expiry",
-                            "NIP-40 expiration set — expiry never implies consent".into(),
+                            "NIP-40 set — expiry never implies consent".into(),
                             FAINT,
                         )),
                 )
                 .child(
-                    h_flex().child(
-                        Button::new("recv-quotes", "Both providers answered — view Quotes →")
+                    h_flex().pt_1().child(
+                        Button::new("recv-quotes", "BOTH PROVIDERS ANSWERED — QUOTES →")
                             .style(ButtonStyle::Filled)
                             .on_click(cx.listener(|this, _event, _window, cx| {
                                 this.stage = Stage::Quotes;
+                                this.push_tape(
+                                    "QUOT",
+                                    GREEN,
+                                    "quote 39605 firm/hard from aurora-lp [DEMO]".to_owned(),
+                                    cx,
+                                );
+                                this.push_tape(
+                                    "QUOT",
+                                    AMBER,
+                                    "quote 39605 indicative/soft from meridian-swaps [DEMO]"
+                                        .to_owned(),
+                                    cx,
+                                );
                                 cx.notify();
                             })),
                     ),
                 )
         }
 
-        fn render_quotes(&self, cx: &mut Context<Self>) -> impl IntoElement {
-            let mut list = v_flex().gap_3();
+        fn render_session_quotes(&self, cx: &mut Context<Self>) -> impl IntoElement {
+            let mut list = v_flex().gap_2();
             for (index, quote) in QUOTES.iter().enumerate() {
                 let provider = &PROVIDERS[quote.provider];
                 let firm = quote.kind == "firm";
                 list = list.child(
-                    card()
+                    v_flex()
+                        .gap_1()
+                        .p_2()
+                        .bg(rgb(RAISED))
+                        .border_1()
+                        .border_color(rgb(if firm { AMBER_DIM } else { HAIRLINE }))
                         .child(
                             h_flex()
                                 .justify_between()
@@ -666,18 +1039,18 @@ mod web_app {
                                         .items_center()
                                         .child(
                                             Label::new(provider.name)
-                                                .size(LabelSize::Small)
-                                                .weight(FontWeight::SEMIBOLD)
+                                                .size(LabelSize::XSmall)
+                                                .weight(FontWeight::BOLD)
                                                 .color(Color::Custom(rgb(BODY).into())),
                                         )
-                                        .child(Chip::new(quote.kind))
-                                        .child(rung_chip(
-                                            if firm { "reservation: hard" } else { "reservation: soft" },
+                                        .child(tag(quote.kind, if firm { GREEN } else { AMBER }))
+                                        .child(tag(
+                                            quote.reservation,
                                             if firm { GREEN } else { AMBER },
                                         )),
                                 )
                                 .child(
-                                    Button::new(("accept", index), "Accept → Order")
+                                    Button::new(("accept", index), "ACCEPT → ORDER")
                                         .style(if firm {
                                             ButtonStyle::Filled
                                         } else {
@@ -691,34 +1064,31 @@ mod web_app {
                         )
                         .child(key_value("terms", quote.price.into(), BODY))
                         .child(key_value("fee", quote.fee.into(), SECONDARY))
-                        .child(key_value("reservation", quote.reservation_proof.into(), SECONDARY))
+                        .child(key_value("resv", quote.reservation_proof.into(), SECONDARY))
                         .child(key_value("custody", quote.custody.into(), FAINT))
                         .child(key_value("expiry", quote.expiry.into(), FAINT)),
                 );
             }
             v_flex()
-                .gap_4()
-                .child(
-                    Label::new(
-                        "Signed, expiring Quotes (kind 39605). The event ID commits the \
-                         exact terms: an Order references that ID and cannot restate a \
-                         different price and call it acceptance. Compare the trade-off: \
-                         firm+hard commits capacity; indicative+soft is cheaper on paper \
-                         with nothing reserved.",
-                    )
-                    .size(LabelSize::Small)
-                    .color(Color::Custom(rgb(SECONDARY).into())),
-                )
+                .px_3()
+                .py_2()
+                .gap_2()
+                .child(mono(
+                    "Signed expiring Quotes (39605). The event id commits exact terms — \
+                     an Order references that id and cannot restate a different price and \
+                     call it acceptance.",
+                    SECONDARY,
+                ))
                 .child(list)
         }
 
-        fn render_verify(&self, cx: &mut Context<Self>) -> impl IntoElement {
-            let mut checklist = v_flex().gap_2();
+        fn render_session_verify(&self, cx: &mut Context<Self>) -> impl IntoElement {
+            let mut checklist = v_flex().gap_1();
             for (index, (name, detail)) in VERIFY_STEPS.iter().enumerate() {
                 let done = index < self.verify_done;
                 checklist = checklist.child(
                     h_flex()
-                        .gap_3()
+                        .gap_2()
                         .items_start()
                         .child(if done {
                             Indicator::dot().color(Color::Success)
@@ -727,128 +1097,90 @@ mod web_app {
                         })
                         .child(
                             v_flex()
-                                .gap_0p5()
-                                .child(
-                                    Label::new(*name)
-                                        .size(LabelSize::Small)
-                                        .weight(FontWeight::SEMIBOLD)
-                                        .color(Color::Custom(
-                                            rgb(if done { BODY } else { FAINT }).into(),
-                                        )),
-                                )
-                                .child(
-                                    Label::new(*detail)
-                                        .size(LabelSize::XSmall)
-                                        .color(Color::Custom(rgb(FAINT).into())),
-                                ),
+                                .child(mono(*name, if done { GREEN } else { FAINT }))
+                                .child(mono(*detail, FAINT)),
                         ),
                 );
             }
             let complete = self.verify_done == VERIFY_STEPS.len() && !self.verifying;
             v_flex()
-                .gap_4()
-                .child(
-                    card()
-                        .child(section_title("VERIFY BEFORE FUND — THE LAW BOLTZ TAUGHT"))
-                        .child(
-                            Label::new(
-                                "Nothing is funded until the client itself has verified \
-                                 every term below. This is structural: the engine refuses \
-                                 to signal funding readiness until all checks pass.",
-                            )
-                            .size(LabelSize::Small)
-                            .color(Color::Custom(rgb(BODY).into())),
-                        )
-                        .child(checklist),
-                )
+                .px_3()
+                .py_2()
+                .gap_2()
+                .child(mono(
+                    "VERIFY BEFORE FUND — the law Boltz taught. Nothing is funded until \
+                     the client itself verified every term; the engine refuses funding \
+                     readiness until all checks pass.",
+                    BODY,
+                ))
+                .child(checklist)
                 .child(if complete {
-                    h_flex().gap_3().items_center().child(
-                        Button::new("fund", "All checks green — fund and watch the session →")
+                    h_flex().pt_1().child(
+                        Button::new("fund", "ALL CHECKS GREEN — FUND & WATCH SESSION →")
                             .style(ButtonStyle::Filled)
                             .on_click(cx.listener(|this, _event, _window, cx| {
                                 this.stage = Stage::Timeline;
-                                this.timeline_shown = 1;
-                                cx.notify();
+                                this.timeline_shown = 0;
+                                this.advance_timeline(cx);
                             })),
                     )
                 } else {
-                    h_flex().child(
-                        Label::new("verifying…")
-                            .size(LabelSize::Small)
-                            .color(Color::Custom(rgb(SOFT_BLUE).into())),
-                    )
+                    h_flex().pt_1().child(mono("verifying…", AMBER))
                 })
         }
 
-        fn render_timeline(&self, cx: &mut Context<Self>) -> impl IntoElement {
-            let mut rows = v_flex().gap_2();
+        fn render_session_timeline(&self, cx: &mut Context<Self>) -> impl IntoElement {
+            let mut rows = v_flex().gap_1();
             for row in TIMELINE.iter().take(self.timeline_shown) {
                 let is_gap = row.seq.is_none();
                 rows = rows.child(
                     h_flex()
-                        .gap_3()
+                        .gap_2()
                         .items_center()
-                        .p_2()
-                        .rounded_sm()
+                        .px_2()
+                        .py_1()
                         .bg(rgb(if is_gap { 0x1a0d0d } else { RAISED }))
                         .border_1()
                         .border_color(rgb(if is_gap { 0x3a1d1d } else { HAIRLINE }))
+                        .child(div().min_w(px(70.)).child(mono(row.signer, FAINT)))
+                        .child(div().min_w(px(44.)).child(mono(
+                            match row.seq {
+                                Some(seq) => format!("seq {seq}"),
+                                None => "seq 3?".to_owned(),
+                            },
+                            if is_gap { RED } else { SECONDARY },
+                        )))
                         .child(
-                            div().min_w(px(90.)).child(
-                                Label::new(row.signer)
-                                    .size(LabelSize::XSmall)
-                                    .color(Color::Custom(rgb(FAINT).into())),
-                            ),
-                        )
-                        .child(
-                            div().min_w(px(52.)).child(
-                                Label::new(match row.seq {
-                                    Some(seq) => format!("seq {seq}"),
-                                    None => "seq 3?".to_owned(),
-                                })
-                                .size(LabelSize::XSmall)
-                                .color(Color::Custom(rgb(if is_gap { RED } else { SECONDARY }).into())),
-                            ),
-                        )
-                        .child(
-                            div().min_w(px(150.)).child(
+                            div().min_w(px(122.)).child(
                                 Label::new(row.state)
-                                    .size(LabelSize::Small)
-                                    .weight(FontWeight::SEMIBOLD)
-                                    .color(Color::Custom(rgb(if is_gap { RED } else { BODY }).into())),
+                                    .size(LabelSize::XSmall)
+                                    .weight(FontWeight::BOLD)
+                                    .color(Color::Custom(
+                                        rgb(if is_gap { RED } else { BODY }).into(),
+                                    )),
                             ),
                         )
-                        .child(rung_chip(row.rung, row.rung_color))
-                        .child(
-                            Label::new(row.detail)
-                                .size(LabelSize::XSmall)
-                                .color(Color::Custom(rgb(FAINT).into())),
-                        ),
+                        .child(tag(row.rung, row.rung_color))
+                        .child(mono(row.detail, FAINT)),
                 );
             }
             let done = self.timeline_shown >= TIMELINE.len();
             v_flex()
-                .gap_4()
-                .child(
-                    Label::new(
-                        "Status records (kind 39607) carry a dense per-signer sequence. \
-                         A missing number is displayed as a gap; two records at one \
-                         sequence would render as a fork. Nothing is silently resolved, \
-                         and no state implies the next rung of proof.",
-                    )
-                    .size(LabelSize::Small)
-                    .color(Color::Custom(rgb(SECONDARY).into())),
-                )
+                .px_3()
+                .py_2()
+                .gap_2()
+                .child(mono(
+                    "Status records (39607) carry a dense per-signer sequence. A missing \
+                     number is a displayed gap; a duplicate would render as a fork. No \
+                     state implies the next rung of proof.",
+                    SECONDARY,
+                ))
                 .child(rows)
                 .child(if done {
-                    h_flex().child(
-                        Label::new("session terminal — see Close below")
-                            .size(LabelSize::Small)
-                            .color(Color::Custom(rgb(SOFT_BLUE).into())),
-                    )
+                    h_flex().child(mono("session terminal — close below", AMBER))
                 } else {
                     h_flex().child(
-                        Button::new("advance", "Next status record →")
+                        Button::new("advance", "NEXT STATUS RECORD →")
                             .style(ButtonStyle::Filled)
                             .on_click(cx.listener(|this, _event, _window, cx| {
                                 this.advance_timeline(cx);
@@ -857,12 +1189,19 @@ mod web_app {
                 })
         }
 
-        fn render_close(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        fn render_session_close(&self, cx: &mut Context<Self>) -> impl IntoElement {
             v_flex()
-                .gap_4()
+                .gap_2()
+                .child(self.render_session_timeline(cx))
                 .child(
-                    card()
-                        .child(section_title("CLOSE (KIND 39609) + PUBLIC RECEIPT (KIND 39603)"))
+                    v_flex()
+                        .mx_3()
+                        .gap_1()
+                        .p_2()
+                        .bg(rgb(RAISED))
+                        .border_1()
+                        .border_color(rgb(HAIRLINE))
+                        .child(mono("CLOSE (39609) + PUBLIC RECEIPT (39603)", AMBER))
                         .child(key_value("outcome", "completed".into(), GREEN))
                         .child(key_value(
                             "close",
@@ -873,129 +1212,129 @@ mod web_app {
                         ))
                         .child(key_value(
                             "receipt",
-                            "optional, redacted, consented: outcome + close ref only. \
-                             No session, counterparty, amount, or route disclosed."
-                                .into(),
+                            "redacted + consented: outcome and close ref only".into(),
                             SECONDARY,
                         ))
                         .child(key_value(
                             "rung",
-                            "still a signer's claim — 'settled' requires exact external \
-                             proof this demo does not manufacture"
+                            "still a signer's claim — settled needs exact external proof"
                                 .into(),
                             AMBER,
                         )),
                 )
                 .child(
-                    card()
-                        .bg(rgb(0x0a1220))
-                        .border_color(rgb(ENERGY_BLUE))
-                        .child(
-                            Label::new(
-                                "Boltz and Satora went dark because one company's API was \
-                                 the market. This market is signed events on relays: any \
-                                 provider can join, any client can verify, and this page \
-                                 is just one window onto it.",
-                            )
-                            .size(LabelSize::Small)
-                            .color(Color::Custom(rgb(SOFT_BLUE).into())),
-                        ),
+                    div()
+                        .mx_3()
+                        .p_2()
+                        .bg(rgb(0x0f0c04))
+                        .border_1()
+                        .border_color(rgb(AMBER))
+                        .child(mono(
+                            "Boltz and Satora went dark because one company's API was the \
+                             market. This market is signed events on relays: any provider \
+                             can join, any client can verify, and this terminal is just \
+                             one window onto it.",
+                            AMBER,
+                        )),
                 )
                 .child(
-                    h_flex().child(
-                        Button::new("reset", "Run the demo again")
+                    h_flex().px_3().pb_2().child(
+                        Button::new("reset", "RUN THE SESSION AGAIN")
                             .style(ButtonStyle::Outlined)
-                            .on_click(cx.listener(|this, _event, _window, cx| {
-                                this.reset(cx);
-                            })),
+                            .on_click(cx.listener(|this, _event, _window, cx| this.reset(cx))),
                     ),
                 )
         }
 
-        fn render_stage_rail(&self, _cx: &mut Context<Self>) -> impl IntoElement {
-            const STAGES: [(&str, Stage); 6] = [
-                ("1 · Market", Stage::Market),
-                ("2 · RFQ", Stage::Rfq),
-                ("3 · Quotes", Stage::Quotes),
-                ("4 · Verify", Stage::Verify),
-                ("5 · Session", Stage::Timeline),
-                ("6 · Close", Stage::Closed),
-            ];
-            let mut rail = h_flex().gap_2().flex_wrap();
-            for (label, stage) in STAGES {
-                let current = self.stage == stage;
-                rail = rail.child(
-                    div()
-                        .px_2()
-                        .py_0p5()
-                        .rounded_sm()
-                        .bg(rgb(if current { RAISED } else { SURFACE }))
-                        .border_1()
-                        .border_color(rgb(if current { ENERGY_BLUE } else { HAIRLINE }))
-                        .child(
-                            Label::new(label)
-                                .size(LabelSize::XSmall)
-                                .color(Color::Custom(
-                                    rgb(if current { SOFT_BLUE } else { FAINT }).into(),
-                                )),
-                        ),
-                );
-            }
-            rail
+        fn render_session_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
+            let body: gpui::AnyElement = match self.stage {
+                Stage::Market => self.render_session_market(cx).into_any_element(),
+                Stage::Rfq => self.render_session_rfq(cx).into_any_element(),
+                Stage::Quotes => self.render_session_quotes(cx).into_any_element(),
+                Stage::Verify => self.render_session_verify(cx).into_any_element(),
+                Stage::Timeline => self.render_session_timeline(cx).into_any_element(),
+                Stage::Closed => self.render_session_close(cx).into_any_element(),
+            };
+            let subtitle = match self.stage {
+                Stage::Market => "stage 1 · discovery",
+                Stage::Rfq => "stage 2 · private rfq",
+                Stage::Quotes => "stage 3 · competing quotes",
+                Stage::Verify => "stage 4 · verify before fund",
+                Stage::Timeline => "stage 5 · session",
+                Stage::Closed => "stage 6 · close",
+            };
+            panel_frame("SWAP SESSION · KINDS 39604-39609", Some(subtitle.into())).child(body)
+        }
+
+        fn render_status_bar(&self, _cx: &mut Context<Self>) -> impl IntoElement {
+            h_flex()
+                .justify_between()
+                .items_center()
+                .px_3()
+                .py_1()
+                .bg(rgb(RAISED))
+                .border_t_1()
+                .border_color(rgb(AMBER_DIM))
+                .child(mono(
+                    "synthetic DEMO market · protocol NIP-MKT v0.1 · relay probe is the \
+                     only live data",
+                    FAINT,
+                ))
+                .child(mono(
+                    "open source: OpenAgentsInc/openagents · immortal · omega",
+                    FAINT,
+                ))
         }
     }
 
-    impl Render for MarketDemo {
+    impl Render for MarketTerminal {
         fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-            let _aiur = cx.theme();
-            let body: gpui::AnyElement = match self.stage {
-                Stage::Market => self.render_market(cx).into_any_element(),
-                Stage::Rfq => self.render_rfq(cx).into_any_element(),
-                Stage::Quotes => self.render_quotes(cx).into_any_element(),
-                Stage::Verify => self.render_verify(cx).into_any_element(),
-                Stage::Timeline => self.render_timeline(cx).into_any_element(),
-                Stage::Closed => v_flex()
-                    .gap_4()
-                    .child(self.render_timeline(cx))
-                    .child(self.render_close(cx))
-                    .into_any_element(),
-            };
+            let _theme = cx.theme();
             div()
                 .size_full()
                 .bg(rgb(VOID))
                 .overflow_hidden()
                 .child(
-                    div()
-                        .id("market-demo-scroll")
+                    v_flex()
                         .size_full()
-                        .overflow_y_scroll()
+                        .child(self.render_top_bar(cx))
+                        .child(self.render_stage_strip(cx))
                         .child(
-                            v_flex()
-                                .max_w(px(880.))
-                                .mx_auto()
-                                .px_6()
-                                .py_6()
-                                .gap_5()
-                                .child(self.render_header(cx))
-                                .child(Divider::horizontal())
-                                .child(self.render_stage_rail(cx))
-                                .child(body)
-                                .child(Divider::horizontal())
+                            div()
+                                .id("terminal-scroll")
+                                .flex_1()
+                                .overflow_y_scroll()
                                 .child(
-                                    v_flex().gap_1().pb_10().child(
-                                        Label::new(
-                                            "Every value on this page is synthetic demo data \
-                                             shaped by NIP-MKT v0.1. No keys, funds, or custody \
-                                             exist in this browser. The protocol, the relay \
-                                             implementation, and this design system are open \
-                                             source: OpenAgentsInc/openagents · \
-                                             OpenAgentsInc/immortal · OpenAgentsInc/omega.",
+                                    h_flex()
+                                        .items_start()
+                                        .gap_2()
+                                        .p_2()
+                                        .child(
+                                            v_flex()
+                                                .w(px(268.))
+                                                .flex_none()
+                                                .gap_2()
+                                                .child(self.render_market_watch(cx))
+                                                .child(self.render_network(cx)),
                                         )
-                                        .size(LabelSize::XSmall)
-                                        .color(Color::Custom(rgb(FAINT).into())),
-                                    ),
+                                        .child(
+                                            v_flex()
+                                                .flex_1()
+                                                .min_w(px(430.))
+                                                .gap_2()
+                                                .child(self.render_session_panel(cx)),
+                                        )
+                                        .child(
+                                            v_flex()
+                                                .w(px(354.))
+                                                .flex_none()
+                                                .gap_2()
+                                                .child(self.render_providers(cx))
+                                                .child(self.render_tape(cx)),
+                                        ),
                                 ),
-                        ),
+                        )
+                        .child(self.render_status_bar(cx)),
                 )
         }
     }
@@ -1059,8 +1398,8 @@ mod web_app {
         }
     }
 
-    fn apply_aiur_theme(cx: &mut App) {
-        let parsed: serde_json::Value = match serde_json::from_str(AIUR_JSON) {
+    fn apply_terminal_theme(cx: &mut App) {
+        let parsed: serde_json::Value = match serde_json::from_str(TERMINAL_JSON) {
             Ok(value) => value,
             Err(_) => return,
         };
@@ -1145,24 +1484,24 @@ mod web_app {
         let handle = gpui_platform::application().run_embedded(|cx: &mut App| {
             theme::set_theme_settings_provider(
                 Box::new(WebThemeSettings {
-                    ui_font: gpui::font("IBM Plex Sans"),
+                    ui_font: gpui::font("Lilex"),
                     buffer_font: gpui::font("Lilex"),
                 }),
                 cx,
             );
             theme::init(theme::LoadThemes::JustBase, cx);
-            apply_aiur_theme(cx);
-            let bounds = Bounds::centered(None, size(px(1180.), px(820.)), cx);
+            apply_terminal_theme(cx);
+            let bounds = Bounds::centered(None, size(px(1440.), px(880.)), cx);
             match cx.open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     ..Default::default()
                 },
-                |_, cx| cx.new(MarketDemo::new),
+                |_, cx| cx.new(MarketTerminal::new),
             ) {
                 Ok(_) => cx.activate(true),
                 Err(error) => console::error_1(&JsValue::from_str(&format!(
-                    "failed to open the market demo: {error:#}"
+                    "failed to open the market terminal: {error:#}"
                 ))),
             }
         });
@@ -1177,5 +1516,5 @@ fn main() {
 
 #[cfg(not(target_family = "wasm"))]
 fn main() {
-    eprintln!("market_demo_web builds for wasm32-unknown-unknown");
+    eprintln!("market_demo_web builds for wasm32-unknown-unknown")
 }
