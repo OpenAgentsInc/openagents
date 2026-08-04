@@ -66,8 +66,33 @@ The broader 2026-08-04 synthesis adds tbDEX's provider-neutral negotiation
 grammar and a custody/trust gradient. Boltz supplies the strongest atomic
 profile; tbDEX supplies the common provider/RFQ/Quote/Order/Status/Close
 shape for rails that retain social trust; Nostr supplies portable discovery
-and encrypted messaging; Immortal can be one hardened, noncustodial relay in
-a multi-relay fabric. See §§11–18. [inferred]
+and encrypted messaging; Immortal begins as a hardened relay and grows into
+the noncustodial coordination runtime for that multi-relay fabric. See
+§§11–18. [inferred]
+
+### Product and protocol language
+
+[Episode 213](../transcripts/213.md) names five interlocking **Agent Markets**:
+compute, data, labor, liquidity, and risk. Boltz/tbDEX work is therefore not a
+sixth market and not the whole marketplace. Use this vocabulary consistently:
+
+- **OpenAgents Agent Markets** — the umbrella economy across the five market
+  lanes;
+- **OpenAgents Liquidity Market** — the product lane where agents and humans
+  provide, find, route, and earn from Bitcoin liquidity;
+- **NIP-MKT negotiated-market fabric** — the reusable provider-neutral wire
+  grammar beneath liquidity and, where appropriate, other bilateral markets;
+- **noncustodial Bitcoin liquidity network** — the first technical system:
+  multiple providers, relays, wallets, and settlement rails speaking that
+  common protocol.
+
+“Decentralized exchange” is too narrow because the product includes swaps,
+Lightning channel/JIT liquidity, mint/federation gateways, credentialed
+on/off ramps, provider discovery, and recovery. “Liquidity pool” is also
+misleading unless referring to actual provider inventory: Immortal does not
+pool or custody funds. Boltz contributes the atomic-swap profile; tbDEX
+contributes the broad provider negotiation grammar; neither names the whole
+product. [source] [proposal]
 
 A shortest accurate statement:
 
@@ -684,7 +709,7 @@ claimable covenant is not an offline proof that the covenant was safe. The
 client must verify the covenant before funding. The same law applies to every
 provider event: later observability cannot repair an unverified lock.
 
-## 12. What Immortal actually contributes
+## 12. What Immortal contributes now—and is committed to become
 
 The current Immortal source and production handoff establish a specific relay,
 not a hypothetical exchange server:
@@ -720,12 +745,22 @@ degrades ownership/admission, agent observer traffic, encrypted memory,
 metrics, personas, reminders, projects, archival, identity/DM/read-state, and
 workspace presentation features according to configuration.
 
-It does **not** currently implement a swap state machine, provider catalog,
-quote reservation, liquidity verifier, NIP-66/67/77 multi-relay fabric, or any
-OpenAgents market draft as relay authority. That is desirable separation:
-most market logic belongs in clients and providers. What Immortal needs for
-the first market proof is generic transport correctness, appropriate kind
-admission, private-message gates, and fixtures—not custody or matching.
+As of this audit pin, it does **not yet** implement a swap state machine,
+provider catalog, quote reservation, liquidity verifier, NIP-66/67/77
+multi-relay fabric, or an OpenAgents market draft as an executable server
+contract. That is an honest current-state gap, not the intended boundary.
+
+The owner-directed target is every NIP pinned across Immortal's official,
+Block, and OpenAgents lanes, plus focused new NIPs for missing market
+primitives. Immortal will absorb every useful noncustodial Boltz/tbDEX
+coordination function that fits its one-binary/one-Postgres laws: validation,
+catalog/indexing, private session routing, provider-signed reservation state,
+state-machine enforcement, timers, evidence verification, recovery,
+monitoring, and compatibility APIs. Client and provider code still verifies
+and controls its own funds; the relay must not hold wallet/LP spend keys,
+balances, unreleased preimages, node or bank credentials, or final settlement
+authority. The design separation is **custody from coordination**, not market
+functionality from Immortal.
 
 ### 12.2 Relay topology, not “the relay”
 
@@ -753,9 +788,16 @@ wallet + LP verify rails directly; relays never declare settlement
   Permissionless protocol participation can span multiple relays with
   different policies.
 
-## 13. The three NIP lanes, used as a portfolio
+## 13. The three NIP lanes: complete implementation, role-correct use
 
-The pinned lanes are complementary. None should be treated as a checklist.
+The pinned lanes are complementary, and every pinned NIP is now an Immortal
+implementation target. The tables below describe relevance to this liquidity
+market, not the limit of implementation. Relay semantics belong in server
+handlers; client-only semantics belong in the native/browser client;
+operator/provider/executor profiles belong in bounded configured modules.
+Only a currently executable relay behavior is advertised. Deprecated or
+unrecommended NIPs receive compatibility implementations and fixtures rather
+than becoming the basis for new market design.
 
 ### 13.1 Official lane
 
@@ -790,9 +832,11 @@ compatibility-only under
 | NIP-IA | Archive public catalogs and receipts |
 
 NIP-MP, GS, CW, DV, and WP may support project, Git, pagination, DM
-projection, and presentation surfaces, but they do not belong in settlement
-semantics. NIP-PL requires an executor that Immortal intentionally does not
-provide; do not make it a market dependency.
+projection, and presentation surfaces, but they do not become settlement
+authority. NIP-PL's current fail-closed handler is temporary: the full-lane
+program must add its specified executor/decryption/dispatch behavior inside
+Immortal's one-binary boundary and advertise it only after fixture and actual
+transport proof. Market safety must not depend on an unconfigured executor.
 
 ### 13.3 OpenAgents lane
 
@@ -899,10 +943,13 @@ Close is not settlement unless the rail-specific verifier proves it.
 | Fiat and stablecoins | Provider-specific adapters plus consented credential presentation; never call reversible settlement atomic |
 | Existing Boltz clients | Optional REST/WSS compatibility facade backed by one or more LP sessions; client still verifies |
 
-Provider daemons need inventory management, price feeds, quote reservation,
-chain/LN watchers, rebalancing, and risk limits. These are provider processes,
-not Immortal services. OpenAgents can publish adapter contracts and run a
-client/router without becoming the custodian or global matcher.
+Provider-held spend authority, private inventory control, node credentials,
+rebalancing, and rail submission remain provider processes. Immortal should
+nevertheless implement the noncustodial half of those workflows: provider
+registration, signed capacity and quote-reservation contracts, routing,
+public-chain and invoice verification, timers, status/evidence indexing,
+recovery coordination, and compatibility APIs. That division lets Immortal
+eat the coordination surface without becoming custodian or settlement truth.
 
 ### 15.1 Liquidity truth
 
@@ -945,7 +992,7 @@ timeout graph it cannot explain.
 | Arbiter capture | Solver set and authority disclosed before Order; portable evidence; competing coordinators |
 | Privacy compromise | NIP-44 limitations documented; separate high-risk channel when forward secrecy is required |
 
-## 17. Honest current-state map
+## 17. Honest current-state map and committed destination
 
 | Capability | Current evidence | Status for this design |
 | --- | --- | --- |
@@ -958,6 +1005,12 @@ timeout graph it cannot explain.
 | Multi-provider router | None | Missing |
 | Liquidity/custody assertions | Draft components only | Missing and must not be inferred from relay events |
 | Real cross-rail settlement | External Boltz/Mostro/mint/federation/PFI systems | Adapter research, not OpenAgents authority |
+
+Every “missing” entry above is queued implementation scope except live capital
+and authorities that inherently belong to independent providers or settlement
+rails. The target is a complete Liquidity Market and negotiated-market fabric,
+not a relay that only transports someone else's market. Current-state honesty
+controls claims and advertisement; it does not narrow the roadmap.
 
 Ignore retired product surfaces as a design ceiling. Reuse their verified
 contracts and evidence laws where they help; do not resurrect their claims or
@@ -999,5 +1052,6 @@ as good as the happy path.
 
 ---
 
-*End of teardown. Design evidence only. Implementation requires separately
-admitted packets, authority reconciliation, and live verification.*
+*End of teardown. Design evidence only. The implementation mandate is active;
+each capability still requires separately fixture-proved packets, authority
+reconciliation, and live verification before it is claimed or advertised.*

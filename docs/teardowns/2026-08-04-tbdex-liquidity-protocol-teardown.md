@@ -48,6 +48,24 @@ The OpenAgents synthesis is therefore:
 > residual counterparty, custody, reversibility, and dispute risk everywhere
 > else.
 
+### Product name and architecture name
+
+The user-facing product is the **OpenAgents Liquidity Market**, one of
+[Episode 213's](../transcripts/213.md) five interlocking Agent Markets
+(compute, data, labor, liquidity, risk). The broader thing being built
+underneath it is a **Nostr-native negotiated-market fabric**: a common protocol
+by which heterogeneous providers advertise, quote, accept, progress, prove,
+and close bilateral transactions. The first technical deployment is a
+**noncustodial Bitcoin liquidity network** spanning atomic swaps, Lightning
+liquidity, P2P/PFI routes, and mint/federation gateways.
+
+That distinction matters. “Liquidity Market” is the right product name.
+NIP-MKT is the reusable protocol family and can later support common
+negotiation laws in other Agent Markets without pretending compute, data,
+labor, liquidity, and risk are the same state machine. “Exchange” is too
+narrow and “liquidity pool” falsely suggests pooled custody. [source]
+[proposal]
+
 ## 1. Sources, status, and evidence
 
 ### 1.1 Local whitepaper
@@ -323,10 +341,15 @@ NIP-90 is explicitly unrecommended upstream and has become too generic. Do
 not place a financial state machine in the DVM job ranges. Define a focused
 market microstandard with exact invariants and test vectors.
 
-### 6.3 Compose the three pinned NIP lanes selectively
+### 6.3 Implement all three pinned NIP lanes; compose them by role
 
-The Immortal repository pins official, Block, and OpenAgents lanes. They are a
-design vocabulary, not a demand to force every NIP into the protocol.
+The Immortal repository pins official, Block, and OpenAgents lanes. The owner
+has directed Immortal to implement every pinned NIP, plus new focused NIPs
+needed to absorb the noncustodial Boltz/tbDEX coordination surface. This does
+not mean forcing every NIP into every market event. It means implementing the
+role each text actually defines—relay, client, operator, provider, or
+executor—and composing only the relevant roles into the Liquidity Market.
+Current non-advertisement is a conformance fact, not a scope ceiling.
 
 **Official lane:** use the NIPs above as transport and discovery primitives.
 
@@ -391,9 +414,13 @@ Nostr-specific ticker ontology.
 | Regulated fiat/stablecoins | PFI-specific adapters and selective credentials | Bank and token corridors without making one provider the protocol |
 | Legacy Boltz clients | Optional Boltz-compatible REST/WSS facade | Gradual migration while Nostr owns portable discovery and provider choice |
 
-A market-maker daemon needs inventory and rebalancing adapters across those
-rails, but it remains a provider process. It is not part of Immortal and does
-not grant the relay custody.
+A market-maker needs private inventory, spend authority, and rebalancing
+adapters across those rails; those custody-bearing pieces remain provider
+processes. Immortal will implement the noncustodial coordination half:
+provider admission/catalogs, signed capacity and reservations, route and
+state-machine handling, evidence verification, timers/recovery, and
+compatibility APIs. This makes Immortal materially more than transport without
+granting the relay custody.
 
 ## 8. Threats the protocol must make visible
 
@@ -412,7 +439,7 @@ not grant the relay custody.
 | Dispute capture | Disclose solver/arbiter set and appeal path before Order; support competing coordinators |
 | Multi-hop partial completion | Shared atomic construction, pre-funding, guarantee, or explicit sequential exposure |
 
-## 9. What OpenAgents already has—and does not
+## 9. Current implementation snapshot and target
 
 Reusable foundations:
 
@@ -428,7 +455,7 @@ Reusable foundations:
   skeletons. Their request/offer/fill/receipt vocabulary is a useful seed, not
   evidence of a live market.
 
-Missing foundations:
+Not yet implemented at this snapshot:
 
 - no implemented NIP-MKT/MKT-SWP state machine or fixture corpus;
 - no provider router, quote-reservation engine, wallet policy engine, or
@@ -438,8 +465,12 @@ Missing foundations:
 - no live liquidity, underwriter, escrow, arbiter, reserve, or payout authority;
 - no proof that `relay.openagents.com` alone provides operator diversity.
 
-This research is intentionally ambitious, but those absences must remain
-visible until separately implemented and proved.
+Those gaps remain visible for claim and rollout honesty, but they are not
+exclusions. The committed destination is the complete OpenAgents Liquidity
+Market, its reusable negotiated-market fabric, every pinned Immortal NIP, and
+new focused NIPs wherever the three lanes do not yet express required
+noncustodial behavior. Live capital, spend keys, bank/node credentials, and
+final settlement authority remain with independent providers and rails.
 
 ## 10. Recommended build order
 

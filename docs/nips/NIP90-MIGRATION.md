@@ -30,6 +30,12 @@ OpenAgents will:
    safely in a new profile, without claiming wire equivalence when semantics
    differ.
 
+Immortal's full-three-lane implementation directive includes NIP-90. Here,
+“implemented” means exact decoding, validation, relay/client interoperability,
+historical replay, translation, negative cases, and pinned compatibility
+fixtures. It does **not** reverse this design decision or put new liquidity,
+labor, data, or compute protocols back into the generic DVM ranges.
+
 ## Why
 
 The generic DVM envelope made it easy to start markets but hard to state what
