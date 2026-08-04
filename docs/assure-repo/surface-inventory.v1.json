@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:9a91d71590cf5d168bd33be0fb894e6ac1996b9fb9621912abfc4f9198ff9cec",
+  "sourceDigest": "sha256:b28f33bcf9d07de533a46f843bdd54a0e6897cb75a4d265494af6147441200bb",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -2638,6 +2638,23 @@
       }
     },
     {
+      "id": "package:@openagentsinc/nip-mkt",
+      "kind": "package",
+      "owningPath": "packages/nip-mkt",
+      "title": "@openagentsinc/nip-mkt",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/nip-mkt (5 tracked test files)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
       "id": "package:@openagentsinc/nip90",
       "kind": "package",
       "owningPath": "packages/nip90",
@@ -3489,17 +3506,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 182,
+    "totalSurfaces": 183,
     "byKind": {
       "app": 19,
       "crate": 7,
       "document": 52,
-      "package": 92,
+      "package": 93,
       "public-endpoint": 2,
       "release-pipeline": 9,
       "worker": 1
     },
-    "withOracle": 168,
+    "withOracle": 169,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3507,7 +3524,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 132,
+      "designed": 133,
       "inconclusive": 9,
       "mapped": 36,
       "out-of-scope": 5

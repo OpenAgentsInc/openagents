@@ -1,0 +1,102 @@
+{
+  "valid": [
+    {
+      "kind": 39600,
+      "tags": [
+        ["d", "provider-one"],
+        ["status", "active"],
+        ["profile", "mkt-swp", "1"],
+        ["profile", "mkt-p2p", "2"],
+        ["published_at", "1722729600"]
+      ]
+    },
+    {
+      "kind": 39601,
+      "tags": [
+        ["d", "offering-one"],
+        ["profile", "mkt-swp", "1"],
+        ["status", "exhausted"],
+        ["provider", "39600:1111111111111111111111111111111111111111111111111111111111111111:provider-one"],
+        ["published_at", "1722729600"]
+      ]
+    },
+    {
+      "kind": 39602,
+      "tags": [
+        ["d", "mkt-swp"],
+        ["version", "1"],
+        ["x", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+        ["r", "https://profiles.example/mkt-swp-v1.json"],
+        ["status", "deprecated"]
+      ]
+    },
+    {
+      "kind": 39603,
+      "tags": [
+        ["d", "receipt-one"],
+        ["profile", "mkt-swp", "1"],
+        ["outcome", "refunded"],
+        ["x", "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"],
+        ["role", "provider"]
+      ]
+    }
+  ],
+  "invalid": [
+    {"name": "provider missing d", "kind": 39600, "remove": "d"},
+    {"name": "provider invalid d", "kind": 39600, "set": ["d", "Provider One"]},
+    {"name": "provider missing status", "kind": 39600, "remove": "status"},
+    {"name": "provider invalid status", "kind": 39600, "set": ["status", "unknown"]},
+    {"name": "provider missing profile", "kind": 39600, "remove": "profile"},
+    {"name": "provider malformed profile", "kind": 39600, "set_tag": ["profile", "mkt-swp"]},
+    {"name": "provider invalid profile id", "kind": 39600, "set_tag": ["profile", "MKT-SWP", "1"]},
+    {"name": "provider invalid profile version", "kind": 39600, "set_tag": ["profile", "mkt-swp", "0"]},
+    {"name": "provider duplicate profile version", "kind": 39600, "add": ["profile", "mkt-swp", "1"]},
+    {"name": "provider missing published_at", "kind": 39600, "remove": "published_at"},
+    {"name": "provider invalid published_at", "kind": 39600, "set": ["published_at", "01"]},
+    {"name": "provider duplicate required tag", "kind": 39600, "add": ["status", "active"]},
+    {"name": "provider oversize content", "kind": 39600, "content_bytes": 16385},
+
+    {"name": "offering missing d", "kind": 39601, "remove": "d"},
+    {"name": "offering invalid d", "kind": 39601, "set": ["d", "bad/id"]},
+    {"name": "offering missing profile", "kind": 39601, "remove": "profile"},
+    {"name": "offering invalid profile", "kind": 39601, "set_tag": ["profile", "mkt-swp", "0"]},
+    {"name": "offering multiple profiles", "kind": 39601, "add": ["profile", "mkt-p2p", "1"]},
+    {"name": "offering missing status", "kind": 39601, "remove": "status"},
+    {"name": "offering invalid status", "kind": 39601, "set": ["status", "unknown"]},
+    {"name": "offering missing provider", "kind": 39601, "remove": "provider"},
+    {"name": "offering invalid provider kind", "kind": 39601, "set": ["provider", "39601:1111111111111111111111111111111111111111111111111111111111111111:provider-one"]},
+    {"name": "offering invalid provider signer", "kind": 39601, "set": ["provider", "39600:2222222222222222222222222222222222222222222222222222222222222222:provider-one"]},
+    {"name": "offering missing published_at", "kind": 39601, "remove": "published_at"},
+    {"name": "offering invalid published_at", "kind": 39601, "set": ["published_at", "later"]},
+    {"name": "offering duplicate required tag", "kind": 39601, "add": ["provider", "39600:1111111111111111111111111111111111111111111111111111111111111111:provider-one"]},
+    {"name": "offering oversize content", "kind": 39601, "content_bytes": 16385},
+
+    {"name": "descriptor missing d", "kind": 39602, "remove": "d"},
+    {"name": "descriptor invalid d", "kind": 39602, "set": ["d", ".profile"]},
+    {"name": "descriptor missing version", "kind": 39602, "remove": "version"},
+    {"name": "descriptor invalid version", "kind": 39602, "set": ["version", "0"]},
+    {"name": "descriptor missing digest", "kind": 39602, "remove": "x"},
+    {"name": "descriptor invalid digest", "kind": 39602, "set": ["x", "AA"]},
+    {"name": "descriptor missing retrieval URL", "kind": 39602, "remove": "r"},
+    {"name": "descriptor invalid retrieval URL", "kind": 39602, "set": ["r", "ftp://profiles.example/mkt-swp"]},
+    {"name": "descriptor empty retrieval authority", "kind": 39602, "set": ["r", "http://"]},
+    {"name": "descriptor retrieval URL whitespace", "kind": 39602, "set": ["r", "https://profiles.example/mkt swp"]},
+    {"name": "descriptor missing status", "kind": 39602, "remove": "status"},
+    {"name": "descriptor invalid status", "kind": 39602, "set": ["status", "retired"]},
+    {"name": "descriptor duplicate required tag", "kind": 39602, "add": ["version", "1"]},
+    {"name": "descriptor oversize content", "kind": 39602, "content_bytes": 16385},
+
+    {"name": "receipt missing d", "kind": 39603, "remove": "d"},
+    {"name": "receipt invalid d", "kind": 39603, "set": ["d", ""]},
+    {"name": "receipt missing profile", "kind": 39603, "remove": "profile"},
+    {"name": "receipt invalid profile", "kind": 39603, "set_tag": ["profile", "mkt-swp", "0"]},
+    {"name": "receipt missing outcome", "kind": 39603, "remove": "outcome"},
+    {"name": "receipt invalid outcome", "kind": 39603, "set": ["outcome", "rejected"]},
+    {"name": "receipt missing Close id", "kind": 39603, "remove": "x"},
+    {"name": "receipt invalid Close id", "kind": 39603, "set": ["x", "CC"]},
+    {"name": "receipt missing role", "kind": 39603, "remove": "role"},
+    {"name": "receipt invalid role", "kind": 39603, "set": ["role", "Provider Role"]},
+    {"name": "receipt duplicate required tag", "kind": 39603, "add": ["outcome", "refunded"]},
+    {"name": "receipt oversize content", "kind": 39603, "content_bytes": 4097}
+  ]
+}

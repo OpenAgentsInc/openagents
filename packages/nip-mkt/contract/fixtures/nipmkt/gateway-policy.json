@@ -1,0 +1,18 @@
+{
+  "bare_private_refusal": "restricted: mkt-private-requires-gift-wrap",
+  "gift_wrap_recipient_rate_refusal": "rate-limited: gift-wrap recipient rate exceeded",
+  "gift_wrap_read_refusals": {
+    "unauthenticated_connection": "auth-required: authenticate before subscribing",
+    "unauthenticated_filter": "auth-required: gift-wrap reads require recipient authentication",
+    "not_self_scoped": "restricted: gift-wrap reads must be scoped to #p self"
+  },
+  "read_surfaces": ["history", "ids", "count", "search_exclusion", "live_fanout"],
+  "legacy_private_rows_hidden": true,
+  "legacy_wrap_requires_exactly_one_indexed_recipient": true,
+  "invalid_signature_does_not_charge_keyed_rates": true,
+  "rate_dimensions": {
+    "discovery": ["client_ip", "event_author_pubkey"],
+    "gift_wrap": ["client_ip", "outer_wrapper_pubkey", "recipient_pubkey"]
+  },
+  "recipient_rate_env": "IMMORTAL_RATE_GIFT_WRAPS_PER_MIN_RECIPIENT"
+}

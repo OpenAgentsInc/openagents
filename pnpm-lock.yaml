@@ -2477,6 +2477,19 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
+  packages/nip-mkt:
+    dependencies:
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+      nostr-effect:
+        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz
+        version: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
   packages/nip90:
     dependencies:
       nostr-effect:
@@ -10939,6 +10952,11 @@ packages:
 
   nostr-effect@https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz:
     resolution: {integrity: sha512-WW12/cS9II6SIjcgzewOd8DYoqEJKrw7+Fl//+PXvALkZQ0yVNhzlDOvHS/S38Aw68IJE4NWioJdJ+S1waY88Q==, tarball: https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz}
+    version: 0.0.13
+    engines: {node: '>=24'}
+
+  nostr-effect@https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz:
+    resolution: {integrity: sha512-pFAlUHoZVm+XwZCYrrjj/3x0v0EQKSdR9UHWGHjv+jKP9tiyq+V6udmawA88zTIjSo1oxEpuhlOP6xtYRu+b9w==, tarball: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz}
     version: 0.0.13
     engines: {node: '>=24'}
 
@@ -22823,6 +22841,22 @@ snapshots:
   normalize-url@6.1.0: {}
 
   nostr-effect@https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz:
+    dependencies:
+      '@noble/ciphers': 1.2.1
+      '@noble/curves': 1.8.1
+      '@noble/hashes': 1.7.1
+      '@scure/base': 1.2.4
+      '@scure/bip32': 1.6.2
+      '@scure/bip39': 1.5.4
+      effect: 4.0.0-beta.94
+      pako: 2.1.0
+      postgres: 3.4.9
+      ws: 8.21.1
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
+  nostr-effect@https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz:
     dependencies:
       '@noble/ciphers': 1.2.1
       '@noble/curves': 1.8.1

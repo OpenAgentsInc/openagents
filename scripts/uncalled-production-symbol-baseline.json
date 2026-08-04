@@ -1946,6 +1946,94 @@
   ],
   "allowed": [
     {
+      "ref": "packages/nip-mkt/src/generated.ts#CLOSED_REASONS",
+      "reason": "Published relay CLOSED vocabulary for the generated NIP-MKT SDK; openagents.com issue #9310 will classify recipient-gated market query failures when it adopts this package."
+    },
+    {
+      "ref": "packages/nip-mkt/src/generated.ts#CONTRACT_SHA256",
+      "reason": "Published contract provenance for the generated NIP-MKT SDK; openagents.com issue #9310 will display and diagnose the pinned Immortal contract when it adopts this package."
+    },
+    {
+      "ref": "packages/nip-mkt/src/generated.ts#CONTRACT_SOURCE_COMMIT",
+      "reason": "Published contract provenance for the generated NIP-MKT SDK; openagents.com issue #9310 will display and diagnose the pinned Immortal contract when it adopts this package."
+    },
+    {
+      "ref": "packages/nip-mkt/src/generated.ts#FIXTURE_MANIFEST_SHA256",
+      "reason": "Published conformance provenance for the generated NIP-MKT SDK; openagents.com issue #9310 will expose it in market diagnostics when it adopts this package."
+    },
+    {
+      "ref": "packages/nip-mkt/src/generated.ts#GATEWAY_LIMITS",
+      "reason": "Published generated relay configuration catalog; openagents.com issue #9310 will use the pinned recipient-rate environment name in local market diagnostics."
+    },
+    {
+      "ref": "packages/nip-mkt/src/generated.ts#MKT_KIND_DEFINITIONS",
+      "reason": "Published generated kind metadata for downstream NIP-MKT clients; openagents.com issue #9310 will use publication and enforcement scope when presenting discovery and negotiation records."
+    },
+    {
+      "ref": "packages/nip-mkt/src/generated.ts#MKT_KINDS",
+      "reason": "Published generated kind catalog for downstream NIP-MKT clients; openagents.com issue #9310 will use it when building discovery and negotiation filters."
+    },
+    {
+      "ref": "packages/nip-mkt/src/generated.ts#OPAQUE_TRANSPORT",
+      "reason": "Published NIP-MKT transport policy for SDK consumers; openagents.com issue #9310 will use it to select wrapped private delivery and recipient-scoped reads."
+    },
+    {
+      "ref": "packages/nip-mkt/src/generated.ts#REASON_PREFIXES",
+      "reason": "Published relay reason-prefix vocabulary for the generated NIP-MKT SDK; openagents.com issue #9310 will classify authenticated read and publish failures when it adopts this package."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#activeSupersedingQuote",
+      "reason": "Published NIP-MKT client projection; openagents.com issue #9310 will call it when the negotiation UI adopts this SDK."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#analyzeStatusSequence",
+      "reason": "Published NIP-MKT gap and fork projection; openagents.com issue #9310 will call it when the negotiation UI adopts this SDK."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#admitPrivateRecord",
+      "reason": "Published immutable private-record admission operation; openagents.com issue #9310 will call it from its local negotiation record store when it adopts this SDK."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#authorizationDecision",
+      "reason": "Published NIP-MKT signer authorization decision; openagents.com issue #9310 will call it before advancing Status, Cancel, or Close state."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#createPrivateAdmissionStore",
+      "reason": "Published in-memory NIP-MKT admission store constructor; the demo provider in openagents.com issue #9310 will use it for its throwaway local negotiation session."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#deliveryDeduplicationDecision",
+      "reason": "Published NIP-MKT logical-delivery decision; openagents.com issue #9310 will call it before applying rewrapped inbox deliveries."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#evidenceDecision",
+      "reason": "Published NIP-MKT evidence projection; openagents.com issue #9310 will call it for evidence-rung display when it adopts this SDK."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#expiryDecision",
+      "reason": "Published fail-closed NIP-MKT expiry decision; openagents.com issue #9310 will call it before any demo-provider reservation or execution effect."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#generateIdempotencyKey",
+      "reason": "Published NIP-MKT idempotency-key generator; openagents.com issue #9310 will use it when constructing new private negotiation records."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#reserveCapacity",
+      "reason": "Published NIP-MKT reservation projection; the demo provider in openagents.com issue #9310 will call it when it adopts this SDK."
+    },
+    {
+      "ref": "packages/nip-mkt/src/transport.ts#serializeSignedEvent",
+      "reason": "Published canonical NIP-MKT serializer; openagents.com issue #9310 will call it before gift wrapping when it adopts this SDK."
+    },
+    {
+      "ref": "packages/nip-mkt/src/transport.ts#unwrapPrivateRecord",
+      "reason": "Published NIP-MKT recipient transport operation; openagents.com issue #9310 will call it when its negotiation inbox adopts this SDK."
+    },
+    {
+      "ref": "packages/nip-mkt/src/transport.ts#wrapPrivateRecordCopies",
+      "reason": "Published NIP-MKT counterparty and sender-recovery operation; openagents.com issue #9310 will call it for every private negotiation record it sends."
+    },
+    {
       "ref": "packages/forensic-contract/src/historical-scan.ts#runHistoricalFingerprintScan",
       "reason": "Published deterministic historical scanner; the native forensic worker route will call it after immutable bundle or private brokered Bitcoin Core materialization on an admitted OpenAgents Cloud worker."
     },

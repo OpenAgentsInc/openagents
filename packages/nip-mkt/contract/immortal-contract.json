@@ -1,0 +1,709 @@
+{
+  "identity": {
+    "schema": "openagents.immortal.contract.v1",
+    "contract_version": 1,
+    "crate_name": "immortal",
+    "crate_version": "0.0.1",
+    "nips": [
+      {
+        "lane": "official",
+        "repo": "https://github.com/nostr-protocol/nips",
+        "subdir": ".",
+        "commit": "c53877571f96eb423661fc23c620d629d37b8f19"
+      },
+      {
+        "lane": "block",
+        "repo": "https://github.com/block/buzz",
+        "subdir": "docs/nips",
+        "commit": "feccf4eabc23fdba94ce3537a194357ed17b197c"
+      },
+      {
+        "lane": "openagents",
+        "repo": "https://github.com/OpenAgentsInc/openagents",
+        "subdir": "docs/nips",
+        "commit": "b839dd43bad7915a35639b562d4d7ebf7d51c3f6"
+      }
+    ]
+  },
+  "supported_protocols": [
+    {
+      "lane": "official",
+      "identifier": "NIP-01",
+      "advertisement": "always",
+      "status": "implemented"
+    },
+    {
+      "lane": "official",
+      "identifier": "NIP-09",
+      "advertisement": "always",
+      "status": "implemented"
+    },
+    {
+      "lane": "official",
+      "identifier": "NIP-11",
+      "advertisement": "always",
+      "status": "implemented"
+    },
+    {
+      "lane": "official",
+      "identifier": "NIP-17",
+      "advertisement": "relay_url",
+      "status": "implemented"
+    },
+    {
+      "lane": "official",
+      "identifier": "NIP-29",
+      "advertisement": "relay_signer",
+      "status": "implemented"
+    },
+    {
+      "lane": "official",
+      "identifier": "NIP-40",
+      "advertisement": "always",
+      "status": "implemented"
+    },
+    {
+      "lane": "official",
+      "identifier": "NIP-42",
+      "advertisement": "relay_url",
+      "status": "implemented"
+    },
+    {
+      "lane": "official",
+      "identifier": "NIP-45",
+      "advertisement": "always",
+      "status": "implemented"
+    },
+    {
+      "lane": "official",
+      "identifier": "NIP-50",
+      "advertisement": "always",
+      "status": "implemented"
+    },
+    {
+      "lane": "official",
+      "identifier": "NIP-65",
+      "advertisement": "always",
+      "status": "implemented"
+    },
+    {
+      "lane": "official",
+      "identifier": "NIP-70",
+      "advertisement": "relay_url",
+      "status": "implemented"
+    },
+    {
+      "lane": "official",
+      "identifier": "NIP-86",
+      "advertisement": "management_pubkey",
+      "status": "implemented"
+    },
+    {
+      "lane": "official",
+      "identifier": "NIP-94",
+      "advertisement": "always",
+      "status": "implemented"
+    },
+    {
+      "lane": "official",
+      "identifier": "NIP-98",
+      "advertisement": "management_pubkey_or_media",
+      "status": "implemented"
+    },
+    {
+      "lane": "block",
+      "identifier": "nip-mp",
+      "advertisement": "always",
+      "status": "implemented"
+    },
+    {
+      "lane": "block",
+      "identifier": "nip-oa",
+      "advertisement": "always",
+      "status": "implemented"
+    },
+    {
+      "lane": "block",
+      "identifier": "nip-rs",
+      "advertisement": "always",
+      "status": "implemented"
+    },
+    {
+      "lane": "block",
+      "identifier": "nip-aa",
+      "advertisement": "relay_url",
+      "status": "implemented"
+    },
+    {
+      "lane": "block",
+      "identifier": "nip-ae",
+      "advertisement": "relay_url",
+      "status": "implemented"
+    },
+    {
+      "lane": "block",
+      "identifier": "nip-am",
+      "advertisement": "relay_url",
+      "status": "implemented"
+    },
+    {
+      "lane": "block",
+      "identifier": "nip-ao",
+      "advertisement": "relay_url",
+      "status": "implemented"
+    },
+    {
+      "lane": "block",
+      "identifier": "nip-ap",
+      "advertisement": "relay_url",
+      "status": "implemented"
+    },
+    {
+      "lane": "block",
+      "identifier": "nip-er",
+      "advertisement": "relay_url",
+      "status": "implemented"
+    },
+    {
+      "lane": "block",
+      "identifier": "nip-dv",
+      "advertisement": "relay_url_and_relay_signer",
+      "status": "implemented"
+    },
+    {
+      "lane": "block",
+      "identifier": "nip-ia",
+      "advertisement": "relay_url_and_relay_signer",
+      "status": "implemented"
+    },
+    {
+      "lane": "block",
+      "identifier": "nip-wp",
+      "advertisement": "relay_url_and_management_pubkey",
+      "status": "implemented"
+    },
+    {
+      "lane": "block",
+      "identifier": "nip-cw",
+      "advertisement": "never",
+      "status": "safe_degradation_only"
+    },
+    {
+      "lane": "block",
+      "identifier": "nip-gs",
+      "advertisement": "never",
+      "status": "no_relay_handler"
+    },
+    {
+      "lane": "block",
+      "identifier": "nip-pl",
+      "advertisement": "never",
+      "status": "executor_unconfigured"
+    },
+    {
+      "lane": "openagents",
+      "identifier": "NIP-OT/PG",
+      "advertisement": "never",
+      "status": "client_only"
+    },
+    {
+      "lane": "openagents",
+      "identifier": "nip-mkt",
+      "advertisement": "relay_url",
+      "status": "implemented_base"
+    }
+  ],
+  "kinds": [
+    {
+      "kind": 39600,
+      "lane": "openagents",
+      "identifier": "NIP-MKT",
+      "name": "provider_profile",
+      "classification": "addressable",
+      "publication": "public_head",
+      "immutability": "nip01_addressable",
+      "enforcement_scope": "relay"
+    },
+    {
+      "kind": 39601,
+      "lane": "openagents",
+      "identifier": "NIP-MKT",
+      "name": "offering",
+      "classification": "addressable",
+      "publication": "public_head",
+      "immutability": "nip01_addressable",
+      "enforcement_scope": "relay"
+    },
+    {
+      "kind": 39602,
+      "lane": "openagents",
+      "identifier": "NIP-MKT",
+      "name": "profile_descriptor",
+      "classification": "addressable",
+      "publication": "public_head",
+      "immutability": "nip01_addressable",
+      "enforcement_scope": "relay"
+    },
+    {
+      "kind": 39603,
+      "lane": "openagents",
+      "identifier": "NIP-MKT",
+      "name": "public_market_receipt",
+      "classification": "addressable",
+      "publication": "public_head",
+      "immutability": "nip01_addressable",
+      "enforcement_scope": "relay"
+    },
+    {
+      "kind": 39604,
+      "lane": "openagents",
+      "identifier": "NIP-MKT",
+      "name": "rfq",
+      "classification": "addressable",
+      "publication": "private_wrapped",
+      "immutability": "exact_signed_coordinate",
+      "enforcement_scope": "client_and_internal_store"
+    },
+    {
+      "kind": 39605,
+      "lane": "openagents",
+      "identifier": "NIP-MKT",
+      "name": "quote",
+      "classification": "addressable",
+      "publication": "private_wrapped",
+      "immutability": "exact_signed_coordinate",
+      "enforcement_scope": "client_and_internal_store"
+    },
+    {
+      "kind": 39606,
+      "lane": "openagents",
+      "identifier": "NIP-MKT",
+      "name": "order",
+      "classification": "addressable",
+      "publication": "private_wrapped",
+      "immutability": "exact_signed_coordinate",
+      "enforcement_scope": "client_and_internal_store"
+    },
+    {
+      "kind": 39607,
+      "lane": "openagents",
+      "identifier": "NIP-MKT",
+      "name": "status",
+      "classification": "addressable",
+      "publication": "private_wrapped",
+      "immutability": "exact_signed_coordinate",
+      "enforcement_scope": "client_and_internal_store"
+    },
+    {
+      "kind": 39608,
+      "lane": "openagents",
+      "identifier": "NIP-MKT",
+      "name": "cancel",
+      "classification": "addressable",
+      "publication": "private_wrapped",
+      "immutability": "exact_signed_coordinate",
+      "enforcement_scope": "client_and_internal_store"
+    },
+    {
+      "kind": 39609,
+      "lane": "openagents",
+      "identifier": "NIP-MKT",
+      "name": "close",
+      "classification": "addressable",
+      "publication": "private_wrapped",
+      "immutability": "exact_signed_coordinate",
+      "enforcement_scope": "client_and_internal_store"
+    }
+  ],
+  "limits": {
+    "gateway": [
+      {
+        "name": "frame_bytes",
+        "environment": "IMMORTAL_MAX_FRAME_BYTES",
+        "default": 131072,
+        "minimum": 1024,
+        "maximum": 16777216,
+        "unit": "bytes"
+      },
+      {
+        "name": "subscriptions_per_connection",
+        "environment": "IMMORTAL_MAX_SUBSCRIPTIONS",
+        "default": 32,
+        "minimum": 1,
+        "maximum": 1024,
+        "unit": "count"
+      },
+      {
+        "name": "filters_per_request",
+        "environment": "IMMORTAL_MAX_FILTERS",
+        "default": 16,
+        "minimum": 1,
+        "maximum": 256,
+        "unit": "count"
+      },
+      {
+        "name": "results_per_filter",
+        "environment": "IMMORTAL_MAX_LIMIT",
+        "default": 1000,
+        "minimum": 1,
+        "maximum": 100000,
+        "unit": "count"
+      },
+      {
+        "name": "query_cost",
+        "environment": "IMMORTAL_MAX_QUERY_COST",
+        "default": 100000,
+        "minimum": 1,
+        "maximum": 1000000000,
+        "unit": "estimated_rows"
+      },
+      {
+        "name": "events_per_minute_ip",
+        "environment": "IMMORTAL_RATE_EVENTS_PER_MIN_IP",
+        "default": 120,
+        "minimum": 1,
+        "maximum": 4294967295,
+        "unit": "events_per_minute"
+      },
+      {
+        "name": "events_per_minute_pubkey",
+        "environment": "IMMORTAL_RATE_EVENTS_PER_MIN_PUBKEY",
+        "default": 60,
+        "minimum": 1,
+        "maximum": 4294967295,
+        "unit": "events_per_minute"
+      },
+      {
+        "name": "gift_wraps_per_minute_recipient",
+        "environment": "IMMORTAL_RATE_GIFT_WRAPS_PER_MIN_RECIPIENT",
+        "default": 60,
+        "minimum": 1,
+        "maximum": 4294967295,
+        "unit": "events_per_minute"
+      },
+      {
+        "name": "observer_events_per_second_ip",
+        "environment": "IMMORTAL_RATE_OBSERVER_PER_SEC_IP",
+        "default": 200,
+        "minimum": 1,
+        "maximum": 4294967295,
+        "unit": "events_per_second"
+      },
+      {
+        "name": "observer_events_per_second_agent",
+        "environment": "IMMORTAL_RATE_OBSERVER_PER_SEC_AGENT",
+        "default": 100,
+        "minimum": 1,
+        "maximum": 4294967295,
+        "unit": "events_per_second"
+      },
+      {
+        "name": "requests_per_minute_ip",
+        "environment": "IMMORTAL_RATE_REQ_PER_MIN_IP",
+        "default": 120,
+        "minimum": 1,
+        "maximum": 4294967295,
+        "unit": "requests_per_minute"
+      },
+      {
+        "name": "media_requests_per_minute_ip",
+        "environment": "IMMORTAL_RATE_MEDIA_PER_MIN_IP",
+        "default": 30,
+        "minimum": 1,
+        "maximum": 4294967295,
+        "unit": "requests_per_minute"
+      },
+      {
+        "name": "media_requests_per_minute_pubkey",
+        "environment": "IMMORTAL_RATE_MEDIA_PER_MIN_PUBKEY",
+        "default": 15,
+        "minimum": 1,
+        "maximum": 4294967295,
+        "unit": "requests_per_minute"
+      },
+      {
+        "name": "connections_per_ip",
+        "environment": "IMMORTAL_MAX_CONNECTIONS_PER_IP",
+        "default": 20,
+        "minimum": 1,
+        "maximum": 4096,
+        "unit": "count"
+      },
+      {
+        "name": "send_queue_capacity",
+        "environment": "IMMORTAL_SEND_QUEUE_CAPACITY",
+        "default": 256,
+        "minimum": 8,
+        "maximum": 65536,
+        "unit": "messages"
+      }
+    ],
+    "mkt": {
+      "discovery_content_bytes": 16384,
+      "receipt_content_bytes": 4096,
+      "private_signed_record_bytes": 32768,
+      "tags": 64,
+      "counterparties": 8,
+      "causal_or_evidence_references": 32,
+      "profiles": 16,
+      "relay_or_endpoint_hints": 8
+    }
+  },
+  "mkt": {
+    "schema": "openagents.mkt.v1",
+    "executable_profiles": [],
+    "required_tags": {
+      "cancel": [
+        "order e",
+        "action",
+        "reason"
+      ],
+      "close": [
+        "order e",
+        "outcome",
+        "terminal_at"
+      ],
+      "offering": [
+        "d",
+        "status",
+        "published_at",
+        "profile",
+        "provider"
+      ],
+      "order": [
+        "quote e",
+        "provider p"
+      ],
+      "private_common": [
+        "d",
+        "session",
+        "profile",
+        "p",
+        "alt"
+      ],
+      "profile_descriptor": [
+        "d",
+        "version",
+        "x",
+        "r",
+        "status"
+      ],
+      "provider_profile": [
+        "d",
+        "status",
+        "published_at",
+        "profile"
+      ],
+      "public_market_receipt": [
+        "d",
+        "profile",
+        "outcome",
+        "x",
+        "role"
+      ],
+      "quote": [
+        "rfq e",
+        "requester p",
+        "expiration",
+        "quote",
+        "reservation"
+      ],
+      "rfq": [
+        "provider p",
+        "offering a",
+        "expiration"
+      ],
+      "status": [
+        "order e",
+        "seq",
+        "state",
+        "previous e when seq > 0"
+      ]
+    },
+    "enums": {
+      "cancel_action": [
+        "request",
+        "accepted",
+        "rejected",
+        "effective"
+      ],
+      "close_outcome": [
+        "completed",
+        "rejected",
+        "cancelled",
+        "expired",
+        "failed",
+        "refunded",
+        "disputed",
+        "unresolved"
+      ],
+      "descriptor_status": [
+        "draft",
+        "active",
+        "deprecated",
+        "withdrawn"
+      ],
+      "offering_status": [
+        "active",
+        "paused",
+        "exhausted",
+        "retired"
+      ],
+      "provider_status": [
+        "active",
+        "paused",
+        "retired"
+      ],
+      "public_receipt_outcome": [
+        "completed",
+        "cancelled",
+        "expired",
+        "failed",
+        "refunded",
+        "disputed",
+        "unresolved"
+      ],
+      "quote": [
+        "indicative",
+        "firm"
+      ],
+      "reservation": [
+        "none",
+        "soft",
+        "hard"
+      ],
+      "status_state": [
+        "accepted",
+        "rejected",
+        "awaiting_input",
+        "funding_required",
+        "funding_observed",
+        "executing",
+        "settlement_pending",
+        "completed",
+        "refund_pending",
+        "refunded",
+        "disputed",
+        "failed"
+      ]
+    },
+    "identifiers": {
+      "private_d_and_session": {
+        "pattern": "^[0-9a-f]{64}$",
+        "maximum_bytes": 64
+      },
+      "provider_id_offering_id_profile_id": {
+        "pattern": "[a-z0-9][a-z0-9._-]*",
+        "maximum_bytes": 64
+      }
+    },
+    "content_envelope": [
+      "schema",
+      "profile",
+      "profile_version",
+      "session_id"
+    ],
+    "opaque_transport": {
+      "outer_kind": 1059,
+      "bare_private_publication": "rejected",
+      "relay_validates_inner": false,
+      "read_authorization": "nip42_authenticated_exact_single_p_recipient"
+    }
+  },
+  "reasons": {
+    "ok": [
+      {
+        "code": "stored",
+        "message": ""
+      },
+      {
+        "code": "duplicate",
+        "message": "duplicate: already have this event"
+      },
+      {
+        "code": "blocked",
+        "message": "blocked: {bounded_detail}"
+      },
+      {
+        "code": "relay_policy",
+        "message": "restricted: event is not allowed by relay policy"
+      },
+      {
+        "code": "content_too_large",
+        "message": "invalid: event content is too large"
+      },
+      {
+        "code": "too_many_tags",
+        "message": "invalid: event has too many tags"
+      },
+      {
+        "code": "timestamp_outside_bounds",
+        "message": "invalid: event timestamp is outside relay bounds"
+      },
+      {
+        "code": "auth_event",
+        "message": "invalid: authentication events cannot be published"
+      },
+      {
+        "code": "deleted",
+        "message": "blocked: event is covered by a deletion request"
+      },
+      {
+        "code": "superseded",
+        "message": "duplicate: newer replaceable event already stored"
+      },
+      {
+        "code": "mkt_private_requires_gift_wrap",
+        "message": "restricted: mkt-private-requires-gift-wrap"
+      },
+      {
+        "code": "mkt_idempotency_conflict",
+        "message": "invalid: idempotency-conflict"
+      },
+      {
+        "code": "gift_wrap_recipient_rate",
+        "message": "rate-limited: gift-wrap recipient rate exceeded"
+      }
+    ],
+    "closed": [
+      {
+        "code": "request_rate",
+        "message": "rate-limited: REQ rate exceeded"
+      },
+      {
+        "code": "count_rate",
+        "message": "rate-limited: COUNT rate exceeded"
+      },
+      {
+        "code": "too_many_filters",
+        "message": "restricted: too many filters"
+      },
+      {
+        "code": "gift_wrap_auth_required",
+        "message": "auth-required: gift-wrap reads require recipient authentication"
+      },
+      {
+        "code": "gift_wrap_self_scope_required",
+        "message": "restricted: gift-wrap reads must be scoped to #p self"
+      },
+      {
+        "code": "query_cost",
+        "message": "restricted: query cost exceeds the configured limit"
+      },
+      {
+        "code": "count_bound",
+        "message": "restricted: count exceeds the configured query bound"
+      }
+    ],
+    "prefixes": [
+      "auth-required:",
+      "blocked:",
+      "duplicate:",
+      "error:",
+      "invalid:",
+      "rate-limited:",
+      "restricted:"
+    ]
+  },
+  "fixture_manifest": "contract/immortal-fixtures.json"
+}

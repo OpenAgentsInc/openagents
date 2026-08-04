@@ -1,0 +1,7 @@
+{
+  "schema": "openagents.nip-mkt.contract-source.v1",
+  "repository": "https://github.com/OpenAgentsInc/immortal",
+  "commit": "15e77e0c9958b2334a8471c250cf7476f4c28598",
+  "contract_sha256": "a0037ebb944c907b46f3e0d83c4be6081588fa826bcf4ae4bf5075e875186c83",
+  "fixture_manifest_sha256": "a056f3883a4c80918a7d906f652c122d39c2746e46ce5a50926a16fd9f14489b"
+}

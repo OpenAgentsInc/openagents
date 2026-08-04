@@ -1,0 +1,20 @@
+{
+  "private_kinds": [39604, 39605, 39606, 39607, 39608, 39609],
+  "outcomes": {
+    "first": "stored",
+    "identical": "duplicate",
+    "conflicting": "idempotency-conflict"
+  },
+  "gateway_conflict_reason": "invalid: idempotency-conflict",
+  "bounded_model": {
+    "actions": ["admit-a", "admit-b", "delete", "expire", "restart"],
+    "maximum_sequence_length": 6
+  },
+  "anchor_sequences": [
+    {"candidates": ["event-a"], "outcomes": ["stored"]},
+    {"candidates": ["event-a", "event-a"], "outcomes": ["stored", "duplicate"]},
+    {"candidates": ["event-a", "event-a-alt-signature"], "outcomes": ["stored", "idempotency-conflict"]},
+    {"candidates": ["event-a", "event-b"], "outcomes": ["stored", "idempotency-conflict"]},
+    {"candidates": ["event-b", "event-a", "event-b"], "outcomes": ["stored", "idempotency-conflict", "duplicate"]}
+  ]
+}

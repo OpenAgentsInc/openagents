@@ -1,0 +1,285 @@
+{
+  "schema": "openagents.immortal.fixture-manifest.v1",
+  "manifest_version": 1,
+  "algorithm": "sha256",
+  "contract_identity": {
+    "schema": "openagents.immortal.contract.v1",
+    "contract_version": 1,
+    "crate_name": "immortal",
+    "crate_version": "0.0.1",
+    "nips": [
+      {
+        "lane": "official",
+        "repo": "https://github.com/nostr-protocol/nips",
+        "subdir": ".",
+        "commit": "c53877571f96eb423661fc23c620d629d37b8f19"
+      },
+      {
+        "lane": "block",
+        "repo": "https://github.com/block/buzz",
+        "subdir": "docs/nips",
+        "commit": "feccf4eabc23fdba94ce3537a194357ed17b197c"
+      },
+      {
+        "lane": "openagents",
+        "repo": "https://github.com/OpenAgentsInc/openagents",
+        "subdir": "docs/nips",
+        "commit": "b839dd43bad7915a35639b562d4d7ebf7d51c3f6"
+      }
+    ]
+  },
+  "fixtures": [
+    {
+      "path": "tests/fixtures/nip01/events.json",
+      "sha256": "a1a74424da21fb04e22d5a689ef17204aa2cb46f3937cfa8727a11d952f5bd3a",
+      "bytes": 630,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nip01/filters.json",
+      "sha256": "a3c41b2e5d51cbc6232f4064adbc4acaee5db7e717426e0e930fe19056798c3f",
+      "bytes": 3135,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nip01/gateway_messages.json",
+      "sha256": "32ce48d5826c4c2575541da23f8b218323f9b2dff8871a6bbc711dae41ecddfa",
+      "bytes": 495,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nip01/replacement.json",
+      "sha256": "cd526ec7ae9136d971df90a7f0e45dfeb671f3bf2e5bda77fbc059564bb0fc56",
+      "bytes": 1715,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nip09/deletion.json",
+      "sha256": "2109f35195135a5bf4e8a1d8f980c72fcacab1c41c71a121d59449392e3f6046",
+      "bytes": 2740,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nip11/document.json",
+      "sha256": "9abd4dbfbc18a9a0217e51497e3e0dd7eb8cd3a4dea079732ac783d2c9adf393",
+      "bytes": 646,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nip17/routing.json",
+      "sha256": "96f026bc00f32d2f407442d75c2787617961b8d051a4e2fd8cca74ad045e1a18",
+      "bytes": 862,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nip29/groups.json",
+      "sha256": "5624e299fb869f7fc7fd137718f6cb9b28d665506b743abc4d2cfc14a8f4e87c",
+      "bytes": 1046,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nip40/expiration.json",
+      "sha256": "20c7e620bfc1683b5cef957b57829f46b4265ee87aa5a9f832b00597b713cda7",
+      "bytes": 772,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nip42/auth.json",
+      "sha256": "8ac74bff8e7931bd6d66da63f6a66b0505947de0964905280241d52a3802cbeb",
+      "bytes": 1200,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nip44/market-client.json",
+      "sha256": "708744cae37de15cfdf93d1c38d994259947a5a7b31a6259a8aaa6c9f705bd82",
+      "bytes": 604,
+      "scope": "client"
+    },
+    {
+      "path": "tests/fixtures/nip45/count.json",
+      "sha256": "8dd3dd7d16f397f76a32b332980c7314af8103b42ff211b69b03a7b2b093bd91",
+      "bytes": 287,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nip50/search.json",
+      "sha256": "62dc88c2bb6ba6bf14f1f6b8d9d12d0859f74535e2423515053564f5bbf2e3ef",
+      "bytes": 422,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nip65/relay-list.json",
+      "sha256": "3eb92c1ea3ae24e50ec9ed0ae254c7ef0c9d516641363ab101b63b4ceec868a3",
+      "bytes": 651,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nip70/protected.json",
+      "sha256": "618bea7eecea8dc7a911d128c49857d39115f132b49f52824bd02b8cb324010a",
+      "bytes": 325,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nip86/management.json",
+      "sha256": "b1f5076a9f3ed9bf58999d0e075ec4a14787a6223f09b5db8ee54861c67ac533",
+      "bytes": 1690,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nip94/metadata.json",
+      "sha256": "06a6a6e05f45f0dac6ad3102a11c3ff451328e3acf4ddc7587f62cf0bbb6c47f",
+      "bytes": 1464,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nip98/http-auth.json",
+      "sha256": "613fcab8f722f7a7be124a87452fea8bdecbb59c6d03d48b5f846fe6d538a482",
+      "bytes": 228,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nipaa/auth.json",
+      "sha256": "67898e2430c9e8cc4eff8a11d1def293ae502ad5734e457768105a18a6ddb83c",
+      "bytes": 1051,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nipae/server.json",
+      "sha256": "f7d1b3fcf8de78c3167fcf9fb3476f17efae4a4e2dd96d17ed78570132f2fc91",
+      "bytes": 150,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nipam/turn-metrics.json",
+      "sha256": "db4970234e314c3290c951d39cb697d3b325e0b542383d2745884f00ae670efa",
+      "bytes": 1087,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nipao/observer.json",
+      "sha256": "e0e6d261830c157692def5f2a1310914dfdd3cb1c04042fc22917a670f47d4ec",
+      "bytes": 1205,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nipap/server.json",
+      "sha256": "a789338901398ceff32535c25d0049db6ea4e55f8623af6c9763ce607f3c4885",
+      "bytes": 200,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nipb7/servers.json",
+      "sha256": "50a6d8de4a945d200707ebd986a763d1f75590a56af4b8a8d3fc8999e89b26d8",
+      "bytes": 655,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nipcw/server.json",
+      "sha256": "779feb7aa50370baa77d22c3db10b6ff724c60a7e94ce0b06459ac574d71cd45",
+      "bytes": 173,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nipdv/server.json",
+      "sha256": "74bcd89e9fe3b8f246d920fed4b47df1b0b002d5a6cd5f75a67229b8ee4ec6e1",
+      "bytes": 100,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/niper/server.json",
+      "sha256": "6b3390c5cc2355134528a4a7d19c28ab2cf452a78e7c0104784536e4543744bc",
+      "bytes": 184,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nipgs/server.json",
+      "sha256": "d5ec7768cabc20d1ef169c5d4943cd7fd9c7faaee5d7d384522411347d321e58",
+      "bytes": 95,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nipia/server.json",
+      "sha256": "094ab370da9518e1b8cdfc79e023c5ddd22c90f48650ab54244082b9f90b6b40",
+      "bytes": 160,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nipmkt/client-only-cases.json",
+      "sha256": "96ef5367ccba2f111137579661948a0402d2d04935636281b04f39b07f4db64e",
+      "bytes": 9529,
+      "scope": "client"
+    },
+    {
+      "path": "tests/fixtures/nipmkt/client-transport.json",
+      "sha256": "9868527d36e28a14d521b1f3f744124461cbb65d80c4e7dccd8675b7e4047a38",
+      "bytes": 637,
+      "scope": "client"
+    },
+    {
+      "path": "tests/fixtures/nipmkt/common-grammar.json",
+      "sha256": "f81135bbf68d2d05f4c7f43d7c7901be1ddf622b241a50c818a9256e2e3b5e46",
+      "bytes": 6871,
+      "scope": "relay_and_client"
+    },
+    {
+      "path": "tests/fixtures/nipmkt/gateway-policy.json",
+      "sha256": "a4808bf19259eff5b8371dbd0aa1a753885b2c03c0f2bd6d515c282a56782314",
+      "bytes": 928,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nipmkt/immutability.json",
+      "sha256": "b421306819d4eedda9ca1d47f36fbcc94d0740c18010c4fabe2fa9919ecd679e",
+      "bytes": 853,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nipmkt/public-heads.json",
+      "sha256": "7a623599a00c3f1bb581b41d94f721e239e6659f83f476557c839226796f227c",
+      "bytes": 5877,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nipmkt/relay-closing.json",
+      "sha256": "7e8c1f8444bdaa433be90d8087218ffa910d1f4103bc75649d09ddf587c9339a",
+      "bytes": 5868,
+      "scope": "relay_and_client"
+    },
+    {
+      "path": "tests/fixtures/nipmp/server.json",
+      "sha256": "ebf1eee932f995236bfc58f6b32c7e18e433dd11ab2b26a78389e90d9c3cfa5f",
+      "bytes": 345,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nipoa/attestation.json",
+      "sha256": "e115143bd83d5cdbd023c23da1bca4bf2c8e71e3afc3c246a796f10197713c02",
+      "bytes": 1029,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nipotpg/project-read.json",
+      "sha256": "3f0e355c196e23c0edd541fd8b3949f57030626cd504fa6c55eca7f1e2a620b6",
+      "bytes": 1419,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nippl/server.json",
+      "sha256": "f98cdd0c360b7ce0e611e71562efdf15c629759cfead4a93946aec6cfbda44ea",
+      "bytes": 156,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/niprs/server.json",
+      "sha256": "98dbdd58a37dd793e0a8fa48739904ce8791fa62ff28edec28d8de5ba0141377",
+      "bytes": 150,
+      "scope": "relay"
+    },
+    {
+      "path": "tests/fixtures/nipwp/server.json",
+      "sha256": "1b4965991ad9c14c106d30b1a794da9a96f0175e97a8393fd187b178bc103179",
+      "bytes": 198,
+      "scope": "relay"
+    }
+  ]
+}

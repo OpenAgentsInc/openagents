@@ -1,0 +1,123 @@
+{
+  "contract_version": 1,
+  "enforcement": "client_only_not_relay_enforced",
+  "source": {
+    "lane": "openagents",
+    "identifier": "NIP-MKT",
+    "commit": "b839dd43bad7915a35639b562d4d7ebf7d51c3f6"
+  },
+  "actors": {
+    "requester": "1111111111111111111111111111111111111111111111111111111111111111",
+    "provider": "2222222222222222222222222222222222222222222222222222222222222222",
+    "attacker": "3333333333333333333333333333333333333333333333333333333333333333",
+    "verifier": "4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "session_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "cases": [
+    {
+      "id": "quote-supersession",
+      "scope": "client",
+      "relay_enforced": false,
+      "inputs": {"records": [{"id": "0101010101010101010101010101010101010101010101010101010101010101", "kind": 39605, "author": "provider", "d": "1111111111111111111111111111111111111111111111111111111111111111", "terms": {"price": 10}}, {"id": "0202020202020202020202020202020202020202020202020202020202020202", "kind": 39605, "author": "provider", "d": "2222222222222222222222222222222222222222222222222222222222222222", "previous": "0101010101010101010101010101010101010101010101010101010101010101", "terms": {"price": 11}}]},
+      "expected": {"decision": "supersede", "active_quote_id": "0202020202020202020202020202020202020202020202020202020202020202", "retain_ids": ["0101010101010101010101010101010101010101010101010101010101010101", "0202020202020202020202020202020202020202020202020202020202020202"]}
+    },
+    {
+      "id": "double-reservation",
+      "scope": "client",
+      "relay_enforced": false,
+      "inputs": {"capacity_key": "btc:provider:slot-7", "capacity": 1, "quotes": [{"id": "0303030303030303030303030303030303030303030303030303030303030303", "reservation": "hard", "units": 1}, {"id": "0404040404040404040404040404040404040404040404040404040404040404", "reservation": "hard", "units": 1}]},
+      "expected": {"decision": "conflict", "code": "double_reservation", "retain_ids": ["0303030303030303030303030303030303030303030303030303030303030303", "0404040404040404040404040404040404040404040404040404040404040404"], "effective_reserved_units": 1}
+    },
+    {
+      "id": "status-sequence-gap",
+      "scope": "client",
+      "relay_enforced": false,
+      "inputs": {"order_id": "0505050505050505050505050505050505050505050505050505050505050505", "author": "provider", "statuses": [{"id": "0606060606060606060606060606060606060606060606060606060606060606", "seq": 0}, {"id": "0707070707070707070707070707070707070707070707070707070707070707", "seq": 2, "previous": "0606060606060606060606060606060606060606060606060606060606060606"}]},
+      "expected": {"decision": "gap", "missing_sequences": [1], "last_contiguous_seq": 0, "retain_ids": ["0606060606060606060606060606060606060606060606060606060606060606", "0707070707070707070707070707070707070707070707070707070707070707"]}
+    },
+    {
+      "id": "status-sequence-fork",
+      "scope": "client",
+      "relay_enforced": false,
+      "inputs": {"order_id": "0505050505050505050505050505050505050505050505050505050505050505", "author": "provider", "statuses": [{"id": "0808080808080808080808080808080808080808080808080808080808080808", "seq": 1, "state": "executing"}, {"id": "0909090909090909090909090909090909090909090909090909090909090909", "seq": 1, "state": "failed"}]},
+      "expected": {"decision": "fork", "fork_key": {"order_id": "0505050505050505050505050505050505050505050505050505050505050505", "author": "provider", "seq": 1}, "retain_ids": ["0808080808080808080808080808080808080808080808080808080808080808", "0909090909090909090909090909090909090909090909090909090909090909"], "advance_state": false}
+    },
+    {
+      "id": "wrapper-inner-signer-mismatch",
+      "scope": "client",
+      "relay_enforced": false,
+      "inputs": {"seal_pubkey": "provider", "rumor_pubkey": "provider", "inner": {"id": "1010101010101010101010101010101010101010101010101010101010101010", "pubkey": "attacker", "kind": 39605}},
+      "expected": {"decision": "reject", "code": "wrapper_inner_signer_mismatch", "admit_inner": false}
+    },
+    {
+      "id": "wrapper-inner-kind-mismatch",
+      "scope": "client",
+      "relay_enforced": false,
+      "inputs": {"rumor_kind": 39605, "inner": {"id": "1111111111111111111111111111111111111111111111111111111111111111", "pubkey": "provider", "kind": 39606}},
+      "expected": {"decision": "reject", "code": "wrapper_inner_kind_mismatch", "admit_inner": false}
+    },
+    {
+      "id": "wrapper-inner-recipient-mismatch",
+      "scope": "client",
+      "relay_enforced": false,
+      "inputs": {"authenticated_recipient": "requester", "inner": {"id": "1212121212121212121212121212121212121212121212121212121212121212", "kind": 39605, "counterparties": [{"pubkey": "attacker", "role": "requester"}]}},
+      "expected": {"decision": "reject", "code": "wrapper_inner_recipient_mismatch", "admit_inner": false}
+    },
+    {
+      "id": "evidence-mismatch",
+      "scope": "client",
+      "relay_enforced": false,
+      "inputs": {"status": {"id": "1313131313131313131313131313131313131313131313131313131313131313", "state": "funding_observed", "evidence_id": "1414141414141414141414141414141414141414141414141414141414141414", "claimed_rung": "verified"}, "evidence": {"id": "1414141414141414141414141414141414141414141414141414141414141414", "subject_id": "1515151515151515151515151515151515151515151515151515151515151515", "rung": "measured", "verifier": "verifier"}},
+      "expected": {"decision": "mismatch", "code": "evidence_subject_or_rung_mismatch", "display_rung": "claimed", "advance_verified_state": false}
+    },
+    {
+      "id": "recovery-loss",
+      "scope": "client",
+      "relay_enforced": false,
+      "inputs": {"local_ids": ["1616161616161616161616161616161616161616161616161616161616161616", "1818181818181818181818181818181818181818181818181818181818181818"], "causal_ids": ["1616161616161616161616161616161616161616161616161616161616161616", "1717171717171717171717171717171717171717171717171717171717171717", "1818181818181818181818181818181818181818181818181818181818181818"]},
+      "expected": {"decision": "loss", "code": "missing_causal_record", "missing_ids": ["1717171717171717171717171717171717171717171717171717171717171717"], "synthesize_history": false}
+    },
+    {
+      "id": "settlement-overclaim",
+      "scope": "client",
+      "relay_enforced": false,
+      "inputs": {"close": {"id": "1919191919191919191919191919191919191919191919191919191919191919", "outcome": "completed", "settlement_id": "2020202020202020202020202020202020202020202020202020202020202020"}, "settlement_evidence": {"id": "2020202020202020202020202020202020202020202020202020202020202020", "rung": "pledged", "final": false}},
+      "expected": {"decision": "overclaim", "code": "settlement_overclaim", "display_rung": "pledged", "settled": false}
+    },
+    {
+      "id": "expired-order",
+      "scope": "client",
+      "relay_enforced": false,
+      "inputs": {"observed_at": 100, "order": {"id": "2121212121212121212121212121212121212121212121212121212121212121", "kind": 39606, "expiration": 100}},
+      "expected": {"decision": "reject", "code": "expired", "inclusive": true, "perform_external_effect": false}
+    },
+    {
+      "id": "unauthorized-status",
+      "scope": "client",
+      "relay_enforced": false,
+      "inputs": {"record": {"id": "2222222222222222222222222222222222222222222222222222222222222222", "kind": 39607, "author": "attacker", "state": "completed"}, "allowed_authors": ["requester", "provider"]},
+      "expected": {"decision": "reject", "code": "unauthorized_status", "advance_state": false}
+    },
+    {
+      "id": "unauthorized-cancel",
+      "scope": "client",
+      "relay_enforced": false,
+      "inputs": {"record": {"id": "2323232323232323232323232323232323232323232323232323232323232323", "kind": 39608, "author": "attacker", "action": "effective"}, "allowed_authors": ["requester", "provider"]},
+      "expected": {"decision": "reject", "code": "unauthorized_cancel", "cancelled": false}
+    },
+    {
+      "id": "unauthorized-close",
+      "scope": "client",
+      "relay_enforced": false,
+      "inputs": {"record": {"id": "2424242424242424242424242424242424242424242424242424242424242424", "kind": 39609, "author": "attacker", "outcome": "completed"}, "allowed_authors": ["requester", "provider"]},
+      "expected": {"decision": "reject", "code": "unauthorized_close", "terminal": false}
+    },
+    {
+      "id": "rewrapped-inner-deduplication",
+      "scope": "client",
+      "relay_enforced": false,
+      "inputs": {"inner": {"id": "2525252525252525252525252525252525252525252525252525252525252525", "kind": 39606, "author": "requester"}, "deliveries": [{"wrap_id": "2626262626262626262626262626262626262626262626262626262626262626", "seal_id": "2727272727272727272727272727272727272727272727272727272727272727", "received_at": 100}, {"wrap_id": "2828282828282828282828282828282828282828282828282828282828282828", "seal_id": "2929292929292929292929292929292929292929292929292929292929292929", "received_at": 101}]},
+      "expected": {"decision": "deduplicate", "dedup_key": "2525252525252525252525252525252525252525252525252525252525252525", "logical_records": 1, "retain_delivery_provenance": ["2626262626262626262626262626262626262626262626262626262626262626", "2828282828282828282828282828282828282828282828282828282828282828"], "repeat_external_effect": false}
+    }
+  ]
+}

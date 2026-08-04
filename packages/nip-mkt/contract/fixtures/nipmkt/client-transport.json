@@ -1,0 +1,21 @@
+{
+  "contract_version": 1,
+  "scope": "transport_neutral_client",
+  "transport": {
+    "encryption": "nip44-v2",
+    "wrapping": "nip59",
+    "outer_kind": 1059,
+    "seal_kind": 13,
+    "copies": ["counterparty", "sender_recovery"]
+  },
+  "deterministic_round_trip": {
+    "inner_event_id": "fd9fe89e28891f7ac6f0b51101a2c5bbeb991e3d7af507435425988e7814de69",
+    "outer_event_id": "70e5a057d61d4f453a62d926d84a4783f7c7c3f489a24fcd6b640b56b2725ee4",
+    "expected": "exact_signed_inner_bytes"
+  },
+  "privacy": {
+    "private_keys_in_trace": false,
+    "relay_can_read_inner": false,
+    "relay_acceptance_claim": "transport_only"
+  }
+}

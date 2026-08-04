@@ -1,0 +1,95 @@
+{
+  "contract_version": 1,
+  "source": {
+    "lane": "openagents",
+    "identifier": "NIP-MKT",
+    "commit": "b839dd43bad7915a35639b562d4d7ebf7d51c3f6"
+  },
+  "scope": {
+    "relay_observable": ["outer_event_bytes", "outer_signature", "outer_expiration", "public_mkt_grammar", "private_store_grammar", "immutable_coordinate", "recipient_tag", "rate_keys"],
+    "opaque_to_relay": ["inner_signed_event", "inner_profile", "inner_expiration", "inner_author", "inner_kind", "logical_replay_key"]
+  },
+  "profile_support": {
+    "id": "conformance",
+    "version": 1,
+    "critical_members": ["terms"],
+    "understood_members": ["terms"]
+  },
+  "private_base": {
+    "kind": 39604,
+    "tags": [
+      ["d", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+      ["session", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+      ["profile", "conformance", "1"],
+      ["p", "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "", "provider"],
+      ["alt", "NIP-MKT closing fixture"]
+    ],
+    "content": "{\"schema\":\"openagents.mkt.v1\",\"profile\":\"conformance\",\"profile_version\":1,\"session_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"terms\":{\"amount\":1}}"
+  },
+  "validation_cases": [
+    {
+      "id": "malformed-missing-alt",
+      "scope": "relay_private_store",
+      "input": {"remove_tag": "alt"},
+      "expected": {"decision": "reject", "code": "tag_grammar"}
+    },
+    {
+      "id": "duplicate-json-member",
+      "scope": "relay_private_store",
+      "input": {"content": "{\"schema\":\"openagents.mkt.v1\",\"profile\":\"conformance\",\"profile_version\":1,\"session_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"terms\":{\"amount\":1,\"amount\":2}}"},
+      "expected": {"decision": "reject", "code": "duplicate_json_member"}
+    },
+    {
+      "id": "unsupported-profile",
+      "scope": "client_profile_registry",
+      "input": {"profile_id": "unknown", "profile_version": 1},
+      "expected": {"relay_base": "accept", "client": "reject", "code": "unsupported_profile"}
+    },
+    {
+      "id": "unsupported-profile-version",
+      "scope": "client_profile_registry",
+      "input": {"profile_id": "conformance", "profile_version": 2},
+      "expected": {"relay_base": "accept", "client": "reject", "code": "unsupported_profile_version"}
+    }
+  ],
+  "immutable_changed_bytes": {
+    "scope": "relay_private_store",
+    "coordinate": {"pubkey": "1111111111111111111111111111111111111111111111111111111111111111", "kind": 39605, "d": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},
+    "stored": {"id": "2222222222222222222222222222222222222222222222222222222222222222", "sig": "33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333", "content": "{\"price\":10}"},
+    "replay": {"id": "2222222222222222222222222222222222222222222222222222222222222222", "sig": "33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333", "content": "{\"price\":10}"},
+    "changed": {"id": "4444444444444444444444444444444444444444444444444444444444444444", "sig": "55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555", "content": "{\"price\":11}"},
+    "expected": {"replay": "duplicate", "changed": "idempotency-conflict"}
+  },
+  "rewrapped_same_inner": {
+    "scope": "relay_outer_transport_and_client_dedup",
+    "inner_event_id": "6666666666666666666666666666666666666666666666666666666666666666",
+    "wraps": [
+      {"id": "7777777777777777777777777777777777777777777777777777777777777777", "kind": 1059, "pubkey": "8888888888888888888888888888888888888888888888888888888888888888", "recipient": "9999999999999999999999999999999999999999999999999999999999999999", "opaque_content": "Aq8_fixture_ciphertext_one"},
+      {"id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "kind": 1059, "pubkey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "recipient": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "opaque_content": "Aq8_fixture_ciphertext_two"}
+    ],
+    "expected": {"relay": "store_both_distinct_outer_events", "relay_inner_visibility": "none", "client_dedup_key": "6666666666666666666666666666666666666666666666666666666666666666", "logical_records": 1, "delivery_records": 2}
+  },
+  "expiration_at_now": [
+    {"id": "public-head", "scope": "relay", "kind": 39600, "now": 100, "expiration": 100, "expected": "expired"},
+    {"id": "outer-wrap", "scope": "relay", "kind": 1059, "now": 100, "expiration": 100, "expected": "expired"},
+    {"id": "inner-order", "scope": "client_only", "kind": 39606, "now": 100, "expiration": 100, "expected": "expired"}
+  ],
+  "bare_private": {
+    "scope": "relay_gateway",
+    "kinds": [39604, 39605, 39606, 39607, 39608, 39609],
+    "expected": {"decision": "reject", "reason": "restricted: mkt-private-requires-gift-wrap"}
+  },
+  "rates": {
+    "scope": "relay_gateway",
+    "discovery": ["client_ip", "event_author_pubkey"],
+    "gift_wrap": ["client_ip", "outer_wrapper_pubkey", "recipient_pubkey"],
+    "charging_order": ["client_ip", "signature_verification", "event_author_or_outer_pubkey", "recipient_pubkey"],
+    "invalid_signature_charges": ["client_ip"],
+    "expected_recipient_refusal": "rate-limited: gift-wrap recipient rate exceeded"
+  },
+  "classification": [
+    {"first": 39600, "last": 39603, "nip01_class": "addressable", "allocation": "public_mkt"},
+    {"first": 39604, "last": 39609, "nip01_class": "addressable", "allocation": "private_mkt"},
+    {"first": 39610, "last": 39699, "nip01_class": "addressable", "allocation": "reserved_unallocated"}
+  ]
+}

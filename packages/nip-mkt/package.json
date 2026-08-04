@@ -1,0 +1,35 @@
+{
+  "name": "@openagentsinc/nip-mkt",
+  "version": "0.1.0",
+  "private": false,
+  "files": [
+    "contract",
+    "scripts",
+    "src",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./generated": "./src/generated.ts",
+    "./contract": "./contract/immortal-contract.json",
+    "./fixtures": "./contract/immortal-fixtures.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "generate": "node scripts/generate.mjs",
+    "check:generated": "node scripts/generate.mjs --check",
+    "test": "vp test --root ../.. --run packages/nip-mkt/src",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check": "pnpm run check:generated && pnpm run typecheck && pnpm run test"
+  },
+  "dependencies": {
+    "effect": "catalog:",
+    "nostr-effect": "https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

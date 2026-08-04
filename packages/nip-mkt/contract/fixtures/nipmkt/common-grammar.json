@@ -1,0 +1,67 @@
+{
+  "scope": {
+    "relay": ["public_json", "public_bounds", "visible_private_base_after_replay_lookup"],
+    "client": ["raw_signed_record_bytes", "signature", "explicit_profile_contract"],
+    "future_handler": ["visible_private_base", "explicit_profile_contract", "critical_members"]
+  },
+  "base": {
+    "kind": 39604,
+    "tags": [
+      ["d", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+      ["session", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+      ["profile", "conformance", "1"],
+      ["p", "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "", "provider"],
+      ["alt", "NIP-MKT private conformance record"]
+    ],
+    "content": "{\"schema\":\"openagents.mkt.v1\",\"profile\":\"conformance\",\"profile_version\":1,\"session_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"terms\":{\"mode\":\"fixture\"},\"future\":true}"
+  },
+  "invalid": [
+    {"name": "missing d", "expected_code": "tag_grammar", "remove": "d"},
+    {"name": "duplicate d", "expected_code": "tag_grammar", "add": ["d", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]},
+    {"name": "invalid d", "expected_code": "invalid_identifier", "set_tag": ["d", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]},
+    {"name": "missing session", "expected_code": "tag_grammar", "remove": "session"},
+    {"name": "duplicate session", "expected_code": "tag_grammar", "add": ["session", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]},
+    {"name": "invalid session", "expected_code": "invalid_identifier", "set_tag": ["session", "bbbb"]},
+    {"name": "missing profile", "expected_code": "tag_grammar", "remove": "profile"},
+    {"name": "duplicate profile", "expected_code": "tag_grammar", "add": ["profile", "conformance", "1"]},
+    {"name": "malformed profile", "expected_code": "tag_grammar", "set_tag": ["profile", "conformance"]},
+    {"name": "invalid profile id", "expected_code": "invalid_identifier", "set_tag": ["profile", "Conformance", "1"]},
+    {"name": "invalid profile version", "expected_code": "tag_grammar", "set_tag": ["profile", "conformance", "0"]},
+    {"name": "missing alt", "expected_code": "tag_grammar", "remove": "alt"},
+    {"name": "duplicate alt", "expected_code": "tag_grammar", "add": ["alt", "duplicate"]},
+    {"name": "invalid alt", "expected_code": "tag_grammar", "set_tag": ["alt", ""]},
+    {"name": "missing counterparty", "expected_code": "tag_grammar", "remove": "p"},
+    {"name": "malformed counterparty", "expected_code": "tag_grammar", "set_tag": ["p", "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "provider"]},
+    {"name": "invalid counterparty pubkey", "expected_code": "invalid_identifier", "set_tag": ["p", "cc", "", "provider"]},
+    {"name": "invalid counterparty role", "expected_code": "tag_grammar", "set_tag": ["p", "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "", "observer"]},
+    {"name": "content array", "expected_code": "envelope_mismatch", "content": "[]"},
+    {"name": "missing schema", "expected_code": "envelope_mismatch", "content": "{\"profile\":\"conformance\",\"profile_version\":1,\"session_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}"},
+    {"name": "wrong schema", "expected_code": "envelope_mismatch", "content": "{\"schema\":\"openagents.mkt.v2\",\"profile\":\"conformance\",\"profile_version\":1,\"session_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}"},
+    {"name": "profile disagreement", "expected_code": "envelope_mismatch", "content": "{\"schema\":\"openagents.mkt.v1\",\"profile\":\"other\",\"profile_version\":1,\"session_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}"},
+    {"name": "profile version disagreement", "expected_code": "envelope_mismatch", "content": "{\"schema\":\"openagents.mkt.v1\",\"profile\":\"conformance\",\"profile_version\":2,\"session_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}"},
+    {"name": "profile version wrong type", "expected_code": "envelope_mismatch", "content": "{\"schema\":\"openagents.mkt.v1\",\"profile\":\"conformance\",\"profile_version\":\"1\",\"session_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}"},
+    {"name": "session disagreement", "expected_code": "envelope_mismatch", "content": "{\"schema\":\"openagents.mkt.v1\",\"profile\":\"conformance\",\"profile_version\":1,\"session_id\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\"}"},
+    {"name": "duplicate top-level member", "expected_code": "duplicate_json_member", "content": "{\"schema\":\"openagents.mkt.v1\",\"schema\":\"openagents.mkt.v1\",\"profile\":\"conformance\",\"profile_version\":1,\"session_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}"},
+    {"name": "duplicate nested member", "expected_code": "duplicate_json_member", "content": "{\"schema\":\"openagents.mkt.v1\",\"profile\":\"conformance\",\"profile_version\":1,\"session_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"nested\":{\"x\":1,\"x\":2}}"},
+    {"name": "duplicate member inside array", "expected_code": "duplicate_json_member", "content": "{\"schema\":\"openagents.mkt.v1\",\"profile\":\"conformance\",\"profile_version\":1,\"session_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"nested\":[{\"x\":1,\"x\":2}]}"},
+    {"name": "escaped equivalent duplicate member", "expected_code": "duplicate_json_member", "content": "{\"schema\":\"openagents.mkt.v1\",\"profile\":\"conformance\",\"profile_version\":1,\"session_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"nested\":{\"x\":1,\"\\u0078\":2}}"},
+    {"name": "trailing JSON", "expected_code": "invalid_json", "content": "{\"schema\":\"openagents.mkt.v1\",\"profile\":\"conformance\",\"profile_version\":1,\"session_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"} true"},
+    {"name": "bad event reference marker", "expected_code": "invalid_reference", "add": ["e", "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "", "unknown"]},
+    {"name": "bad event reference id", "expected_code": "invalid_reference", "add": ["e", "dd", "", "evidence"]},
+    {"name": "bad offering address", "expected_code": "invalid_reference", "add": ["a", "39600:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc:offer", "", "offering"]}
+  ],
+  "synthetic_profile": {
+    "id": "conformance",
+    "version": 1,
+    "critical_members": ["terms", "future"],
+    "understood_members": ["terms"]
+  },
+  "limits": {
+    "serialized_private_bytes": 32768,
+    "tags": 64,
+    "p_tags": 8,
+    "references": 32,
+    "profiles": 16,
+    "hints": 8
+  }
+}
