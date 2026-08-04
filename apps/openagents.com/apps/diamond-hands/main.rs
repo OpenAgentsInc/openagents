@@ -12,7 +12,7 @@ mod web_app {
     };
     use immortal::client::{
         ConnectionState, ProjectActivity, ProjectActivityKind, ProjectClient, ProjectClientConfig,
-        ProjectSnapshot,
+        ProjectSnapshot, RelayInformation,
     };
     use immortal::domain::OpenAgentsProject;
     use theme::{ActiveTheme as _, ThemeSettingsProvider, UiDensity};
@@ -21,7 +21,10 @@ mod web_app {
         Label, LabelCommon as _, LabelSize, h_flex, v_flex,
     };
     use wasm_bindgen::{JsCast as _, JsValue, closure::Closure};
-    use web_sys::{CloseEvent, Event, MessageEvent, WebSocket, console};
+    use wasm_bindgen_futures::JsFuture;
+    use web_sys::{
+        CloseEvent, Event, MessageEvent, Request, RequestInit, Response, WebSocket, console,
+    };
     use web_time::{SystemTime, UNIX_EPOCH};
 
     const RELAY_URL: &str = "wss://relay.openagents.com";
@@ -216,11 +219,13 @@ mod web_app {
 
     struct DiamondHands {
         client: Option<ProjectClient>,
+        relay_information: Option<RelayInformation>,
         configuration_error: Option<String>,
         sender: mpsc::UnboundedSender<RelayInput>,
         relay: Option<BrowserRelay>,
         reconnect_attempt: u32,
         reconnect_task: Option<Task<()>>,
+        discovery_task: Option<Task<()>>,
         transport_message: Option<String>,
         _incoming_task: Task<()>,
         _stale_task: Task<()>,
@@ -278,20 +283,57 @@ mod web_app {
 
             let mut view = Self {
                 client,
+                relay_information: None,
                 configuration_error,
                 sender,
                 relay: None,
                 reconnect_attempt: 0,
                 reconnect_task: None,
+                discovery_task: None,
                 transport_message: None,
                 _incoming_task: incoming_task,
                 _stale_task: stale_task,
             };
-            view.open_relay(cx);
+            view.discover_relay(cx);
             view
         }
 
+        fn discover_relay(&mut self, cx: &mut Context<Self>) {
+            let Some(config) = self.client.as_ref().map(ProjectClient::config).cloned() else {
+                cx.notify();
+                return;
+            };
+            self.relay = None;
+            self.relay_information = None;
+            self.transport_message = Some("Validating the relay's NIP-11 identity…".to_owned());
+            self.discovery_task = Some(cx.spawn(async move |this, cx| {
+                let discovered = fetch_relay_information(&config).await;
+                if let Ok(()) = this.update(cx, |this, cx| {
+                    this.discovery_task = None;
+                    match discovered {
+                        Ok(information) => {
+                            this.relay_information = Some(information);
+                            this.transport_message = None;
+                            this.open_relay(cx);
+                        }
+                        Err(error) => {
+                            if let Some(client) = this.client.as_mut() {
+                                client.disconnected();
+                            }
+                            this.transport_message = Some(error);
+                            cx.notify();
+                        }
+                    }
+                }) {}
+            }));
+            cx.notify();
+        }
+
         fn open_relay(&mut self, cx: &mut Context<Self>) {
+            if self.relay_information.is_none() {
+                self.discover_relay(cx);
+                return;
+            }
             let Some(client) = self.client.as_mut() else {
                 cx.notify();
                 return;
@@ -372,7 +414,7 @@ mod web_app {
             self.reconnect_task = None;
             self.reconnect_attempt = 0;
             self.relay = None;
-            self.open_relay(cx);
+            self.discover_relay(cx);
         }
 
         fn connection_label(&self) -> &'static str {
@@ -779,7 +821,56 @@ mod web_app {
                         .size(LabelSize::XSmall)
                         .color(Color::Custom(rgb(FAINT).into())),
                 )
+                .when_some(self.relay_information.as_ref(), |view, information| {
+                    view.child(
+                        Label::new(format!(
+                            "NIP-11  {} · {} advertised NIPs · max limit {}",
+                            information.name,
+                            information.supported_nips.len(),
+                            information.max_limit
+                        ))
+                        .size(LabelSize::XSmall)
+                        .color(Color::Custom(rgb(FAINT).into())),
+                    )
+                })
         }
+    }
+
+    async fn fetch_relay_information(
+        config: &ProjectClientConfig,
+    ) -> Result<RelayInformation, String> {
+        let window = web_sys::window().ok_or_else(|| "browser window is unavailable".to_owned())?;
+        let options = RequestInit::new();
+        options.set_method("GET");
+        let request = Request::new_with_str_and_init(&config.relay_information_url(), &options)
+            .map_err(|error| format!("could not create NIP-11 request: {error:?}"))?;
+        request
+            .headers()
+            .set("Accept", "application/nostr+json")
+            .map_err(|error| format!("could not set NIP-11 media type: {error:?}"))?;
+        let response = JsFuture::from(window.fetch_with_request(&request))
+            .await
+            .map_err(|error| format!("NIP-11 discovery failed: {error:?}"))?;
+        let response = response
+            .dyn_into::<Response>()
+            .map_err(|_| "NIP-11 discovery returned no HTTP response".to_owned())?;
+        if !response.ok() {
+            return Err(format!(
+                "NIP-11 discovery returned HTTP {}",
+                response.status()
+            ));
+        }
+        let text = response
+            .text()
+            .map_err(|error| format!("could not read NIP-11 response: {error:?}"))?;
+        let text = JsFuture::from(text)
+            .await
+            .map_err(|error| format!("could not read NIP-11 response: {error:?}"))?
+            .as_string()
+            .ok_or_else(|| "NIP-11 response was not text".to_owned())?;
+        config
+            .validate_relay_information(&text)
+            .map_err(|error| format!("relay identity refused: {error}"))
     }
 
     impl Render for DiamondHands {

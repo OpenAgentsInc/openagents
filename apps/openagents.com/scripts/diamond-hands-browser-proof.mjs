@@ -6,6 +6,7 @@ const targetUrl = process.argv[2] ?? 'http://127.0.0.1:8081/dh/'
 const relayUrl = 'wss://relay.openagents.com/'
 const expectedLiveEventId = process.env['DIAMOND_HANDS_EXPECT_LIVE_EVENT_ID']
 const projectApiRequests = []
+const relayInformationRequests = []
 const relayFrames = []
 const browserErrors = []
 
@@ -23,6 +24,12 @@ try {
   page.on('request', request => {
     const url = new URL(request.url())
     if (url.pathname.startsWith('/api/')) projectApiRequests.push(request.url())
+    if (
+      request.url() === 'https://relay.openagents.com/' &&
+      request.headers()['accept'] === 'application/nostr+json'
+    ) {
+      relayInformationRequests.push(request.url())
+    }
   })
 
   const eose = new Promise((resolve, reject) => {
@@ -102,6 +109,9 @@ try {
     return parsed[0] === 'REQ' && parsed[1] === 'dh-project-v1'
   })
   if (req === undefined) throw new Error('browser sent no bounded project REQ')
+  if (relayInformationRequests.length === 0) {
+    throw new Error('browser performed no NIP-11 relay discovery')
+  }
   if (projectApiRequests.length > 0) {
     throw new Error(
       `project page called an OpenAgents API: ${projectApiRequests.join(', ')}`,
@@ -116,6 +126,7 @@ try {
       targetUrl,
       relayUrl,
       reqObserved: true,
+      relayInformationObserved: true,
       eoseObserved: true,
       liveEventObserved: expectedLiveEventId !== undefined,
       projectApiRequests: 0,

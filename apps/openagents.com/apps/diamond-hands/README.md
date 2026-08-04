@@ -2,9 +2,9 @@
 
 This standalone Rust crate builds the `/dh` GPUI/WebGPU document. The browser
 owns its WebSocket to `wss://relay.openagents.com`; Immortal owns the bounded
-subscription, event verification, EOSE snapshot boundary, live fold, and
-reconnect state machine. There is no project-data API or server-side relay
-proxy.
+NIP-11 identity/limit check, subscription, event verification, EOSE snapshot
+boundary, live fold, and reconnect state machine. There is no project-data API
+or server-side relay proxy.
 
 Build and stage the stable static assets manually:
 

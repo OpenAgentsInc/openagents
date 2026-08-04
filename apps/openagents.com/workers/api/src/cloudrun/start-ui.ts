@@ -123,7 +123,7 @@ export const diamondHandsResponseHeaders = (
         'content-security-policy': [
           "default-src 'none'",
           "base-uri 'none'",
-          'connect-src wss://relay.openagents.com',
+          'connect-src https://relay.openagents.com wss://relay.openagents.com',
           "font-src 'self' data:",
           "frame-ancestors 'none'",
           "img-src 'self' data:",

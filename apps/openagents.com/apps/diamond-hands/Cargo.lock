@@ -1367,6 +1367,7 @@ dependencies = [
  "theme",
  "ui",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
  "web-time",
 ]
@@ -2770,7 +2771,7 @@ checksum = "89194689a993ab15268672e99e7b0e19da2da3268ac682e8f02d29d4d1434cd7"
 [[package]]
 name = "immortal"
 version = "0.0.1"
-source = "git+https://github.com/OpenAgentsInc/immortal?rev=98e1dd57529f7917e40f52e88bb8d95da4fee61b#98e1dd57529f7917e40f52e88bb8d95da4fee61b"
+source = "git+https://github.com/OpenAgentsInc/immortal?rev=cb13db4abf385522228031b7abbcb729369362dc#cb13db4abf385522228031b7abbcb729369362dc"
 dependencies = [
  "secp256k1",
  "serde",
