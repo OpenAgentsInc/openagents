@@ -1,4 +1,4 @@
-# The Bitcoin OSS hardening program as a Nostr-native public project
+# Operation Diamond Hands — the Bitcoin OSS hardening program as a Nostr-native public project
 
 - Date: 2026-08-04
 - Class: architecture spec and initial roadmap
@@ -26,18 +26,20 @@ Episodes 263–265 established three things:
    a public record of what has been examined and how, shared configurations,
    divergence detection, a room to work in, and somebody paying for compute.
 
-This document specifies how to build that coordination layer as a **public
-project living in our own Nostr relay**, organized with the OpenAgents NIP
-program, projected read-only onto the web, and worked through Omega.
+This document specifies how to build that coordination layer as **Operation
+Diamond Hands**, a public project living in our own Nostr relay, organized
+with the OpenAgents NIP program, projected read-only onto the web, and worked
+through Omega.
 
-The Episode 266 target, stated as a demo rather than a claim:
+The first delivery target, stated as a demo rather than a claim:
 
-> A page on openagents.com shows the hardening program — its targets, what has
-> been scanned, with which profile, at what completeness, and what remains
-> untouched — rendered entirely from signed events on `relay.openagents.com`.
-> An outside contributor can point their own agent at the same relay, claim a
-> target, run a profile, and publish a coverage attestation that appears on
-> that page.
+> `/dh` shows a basic project page for **Operation Diamond Hands**: its signed
+> project identity, current status, latest authored update, and recent public
+> activity. The browser itself opens a Nostr WebSocket connection to
+> `wss://relay.openagents.com`, reads the initial snapshot through `REQ` and
+> `EOSE`, and stays subscribed for new events. The page does not need an
+> OpenAgents HTTP projection, a private database, or a server-side WebSocket
+> proxy to render its project data.
 >
 > **The surface is Omega's own GPUI components compiled to WebAssembly, not a
 > separately authored web app.** Owner decision, 2026-08-04: the first
@@ -61,7 +63,7 @@ Facts, with paths, so the roadmap starts from the real substrate.
 | Nostr client code | `packages/public-nostr-chat` (relay client, subscribe/snapshot, remote signer); `nostr-effect` sibling repo is the shared Effect implementation | `packages/public-nostr-chat/src/client.ts`, `~/work/nostr-effect` |
 | Forensic workbench | Implemented in the **Omega** repo (Rust/GPUI) with an Effect Schema boundary and Loupe adapter in this monorepo | `~/work/omega/crates/omega_forensics/`, `packages/forensic-contract/`, `packages/forensic-loupe-adapter/` |
 | Coldcard evidence | Pre-registered experiment, results, generator reproduction, evidence graph, historical fingerprint scan | `docs/loupe/`, `docs/coldcard/`, `fixtures/forensics/coldcard/` |
-| Web app | Cloud Run Node monolith; retained public product routes are `/`, `/forum`, `/promises`; `apps/start` serves retained documents; `/api/public/*` routes are exact entries in one registry | `apps/openagents.com/workers/api/src/cloudrun/server.ts`, `src/index.ts` |
+| Web app | Cloud Run Node monolith; retained public product routes are `/`, `/forum`, `/promises`. The owner admitted `/dh` as the Operation Diamond Hands project route on 2026-08-04; it is planned here and not yet implemented. | `apps/openagents.com/workers/api/src/cloudrun/server.ts`, `src/index.ts` |
 | GPUI on the web | **Proven 2026-08-04.** Omega's real `ui` design system and Aiur theme render in a browser through `gpui_web` + `gpui_wgpu` → WebGPU. Four defects found and worked around; filed as [omega#243](https://github.com/OpenAgentsInc/omega/issues/243) | `~/work/omega/crates/gpui_web/`, [Addendum A §11](2026-08-04-gpui-on-web-addendum.md) |
 | Sats payout | **No live rail.** MDK/Nexus money authority retired under VP-1; payout/L402/credit routes stripped from the served registry; LDK exists as typed readiness projections only | root `INVARIANTS.md`, `workers/api/src/index.ts:13341`, `pylon-ldk-readiness-projections.ts` |
 
@@ -269,7 +271,7 @@ validation skips, update and downgrade paths, side channels, and dependency
 substitution — are the first invariant families, ranked by the free-oracle
 property rather than by CVSS.
 
-### 5.5 NIP-BT — Bounties and Contribution Credit
+### 5.5 NIP-BT — Bounties and Contribution Credit (drafted, postponed)
 
 **Records.** A *Funding Pool* (`32490`): a sponsor's committed budget for a
 named campaign, scope, and period. A *Contribution Credit* (`32491`): the
@@ -306,6 +308,12 @@ NIP-61 nutzaps are the obvious Nostr-native evidence carriers, and both are
 ordinary events Immortal already stores. A zap receipt is evidence that a
 payment happened; it is not authority to pay, and NIP-OC keeps the accounting
 boundary.
+
+**Roadmap disposition.** NIP-BT remains a protocol draft, but Funding Pools,
+Contribution Credits, and Payout References are outside the first pass. The
+program will first prove the project page, browser relay connection,
+joinability, coverage, disclosure, and invariant paths. BT work requires a new
+owner sequencing decision after those paths have evidence.
 
 ## 6. The three surfaces
 
@@ -350,7 +358,7 @@ natively and by the wasm surface through the same source).
 
 | Layer | Contents |
 | --- | --- |
-| Transport | Connect, REQ/EVENT/CLOSE/AUTH, reconnect, NIP-42 auth, subscription lifecycle, EOSE and live handoff with explicit gap reporting |
+| Transport | Native and browser transports; connect, REQ/EVENT/CLOSE/AUTH, reconnect, NIP-42 auth, subscription lifecycle, EOSE and live handoff with explicit gap reporting. The wasm build uses the browser's WebSocket API and connects directly to `wss://relay.openagents.com` |
 | Relay features | NIP-11 capability read, NIP-45 COUNT, NIP-50 search, NIP-29 groups, NIP-17 private messages, NIP-70 protected events, Blossom when configured |
 | Kinds | Typed encoders/decoders for the All Work kinds and the hardening kinds, with unknown-kind preservation |
 | Identity | Local signer, remote signer (NIP-46), Block NIP-OA attestation helpers, NIP-AA auth flow |
@@ -362,6 +370,13 @@ native Omega target and `wasm32-unknown-unknown`, which is a real constraint on
 its dependency choices (see the `settings`-crate lesson in omega#243: one
 transitive `errno`/`polling` dependency is enough to lose the browser target).
 
+The first client proof is read-only and runs inside `/dh`. Browser developer
+tools and an automated browser test must show the page opening the relay
+WebSocket itself, sending bounded Nostr `REQ` filters, receiving `EOSE`, and
+continuing to receive live events. Fetching a JSON copy from an OpenAgents API,
+embedding a build-time project document, or terminating the relay subscription
+on the application server does not satisfy this proof.
+
 **Retired to backup: the TypeScript SDK.** The earlier plan was a generated
 `@openagentsinc/immortal-sdk` emitted from a pinned contract definition,
 reusing the `packages/all-work-contract` generator. That plan is **not
@@ -372,12 +387,27 @@ once the Rust client's wire behavior is stable, so the TypeScript surface is
 generated from proven semantics rather than designed in parallel. Nothing in
 this program depends on it for the first deliverable.
 
-### 6.3 The public projection on openagents.com
+### 6.3 Operation Diamond Hands at `/dh`
 
-A read-only page rendering the program from the relay: targets and their
-coverage state, recent scans with their completeness, the divergence feed,
-open invariants, the disclosure funnel in aggregate (counts and states, never
-embargoed content), and the contributor roster with credits.
+The first projection is a basic read-only Project page. It renders these
+public signed records directly from the relay:
+
+- the NIP-OT Organization (`kind:32100`) named by the Project's `org` tag,
+  including its public name and authority refs;
+- the NIP-PG Project (`kind:32222`): name, owner and lead refs, teams,
+  initiative, dates, progress claim, document and workroom refs;
+- its Project Status definition (`kind:32223`): label, lifecycle category,
+  and position;
+- its latest Project Update (`kind:32226`): authored health, body, evidence
+  refs, author, and publication time; and
+- a bounded recent-activity feed of public events that reference the exact
+  Project address, with kind, author, event id, timestamp, and decoded summary
+  when a supported decoder exists.
+
+The route shell can contain the route, loading states, and decoder rules. The
+project name, status, update body, activity, and timestamps must not be baked
+into the bundle. Unsupported or malformed records remain visible as unknown or
+invalid records and never become project truth.
 
 **How it is built (owner decision, 2026-08-04).** The projection is Omega's
 GPUI components compiled to WebAssembly and rendered on a canvas through
@@ -391,36 +421,28 @@ means and which of them can be bought back later.
 
 A DOM projection remains the **backup path**, not a cancelled one: if the page
 must be indexable, quotable, or reachable by a screen reader before those gaps
-close, the read-only `/api/public/hardening/*` projections below are enough to
-render one, and the deferred TypeScript SDK (§6.2) is how a third party would.
+close, a later read-only `/api/public/hardening/*` projection can feed one, and
+the deferred TypeScript SDK (§6.2) is how a third party would consume it.
 
-**Honest constraint.** The retained public product routes are `/`, `/forum`,
-and `/promises`; adding a new public product page is a **product-shape
-exception requiring owner authority**. Three viable shapes, in the order I
-would propose them:
+**Route decision.** The owner admitted `/dh` as the public project-page shape
+on 2026-08-04 and named the project Operation Diamond Hands. This settles the
+route question for the first slice. It does not authorize unsupported coverage,
+security, participation, or payment claims; public copy still carries source,
+freshness, and authority labels.
 
-1. **`/hardening` as an owner-admitted new public route** — cleanest for the
-   demo and for outside contributors, and it needs an explicit owner decision
-   plus a product-promise entry before it can make any public claim.
-2. **Inside `/forum`** as a program space, since Forum is retained and already
-   the intake-first surface — no new route, weaker as a dashboard.
-3. **API-first**: ship `/api/public/hardening/*` read-only projections now
-   (the `relay-health-routes.ts` pattern: read-only, Effect, no-store, declared
-   staleness, "grants no authority"), and let Omega and third-party clients
-   render them while the page decision is pending.
+**Browser data path.** On mount, the wasm client opens
+`wss://relay.openagents.com`, subscribes to the exact Project coordinate and
+the bounded set of Project Status, Project Update, and project-referencing
+activity kinds, folds the snapshot only after `EOSE`, and then keeps the
+subscription live. The page displays `connecting`, `live`, `reconnecting`,
+`stale`, and `unavailable` states with the last observed relay event time.
+Reconnect must establish a new bounded snapshot/live boundary without silently
+dropping or duplicating activity.
 
-Option 3 is the one that requires no exception and can land immediately;
-option 1 is what Episode 266 wants to show. They compose: build the API and the
-projection logic first, mount the page when the owner admits it.
-
-On *how* the page is built —
-[Addendum A](2026-08-04-gpui-on-web-addendum.md) researches whether Omega's
-GPUI components could be compiled to WebAssembly and rendered here instead of
-authoring web components separately. Finding: a complete GPUI web backend
-already exists in our tree and builds, but a canvas surface gives up
-accessibility, search, deep links, text selection, and about 30% of browsers —
-so the page stays DOM, while GPUI-on-web is worth spending on for a canvas
-island, a browser Omega, and shared Rust projection logic.
+The initial `/dh` route must make no `/api/public/hardening/*` data request.
+Those projections remain a later compatibility and accessibility fallback,
+not the first page's source. This direct browser connection is part of the
+feature, not an implementation detail.
 
 The page must state what it is: a projection with freshness, not a claim.
 Coverage counts inherit the completeness of their inputs, and a target with no
@@ -437,12 +459,11 @@ findings enter the commitment-then-disclose lifecycle; claims prevent
 collisions across contributors; and the campaign room is the Workroom the
 program's NIP-OT binding names.
 
-That is the division of labor for the demo: **Omega runs the work, the relay
-holds the record, the web surface shows the record, and the Rust client lets
-anyone else join.** With the GPUI/wasm decision the web surface stops being a
-second implementation of Omega's UI and becomes the same code with a different
-renderer target — which is the strongest argument for the decision, and the
-thing the 2026-08-04 test actually demonstrated.
+That is the eventual division of labor: **Omega runs the work, the relay holds
+the record, the web surface shows the record, and the Rust client lets anyone
+else join.** The first slice proves the middle of that chain before it adds
+write participation: signed Project records on the relay appear live inside
+the browser through the same Rust client and GPUI component set.
 
 ### 6.5 Other possibilities worth naming
 
@@ -485,7 +506,7 @@ The proposed starting position, offered as a design to be attacked:
 
 This is not obviously right, and the spec should not pretend otherwise. It is
 the one decision that should be settled by the owner and the first outside
-participants together, in the open, before Phase 2 ships.
+participants together, in the open, before Phase 3 ships.
 
 ## 8. Initial roadmap
 
@@ -493,58 +514,82 @@ Phases are ordered by what unlocks the most downstream work, with the demo cut
 line explicit. Nothing here is admitted work: each phase becomes issues under
 ordinary authority.
 
-### Phase 0 — Make the relay joinable (blocking everything)
+### Phase 0 — Operation Diamond Hands project page (first visible result)
 
-1. Decide and implement the admission path (§6.1): NIP-86 management on
-   production, or the gated public join endpoint, or NIP-43 in Immortal.
-2. Admit the program's event kinds in relay policy, with fixtures per
+All Rust. No TypeScript or OpenAgents projection API is on the critical path.
+
+1. Review, pin, and admit the minimum read contract with fixtures: NIP-OT
+   Organization (`32100`), NIP-PG Project (`32222`), Project Status (`32223`),
+   Project Update (`32226`), and the exact public activity refs admitted for
+   the recent feed.
+2. Build the smallest `immortal-client` Rust/wasm slice needed for browser
+   WebSocket connection, NIP-11 discovery, `REQ`/`EOSE`/live subscription,
+   bounded reconnect, and typed decoding of those records.
+3. Land the GPUI/wasm prerequisites from
+   [omega#243](https://github.com/OpenAgentsInc/omega/issues/243): the
+   `settings` wasm gate, embedded assets, and the actual Aiur theme. The page
+   must not silently fall back to a generic theme.
+4. Publish the signed program Organization, Project Status definition,
+   Operation Diamond Hands Project, and initial Project Update records on
+   `relay.openagents.com` from the admitted program authority. Publish a small
+   sequence of public-safe project activity so the recent feed has source data.
+5. Mount the GPUI/wasm surface at `/dh`. Show project identity, status, latest
+   update, relevant refs, recent activity, relay connection state, and data
+   freshness. Keep loading, empty, malformed, reconnecting, stale, and relay-
+   unavailable states explicit.
+6. Prove in an automated browser and its network trace that `/dh` opens the
+   Nostr WebSocket from inside the browser, renders only after the snapshot
+   boundary, receives a newly published event without a page reload, and does
+   not call an OpenAgents project-data API.
+
+**Exit:** a browser opens `/dh`, connects directly to
+`wss://relay.openagents.com`, renders Operation Diamond Hands from signed
+Project records, and appends one newly published project event live.
+
+### Phase 1 — Make the relay joinable
+
+7. Decide and implement the contributor admission path (§6.1): NIP-86
+   management on production, the gated public join endpoint, or NIP-43 in
+   Immortal.
+8. Admit the remaining program event kinds in relay policy, with fixtures per
    `AGENTS.md` rule 8.
-3. Publish the program's root records: Organization, Team, Initiative, and the
-   NIP-29 Workroom binding, signed by the program authority key.
-4. Verify a second, non-owner identity can authenticate, publish, and be read.
+9. Publish the remaining root records: Team, Initiative, and the NIP-29
+   Workroom binding, signed by the program authority key.
+10. Verify a second, non-owner identity can authenticate, publish, and be read.
 
 **Exit:** an outside human joins, attests an agent with NIP-OA, and that agent
 writes one event that a third party reads back.
 
-### Phase 1 — Coverage ledger and the GPUI surface (the Episode 266 demo)
+### Phase 2 — Coverage ledger and the expanded GPUI surface
 
-All Rust. No TypeScript is on the critical path for this phase.
-
-5. Review and pin the drafted **NIP-SC** and **NIP-SP** contracts with fixtures
+11. Review and pin the drafted **NIP-SC** and **NIP-SP** contracts with fixtures
    and an implementation decision — coverage and profiles are the two records
    the demo needs, and they are the two the evidence most directly supports.
-6. Build the `immortal-client` Rust crate (§6.2): transport, NIP-42 auth,
-   typed decoders for the program kinds, building for both the native Omega
-   target and `wasm32-unknown-unknown`.
-7. Land the GPUI/wasm prerequisites from
-   [omega#243](https://github.com/OpenAgentsInc/omega/issues/243) — at minimum
-   the `settings` wasm gate and an embedded `AssetSource`, so the surface uses
-   the real theme and icons instead of the workarounds proven on 2026-08-04.
-8. Seed the ledger from work already done: publish Coverage Attestations and
+12. Expand `immortal-client` with NIP-42 auth, program-kind decoders, and the
+   write path shared by native Omega and the wasm surface.
+13. Seed the ledger from work already done: publish Coverage Attestations and
    Materialized Source Sets for the Coldcard experiment's two arms, and for the
    Omega self-scan. The divergence between arm A and arm B becomes the first
    published Divergence Note — the program's founding data point is a result we
    already have.
-9. Ship the GPUI/wasm hardening surface reading the relay through
-   `immortal-client`; mount it at `/hardening` if and when the owner admits the
-   route. Ship `/api/public/hardening/*` read-only projections alongside it, so
-   the backup DOM path and third-party clients stay possible.
-10. Omega publishes attestations from real workbench runs rather than local
+14. Expand `/dh` with targets, coverage completeness, profiles, and divergence
+   while preserving the direct browser-to-relay source path.
+15. Omega publishes attestations from real workbench runs rather than local
     state.
 
-**Exit (the demo):** the surface renders live from the relay in a browser tab,
-built from Omega's own components; an outside contributor using the Rust client
-adds a coverage attestation that appears on it.
+**Exit:** `/dh` expands from project information into a coverage ledger; an
+outside contributor using the Rust client adds a Coverage Attestation that
+appears live.
 
-### Phase 2 — Findings and disclosure
+### Phase 3 — Findings and disclosure
 
-11. Review and pin **NIP-FD** with fixtures and an implementation decision;
+16. Review and pin **NIP-FD** with fixtures and an implementation decision;
     implement commitments, encrypted candidate findings, the independent-
     verdict path (producer ≠ verifier, enforced), and the disclosure state
     machine.
-12. Settle §7 in the open with the first outside participants; encode the
+17. Settle §7 in the open with the first outside participants; encode the
     answer in the audience rules rather than in prose.
-13. Build the maintainer contact path: encrypted, per-project, with
+18. Build the maintainer contact path: encrypted, per-project, with
     acknowledgement tracking. Slow and correct beats fast and voluminous — the
     first five disclosures set the program's reputation permanently.
 
@@ -552,47 +597,42 @@ adds a coverage attestation that appears on it.
 acknowledgement → publication without any private material reaching a public
 relay.
 
-### Phase 3 — Invariants and regression watch
+### Phase 4 — Invariants and regression watch
 
-14. Review and pin **NIP-SI** with fixtures and an implementation decision;
+19. Review and pin **NIP-SI** with fixtures and an implementation decision;
     encode the first invariant families from the hunt-class list, starting
     with entropy provenance and build-versus-source divergence, because those
     are where the free-oracle property concentrates.
-15. Implement artifact provenance witnesses — the `nm`-on-objects class of
+20. Implement artifact provenance witnesses — the `nm`-on-objects class of
     check — and bind them to invariants.
-16. Regression watches over target revisions, with freshness and honest
+21. Regression watches over target revisions, with freshness and explicit
     stopping rules.
 
 **Exit:** a target regression is detected by a watch rather than by a human
 noticing.
 
-### Phase 4 — Funding and credit (owner-gated)
+### Deferred — Funding and credit
 
-17. Review and pin **NIP-BT** with fixtures and an implementation decision;
-    ship Contribution Credits with no rail, because credit and standing work
-    today and are what the analysis says most contributors want.
-18. Funding Pools for sponsored campaigns, scoped and public.
-19. Payout references **only** after an admitted settlement-rail decision. This
-    repository has no live payout authority today, and the spec deliberately
-    does not assume one.
-
-**Exit:** a sponsor funds a campaign, contributors accrue credits against
-published coverage, and the accounting is auditable end to end — with or
-without a payment rail attached.
+NIP-BT stays drafted and unimplemented. Funding Pools, Contribution Credits,
+and Payout References are not part of the first pass and have no scheduled
+phase. Reconsider them only after Phases 0–4 have evidence and the owner makes
+a new sequencing decision. No payment rail is assumed.
 
 ## 9. Acceptance and falsification
 
 | Claim the program will want to make | Required proof | Falsifier |
 | --- | --- | --- |
-| The program is Nostr-native | Every record readable from `relay.openagents.com` with the published Rust client and no OpenAgents API | The page needs a private database to render |
+| The first project page is Nostr-native | Browser evidence shows `/dh` opening `wss://relay.openagents.com`, completing a bounded `REQ`/`EOSE` snapshot, and receiving a live event with no project-data API | The page renders from baked data, a private database, an HTTP projection, or a server-side relay proxy |
 | The surface is Omega's own code | The web surface and the workbench share the `ui` component set, the Aiur theme, and `immortal-client` | The web surface reimplements components or decoding in another language |
 | Anyone can join | An outside human plus their agent write and are read, using only public docs | Joining needs an operator to run SQL |
 | Coverage is honest | Every result references a Materialized Source Set; incomplete scans are visibly incomplete | A result renders confidently over a partially-read program |
 | Divergence is captured | Two runs over one target produce a Divergence Note automatically | Disagreement is only visible to whoever ran both |
-| Findings are not raced | Commitments precede reveals; credit is commitment-ordered, not publication-ordered | Credit accrues to whoever posts first |
+| Findings are not raced | Commitments precede reveals; duplicate-work priority follows the admitted commitment anchor, not publication time | Priority accrues to whoever posts first |
 | Disclosure is responsible | No embargoed content on a public relay; maintainer path attempted before publication | An embargo expiry alone publishes something |
 | Verification is independent | Verifier key ≠ producer key, enforced at admission | A scanner confirms its own finding |
-| Money never distorts disclosure | Credits pay for coverage and verification; payouts, if any, are gated behind disclosure completion | A payout is claimable by publishing a finding |
+
+NIP-BT keeps its own payment and settlement falsifiers, but they are not an
+acceptance gate for this first-pass roadmap while BT is deferred.
 
 ## 10. What this program will not build
 

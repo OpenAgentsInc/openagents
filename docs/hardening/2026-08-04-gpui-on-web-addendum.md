@@ -3,8 +3,9 @@
 - Date: 2026-08-04
 - Class: research addendum to
   [`2026-08-04-nostr-native-hardening-program.md`](2026-08-04-nostr-native-hardening-program.md) §6.3
-- Status: research finding, then a working test (§11) and an owner decision
-  (§12) that supersedes the §7 Tier 1 recommendation. Authorizes nothing.
+- Status: research finding, then a working test (§11), an owner decision
+  (§12) that supersedes the §7 Tier 1 recommendation, and the first delivery
+  slice (§13). Authorizes nothing beyond the recorded owner decisions.
 - Question asked: instead of building the hardening projection with
   TanStack/React and separately defined components, could we compile Omega's
   GPUI components to WebAssembly and render them on the web?
@@ -342,6 +343,12 @@ GPUI** — the web surface is Omega's components compiled to wasm, and the
 TypeScript SDK is retired to backup. This **supersedes the Tier 1
 recommendation in §7** (a DOM page via Effect Native).
 
+The owner subsequently named that first surface **Operation Diamond Hands**,
+admitted `/dh` as its route, and required its Nostr WebSocket connection to run
+inside the browser. The first page is a Project view, not the complete coverage
+dashboard: it reads signed project information and recent activity directly
+from `wss://relay.openagents.com` through the Rust/wasm client.
+
 What the decision buys: one component set, one client, one language from the
 workbench to the browser tab. No second implementation of the UI, no second
 implementation of event decoding, and no drift between them — which is exactly
@@ -368,6 +375,29 @@ records underneath.
 Revisit this decision if any of these becomes true: the page needs to be
 citable by outsiders in writing; a maintainer needs to read it with assistive
 tech; or contributors report they cannot open it at all.
+
+## 13. First delivery slice: Operation Diamond Hands at `/dh`
+
+The first visible result is deliberately smaller than the full hardening
+projection. `/dh` renders the Project's NIP-OT Organization, one NIP-PG
+Project, its configured Project Status, its latest authored Project Update,
+relevant public refs, and a bounded recent-activity feed.
+
+The source path is part of the acceptance contract:
+
+1. GPUI/wasm starts in the browser and opens
+   `wss://relay.openagents.com` through the browser WebSocket API.
+2. The Rust client sends bounded filters for the exact Project coordinate,
+   waits for `EOSE`, renders the snapshot, and stays subscribed.
+3. A newly published project event appears without a page reload.
+4. Connection, reconnecting, stale, unavailable, and last-event states remain
+   visible.
+5. Project data does not come from baked JSON, an OpenAgents HTTP projection,
+   a private database, or a server-side WebSocket proxy.
+
+This slice does not require public contributor admission, SP/SC coverage
+records, findings, invariants, funding, Contribution Credits, or payouts.
+Those remain later phases. NIP-BT is postponed without changing its draft.
 
 ## Sources
 
