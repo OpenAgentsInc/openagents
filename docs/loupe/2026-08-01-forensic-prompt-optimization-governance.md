@@ -16,7 +16,10 @@ accepted only with an independently tested integration receipt.
 ## Evaluation boundary
 
 Training and development examples are optimizer-visible. Vulnerable and clean
-holdouts are evaluator-only, disjoint, and absent from candidate input. A
+holdouts are evaluator-only, disjoint, non-empty, and absent from candidate
+input. The non-empty requirement is not decoration: disjointness is vacuous over
+an empty set, so a holdout revision declaring no examples would satisfy every
+blindness check while carrying nothing to be blind about. A
 candidate is eligible for comparison only when:
 
 - its baseline and candidate scorecards use the same untouched holdout,
@@ -61,11 +64,16 @@ and an explicit direction before any result exists. Because the bindings sit
 inside the frozen metric digest, they cannot be chosen after results are known.
 
 Every bound metric ref must be one the frozen forensic metric registry
-(`registry.openagents.forensic.metrics.2026-08-01.v1`) actually defines.
-Without that check an evaluator could bind an axis to a ref it invented, supply
-values for that same invented ref in its own scorecard, and obtain a
-`dominates` verdict computed entirely over its own assertion — which is the
-thing a derived comparison exists to remove.
+(`registry.openagents.forensic.metrics.2026-08-01.v1`) actually defines, and the
+freeze must pin that same registry revision. Without the first check an
+evaluator could bind an axis to a ref it invented, supply values for that same
+invented ref in its own scorecard, and obtain a `dominates` verdict computed
+entirely over its own assertion — which is the thing a derived comparison exists
+to remove. Without the second, a freeze could claim it pinned some other metric
+definitions while its axes were admitted against these, leaving every downstream
+scorecard-revision comparison to check a caller-chosen digest against itself.
+
+`rebuildForensicScorecard` emits a per-run value for all seven bound metrics.
 
 The evaluation aggregates each bound metric across the retained runs of the
 baseline and candidate holdout scorecards and derives the verdict. `dominates`
@@ -147,8 +155,44 @@ unconfigured or unreachable storage as `503`, and storage drift found on read as
 
 The remaining acceptance criterion — a winning candidate improves an untouched
 holdout without regressing the clean holdout or any hard gate — is a claim about
-a real campaign. It is not evidenced, and as of 2026-08-03 it is not runnable.
-The blockers are specific, and each is owned elsewhere:
+a real campaign. It is not evidenced. As of 2026-08-04 two of the four blockers
+recorded on 2026-08-03 are closed and two remain, and the campaign criterion is
+descoped to the live program gate on
+[#9300](https://github.com/OpenAgentsInc/openagents/issues/9300).
+
+### Closed
+
+- **The two unresolvable Pareto axes now resolve.** `rebuildForensicScorecard`
+  previously emitted no per-run value for `metric.causal_chain_coverage.v1` or
+  `metric.cost_to_identification.v1`, so any scorecard the repository's own
+  projector built reported those axes `unavailable`, the derived status was
+  `insufficient_evidence`, and promotion refused every candidate regardless of
+  merit. Causal-chain coverage is now derived from the run's retained
+  adjudications as supported links over required links. Cost to identification
+  is derived from retained provider cost through immutable T5 plus a new
+  `openagents.forensic_infrastructure_cost_receipt.v1`. The frozen definition
+  reads *provider and incremental GCE cost*, and it was not narrowed to provider
+  cost alone: a candidate that traded provider tokens for longer paid VM time
+  would win a provider-only cost axis while costing more. Without an
+  infrastructure receipt the axis stays `unavailable` with
+  `unavailable.infrastructure_cost.missing`, and `isolation_class: "none"` is
+  how a run with no incremental infrastructure cost records that as a pinned
+  zero rather than an omission.
+- **`rebuildForensicScorecard` has a production caller.** `BuildScorecard` on
+  the mounted forensic worker route (`/api/forensics/workers`) names runs and
+  the frozen revisions being scored, then reads every event, adjudication,
+  provider usage receipt, and infrastructure cost receipt back out of the
+  owner-scoped durable ledger. A caller cannot hand in the measurements its own
+  scorecard is judged on, and `generatedAt` is the server clock.
+
+  A gate run over scorecards this projector built now reaches a `dominates`
+  verdict with no axis `unavailable`
+  (`forensic-prompt-compiler.test.ts`, "reaches a verdict on scorecards this
+  repository's own projector built"). The evidence in that test is synthetic and
+  labelled as such; it proves the gate is satisfiable, not that any candidate is
+  good.
+
+### Still open, and why the campaign criterion is descoped
 
 - **There is no untouched holdout.** `fixtures/forensics/coldcard/dataset-splits.v1.json`
   declares `holdout` and `clean_holdout` as evaluator-only descriptors with
@@ -159,23 +203,23 @@ The blockers are specific, and each is owned elsewhere:
   arms, which the benchmark manifest declares `development` and `control` —
   optimizer-visible by construction. Promoting them to a holdout would destroy
   the boundary the gate exists to protect, so it must not be done.
-- **Nothing produces a scorecard.** `rebuildForensicScorecard` has no production
-  caller, and `LoupeForensicBackend` has no implementation outside a test fake,
-  so no code path turns a prompt plus an example into retained runs. There is
-  also no evaluator that emits `ForensicEvaluatorAdjudication` from a submitted
-  finding; the six-link causal rubric exists only as prose.
-- **Two of the seven axes cannot resolve.** `rebuildForensicScorecard` never
-  emits a per-run value for `metric.causal_chain_coverage.v1` or
-  `metric.cost_to_identification.v1`; cost appears only as a scorecard-level
-  field. Both are defined in the frozen registry, so they are legal bindings,
-  but any scorecard the repository's own projector builds would report those two
-  axes `unavailable`, the derived status would be `insufficient_evidence`, and
-  promotion would refuse. This is a real blocker for a future campaign, not a
-  hypothetical one.
-- **The live worker path is not accepted.** The forensic managed-sandbox
-  dispatch route exists and is gated on `MANAGED_SANDBOX_BROKER_ENABLED` and a
-  configured runtime, but issues #9289 and #9290 do not carry accepted live
-  receipts, and the operator guide holds launch controls behind them.
+
+  The compiler now refuses that shape outright rather than passing it
+  vacuously: disjointness between optimizer-visible and holdout examples is
+  trivially satisfied by an empty holdout, so an empty untouched or clean
+  holdout revision is rejected. Building a real one is corpus construction —
+  separately owned material the optimizer has never seen, digest-pinned, with
+  the contamination boundary enforced mechanically — not promotion-gate work,
+  which is why it is descoped.
+- **No accepted live worker receipts.** The forensic managed-sandbox dispatch
+  route exists and is gated on `MANAGED_SANDBOX_BROKER_ENABLED` and a configured
+  runtime, but issues #9289 and #9290 do not carry accepted live receipts, and
+  the operator guide holds launch controls behind them.
+- **Nothing turns a prompt into retained runs end to end.** `LoupeForensicBackend`
+  has no implementation outside a test fake, and no component emits a
+  `ForensicEvaluatorAdjudication` from a submitted finding; the six-link causal
+  rubric exists only as prose. That surface belongs to the Loupe adapter lane
+  (#9294), not to this one.
 
 The one real forensic run in the tree,
 `fixtures/forensics/coldcard/historical-import.v1.json` (Episode 264), does not
@@ -185,19 +229,20 @@ one prompt rather than a baseline and a candidate, and with wall time and token
 usage both `unavailable`. The gate would refuse it on the holdout boundary, the
 matched-population requirement, and `insufficient_evidence`.
 
-Recommendation: the campaign claim belongs to the live program gate on
-[#9300](https://github.com/OpenAgentsInc/openagents/issues/9300), which already
-owns live campaigns and downstream evidence. This document's scope is the
-promotion mechanism, and that mechanism is derived rather than asserted.
-
 ## Remaining limits
 
 These should not be read as covered:
 
 - No untouched-holdout campaign has been run, for the reasons above. The
-  mechanism that would admit a winning candidate is in place; the claim that a
+  mechanism that would admit a winning candidate is in place and is now
+  demonstrably satisfiable by projector-built scorecards; the claim that a
   specific candidate improved an untouched holdout without regressing the clean
-  holdout or any hard gate is not evidenced by anything in this repository.
+  holdout or any hard gate is not evidenced by anything in this repository, and
+  is tracked on #9300.
+- Infrastructure cost is a retained receipt, not a reading taken from a billing
+  authority. The projector requires it before it will report cost to
+  identification, and it binds a retained turn window, but the micros figure is
+  still an observation whoever ran the worker submits.
 - The DSPy/GEPA honesty guard requires only a non-empty caller-supplied
   `integrationReceiptRefs` array. It constrains naming; it does not evidence a
   tested integration.

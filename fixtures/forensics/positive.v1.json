@@ -564,6 +564,19 @@
       "reasonRefs": ["reason.review.source-correction"],
       "recordedAt": "2026-08-01T12:08:00.000Z"
     },
+    "openagents.forensic_infrastructure_cost_receipt.v1": {
+      "schema": "openagents.forensic_infrastructure_cost_receipt.v1",
+      "receiptRef": "receipt.infrastructure.turn.1",
+      "runRef": "run.forensic.coldcard.1",
+      "resourceRef": "resource.gce.oa-managed-sandbox.1",
+      "isolationClass": "gce_vm",
+      "startEventRef": "event.turn.started.1",
+      "startEventSequence": 4,
+      "settledEventSequence": 7,
+      "cost": { "micros": 18000, "exactness": "exact" },
+      "reasonRefs": ["reason.infrastructure_cost.metered_instance_hours"],
+      "recordedAt": "2026-08-01T12:05:00.000Z"
+    },
     "openagents.forensic_evaluator_adjudication.v1": {
       "schema": "openagents.forensic_evaluator_adjudication.v1",
       "adjudicationRef": "adjudication.finding.coldcard.1",

@@ -1,9 +1,11 @@
 import {
   FORENSIC_EVALUATOR_ADJUDICATION_VERSION,
+  FORENSIC_INFRASTRUCTURE_COST_RECEIPT_VERSION,
   FORENSIC_PROVIDER_USAGE_RECEIPT_VERSION,
   FORENSIC_REVIEWER_BURDEN_RECEIPT_VERSION,
   FORENSIC_RUN_EVENT_VERSION,
   ForensicEvaluatorAdjudicationSchema,
+  ForensicInfrastructureCostReceiptSchema,
   ForensicProviderUsageReceiptSchema,
   ForensicReviewerBurdenReceiptSchema,
   ForensicRunEventSchema,
@@ -11,6 +13,7 @@ import {
   forensicSha256Digest,
   strictDecode,
   type ForensicEvaluatorAdjudication,
+  type ForensicInfrastructureCostReceipt,
   type ForensicProviderUsageReceipt,
   type ForensicReviewerBurdenReceipt,
   type ForensicRunEvent,
@@ -24,13 +27,15 @@ export type ForensicMetricEvidence =
   | ForensicRunEvent
   | ForensicProviderUsageReceipt
   | ForensicEvaluatorAdjudication
-  | ForensicReviewerBurdenReceipt;
+  | ForensicReviewerBurdenReceipt
+  | ForensicInfrastructureCostReceipt;
 
 export type ForensicMetricEvidenceKind =
   | "run_event"
   | "provider_usage"
   | "adjudication"
-  | "reviewer_burden";
+  | "reviewer_burden"
+  | "infrastructure_cost";
 
 export type ForensicMetricEvidenceAppend = Readonly<{
   schema: typeof FORENSIC_METRIC_EVIDENCE_LEDGER_VERSION;
@@ -51,6 +56,7 @@ export type ForensicMetricRunEvidence = Readonly<{
   usageReceipts: ReadonlyArray<ForensicProviderUsageReceipt>;
   adjudications: ReadonlyArray<ForensicEvaluatorAdjudication>;
   reviewerBurdenReceipts: ReadonlyArray<ForensicReviewerBurdenReceipt>;
+  infrastructureCostReceipts: ReadonlyArray<ForensicInfrastructureCostReceipt>;
   eventDigest: string;
   receiptDigest: string;
 }>;
@@ -157,6 +163,15 @@ const decodeEvidence = (value: unknown): DecodedEvidence => {
         observedAt = receipt.recordedAt;
         break;
       }
+      case FORENSIC_INFRASTRUCTURE_COST_RECEIPT_VERSION: {
+        const receipt = strictDecode(ForensicInfrastructureCostReceiptSchema, value);
+        evidence = receipt;
+        recordRef = receipt.receiptRef;
+        recordKind = "infrastructure_cost";
+        sequence = null;
+        observedAt = receipt.recordedAt;
+        break;
+      }
       default:
         throw invalidEvidence("unsupported forensic metric evidence schema");
     }
@@ -217,6 +232,10 @@ const projectRun = (
     (record): record is ForensicReviewerBurdenReceipt =>
       record.schema === FORENSIC_REVIEWER_BURDEN_RECEIPT_VERSION,
   );
+  const infrastructureCostReceipts = records.filter(
+    (record): record is ForensicInfrastructureCostReceipt =>
+      record.schema === FORENSIC_INFRASTRUCTURE_COST_RECEIPT_VERSION,
+  );
   return {
     schema: FORENSIC_METRIC_EVIDENCE_LEDGER_VERSION,
     ownerRef,
@@ -225,8 +244,13 @@ const projectRun = (
     usageReceipts,
     adjudications,
     reviewerBurdenReceipts,
+    infrastructureCostReceipts,
     eventDigest: forensicSha256Digest([...events, ...adjudications]),
-    receiptDigest: forensicSha256Digest([...usageReceipts, ...reviewerBurdenReceipts]),
+    receiptDigest: forensicSha256Digest([
+      ...usageReceipts,
+      ...reviewerBurdenReceipts,
+      ...infrastructureCostReceipts,
+    ]),
   };
 };
 

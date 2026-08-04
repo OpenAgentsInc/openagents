@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { forensicSha256Digest } from "@openagentsinc/forensic-contract";
+import { FROZEN_FORENSIC_METRIC_REGISTRY } from "@openagentsinc/forensic-contract/metrics";
 
 import { FORENSIC_PROMPT_PARETO_AXES } from "../schemas/forensic-prompt-optimization";
 import type { ForensicPromptGovernanceState } from "../schemas/forensic-prompt-optimization";
@@ -10,6 +11,7 @@ import {
   digest,
   evaluationInputFor,
   genesisState,
+  projectedScorecard,
   metricFreeze,
   paretoAxes,
   releaseGate,
@@ -141,6 +143,145 @@ describe("forensic prompt compiler and Blueprint governance", () => {
         },
       }),
     ).toThrow(/frozen metric definitions/);
+  });
+
+
+  test("refuses an empty untouched holdout, which every blindness check would pass vacuously", () => {
+    const input = compilerInput();
+    for (const split of ["holdout", "clean_holdout"] as const) {
+      expect(() =>
+        compileForensicPromptCandidates({
+          ...input,
+          datasets: input.datasets.map((dataset) =>
+            dataset.split === split ? { ...dataset, exampleRefs: [] } : dataset,
+          ),
+        }),
+      ).toThrow(/must retain examples/);
+    }
+    // The shape being refused is the one the repository actually ships:
+    // `fixtures/forensics/coldcard/dataset-splits.v1.json` declares both holdout
+    // splits with no benchmark arms, so there is nothing for a campaign to be
+    // blind to. Constructing that corpus is tracked on #9300.
+  });
+
+  test("refuses a metric freeze that does not pin the registry revision its axes resolve against", () => {
+    const candidate = compileForensicPromptCandidates(compilerInput()).candidates[0]!;
+    const evaluationInput = evaluationInputFor(candidate);
+    expect(metricFreeze.metricDefinitionRevisionDigest).toBe(
+      FROZEN_FORENSIC_METRIC_REGISTRY.revisionDigest,
+    );
+    // Axis bindings are admitted against one exact registry revision. A freeze
+    // naming a different revision would have its axes checked against these
+    // definitions while every downstream scorecard-revision comparison was made
+    // against the digest the caller chose.
+    expect(() =>
+      validateForensicPromptEvaluation({
+        ...evaluationInput,
+        metricFreeze: { ...metricFreeze, metricDefinitionRevisionDigest: digest("7") },
+      }),
+    ).toThrow(/pin the frozen forensic metric registry revision/);
+  });
+
+  test("reaches a verdict on scorecards this repository's own projector built", () => {
+    // Before this change `rebuildForensicScorecard` emitted no per-run value for
+    // `metric.causal_chain_coverage.v1` or `metric.cost_to_identification.v1`,
+    // so any projector-built scorecard forced `insufficient_evidence` and the
+    // gate refused every candidate regardless of its merit. The evidence below
+    // is synthetic, but the projection is production's, so this proves the gate
+    // is satisfiable rather than proving any candidate is good.
+    const candidate = compileForensicPromptCandidates(compilerInput()).candidates[0]!;
+    const run = (
+      runRef: string,
+      qualified: boolean,
+      overrides: { analysisMillis?: number } = {},
+    ) => ({
+      runRef,
+      split: "holdout" as const,
+      population: "vulnerable" as const,
+      qualified,
+      analysisMillis: overrides.analysisMillis ?? 900_000,
+      totalTokens: 120_000,
+      providerCostMicros: 40_000,
+      infrastructureCostMicros: 6_000,
+      reviewerMillis: 720_000,
+    });
+    const baselineHoldoutScorecard = projectedScorecard({
+      scorecardRef: "scorecard.projected.baseline.v1",
+      datasetRevisionDigest: candidate.holdoutDatasetDigest,
+      candidateDigest: digest("0"),
+      runs: [run("run.projected.baseline.hit", true), run("run.projected.baseline.miss", false)],
+    });
+    const holdoutScorecard = projectedScorecard({
+      scorecardRef: "scorecard.holdout.v1",
+      datasetRevisionDigest: candidate.holdoutDatasetDigest,
+      candidateDigest: candidate.candidateDigest,
+      runs: [
+        run("run.projected.candidate.1", true, { analysisMillis: 800_000 }),
+        run("run.projected.candidate.2", true, { analysisMillis: 800_000 }),
+      ],
+    });
+    const cleanHoldoutScorecard = projectedScorecard({
+      scorecardRef: "scorecard.projected.clean.v1",
+      datasetRevisionDigest: candidate.cleanHoldoutDatasetDigest,
+      candidateDigest: candidate.candidateDigest,
+      runs: [
+        {
+          ...run("run.projected.clean.1", false),
+          split: "clean_holdout" as const,
+          population: "clean_control" as const,
+        },
+      ],
+    });
+
+    const evaluation = validateForensicPromptEvaluation({
+      ...evaluationInputFor(candidate),
+      baselineHoldoutScorecard,
+      cleanHoldoutScorecard,
+      holdoutScorecard,
+    });
+
+    // Every frozen axis resolved; none reported `unavailable`.
+    expect(evaluation.paretoComparisons).toHaveLength(FORENSIC_PROMPT_PARETO_AXES.length);
+    expect(
+      evaluation.paretoComparisons.filter((comparison) => comparison.verdict === "unavailable"),
+    ).toEqual([]);
+    expect(evaluation.paretoStatus).toBe("dominates");
+    expect(
+      evaluation.paretoComparisons.find((comparison) => comparison.axis === "cost")?.candidateValue,
+    ).toBe(46_000);
+    expect(
+      evaluation.paretoComparisons.find((comparison) => comparison.axis === "causal_coverage")
+        ?.candidateValue,
+    ).toBe(1);
+
+    // Strip the infrastructure half of the cost measurement and the projector
+    // reports the axis unavailable, which the gate must read as
+    // `insufficient_evidence` rather than as a tie it can promote through.
+    const withoutInfrastructureCost = {
+      ...holdoutScorecard,
+      runs: holdoutScorecard.runs.map((scorecardRun) => ({
+        ...scorecardRun,
+        values: scorecardRun.values.map((value) =>
+          value.metricRef === "metric.cost_to_identification.v1"
+            ? {
+                metricRef: value.metricRef,
+                exactness: "unavailable" as const,
+                unavailableReasonRef: "unavailable.infrastructure_cost.missing",
+                sourceEventRefs: [],
+                sourceReceiptRefs: [],
+              }
+            : value,
+        ),
+      })),
+    };
+    expect(
+      validateForensicPromptEvaluation({
+        ...evaluationInputFor(candidate),
+        baselineHoldoutScorecard,
+        cleanHoldoutScorecard,
+        holdoutScorecard: withoutInfrastructureCost,
+      }).paretoStatus,
+    ).toBe("insufficient_evidence");
   });
 
   test("resolves worker and source evidence as typed records rather than caller strings", () => {

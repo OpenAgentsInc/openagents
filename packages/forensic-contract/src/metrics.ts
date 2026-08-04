@@ -30,6 +30,8 @@ export const FORENSIC_EVALUATOR_ADJUDICATION_VERSION =
   "openagents.forensic_evaluator_adjudication.v1" as const;
 export const FORENSIC_REVIEWER_BURDEN_RECEIPT_VERSION =
   "openagents.forensic_reviewer_burden_receipt.v1" as const;
+export const FORENSIC_INFRASTRUCTURE_COST_RECEIPT_VERSION =
+  "openagents.forensic_infrastructure_cost_receipt.v1" as const;
 
 export const ForensicMetricDefinitionSchema = S.Struct({
   schema: S.Literal(FORENSIC_METRIC_DEFINITION_VERSION),
@@ -198,6 +200,64 @@ export const ForensicReviewerBurdenReceiptSchema = S.Struct({
 }).annotate({ identifier: "ForensicReviewerBurdenReceipt" });
 export interface ForensicReviewerBurdenReceipt extends S.Schema.Type<
   typeof ForensicReviewerBurdenReceiptSchema
+> {}
+
+const InfrastructureCostSchema = S.Union([
+  S.Struct({
+    micros: NonNegativeInteger,
+    exactness: S.Literals(["exact", "estimated", "upper_bound"]),
+  }),
+  S.Struct({
+    exactness: S.Literal("unavailable"),
+    unavailableReasonRef: ForensicRef,
+  }),
+]);
+
+/**
+ * Measured infrastructure cost attributable to one retained turn window.
+ *
+ * `metric.cost_to_identification.v1` is defined as measured provider *and*
+ * incremental GCE cost through immutable T5. Provider cost arrives on
+ * {@link ForensicProviderUsageReceiptSchema}; without this receipt the
+ * infrastructure half is simply unknown, and the projector must report the
+ * metric unavailable rather than pass provider cost off as the whole figure.
+ *
+ * `isolationClass: "none"` is how a run that genuinely incurs no incremental
+ * infrastructure cost says so. It is pinned to a zero measurement, so it
+ * records an observation rather than an excuse.
+ */
+export const ForensicInfrastructureCostReceiptSchema = S.Struct({
+  schema: S.Literal(FORENSIC_INFRASTRUCTURE_COST_RECEIPT_VERSION),
+  receiptRef: ForensicRef,
+  runRef: ForensicRef,
+  resourceRef: ForensicRef,
+  isolationClass: S.Literals(["gce_vm", "none"]),
+  startEventRef: ForensicRef,
+  startEventSequence: PositiveInteger,
+  settledEventSequence: PositiveInteger,
+  cost: InfrastructureCostSchema,
+  reasonRefs: NonEmptyBoundedRefs,
+  recordedAt: ForensicTimestamp,
+})
+  .pipe(
+    S.check(
+      S.makeFilter((receipt) => receipt.settledEventSequence >= receipt.startEventSequence, {
+        message: "infrastructure cost settlement cannot precede its turn start",
+      }),
+      S.makeFilter(
+        (receipt) =>
+          receipt.isolationClass !== "none" ||
+          (receipt.cost.exactness === "exact" && receipt.cost.micros === 0),
+        {
+          message:
+            "an isolation class of none must record an exact zero incremental infrastructure cost",
+        },
+      ),
+    ),
+  )
+  .annotate({ identifier: "ForensicInfrastructureCostReceipt" });
+export interface ForensicInfrastructureCostReceipt extends S.Schema.Type<
+  typeof ForensicInfrastructureCostReceiptSchema
 > {}
 
 export const MetricValueSchema = S.Struct({
@@ -513,6 +573,8 @@ export const REVIEWER_MINUTES_PER_QUALIFIED_FINDING_METRIC_REF =
   "metric.reviewer_minutes_per_qualified_finding.v1" as const;
 export const CORRECTION_REJECTION_BURDEN_METRIC_REF =
   "metric.correction_rejection_burden.v1" as const;
+export const CAUSAL_CHAIN_COVERAGE_METRIC_REF = "metric.causal_chain_coverage.v1" as const;
+export const COST_TO_IDENTIFICATION_METRIC_REF = "metric.cost_to_identification.v1" as const;
 
 const REQUIRED_PROJECTOR_METRICS = [
   QUALIFIED_HIT_METRIC_REF,
@@ -522,6 +584,8 @@ const REQUIRED_PROJECTOR_METRICS = [
   CONTROL_FALSE_POSITIVE_METRIC_REF,
   REVIEWER_MINUTES_PER_QUALIFIED_FINDING_METRIC_REF,
   CORRECTION_REJECTION_BURDEN_METRIC_REF,
+  CAUSAL_CHAIN_COVERAGE_METRIC_REF,
+  COST_TO_IDENTIFICATION_METRIC_REF,
 ] as const;
 
 type FrozenMetricSpec = readonly [
@@ -647,7 +711,7 @@ const FROZEN_METRIC_SPECS: ReadonlyArray<FrozenMetricSpec> = [
     "Frozen benchmark vulnerabilities qualified before a preregistered aggregate-token budget divided by all benchmark vulnerabilities.",
   ],
   [
-    "metric.causal_chain_coverage.v1",
+    CAUSAL_CHAIN_COVERAGE_METRIC_REF,
     "Causal-chain coverage",
     "ratio",
     "population.adjudicated_claims",
@@ -767,7 +831,7 @@ const FROZEN_METRIC_SPECS: ReadonlyArray<FrozenMetricSpec> = [
     "Provider-reported cached input tokens divided by cache-eligible input tokens.",
   ],
   [
-    "metric.cost_to_identification.v1",
+    COST_TO_IDENTIFICATION_METRIC_REF,
     "Cost to identification",
     "usd_micros",
     "population.complete_vulnerable",
@@ -969,6 +1033,7 @@ export interface ForensicScorecardRunInput {
   readonly usageReceipts: ReadonlyArray<ForensicProviderUsageReceipt>;
   readonly adjudications: ReadonlyArray<ForensicEvaluatorAdjudication>;
   readonly reviewerBurdenReceipts?: ReadonlyArray<ForensicReviewerBurdenReceipt>;
+  readonly infrastructureCostReceipts?: ReadonlyArray<ForensicInfrastructureCostReceipt>;
   readonly retainedReceiptDigests: ReadonlyArray<string>;
   readonly failureRefs: ReadonlyArray<string>;
 }
@@ -1100,6 +1165,26 @@ const deriveRun = (
     })
   ) {
     throw new Error("reviewer burden receipts must bind unique retained review events");
+  }
+  const infrastructureCostReceipts = (input.infrastructureCostReceipts ?? []).map((receipt) =>
+    strictDecode(ForensicInfrastructureCostReceiptSchema, receipt),
+  );
+  if (
+    new Set(infrastructureCostReceipts.map((receipt) => receipt.receiptRef)).size !==
+      infrastructureCostReceipts.length ||
+    infrastructureCostReceipts.some((receipt) => {
+      const started = events.find(
+        (event) =>
+          event.eventRef === receipt.startEventRef && event.sequence === receipt.startEventSequence,
+      );
+      return (
+        receipt.runRef !== input.runRef ||
+        started?.kind !== "turn_started" ||
+        events.find((event) => event.sequence === receipt.settledEventSequence) === undefined
+      );
+    })
+  ) {
+    throw new Error("infrastructure cost must bind a retained turn start and settlement sequence");
   }
   if (
     new Set(adjudications.map((adjudication) => adjudication.adjudicationRef)).size !==
@@ -1318,6 +1403,129 @@ const deriveRun = (
     }),
   );
 
+  // Causal-chain coverage over the run's adjudicated claims. Qualified
+  // adjudications are constrained to full coverage by their own schema, so this
+  // ratio only moves because of rejected, duplicate, and not-applicable claims —
+  // which is exactly the evaluator work a prompt change shifts.
+  const adjudicatedEventRefs = adjudications.map((adjudication) => adjudication.findingEventRef);
+  const requiredCausalLinks = adjudications.reduce(
+    (total, adjudication) => total + adjudication.requiredCausalLinks,
+    0,
+  );
+  const supportedCausalLinks = adjudications.reduce(
+    (total, adjudication) => total + adjudication.supportedCausalLinks,
+    0,
+  );
+  values.push(
+    strictDecode(
+      MetricValueSchema,
+      adjudications.length === 0
+        ? metricUnavailable(
+            CAUSAL_CHAIN_COVERAGE_METRIC_REF,
+            "unavailable.causal_chain_coverage.no_adjudicated_claim",
+            [],
+            [],
+          )
+        : requiredCausalLinks === 0
+          ? metricUnavailable(
+              CAUSAL_CHAIN_COVERAGE_METRIC_REF,
+              "unavailable.causal_chain_coverage.no_required_link",
+              adjudicatedEventRefs,
+              [],
+            )
+          : {
+              metricRef: CAUSAL_CHAIN_COVERAGE_METRIC_REF,
+              numericValue: supportedCausalLinks / requiredCausalLinks,
+              exactness: "exact",
+              sourceEventRefs: adjudicatedEventRefs,
+              sourceReceiptRefs: [],
+            },
+    ),
+  );
+
+  const costToIdentification = (): Record<string, unknown> => {
+    if (firstQualified === undefined) {
+      return metricUnavailable(
+        COST_TO_IDENTIFICATION_METRIC_REF,
+        miss ? "unavailable.identification.right_censored" : "unavailable.identification.not_eligible",
+        [],
+        [],
+      );
+    }
+    // The frozen definition is measured provider *and* incremental
+    // infrastructure cost. With no infrastructure receipt the second half is
+    // unknown, and reporting provider cost alone would let a candidate win this
+    // axis by trading provider tokens for longer paid VM time.
+    if (infrastructureCostReceipts.length === 0) {
+      return metricUnavailable(
+        COST_TO_IDENTIFICATION_METRIC_REF,
+        "unavailable.infrastructure_cost.missing",
+        [firstQualified.event.eventRef],
+        throughIdentification.map((receipt) => receipt.receiptRef),
+      );
+    }
+    const identificationSequence = firstQualified.event.sequence;
+    const infrastructureThroughIdentification = infrastructureCostReceipts.filter(
+      (receipt) => receipt.startEventSequence <= identificationSequence,
+    );
+    const sourceReceiptRefs = [
+      ...throughIdentification.map((receipt) => receipt.receiptRef),
+      ...infrastructureThroughIdentification.map((receipt) => receipt.receiptRef),
+    ];
+    if (identificationUsage.exactness === "unavailable") {
+      return metricUnavailable(
+        COST_TO_IDENTIFICATION_METRIC_REF,
+        identificationUsage.unavailableReasonRef,
+        [firstQualified.event.eventRef],
+        sourceReceiptRefs,
+      );
+    }
+    const unavailableInfrastructure = infrastructureThroughIdentification.find(
+      (receipt) => receipt.cost.exactness === "unavailable",
+    );
+    if (unavailableInfrastructure?.cost.exactness === "unavailable") {
+      return metricUnavailable(
+        COST_TO_IDENTIFICATION_METRIC_REF,
+        unavailableInfrastructure.cost.unavailableReasonRef,
+        [firstQualified.event.eventRef],
+        sourceReceiptRefs,
+      );
+    }
+    const providerCostMicros = throughIdentification.reduce(
+      (total, receipt) => total + (receipt.costMicros ?? 0),
+      0,
+    );
+    const infrastructureCostMicros = infrastructureThroughIdentification.reduce(
+      (total, receipt) => total + (receipt.cost.exactness === "unavailable" ? 0 : receipt.cost.micros),
+      0,
+    );
+    // A window still open at T5 is attributed whole, so the figure is an upper
+    // bound rather than a silent truncation.
+    const straddlesIdentification = infrastructureThroughIdentification.some(
+      (receipt) => receipt.settledEventSequence > identificationSequence,
+    );
+    const infrastructureExactness = infrastructureThroughIdentification.map(
+      (receipt) => receipt.cost.exactness,
+    );
+    return {
+      metricRef: COST_TO_IDENTIFICATION_METRIC_REF,
+      numericValue: providerCostMicros + infrastructureCostMicros,
+      exactness:
+        straddlesIdentification ||
+        identificationUsage.exactness === "upper_bound" ||
+        infrastructureExactness.includes("upper_bound")
+          ? "upper_bound"
+          : identificationUsage.exactness === "estimated" ||
+              infrastructureExactness.includes("estimated")
+            ? "estimated"
+            : "exact",
+      sourceEventRefs: [firstQualified.event.eventRef],
+      sourceReceiptRefs,
+    };
+  };
+
+  values.push(strictDecode(MetricValueSchema, costToIdentification()));
+
   return strictDecode(ScorecardRunSchema, {
     runDigest: input.runDigest,
     armRef: input.armRef,
@@ -1379,6 +1587,9 @@ export const rebuildForensicScorecard = (
   ).map(([, group]) => group);
   const usageReceipts = input.runs.flatMap((run) => run.usageReceipts);
   const reviewerBurdenReceipts = input.runs.flatMap((run) => run.reviewerBurdenReceipts ?? []);
+  const infrastructureCostReceipts = input.runs.flatMap(
+    (run) => run.infrastructureCostReceipts ?? [],
+  );
   const hasUnavailableCost =
     usageReceipts.length === 0 ||
     usageReceipts.some(
@@ -1420,6 +1631,7 @@ export const rebuildForensicScorecard = (
     receiptDigest: forensicSha256Digest([
       ...usageReceipts,
       ...reviewerBurdenReceipts,
+      ...infrastructureCostReceipts,
       ...retainedReceiptDigests,
     ]),
     generatedAt: input.generatedAt,

@@ -3,7 +3,11 @@ import { describe, expect, it } from "vite-plus/test";
 import { forensicCanonicalJson, forensicSha256Digest, strictDecode } from "../src/canonical.ts";
 import {
   ANALYSIS_TIME_TO_IDENTIFICATION_METRIC_REF,
+  CAUSAL_CHAIN_COVERAGE_METRIC_REF,
+  FORENSIC_INFRASTRUCTURE_COST_RECEIPT_VERSION,
+  ForensicInfrastructureCostReceiptSchema,
   CONTROL_FALSE_POSITIVE_METRIC_REF,
+  COST_TO_IDENTIFICATION_METRIC_REF,
   CORRECTION_REJECTION_BURDEN_METRIC_REF,
   FROZEN_FORENSIC_METRIC_REGISTRY,
   FORENSIC_EVALUATOR_ADJUDICATION_VERSION,
@@ -31,7 +35,7 @@ const evaluatorRevisionDigest = digest("9");
 
 const definition = (
   metricRef: string,
-  unit: "boolean" | "count" | "milliseconds" | "tokens",
+  unit: "boolean" | "count" | "milliseconds" | "ratio" | "tokens" | "usd_micros",
 ): ForensicMetricDefinition => ({
   schema: FORENSIC_METRIC_DEFINITION_VERSION,
   metricRef,
@@ -57,6 +61,8 @@ const definitions = [
   definition(CONTROL_FALSE_POSITIVE_METRIC_REF, "boolean"),
   definition(REVIEWER_MINUTES_PER_QUALIFIED_FINDING_METRIC_REF, "milliseconds"),
   definition(CORRECTION_REJECTION_BURDEN_METRIC_REF, "count"),
+  definition(CAUSAL_CHAIN_COVERAGE_METRIC_REF, "ratio"),
+  definition(COST_TO_IDENTIFICATION_METRIC_REF, "usd_micros"),
 ];
 
 const registry = strictDecode(ForensicMetricRegistrySchema, {
@@ -196,6 +202,158 @@ describe("forensic metric evidence", () => {
     expect(metricRefs.has("metric.coldcard.false_matches_per_million.v1")).toBe(true);
     expect(metricRefs.has("metric.coldcard.reconciliation_drift.v1")).toBe(true);
     expect(metricRefs.has("metric.correction_rejection_burden.v1")).toBe(true);
+  });
+
+  it("derives causal-chain coverage from the retained adjudications rather than the qualified count", () => {
+    const { vulnerabilityIdentityDigest: _identity, ...unqualified } = adjudication;
+    const rejected = strictDecode(ForensicEvaluatorAdjudicationSchema, {
+      ...unqualified,
+      adjudicationRef: "adjudication.test.2",
+      outcome: "rejected",
+      requiredCausalLinks: 6,
+      supportedCausalLinks: 3,
+      validSourceRefs: 1,
+      reasonRefs: ["reason.frozen.oracle.partial-chain"],
+    });
+    const coverage = (run: (typeof baseRun)["adjudications"]) =>
+      rebuild([{ ...baseRun, adjudications: run, censorAtMilliseconds: 300000 }]).runs[0]?.values.find(
+        (value) => value.metricRef === CAUSAL_CHAIN_COVERAGE_METRIC_REF,
+      );
+    // 6/6 with only the qualified claim, then 9/12 once the rejected claim is
+    // retained. A derivation that simply reported the qualified state would be
+    // pinned at 1 in both, because the adjudication schema already forces a
+    // qualified claim to carry every link.
+    expect(coverage([adjudication])).toMatchObject({ numericValue: 1, exactness: "exact" });
+    expect(coverage([adjudication, rejected])).toMatchObject({
+      numericValue: 0.75,
+      exactness: "exact",
+    });
+    expect(coverage([])).toMatchObject({
+      exactness: "unavailable",
+      unavailableReasonRef: "unavailable.causal_chain_coverage.no_adjudicated_claim",
+    });
+  });
+
+  it("reports cost to identification unavailable until the infrastructure half is measured", () => {
+    const withoutInfrastructure = rebuild([baseRun]).runs[0]?.values.find(
+      (value) => value.metricRef === COST_TO_IDENTIFICATION_METRIC_REF,
+    );
+    expect(withoutInfrastructure).toMatchObject({
+      exactness: "unavailable",
+      unavailableReasonRef: "unavailable.infrastructure_cost.missing",
+    });
+
+    const settledBeforeIdentification = strictDecode(ForensicInfrastructureCostReceiptSchema, {
+      schema: FORENSIC_INFRASTRUCTURE_COST_RECEIPT_VERSION,
+      receiptRef: "receipt.infrastructure.test.1",
+      runRef: baseRun.runRef,
+      resourceRef: "resource.gce.test.1",
+      isolationClass: "gce_vm",
+      startEventRef: turnEvent.eventRef,
+      startEventSequence: turnEvent.sequence,
+      settledEventSequence: findingEvent.sequence,
+      cost: { micros: 18000, exactness: "exact" },
+      reasonRefs: ["reason.infrastructure_cost.metered_instance_hours"],
+      recordedAt: "2026-08-01T12:03:02.000Z",
+    });
+    // Provider cost is 120000 and the closed infrastructure window is 18000. The
+    // provider slice already crosses T5, so the sum is an upper bound.
+    expect(
+      rebuild([
+        { ...baseRun, infrastructureCostReceipts: [settledBeforeIdentification] },
+      ]).runs[0]?.values.find((value) => value.metricRef === COST_TO_IDENTIFICATION_METRIC_REF),
+    ).toMatchObject({ numericValue: 138000, exactness: "upper_bound" });
+
+    const unmeasured = strictDecode(ForensicInfrastructureCostReceiptSchema, {
+      ...settledBeforeIdentification,
+      receiptRef: "receipt.infrastructure.test.2",
+      cost: {
+        exactness: "unavailable",
+        unavailableReasonRef: "unavailable.infrastructure_cost.billing_not_settled",
+      },
+    });
+    expect(
+      rebuild([{ ...baseRun, infrastructureCostReceipts: [unmeasured] }]).runs[0]?.values.find(
+        (value) => value.metricRef === COST_TO_IDENTIFICATION_METRIC_REF,
+      ),
+    ).toMatchObject({
+      exactness: "unavailable",
+      unavailableReasonRef: "unavailable.infrastructure_cost.billing_not_settled",
+    });
+
+    // A run with no incremental infrastructure cost says so with a pinned zero,
+    // and the metric then reports the provider figure as the whole cost.
+    const none = strictDecode(ForensicInfrastructureCostReceiptSchema, {
+      ...settledBeforeIdentification,
+      receiptRef: "receipt.infrastructure.test.3",
+      isolationClass: "none",
+      resourceRef: "resource.local.none",
+      cost: { micros: 0, exactness: "exact" },
+    });
+    expect(
+      rebuild([{ ...baseRun, infrastructureCostReceipts: [none] }]).runs[0]?.values.find(
+        (value) => value.metricRef === COST_TO_IDENTIFICATION_METRIC_REF,
+      ),
+    ).toMatchObject({ numericValue: 120000 });
+    expect(() =>
+      strictDecode(ForensicInfrastructureCostReceiptSchema, {
+        ...none,
+        cost: { micros: 5, exactness: "exact" },
+      }),
+    ).toThrow();
+
+    // With every window closed at or before T5 the figure is exact, so the
+    // upper bound above is a property of the straddling window rather than a
+    // constant the projector always reports.
+    const closedProviderTurn = strictDecode(ForensicProviderUsageReceiptSchema, {
+      ...usageReceipt,
+      settledEventSequence: findingEvent.sequence,
+    });
+    expect(
+      rebuild([
+        {
+          ...baseRun,
+          usageReceipts: [closedProviderTurn],
+          infrastructureCostReceipts: [settledBeforeIdentification],
+        },
+      ]).runs[0]?.values.find((value) => value.metricRef === COST_TO_IDENTIFICATION_METRIC_REF),
+    ).toMatchObject({ numericValue: 138000, exactness: "exact" });
+
+    // A window still open at T5 is attributed whole, and that shows as an upper
+    // bound rather than a silent truncation.
+    const straddlingInfrastructure = strictDecode(ForensicInfrastructureCostReceiptSchema, {
+      ...settledBeforeIdentification,
+      receiptRef: "receipt.infrastructure.test.5",
+      settledEventSequence: settledEvent.sequence,
+    });
+    expect(
+      rebuild([
+        {
+          ...baseRun,
+          usageReceipts: [closedProviderTurn],
+          infrastructureCostReceipts: [straddlingInfrastructure],
+        },
+      ]).runs[0]?.values.find((value) => value.metricRef === COST_TO_IDENTIFICATION_METRIC_REF),
+    ).toMatchObject({ numericValue: 138000, exactness: "upper_bound" });
+  });
+
+  it("refuses infrastructure cost that does not bind a retained turn", () => {
+    const floating = strictDecode(ForensicInfrastructureCostReceiptSchema, {
+      schema: FORENSIC_INFRASTRUCTURE_COST_RECEIPT_VERSION,
+      receiptRef: "receipt.infrastructure.test.4",
+      runRef: baseRun.runRef,
+      resourceRef: "resource.gce.test.1",
+      isolationClass: "gce_vm",
+      startEventRef: analysisEvent.eventRef,
+      startEventSequence: analysisEvent.sequence,
+      settledEventSequence: settledEvent.sequence,
+      cost: { micros: 18000, exactness: "exact" },
+      reasonRefs: ["reason.infrastructure_cost.metered_instance_hours"],
+      recordedAt: "2026-08-01T12:03:02.000Z",
+    });
+    expect(() => rebuild([{ ...baseRun, infrastructureCostReceipts: [floating] }])).toThrow(
+      /retained turn start and settlement sequence/,
+    );
   });
 
   it("keeps T5 at the immutable finding timestamp and treats crossing-turn tokens as an upper bound", () => {

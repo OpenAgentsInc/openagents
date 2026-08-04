@@ -1,13 +1,19 @@
 import {
+  FROZEN_FORENSIC_METRIC_REGISTRY,
+} from "@openagentsinc/forensic-contract/metrics";
+import {
   ForensicEvaluatorAdjudicationSchema,
+  ForensicInfrastructureCostReceiptSchema,
   ForensicProviderUsageReceiptSchema,
   ForensicReviewerBurdenReceiptSchema,
   ForensicRunEventSchema,
   FORENSIC_WORKER_PLACEMENT_VERSION,
   type ForensicBudget,
   ForensicBudgetSchema,
+  type ForensicScorecard,
   type ForensicWorkerPlacement,
   ForensicWorkerPlacementSchema,
+  rebuildForensicScorecard,
 } from "@openagentsinc/forensic-contract";
 import { canonicalJson } from "@openagentsinc/khala-sync";
 import {
@@ -906,6 +912,7 @@ const ForensicRouteTimestamp = S.String.check(
   S.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u),
 );
 const ForensicRouteNonNegativeInteger = S.Number.check(S.isInt(), S.isGreaterThanOrEqualTo(0));
+const ForensicRouteDigest = S.String.check(S.isPattern(/^sha256:[0-9a-f]{64}$/u));
 
 const ForensicWorkerRouteRequestSchema = S.TaggedUnion({
   Admit: {
@@ -969,10 +976,45 @@ const ForensicWorkerRouteRequestSchema = S.TaggedUnion({
       ForensicProviderUsageReceiptSchema,
       ForensicEvaluatorAdjudicationSchema,
       ForensicReviewerBurdenReceiptSchema,
+      ForensicInfrastructureCostReceiptSchema,
     ]),
   },
   ReadMetricEvidence: {
     runRef: S.String,
+  },
+  BuildScorecard: {
+    scorecardRef: S.String,
+    datasetRevisionDigest: ForensicRouteDigest,
+    evaluatorRevisionDigest: ForensicRouteDigest,
+    candidateDigest: ForensicRouteDigest,
+    hardGates: S.Array(
+      S.Struct({
+        gateRef: S.String,
+        passed: S.Boolean,
+        evidenceRefs: S.Array(S.String).check(S.isMaxLength(64)),
+        blockerRefs: S.Array(S.String).check(S.isMaxLength(64)),
+      }),
+    ).check(S.isMinLength(1), S.isMaxLength(64)),
+    runs: S.Array(
+      S.Struct({
+        runRef: S.String,
+        runDigest: ForensicRouteDigest,
+        armRef: S.String,
+        datasetSplit: S.Literals(["train", "development", "holdout", "clean_holdout"]),
+        population: S.Literals([
+          "vulnerable",
+          "structural_variant",
+          "fixed_control",
+          "clean_control",
+        ]),
+        coverageStatus: S.Literals(["complete", "incomplete", "denied"]),
+        censorAtMilliseconds: S.optionalKey(
+          S.Number.check(S.isInt(), S.isGreaterThan(0)),
+        ),
+        retainedReceiptDigests: S.Array(ForensicRouteDigest).check(S.isMaxLength(256)),
+        failureRefs: S.Array(S.String).check(S.isMaxLength(256)),
+      }),
+    ).check(S.isMinLength(1), S.isMaxLength(64)),
   },
 });
 
@@ -1270,6 +1312,61 @@ export const makeForensicManagedSandboxRoutes = <Bindings>(
         case "ReadMetricEvidence":
           result = yield* dependencies.readMetricEvidence(env, owner.userId, body.runRef);
           break;
+        case "BuildScorecard": {
+          // The caller names runs and declares the frozen revisions it is
+          // scoring against. Every metric event, adjudication, provider usage
+          // receipt, and infrastructure cost receipt is read back out of the
+          // owner-scoped durable ledger, so a caller cannot hand in the
+          // measurements its own scorecard is then judged on.
+          const runs: Array<Parameters<typeof rebuildForensicScorecard>[0]["runs"][number]> = [];
+          for (const descriptor of body.runs) {
+            const evidence = yield* dependencies.readMetricEvidence(
+              env,
+              owner.userId,
+              descriptor.runRef,
+            );
+            runs.push({
+              runRef: descriptor.runRef,
+              runDigest: descriptor.runDigest,
+              armRef: descriptor.armRef,
+              datasetSplit: descriptor.datasetSplit,
+              population: descriptor.population,
+              coverageStatus: descriptor.coverageStatus,
+              ...(descriptor.censorAtMilliseconds === undefined
+                ? {}
+                : { censorAtMilliseconds: descriptor.censorAtMilliseconds }),
+              events: evidence.events,
+              usageReceipts: evidence.usageReceipts,
+              adjudications: evidence.adjudications,
+              reviewerBurdenReceipts: evidence.reviewerBurdenReceipts,
+              infrastructureCostReceipts: evidence.infrastructureCostReceipts,
+              retainedReceiptDigests: descriptor.retainedReceiptDigests,
+              failureRefs: descriptor.failureRefs,
+            });
+          }
+          result = yield* Effect.try({
+            try: (): ForensicScorecard =>
+              rebuildForensicScorecard({
+                scorecardRef: body.scorecardRef,
+                datasetRevisionDigest: body.datasetRevisionDigest,
+                evaluatorRevisionDigest: body.evaluatorRevisionDigest,
+                candidateDigest: body.candidateDigest,
+                registry: FROZEN_FORENSIC_METRIC_REGISTRY,
+                hardGates: body.hardGates,
+                runs,
+                // Server clock. A scorecard cannot be backdated into a window
+                // where different evidence was retained.
+                generatedAt: new Date(handledAtMs).toISOString(),
+              }),
+            catch: (error) =>
+              refuse(
+                error instanceof Error
+                  ? error.message
+                  : "retained forensic evidence does not project a scorecard",
+              ),
+          });
+          break;
+        }
       }
       return routeJson({ result }, {}, owner.decorateResponseHeaders);
     }).pipe(Effect.catch((error) => Effect.succeed(routeError(error))));

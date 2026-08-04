@@ -1,6 +1,20 @@
+import { FROZEN_FORENSIC_METRIC_REGISTRY } from "@openagentsinc/forensic-contract/metrics";
 import {
+  FORENSIC_EVALUATOR_ADJUDICATION_VERSION,
+  FORENSIC_INFRASTRUCTURE_COST_RECEIPT_VERSION,
+  FORENSIC_PROVIDER_USAGE_RECEIPT_VERSION,
+  FORENSIC_REVIEWER_BURDEN_RECEIPT_VERSION,
+  FORENSIC_RUN_EVENT_VERSION,
+  ForensicEvaluatorAdjudicationSchema,
+  ForensicInfrastructureCostReceiptSchema,
+  ForensicProviderUsageReceiptSchema,
+  ForensicReviewerBurdenReceiptSchema,
+  ForensicRunEventSchema,
+  forensicSha256Digest,
+  strictDecode,
   type ForensicBudget,
   type ForensicRunEvent,
+  type ForensicScorecard,
   ForensicWorkerPlacementSchema,
 } from "@openagentsinc/forensic-contract";
 import { ManagedSandboxResourceSchema } from "@openagentsinc/managed-sandbox-contract";
@@ -857,6 +871,7 @@ describe("forensic managed sandbox", () => {
           usageReceipts: [],
           adjudications: [],
           reviewerBurdenReceipts: [],
+          infrastructureCostReceipts: [],
           eventDigest: `sha256:${"b".repeat(64)}`,
           receiptDigest: `sha256:${"c".repeat(64)}`,
         }),
@@ -986,5 +1001,263 @@ describe("forensic managed sandbox", () => {
     await expect(readResponse.json()).resolves.toMatchObject({
       result: { ownerRef: principal.ownerRef, runRef, events: [metricRecord] },
     });
+  });
+
+  test("BuildScorecard projects every frozen Pareto axis from the durable ledger, not the caller", async () => {
+    const runRef = "run.forensic.scorecard.1";
+    const evaluatorRevisionDigest = `sha256:${"9".repeat(64)}`;
+    const metricContext = {
+      benchmarkRevisionDigest: `sha256:${"1".repeat(64)}`,
+      datasetSplit: "holdout" as const,
+      armRef: "arm.coldcard.complete-vulnerable",
+      repetition: 1,
+      targetDigest: `sha256:${"2".repeat(64)}`,
+      sourceBundleDigest: `sha256:${"3".repeat(64)}`,
+      promptDigest: `sha256:${"4".repeat(64)}`,
+      modelDigest: `sha256:${"5".repeat(64)}`,
+      modelParametersDigest: `sha256:${"6".repeat(64)}`,
+      workerImageDigest: `sha256:${"7".repeat(64)}`,
+      workerProfileDigest: `sha256:${"8".repeat(64)}`,
+      sandboxRef: "sandbox.forensic.scorecard.1",
+      resourceGeneration: 1,
+      evaluatorRevisionDigest,
+    };
+    const runEvent = (
+      sequence: number,
+      kind:
+        | "analysis_started"
+        | "turn_started"
+        | "finding_submitted"
+        | "run_settled"
+        | "review_recorded",
+      observedAt: string,
+    ) =>
+      strictDecode(ForensicRunEventSchema, {
+        schema: FORENSIC_RUN_EVENT_VERSION,
+        eventRef: `event.forensic.scorecard.${sequence}`,
+        runRef,
+        sequence,
+        kind,
+        actorRef: principal.actorRef,
+        metricContext,
+        relatedRefs: kind === "finding_submitted" ? ["finding.forensic.scorecard.1"] : [],
+        detailRefs: [],
+        clock: "control_plane_server",
+        observedAt,
+      });
+    const analysisEvent = runEvent(1, "analysis_started", "2026-08-01T10:00:00.000Z");
+    const turnEvent = runEvent(2, "turn_started", "2026-08-01T10:00:05.000Z");
+    const findingEvent = runEvent(3, "finding_submitted", "2026-08-01T10:04:00.000Z");
+    const settledEvent = runEvent(4, "run_settled", "2026-08-01T10:05:00.000Z");
+    const reviewEvent = runEvent(5, "review_recorded", "2026-08-01T10:10:00.000Z");
+    const events = [analysisEvent, turnEvent, findingEvent, settledEvent, reviewEvent];
+
+    const usageReceipts = [
+      strictDecode(ForensicProviderUsageReceiptSchema, {
+        schema: FORENSIC_PROVIDER_USAGE_RECEIPT_VERSION,
+        receiptRef: "receipt.provider.scorecard.1",
+        runRef,
+        turnRef: "turn.discovery.scorecard.1",
+        role: "discovery",
+        attempt: 1,
+        startEventRef: turnEvent.eventRef,
+        startEventSequence: turnEvent.sequence,
+        settledEventSequence: findingEvent.sequence,
+        abandoned: false,
+        losingParallelArm: false,
+        usage: {
+          inputTokens: 4000,
+          cachedInputTokens: 500,
+          outputTokens: 900,
+          reasoningTokens: 100,
+          totalTokens: 5400,
+          exactness: "exact",
+          providerUsageRef: "provider.usage.scorecard.1",
+        },
+        costMicros: 90_000,
+        recordedAt: "2026-08-01T10:04:10.000Z",
+      }),
+    ];
+    const adjudications = [
+      strictDecode(ForensicEvaluatorAdjudicationSchema, {
+        schema: FORENSIC_EVALUATOR_ADJUDICATION_VERSION,
+        adjudicationRef: "adjudication.forensic.scorecard.1",
+        runRef,
+        findingRef: "finding.forensic.scorecard.1",
+        findingEventRef: findingEvent.eventRef,
+        findingEventDigest: forensicSha256Digest(findingEvent),
+        evaluatorRevisionDigest,
+        outcome: "qualified",
+        vulnerabilityIdentityDigest: `sha256:${"a".repeat(64)}`,
+        requiredCausalLinks: 6,
+        supportedCausalLinks: 6,
+        submittedSourceRefs: 4,
+        validSourceRefs: 4,
+        reasonRefs: ["reason.frozen.oracle.match"],
+        evaluatedAt: "2026-08-01T10:06:00.000Z",
+      }),
+    ];
+    const reviewerBurdenReceipts = [
+      strictDecode(ForensicReviewerBurdenReceiptSchema, {
+        schema: FORENSIC_REVIEWER_BURDEN_RECEIPT_VERSION,
+        receiptRef: "receipt.reviewer.scorecard.1",
+        runRef,
+        reviewerActorRef: "actor.forensic.independent-reviewer",
+        reviewEventRef: reviewEvent.eventRef,
+        reviewEventSequence: reviewEvent.sequence,
+        duration: { milliseconds: 240_000, exactness: "exact" },
+        correctionCount: 1,
+        rejectionCount: 0,
+        reasonRefs: ["reason.review.source-correction"],
+        recordedAt: "2026-08-01T10:10:00.000Z",
+      }),
+    ];
+    const infrastructureCostReceipts = [
+      strictDecode(ForensicInfrastructureCostReceiptSchema, {
+        schema: FORENSIC_INFRASTRUCTURE_COST_RECEIPT_VERSION,
+        receiptRef: "receipt.infrastructure.scorecard.1",
+        runRef,
+        resourceRef: "resource.gce.forensic.scorecard.1",
+        isolationClass: "gce_vm",
+        startEventRef: turnEvent.eventRef,
+        startEventSequence: turnEvent.sequence,
+        settledEventSequence: findingEvent.sequence,
+        cost: { micros: 6_000, exactness: "exact" },
+        reasonRefs: ["reason.infrastructure_cost.metered_instance_hours"],
+        recordedAt: "2026-08-01T10:04:20.000Z",
+      }),
+    ];
+
+    let reads = 0;
+    const routes = makeForensicManagedSandboxRoutes({
+      authenticateOwner: async () => ({ userId: principal.ownerRef }),
+      enabled: () => true,
+      policy: () => Effect.succeed(policy),
+      profileDigest: () => `sha256:${"b".repeat(64)}`,
+      store: () => new BoxV1MemoryAuthority(),
+      runtime: () => Effect.succeed(makeBoxV1MemoryRuntime()),
+      assertSourceReady: () => Effect.die("scorecards do not materialize source"),
+      appendMetricEvidence: () => Effect.die("scorecards do not append evidence"),
+      readMetricEvidence: (_env, ownerRef, requestedRunRef) => {
+        reads += 1;
+        return Effect.succeed({
+          schema: FORENSIC_METRIC_EVIDENCE_LEDGER_VERSION,
+          ownerRef,
+          runRef: requestedRunRef,
+          events,
+          usageReceipts,
+          adjudications,
+          reviewerBurdenReceipts,
+          infrastructureCostReceipts,
+          eventDigest: forensicSha256Digest([...events, ...adjudications]),
+          receiptDigest: forensicSha256Digest([
+            ...usageReceipts,
+            ...reviewerBurdenReceipts,
+            ...infrastructureCostReceipts,
+          ]),
+        });
+      },
+      now: () => new Date("2026-08-01T11:00:00.000Z"),
+    });
+
+    const buildScorecard = (patch: Record<string, unknown> = {}) =>
+      Effect.runPromise(
+        routes.handle(
+          new Request(`https://api.openagents.com${FORENSIC_MANAGED_SANDBOX_PATH}`, {
+            method: "POST",
+            body: JSON.stringify({
+              _tag: "BuildScorecard",
+              scorecardRef: "scorecard.forensic.holdout.v1",
+              datasetRevisionDigest: `sha256:${"e".repeat(64)}`,
+              evaluatorRevisionDigest,
+              candidateDigest: `sha256:${"f".repeat(64)}`,
+              hardGates: [
+                {
+                  gateRef: "gate.holdout.complete",
+                  passed: true,
+                  evidenceRefs: ["evidence.holdout.complete"],
+                  blockerRefs: [],
+                },
+              ],
+              runs: [
+                {
+                  runRef,
+                  runDigest: `sha256:${"c".repeat(64)}`,
+                  armRef: metricContext.armRef,
+                  datasetSplit: "holdout",
+                  population: "vulnerable",
+                  coverageStatus: "complete",
+                  retainedReceiptDigests: [`sha256:${"d".repeat(64)}`],
+                  failureRefs: [],
+                },
+              ],
+              ...patch,
+            }),
+          }),
+          {},
+          {} as ExecutionContext,
+        ),
+      );
+
+    const response = await buildScorecard();
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { result: ForensicScorecard };
+    expect(reads).toBe(1);
+    // The server clock stamps the scorecard, so it cannot be dated into a
+    // window where different evidence was retained.
+    expect(body.result.generatedAt).toBe("2026-08-01T11:00:00.000Z");
+    expect(body.result.metricDefinitionRevisionDigest).toBe(
+      FROZEN_FORENSIC_METRIC_REGISTRY.revisionDigest,
+    );
+
+    const values = new Map(
+      (body.result.runs[0]?.values ?? []).map((value) => [value.metricRef, value]),
+    );
+    // This is the point of the change: a scorecard the repository's own
+    // projector built now resolves every axis the promotion gate compares, so
+    // the gate can reach a verdict instead of refusing on
+    // `insufficient_evidence` regardless of the candidate.
+    for (const metricRef of [
+      "metric.qualified_hit.v1",
+      "metric.causal_chain_coverage.v1",
+      "metric.analysis_time_to_identification.v1",
+      "metric.tokens_to_identification.v1",
+      "metric.cost_to_identification.v1",
+      "metric.control_false_positive.v1",
+      "metric.reviewer_minutes_per_qualified_finding.v1",
+    ]) {
+      expect(values.get(metricRef)?.exactness, metricRef).not.toBe("unavailable");
+    }
+    expect(values.get("metric.causal_chain_coverage.v1")?.numericValue).toBe(1);
+    expect(values.get("metric.cost_to_identification.v1")?.numericValue).toBe(96_000);
+
+    // A caller cannot hand in the measurements. An unadmitted `runs[0].events`
+    // field is rejected at the strict boundary rather than being merged over
+    // the ledger.
+    const smuggled = await buildScorecard({
+      runs: [
+        {
+          runRef,
+          runDigest: `sha256:${"c".repeat(64)}`,
+          armRef: metricContext.armRef,
+          datasetSplit: "holdout",
+          population: "vulnerable",
+          coverageStatus: "complete",
+          retainedReceiptDigests: [`sha256:${"d".repeat(64)}`],
+          failureRefs: [],
+          events: [],
+          adjudications: [],
+        },
+      ],
+    });
+    expect(smuggled.status).toBe(400);
+
+    // Evidence that does not project is refused with its exact reason rather
+    // than returning a scorecard built from a partial read.
+    const wrongEvaluator = await buildScorecard({
+      evaluatorRevisionDigest: `sha256:${"0".repeat(64)}`,
+    });
+    expect(wrongEvaluator.status).toBe(409);
+    await expect(wrongEvaluator.json()).resolves.toMatchObject({ error: "conflict" });
   });
 });

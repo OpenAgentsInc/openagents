@@ -78,6 +78,18 @@ const assertFrozenParetoAxes = (metricFreeze: ForensicPromptMetricFreeze): void 
       );
     }
   }
+  // The bindings above are checked against one exact registry revision, so the
+  // freeze must name that same revision. Otherwise a freeze could claim it
+  // pinned some other metric definitions while its axes were admitted against
+  // these, and the scorecard revision check further down would compare a
+  // caller-chosen digest to itself.
+  if (
+    metricFreeze.metricDefinitionRevisionDigest !== FROZEN_FORENSIC_METRIC_REGISTRY.revisionDigest
+  ) {
+    throw new Error(
+      "the metric freeze must pin the frozen forensic metric registry revision its axes resolve against",
+    );
+  }
 };
 
 /**
@@ -227,6 +239,14 @@ const validateCompilerInputs = (input: CompileForensicPromptCandidatesInput) => 
     throw new Error(
       "holdout revisions are evaluator-only and train/development are optimizer-visible",
     );
+  }
+  // Disjointness is vacuous over an empty set. A holdout revision declaring no
+  // examples would satisfy every blindness check below while carrying nothing to
+  // be blind about, so an empty untouched holdout is refused outright. As of
+  // 2026-08-04 the repository's own `fixtures/forensics/coldcard/dataset-splits.v1.json`
+  // declares exactly that shape, which is why no campaign has run — see #9300.
+  if (holdout.exampleRefs.length === 0 || cleanHoldout.exampleRefs.length === 0) {
+    throw new Error("untouched holdout and clean holdout revisions must retain examples");
   }
   const optimizerExamples = new Set([...train.exampleRefs, ...development.exampleRefs]);
   const holdoutExamples = new Set([...holdout.exampleRefs, ...cleanHoldout.exampleRefs]);

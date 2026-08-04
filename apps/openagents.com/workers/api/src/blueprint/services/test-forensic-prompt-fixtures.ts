@@ -5,19 +5,32 @@
  * forensic target.
  */
 import {
+  FORENSIC_EVALUATOR_ADJUDICATION_VERSION,
   FORENSIC_FINDING_VERSION,
   FORENSIC_HYPOTHESIS_VERSION,
+  FORENSIC_INFRASTRUCTURE_COST_RECEIPT_VERSION,
   FORENSIC_PROMPT_ARTIFACT_VERSION,
+  FORENSIC_PROVIDER_USAGE_RECEIPT_VERSION,
+  FORENSIC_REVIEWER_BURDEN_RECEIPT_VERSION,
+  FORENSIC_RUN_EVENT_VERSION,
   FORENSIC_SCORECARD_VERSION,
   FORENSIC_WORKER_PLACEMENT_VERSION,
   forensicPromptArtifactDigest,
   forensicSha256Digest,
+  rebuildForensicScorecard,
   strictDecode,
+  ForensicEvaluatorAdjudicationSchema,
+  ForensicInfrastructureCostReceiptSchema,
+  ForensicProviderUsageReceiptSchema,
+  ForensicReviewerBurdenReceiptSchema,
+  ForensicRunEventSchema,
   ForensicScorecardSchema,
   ForensicWorkerPlacementSchema,
   type ForensicPromptArtifact,
   type ForensicPromptIr,
 } from "@openagentsinc/forensic-contract";
+
+import { FROZEN_FORENSIC_METRIC_REGISTRY } from "@openagentsinc/forensic-contract/metrics";
 
 import type { BlueprintReleaseGate } from "../schemas/release-gate";
 import { FORENSIC_PROMPT_PARETO_AXES } from "../schemas/forensic-prompt-optimization";
@@ -100,10 +113,7 @@ export const datasets = (): ReadonlyArray<ForensicPromptDatasetRevision> => [
 
 /**
  * Every axis binds a metric the frozen forensic metric registry actually
- * defines. Two of these — `metric.causal_chain_coverage.v1` and
- * `metric.cost_to_identification.v1` — are defined in the registry but are not
- * emitted per run by `rebuildForensicScorecard`, which is recorded as a live
- * blocker in the governance document rather than papered over here.
+ * defines, and `rebuildForensicScorecard` emits a per-run value for all seven.
  */
 const AXIS_METRIC_REFS: Readonly<Record<ForensicPromptParetoAxis, string>> = {
   hit_rate: "metric.qualified_hit.v1",
@@ -129,7 +139,7 @@ export const metricFreeze: ForensicPromptMetricFreeze = {
   censoringDefinitionDigest: digest("5"),
   eligibilityDefinitionDigest: digest("6"),
   frozenAt: "2026-08-01T16:00:00.000Z",
-  metricDefinitionRevisionDigest: digest("7"),
+  metricDefinitionRevisionDigest: FROZEN_FORENSIC_METRIC_REGISTRY.revisionDigest,
   paretoAxes,
   t5DefinitionDigest: digest("8"),
 };
@@ -387,3 +397,195 @@ export const stateAfter = (
   revision: transitions.length,
   schema: "openagents.blueprint.forensic_prompt_governance_state.v1",
 });
+
+/**
+ * Build a scorecard the way production does: from retained run events, provider
+ * usage, adjudications, reviewer burden, and infrastructure cost, projected by
+ * `rebuildForensicScorecard` against the frozen registry.
+ *
+ * The evidence is synthetic — this is not a campaign result — but the
+ * projection is the real one, so a gate run over these scorecards exercises the
+ * same values a live scorecard would carry.
+ */
+const EVALUATOR_REVISION_DIGEST = digest("a");
+
+type ProjectedRunSpec = Readonly<{
+  runRef: string;
+  split: "holdout" | "clean_holdout";
+  population: "vulnerable" | "clean_control";
+  qualified: boolean;
+  analysisMillis: number;
+  totalTokens: number;
+  providerCostMicros: number;
+  infrastructureCostMicros: number;
+  reviewerMillis: number;
+}>;
+
+const projectedRun = (spec: ProjectedRunSpec) => {
+  const metricContext = {
+    benchmarkRevisionDigest: digest("1"),
+    datasetSplit: spec.split,
+    armRef: `arm.${spec.runRef}`,
+    repetition: 1,
+    targetDigest: digest("2"),
+    sourceBundleDigest: digest("3"),
+    promptDigest: digest("4"),
+    modelDigest: digest("5"),
+    modelParametersDigest: digest("6"),
+    workerImageDigest: digest("7"),
+    workerProfileDigest: digest("8"),
+    sandboxRef: `sandbox.${spec.runRef}`,
+    resourceGeneration: 1,
+    evaluatorRevisionDigest: EVALUATOR_REVISION_DIGEST,
+  };
+  const startedAt = Date.parse("2026-08-01T17:00:00.000Z");
+  const at = (offsetMillis: number) => new Date(startedAt + offsetMillis).toISOString();
+  const kinds: ReadonlyArray<[string, number]> = spec.qualified
+    ? [
+        ["analysis_started", 0],
+        ["turn_started", 1_000],
+        ["finding_submitted", spec.analysisMillis],
+        ["run_settled", spec.analysisMillis + 1_000],
+        ["review_recorded", spec.analysisMillis + 2_000],
+      ]
+    : [
+        ["analysis_started", 0],
+        ["turn_started", 1_000],
+        ["run_settled", spec.analysisMillis + 1_000],
+        ["review_recorded", spec.analysisMillis + 2_000],
+      ];
+  const events = kinds.map(([kind, offset], index) =>
+    strictDecode(ForensicRunEventSchema, {
+      schema: FORENSIC_RUN_EVENT_VERSION,
+      eventRef: `event.${spec.runRef}.${index + 1}`,
+      runRef: spec.runRef,
+      sequence: index + 1,
+      kind,
+      actorRef: "actor.forensic.driver",
+      metricContext,
+      relatedRefs: kind === "finding_submitted" ? [`finding.${spec.runRef}.1`] : [],
+      detailRefs: [],
+      clock: "control_plane_server",
+      observedAt: at(offset),
+    }),
+  );
+  const turnEvent = events[1]!;
+  const findingEvent = spec.qualified ? events[2]! : undefined;
+  const reviewEvent = events.at(-1)!;
+  const settlementSequence = findingEvent?.sequence ?? events.at(-2)!.sequence;
+  return {
+    runRef: spec.runRef,
+    runDigest: forensicSha256Digest(spec),
+    armRef: metricContext.armRef,
+    datasetSplit: spec.split,
+    population: spec.population,
+    coverageStatus: "complete" as const,
+    ...(spec.qualified || spec.population === "clean_control"
+      ? {}
+      : { censorAtMilliseconds: spec.analysisMillis + 1_000 }),
+    events,
+    usageReceipts: [
+      strictDecode(ForensicProviderUsageReceiptSchema, {
+        schema: FORENSIC_PROVIDER_USAGE_RECEIPT_VERSION,
+        receiptRef: `receipt.provider.${spec.runRef}`,
+        runRef: spec.runRef,
+        turnRef: `turn.discovery.${spec.runRef}`,
+        role: "discovery",
+        attempt: 1,
+        startEventRef: turnEvent.eventRef,
+        startEventSequence: turnEvent.sequence,
+        settledEventSequence: settlementSequence,
+        abandoned: false,
+        losingParallelArm: false,
+        usage: {
+          inputTokens: spec.totalTokens - 300,
+          cachedInputTokens: 100,
+          outputTokens: 200,
+          reasoningTokens: 0,
+          totalTokens: spec.totalTokens,
+          exactness: "exact",
+          providerUsageRef: `provider.usage.${spec.runRef}`,
+        },
+        costMicros: spec.providerCostMicros,
+        recordedAt: at(spec.analysisMillis + 3_000),
+      }),
+    ],
+    adjudications: findingEvent === undefined
+      ? []
+      : [
+          strictDecode(ForensicEvaluatorAdjudicationSchema, {
+            schema: FORENSIC_EVALUATOR_ADJUDICATION_VERSION,
+            adjudicationRef: `adjudication.${spec.runRef}.1`,
+            runRef: spec.runRef,
+            findingRef: `finding.${spec.runRef}.1`,
+            findingEventRef: findingEvent.eventRef,
+            findingEventDigest: forensicSha256Digest(findingEvent),
+            evaluatorRevisionDigest: EVALUATOR_REVISION_DIGEST,
+            outcome: "qualified",
+            vulnerabilityIdentityDigest: digest("b"),
+            requiredCausalLinks: 6,
+            supportedCausalLinks: 6,
+            submittedSourceRefs: 4,
+            validSourceRefs: 4,
+            reasonRefs: ["reason.frozen.oracle.match"],
+            evaluatedAt: at(spec.analysisMillis + 4_000),
+          }),
+        ],
+    reviewerBurdenReceipts: [
+      strictDecode(ForensicReviewerBurdenReceiptSchema, {
+        schema: FORENSIC_REVIEWER_BURDEN_RECEIPT_VERSION,
+        receiptRef: `receipt.reviewer.${spec.runRef}`,
+        runRef: spec.runRef,
+        reviewerActorRef: "actor.forensic.independent-reviewer",
+        reviewEventRef: reviewEvent.eventRef,
+        reviewEventSequence: reviewEvent.sequence,
+        duration: { milliseconds: spec.reviewerMillis, exactness: "exact" },
+        correctionCount: 1,
+        rejectionCount: 0,
+        reasonRefs: ["reason.review.source-correction"],
+        recordedAt: at(spec.analysisMillis + 5_000),
+      }),
+    ],
+    infrastructureCostReceipts: [
+      strictDecode(ForensicInfrastructureCostReceiptSchema, {
+        schema: FORENSIC_INFRASTRUCTURE_COST_RECEIPT_VERSION,
+        receiptRef: `receipt.infrastructure.${spec.runRef}`,
+        runRef: spec.runRef,
+        resourceRef: `resource.gce.${spec.runRef}`,
+        isolationClass: "gce_vm",
+        startEventRef: turnEvent.eventRef,
+        startEventSequence: turnEvent.sequence,
+        settledEventSequence: settlementSequence,
+        cost: { micros: spec.infrastructureCostMicros, exactness: "exact" },
+        reasonRefs: ["reason.infrastructure_cost.metered_instance_hours"],
+        recordedAt: at(spec.analysisMillis + 6_000),
+      }),
+    ],
+    retainedReceiptDigests: [],
+    failureRefs: [],
+  };
+};
+
+export const projectedScorecard = (input: {
+  readonly scorecardRef: string;
+  readonly datasetRevisionDigest: string;
+  readonly candidateDigest: string;
+  readonly runs: ReadonlyArray<ProjectedRunSpec>;
+}) =>
+  rebuildForensicScorecard({
+    scorecardRef: input.scorecardRef,
+    datasetRevisionDigest: input.datasetRevisionDigest,
+    evaluatorRevisionDigest: EVALUATOR_REVISION_DIGEST,
+    candidateDigest: input.candidateDigest,
+    registry: FROZEN_FORENSIC_METRIC_REGISTRY,
+    hardGates: [
+      {
+        gateRef: `gate.${input.scorecardRef}.complete`,
+        passed: true,
+        evidenceRefs: [`evidence.${input.scorecardRef}.complete`],
+        blockerRefs: [],
+      },
+    ],
+    runs: input.runs.map(projectedRun),
+    generatedAt: "2026-08-01T18:00:00.000Z",
+  });
