@@ -3,7 +3,8 @@
 - Date: 2026-08-04
 - Class: research addendum to
   [`2026-08-04-nostr-native-hardening-program.md`](2026-08-04-nostr-native-hardening-program.md) §6.3
-- Status: research finding and recommendation. Authorizes nothing.
+- Status: research finding, then a working test (§11) and an owner decision
+  (§12) that supersedes the §7 Tier 1 recommendation. Authorizes nothing.
 - Question asked: instead of building the hardening projection with
   TanStack/React and separately defined components, could we compile Omega's
   GPUI components to WebAssembly and render them on the web?
@@ -26,6 +27,7 @@ The measured position:
 | Is the page accessible, searchable, linkable? | **No.** Canvas rendering with no accessibility adapter on web |
 | Is upstream healthy? | Mixed. The work is recent and active, but Zed publicly slowed GPUI in 2026 |
 | Is any Omega product code wasm-ready? | Yes — `omega_forensics` type-checks clean for `wasm32-unknown-unknown` today |
+| Did it actually run? | **Yes, 2026-08-04** — real `ui` components and the real Aiur theme in a browser tab (§11) |
 
 ## 2. What is actually in our tree
 
@@ -200,6 +202,11 @@ toolchain, no cross-origin isolation, accessible and indexable by default,
 and it satisfies §6.3 of the spec as written. This is the Episode 266 path and
 nothing in this research changes it.
 
+> **Superseded 2026-08-04.** The owner directed Rust and GPUI for the first
+> deliverable; the DOM path is retired to backup. See §11 for the working test
+> and §12 for the decision and the costs it accepts. Tiers 2 and 3 below are
+> unaffected — and §11.2 makes Tier 3 cheaper than estimated here.
+
 **Tier 2 — one GPUI canvas island, opportunistic.** Pick a single artifact
 that is genuinely better on canvas, ship it behind a capability check with a
 DOM fallback, on a separate origin or route if cross-origin isolation proves
@@ -264,6 +271,103 @@ Each is falsifiable and small:
   spending on.
 - Not an authority change. The UI architecture remains what `CLAUDE.md` says
   it is, and any Tier 2 or Tier 3 work needs its own admission.
+
+## 11. Update: the working test, and what it changed
+
+*Added 2026-08-04, after §§1–10 were written. Sections 1–10 are preserved as
+the original research; this section records what happened when we actually
+built it, and §12 records the owner decision that followed.*
+
+We built an Omega-flavoured chat surface — thread rail, transcript with typed
+agent-activity rows, executor-disclosure header, composer — and ran it in a
+browser tab. It works, and it uses **Omega's real design system and real
+theme**, not a reimplementation:
+
+- `ui::Label`, `ui::Button`, `ui::Chip`, `ui::Indicator` with real
+  `ButtonStyle`/`LabelSize`/`Color` semantics;
+- the actual **Aiur** theme parsed from the checked-in
+  `assets/themes/aiur/aiur.json`, so `cx.theme().colors()` returns the same
+  navy/blue palette the desktop app ships;
+- real async through the `gpui_web` worker dispatcher (`cx.spawn` +
+  `cx.background_spawn`);
+- served with `Cross-Origin-Embedder-Policy: require-corp` and
+  `Cross-Origin-Opener-Policy: same-origin`, at **15.3 MB** of wasm with the
+  design system included (up from 10.6 MB for hello-world).
+
+Source: `~/work/omega/crates/gpui_web/examples/chat_web` (untracked).
+
+### 11.1 Four defects, all fixed or worked around
+
+Filed together as [omega#243](https://github.com/OpenAgentsInc/omega/issues/243).
+
+| # | Defect | Fix |
+| --- | --- | --- |
+| 1 | Upstream `hello_web` calls `.run()`, which cannot work on web: `gpui_web`'s `Platform::run` returns immediately, so the App is dropped and the canvas stays blank (`ERROR gpui::window: app was released`) | `run_embedded()` + `std::mem::forget(handle)`. Also an upstream PR candidate — Zed's own example is broken |
+| 2 | The example's rustflags omit `--export=__heap_base`, so wasm-bindgen 0.2.126's threading transform aborts | Add `--export=__heap_base` and `--export=__data_end` |
+| 3 | Every `ui` component panics at first paint: `no state of type GlobalThemeSettingsProvider exists` — that global is installed by `theme_settings`, which cannot build for wasm | Implement the 5-method `ThemeSettingsProvider` directly (~25 lines) using the fonts `gpui_web` already embeds |
+| 4 | `theme::init(LoadThemes::JustBase)` passes an empty `AssetSource`, so `themes.get("Aiur")` fails and it **silently** falls back to a generic theme | `include_str!` the real `aiur.json`, convert `#rrggbbaa` → `Hsla`, patch `Theme.styles.colors`, install via `GlobalTheme::update_theme` |
+
+Defect 4 deserves emphasis because it is this program's own thesis turned on
+us: a green-looking result that could not have been red. The app rendered
+plausibly in the wrong theme, and nothing in the output said so. `DEFAULT_DARK_THEME`
+is literally `"Aiur"` — Omega asks for the right theme by name and gets
+something else without a warning.
+
+### 11.2 The measurement that matters
+
+Three of the four defects have the same root cause: **the `settings` crate is
+the single dependency blocking a browser build of Omega's UI.** It pulls in
+`errno` and `polling` transitively (native fs/file-watching), which takes down
+`theme_settings`, which takes down the settings provider, the bundled-theme
+loader, and asset resolution.
+
+| Crate | wasm32-unknown-unknown |
+| --- | --- |
+| `gpui`, `gpui_web`, `gpui_wgpu` | builds and renders |
+| `theme` | 0 errors |
+| `ui` (whole design system) | 0 errors |
+| `omega_forensics` | 0 errors |
+| `settings` | **fails** — `errno`, `polling` |
+| `theme_settings` | **fails** — transitively |
+
+Every workaround so far has been 25–40 lines. One feature gate on `settings`
+would collapse all of them. That makes the Tier 3 estimate in §7 materially
+cheaper than this addendum originally implied: the blocker is a dependency
+problem, not a UI rewrite.
+
+## 12. Owner decision, 2026-08-04: Rust and GPUI first
+
+The owner directed that the first hardening deliverable use **only Rust and
+GPUI** — the web surface is Omega's components compiled to wasm, and the
+TypeScript SDK is retired to backup. This **supersedes the Tier 1
+recommendation in §7** (a DOM page via Effect Native).
+
+What the decision buys: one component set, one client, one language from the
+workbench to the browser tab. No second implementation of the UI, no second
+implementation of event decoding, and no drift between them — which is exactly
+the duplication §5.3 identified as the real cost, now avoided rather than
+managed.
+
+What it accepts, unchanged from §4 and not softened here:
+
+- **No accessibility.** `gpui_web` has no `accesskit` adapter while the macOS,
+  Linux, and Windows backends do. A screen reader gets nothing.
+- **No indexing, no link previews, no Ctrl-F, no text selection**, so the page
+  is not quotable and evidence refs cannot be copied out of it.
+- **~70% browser reach**, WebGPU required, and cross-origin isolation
+  constrains the serving origin.
+- **Multi-megabyte first load** — 15.3 MB today, before `wasm-opt`.
+
+These are real costs for a surface whose purpose is public legibility. They are
+accepted as a deliberate trade for coherence and speed, and they are why the
+DOM path is retired to backup rather than deleted: the `/api/public/hardening/*`
+projections in the program spec keep it buildable, and an `accesskit` web
+adapter or a DOM twin can buy the properties back later without redesigning the
+records underneath.
+
+Revisit this decision if any of these becomes true: the page needs to be
+citable by outsiders in writing; a maintainer needs to read it with assistive
+tech; or contributors report they cannot open it at all.
 
 ## Sources
 

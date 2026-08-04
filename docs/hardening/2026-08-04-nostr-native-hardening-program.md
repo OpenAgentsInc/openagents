@@ -32,13 +32,19 @@ program, projected read-only onto the web, and worked through Omega.
 
 The Episode 266 target, stated as a demo rather than a claim:
 
-> A public page on openagents.com shows the hardening program — its targets,
-> what has been scanned, with which profile, at what completeness, and what
-> remains untouched — rendered entirely from signed events on
-> `relay.openagents.com` through a TypeScript SDK anyone can install. An
-> outside contributor can point their own agent at the same relay, claim a
+> A page on openagents.com shows the hardening program — its targets, what has
+> been scanned, with which profile, at what completeness, and what remains
+> untouched — rendered entirely from signed events on `relay.openagents.com`.
+> An outside contributor can point their own agent at the same relay, claim a
 > target, run a profile, and publish a coverage attestation that appears on
 > that page.
+>
+> **The surface is Omega's own GPUI components compiled to WebAssembly, not a
+> separately authored web app.** Owner decision, 2026-08-04: the first
+> deliverable is Rust and GPUI end to end — one component set, one client, one
+> language, from the workbench to the browser tab. See
+> [Addendum A](2026-08-04-gpui-on-web-addendum.md) §11 for the working test
+> this decision rests on, and §12 for the costs it accepts.
 
 ## 2. What already exists
 
@@ -56,6 +62,7 @@ Facts, with paths, so the roadmap starts from the real substrate.
 | Forensic workbench | Implemented in the **Omega** repo (Rust/GPUI) with an Effect Schema boundary and Loupe adapter in this monorepo | `~/work/omega/crates/omega_forensics/`, `packages/forensic-contract/`, `packages/forensic-loupe-adapter/` |
 | Coldcard evidence | Pre-registered experiment, results, generator reproduction, evidence graph, historical fingerprint scan | `docs/loupe/`, `docs/coldcard/`, `fixtures/forensics/coldcard/` |
 | Web app | Cloud Run Node monolith; retained public product routes are `/`, `/forum`, `/promises`; `apps/start` serves retained documents; `/api/public/*` routes are exact entries in one registry | `apps/openagents.com/workers/api/src/cloudrun/server.ts`, `src/index.ts` |
+| GPUI on the web | **Proven 2026-08-04.** Omega's real `ui` design system and Aiur theme render in a browser through `gpui_web` + `gpui_wgpu` → WebGPU. Four defects found and worked around; filed as [omega#243](https://github.com/OpenAgentsInc/omega/issues/243) | `~/work/omega/crates/gpui_web/`, [Addendum A §11](2026-08-04-gpui-on-web-addendum.md) |
 | Sats payout | **No live rail.** MDK/Nexus money authority retired under VP-1; payout/L402/credit routes stripped from the served registry; LDK exists as typed readiness projections only | root `INVARIANTS.md`, `workers/api/src/index.ts:13341`, `pylon-ldk-readiness-projections.ts` |
 
 Two of these are load-bearing constraints rather than conveniences, and the
@@ -331,17 +338,15 @@ mechanism, and it already works in the deployed relay.
 new hardening kinds and the All Work kinds need an explicit allow decision per
 `AGENTS.md` rule 8 — a protocol change without a fixture is not complete.
 
-### 6.2 The TypeScript SDK for Immortal
+### 6.2 The Rust relay client for Immortal
 
-Nothing today lets an outside developer talk to our relay in typed TypeScript
-with the OpenAgents kinds decoded. The SDK is the thing that makes the
-program joinable, and it should be **generated, not hand-written**, reusing
-the pattern already proven in `packages/all-work-contract`: one pinned
-definition emits Effect Schema, a TypeScript client, Rust types, JSON Schema,
-fixtures, and a digest-bound compatibility manifest, with clean-regeneration
-drift checking in CI.
+Nothing today lets a client talk to our relay with the OpenAgents kinds
+decoded. Under the 2026-08-04 owner decision the first client is **Rust**, so
+that Omega, the browser surface, and any contributor's agent share one
+implementation rather than three.
 
-Proposed package: `@openagentsinc/immortal-sdk`.
+Proposed crate: `immortal-client` (workspace member; consumed by Omega
+natively and by the wasm surface through the same source).
 
 | Layer | Contents |
 | --- | --- |
@@ -351,10 +356,21 @@ Proposed package: `@openagentsinc/immortal-sdk`.
 | Identity | Local signer, remote signer (NIP-46), Block NIP-OA attestation helpers, NIP-AA auth flow |
 | Discipline | Every decoder fails closed on malformed input; every projection carries freshness and completeness; the client never asserts authority a record does not carry |
 
-Two boundaries to write into the package from day one: it is a **client**, not
-an authority — it decodes and publishes, it does not admit anything — and it
-must extend `nostr-effect` rather than rebuilding Nostr primitives, per
-workspace policy.
+Two boundaries from day one: it is a **client**, not an authority — it decodes
+and publishes, it does not admit anything — and it must build for both the
+native Omega target and `wasm32-unknown-unknown`, which is a real constraint on
+its dependency choices (see the `settings`-crate lesson in omega#243: one
+transitive `errno`/`polling` dependency is enough to lose the browser target).
+
+**Retired to backup: the TypeScript SDK.** The earlier plan was a generated
+`@openagentsinc/immortal-sdk` emitted from a pinned contract definition,
+reusing the `packages/all-work-contract` generator. That plan is **not
+cancelled, it is deferred** — it remains the right answer for third-party
+JavaScript integrators, for a DOM projection if one is later admitted, and for
+anyone who wants relay access without a Rust toolchain. It should be revisited
+once the Rust client's wire behavior is stable, so the TypeScript surface is
+generated from proven semantics rather than designed in parallel. Nothing in
+this program depends on it for the first deliverable.
 
 ### 6.3 The public projection on openagents.com
 
@@ -362,6 +378,21 @@ A read-only page rendering the program from the relay: targets and their
 coverage state, recent scans with their completeness, the divergence feed,
 open invariants, the disclosure funnel in aggregate (counts and states, never
 embargoed content), and the contributor roster with credits.
+
+**How it is built (owner decision, 2026-08-04).** The projection is Omega's
+GPUI components compiled to WebAssembly and rendered on a canvas through
+WebGPU — the same component set and the same Rust client the workbench uses.
+This overrides [Addendum A](2026-08-04-gpui-on-web-addendum.md)'s earlier
+Tier-1 recommendation of a DOM surface. The addendum's costs are not disputed
+and are accepted knowingly: no accessibility adapter on web, no search
+indexing, no text selection or Ctrl-F, no link previews, roughly 70% browser
+reach, and a multi-megabyte bundle. §12 of the addendum records what that
+means and which of them can be bought back later.
+
+A DOM projection remains the **backup path**, not a cancelled one: if the page
+must be indexable, quotable, or reachable by a screen reader before those gaps
+close, the read-only `/api/public/hardening/*` projections below are enough to
+render one, and the deferred TypeScript SDK (§6.2) is how a third party would.
 
 **Honest constraint.** The retained public product routes are `/`, `/forum`,
 and `/promises`; adding a new public product page is a **product-shape
@@ -407,8 +438,11 @@ collisions across contributors; and the campaign room is the Workroom the
 program's NIP-OT binding names.
 
 That is the division of labor for the demo: **Omega runs the work, the relay
-holds the record, the web page shows the record, the SDK lets anyone else
-join.**
+holds the record, the web surface shows the record, and the Rust client lets
+anyone else join.** With the GPUI/wasm decision the web surface stops being a
+second implementation of Omega's UI and becomes the same code with a different
+renderer target — which is the strongest argument for the decision, and the
+thing the 2026-08-04 test actually demonstrated.
 
 ### 6.5 Other possibilities worth naming
 
@@ -472,36 +506,45 @@ ordinary authority.
 **Exit:** an outside human joins, attests an agent with NIP-OA, and that agent
 writes one event that a third party reads back.
 
-### Phase 1 — Coverage ledger and the SDK (the Episode 266 demo)
+### Phase 1 — Coverage ledger and the GPUI surface (the Episode 266 demo)
+
+All Rust. No TypeScript is on the critical path for this phase.
 
 5. Review and pin the drafted **NIP-SC** and **NIP-SP** contracts with fixtures
    and an implementation decision — coverage and profiles are the two records
    the demo needs, and they are the two the evidence most directly supports.
-6. Generate `@openagentsinc/immortal-sdk` from a pinned contract definition:
-   transport, NIP-42 auth, typed decoders for the program kinds, drift check.
-7. Seed the ledger from work already done: publish Coverage Attestations and
+6. Build the `immortal-client` Rust crate (§6.2): transport, NIP-42 auth,
+   typed decoders for the program kinds, building for both the native Omega
+   target and `wasm32-unknown-unknown`.
+7. Land the GPUI/wasm prerequisites from
+   [omega#243](https://github.com/OpenAgentsInc/omega/issues/243) — at minimum
+   the `settings` wasm gate and an embedded `AssetSource`, so the surface uses
+   the real theme and icons instead of the workarounds proven on 2026-08-04.
+8. Seed the ledger from work already done: publish Coverage Attestations and
    Materialized Source Sets for the Coldcard experiment's two arms, and for the
    Omega self-scan. The divergence between arm A and arm B becomes the first
    published Divergence Note — the program's founding data point is a result we
    already have.
-8. Ship `/api/public/hardening/*` read-only projections and the projection UI;
-   mount `/hardening` if and when the owner admits the route.
-9. Omega publishes attestations from real workbench runs rather than local
-   state.
+9. Ship the GPUI/wasm hardening surface reading the relay through
+   `immortal-client`; mount it at `/hardening` if and when the owner admits the
+   route. Ship `/api/public/hardening/*` read-only projections alongside it, so
+   the backup DOM path and third-party clients stay possible.
+10. Omega publishes attestations from real workbench runs rather than local
+    state.
 
-**Exit (the demo):** the page renders live from the relay; an outside
-contributor using only the published SDK adds a coverage attestation that
-appears on it.
+**Exit (the demo):** the surface renders live from the relay in a browser tab,
+built from Omega's own components; an outside contributor using the Rust client
+adds a coverage attestation that appears on it.
 
 ### Phase 2 — Findings and disclosure
 
-10. Review and pin **NIP-FD** with fixtures and an implementation decision;
+11. Review and pin **NIP-FD** with fixtures and an implementation decision;
     implement commitments, encrypted candidate findings, the independent-
     verdict path (producer ≠ verifier, enforced), and the disclosure state
     machine.
-11. Settle §7 in the open with the first outside participants; encode the
+12. Settle §7 in the open with the first outside participants; encode the
     answer in the audience rules rather than in prose.
-12. Build the maintainer contact path: encrypted, per-project, with
+13. Build the maintainer contact path: encrypted, per-project, with
     acknowledgement tracking. Slow and correct beats fast and voluminous — the
     first five disclosures set the program's reputation permanently.
 
@@ -511,13 +554,13 @@ relay.
 
 ### Phase 3 — Invariants and regression watch
 
-13. Review and pin **NIP-SI** with fixtures and an implementation decision;
+14. Review and pin **NIP-SI** with fixtures and an implementation decision;
     encode the first invariant families from the hunt-class list, starting
     with entropy provenance and build-versus-source divergence, because those
     are where the free-oracle property concentrates.
-14. Implement artifact provenance witnesses — the `nm`-on-objects class of
+15. Implement artifact provenance witnesses — the `nm`-on-objects class of
     check — and bind them to invariants.
-15. Regression watches over target revisions, with freshness and honest
+16. Regression watches over target revisions, with freshness and honest
     stopping rules.
 
 **Exit:** a target regression is detected by a watch rather than by a human
@@ -525,11 +568,11 @@ noticing.
 
 ### Phase 4 — Funding and credit (owner-gated)
 
-16. Review and pin **NIP-BT** with fixtures and an implementation decision;
+17. Review and pin **NIP-BT** with fixtures and an implementation decision;
     ship Contribution Credits with no rail, because credit and standing work
     today and are what the analysis says most contributors want.
-17. Funding Pools for sponsored campaigns, scoped and public.
-18. Payout references **only** after an admitted settlement-rail decision. This
+18. Funding Pools for sponsored campaigns, scoped and public.
+19. Payout references **only** after an admitted settlement-rail decision. This
     repository has no live payout authority today, and the spec deliberately
     does not assume one.
 
@@ -541,7 +584,8 @@ without a payment rail attached.
 
 | Claim the program will want to make | Required proof | Falsifier |
 | --- | --- | --- |
-| The program is Nostr-native | Every record readable from `relay.openagents.com` with the published SDK and no OpenAgents API | The page needs a private database to render |
+| The program is Nostr-native | Every record readable from `relay.openagents.com` with the published Rust client and no OpenAgents API | The page needs a private database to render |
+| The surface is Omega's own code | The web surface and the workbench share the `ui` component set, the Aiur theme, and `immortal-client` | The web surface reimplements components or decoding in another language |
 | Anyone can join | An outside human plus their agent write and are read, using only public docs | Joining needs an operator to run SQL |
 | Coverage is honest | Every result references a Materialized Source Set; incomplete scans are visibly incomplete | A result renders confidently over a partially-read program |
 | Divergence is captured | Two runs over one target produce a Divergence Note automatically | Disagreement is only visible to whoever ran both |
