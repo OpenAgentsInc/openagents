@@ -644,19 +644,141 @@ a **governance / culture** indictment even if theft is false.
 
 ## Speculative scenarios (explicitly labeled)
 
-These are **interpretation sketches**, not findings. Ordered from “more
-consistent with current public evidence” to “requires bigger leaps.”
+These are **interpretation sketches**, not findings. Ordered roughly from “more
+consistent with current public evidence” to “requires bigger leaps.” The table
+is for navigation; the essays carry the argument. The claim ledger keeps a
+shorter copy of the same essays for readers who only open that file.
 
 | # | Scenario | Fits well | Fits poorly / needs extra facts | Guilt flavor |
 | --- | --- | --- | --- | --- |
-| **S1** | **Tragic integration negligence** — competent-enough team ships libNgU migration, wrong RNG linked, nobody does end-to-end seed-path proof; AI later cheapens exploit | E17 mechanism; open source age; afilini; GPG identity as OPSEC mess not heist | Prior-notice claims if primary tickets show clear RNG root cause was known | Low theft guilt; high product guilt |
-| **S2** | **Negligence + defensive denial** — sparse early drains misfiled; May 2025 report soft-pedaled; “unaware” is institutional face-saving | E12/E18 vs E17 tension; studentofthings “unrelated” reply pattern | Still no ticket PDFs | Medium process guilt |
-| **S3** | **Reckless opacity** — dual identity + empty commits + joke culture (retirement attack) without plan to steal; when AI era arrives, external actors cash the option | E3–E5, E10, E15; external attacker ops E19 | Why real-name firmware commits then? | High reputation guilt; theft unproven |
-| **S4** | **Informed non-fix + hope it ages out** — someone inside understood weakness risk after signals, chose not to force migration (business / reputation), no personal drain | Prior-notice steelman | Contradicts E17 “unaware”; needs smoking-gun internal docs | Moral/civil exposure |
-| **S5** | **Inside-assisted exploit** — staff or ex-staff uses knowledge of weak seed space; may or may not be original 2021 author | Control of code knowledge; timing theories | No on-chain link; Block provider lead looks like external paid analytics user | Criminal if true |
-| **S6** | **Long-game intentional plant (retirement attack realized)** — entropy bug designed for later retrieval | E10 joke; dual nym; disaster scale | E17 first-person “didn’t know PRNG in tree”; real-name migration; upstream MicroPython PRNG not invented in-house; empty “x” commits look more chaotic than crafty | Maximum allegation; **weakest fit** to full public technical record without new evidence |
-| **S7** | **RFC6979 post as tell** — E23 is subconscious / half-aware comment about AI finding *their* bug | Same-day timing; AI theme matches E17 attacker theory | Wrong vulnerability class; darosior correction; low engagement | Weak as standalone proof |
-| **S8** | **RFC6979 post as honest wrong theory** — CTO genuinely hypothesized nonce break under AI pressure | Wrong class + quick community correction | — | Non-guilt on this artifact |
+| **S1** | Tragic integration negligence | E17 mechanism; open source age; afilini; GPG as OPSEC mess not heist | Prior-notice claims if tickets show this root cause was known | Low theft; high product |
+| **S2** | Negligence + defensive denial | E12/E18 vs E17; studentofthings pattern | No ticket PDFs yet | Medium process |
+| **S3** | Reckless opacity without heist plan | E3–E5, E10, E15; external attacker ops E19 | Real-name firmware commits cut pure “burner” story | High reputation; theft unproven |
+| **S4** | Informed non-fix | Prior-notice steelman | Contradicts plain “unaware until today” | Moral/civil |
+| **S5** | Inside-assisted exploit | Code knowledge; timing theories | No staff↔proceeds link | Criminal if true |
+| **S6** | Long-game intentional plant | E10 joke; dual nym; scale | E17 “didn’t know PRNG”; upstream fallback; chaotic `x` commits | Max allegation; weak fit |
+| **S7** | RFC6979 post as tell | Day-0 timing; AI theme | Wrong vuln class; darosior; low engagement | Weak alone |
+| **S8** | RFC6979 post as honest wrong theory | Wrong class + quick correction | — | Non-guilt on artifact |
+
+### S1 — Tragic integration negligence
+
+In this reading the story is almost ordinary, which is what makes it
+devastating. A small team moves elliptic-curve work onto Bitcoin Core’s
+libsecp256k1 through an embedded helper (libNgU). Seed generation is redirected
+from a direct hardware-RNG call onto the helper’s `random.bytes()` path. Two
+implementations share a symbol name; a preprocessor guard tests existence rather
+than truth; MicroPython’s software PRNG fills the gap; the build stays green.
+Nobody runs an end-to-end proof that *wallet seed generation* still reaches the
+board TRNG. Years later, AI-cheap search turns a latent composition bug into
+mass theft by outsiders who never needed Coinkite’s servers.
+
+This scenario fits the official technical backgrounder almost line for line: the
+cryptographic *choice* was sound, the *integration* was not; review confirmed
+TRNG code was present in the binary without verifying which `rng_get` seed
+generation actually resolved to. It also fits afilini’s correction that the
+fallback PRNG is normal upstream behavior for boards without hardware RNG—the
+sin is accidentally landing on it for seed creation, not inventing a custom
+backdoor PRNG in Coldcard’s own tree. Dual identity and empty commit subjects
+still look bad under S1, but they read as OPSEC and culture failure, not as a
+finished heist plan. Theft guilt is low; product and process guilt are high.
+
+### S2 — Negligence plus defensive denial
+
+S2 accepts S1’s mechanism and adds an institutional second act. Sparse early
+drains (2022–2024 social claims), a May 2025 engineer concern, or other noisy
+signals reach the company and are mis-triaged—malware, user error, “we’d already
+know”—or acknowledged only as unrelated patches. When the 2026 mass waves hit,
+the public line becomes “we were unaware until today,” which may be narrowly
+true about *this root cause* while still false as a story about never having
+heard of anomalous Coldcard losses.
+
+This is the cleanest way to hold E17’s unawareness claim and the prior-notice
+chorus in one head without forcing intentional plant. It still needs primary
+tickets to graduate from plausible to demonstrated. Process and moral exposure
+rise; criminal theft remains unproven.
+
+### S3 — Reckless opacity without a heist plan
+
+Here the dual identity is the emotional center. Security-critical libngu work
+lands under a sparse GitHub nym while the same human also commits as Peter Gray
+on the same repos and authors the firmware migration under a real email. Commit
+messages like `x`, missing review, and an official account’s old joke defining
+“retirement attack” as a planted entropy bug all feed a narrative of people who
+liked dark humor and burner handles more than transparent process. When the AI
+era arrives, *external* actors cash an option the culture left on the table.
+
+S3 explains why the nym discourse feels decisive even when it does not prove
+who moved the coins. Real-name firmware commits slightly cut against a pure
+“burner only” story—they show the same person was not exclusively hiding—but
+they do not erase the opacity. Reputation and governance guilt run high; theft
+still needs a proceeds bridge.
+
+### S4 — Informed non-fix
+
+Someone inside eventually understands that device-generated seeds on affected
+firmware are weaker than advertised. Forcing a loud migration would destroy
+trust, sales, and inventory narrative. The company (or a decision-maker) hopes
+the issue ages out, stays rare, or stays below attacker cost until something
+else intervenes. No one necessarily plans to steal; they plan *not to be the
+ones who announce the fire*.
+
+S4 is morally serious and almost impossible to prove from public data. It
+directly contradicts the plain reading of “unaware until today.” Treat it as a
+hypothesis that only internal mail, tickets, or testimony can promote.
+
+### S5 — Inside-assisted exploit
+
+Staff, former staff, or someone with insider knowledge of the weak seed space
+(not necessarily the original 2021 author) runs or helps the 2026 drains. The
+public attack pattern—paid blockchain-analytics accounts, automated sweeps, wave
+behavior—can still look external if the insider only supplies knowledge or a
+seed list.
+
+S5 is the first scenario that is *structurally criminal* if true. Public
+evidence does not currently identify Coinkite staff as operators. Block’s lead
+that a well-known provider’s paid account was used is compatible with a
+sophisticated outsider *or* with anyone who can buy analytics. Without
+staff↔collector linkage, S5 remains an open allegation class, not a finding.
+
+### S6 — Long-game intentional plant
+
+This is the maximal social story: the entropy failure was designed so that
+“project makers” could later retrieve funds—the retirement-attack joke made
+flesh. The nym, the empty commits, the disaster scale, and the multi-year
+latency are recruited as choreography.
+
+S6 is the weakest fit to the *full* public technical record. The dangerous PRNG
+is upstream MicroPython fallback, not a bespoke Coinkite backdoor generator; the
+failure is a cross-module composition that looks more like chaos than craft;
+Gray’s own technical prose claims he did not know that PRNG was in the tree and
+that he zeroed a macro for the wrong reason. Empty `x` commits look more like
+haste than a careful trap. S6 should stay on the board as the hypothesis social
+media wants, but it demands intent evidence the current set does not supply.
+
+### S7 — RFC6979 post as a tell
+
+On day 0 of the public crisis, `@DocHex` writes that he wonders whether a smart
+AI found a hole in RFC6979. Same-day timing, the AI theme shared with the
+official attacker narrative, and the scarcity of other original CTO posts that
+week invite a reading that he was circling the real threat model—AI-scale search
+against crypto assumptions—while naming the wrong layer.
+
+As a *standalone* proof of inside knowledge of the entropy bug, S7 is weak. The
+named standard is about deterministic ECDSA nonces, not seed generation; the
+actual Coldcard defect does not require breaking RFC6979; engagement was low;
+and a correct entropy hypothesis appeared in-thread within about ninety minutes
+from someone else. Useful as color; dangerous as load-bearing structure.
+
+### S8 — RFC6979 post as honest wrong theory
+
+The same artifact, kinder reading: a senior engineer under extreme stress
+free-associates to the scariest AI-crypto failure mode in his head—broken
+deterministic nonces—and posts it. He is wrong about the class. The community
+corrects toward entropy. No further CTO correction appears, but silence after
+chaos is ambiguous.
+
+S8 is the non-guilt reading of E23. It neither helps nor hurts identity claims
+A/B; it only resists over-reading one tweet into a confession.
 
 **Working preference under current public set (still speculative):**  
 **S1–S3** are the least strained. **S5–S6** remain the ones social media treats as
