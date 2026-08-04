@@ -379,6 +379,15 @@ Option 3 is the one that requires no exception and can land immediately;
 option 1 is what Episode 266 wants to show. They compose: build the API and the
 projection logic first, mount the page when the owner admits it.
 
+On *how* the page is built —
+[Addendum A](2026-08-04-gpui-on-web-addendum.md) researches whether Omega's
+GPUI components could be compiled to WebAssembly and rendered here instead of
+authoring web components separately. Finding: a complete GPUI web backend
+already exists in our tree and builds, but a canvas surface gives up
+accessibility, search, deep links, text selection, and about 30% of browsers —
+so the page stays DOM, while GPUI-on-web is worth spending on for a canvas
+island, a browser Omega, and shared Rust projection logic.
+
 The page must state what it is: a projection with freshness, not a claim.
 Coverage counts inherit the completeness of their inputs, and a target with no
 attestation renders as *never examined* — which is the honest and uncomfortable

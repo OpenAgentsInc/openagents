@@ -12,6 +12,7 @@ anyone else's code.
 | Document | Contents |
 | --- | --- |
 | [`2026-08-04-nostr-native-hardening-program.md`](2026-08-04-nostr-native-hardening-program.md) | The architecture spec: the substrate that exists today, the program mapped onto the All Work NIPs, five new hardening NIPs (SP, SC, FD, SI, BT), the relay/SDK/web/Omega surfaces, the coverage-map disclosure question, and a five-phase roadmap with the Episode 266 demo cut line |
+| [`2026-08-04-gpui-on-web-addendum.md`](2026-08-04-gpui-on-web-addendum.md) | Addendum A: could the public projection be Omega's GPUI components compiled to WebAssembly rather than separately authored web components? Measured research — the `gpui_web` backend in our tree, a built wasm bundle, WebGPU reach, the missing accessibility adapter, and where GPUI-on-web is worth spending on instead |
 
 ## Where the surrounding material lives
 
