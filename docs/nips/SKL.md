@@ -2,6 +2,11 @@
 > Last shipped in: `f5919c766^:crates/nostr/nips/SKL.md`.
 > Market stream: skills registry.
 
+> **NIP-90 search status (2026-08-04): compatibility only.** New discovery
+> queries SKL manifests directly and composes NIP-51, NIP-89, and NIP-99.
+> Existing `5390`/`6390` search events may remain readable. See
+> [`NIP90-MIGRATION.md`](NIP90-MIGRATION.md).
+
 NIP-SKL
 =======
 
@@ -352,9 +357,11 @@ For a specific slug:
 
 `kind:30402` listings MAY reference skill addresses via `a` or `skill` tags. SKL trust checks still run against `kind:33400`.
 
-### 6.3 Optional NIP-90 Search Profile
+### 6.3 Legacy NIP-90 Search Compatibility
 
-Implementations MAY define a skill-search request/result pair in the NIP-90 request/result ranges (for example `5390`/`6390`).
+Implementations MAY decode the historical skill-search request/result pair in
+the NIP-90 request/result ranges (for example `5390`/`6390`). They MUST NOT
+allocate new skill-search semantics in those ranges.
 
 If used, results SHOULD include `a` tags pointing to manifest addresses:
 
@@ -362,7 +369,8 @@ If used, results SHOULD include `a` tags pointing to manifest addresses:
 ["a", "33400:<skill_pubkey>:<d-tag>"]
 ```
 
-SKL core does not require NIP-90 discovery support.
+SKL core does not require NIP-90 discovery support. New clients query
+`kind:33400` manifests, curated lists, listings, and handlers directly.
 
 ---
 

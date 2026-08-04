@@ -2,6 +2,12 @@
 > Last shipped in: `f5919c766^:crates/nostr/nips/SA.md`.
 > Market stream: sovereign agents.
 
+> **NIP-90 integration status (2026-08-04): compatibility only.** Existing
+> inference requests/results and tick references remain valid historical
+> evidence. New agent compute uses a focused compute microstandard with
+> explicit privacy, metering, cancellation, streaming, and evidence semantics.
+> See [`NIP90-MIGRATION.md`](NIP90-MIGRATION.md).
+
 NIP-SA
 ======
 
@@ -45,7 +51,8 @@ There are several actors in the sovereign agent ecosystem:
 * **Agent**: An autonomous software entity with its own Nostr identity (npub)
 * **Operator**: The human who deploys and configures the agent
 * **Runner**: A service that executes agent ticks (may be local daemon or network)
-* **Compute Provider**: A NIP-90 service provider that performs inference
+* **Compute Provider**: A focused-compute provider (or legacy NIP-90 service
+  provider) that performs inference
 * **Skill Provider**: An entity that sells skills to agents
 * **Marketplace**: A service that facilitates skill purchases and enforces licenses
 
@@ -417,9 +424,10 @@ Guardians approve or deny specific tick requests in response to `kind:39212` eve
 
 Runners MUST verify that `kind:39213` events are signed by the guardian pubkey declared in the corresponding `kind:39210` `guardian` tag, and MUST enforce the `decision` value before executing high-spend ticks. If spend is below threshold, runners SHOULD include `["guardian_approved", "auto"]` on the tick result for auditability. Implementations that do not support guardian approval semantics MUST ignore these tags per NIP-01 semantics.
 
-### Inference via NIP-90
+### Legacy Inference via NIP-90
 
-During the "Reason" phase, agents use NIP-90 job requests for LLM inference:
+For historical compatibility, the “Reason” phase may use NIP-90 job requests
+for LLM inference. New implementations use the focused compute microstandard:
 
 ```jsonc
 {

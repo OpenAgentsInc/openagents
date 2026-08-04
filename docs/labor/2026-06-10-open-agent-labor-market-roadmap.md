@@ -5,6 +5,13 @@ business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
+> **PROTOCOL SUPERSESSION (2026-08-04):** this document remains historical
+> evidence of the v1 labor market and its NIP-90 implementation. NIP-90 is now
+> marked unrecommended upstream. Do not resume this roadmap by extending the
+> DVM ranges. Preserve v1 read/replay compatibility and design new labor work
+> as a standalone NIP-LBR v2 microstandard under
+> [`docs/nips/NIP90-MIGRATION.md`](../nips/NIP90-MIGRATION.md).
+
 
 Date: 2026-06-10 (night)
 

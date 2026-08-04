@@ -2,6 +2,13 @@
 > Last shipped in: `f5919c766^:crates/nostr/nips/DS.md`.
 > Market stream: data market.
 
+> **NIP-90 profile status (2026-08-04): compatibility only.** DS core listing,
+> offer, and access-contract events remain the forward base. The optional
+> DS-DVM `5960`/`6960`/`7000` profile is frozen for historical
+> interoperability because NIP-90 is now unrecommended upstream. New private
+> access negotiation should use a DS-specific RFQ/quote/order/status/close
+> microstandard. See [`NIP90-MIGRATION.md`](NIP90-MIGRATION.md).
+
 NIP-DS
 ======
 
@@ -64,7 +71,8 @@ This NIP separates those concerns into a small core plus optional profiles:
 - DS core defines canonical dataset identity, listing metadata, and access
   offers
 - DS-Market profiles reuse NIP-15 and NIP-99 for storefront and listing UX
-- DS-DVM reuses NIP-90 for targeted access requests and result delivery
+- legacy DS-DVM reuses NIP-90 for targeted access requests and result delivery;
+  new work uses a DS-specific private negotiation microstandard
 - DS-Chat reuses NIP-28 for public negotiation and NIP-17/NIP-59 for private
   negotiation
 
@@ -79,14 +87,16 @@ This NIP is designed to fit alongside:
 - NIP-57: Lightning zaps
 - NIP-60 / NIP-61 / NIP-87: Cashu and mint discovery
 - NIP-89: handler announcements
-- NIP-90: on-demand request/result flow
+- NIP-90: legacy on-demand request/result compatibility
 - NIP-94: file metadata
 - NIP-99: classified listings
 
 ## Rationale
 
-NIP-90 is a good fit for "I want access to this dataset now, under these
-constraints, and I may need quoting, payment, or targeted delivery."
+NIP-90 historically supplied “I want access to this dataset now” request and
+result mechanics. It is retained only for compatibility; a DS-specific
+RFQ/quote/order/status/close profile is the forward fit for quoting, payment,
+and targeted delivery.
 
 It is not, by itself, a good fit for "I want to put this thing up for sale and
 let marketplaces or buyers discover it as a durable listing."
@@ -99,7 +109,8 @@ This NIP introduces a dataset-native identity and offer layer that can be used
 with either model:
 
 - catalog-first discovery through a persistent listing
-- request-first access through NIP-90
+- request-first access through the DS-specific private negotiation profile
+  (legacy NIP-90 events remain readable)
 - public discussion through NIP-28
 - private terms and delivery through NIP-17 / NIP-44 / NIP-59
 
@@ -595,12 +606,14 @@ Recommended NIP-99 tags for dataset ads:
 - use DS core when you need canonical dataset identity and offers
 - use NIP-15 when you want a storefront or cart-like merchant UX
 - use NIP-99 when you want a simple classified ad
-- use DS-DVM when you want targeted, request/quote/delivery behavior
+- use DS-DVM only when interoperating with existing NIP-90 events; new
+  targeted request/quote/delivery behavior belongs in the DS-private profile
 
-## 7. Optional DS-DVM Profile (NIP-90)
+## 7. Legacy DS-DVM Compatibility Profile (NIP-90)
 
-This NIP defines an optional dataset-access request/result profile on top of
-NIP-90.
+This section pins the historical dataset-access request/result profile on top
+of NIP-90. Implementations MAY support it for compatibility but MUST NOT add
+new semantics or job kinds to it.
 
 Use this profile when the buyer needs:
 

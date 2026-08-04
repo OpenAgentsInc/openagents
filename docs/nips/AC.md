@@ -2,6 +2,11 @@
 > Last shipped in: `f5919c766^:crates/nostr/nips/AC.md`.
 > Market stream: agent credit.
 
+> **NIP-90 scope status (2026-08-04): compatibility only.** Existing
+> `scope=nip90` envelopes and receipts retain their exact meaning. New credit
+> envelopes bind the owning use-case microstandard's canonical order or
+> outcome digest. See [`NIP90-MIGRATION.md`](NIP90-MIGRATION.md).
+
 NIP-AC
 ======
 
@@ -12,7 +17,7 @@ Agent Credit
 
 This NIP defines a **Bitcoin-native, outcome-scoped credit** protocol for sovereign agents on Nostr.
 
-Instead of lending agents free capital, this protocol issues **bounded "credit envelopes"** that can only be spent on a **specific, verifiable outcome** (e.g. a NIP-90 job, an L402 API call series, a paid skill invocation). Credit capacity is derived from **reputation**, and failure is handled via **reputation decay and limit reductions**, not token slashing.
+Instead of lending agents free capital, this protocol issues **bounded "credit envelopes"** that can only be spent on a **specific, verifiable outcome** (e.g. a use-case-specific market order, an L402 API call series, a paid skill invocation, or a legacy NIP-90 job). Credit capacity is derived from **reputation**, and failure is handled via **reputation decay and limit reductions**, not token slashing.
 
 This NIP is designed to **fit alongside NIP-SA** (Sovereign Agents) and existing commerce NIPs:
 
@@ -23,7 +28,7 @@ This NIP is designed to **fit alongside NIP-SA** (Sovereign Agents) and existing
 * NIP-57: Lightning zaps (optional repayment / fees)
 * NIP-60 / NIP-61 / NIP-87: Cashu / nutzaps / mint discovery (optional settlement rails)
 * Fedimint: federation ecash rails (federation discovery follows NIP-SA `federation` tag conventions, no dedicated NIP at time of writing)
-* NIP-90: Data Vending Machines (primary "outcome" rail)
+* NIP-90: legacy Data Vending Machine outcome compatibility
 * NIP-98: HTTP Auth (useful for L402-ish flows)
 
 It also RECOMMENDS threshold signing for agent keys (e.g. FROST/FROSTR), but does not require it.
@@ -368,7 +373,7 @@ Example label (default):
 
 ## Protocol Flows
 
-### 1) NIP-90 Compute (objective verification) — recommended MVP
+### 1) Legacy NIP-90 Compute (objective verification) — compatibility flow
 
 1. Agent publishes Credit Intent (39240) with `scope=nip90:<job_hash>`
 2. Issuer publishes Credit Offer (39241)

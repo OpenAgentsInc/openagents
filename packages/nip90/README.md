@@ -1,7 +1,15 @@
 # @openagentsinc/nip90
 
-Thin OpenAgents workspace surface for NIP-90 Data Vending Machine protocol
-helpers.
+> **Compatibility status (2026-08-04): frozen for new market design.** The
+> official Nostr repository marks NIP-90 unrecommended and directs new work to
+> use-case-specific microstandards. This package remains the decoder,
+> validator, fixture, and historical-receipt surface for existing OpenAgents
+> NIP-90/NIP-LBR/NIP-DS events. Do not add new job kinds or new market
+> semantics here. See
+> [`docs/nips/NIP90-MIGRATION.md`](../../docs/nips/NIP90-MIGRATION.md).
+
+Thin OpenAgents workspace compatibility surface for NIP-90 Data Vending
+Machine protocol helpers.
 
 The implementation is intentionally re-exported from the `nostr-effect`
 package:

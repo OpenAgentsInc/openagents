@@ -7,6 +7,11 @@ implementation decision, runtime evidence, and any required product-claim
 transition. This index is a protocol program, not a product availability
 claim.
 
+NIP-90 is a historical compatibility surface, not the forward common market
+protocol. New market work uses focused microstandards under
+[`NIP90-MIGRATION.md`](NIP90-MIGRATION.md); references below describe
+interoperability or source history unless a narrower spec says otherwise.
+
 ## Philosophy
 
 Block's Buzz NIPs encode a Nostr-native Slack: workspace chat where the relay

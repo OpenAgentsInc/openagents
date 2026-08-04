@@ -10,10 +10,17 @@ Outside Nostr and Bitcoin developers can use these drafts to implement
 compatible market, agent, credit, training, work-coordination, and security-
 hardening rails against the same event model.
 
+> **NIP-90 direction (2026-08-04):** the official Nostr repository now marks
+> NIP-90 unrecommended and asks implementers to prefer use-case-specific
+> microstandards. Existing OpenAgents NIP-90 events and receipts remain
+> readable and verifiable, but the profiles are frozen for new design. See
+> [`NIP90-MIGRATION.md`](NIP90-MIGRATION.md) for the compatibility policy and
+> the NIP-LBR v2, DS-private, compute, and NIP-MKT replacement map.
+
 | Spec | Market stream | Kinds | File |
 | --- | --- | --- | --- |
-| NIP-DS | Data market | 30404-30407, 5960/6960 | [`DS.md`](DS.md) |
-| NIP-LBR | Labor market | 5930-5936, 6930-6936, 7000 | [`LBR.md`](LBR.md) |
+| NIP-DS | Data market; core forward, DS-DVM compatibility only | 30404-30407, legacy 5960/6960 | [`DS.md`](DS.md) |
+| NIP-LBR | Labor market; v1 compatibility profile | legacy 5930-5936, 6930-6936, 7000 | [`LBR.md`](LBR.md) |
 | NIP-SKL | Skills registry | 33400/33401, 33410/33411 | [`SKL.md`](SKL.md) |
 | NIP-SA | Sovereign agents | 39200-39260 | [`SA.md`](SA.md) |
 | NIP-AC | Agent credit | 39240-39246 | [`AC.md`](AC.md) |
@@ -74,15 +81,18 @@ anchored by a mandatory SHA-256 digest, draft/inactive listings
 (`kind:30405`), access offers (`kind:30406`, open, targeted, quote-only, or
 subscription), and a durable per-buyer access contract (`kind:30407`) that
 tracks payment-required, paid, delivered, revoked, expired, and refunded
-state. Optional profiles reuse NIP-15/NIP-99 for storefront and classified
-discovery, NIP-90 (`5960`/`6960`) for request/quote/delivery flows, NIP-28
-for public negotiation, and NIP-17/NIP-44/NIP-59 for private terms and
-delivery pointers. Clients must verify delivered payloads against the listing
-digest before treating them as authentic.
+state. Historical optional profiles reuse NIP-15/NIP-99 for storefront and
+classified discovery, NIP-90 (`5960`/`6960`) for request/quote/delivery
+compatibility, NIP-28 for public negotiation, and NIP-17/NIP-44/NIP-59 for
+private terms and delivery pointers. New work keeps DS core and replaces the
+DS-DVM profile with a DS-specific private negotiation microstandard. Clients
+must verify delivered payloads against the listing digest before treating them
+as authentic.
 
 ### NIP-LBR — Agentic Labor
 
-A strictly ref-only labor contract for agentic coding work over NIP-90. A
+A strictly ref-only v1 labor compatibility contract for agentic coding work
+over NIP-90. A
 requester publishes a budgeted `kind:5934` work request, providers quote via
 `kind:7000` feedback, the requester accepts exactly one quote with escrow
 held in the platform ledger, and the provider delivers an output-only
@@ -91,7 +101,8 @@ only: identity, assignment, escrow, acceptance, and settlement authority live
 in platform receipt systems, and events must never contain raw prompts,
 credentials, private repository content, payment secrets, or wallet material.
 Includes the OpenAgents Forum bridge profile that mirrors work requests,
-offers, acceptances, and lifecycle receipts through public Forum APIs.
+offers, acceptances, and lifecycle receipts through public Forum APIs. New
+labor design targets standalone NIP-LBR v2 rather than extending NIP-90.
 
 ### NIP-SKL — Agent Skill Registry
 
@@ -102,7 +113,9 @@ append-only version log (`kind:33401`), NIP-32 attestations with assurance
 tiers (self-assessed, third-party-evaluated, red-team-tested), and NIP-09
 same-pubkey revocation with an emergency pre-signed kill practice. Optional
 profiles add an ephemeral proof-of-possession challenge/response pair
-(`33410`/`33411`), NIP-99 listings, and a NIP-90 skill-search flow. SKL is
+(`33410`/`33411`) and NIP-99 listings. The old NIP-90 skill-search flow is
+compatibility-only; new clients query manifests, curated lists, and handlers
+directly. SKL is
 the registry that NIP-SA fulfillment and NIP-AC credit both reference through
 `33400:<pubkey>:<d-tag>:<version>` scope identifiers.
 
@@ -129,6 +142,8 @@ Bitcoin-native, outcome-scoped credit for agents that start with zero
 capital. Instead of free-floating loans, issuers grant Outcome-Scoped Credit
 Envelopes (`kind:39242`) bound to one verifiable scope (a NIP-90 job, an
 L402 resource, or a pinned SKL skill version) with a hard cap and expiry.
+`nip90` is the legacy scope; new envelopes bind the canonical order/outcome
+digest defined by the owning use-case microstandard.
 The flow runs intent (`39240`), offer (`39241`), envelope, ephemeral spend
 authorization (`39243`), settlement receipt (`39244`), and default notice
 (`39245`), with an optional cancel-spend event (`39246`) inside a declared
@@ -488,9 +503,11 @@ pledged, measured, paid, and settled values remain distinct.
 ## How the specs fit together
 
 SKL is the shared identity and trust substrate: SA skill licenses and AC
-credit scopes both pin exact SKL manifest versions. SA tick results cite AC
-settlement receipts and NIP-90 job results so the cost of autonomy is
-auditable from one event. AC envelopes fund NIP-90 jobs, L402 resources, and
-skill invocations, and TRN closeouts can link AC receipts for training
-rewards. DS and LBR reuse the same NIP-90 request/result and NIP-32 label
-machinery for the data and labor market streams.
+credit scopes both pin exact SKL manifest versions. Existing SA tick results
+may cite AC settlement receipts and legacy NIP-90 job results so historical
+cost remains auditable. Future envelopes and results cite the owning
+use-case-specific microstandard. AC can fund admitted L402 resources, skill
+invocations, and market orders without making its settlement authority part
+of their wire. TRN closeouts can link AC receipts for training rewards. DS and
+LBR retain NIP-90 read compatibility while their next versions own separate
+data and labor state machines.

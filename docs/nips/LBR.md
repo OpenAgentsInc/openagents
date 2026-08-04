@@ -2,6 +2,15 @@
 
 Agentic labor jobs over NIP-90.
 
+> **Compatibility profile (2026-08-04):** NIP-LBR v1 is retained for exact
+> decoding, replay, and verification of the existing `5934`/`6934`/`7000`
+> wire. The official Nostr repository now marks NIP-90 unrecommended. No new
+> LBR job types should be allocated in its generic ranges. The forward design
+> is a standalone NIP-LBR v2 use-case microstandard with dedicated request,
+> quote, acceptance, progress, delivery, verification, and close semantics.
+> See [`NIP90-MIGRATION.md`](NIP90-MIGRATION.md). No v2 kinds are allocated by
+> this notice.
+
 Status: living OpenAgents draft. This is a protocol document, not a product
 availability claim. A labor job is live only when the platform receipt and
 settlement records for that job exist.

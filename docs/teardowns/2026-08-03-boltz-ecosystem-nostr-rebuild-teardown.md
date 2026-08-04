@@ -1,12 +1,14 @@
 # Boltz Ecosystem Teardown — non-custodial Bitcoin layer swaps, and a Nostr rebuild
 
-- Date: 2026-08-03
+- Date: 2026-08-03; expanded 2026-08-04
 - Lane: Fast Follow research / product teardown
 - Disposition: high-relevance **liquidity and atomic-swap** reference; recommended
   **native multi-provider swap marketplace** design using OpenAgents NIP drafts and
   official Nostr payment NIPs — **not** implementation, deploy, or product authority
 - Local mirror: `~/work/projects/repos/boltz/` (31 public `BoltzExchange` clones)
-- OpenAgents tree pin: `086dc611bb0cf12258b305007f6f66c8efa052a1`
+- OpenAgents tree pin: `dc8a75fe4c7663ee48347702f0ed604a17286606`
+- Companion teardown:
+  [tbDEX liquidity protocol](./2026-08-04-tbdex-liquidity-protocol-teardown.md)
 
 Read-only architecture and product audit of the public Boltz Exchange
 organization at commit-pinned local clones. Nothing in those clones was
@@ -59,6 +61,13 @@ into Cloud Run." The useful port is the **economic and cryptographic shape**:
    channels for swap parameters that must stay off public relays.
 5. **Settlement and receipts stay off the relay authority path** — same law
    already stated in NIP-LBR, NIP-AC, NIP-OC, and NIP-EV.
+
+The broader 2026-08-04 synthesis adds tbDEX's provider-neutral negotiation
+grammar and a custody/trust gradient. Boltz supplies the strongest atomic
+profile; tbDEX supplies the common provider/RFQ/Quote/Order/Status/Close
+shape for rails that retain social trust; Nostr supplies portable discovery
+and encrypted messaging; Immortal can be one hardened, noncustodial relay in
+a multi-relay fabric. See §§11–18. [inferred]
 
 A shortest accurate statement:
 
@@ -380,7 +389,7 @@ shipped it. It maps Boltz roles onto official NIPs (local clone
 
 | Boltz role | Single-operator today | Nostr multi-provider rebuild |
 | --- | --- | --- |
-| LP identity | Boltz company + node pubkeys | Nostr pubkey (person or NIP-SA agent) with NIP-32 attestations |
+| LP identity | Boltz company + node pubkeys | Nostr service pubkey (person or NIP-SA agent), owner binding where applicable, and wallet-selected NIP-32/39/85 assertions |
 | Pair catalog | `GET` pairs on one API | Addressable **Swap Pair** / capacity events (see §5.4) + NIP-HP capacity for host-bound LPs |
 | Create swap | `POST /v2/swap/...` | Signed **Swap Offer** response to a **Swap Intent** (private NIP-17/59 or gift-wrapped) |
 | Status stream | Operator WebSocket | Append-only **Swap Progress** events to agreed relays; client also watches chain/LN locally |
@@ -401,9 +410,18 @@ shipped it. It maps Boltz roles onto official NIPs (local clone
 | [NIP-47](https://github.com/nostr-protocol/nips/blob/master/47.md) | Wallet Connect: `pay_invoice`, `make_invoice`, `lookup_invoice`, balance, notifications — the Lightning hand without embedding node credentials in the swap UI |
 | [NIP-57](https://github.com/nostr-protocol/nips/blob/master/57.md) | Optional public zap receipts when a payment is meant to be socially visible; **not** a substitute for HTLC proof |
 | [NIP-60](https://github.com/nostr-protocol/nips/blob/master/60.md) / [NIP-61](https://github.com/nostr-protocol/nips/blob/master/61.md) | Cashu wallet state and nutzaps as **adjacent rails** for fee payment or later Cashu↔LN bridges (out of Boltz core, in scope for OpenAgents multi-rail) |
-| [NIP-69](https://github.com/nostr-protocol/nips/blob/master/69.md) | Precedent for pooled P2P order discovery (`kind:38383`); pattern for public orderbooks — adapt tags for BTC layers rather than fiat methods |
-| [NIP-89](https://github.com/nostr-protocol/nips/blob/master/89.md) / [NIP-90](https://github.com/nostr-protocol/nips/blob/master/90.md) | App handlers and DVM-style service announcements for "I provide submarine swaps" machines |
+| [NIP-32](https://github.com/nostr-protocol/nips/blob/master/32.md) / [NIP-39](https://github.com/nostr-protocol/nips/blob/master/39.md) / [NIP-85](https://github.com/nostr-protocol/nips/blob/master/85.md) | Namespaced public claims, external identity control, and wallet-selected assertion providers; none is settlement or solvency proof |
+| [NIP-51](https://github.com/nostr-protocol/nips/blob/master/51.md) / [NIP-65](https://github.com/nostr-protocol/nips/blob/master/65.md) / [NIP-66](https://github.com/nostr-protocol/nips/blob/master/66.md) | Curated provider/monitor lists, participant relay sets, and multi-monitor relay liveness |
+| [NIP-69](https://github.com/nostr-protocol/nips/blob/master/69.md) | Existing P2P fiat order vocabulary and interop precedent; do not overload it for atomic swaps |
+| [NIP-87](https://github.com/nostr-protocol/nips/blob/master/87.md) | Cashu mint and Fedimint discoverability; reuse rather than duplicate |
+| [NIP-89](https://github.com/nostr-protocol/nips/blob/master/89.md) | Discover applications that handle the focused market events |
+| [NIP-99](https://github.com/nostr-protocol/nips/blob/master/99.md) | Human-facing provider/service listings; not the executable quote wire |
 | [NIP-98](https://github.com/nostr-protocol/nips/blob/master/98.md) | HTTP auth if an LP still exposes a Boltz-compatible REST facade |
+
+NIP-90 is explicitly marked **unrecommended** upstream with a direction to
+prefer use-case-specific microstandards. It remains a historical OpenAgents
+compatibility surface, not the swap or liquidity protocol. See
+[`NIP90-MIGRATION.md`](../nips/NIP90-MIGRATION.md).
 
 ### 5.4 OpenAgents NIP drafts to compose
 
@@ -558,7 +576,7 @@ atomic swaps on day one. [inferred]
 | Existing rail | Interaction |
 | --- | --- |
 | Pylon / own-capacity coding | Orthogonal; swaps fund or rebalance agent budgets |
-| NIP-90 / NIP-LBR markets | Swaps can settle labor fees; labor can operate LP bots |
+| Legacy NIP-90 / NIP-LBR v1 | Compatibility only; swaps may fund admitted labor outcomes but never reuse the DVM wire |
 | NIP-AC credit | Fees and inventory float without free-floating loans |
 | L402 / paid APIs | Reverse submarine can fund prepaid API access |
 | Khala token counters | Exact token rows stay exact; do not mix with sat ledgers |
@@ -569,9 +587,9 @@ atomic swaps on day one. [inferred]
 These are research-sized packets for later owner admission. They are not
 issues, roadmap rows, or deploy authority.
 
-1. **SWP-Spec-0** — Draft `docs/nips/SWP.md` with reserved kinds, status enum
-   aligned to Boltz lifecycle, and public-safe tag lists; link from
-   `docs/nips/README.md` only after review.
+1. **MKT/SWP-Spec-0** — Draft a focused negotiated-market base and MKT-SWP
+   profile with kinds reserved only after review, a status enum aligned to
+   Boltz lifecycle, and public-safe/private field rules. Do not use NIP-90.
 2. **SWP-Verify-1** — Effect Schema + tests porting `dont-trust-verify`
    checks for one Taproot submarine pair using MIT `boltz-core` behind an
    adapter (no network).
@@ -628,12 +646,356 @@ and Lightning physics no relay can fake. [inferred]
 | `channel-bot` | `5bbf23b0762d4a055ecdebd776011b937dcd68b3` |
 | `go-electrum` | `d6484ac8e978cf87db8abe17a06a152db2aad8a3` |
 | `bolt12-wasm` | `1e693509772e13593ae0cffcffad394ad9abdc9b` |
+| Immortal relay source | `2a04142b0a791e862a2112c7230d186d088bde17` (`origin/main` audited 2026-08-04) |
+| OpenAgents source | `dc8a75fe4c7663ee48347702f0ed604a17286606` (`origin/main` audited 2026-08-04) |
 
 OpenAgents NIP drafts consulted: `docs/nips/README.md`, `AC.md`, `LBR.md`,
 `SA.md`, `HP.md`, `OC.md`, `EV.md`, `WI.md`, `WK.md`, `DS.md`, `AT.md`,
-`PROPOSED.md`. Official NIPs consulted from
-`~/work/projects/repos/nips`: `47.md`, `57.md`, `60.md`, `61.md`, `69.md`,
-plus NIP-01/17/44/59 by reference.
+`PROPOSED.md`. Official NIPs consulted from Immortal's pinned official lane:
+NIP-01, 17, 32, 39, 40, 43, 44, 47, 51, 57, 59, 60, 61, 65, 66, 67, 69,
+70, 73, 85, 87, 89, 90, 94, 98, and 99. The full Block lane was reviewed;
+its market-relevant disposition is in §13.2. The local tbDEX v0.2 whitepaper,
+its TeX source, the archived tbDEX protocol/SDK repositories, the current
+Mostro protocol, Cashu NUTs, Fedimint, Arkade, and Lightning bLIPs were also
+consulted for the 2026-08-04 expansion.
+
+## 11. Full ecosystem decomposition: what decentralizes, what does not
+
+The 31 repositories are not 31 pieces of a protocol. They divide into a few
+portable laws, operator processes, client surfaces, and packaging artifacts.
+The decentralized design should replace the central coordination boundary,
+not force every operational tool onto Nostr.
+
+| Boltz ecosystem slice | Repositories | Decentralized successor |
+| --- | --- | --- |
+| Primary operator | `boltz-backend`, older `boltz-middleware` | Many independently keyed LP daemons; each owns inventory, node access, reservations, watchers, and quotes |
+| Cryptographic verifier | `boltz-core`, `bitcoin-ops`, `bolt11`, `bolt12-wasm` | Shared client/LP verifier SDK behind an OpenAgents-owned adapter; quote binds exact algorithm/version |
+| Wallet and automation clients | `boltz-client`, `boltz-python`, `boltz-web-app`, legacy frontend/demo | Local-first market router that discovers providers, compares quotes, verifies scripts, and recovers without one API |
+| Lightning mechanics | `hold`, channel-creation plugin | Provider-local CLN/LND/LSP adapters; never relay code |
+| Merchant bridges | BTCPay Liquid and Arkade plugins | Merchant adapter chooses a provider set and exposes settlement state without taking protocol custody |
+| Chain observation | `go-electrum`, backend nurseries, `covclaim` | Independent rail watchers plus wallet verification; Nostr carries signed observations, not chain truth |
+| LP operations | `channel-bot`, `canary`, `cln-backup` | Private provider operations; optionally advertised as separate services, never market authority |
+| Partner metrics | partner dashboard | Derived signed attribution and redacted receipts; no privileged API-key ledger |
+| Conformance lab | `regtest`, predecessor environment | Multi-provider adversarial lab with relay partitions, reorgs, RBF, stale quotes, crash/recovery, and refunds |
+| Packaging and brand | Umbrel/Proton forks, landing, maintenance, logo, slides | Distribution and provenance only; no protocol role |
+
+`covclaim` supplies a particularly useful warning: a watcher that notices a
+claimable covenant is not an offline proof that the covenant was safe. The
+client must verify the covenant before funding. The same law applies to every
+provider event: later observability cannot repair an unverified lock.
+
+## 12. What Immortal actually contributes
+
+The current Immortal source and production handoff establish a specific relay,
+not a hypothetical exchange server:
+
+- one Rust binary and one Postgres database;
+- NIP-01 event/signature admission, prepared SQL, bounded filters and query
+  cost, per-IP/per-pubkey limits, and commit-before-`OK`;
+- stable historical/live boundaries through database ingest sequence and
+  LISTEN/NOTIFY; fail-closed connection shutdown when a process cannot remain
+  current;
+- ephemeral kinds `20000–29999` excluded from storage;
+- relay identity, NIP-42 authentication, recipient-gated gift wraps, COUNT,
+  full-text search, relay-managed groups, authenticated management, and
+  bounded Blossom media;
+- pinned official, Block, and OpenAgents NIP source lanes with manual fixture
+  and conformance policy; no GitHub workflows or GitHub-billed runners;
+- production deployment at `relay.openagents.com` backed by Cloud Run and one
+  Cloud SQL database, with the prior revision retained for rollback.
+
+The production cutover record reports 6,882 source rows examined, 6,792
+stored, 90 expired, zero rejected or unresolved, and successful publish/read,
+NIP-42, COUNT, and load proofs at cutover. That is useful evidence of a real
+relay and migration path. It is not evidence of market liquidity, provider
+diversity, or decentralization. [source]
+
+### 12.1 Relevant implemented protocol surface
+
+Immortal advertises the official NIPs its configured runtime actually serves,
+including base/event metadata, deletion, expiration, COUNT, search, relay
+lists, media, and—when configured—private messaging/authentication, groups,
+management, and HTTP auth. The Block server contract implements or safely
+degrades ownership/admission, agent observer traffic, encrypted memory,
+metrics, personas, reminders, projects, archival, identity/DM/read-state, and
+workspace presentation features according to configuration.
+
+It does **not** currently implement a swap state machine, provider catalog,
+quote reservation, liquidity verifier, NIP-66/67/77 multi-relay fabric, or any
+OpenAgents market draft as relay authority. That is desirable separation:
+most market logic belongs in clients and providers. What Immortal needs for
+the first market proof is generic transport correctness, appropriate kind
+admission, private-message gates, and fixtures—not custody or matching.
+
+### 12.2 Relay topology, not “the relay”
+
+```text
+                       public Offering replicas
+                ┌──────── relay A (Immortal) ────────┐
+wallet/router ───┼──────── independent relay B ───────┼── LP directories
+                └──────── independent relay C ───────┘
+                     |                         |
+            taker DM inbox relays       provider DM inbox relays
+                     \──── encrypted RFQ/Quote/Order ────/
+
+wallet + LP verify rails directly; relays never declare settlement
+```
+
+- Use NIP-65 for small participant-selected read/write sets.
+- Use NIP-66 observations from several monitors; never trust one monitor or
+  make its absence fatal.
+- Add NIP-67 completeness hints or conservative pagination before treating a
+  catalog snapshot as complete.
+- Consider NIP-77-style sync only for public catalogs and receipts, not secret
+  sessions.
+- Keep a high-integrity authenticated Immortal deployment if useful, but do
+  not weaken its write policy merely to call a marketplace permissionless.
+  Permissionless protocol participation can span multiple relays with
+  different policies.
+
+## 13. The three NIP lanes, used as a portfolio
+
+The pinned lanes are complementary. None should be treated as a checklist.
+
+### 13.1 Official lane
+
+| Function | Preferred official primitives |
+| --- | --- |
+| Event and expiry | NIP-01, NIP-40, NIP-70 |
+| Private negotiation | NIP-17, NIP-44, NIP-59; ephemeral relationship keys |
+| Wallet operation | NIP-47; local CLN/LND remains valid |
+| Provider and trust discovery | NIP-32, NIP-39, NIP-51, NIP-73, NIP-85, NIP-99 |
+| Relay discovery and routing | NIP-43, NIP-65, NIP-66, NIP-67 |
+| Adjacent rail discovery | NIP-87 for Cashu/Fedimint |
+| P2P fiat interop | NIP-69 and Mostro semantics |
+| Client handlers | NIP-89 |
+| HTTP compatibility | NIP-98 |
+
+NIP-15 is not the new foundation; upstream recommends NIP-99. NIP-96 is
+deprecated in favor of Blossom. NIP-90 is unrecommended and is now
+compatibility-only under
+[`NIP90-MIGRATION.md`](../nips/NIP90-MIGRATION.md).
+
+### 13.2 Block lane
+
+| Draft | Market use |
+| --- | --- |
+| NIP-OA | Bind an agent service key to an owner's signed attestation |
+| NIP-AA | Explicit relay admission and revocation for scoped/private relays |
+| NIP-AP | Provider-agent persona/team catalog, not financial identity |
+| NIP-AO | Ephemeral private telemetry/control for provider operations |
+| NIP-AM | Durable bounded metrics with no claim of solvency |
+| NIP-AE / NIP-ER | Encrypted provider memory and recovery reminders |
+| NIP-RS | Wallet/router read state across devices |
+| NIP-IA | Archive public catalogs and receipts |
+
+NIP-MP, GS, CW, DV, and WP may support project, Git, pagination, DM
+projection, and presentation surfaces, but they do not belong in settlement
+semantics. NIP-PL requires an executor that Immortal intentionally does not
+provide; do not make it a market dependency.
+
+### 13.3 OpenAgents lane
+
+| Draft | Market use |
+| --- | --- |
+| NIP-SKL | Versioned rail-adapter skill manifests and independent attestations |
+| NIP-SA, AD, AS, AV | Provider/taker agents, delegated authority, sessions, and bounded activity |
+| NIP-WI / NIP-WK | Owner-authorized treasury action before an agent may lock funds |
+| NIP-EV | Lock, claim, refund, invoice/payment-hash, and independent verification evidence |
+| NIP-OC | Accepted outcome and closeout references; never payment authority |
+| NIP-HP | Host/provider capability; never proof of live inventory |
+| NIP-AT, GB, AL, TP | Private refund/claim alerts, guidance, automation, and triage |
+| NIP-PP | Honest claim state for a proposed market capability |
+| NIP-DS / LBR v1 | Historical compatibility and adjacent data/labor markets |
+| NIP-AC | Optional admitted credit later; not required for first-pass swaps |
+
+BT contribution credit is not part of the first market pass. Security
+hardening NIPs can verify an implementation, but should not be overloaded into
+the quote wire.
+
+## 14. Unified market architecture: Boltz physics plus tbDEX negotiation
+
+The market must use the strongest guarantee available on each route rather
+than impose one custody ideology on every provider.
+
+| Guarantee class | Provider examples | What the client must verify or accept |
+| --- | --- | --- |
+| Atomic | Boltz-style submarine/reverse/chain LP | Script/tree, payment hash, amounts, timelocks, confirmations, claim/refund exits |
+| Coordinated escrow | Mostro-style Lightning hold coordinator | Hold state, bond, solver/arbiter set, release/dispute/timeouts |
+| Federated custody | Fedimint federation + gateway | Federation identity/threshold/modules, gateway terms, redemption route |
+| Mint custody | Cashu mint | Mint key/keysets/NUTs, redemption rail, operator/solvency/censorship risk |
+| Regulated PFI | Bank/stablecoin/payment provider | Legal identity, credential policy, settlement/reversibility window, custody, recourse |
+| Custodian/prime service | Named custodian or broker | Segregation, authorization, withdrawal, insurance, insolvency and jurisdiction |
+
+Every signed Quote should bind at least:
+
+- exact input/output asset, network, amount, fees, expiry, and route legs;
+- provider and service keys plus Offering and RFQ digests;
+- guarantee and custody class for every leg;
+- reservation type and proof/reference, with expiry;
+- confirmation/finality/reversibility rules;
+- credential types and issuers, disclosed data classes, purpose and retention;
+- dispute/solver/recourse path;
+- settlement adapter and evidence profile versions;
+- privacy and relay/inbox expectations.
+
+The wallet then chooses a route using its own policy. There is no universal
+rank. Price is one dimension alongside finality, custody, credential cost,
+latency, privacy, and recourse.
+
+### 14.1 Focused market microstandard
+
+The smallest common base is tbDEX-shaped:
+
+```text
+ProviderProfile → Offering → private RFQ → signed expiring Quote
+                → signed Order → sequenced OrderStatus → Close
+```
+
+Call the candidate base **NIP-MKT: Negotiated Markets** and define narrow
+profiles:
+
+- **MKT-SWP** — atomic Bitcoin/Lightning/Liquid/Ark swaps;
+- **MKT-P2P** — NIP-69/Mostro-compatible fiat trades;
+- **MKT-PFI** — credentialed on/off ramps;
+- **MKT-MINT** — Cashu/Fedimint gateway and redemption;
+- **MKT-LSP** — channel and just-in-time liquidity;
+- later **MKT-RISK** — bonds/guarantees/insurance only when a real
+  underwriter and claims authority exist.
+
+The base owns signatures, correlation, idempotency, expiry, reservation,
+cancellation, sequencing, errors, privacy, and evidence references. Profiles
+own rail semantics and fixtures. No kinds are allocated by this teardown.
+
+### 14.2 Public and private event law
+
+**Public and replicated:** provider profile, human-facing NIP-99 listing,
+Offering, supported profile/adapter versions, bounded availability, relay
+lists, public attestations, and optional redacted receipts.
+
+**Pairwise encrypted by default:** RFQ, Quote, Order, Status, invoices,
+addresses, scripts before funding, account/payment method, credentials,
+reservation proof, disputes, and recovery traffic.
+
+**Never placed on relays:** wallet seeds, NWC connection secrets, node
+macaroons, preimages before safe revelation, private refund/claim keys,
+MuSig2 secret nonces, raw PII, bearer credentials, or unredacted bank data.
+
+Relay acceptance is not provider acceptance; provider acceptance is not
+capacity reservation; reservation is not funding; funding is not finality;
+Close is not settlement unless the rail-specific verifier proves it.
+
+## 15. Liquidity bridges and interoperability
+
+| Rail/ecosystem | Concrete bridge |
+| --- | --- |
+| Bitcoin and Liquid | Bitcoin Core/Elements plus Electrum/Esplora-compatible watchers; client verifies consensus-visible evidence |
+| Lightning | LND/CLN, BOLT11/BOLT12, hold invoices, NIP-47 for scoped remote wallet operations |
+| LSP market | bLIP-50 transport, bLIP-51 channel purchase, bLIP-52 JIT channels; do not invent parallel terms |
+| Ark | Arkade/Ark adapters and the existing BTCPay Arkade reference; expose operator and exit assumptions |
+| Mostro | Translate existing NIP-69 order and current encrypted action semantics into MKT-P2P; preserve bonds, ratings, disputes, and privacy modes |
+| Cashu | NUT-compatible mint/wallet adapters and NIP-87 discovery; quote mint and redemption risk explicitly |
+| Fedimint | Federation/gateway adapter and NIP-87 discovery; surface guardian threshold and gateway exposure |
+| Fiat and stablecoins | Provider-specific adapters plus consented credential presentation; never call reversible settlement atomic |
+| Existing Boltz clients | Optional REST/WSS compatibility facade backed by one or more LP sessions; client still verifies |
+
+Provider daemons need inventory management, price feeds, quote reservation,
+chain/LN watchers, rebalancing, and risk limits. These are provider processes,
+not Immortal services. OpenAgents can publish adapter contracts and run a
+client/router without becoming the custodian or global matcher.
+
+### 15.1 Liquidity truth
+
+An address balance or signed capacity claim is insufficient: funds may be
+encumbered or promised elsewhere. Prefer quote-scoped proof:
+
+- funded HTLC/Taproot output;
+- pending hold invoice or channel/JIT commitment;
+- mint/federation quote with a verifiable state transition;
+- escrow or custodian reservation reference;
+- bounded guarantee/bond/insurance where the rail cannot be atomic.
+
+History, uptime, NIP-85 assertions, and independent metrics help select whom
+to ask. They never substitute for the current reservation.
+
+### 15.2 Route composition
+
+A router may find Lightning → Liquid → fiat or Cashu → Lightning → Bitcoin.
+Two atomic legs do not automatically make an atomic route. A composed route
+must share an enforceable secret/timelock construction, be fully pre-funded,
+carry a guarantee for intermediate exposure, or disclose the exact sequential
+risk window. The router must reject any route whose worst-case refund and
+timeout graph it cannot explain.
+
+## 16. Threat model
+
+| Threat | Required control |
+| --- | --- |
+| Fake/stale Offering | Short expiry, replaceable head, independent probes, Quote rebinds current terms |
+| Double reservation | Idempotency key, provider sequence, reservation digest/expiry, enforceable penalty only where real |
+| Public front-running and amount leakage | Pull public Offerings; pairwise encrypted RFQs and Quotes |
+| Sybil/reputation capture | Wallet-selected provider/issuer/monitor lists; no global score |
+| Credential harvesting | Disclose after shortlist; audience/purpose/nonce/expiry binding; retention and deletion contract |
+| Relay omission/censorship | Multi-relay replication, local session log, conservative pagination, direct/HTTP fallback |
+| Relay correlation | Ephemeral trade keys, separate inboxes, padding/timing defenses, Tor where required |
+| LP or wallet crash | Persist-before-publish outbox, deterministic replay, monotonic status, independently executable refund |
+| Reorg, RBF, 0-conf loss | Pair-specific policy and local chain verification; fail closed |
+| Price-oracle manipulation | Several signed sources, bounded staleness, exact quote binding; oracle never settles |
+| Fiat chargeback/non-delivery | Explicit reversibility window, escrow/guarantee/recourse, never “atomic” copy |
+| Arbiter capture | Solver set and authority disclosed before Order; portable evidence; competing coordinators |
+| Privacy compromise | NIP-44 limitations documented; separate high-risk channel when forward secrecy is required |
+
+## 17. Honest current-state map
+
+| Capability | Current evidence | Status for this design |
+| --- | --- | --- |
+| Hardened relay | Immortal M1–M7 and production cutover evidence | Exists; one operator deployment |
+| Browser/native verified reader | Immortal transport-neutral client and WASM proof | Reusable substrate; not a market router |
+| Signed projection/outbox | OpenAgents signed workroom projection | Reusable pattern |
+| Typed liquidity model | OpenAgents inert request/offer/fill/receipt skeleton | Shape only; explicitly no provider, price, fill, or settlement |
+| Historical labor market | NIP-90/LBR helpers and prior receipts | Compatibility evidence; NIP-90 expansion frozen |
+| Swap provider | None in OpenAgents | Missing |
+| Multi-provider router | None | Missing |
+| Liquidity/custody assertions | Draft components only | Missing and must not be inferred from relay events |
+| Real cross-rail settlement | External Boltz/Mostro/mint/federation/PFI systems | Adapter research, not OpenAgents authority |
+
+Ignore retired product surfaces as a design ceiling. Reuse their verified
+contracts and evidence laws where they help; do not resurrect their claims or
+let them imply a live market.
+
+## 18. Falsifiable first program
+
+1. **NIP-MKT envelope and MKT-SWP fixtures.** Define exact public/private
+   fields and state transitions for one Bitcoin↔Lightning regtest profile.
+2. **Two independent LP daemons.** Different keys, inventories, and relay
+   sets; no shared matcher or hot wallet.
+3. **Local-first router.** Discover, shortlist, send private RFQs, compare
+   Quotes, persist before publish, and verify every lock/invoice locally.
+4. **Owned crypto adapter.** Pin a compatible MIT implementation or
+   independent port; bind version/digest in the Quote and conformance corpus.
+5. **Adversarial lab.** Relay loss, stale catalog, provider crash, duplicate
+   Order, conflicting Status, RBF, reorg, timeout, non-cooperative refund, and
+   secret-leak scans.
+6. **Compatibility bridge.** One Boltz REST/WSS adapter after the native wire
+   works, proving old clients can reach a provider without making the facade
+   canonical.
+7. **Mostro and LSP profiles.** Reuse their current protocols rather than
+   creating isolated liquidity islands.
+8. **Mint/federation profile.** NIP-87 discovery plus explicit custody/exit
+   terms.
+9. **Credentialed PFI pilot last.** Only with a real provider and legal owner;
+   prove selective disclosure, retention, failure, dispute, and reversibility.
+
+The first success gate is deliberately small and hard:
+
+> One wallet completes the same regtest swap against either of two independent
+> LPs, over independently selected relay sets, then safely refunds when one LP
+> and one relay disappear. The relay holds no keys or funds, and every terminal
+> claim is independently re-derived from the underlying rail.
+
+That proves dispersed coordination without confusing it with dispersed
+liquidity or settlement. Production comes only after the failure journey is
+as good as the happy path.
 
 ---
 

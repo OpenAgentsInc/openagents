@@ -2,6 +2,11 @@
 > Last shipped in: `f5919c766^:crates/nostr/nips/TRN.md`.
 > Market stream: training.
 
+> **NIP-90 challenge status (2026-08-04): compatibility only.** New validator,
+> replay, proof, benchmark, and evaluation jobs require a focused compute or
+> training-check microstandard. Existing NIP-90 results may remain referenced
+> as historical evidence. See [`NIP90-MIGRATION.md`](NIP90-MIGRATION.md).
+
 NIP-TRN
 =======
 
@@ -33,7 +38,7 @@ TRN builds on:
 - NIP-44 and NIP-59 for private coordination
 - NIP-66 for relay health and discovery
 - NIP-89 for service discovery
-- NIP-90 for small check and replay jobs
+- legacy NIP-90 compatibility for small check and replay jobs
 - NIP-94 for public file metadata
 - our in-repo drafts NIP-DS, NIP-SKL, and NIP-AC for datasets, skills, and
   settlement-related flows
@@ -75,10 +80,11 @@ The design rule is simple:
 
 ## Rationale
 
-NIP-90 is a good fit for small jobs like "check this result", "rerun this
-work", "show proof", or "score this model", but it is not, by itself, a good
-fit for questions like "what training network is this node in?", "what role is
-this node claiming?", or "which checkpoint became the accepted one?" Likewise,
+NIP-90 historically carried small jobs like “check this result,” “rerun this
+work,” “show proof,” or “score this model.” New work uses a focused
+training-check or compute microstandard. Neither wire, by itself, answers
+questions like “what training network is this node in?”, “what role is this
+node claiming?”, or “which checkpoint became the accepted one?” Likewise,
 NIP-89 is useful for service and handler discovery, but it does not define
 shared network records, window identity, validator results, or checkpoint
 pointer records for training.
@@ -900,15 +906,15 @@ fast runtime traffic.
 
 ### TRN-Challenge
 
-Implementations MAY use NIP-90 for:
+Implementations MAY decode legacy NIP-90 events for:
 
 - validator check jobs
 - replay requests
 - requests to generate proof files
 - small benchmark or eval jobs
 
-TRN does not require NIP-90, but it composes well with it for narrow challenge
-flows.
+TRN does not require NIP-90. New narrow challenge flows use an owned
+use-case-specific microstandard and may reference legacy NIP-90 evidence.
 
 ### TRN-DiLoCo
 
