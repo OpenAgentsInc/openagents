@@ -389,6 +389,28 @@ transitions are authority-signed; marketing copy, screenshots, or individual
 receipts cannot silently flip a state. Makes the existing
 `openagents.com/promises` contract portable and independently verifiable.
 
+## Applications: the hardening program
+
+[`docs/hardening/`](../hardening/README.md) specifies the first concrete
+program built on these NIPs — the Bitcoin OSS hardening effort as a public
+project inside `relay.openagents.com`. It maps the program onto the layers
+above (Organization and Teams, Projects per target, Work per assessment,
+Coding Sessions pinned to exact commits, Repository Work Claims for
+collision-free parallel scanning, Evidence and Verification with enforced
+producer/verifier separation) and proposes five additional NIPs that the
+security domain needs and this program does not cover:
+
+| NIP | Name | Tentative kinds |
+| --- | --- | --- |
+| NIP-SP | Scan Profiles and Pre-Registration | 32450-32459 |
+| NIP-SC | Source Completeness and Coverage | 32460-32469 |
+| NIP-FD | Findings, Verdicts, and Disclosure | 32470-32479 |
+| NIP-SI | Security Invariants and Regression Watch | 32480-32489 |
+| NIP-BT | Bounties and Contribution Credit | 32490-32499 |
+
+Those five extend the addressable neighborhood to `32450-32499` and are
+specified, but not yet drafted, in the hardening spec.
+
 ## Suggested drafting order
 
 1. **NIP-WA** — the implementation already exists; write the spec around the
