@@ -19,6 +19,11 @@ liquidity pool.
 | NIP-AC | Agent credit | 39240-39246 | [`AC.md`](AC.md) |
 | NIP-TRN | Training | 39500-39530 | [`TRN.md`](TRN.md) |
 
+[`PROPOSED.md`](PROPOSED.md) indexes the proposed next wave: the All Work NIP
+program that encodes the Linear-class planning, agent delegation, coding,
+review, evidence, and outcome system on Nostr, in the spirit of the Block Buzz
+extension NIPs.
+
 ## Per-spec summaries
 
 ### NIP-DS — Datasets
