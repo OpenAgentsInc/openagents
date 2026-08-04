@@ -225,15 +225,17 @@ commitment, grant, or Work State.
 
 ### Layer 2 — Agents and execution (the coding half)
 
-| NIP | Name | Tentative kinds |
-| --- | --- | --- |
-| NIP-AD | Assignment and Delegation | 32270-32279 |
-| NIP-AS | Agent Sessions | 32280-32289 |
-| NIP-AV | Agent Activity | 32290-32299 |
-| NIP-RC | Repository Work Claims | 32300-32309 |
-| NIP-CC | Code Context and Coding Sessions | 32310-32319 |
-| NIP-RV | Reviews | 32320-32329 |
-| NIP-WA | Workroom Activity | 32150-32163 (pinned) |
+Layer 2 is drafted. The seven spec files live beside this index.
+
+| NIP | Name | Tentative kinds | Draft |
+| --- | --- | --- | --- |
+| NIP-AD | Assignment and Delegation | 32270-32279 | [`AD.md`](AD.md) |
+| NIP-AS | Agent Sessions | 32280-32289 | [`AS.md`](AS.md) |
+| NIP-AV | Agent Activity | 32290-32299 | [`AV.md`](AV.md) |
+| NIP-RC | Repository Work Claims | 32300-32309 | [`RC.md`](RC.md) |
+| NIP-CC | Code Context and Coding Sessions | 32310-32319 | [`CC.md`](CC.md) |
+| NIP-RV | Reviews | 32320-32329 | [`RV.md`](RV.md) |
+| NIP-WA | Workroom Activity | 32150-32163 (pinned) | [`WA.md`](WA.md) |
 
 **NIP-AD — Assignment and Delegation.** The structural Assignee/Delegate
 split, which is the single most important Linear behavior to port. An

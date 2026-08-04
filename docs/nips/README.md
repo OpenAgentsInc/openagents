@@ -22,8 +22,8 @@ liquidity pool.
 [`PROPOSED.md`](PROPOSED.md) indexes the proposed next wave: the All Work NIP
 program that encodes the Linear-class planning, agent delegation, coding,
 review, evidence, and outcome system on Nostr, in the spirit of the Block Buzz
-extension NIPs. Its foundation (layer 0) and planning (layer 1) waves are
-drafted:
+extension NIPs. Its foundation (layer 0), planning (layer 1), and
+agents-and-execution (layer 2) waves are drafted:
 
 | Spec | Role | Kinds (tentative) | File |
 | --- | --- | --- | --- |
@@ -38,6 +38,13 @@ drafted:
 | NIP-RP | Release Planning | 32240-32243 | [`RP.md`](RP.md) |
 | NIP-DD | Documents and Decisions | 32250-32252 | [`DD.md`](DD.md) |
 | NIP-CN | Customers and Needs | 32260-32262 | [`CN.md`](CN.md) |
+| NIP-AD | Assignment and Delegation | 32270-32271 | [`AD.md`](AD.md) |
+| NIP-AS | Agent Sessions | 32280 | [`AS.md`](AS.md) |
+| NIP-AV | Agent Activity | 32290 | [`AV.md`](AV.md) |
+| NIP-RC | Repository Work Claims | 32300-32302 | [`RC.md`](RC.md) |
+| NIP-CC | Code Context and Coding Sessions | 32310-32311 | [`CC.md`](CC.md) |
+| NIP-RV | Reviews | 32320-32322 | [`RV.md`](RV.md) |
+| NIP-WA | Workroom Activity | 32150-32163 (pinned) | [`WA.md`](WA.md) |
 
 ## Per-spec summaries
 
@@ -250,6 +257,85 @@ Outcomes, and consent-classed Customer Signals (`32262`) carrying
 digest-bound source evidence. Public relays see refs, links, and digests
 only; customer identity never creates a commitment, grant, or Work
 State.
+
+### NIP-AD — Assignment and Delegation (proposed layer 2)
+
+The structural Assignee/Delegate split. Assignment Records (`32270`) bind
+the accountable human — exactly one per Work, person-only, and the valid
+decider for Owner Dispositions. Delegation Grants (`32271`) authorize one
+Agent Member per Work with named issuer, capabilities, tool policy,
+budget, privacy class, expiry, and generation; revocation fences every
+session and late intent on the old generation, and repository-domain
+grants carry their NIP-RC claim/lease pair. Prose anywhere cannot widen a
+grant, and no composition of grants makes an agent the accountable human.
+
+### NIP-AS — Agent Sessions (proposed layer 2)
+
+The durable record of one agent engagement (`32280`), kept strictly apart
+from the Work, the Thread, and the Run. Sessions carry grant and
+generation, context-manifest refs, requested-versus-effective runtime
+identity (never collapsed, per no-silent-substitution), an activity
+cursor, and a state machine where `awaiting_input` names its blocking
+question, `stale` is declared rather than assumed, terminal states are
+terminal, and continuation is a new session with a predecessor ref.
+Provider `complete` implies nothing about verification or acceptance.
+
+### NIP-AV — Agent Activity (proposed layer 2)
+
+The typed, redacted, append-only supervision stream (`32290`): progress,
+plan, elicitation, action, artifact, result, verification, error, and
+disposition activities with dense sequence, digest-bound off-relay
+material, and explicit loss accounting. Elicitations are answer-fenced —
+question, answerer, decision, and admission are separate signed records.
+Never raw chain of thought or provider payloads, and narration is not
+effect: an evidence-less `result` renders as unverified. The actor-signed
+workroom twin is NIP-WA `32156`; the AV record wins for product meaning.
+
+### NIP-RC — Repository Work Claims (proposed layer 2)
+
+The multi-agent collision ledger: Work Packets (`32300`) naming canonical
+Work, owned paths, hot files, and hot contracts with explicit collision
+classes; Repository Work Claims (`32301`) with holder, generation,
+evidence heartbeats, and explicit release; and append-only Claim Audit
+Entries (`32302`). Claims refuse before colliding, takeover requires both
+90-plus evidence-less minutes and a recorded process audit, release
+asserts nothing about landing, and a claim is never an Assignee, Lease,
+merge authority, or proof of progress.
+
+### NIP-CC — Code Context and Coding Sessions (proposed layer 2)
+
+Binds Work to exact code without ambient access. Code Context (`32310`)
+records repository refs, pinned commits, focus paths, and the effective-
+access intersection — listing a repository narrows scope and never grants
+it. Coding Sessions (`32311`) companion NIP-AS records with a mandatory
+pinned base commit, opaque worktree identity, containment profile, held
+claim, verification evidence, and bounded diffstat; catch-up to a newer
+base is explicit with fresh compatibility proof, and Git/NIP-34 remains
+the sole authority for PR, check, and merge state.
+
+### NIP-RV — Reviews (proposed layer 2)
+
+Review Requests (`32320`) whose state is a policy fold over admitted
+reviewer-signed Verdicts (`32321`), each bound to the exact subject
+revision so approve-then-push races surface as staleness. Self-review is
+labeled and cannot satisfy independence-requiring folds; agent verdicts
+run under grants and never satisfy human-required approvals. Review
+Guides (`32322`) are regenerable evidence-linked explanations with
+exactly zero authority — a verdict contributes evidence toward NIP-EV
+verification and is never merge authority or acceptance.
+
+### NIP-WA — Workroom Activity (proposed layer 2, kinds pinned)
+
+Formalizes the implemented `openagents.signed-workroom.v2` profile on the
+pinned range `32150-32163`: fourteen actor-signed collaboration
+projections (membership through revocation) with deterministic tags,
+empty content, and payload digests. Covers direct principals versus
+grant-bound organizational/device/agent signers, the two-phase
+prepare/commit external-signing lane where the authority fixes the exact
+unsigned bytes, causal-parent and generation admission, audience-scoped
+server-owned relay sets, and persist-before-publish delivery whose
+receipts fix `relayAcceptanceIsAuthority: false`. Projection transport,
+never command or product authority.
 
 ## How the specs fit together
 
