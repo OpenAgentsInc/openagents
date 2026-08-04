@@ -3,12 +3,13 @@
 Status: **single consolidated document** (claims + full evidence log +
 scenarios + collection plans). Not a legal finding and not a public product claim.
 
-Last updated: 2026-08-04 (E29 expanded to full 92-post Hanlon/darosior thread inventory).
+Last updated: 2026-08-04 ~21:15Z (later discourse sweep E30–E34; E29 delta).
 
 Related receipts (machine data, kept beside this file):
 
 - [`receipts/2026-08-04-switck-x-archive.json`](receipts/2026-08-04-switck-x-archive.json) — full `@switck` timeline dump (52 posts)
 - [`receipts/2026-08-04-darosior-bikes-hanlon-thread.json`](receipts/2026-08-04-darosior-bikes-hanlon-thread.json) — full E29 thread (92 posts: BikesandBitcoin Hanlon root + darosior QT conversation)
+- [`receipts/2026-08-04-later-discourse-sweep.json`](receipts/2026-08-04-later-discourse-sweep.json) — later sweep ~16:54Z–21:15Z (117 posts after E29 cutoff; verifications)
 
 ## Working thesis
 
@@ -31,7 +32,7 @@ and staff participation in drains are not.**
 | **D** | Gray or Coinkite staff **participated in or directed** 2026 drains | **Open / not established** | None on-chain to staff | **Staff ↔ collector/proceeds** link (KYC, device, confession, LE) |
 | **E** | Remediation messaging is cover for ongoing theft | **Ambiguous** | Dual-use with standard incident response | Evidence migration guidance was **chosen to maximize** attacker window (internal) |
 | **F** | 2021 “retirement attack” language implies premeditated backdoor | **Partial** | Official definition is real (E10); heist inference speculative | Link from that joke to **implemented** plant design |
-| **G** | Vendor had prior victim reports / notice years before Jul 2026 | **Collecting** | Multi-source social claims (E12/E18); conflicts with E17 “unaware until today” | **Primary ticket/email** *or* pre-2026 victim address ∈ weak keyspace (on-chain) |
+| **G** | Vendor had prior victim reports / notice years before Jul 2026 | **Collecting** | Multi-source social claims (E12/E18); jamesob May 2025 report (E29); inverse_hanlon also claims Apr 2021 Telegram + “LNGU Clean up” Signal (E31 — **needs primary**) | **Primary ticket/email/Signal** *or* pre-2026 victim address ∈ weak keyspace (on-chain) |
 | **H** | Early public advisory understated model blast radius | **Documented** | Day-0 “Mk4/Q/Mk5 not affected” → later ~72-bit impact (E11) | N/A (already documented); further flips only refine timeline |
 | **I** | Official tech post admits first-person responsibility for zeroed RNG macro / wrong path | **Documented** | [entropy-technical-backgrounder](https://blog.coinkite.com/entropy-technical-backgrounder/) (E17) | Attribution of “I” to a different named engineer with evidence |
 
@@ -1226,6 +1227,197 @@ red flags and prior-report claim as open process evidence (G / S2).
 
 ---
 
+
+### E29Δ — Same thread + broader discourse after E29 cutoff (2026-08-04 ~16:54Z–21:15Z)
+
+**Probe:** ~4 hours after the E29 inventory end (last prior row ~16:54Z). Full post
+list in
+[`receipts/2026-08-04-later-discourse-sweep.json`](receipts/2026-08-04-later-discourse-sweep.json)
+(**117** posts with `created_at ≥ 16:54Z` across root/QT conversations plus
+switck/DocHex/identity queries; **116** not already in the E29 receipt).
+
+**DocHex:** still **no** new personal posts in the window (silence continues).
+
+#### Material additions on the E29 / darosior branch
+
+| Time UTC | Author | Link | Point |
+| --- | --- | --- | --- |
+| 17:55 | `@OneSirMeow` | [2084699873085931911](https://x.com/OneSirMeow/status/2084699873085931911) | Multi-GH-account “paranoid privacy” nym theory; still “bad execution” |
+| 17:59 | `@darosior` | [2084700696369135972](https://x.com/darosior/status/2084700696369135972) | Privacy management that **signs both identities with the same key**? |
+| 18:00 | `@OneSirMeow` | [2084700972396253634](https://x.com/OneSirMeow/status/2084700972396253634) | “Yes, bad and clueless execution.” |
+| 18:20 | `@adam3us` | [2084706074095910954](https://x.com/adam3us/status/2084706074095910954) | Don’t over-read PGP; senior-dev merge/update workflow can explain signing (E32) |
+| 17:50 | `@FlyTheElephant1` | [2084698458640802059](https://x.com/FlyTheElephant1/status/2084698458640802059) | Pushback: why assume negligence if entropy collapse benefits a party with UID list? |
+
+**Use:** darosior continues to steelman non-malice while **tightening** the dual-key
+absurdity; Adam Back adds a senior-workflow non-guilt reading that **does not**
+erase dual *authorship* under real email (E3–E5) — only weakens pure “GPG = intent”
+tea-leaf reading.
+
+Other root-thread replies after cutoff are mostly reaction / conspiracy color
+(state attack, “assume malice,” influencer speculation). Inventoried in receipt;
+no new cryptographic or ticket primary evidence.
+
+#### High-signal posts outside the Hanlon root (same window)
+
+| Time UTC | Author | Link | Why it matters |
+| --- | --- | --- | --- |
+| 17:13 | `@inverse_hanlon` | [2084689208627925384](https://x.com/inverse_hanlon/status/2084689208627925384) | Long guilt-leaning timeline essay (E31) |
+| 17:28 | `@hodlonaut` | [2084692918506295583](https://x.com/hodlonaut/status/2084692918506295583) | High-engagement identity+libngu confirmation ask (~278 likes) (E34) |
+| 17:24 | `@anticonduct` | [2084691958841372699](https://x.com/anticonduct/status/2084691958841372699) | Independent re-verify of GPG subkey link |
+| 17:56 | `@darosior` | [2084699942531014843](https://x.com/darosior/status/2084699942531014843) | In-person Coldcard vuln discussion at PubKey |
+| 19:48 | `@fionacmurphy` | [2084728222701535248](https://x.com/fionacmurphy/status/2084728222701535248) | Rename + registrar coincidence claims (E33) |
+| 20:02 | `@COLDCARDwallet` | [2084731768632991801](https://x.com/COLDCARDwallet/status/2084731768632991801) | Official “public record” article + historical-disclosures (E30) |
+| 20:38 | `@asanoha_gold` | [2084740726458556872](https://x.com/asanoha_gold/status/2084740726458556872) | Screenshots of alleged switck posts (dice imagery) as “spine chilling” — social reading of E25-class material |
+| 17:05 | `@jamesob` | [2084687252924318090](https://x.com/jamesob/status/2084687252924318090) | Personal: strong passphrase; “mistakenly trusted that they knew” |
+| 18:21 | `@jamesob` | [2084706411791954058](https://x.com/jamesob/status/2084706411791954058) | Simulator path uses host `os.random()` (not the device defect) |
+
+**Noise filtered:** generic “$114M drained” reposts, BIP-110 delay solidarity
+threads, antisemitic / Epstein / pure-Fed fanfic without new artifacts.
+
+---
+
+### E30 — Official COLDCARD “Adding to the Public Record” + historical-disclosures (2026-08-04)
+
+**Primary X post:**
+[2084731768632991801](https://x.com/COLDCARDwallet/status/2084731768632991801)
+(~58 likes / ~26k views at probe) — long-form X article.
+
+**Companion page (live):**
+[https://coinkite.com/historical-disclosures](https://coinkite.com/historical-disclosures)
+— “COLDCARD Security Disclosure History”; probe HTML claims **23**
+security-relevant events, **12** with public evidence of coordinated disclosure,
+coverage 2019–2026 through 2026-08-03. Explicitly “a chronology, not a count of
+independent vulnerabilities or a product score.”
+
+**Article substance (paraphrase + direct claims):**
+
+1. Anger/losses acknowledged; migrate if seed on affected firmware without ≥50
+   private dice rolls and without strong unique BIP-39 passphrase.
+2. Bug framed as living at a **boundary between two unrelated submodules**, not
+   in parent code / Bitcoin-crypto logic most reviews target; flag check “looked
+   correct.”
+3. **AI-assisted review** of critical codebases, including weeks before exploit,
+   **did not catch** the vulnerability; post-incident tests against frontier
+   models (**Kimi K3, Claude Fable, Codex 5.6**) also missed it.
+4. Ask other teams to test AI review against **build and submodule boundaries**.
+5. Historical-disclosures published as definitive public record for researchers.
+
+**Bearing:**
+
+| Claim | Bearing |
+| --- | --- |
+| Submodule-boundary integration bug | Reinforces S1 composition narrative (aligns E17) |
+| AI review miss (self + named models) | Non-guilt / industry-warning steelman; **not** proof no human knew |
+| Historical-disclosures page | Process transparency move; does **not** by itself settle prior-notice (G) |
+| Still no CTO nym/GPG personal response | Silence continues (H/comms pattern) |
+
+**Label:** official product communication. Preserve as evidence of vendor
+framing, not as independent verification of unawareness.
+
+---
+
+### E31 — `@inverse_hanlon` longform guilt-leaning timeline (2026-08-04)
+
+**Primary:** [2084689208627925384](https://x.com/inverse_hanlon/status/2084689208627925384)
+(~31 likes; long article body via note/expand). Title energy: inverse Hanlon —
+when many “incompetences” stack, incentive is simpler.
+
+**Assembled claims in the essay (verification status in this log):**
+
+| Essay claim | Status in our ledger |
+| --- | --- |
+| NVK Dec 2020 “retirement attack” / dice reply to Flaxman | Matches E10-class official discourse; exact Flaxman thread should stay pinned to primary URLs |
+| Mar 2021 “First pass w/ libNgU” routes seed to software PRNG | **Strong** (E4–E5, E17) — mechanism wording in essay slightly loose (serial/clock vs Yasmarang constants) |
+| switck = Gray via GPG census | **Strong** (E3 / jamesob / zherbert) |
+| Apr 2021 Telegram warning on libNgU swap | **Social claim** — needs primary Telegram export / archive (new to G lane) |
+| May 2025 jamesob report + “we’d already know” | **Social primary from jamesob** (E29 spine); essay elaborates |
+| Signal group “LNGU Clean up” (n, Doc, andres…) May 2025; 4-week disappearing msgs; no ship | **Unverified social claim** — high flip value if confirmed (G / S2 / S4) |
+| Official “retirement attack” definition Oct 2021 | **Documented** (E10) |
+| Dice opt-in as architecture of a retirement attack | **Interpretation** — dual-use with real user-agency design |
+| Purchase-data retention contradiction (90 days vs 2019 buyers) | **Not verified here** — track separately |
+| Hotfix TRNG latch / #692→#693 | Aligns E21; “more time for attackers” is inference |
+| Wave-1 prep argument for insider/precompute | Aligns open claim **D**; still needs staff↔proceeds |
+
+**Use:** best-packaged **public guilt narrative** in this window. Treat as a
+**steelman index of allegations**, not as primary evidence for the unverified
+rows. Highest new research target from the essay: **primary for “LNGU Clean up”
+Signal + Apr 2021 Telegram**.
+
+---
+
+### E32 — `@adam3us` on GPG tea-leaf reading (2026-08-04)
+
+**Primary:** [2084706074095910954](https://x.com/adam3us/status/2084706074095910954)
+(reply under darosior / jamesob; ~3 likes at probe):
+
+> agree, let's not get too speculative on tea-leaf reading who pgp signed what.
+> simple work-flow explanations abound for @dochex to be signing merge of a 3rd
+> party project as their senior dev, or pulling in updates etc.
+
+**Bearing:** non-guilt steelman from a high-reputation cryptographer. **Scope
+check against our git facts:**
+
+- Workflow signing of merges/updates can explain *some* Good signatures.
+- It does **not** by itself explain **dual authorship** (switck *and*
+  `peter@conalgo.com` / DocHex-named commits on the same critical path) or the
+  firmware “First pass w/ libNgU” under real email (E4b).
+- Still useful: separates **“GPG proves Gray’s key touched the object”** (strong)
+  from **“GPG proves heist intent”** (not established).
+
+---
+
+### E33 — Domain registrar match vs GitHub-rename claim (2026-08-04)
+
+**Social source:** `@fionacmurphy`
+[2084728222701535248](https://x.com/fionacmurphy/status/2084728222701535248)
+on zherbert’s identity thread:
+
+1. “A month before introducing the bug the CTO renamed GitHub from
+   `peter-conalgo` to `doc-hex`.”
+2. `conalgo.com` and `switck.com` share a small Ontario-based registrar.
+
+**Independent checks (2026-08-04 probe; in later-sweep receipt):**
+
+| Check | Result |
+| --- | --- |
+| RDAP `conalgo.com` | Registrar **easyDNS Technologies Inc.**; registered 2000-08-18 |
+| RDAP `switck.com` | Registrar **easyDNS Technologies Inc.**; registered **2021-01-05** |
+| GitHub `doc-hex` | Created **2012-02-28** (long-standing) |
+| GitHub `switck` | Created **2020-08-07** |
+| GitHub `peter-conalgo` | Created **2021-04-22** — **after** Mar 2021 libNgU ship |
+
+**Verdict:**
+
+- **Registrar coincidence: confirmed** (both easyDNS). Supports dual-identity /
+  same-operator **hygiene** reading; not proof of theft. Aligns with E25-era
+  switck web presence.
+- **“Renamed peter-conalgo → doc-hex a month before the bug”: not supported** by
+  public user-creation dates (`doc-hex` predates by years; `peter-conalgo` post-
+  dates the defect). Do **not** promote this claim without commit-graph rename
+  evidence stronger than user-created timestamps.
+- Note: firmware commits use email `peter@conalgo.com` (E4b) — domain link is
+  real; username-rename story as told is the weak part.
+
+---
+
+### E34 — hodlonaut identity amplification + independent GPG re-check
+
+**`@hodlonaut`** [2084692918506295583](https://x.com/hodlonaut/status/2084692918506295583)
+(~278 likes / ~16k views): asks confirmation that switck image = CTO Peter Gray
+and that “library he made himself” is the one that displaced hardware RNG.
+Replies include retirement-attack readings and pointers back to zherbert phone-
+digit + GPG census (E29 steelman table / prior E rows).
+
+**`@anticonduct`** [2084691958841372699](https://x.com/anticonduct/status/2084691958841372699):
+claims independent verification that switck signing key material matches
+DocHex encryption subkey — same person.
+
+**Bearing:** spreads **A/B identity** further into mainstream Bitcoin Twitter;
+does not add staff↔proceeds. Useful as discourse-temperature / amplification
+evidence, not new crypto beyond corroboration of E3.
+
+---
+
 # Part III — Steelman readings
 
 ## Steelman: readings that pull toward **guilt / bad faith**
@@ -1242,6 +1434,9 @@ then still separate fact from leap.
 | `@jamesob` | [2084666514439848413](https://x.com/jamesob/status/2084666514439848413) | Anon mediating RNG is huge red flag; seriousness-theater nym theory does not explain reworking RNG (E29 #13) |
 | `@jamesob` | [2084620229389197453](https://x.com/jamesob/status/2084620229389197453) | switck ≈ DocHex; same person dismissed prior report |
 | `@PrinceHeat44402` | [2084648769459482693](https://x.com/PrinceHeat44402/status/2084648769459482693) | 2021 retirement-attack official post re-read as “admission” if you understand the mistakes (E10 dual-use; E29 #8) |
+| `@inverse_hanlon` | [2084689208627925384](https://x.com/inverse_hanlon/status/2084689208627925384) | Full inverse-Hanlon timeline essay: dice architecture, dual warnings, alleged “LNGU Clean up” Signal, AI-blame vs prior report (E31) |
+| `@hodlonaut` | [2084692918506295583](https://x.com/hodlonaut/status/2084692918506295583) | High-amplification switck=Gray + libngu ask (~278 likes) (E34) |
+| `@FlyTheElephant1` | [2084698458640802059](https://x.com/FlyTheElephant1/status/2084698458640802059) | Why assume negligence if weak entropy benefits a party with UID list? (E29Δ) |
 | `@zherbert` | [2084647957526167853](https://x.com/zherbert/status/2084647957526167853) | Multi-channel identity verification (GPG + phone digits claim) |
 | `@AtlantisPleb` | [2084660832596570417](https://x.com/AtlantisPleb/status/2084660832596570417) | Migration advice is “logical if complicit”; who else knew? |
 | `@hodlonaut` | [2084633601845363006](https://x.com/hodlonaut/status/2084633601845363006) | Authorship + post-attack messaging inconsistency |
@@ -1293,6 +1488,9 @@ opacity + ignored warnings + catastrophic negligence**, not proven heist.
 | `@NicerInPerson` | [2084678159018967069](https://x.com/NicerInPerson/status/2084678159018967069) | Plant under nym while signing real identity is self-defeating OPSEC (E29 #16) |
 | `@BikesandBitcoin` | [2084630840982831568](https://x.com/BikesandBitcoin/status/2084630840982831568) | Hanlon razor root of the thread; razor is heuristic not answer (E29 #1, #17) |
 | `@raw_avocado` (quoted root) | [2084626833182458302](https://x.com/raw_avocado/status/2084626833182458302) | “99.99% chance they did not know”; stop inflating for likes |
+| `@adam3us` | [2084706074095910954](https://x.com/adam3us/status/2084706074095910954) | Don’t tea-leaf PGP; senior merge/update workflow can explain signing (E32; limited vs dual authorship) |
+| `@darosior` (same-key dig) | [2084700696369135972](https://x.com/darosior/status/2084700696369135972) | Still non-malice, but multi-account privacy that reuses one signing key is absurd (E29Δ) |
+| Official COLDCARD article | [2084731768632991801](https://x.com/COLDCARDwallet/status/2084731768632991801) | Submodule-boundary bug; AI reviews missed; historical-disclosures page (E30) |
 | `@zherbert` (even while identity-hunting) | [2084638910970220754](https://x.com/zherbert/status/2084638910970220754) | “Still think it is likely just **incompetence / negligence**” unless identity raises flags |
 | `@CyberTruckRonin` | [2084661432960880793](https://x.com/CyberTruckRonin/status/2084661432960880793) | Identity facts can be true without “evil maid” / intentional plant framing |
 | Dice / multisig survivors | many; e.g. diceroll reports | Mitigation paths worked as designed for users who BYOE |
@@ -1362,6 +1560,11 @@ Part IV of this document.
 | Public Mk3 RNG PoC review/reproduce | **Open** (repo found) |
 | Retry Wayback saves for failed URLs | **Open** |
 | Import scgbckbone public keys and confirm Good on their 2 commits | Optional polish |
+| Primary for inverse_hanlon Apr 2021 Telegram warning | **Open** (E31) |
+| Primary for “LNGU Clean up” Signal group claim | **Open** (E31 / G) |
+| easyDNS registrar match conalgo.com ↔ switck.com | **Done** E33 |
+| GitHub rename peter-conalgo→doc-hex pre-bug story | **Refuted** as stated (E33) |
+| Official historical-disclosures page snapshot | **Done** E30 (live page + X article) |
 
 ---
 

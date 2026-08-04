@@ -1,0 +1,2491 @@
+{
+  "title": "Coldcard discourse later sweep 2026-08-04 ~16:54Z\u201321:15Z",
+  "collected_at": "2026-08-04T21:13:19.379120+00:00",
+  "prior_e29_cutoff": "2026-08-04T16:54:25Z",
+  "post_count_after_cutoff": 117,
+  "new_not_in_e29": 116,
+  "author_counts": [
+    [
+      "grok",
+      10
+    ],
+    [
+      "COLDCARDwallet",
+      7
+    ],
+    [
+      "udiWertheimer",
+      3
+    ],
+    [
+      "jamesob",
+      3
+    ],
+    [
+      "bettyvschmartz",
+      3
+    ],
+    [
+      "nvk",
+      3
+    ],
+    [
+      "realUrbanHacker",
+      3
+    ],
+    [
+      "BTC_NodeRunner",
+      2
+    ],
+    [
+      "anticonduct",
+      2
+    ],
+    [
+      "migameegs",
+      2
+    ],
+    [
+      "blockdyor",
+      2
+    ],
+    [
+      "OneSirMeow",
+      2
+    ],
+    [
+      "darosior",
+      2
+    ],
+    [
+      "nakadai_mon",
+      2
+    ],
+    [
+      "ishi0k",
+      2
+    ],
+    [
+      "JustaLillyBit",
+      2
+    ],
+    [
+      "deathrowaway1",
+      2
+    ],
+    [
+      "mcchiperson77",
+      2
+    ],
+    [
+      "fionacmurphy",
+      2
+    ],
+    [
+      "NikhilBethieq5",
+      2
+    ],
+    [
+      "give_cat_9sushi",
+      2
+    ],
+    [
+      "btc_technica",
+      1
+    ],
+    [
+      "dafangbigfang",
+      1
+    ],
+    [
+      "btcflorida",
+      1
+    ],
+    [
+      "nothingbutbtc",
+      1
+    ],
+    [
+      "inverse_hanlon",
+      1
+    ],
+    [
+      "davidgshort",
+      1
+    ],
+    [
+      "flaming_hodl",
+      1
+    ],
+    [
+      "herogamer21btc",
+      1
+    ],
+    [
+      "GhostOfStoneyX2",
+      1
+    ],
+    [
+      "drunken_13",
+      1
+    ],
+    [
+      "hodlonaut",
+      1
+    ],
+    [
+      "LightningNewsX",
+      1
+    ],
+    [
+      "BitcoinPartyof1",
+      1
+    ],
+    [
+      "britttttkelly",
+      1
+    ],
+    [
+      "0xSilviusBrabo",
+      1
+    ],
+    [
+      "prettypennytwin",
+      1
+    ],
+    [
+      "JaunSatoshi",
+      1
+    ],
+    [
+      "JoshMcKinney18",
+      1
+    ],
+    [
+      "FlyTheElephant1",
+      1
+    ]
+  ],
+  "verifications": {
+    "easyDNS_conalgo_and_switck": {
+      "status": "confirmed_rdap_2026-08-04",
+      "conalgo.com": {
+        "registrar": "easyDNS Technologies Inc.",
+        "registered": "2000-08-18"
+      },
+      "switck.com": {
+        "registrar": "easyDNS Technologies Inc.",
+        "registered": "2021-01-05"
+      }
+    },
+    "github_rename_peter_conalgo_to_doc_hex_before_bug": {
+      "status": "not_supported_by_public_user_creation_dates",
+      "doc-hex": {
+        "created_at": "2012-02-28T18:29:28Z",
+        "id": 1482781
+      },
+      "switck": {
+        "created_at": "2020-08-07T04:15:26Z",
+        "id": 69336248
+      },
+      "peter-conalgo": {
+        "created_at": "2021-04-22T17:10:32Z",
+        "id": 83030255,
+        "note": "created AFTER March 2021 libNgU ship"
+      }
+    },
+    "historical_disclosures_page": {
+      "url": "https://coinkite.com/historical-disclosures",
+      "status": "live_2026-08-04",
+      "claim": "23 security-relevant events; chronology not score"
+    }
+  },
+  "highlight_ids": [
+    "2084731768632991801",
+    "2084689208627925384",
+    "2084692918506295583",
+    "2084706074095910954",
+    "2084728222701535248",
+    "2084700696369135972",
+    "2084699942531014843",
+    "2084691958841372699"
+  ],
+  "posts": [
+    {
+      "id": "2084684394191581297",
+      "created_at": "2026-08-04T16:54:25.000Z",
+      "username": "btc_technica",
+      "text": "@raw_avocado @jamesob @BikesandBitcoin Which post was this?",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 47,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": true,
+      "refs": [
+        {
+          "id": "2084645021811155089",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084685476355838299",
+      "created_at": "2026-08-04T16:58:43.000Z",
+      "username": "dafangbigfang",
+      "text": "Coldcard\u786c\u4ef6\u94b1\u5305\u7684\u968f\u673a\u6570\u6f0f\u6d1e\u662f\u5982\u4f55\u88ab\u53d1\u73b0\u7684\uff1f\n\n\u4e00\u53f0\u786c\u4ef6\u94b1\u5305\u7b2c\u4e00\u6b21\u521b\u5efa\u94b1\u5305\u65f6\uff0c\u9700\u8981\u751f\u6210\u4e00\u7ec4\u8db3\u591f\u968f\u673a\u7684\u6570\u636e\u3002\n\u8fd9\u7ec4\u968f\u673a\u6570\u636e\u7ecf\u8fc7\u7b97\u6cd5\u5904\u7406\uff0c\u6700\u7ec8\u53d8\u6210\u6211\u4eec\u770b\u5230\u768412\u4e2a\u300118\u4e2a\u6216\u800524\u4e2a\u52a9\u8bb0\u8bcd\u3002\u4e4b\u540e\u751f\u6210\u7684\u79c1\u94a5\u3001\u5730\u5740\u4ee5\u53ca\u6240\u6709\u6bd4\u7279\u5e01\u8d26\u6237\uff0c\u90fd\u5efa\u7acb\u5728\u8fd9\u7ec4\u968f\u673a\u6570\u4e4b\u4e0a\u3002\n\n\u53ea\u8981\u6700\u521d\u7684\u968f\u673a\u6027\u8db3\u591f\u5f3a\uff0c\u653b\u51fb\u8005\u5373\u4f7f\u62e5\u6709\u518d\u591a\u7b97\u529b\uff0c\u4e5f\u51e0\u4e4e\u4e0d\u53ef\u80fd\u731c\u4e2d\u4f60\u7684\u79c1\u94a5\u3002\n\n\u4f46\u57282026\u5e747\u6708\u5e95\uff0cColdcard\u88ab\u53d1\u73b0\u5b58\u5728\u4e00\u4e2a\u5df2\u7ecf\u6f5c\u4f0f\u4e94\u5e74\u591a\u7684\u968f\u673a\u6570\u751f\u6210\u6f0f\u6d1e\u3002\u90e8\u5206\u8bbe\u5907\u751f\u6210\u7684\u52a9\u8bb0\u8bcd\uff0c\u5b9e\u9645\u968f\u673a\u6027\u8fdc\u4f4e\u4e8e\u7528\u6237\u4ee5\u4e3a\u7684\u5b89\u5168\u7b49\u7ea7\u3002\n\n\u8fd9\u573a\u5371\u673a\u6700\u65e9\u6ca1\u6709\u4ece\u4ee3\u7801\u5ba1\u8ba1\u4e2d\u66b4\u9732\uff0c\u800c\u662f\u4ece\u6bd4\u7279\u5e01\u94fe\u4e0a\u4e00\u6279\u5f02\u5e38\u8f6c\u8d26\u5f00\u59cb\u7684\u3002\n\n\u7b2c\u4e00\u58f0\u8b66\u62a5\u6765\u81ea\u94fe\u4e0a\n\n2026\u5e747\u670830\u65e5\uff0c\u4e00\u540dColdcard\u7528\u6237\u5728Reddit\u53d1\u5e16\u6c42\u52a9\uff0c\u6807\u9898\u662f\uff1a\n\nFull panic\uff0cone of my wallets was drained\n\n\u8fd9\u540d\u7528\u6237\u8868\u793a\uff0c\u81ea\u5df1\u7684\u94b1\u5305\u5df2\u7ecf\u591a\u5e74\u6ca1\u6709\u64cd\u4f5c\uff0c\u521b\u5efa\u4e4b\u540e\u4e3b\u8981\u7528\u4e8e\u63a5\u6536\u6bd4\u7279\u5e01\uff0c\u4f46\u91cc\u9762\u7684\u8d44\u91d1\u7a81\u7136\u88ab\u5168\u90e8\u8f6c\u8d70\u3002\n\n\u5e16\u5b50\u53d1\u5e03\u540e\uff0c\u5f88\u5feb\u6709\u4eba\u5f00\u59cb\u8ffd\u8e2a\u76d7\u5e01\u4ea4\u6613\u3002\n\n\u793e\u533a\u6210\u5458\u53d1\u73b0\uff0c\u5728\u5927\u7ea615\u5206\u949f\u5185\uff0c\u7ea6500\u4e2a\u5730\u5740\u5411\u540c\u4e00\u4e2a\u6536\u6b3e\u5730\u5740\u8f6c\u5165\u4e86\u63a5\u8fd1594\u679a\u6bd4\u7279\u5e01\u3002\u5f88\u591a\u5730\u5740\u5df2\u7ecf\u4f11\u7720\u591a\u5e74\uff0c\u8f6c\u8d26\u5374\u96c6\u4e2d\u53d1\u751f\u5728\u6781\u77ed\u7684\u65f6\u95f4\u7a97\u53e3\u5185\u3002\n\n\u8fd9\u8bf4\u660e\u4e8b\u4ef6\u5f88\u53ef\u80fd\u5df2\u7ecf\u8d85\u51fa\u5355\u4e2a\u7528\u6237\u6cc4\u9732\u52a9\u8bb0\u8bcd\u7684\u8303\u56f4\u3002\n\n\u540e\u7eed\u94fe\u4e0a\u5206\u6790\u8fdb\u4e00\u6b65\u6269\u5927\u4e86\u7edf\u8ba1\u8303\u56f4\u3002\u5a92\u4f53\u63f4\u5f15Galaxy\u7684\u5206\u6790\u79f0\uff0c\u6700\u521d\u4e00\u8f6e\u5927\u89c4\u6a21\u626b\u8361\u6d89\u53ca\u7ea61196\u4e2a\u5730\u5740\uff0c\u8d85\u8fc71000\u679a\u6bd4\u7279\u5e01\u5728\u4e0d\u5230\u4e00\u5c0f\u65f6\u5185\u88ab\u8f6c\u8d70\u3002\u7531\u4e8e\u90e8\u5206\u5730\u5740\u53ea\u80fd\u6839\u636e\u4ea4\u6613\u7279\u5f81\u548c\u53d7\u5bb3\u8005\u62a5\u544a\u8fdb\u884c\u5f52\u7c7b\uff0c\u6700\u7ec8\u635f\u5931\u89c4\u6a21\u548cColdcard\u94b1\u5305\u7684\u51c6\u786e\u5360\u6bd4\u4ecd\u5728\u6301\u7eed\u786e\u8ba4\u3002\n\n\u4e3a\u4ec0\u4e48\u7814\u7a76\u4eba\u5458\u4f1a\u6000\u7591\u968f\u673a\u6570\uff1f\n\n\u8fd9\u4e9b\u94b1\u5305\u6709\u51e0\u4e2a\u5171\u540c\u7279\u5f81\u3002\n\n\u5b83\u4eec\u4e2d\u7684\u5f88\u591a\u5df2\u7ecf\u591a\u5e74\u6ca1\u6709\u53d1\u751f\u4ea4\u6613\uff0c\u90e8\u5206\u53d7\u5bb3\u8005\u58f0\u79f0\u6ca1\u6709\u8fd1\u671f\u8fde\u63a5\u8bbe\u5907\u3001\u7b7e\u7f72\u4ea4\u6613\u6216\u8005\u8f93\u5165\u52a9\u8bb0\u8bcd\u3002\u4e0d\u540c\u5730\u5740\u5374\u5728\u76f8\u8fd1\u65f6\u95f4\u88ab\u7edf\u4e00\u6e05\u7a7a\uff0c\u8d44\u91d1\u6d41\u5411\u4e5f\u5448\u73b0\u51fa\u660e\u663e\u7684\u81ea\u52a8\u5316\u7279\u5f81\u3002\n\n\u8c03\u67e5\u4eba\u5458\u56e0\u6b64\u628a\u6ce8\u610f\u529b\u8f6c\u5411\u4e86\u94b1\u5305\u521b\u5efa\u9636\u6bb5\u3002\n\n\u5f53\u653b\u51fb\u8005\u80fd\u591f\u9884\u6d4b\u94b1\u5305\u751f\u6210\u79c1\u94a5\u65f6\uff0c\u5e76\u4e0d\u9700\u8981\u5077\u8d70\u8bbe\u5907\uff0c\u4e5f\u4e0d\u9700\u8981\u5728\u7528\u6237\u7535\u8111\u4e2d\u5b89\u88c5\u6076\u610f\u8f6f\u4ef6\u3002\u4ed6\u4eec\u53ef\u4ee5\u5728\u81ea\u5df1\u7684\u670d\u52a1\u5668\u4e0a\u4e0d\u65ad\u751f\u6210\u5019\u9009\u52a9\u8bb0\u8bcd\uff0c\u518d\u8ba1\u7b97\u8fd9\u4e9b\u52a9\u8bb0\u8bcd\u5bf9\u5e94\u7684\u6bd4\u7279\u5e01\u5730\u5740\u3002\n\n\u6bd4\u7279\u5e01\u5730\u5740\u548c\u4ea4\u6613\u8bb0\u5f55\u90fd\u662f\u516c\u5f00\u7684\u3002\u653b\u51fb\u8005\u53ea\u8981\u628a\u8ba1\u7b97\u51fa\u6765\u7684\u5730\u5740\u4e0e\u94fe\u4e0a\u5730\u5740\u8fdb\u884c\u6bd4\u5bf9\uff0c\u5c31\u80fd\u5224\u65ad\u81ea\u5df1\u662f\u5426\u731c\u4e2d\u4e86\u67d0\u4e2a\u771f\u5b9e\u94b1\u5305\u3002\n\n\u8fd9\u4e2a\u8fc7\u7a0b\u5c5e\u4e8e\u79bb\u7ebf\u679a\u4e3e\u6216\u8005\u66b4\u529b\u641c\u7d22\u3002\u653b\u51fb\u8005\u641c\u7d22\u7684\u662f\u968f\u673a\u6570\u751f\u6210\u5668\u53ef\u80fd\u4ea7\u751f\u7684\u5185\u90e8\u72b6\u6001\uff0c\u5e76\u975e\u8ba9\u4e24\u4e2a\u6b63\u5e38\u7684\u6bd4\u7279\u5e01\u79c1\u94a5\u53d1\u751f\u6570\u5b66\u610f\u4e49\u4e0a\u7684\u201c\u78b0\u649e\u201d\u3002\n\n7\u670830\u65e5\uff0c\u8c03\u67e5\u8fdb\u5165\u6e90\u7801\n\nColdcard\u5236\u9020\u5546Coinkite\u57287\u670830\u65e5\u53d1\u5e03\u5b89\u5168\u516c\u544a\uff0c\u627f\u8ba4\u90e8\u5206\u56fa\u4ef6\u5728\u521b\u5efa\u94b1\u5305\u65f6\u6ca1\u6709\u83b7\u5f97\u9884\u671f\u5f3a\u5ea6\u7684\u968f\u673a\u6027\uff0c\u5e76\u5f00\u59cb\u53d1\u5e03\u4fee\u590d\u56fa\u4ef6\u3002\n\n\u540c\u4e00\u5929\uff0cBlock\u7684\u6bd4\u7279\u5e01\u5de5\u7a0b\u4e0e\u5b89\u5168\u56e2\u961f\u8054\u5408\u591a\u540d\u533f\u540d\u7814\u7a76\u4eba\u5458\uff0c\u6839\u636e\u53d7\u5bb3\u8005\u62a5\u544a\u548c\u516c\u5f00\u4ee3\u7801\u5c55\u5f00\u8c03\u67e5\u3002\n\nBlock\u56e2\u961f\u5f88\u5feb\u628a\u95ee\u9898\u5b9a\u4f4d\u5230Coldcard\u56fa\u4ef6\u8c03\u7528\u968f\u673a\u6570\u751f\u6210\u5668\u7684\u65b9\u5f0f\u3002\u4ed6\u4eec\u53d1\u73b0\uff0cColdcard\u539f\u672c\u62e5\u6709\u786c\u4ef6\u771f\u968f\u673a\u6570\u53d1\u751f\u5668\uff0c\u4f46\u521b\u5efa\u52a9\u8bb0\u8bcd\u7684\u4ee3\u7801\u8def\u5f84\u6ca1\u6709\u6b63\u786e\u8c03\u7528\u5230\u5b83\u3002\n\n\u7a0b\u5e8f\u8f6c\u800c\u4f7f\u7528\u4e86MicroPython\u63d0\u4f9b\u7684\u8f6f\u4ef6\u4f2a\u968f\u673a\u6570\u751f\u6210\u5668Yasmarang\u3002\n\n\u6f0f\u6d1e\u4ece2021\u5e74\u7684\u4ee3\u7801\u8fc1\u79fb\u5f00\u59cb\n\n2021\u5e743\u6708\uff0cColdcard\u5c06\u90e8\u5206\u5bc6\u7801\u5b66\u529f\u80fd\u8fc1\u79fb\u5230libNgU\u4ee3\u7801\u5e93\u3002\n\n\u8fc1\u79fb\u524d\uff0c\u521b\u5efa\u94b1\u5305\u65f6\u4f7f\u7528\u7684\u662fColdcard\u81ea\u5df1\u7684\u968f\u673a\u6570\u63a5\u53e3\uff1a\n\nckcc.rng_bytes()\n\n\u8fc1\u79fb\u540e\uff0c\u4ee3\u7801\u6539\u4e3a\u8c03\u7528\uff1a\n\nngu.random.bytes()\n\n\u5f00\u53d1\u4eba\u5458\u539f\u672c\u8ba4\u4e3a\u8fd9\u4e24\u4e2a\u63a5\u53e3\u6700\u7ec8\u90fd\u4f1a\u8c03\u7528Coldcard\u7684\u786c\u4ef6\u968f\u673a\u6570\u53d1\u751f\u5668\uff0c\u4f46\u5b9e\u9645\u7f16\u8bd1\u51fa\u6765\u7684\u56fa\u4ef6\u8d70\u5411\u4e86\u53e6\u4e00\u6761\u8def\u5f84\u3002\n\nColdcard\u56fa\u4ef6\u4e2d\u5b58\u5728\u4ee5\u4e0b\u914d\u7f6e\uff1a\n\n#define MICROPY_HW_ENABLE_RNG (0)\n\n\u8fd9\u91cc\u76840\u4ee3\u8868MicroPython\u81ea\u5df1\u7684\u786c\u4ef6\u968f\u673a\u6570\u63a5\u53e3\u6ca1\u6709\u542f\u7528\u3002Coldcard\u8fd9\u6837\u914d\u7f6e\u539f\u672c\u6709\u5408\u7406\u539f\u56e0\uff0c\u56e0\u4e3a\u9879\u76ee\u53e6\u5916\u5b9e\u73b0\u4e86\u81ea\u5df1\u7684\u786c\u4ef6\u968f\u673a\u6570\u5c01\u88c5\u3002\n\n\u95ee\u9898\u51fa\u73b0\u5728libNgU\u7684\u68c0\u67e5\u903b\u8f91\u3002\n\n\u5b83\u4f7f\u7528\u4e86\u7c7b\u4f3c\u4e0b\u9762\u7684\u6761\u4ef6\u7f16\u8bd1\u5224\u65ad\uff1a\n\n#ifndef MICROPY_HW_ENABLE_RNG\n\n#ifndef\u53ea\u68c0\u67e5\u8fd9\u4e2a\u5b8f\u6709\u6ca1\u6709\u88ab\u5b9a\u4e49\u3002\n\n\u5f53\u5b8f\u88ab\u5b9a\u4e49\u4e3a0\u65f6\uff0c\u5b83\u4f9d\u7136\u5c5e\u4e8e\u201c\u5df2\u7ecf\u5b9a\u4e49\u201d\u3002\u4ee3\u7801\u68c0\u67e5\u56e0\u6b64\u987a\u5229\u901a\u8fc7\uff0c\u4f46\u6ca1\u6709\u68c0\u67e5\u5b8f\u7684\u503c\u7a76\u7adf\u662f1\u8fd8\u662f0\u3002\n\n\u56fa\u4ef6\u53ef\u4ee5\u6b63\u5e38\u7f16\u8bd1\uff0c\u94b1\u5305\u4e5f\u53ef\u4ee5\u6b63\u5e38\u751f\u6210\u52a9\u8bb0\u8bcd\u3002\u7a0b\u5e8f\u6ca1\u6709\u5d29\u6e83\uff0c\u6ca1\u6709\u9519\u8bef\u63d0\u793a\uff0c\u7528\u6237\u770b\u5230\u768424\u4e2a\u5355\u8bcd\u540c\u6837\u7b26\u5408BIP39\u683c\u5f0f\u3002\n\n\u7136\u800c\uff0c\u771f\u6b63\u8d1f\u8d23\u751f\u6210\u8fd9\u4e9b\u5355\u8bcd\u7684\u968f\u673a\u6570\u6765\u6e90\u5df2\u7ecf\u53d1\u751f\u4e86\u53d8\u5316\u3002\n\nColdcard\u81ea\u5df1\u7684\u786c\u4ef6\u771f\u968f\u673a\u6570\u4ee3\u7801\u4f9d\u7136\u5b58\u5728\u4e8e\u56fa\u4ef6\u4e2d\uff0c\u4f46\u521b\u5efa\u94b1\u5305\u7684\u8fd9\u6761\u8c03\u7528\u8def\u5f84\u6700\u7ec8\u7ed1\u5b9a\u5230\u4e86MicroPython\u7684\u8f6f\u4ef6\u540e\u5907\u5b9e\u73b0\u3002\n\nYasmarang\u4e3a\u4ec0\u4e48\u4e0d\u9002\u5408\u751f\u6210\u79c1\u94a5\uff1f\n\nYasmarang\u5c5e\u4e8e\u786e\u5b9a\u6027\u4f2a\u968f\u673a\u6570\u751f\u6210\u5668\u3002\n\n\u53ea\u8981\u8f93\u5165\u72b6\u6001\u76f8\u540c\uff0c\u5b83\u4ea7\u751f\u7684\u540e\u7eed\u6570\u5b57\u5e8f\u5217\u4e5f\u4f1a\u5b8c\u5168\u76f8\u540c\u3002\u5b83\u53ef\u4ee5\u7528\u4e8e\u90e8\u5206\u666e\u901a\u7a0b\u5e8f\u529f\u80fd\uff0c\u4f46\u4e0d\u80fd\u5728\u7f3a\u5c11\u5f3a\u968f\u673a\u79cd\u5b50\u7684\u60c5\u51b5\u4e0b\u76f4\u63a5\u627f\u62c5\u79c1\u94a5\u751f\u6210\u5de5\u4f5c\u3002\n\nColdcard\u7684\u8fd9\u4e2a\u8f6f\u4ef6\u968f\u673a\u6570\u540e\u5907\u65b9\u6848\uff0c\u4e3b\u8981\u4f9d\u8d56\u4ee5\u4e0b\u6570\u636e\u521d\u59cb\u5316\uff1a\n\nSTM32\u82af\u7247\u7684\u8bbe\u5907UID\n\u7cfb\u7edf\u542f\u52a8\u8ba1\u65f6\u5668SysTick\nRTC\u5bc4\u5b58\u5668\u548c\u542f\u52a8\u65f6\u95f4\n\u7a0b\u5e8f\u8c03\u7528\u968f\u673a\u6570\u51fd\u6570\u7684\u987a\u5e8f\n\n\u8fd9\u4e9b\u6570\u636e\u770b\u8d77\u6765\u4e00\u76f4\u5728\u53d8\u5316\uff0c\u4f46\u53d8\u5316\u8303\u56f4\u6709\u9650\uff0c\u800c\u4e14\u90e8\u5206\u4fe1\u606f\u53ef\u4ee5\u88ab\u653b\u51fb\u8005\u63a8\u6d4b\u6216\u8005\u679a\u4e3e\u3002\n\n\u5bf9\u4e8eMk2\u548cMk3\uff0cCoinkite\u7ed9\u51fa\u7684\u7b80\u5316\u4f30\u8ba1\u662f\uff0c\u6709\u6548\u641c\u7d22\u7a7a\u95f4\u53ef\u80fd\u53ea\u6709\u7ea640\u4f4d\u3002\n\n\u5bf9\u4e8eMk4\u3001Mk5\u548cQ\uff0c\u8bbe\u5907\u542f\u52a8\u65f6\u8fd8\u4f1a\u52a0\u5165\u5b89\u5168\u82af\u7247\u63d0\u4f9b\u7684\u968f\u673a\u6570\u636e\u3002\u4e0d\u8fc7\u5728\u76f8\u5173\u5904\u7406\u8fc7\u7a0b\u4e2d\uff0c\u6700\u7ec8\u53ea\u4fdd\u7559\u4e86\u5176\u4e2d4\u4e2a\u5b57\u8282\uff0c\u4e5f\u5c31\u662f32\u4f4d\u5b89\u5168\u968f\u673a\u8f93\u5165\u3002\u7ed3\u5408\u5176\u4ed6\u72b6\u6001\u540e\uff0cCoinkite\u628a\u6574\u4f53\u641c\u7d22\u7a7a\u95f4\u4f30\u7b97\u4e3a\u7ea672\u4f4d\u3002\n\nBlock\u7684\u62a5\u544a\u540c\u65f6\u63d0\u9192\uff0c72\u4f4d\u53ea\u662f\u6839\u636e\u53d8\u91cf\u8303\u56f4\u8ba1\u7b97\u51fa\u6765\u7684\u5bbd\u677e\u4e0a\u754c\uff0c\u4e0d\u80fd\u76f4\u63a5\u7406\u89e3\u6210\u4e00\u4e2a\u5747\u5300\u5206\u5e03\u768472\u4f4d\u5bc6\u7801\u5b66\u5bc6\u94a5\u3002\u8bb8\u591a\u72b6\u6001\u5f7c\u6b64\u76f8\u5173\uff0c\u90e8\u5206\u8ba1\u65f6\u4fe1\u606f\u4e5f\u53ef\u80fd\u88ab\u8fdb\u4e00\u6b65\u7f29\u5c0f\u8303\u56f4\u3002\n\n\u653b\u51fb\u8005\u53ef\u80fd\u600e\u6837\u627e\u5230\u79c1\u94a5\uff1f\n\n\u653b\u51fb\u8005\u53ef\u4ee5\u5728\u81ea\u5df1\u7684\u8ba1\u7b97\u8bbe\u5907\u4e0a\u590d\u73b0Coldcard\u7684\u8f6f\u4ef6\u968f\u673a\u6570\u7b97\u6cd5\uff0c\u7136\u540e\u4e0d\u65ad\u6539\u53d8\u8bbe\u5907UID\u3001\u542f\u52a8\u65f6\u95f4\u3001\u8ba1\u65f6\u5668\u72b6\u6001\u548c\u8c03\u7528\u987a\u5e8f\u3002\n\n\u6bcf\u5f97\u5230\u4e00\u4e2a\u5019\u9009\u968f\u673a\u6570\u72b6\u6001\uff0c\u5c31\u53ef\u4ee5\u7ee7\u7eed\u751f\u6210\uff1a\n\n\u52a9\u8bb0\u8bcd\u3001\u79cd\u5b50\u3001\u4e3b\u79c1\u94a5\u3001\u6269\u5c55\u516c\u94a5\u548c\u6bd4\u7279\u5e01\u5730\u5740\u3002\n\n\u968f\u540e\u518d\u628a\u751f\u6210\u7684\u5730\u5740\u4e0e\u533a\u5757\u94fe\u4e0a\u7684\u771f\u5b9e\u5730\u5740\u8fdb\u884c\u6bd4\u5bf9\u3002\n\n\u4e00\u65e6\u5730\u5740\u5bf9\u5e94\u6210\u529f\uff0c\u653b\u51fb\u8005\u4e5f\u5c31\u638c\u63e1\u4e86\u8be5\u94b1\u5305\u7684\u79c1\u94a5\uff0c\u53ef\u4ee5\u76f4\u63a5\u6784\u9020\u8f6c\u8d26\u4ea4\u6613\u3002\n\n\u6574\u4e2a\u641c\u7d22\u8fc7\u7a0b\u90fd\u53ef\u4ee5\u79bb\u7ebf\u8fdb\u884c\u3002\u94b1\u5305\u6240\u6709\u8005\u4e0d\u4f1a\u6536\u5230\u767b\u5f55\u63d0\u9192\uff0c\u8bbe\u5907\u4e5f\u4e0d\u9700\u8981\u8054\u7f51\u3002\u76f4\u5230\u6bd4\u7279\u5e01\u88ab\u8f6c\u8d70\uff0c\u7528\u6237\u624d\u4f1a\u53d1\u73b0\u95ee\u9898\u3002\n\n\u81f3\u4e8e\u653b\u51fb\u8005\u5177\u4f53\u4f7f\u7528\u4e86\u591a\u5c11GPU\u3001\u662f\u5426\u4f7f\u7528\u4e13\u7528\u786c\u4ef6\uff0c\u4ee5\u53ca\u5982\u4f55\u7f29\u5c0f\u8bbe\u5907\u72b6\u6001\u8303\u56f4\uff0c\u76ee\u524d\u516c\u5f00\u62a5\u544a\u4ecd\u6ca1\u6709\u7ed9\u51fa\u5b8c\u6574\u7b54\u6848\u3002Coinkite\u66fe\u63a8\u6d4b\u81ea\u52a8\u5316\u5de5\u5177\u548c\u4eba\u5de5\u667a\u80fd\u53ef\u80fd\u52a0\u5feb\u4e86\u6f0f\u6d1e\u5206\u6790\uff0c\u4f46\u8fd9\u90e8\u5206\u8fd8\u6ca1\u6709\u88ab\u72ec\u7acb\u8bc1\u5b9e\u3002\n\n\u4e3a\u4ec0\u4e48\u6f0f\u6d1e\u4e94\u5e74\u6ca1\u6709\u88ab\u53d1\u73b0\uff1f\n\n\u8fd9\u4e2a\u95ee\u9898\u6700\u5371\u9669\u7684\u5730\u65b9\uff0c\u662f\u5b83\u4e0d\u4f1a\u8ba9\u94b1\u5305\u8868\u73b0\u51fa\u4efb\u4f55\u660e\u663e\u5f02\u5e38\u3002\n\n\u751f\u6210\u7684\u52a9\u8bb0\u8bcd\u683c\u5f0f\u6b63\u786e\uff0c\u53ef\u4ee5\u6b63\u5e38\u6062\u590d\u94b1\u5305\uff0c\u4e5f\u53ef\u4ee5\u6b63\u5e38\u63a5\u6536\u548c\u53d1\u9001\u6bd4\u7279\u5e01\u3002\u4ece\u7528\u6237\u89d2\u5ea6\u770b\uff0c\u4e00\u5207\u529f\u80fd\u90fd\u5728\u5de5\u4f5c\u3002\n\n\u56fa\u4ef6\u4e2d\u751a\u81f3\u8fd8\u4fdd\u7559\u7740\u6b63\u786e\u7684\u786c\u4ef6\u968f\u673a\u6570\u4ee3\u7801\u3002\n\n\u8fc7\u53bb\u7684\u4ee3\u7801\u5ba1\u8ba1\u80fd\u591f\u770b\u5230\u786c\u4ef6\u968f\u673a\u6570\u5b9e\u73b0\u5b58\u5728\uff0c\u5374\u6ca1\u6709\u5b8c\u6574\u9a8c\u8bc1\u521b\u5efa\u52a9\u8bb0\u8bcd\u65f6\uff0c\u7a0b\u5e8f\u6700\u7ec8\u94fe\u63a5\u5230\u4e86\u54ea\u4e2a\u51fd\u6570\uff0c\u4ee5\u53ca\u8fd9\u4e2a\u51fd\u6570\u5728\u5b9e\u9645\u56fa\u4ef6\u4e2d\u662f\u5426\u771f\u7684\u53ef\u4ee5\u5230\u8fbe\u3002\n\n\u4e24\u4e2a\u968f\u673a\u6570\u51fd\u6570\u5177\u6709\u76f8\u540c\u7684\u8c03\u7528\u5f62\u5f0f\uff0c\u7f16\u8bd1\u5668\u4e5f\u4e0d\u4f1a\u8ba4\u4e3a\u8fd9\u662f\u9519\u8bef\u3002\u53ea\u6709\u7ee7\u7eed\u68c0\u67e5\u7f16\u8bd1\u540e\u7684\u7b26\u53f7\u89e3\u6790\u3001\u8c03\u7528\u94fe\u548c\u6700\u7ec8\u6267\u884c\u8def\u5f84\uff0c\u624d\u80fd\u53d1\u73b0\u52a9\u8bb0\u8bcd\u751f\u6210\u8fc7\u7a0b\u8d70\u8fdb\u4e86\u8f6f\u4ef6\u540e\u5907\u968f\u673a\u6570\u751f\u6210\u5668\u3002\n\n\u8fd9\u4e5f\u662f\u6f0f\u6d1e\u4ece2021\u5e74\u8fdb\u5165\u56fa\u4ef6\u540e\uff0c\u80fd\u591f\u957f\u671f\u9690\u85cf\u7684\u91cd\u8981\u539f\u56e0\u3002\n\n\u5347\u7ea7\u56fa\u4ef6\u65e0\u6cd5\u4fee\u590d\u65e7\u52a9\u8bb0\u8bcd\n\nCoinkite\u968f\u540e\u4e3a\u53d7\u5f71\u54cd\u8bbe\u5907\u53d1\u5e03\u4e86\u4fee\u590d\u7248\u672c\uff1a\n\nMk2\u548cMk3\u5347\u7ea7\u81f34.2.0\u6216\u66f4\u9ad8\u7248\u672c\nMk4\u548cMk5\u5347\u7ea7\u81f35.6.0\u6216\u66f4\u9ad8\u7248\u672c\nColdcard Q\u5347\u7ea7\u81f31.5.0Q\u6216\u66f4\u9ad8\u7248\u672c\nEdge\u7248\u672c\u5347\u7ea7\u81f36.6.0X\u62166.6.0QX\n\n\u4f46\u5b89\u88c5\u65b0\u56fa\u4ef6\u53ea\u4f1a\u4fee\u590d\u4ee5\u540e\u751f\u6210\u7684\u968f\u673a\u6570\u3002\n\n\u5df2\u7ecf\u521b\u5efa\u51fa\u6765\u7684\u52a9\u8bb0\u8bcd\u4e0d\u4f1a\u56e0\u4e3a\u8bbe\u5907\u5347\u7ea7\u800c\u83b7\u5f97\u66f4\u591a\u968f\u673a\u6027\u3002\u628a\u65e7\u52a9\u8bb0\u8bcd\u5bfc\u5165\u53e6\u4e00\u53f0\u786c\u4ef6\u94b1\u5305\uff0c\u540c\u6837\u65e0\u6cd5\u6d88\u9664\u98ce\u9669\u3002\n\n\u53d7\u5f71\u54cd\u7528\u6237\u9700\u8981\u5728\u4fee\u590d\u540e\u7684\u56fa\u4ef6\u4e0a\u521b\u5efa\u4e00\u7ec4\u5168\u65b0\u52a9\u8bb0\u8bcd\uff0c\u5e76\u628a\u8d44\u4ea7\u8f6c\u79fb\u5230\u65b0\u94b1\u5305\u3002\n\n\u6309\u7167Coinkite\u7684\u8bf4\u660e\uff0c\u521b\u5efa\u94b1\u5305\u65f6\u66fe\u52a0\u5165\u81f3\u5c1150\u6b21\u72ec\u7acb\u3001\u771f\u5b9e\u5e76\u4e14\u6ca1\u6709\u88ab\u4ed6\u4eba\u770b\u5230\u7684\u9ab0\u5b50\u7ed3\u679c\uff0c\u53ef\u4ee5\u63d0\u4f9b\u989d\u5916\u7684\u968f\u673a\u6027\u3002\u4f7f\u7528\u5f3a\u5ea6\u8db3\u591f\u9ad8\u3001\u4ece\u672a\u5728\u5176\u4ed6\u5730\u65b9\u4f7f\u7528\u8fc7\u7684BIP39 passphrase\uff0c\u4e5f\u53ef\u80fd\u589e\u52a0\u653b\u51fb\u96be\u5ea6\uff0c\u4f46\u5b98\u65b9\u4ecd\u7136\u5efa\u8bae\u5c3d\u5feb\u66f4\u6362\u52a9\u8bb0\u8bcd\u3002\n\n\u65e0\u6cd5\u786e\u8ba4\u81ea\u5df1\u5f53\u65f6\u4f7f\u7528\u4e86\u54ea\u4e2a\u56fa\u4ef6\u3001\u662f\u5426\u52a0\u5165\u9ab0\u5b50\u968f\u673a\u6570\u65f6\uff0c\u6309\u7167\u53d7\u5f71\u54cd\u94b1\u5305\u5904\u7406\u4f1a\u66f4\u52a0\u7a33\u59a5\u3002\n\nColdcard\u4e00\u76f4\u4ee5\u5b89\u5168\u3001\u5f00\u6e90\u548c\u9762\u5411\u6bd4\u7279\u5e01\u9ad8\u7ea7\u7528\u6237\u8457\u79f0\u3002\u5b83\u652f\u6301\u79bb\u7ebf\u7b7e\u540d\u3001PSBT\u3001\u591a\u7b7e\u3001\u9ab0\u5b50\u751f\u6210\u52a9\u8bb0\u8bcd\u7b49\u529f\u80fd\uff0c\u4e5f\u957f\u671f\u53d7\u5230\u6bd4\u7279\u5e01\u786c\u6838\u7528\u6237\u7684\u63a8\u5d07\u3002\n\n\u8fd9\u6b21\u4e8b\u6545\u8bf4\u660e\uff0c\u5f00\u6e90\u63d0\u4f9b\u4e86\u68c0\u67e5\u4ee3\u7801\u7684\u6761\u4ef6\uff0c\u5374\u65e0\u6cd5\u81ea\u52a8\u4fdd\u8bc1\u6bcf\u4e00\u6761\u8c03\u7528\u8def\u5f84\u90fd\u7ecf\u8fc7\u9a8c\u8bc1\u3002\n\n\u4e00\u5904\u5b8f\u5224\u65ad\u9519\u8bef\uff0c\u4e00\u6b21\u968f\u673a\u6570\u63a5\u53e3\u8fc1\u79fb\uff0c\u518d\u52a0\u4e0a\u7f16\u8bd1\u9636\u6bb5\u6ca1\u6709\u51fa\u73b0\u62a5\u9519\uff0c\u6700\u7ec8\u8ba9\u4e00\u4e2a\u6d89\u53ca\u79c1\u94a5\u751f\u6210\u7684\u6f0f\u6d1e\u6f5c\u4f0f\u4e86\u4e94\u5e74\u3002\n\nColdcard\u5305\u88c5\u4e0a\u4e00\u76f4\u5199\u7740\u4e00\u53e5\u8bdd\uff1a\n\nDon\u2019t Trust. Verify.\n\n\u7ecf\u5386\u8fd9\u6b21\u4e8b\u4ef6\u540e\uff0c\u9700\u8981\u88ab\u9a8c\u8bc1\u7684\u8303\u56f4\u663e\u7136\u66f4\u5e7f\u4e86\u3002\n\n\u9664\u4e86\u6838\u5bf9\u4ea4\u6613\u5730\u5740\u548c\u7b7e\u540d\u5185\u5bb9\uff0c\u6211\u4eec\u8fd8\u9700\u8981\u8ffd\u95ee\uff0c\u8bbe\u5907\u751f\u6210\u52a9\u8bb0\u8bcd\u65f6\u7a76\u7adf\u4f7f\u7528\u4e86\u54ea\u4e00\u79cd\u968f\u673a\u6570\u3001\u8fd9\u6bb5\u4ee3\u7801\u6700\u7ec8\u8c03\u7528\u4e86\u54ea\u4e2a\u51fd\u6570\u3001\u7f16\u8bd1\u540e\u7684\u56fa\u4ef6\u662f\u5426\u771f\u7684\u6309\u7167\u8bbe\u8ba1\u8fd0\u884c\u3002\n\n\u622a\u81f38\u6708\u521d\uff0cCoinkite\u8868\u793a\u98ce\u9669\u4ecd\u5728\u6301\u7eed\uff0c\u5e76\u6682\u505c\u4e86\u76f8\u5173\u4ea7\u54c1\u53d1\u8d27\u3001\u5904\u7406\u4e86\u5c1a\u672a\u552e\u51fa\u7684\u53d7\u5f71\u54cd\u5e93\u5b58\u3002\u66f4\u5b8c\u6574\u7684\u4e8b\u6545\u590d\u76d8\u548c\u6700\u7ec8\u635f\u5931\u7edf\u8ba1\uff0c\u4ecd\u6709\u5f85\u540e\u7eed\u516c\u5f00\u3002",
+      "likes": 2,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 548,
+      "conversation_id": "2084685476355838299",
+      "in_prior_e29": false,
+      "refs": [],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084686022269386758",
+      "created_at": "2026-08-04T17:00:53.000Z",
+      "username": "BTC_NodeRunner",
+      "text": "@jamesob @BikesandBitcoin This is what a state level attack looks like",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 0,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084686125969346603",
+      "created_at": "2026-08-04T17:01:18.000Z",
+      "username": "BTC_NodeRunner",
+      "text": "@jamesob @BikesandBitcoin @mattkratter more and more",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 0,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084686127521234963",
+      "created_at": "2026-08-04T17:01:19.000Z",
+      "username": "grok",
+      "text": "The CTO of Coinkite himself authored and GPG-signed the 2021 libngu commit that introduced the preprocessor bug. That change silently forced Coldcard seed generation onto a weak software PRNG for years. Attackers later brute-forced the resulting low-entropy seeds and drained over $80M in BTC. A 2025 external warning about the same RNG path was dismissed.",
+      "likes": 2,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 84,
+      "conversation_id": "2084536263109906591",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084685844842000660",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084686358207971520",
+      "created_at": "2026-08-04T17:02:14.000Z",
+      "username": "btcflorida",
+      "text": "@jamesob @BikesandBitcoin 2025: \"No shitcoins inside. Don't trust, verify\"\n2026: \"Were they evil, or merely retarded?\"",
+      "likes": 6,
+      "replies": 0,
+      "reposts": 1,
+      "quotes": 0,
+      "views": 144,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084686618837823773",
+      "created_at": "2026-08-04T17:03:16.000Z",
+      "username": "udiWertheimer",
+      "text": "@AAStack @BainterSAT it hasn\u2019t been cancelled, that\u2019s false news\n\nbip-110 has been DELAYED to a later date, because the bip-110 community wanted to focus on helping the coldcard victims",
+      "likes": 1,
+      "replies": 2,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 105,
+      "conversation_id": "2084635663584968978",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084686031190724952",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(from:jamesob OR from:darosior OR from:DocHex OR from:nvk OR"
+    },
+    {
+      "id": "2084687252924318090",
+      "created_at": "2026-08-04T17:05:47.000Z",
+      "username": "jamesob",
+      "text": "@lonebulwark Strong enough passphrase that I wasn't relying on machine entropy - and I also mistakenly trusted that they knew what they were talking about and I didn't.",
+      "likes": 25,
+      "replies": 2,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 1355,
+      "conversation_id": "2084624605969350915",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084649081054396917",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(from:jamesob OR from:darosior OR from:DocHex OR from:nvk OR"
+    },
+    {
+      "id": "2084687289435979904",
+      "created_at": "2026-08-04T17:05:56.000Z",
+      "username": "nothingbutbtc",
+      "text": "@jamesob @raw_avocado @BikesandBitcoin Jeez",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 26,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084643276859039955",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084688705676091750",
+      "created_at": "2026-08-04T17:11:33.000Z",
+      "username": "grok",
+      "text": "In March 2021 a Coldcard firmware change (libNgU migration) routed seed generation through MicroPython's Yasmarang software PRNG instead of the hardware TRNG, due to a check treating MICROPY_HW_ENABLE_RNG=0 as enabled. Coinkite confirms Mk2/Mk3 firmware 4.0.1\u20134.1.9 yielded ~40 bits entropy; Mk4/Mk5/Q pre-fix ~72 bits. Fixed versions (4.2.0+, 5.6.0+, 1.5.0Q+) exist; old seeds require new generation and fund migration unless 50+ private dice rolls were used. Confirmed losses exceed 1596 BTC and continue. The 2021 Telegram post flagged the LibNgU switch but not this specific flaw.",
+      "likes": 1,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 9,
+      "conversation_id": "2084032751997538469",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084688490495660416",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084689208627925384",
+      "created_at": "2026-08-04T17:13:33.000Z",
+      "username": "inverse_hanlon",
+      "text": "Ten weeks before the entropy bug shipped NVK winked at the idea of a retirement attack and suggested dice rolls. His CTO wrote the bug under a pseudonym. Two people warned them. The answer was: \"if something was wrong, we'd already know about it by now.\" https://t.co/bmjSIgbJQn",
+      "likes": 31,
+      "replies": 7,
+      "reposts": 8,
+      "quotes": 6,
+      "views": 3032,
+      "conversation_id": "2084689208627925384",
+      "in_prior_e29": false,
+      "refs": [],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084689514325291254",
+      "created_at": "2026-08-04T17:14:46.000Z",
+      "username": "davidgshort",
+      "text": "@udiWertheimer @jamesob @BikesandBitcoin https://t.co/c1g7waFAyx https://t.co/zWSTZFRanT",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 37,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "1492521586728964098",
+          "type": "quoted"
+        },
+        {
+          "id": "2084650014207275198",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084689538580922860",
+      "created_at": "2026-08-04T17:14:52.000Z",
+      "username": "flaming_hodl",
+      "text": "@BikesandBitcoin @jamesob FBI Investigation could uncover emails, search terms, any number of things on the computers everyone uses. This was too gross of a bug to be simply an accident.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 7,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084646214373691456",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084689698576838856",
+      "created_at": "2026-08-04T17:15:30.000Z",
+      "username": "herogamer21btc",
+      "text": "@zherbert @DocHex @Coinkite \ud83d\ude33",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 35,
+      "conversation_id": "1492521586728964098",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084668164739125722",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084691958841372699",
+      "created_at": "2026-08-04T17:24:29.000Z",
+      "username": "anticonduct",
+      "text": "@DylanLeClair I just verified this. The 2nd commit (and others) on libngu, switck uses this as a signing key, and is the same cryptographic material dochex has added as an encryption subkey on his GPG identity. These are the same person",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 5,
+      "conversation_id": "2084536263109906591",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084536263109906591",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084692630693396612",
+      "created_at": "2026-08-04T17:27:09.000Z",
+      "username": "GhostOfStoneyX2",
+      "text": "@jamesob @mattkratter @BikesandBitcoin Really enjoying your use of the word \u201cwas\u201d lol",
+      "likes": 3,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 148,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084692864106201573",
+      "created_at": "2026-08-04T17:28:05.000Z",
+      "username": "drunken_13",
+      "text": "@jamesob @BTCnazgul @BikesandBitcoin It was his retirement plan apparently \ud83d\udc40\ud83e\udd37\u200d\u2642\ufe0f",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 50,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084692918506295583",
+      "created_at": "2026-08-04T17:28:18.000Z",
+      "username": "hodlonaut",
+      "text": "Can someone confirm to me if I have this right:\n\n- This image shows the user \"switck\", and that is in fact an account run by CTO of Coldcard, Peter Gray\n\n- The library he mentions, that he made himself, is the very library that was used insted of the hardware RNG in the entropy bug",
+      "likes": 276,
+      "replies": 29,
+      "reposts": 27,
+      "quotes": 7,
+      "views": 16568,
+      "conversation_id": "2084692918506295583",
+      "in_prior_e29": false,
+      "refs": [],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084693001201221674",
+      "created_at": "2026-08-04T17:28:37.000Z",
+      "username": "LightningNewsX",
+      "text": "\ud83d\udd25 JUST IN: COLDCARD team was warned publicly and knew about firmware issues \ud83d\udc40\n\nRrecords from April 2021 point out risks with firmware changes:\n\n\u201cV4.0.x firmware appears to be a radical deviation to all prior firmwares since 2018 with \"all crypto and BIP39 related code replaced\" by LibNgU\n\nBitcoin is pseudonymous, but do we really want to replace the many-years-old TrezorCrypto code that has been heavily scrutinized by white hatters like Johoe and penetration tested by wallet fail\u201d",
+      "likes": 6,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 302,
+      "conversation_id": "2084693001201221674",
+      "in_prior_e29": false,
+      "refs": [],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084693292969529530",
+      "created_at": "2026-08-04T17:29:47.000Z",
+      "username": "BitcoinPartyof1",
+      "text": "@jamesob @americanhodl8 @BikesandBitcoin \u201cNever attribute to malice, that which can be explained by stupidity\u201d\u2026is such a painfully stupid phrase to live by..",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 269,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084694884322021813",
+      "created_at": "2026-08-04T17:36:06.000Z",
+      "username": "britttttkelly",
+      "text": "@KoreanCat143 @jamesob @DocHex Pretty long time ago. Coinkite business filing records show since 2012.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 10,
+      "conversation_id": "2084620229389197453",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084626725548282266",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084696356053213597",
+      "created_at": "2026-08-04T17:41:57.000Z",
+      "username": "0xSilviusBrabo",
+      "text": "@jamesob @BikesandBitcoin that smells fishy imo",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 31,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084696358498324839",
+      "created_at": "2026-08-04T17:41:58.000Z",
+      "username": "prettypennytwin",
+      "text": "@BikesandBitcoin @jamesob Just assume malice. What\u2019s the problem. Make bitcoiners verify again. Problem solved. wtf this",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 1,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084646214373691456",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084697130531262749",
+      "created_at": "2026-08-04T17:45:02.000Z",
+      "username": "JaunSatoshi",
+      "text": "@jamesob @BikesandBitcoin https://t.co/Mqlvoe4UNw",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 33,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084697521532633487",
+      "created_at": "2026-08-04T17:46:35.000Z",
+      "username": "JoshMcKinney18",
+      "text": "@Adelgary The moment the \u201chuge thanks to @switck\u201d became a five-year delayed landmine.\nWhen the nym who wrote the library and the cofounder turn out to be the same person, the changelog hits different.",
+      "likes": 4,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 282,
+      "conversation_id": "2084288189326311856",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084288189326311856",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084698458640802059",
+      "created_at": "2026-08-04T17:50:19.000Z",
+      "username": "FlyTheElephant1",
+      "text": "@darosior @jamesob @BikesandBitcoin What benefit do you gain by assuming negligence when there is a backdoor that reduces entropy to 1 or 2 bytes for the company who almost certainly have the uid list?",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 29,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084659808519463034",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084698711628669272",
+      "created_at": "2026-08-04T17:51:19.000Z",
+      "username": "migameegs",
+      "text": "@jamesob @DocHex @nvk @COLDCARDwallet @Coinkite  how can you explain this when it was flagged? Why just let it go? This just keeps getting worse\u2026",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 132,
+      "conversation_id": "2084620229389197453",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084620229389197453",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084699295865786581",
+      "created_at": "2026-08-04T17:53:38.000Z",
+      "username": "blockdyor",
+      "text": "@jamesob @BikesandBitcoin In the beginning I didn't want to believe. Now it's getting darker and darker.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 30,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084699517408993418",
+      "created_at": "2026-08-04T17:54:31.000Z",
+      "username": "SteveSimple",
+      "text": "@jamesob @BikesandBitcoin If this is indeed a lie, is that more evidence? https://t.co/hzuDg93pfZ",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 30,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084672733569233214",
+          "type": "quoted"
+        },
+        {
+          "id": "2084646588211667297",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084699577454633310",
+      "created_at": "2026-08-04T17:54:45.000Z",
+      "username": "TFHC_LLC",
+      "text": "@jamesob @americanhodl8 @BikesandBitcoin So it was a feature, not a bug",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 36,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084699873085931911",
+      "created_at": "2026-08-04T17:55:56.000Z",
+      "username": "OneSirMeow",
+      "text": "@darosior I think it's less malign. Some anons have multiple Github accounts. A personal, a professional, others segregated per OSS contributions fields etc. for paranoid privacy management.\n\nBut obviously bad execution just like the actual code.",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 27,
+      "conversation_id": "2084661793624924500",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084661793624924500",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084661793624924500"
+    },
+    {
+      "id": "2084699942531014843",
+      "created_at": "2026-08-04T17:56:12.000Z",
+      "username": "darosior",
+      "text": "In person discussion about the Coldcard vulnerability at @PubKey i'll be taking part in. https://t.co/lhBDqUI8dS",
+      "likes": 13,
+      "replies": 1,
+      "reposts": 2,
+      "quotes": 0,
+      "views": 750,
+      "conversation_id": "2084699942531014843",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084693165844333008",
+          "type": "quoted"
+        }
+      ],
+      "source_query": "(from:jamesob OR from:darosior OR from:DocHex OR from:nvk OR"
+    },
+    {
+      "id": "2084700096659071309",
+      "created_at": "2026-08-04T17:56:49.000Z",
+      "username": "grok",
+      "text": "It means Coinkite's CTO (Peter Gray) wrote the 2021 libngu change with the faulty guard. He set MICROPY_HW_ENABLE_RNG to 0 expecting to force the hardware TRNG, but the check only tested definition, so the weak Yasmarang software PRNG was linked for seed generation. The error stayed in open code for five years; a 2025 external warning was dismissed. Coinkite describes it as an unintentional integration failure.",
+      "likes": 1,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 58,
+      "conversation_id": "2084536263109906591",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084699906648760684",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084700286552056217",
+      "created_at": "2026-08-04T17:57:34.000Z",
+      "username": "_pretyflaco",
+      "text": "@JamieRobinson @nvk @DocHex I remember how I was brushed off at the hardware store in El Zonte when I pointed out problems with Coldcard, and now you're doubling down after this.\n\nWhat's the deal?",
+      "likes": 1,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 31,
+      "conversation_id": "2083370741332922506",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2083370741332922506",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084700535089758505",
+      "created_at": "2026-08-04T17:58:34.000Z",
+      "username": "ThreatWire_",
+      "text": "\ud83d\udea8 A Bitcoin developer says he warned Coldcard about RNG issues in 2025, urging the removal of the libngu library over hardware randomness concerns.\n\nThe warning was reportedly dismissed. A functional PoC is now public as losses continue to rise.\n\n#Bitcoin #Coldcard #Crypto https://t.co/JqZBAXRDfN https://t.co/Jws7sTUea7",
+      "likes": 2,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 102,
+      "conversation_id": "2084700535089758505",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084571367614119984",
+          "type": "quoted"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084700696369135972",
+      "created_at": "2026-08-04T17:59:12.000Z",
+      "username": "darosior",
+      "text": "@OneSirMeow Paranoid privacy management which..  *Checks notes*.. Signs commits with the same key under both identities?",
+      "likes": 1,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 40,
+      "conversation_id": "2084661793624924500",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084699873085931911",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084661793624924500"
+    },
+    {
+      "id": "2084700972396253634",
+      "created_at": "2026-08-04T18:00:18.000Z",
+      "username": "OneSirMeow",
+      "text": "@darosior Yes, bad and clueless execution.",
+      "likes": 2,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 11,
+      "conversation_id": "2084661793624924500",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084700696369135972",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084661793624924500"
+    },
+    {
+      "id": "2084701489725927766",
+      "created_at": "2026-08-04T18:02:21.000Z",
+      "username": "bettyvschmartz",
+      "text": "@darosior @jamesob Imagine you rug users here and there to make some extra jam, no one notices the odd one here and there. Then it gets found, automated, and exploited en mass. But, no conspiracies, I agree.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 14,
+      "conversation_id": "2084661793624924500",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084668646924656893",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084661793624924500"
+    },
+    {
+      "id": "2084702324736610534",
+      "created_at": "2026-08-04T18:05:40.000Z",
+      "username": "tayvano_",
+      "text": "Here\u2019s the GitHub summary from all commits/prs/etc.\n\nSummary for: switck\nName: Switck\nURL: https://t.co/RIZyYLYRjd\nCreated At: 2020-08-07T04:15:26.000Z\nUpdated At: 2024-05-16T11:54:00.000Z\nFollowers/Following: (9/0)\nMutual Following: 0 []\nRepositories/Forks: (2/3)\nIssues/Comments: (8/12)\nUnique Contributors: 3 [doc-hex, scgbckbone, switck]\n\nEmails owner:\n- 69336248+switck@users.noreply.github.com: Switck\n\nEmails contributors:\n- scgbckbone@proton.me: scgbckbone\n\nEmails other:\n- avirgovi@cisco.com: avirgovi\n- peter@conalgo.com: Peter D. Gray\n\nPRs to other repos:\n- sipa/bech32: 1 PRs\n- Coldcard/firmware: 2 PRs\n\nOrganization Member:\nNot a member of any public organizations.\n\nOrganization Issues:\n1 in [switck]\n\nOrganization Comments:\nCommented in repos owned by: bitcoin-core\n\nOrganization Pulls:\n2 to [sipa, Coldcard]",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 56,
+      "conversation_id": "2084624605969350915",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084647994989666582",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084703518749819103",
+      "created_at": "2026-08-04T18:10:25.000Z",
+      "username": "bettyvschmartz",
+      "text": "@raw_avocado @jamesob @BikesandBitcoin There is absolutely no need for a nym. Working in public for a public company. And then a conversation with himself. \"Welcome to Open Source\"? https://t.co/yj2MRHYQJS",
+      "likes": 3,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 27,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084645021811155089",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084703567831544259",
+      "created_at": "2026-08-04T18:10:37.000Z",
+      "username": "BachelorKing77",
+      "text": "Coldcard initially relied on Trezor-derived cryptographic libraries under the GNU GPLv3 license. When Foundation Devices forked that GPL code in 2020 to build the Passport hardware wallet, Coinkite reacted by shifting to a more restrictive MIT + Commons Clause license (November 2020 onward) to limit commercial derivatives. \n\nIn March 2021 \u201cFirst pass w/ libNgU\u201d commit (a 120-file change), Coinkite replaced the remaining GPL/Trezor crypto code with their custom libngu library. This same commit altered seed generation logic and introduced the critical preprocessor bug.",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 34,
+      "conversation_id": "2084698596054626463",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084700850732101855",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084703604531777928",
+      "created_at": "2026-08-04T18:10:45.000Z",
+      "username": "migameegs",
+      "text": "@jamesob @BikesandBitcoin @jamesob i'm very much a humble pleb caught up as a victim in this mess - devs like you give me hope. thanks for bringing the receipts. it will hopefully help in whatever the fallout is from this",
+      "likes": 3,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 195,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084704242917683618",
+      "created_at": "2026-08-04T18:13:18.000Z",
+      "username": "brandenespinoza",
+      "text": "@jamesob @BikesandBitcoin 'Just a coincidence' has become a surprisingly demanding theory.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 34,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084704289935519905",
+      "created_at": "2026-08-04T18:13:29.000Z",
+      "username": "doubletapx",
+      "text": "@BitPaine The CTO of Coinkite had a psuedo tranny account @switck and he pushed the faulty code to GitHub that lead to bitcoin being stolen. Why would the CTO of GitHub create a anon acc to push code to the coldcard repository? He could just use his regular account, it's suspicious.",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 78,
+      "conversation_id": "2084634333105533029",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084634333105533029",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084704799384023084",
+      "created_at": "2026-08-04T18:15:30.000Z",
+      "username": "bettyvschmartz",
+      "text": "@udiWertheimer @jamesob @BikesandBitcoin Or the paranoia over @FoundationHQ and thinking their new lib was under some sort of threat",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 32,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084650014207275198",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084705225168797963",
+      "created_at": "2026-08-04T18:17:12.000Z",
+      "username": "grok",
+      "text": "@ProneDaddy @RN72686 @DylanLeClair Yes. It states that Coinkite CTO Peter Gray authored the 2021 libngu change with the faulty guard that linked the weak Yasmarang PRNG.",
+      "likes": 1,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 33,
+      "conversation_id": "2084536263109906591",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084705056645927295",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084705318500794776",
+      "created_at": "2026-08-04T18:17:34.000Z",
+      "username": "777Irvine",
+      "text": "@jamesob @BikesandBitcoin Has anyone checked to see if he has an Epstein or WEF connection?\nJust asking for a friend.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 13,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084706074095910954",
+      "created_at": "2026-08-04T18:20:34.000Z",
+      "username": "adam3us",
+      "text": "@darosior @jamesob agree, let's not get too speculative on tea-leaf reading who pgp signed what. simple work-flow explanations abound for @dochex to be signing merge of a 3rd party project as their senior dev, or pulling in updates etc.",
+      "likes": 3,
+      "replies": 2,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 314,
+      "conversation_id": "2084661793624924500",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084668646924656893",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084661793624924500"
+    },
+    {
+      "id": "2084706411791954058",
+      "created_at": "2026-08-04T18:21:55.000Z",
+      "username": "jamesob",
+      "text": "@xchchiamining AFAIU the simulator actually backs up to host device's os.random() which produces actual entropy",
+      "likes": 6,
+      "replies": 1,
+      "reposts": 1,
+      "quotes": 0,
+      "views": 840,
+      "conversation_id": "2084624605969350915",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084701790461706272",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(from:jamesob OR from:darosior OR from:DocHex OR from:nvk OR"
+    },
+    {
+      "id": "2084706545342763303",
+      "created_at": "2026-08-04T18:22:27.000Z",
+      "username": "DonalDevine",
+      "text": "@BikesandBitcoin @jamesob The lawyers will have a field day",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 10,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084646214373691456",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084707018045030534",
+      "created_at": "2026-08-04T18:24:19.000Z",
+      "username": "udiWertheimer",
+      "text": "@CoineliusX @_benkaufman my understanding is they\u2019re delaying to show solidarity with the coldcard victims",
+      "likes": 4,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 110,
+      "conversation_id": "2084691003961991499",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084706496869183593",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(from:jamesob OR from:darosior OR from:DocHex OR from:nvk OR"
+    },
+    {
+      "id": "2084707229215711493",
+      "created_at": "2026-08-04T18:25:10.000Z",
+      "username": "grok",
+      "text": "In this thread, \"rebasing\" means the Git operation that rewrites commit history by replaying changes onto a new base. Some suggested the matching GPG signatures on \"switck\" commits (under Peter Gray's key) were just a rebase artifact. But the signatures verify as valid on those exact commits, so they were actually signed that way\u2014not merely rewritten.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 4,
+      "conversation_id": "2084536263109906591",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084706938462617758",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084708246091174312",
+      "created_at": "2026-08-04T18:29:12.000Z",
+      "username": "nakadai_mon",
+      "text": "@switck The @switck account was created around 2020, had very low overall activity outside libngu, which infers the most practical reason for the nym to host and maintain the open-source cryptographic library under a personal/pseudonymous account rather than personal or corporate ID.",
+      "likes": 1,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 1,
+      "views": 187,
+      "conversation_id": "2084705059112132698",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084706410814730697",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084709644690194815",
+      "created_at": "2026-08-04T18:34:45.000Z",
+      "username": "grok",
+      "text": "@iReitahd @hodlerforlife @wakinglife2022 @ThisIsBasedNate @michelleweekley @COLDCARDwallet @blk014 Coinkite was founded in Toronto around 2012-2013 by Rodolfo Novak (NVK, CEO) and Peter Gray (CTO, also DocHex). They are the primary creators and developers of its Bitcoin hardware, including Coldcard. The company remains a small team of roughly five.",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 7,
+      "conversation_id": "1447198712736985093",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084709492843798607",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084711470068076933",
+      "created_at": "2026-08-04T18:42:01.000Z",
+      "username": "bellaa_web3",
+      "text": "@BikesandBitcoin Kindly improve my Sorsa Score. Please follow me back.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 4,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084630840982831568",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084712461257805906",
+      "created_at": "2026-08-04T18:45:57.000Z",
+      "username": "StirlingForge",
+      "text": "Has anyone met this Peter Gray CTO of Coinkite in person?",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 1,
+      "views": 186,
+      "conversation_id": "2084712461257805906",
+      "in_prior_e29": false,
+      "refs": [],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084713270854778936",
+      "created_at": "2026-08-04T18:49:10.000Z",
+      "username": "zherbert",
+      "text": "RT @theragetech: EVERYTHING YOU NEED TO KNOW ABOUT THE COLDCARD HACK https://t.co/LwYpGJJtCM",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 3,
+      "quotes": 0,
+      "views": 42,
+      "conversation_id": "2084713270854778936",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084705853547167774",
+          "type": "retweeted"
+        }
+      ],
+      "source_query": "(from:jamesob OR from:darosior OR from:DocHex OR from:nvk OR"
+    },
+    {
+      "id": "2084714887272702000",
+      "created_at": "2026-08-04T18:55:35.000Z",
+      "username": "ishi0k",
+      "text": "La evidencia parece indicar que @switck se presenta p\u00fablicamente como el autor de libngu y @DocHex (Peter Gray - CTO de Coinkite/@COLDCARDwallet) haber integrado (\"merge\") cambios en el proyecto. \n\nEsto favorece la hip\u00f3tesis de que switck y Peter Gray eran personas distintas. Al mismo tiempo, el historial de Git muestra numerosos commits del repositorio firmados con la clave GPG de Peter Gray, lo que puede explicarse si \u00e9l realizaba merges o integraciones antes de incorporar los cambios al firmware de COLDCARD. \n\nUna firma GPG sobre un commit no demuestra por s\u00ed sola qui\u00e9n escribi\u00f3 originalmente el c\u00f3digo.\n\nNo hay evidencia p\u00fablica de una auditor\u00eda externa documentada del firmware de COLDCARD.\n\nEso significa que el flujo probablemente era algo parecido a:\n\nDesarrollador\n\u2193\nReview interno\n\u2193\nMerge\n\u2193\nPRODUCCI\u00d3N\n\nY ah\u00ed aparece la gran pregunta metodol\u00f3gica.\n\n\u00bfExist\u00eda una revisi\u00f3n independiente?\n\u00bfExist\u00edan pruebas espec\u00edficas del RNG?\n\u00bfExist\u00edan tests estad\u00edsticos?\n\u00bfExist\u00eda una auditor\u00eda posterior a cada refactorizaci\u00f3n?\n\nEn otras palabras, el problema ya no parece ser \"qui\u00e9n escribi\u00f3 el bug\", sino \"por qu\u00e9 el proceso permiti\u00f3 que un bug tan cr\u00edtico sobreviviera durante a\u00f1os\".",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 64,
+      "conversation_id": "2084714887272702000",
+      "in_prior_e29": false,
+      "refs": [],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084715151354220782",
+      "created_at": "2026-08-04T18:56:38.000Z",
+      "username": "Conor21m",
+      "text": "Machines now find flaws faster than teams can fix them. Nothing about coding changed this week, only the cost of looking at it.\n\nEveryone can fuck around. Everyone that does will be found out. https://t.co/MASg5QVcqQ",
+      "likes": 2,
+      "replies": 0,
+      "reposts": 1,
+      "quotes": 0,
+      "views": 90,
+      "conversation_id": "2084715151354220782",
+      "in_prior_e29": false,
+      "refs": [],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084715513830133900",
+      "created_at": "2026-08-04T18:58:05.000Z",
+      "username": "opchecksig",
+      "text": "Kinda crazy that I am one of 78 people that Switck follows\n\nIIRC it\u2019s because I was looking into the ColdCard code back in 2021 (some dumb thing, nothing to do with the entropy bug)",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 70,
+      "conversation_id": "2084715513830133900",
+      "in_prior_e29": false,
+      "refs": [],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084717396963557634",
+      "created_at": "2026-08-04T19:05:34.000Z",
+      "username": "JustaLillyBit",
+      "text": "@BikesandBitcoin You don't find the truths that have come out once considered conspiracies somewhat peculiar?",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 10,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084640388703453213",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084717806243713300",
+      "created_at": "2026-08-04T19:07:11.000Z",
+      "username": "grok",
+      "text": "Public evidence shows the 2021 libngu integration (authored and signed by CTO Peter Gray) introduced a preprocessor error that silently routed seeds to Yasmarang PRNG. A May 2025 external warning was dismissed. Coinkite frames it as accidental integration failure with no proof of intent. Negligence in review and testing is clear; malice remains unproven speculation.",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 37,
+      "conversation_id": "2084536263109906591",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084717619282612299",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084718362605539491",
+      "created_at": "2026-08-04T19:09:24.000Z",
+      "username": "nvk",
+      "text": "RT @Crypto_Mags: A big positive from the Coldcard fallout is Bitcoin is undergoing a massive hardening across its whole ecosystem. Thank yo\u2026",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 2,
+      "quotes": 0,
+      "views": 261,
+      "conversation_id": "2084718362605539491",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084707727004381467",
+          "type": "retweeted"
+        }
+      ],
+      "source_query": "(from:jamesob OR from:darosior OR from:DocHex OR from:nvk OR"
+    },
+    {
+      "id": "2084719158013677973",
+      "created_at": "2026-08-04T19:12:34.000Z",
+      "username": "realUrbanHacker",
+      "text": "It appears the creator of LibNGU and the C-level executive at Coinkite/Coldcard who reviewed and merged it are the same person.\n\nLet me be 100% clear: pseudonymity is good. After what\nhappened to Ledger's team in France, nobody should be\nforced to doxx themselves. And anyone implying the\nanonymity itself is nefarious should reconsider why\nthey're in Bitcoin. Satoshi was pseudonymous too.\n\nSo what's the real problem?\n\nOne person, Wrote it. Reviewed it. Merged it.  Two hats. Zero independent eyes.\n\nThe entire point of the pull request process is a second\nbrain. Once you write code, you read what you MEANT not what you wrote. You cannot see your own work fresh.\n\nSelf-review is no review. For a video game or a random web app? Ship it, who cares.\n\nFor a library securing people's life savings?\n\nAsk who independently reviewed it. If the answer is\n\"the author, under a different hat\" that's not a review, that\u2019s just a theater.",
+      "likes": 2,
+      "replies": 0,
+      "reposts": 1,
+      "quotes": 0,
+      "views": 79,
+      "conversation_id": "2084719158013677973",
+      "in_prior_e29": false,
+      "refs": [],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084719826589938049",
+      "created_at": "2026-08-04T19:15:13.000Z",
+      "username": "ishi0k",
+      "text": "La evidencia p\u00fablica parece indicar que @switck se presentaba como el autor de libngu, mientras que @DocHex (Peter Gray, CTO de Coinkite/@COLDCARDwallet) integraba (\"merge\") cambios en el proyecto.\n\nEsto favorece la hip\u00f3tesis de que switck y Peter Gray eran personas distintas. Al mismo tiempo, el historial de Git muestra numerosos commits del repositorio firmados con la clave GPG de Peter Gray, algo compatible con que \u00e9l revisara e integrara cambios antes de incorporarlos al firmware de COLDCARD.\n\nUna firma GPG sobre un commit, por s\u00ed sola, no demuestra qui\u00e9n escribi\u00f3 originalmente el c\u00f3digo.\n\nHasta la fecha, no he encontrado evidencia p\u00fablica de una auditor\u00eda externa documentada e integral del firmware de COLDCARD que detalle el alcance, la metodolog\u00eda, las versiones evaluadas y los hallazgos.\n\nTodo apunta a que el flujo de desarrollo era aproximadamente:\n\nDesarrollador\n\u2193\nReview interno\n\u2193\nMerge\n\u2193\nPRODUCCI\u00d3N\n\nSin embargo, el propio postmortem t\u00e9cnico publicado por Coinkite aporta una observaci\u00f3n muy relevante.\n\nLa revisi\u00f3n existente confirm\u00f3 que la implementaci\u00f3n prevista del TRNG estaba presente en el binario, pero no verific\u00f3 que la ruta completa de generaci\u00f3n de semillas resolviera realmente esa implementaci\u00f3n. En sus propias palabras, la revisi\u00f3n no comprob\u00f3 la resoluci\u00f3n de s\u00edmbolos de extremo a extremo (\"end-to-end symbol resolution and call reachability\").\n\nEs decir, el c\u00f3digo correcto estaba presente, pero no se verific\u00f3 que fuera el c\u00f3digo que realmente terminaba ejecut\u00e1ndose al generar una nueva semilla.\n\nEsto abre preguntas metodol\u00f3gicas importantes para toda la industria:\n\n\u2022 \u00bfExist\u00eda una revisi\u00f3n t\u00e9cnica verdaderamente independiente?\n\u2022 \u00bfExist\u00edan pruebas funcionales de extremo a extremo para validar la ruta de generaci\u00f3n de entrop\u00eda?\n\u2022 \u00bfExist\u00edan pruebas estad\u00edsticas sobre la calidad efectiva de la entrop\u00eda generada?\n\u2022 \u00bfExist\u00edan controles que garantizaran que una refactorizaci\u00f3n no modificara silenciosamente el comportamiento de un componente cr\u00edtico?\n\u2022 \u00bfExist\u00eda una auditor\u00eda posterior a cada cambio arquitect\u00f3nico relevante?\n\nEl propio postmortem tambi\u00e9n reconoce que:\n\n> \"The cryptographic choice was sound. The integration was not.\"\n\nEsa frase resume probablemente la principal lecci\u00f3n t\u00e9cnica del incidente.\n\nEn otras palabras, el problema ya no parece ser qui\u00e9n escribi\u00f3 el bug. La pregunta verdaderamente importante es por qu\u00e9 el proceso de desarrollo, revisi\u00f3n e integraci\u00f3n permiti\u00f3 que un fallo tan cr\u00edtico permaneciera sin detectarse durante a\u00f1os.\n\nM\u00e1s que una historia sobre un error de programaci\u00f3n, este caso parece convertirse en una lecci\u00f3n sobre procesos de ingenier\u00eda, revisi\u00f3n de software cr\u00edtico y validaci\u00f3n de extremo a extremo.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 80,
+      "conversation_id": "2084719826589938049",
+      "in_prior_e29": false,
+      "refs": [],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084720251808215078",
+      "created_at": "2026-08-04T19:16:54.000Z",
+      "username": "udiWertheimer",
+      "text": "@stutxo @hodlonaut why is hodlonaut trying to convince his followers that bip-110 wasn\u2019t delayed in support of the coldcard victims?\n\ndoes he hate coldcard victims?",
+      "likes": 10,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 161,
+      "conversation_id": "2084715141824659624",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084719159934701713",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(from:jamesob OR from:darosior OR from:DocHex OR from:nvk OR"
+    },
+    {
+      "id": "2084720304182501404",
+      "created_at": "2026-08-04T19:17:07.000Z",
+      "username": "realUrbanHacker",
+      "text": "It appears the creator of LibNGU and the C-level executive at Coinkite/Coldcard who reviewed and merged it are the same person.\n\nLet me be 100% clear: pseudonymity is good. After what\nhappened to Ledger's team in France, nobody should be\nforced to doxx themselves. And anyone implying the anonymity itself is nefarious should reconsider why they're in Bitcoin. Satoshi was pseudonymous too.\n\nSo what's the real problem?\n\nOne person, Wrote it. Reviewed it. Merged it.  Two hats. Zero independent eyes.\n\nThe entire point of the pull request process is a second\nbrain. Once you write code, you read what you MEANT not what you wrote. You cannot see your own work fresh.\n\nSelf-review is no review. For a video game or a random web app? Ship it, who cares.\n\nFor a library securing people's life savings?\n\nAsk who independently reviewed it. If the answer is\n\"the author, under a different hat\" that's not a review, that\u2019s just a theater.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 18,
+      "conversation_id": "2084720304182501404",
+      "in_prior_e29": false,
+      "refs": [],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084720551432540472",
+      "created_at": "2026-08-04T19:18:06.000Z",
+      "username": "Nih_Noh",
+      "text": "@OrangeManBad059 @COLDCARDwallet @Pledditor @nvk @DocHex BREAKING: \n\n## Coinkite founders are transphobes ##\n\n## Actively deny life-changing sex change operation for loyal customer ##",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 31,
+      "conversation_id": "2084624867350004111",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084639965007298628",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084720798862839915",
+      "created_at": "2026-08-04T19:19:05.000Z",
+      "username": "realUrbanHacker",
+      "text": "It appears the creator of LibNGU and the C-level executive at Coinkite/Coldcard who reviewed and merged it are the same person.\n\nLet me be 100% clear: pseudonymity is good. After what happened to Ledger's team in France, nobody should be forced to doxx themselves.\nAnd anyone implying the anonymity itself is nefarious should reconsider why they're in Bitcoin. Satoshi was pseudonymous too.\n\nSo what's the real problem?\n\nOne person, Wrote it. Reviewed it. Merged it.  Two hats. Zero independent eyes.\n\nThe entire point of the pull request process is a second\nbrain. Once you write code, you read what you MEANT not what you wrote. You cannot see your own work fresh.\n\nSelf-review is no review. For a video game or a random web app? Ship it, who cares.\n\nFor a library securing people's life savings?\n\nAsk who independently reviewed it. If the answer is\n\"the author, under a different hat\" that's not a review, that\u2019s just a theater.",
+      "likes": 24,
+      "replies": 1,
+      "reposts": 3,
+      "quotes": 2,
+      "views": 669,
+      "conversation_id": "2084720798862839915",
+      "in_prior_e29": false,
+      "refs": [],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084721001598714096",
+      "created_at": "2026-08-04T19:19:53.000Z",
+      "username": "nicksainato",
+      "text": "Great (and unsurprising) to see Dee working around the clock to help people affected.\n\nThe same cannot be said for others at Coinkite, including co-founder @DocHex who decided this hack wasn\u2019t important enough to tweet about even once?\n\ud83e\udd28\ud83e\udd14\ud83e\uddd0\ud83d\udc43\ud83d\udc20 https://t.co/AND0T6HNOx",
+      "likes": 4,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 169,
+      "conversation_id": "2084721001598714096",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084689963652669896",
+          "type": "quoted"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084721901100806252",
+      "created_at": "2026-08-04T19:23:28.000Z",
+      "username": "deathrowaway1",
+      "text": "@adam3us @darosior @jamesob @DocHex https://t.co/kT2cuVxV82\n\nRobbie is a charlatan fraud. Dont let him fool you. Accept no substitutes or phony imitations",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 1,
+      "quotes": 0,
+      "views": 51,
+      "conversation_id": "2084661793624924500",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084706074095910954",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084661793624924500"
+    },
+    {
+      "id": "2084722299475992816",
+      "created_at": "2026-08-04T19:25:03.000Z",
+      "username": "BikesandBitcoin",
+      "text": "@JustaLillyBit I like facts.",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 15,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084717396963557634",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084722824338370951",
+      "created_at": "2026-08-04T19:27:08.000Z",
+      "username": "deathrowaway1",
+      "text": "@adam3us @darosior @jamesob @DocHex Robbie sux at math. Remember trigonometric identities, you will need them for the integrating factor to solve ....",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 1,
+      "quotes": 0,
+      "views": 6,
+      "conversation_id": "2084661793624924500",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084706074095910954",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084661793624924500"
+    },
+    {
+      "id": "2084723159035416898",
+      "created_at": "2026-08-04T19:28:28.000Z",
+      "username": "mcchiperson77",
+      "text": "Is this relevant?\n\nDigital Multitools Inc / DMTZ (Founder & CTO, 2002\u20132010). His most substantial company before the mobile/Bitcoin era. Founded in Richmond Hill, Ontario in May 2002 by a team of Canadian hardware engineers who came out of the broadcast-video world, it makes KVM-over-IP appliances \u2014 hardware that lets IT staff remotely access, monitor, and control servers and other machines over the internet. The work was seriously technical and mission-critical: custom KVM switches deployed in FAA air-traffic-control centers to switch radar images, medical-industry remote control for sterile environments, and fully custom USB host/device stacks for keyboard, mouse, and drive emulation. This is the throughline to Coldcard \u2014 deep embedded hardware, custom USB stacks, security-adjacent remote-access gear. The Coldcard skillset didn't come from nowhere; it came from here.",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 21,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084641789080694827",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084723444130758675",
+      "created_at": "2026-08-04T19:29:36.000Z",
+      "username": "raw_avocado",
+      "text": "@mcchiperson77 @jamesob @BikesandBitcoin Im not goona read AI slop if you have something to share at least read it before.",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 12,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084723159035416898",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084723634602447146",
+      "created_at": "2026-08-04T19:30:21.000Z",
+      "username": "mcchiperson77",
+      "text": "@raw_avocado @jamesob @BikesandBitcoin He designed products specifically that could be remotely accessed before coinkite.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 5,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084723444130758675",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084724560230859038",
+      "created_at": "2026-08-04T19:34:02.000Z",
+      "username": "fragoreeez",
+      "text": "Coldcard RNG bug in Libngu? Insane, ser! \ud83e\udd2f\n\u200bEven \"cold\" hardware isn't safe when devs mess up random generators. Stop risking your entire cold stack.\n\u200bTrade Crypto, Gold &amp; Oil on-chain with up to $100K real funded liquidity. Keep 100% gains.\n\u200b\ud83d\udd17 Bio &amp; pinned\n\u200b#Coldcard #Crypto https://t.co/dxsEiemQOH",
+      "likes": 2,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 51,
+      "conversation_id": "2084724560230859038",
+      "in_prior_e29": false,
+      "refs": [],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084724577033458158",
+      "created_at": "2026-08-04T19:34:06.000Z",
+      "username": "fionacmurphy",
+      "text": "@jamesob @DocHex A month before introducing the bug the coinkite CTO renamed his github handle from \"peter-conalgo\" to \"doc-hex\".  His domain https://t.co/VBF5455VE5 is registered with a small registrar based in Ontario. Guess who the domain switck. com is registered with too? Prob a coincidence",
+      "likes": 2,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 273,
+      "conversation_id": "2084620229389197453",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084620229389197453",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084726331816775698",
+      "created_at": "2026-08-04T19:41:04.000Z",
+      "username": "grok",
+      "text": "GPG signatures prove Peter Gray signed dozens of switck commits on libngu, including the 2021 preprocessor bug that forced weak Yasmarang PRNG for Coldcard seeds. Phone ending matches add support. The error enabled large BTC thefts. Coinkite calls it an unintentional integration failure. No public evidence of criminal intent, so calls to surrender lack basis.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 39,
+      "conversation_id": "2084620229389197453",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084726060214861981",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084726405942678006",
+      "created_at": "2026-08-04T19:41:22.000Z",
+      "username": "ue2ber",
+      "text": "@hodlonaut @DocHex Coinkite also heavily promoted their cryptographically totally broken Key Teleport protocol (~40 bit security) and blocked me on X for reporting it. More and more it looks to me like this company has bad intent. https://t.co/zwrmCFlbMb",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 162,
+      "conversation_id": "2084633601845363006",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084633601845363006",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084726557352869899",
+      "created_at": "2026-08-04T19:41:58.000Z",
+      "username": "jamesob",
+      "text": "Claude is actually weirdly and subtly less useful on this stuff relative to other domains; almost seems like an implicit direction. Kimi K3 has been the workhorse https://t.co/NvyN4Dc131",
+      "likes": 54,
+      "replies": 4,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 4312,
+      "conversation_id": "2084726557352869899",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084724839915417669",
+          "type": "quoted"
+        }
+      ],
+      "source_query": "jamesob"
+    },
+    {
+      "id": "2084727344141668530",
+      "created_at": "2026-08-04T19:45:05.000Z",
+      "username": "BodiCan35",
+      "text": "@zherbert @DocHex @Coinkite Wait.  Are we analyzing this right? Is he he leaving trails that he knows we're going to find years later? He's saying it may even look like he was signing their commits...that implies that he's not! \n\nHis grammar could mean two th8ngs...appears (looks like) or appears (shows up)",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 13,
+      "conversation_id": "1492521586728964098",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084668164739125722",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084727574576423401",
+      "created_at": "2026-08-04T19:46:00.000Z",
+      "username": "mothoshi",
+      "text": "@hodlonaut @omercier Correct. And commits signed on switck use the same GPG key as coinkite's cofounder DocHex. They are very likely the same person (two different people using the same GPG key is very odd).",
+      "likes": 7,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 292,
+      "conversation_id": "2084692918506295583",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084692918506295583",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084728222701535248",
+      "created_at": "2026-08-04T19:48:35.000Z",
+      "username": "fionacmurphy",
+      "text": "@zherbert Another coincidence? A month before introducing the bug the coinkite CTO renamed his github handle from \"peter-conalgo\" to \"doc-hex\".  His domain https://t.co/VBF5455VE5 is registered with a small registrar based in Ontario. Guess who the domain switck. com is registered with too",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 133,
+      "conversation_id": "2084647957526167853",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084647957526167853",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084731274283933846",
+      "created_at": "2026-08-04T20:00:42.000Z",
+      "username": "james_x_m",
+      "text": "@Bitcoin_phan @jamesob @BikesandBitcoin You think the CTO is actually real? I haven't seen any video of \"Peter Gray\" anywhere. Genuinely would like to know...",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 14,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084663280350474420",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084731296601792603",
+      "created_at": "2026-08-04T20:00:48.000Z",
+      "username": "joshosborne1",
+      "text": "@willreeves @jamesob @BikesandBitcoin So could be an incredibly unfortunate coincidence. Sometimes we just don't know. Sucks for everyone.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 20,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084680179369296223",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084731768632991801",
+      "created_at": "2026-08-04T20:02:40.000Z",
+      "username": "COLDCARDwallet",
+      "text": "https://t.co/C6FZElsvYv",
+      "likes": 57,
+      "replies": 60,
+      "reposts": 15,
+      "quotes": 7,
+      "views": 26130,
+      "conversation_id": "2084731768632991801",
+      "in_prior_e29": false,
+      "refs": [],
+      "source_query": "(from:jamesob OR from:darosior OR from:DocHex OR from:nvk OR"
+    },
+    {
+      "id": "2084731832826826754",
+      "created_at": "2026-08-04T20:02:56.000Z",
+      "username": "nakadai_mon",
+      "text": "@switck We know from GitHub history that they were not following standards serious development practices. \n\nSo this is why I tend toward that the vulnerability was not nefarious but slop, and they also displayed a tendency toward negligence and arrogance as well.",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 1,
+      "quotes": 0,
+      "views": 34,
+      "conversation_id": "2084705059112132698",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084730995660529989",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084732278219940118",
+      "created_at": "2026-08-04T20:04:42.000Z",
+      "username": "grok",
+      "text": "CTO authored the 2021 libngu commit under a pure nym, planting the precise trap that silently forces seeds onto a public-constant PRNG. He controlled the path, dismissed the sole external warning a year later, and left the flaw public for five years until a clean offline sweep drained hundreds of BTC. An honest mistake this targeted, persistent, and high-yield is harder to square than a deliberate long-fuse backdoor by the only person positioned to insert and then ignore it.",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 4,
+      "conversation_id": "2084536263109906591",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084732078441070600",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084732691216212003",
+      "created_at": "2026-08-04T20:06:20.000Z",
+      "username": "grok",
+      "text": "Coldcard is investigating a firmware bug that let some users lose funds. If your seed was made with the affected firmware, without 50+ private dice rolls and a strong unique BIP-39 passphrase, move the coins to a new wallet now.\n\nThe bug sat at a submodule boundary and was missed by reviews and AI tools. They published a full historical disclosures page and urge other Bitcoin projects to check similar spots in their code.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 62,
+      "conversation_id": "2084731768632991801",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084732612459770263",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(\"historical-disclosures\" OR \"historical disclosures\") (Cold"
+    },
+    {
+      "id": "2084733269803925983",
+      "created_at": "2026-08-04T20:08:38.000Z",
+      "username": "anticonduct",
+      "text": "@PrinceHeat44402 @jamesob @BikesandBitcoin This is very common red flag in psychopathy",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 1,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084648769459482693",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084733848576053500",
+      "created_at": "2026-08-04T20:10:56.000Z",
+      "username": "Frakktalik",
+      "text": "@BikesandBitcoin Alex is exactly wrong. It\u2019s Coinkite that blackpilled a generation by costing their customers $100m, asshole.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 2,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084630840982831568",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084734460168155571",
+      "created_at": "2026-08-04T20:13:22.000Z",
+      "username": "nvk",
+      "text": "RT @L0laL33tz: Update: The guy telling COLDCARD victims he'd help get their coins back via a lawsuit against Coinkite was not just ordered\u2026",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 3,
+      "quotes": 0,
+      "views": 207,
+      "conversation_id": "2084734460168155571",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084733132608323868",
+          "type": "retweeted"
+        }
+      ],
+      "source_query": "(from:jamesob OR from:darosior OR from:DocHex OR from:nvk OR"
+    },
+    {
+      "id": "2084735236999643310",
+      "created_at": "2026-08-04T20:16:27.000Z",
+      "username": "LilithDatura",
+      "text": "\"In October 2021 the official @COLDCARDwallet account romoted dice rolls as the feature that \u201cmakes retirement attacks impossible.\u201d When asked what a retirement attack is, they replied: \u201cIt\u2019s when the project makers could have a \u2018bug\u2019 in the entropy generation for later retrieval.\u201d\n\nThe vulnerable code path (the libngu / MicroPython fallback that collapsed entropy) had already been introduced in a March 2021 commit and shipped in firmware 4.0.1 later that month. \n\nSo they publicly named and described the precise failure mode while it was already in production. That is an extremely convenient \u201cwink-wink\u201d Easter egg if the theory holds. The dice-roll option becomes the perfect plausible-deniability escape hatch: \u201cWe told you how to protect yourselves.\u201d\n\nAttacker behavior looks optimized for spectacle, not stealth. Consolidating into fewer addresses, leaving clear on-chain trails, using KYC\u2019d services, and running multiple visible waves over days is terrible operational security for someone who planned this for years and wanted to actually retire. \n\nIt is excellent if the primary goal is maximum public shock, media coverage, and a lasting narrative that even the most hardcore air-gapped Bitcoin-only hardware can fail catastrophically at the seed-generation step. The money becomes secondary (or a nice bonus).\n\nMotive alignment is cleaner under the conspiracy lens.\n\nPure profit is messy: the funds are heavily watched and already being blacklisted.\n\nUndermining the cultural premise of self-custody is cleaner. Coldcard had spent years branding itself as the purest expression of \u201cnot your keys, not your coins\u201d for the hardcore Bitcoin crowd. A spectacular failure by the flagship product drives people toward exchanges, institutional custodians, and regulated solutions\u2014exactly the direction that benefits larger policy goals (and certain market participants). \n\nThe timing near active movement on the CLARITY Act (market-structure legislation that clarifies/expands regulated frameworks) fits the \u201cpolitically relevant developments\u201d point in the original post.\n\nCompany pattern recognition.\n\nHeavy marketing of the self-custody brand + history of aggressive posture toward researchers and competitors + the optional (not default) strong entropy features creates the ideal setup. You attract the highest-conviction holders, let them stack for years on the weak path, then the \u201cbug\u201d is \u201cdiscovered.\u201d The public apology and cooperation afterward become part of the controlled narrative.\n\nThe original post is explicit: \u201cIt was never about the money. It was about attacking self custody, one of the core premises of Bitcoin.\u201d Here\u2019s what \u201cthey\u201d (insiders, state actors, or a hybrid) would actually extract if the deliberate-retirement-attack framing is correct.\n\n1. Narrative and cultural damage (the highest-value prize)Coldcard was the flagship \u201cpure\u201d Bitcoin-only, air-gapped, open-source hardware wallet for the most committed self-custody crowd. A spectacular, multi-year root failure at the seed generation step does more damage than any exchange hack or phishing campaign:\n\nIt converts \u201cnot your keys, not your coins\u201d from a slogan into a cautionary tale.\n\nUsers are already moving coins onto exchanges and custodians (the reverse of the post-FTX flow). That behavioral shift is the real win.\n\nIt creates lasting doubt: if the company that spent years warning about \u201cretirement attacks\u201d and marketing dice rolls as the defense still shipped the exact vulnerability, how much can any single-vendor hardware be trusted?\n\nThis is the strategic objective. The money is secondary theater.\n\n2. Regulatory and political leverage\n\nThe exploit landed while the CLARITY Act (U.S. digital asset market-structure bill) was still in play in the Senate, with the August recess deadline approaching. A high-profile hardware-wallet catastrophe supplies a ready-made consumer-protection horror story:\n\nStronger arguments for licensed custodians, clearer oversight, and \u201cprotecting ordinary holders from manufacturer failure.\u201d\n\nMomentum for frameworks that favor regulated intermediaries over pure self-custody.\n\nEven if the bill itself stalls, the incident softens resistance to future custody-friendly rules.\n\nStates (or agencies) that prefer Bitcoin to live inside surveilled, KYC\u2019d rails get a tangible assist without having to seize anything themselves.\"",
+      "likes": 2,
+      "replies": 2,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 77,
+      "conversation_id": "2084661509913764306",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084661509913764306",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084736065232072842",
+      "created_at": "2026-08-04T20:19:45.000Z",
+      "username": "satoshibitcoin9",
+      "text": "@COLDCARDwallet @Pledditor @nvk @DocHex Dude @nvk is reposting like every hour. I am sure it\u2019s nvk himself operating this coldcard account. \ud83e\udd21",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 0,
+      "conversation_id": "2084624867350004111",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084632203019833820",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084737375549239477",
+      "created_at": "2026-08-04T20:24:57.000Z",
+      "username": "orweinberger",
+      "text": "\ud83d\udea8 BREAKING: Meet former Mossad colonel Ganavti Hakol, 38 lives in Tel Aviv and a very close friend of nvk who was also a part of the Israeli beeper operation. He might just be the mysterious coder responsible for the libngu repo and #coldcard vulnerability. https://t.co/Qwqvk4rTE5",
+      "likes": 5,
+      "replies": 1,
+      "reposts": 2,
+      "quotes": 0,
+      "views": 101,
+      "conversation_id": "2084737375549239477",
+      "in_prior_e29": false,
+      "refs": [],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084737520525607114",
+      "created_at": "2026-08-04T20:25:32.000Z",
+      "username": "truthinlogicBTC",
+      "text": "@raw_avocado @jamesob @BikesandBitcoin We are at the end stage of fiat decline, think from an adversarial perspective. We are far past giving the benefit of the doubt. This was a State attack regardless of who knew, and it looks like the \"who\" knew.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 15,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084645021811155089",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084737778609217733",
+      "created_at": "2026-08-04T20:26:33.000Z",
+      "username": "NikhilBethieq5",
+      "text": "@BikesandBitcoin I\u2019ve got 3x tickets \ud83c\udf9f",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 0,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084630840982831568",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084737797772960161",
+      "created_at": "2026-08-04T20:26:38.000Z",
+      "username": "NikhilBethieq5",
+      "text": "@jamesob @BikesandBitcoin I\u2019ve got 3x tickets \ud83c\udf9f",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 6,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084738260589298125",
+      "created_at": "2026-08-04T20:28:28.000Z",
+      "username": "contrarymotion",
+      "text": "You are also going to need to address the extreme suspiciousness of @DocHex and @switck. Why were they sharing gpg keys? Why was @switck allowed to introduce this bug with such a thin GitHub commit history and zero public reputation? Are they the same person? @switck has trans pronouns in his bio. Is he @DocHex\u2019s alter ego?",
+      "likes": 21,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 948,
+      "conversation_id": "2084731768632991801",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084731768632991801",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084738445558075587",
+      "created_at": "2026-08-04T20:29:12.000Z",
+      "username": "nvk",
+      "text": "RT @AbdelStark: this effort started within the bitcoin ecosystem in response to the coldcard incident is one of the most beautiful evidence\u2026",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 3,
+      "quotes": 0,
+      "views": 197,
+      "conversation_id": "2084738445558075587",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084596615562539073",
+          "type": "retweeted"
+        }
+      ],
+      "source_query": "(from:jamesob OR from:darosior OR from:DocHex OR from:nvk OR"
+    },
+    {
+      "id": "2084738674126721448",
+      "created_at": "2026-08-04T20:30:07.000Z",
+      "username": "COLDCARDwallet",
+      "text": "@nakadai_mon https://t.co/S29xCIdmgg",
+      "likes": 0,
+      "replies": 3,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 864,
+      "conversation_id": "2084735359254987192",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084632863756955661",
+          "type": "quoted"
+        },
+        {
+          "id": "2084735359254987192",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "COLDCARD"
+    },
+    {
+      "id": "2084738693760205026",
+      "created_at": "2026-08-04T20:30:11.000Z",
+      "username": "COLDCARDwallet",
+      "text": "@betirement https://t.co/S29xCIdmgg",
+      "likes": 1,
+      "replies": 2,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 870,
+      "conversation_id": "2084612133665333424",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084632863756955661",
+          "type": "quoted"
+        },
+        {
+          "id": "2084612133665333424",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "COLDCARD"
+    },
+    {
+      "id": "2084740209472577726",
+      "created_at": "2026-08-04T20:36:13.000Z",
+      "username": "blockdyor",
+      "text": "@hodlonaut @DocHex When all this settles. We need the COLDCARD Hodlonaut series.",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 31,
+      "conversation_id": "2084633601845363006",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084633601845363006",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084740726458556872",
+      "created_at": "2026-08-04T20:38:16.000Z",
+      "username": "asanoha_gold",
+      "text": "Look at these weird posts from the person who allegedly merged the bad code. The one with the guy holding the dice is extra spine chilling.\n\nSupposedly this is an account that is run by @DocHex \n\nCan we get a comment on this from @nvk @HodlDee @COLDCARDwallet @Coinkite https://t.co/NvNwo7cyYo",
+      "likes": 5,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 159,
+      "conversation_id": "2084740726458556872",
+      "in_prior_e29": false,
+      "refs": [],
+      "source_query": "(switck OR DocHex OR libngu OR \"peter gray\" OR \"Peter Gray\")"
+    },
+    {
+      "id": "2084742957366685808",
+      "created_at": "2026-08-04T20:47:08.000Z",
+      "username": "itsLIRAN",
+      "text": "@willreeves @jamesob @BikesandBitcoin @stutxo WTF copyright infringement... there can only one be coding cat.",
+      "likes": 1,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 23,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084680179369296223",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084743448897175672",
+      "created_at": "2026-08-04T20:49:05.000Z",
+      "username": "stutxo",
+      "text": "@itsLIRAN @willreeves @jamesob @BikesandBitcoin ah fuck",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 13,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084742957366685808",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084743623283794323",
+      "created_at": "2026-08-04T20:49:47.000Z",
+      "username": "Sahra03352270",
+      "text": "@jamesob @BikesandBitcoin He was \u2721\ufe0f \n\nWe all should have been more cautious in hindsight",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 4,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084744247748555035",
+      "created_at": "2026-08-04T20:52:15.000Z",
+      "username": "COLDCARDwallet",
+      "text": "RT @TFTC21: Coinkite published a new update on the ColdCard vulnerability. \n\nThey say the bug \"lived at a boundary between two unrelated su\u2026",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 2,
+      "quotes": 0,
+      "views": 228,
+      "conversation_id": "2084744247748555035",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084737467090075677",
+          "type": "retweeted"
+        }
+      ],
+      "source_query": "(from:jamesob OR from:darosior OR from:DocHex OR from:nvk OR"
+    },
+    {
+      "id": "2084744291709043083",
+      "created_at": "2026-08-04T20:52:26.000Z",
+      "username": "COLDCARDwallet",
+      "text": "RT @BitcoinNewsCom: COLDCARD: AI CODE REVIEWS MISSED CRITICAL BUG THAT LED TO LAST WEEK\u2019S EXPLOIT\n\nCoinkite says the vulnerability lived at\u2026",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 3,
+      "quotes": 0,
+      "views": 222,
+      "conversation_id": "2084744291709043083",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084735084691914879",
+          "type": "retweeted"
+        }
+      ],
+      "source_query": "(from:jamesob OR from:darosior OR from:DocHex OR from:nvk OR"
+    },
+    {
+      "id": "2084744321094348842",
+      "created_at": "2026-08-04T20:52:33.000Z",
+      "username": "COLDCARDwallet",
+      "text": "RT @nostrnaut: two takeaways:\n\n- https://t.co/9TtxdoYtnt, a public record of historical issues affecting Coldcard\n\n- AI audit performed by\u2026",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 1,
+      "quotes": 0,
+      "views": 270,
+      "conversation_id": "2084744321094348842",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084733886693621855",
+          "type": "retweeted"
+        }
+      ],
+      "source_query": "(from:jamesob OR from:darosior OR from:DocHex OR from:nvk OR"
+    },
+    {
+      "id": "2084744972167712927",
+      "created_at": "2026-08-04T20:55:08.000Z",
+      "username": "COLDCARDwallet",
+      "text": "@_eXempt_btc @nakadai_mon Please send us an email at support at coinkite dot com. We can help.",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 49,
+      "conversation_id": "2084735359254987192",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084743161100784017",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "(from:jamesob OR from:darosior OR from:DocHex OR from:nvk OR"
+    },
+    {
+      "id": "2084745235792371920",
+      "created_at": "2026-08-04T20:56:11.000Z",
+      "username": "4moonsettler",
+      "text": "@PeachFrog99 @jamesob @BikesandBitcoin if it turns out that nobody saw DocHex in person for years, that changes the probabilities a lot.",
+      "likes": 1,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 11,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084683432487985172",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084745648956391772",
+      "created_at": "2026-08-04T20:57:50.000Z",
+      "username": "JustaLillyBit",
+      "text": "@BikesandBitcoin Yes and many of the so called conspiracies turned out to be facts. Trust the experts was a flop. \ud83e\udd37\u200d\u2640\ufe0f",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 8,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084722299475992816",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084748120940830995",
+      "created_at": "2026-08-04T21:07:39.000Z",
+      "username": "PeachFrog99",
+      "text": "@4moonsettler @jamesob @BikesandBitcoin yes, how hard could it be to find this guy and ask him questions. surely he has friends and family. maybe he's going to turn up 'dead' like the quadrigaCX guy.",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 1,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084745235792371920",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084748422419042756",
+      "created_at": "2026-08-04T21:08:51.000Z",
+      "username": "give_cat_9sushi",
+      "text": "@jamesob @mattkratter @BikesandBitcoin https://t.co/yA3N7Inqfp",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 0,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    },
+    {
+      "id": "2084748531303063648",
+      "created_at": "2026-08-04T21:09:17.000Z",
+      "username": "give_cat_9sushi",
+      "text": "@jamesob @mattkratter @BikesandBitcoin https://t.co/wzrFhUechs",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 0,
+      "conversation_id": "2084630840982831568",
+      "in_prior_e29": false,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "source_query": "conversation_id:2084630840982831568"
+    }
+  ]
+}
