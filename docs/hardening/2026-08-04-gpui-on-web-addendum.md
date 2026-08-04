@@ -14,21 +14,21 @@
 
 **Yes, technically — and much more readily than expected. Our own tree already
 contains a working GPUI web backend, and it builds.** But it is the wrong tool
-for *this particular page*, and the right tool for two adjacent things we will
+for _this particular page_, and the right tool for two adjacent things we will
 want soon.
 
 The measured position:
 
-| Question | Answer |
-| --- | --- |
-| Does GPUI run in a browser at all? | Yes. `crates/gpui_web` is a complete platform backend in our own tree |
-| Does it build here, today? | Yes — a hello-world example compiled clean in 51s on this machine |
-| What does it cost to ship? | **10.6 MB of wasm, 3.2 MB gzipped**, for hello-world, before wasm-opt |
-| Will it render for our audience? | For roughly 70% of browsers. Firefox on Linux and Chrome on Android are still gaps |
-| Is the page accessible, searchable, linkable? | **No.** Canvas rendering with no accessibility adapter on web |
-| Is upstream healthy? | Mixed. The work is recent and active, but Zed publicly slowed GPUI in 2026 |
-| Is any Omega product code wasm-ready? | Yes — `omega_forensics` type-checks clean for `wasm32-unknown-unknown` today |
-| Did it actually run? | **Yes, 2026-08-04** — real `ui` components and the real Aiur theme in a browser tab (§11) |
+| Question                                      | Answer                                                                                    |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Does GPUI run in a browser at all?            | Yes. `crates/gpui_web` is a complete platform backend in our own tree                     |
+| Does it build here, today?                    | Yes — a hello-world example compiled clean in 51s on this machine                         |
+| What does it cost to ship?                    | **10.6 MB of wasm, 3.2 MB gzipped**, for hello-world, before wasm-opt                     |
+| Will it render for our audience?              | For roughly 70% of browsers. Firefox on Linux and Chrome on Android are still gaps        |
+| Is the page accessible, searchable, linkable? | **No.** Canvas rendering with no accessibility adapter on web                             |
+| Is upstream healthy?                          | Mixed. The work is recent and active, but Zed publicly slowed GPUI in 2026                |
+| Is any Omega product code wasm-ready?         | Yes — `omega_forensics` type-checks clean for `wasm32-unknown-unknown` today              |
+| Did it actually run?                          | **Yes, 2026-08-04** — real `ui` components and the real Aiur theme in a browser tab (§11) |
 
 ## 2. What is actually in our tree
 
@@ -71,8 +71,8 @@ web idle scheduling (#61827). We track it through our `zed` remote; we did not
 write it and we do not maintain it.
 
 Notably, the crate split that a former Zed employee described as the
-prerequisite for web support — *"the crate needs to split into
-core/web/native"* — **has already happened**. That public commentary is older
+prerequisite for web support — _"the crate needs to split into
+core/web/native"_ — **has already happened**. That public commentary is older
 than the code.
 
 ## 3. What we measured on this machine
@@ -88,7 +88,7 @@ cargo +nightly build --release --target wasm32-unknown-unknown \
 Results:
 
 - **Builds clean**, `Finished release profile in 50.88s`, one benign warning.
-- **`hello_web.wasm` = 10.6 MB raw, 3.2 MB gzipped.** This is *before*
+- **`hello_web.wasm` = 10.6 MB raw, 3.2 MB gzipped.** This is _before_
   `wasm-bindgen` and `wasm-opt`, which Trunk runs and which typically recover
   a meaningful fraction — but it is also a hello-world that draws text and
   counts primes. A real component set is additive, not smaller.
@@ -117,19 +117,19 @@ The hardening projection is not an application. It is **public evidence**, and
 its entire job is to be legible to strangers and to machines. A canvas gives
 up the properties that make it evidence:
 
-| Property the page needs | DOM | GPUI canvas |
-| --- | --- | --- |
-| Screen-reader accessible | Yes | **No adapter.** `accesskit` is wired in `gpui_macos`, `gpui_linux`, and `gpui_windows`; `gpui_web` has no accesskit reference at all |
-| Ctrl-F, text selection, copy a digest or event ref | Yes | Must be reimplemented, badly |
-| Search-engine indexable, link previews | Yes | No |
-| Deep links to a target, finding, or attestation | Yes | Only with hand-rolled routing |
-| Renders on any browser, old device, no GPU | Yes | ~70%, GPU required |
-| Cheap first paint on a phone on bad wifi | ~100 KB | 3.2 MB gzipped minimum |
-| Quotable in someone else's article or issue | Yes | Screenshot only |
+| Property the page needs                            | DOM     | GPUI canvas                                                                                                                          |
+| -------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Screen-reader accessible                           | Yes     | **No adapter.** `accesskit` is wired in `gpui_macos`, `gpui_linux`, and `gpui_windows`; `gpui_web` has no accesskit reference at all |
+| Ctrl-F, text selection, copy a digest or event ref | Yes     | Must be reimplemented, badly                                                                                                         |
+| Search-engine indexable, link previews             | Yes     | No                                                                                                                                   |
+| Deep links to a target, finding, or attestation    | Yes     | Only with hand-rolled routing                                                                                                        |
+| Renders on any browser, old device, no GPU         | Yes     | ~70%, GPU required                                                                                                                   |
+| Cheap first paint on a phone on bad wifi           | ~100 KB | 3.2 MB gzipped minimum                                                                                                               |
+| Quotable in someone else's article or issue        | Yes     | Screenshot only                                                                                                                      |
 
 There is also a credibility argument specific to this program. We are asking
-an ecosystem to trust a coverage ledger whose thesis is *do not make
-completeness claims you have not earned*. A page that silently fails to render
+an ecosystem to trust a coverage ledger whose thesis is _do not make
+completeness claims you have not earned_. A page that silently fails to render
 on a Bitcoin developer's Firefox-on-Linux, or in a screen reader, is the same
 category of error dressed differently. The projection should be the most
 boring, most durable, most linkable thing we ship.
@@ -157,7 +157,7 @@ gets the demo value with none of the page-level costs, and proves the pipeline
 end to end for a few days of work.
 
 **5.3 Sharing logic rather than pixels — and this one is already true.** The
-uncomfortable duplication is not buttons, it is *decoders*: the same event-kind
+uncomfortable duplication is not buttons, it is _decoders_: the same event-kind
 parsing, coverage arithmetic, and completeness rules exist in Rust for Omega
 and would be written again in TypeScript for the web. Compiling the pure-Rust
 projection logic to wasm and calling it from a DOM page removes the
@@ -224,16 +224,16 @@ maintenance is healthy enough to depend on.
 
 ## 8. The risk that decides Tier 3
 
-Zed publicly slowed GPUI in 2026 — reported as *"GPUI development is getting
+Zed publicly slowed GPUI in 2026 — reported as _"GPUI development is getting
 some major brakes put on it. We gotta focus on some business relevant work in
-2026"*, confirmed by a former Zed employee who noted it is hard to justify work
+2026"_, confirmed by a former Zed employee who noted it is hard to justify work
 on GPUI that is purely for the community. A community fork, **gpui-ce**,
 exists and publishes to crates.io; a separate effort, WGPUI, has diverged.
 
 This cuts both ways and should be stated honestly rather than resolved by
 preference:
 
-- The web backend is *already written*, recent, and in our tree. We inherit it
+- The web backend is _already written_, recent, and in our tree. We inherit it
   whether or not upstream continues.
 - But betting a public product surface on a paused upstream means we would own
   the maintenance — including the accessibility adapter that does not exist,
@@ -275,9 +275,9 @@ Each is falsifiable and small:
 
 ## 11. Update: the working test, and what it changed
 
-*Added 2026-08-04, after §§1–10 were written. Sections 1–10 are preserved as
+_Added 2026-08-04, after §§1–10 were written. Sections 1–10 are preserved as
 the original research; this section records what happened when we actually
-built it, and §12 records the owner decision that followed.*
+built it, and §12 records the owner decision that followed._
 
 We built an Omega-flavoured chat surface — thread rail, transcript with typed
 agent-activity rows, executor-disclosure header, composer — and ran it in a
@@ -301,12 +301,12 @@ Source: `~/work/omega/crates/gpui_web/examples/chat_web` (untracked).
 
 Filed together as [omega#243](https://github.com/OpenAgentsInc/omega/issues/243).
 
-| # | Defect | Fix |
-| --- | --- | --- |
-| 1 | Upstream `hello_web` calls `.run()`, which cannot work on web: `gpui_web`'s `Platform::run` returns immediately, so the App is dropped and the canvas stays blank (`ERROR gpui::window: app was released`) | `run_embedded()` + `std::mem::forget(handle)`. Also an upstream PR candidate — Zed's own example is broken |
-| 2 | The example's rustflags omit `--export=__heap_base`, so wasm-bindgen 0.2.126's threading transform aborts | Add `--export=__heap_base` and `--export=__data_end` |
-| 3 | Every `ui` component panics at first paint: `no state of type GlobalThemeSettingsProvider exists` — that global is installed by `theme_settings`, which cannot build for wasm | Implement the 5-method `ThemeSettingsProvider` directly (~25 lines) using the fonts `gpui_web` already embeds |
-| 4 | `theme::init(LoadThemes::JustBase)` passes an empty `AssetSource`, so `themes.get("Aiur")` fails and it **silently** falls back to a generic theme | `include_str!` the real `aiur.json`, convert `#rrggbbaa` → `Hsla`, patch `Theme.styles.colors`, install via `GlobalTheme::update_theme` |
+| #   | Defect                                                                                                                                                                                                     | Fix                                                                                                                                     |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Upstream `hello_web` calls `.run()`, which cannot work on web: `gpui_web`'s `Platform::run` returns immediately, so the App is dropped and the canvas stays blank (`ERROR gpui::window: app was released`) | `run_embedded()` + `std::mem::forget(handle)`. Also an upstream PR candidate — Zed's own example is broken                              |
+| 2   | The example's rustflags omit `--export=__heap_base`, so wasm-bindgen 0.2.126's threading transform aborts                                                                                                  | Add `--export=__heap_base` and `--export=__data_end`                                                                                    |
+| 3   | Every `ui` component panics at first paint: `no state of type GlobalThemeSettingsProvider exists` — that global is installed by `theme_settings`, which cannot build for wasm                              | Implement the 5-method `ThemeSettingsProvider` directly (~25 lines) using the fonts `gpui_web` already embeds                           |
+| 4   | `theme::init(LoadThemes::JustBase)` passes an empty `AssetSource`, so `themes.get("Aiur")` fails and it **silently** falls back to a generic theme                                                         | `include_str!` the real `aiur.json`, convert `#rrggbbaa` → `Hsla`, patch `Theme.styles.colors`, install via `GlobalTheme::update_theme` |
 
 Defect 4 deserves emphasis because it is this program's own thesis turned on
 us: a green-looking result that could not have been red. The app rendered
@@ -322,14 +322,14 @@ the single dependency blocking a browser build of Omega's UI.** It pulls in
 `theme_settings`, which takes down the settings provider, the bundled-theme
 loader, and asset resolution.
 
-| Crate | wasm32-unknown-unknown |
-| --- | --- |
-| `gpui`, `gpui_web`, `gpui_wgpu` | builds and renders |
-| `theme` | 0 errors |
-| `ui` (whole design system) | 0 errors |
-| `omega_forensics` | 0 errors |
-| `settings` | **fails** — `errno`, `polling` |
-| `theme_settings` | **fails** — transitively |
+| Crate                           | wasm32-unknown-unknown         |
+| ------------------------------- | ------------------------------ |
+| `gpui`, `gpui_web`, `gpui_wgpu` | builds and renders             |
+| `theme`                         | 0 errors                       |
+| `ui` (whole design system)      | 0 errors                       |
+| `omega_forensics`               | 0 errors                       |
+| `settings`                      | **fails** — `errno`, `polling` |
+| `theme_settings`                | **fails** — transitively       |
 
 Every workaround so far has been 25–40 lines. One feature gate on `settings`
 would collapse all of them. That makes the Tier 3 estimate in §7 materially
@@ -377,6 +377,12 @@ citable by outsiders in writing; a maintainer needs to read it with assistive
 tech; or contributors report they cannot open it at all.
 
 ## 13. First delivery slice: Operation Diamond Hands at `/dh`
+
+**Historical status, 2026-08-04:** the reusable Rust/GPUI browser source,
+generated wasm, route integration, and direct NIP-11/WebSocket browser proof
+were completed, then the owner stood down before relay records were published
+or `/dh` was deployed. Preserve the implementation for other GPUI-on-web work;
+do not ship this project surface without a new owner decision.
 
 The first visible result is deliberately smaller than the full hardening
 projection. `/dh` renders the Project's NIP-OT Organization, one NIP-PG

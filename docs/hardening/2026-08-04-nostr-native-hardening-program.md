@@ -2,8 +2,9 @@
 
 - Date: 2026-08-04
 - Class: architecture spec and initial roadmap
-- Status: proposal with five protocol drafts. Authorizes nothing. Names
-  owner-gated decisions explicitly.
+- Status: stood down by owner direction on 2026-08-04. Preserved for reuse;
+  authorizes no deployment, publication, admission, or continued forensics
+  work.
 - Owner: OpenAgents
 - Companion reading:
   [`../loupe/2026-08-01-coordination-not-scanners.md`](../loupe/2026-08-01-coordination-not-scanners.md)
@@ -13,6 +14,13 @@
   [264](../transcripts/264.md), [265](../transcripts/265.md).
 
 ## 1. What this document is for
+
+> **Stand-down, 2026-08-04.** The owner cancelled Operation Diamond Hands and
+> the surrounding forensics effort before production deployment or relay
+> publication. The implemented OT/PG client, GPUI/wasm surface, browser network
+> proof, and route infrastructure remain on `main` for later reuse. `/dh` must
+> not be deployed and the roadmap below must not resume without a new owner
+> decision.
 
 Episodes 263–265 established three things:
 
@@ -52,20 +60,20 @@ The first delivery target, stated as a demo rather than a claim:
 
 Facts, with paths, so the roadmap starts from the real substrate.
 
-| Piece | State today | Where |
-| --- | --- | --- |
-| The relay | **Live.** `relay.openagents.com` serves Immortal 0.0.1 as of 2026-08-04, NIP-11 reporting NIPs 1, 9, 11, 17, 29, 40, 42, 45, 50, 65, 70, 94 plus eleven Block extensions | `~/work/immortal`, `PROVENANCE.md` |
-| Relay write policy | `restricted_writes: true` — closed membership via `relay_member_pubkey`; agents can ride their owner's membership through Block NIP-AA | `immortal/src/store/mod.rs:457`, `src/gateway/server.rs:718` |
-| Relay admin path | NIP-86 management API **not configured in production** (86 absent from live `supported_nips`); no media endpoint configured either | live NIP-11 |
-| The NIP program | 25 All Work NIPs drafted across five layers | [`../nips/PROPOSED.md`](../nips/PROPOSED.md) |
-| Signed workroom projection | **Implemented**, kinds 32150–32163 pinned, prepare/commit signing lane, persist-before-publish outbox | `packages/all-work-contract/src/signed-workroom-*.ts`, [`../nips/WA.md`](../nips/WA.md) |
-| Contract → SDK generator | **Implemented**: one pinned JSON definition emits Effect Schema, a TypeScript client, Rust types, JSON Schema, fixtures, and a digest-bound compatibility manifest with drift checking | `packages/all-work-contract/scripts/generate.mjs` |
-| Nostr client code | `packages/public-nostr-chat` (relay client, subscribe/snapshot, remote signer); `nostr-effect` sibling repo is the shared Effect implementation | `packages/public-nostr-chat/src/client.ts`, `~/work/nostr-effect` |
-| Forensic workbench | Implemented in the **Omega** repo (Rust/GPUI) with an Effect Schema boundary and Loupe adapter in this monorepo | `~/work/omega/crates/omega_forensics/`, `packages/forensic-contract/`, `packages/forensic-loupe-adapter/` |
-| Coldcard evidence | Pre-registered experiment, results, generator reproduction, evidence graph, historical fingerprint scan | `docs/loupe/`, `docs/coldcard/`, `fixtures/forensics/coldcard/` |
-| Web app | Cloud Run Node monolith; retained public product routes are `/`, `/forum`, `/promises`. The owner admitted `/dh` as the Operation Diamond Hands project route on 2026-08-04; it is planned here and not yet implemented. | `apps/openagents.com/workers/api/src/cloudrun/server.ts`, `src/index.ts` |
-| GPUI on the web | **Proven 2026-08-04.** Omega's real `ui` design system and Aiur theme render in a browser through `gpui_web` + `gpui_wgpu` → WebGPU. Four defects found and worked around; filed as [omega#243](https://github.com/OpenAgentsInc/omega/issues/243) | `~/work/omega/crates/gpui_web/`, [Addendum A §11](2026-08-04-gpui-on-web-addendum.md) |
-| Sats payout | **No live rail.** MDK/Nexus money authority retired under VP-1; payout/L402/credit routes stripped from the served registry; LDK exists as typed readiness projections only | root `INVARIANTS.md`, `workers/api/src/index.ts:13341`, `pylon-ldk-readiness-projections.ts` |
+| Piece                      | State today                                                                                                                                                                                                                                        | Where                                                                                                     |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| The relay                  | **Live.** `relay.openagents.com` serves Immortal 0.0.1 as of 2026-08-04, NIP-11 reporting NIPs 1, 9, 11, 17, 29, 40, 42, 45, 50, 65, 70, 94 plus eleven Block extensions                                                                           | `~/work/immortal`, `PROVENANCE.md`                                                                        |
+| Relay write policy         | `restricted_writes: true` — closed membership via `relay_member_pubkey`; agents can ride their owner's membership through Block NIP-AA                                                                                                             | `immortal/src/store/mod.rs:457`, `src/gateway/server.rs:718`                                              |
+| Relay admin path           | NIP-86 management API **not configured in production** (86 absent from live `supported_nips`); no media endpoint configured either                                                                                                                 | live NIP-11                                                                                               |
+| The NIP program            | 25 All Work NIPs drafted across five layers                                                                                                                                                                                                        | [`../nips/PROPOSED.md`](../nips/PROPOSED.md)                                                              |
+| Signed workroom projection | **Implemented**, kinds 32150–32163 pinned, prepare/commit signing lane, persist-before-publish outbox                                                                                                                                              | `packages/all-work-contract/src/signed-workroom-*.ts`, [`../nips/WA.md`](../nips/WA.md)                   |
+| Contract → SDK generator   | **Implemented**: one pinned JSON definition emits Effect Schema, a TypeScript client, Rust types, JSON Schema, fixtures, and a digest-bound compatibility manifest with drift checking                                                             | `packages/all-work-contract/scripts/generate.mjs`                                                         |
+| Nostr client code          | `packages/public-nostr-chat` (relay client, subscribe/snapshot, remote signer); `nostr-effect` sibling repo is the shared Effect implementation                                                                                                    | `packages/public-nostr-chat/src/client.ts`, `~/work/nostr-effect`                                         |
+| Forensic workbench         | Implemented in the **Omega** repo (Rust/GPUI) with an Effect Schema boundary and Loupe adapter in this monorepo                                                                                                                                    | `~/work/omega/crates/omega_forensics/`, `packages/forensic-contract/`, `packages/forensic-loupe-adapter/` |
+| Coldcard evidence          | Pre-registered experiment, results, generator reproduction, evidence graph, historical fingerprint scan                                                                                                                                            | `docs/loupe/`, `docs/coldcard/`, `fixtures/forensics/coldcard/`                                           |
+| Web app                    | Cloud Run Node monolith. Reusable `/dh` GPUI/wasm source, assets, route mapping, isolation headers, and browser proof landed locally and on `main`, but the owner stood the program down before production deployment.                             | `apps/openagents.com/apps/diamond-hands/`, `workers/api/src/cloudrun/start-ui.ts`                         |
+| GPUI on the web            | **Proven 2026-08-04.** Omega's real `ui` design system and Aiur theme render in a browser through `gpui_web` + `gpui_wgpu` → WebGPU. Four defects found and worked around; filed as [omega#243](https://github.com/OpenAgentsInc/omega/issues/243) | `~/work/omega/crates/gpui_web/`, [Addendum A §11](2026-08-04-gpui-on-web-addendum.md)                     |
+| Sats payout                | **No live rail.** MDK/Nexus money authority retired under VP-1; payout/L402/credit routes stripped from the served registry; LDK exists as typed readiness projections only                                                                        | root `INVARIANTS.md`, `workers/api/src/index.ts:13341`, `pylon-ldk-readiness-projections.ts`              |
 
 Two of these are load-bearing constraints rather than conveniences, and the
 roadmap in §8 is shaped around them: **the relay is closed-write**, and
@@ -79,7 +87,7 @@ roadmap in §8 is shaped around them: **the relay is closed-write**, and
    has not earned. Completeness is therefore a first-class, signed record —
    not a footnote in a report.
 2. **Pre-register before running.** Our own experiment was credible because the
-   scoring rubric was written, digested, and pushed *before* the run. On a
+   scoring rubric was written, digested, and pushed _before_ the run. On a
    relay this becomes trivial and universal: publish the profile and rubric
    digest first, then the result. Goalposts cannot move.
 3. **Divergence is the product.** Two runs over the same target that disagree
@@ -95,7 +103,7 @@ roadmap in §8 is shaped around them: **the relay is closed-write**, and
 6. **Money last, and never per-vulnerability by default.** The coordination
    analysis argued explicitly for keeping money out until someone can
    articulate why it must be in. §6.5 takes that seriously and proposes paying
-   for *coverage and verification work* rather than running a bounty market.
+   for _coverage and verification work_ rather than running a bounty market.
 
 ## 4. The program as All Work objects
 
@@ -158,21 +166,21 @@ addressable neighborhood declared in `PROPOSED.md`, after collision review
 against the official, Block, and existing OpenAgents lanes. A draft reserves
 wire vocabulary; it does not admit implementation or a product claim.
 
-| NIP | Name | Reserved block | Draft | Why it cannot be folded into an existing NIP |
-| --- | --- | --- | --- | --- |
-| NIP-SP | Scan Profiles and Pre-Registration | 32450–32459 | [`SP.md`](../nips/SP.md) | A profile is a versioned, shareable, digest-bound *configuration*, and the rubric must be committed before the run |
-| NIP-SC | Source Completeness and Coverage | 32460–32469 | [`SC.md`](../nips/SC.md) | The Coldcard lesson: what was actually on disk is a claim that must be signed, checkable, and comparable across runs |
-| NIP-FD | Findings, Verdicts, and Disclosure | 32470–32479 | [`FD.md`](../nips/FD.md) | Findings need severity, CWE, embargo state, hash commitments, and coordinated-disclosure lifecycle that generic evidence records do not carry |
-| NIP-SI | Security Invariants and Regression Watch | 32480–32489 | [`SI.md`](../nips/SI.md) | The decisive Coldcard control was a build-time assertion about the shipped artifact — a durable property, not a one-time finding |
-| NIP-BT | Bounties and Contribution Credit | 32490–32499 | [`BT.md`](../nips/BT.md) | Funding pools, credit standing, and (later, if ever) payouts need their own records with hard boundaries against the disclosure process |
+| NIP    | Name                                     | Reserved block | Draft                    | Why it cannot be folded into an existing NIP                                                                                                  |
+| ------ | ---------------------------------------- | -------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| NIP-SP | Scan Profiles and Pre-Registration       | 32450–32459    | [`SP.md`](../nips/SP.md) | A profile is a versioned, shareable, digest-bound _configuration_, and the rubric must be committed before the run                            |
+| NIP-SC | Source Completeness and Coverage         | 32460–32469    | [`SC.md`](../nips/SC.md) | The Coldcard lesson: what was actually on disk is a claim that must be signed, checkable, and comparable across runs                          |
+| NIP-FD | Findings, Verdicts, and Disclosure       | 32470–32479    | [`FD.md`](../nips/FD.md) | Findings need severity, CWE, embargo state, hash commitments, and coordinated-disclosure lifecycle that generic evidence records do not carry |
+| NIP-SI | Security Invariants and Regression Watch | 32480–32489    | [`SI.md`](../nips/SI.md) | The decisive Coldcard control was a build-time assertion about the shipped artifact — a durable property, not a one-time finding              |
+| NIP-BT | Bounties and Contribution Credit         | 32490–32499    | [`BT.md`](../nips/BT.md) | Funding pools, credit standing, and (later, if ever) payouts need their own records with hard boundaries against the disclosure process       |
 
 ### 5.1 NIP-SP — Scan Profiles and Pre-Registration
 
-**Records.** A *Scan Profile* (`32450`): named, versioned, digest-bound
+**Records.** A _Scan Profile_ (`32450`): named, versioned, digest-bound
 configuration — source materialization rules (submodules, vendored trees,
 lockfile-pinned deps), file selection, attack-surface ranking policy, hunt
 classes, model and harness roles, budget bounds, and evidence requirements. A
-*Pre-Registration* (`32451`): published **before** a run, binding the target,
+_Pre-Registration_ (`32451`): published **before** a run, binding the target,
 the pinned commit, the profile digest, the hypothesis, and the scoring rubric
 digest, with an expiry.
 
@@ -186,17 +194,17 @@ key-derivation paths first, hunt these classes" becomes a shareable object
 with a version and an author, not tribal knowledge.
 
 **Composition.** A profile is close kin to NIP-GB Guidance and NIP-SKL Skills;
-the difference is that a profile is a *measurement instrument* whose exact
+the difference is that a profile is a _measurement instrument_ whose exact
 bytes must be citable by a result. It references guidance and skills rather
 than replacing them.
 
 ### 5.2 NIP-SC — Source Completeness and Coverage
 
-**Records.** A *Materialized Source Set* (`32460`): for one scan, the exact
+**Records.** A _Materialized Source Set_ (`32460`): for one scan, the exact
 tree that was actually readable — repository refs, pinned commit, submodule
 paths declared versus populated, vendored trees, dependency lockfile digests,
-file count and byte count analyzed versus skipped and why. A *Coverage
-Attestation* (`32461`): the durable public statement that this target, at this
+file count and byte count analyzed versus skipped and why. A _Coverage
+Attestation_ (`32461`): the durable public statement that this target, at this
 commit, was examined with this profile to this depth — including
 `completeness: complete | partial | degraded` and the reason.
 
@@ -216,17 +224,17 @@ it as such.
 **Divergence.** Because attestations are comparable by
 `(target, commit, profile)`, divergence detection is a query, not a product:
 two attestations over the same target with different completeness or different
-finding sets is a lead, published as a *Divergence Note* (`32462`) that names
+finding sets is a lead, published as a _Divergence Note_ (`32462`) that names
 both runs and what differed.
 
 ### 5.3 NIP-FD — Findings, Verdicts, and Disclosure
 
-**Records.** A *Finding Commitment* (`32470`): a digest-bound commitment
-published at discovery, revealing nothing. A *Candidate Finding* (`32471`):
+**Records.** A _Finding Commitment_ (`32470`): a digest-bound commitment
+published at discovery, revealing nothing. A _Candidate Finding_ (`32471`):
 target, mechanism, severity proposal, CWE, evidence boundary, assumptions —
-encrypted to the disclosure audience while embargoed. A *Finding Verdict*
+encrypted to the disclosure audience while embargoed. A _Finding Verdict_
 (`32472`): an independent judgment (`confirmed`, `refuted`, `inconclusive`)
-from a signer other than the producer. A *Disclosure State* (`32473`):
+from a signer other than the producer. A _Disclosure State_ (`32473`):
 reported-to-maintainer, acknowledged, fix-available, published, or withdrawn,
 with embargo expiry.
 
@@ -246,11 +254,11 @@ post the list on X" behavior Episode 265 criticized.
 
 ### 5.4 NIP-SI — Security Invariants and Regression Watch
 
-**Records.** A *Security Invariant* (`32480`): a named property that must hold
+**Records.** A _Security Invariant_ (`32480`): a named property that must hold
 across source, configuration, build, artifact, and runtime, with its failure
-consequence, required witnesses, and falsifiers. An *Artifact Provenance
-Witness* (`32481`): evidence binding a built artifact to the exact source,
-symbols, or configuration an invariant requires. A *Regression Watch*
+consequence, required witnesses, and falsifiers. An _Artifact Provenance
+Witness_ (`32481`): evidence binding a built artifact to the exact source,
+symbols, or configuration an invariant requires. A _Regression Watch_
 (`32482`):
 a recurring check that re-evaluates invariants against new target revisions,
 with freshness and stopping rules.
@@ -273,12 +281,12 @@ property rather than by CVSS.
 
 ### 5.5 NIP-BT — Bounties and Contribution Credit (drafted, postponed)
 
-**Records.** A *Funding Pool* (`32490`): a sponsor's committed budget for a
-named campaign, scope, and period. A *Contribution Credit* (`32491`): the
+**Records.** A _Funding Pool_ (`32490`): a sponsor's committed budget for a
+named campaign, scope, and period. A _Contribution Credit_ (`32491`): the
 receipt-backed record that a contributor produced a coverage attestation, an
 independent verdict, a reproduction, or a confirmed finding — the standing
 that the coordination analysis identified as sufficient incentive for a large
-class of contributors. A *Payout Reference* (`32492`): if and only if a
+class of contributors. A _Payout Reference_ (`32492`): if and only if a
 settlement rail is admitted, the reference binding a Contribution Credit to
 settlement evidence.
 
@@ -291,7 +299,7 @@ disclosures. The proposal here is deliberately different:
 
 - **Pay for coverage and verification, not for vulnerabilities.** A signed
   coverage attestation over an unscanned target, an independent verdict that
-  *refutes* a candidate, a negative control, a reproduction — these are the
+  _refutes_ a candidate, a negative control, a reproduction — these are the
   scarce goods, they are cheap to verify, and paying for them creates no
   incentive to publish prematurely or to inflate severity.
 - **Credit before cash.** Contribution Credits work with no rail at all and
@@ -356,13 +364,13 @@ implementation rather than three.
 Proposed crate: `immortal-client` (workspace member; consumed by Omega
 natively and by the wasm surface through the same source).
 
-| Layer | Contents |
-| --- | --- |
-| Transport | Native and browser transports; connect, REQ/EVENT/CLOSE/AUTH, reconnect, NIP-42 auth, subscription lifecycle, EOSE and live handoff with explicit gap reporting. The wasm build uses the browser's WebSocket API and connects directly to `wss://relay.openagents.com` |
-| Relay features | NIP-11 capability read, NIP-45 COUNT, NIP-50 search, NIP-29 groups, NIP-17 private messages, NIP-70 protected events, Blossom when configured |
-| Kinds | Typed encoders/decoders for the All Work kinds and the hardening kinds, with unknown-kind preservation |
-| Identity | Local signer, remote signer (NIP-46), Block NIP-OA attestation helpers, NIP-AA auth flow |
-| Discipline | Every decoder fails closed on malformed input; every projection carries freshness and completeness; the client never asserts authority a record does not carry |
+| Layer          | Contents                                                                                                                                                                                                                                                               |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Transport      | Native and browser transports; connect, REQ/EVENT/CLOSE/AUTH, reconnect, NIP-42 auth, subscription lifecycle, EOSE and live handoff with explicit gap reporting. The wasm build uses the browser's WebSocket API and connects directly to `wss://relay.openagents.com` |
+| Relay features | NIP-11 capability read, NIP-45 COUNT, NIP-50 search, NIP-29 groups, NIP-17 private messages, NIP-70 protected events, Blossom when configured                                                                                                                          |
+| Kinds          | Typed encoders/decoders for the All Work kinds and the hardening kinds, with unknown-kind preservation                                                                                                                                                                 |
+| Identity       | Local signer, remote signer (NIP-46), Block NIP-OA attestation helpers, NIP-AA auth flow                                                                                                                                                                               |
+| Discipline     | Every decoder fails closed on malformed input; every projection carries freshness and completeness; the client never asserts authority a record does not carry                                                                                                         |
 
 Two boundaries from day one: it is a **client**, not an authority — it decodes
 and publishes, it does not admit anything — and it must build for both the
@@ -446,7 +454,7 @@ feature, not an implementation detail.
 
 The page must state what it is: a projection with freshness, not a claim.
 Coverage counts inherit the completeness of their inputs, and a target with no
-attestation renders as *never examined* — which is the honest and uncomfortable
+attestation renders as _never examined_ — which is the honest and uncomfortable
 default for most of the ecosystem.
 
 ### 6.4 Omega as the working surface
@@ -468,7 +476,7 @@ the browser through the same Rust client and GPUI component set.
 ### 6.5 Other possibilities worth naming
 
 - **Attested absence as a public good.** The coverage map's most valuable
-  number is how many high-value targets have *never* been examined. That
+  number is how many high-value targets have _never_ been examined. That
   number is also the thing most likely to attract funding.
 - **Profile diversity as a security property.** Once profiles are shareable
   objects, a campaign can deliberately require N runs under M distinct
@@ -490,7 +498,7 @@ the browser through the same Rust client and GPUI component set.
 A public coverage map tells attackers exactly where nobody is looking.
 "No one has ever examined this wallet's entropy path" is actionable for both
 sides, and the coordination analysis flagged this as the question to settle
-*before* the ledger exists rather than after.
+_before_ the ledger exists rather than after.
 
 The proposed starting position, offered as a design to be attacked:
 
@@ -513,6 +521,11 @@ participants together, in the open, before Phase 3 ships.
 Phases are ordered by what unlocks the most downstream work, with the demo cut
 line explicit. Nothing here is admitted work: each phase becomes issues under
 ordinary authority.
+
+**Stand-down status:** Phases 0–4 are cancelled. Phase 0's reusable technical
+foundation is preserved, but its relay publication, live-event exit proof, and
+production deployment did not occur. Phase 1 never began. Restarting any phase
+requires a new owner decision.
 
 ### Phase 0 — Operation Diamond Hands project page (first visible result)
 
@@ -563,17 +576,17 @@ writes one event that a third party reads back.
 ### Phase 2 — Coverage ledger and the expanded GPUI surface
 
 11. Review and pin the drafted **NIP-SC** and **NIP-SP** contracts with fixtures
-   and an implementation decision — coverage and profiles are the two records
-   the demo needs, and they are the two the evidence most directly supports.
+    and an implementation decision — coverage and profiles are the two records
+    the demo needs, and they are the two the evidence most directly supports.
 12. Expand `immortal-client` with NIP-42 auth, program-kind decoders, and the
-   write path shared by native Omega and the wasm surface.
+    write path shared by native Omega and the wasm surface.
 13. Seed the ledger from work already done: publish Coverage Attestations and
-   Materialized Source Sets for the Coldcard experiment's two arms, and for the
-   Omega self-scan. The divergence between arm A and arm B becomes the first
-   published Divergence Note — the program's founding data point is a result we
-   already have.
+    Materialized Source Sets for the Coldcard experiment's two arms, and for the
+    Omega self-scan. The divergence between arm A and arm B becomes the first
+    published Divergence Note — the program's founding data point is a result we
+    already have.
 14. Expand `/dh` with targets, coverage completeness, profiles, and divergence
-   while preserving the direct browser-to-relay source path.
+    while preserving the direct browser-to-relay source path.
 15. Omega publishes attestations from real workbench runs rather than local
     state.
 
@@ -620,16 +633,16 @@ a new sequencing decision. No payment rail is assumed.
 
 ## 9. Acceptance and falsification
 
-| Claim the program will want to make | Required proof | Falsifier |
-| --- | --- | --- |
+| Claim the program will want to make    | Required proof                                                                                                                                                     | Falsifier                                                                                              |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
 | The first project page is Nostr-native | Browser evidence shows `/dh` opening `wss://relay.openagents.com`, completing a bounded `REQ`/`EOSE` snapshot, and receiving a live event with no project-data API | The page renders from baked data, a private database, an HTTP projection, or a server-side relay proxy |
-| The surface is Omega's own code | The web surface and the workbench share the `ui` component set, the Aiur theme, and `immortal-client` | The web surface reimplements components or decoding in another language |
-| Anyone can join | An outside human plus their agent write and are read, using only public docs | Joining needs an operator to run SQL |
-| Coverage is honest | Every result references a Materialized Source Set; incomplete scans are visibly incomplete | A result renders confidently over a partially-read program |
-| Divergence is captured | Two runs over one target produce a Divergence Note automatically | Disagreement is only visible to whoever ran both |
-| Findings are not raced | Commitments precede reveals; duplicate-work priority follows the admitted commitment anchor, not publication time | Priority accrues to whoever posts first |
-| Disclosure is responsible | No embargoed content on a public relay; maintainer path attempted before publication | An embargo expiry alone publishes something |
-| Verification is independent | Verifier key ≠ producer key, enforced at admission | A scanner confirms its own finding |
+| The surface is Omega's own code        | The web surface and the workbench share the `ui` component set, the Aiur theme, and `immortal-client`                                                              | The web surface reimplements components or decoding in another language                                |
+| Anyone can join                        | An outside human plus their agent write and are read, using only public docs                                                                                       | Joining needs an operator to run SQL                                                                   |
+| Coverage is honest                     | Every result references a Materialized Source Set; incomplete scans are visibly incomplete                                                                         | A result renders confidently over a partially-read program                                             |
+| Divergence is captured                 | Two runs over one target produce a Divergence Note automatically                                                                                                   | Disagreement is only visible to whoever ran both                                                       |
+| Findings are not raced                 | Commitments precede reveals; duplicate-work priority follows the admitted commitment anchor, not publication time                                                  | Priority accrues to whoever posts first                                                                |
+| Disclosure is responsible              | No embargoed content on a public relay; maintainer path attempted before publication                                                                               | An embargo expiry alone publishes something                                                            |
+| Verification is independent            | Verifier key ≠ producer key, enforced at admission                                                                                                                 | A scanner confirms its own finding                                                                     |
 
 NIP-BT keeps its own payment and settlement falsifiers, but they are not an
 acceptance gate for this first-pass roadmap while BT is deferred.
