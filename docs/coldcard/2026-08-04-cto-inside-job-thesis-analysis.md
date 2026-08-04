@@ -4,8 +4,8 @@ Status: **living evidence log** (social + independent technical re-checks).
 This is **not** a claim that theft-complicity is proven. It is a structured place
 to park what is observed, what was re-verified, and what remains open.
 
-Last updated: 2026-08-04 (third pass: ~590 unique recent-search posts, prior-notice
-leads, official advisory timeline, retirement-attack definition, pandora-shar).
+Last updated: 2026-08-04 (fourth pass: official technical backgrounder first-person
+claims, Block provider-log lead, more prior-notice posts, jamesob May 2025 detail).
 
 ## How to read this
 
@@ -39,8 +39,9 @@ Split for collection:
 | **D** | Gray or Coinkite staff **participated in or directed** the 2026 drains | **Open / not established** |
 | **E** | Remediation messaging is a cover for ongoing theft | **Ambiguous** (compatible with innocence and guilt) |
 | **F** | 2021 “retirement attack” language implies premeditated backdoor | **Partial:** official definition is real; **heist-plot inference still speculative** |
-| **G** | Vendor had prior victim reports years before July 2026 mass drains | **Collecting** — multiple third-party claims; primary tickets not public here |
+| **G** | Vendor had prior victim reports / notice years before July 2026 mass drains | **Collecting** — multi-source third-party claims; **conflicts with** official “unaware until today” |
 | **H** | Early public advisory understated model blast radius | **Documented** (Mk3-only day 0 → later Mk4/Mk5/Q) |
+| **I** | Official tech post admits first-person responsibility for zeroed RNG macro / wrong path | **Documented** (blog technical backgrounder) |
 
 ---
 
@@ -397,6 +398,93 @@ Official advisory still treats a **strong unique** passphrase as reducing
 immediate exposure but recommends migration. Short passphrases are in the
 attack surface.
 
+### E17 — Official technical backgrounder (primary, 2026-07-30 / updated Aug 1)
+
+URL: [blog.coinkite.com/entropy-technical-backgrounder](https://blog.coinkite.com/entropy-technical-backgrounder/)
+
+Retrieved full HTML text 2026-08-04. Material quotes / claims:
+
+| Claim in post | Relevance |
+| --- | --- |
+| “**We were unaware of the bug until today.**” | Official unawareness claim — **tension with G** prior-notice social claims |
+| “A few weeks ago, we used one of the best available **AI models** to review our code… **it did not find this bug**” | Process failure under AI review; also frames attacker discovery as AI-assisted |
+| “The COLDCARD source… open… we have to **assume** that someone used AI to review previous versions… and stumbled upon this issue” | Vendor attack-story hypothesis, not independent proof of method |
+| Migration 2021: `ckcc.rng_bytes()` → `ngu.random.bytes()`; `rng_get()` resolved to **MicroPython software fallback** | Matches in-repo technical analyses |
+| First person: “a PRNG that **I didn’t know** was actually in the source code base (… Micropython)” | **I** voice — internal engineer owning narrative (consistent with CTO-as-author map, not proof alone) |
+| First person: “the carefully crafted TRNG code **I wrote** was being used, but just by chance, and only for less important things” | Same |
+| First person: “**I explicitly set** `MICROPY_HW_ENABLE_RNG` to zero, thinking we didn’t need either version, but that’s not what it does” | Direct ownership of the zeroed macro decision (contrast with pure “accidental 2018 carry-forward only” popular story — macro value choice is admitted) |
+| Mk2/Mk3 search space estimate **~40 bits**; Mk4/Q/Mk5 **~72 bits** under stated assumptions | Quantifies blast radius |
+| Existing review confirmed TRNG **present in binary** but did not verify **which `rng_get()` seed generation actually reached** | Explains how review missed it; aligns with whole-program reachability lesson in Loupe docs |
+
+**Label:** highest-value **vendor primary** for technical mechanism + unawareness claim + first-person engineering ownership. Does **not** name `switck` or address GPG/nym identity.
+
+**Tension to track:** E17 “unaware until today” vs E12 / E18 prior-notice claims. Both can be true only if “unaware” means “did not accept this root cause,” not “never heard of anomalous drains.”
+
+### E18 — More prior-notice / ignored-report claims (still third-party)
+
+| Source | Link | Claim |
+| --- | --- | --- |
+| `@Zenul_Abidin` | [2083756420843839872](https://x.com/Zenul_Abidin/status/2083756420843839872) (~2.9k likes) | “SCANDAL: Coldcard knew… for years”; **2022** brand-new user drained; victim “blocked for reporting”; media attachments |
+| `@studentofthings` | [2084007449267188163](https://x.com/studentofthings/status/2084007449267188163) (~3.6k likes in search ranking) | “Just confirmed, I found the Coldcard RNG bug **11 months ago** and never reported it because they didn’t acknowledge me on the **first one** I reported” (+ image) |
+| `@COLDCARDwallet` on studentofthings | [2084280694864224641](https://x.com/COLDCARDwallet/status/2084280694864224641) | Official: “your original report is **not related** to the current issues. A patch was made, and credit was issued.” |
+| `@jamesob` | [2084603251706503369](https://x.com/jamesob/status/2084603251706503369) | May 2025: “found the potential/likelihood… Reported it, was **shrugged off**… trusted Coinkite when they said it wasn’t misconfigured” |
+| `@PanHodl` | [2084117965717323961](https://x.com/PanHodl/status/2084117965717323961) | Claims Telegram pointed at Coldcard random function **in 2021** (screenshot) |
+
+**Collection status:** volume and engagement of “prior knowledge” narrative is high. **Primary manufacturer tickets still absent.** Official line on at least one reporter is “different issue, already patched.” That could be true, partial, or incorrect — needs document comparison.
+
+### E19 — Block / Bitkey investigation: paid analytics provider (expanded)
+
+Thread from `@clay_garrett` (Block / Bitkey eng leadership):
+
+1. [2083247006139503065](https://x.com/clay_garrett/status/2083247006139503065) — sweep operator used **paid account** at well-known blockchain-services provider to query source addresses during sweeps.
+2. [2083247007808774228](https://x.com/clay_garrett/status/2083247007808774228) — Block contacted provider; **internal logs matched** number/timing/sequence of requests “with extraordinary specificity”; provider supplied standard services; **no evidence provider knowingly facilitated** theft.
+
+Related: `@max_guise` / Block early investigation thread
+[2083007180874379515](https://x.com/max_guise/status/2083007180874379515) (quoted in clay’s posts).
+
+**Label:** strong **third-party operational** evidence about attacker tooling. Provider name not public in the text we captured. **Does not** identify Coinkite staff as the account holder.
+
+### E20 — Loss totals (moving public estimates)
+
+Public figures shifted during the week (not reconciled here):
+
+- Early: ~594 BTC / ~$38M / ~500 wallets (many posts; BlockUnmasked article).
+- Galaxy updates: e.g. ~1,367 BTC / ~4,585 addresses
+  ([2083623500183421043](https://x.com/glxyresearch/status/2083623500183421043)).
+- Later viral: **>$100M**
+  ([2084413716494266594](https://x.com/WatcherGuru/status/2084413716494266594) style JUST IN posts);
+  ~2,055 BTC / ~$130M / 7,700+ addresses
+  ([2084465607932854717](https://x.com/lookonchain/status/2084465607932854717) citing Galaxy).
+
+**Label:** treat as **external estimates**. Prefer Galaxy / Kelbie-style ledgers for forensic work; do not freeze a single number in product claims.
+
+### E21 — Hotfix side effect: TRNG latch / “brick” scare
+
+- Community reported rushed hotfix risk of permanent RNG fault before PIN
+  ([2084245649944387633](https://x.com/i/web/status/2084245649944387633) citing
+  [PR #692](https://github.com/Coldcard/firmware/pull/692)).
+- Official later: not permanent; power-cycle; fail closed; [PR #693](https://github.com/Coldcard/firmware/pull/693)
+  (E1 / E11).
+
+**Label:** remediation quality issue; separate from 2021 seed defect root cause.
+
+### E22 — Vendor first-person vs dual-identity evidence (inference map)
+
+Combining E3–E5 (GPG + dual authorship) with E17 first-person blog:
+
+| Fact class | Support |
+| --- | --- |
+| Gray’s key signed switck libngu work | Cryptographic (E3) |
+| Gray authored firmware libNgU seed migration under real email | Git (E4b) |
+| Vendor blog’s “I” admits zeroing `MICROPY_HW_ENABLE_RNG` and not knowing PRNG was in tree | Official prose (E17) |
+| Blog addresses switck nym / dual identity | **Not present** in retrieved text |
+| Blog claims unawareness until disclosure day | Official prose (E17) — contested by E12/E18 |
+
+**Inference (not proven):** the first-person engineering voice is **consistent with**
+CTO-as-integrator; identity of the blog “I” is not cryptographically signed in
+the HTML. Treat as **probable staff voice**, likely Gray given ownership of TRNG
+code and migration, unless Coinkite attributes authorship otherwise.
+
 ---
 
 ## Synthesis (evidence, not verdict)
@@ -480,8 +568,9 @@ cargo run -p x_api -- search 'from:_PyBlock_ (DocHex OR Switck)' --max-results 2
 cargo run -p x_api -- post 2084660832596570417
 cargo run -p x_api -- post 1447213375398846473   # official retirement-attack definition
 
-# D) Official advisory (HTML)
+# D) Official advisory + technical deep dive (HTML)
 curl -fsS https://blog.coinkite.com/coldcard-mk3-seed-generation-warning/ | head
+curl -fsS https://blog.coinkite.com/entropy-technical-backgrounder/ | head
 ```
 
 ---
