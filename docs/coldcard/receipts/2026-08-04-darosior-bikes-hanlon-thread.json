@@ -1,0 +1,2127 @@
+{
+  "title": "BikesandBitcoin Hanlon root + darosior nym/backdoor QT conversation inventory",
+  "collected_at": "2026-08-04",
+  "anchor_url": "https://x.com/darosior/status/2084661793624924500",
+  "root_conversation_id": "2084630840982831568",
+  "qt_conversation_id": "2084661793624924500",
+  "post_count": 92,
+  "by_conversation": {
+    "2084630840982831568": 88,
+    "2084661793624924500": 4
+  },
+  "author_counts": [
+    [
+      "BikesandBitcoin",
+      8
+    ],
+    [
+      "jamesob",
+      8
+    ],
+    [
+      "4moonsettler",
+      4
+    ],
+    [
+      "udiWertheimer",
+      4
+    ],
+    [
+      "TheDesignFlaw",
+      3
+    ],
+    [
+      "darosior",
+      3
+    ],
+    [
+      "Bitcoin_phan",
+      3
+    ],
+    [
+      "PeachFrog99",
+      3
+    ],
+    [
+      "raw_avocado",
+      2
+    ],
+    [
+      "osborne_sam",
+      2
+    ],
+    [
+      "MrHodl",
+      2
+    ],
+    [
+      "masunobom",
+      2
+    ],
+    [
+      "belair6909",
+      2
+    ],
+    [
+      "kimstrodamus",
+      2
+    ],
+    [
+      "SimplestBTCBook",
+      2
+    ],
+    [
+      "NicerInPerson",
+      2
+    ],
+    [
+      "jacklesser_",
+      1
+    ],
+    [
+      "JustaLillyBit",
+      1
+    ],
+    [
+      "noD7R",
+      1
+    ],
+    [
+      "BitcoinBombz",
+      1
+    ],
+    [
+      "grok",
+      1
+    ],
+    [
+      "mcchiperson77",
+      1
+    ],
+    [
+      "bendbotbtc",
+      1
+    ],
+    [
+      "decentmoney2009",
+      1
+    ],
+    [
+      "autocatalytics",
+      1
+    ],
+    [
+      "lonebulwark",
+      1
+    ],
+    [
+      "PrinceHeat44402",
+      1
+    ],
+    [
+      "Conor21m",
+      1
+    ],
+    [
+      "zherbert",
+      1
+    ],
+    [
+      "alpacasw",
+      1
+    ],
+    [
+      "ChuckSRQ",
+      1
+    ],
+    [
+      "cici7869",
+      1
+    ],
+    [
+      "umbrellaXBT",
+      1
+    ],
+    [
+      "codywhitt16",
+      1
+    ],
+    [
+      "369magicmanx",
+      1
+    ],
+    [
+      "TheBTCGame",
+      1
+    ],
+    [
+      "jaybny",
+      1
+    ],
+    [
+      "GMONEYPEPE",
+      1
+    ],
+    [
+      "the_nassar",
+      1
+    ],
+    [
+      "jordanBTCplz",
+      1
+    ],
+    [
+      "charlosrossi",
+      1
+    ],
+    [
+      "mykopikid",
+      1
+    ],
+    [
+      "GlennPudick",
+      1
+    ],
+    [
+      "denverbitcoin",
+      1
+    ],
+    [
+      "inverse_hanlon",
+      1
+    ],
+    [
+      "RRulehard",
+      1
+    ],
+    [
+      "JWWeatherman_",
+      1
+    ],
+    [
+      "GeoffreyGardine",
+      1
+    ],
+    [
+      "xstoicunicornx",
+      1
+    ],
+    [
+      "bleighky",
+      1
+    ],
+    [
+      "cornfordogs",
+      1
+    ],
+    [
+      "BridgeBTC",
+      1
+    ],
+    [
+      "willreeves",
+      1
+    ],
+    [
+      "GrauweDakGans",
+      1
+    ],
+    [
+      "deepchess_",
+      1
+    ],
+    [
+      "btc_technica",
+      1
+    ]
+  ],
+  "quoted_parent_outside_conv": {
+    "id": "2084626833182458302",
+    "username": "raw_avocado",
+    "created_at": "2026-08-04T13:05:42.000Z",
+    "text": "Guys please stop trying to make it sound that coinkite knew about this bug for likes.\n\nIf you have even even a small understanding of how the code works, shows 99.99% chance they did not know.\n\nIts very bad taste to spread lies and inflate an already bad situation for attention.",
+    "note": "Quoted by BikesandBitcoin root; not in conversation_id set but is the root's quote target"
+  },
+  "posts": [
+    {
+      "id": "2084630840982831568",
+      "created_at": "2026-08-04T13:21:37.000Z",
+      "username": "BikesandBitcoin",
+      "author_id": "1320533720856547328",
+      "conversation_id": "2084630840982831568",
+      "text": "Never attribute to malice that which is adequately explained by stupidity. \n\nAlex is exactly right.\n\nConspiracy theories will get you clicks, but you\u2019re also blackpilling a generation of bitcoiners. https://t.co/RDoihbiYyb",
+      "likes": 38,
+      "replies": 7,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 5362,
+      "refs": [
+        {
+          "id": "2084626833182458302",
+          "type": "quoted"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084632266072809853",
+      "created_at": "2026-08-04T13:27:17.000Z",
+      "username": "jacklesser_",
+      "author_id": "370434445",
+      "conversation_id": "2084630840982831568",
+      "text": "@BikesandBitcoin Unfortunately many are already too blackpilled to ever come back. \n\nBut agree nonetheless. Onwards",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 52,
+      "refs": [
+        {
+          "id": "2084630840982831568",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084635815087419422",
+      "created_at": "2026-08-04T13:41:23.000Z",
+      "username": "JustaLillyBit",
+      "author_id": "1574711467487776771",
+      "conversation_id": "2084630840982831568",
+      "text": "@BikesandBitcoin Do you think Satoshi might have been a conspiracy theorist?",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 78,
+      "refs": [
+        {
+          "id": "2084630840982831568",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084640388703453213",
+      "created_at": "2026-08-04T13:59:34.000Z",
+      "username": "BikesandBitcoin",
+      "author_id": "1320533720856547328",
+      "conversation_id": "2084630840982831568",
+      "text": "@JustaLillyBit No. If they were they never would have built anything.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 31,
+      "refs": [
+        {
+          "id": "2084635815087419422",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084640418918957430",
+      "created_at": "2026-08-04T13:59:41.000Z",
+      "username": "jamesob",
+      "author_id": "14262432",
+      "conversation_id": "2084630840982831568",
+      "text": "It's looking worse and worse. Nvk was a friend of mine, but for the CTO to commit the buggy code under a pseudonym has no reasonable explanation. He was already publicly working on security critical software, so a 'nym would not have bought him anything.\n\nI reported the possibility of the defect directly, by name, and it was shrugged off.\n\nHigh potential that something isn't right.",
+      "likes": 552,
+      "replies": 28,
+      "reposts": 72,
+      "quotes": 7,
+      "views": 16487,
+      "refs": [
+        {
+          "id": "2084630840982831568",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_thread_fetch_full"
+    },
+    {
+      "id": "2084641279879569455",
+      "created_at": "2026-08-04T14:03:06.000Z",
+      "username": "noD7R",
+      "author_id": "1943249888873164800",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin some layers of plausible deniability hiding something shadier?",
+      "likes": 2,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 447,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084641789080694827",
+      "created_at": "2026-08-04T14:05:07.000Z",
+      "username": "raw_avocado",
+      "author_id": "712425670987673600",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin Wait, you told them there may be a bug, like before this exploded?",
+      "likes": 27,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 1669,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084641833565515912",
+      "created_at": "2026-08-04T14:05:18.000Z",
+      "username": "4moonsettler",
+      "author_id": "1410540000920342529",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin if it was intentional shouldn't they just pull the plug on everything and ran? face change, sex change, new id?",
+      "likes": 7,
+      "replies": 4,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 1007,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084641943321973193",
+      "created_at": "2026-08-04T14:05:44.000Z",
+      "username": "BitcoinBombz",
+      "author_id": "1279837898485964801",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin @grok why would the CTO commit this buggy code under a pseudonym?",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 876,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084642145470763449",
+      "created_at": "2026-08-04T14:06:32.000Z",
+      "username": "grok",
+      "author_id": "1720665183188922368",
+      "conversation_id": "2084630840982831568",
+      "text": "@BitcoinBombz @jamesob @BikesandBitcoin Pseudonyms are routine in Bitcoin/cypherpunk work for privacy or project separation. GPG signatures on the libngu commits match Peter Gray's (DocHex) key, showing he maintained the library under the switck handle while authenticating with his personal key. No public statement",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 162,
+      "refs": [
+        {
+          "id": "2084641943321973193",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084643276859039955",
+      "created_at": "2026-08-04T14:11:02.000Z",
+      "username": "jamesob",
+      "author_id": "14262432",
+      "conversation_id": "2084630840982831568",
+      "text": "@raw_avocado @BikesandBitcoin Yes",
+      "likes": 53,
+      "replies": 2,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 1605,
+      "refs": [
+        {
+          "id": "2084641789080694827",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084644264970006653",
+      "created_at": "2026-08-04T14:14:58.000Z",
+      "username": "mcchiperson77",
+      "author_id": "3020587835",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @raw_avocado @BikesandBitcoin I'm starting to piece things together as well.  I'm not technical like you all, but I think it's possible they knew there was a fatal issue and just sat on it.  THIS IS SPECULATION, but we owe it to everyone to figure it out and speculating is part of figuring it out.\n\nIf you are",
+      "likes": 2,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 55,
+      "refs": [
+        {
+          "id": "2084643276859039955",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084644534764368275",
+      "created_at": "2026-08-04T14:16:02.000Z",
+      "username": "4moonsettler",
+      "author_id": "1410540000920342529",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin what's the game theory of sticking around like a deer caught in headlight?\n\nif you prepared for a rug for years you have thought things through a billion times and already made arrangements. idk. but it is sus and weird.",
+      "likes": 1,
+      "replies": 2,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 75,
+      "refs": [
+        {
+          "id": "2084641833565515912",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084644625701118347",
+      "created_at": "2026-08-04T14:16:24.000Z",
+      "username": "bendbotbtc",
+      "author_id": "776143417323687937",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin Thank you for your candor.  It can't be easy.",
+      "likes": 2,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 314,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084644643808092409",
+      "created_at": "2026-08-04T14:16:28.000Z",
+      "username": "osborne_sam",
+      "author_id": "311973895",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin I do not want for likes\nI yearn for truth\nthe internet warps it\nsource code is one avenue to discover truth\narchive everything",
+      "likes": 1,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 683,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084645021811155089",
+      "created_at": "2026-08-04T14:17:58.000Z",
+      "username": "raw_avocado",
+      "author_id": "712425670987673600",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin Just saw your post, that is INSANE!!!!\n\nBut to be fair, I still think this could be explained by gross incompetence and vanity, fwiw.",
+      "likes": 25,
+      "replies": 3,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 830,
+      "refs": [
+        {
+          "id": "2084643276859039955",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084645169459286267",
+      "created_at": "2026-08-04T14:18:33.000Z",
+      "username": "osborne_sam",
+      "author_id": "311973895",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin when did verify become yet a slogan",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 8,
+      "refs": [
+        {
+          "id": "2084644643808092409",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084646214373691456",
+      "created_at": "2026-08-04T14:22:43.000Z",
+      "username": "BikesandBitcoin",
+      "author_id": "1320533720856547328",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob How would one go about confirming malice in this case?",
+      "likes": 11,
+      "replies": 4,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 2187,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084646338780635269",
+      "created_at": "2026-08-04T14:23:12.000Z",
+      "username": "MrHodl",
+      "author_id": "370872518",
+      "conversation_id": "2084630840982831568",
+      "text": "@4moonsettler @jamesob @BikesandBitcoin This right here is why I don't think that was the case. What's more likely is that they wanted to make it look like it was more than one dev working at fucking coinkite.",
+      "likes": 9,
+      "replies": 3,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 115,
+      "refs": [
+        {
+          "id": "2084641833565515912",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084646489390010746",
+      "created_at": "2026-08-04T14:23:48.000Z",
+      "username": "decentmoney2009",
+      "author_id": "1403878561006587904",
+      "conversation_id": "2084630840982831568",
+      "text": "@raw_avocado @jamesob @BikesandBitcoin Why the unnecessary nym though?",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 110,
+      "refs": [
+        {
+          "id": "2084645021811155089",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084646588211667297",
+      "created_at": "2026-08-04T14:24:12.000Z",
+      "username": "jamesob",
+      "author_id": "14262432",
+      "conversation_id": "2084630840982831568",
+      "text": "@BikesandBitcoin I think not possible short of more evidence than we have now",
+      "likes": 37,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 2088,
+      "refs": [
+        {
+          "id": "2084646214373691456",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084646718373597444",
+      "created_at": "2026-08-04T14:24:43.000Z",
+      "username": "MrHodl",
+      "author_id": "370872518",
+      "conversation_id": "2084630840982831568",
+      "text": "@4moonsettler @jamesob @BikesandBitcoin (Which is honestly not that much better) /",
+      "likes": 4,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 49,
+      "refs": [
+        {
+          "id": "2084646338780635269",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084646756592082989",
+      "created_at": "2026-08-04T14:24:52.000Z",
+      "username": "udiWertheimer",
+      "author_id": "14527699",
+      "conversation_id": "2084630840982831568",
+      "text": "obviously after the exploit, every fishy data point just makes things look worse\n\nhowever in a world where this didn't get exploited (or the vulnerability didn't exist at all) we'd probably agree that the arbitrary appearance of highly sensitive code by an unknown anon who is secretly the CTO is a more reasonable event than an arbitrary appearance of highly sensitive code by an unknown anon who's actually a complete nobody and has no relationship with the CTO whatsoever?\n\nwho knows what kind of deranged tinfoil-hat motivation drove them to hide the coder's identity. i can think of some (stupid) reasons. regardless i think implementing critical code that was secretly authored by the CTO is *more responsible* than the alternative fact of implementing critical code authored by a complete nobody",
+      "likes": 8,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 1291,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_thread_fetch_full"
+    },
+    {
+      "id": "2084646880852816257",
+      "created_at": "2026-08-04T14:25:21.000Z",
+      "username": "BikesandBitcoin",
+      "author_id": "1320533720856547328",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob An unbelievable situation all around. Thanks for taking the time to try to unpack it.",
+      "likes": 9,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 765,
+      "refs": [
+        {
+          "id": "2084646588211667297",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084647461029572834",
+      "created_at": "2026-08-04T14:27:40.000Z",
+      "username": "jamesob",
+      "author_id": "14262432",
+      "conversation_id": "2084630840982831568",
+      "text": "@udiWertheimer @BikesandBitcoin But the fishy thing is: why pick and choose what to do under a nym? The whole firmware codebase is basically equally revealing/sensitive, so his identity was already tied to a highly security critical project",
+      "likes": 17,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 1033,
+      "refs": [
+        {
+          "id": "2084646756592082989",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084647846628794747",
+      "created_at": "2026-08-04T14:29:12.000Z",
+      "username": "udiWertheimer",
+      "author_id": "14527699",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin i don\u2019t know why. there could be an entire range of very dumb reasons\n\ni\u2019d argue that even if the reason was malicious this would be a very dumb way to do it",
+      "likes": 7,
+      "replies": 2,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 487,
+      "refs": [
+        {
+          "id": "2084647461029572834",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084648217069646012",
+      "created_at": "2026-08-04T14:30:40.000Z",
+      "username": "jamesob",
+      "author_id": "14262432",
+      "conversation_id": "2084630840982831568",
+      "text": "@udiWertheimer @BikesandBitcoin It's also *obviously* a bad look for the company to have your RNG/ECDSA interaction mediated by a complete no-one library, which is what flagged my attention in the first place",
+      "likes": 12,
+      "replies": 2,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 415,
+      "refs": [
+        {
+          "id": "2084647846628794747",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084648254936072500",
+      "created_at": "2026-08-04T14:30:49.000Z",
+      "username": "autocatalytics",
+      "author_id": "1408100226",
+      "conversation_id": "2084630840982831568",
+      "text": "@4moonsettler @jamesob @BikesandBitcoin Maybe they don\u2019t count on someone else finding it first. But I put low probability this was intentional personally but I don\u2019t have the best track record of good judgement in people \ud83d\ude02",
+      "likes": 2,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 23,
+      "refs": [
+        {
+          "id": "2084644534764368275",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084648548730061128",
+      "created_at": "2026-08-04T14:31:59.000Z",
+      "username": "4moonsettler",
+      "author_id": "1410540000920342529",
+      "conversation_id": "2084630840982831568",
+      "text": "@autocatalytics @jamesob @BikesandBitcoin i have been forced to eat my disbelief a few times too.",
+      "likes": 2,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 21,
+      "refs": [
+        {
+          "id": "2084648254936072500",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084648556535631912",
+      "created_at": "2026-08-04T14:32:01.000Z",
+      "username": "lonebulwark",
+      "author_id": "1815825629792854016",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @udiWertheimer @BikesandBitcoin what issue did you find and report?",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 16,
+      "refs": [
+        {
+          "id": "2084648217069646012",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084648769459482693",
+      "created_at": "2026-08-04T14:32:52.000Z",
+      "username": "PrinceHeat44402",
+      "author_id": "1636749218428624896",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin If you can read the code and understand the mistakes, this tweet looks like an admission of guilt. \n\nShocked it's still up. \n\nhttps://t.co/VwbKuUAMTN",
+      "likes": 5,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 388,
+      "refs": [
+        {
+          "id": "1447213375398846473",
+          "type": "quoted"
+        },
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084648955674018174",
+      "created_at": "2026-08-04T14:33:36.000Z",
+      "username": "TheDesignFlaw",
+      "author_id": "176639512",
+      "conversation_id": "2084630840982831568",
+      "text": "@MrHodl @4moonsettler @jamesob @BikesandBitcoin I think this is most likely incompetence too, but not because they haven't run. All you need to not have to run is plausible deniability. Because of that, I'm more open to this being intentional than you. I mean, being able to map this many CC user's history is a Fed's wet dream.",
+      "likes": 3,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 44,
+      "refs": [
+        {
+          "id": "2084646338780635269",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084649102881481088",
+      "created_at": "2026-08-04T14:34:11.000Z",
+      "username": "Conor21m",
+      "author_id": "132130721",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin you'd imagine they'd have patched this firmware on newer products if they knew the bug existed.",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 434,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084649171861004419",
+      "created_at": "2026-08-04T14:34:28.000Z",
+      "username": "udiWertheimer",
+      "author_id": "14527699",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin yes. you\u2019re absolutely right. it\u2019s diabolically stupid",
+      "likes": 7,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 426,
+      "refs": [
+        {
+          "id": "2084648217069646012",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084649694358040792",
+      "created_at": "2026-08-04T14:36:32.000Z",
+      "username": "zherbert",
+      "author_id": "58868301",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin Thank you for speaking up James",
+      "likes": 19,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 749,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084649788289531917",
+      "created_at": "2026-08-04T14:36:55.000Z",
+      "username": "alpacasw",
+      "author_id": "1959579402",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin Shrugging off things was par for the course for that team though. Well, shrugging off then attacking those who pointed it out.",
+      "likes": 9,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 404,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084649912654864395",
+      "created_at": "2026-08-04T14:37:24.000Z",
+      "username": "4moonsettler",
+      "author_id": "1410540000920342529",
+      "conversation_id": "2084630840982831568",
+      "text": "@TheDesignFlaw @MrHodl @jamesob @BikesandBitcoin \"All you need to not have to run is plausible deniability.\"\n\nit doesn't work out well, if you run it forward.\n\n\"I mean, being able to map this many CC user's history is a Fed's wet dream.\"\n\nif anything the incident showed CK had negligible market penetration.",
+      "likes": 1,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 26,
+      "refs": [
+        {
+          "id": "2084648955674018174",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084649994578022463",
+      "created_at": "2026-08-04T14:37:44.000Z",
+      "username": "masunobom",
+      "author_id": "1676233706510471168",
+      "conversation_id": "2084630840982831568",
+      "text": "@BikesandBitcoin That\u2019s Reddit programming https://t.co/YcGt1WG9U3",
+      "likes": 1,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 54,
+      "refs": [
+        {
+          "id": "2084636596314460474",
+          "type": "quoted"
+        },
+        {
+          "id": "2084630840982831568",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084650014207275198",
+      "created_at": "2026-08-04T14:37:48.000Z",
+      "username": "udiWertheimer",
+      "author_id": "14527699",
+      "conversation_id": "2084630840982831568",
+      "text": "i don't know peter at all, i don't believe i ever met him or spoke to him, but having had social experiences with some other permanently online folks who consider themselves \"cypherpunks\" i could imagine, as an example, that he told himself some deranged story where if he convinces the world that he is NOT the man writing the code for coldcard firmware, he is doing a service to customers because if people don't know it's him they won't try to \"evil maid\" his laptop when he goes to conferences\n\ni don't know. i'm fully aware of how absurd this sounds given the circumstances. but I've seen people like that doing very absurd things before so it doesn't strike me as completely out of the ordinary",
+      "likes": 7,
+      "replies": 0,
+      "reposts": 1,
+      "quotes": 0,
+      "views": 401,
+      "refs": [
+        {
+          "id": "2084649171861004419",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_thread_fetch_full"
+    },
+    {
+      "id": "2084650381179490485",
+      "created_at": "2026-08-04T14:39:16.000Z",
+      "username": "ChuckSRQ",
+      "author_id": "36441726",
+      "conversation_id": "2084630840982831568",
+      "text": "@BikesandBitcoin https://t.co/uErdCg2U61",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 19,
+      "refs": [
+        {
+          "id": "2084628592760164385",
+          "type": "quoted"
+        },
+        {
+          "id": "2084630840982831568",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084650470254227912",
+      "created_at": "2026-08-04T14:39:37.000Z",
+      "username": "BikesandBitcoin",
+      "author_id": "1320533720856547328",
+      "conversation_id": "2084630840982831568",
+      "text": "@masunobom You think BIP 110 is real.\nOpinion disregarded.",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 30,
+      "refs": [
+        {
+          "id": "2084649994578022463",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084650603041398875",
+      "created_at": "2026-08-04T14:40:09.000Z",
+      "username": "cici7869",
+      "author_id": "1940400462",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin Honestly, I really want to appreciate @Crypto_Sm1th who brought a lot of light to my life in a short period of time in crypto",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 1,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084651167905120694",
+      "created_at": "2026-08-04T14:42:24.000Z",
+      "username": "masunobom",
+      "author_id": "1676233706510471168",
+      "conversation_id": "2084630840982831568",
+      "text": "@BikesandBitcoin \ud83d\udc4d",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 14,
+      "refs": [
+        {
+          "id": "2084650470254227912",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084651189077934320",
+      "created_at": "2026-08-04T14:42:29.000Z",
+      "username": "umbrellaXBT",
+      "author_id": "1801668351837581312",
+      "conversation_id": "2084630840982831568",
+      "text": "@BikesandBitcoin @jamesob Here's my thought, their plan was to build a multi billion dollar giant company, they failed so they implemented a shit code at some point to rug when they judge there are enough weak wallet to drain. My bullshit detector is saying to me that's obvious",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 5,
+      "refs": [
+        {
+          "id": "2084646880852816257",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084651445597491526",
+      "created_at": "2026-08-04T14:43:30.000Z",
+      "username": "TheDesignFlaw",
+      "author_id": "176639512",
+      "conversation_id": "2084630840982831568",
+      "text": "@4moonsettler @MrHodl @jamesob @BikesandBitcoin I mean, let's just hypothesize for a moment that this trans pseudoanon dev is the Ray Epps of cold storage... no need to run. He/she is protected. Worked out fine for Ray. Negligible market share, but perfect ven diagram of the most privacy conscious bitoiners.",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 17,
+      "refs": [
+        {
+          "id": "2084649912654864395",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084652520446521696",
+      "created_at": "2026-08-04T14:47:46.000Z",
+      "username": "TheDesignFlaw",
+      "author_id": "176639512",
+      "conversation_id": "2084630840982831568",
+      "text": "@4moonsettler @MrHodl @jamesob @BikesandBitcoin Not to mention the coinjoin exposure. The history of those that transacted with these exposed seeds. The tax implications. The new social attacks on self custody this incentivizes. More people moving to exchanges.\n\nFeds are high-fiving over this whether involved or not.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 11,
+      "refs": [
+        {
+          "id": "2084651445597491526",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084652998567870576",
+      "created_at": "2026-08-04T14:49:40.000Z",
+      "username": "codywhitt16",
+      "author_id": "1524853720969773056",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin In any other line of work, an analogous error would draw immediate suspicion, maybe worse.",
+      "likes": 2,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 336,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084654540142338428",
+      "created_at": "2026-08-04T14:55:48.000Z",
+      "username": "369magicmanx",
+      "author_id": "1709197677513351168",
+      "conversation_id": "2084630840982831568",
+      "text": "@BikesandBitcoin @jamesob By confirming that random number generation was disabled and replaced by deterministic number generation.\n\nThat doesnt happen by accident. \n\nThere is no other reason for a silent fallback to deterministic number generation.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 17,
+      "refs": [
+        {
+          "id": "2084646214373691456",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084654686125301848",
+      "created_at": "2026-08-04T14:56:22.000Z",
+      "username": "TheBTCGame",
+      "author_id": "2858231220",
+      "conversation_id": "2084630840982831568",
+      "text": "@decentmoney2009 @raw_avocado @jamesob @BikesandBitcoin Decentralization theater?",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 21,
+      "refs": [
+        {
+          "id": "2084646489390010746",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084657156406522284",
+      "created_at": "2026-08-04T15:06:11.000Z",
+      "username": "jaybny",
+      "author_id": "18274684",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin something to look into for sure. great work so far btw",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 290,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084658371890942096",
+      "created_at": "2026-08-04T15:11:01.000Z",
+      "username": "GMONEYPEPE",
+      "author_id": "1647114184805744642",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin Mossad bud",
+      "likes": 2,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 175,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084659808519463034",
+      "created_at": "2026-08-04T15:16:44.000Z",
+      "username": "darosior",
+      "author_id": "1088099386742239234",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin He did commit the change to libngu under doc hex, so using a nym to commit to libngu itself doesn't seem to be hinting at a cover up?\n\nAt that point i still believe extreme negligence explains this better than malice.",
+      "likes": 15,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 1,
+      "views": 2519,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084660481088721324",
+      "created_at": "2026-08-04T15:19:24.000Z",
+      "username": "the_nassar",
+      "author_id": "222156207",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @bdionbtc @BikesandBitcoin To be fair, this proves negligence, stupidity, and ego from their part more than anything else. \nAnyway we, as Bitcoiners, are proud of you and thankful for auditing Bitcoin related stuff, thank you!",
+      "likes": 2,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 479,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084661620685382136",
+      "created_at": "2026-08-04T15:23:56.000Z",
+      "username": "jordanBTCplz",
+      "author_id": "964989705187217408",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin Even if they knew about this, what would they have done? I\u2019m not implying they handled it well, but realistically there was no way to save everyone.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 105,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084661793624924500",
+      "created_at": "2026-08-04T15:24:37.000Z",
+      "username": "darosior",
+      "author_id": "1088099386742239234",
+      "conversation_id": "2084661793624924500",
+      "text": "The nym usage could also be explained by simply trying to portray the project as more serious than it was (more eyes).\n\nAnd if you really wanted to introduce a backdoor, there would be less conspicuous ways of doing it.\n\nThe backdoor theory is not compelling at this point. https://t.co/1SJDdzYPHh",
+      "likes": 22,
+      "replies": 2,
+      "reposts": 1,
+      "quotes": 0,
+      "views": 1694,
+      "refs": [
+        {
+          "id": "2084659808519463034",
+          "type": "quoted"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084662133447438475",
+      "created_at": "2026-08-04T15:25:58.000Z",
+      "username": "charlosrossi",
+      "author_id": "1599239771523452929",
+      "conversation_id": "2084630840982831568",
+      "text": "@MrHodl @4moonsettler @jamesob @BikesandBitcoin Incompetence &gt; Malice",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 13,
+      "refs": [
+        {
+          "id": "2084646338780635269",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084663280350474420",
+      "created_at": "2026-08-04T15:30:31.000Z",
+      "username": "Bitcoin_phan",
+      "author_id": "912853606054924289",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin You think Switck was the CTO's nym?",
+      "likes": 1,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 641,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084664353253474593",
+      "created_at": "2026-08-04T15:34:47.000Z",
+      "username": "jamesob",
+      "author_id": "14262432",
+      "conversation_id": "2084630840982831568",
+      "text": "@Bitcoin_phan @BikesandBitcoin Confirmed",
+      "likes": 15,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 606,
+      "refs": [
+        {
+          "id": "2084663280350474420",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084664563761307852",
+      "created_at": "2026-08-04T15:35:37.000Z",
+      "username": "Bitcoin_phan",
+      "author_id": "912853606054924289",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin Confirmed that you think that or confirmed that that is true?!",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 226,
+      "refs": [
+        {
+          "id": "2084664353253474593",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084664614382444896",
+      "created_at": "2026-08-04T15:35:49.000Z",
+      "username": "jamesob",
+      "author_id": "14262432",
+      "conversation_id": "2084630840982831568",
+      "text": "@Bitcoin_phan @BikesandBitcoin True if you believe in cryptography",
+      "likes": 5,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 224,
+      "refs": [
+        {
+          "id": "2084664563761307852",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084665364944703871",
+      "created_at": "2026-08-04T15:38:48.000Z",
+      "username": "Bitcoin_phan",
+      "author_id": "912853606054924289",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin I said it already, but I'll say it again... Yikes. https://t.co/dxDKBHTRi9",
+      "likes": 2,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 297,
+      "refs": [
+        {
+          "id": "2084311024035918317",
+          "type": "quoted"
+        },
+        {
+          "id": "2084664614382444896",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084665900712820792",
+      "created_at": "2026-08-04T15:40:56.000Z",
+      "username": "mykopikid",
+      "author_id": "871301916071833601",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin Seems like the ethos of \"Don't Trust, Verify\" has been eroded over time from the bitcoin community.\n\nIs \"Adversarial\" thinking be eroded as well? Should be really attribute to stupidity what can be explained by malicious intent?",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 260,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084666514439848413",
+      "created_at": "2026-08-04T15:43:22.000Z",
+      "username": "jamesob",
+      "author_id": "14262432",
+      "conversation_id": "2084661793624924500",
+      "text": "If that were the intent, the obvious approach would be to have anons submit tests, not completely rework random number generation.\n\nHaving an anon mediate your RNG is a huge red flag and is what got me interested in the first place.\n\nYour theory doesn't make a lot of sense. It's possible, but why are you pushing it?",
+      "likes": 33,
+      "replies": 1,
+      "reposts": 1,
+      "quotes": 1,
+      "views": 653,
+      "refs": [
+        {
+          "id": "2084661793624924500",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_thread_fetch_full"
+    },
+    {
+      "id": "2084666793646268499",
+      "created_at": "2026-08-04T15:44:29.000Z",
+      "username": "belair6909",
+      "author_id": "65568390",
+      "conversation_id": "2084630840982831568",
+      "text": "@Bitcoin_phan @jamesob @BikesandBitcoin Ockham\u00b4s razor?",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 131,
+      "refs": [
+        {
+          "id": "2084665364944703871",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084667746248474742",
+      "created_at": "2026-08-04T15:48:16.000Z",
+      "username": "kimstrodamus",
+      "author_id": "1707958415052750848",
+      "conversation_id": "2084630840982831568",
+      "text": "@BikesandBitcoin I never understood this saying. Why shouldn\u2019t we attribute malice to careless incompetence like this?",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 15,
+      "refs": [
+        {
+          "id": "2084630840982831568",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084668646924656893",
+      "created_at": "2026-08-04T15:51:51.000Z",
+      "username": "darosior",
+      "author_id": "1088099386742239234",
+      "conversation_id": "2084661793624924500",
+      "text": "Not pushing anything. To be honest i'm worried suggesting there was a backdoor will spread like wildfire, because 1) people are still emotional after all the losses 2) our community often prefers believing conspiracy over more boring explanations. That seemed unfair and figured i'd offer counterpoints.  -- Just kidding, i'm 'pushing' it because Mossad paid me to of course!\n\nAgree with the red flags, but it's not news to anybody who actually had a look at their project. (That it was *that* broken definitely is news to me though, of course.)",
+      "likes": 11,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 161,
+      "refs": [
+        {
+          "id": "2084666514439848413",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_thread_fetch_full"
+    },
+    {
+      "id": "2084670512421302654",
+      "created_at": "2026-08-04T15:59:16.000Z",
+      "username": "GlennPudick",
+      "author_id": "981744799",
+      "conversation_id": "2084630840982831568",
+      "text": "@BikesandBitcoin @jamesob Last years Bitcoin dump. Who sold the top?",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 7,
+      "refs": [
+        {
+          "id": "2084646214373691456",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084671077746380842",
+      "created_at": "2026-08-04T16:01:30.000Z",
+      "username": "denverbitcoin",
+      "author_id": "1025967921472786432",
+      "conversation_id": "2084630840982831568",
+      "text": "@BikesandBitcoin Negligence and malice become indistinguishable when outcome is the realization of total loss.",
+      "likes": 2,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 28,
+      "refs": [
+        {
+          "id": "2084630840982831568",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084671579238154655",
+      "created_at": "2026-08-04T16:03:30.000Z",
+      "username": "BikesandBitcoin",
+      "author_id": "1320533720856547328",
+      "conversation_id": "2084630840982831568",
+      "text": "@kimstrodamus because you're far more likely to find stupid people than ill-intentioned people.",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 21,
+      "refs": [
+        {
+          "id": "2084667746248474742",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084671612331176428",
+      "created_at": "2026-08-04T16:03:38.000Z",
+      "username": "BikesandBitcoin",
+      "author_id": "1320533720856547328",
+      "conversation_id": "2084630840982831568",
+      "text": "@belair6909 @Bitcoin_phan @jamesob Hanlon's",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 135,
+      "refs": [
+        {
+          "id": "2084666793646268499",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084671852979601811",
+      "created_at": "2026-08-04T16:04:35.000Z",
+      "username": "inverse_hanlon",
+      "author_id": "280165610",
+      "conversation_id": "2084630840982831568",
+      "text": "@BikesandBitcoin @jamesob https://t.co/EDNTZ39d82 you don't get it",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 6,
+      "refs": [
+        {
+          "id": "2084629199361646984",
+          "type": "quoted"
+        },
+        {
+          "id": "2084646214373691456",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084672223827173561",
+      "created_at": "2026-08-04T16:06:04.000Z",
+      "username": "RRulehard",
+      "author_id": "1415453517347794948",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin https://t.co/Y2OFQxC2vU",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 73,
+      "refs": [
+        {
+          "id": "2084637313582141474",
+          "type": "quoted"
+        },
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084672752813060337",
+      "created_at": "2026-08-04T16:08:10.000Z",
+      "username": "kimstrodamus",
+      "author_id": "1707958415052750848",
+      "conversation_id": "2084630840982831568",
+      "text": "@BikesandBitcoin That doesn\u2019t really answer why we shouldn\u2019t attribute malice to morons. We can\u2019t just keep living as hostages by the bottom dregs of society.",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 2,
+      "refs": [
+        {
+          "id": "2084671579238154655",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084673484555243986",
+      "created_at": "2026-08-04T16:11:04.000Z",
+      "username": "BikesandBitcoin",
+      "author_id": "1320533720856547328",
+      "conversation_id": "2084630840982831568",
+      "text": "@kimstrodamus The point of a razor is to provide a heuristic,  a starting assumption to work from, not an answer.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 6,
+      "refs": [
+        {
+          "id": "2084672752813060337",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084673736524136858",
+      "created_at": "2026-08-04T16:12:04.000Z",
+      "username": "SimplestBTCBook",
+      "author_id": "1514429909959159814",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @bleighky @BikesandBitcoin Wait are you saying @switck was NVK? https://t.co/iW0Z8zhxcM https://t.co/GZqM1PhIEI",
+      "likes": 1,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 1,
+      "views": 269,
+      "refs": [
+        {
+          "id": "2084378090499891646",
+          "type": "quoted"
+        },
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084674008025378905",
+      "created_at": "2026-08-04T16:13:09.000Z",
+      "username": "JWWeatherman_",
+      "author_id": "920399561272594433",
+      "conversation_id": "2084661793624924500",
+      "text": "@darosior \ud83d\ude02",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 40,
+      "refs": [
+        {
+          "id": "2084661793624924500",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084675114248102297",
+      "created_at": "2026-08-04T16:17:33.000Z",
+      "username": "GeoffreyGardine",
+      "author_id": "1131655789",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin if the anon code submission was normal \n\nwhat other anon submissions are there ?",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 67,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084675663982739955",
+      "created_at": "2026-08-04T16:19:44.000Z",
+      "username": "xstoicunicornx",
+      "author_id": "1373891873178275840",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin seems like he publicly indicated that he is using a nym from a while back\n\nhttps://t.co/I4Hb7W7wtg",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 85,
+      "refs": [
+        {
+          "id": "1492521586728964098",
+          "type": "quoted"
+        },
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084675857105199602",
+      "created_at": "2026-08-04T16:20:30.000Z",
+      "username": "bleighky",
+      "author_id": "462430701",
+      "conversation_id": "2084630840982831568",
+      "text": "@SimplestBTCBook @jamesob @BikesandBitcoin @switck Or Peter Gray https://t.co/vFcI1YXeho",
+      "likes": 1,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 19,
+      "refs": [
+        {
+          "id": "2084536263109906591",
+          "type": "quoted"
+        },
+        {
+          "id": "2084673736524136858",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084675924100784335",
+      "created_at": "2026-08-04T16:20:46.000Z",
+      "username": "cornfordogs",
+      "author_id": "1418938301352927233",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @americanhodl8 @BikesandBitcoin So so so sad if true\n\nAnd let\u2019s just say this community believes in vigilante justice",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 67,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084676157677420653",
+      "created_at": "2026-08-04T16:21:42.000Z",
+      "username": "belair6909",
+      "author_id": "65568390",
+      "conversation_id": "2084630840982831568",
+      "text": "@BikesandBitcoin @Bitcoin_phan @jamesob I hope.. it is a convoluted way of proceeding",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 13,
+      "refs": [
+        {
+          "id": "2084671612331176428",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084678159018967069",
+      "created_at": "2026-08-04T16:29:39.000Z",
+      "username": "NicerInPerson",
+      "author_id": "15151905",
+      "conversation_id": "2084630840982831568",
+      "text": "@udiWertheimer @jamesob @BikesandBitcoin It\u2019s a dumb theory :\n\n&gt; Be super evil genius smuggling bugs intentionally into your company\u2019s product under a pseudonym\n&gt; Care so little about opsec that you sign your pseudonym\u2019s commits with your real identity \n\nwat",
+      "likes": 0,
+      "replies": 1,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 10,
+      "refs": [
+        {
+          "id": "2084647846628794747",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084678875058192776",
+      "created_at": "2026-08-04T16:32:29.000Z",
+      "username": "BridgeBTC",
+      "author_id": "900827556814790656",
+      "conversation_id": "2084630840982831568",
+      "text": "@4moonsettler @jamesob @BikesandBitcoin It's early yet",
+      "likes": 2,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 11,
+      "refs": [
+        {
+          "id": "2084641833565515912",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084680027782643986",
+      "created_at": "2026-08-04T16:37:04.000Z",
+      "username": "NicerInPerson",
+      "author_id": "15151905",
+      "conversation_id": "2084630840982831568",
+      "text": "@udiWertheimer @jamesob @BikesandBitcoin There are other explanations for publishing a security lib under a pseudonym (assuming that\u2019s even what happened).\n\nThe obvious one; to avoid any legal or reputational liability if third parties use it and harm themselves.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 5,
+      "refs": [
+        {
+          "id": "2084678159018967069",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084680179369296223",
+      "created_at": "2026-08-04T16:37:40.000Z",
+      "username": "willreeves",
+      "author_id": "374670855",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin https://t.co/YTYcGhWt8A https://t.co/uSqdMaYgmt",
+      "likes": 1,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 102,
+      "refs": [
+        {
+          "id": "1492521586728964098",
+          "type": "quoted"
+        },
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084680255349112963",
+      "created_at": "2026-08-04T16:37:59.000Z",
+      "username": "SimplestBTCBook",
+      "author_id": "1514429909959159814",
+      "conversation_id": "2084630840982831568",
+      "text": "@bleighky @jamesob @BikesandBitcoin @switck Ok yea hearing that now",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 2,
+      "refs": [
+        {
+          "id": "2084675857105199602",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084681651511087345",
+      "created_at": "2026-08-04T16:43:31.000Z",
+      "username": "GrauweDakGans",
+      "author_id": "1076560666457227266",
+      "conversation_id": "2084630840982831568",
+      "text": "@raw_avocado @jamesob @BikesandBitcoin Let me guess, you took the jab as well?",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 7,
+      "refs": [
+        {
+          "id": "2084645021811155089",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084681854041424153",
+      "created_at": "2026-08-04T16:44:20.000Z",
+      "username": "PeachFrog99",
+      "author_id": "1740129670736101376",
+      "conversation_id": "2084630840982831568",
+      "text": "@PrinceHeat44402 @jamesob @BikesandBitcoin so imagine that they were pumping this hardware wallet with all the influencers despite being a small low revenue company knowing the more high value bitcoiners they could get using the product were potential future victims.",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 2,
+      "refs": [
+        {
+          "id": "2084648769459482693",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084682204311941288",
+      "created_at": "2026-08-04T16:45:43.000Z",
+      "username": "deepchess_",
+      "author_id": "1773428305284210688",
+      "conversation_id": "2084630840982831568",
+      "text": "@jamesob @BikesandBitcoin Shady as **** isn't it?",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 9,
+      "refs": [
+        {
+          "id": "2084640418918957430",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084682731800174786",
+      "created_at": "2026-08-04T16:47:49.000Z",
+      "username": "PeachFrog99",
+      "author_id": "1740129670736101376",
+      "conversation_id": "2084630840982831568",
+      "text": "@4moonsettler @jamesob @BikesandBitcoin it would be better to stick around for plausible deniability. are odell, natalie, marty others going to be running as well? seems like if this was an inside job they have very suspicious behaviour as well. notice they didn't seem to lose their bitcoin !!",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 8,
+      "refs": [
+        {
+          "id": "2084641833565515912",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084683432487985172",
+      "created_at": "2026-08-04T16:50:36.000Z",
+      "username": "PeachFrog99",
+      "author_id": "1740129670736101376",
+      "conversation_id": "2084630840982831568",
+      "text": "@4moonsettler @jamesob @BikesandBitcoin i don't know if it's just the conspiracy tendencies of twitter, but i'm starting to get a bad feeling. there is more then a few weird occurences that point in one direction",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 3,
+      "refs": [
+        {
+          "id": "2084644534764368275",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    },
+    {
+      "id": "2084684394191581297",
+      "created_at": "2026-08-04T16:54:25.000Z",
+      "username": "btc_technica",
+      "author_id": "1633784238",
+      "conversation_id": "2084630840982831568",
+      "text": "@raw_avocado @jamesob @BikesandBitcoin Which post was this?",
+      "likes": 0,
+      "replies": 0,
+      "reposts": 0,
+      "quotes": 0,
+      "views": 0,
+      "refs": [
+        {
+          "id": "2084645021811155089",
+          "type": "replied_to"
+        }
+      ],
+      "text_source": "x_api_v2_search"
+    }
+  ]
+}

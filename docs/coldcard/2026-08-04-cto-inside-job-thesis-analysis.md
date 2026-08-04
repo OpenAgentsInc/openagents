@@ -3,11 +3,12 @@
 Status: **single consolidated document** (claims + full evidence log +
 scenarios + collection plans). Not a legal finding and not a public product claim.
 
-Last updated: 2026-08-04 (split reversed — all thesis material recombined here).
+Last updated: 2026-08-04 (E29 expanded to full 92-post Hanlon/darosior thread inventory).
 
 Related receipts (machine data, kept beside this file):
 
 - [`receipts/2026-08-04-switck-x-archive.json`](receipts/2026-08-04-switck-x-archive.json) — full `@switck` timeline dump (52 posts)
+- [`receipts/2026-08-04-darosior-bikes-hanlon-thread.json`](receipts/2026-08-04-darosior-bikes-hanlon-thread.json) — full E29 thread (92 posts: BikesandBitcoin Hanlon root + darosior QT conversation)
 
 ## Working thesis
 
@@ -895,13 +896,146 @@ Additional posts reinforce E24d:
 *this* researcher; strengthens "broken acknowledgment culture delayed more
 eyes on the code."
 
-### E29 — `@darosior` on nym usage vs backdoor theory (2026-08-04)
+### E29 — Hanlon / nym / backdoor thread: full inventory (2026-08-04)
 
-Credible technical voice (Antoine Poinsot) explicitly **down-weights intentional
-backdoor** while engaging the nym discourse.
+Credible technical voices debate **intentional backdoor** vs **extreme negligence**
+after `@jamesob` answers `@BikesandBitcoin`’s Hanlon-razor post. Anchor for this
+row is darosior’s QT
+[2084661793624924500](https://x.com/darosior/status/2084661793624924500); the
+**full reply tree** is inventoried so no material post in that conversation is
+left only in the API dump.
 
-**Primary:** [2084661793624924500](https://x.com/darosior/status/2084661793624924500)
-(2026-08-04T15:24:37Z, quote-tweet; ~22 likes at probe):
+**Machine receipt (all 92 posts + metrics):**
+[`receipts/2026-08-04-darosior-bikes-hanlon-thread.json`](receipts/2026-08-04-darosior-bikes-hanlon-thread.json)
+
+#### Scope of inventory
+
+| Scope | Conversation ID | Posts captured |
+| --- | --- | --- |
+| Root Hanlon post + all replies (incl. jamesob branch) | `2084630840982831568` | 88 |
+| darosior QT as its own conversation (QT + 3 replies) | `2084661793624924500` | 4 |
+| **Total unique posts** | | **92** |
+
+**Quoted parent outside the conversation set** (root quotes this; not counted in
+the 92): `@raw_avocado`
+[2084626833182458302](https://x.com/raw_avocado/status/2084626833182458302) —
+“please stop trying to make it sound that coinkite knew about this bug for
+likes… 99.99% chance they did not know.”
+
+**Probe window:** posts from **2026-08-04T13:21:37Z** through
+**2026-08-04T16:54:25Z** (UTC). Author mix (top): BikesandBitcoin 8, jamesob 8,
+4moonsettler 4, udiWertheimer 4, darosior 3, plus 50+ other accounts (full
+counts in receipt).
+
+**Label:** external discourse observation. Engagement counts are point-in-time
+probes, not frozen truth.
+
+#### Spine (material posts, full text where recovered)
+
+These are the load-bearing posts for claims A/B, S1–S3 vs S6, and the May 2025
+prior-notice claim. Shorter reactions live only in the full inventory table.
+
+**1. Root — `@BikesandBitcoin` Hanlon frame**
+[2084630840982831568](https://x.com/BikesandBitcoin/status/2084630840982831568)
+(~38 likes; quotes raw_avocado):
+
+> Never attribute to malice that which is adequately explained by stupidity.
+>
+> Alex is exactly right.
+>
+> Conspiracy theories will get you clicks, but you’re also blackpilling a
+> generation of bitcoiners.
+
+**2. Branch root — `@jamesob` nym + prior report**
+[2084640418918957430](https://x.com/jamesob/status/2084640418918957430)
+(~552–559 likes; highest engagement in tree):
+
+> It's looking worse and worse. Nvk was a friend of mine, but for the CTO to
+> commit the buggy code under a pseudonym has no reasonable explanation. He was
+> already publicly working on security critical software, so a 'nym would not
+> have bought him anything.
+>
+> I reported the possibility of the defect directly, by name, and it was
+> shrugged off.
+>
+> High potential that something isn't right.
+
+**Use:** steelman guilt (nym OPSEC + May-ish prior notice); does **not** alone
+prove theft. Cross-check with E12/E18 on prior notice.
+
+**3. jamesob confirms he reported before explosion**
+[2084643276859039955](https://x.com/jamesob/status/2084643276859039955) — reply
+to `@raw_avocado` “you told them…?”: **“Yes”** (~53 likes).
+
+**4. Malice confirmation bar — Bikes ↔ jamesob**
+- Bikes [2084646214373691456](https://x.com/BikesandBitcoin/status/2084646214373691456):
+  “How would one go about confirming malice in this case?”
+- jamesob [2084646588211667297](https://x.com/jamesob/status/2084646588211667297):
+  “I think not possible short of more evidence than we have now” (~37 likes).
+
+**Use:** even the loudest nym critic **refuses** a malice verdict from public
+data alone — aligns with this document’s A/B strong, C/D open.
+
+**5. “More than one dev” theater (non-theft nym theory)**
+`@MrHodl` [2084646338780635269](https://x.com/MrHodl/status/2084646338780635269)
+(~9 likes): more likely they wanted it to look like more than one Coinkite
+dev; follow-up “which is honestly not that much better.”
+
+**6. `@udiWertheimer` — secret-CTO more responsible than secret-nobody; dumb
+malice path; “evil maid” self-story**
+- [2084646756592082989](https://x.com/udiWertheimer/status/2084646756592082989):
+  post-exploit every fishy point looks worse; but secret-CTO-as-anon is still
+  more responsible than critical code from a true nobody; dumb reasons possible.
+- jamesob [2084647461029572834](https://x.com/jamesob/status/2084647461029572834):
+  “why pick and choose what to do under a nym?” whole firmware equally sensitive.
+- udi [2084647846628794747](https://x.com/udiWertheimer/status/2084647846628794747):
+  even if malicious, “a very dumb way to do it.”
+- jamesob [2084648217069646012](https://x.com/jamesob/status/2084648217069646012):
+  “RNG/ECDSA interaction mediated by a complete no-one library” is what flagged
+  attention first (~12 likes).
+- udi [2084650014207275198](https://x.com/udiWertheimer/status/2084650014207275198):
+  speculative “deranged” privacy/evil-maid conference story as non-theft nym
+  motive (explicitly labeled absurd-but-seen-before).
+
+**7. Grok bot in-thread (identity fact, non-verdict)**
+`@grok` [2084642145470763449](https://x.com/grok/status/2084642145470763449)
+reply to “why pseudonym?”: nyms routine; GPG on libngu matches Peter Gray /
+DocHex key under switck handle — same cryptographic claim as E3, still not a
+theft finding.
+
+**8. Retirement-attack official post re-cited as “admission”**
+`@PrinceHeat44402` [2084648769459482693](https://x.com/PrinceHeat44402/status/2084648769459482693)
+quotes the 2021 COLDCARDwallet “retirement attack” definition (E10) as looking
+like admission of guilt if you understand the mistakes. **Dual-use** with E10
+analysis — joke is real; heist inference speculative (claim F).
+
+**9. Culture / shrug claims**
+- `@alpacasw` [2084649788289531917](https://x.com/alpacasw/status/2084649788289531917):
+  shrugging off then attacking reporters “par for the course.”
+- `@zherbert` [2084649694358040792](https://x.com/zherbert/status/2084649694358040792):
+  thanks jamesob for speaking up.
+- `@raw_avocado` [2084645021811155089](https://x.com/raw_avocado/status/2084645021811155089):
+  still “gross incompetence and vanity” possible (~25 likes).
+
+**10. Flight-game-theory branch (not evidence of theft)**
+`@4moonsettler` and replies debate “if intentional why not run?” vs plausible
+deniability / stick-around (`@TheDesignFlaw`, `@autocatalytics`, later
+`@PeachFrog99` influencer-complicity speculation). **Speculation only** — no
+proceeds link.
+
+**11. darosior #1 — extreme negligence > malice**
+[2084659808519463034](https://x.com/darosior/status/2084659808519463034)
+(~15 likes; reply to jamesob):
+
+> He did commit the change to libngu under doc hex, so using a nym to commit to
+> libngu itself doesn't seem to be hinting at a cover up?
+>
+> At that point i still believe **extreme negligence explains this better than
+> malice.**
+
+**12. darosior #2 (anchor QT) — backdoor not compelling**
+[2084661793624924500](https://x.com/darosior/status/2084661793624924500)
+(2026-08-04T15:24:37Z, ~22 likes; quotes #11):
 
 > The nym usage could also be explained by simply trying to portray the project
 > as more serious than it was (more eyes).
@@ -911,28 +1045,184 @@ backdoor** while engaging the nym discourse.
 >
 > **The backdoor theory is not compelling at this point.**
 
-**Quoted prior in same thread family:**
-[2084659808519463034](https://x.com/darosior/status/2084659808519463034)
-(reply to jamesob / BikesandBitcoin):
+**13. jamesob reply to darosior QT — “why push non-backdoor?”**
+[2084666514439848413](https://x.com/jamesob/status/2084666514439848413)
+(~33 likes):
 
-> He did commit the change to libngu under doc hex, so using a nym to commit to
-> libngu itself doesn't seem to be hinting at a cover up?
+> If that were the intent, the obvious approach would be to have anons submit
+> tests, not completely rework random number generation.
 >
-> At that point i still believe **extreme negligence explains this better than
-> malice.**
+> Having an anon mediate your RNG is a huge red flag and is what got me
+> interested in the first place.
+>
+> Your theory doesn't make a lot of sense. It's possible, but why are you
+> pushing it?
 
-**Use in this log:**
+**14. darosior #3 — wildfire / conspiracy preference; red flags still real**
+[2084668646924656893](https://x.com/darosior/status/2084668646924656893)
+(~11 likes):
 
-| Point | Bearing |
+> Not pushing anything. To be honest i'm worried suggesting there was a backdoor
+> will spread like wildfire, because 1) people are still emotional after all the
+> losses 2) our community often prefers believing conspiracy over more boring
+> explanations. That seemed unfair and figured i'd offer counterpoints.  -- Just
+> kidding, i'm 'pushing' it because Mossad paid me to of course!
+>
+> Agree with the red flags, but it's not news to anybody who actually had a look
+> at their project. (That it was *that* broken definitely is news to me though,
+> of course.)
+
+**15. Identity confirmation sub-thread**
+- `@Bitcoin_phan` asks if switck was CTO’s nym → jamesob “Confirmed” → “true if
+  you believe in cryptography”
+  ([2084664353253474593](https://x.com/jamesob/status/2084664353253474593),
+  [2084664614382444896](https://x.com/jamesob/status/2084664614382444896)).
+- `@SimplestBTCBook` mishears as NVK; `@bleighky` corrects to Peter Gray.
+- `@xstoicunicornx` / `@willreeves` link older public nym self-indication posts
+  (corroborative color for dual identity, not new crypto).
+
+**16. OPSEC irony (non-guilt steelman)**
+`@NicerInPerson`
+[2084678159018967069](https://x.com/NicerInPerson/status/2084678159018967069):
+evil-genius plant under nym while signing with real identity is “dumb theory”;
+follow-up [2084680027782643986](https://x.com/NicerInPerson/status/2084680027782643986)
+offers liability-insulation as non-theft nym motive for a security lib.
+
+**17. Hanlon defense close**
+Bikes continues: more likely find stupid people than ill-intentioned; razor is a
+**starting heuristic**, not an answer
+([2084671579238154655](https://x.com/BikesandBitcoin/status/2084671579238154655),
+[2084673484555243986](https://x.com/BikesandBitcoin/status/2084673484555243986)).
+`@denverbitcoin`: negligence and malice “become indistinguishable” under total
+loss ([2084671077746380842](https://x.com/denverbitcoin/status/2084671077746380842)).
+
+**18. Low-signal QT replies**
+`@JWWeatherman_` [2084674008025378905](https://x.com/JWWeatherman_/status/2084674008025378905)
+only “😂” under the darosior QT — inventoried for completeness, no analytical weight.
+
+#### Full chronological inventory (all 92 posts)
+
+One line per post. Full text + metrics in the JSON receipt. Times UTC on
+2026-08-04.
+
+| # | Time | Author | Post | ♥ | Summary |
+| --- | --- | --- | --- | ---: | --- |
+| 1 | 13:21:37 | `@BikesandBitcoin` | [2084630840982831568](https://x.com/BikesandBitcoin/status/2084630840982831568) | 38 | Never attribute to malice that which is adequately explained by stupidity.   Alex is exactly right.  Conspiracy theories will get you clicks, but you’re also... |
+| 2 | 13:27:17 | `@jacklesser_` | [2084632266072809853](https://x.com/jacklesser_/status/2084632266072809853) | 1 | @BikesandBitcoin Unfortunately many are already too blackpilled to ever come back.   But agree nonetheless. Onwards |
+| 3 | 13:41:23 | `@JustaLillyBit` | [2084635815087419422](https://x.com/JustaLillyBit/status/2084635815087419422) | 0 | @BikesandBitcoin Do you think Satoshi might have been a conspiracy theorist? |
+| 4 | 13:59:34 | `@BikesandBitcoin` | [2084640388703453213](https://x.com/BikesandBitcoin/status/2084640388703453213) | 0 | @JustaLillyBit No. If they were they never would have built anything. |
+| 5 | 13:59:41 | `@jamesob` | [2084640418918957430](https://x.com/jamesob/status/2084640418918957430) | 552 | It's looking worse and worse. Nvk was a friend of mine, but for the CTO to commit the buggy code under a pseudonym has no reasonable explanation. He was alre... |
+| 6 | 14:03:06 | `@noD7R` | [2084641279879569455](https://x.com/noD7R/status/2084641279879569455) | 2 | @jamesob @BikesandBitcoin some layers of plausible deniability hiding something shadier? |
+| 7 | 14:05:07 | `@raw_avocado` | [2084641789080694827](https://x.com/raw_avocado/status/2084641789080694827) | 27 | @jamesob @BikesandBitcoin Wait, you told them there may be a bug, like before this exploded? |
+| 8 | 14:05:18 | `@4moonsettler` | [2084641833565515912](https://x.com/4moonsettler/status/2084641833565515912) | 7 | @jamesob @BikesandBitcoin if it was intentional shouldn't they just pull the plug on everything and ran? face change, sex change, new id? |
+| 9 | 14:05:44 | `@BitcoinBombz` | [2084641943321973193](https://x.com/BitcoinBombz/status/2084641943321973193) | 0 | @jamesob @BikesandBitcoin @grok why would the CTO commit this buggy code under a pseudonym? |
+| 10 | 14:06:32 | `@grok` | [2084642145470763449](https://x.com/grok/status/2084642145470763449) | 0 | @BitcoinBombz @jamesob @BikesandBitcoin Pseudonyms are routine in Bitcoin/cypherpunk work for privacy or project separation. GPG signatures on the libngu com... |
+| 11 | 14:11:02 | `@jamesob` | [2084643276859039955](https://x.com/jamesob/status/2084643276859039955) | 53 | @raw_avocado @BikesandBitcoin Yes |
+| 12 | 14:14:58 | `@mcchiperson77` | [2084644264970006653](https://x.com/mcchiperson77/status/2084644264970006653) | 2 | @jamesob @raw_avocado @BikesandBitcoin I'm starting to piece things together as well.  I'm not technical like you all, but I think it's possible they knew th... |
+| 13 | 14:16:02 | `@4moonsettler` | [2084644534764368275](https://x.com/4moonsettler/status/2084644534764368275) | 1 | @jamesob @BikesandBitcoin what's the game theory of sticking around like a deer caught in headlight?  if you prepared for a rug for years you have thought th... |
+| 14 | 14:16:24 | `@bendbotbtc` | [2084644625701118347](https://x.com/bendbotbtc/status/2084644625701118347) | 2 | @jamesob @BikesandBitcoin Thank you for your candor.  It can't be easy. |
+| 15 | 14:16:28 | `@osborne_sam` | [2084644643808092409](https://x.com/osborne_sam/status/2084644643808092409) | 1 | @jamesob @BikesandBitcoin I do not want for likes I yearn for truth the internet warps it source code is one avenue to discover truth archive everything |
+| 16 | 14:17:58 | `@raw_avocado` | [2084645021811155089](https://x.com/raw_avocado/status/2084645021811155089) | 25 | @jamesob @BikesandBitcoin Just saw your post, that is INSANE!!!!  But to be fair, I still think this could be explained by gross incompetence and vanity, fwiw. |
+| 17 | 14:18:33 | `@osborne_sam` | [2084645169459286267](https://x.com/osborne_sam/status/2084645169459286267) | 1 | @jamesob @BikesandBitcoin when did verify become yet a slogan |
+| 18 | 14:22:43 | `@BikesandBitcoin` | [2084646214373691456](https://x.com/BikesandBitcoin/status/2084646214373691456) | 11 | @jamesob How would one go about confirming malice in this case? |
+| 19 | 14:23:12 | `@MrHodl` | [2084646338780635269](https://x.com/MrHodl/status/2084646338780635269) | 9 | @4moonsettler @jamesob @BikesandBitcoin This right here is why I don't think that was the case. What's more likely is that they wanted to make it look like i... |
+| 20 | 14:23:48 | `@decentmoney2009` | [2084646489390010746](https://x.com/decentmoney2009/status/2084646489390010746) | 0 | @raw_avocado @jamesob @BikesandBitcoin Why the unnecessary nym though? |
+| 21 | 14:24:12 | `@jamesob` | [2084646588211667297](https://x.com/jamesob/status/2084646588211667297) | 37 | @BikesandBitcoin I think not possible short of more evidence than we have now |
+| 22 | 14:24:43 | `@MrHodl` | [2084646718373597444](https://x.com/MrHodl/status/2084646718373597444) | 4 | @4moonsettler @jamesob @BikesandBitcoin (Which is honestly not that much better) / |
+| 23 | 14:24:52 | `@udiWertheimer` | [2084646756592082989](https://x.com/udiWertheimer/status/2084646756592082989) | 8 | obviously after the exploit, every fishy data point just makes things look worse  however in a world where this didn't get exploited (or the vulnerability di... |
+| 24 | 14:25:21 | `@BikesandBitcoin` | [2084646880852816257](https://x.com/BikesandBitcoin/status/2084646880852816257) | 9 | @jamesob An unbelievable situation all around. Thanks for taking the time to try to unpack it. |
+| 25 | 14:27:40 | `@jamesob` | [2084647461029572834](https://x.com/jamesob/status/2084647461029572834) | 17 | @udiWertheimer @BikesandBitcoin But the fishy thing is: why pick and choose what to do under a nym? The whole firmware codebase is basically equally revealin... |
+| 26 | 14:29:12 | `@udiWertheimer` | [2084647846628794747](https://x.com/udiWertheimer/status/2084647846628794747) | 7 | @jamesob @BikesandBitcoin i don’t know why. there could be an entire range of very dumb reasons  i’d argue that even if the reason was malicious this would b... |
+| 27 | 14:30:40 | `@jamesob` | [2084648217069646012](https://x.com/jamesob/status/2084648217069646012) | 12 | @udiWertheimer @BikesandBitcoin It's also *obviously* a bad look for the company to have your RNG/ECDSA interaction mediated by a complete no-one library, wh... |
+| 28 | 14:30:49 | `@autocatalytics` | [2084648254936072500](https://x.com/autocatalytics/status/2084648254936072500) | 2 | @4moonsettler @jamesob @BikesandBitcoin Maybe they don’t count on someone else finding it first. But I put low probability this was intentional personally bu... |
+| 29 | 14:31:59 | `@4moonsettler` | [2084648548730061128](https://x.com/4moonsettler/status/2084648548730061128) | 2 | @autocatalytics @jamesob @BikesandBitcoin i have been forced to eat my disbelief a few times too. |
+| 30 | 14:32:01 | `@lonebulwark` | [2084648556535631912](https://x.com/lonebulwark/status/2084648556535631912) | 0 | @jamesob @udiWertheimer @BikesandBitcoin what issue did you find and report? |
+| 31 | 14:32:52 | `@PrinceHeat44402` | [2084648769459482693](https://x.com/PrinceHeat44402/status/2084648769459482693) | 5 | @jamesob @BikesandBitcoin If you can read the code and understand the mistakes, this tweet looks like an admission of guilt.   Shocked it's still up.   https... |
+| 32 | 14:33:36 | `@TheDesignFlaw` | [2084648955674018174](https://x.com/TheDesignFlaw/status/2084648955674018174) | 3 | @MrHodl @4moonsettler @jamesob @BikesandBitcoin I think this is most likely incompetence too, but not because they haven't run. All you need to not have to r... |
+| 33 | 14:34:11 | `@Conor21m` | [2084649102881481088](https://x.com/Conor21m/status/2084649102881481088) | 1 | @jamesob @BikesandBitcoin you'd imagine they'd have patched this firmware on newer products if they knew the bug existed. |
+| 34 | 14:34:28 | `@udiWertheimer` | [2084649171861004419](https://x.com/udiWertheimer/status/2084649171861004419) | 7 | @jamesob @BikesandBitcoin yes. you’re absolutely right. it’s diabolically stupid |
+| 35 | 14:36:32 | `@zherbert` | [2084649694358040792](https://x.com/zherbert/status/2084649694358040792) | 19 | @jamesob @BikesandBitcoin Thank you for speaking up James |
+| 36 | 14:36:55 | `@alpacasw` | [2084649788289531917](https://x.com/alpacasw/status/2084649788289531917) | 9 | @jamesob @BikesandBitcoin Shrugging off things was par for the course for that team though. Well, shrugging off then attacking those who pointed it out. |
+| 37 | 14:37:24 | `@4moonsettler` | [2084649912654864395](https://x.com/4moonsettler/status/2084649912654864395) | 1 | @TheDesignFlaw @MrHodl @jamesob @BikesandBitcoin "All you need to not have to run is plausible deniability."  it doesn't work out well, if you run it forward... |
+| 38 | 14:37:44 | `@masunobom` | [2084649994578022463](https://x.com/masunobom/status/2084649994578022463) | 1 | @BikesandBitcoin That’s Reddit programming https://t.co/YcGt1WG9U3 |
+| 39 | 14:37:48 | `@udiWertheimer` | [2084650014207275198](https://x.com/udiWertheimer/status/2084650014207275198) | 7 | i don't know peter at all, i don't believe i ever met him or spoke to him, but having had social experiences with some other permanently online folks who con... |
+| 40 | 14:39:16 | `@ChuckSRQ` | [2084650381179490485](https://x.com/ChuckSRQ/status/2084650381179490485) | 0 | @BikesandBitcoin https://t.co/uErdCg2U61 |
+| 41 | 14:39:37 | `@BikesandBitcoin` | [2084650470254227912](https://x.com/BikesandBitcoin/status/2084650470254227912) | 0 | @masunobom You think BIP 110 is real. Opinion disregarded. |
+| 42 | 14:40:09 | `@cici7869` | [2084650603041398875](https://x.com/cici7869/status/2084650603041398875) | 0 | @jamesob @BikesandBitcoin Honestly, I really want to appreciate @Crypto_Sm1th who brought a lot of light to my life in a short period of time in crypto |
+| 43 | 14:42:24 | `@masunobom` | [2084651167905120694](https://x.com/masunobom/status/2084651167905120694) | 0 | @BikesandBitcoin 👍 |
+| 44 | 14:42:29 | `@umbrellaXBT` | [2084651189077934320](https://x.com/umbrellaXBT/status/2084651189077934320) | 0 | @BikesandBitcoin @jamesob Here's my thought, their plan was to build a multi billion dollar giant company, they failed so they implemented a shit code at som... |
+| 45 | 14:43:30 | `@TheDesignFlaw` | [2084651445597491526](https://x.com/TheDesignFlaw/status/2084651445597491526) | 0 | @4moonsettler @MrHodl @jamesob @BikesandBitcoin I mean, let's just hypothesize for a moment that this trans pseudoanon dev is the Ray Epps of cold storage...... |
+| 46 | 14:47:46 | `@TheDesignFlaw` | [2084652520446521696](https://x.com/TheDesignFlaw/status/2084652520446521696) | 0 | @4moonsettler @MrHodl @jamesob @BikesandBitcoin Not to mention the coinjoin exposure. The history of those that transacted with these exposed seeds. The tax ... |
+| 47 | 14:49:40 | `@codywhitt16` | [2084652998567870576](https://x.com/codywhitt16/status/2084652998567870576) | 2 | @jamesob @BikesandBitcoin In any other line of work, an analogous error would draw immediate suspicion, maybe worse. |
+| 48 | 14:55:48 | `@369magicmanx` | [2084654540142338428](https://x.com/369magicmanx/status/2084654540142338428) | 0 | @BikesandBitcoin @jamesob By confirming that random number generation was disabled and replaced by deterministic number generation.  That doesnt happen by ac... |
+| 49 | 14:56:22 | `@TheBTCGame` | [2084654686125301848](https://x.com/TheBTCGame/status/2084654686125301848) | 1 | @decentmoney2009 @raw_avocado @jamesob @BikesandBitcoin Decentralization theater? |
+| 50 | 15:06:11 | `@jaybny` | [2084657156406522284](https://x.com/jaybny/status/2084657156406522284) | 1 | @jamesob @BikesandBitcoin something to look into for sure. great work so far btw |
+| 51 | 15:11:01 | `@GMONEYPEPE` | [2084658371890942096](https://x.com/GMONEYPEPE/status/2084658371890942096) | 2 | @jamesob @BikesandBitcoin Mossad bud |
+| 52 | 15:16:44 | `@darosior` | [2084659808519463034](https://x.com/darosior/status/2084659808519463034) | 15 | @jamesob @BikesandBitcoin He did commit the change to libngu under doc hex, so using a nym to commit to libngu itself doesn't seem to be hinting at a cover u... |
+| 53 | 15:19:24 | `@the_nassar` | [2084660481088721324](https://x.com/the_nassar/status/2084660481088721324) | 2 | @jamesob @bdionbtc @BikesandBitcoin To be fair, this proves negligence, stupidity, and ego from their part more than anything else.  Anyway we, as Bitcoiners... |
+| 54 | 15:23:56 | `@jordanBTCplz` | [2084661620685382136](https://x.com/jordanBTCplz/status/2084661620685382136) | 0 | @jamesob @BikesandBitcoin Even if they knew about this, what would they have done? I’m not implying they handled it well, but realistically there was no way ... |
+| 55 | 15:24:37 | `@darosior` | [2084661793624924500](https://x.com/darosior/status/2084661793624924500) | 22 | The nym usage could also be explained by simply trying to portray the project as more serious than it was (more eyes).  And if you really wanted to introduce... |
+| 56 | 15:25:58 | `@charlosrossi` | [2084662133447438475](https://x.com/charlosrossi/status/2084662133447438475) | 0 | @MrHodl @4moonsettler @jamesob @BikesandBitcoin Incompetence &gt; Malice |
+| 57 | 15:30:31 | `@Bitcoin_phan` | [2084663280350474420](https://x.com/Bitcoin_phan/status/2084663280350474420) | 1 | @jamesob @BikesandBitcoin You think Switck was the CTO's nym? |
+| 58 | 15:34:47 | `@jamesob` | [2084664353253474593](https://x.com/jamesob/status/2084664353253474593) | 15 | @Bitcoin_phan @BikesandBitcoin Confirmed |
+| 59 | 15:35:37 | `@Bitcoin_phan` | [2084664563761307852](https://x.com/Bitcoin_phan/status/2084664563761307852) | 0 | @jamesob @BikesandBitcoin Confirmed that you think that or confirmed that that is true?! |
+| 60 | 15:35:49 | `@jamesob` | [2084664614382444896](https://x.com/jamesob/status/2084664614382444896) | 5 | @Bitcoin_phan @BikesandBitcoin True if you believe in cryptography |
+| 61 | 15:38:48 | `@Bitcoin_phan` | [2084665364944703871](https://x.com/Bitcoin_phan/status/2084665364944703871) | 2 | @jamesob @BikesandBitcoin I said it already, but I'll say it again... Yikes. https://t.co/dxDKBHTRi9 |
+| 62 | 15:40:56 | `@mykopikid` | [2084665900712820792](https://x.com/mykopikid/status/2084665900712820792) | 0 | @jamesob @BikesandBitcoin Seems like the ethos of "Don't Trust, Verify" has been eroded over time from the bitcoin community.  Is "Adversarial" thinking be e... |
+| 63 | 15:43:22 | `@jamesob` | [2084666514439848413](https://x.com/jamesob/status/2084666514439848413) | 33 | If that were the intent, the obvious approach would be to have anons submit tests, not completely rework random number generation.  Having an anon mediate yo... |
+| 64 | 15:44:29 | `@belair6909` | [2084666793646268499](https://x.com/belair6909/status/2084666793646268499) | 0 | @Bitcoin_phan @jamesob @BikesandBitcoin Ockham´s razor? |
+| 65 | 15:48:16 | `@kimstrodamus` | [2084667746248474742](https://x.com/kimstrodamus/status/2084667746248474742) | 0 | @BikesandBitcoin I never understood this saying. Why shouldn’t we attribute malice to careless incompetence like this? |
+| 66 | 15:51:51 | `@darosior` | [2084668646924656893](https://x.com/darosior/status/2084668646924656893) | 11 | Not pushing anything. To be honest i'm worried suggesting there was a backdoor will spread like wildfire, because 1) people are still emotional after all the... |
+| 67 | 15:59:16 | `@GlennPudick` | [2084670512421302654](https://x.com/GlennPudick/status/2084670512421302654) | 0 | @BikesandBitcoin @jamesob Last years Bitcoin dump. Who sold the top? |
+| 68 | 16:01:30 | `@denverbitcoin` | [2084671077746380842](https://x.com/denverbitcoin/status/2084671077746380842) | 2 | @BikesandBitcoin Negligence and malice become indistinguishable when outcome is the realization of total loss. |
+| 69 | 16:03:30 | `@BikesandBitcoin` | [2084671579238154655](https://x.com/BikesandBitcoin/status/2084671579238154655) | 0 | @kimstrodamus because you're far more likely to find stupid people than ill-intentioned people. |
+| 70 | 16:03:38 | `@BikesandBitcoin` | [2084671612331176428](https://x.com/BikesandBitcoin/status/2084671612331176428) | 0 | @belair6909 @Bitcoin_phan @jamesob Hanlon's |
+| 71 | 16:04:35 | `@inverse_hanlon` | [2084671852979601811](https://x.com/inverse_hanlon/status/2084671852979601811) | 1 | @BikesandBitcoin @jamesob https://t.co/EDNTZ39d82 you don't get it |
+| 72 | 16:06:04 | `@RRulehard` | [2084672223827173561](https://x.com/RRulehard/status/2084672223827173561) | 0 | @jamesob @BikesandBitcoin https://t.co/Y2OFQxC2vU |
+| 73 | 16:08:10 | `@kimstrodamus` | [2084672752813060337](https://x.com/kimstrodamus/status/2084672752813060337) | 0 | @BikesandBitcoin That doesn’t really answer why we shouldn’t attribute malice to morons. We can’t just keep living as hostages by the bottom dregs of society. |
+| 74 | 16:11:04 | `@BikesandBitcoin` | [2084673484555243986](https://x.com/BikesandBitcoin/status/2084673484555243986) | 0 | @kimstrodamus The point of a razor is to provide a heuristic,  a starting assumption to work from, not an answer. |
+| 75 | 16:12:04 | `@SimplestBTCBook` | [2084673736524136858](https://x.com/SimplestBTCBook/status/2084673736524136858) | 1 | @jamesob @bleighky @BikesandBitcoin Wait are you saying @switck was NVK? https://t.co/iW0Z8zhxcM https://t.co/GZqM1PhIEI |
+| 76 | 16:13:09 | `@JWWeatherman_` | [2084674008025378905](https://x.com/JWWeatherman_/status/2084674008025378905) | 0 | @darosior 😂 |
+| 77 | 16:17:33 | `@GeoffreyGardine` | [2084675114248102297](https://x.com/GeoffreyGardine/status/2084675114248102297) | 0 | @jamesob @BikesandBitcoin if the anon code submission was normal   what other anon submissions are there ? |
+| 78 | 16:19:44 | `@xstoicunicornx` | [2084675663982739955](https://x.com/xstoicunicornx/status/2084675663982739955) | 0 | @jamesob @BikesandBitcoin seems like he publicly indicated that he is using a nym from a while back  https://t.co/I4Hb7W7wtg |
+| 79 | 16:20:30 | `@bleighky` | [2084675857105199602](https://x.com/bleighky/status/2084675857105199602) | 1 | @SimplestBTCBook @jamesob @BikesandBitcoin @switck Or Peter Gray https://t.co/vFcI1YXeho |
+| 80 | 16:20:46 | `@cornfordogs` | [2084675924100784335](https://x.com/cornfordogs/status/2084675924100784335) | 0 | @jamesob @americanhodl8 @BikesandBitcoin So so so sad if true  And let’s just say this community believes in vigilante justice |
+| 81 | 16:21:42 | `@belair6909` | [2084676157677420653](https://x.com/belair6909/status/2084676157677420653) | 0 | @BikesandBitcoin @Bitcoin_phan @jamesob I hope.. it is a convoluted way of proceeding |
+| 82 | 16:29:39 | `@NicerInPerson` | [2084678159018967069](https://x.com/NicerInPerson/status/2084678159018967069) | 0 | @udiWertheimer @jamesob @BikesandBitcoin It’s a dumb theory :  &gt; Be super evil genius smuggling bugs intentionally into your company’s product under a pse... |
+| 83 | 16:32:29 | `@BridgeBTC` | [2084678875058192776](https://x.com/BridgeBTC/status/2084678875058192776) | 2 | @4moonsettler @jamesob @BikesandBitcoin It's early yet |
+| 84 | 16:37:04 | `@NicerInPerson` | [2084680027782643986](https://x.com/NicerInPerson/status/2084680027782643986) | 0 | @udiWertheimer @jamesob @BikesandBitcoin There are other explanations for publishing a security lib under a pseudonym (assuming that’s even what happened).  ... |
+| 85 | 16:37:40 | `@willreeves` | [2084680179369296223](https://x.com/willreeves/status/2084680179369296223) | 1 | @jamesob @BikesandBitcoin https://t.co/YTYcGhWt8A https://t.co/uSqdMaYgmt |
+| 86 | 16:37:59 | `@SimplestBTCBook` | [2084680255349112963](https://x.com/SimplestBTCBook/status/2084680255349112963) | 0 | @bleighky @jamesob @BikesandBitcoin @switck Ok yea hearing that now |
+| 87 | 16:43:31 | `@GrauweDakGans` | [2084681651511087345](https://x.com/GrauweDakGans/status/2084681651511087345) | 0 | @raw_avocado @jamesob @BikesandBitcoin Let me guess, you took the jab as well? |
+| 88 | 16:44:20 | `@PeachFrog99` | [2084681854041424153](https://x.com/PeachFrog99/status/2084681854041424153) | 0 | @PrinceHeat44402 @jamesob @BikesandBitcoin so imagine that they were pumping this hardware wallet with all the influencers despite being a small low revenue ... |
+| 89 | 16:45:43 | `@deepchess_` | [2084682204311941288](https://x.com/deepchess_/status/2084682204311941288) | 0 | @jamesob @BikesandBitcoin Shady as **** isn't it? |
+| 90 | 16:47:49 | `@PeachFrog99` | [2084682731800174786](https://x.com/PeachFrog99/status/2084682731800174786) | 0 | @4moonsettler @jamesob @BikesandBitcoin it would be better to stick around for plausible deniability. are odell, natalie, marty others going to be running as... |
+| 91 | 16:50:36 | `@PeachFrog99` | [2084683432487985172](https://x.com/PeachFrog99/status/2084683432487985172) | 0 | @4moonsettler @jamesob @BikesandBitcoin i don't know if it's just the conspiracy tendencies of twitter, but i'm starting to get a bad feeling. there is more ... |
+| 92 | 16:54:25 | `@btc_technica` | [2084684394191581297](https://x.com/btc_technica/status/2084684394191581297) | 0 | @raw_avocado @jamesob @BikesandBitcoin Which post was this? |
+
+#### Bearing on this log
+
+| Point from thread | Bearing |
 | --- | --- |
-| Nym as “more eyes” / seriousness theater | Alternative to “nym = cover-up for theft” (S3 without S6) |
-| Real backdoors would be stealthier than public open-source composition bugs | Pressures S6 (intentional plant) |
-| Real-name DocHex commits on libngu alongside nym | Cuts pure burner-cover story; aligns with dual-authorship evidence E3–E5 |
-| Explicit “not compelling” on backdoor | Strong **non-guilt-of-theft** technical steelman (not a legal finding) |
+| Nym as “more eyes” / seriousness theater (darosior #2) | Alternative to “nym = cover-up for theft” (S3 without S6) |
+| Real backdoors would be stealthier (darosior #2) | Pressures S6 (intentional plant) |
+| Real-name DocHex commits on libngu alongside nym (darosior #1) | Cuts pure burner-cover story; aligns E3–E5 |
+| Explicit “not compelling” + wildfire concern (darosior #2–#3) | Strong technical **non-guilt-of-theft** steelman |
+| jamesob: no reasonable nym explanation; prior report shrugged | Strong process / opacity indictment; May notice claim |
+| jamesob: malice not confirmable from current public evidence | Matches C/D open in claim table |
+| jamesob: anon mediating RNG is the red flag that drew audit | Explains *why* nym discourse matters without proving heist |
+| udi: secret CTO better than true nobody; dumb malice path | Softens pure “burner = assassin” reading |
+| MrHodl: multi-dev optics | Non-theft nym motive (still OPSEC failure) |
+| NicerInPerson: sign real key on nym commits is bad plant OPSEC | Aligns with dual-authorship evidence vs careful plant |
+| Bikes Hanlon + “heuristic not answer” | Method for S1–S3 preference without closing S5–S6 |
+| PrinceHeat + 2021 retirement-attack quote | Reinforces F dual-use, not new fact |
+| raw_avocado quoted root: “99.99% they did not know” | Social non-guilt prior; independent of G ticket hunt |
+| Flight / influencer / Fed conspiracy side-branches | Discourse noise; no staff↔proceeds artifact |
 
-**Label:** external expert observation. Does not erase A/B identity facts or
-process guilt. Does directly support least-strained S1–S3 over S6 when the
-reader is **not sure** about malice.
+**Label:** external expert + community observation set. Does not erase A/B
+identity facts or process guilt. Directly supports least-strained **S1–S3 over
+S6** when the reader is **not sure** about malice, while preserving jamesob’s
+red flags and prior-report claim as open process evidence (G / S2).
 
 ---
 
@@ -948,8 +1238,10 @@ then still separate fact from leap.
 
 | Voice | Link | Steelman point |
 | --- | --- | --- |
-| `@jamesob` | [2084640418918957430](https://x.com/jamesob/status/2084640418918957430) | Public nym for security-critical code “has no reasonable explanation”; May 2025 concern shrugged off |
+| `@jamesob` | [2084640418918957430](https://x.com/jamesob/status/2084640418918957430) | Public nym for security-critical code “has no reasonable explanation”; prior defect report “shrugged off” (E29 spine #2) |
+| `@jamesob` | [2084666514439848413](https://x.com/jamesob/status/2084666514439848413) | Anon mediating RNG is huge red flag; seriousness-theater nym theory does not explain reworking RNG (E29 #13) |
 | `@jamesob` | [2084620229389197453](https://x.com/jamesob/status/2084620229389197453) | switck ≈ DocHex; same person dismissed prior report |
+| `@PrinceHeat44402` | [2084648769459482693](https://x.com/PrinceHeat44402/status/2084648769459482693) | 2021 retirement-attack official post re-read as “admission” if you understand the mistakes (E10 dual-use; E29 #8) |
 | `@zherbert` | [2084647957526167853](https://x.com/zherbert/status/2084647957526167853) | Multi-channel identity verification (GPG + phone digits claim) |
 | `@AtlantisPleb` | [2084660832596570417](https://x.com/AtlantisPleb/status/2084660832596570417) | Migration advice is “logical if complicit”; who else knew? |
 | `@hodlonaut` | [2084633601845363006](https://x.com/hodlonaut/status/2084633601845363006) | Authorship + post-attack messaging inconsistency |
@@ -992,8 +1284,15 @@ opacity + ignored warnings + catastrophic negligence**, not proven heist.
 | `@afilini` | [2083477163957694524](https://x.com/afilini/status/2083477163957694524) | MicroPython PRNG is normal upstream fallback; bug is **accidentally using it**, not inventing evil PRNG in Coldcard |
 | `@afilini` | [2083483878887399594](https://x.com/afilini/status/2083483878887399594) | Auditing fallback would be ignored if you **wrongly assumed** you weren’t on that path |
 | `@darosior` (on E23) | [2082948440720359924](https://x.com/darosior/status/2082948440720359924) | Entropy + LLM orchestration — external attacker pattern, not RFC6979 |
-| `@darosior` (nym / backdoor) | [2084661793624924500](https://x.com/darosior/status/2084661793624924500) | Nym can mean “portray more eyes”; real backdoors would be less conspicuous; **“The backdoor theory is not compelling at this point”** (E29) |
-| `@darosior` (quoted prior) | [2084659808519463034](https://x.com/darosior/status/2084659808519463034) | Gray also committed under DocHex to libngu; nym alone “doesn’t seem to be hinting at a cover up”; **extreme negligence > malice** |
+| `@darosior` (nym / backdoor) | [2084661793624924500](https://x.com/darosior/status/2084661793624924500) | Nym can mean “portray more eyes”; real backdoors would be less conspicuous; **“The backdoor theory is not compelling at this point”** (E29 #12) |
+| `@darosior` (quoted prior) | [2084659808519463034](https://x.com/darosior/status/2084659808519463034) | Gray also committed under DocHex to libngu; nym alone “doesn’t seem to be hinting at a cover up”; **extreme negligence > malice** (E29 #11) |
+| `@darosior` (reply to jamesob) | [2084668646924656893](https://x.com/darosior/status/2084668646924656893) | Not “pushing” non-backdoor; fears wildfire conspiracy; agrees red flags but opacity was already visible to anyone who looked (E29 #14) |
+| `@jamesob` (malice bar) | [2084646588211667297](https://x.com/jamesob/status/2084646588211667297) | Confirming malice “not possible short of more evidence than we have now” (E29 #4) |
+| `@udiWertheimer` | [2084646756592082989](https://x.com/udiWertheimer/status/2084646756592082989) / [2084647846628794747](https://x.com/udiWertheimer/status/2084647846628794747) | Secret CTO better than true nobody; malicious nym plant would still be a “very dumb way” (E29 #6) |
+| `@MrHodl` | [2084646338780635269](https://x.com/MrHodl/status/2084646338780635269) | Nym more likely multi-dev theater than heist flight plan (E29 #5) |
+| `@NicerInPerson` | [2084678159018967069](https://x.com/NicerInPerson/status/2084678159018967069) | Plant under nym while signing real identity is self-defeating OPSEC (E29 #16) |
+| `@BikesandBitcoin` | [2084630840982831568](https://x.com/BikesandBitcoin/status/2084630840982831568) | Hanlon razor root of the thread; razor is heuristic not answer (E29 #1, #17) |
+| `@raw_avocado` (quoted root) | [2084626833182458302](https://x.com/raw_avocado/status/2084626833182458302) | “99.99% chance they did not know”; stop inflating for likes |
 | `@zherbert` (even while identity-hunting) | [2084638910970220754](https://x.com/zherbert/status/2084638910970220754) | “Still think it is likely just **incompetence / negligence**” unless identity raises flags |
 | `@CyberTruckRonin` | [2084661432960880793](https://x.com/CyberTruckRonin/status/2084661432960880793) | Identity facts can be true without “evil maid” / intentional plant framing |
 | Dice / multisig survivors | many; e.g. diceroll reports | Mitigation paths worked as designed for users who BYOE |
@@ -1005,7 +1304,7 @@ opacity + ignored warnings + catastrophic negligence**, not proven heist.
    `#ifndef` vs value, submodule PRNG — exactly the sort of thing that survives
    partial review (E17 “binary had TRNG, wrong `rng_get` linked”).
 2. **Nym use can be privacy / old habit / side project / “more eyes” optics**
-   without theft intent (darosior E29); still bad OPSEC, but not a completed
+   without theft intent (darosior E29 #11–#14); still bad OPSEC, but not a completed
    crime theory. Gray also commits under **real name** on the same repos
    (hurts “pure burner” / cover-up-only story).
 3. **“Unaware until today”** can mean unaware of **this root cause**, even if
