@@ -1,245 +1,323 @@
-# Coinkite CTO / “inside job” thesis — social claims vs what holds
+# Coinkite CTO / “inside job” thesis — evidence collection
 
-Status: **external-observation map + independent technical cross-check.**  
-Not a legal finding, not a public accusation product claim, and not accepted
-forensic proof of theft participation. Written 2026-08-04 after a live X API
-pass and re-check of public Git / GPG material.
+Status: **living evidence log** (social + independent technical re-checks).  
+This is **not** a claim that theft-complicity is proven. It is a structured place
+to park what is observed, what was re-verified, and what remains open.
 
-## Thesis under review
+Last updated: 2026-08-04 (second pass: local GPG verify + commit census +
+firmware authorship).
 
-**Claim (morning discourse, 2026-08-04):** the Coldcard entropy failure and the
-ongoing fund drains are not mere negligence — they involve an **inside job**,
-**at minimum the Coinkite CTO** (Peter Gray, X `@DocHex`), including the idea
-that the defect was authored under a GitHub nym (`switck`) that is actually
-Gray, and that company remediation behavior is consistent with complicity.
+## How to read this
 
-This document splits that into **testable sub-claims**, links the main posts,
-and marks each **substantiated / partially substantiated / not substantiated /
-refuted as stated**.
+- **Evidence** = something a third party can re-fetch (URL, commit SHA, GPG
+  output shape).
+- **Inference** = interpretation that still needs more support.
+- **Open** = not yet checked or not checkable from public data here.
 
----
-
-## Morning social record (links)
-
-### Amplification from `@AtlantisPleb` (owner account; morning of 2026-08-04)
-
-| Kind | UTC | Link | Content (summary) |
-| --- | --- | --- | --- |
-| Repost | 15:52 | [status/2084668869881323543](https://x.com/AtlantisPleb/status/2084668869881323543) | RT `@_PyBlock_`: “Who is Peter/@Switck/@DocHex following?” |
-| Quote | 15:28 | [status/2084662822512873785](https://x.com/AtlantisPleb/status/2084662822512873785) | Flags “Could be useful on Coldcard someday” with red-flag emoji |
-| Repost | 15:28 | [status/2084662675057877310](https://x.com/AtlantisPleb/status/2084662675057877310) | RT `@_PyBlock_`: “Switck aka Peter” |
-| Repost | 15:27 | [status/2084662595177337212](https://x.com/AtlantisPleb/status/2084662595177337212) | RT `@hodlonaut` on CTO authorship + messaging after attack |
-| Quote | 15:20 | [status/2084660832596570417](https://x.com/AtlantisPleb/status/2084660832596570417) | “not absurd … if you / your team are **complicit in the ongoing theft**”; “Evidence is pointing to the Coinkite CTO”; “who else on the team knew” |
-| Repost | 15:18 | [status/2084660264499020015](https://x.com/AtlantisPleb/status/2084660264499020015) | RT `@zherbert` DocHex ≡ switck verification |
-| Reply | 15:44 | [status/2084666853419360648](https://x.com/AtlantisPleb/status/2084666853419360648) | “Or preparing a theft” |
-| Quote | 13:33 | [status/2084633753817592252](https://x.com/AtlantisPleb/status/2084633753817592252) | **Self-tagged** `<speculation>` about 2021 “retirement attack” tweet / heist probe |
-| Repost | 14:33 | [status/2084648950196277698](https://x.com/AtlantisPleb/status/2084648950196277698) | RT `@jamesob` May 2025 audit / libngu concerns |
-| Repost | 14:32 | [status/2084648659891749182](https://x.com/AtlantisPleb/status/2084648659891749182) | RT `@jamesob`: CTO committing under a pseudonym “has no reasonable explanation” |
-
-### Source posts (not only RTs)
-
-| Author | UTC | Link | Role in thesis |
-| --- | --- | --- | --- |
-| `@_PyBlock_` | 15:20 | [status/2084660826271531386](https://x.com/_PyBlock_/status/2084660826271531386) | Follow-graph collage for Peter / Switck / DocHex |
-| `@_PyBlock_` | 14:17 | [status/2084644806890782737](https://x.com/_PyBlock_/status/2084644806890782737) | “Switck aka Peter” (image) |
-| `@zherbert` | 14:29 | [status/2084647957526167853](https://x.com/zherbert/status/2084647957526167853) | Phone-last-digits claim + cites jamesob GPG work; “conclusive” identity |
-| `@jamesob` | 12:39 | [status/2084620229389197453](https://x.com/jamesob/status/2084620229389197453) | Strong possibility switck = Peter Gray / `@DocHex` |
-| `@jamesob` | 12:56 | [status/2084624605969350915](https://x.com/jamesob/status/2084624605969350915) | May 2025 report to Coinkite about RNG / libngu; response “we'd already know” |
-| `@jamesob` | 13:59 | [status/2084640418918957430](https://x.com/jamesob/status/2084640418918957430) | Pseudonym unexplained; “High potential that something isn't right” |
-| `@jamesob` | 13:36 | [status/2084634518883872942](https://x.com/jamesob/status/2084634518883872942) | “based on gpg sigs” |
-| `@hodlonaut` | 13:32 | [status/2084633601845363006](https://x.com/hodlonaut/status/2084633601845363006) | “Bug seemingly written by” CTO; criticizes post-attack messaging |
-| `@hodlonaut` | 13:39 | [status/2084635363192996287](https://x.com/hodlonaut/status/2084635363192996287) | Satirical CTO / Yasmarang line |
-| `@hodlonaut` | Aug 2 | [status/2083888379465273754](https://x.com/hodlonaut/status/2083888379465273754) | Amplifies bitcoin++ “disabled HW RNG to silence compiler” narrative |
-| `@hodlonaut` | Aug 3 | [status/2084217381165940812](https://x.com/hodlonaut/status/2084217381165940812) | Conditional theory: long-known bug + job vacancy timing |
-| `@COLDCARDwallet` | 11:07 | [status/2084596971268956161](https://x.com/COLDCARDwallet/status/2084596971268956161) | Official: migrate / new seed / move funds; threat ongoing |
-| `@COLDCARDwallet` | 13:29 | [status/2084632863756955661](https://x.com/COLDCARDwallet/status/2084632863756955661) | Official: firmware does not permanently brick; power-cycle TRNG fault |
+No layer below is a courtroom verdict. Collecting “CTO involvement” evidence
+does not by itself establish “CTO stole coins.”
 
 ---
 
-## Sub-claims
+## Thesis under collection
 
-### A. Peter Gray (`@DocHex` / GitHub `doc-hex`) authored the critical libngu RNG code under the GitHub nym `switck`
+Working statement from morning discourse (2026-08-04):
 
-**Verdict: substantially substantiated as identity of the signing key, with residual process caveats.**
+> The Coldcard entropy failure and ongoing drains involve more than simple
+> oops — **at minimum the Coinkite CTO** (Peter Gray / X `@DocHex` / GitHub
+> `doc-hex`) is central: the critical code was written or signed under a
+> GitHub nym (`switck`), process was opaque, and company behavior after the
+> drains is consistent with (or at least not falsifying) deeper involvement.
 
-Independent checks (this session):
+Split for collection:
 
-1. Public defect commit in libngu:
-   [`switck/libngu@f19de052`](https://github.com/switck/libngu/commit/f19de0527a49e560203102288ae4bc9740a32d96)
-   (2021-01-28, message `x`, author name “Switck”).
-2. That commit carries an OpenPGP signature. GitHub UI reports
-   `verification.verified = false` / `unknown_key` **on the switck account**
-   (expected if the key is not registered to `switck`).
-3. Decode the signature’s embedded fingerprint →  
-   `D9766C79E77B0198D66975BDF0E6CC6AFC16CF7B`.  
-   Long key id (last 64 bits) → **`F0E6CC6AFC16CF7B`**.
-4. GitHub user [`doc-hex`](https://github.com/doc-hex) exposes GPG keys via
-   API. Primary key uid material identifies **Peter D. Gray**
-   (`peter@conalgo.com`). **Signing subkey `key_id` is exactly
-   `F0E6CC6AFC16CF7B`.**
-
-So: the critical 2021 libngu commit is signed with a subkey that is **byte-identical**
-to the signing subkey published on the `doc-hex` GitHub account under Peter Gray’s
-name. That is strong public-key evidence that **Gray’s key material signed the
-switck-attributed defect commit**, which is what the morning GPG discourse is
-pointing at.
-
-Caveats (do not skip):
-
-- This shows **key control / signing**, not a court-grade proof of sole human
-  operator every day of the nym’s life.
-- Phone-last-two-digits overlap cited by `@zherbert` is **weak alone** (he
-  himself quotes ~1% chance for two digits); treat as secondary color only.
-- Follow-graph collages (`@_PyBlock_`) are **not identity proofs**.
-
-### B. The CTO therefore “wrote the Coldcard bug”
-
-**Verdict: partially substantiated, if A holds — for libngu side of the
-composition; not the entire multi-repo story alone.**
-
-Repository technical chronology already in-tree:
-
-- [`chatgpt-pro-analysis.md`](chatgpt-pro-analysis.md) — seed path moved to
-  `random.bytes()` → libngu → wrong `rng_get` selection / weak PRNG.
-- [`2026-08-01-bitcoin-plus-plus-oped-analysis.md`](2026-08-01-bitcoin-plus-plus-oped-analysis.md)
-  — `f19de052` existence-only `#ifndef` guard; Coldcard `b18723dd` migration;
-  Mk4 port later.
-- [`2026-08-01-kelbie-independent-postmortem-analysis.md`](2026-08-01-kelbie-independent-postmortem-analysis.md)
-  — no PR / message `x` / zero reviewers on related commits (process failure).
-
-If A is accepted, Gray signed the libngu change that made the bad RNG adapter
-real. Coldcard firmware still had to **import** that library and **point seed
-creation** at it (`b18723dd` etc.). Authorship of the full incident is
-**cross-repo composition**, not a single line of “CTO flipped one switch.”
-
-### C. The defect was planted **on purpose** as a backdoor for later theft
-
-**Verdict: not substantiated. Several popular “intentional disable” stories are
-over-specific or contradicted by commit history.**
-
-What **does** support seriousness / process failure:
-
-- Security-critical commits with empty subjects (`x`, `runs`).
-- Missing review (Kelbie / Block-derived commit table).
-- Years of exposure before mass exploitation.
-- May 2025 external concern (`@jamesob`) reportedly dismissed.
-
-What **does not** prove intentional theft design:
-
-1. **2018 board macro already set `MICROPY_HW_ENABLE_RNG` to 0** with an
-   explanatory comment about Coldcard’s own RNG path
-   ([bitcoin++ op-ed review](2026-08-01-bitcoin-plus-plus-oped-analysis.md)).
-   The viral “he zeroed the macro in 2021 to silence a compiler error” story
-   (widely RTed, including by `@hodlonaut` quoting Dusty Daemon) is **not a
-   complete causal history** for that macro; our source review already says so.
-2. The failure mode is a **composition bug** (existence-test `#ifndef`, missing
-   `rng_get` export, MicroPython fallback, seed API migration). That pattern is
-   classic **integration negligence**. Intentional backdoors more often look
-   like deliberate PRNG seeds, hidden constants only the author knows, or dual
-   code paths gated on secrets — none of which is established here as the
-   primary mechanism.
-3. No public, independently verified link in this repository (or in the morning
-   posts we sampled) from **Gray’s identity → control of drain / collector
-   addresses**. On-chain forensics in
-   [`2026-08-01-kelbie-independent-postmortem-analysis.md`](2026-08-01-kelbie-independent-postmortem-analysis.md)
-   track attacker graphs without naming Coinkite staff as owners.
-
-`@zherbert` himself, while pushing identity verification, still wrote that he
-thinks it is **likely incompetence / negligence** unless identity proof raises
-further red flags ([status/2084638910970220754](https://x.com/zherbert/status/2084638910970220754)).
-That is the correct split: **identity ≠ intent**.
-
-### D. Company remediation (“upgrade, new seed, move funds”) is evidence of
-**complicity in ongoing theft**
-
-**Verdict: not substantiated as stated; ambiguous at best.**
-
-- The same advice is the **standard** remediation for weak-seed wallets: stop
-  using the broken seed, generate a new one, move value. Official account:
-  [status/2084596971268956161](https://x.com/COLDCARDwallet/status/2084596971268956161).
-- `@AtlantisPleb` quote
-  [status/2084660832596570417](https://x.com/AtlantisPleb/status/2084660832596570417)
-  argues that advice is “logical if complicit.” That is a **motive hypothesis**,
-  not a discriminator: a non-complicit vendor under active exploitation gives
-  the same instruction.
-- Critiques of messaging quality, humility, deleted posts, or brick-claim
-  corrections ([status/2084632863756955661](https://x.com/COLDCARDwallet/status/2084632863756955661))
-  can support **crisis-comms failure** without proving participation in theft.
-
-### E. Long-known bug + wait-then-drain + job vacancy timing
-
-**Verdict: speculative.** `@hodlonaut`
-[status/2084217381165940812](https://x.com/hodlonaut/status/2084217381165940812)
-explicitly double-`IF`s the theory. Timing coincidences need independent
-attacker-knowledge evidence (when the PRNG space was first enumerated at
-scale, who held the tooling, etc.). Not established in the linked morning
-posts.
-
-### F. 2021 “retirement attack” tweet as CTO floating a heist to nvk
-
-**Verdict: pure speculation** — author’s own
-[status/2084633753817592252](https://x.com/AtlantisPleb/status/2084633753817592252)
-is wrapped in `<speculation>`. Do not promote as evidence.
-
----
-
-## Synthesis (what to keep vs drop)
-
-| Layer | Keep? | Note |
+| ID | Sub-claim | Status after this pass |
 | --- | --- | --- |
-| Gray’s GPG subkey signed `switck` libngu defect commit | **Yes** | Re-checkable; see §A |
-| libngu + Coldcard integration caused weak seeds | **Yes** | Existing technical docs |
-| Catastrophic process / review failure | **Yes** | Existing Kelbie / op-ed reviews |
-| May 2025 concern allegedly shrugged off | **Social claim** | Strong narrative; needs Coinkite-side records for full confirmation |
-| CTO nym use “unexplained” / looks bad | **Judgment** | Fair as reputation critique if A holds; still not theft proof |
-| Intentional backdoor planted for later theft | **No proof** | Do not treat as established |
-| “Inside job at minimum the CTO” as **theft complicity** | **Not established** | Identity + negligence ⇏ participation in drains |
-| Migration advice as proof of complicity | **No** | Compatible with both guilt and innocence |
-
-**Short form:** Morning discourse correctly elevates a **serious identity and
-governance problem** (CTO-linked key signing the nym repo that shipped the RNG
-adapter; years of silent exposure; weak review). It **overreaches** when it
-collapses that into **proven intentional inside theft** or treats standard
-migration guidance as a confession.
+| **A** | Gray’s personal OpenPGP key signed `switck`-attributed libngu commits | **Strong evidence (re-verified locally)** |
+| **B** | Gray authored / integrated the security-critical seed path (libngu + firmware) | **Strong evidence (dual authorship + real-name firmware commit)** |
+| **C** | Defect was **intentionally** planted as a long-term theft backdoor | **Open / not established** |
+| **D** | Gray or Coinkite staff **participated in or directed** the 2026 drains | **Open / not established** |
+| **E** | Remediation messaging is a cover for ongoing theft | **Ambiguous** (compatible with innocence and guilt) |
+| **F** | 2021 “retirement attack” tweet = heist dry-run with nvk | **Speculation only** (author-labeled) |
 
 ---
 
-## Reproduce the GPG subkey check
+## Evidence log (append-only style)
+
+### E1 — Morning social amplification (2026-08-04)
+
+Source: X API recent search + post lookup. Owner account `@AtlantisPleb`
+heavily RTed / quoted the CTO-identity cluster.
+
+| Kind | UTC | Link | Note |
+| --- | --- | --- | --- |
+| RT | 15:52 | [AtlantisPleb/2084668869881323543](https://x.com/AtlantisPleb/status/2084668869881323543) | RT `@_PyBlock_` follow-graph: Peter / Switck / DocHex |
+| Source | 15:20 | [_PyBlock_/2084660826271531386](https://x.com/_PyBlock_/status/2084660826271531386) | Same collage |
+| Source | 14:17 | [_PyBlock_/2084644806890782737](https://x.com/_PyBlock_/status/2084644806890782737) | “Switck aka Peter” + image |
+| Quote | 15:20 | [AtlantisPleb/2084660832596570417](https://x.com/AtlantisPleb/status/2084660832596570417) | Complicity hypothesis if team knew; points at CTO |
+| Quote | 15:28 | [AtlantisPleb/2084662822512873785](https://x.com/AtlantisPleb/status/2084662822512873785) | “Could be useful on Coldcard someday” 🚩 |
+| Quote | 13:33 | [AtlantisPleb/2084633753817592252](https://x.com/AtlantisPleb/status/2084633753817592252) | `<speculation>` 2021 retirement-attack tweet |
+| Reply | 15:44 | [AtlantisPleb/2084666853419360648](https://x.com/AtlantisPleb/status/2084666853419360648) | “Or preparing a theft” |
+| RT | 15:18 | [AtlantisPleb/2084660264499020015](https://x.com/AtlantisPleb/status/2084660264499020015) | RT `@zherbert` identity post |
+| Source | 14:29 | [zherbert/2084647957526167853](https://x.com/zherbert/status/2084647957526167853) | Phone-last-digits + cites GPG work |
+| Source | 12:39 | [jamesob/2084620229389197453](https://x.com/jamesob/status/2084620229389197453) | switck ≈ Peter Gray |
+| Source | 12:56 | [jamesob/2084624605969350915](https://x.com/jamesob/status/2084624605969350915) | May 2025 libngu/RNG report; “we'd already know” |
+| Source | 13:59 | [jamesob/2084640418918957430](https://x.com/jamesob/status/2084640418918957430) | Nym “no reasonable explanation”; “something isn't right” |
+| Source | 13:32 | [hodlonaut/2084633601845363006](https://x.com/hodlonaut/status/2084633601845363006) | Bug seemingly written by CTO; post-attack messaging critique |
+| Source | Aug 3 | [hodlonaut/2084217381165940812](https://x.com/hodlonaut/status/2084217381165940812) | Conditional long-known-bug + job-vacancy theory |
+| Official | 11:07 | [COLDCARDwallet/2084596971268956161](https://x.com/COLDCARDwallet/status/2084596971268956161) | Migrate / new seed / threat ongoing |
+| Official | 13:29 | [COLDCARDwallet/2084632863756955661](https://x.com/COLDCARDwallet/status/2084632863756955661) | Not permanently bricked; power-cycle; [PR #693](https://github.com/Coldcard/firmware/pull/693) |
+
+**Label:** external observation. Useful as a citation map of what the timeline
+was arguing, not as primary technical proof.
+
+### E2 — Account directory (public profiles)
+
+| Account | Platform | Observed fields (2026-08-04) |
+| --- | --- | --- |
+| `@DocHex` | X | Bio: “Co-Founder Coinkite. Programmer.” Created 2010-10-21. ~3.1k followers. |
+| `@switck` | X | Bio: “Cypher all the things. She/he/his/hers.” Created 2019-08-04. ~114 followers. ~54 posts. Location “Cyberspace”. |
+| `doc-hex` | GitHub | Company Coinkite Inc.; blog coinkite.com; location Toronto; created 2012-02-28; 41 public repos. |
+| `switck` | GitHub | Bio `mx@switck.com`; company `NaN`; location Cyberspace; twitter `switck`; created **2020-08-07**; 5 public repos; 9 followers. |
+| `@nvk` | X | High-follower Coinkite-associated account; recent window mostly RTs of official/migration content (no original switck-identity rebuttal found in sampled recent search). |
+| `@COLDCARDwallet` | X | Official product account; migration + inventory-destruction messaging. |
+
+`switck` GitHub repos (all public):
+
+| Repo | Created | Notes |
+| --- | --- | --- |
+| [switck/pandora-shar](https://github.com/switck/pandora-shar) | 2020-08-07 | Same day as account |
+| [switck/libngu](https://github.com/switck/libngu) | 2020-10-15 | Non-fork; ★5; critical crypto |
+| [switck/firmware](https://github.com/switck/firmware) | 2020-10-15 | Fork of Coldcard firmware |
+| [switck/micropython](https://github.com/switck/micropython) | 2020-10-15 | Fork |
+| [switck/bech32](https://github.com/switck/bech32) | 2021-02-03 | Fork |
+
+**Inference (weak):** the nym repo graph looks purpose-built around Coldcard’s
+stack (firmware + micropython + libngu), not a broad independent FOSS career.
+
+### E3 — OpenPGP: local `git verify-commit` against `doc-hex` public key
+
+**Method (reproducible):**
 
 ```sh
-# 1) Pull commit signature metadata (API)
-curl -sS \
-  "https://api.github.com/repos/switck/libngu/commits/f19de0527a49e560203102288ae4bc9740a32d96" \
-  | jq '.commit.verification'
+# Import Peter Gray personal key published on GitHub user doc-hex
+curl -sS https://api.github.com/users/doc-hex/gpg_keys | jq -r '.[0].raw_key' > /tmp/doc-hex.asc
+export GNUPGHOME=$(mktemp -d)
+gpg --import /tmp/doc-hex.asc
 
-# 2) Decode fingerprint from the signature block (FiEE… OpenPGP notation)
-#    Expected long key id: F0E6CC6AFC16CF7B
-
-# 3) Compare to doc-hex GitHub GPG keys
-curl -sS "https://api.github.com/users/doc-hex/gpg_keys" \
-  | jq '.[].subkeys[].key_id'
-# Expect F0E6CC6AFC16CF7B among signing subkeys
+git clone https://github.com/switck/libngu.git
+cd libngu
+git verify-commit f19de0527a49e560203102288ae4bc9740a32d96
 ```
 
-Full offline verify would import the `doc-hex` public key and run `gpg --verify`
-on the commit object; the key-id match above is the fast public cross-check used
-for this note.
+**Observed (this machine, 2026-08-04):**
+
+```text
+gpg: Signature made Thu Jan 28 13:16:43 2021 CST
+gpg:                using RSA key D9766C79E77B0198D66975BDF0E6CC6AFC16CF7B
+gpg: Good signature from "Peter D. Gray (Personal) <peter@conalgo.com>" [expired]
+gpg:                 aka "Peter Gray <peter@ripeapps.com>" [expired]
+gpg: Note: This key has expired!
+Primary: A004C9BCE217ABE9341CD81AA2DCD558C2BE5D7C
+Subkey:  D9766C79E77B0198D66975BDF0E6CC6AFC16CF7B
+```
+
+Key notes:
+
+- GitHub API lists the same signing subkey id **`F0E6CC6AFC16CF7B`** (last 64
+  bits of the fingerprint above).
+- Key is marked **expired as of 2023-05-28** when verified in 2026; that does
+  **not** invalidate a 2021 signature made while the key was valid.
+- UIDs on the key: **Peter D. Gray (Personal) `<peter@conalgo.com>`** (verified
+  on GitHub) and `peter@ripeapps.com`.
+
+**Census of all 123 commits on `switck/libngu` (local verify loop):**
+
+| Result | Count |
+| --- | ---: |
+| **Good signature** under Gray’s imported key | **77** |
+| PGP block present but not good under this key | 10 |
+| No PGP signature | 36 |
+| **Total commits** | **123** |
+
+Good signatures by **author string** on the commit:
+
+| Author field | Good sigs |
+| --- | ---: |
+| `Switck <69336248+switck@users.noreply.github.com>` | **58** |
+| `Peter D. Gray <peter@conalgo.com>` | **19** |
+
+**Implication for A:** this is stronger than “key id string match on one
+commit.” Dozens of nym-authored commits, including the critical RNG adapter
+commit, produce **Good signature** as Peter D. Gray’s personal key. Nineteen
+more commits are authored **in Gray’s real name on the same nym-owned repo**
+and also good-sig under the same key.
+
+### E4 — Critical commits (technical + authorship)
+
+#### E4a — libngu RNG adapter (defect component)
+
+- SHA: [`f19de0527a49e560203102288ae4bc9740a32d96`](https://github.com/switck/libngu/commit/f19de0527a49e560203102288ae4bc9740a32d96)
+- Date: 2021-01-28
+- Author/committer fields: **Switck** / `69336248+switck@users.noreply.github.com`
+- Message: `x`
+- GPG: **Good signature**, Peter D. Gray personal key (E3)
+- Role: existence-only `#ifndef MICROPY_HW_ENABLE_RNG` guard + `rng_get()` path
+  (see [`chatgpt-pro-analysis.md`](chatgpt-pro-analysis.md),
+  [`2026-08-01-bitcoin-plus-plus-oped-analysis.md`](2026-08-01-bitcoin-plus-plus-oped-analysis.md))
+
+#### E4b — Coldcard firmware imports libNgU / moves seed generation
+
+- SHA: [`b18723dddb6d751c39978e4364b56b2414f68b47`](https://github.com/Coldcard/firmware/commit/b18723dddb6d751c39978e4364b56b2414f68b47)
+- Message: **`First pass w/ libNgU`**
+- Author **and** committer (local `git log` on fetch):  
+  **`Peter D. Gray <peter@conalgo.com>`**
+- Role: large migration that points wallet seed creation at libNgU’s
+  `random.bytes()` path (see existing technical docs)
+
+**Implication for B:** the nym is not required to “hide” the firmware
+integration. The seed-path migration is under Gray’s **real name and
+conalgo.com email**. Combined with E3, Gray is on **both sides** of the
+composition that produced weak seeds: libngu adapter (signed as nym) and
+firmware import (real name).
+
+#### E4c — Later libngu reseed under real name
+
+- SHA: [`61ffc74af171197ef5d5d79b78b59ab750ef35c7`](https://github.com/switck/libngu/commit/61ffc74af171197ef5d5d79b78b59ab750ef35c7)
+- Date: 2022-03-11
+- Author: **Peter D. Gray `<peter@conalgo.com>`**
+- Message: `Add reseed function to ngu.random module`
+- Process note (Kelbie archive): PR #18, zero reviewers — see
+  [`2026-08-01-kelbie-independent-postmortem-analysis.md`](2026-08-01-kelbie-independent-postmortem-analysis.md)
+
+### E5 — Author census on `switck/libngu` (API commit list, 123 commits)
+
+| Author email | Commits |
+| --- | ---: |
+| `69336248+switck@users.noreply.github.com` | 66 |
+| `scgbckbone@proton.me` | 36 |
+| **`peter@conalgo.com`** | **19** |
+| `avirgovi@cisco.com` | 2 |
+
+Committer field: 92× switck noreply, **19× peter@conalgo.com**, 9× GitHub
+noreply, etc.
+
+**Implication:** the nym-owned repository is not “a stranger’s project that
+Coinkite later vendored with no staff fingerprints.” Gray’s real email is a
+first-class author on that repo for a non-trivial commit share, and his key
+signs most of the early nym history.
+
+### E6 — `@DocHex` recent X behavior (sampled window)
+
+Recent-search `from:DocHex` (≤7 days, 2026-08-04 probe): **almost entirely
+reposts** of official COLDCARD / third-party migration and clarification posts.
+No original long-form rebuttal of the switck/GPG identity thread appeared in
+that sample.
+
+Official product account (`@COLDCARDwallet`) explicitly told critics that
+personal opinions of named staff have “little value” and that the team is
+presenting a “single united front”
+([2084632203019833820](https://x.com/COLDCARDwallet/status/2084632203019833820),
+mentions `@nvk` `@DocHex`).
+
+**Label:** behavioral observation only. Silence is not guilt; it is still
+evidence of **comms strategy**.
+
+### E7 — Process / review failure (prior docs, still relevant)
+
+Already in-repo; re-listed so the thesis file is self-contained as an index:
+
+- Empty commit subjects (`x`, `runs`) on security-critical diffs.
+- No PR / zero reviewers on key path commits (Kelbie `commits.json` table).
+- 2018 board macro `MICROPY_HW_ENABLE_RNG (0)` **predates** 2021 — undercuts
+  “he zeroed the macro in 2021 only to silence the compiler” as a complete
+  history ([bitcoin++ op-ed review](2026-08-01-bitcoin-plus-plus-oped-analysis.md)).
+
+### E8 — What we still do **not** have (open collection)
+
+| Gap | Why it matters |
+| --- | --- |
+| On-chain link from Gray/Coinkite to drain/collector keys | Required for D (theft participation) |
+| Independent verification of jamesob’s May 2025 private report text / Coinkite reply | Supports process failure / prior notice; not yet a public artifact here |
+| Full offline audit of the 10 “signed but not good under this key” commits | Who else signed? Key rotation? |
+| switck X account archive (54 posts) full pull | Nym persona consistency / links |
+| Device serial / factory programming chain of custody | Inventory destruction claims |
+| Legal process, LE, or exchange freezes tied to named parties | Outside this repo’s authority |
 
 ---
 
-## Operating rules for OpenAgents surfaces
+## Synthesis (evidence, not verdict)
 
-1. Label social posts **external observation**.
-2. Do **not** turn “CTO key signed switck commits” into “CTO stole the coins”
-   without on-chain attribution receipts.
-3. Prefer linking technical postmortems and identity-check methods over rage-RT
-   chains when product UI summarizes the incident.
-4. Continue forensic work under the evidence ladder in
-   [`2026-08-01-omega-coldcard-forensic-practice-runbook.md`](2026-08-01-omega-coldcard-forensic-practice-runbook.md).
+### What the evidence **does** support collecting as high confidence
 
-## Related
+1. **Cryptographic identity bridge:** Peter D. Gray’s personal OpenPGP key
+   produces **Good signatures** on the critical libngu commit and on **dozens**
+   of other commits whose author field is the `switck` nym (E3).
+2. **Dual identity on one repo:** the same person commits as **Switck** and as
+   **Peter D. Gray `<peter@conalgo.com>`** on `switck/libngu` (E3–E5).
+3. **Real-name firmware responsibility:** the Coldcard “First pass w/ libNgU”
+   migration that wired seed generation into libNgU is authored by
+   **Peter D. Gray** (E4b).
+4. **Nym surface is narrow and Coldcard-adjacent** (E2).
+5. **Process failure** around review and commit hygiene is independently
+   documented (E7, prior postmortems).
+
+These points make “CTO is central to how the defective code entered the
+product” a **well-supported collection target**, not a vibes-only RT.
+
+### What the evidence does **not** yet support
+
+1. **Intentional backdoor for later theft (C).** Composition bugs, empty
+   subjects, and dual identity are consistent with negligence, haste, and
+   secrecy habits. They are not a completed intent proof.
+2. **Participation in the 2026 drains (D).** No collector-key attribution to
+   named staff is in this file.
+3. **Remediation-as-confession (E).** “Generate new seed and move funds” is
+   also what a non-malicious vendor must say under active exploitation.
+4. **Narrative overreach** in viral posts that depend on an incorrect full
+   causal story for the 2018 RNG macro (E7).
+
+### Working stance for further collection
+
+Keep gathering artifacts that could move C or D (or falsify them): prior
+notice records, internal issue trackers if they become public, factory
+firmware provenance, chain analysis of drains, and any authentic staff
+statements that address the GPG/nym facts **directly**.
+
+Until then, the honest summary is:
+
+> **Strong public evidence that Coinkite CTO Peter Gray controlled the signing
+> key and authorship path for the defective libngu/firmware seed stack,
+> including work under the switck nym. Open whether that implies intentional
+> theft design or participation in the 2026 drains.**
+
+---
+
+## Reproduce checklist
+
+```sh
+# A) GPG good-sig on defect commit
+curl -sS https://api.github.com/users/doc-hex/gpg_keys | jq -r '.[0].raw_key' > /tmp/doc-hex.asc
+export GNUPGHOME=$(mktemp -d) && gpg --import /tmp/doc-hex.asc
+git clone https://github.com/switck/libngu.git && cd libngu
+git verify-commit f19de0527a49e560203102288ae4bc9740a32d96
+
+# B) Firmware migration author
+git clone --filter=blob:none --no-checkout https://github.com/Coldcard/firmware.git
+cd firmware && git fetch --depth=1 origin b18723dddb6d751c39978e4364b56b2414f68b47
+git log -1 --format=fuller FETCH_HEAD
+
+# C) Social map (requires X_BEARER_TOKEN)
+cargo run -p x_api -- search 'from:_PyBlock_ (DocHex OR Switck)' --max-results 20
+cargo run -p x_api -- post 2084660832596570417
+```
+
+---
+
+## Related OpenAgents docs
 
 - [`2026-08-04-x-posts-recent-summary.md`](2026-08-04-x-posts-recent-summary.md)
 - [`chatgpt-pro-analysis.md`](chatgpt-pro-analysis.md)
 - [`2026-08-01-bitcoin-plus-plus-oped-analysis.md`](2026-08-01-bitcoin-plus-plus-oped-analysis.md)
 - [`2026-08-01-kelbie-independent-postmortem-analysis.md`](2026-08-01-kelbie-independent-postmortem-analysis.md)
+- X access tooling: [`../grok/2026-08-04-x-api-and-xai-x-search-access.md`](../grok/2026-08-04-x-api-and-xai-x-search-access.md)
