@@ -2,7 +2,8 @@
 
 - Date: 2026-08-04
 - Class: architecture spec and initial roadmap
-- Status: proposal. Authorizes nothing. Names owner-gated decisions explicitly.
+- Status: proposal with five protocol drafts. Authorizes nothing. Names
+  owner-gated decisions explicitly.
 - Owner: OpenAgents
 - Companion reading:
   [`../loupe/2026-08-01-coordination-not-scanners.md`](../loupe/2026-08-01-coordination-not-scanners.md)
@@ -142,18 +143,19 @@ reminders, and mobile wake-ups.
 ## 5. Five new NIPs the hardening program needs
 
 The All Work program covers planning, delegation, execution, evidence, and
-outcomes. It does not cover five things that this specific program lives or
-dies on. Proposed kind block: **32450–32499**, extending the OpenAgents
-addressable neighborhood declared in `PROPOSED.md`. Every number is tentative
-pending a collision review, and each NIP is a draft-to-be-written, not a draft.
+outcomes. It does not cover five things that this specific program depends on.
+The five application drafts reserve **32450–32499**, extending the OpenAgents
+addressable neighborhood declared in `PROPOSED.md`, after collision review
+against the official, Block, and existing OpenAgents lanes. A draft reserves
+wire vocabulary; it does not admit implementation or a product claim.
 
-| NIP | Name | Tentative kinds | Why it cannot be folded into an existing NIP |
-| --- | --- | --- | --- |
-| NIP-SP | Scan Profiles and Pre-Registration | 32450–32459 | A profile is a versioned, shareable, digest-bound *configuration*, and the rubric must be committed before the run |
-| NIP-SC | Source Completeness and Coverage | 32460–32469 | The Coldcard lesson: what was actually on disk is a claim that must be signed, checkable, and comparable across runs |
-| NIP-FD | Findings, Verdicts, and Disclosure | 32470–32479 | Findings need severity, CWE, embargo state, hash commitments, and coordinated-disclosure lifecycle that generic evidence records do not carry |
-| NIP-SI | Security Invariants and Regression Watch | 32480–32489 | The decisive Coldcard control was a build-time assertion about the shipped artifact — a durable property, not a one-time finding |
-| NIP-BT | Bounties and Contribution Credit | 32490–32499 | Funding pools, credit standing, and (later, if ever) payouts need their own records with hard boundaries against the disclosure process |
+| NIP | Name | Reserved block | Draft | Why it cannot be folded into an existing NIP |
+| --- | --- | --- | --- | --- |
+| NIP-SP | Scan Profiles and Pre-Registration | 32450–32459 | [`SP.md`](../nips/SP.md) | A profile is a versioned, shareable, digest-bound *configuration*, and the rubric must be committed before the run |
+| NIP-SC | Source Completeness and Coverage | 32460–32469 | [`SC.md`](../nips/SC.md) | The Coldcard lesson: what was actually on disk is a claim that must be signed, checkable, and comparable across runs |
+| NIP-FD | Findings, Verdicts, and Disclosure | 32470–32479 | [`FD.md`](../nips/FD.md) | Findings need severity, CWE, embargo state, hash commitments, and coordinated-disclosure lifecycle that generic evidence records do not carry |
+| NIP-SI | Security Invariants and Regression Watch | 32480–32489 | [`SI.md`](../nips/SI.md) | The decisive Coldcard control was a build-time assertion about the shipped artifact — a durable property, not a one-time finding |
+| NIP-BT | Bounties and Contribution Credit | 32490–32499 | [`BT.md`](../nips/BT.md) | Funding pools, credit standing, and (later, if ever) payouts need their own records with hard boundaries against the disclosure process |
 
 ### 5.1 NIP-SP — Scan Profiles and Pre-Registration
 
@@ -289,7 +291,8 @@ disclosures. The proposal here is deliberately different:
   rail: MDK/Nexus money authority is retired under VP-1, payout routes are
   stripped from the served registry, and LDK is a readiness projection. Any
   sats flow is therefore an **owner decision plus a rail decision**, and this
-  NIP must be written so the program is complete and useful without it.
+  NIP therefore defines a complete credit path that does not require a payout
+  rail.
 
 **Settlement evidence, when it exists.** NIP-57 zap receipts (`kind:9735`) and
 NIP-61 nutzaps are the obvious Nostr-native evidence carriers, and both are
@@ -471,9 +474,9 @@ writes one event that a third party reads back.
 
 ### Phase 1 — Coverage ledger and the SDK (the Episode 266 demo)
 
-5. Draft **NIP-SC** and **NIP-SP** as spec files in `docs/nips/` — coverage and
-   profiles are the two records the demo needs, and they are the two the
-   evidence most directly supports.
+5. Review and pin the drafted **NIP-SC** and **NIP-SP** contracts with fixtures
+   and an implementation decision — coverage and profiles are the two records
+   the demo needs, and they are the two the evidence most directly supports.
 6. Generate `@openagentsinc/immortal-sdk` from a pinned contract definition:
    transport, NIP-42 auth, typed decoders for the program kinds, drift check.
 7. Seed the ledger from work already done: publish Coverage Attestations and
@@ -492,9 +495,10 @@ appears on it.
 
 ### Phase 2 — Findings and disclosure
 
-10. Draft **NIP-FD**; implement commitments, encrypted candidate findings, the
-    independent-verdict path (producer ≠ verifier, enforced), and the
-    disclosure state machine.
+10. Review and pin **NIP-FD** with fixtures and an implementation decision;
+    implement commitments, encrypted candidate findings, the independent-
+    verdict path (producer ≠ verifier, enforced), and the disclosure state
+    machine.
 11. Settle §7 in the open with the first outside participants; encode the
     answer in the audience rules rather than in prose.
 12. Build the maintainer contact path: encrypted, per-project, with
@@ -507,9 +511,10 @@ relay.
 
 ### Phase 3 — Invariants and regression watch
 
-13. Draft **NIP-SI**; encode the first invariant families from the hunt-class
-    list, starting with entropy provenance and build-versus-source divergence,
-    because those are where the free-oracle property concentrates.
+13. Review and pin **NIP-SI** with fixtures and an implementation decision;
+    encode the first invariant families from the hunt-class list, starting
+    with entropy provenance and build-versus-source divergence, because those
+    are where the free-oracle property concentrates.
 14. Implement artifact provenance witnesses — the `nm`-on-objects class of
     check — and bind them to invariants.
 15. Regression watches over target revisions, with freshness and honest
@@ -520,9 +525,9 @@ noticing.
 
 ### Phase 4 — Funding and credit (owner-gated)
 
-16. Draft **NIP-BT**; ship Contribution Credits with no rail, because credit
-    and standing work today and are what the analysis says most contributors
-    actually want.
+16. Review and pin **NIP-BT** with fixtures and an implementation decision;
+    ship Contribution Credits with no rail, because credit and standing work
+    today and are what the analysis says most contributors want.
 17. Funding Pools for sponsored campaigns, scoped and public.
 18. Payout references **only** after an admitted settlement-rail decision. This
     repository has no live payout authority today, and the spec deliberately

@@ -1,5 +1,5 @@
 > Status: proposed draft from the All Work NIP program ([`PROPOSED.md`](PROPOSED.md)).
-> Layer: 4 — hosts, outcomes, and public trust.
+> Layer: application — security hardening.
 
 NIP-SI
 ======

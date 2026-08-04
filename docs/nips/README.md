@@ -7,8 +7,8 @@ claim. A capability is live only when the matching implementation, receipts,
 and settlement records exist.
 
 Outside Nostr and Bitcoin developers can use these drafts to implement
-compatible market, agent, credit, and training rails against the same
-liquidity pool.
+compatible market, agent, credit, training, work-coordination, and security-
+hardening rails against the same event model.
 
 | Spec | Market stream | Kinds | File |
 | --- | --- | --- | --- |
@@ -24,7 +24,7 @@ program that encodes the Linear-class planning, agent delegation, coding,
 review, evidence, and outcome system on Nostr, in the spirit of the Block Buzz
 extension NIPs. All five layers are drafted:
 
-| Spec | Role | Kinds (tentative) | File |
+| Spec | Role | Reserved kinds | File |
 | --- | --- | --- | --- |
 | NIP-WK | Work root object | 32170-32173 | [`WK.md`](WK.md) |
 | NIP-WI | Work Intents and Admission | 32180-32182 | [`WI.md`](WI.md) |
@@ -51,6 +51,18 @@ extension NIPs. All five layers are drafted:
 | NIP-HP | Hosts and Placement | 39560-39562 | [`HP.md`](HP.md) |
 | NIP-OC | Outcome Closeout | 39580-39581 | [`OC.md`](OC.md) |
 | NIP-PP | Product Promises | 32440-32442 | [`PP.md`](PP.md) |
+
+The Bitcoin OSS hardening application adds five drafted protocol modules.
+They remain design records until an implementation decision, fixtures, and
+runtime evidence land:
+
+| Spec | Role | Reserved kinds | File |
+| --- | --- | --- | --- |
+| NIP-SP | Scan Profiles and Pre-Registration | 32450-32451 | [`SP.md`](SP.md) |
+| NIP-SC | Source Completeness and Coverage | 32460-32462 | [`SC.md`](SC.md) |
+| NIP-FD | Findings, Verdicts, and Disclosure | 32470-32473 | [`FD.md`](FD.md) |
+| NIP-SI | Security Invariants and Regression Watch | 32480-32482 | [`SI.md`](SI.md) |
+| NIP-BT | Bounties and Contribution Credit | 32490-32492 | [`BT.md`](BT.md) |
 
 ## Per-spec summaries
 
@@ -420,6 +432,58 @@ complete registry and detect omission. Nothing but an authority-signed
 transition changes a state — roadmaps, marketing, screenshots, and demos
 inherit nothing. Makes the live `openagents.com/promises` contract
 portable and independently verifiable.
+
+### NIP-SP — Scan Profiles and Pre-Registration (hardening application)
+
+Defines a digest-bound Scan Profile (`32450`) as the reusable measurement
+instrument for a security run: exact source-materialization rules, selection
+and hunt policies, model/harness roles, budgets, and evidence requirements. A
+Pre-Registration (`32451`) freezes the target, commit, profile revision,
+hypothesis, and scoring-rubric digest before execution. A later run can cite
+that immutable setup; a changed rubric or profile is a different experiment,
+and neither a signature nor relay acceptance proves that a scan ran.
+
+### NIP-SC — Source Completeness and Coverage (hardening application)
+
+Makes the readable source boundary and its gaps signed data. A Materialized
+Source Set (`32460`) records the exact repository revision, populated and
+missing submodules, vendored/dependency inputs, analyzed and skipped counts,
+and loss reasons. A Coverage Attestation (`32461`) classifies one run as
+complete, partial, or degraded against that source set and profile; a result
+without this reference is an anecdote. Divergence Notes (`32462`) compare runs
+over the same target, commit, and profile without turning disagreement into a
+verdict.
+
+### NIP-FD — Findings, Verdicts, and Disclosure (hardening application)
+
+Separates discovery, independent judgment, and publication. A Finding
+Commitment (`32470`) establishes priority without disclosure; an encrypted
+Candidate Finding (`32471`) carries the mechanism, proposed severity, CWE,
+assumptions, and evidence boundary to the authorized audience; a distinct
+verifier signs a Finding Verdict (`32472`); and authority-signed Disclosure
+State (`32473`) records the maintainer and publication lifecycle. Embargo
+expiry never publishes content by itself, and none of these records implies
+owner acceptance, release, settlement, or public claim authority.
+
+### NIP-SI — Security Invariants and Regression Watch (hardening application)
+
+Turns one-time findings into durable properties. A Security Invariant
+(`32480`) names the source/configuration/build/artifact/runtime property,
+required witnesses, and falsifiers. Artifact Provenance Witnesses (`32481`)
+bind exact build inputs and artifacts to observed checks. Regression Watches
+(`32482`) re-evaluate a pinned invariant against later revisions with explicit
+freshness, stopping, and loss rules. A failing watch is evidence for triage;
+it is not a verdict or disclosure decision.
+
+### NIP-BT — Bounties and Contribution Credit (hardening application)
+
+Defines campaign Funding Pools (`32490`), receipt-backed Contribution Credits
+(`32491`) for coverage, reproduction, independent verification, refutation,
+invariant, and confirmed-finding work, and optional Payout References
+(`32492`) to an external admitted settlement rail. Credit works without money,
+negative work can earn it, and duplicate evidence cannot mint it twice. The
+NIP moves no funds and does not make publication a condition of credit;
+pledged, measured, paid, and settled values remain distinct.
 
 ## How the specs fit together
 

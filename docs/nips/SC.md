@@ -123,6 +123,8 @@ Recommended codes are `profile_excluded`, `unsupported_format`, `binary`,
   `file_unreadable`, `repository_unavailable`, `credential_denied`,
   `materializer_failure`, `manifest_incomplete`, and `other`
 - `env_x`: digest of the materializer and harness environment manifest
+- `url`: an authorized location for the source-set manifest when it is not in
+  plaintext `content`
 - `org`, `work`, and `a` with markers `session`, `code_context`, and
   `workroom`, when applicable
 - `e` with marker `supersedes`: an explicitly corrected prior source-set

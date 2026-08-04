@@ -1,9 +1,11 @@
 # Proposed OpenAgents NIPs: All Work on Nostr
 
-Status: proposal index. These NIPs are not yet drafted, implemented, or
-advertised by any relay. Each entry becomes real only when its own spec file
-lands in this directory with fixtures and an implementation decision. This
-index is a protocol program, not a product availability claim.
+Status: draft index. The 25 All Work NIPs and five hardening-application NIPs
+have specification files, but they are not thereby implemented or advertised
+by any relay. Each capability becomes real only with fixtures, an explicit
+implementation decision, runtime evidence, and any required product-claim
+transition. This index is a protocol program, not a product availability
+claim.
 
 ## Philosophy
 
@@ -98,9 +100,10 @@ NIP-SKL (skills gate what a Delegate may load).
   (TRN) reservations.
 - Append-only streams either use unique-`d` addressable events (the
   signed-workroom precedent) or a regular-kind block chosen at drafting time.
-- Tentative kinds below are placeholders. Each NIP fixes its exact kinds when
-  drafted, after a collision review against the official registry and the
-  Block lane.
+- Each drafted NIP reserves the exact kinds in its specification after a
+  collision review against the official, Block, and existing OpenAgents lanes.
+  Only NIP-WA's range is pinned by an implementation. Changing another draft
+  allocation requires a new collision review and a compatibility disposition.
 
 ## Proposed NIPs
 
@@ -108,7 +111,7 @@ NIP-SKL (skills gate what a Delegate may load).
 
 Layer 0 is drafted. The four spec files live beside this index.
 
-| NIP | Name | Tentative kinds | Draft |
+| NIP | Name | Reserved kinds | Draft |
 | --- | --- | --- | --- |
 | NIP-WK | Work | 32170-32179 | [`WK.md`](WK.md) |
 | NIP-WI | Work Intents and Admission | 32180-32189 | [`WI.md`](WI.md) |
@@ -161,7 +164,7 @@ capability, and a generation change fences stale membership
 
 Layer 1 is drafted. The seven spec files live beside this index.
 
-| NIP | Name | Tentative kinds | Draft |
+| NIP | Name | Reserved kinds | Draft |
 | --- | --- | --- | --- |
 | NIP-PI | Project Issue | 32200-32209 | [`PI.md`](PI.md) |
 | NIP-WR | Work Relations | 32210-32214 | [`WR.md`](WR.md) |
@@ -227,7 +230,7 @@ commitment, grant, or Work State.
 
 Layer 2 is drafted. The seven spec files live beside this index.
 
-| NIP | Name | Tentative kinds | Draft |
+| NIP | Name | Reserved kinds | Draft |
 | --- | --- | --- | --- |
 | NIP-AD | Assignment and Delegation | 32270-32279 | [`AD.md`](AD.md) |
 | NIP-AS | Agent Sessions | 32280-32289 | [`AS.md`](AS.md) |
@@ -309,7 +312,7 @@ implementation already exists.
 
 Layer 3 is drafted. The four spec files live beside this index.
 
-| NIP | Name | Tentative kinds | Draft |
+| NIP | Name | Reserved kinds | Draft |
 | --- | --- | --- | --- |
 | NIP-GB | Guidance Bundles | 32330-32339 | [`GB.md`](GB.md) |
 | NIP-AL | Automation Loops | 32340-32349 | [`AL.md`](AL.md) |
@@ -357,7 +360,7 @@ notification never triggers Work.
 Layer 4 is drafted. With it, all 25 proposed NIPs have spec files beside
 this index.
 
-| NIP | Name | Tentative kinds | Draft |
+| NIP | Name | Reserved kinds | Draft |
 | --- | --- | --- | --- |
 | NIP-HP | Hosts and Placement | 39560-39579 | [`HP.md`](HP.md) |
 | NIP-OC | Outcome Closeout | 39580-39589 | [`OC.md`](OC.md) |
@@ -397,19 +400,25 @@ project inside `relay.openagents.com`. It maps the program onto the layers
 above (Organization and Teams, Projects per target, Work per assessment,
 Coding Sessions pinned to exact commits, Repository Work Claims for
 collision-free parallel scanning, Evidence and Verification with enforced
-producer/verifier separation) and proposes five additional NIPs that the
-security domain needs and this program does not cover:
+producer/verifier separation) and adds five drafted NIPs for the security
+domain concerns the general Work model does not cover:
 
-| NIP | Name | Tentative kinds |
-| --- | --- | --- |
-| NIP-SP | Scan Profiles and Pre-Registration | 32450-32459 |
-| NIP-SC | Source Completeness and Coverage | 32460-32469 |
-| NIP-FD | Findings, Verdicts, and Disclosure | 32470-32479 |
-| NIP-SI | Security Invariants and Regression Watch | 32480-32489 |
-| NIP-BT | Bounties and Contribution Credit | 32490-32499 |
+| NIP | Name | Reserved block | Draft |
+| --- | --- | --- | --- |
+| NIP-SP | Scan Profiles and Pre-Registration | 32450-32459 | [`SP.md`](SP.md) |
+| NIP-SC | Source Completeness and Coverage | 32460-32469 | [`SC.md`](SC.md) |
+| NIP-FD | Findings, Verdicts, and Disclosure | 32470-32479 | [`FD.md`](FD.md) |
+| NIP-SI | Security Invariants and Regression Watch | 32480-32489 | [`SI.md`](SI.md) |
+| NIP-BT | Bounties and Contribution Credit | 32490-32499 | [`BT.md`](BT.md) |
 
-Those five extend the addressable neighborhood to `32450-32499` and are
-specified, but not yet drafted, in the hardening spec.
+Those five extend the addressable neighborhood to `32450-32499`. They remain
+application drafts: the hardening roadmap separately owns implementation,
+fixtures, contributor admission, disclosure policy, and settlement gates.
+
+The application order is NIP-SP plus NIP-SC for the coverage ledger, NIP-FD
+for responsible disclosure, NIP-SI for durable regression prevention, then
+NIP-BT for contribution credit. A settlement rail is optional and separately
+owner-gated.
 
 ## Suggested drafting order
 
@@ -436,5 +445,6 @@ specified, but not yet drafted, in the hardening spec.
   study.
 - No NIP replaces the Block lane: agent identity, memory, telemetry, read
   state, reminders, and push remain composed from Buzz's specs.
-- No kind number in this index is final until its NIP is drafted and passes
-  a collision review.
+- Draft kind allocations are protocol reservations, not runtime support.
+  NIP-WA alone has an implementation-pinned range; every other allocation
+  still needs a compatibility decision before a breaking change.

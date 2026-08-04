@@ -4,10 +4,10 @@ This directory owns the design for the OpenAgents Bitcoin OSS hardening
 program: the coordination layer that Episodes 263–265 concluded was missing,
 built as a public project inside our own Nostr relay.
 
-Status: design and roadmap. Nothing here is admitted implementation work, a
-schedule, or a public claim. Today the honest position is one measured
-experiment, one upstream PR to Loupe, and zero confirmed vulnerabilities in
-anyone else's code.
+Status: design, protocol drafts, and roadmap. Nothing here is admitted
+implementation work, a schedule, or a public claim. Today the supported
+position is one measured experiment, one upstream PR to Loupe, five drafted
+hardening NIPs, and zero confirmed vulnerabilities in anyone else's code.
 
 | Document | Contents |
 | --- | --- |
@@ -26,8 +26,9 @@ anyone else's code.
 - **The incident.** [`../coldcard/`](../coldcard/) — postmortems, independent
   analyses, generator reproduction, and the checked-in benchmark.
 - **The protocol program.** [`../nips/PROPOSED.md`](../nips/PROPOSED.md) — the
-  25 All Work NIPs this program organizes itself with, and where the five
-  proposed hardening NIPs would join them.
+  25 All Work NIPs this program organizes itself with and the five drafted
+  hardening NIPs: [`SP`](../nips/SP.md), [`SC`](../nips/SC.md),
+  [`FD`](../nips/FD.md), [`SI`](../nips/SI.md), and [`BT`](../nips/BT.md).
 - **The relay.** `~/work/immortal` — the Rust relay serving
   `relay.openagents.com`, and its `nips/` lanes (official, Block, OpenAgents).
 - **The workbench.** `~/work/omega/crates/omega_forensics/` plus
