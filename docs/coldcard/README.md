@@ -48,21 +48,11 @@ Until those dependencies close with accepted receipts:
    — live X API recent-search snapshot of Coldcard discourse (external
    observation only). Access path:
    [`../grok/2026-08-04-x-api-and-xai-x-search-access.md`](../grok/2026-08-04-x-api-and-xai-x-search-access.md).
-8. **CTO / inside-job thesis pack (start here for identity + guilt questions):**
-   - [`2026-08-04-cto-inside-job-thesis-analysis.md`](2026-08-04-cto-inside-job-thesis-analysis.md)
-     — **claim ledger** A–I, flip-artifacts, scenarios S1–S8, summary.
-   - [`2026-08-04-cto-thesis-evidence-detail.md`](2026-08-04-cto-thesis-evidence-detail.md)
-     — append-only evidence rows E1–E24, steelmans, full links.
-   - [`2026-08-04-on-chain-keyspace-prior-drain-plan.md`](2026-08-04-on-chain-keyspace-prior-drain-plan.md)
-     — Fable priority: weak keyspace + prior-drain membership tests.
-   - [`2026-08-04-cto-thesis-collection-plan.md`](2026-08-04-cto-thesis-collection-plan.md)
-     — lanes and checkboxes.
-   - [`receipts/2026-08-04-cto-thesis-archive-index.md`](receipts/2026-08-04-cto-thesis-archive-index.md)
-     — local snapshot digests for cited URLs.
-   - [`receipts/2026-08-04-switck-x-archive.json`](receipts/2026-08-04-switck-x-archive.json)
-     — `@switck` X timeline dump (52 posts).
-   - [`receipts/2026-08-04-galaxy-public-attacker-addresses.md`](receipts/2026-08-04-galaxy-public-attacker-addresses.md)
-     — Galaxy Waves 1–2 monitor addresses (public).
+8. [`2026-08-04-cto-inside-job-thesis-analysis.md`](2026-08-04-cto-inside-job-thesis-analysis.md)
+   — **single consolidated** CTO / inside-job thesis: claims A–I, evidence
+   E1–E28, steelmans, scenario essays, collection and on-chain plans, archive
+   digests. Machine receipt:
+   [`receipts/2026-08-04-switck-x-archive.json`](receipts/2026-08-04-switck-x-archive.json).
 
 The broader rationale and current product sequence live in the
 [`docs/loupe` entry point](../loupe/README.md), the
