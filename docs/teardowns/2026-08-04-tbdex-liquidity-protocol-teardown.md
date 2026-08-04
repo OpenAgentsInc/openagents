@@ -5,15 +5,22 @@
 - Disposition: high-value architectural donor for a heterogeneous liquidity
   market; archived upstream implementation, so **adapt the protocol laws, not
   the runtime dependency**
-- Primary local source: `~/work/projects/repos/tbdex-whitepaper/`
-- Whitepaper pin: `62c466774f36671ce89649b9507f6802a3b60475`
+- Primary local source: the `~/work/projects/tbd/` reference lane
+  (32 TBD54566975 clones under `projects/tbd/repos/`, synced 2026-08-04;
+  upstream has archived most of them, so the clones are frozen reference
+  evidence)
+- Whitepaper: `projects/tbd/repos/tbdex-whitepaper/` at
+  `62c466774f36671ce89649b9507f6802a3b60475` (moved from the old
+  `projects/repos/` location on 2026-08-04)
+- Rust SDK pin: `projects/tbd/repos/tbdex-rs/` at `c3d4985` (v4.0.0)
 - Companion synthesis:
   [Boltz ecosystem and Nostr rebuild](./2026-08-03-boltz-ecosystem-nostr-rebuild-teardown.md)
 
 This is a read-only teardown of the local Apache-2.0 tbDEX v0.2 whitepaper,
 its diagrams and source TeX, plus the public protocol and SDK repositories.
 No provider was contacted, no credential was presented, and no quote, order,
-payment, or settlement was attempted.
+payment, or settlement was attempted. Section 7 maps the full local lane to
+concrete harvest targets.
 
 ## Summary
 
@@ -72,7 +79,7 @@ narrow and “liquidity pool” falsely suggests pooled custody. [source]
 
 | Artifact | Identity | Evidence |
 | --- | --- | --- |
-| Repository | `~/work/projects/repos/tbdex-whitepaper/` | Local audited tree |
+| Repository | `~/work/projects/tbd/repos/tbdex-whitepaper/` | Local audited tree |
 | Commit | `62c466774f36671ce89649b9507f6802a3b60475` | Exact source pin |
 | Whitepaper | `whitepaper.pdf`, v0.2, 16 pages, SHA-256 `2144f4c7a764138d7a03a2af4ce9e99609a6cff7428dcfd074561fd4ff2386fc` | Rendered and visually inspected page by page |
 | Source | `whitepaper.tex`, SHA-256 `976b0b94d91af12724d195569e8f0dba29eb66f0d0a3e8d8b17d81376223ac67` | Full text and diagram source |
@@ -370,8 +377,16 @@ not the core liquidity wire.
 
 ### 6.4 The one new microstandard worth drafting
 
-Draft one focused **NIP-MKT: Negotiated Markets** base vocabulary, then narrow
-profiles rather than one giant exchange NIP:
+**Status 2026-08-04: drafted.** NIP-MKT v0 now exists at
+[`docs/nips/MKT.md`](../nips/MKT.md) with the collision-reviewed kind block
+`39600-39609` and `39610-39699` reserved for profiles, and it is mirrored
+into the Immortal `nips/openagents/` lane. The relay implementation program
+is Immortal issues #3-#9 (M10 base, M11 contract export, local dev env); the
+generated TypeScript SDK is openagents#9309, the web demo is
+openagents#9310, and the Omega market panel is omega#244. The shape below is
+what was proposed and matches what was drafted: one focused **NIP-MKT:
+Negotiated Markets** base vocabulary, then narrow profiles rather than one
+giant exchange NIP:
 
 ```text
 ProviderProfile       public, addressable, slow-changing identity/capabilities
@@ -400,7 +415,84 @@ privacy, and evidence references. Each profile owns rail semantics. Asset and
 network identifiers should reuse existing registries rather than create a
 Nostr-specific ticker ontology.
 
-## 7. Liquidity bridges into real ecosystems
+## 7. Harvest map: the full TBD lane, relative to Boltz
+
+The `projects/tbd/` lane now holds the complete relevant TBD54566975 set —
+32 clones spanning protocol, SDKs, PFI exemplars, wallets, and
+discovery/compliance. Upstream archived most of them, which makes the lane
+stable harvest material rather than a moving dependency. This section says
+what each group contributes, where it lands in our build, and what we
+deliberately leave behind.
+
+The division of labor between the two donors:
+
+> **Boltz is the settlement donor. tbDEX is the negotiation donor.** From
+> Boltz we harvest execution physics — swap lifecycles, client-side
+> verification law, HTLC/Taproot script and MuSig2 claim/refund structure,
+> unilateral exit, hold-invoice semantics — which land in the MKT-SWP
+> profile, the provider daemon design, and the adversarial regtest lab.
+> From tbDEX we harvest market grammar and conformance assets — the message
+> vocabulary, JSON schemas, parse vectors, provider/wallet role shapes,
+> discovery precedent, and credential flow — which land in the NIP-MKT base,
+> its fixture corpus, the generated SDK, and the later MKT-PFI profile.
+> Neither donor contributes running code to the critical path; both
+> contribute laws, shapes, and test material.
+
+### 7.1 Per-group harvest
+
+| Lane group | Repos | Harvest | Lands in |
+| --- | --- | --- | --- |
+| Protocol + docs | `tbdex`, `tbdex-whitepaper`, `tbdex-docs`, `tbdex-rest-api` | The message lifecycle and field vocabulary — including two messages our draft should keep in view: `Cancel` as a first-class message and `OrderInstructions` as a separate payment-direction step distinct from `Quote`. The hosted `json-schemas/*.schema.json` (balance, cancel, close, offering, order, orderinstructions, orderstatus, quote, rfq) and `hosted/test-vectors/protocol/vectors/*.json` parse vectors are the highest-value single asset: a frozen, Apache-2.0 conformance corpus for every message type. `tbdex-rest-api` documents the HTTP binding a compatibility facade would mimic. | NIP-MKT fixture translation (Immortal #7, exported corpus in #8); profile field checklists; optional compatibility facade design |
+| Language SDKs | `tbdex-rs` (pinned v4.0.0), `tbdex-js`, `tbdex-kt`, `tbdex-go`, `tbdex-dart`, `tbdex-swift`, `tbdex-rb` | `tbdex-rs` is the reference: its `crates/*/src/messages` and `resources` modules show mature field naming, per-message validation, and a signature module, with bound TypeScript tests replaying the shared vectors. Harvest the model shapes, validation split (structure vs. signature vs. state), and the pattern of one canonical core with thin language bindings — the same pattern as our contract-generated SDK. | `packages/nip-mkt` codegen design (openagents#9309); Immortal domain validation structure (#3-#5) |
+| Privacy mechanics | `tbdex` RFQ spec + `parse-rfq-omit-private-data.json` vector | tbDEX RFQs split private data out of the signed message and bind it by hash, so a stored RFQ can be disclosed without leaking credentials or account details. This is the same disclosure law as NIP-MKT's independently signed inner record inside a gift wrap; the omit-private-data vector is a ready-made negative fixture pattern for our privacy envelope tests. | NIP-MKT privacy-envelope fixtures; MKT-PFI credential-reference design |
+| PFI exemplars | `tbdex-pfi-exemplar` (tombstone → `tbd-examples`), `example-pfi-aud-usd-tbdex`, `pfi-guide-example`, `pfi-providers-data`, `hackathon-mock-pfis`, `workshop-mock-pfis` | The provider-daemon role shape: offering publication, exchange webhook handling, quote issuance, order progression, settlement callbacks. The mock fleets show how small a credible test provider can be — directly the shape of Immortal's `dev-market-seed.sh` provider actor and the web demo's provider driver. `pfi-providers-data` shows a curated provider directory as plain data, matching our no-global-directory law (NIP-51 lists, not a registry service). | Immortal #9 seeded actors; openagents#9310 demo provider driver |
+| Wallets + apps | `didpay` (Flutter), `tbdex-DIDPay-sample`, `tbdex-example`, `tbdex-example-android`, `tbdex-example-ios`, `tbdex-ussd`, `workshop-tbdex-wallet`, `workshop-tbdex-abc-wallet`, `workshop-tbdex-abc-vc-issuer` | The wallet-side UX sequence worth copying: pick corridor → compare pulled offerings → RFQ → ranked quote comparison → explicit acceptance → status timeline → closeout, with credentials requested only when a selected provider needs them. `tbdex-ussd` is a useful boundary case: the protocol survived a USSD text menu, evidence the negotiation grammar is thin enough for constrained clients. | openagents#9310 web demo flows; omega#244 panel flows |
+| Discovery + compliance | `tbdex-discovery-nostr`, `known-customer-credential` (+ `kcc-js`, `kcc-rs`, `kcc-prototype-exemplar`), `trust-framework` | `tbdex-discovery-nostr` is Block's own prototype of exactly our discovery design: PFIs advertise currency pairs as Nostr events on public relays, customers subscribe and then negotiate over tbDEX — precedent, from the protocol's authors, that Nostr is the right discovery fabric where their DID-based directory was too heavy. Harvest it as validation and as a checklist of what a minimal offering advertisement needs. KCC defines the Known Customer Credential issuance flow (IDV vendor integration, what PII the PFI holds vs. the vendor) — the concrete credential input for a future MKT-PFI profile. `trust-framework` shows compliance vocabulary a regulated provider will expect. | NIP-MKT `39600`/`39601` head design (already drafted); MKT-PFI profile inputs; provider admission policy design |
+
+### 7.2 What we deliberately do not harvest
+
+- **The DID/VC identity core.** `did:dht`, DID resolution, and the Web5
+  stack are the weight that limited adoption. Nostr keys plus NIP-32/39/85
+  assertions carry discovery and reputation; W3C VC selective presentation
+  appears only at the MKT-PFI boundary where a regulated counterparty
+  requires it, referenced and encrypted, never on public relays.
+- **JWS/JOSE signing.** Our wire is NIP-01 Schnorr signatures over canonical
+  event bytes. Vector translation maps tbDEX's signature assertions to
+  event-signature assertions rather than porting JOSE.
+- **HTTP as the primary wire.** tbDEX ran provider REST endpoints; our
+  primary wire is relay events with gift-wrapped private records. An HTTP
+  compatibility facade is an optional later adapter, not the foundation.
+- **DWN transport and the packaging machinery.** Decentralized Web Nodes,
+  jitpack/Maven distribution, and the multi-language binding toolchain are
+  replaced by the relay fabric and the contract-generated SDK process.
+- **Running any archived code on the critical path.** Everything harvested
+  arrives as laws, shapes, schemas, and vectors re-expressed in our own
+  fixtures; Apache-2.0 permits direct adaptation where a schema or vector is
+  copied, with notices preserved.
+
+### 7.3 Boltz harvest, for contrast
+
+The [companion Boltz teardown](./2026-08-03-boltz-ecosystem-nostr-rebuild-teardown.md)
+covers the other donor in depth; the short form of what it contributes,
+stated here so the two harvests compose without overlap:
+
+- explicit submarine, reverse, and chain-swap lifecycles with their exact
+  state transitions and timeout ladders → MKT-SWP state machine;
+- the funding law — the client verifies lock script or Taproot tree,
+  amounts, payment hash, timelocks, and claim/refund paths before money
+  moves → wallet-side verification requirements in every atomic profile;
+- MuSig2 cooperative key-path claims with script-path unilateral exit →
+  the happy-path/exit split MKT-SWP must preserve;
+- hold invoices and preimage coupling → the binding between legs;
+- the operational surface (30-repo service map, incident posture) → what a
+  provider daemon and its recovery duties actually contain.
+
+Where tbDEX tells providers and wallets **how to talk**, Boltz tells the
+atomic subset of them **how to be sure**. NIP-MKT base carries the first;
+the MKT-SWP profile carries the second; the custody gradient in section 5
+places every other route honestly between them.
+
+## 8. Liquidity bridges into real ecosystems
 
 | Ecosystem | Bridge | Why it matters |
 | --- | --- | --- |
@@ -422,7 +514,7 @@ state-machine handling, evidence verification, timers/recovery, and
 compatibility APIs. This makes Immortal materially more than transport without
 granting the relay custody.
 
-## 8. Threats the protocol must make visible
+## 9. Threats the protocol must make visible
 
 | Threat | Required response |
 | --- | --- |
@@ -439,7 +531,7 @@ granting the relay custody.
 | Dispute capture | Disclose solver/arbiter set and appeal path before Order; support competing coordinators |
 | Multi-hop partial completion | Shared atomic construction, pre-funding, guarantee, or explicit sequential exposure |
 
-## 9. Current implementation snapshot and target
+## 10. Current implementation snapshot and target
 
 Reusable foundations:
 
@@ -472,7 +564,7 @@ new focused NIPs wherever the three lanes do not yet express required
 noncustodial behavior. Live capital, spend keys, bank/node credentials, and
 final settlement authority remain with independent providers and rails.
 
-## 10. Recommended build order
+## 11. Recommended build order
 
 1. **Protocol vectors first.** Write NIP-MKT base fixtures and an MKT-SWP
    profile for one Bitcoin↔Lightning regtest pair. Freeze exact public/private
@@ -500,7 +592,7 @@ The first success criterion is not volume. It is a wallet completing the same
 regtest swap against either of two providers, over independently chosen relays,
 while recovering safely from one provider and one relay failure.
 
-## 11. Central finding
+## 12. Central finding
 
 tbDEX's most valuable contribution is a market grammar for **heterogeneous
 trust**. Boltz contributes the strongest settlement primitive for the subset
