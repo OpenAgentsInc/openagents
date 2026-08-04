@@ -507,45 +507,40 @@ code and migration, unless Coinkite attributes authorship otherwise.
    affected” was later corrected to include reduced-entropy impact.
 7. **Official 2021 retirement-attack definition** exists as primary text (E10);
    useful for narrative history, not automatic intent proof.
-8. **Dense public investigation ecosystem** (E9, E13): Block, Galaxy, Rob1Ham
-   red team, fee-race victims, etc.
+8. **Dense public investigation ecosystem** (E9, E13, E19): Block, Galaxy,
+   Rob1Ham red team, fee-race victims, provider-log matching.
+9. **Official first-person ownership** of zeroed `MICROPY_HW_ENABLE_RNG` and
+   wrong seed path, plus **“unaware until today”** (E17 / I).
 
 ### What the evidence does **not** yet support
 
-1. **Intentional backdoor for later theft (C).** Composition bugs, empty
-   subjects, dual identity, and dark humor about “retirement attacks” are
-   consistent with negligence and culture; they are not a completed intent
-   proof.
-2. **Participation in the 2026 drains (D).** No collector-key attribution to
-   named staff is in this file. Block’s paid blockchain-services lead (E13)
-   points at a sophisticated operator without naming Coinkite.
-3. **Remediation-as-confession (E).** “Generate new seed and move funds” is
-   also what a non-malicious vendor must say under active exploitation.
-4. **Proven multi-year manufacturer knowledge of this exact flaw (G).** Multiple
-   credible *claims* (E12); primary tickets still missing.
-5. **Narrative overreach** in viral posts that depend on an incorrect full
-   causal story for the 2018 RNG macro (E7).
+1. **Intentional backdoor for later theft (C).** Dual identity + empty commits +
+   retirement-attack joke are not intent proof. E17 “I didn’t know the PRNG was
+   in the tree” is compatible with negligence or post-hoc narrative.
+2. **Participation in the 2026 drains (D).** No staff→collector attribution.
+   Block’s paid analytics lead names a sophisticated operator, not Coinkite.
+3. **Remediation-as-confession (E).** Migration advice remains dual-use.
+4. **Proven multi-year knowledge of this exact flaw (G).** Loud third-party
+   claims (E12/E18) vs official unawareness (E17) — unresolved without tickets.
+5. **Oversimple 2018-macro origin stories** that ignore E17’s “I set it to zero.”
 
 ### Working stance for further collection
 
-Priority leads still open:
+1. Primary 2022–2024 victim tickets; studentofthings “first report” vs official
+   “unrelated” reply (E18).
+2. jamesob May 2025 report text (E18).
+3. Blockchain-services provider name / LE trail if public (E19).
+4. Full `switck` X archive; remaining non-Gray libngu sigs.
+5. Direct `@DocHex`/`@nvk` statement on GPG/nym.
+6. **X API credits depleted** mid fourth pass — refill before more live X pulls.
 
-1. Primary artifacts for 2022–2024 victim reports / manufacturer replies (G).
-2. James O’Beirne May 2025 report text or Coinkite-side confirmation.
-3. Chain-analysis identity of drain operators (D) — exchange/provider
-   cooperation if it ever becomes public.
-4. Full `switck` X archive and any remaining non-Gray signatures on libngu.
-5. Any authentic `@DocHex` / `@nvk` statement that *directly* addresses the
-   GPG/nym map (E14 currently shows absence, not a technical rebuttal).
+Summary:
 
-Until then, the honest summary is:
-
-> **Strong public evidence that Coinkite CTO Peter Gray controlled the signing
-> key and authorship path for the defective libngu/firmware seed stack,
-> including work under the switck nym. Documented early public under-scoping of
-> which models were affected. Multiple third-party claims of earlier victim
-> reports remain unverified as primary records. Open whether any of this
-> implies intentional theft design or participation in the 2026 drains.**
+> **Strong evidence Gray controlled switck signing + real-name seed migration.
+> Official tech blog admits first-person RNG-path mistakes and claims unawareness
+> until disclosure, while third parties allege years of ignored drains. Early
+> advisory under-scoped models. Still open: intentional theft design, staff role
+> in 2026 drains, and reconciling “unaware” with prior-notice claims.**
 
 ---
 
