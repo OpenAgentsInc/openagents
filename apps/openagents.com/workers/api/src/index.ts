@@ -706,7 +706,7 @@ import { isConfidentialComputeEnabled } from './inference/inference-privacy-enti
 import {
   handleConfidentialComputeExecutionReceipt,
   handlePaidPrivacyPurchase,
-  handlePublicPrivacyReceiptRead,
+  makePublicPrivacyReceiptRoutes,
 } from './inference/inference-privacy-receipt-routes'
 import {
   emitKhalaChatTrace,
@@ -10249,6 +10249,27 @@ const publicCloudPrimitiveReceiptRoutes =
     nowIso: currentIsoTimestamp,
   })
 
+// Public paid-privacy / confidential-compute receipt read (#9307). Mounted
+// through the parameterised route seam because the ref is the whole tail of
+// the path; the exact-route table can only compare a path with `===`, so its
+// previous `:receiptRef` entry was reachable by no real ref. Public proof read
+// only — no auth, no writes, no payment material.
+const publicPrivacyReceiptRoutes = makePublicPrivacyReceiptRoutes<Env>({
+  makeDeps: env => ({
+    authenticate: async () => undefined,
+    confidentialComputeEnabled: isConfidentialComputeEnabled(
+      env.INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED,
+    ),
+    db: openAgentsDatabase(env),
+    // KS-8.9 decommission follow-up (#8336): the bounded non-gate read
+    // allowlist — serves this public receipt projection from Postgres for real
+    // under KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS=postgres; absent/'d1' =>
+    // byte-identical inline D1 behavior.
+    nonGateReads: makeInferenceEntitlementsRoutingForEnv(env)?.nonGateReads,
+    nowIso: currentIsoTimestamp,
+  }),
+})
+
 const marketingAgencyReceiptPublicRoutes =
   makeMarketingAgencyReceiptPublicRoutes<Env>({
     makeClaimStore: _env =>
@@ -16122,23 +16143,6 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       ),
   },
   {
-    path: '/api/public/inference/privacy-receipts/:receiptRef',
-    handler: (request, env) =>
-      handlePublicPrivacyReceiptRead(request, {
-        authenticate: async () => undefined,
-        confidentialComputeEnabled: isConfidentialComputeEnabled(
-          env.INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED,
-        ),
-        db: openAgentsDatabase(env),
-        // KS-8.9 decommission follow-up (#8336): the bounded non-gate read
-        // allowlist — serves this public receipt projection from Postgres
-        // for real under KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS=postgres;
-        // absent/'d1' => byte-identical inline D1 behavior.
-        nonGateReads: makeInferenceEntitlementsRoutingForEnv(env)?.nonGateReads,
-        nowIso: currentIsoTimestamp,
-      }),
-  },
-  {
     path: '/v1/inference/privacy/paid-privacy/purchases',
     handler: (request, env) =>
       handlePaidPrivacyPurchase(request, {
@@ -16904,7 +16908,19 @@ const managedSandboxProviderBrokerRoutes =
     store: managedSandboxBoxV1StoreForEnv,
   })
 
-const routeRequest = makeWorkerRouteRequest({
+/**
+ * The Worker's route composition. `workerFetchProgram` below dispatches every
+ * request through it.
+ *
+ * Exported because a mount-level test needs it (#9307):
+ * `exactRouteHandlerForPath` can only reach a route the exact-route table
+ * holds, and a route whose ref is the TAIL of the path is not in that table at
+ * all. That is precisely the class of defect #9307 was — the privacy-receipt
+ * read sat in the exact-route table under the literal text `:receiptRef`, so
+ * `routeExact`'s `===` comparison meant no real ref ever reached its handler,
+ * and no test that called the handler directly could tell.
+ */
+export const routeWorkerRequest = makeWorkerRouteRequest({
   cleanProductRouteRedirectLocation,
   exactRoutes: exactRouteRegistry.routes,
   handleAppShellPage: (request, env, ctx) =>
@@ -17352,6 +17368,8 @@ const routeRequest = makeWorkerRouteRequest({
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
   routePublicInferenceReceiptRequest:
     publicInferenceReceiptRoutes.routePublicInferenceReceiptRequest,
+  routePublicPrivacyReceiptRequest:
+    publicPrivacyReceiptRoutes.routePublicPrivacyReceiptRequest,
   routePublicKhalaCodeOutsideUserRunReceiptRequest:
     publicKhalaCodeOutsideUserRunReceiptRoutes.routePublicKhalaCodeOutsideUserRunReceiptRequest,
   routePublicKhalaCodeTracePluginRevenueShareRequest:
@@ -17633,7 +17651,7 @@ const workerFetchProgram = Effect.gen(function* () {
       return moneySurfaceRetiredResponse()
     }
 
-    return yield* routeRequest()
+    return yield* routeWorkerRequest()
   }).pipe(
     Effect.catchCause(cause =>
       Effect.sync(() => {

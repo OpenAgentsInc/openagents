@@ -582,6 +582,31 @@ export const handleConfidentialComputeExecutionReceipt = (
     )
   })
 
+/**
+ * The public read prefix for `GET /api/public/inference/privacy-receipts/
+ * {receiptRef}`. The ref is an opaque already-issued public identifier, so it
+ * is the whole tail of the path.
+ *
+ * #9307: this surface used to be registered in the exact-route table with the
+ * LITERAL text `:receiptRef`. `routeExact` compares with `===`, so the only
+ * request that ever reached the handler was a request for that literal text
+ * and every real ref 404'd — including the `receiptUrl` this same module hands
+ * back from the purchase and confidential-compute writes. It is now mounted
+ * through the parameterised `OptionalEffectRoute` seam
+ * (`makeWorkerRouteRequest`), the same one `/api/public/cloud/receipts/
+ * {receiptRef}` and the other receipt readers use.
+ */
+export const PUBLIC_PRIVACY_RECEIPT_PATH_PREFIX =
+  '/api/public/inference/privacy-receipts/'
+
+const publicPrivacyReceiptRefFromPath = (pathname: string): string | null =>
+  pathname.startsWith(PUBLIC_PRIVACY_RECEIPT_PATH_PREFIX) &&
+  pathname.length > PUBLIC_PRIVACY_RECEIPT_PATH_PREFIX.length
+    ? decodeURIComponent(
+        pathname.slice(PUBLIC_PRIVACY_RECEIPT_PATH_PREFIX.length),
+      )
+    : null
+
 export const handlePublicPrivacyReceiptRead = (
   request: Request,
   deps: PrivacyReceiptRoutesDeps,
@@ -592,14 +617,11 @@ export const handlePublicPrivacyReceiptRead = (
     }
 
     const url = new URL(request.url)
-    const match = url.pathname.match(
-      /^\/api\/public\/inference\/privacy-receipts\/(.+)$/,
-    )
-    if (!match) {
+    const receiptRef = publicPrivacyReceiptRefFromPath(url.pathname)
+    if (receiptRef === null) {
       return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
     }
 
-    const receiptRef = decodeURIComponent(match[1] ?? '')
     const projection = yield* Effect.tryPromise(() =>
       readPublicPrivacyReceipt(
         deps.db,
@@ -613,3 +635,27 @@ export const handlePublicPrivacyReceiptRead = (
       ? noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
       : noStoreJsonResponse({ receipt: projection })
   })
+
+/**
+ * The parameterised mount for the public privacy-receipt read (#9307).
+ *
+ * Returns `undefined` for any path outside the receipt prefix so the Worker
+ * dispatcher falls through to the next route, exactly like the sibling receipt
+ * readers. A bare `/api/public/inference/privacy-receipts` with no ref is NOT
+ * claimed — there is no collection projection behind it.
+ */
+export const makePublicPrivacyReceiptRoutes = <Bindings>(
+  dependencies: Readonly<{
+    makeDeps: (env: Bindings) => PrivacyReceiptRoutesDeps
+  }>,
+) => {
+  const routePublicPrivacyReceiptRequest = (
+    request: Request,
+    env: Bindings,
+  ): Effect.Effect<globalThis.Response> | undefined =>
+    publicPrivacyReceiptRefFromPath(new URL(request.url).pathname) === null
+      ? undefined
+      : handlePublicPrivacyReceiptRead(request, dependencies.makeDeps(env))
+
+  return { routePublicPrivacyReceiptRequest }
+}

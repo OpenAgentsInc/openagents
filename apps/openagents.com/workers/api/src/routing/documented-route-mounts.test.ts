@@ -555,13 +555,20 @@ const unservedPromiseRouteRefs: ReadonlyArray<string> = [
 /**
  * `routeExact` compares a path to `url.pathname` with `===`, so an exact-route
  * entry containing a `:param` segment answers only a request for that literal
- * text. Four of these are deliberate tombstones whose handler is a bare
- * `notFound()`. The fifth,
- * `/api/public/inference/privacy-receipts/:receiptRef`, is not: it carries a
- * real handler that no live receipt ref can ever reach (#9307).
+ * text. Every remaining one is a deliberate tombstone whose handler is a bare
+ * `notFound()`: the literal path is unreachable AND the handler is inert, so
+ * the two agree.
+ *
+ * `/api/public/inference/privacy-receipts/:receiptRef` used to be the fifth
+ * entry and was NOT a tombstone — it carried a real handler no live receipt
+ * ref could reach (#9307). It is now mounted through the parameterised
+ * `OptionalEffectRoute` seam instead, so it is gone from this table. A
+ * regression that puts it (or any other real handler) back behind a literal
+ * `:param` path fails this test, and the mount-level proof that a real ref
+ * reaches the handler lives in
+ * `inference/inference-privacy-receipt-route-wiring.test.ts`.
  */
 const parameterShapedExactRoutes: ReadonlyArray<string> = [
-  '/api/public/inference/privacy-receipts/:receiptRef',
   '/api/public/khala-code/outside-user-runs/:receiptRef',
   '/api/public/khala-code/trace-plugin-revenue-share-precedents/:receiptRef',
   '/api/public/qa-swarm/first-engagements/:receiptRef',
@@ -662,6 +669,21 @@ describe('documented route mounts', () => {
     expect(
       resolver.resolve('/api/public/business/case-studies'),
     ).toMatchObject({ kind: 'path-template' })
+  })
+
+  test('resolves the #9307 receipt read through its parameterised prefix', () => {
+    // It previously resolved only because the exact-route table carried the
+    // literal text `:receiptRef`, which this resolver reads as a path
+    // template — evidence the route existed, not evidence any ref reached it.
+    // Pinning the KIND records which mechanism the guard now believes. The
+    // request-level proof is
+    // `inference/inference-privacy-receipt-route-wiring.test.ts`.
+    expect(
+      resolver.resolve('/api/public/inference/privacy-receipts/{receiptRef}'),
+    ).toMatchObject({
+      detail: '/api/public/inference/privacy-receipts/',
+      kind: 'pathname-prefix',
+    })
   })
 
   test('does not resolve a path nothing declares', () => {

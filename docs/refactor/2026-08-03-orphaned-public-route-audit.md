@@ -153,6 +153,19 @@ Four sibling entries carry the same param-shaped path but a bare `notFound()`
 handler and are deliberate tombstones. The guard enumerates all five by
 equality so a new one cannot appear unnoticed.
 
+**Fixed 2026-08-03 (#9307).** The read is now mounted through the parameterised
+`OptionalEffectRoute` seam on `makeWorkerRouteRequest` — the same mechanism
+`/api/public/cloud/receipts/{receiptRef}` and the other receipt readers use —
+and the literal `:receiptRef` exact-route entry is gone. A real ref reaches the
+handler, and the `receiptUrl` the purchase and confidential-compute writes hand
+back now dereferences. `inference/inference-privacy-receipt-route-wiring.test.ts`
+proves it at request level against the REAL production route composition
+(`routeWorkerRequest`) rather than by calling the handler directly, which is
+what the pre-existing handler test did and why the defect was invisible. The
+guard's `parameterShapedExactRoutes` ledger now holds the four tombstones only;
+re-registering any real handler behind a literal `:param` path fails it again
+(checked by mutation).
+
 ### (b) Documented but never shipped
 
 None. Every finding traced to a route that once existed.

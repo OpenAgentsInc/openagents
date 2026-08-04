@@ -79,6 +79,12 @@ type WorkerRouteDependencies = Readonly<{
   routeOnboardingRequest: OptionalEffectRoute
   routePublicCloudPrimitiveReceiptRequest: OptionalEffectRoute
   routePublicInferenceReceiptRequest: OptionalEffectRoute
+  // Public paid-privacy / confidential-compute receipt read
+  // GET /api/public/inference/privacy-receipts/{receiptRef} (#9307 — the
+  // path-param surface the exact-route registry cannot match; it was
+  // registered there with the literal text `:receiptRef` and no real ref could
+  // reach it).
+  routePublicPrivacyReceiptRequest: OptionalEffectRoute
   routePublicKhalaCodeOutsideUserRunReceiptRequest: OptionalEffectRoute
   routePublicKhalaCodeTracePluginRevenueShareRequest: OptionalEffectRoute
   routePublicQaSwarmFirstEngagementRequest: OptionalEffectRoute
@@ -525,6 +531,13 @@ export const makeWorkerRouteRequest =
 
       if (publicInferenceReceiptResponse !== undefined) {
         return yield* publicInferenceReceiptResponse
+      }
+
+      const publicPrivacyReceiptResponse =
+        dependencies.routePublicPrivacyReceiptRequest(request, env, ctx)
+
+      if (publicPrivacyReceiptResponse !== undefined) {
+        return yield* publicPrivacyReceiptResponse
       }
 
       const publicKhalaCodeOutsideUserRunReceiptResponse =
