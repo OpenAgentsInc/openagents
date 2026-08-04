@@ -115,6 +115,35 @@ export const startUiContentType = (filePath: string): string => {
 export const isDiamondHandsPath = (pathname: string): boolean =>
   pathname === '/dh' || pathname === '/dh/' || pathname.startsWith('/dh/')
 
+export const isMarketDemoPath = (pathname: string): boolean =>
+  pathname === '/demo' || pathname === '/demo/' || pathname.startsWith('/demo/')
+
+export const marketDemoDeploymentEnabled = (
+  configured = process.env['OPENAGENTS_MARKET_DEMO_ENABLED'],
+): boolean => configured === 'true'
+
+export const marketDemoResponseHeaders = (
+  pathname: string,
+): Readonly<Record<string, string>> =>
+  isMarketDemoPath(pathname)
+    ? {
+        'content-security-policy': [
+          "default-src 'none'",
+          "base-uri 'none'",
+          'connect-src https://relay.openagents.com wss://relay.openagents.com',
+          "font-src 'self' data:",
+          "frame-ancestors 'none'",
+          "img-src 'self' data:",
+          "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+          "style-src 'unsafe-inline'",
+          "worker-src 'self' blob:",
+        ].join('; '),
+        'cross-origin-embedder-policy': 'require-corp',
+        'cross-origin-opener-policy': 'same-origin',
+        'cross-origin-resource-policy': 'same-origin',
+      }
+    : {}
+
 export const diamondHandsDeploymentEnabled = (
   configured = process.env['OPENAGENTS_DIAMOND_HANDS_ENABLED'],
 ): boolean => configured === 'true'
@@ -161,7 +190,9 @@ export const startUiAssetRelativePath = (pathname: string): string | null => {
   const relativePath =
     decoded === '/dh' || decoded === '/dh/'
       ? 'dh/index.html'
-      : decoded.replace(/^[/\\]+/, '')
+      : decoded === '/demo' || decoded === '/demo/'
+        ? 'demo/index.html'
+        : decoded.replace(/^[/\\]+/, '')
   return relativePath
 }
 
@@ -171,6 +202,9 @@ const serveExactClientAsset = async (
   if (request.method !== 'GET' && request.method !== 'HEAD') return undefined
   const url = new URL(request.url)
   if (isDiamondHandsPath(url.pathname) && !diamondHandsDeploymentEnabled()) {
+    return undefined
+  }
+  if (isMarketDemoPath(url.pathname) && !marketDemoDeploymentEnabled()) {
     return undefined
   }
   const filePath = exactClientFile(url.pathname)
@@ -191,6 +225,7 @@ const serveExactClientAsset = async (
           'content-length': String(info.size),
           'content-type': startUiContentType(filePath),
           ...diamondHandsResponseHeaders(url.pathname),
+          ...marketDemoResponseHeaders(url.pathname),
         },
       },
     )
