@@ -39,6 +39,7 @@ describe('Start ⇄ Worker document route agreement (#8813)', () => {
     '/docs',
     '/docs/getting-started',
     '/docs/future/nostr',
+    '/dh',
     '/forge',
     '/forge/',
     '/forge/projects',

@@ -8,11 +8,25 @@ import { isKnownStartDocumentPath } from '../../../../apps/start/src/route-table
 
 const START_CLIENT_DIR = path.resolve(
   process.env['OPENAGENTS_START_CLIENT_DIR'] ??
-    path.resolve(import.meta.dirname, '..', '..', '..', '..', 'apps/start/dist/client'),
+    path.resolve(
+      import.meta.dirname,
+      '..',
+      '..',
+      '..',
+      '..',
+      'apps/start/dist/client',
+    ),
 )
 const START_SERVER_ENTRY = path.resolve(
   process.env['OPENAGENTS_START_SERVER_ENTRY'] ??
-    path.resolve(import.meta.dirname, '..', '..', '..', '..', 'apps/start/dist/server/server.js'),
+    path.resolve(
+      import.meta.dirname,
+      '..',
+      '..',
+      '..',
+      '..',
+      'apps/start/dist/server/server.js',
+    ),
 )
 const REQUIRED_DOCS_CLIENT_ARTIFACTS = [
   'docs/index.md',
@@ -50,49 +64,106 @@ type StartWorker = Readonly<{
 
 let startWorkerPromise: Promise<StartWorker> | undefined
 const loadStartWorker = (): Promise<StartWorker> => {
-  startWorkerPromise ??= import(pathToFileURL(START_SERVER_ENTRY).href).then(module => {
-    const candidate = module.default as StartWorker | undefined
-    if (candidate === undefined || typeof candidate.fetch !== 'function') {
-      throw new Error(`Start server has no default fetch handler: ${START_SERVER_ENTRY}`)
-    }
-    return candidate
-  })
+  startWorkerPromise ??= import(pathToFileURL(START_SERVER_ENTRY).href).then(
+    module => {
+      const candidate = module.default as StartWorker | undefined
+      if (candidate === undefined || typeof candidate.fetch !== 'function') {
+        throw new Error(
+          `Start server has no default fetch handler: ${START_SERVER_ENTRY}`,
+        )
+      }
+      return candidate
+    },
+  )
   return startWorkerPromise
 }
 
-const contentType = (filePath: string): string => {
+export const startUiContentType = (filePath: string): string => {
   switch (path.extname(filePath).toLowerCase()) {
-    case '.css': return 'text/css; charset=utf-8'
-    case '.html': return 'text/html; charset=utf-8'
+    case '.css':
+      return 'text/css; charset=utf-8'
+    case '.html':
+      return 'text/html; charset=utf-8'
     case '.js':
-    case '.mjs': return 'text/javascript; charset=utf-8'
-    case '.json': return 'application/json'
-    case '.md': return 'text/markdown; charset=utf-8'
-    case '.png': return 'image/png'
-    case '.svg': return 'image/svg+xml'
-    case '.txt': return 'text/plain; charset=utf-8'
-    case '.webp': return 'image/webp'
-    case '.woff': return 'font/woff'
-    case '.woff2': return 'font/woff2'
-    case '.xml': return 'application/xml; charset=utf-8'
-    default: return 'application/octet-stream'
+    case '.mjs':
+      return 'text/javascript; charset=utf-8'
+    case '.json':
+      return 'application/json'
+    case '.md':
+      return 'text/markdown; charset=utf-8'
+    case '.png':
+      return 'image/png'
+    case '.svg':
+      return 'image/svg+xml'
+    case '.txt':
+      return 'text/plain; charset=utf-8'
+    case '.wasm':
+      return 'application/wasm'
+    case '.webp':
+      return 'image/webp'
+    case '.woff':
+      return 'font/woff'
+    case '.woff2':
+      return 'font/woff2'
+    case '.xml':
+      return 'application/xml; charset=utf-8'
+    default:
+      return 'application/octet-stream'
   }
 }
 
+export const isDiamondHandsPath = (pathname: string): boolean =>
+  pathname === '/dh' || pathname === '/dh/' || pathname.startsWith('/dh/')
+
+export const diamondHandsResponseHeaders = (
+  pathname: string,
+): Readonly<Record<string, string>> =>
+  isDiamondHandsPath(pathname)
+    ? {
+        'content-security-policy': [
+          "default-src 'none'",
+          "base-uri 'none'",
+          'connect-src wss://relay.openagents.com',
+          "font-src 'self' data:",
+          "frame-ancestors 'none'",
+          "img-src 'self' data:",
+          "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+          "style-src 'unsafe-inline'",
+          "worker-src 'self' blob:",
+        ].join('; '),
+        'cross-origin-embedder-policy': 'require-corp',
+        'cross-origin-opener-policy': 'same-origin',
+        'cross-origin-resource-policy': 'same-origin',
+      }
+    : {}
+
 const exactClientFile = (pathname: string): string | null => {
+  const relativePath = startUiAssetRelativePath(pathname)
+  if (relativePath === null) return null
+  const resolved = path.resolve(START_CLIENT_DIR, relativePath)
+  return resolved === START_CLIENT_DIR ||
+    resolved.startsWith(`${START_CLIENT_DIR}${path.sep}`)
+    ? resolved
+    : null
+}
+
+export const startUiAssetRelativePath = (pathname: string): string | null => {
   let decoded: string
   try {
     decoded = decodeURIComponent(pathname)
   } catch {
     return null
   }
-  const resolved = path.resolve(START_CLIENT_DIR, decoded.replace(/^[/\\]+/, ''))
-  return resolved === START_CLIENT_DIR || resolved.startsWith(`${START_CLIENT_DIR}${path.sep}`)
-    ? resolved
-    : null
+  const relativePath =
+    decoded === '/dh' || decoded === '/dh/'
+      ? 'dh/index.html'
+      : decoded.replace(/^[/\\]+/, '')
+  return relativePath
 }
 
-const serveExactClientAsset = async (request: Request): Promise<Response | undefined> => {
+const serveExactClientAsset = async (
+  request: Request,
+): Promise<Response | undefined> => {
   if (request.method !== 'GET' && request.method !== 'HEAD') return undefined
   const url = new URL(request.url)
   const filePath = exactClientFile(url.pathname)
@@ -100,16 +171,22 @@ const serveExactClientAsset = async (request: Request): Promise<Response | undef
   try {
     const info = await stat(filePath)
     if (!info.isFile()) return undefined
-    const immutable = /\/assets\/[^/]+-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$/.test(url.pathname)
-    return new Response(request.method === 'HEAD' ? null : await readFile(filePath), {
-      headers: {
-        'cache-control': immutable
-          ? 'public, max-age=31536000, immutable'
-          : 'public, max-age=60',
-        'content-length': String(info.size),
-        'content-type': contentType(filePath),
+    const immutable = /\/assets\/[^/]+-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$/.test(
+      url.pathname,
+    )
+    return new Response(
+      request.method === 'HEAD' ? null : await readFile(filePath),
+      {
+        headers: {
+          'cache-control': immutable
+            ? 'public, max-age=31536000, immutable'
+            : 'public, max-age=60',
+          'content-length': String(info.size),
+          'content-type': startUiContentType(filePath),
+          ...diamondHandsResponseHeaders(url.pathname),
+        },
       },
-    })
+    )
   } catch {
     return undefined
   }

@@ -29,6 +29,10 @@ export const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/components(?:\/[^/]+)?\/?$/,
   /^\/download$/,
   /^\/docs(?:\/.*)?$/,
+  // Operation Diamond Hands is a static GPUI/WebGPU document. The Cloud Run
+  // adapter maps this document coordinate to public/dh/index.html before the
+  // retained TanStack Start worker is consulted.
+  /^\/dh\/?$/,
   // #9243: the invite-only Forge and its descendant document routes. The
   // Worker imports this table as its document-route mirror.
   /^\/forge(?:\/.*)?$/,
