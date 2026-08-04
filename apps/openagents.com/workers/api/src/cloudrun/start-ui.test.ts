@@ -112,6 +112,9 @@ describe('Market demo static GPUI document', () => {
       "connect-src 'self' https://relay.openagents.com wss://relay.openagents.com",
     )
     expect(headers['content-security-policy']).toContain(
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'",
+    )
+    expect(headers['content-security-policy']).toContain(
       "worker-src 'self' blob:",
     )
   })

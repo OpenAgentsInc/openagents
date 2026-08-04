@@ -136,7 +136,11 @@ export const marketDemoResponseHeaders = (
           "font-src 'self' data:",
           "frame-ancestors 'none'",
           "img-src 'self' data:",
-          "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+          // 'unsafe-eval' is required beside 'wasm-unsafe-eval': wasm_thread
+          // bootstraps its workers by evaluating a JS string during init.
+          // The document stays isolated (default-src 'none', no framing,
+          // connections limited to self plus the public relay).
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'",
           "style-src 'unsafe-inline'",
           "worker-src 'self' blob:",
         ].join('; '),
