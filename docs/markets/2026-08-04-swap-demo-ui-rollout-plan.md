@@ -1,27 +1,41 @@
-# Swap demo UI rollout — one GPUI component set, two surfaces
+# Swap demo UI rollout — one engine, two rendered surfaces
 
 - Date: 2026-08-04
+- Amended: 2026-08-04 for the Boltz web-app parity directive
+  (openagents#9314). The amendment changes the custody clause, splits
+  the shared source into *engine* and *components*, expands the
+  component set, and adds the parity phases. Everything else stands.
 - Status: owner-directed product-rollout plan for the Liquidity Market's
   first visible surfaces
 - Owning issues: omega#244 (Omega market panel), openagents#9310 (web
-  market demo), openagents#9309 (generated TypeScript SDK — unchanged,
-  see §8), immortal M12 ledger (protocol engine)
+  market demo), openagents#9314 (Boltz web-app parity), openagents#9309
+  (generated TypeScript SDK — unchanged, see §8), immortal M12 ledger
+  (protocol engine)
 - Protocol base: [`docs/nips/MKT.md`](../nips/MKT.md) v0.1, implemented
   base on the Immortal relay
+- Profile: [`docs/nips/MKT-SWP.md`](../nips/MKT-SWP.md) v1
+- Parity evidence:
+  [Boltz web-app UX parity teardown](../teardowns/2026-08-04-boltz-web-app-ux-parity-teardown.md)
 
 ## The thesis
 
-Build the swap UI **once**, in Rust, as GPUI components extending Omega's
-existing `ui` crate — then ship it on two surfaces from the same source:
+Build the swap experience **once** and ship it on two surfaces:
 
-1. **Omega desktop** — a market panel in the zero-base shell: the real
-   wallet-grade product surface where keys live and funds move.
-2. **The web** — a GPUI/WebGPU wasm document on `openagents.com`, built
-   and served exactly the way the Diamond Hands `/dh` document already
-   was: the browser owns a WebSocket straight to
-   `wss://relay.openagents.com`, the Immortal client crate does the
-   protocol work in wasm, and there is **no server-side swap API or relay
-   proxy**. The web demo is protocol-real, not a video or a mock.
+1. **Omega desktop** — a market panel in the zero-base shell: the
+   wallet-grade product surface, rendered with GPUI components extending
+   Omega's existing `ui` crate.
+2. **The web** — the user-facing swap product on `openagents.com`: the
+   browser owns a WebSocket straight to `wss://relay.openagents.com`,
+   the Immortal client crate does the profile and rail work in wasm, and
+   there is **no server-side swap API or relay proxy**.
+
+The shared source is the **engine and its exported typed session
+view-model**, not one widget toolkit. Both surfaces render the same
+contract; behaviour contracts hold both to the same laws. See §2.1 for
+why the original "one GPUI component set, two surfaces" thesis narrowed.
+
+The `/demo` document keeps its current job unchanged: a scripted,
+protocol-real walkthrough in the `/dh` lineage, gated as it is today.
 
 Every piece of infrastructure this needs already exists and was proven
 this week. The plan below is assembly, not invention.
@@ -42,31 +56,90 @@ this week. The plan below is assembly, not invention.
 
 ## 2. Web versus Omega — the responsibility split
 
-The split follows custody, not features. **The web demo shows the market;
-Omega operates in it.**
+**Amended 2026-08-04 (openagents#9314).** The split no longer follows
+custody, because Boltz parity makes the web a user-facing swap product.
+It follows **operator role**: the web is the requester's product, Omega
+is the requester's product *plus* the provider's operating surface.
 
-| Concern | Web demo document | Omega desktop |
+| Concern | Web swap surface | Omega desktop |
 | --- | --- | --- |
-| Discovery: providers, offerings, custody dimensions | Yes — live from the relay | Yes — same components |
-| Quote comparison, reservation classes, rung labels | Yes — live demo session | Yes |
-| Session timeline (Status seq, gaps, forks, Close) | Yes — watching a scripted/no-spend session | Yes — own sessions |
-| Issue RFQs / accept Quotes | Demo mode only: ephemeral in-browser key, no-spend seeded provider, amounts labeled DEMO | Yes — real sessions |
-| Hold keys, fund swaps, claim/refund | **Never.** No wallet, no funds, no custody in the browser demo | Yes — wallet-grade, verify-before-fund enforced by the engine |
-| Exit packages / doomsday drill | Rendered as evidence (badge + explainer) | Produced, persisted, and drillable |
-| Provider operator view (inventory, reservations) | No | Later phase, same component set |
-| Purpose | Public trust surface: *watch the open market work, verify everything yourself* | The product: *participate* |
+| Discovery: providers, offerings, custody dimensions | Yes — live from the relay | Yes |
+| Quote comparison, reservation classes, rung labels | Yes | Yes |
+| Session timeline (Status seq, gaps, forks, Close) | Yes — own sessions | Yes — own sessions |
+| Issue RFQs / accept Quotes | Yes — real sessions | Yes — real sessions |
+| Hold keys, fund swaps, claim/refund | **Yes — self-custodially.** Keys and preimages are generated in the browser and never leave the device | Yes — wallet-grade, with Omega's identity and signer plumbing |
+| Verify-before-fund | Enforced by the engine; funding disabled until every check passes | Same engine, same enforcement |
+| Exit packages / doomsday drill | Built and persisted **before** every funding broadcast; the Rescue surface is the drill made usable | Produced, persisted, and drillable |
+| Provider operator view (inventory, reservations, session queue) | **No** | Later phase, GPUI components |
+| Custody environment | Weaker by construction — an origin compromise reaches key material. Stated in the product, with the desktop path visible | Stronger — OS-level storage, no browser origin exposure |
+| Purpose | The product for anyone with a browser: *swap, and verify everything yourself* | The product for operators and for larger amounts |
+| `/demo` | Unchanged: scripted protocol walkthrough, no keys, no funds, DEMO labels | — |
 
-This split also keeps every promise the protocol makes: relay acceptance
-is transport only, a browser page never becomes a wallet, and nothing on
-the web surface can overclaim settlement because it never touches funds.
+### 2.1 The custody boundary change, recorded
 
-## 3. The shared component crate: `omega/crates/market_ui`
+Until 2026-08-04 this plan said the web surface never holds keys. The
+Boltz parity directive requires the opposite, and **it is still
+non-custodial**: the browser generates and holds the refund/claim keys
+and preimages that make unilateral recovery possible. That is precisely
+what makes a Rescue page meaningful. Parity means *self-custodial
+in-browser key material*, never *server-held funds*.
 
-New crate, GPUI-only, no networking — it renders typed NIP-MKT session
-state produced by the Immortal client crate. It must build for native and
-`wasm32` (chat_web proves the pattern). Components extend existing `ui`
-primitives; the component gaps below are the "new components extending
-our other Omega gpui components":
+The invariants that replace the old blanket clause:
+
+- Key material and preimages are generated in the browser, are never
+  transmitted to a relay, to `openagents.com`, or to any provider, and
+  never appear in a signed record, a receipt, a log, or a fixture — the
+  forbidden-material list in [`MKT-SWP` §14](../nips/MKT-SWP.md) is
+  binding on this surface.
+- The relay and `openagents.com` never receive spend authority. There is
+  no server-side swap API and no relay proxy.
+- No page claims settlement its evidence does not prove. A `completed`
+  Status renders as one signer's claim until an admitted verifier raises
+  the rung.
+- The exit package is built, persisted, and digest-checked against the
+  Swap Contract pair **before** funding is offered, for every direction.
+- The web surface loads no third-party script and states honestly that a
+  browser is a weaker custody environment than the desktop app.
+
+### 2.2 Why the shared source narrowed from components to the engine
+
+The original thesis was one GPUI component set on both surfaces. A
+GPUI/WebGPU canvas is right for a demo and wrong for the page a user
+moves money on: no DOM means no screen reader, no text selection, no
+browser translation, no indexable content, and no rendering where WebGPU
+is unavailable. The repository's product-UI mandate is Effect Native.
+Both cannot hold.
+
+What must not give is implementing verify-before-fund twice. The profile
+and rail logic — script and tree parsing, output-key re-derivation,
+invoice checks, MuSig2 transcript checks, timeout ladders, exit packages,
+the typestate fund-authorisation flow — exists once, in the Immortal
+client crate, and builds for `wasm32`. `@openagentsinc/nip-mkt` covers
+the NIP-MKT **base** in Effect/TypeScript but is deliberately opaque to
+profile content.
+
+So: **everything that can authorise funding stays behind one engine
+boundary**, exposed to the web host through an Effect Schema contract;
+the host owns rendering, storage, entropy, and relay transport; and the
+artifact shared with Omega is the exported typed session view-model. The
+rejected alternative — promoting the wasm document to the product
+surface — is recorded with its costs in the parity teardown §10. Route
+naming and the engine-binding shape remain owner calls, taken on the
+SWAP-0 issue.
+
+## 3. The component set
+
+Two implementations, one contract. `omega/crates/market_ui` is the GPUI
+set (Omega desktop, plus the `/demo` document); the web set is authored
+in Effect Native against the same exported session view-model. Neither
+does networking — both render typed NIP-MKT/MKT-SWP session state
+produced by the Immortal client crate. The GPUI crate must build for
+native and `wasm32` (chat_web proves the pattern).
+
+### 3.1 Market components (both surfaces)
+
+Components extend existing `ui` primitives; the component gaps below are
+the "new components extending our other Omega gpui components":
 
 | New component | Extends | Renders |
 | --- | --- | --- |
@@ -83,10 +156,38 @@ our other Omega gpui components":
 | `ReceiptCard` | `callout`, `chip` | A `39603` Public Market Receipt: outcome, role, redaction notice, "one signer's claim" framing |
 | `SwapFlow` | `modal`, `tab_bar`, `toggle` | The guided requester flow: offering → RFQ → quotes → order → timeline → close |
 
-Rules carried from the protocol into every component: tickers are labels
-and never identity; amounts display from decimal-string atomic units;
-unknown states do not advance a timeline; a `completed` Status renders as
-a claim until evidence upgrades its rung.
+### 3.2 Parity components (added 2026-08-04 for openagents#9314)
+
+These come from the
+[Boltz web-app UX parity teardown](../teardowns/2026-08-04-boltz-web-app-ux-parity-teardown.md).
+They are the difference between a protocol walkthrough and a product a
+user can swap on.
+
+| New component | Extends | Renders |
+| --- | --- | --- |
+| `SwapWidget` | `SwapFlow`, `modal`, `toggle` | The whole product on one card: send/receive selection, amounts, destination, fee disclosure, one primary action |
+| `AssetSideSelector` | `chip`, `list`, `popover` | Per-side asset choice folded from live `39601` Offerings; unreachable directions greyed **before** selection with the reason, plus a direction toggle |
+| `AmountField` | `label`, `indicator` | Both-sides-editable atomic-unit entry with authoritative-side tracking, a MAX bound by the Offering maximum, and a persisted BTC/sats denomination — never auto-switching units while the user types |
+| `PrimaryActionButton` | `button`, `banner` | The disabled-with-a-reason law: label, colour, disabled, and content computed independently; the refusal names the single most proximate cause in the user's current denomination |
+| `FeeBreakdown` | `disclosure`, `callout` | `provider_fee`, `miner_fee_budget`, `lightning_routing_fee_budget`, who pays each, the rounding rule, and `amount_equation` — framed as the fill **promise** §3.3 makes it |
+| `PriceFeedProvenance` | `popover`, `chip` | When a Quote pins a feed: URL, pointer, observation, age limit, response digest, and staleness state (§3.4) |
+| `DestinationField` | `label`, `indicator`, `tooltip` | Address/invoice entry with per-asset validation, paste-driven route switching, QR scan, and typed parse failures that keep their discriminant |
+| `InvoiceChecks` | `VerifyChecklist`, `list` | The §7.2 local invoice parse: network, payment hash, amount, expiry, minimum final CLTV, route-hint policy, description commitment; amountless invoices refused |
+| `RescueKeyCeremony` | `modal`, `list`, `indicator` | Secret-store creation and **verified** backup — re-upload or word quiz, never a checkbox — gated **before** the first funding broadcast in either direction |
+| `RescuePage` | `data_table`, `VerifyChecklist`, `banner` | Recovery with every provider, handler, and relay gone: local secret store plus persisted exit packages, cooperative path first, unilateral script path as the guaranteed fallback |
+| `RefundPanel` | `ExpiryCountdown`, `callout` | Refund state with the height bound and the wall-clock estimate shown **separately** (§6) — never converting an estimate into consensus authority |
+| `SessionHistory` | `data_table`, `RungLabel` | Local signed-record store: actionability-first ordering, resumable in-flight sessions, and an import path for every export we emit |
+| `TypedErrorMessage` | `banner`, `callout` | The §17 identifiers mapped to localisable messages — never a counterparty's prose |
+| `BuildProvenance` | `label` | Which build is holding the user's keys: release tag and commit, on every page that holds key material |
+
+### 3.3 Rules carried into every component
+
+Tickers are labels and never identity; amounts display from
+decimal-string atomic units; unknown states do not advance a timeline; a
+`completed` Status renders as a claim until evidence upgrades its rung;
+per-signer sequence gaps render as gaps and equivocation forks render as
+forks; funding is disabled until every verify-before-fund check passes;
+and no error surface ever renders an upstream string.
 
 ## 4. The web demo document: `apps/openagents.com/apps/market-demo`
 
@@ -118,6 +219,24 @@ demo artifact in the `/dh` lineage — a static, gated, self-contained
 page — not a change to the web app's architecture. The Effect-native
 product integration path stays #9309 (generated SDK), which later powers
 any retained product-route market surface.
+
+### 4.1 The web swap product (added 2026-08-04 for openagents#9314)
+
+Shipped, this crate stays what it is. The **product** surface is
+separate and is Effect Native, per §2.2:
+
+- Effect Native components render the exported session view-model.
+- `@openagentsinc/nip-mkt` supplies base-envelope validation and NIP-59
+  transport; the wasm engine binding supplies everything that can
+  authorise funding.
+- Entropy comes from WebCrypto in the host, because the engine has no
+  randomness source of its own and takes key material as bytes.
+- Local storage holds the user's own signed records, exit packages, and
+  encrypted secret store — with schema versioning from the first commit.
+- Strict content-security posture; no third-party script on a surface
+  that holds keys.
+- Route naming, the gate shape, and the engine-binding surface are owner
+  calls taken on SWAP-0. Until then the surface runs on dev/staging.
 
 ## 5. The Omega market panel (omega#244, expanded)
 
@@ -163,9 +282,21 @@ any retained product-route market surface.
 | P1 | Live discovery: the example reads real `39600/39601` heads from `relay.openagents.com`; market-demo crate + staging serve behind the gate | P0; relay already serves MKT base |
 | P2 | Interactive demo session against the seeded no-spend provider on the public relay; Omega panel mounts the same views | P1; immortal #14 actor pointed at the public relay |
 | P3 | Omega real regtest swap with VerifyChecklist/ExitPackageBadge live; web demo gains the "watch a real regtest swap" replay | immortal #12, #18 |
+| **P4** | **Parity shell**: engine binding behind an Effect Schema contract, the Effect Native widget shell and typed state, asset/direction selection from live Offerings, amount entry, destination entry and validation — regtest only, no mainnet gate | P1; immortal #12 (landed); SWAP-0..2 |
+| **P5** | **Parity depth**: multi-provider quote compare with expiry and reservation class, verify-before-fund as a real checklist, key generation and the rescue ceremony, the Rescue page, History with import, and per-signer status rendering | P4; immortal #14; SWAP-3..6 |
+| **P6** | **Product surface**: nav, routes, build provenance, i18n scaffolding, and a coordinator-absent recovery proof (the §12.1 doomsday drill run as an acceptance test) before any mainnet flip | P5; immortal #18; SWAP-7..8 |
 
 P0/P1 are pure UI + existing infrastructure and can ship this week; the
-demo goes online at P1 (watch-only) and gets interactive at P2.
+demo goes online at P1 (watch-only) and gets interactive at P2. P4-P6 are
+the parity program; no mainnet path opens before the doomsday drill
+passes at P6 and the M12 lab (immortal#18) is green.
+
+Out of parity scope: stablecoins, DEX hops, bridge legs, slippage
+tolerance, and gas top-up. Today's Boltz has all of them; MKT-SWP v1
+requires `evm_leg` to be absent or null and Offering `evm_extension` to
+be `unsupported`, so that surface waits for a future `mkt-swp-evm`
+extension rather than being built against a rail the profile refuses to
+execute.
 
 ## 8. Issue routing
 
@@ -181,9 +312,37 @@ demo goes online at P1 (watch-only) and gets interactive at P2.
 - Serving-gate and route naming: owner decision at P1 flip, recorded in
   the deploy runbook like `/dh`'s.
 
+### 8.1 The parity program (openagents#9314)
+
+| Issue | Scope | Phase |
+| --- | --- | --- |
+| [#9315](https://github.com/OpenAgentsInc/openagents/issues/9315) SWAP-0 | Widget shell, typed state, engine boundary, primary-action law | P4 |
+| [#9316](https://github.com/OpenAgentsInc/openagents/issues/9316) SWAP-1 | Asset/direction selection from Offerings; rate and fee panel | P4 |
+| [#9317](https://github.com/OpenAgentsInc/openagents/issues/9317) SWAP-2 | Destination entry and validation | P4 |
+| [#9318](https://github.com/OpenAgentsInc/openagents/issues/9318) SWAP-3 | Multi-provider quote compare, expiry, reservation, custody, verify-before-fund | P5 |
+| [#9319](https://github.com/OpenAgentsInc/openagents/issues/9319) SWAP-4 | Key material, rescue ceremony, coordinator-absent Rescue page | P5 |
+| [#9320](https://github.com/OpenAgentsInc/openagents/issues/9320) SWAP-5 | Session store, History, resume, export **and** import | P5 |
+| [#9321](https://github.com/OpenAgentsInc/openagents/issues/9321) SWAP-6 | Per-signer Status: gaps, forks, rungs, loss accounting | P5 |
+| [#9322](https://github.com/OpenAgentsInc/openagents/issues/9322) SWAP-7 | Routes, nav, build provenance, settings, surrounding surfaces | P6 |
+| [#9323](https://github.com/OpenAgentsInc/openagents/issues/9323) SWAP-8 | i18n scaffolding and the typed error-message table | P6 (author early) |
+
 ## 9. What this plan does not do
 
-No funds, keys, or custody in any browser surface; no server-side swap
-API; no provider operator UI on the web; no mainnet path before the M12
-lab passes; no claim that a demo session is settlement. The demo's
-honesty is the marketing.
+**Amended 2026-08-04.** The first clause changed; the rest stands.
+
+- **No server-held funds and no server-held keys.** Browser key material
+  is self-custodial, generated on the device, and never transmitted —
+  see §2.1. The old blanket "no keys in any browser surface" clause is
+  superseded by that invariant, not weakened by it.
+- No server-side swap API and no relay proxy.
+- No provider operator UI on the web.
+- No mainnet path before the M12 lab (immortal#18) passes **and** the
+  §12.1 coordinator-absent recovery drill passes on the web surface.
+- No claim that any session is settlement, and no rung inferred upward.
+- No third-party script on a surface that holds key material.
+- No stablecoin, DEX, or bridge surface under MKT-SWP v1.
+- No feature copied from `boltz-web-app`. It is AGPL-3.0; the parity
+  teardown carries the behaviour, and every component here is written by
+  us against our own design system.
+
+The demo's honesty is the marketing. So is the product's.
