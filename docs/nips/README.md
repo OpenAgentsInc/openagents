@@ -337,6 +337,47 @@ server-owned relay sets, and persist-before-publish delivery whose
 receipts fix `relayAcceptanceIsAuthority: false`. Projection transport,
 never command or product authority.
 
+### NIP-GB — Guidance Bundles (proposed layer 3)
+
+Versioned standing instructions on kinds `32330`/`32331`: scoped bundles
+(organization through work-item) with a deny-wins-downward precedence
+chain, fail-closed same-layer conflicts, and append-only digest-bound
+revision archives. Every agent run records the exact guidance revisions
+it consumed in its context manifest, so behavior change without a
+revision change is a defect. Guidance instructs and constrains; natural
+language never mints capability.
+
+### NIP-AL — Automation Loops (proposed layer 3)
+
+Bounded recurring agent workflows on kinds `32340`/`32341`: immutable
+published revisions, typed trigger selectors that confer eligibility but
+never bypass admission, mandatory suggest mode before policy-admitted
+auto mode, and five loop laws — structural self-trigger exclusion checked
+at publish, idempotent triggering, bounded concurrency and budget,
+circuit breaking to a typed paused state, and revision-pinned runs. Loop
+runs are ordinary Agent Sessions on ordinary Work.
+
+### NIP-TP — Triage Proposals (proposed layer 3)
+
+Reviewable suggestions on kind `32350`: routing, duplicates, labels,
+priority, ownership, readiness, and candidate dispositions, each with
+proposer-asserted confidence, evidence refs, and expiry. A proposal never
+mutates Work — a human disposition or an admitted auto-apply policy
+converts it into a NIP-WI intent, conflicting proposals suspend each
+other, and because proposals, dispositions, and applied intents are all
+signed records, precision is measurable from the wire and gates auto
+promotion.
+
+### NIP-AT — Attention and Notifications (proposed layer 3)
+
+The private attention layer on kinds `32360`/`32361`: authority-signed
+Attention Items encrypted to a blinded recipient with typed reasons,
+grouping keys, and required-action refs, plus principal-signed
+self-encrypted Notification Subscriptions that can suppress delivery but
+never widen authorization. Dismissing an item changes nothing about its
+subject, and the Block lane keeps its jobs: NIP-RS read state, NIP-ER
+reminders, NIP-PL push wake-ups with no content transiting platform push.
+
 ## How the specs fit together
 
 SKL is the shared identity and trust substrate: SA skill licenses and AC

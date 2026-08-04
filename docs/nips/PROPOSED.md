@@ -307,12 +307,14 @@ implementation already exists.
 
 ### Layer 3 — Automation and attention
 
-| NIP | Name | Tentative kinds |
-| --- | --- | --- |
-| NIP-GB | Guidance Bundles | 32330-32339 |
-| NIP-AL | Automation Loops | 32340-32349 |
-| NIP-TP | Triage Proposals | 32350-32359 |
-| NIP-AT | Attention and Notifications | 32360-32369 |
+Layer 3 is drafted. The four spec files live beside this index.
+
+| NIP | Name | Tentative kinds | Draft |
+| --- | --- | --- | --- |
+| NIP-GB | Guidance Bundles | 32330-32339 | [`GB.md`](GB.md) |
+| NIP-AL | Automation Loops | 32340-32349 | [`AL.md`](AL.md) |
+| NIP-TP | Triage Proposals | 32350-32359 | [`TP.md`](TP.md) |
+| NIP-AT | Attention and Notifications | 32360-32369 | [`AT.md`](AT.md) |
 
 **NIP-GB — Guidance Bundles.** Versioned organization, team, project,
 repository, and workflow guidance with an explicit precedence chain and
