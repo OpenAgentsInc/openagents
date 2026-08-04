@@ -109,7 +109,7 @@ describe('Market demo static GPUI document', () => {
     expect(headers['cross-origin-embedder-policy']).toBe('require-corp')
     expect(headers['cross-origin-resource-policy']).toBe('same-origin')
     expect(headers['content-security-policy']).toContain(
-      'connect-src https://relay.openagents.com wss://relay.openagents.com',
+      "connect-src 'self' https://relay.openagents.com wss://relay.openagents.com",
     )
     expect(headers['content-security-policy']).toContain(
       "worker-src 'self' blob:",

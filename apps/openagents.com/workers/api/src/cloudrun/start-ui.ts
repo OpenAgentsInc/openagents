@@ -130,7 +130,9 @@ export const marketDemoResponseHeaders = (
         'content-security-policy': [
           "default-src 'none'",
           "base-uri 'none'",
-          'connect-src https://relay.openagents.com wss://relay.openagents.com',
+          // 'self' is required: the wasm-bindgen loader fetches the .wasm
+          // module over fetch(), which CSP classifies as a connection.
+          "connect-src 'self' https://relay.openagents.com wss://relay.openagents.com",
           "font-src 'self' data:",
           "frame-ancestors 'none'",
           "img-src 'self' data:",
