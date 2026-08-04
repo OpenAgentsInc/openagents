@@ -220,7 +220,10 @@ See [`2026-08-04-on-chain-keyspace-prior-drain-plan.md`](2026-08-04-on-chain-key
 | studentofthings “credit” claim | **Nuanced (E24):** reporter says a *different* bug was patched without public credit; RNG was AI-ranked High and **not** fully disclosed because of that — official “unrelated” can be true for the *reported* bug while still leaving process failure |
 | TZ stylometry-lite | **Supportive (E24):** Switck and Peter D. Gray both **US Eastern** (`-04`/`-05`); scgbckbone EU (`+01`/`+02`) |
 | `switck/firmware` fork | **Closed (E24):** ~1013 commits by Gray; last push **2021-01-12**, **before** Mar 2021 libNgU seed migration — fork is Gray’s Coldcard work mirror, not a parallel secret RNG plant post-migration |
-| Full switck X (54 posts) | **Blocked for recent-search:** 0 posts in 7-day window; account live (54 total). Needs full-archive / user-timeline product or scrape outside recent search |
+| Full switck X (54 posts) | **Mostly done (E25):** user-timeline API returned **52/54** posts in [`receipts/2026-08-04-switck-x-archive.json`](receipts/2026-08-04-switck-x-archive.json) |
+| “Thanks @DocHex… Coldcard someday” | **Primary captured (E25):** [1317230987294740480](https://x.com/switck/status/1317230987294740480) (2020-10-16) |
+| Galaxy Waves 1–2 collectors | **Receipt (E27):** [`receipts/2026-08-04-galaxy-public-attacker-addresses.md`](receipts/2026-08-04-galaxy-public-attacker-addresses.md) |
+| Public Mk3 RNG PoC | **Noted (E26):** [HenryqueBrito/coldcard-mk3-rng-poc](https://github.com/HenryqueBrito/coldcard-mk3-rng-poc) — not yet reproduced here |
 
 ### 3. Preservation / monitoring
 
@@ -260,6 +263,14 @@ See [`2026-08-04-on-chain-keyspace-prior-drain-plan.md`](2026-08-04-on-chain-key
    scgbckbone) — they do **not** undermine the Gray↔critical-path map.
 8. `switck/firmware` is essentially **Gray’s** historical Coldcard tree ending
    Jan 2021, not a post-bug secret fork.
+9. **`@switck` X archive (52 posts):** nym born at DEFCON 2019; on **2020-10-16**
+   thanks `@DocHex` for a merge and says a new bitcoin library “Could be useful
+   on @COLDCARDwallet someday”
+   ([1317230987294740480](https://x.com/switck/status/1317230987294740480)) —
+   primary for the viral flag. Under A/B this is dual-account performance aimed
+   at Coldcard.
+10. **Galaxy** published seven concrete Waves 1–2 monitor addresses and evolving
+    loss totals (E27 receipt).
 
 ### Contested / open
 
@@ -267,21 +278,23 @@ See [`2026-08-04-on-chain-keyspace-prior-drain-plan.md`](2026-08-04-on-chain-key
 2. **Staff participation in drains (D, S5)** — no proceeds bridge.
 3. **Prior notice of this exact flaw (G)** — loud third-party claims vs
    “unaware until today”; studentofthings chronology is about a **different
-   reported bug** plus non-report of RNG after no credit.
+   reported bug** plus non-report of RNG after no credit (E24d/E28).
 4. **Day-0 `@DocHex` RFC6979 AI speculation** — wrong vulnerability class;
    interesting timing; not proof of guilt (E23).
 
 ### Least-strained reading
 
 **S1–S3:** catastrophic integration negligence and OPSEC/culture failure by a
-person who controlled the critical code path, amplified by dual identity and
-ignored or mis-triaged signals — **without** proven long-game heist.
+person who controlled the critical code path, amplified by dual identity
+(including the 2020 “someday” Coldcard tweet) and ignored or mis-triaged
+signals — **without** proven long-game heist.
 
-### Highest-value next work (unchanged from Fable)
+### Highest-value next work
 
-1. **Weak keyspace reproduction + prior-victim address membership tests.**
-2. Keep **archiving** citations; stand up court/drain/DocHex watches.
-3. Obtain **primary** prior-notice artifacts if they surface.
+1. **Weak keyspace reproduction + prior-victim address membership tests**
+   (public PoC candidate + Galaxy collector watch list).
+2. Watch for deletion of the 2020-10-16 switck post; fill any missing 2 posts.
+3. Primary tickets / discovery for prior-notice and Block provider name.
 
 ---
 
@@ -290,5 +303,7 @@ ignored or mis-triaged signals — **without** proven long-game heist.
 - Evidence detail: [`2026-08-04-cto-thesis-evidence-detail.md`](2026-08-04-cto-thesis-evidence-detail.md)
 - On-chain plan: [`2026-08-04-on-chain-keyspace-prior-drain-plan.md`](2026-08-04-on-chain-keyspace-prior-drain-plan.md)
 - Archive: [`receipts/2026-08-04-cto-thesis-archive-index.md`](receipts/2026-08-04-cto-thesis-archive-index.md)
+- Switck X: [`receipts/2026-08-04-switck-x-archive.json`](receipts/2026-08-04-switck-x-archive.json)
+- Galaxy addrs: [`receipts/2026-08-04-galaxy-public-attacker-addresses.md`](receipts/2026-08-04-galaxy-public-attacker-addresses.md)
 - Technical: [`chatgpt-pro-analysis.md`](chatgpt-pro-analysis.md),
   [`2026-08-01-kelbie-independent-postmortem-analysis.md`](2026-08-01-kelbie-independent-postmortem-analysis.md)
