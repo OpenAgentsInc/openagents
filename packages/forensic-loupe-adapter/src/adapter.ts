@@ -22,8 +22,6 @@ import {
   forensicSha256Digest,
   strictDecode,
   type ForensicCoverageManifest,
-  type ForensicFinding,
-  type ForensicHypothesis,
   type ForensicPromptArtifact,
   type ForensicPromptIr,
   type ForensicScanProfile,

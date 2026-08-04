@@ -473,27 +473,44 @@ target. Discovery plans, envelopes, and results remain explicitly
 `discovery_only`; a separate seven-part release-gate record is the only artifact
 that can become eligible for `independent_verification` integration.
 
-Three further boundaries close the acceptance audit that reopened OFR-007. A
-plan declares its evidence provenance, and a `conformance_vector` can never
-leave the verifier as `confirmed` or `independently_verified`; under
-`admitted_worker_run` every receipt, mechanical included, must resolve through
-the admitted-worker lifecycle authority against one of the plan's enumerated
-admitted workers. Control evidence reports an observed termination and the
-verifier derives the outcome, so a producer cannot assert the verdict it is
-being checked for, and a clean exit that kept no result artifact is
-`not_observed` rather than a pass. The initial verdict is committed through a
-required compare-and-set first-verdict ledger, so exactly-once holds across
-processes rather than within one call.
+The acceptance audit that reopened OFR-007 named four defects. The last of them
+was structural: the verifier accepted a backend, so one caller supplied both the
+evidence and the authority that validated it, and a caller who lied consistently
+in both places was uncaught. The verifier no longer accepts a backend. It takes
+a spec, one authenticated managed-sandbox control-plane transport, and a ledger
+directory, and drives the sandboxes itself — creating each one, installing the
+source, running the build, writing its own detector into the guest, and
+observing how that detector terminated. Every evidence receipt and every
+admitted-worker receipt is derived from what the control plane returned to the
+verifier's own calls. The evaluator accepts only a session carrying a brand that
+the driver stamps, and no package export path reaches it.
+
+Evidence provenance follows from the transport rather than from a declaration. A
+conformance transport is a simulation and can never leave the verifier
+`confirmed` or `independently_verified`; a live or recorded transport requires
+every receipt, mechanical included, to resolve to an exact still-admitted
+receipt bound to the worker the evidence named, and a plan that claims a
+provenance its session did not observe is refused. Control evidence reports an
+observed termination and the verifier derives the outcome, so a producer cannot
+assert the verdict it is being checked for, and a clean exit that kept no result
+artifact is `not_observed` rather than a pass. The first verdict is committed
+through the adapter's own `O_EXCL` ledger, so exactly-once is resolved by the
+kernel across processes rather than by anything a caller handed in.
 
 The acceptance evidence is a live run, not a fixture:
-`scripts/cloud/coldcard-loupe-verification-live.ts` builds the pinned
-vulnerable Coldcard MK4 tree on an admitted `live_gce` sandbox, locks the
-verdict in the checked-in ledger, and only then executes the
-provider-provenance detector inside two further admitted sandboxes. The
-detector exits 1 on the vulnerable target, whose linker resolved `rng_get` to
-MicroPython's deterministic fallback object, and 0 on the fixed target, whose
-`rng_get` comes from the board's hardware-TRNG object with no fallback symbol
-anywhere in the enumerated inventory.
+`scripts/cloud/coldcard-loupe-verification-live.ts` hands the verifier an
+authenticated staging control plane, and the verifier builds the pinned
+vulnerable Coldcard MK4 tree on an admitted `live_gce` sandbox, locks its verdict
+in the checked-in ledger, and only then executes the provider-provenance
+detector inside two further admitted sandboxes. The detector exits 1 on the
+vulnerable target, whose linker resolved `rng_get` to MicroPython's deterministic
+fallback object with 6 fallback symbols in a 13,458-entry inventory, and 0 on the
+fixed target, whose `rng_get` comes from the board's hardware-TRNG object with no
+fallback symbol anywhere in 13,453 entries. The run's control-plane wire
+responses are recorded to
+`fixtures/forensics/coldcard/loupe-control-plane-transcript.v1.json.gz`, and
+`packages/forensic-loupe-adapter/test/verifier-live.test.ts` replays them so the
+verifier re-derives its verdict from the same responses on every test run.
 
 ### 4.3 Two output lanes
 

@@ -171,6 +171,28 @@ The historical import deliberately has no numeric wall-time or token value:
 the source record did not preserve them. `unavailable` carries a reason and no
 `value` property.
 
+## Loupe verification (OFR-007)
+
+`loupe-control-plane-transcript.v1.json.gz` is the recorded wire traffic of a
+live Loupe verification: every request the verifier sent to the staging
+managed-sandbox control plane and every response it got back, in order, plus the
+clock readings it took. It contains no plan, no evidence receipt, no verdict and
+no worker receipt, because the verifier derives all of those. Replaying it
+re-derives the whole verification, and the replay is exact: the recorded control
+plane matches on request identity, so a driver that would ask a different
+question is refused rather than handed the old answer.
+
+`loupe-first-verdict-ledger/` is the durable first-verdict ledger. One file per
+verification, created with `O_CREAT | O_EXCL`, so the first verdict written for
+a verification is the one every later reader gets. `loupe-verification-live-run.v2.json`
+is the human-readable summary the run derived, including the spec it was given
+and the measured Google Cloud cost.
+
+`loupe-verification-live-run.v1.json` and `loupe-first-verdict-ledger.v1.json`
+are the previous run, retained as the historical record referenced by
+openagents#9294. They belong to the shape where the verifier was handed its
+evidence, and nothing reads them.
+
 Run the contract and benchmark checks with:
 
 ```sh

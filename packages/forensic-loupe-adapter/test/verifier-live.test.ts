@@ -1,110 +1,173 @@
-import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { cpSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gunzipSync } from "node:zlib";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   evaluateLoupeVerificationReleaseGate,
-  executeLoupeVerification,
-  type LoupeVerificationBackend,
-  type LoupeVerificationPlan,
+  recordedLoupeControlPlane,
+  runLoupeVerification,
+  type LoupeControlPlaneTranscript,
+  type LoupeVerificationRun,
+  type LoupeVerificationSpec,
 } from "../src/verifier.ts";
 
 /**
  * Live acceptance evidence for openagents #9294 (OFR-007).
  *
- * `verifier.test.ts` is a conformance vector: repeated-character digests, a
- * lifecycle authority written by the same file that writes the evidence it
- * authorises, and a control pair that is asserted rather than run. It exercises
- * ordering and locking, and it is explicitly capped at `discovery_only`.
+ * `verifier.test.ts` runs the same driver against a simulated control plane and
+ * is capped at `conformance_vector` for exactly that reason. This file is the
+ * other half: the transport replays the recorded wire responses of three
+ * admitted OpenAgents Cloud `live_gce` sandboxes, and the verifier re-derives
+ * everything from them.
  *
- * This file is the other half. Everything it feeds the verifier was measured by
- * `scripts/cloud/coldcard-loupe-verification-live.ts`:
- *
- *  - the mechanical tier is what an admitted OpenAgents Cloud `live_gce`
- *    sandbox observed while building the pinned vulnerable Coldcard MK4 tree;
- *  - the initial verdict was then written to the durable first-verdict ledger
- *    checked in beside this fixture, before any control existed;
- *  - the two control tests are the provider-provenance detector executing
- *    inside two further admitted sandboxes, and their exit statuses are what
- *    the managed-sandbox I/O route observed.
- *
- * The falsifiers at the bottom are what stop this from being a rubber stamp. If
- * the verifier ever stopped discriminating, they would pass with the wrong
- * verdict rather than failing.
+ * That re-derivation is the load-bearing part. The transcript contains no plan,
+ * no evidence receipt, no worker receipt and no verdict — only what the control
+ * plane and the guests answered. If the verifier's derivation were wrong, or if
+ * its ordering, provenance, receipt-resolution or control gates stopped
+ * discriminating, this file would produce the wrong verdict rather than the
+ * right one, and the falsifiers at the bottom would pass.
  */
-
-interface LiveRun {
-  readonly plan: Record<string, unknown>;
-  readonly initialVerdict: {
-    readonly verdictRef: string;
-    readonly outcome: "confirmed" | "dismissed" | "inconclusive";
-    readonly rationaleDigest: string;
-    readonly lockedAt: string;
-  };
-  readonly mechanicalEvidence: ReadonlyArray<Record<string, unknown>>;
-  readonly controlEvidence: ReadonlyArray<Record<string, unknown>>;
-  readonly admittedWorkerReceipts: ReadonlyArray<Record<string, unknown>>;
-  readonly detector: { readonly detectorDigest: string };
-  readonly runs: ReadonlyArray<{
-    readonly role: string;
-    readonly variant: string;
-    readonly sandboxRef: string;
-    readonly buildExitStatus: number;
-    readonly detectorExitStatus?: number;
-    readonly detectorReport?: {
-      readonly observedProviderRefs: ReadonlyArray<string>;
-      readonly observedForbiddenSymbolCount: number;
-      readonly enumeratedSymbolCount: number;
-      readonly satisfied: boolean;
-    };
-  }>;
-  readonly completedAt: string;
-}
 
 const fixture = (name: string) =>
   fileURLToPath(new URL(`../../../fixtures/forensics/coldcard/${name}`, import.meta.url));
 
-const run = JSON.parse(readFileSync(fixture("loupe-verification-live-run.v1.json"), "utf8")) as LiveRun;
-const ledger = JSON.parse(
-  readFileSync(fixture("loupe-first-verdict-ledger.v1.json"), "utf8"),
-) as { readonly verdicts: Record<string, { readonly lockedAt: string; readonly verdictRef: string }> };
-
-const verificationRef = String(run.plan.verificationRef);
-const roleRun = (role: string) => {
-  const found = run.runs.find((entry) => entry.role === role);
-  if (found === undefined) throw new Error(`live run missing ${role}`);
-  return found;
+const TRANSCRIPT_FILE = "loupe-control-plane-transcript.v1.json.gz";
+const transcriptBytes = readFileSync(fixture(TRANSCRIPT_FILE));
+const transcriptJson = gunzipSync(transcriptBytes).toString("utf8");
+const transcript = JSON.parse(transcriptJson) as LoupeControlPlaneTranscript;
+const summary = JSON.parse(
+  readFileSync(fixture("loupe-verification-live-run.v2.json"), "utf8"),
+) as {
+  readonly transcriptDigest: string;
+  readonly recordedOriginRef: string;
+  readonly spec: LoupeVerificationSpec;
+  readonly result: Record<string, unknown>;
+  readonly initialVerdict: Record<string, unknown>;
+  readonly runs: ReadonlyArray<Record<string, unknown>>;
+  readonly totalMeasuredCostMicrousd: number;
+  readonly cloudResidue: number;
 };
 
 /**
- * The backend replays exactly what the live run recorded. It invents nothing:
- * the lifecycle authority answers only from the receipts the orchestrating
- * process observed, and the verdict ledger answers from the checked-in file.
+ * The intent the live run was given. It is read from the fixture rather than
+ * restated here, and replaying pins it: the recorded control plane matches on
+ * request identity, so a spec that differs in any field the driver puts on the
+ * wire produces requests the transcript has no answer for.
  */
-const liveBackend = (overrides: Partial<LoupeVerificationBackend> = {}): LoupeVerificationBackend => ({
-  collectMechanicalEvidence: async () => run.mechanicalEvidence,
-  submitInitialVerdict: async () => ({
-    verdictRef: run.initialVerdict.verdictRef,
-    outcome: run.initialVerdict.outcome,
-    rationaleDigest: run.initialVerdict.rationaleDigest,
-    lockedAt: run.initialVerdict.lockedAt,
-  }),
-  applyPocAndRunControls: async () => run.controlEvidence,
-  resolveAdmittedWorkerReceipt: async (_plan, workerReceiptRef) =>
-    run.admittedWorkerReceipts.find((receipt) => receipt.receiptRef === workerReceiptRef),
-  commitInitialVerdict: async (_plan, candidate) => {
-    const stored = ledger.verdicts[verificationRef];
-    if (stored === undefined) throw new Error("the durable ledger holds no verdict for this run");
-    return { ...candidate, ...stored };
-  },
-  ...overrides,
-});
+const LIVE_RUN_SPEC = summary.spec;
 
-const execute = (overrides: Partial<LoupeVerificationBackend> = {}, plan: unknown = run.plan) =>
-  executeLoupeVerification(plan, liveBackend(overrides), run.completedAt);
+/**
+ * The durable ledger is copied into a temporary directory rather than written
+ * in place, so a replay can never mutate the committed first verdict. The
+ * verdict the run must re-derive is already in the checked-in file.
+ */
+const replay = async (
+  mutate: (value: LoupeControlPlaneTranscript) => LoupeControlPlaneTranscript = (value) => value,
+): Promise<LoupeVerificationRun> => {
+  const ledgerDirectory = mkdtempSync(join(tmpdir(), "loupe-live-ledger-"));
+  cpSync(fixture("loupe-first-verdict-ledger"), ledgerDirectory, { recursive: true });
+  return await runLoupeVerification({
+    spec: LIVE_RUN_SPEC,
+    controlPlane: recordedLoupeControlPlane(mutate(transcript)),
+    ledgerDirectory,
+  });
+};
 
-describe("Loupe verification against admitted-worker controls", () => {
-  it("measured a vulnerable build that links the deterministic fallback and a fixed build that does not", () => {
+/**
+ * Rewrites one recorded response in place, so a falsifier can express itself
+ * the only way an attacker could: by making the control plane answer
+ * differently.
+ */
+const rewriteExchange = (
+  match: (exchange: LoupeControlPlaneTranscript["exchanges"][number]) => boolean,
+  rewrite: (body: Record<string, unknown>) => Record<string, unknown>,
+) =>
+  (value: LoupeControlPlaneTranscript): LoupeControlPlaneTranscript => ({
+    ...value,
+    exchanges: value.exchanges.map((exchange) =>
+      match(exchange)
+        ? { ...exchange, body: rewrite(exchange.body as Record<string, unknown>) }
+        : exchange,
+    ),
+  });
+
+
+describe("Loupe verification against admitted live_gce controls", () => {
+  it("replays a transcript recorded from a live control plane, not a simulation", () => {
+    expect(transcript.recordedOriginKind).toBe("live");
+    expect(transcript.recordedOriginRef).toMatch(/^control-plane\.live\./);
+    expect(`sha256:${createHash("sha256").update(transcriptJson.trimEnd()).digest("hex")}`).toBe(
+      summary.transcriptDigest,
+    );
+    // The transcript carries wire traffic only. Nothing a verifier concludes is
+    // in it: no plan, no evidence receipt, no verdict, no worker receipt record.
+    expect(transcriptJson).not.toContain("openagents.loupe_verification_evidence");
+    expect(transcriptJson).not.toContain("openagents.loupe_initial_verdict");
+    expect(transcriptJson).not.toContain("openagents.loupe_admitted_worker_receipt");
+    expect(transcriptJson).not.toContain("openagents.loupe_verification_plan");
+  });
+
+  it("recorded three admitted live_gce sandboxes on the pinned staging guest image", () => {
+    // `recordedOriginRef` names `localhost:<port>` because the live run reached
+    // the staging control node through an IAP tunnel. The hostname is not the
+    // liveness evidence and should not be read as any. The liveness evidence is
+    // below: every runtime receipt in this transcript was issued by a control
+    // plane that provisioned `live_gce` workers on the pinned guest image, and
+    // the verifier refuses a run whose workers are anything else.
+    const creates = transcript.exchanges.filter(
+      (exchange) => exchange.route === "runtime_operation" && exchange.action === "create",
+    );
+    expect(creates).toHaveLength(3);
+    for (const exchange of creates) {
+      const receipt = exchange.body as Record<string, unknown>;
+      expect(receipt.providerKind).toBe("live_gce");
+      expect(receipt.isolationClass).toBe("gce_vm");
+      expect(receipt.imageDigest).toBe(LIVE_RUN_SPEC.worker.imageDigest);
+      expect(receipt.profileDigest).toBe(LIVE_RUN_SPEC.worker.profileDigest);
+      expect(receipt.readinessObserved).toBe(true);
+    }
+    const deletes = transcript.exchanges.filter(
+      (exchange) => exchange.route === "runtime_operation" && exchange.action === "delete",
+    );
+    expect(deletes).toHaveLength(3);
+    for (const exchange of deletes) {
+      expect((exchange.body as Record<string, unknown>).cleanupObserved).toBe(true);
+    }
+  });
+
+  it("re-derives a confirmation that reaches independent verification", async () => {
+    const run = await replay();
+    expect(run.result.evidenceProvenance).toBe("admitted_worker_run");
+    expect(run.result.evidenceOriginRef).toBe(transcript.recordedOriginRef);
+    expect(run.result.outcome).toBe("confirmed");
+    expect(run.result.evidenceTier).toBe("independently_verified");
+    expect(run.result.derivedVulnerableTestOutcome).toBe("failure");
+    expect(run.result.derivedFixedTestOutcome).toBe("success");
+    expect(run.result.vulnerableControlPassed).toBe(true);
+    expect(run.result.fixedControlPassed).toBe(true);
+    expect(run.result.admittedWorkerReceiptsResolved).toBe(true);
+    expect(run.result.initialVerdictAuthority).toBe("durable_first_verdict_ledger");
+
+    const gate = evaluateLoupeVerificationReleaseGate({
+      gateRef: "gate.verification.coldcard.live.v2",
+      results: [run.result],
+      evaluatedAt: run.completedAt,
+    });
+    expect(gate.productMode).toBe("independent_verification");
+    expect(gate.blockerRefs).toEqual([]);
+  });
+
+  it("measured a vulnerable build that links the deterministic fallback and a fixed build that does not", async () => {
+    const run = await replay();
+    const roleRun = (role: string) => {
+      const found = run.runs.find((entry) => entry.role === role);
+      if (found === undefined) throw new Error(`live run missing ${role}`);
+      return found;
+    };
     const vulnerable = roleRun("control_vulnerable");
     const fixed = roleRun("control_fixed");
     expect(vulnerable.buildExitStatus).toBe(0);
@@ -118,150 +181,146 @@ describe("Loupe verification against admitted-worker controls", () => {
       "provider.object.boards/COLDCARD_MK4/rng.o",
     ]);
     expect(fixed.detectorReport?.observedForbiddenSymbolCount).toBe(0);
-    expect(vulnerable.detectorReport?.observedForbiddenSymbolCount).toBeGreaterThan(0);
-    expect(fixed.detectorReport?.enumeratedSymbolCount).toBeGreaterThan(1_000);
+    expect(Number(vulnerable.detectorReport?.observedForbiddenSymbolCount)).toBeGreaterThan(0);
+    expect(Number(fixed.detectorReport?.enumeratedSymbolCount)).toBeGreaterThan(1_000);
+    expect(vulnerable.detectorExitStatus).toBe(1);
+    expect(fixed.detectorExitStatus).toBe(0);
+    // Three isolated sandboxes, and no Google Cloud residue after them.
+    expect(new Set(run.runs.map((entry) => entry.sandboxRef)).size).toBe(3);
+    expect(summary.cloudResidue).toBe(0);
   });
 
-  it("observed the detector failing on the vulnerable target and passing on the fixed one", () => {
-    expect(roleRun("control_vulnerable").detectorExitStatus).toBe(1);
-    expect(roleRun("control_fixed").detectorExitStatus).toBe(0);
-  });
-
-  it("locked the initial verdict before either control was observed", () => {
-    const lockedAt = Date.parse(run.initialVerdict.lockedAt);
+  it("locked the initial verdict before either control was observed", async () => {
+    const run = await replay();
+    const lockedAt = Date.parse(String(run.initialVerdict.lockedAt));
     expect(Number.isNaN(lockedAt)).toBe(false);
-    expect(ledger.verdicts[verificationRef]?.verdictRef).toBe(run.initialVerdict.verdictRef);
-    expect(ledger.verdicts[verificationRef]?.lockedAt).toBe(run.initialVerdict.lockedAt);
-    for (const receipt of run.controlEvidence) {
-      expect(Date.parse(String(receipt.observedAt))).toBeGreaterThan(lockedAt);
-    }
     for (const receipt of run.mechanicalEvidence) {
       expect(Date.parse(String(receipt.observedAt))).toBeLessThanOrEqual(lockedAt);
     }
-  });
-
-  it("ran the mechanical tier and each control in its own admitted sandbox", () => {
-    const sandboxes = new Set(run.runs.map((entry) => entry.sandboxRef));
-    expect(sandboxes.size).toBe(3);
-    const receiptRefs = new Set(run.admittedWorkerReceipts.map((receipt) => receipt.receiptRef));
-    expect(receiptRefs.size).toBe(3);
-    for (const receipt of run.admittedWorkerReceipts) {
-      expect(receipt.lifecycleState).toBe("admitted");
-      expect(receipt.exact).toBe(true);
+    for (const receipt of run.controlEvidence) {
+      expect(Date.parse(String(receipt.observedAt))).toBeGreaterThan(lockedAt);
     }
-  });
-
-  it("confirms the finding and reaches independent verification", async () => {
-    const result = await execute();
-    expect(result.evidenceProvenance).toBe("admitted_worker_run");
-    expect(result.outcome).toBe("confirmed");
-    expect(result.evidenceTier).toBe("independently_verified");
-    expect(result.derivedVulnerableTestOutcome).toBe("failure");
-    expect(result.derivedFixedTestOutcome).toBe("success");
-    expect(result.vulnerableControlPassed).toBe(true);
-    expect(result.fixedControlPassed).toBe(true);
-    expect(result.admittedWorkerReceiptsResolved).toBe(true);
-    expect(result.initialVerdictAuthority).toBe("durable_first_verdict_ledger");
-
-    const gate = evaluateLoupeVerificationReleaseGate({
-      gateRef: "gate.verification.coldcard.live.v1",
-      results: [result],
-      evaluatedAt: run.completedAt,
-    });
-    expect(gate.productMode).toBe("independent_verification");
-    expect(gate.blockerRefs).toEqual([]);
+    // And the verdict the replay re-derives is the one the live run durably
+    // committed, byte for byte, in the checked-in ledger.
+    const ledgerFile = fixture(
+      `loupe-first-verdict-ledger/${createHash("sha256")
+        .update(LIVE_RUN_SPEC.verificationRef)
+        .digest("hex")}.v1.json`,
+    );
+    const stored = JSON.parse(readFileSync(ledgerFile, "utf8")) as {
+      readonly verdict: Record<string, unknown>;
+    };
+    expect(stored.verdict).toEqual(run.initialVerdict);
   });
 
   // -------------------------------------------------------------------------
-  // Falsifiers
+  // Falsifiers. Every one of them perturbs the CONTROL PLANE, because that is
+  // the only surface a caller has left.
   // -------------------------------------------------------------------------
 
-  it("refuses to confirm when the vulnerable control did not fail", async () => {
-    const controls = run.controlEvidence.map((receipt) =>
-      receipt.controlRevision === "vulnerable"
-        ? {
-            ...receipt,
-            observedTermination: {
-              status: "observed",
-              exitStatus: 0,
-              resultArtifactDigest: run.detector.detectorDigest,
-            },
-          }
-        : receipt,
-    );
-    const result = await execute({ applyPocAndRunControls: async () => controls });
-    expect(result.derivedVulnerableTestOutcome).toBe("success");
-    expect(result.vulnerableControlPassed).toBe(false);
-    expect(result.outcome).toBe("inconclusive");
-  });
-
-  it("refuses to confirm when the fixed control did not pass", async () => {
-    const controls = run.controlEvidence.map((receipt) =>
-      receipt.controlRevision === "fixed"
-        ? { ...receipt, observedTermination: { status: "observed", exitStatus: 1 } }
-        : receipt,
-    );
-    const result = await execute({ applyPocAndRunControls: async () => controls });
-    expect(result.derivedFixedTestOutcome).toBe("failure");
-    expect(result.fixedControlPassed).toBe(false);
-    expect(result.outcome).toBe("inconclusive");
-  });
-
-  it("refuses a fixed control that exited cleanly without keeping its report", async () => {
-    const controls = run.controlEvidence.map((receipt) =>
-      receipt.controlRevision === "fixed"
-        ? { ...receipt, observedTermination: { status: "observed", exitStatus: 0 } }
-        : receipt,
-    );
-    const result = await execute({ applyPocAndRunControls: async () => controls });
-    expect(result.derivedFixedTestOutcome).toBe("not_observed");
-    expect(result.outcome).toBe("inconclusive");
-  });
-
-  it("refuses the same measured evidence once its provenance is downgraded", async () => {
-    const result = await execute({}, { ...run.plan, evidenceProvenance: "conformance_vector" });
-    expect(result.outcome).toBe("inconclusive");
-    expect(result.evidenceTier).toBe("executed");
-    const gate = evaluateLoupeVerificationReleaseGate({
-      gateRef: "gate.verification.coldcard.live.downgraded.v1",
-      results: [result],
-      evaluatedAt: run.completedAt,
-    });
-    expect(gate.blockerRefs).toContain("blocker.verification.admittedProvenancePassed");
-  });
-
-  it("refuses when the lifecycle authority does not know a cited receipt", async () => {
+  it("refuses when the control plane claims a provider kind that is not live_gce", async () => {
     await expect(
-      execute({
-        resolveAdmittedWorkerReceipt: async (_plan, workerReceiptRef) =>
-          workerReceiptRef === run.admittedWorkerReceipts.at(-1)?.receiptRef
-            ? undefined
-            : run.admittedWorkerReceipts.find((receipt) => receipt.receiptRef === workerReceiptRef),
-      }),
-    ).rejects.toThrow("cannot resolve");
+      replay(
+        rewriteExchange(
+          (exchange) => exchange.route === "runtime_operation" && exchange.action === "create",
+          (body) => ({ ...body, providerKind: "fake_local" }),
+        ),
+      ),
+    ).rejects.toThrow("requires live_gce workers");
   });
 
-  it("refuses a control receipt attributed to the wrong admitted sandbox", async () => {
-    const plan = run.plan as unknown as LoupeVerificationPlan;
-    const mechanicalWorkerRef = plan.admittedWorkers[0]?.workerRef;
-    const controls = run.controlEvidence.map((receipt) =>
-      receipt.controlRevision === "fixed" ? { ...receipt, workerRef: mechanicalWorkerRef } : receipt,
-    );
-    await expect(execute({ applyPocAndRunControls: async () => controls })).rejects.toThrow(
-      "admitted sandbox and resource generation",
-    );
+  it("refuses when the control plane admitted a different guest image than requested", async () => {
+    await expect(
+      replay(
+        rewriteExchange(
+          (exchange) => exchange.route === "runtime_operation" && exchange.action === "create",
+          (body) => ({ ...body, imageDigest: `sha256:${"a".repeat(64)}` }),
+        ),
+      ),
+    ).rejects.toThrow("different guest image");
+  });
+
+  it("refuses a transcript whose exchanges were reordered", async () => {
+    await expect(
+      replay((value) => ({
+        ...value,
+        exchanges: [value.exchanges[1]!, value.exchanges[0]!, ...value.exchanges.slice(2)],
+      })),
+    ).rejects.toThrow(/holds no response|expected a/);
+  });
+
+  it("refuses a transcript whose recorded request no longer matches what the verifier asks", async () => {
+    // Order alone is not the check. A transcript entry that kept its position
+    // and its route but was recorded against a different request must not be
+    // able to answer this one.
+    await expect(
+      replay((value) => ({
+        ...value,
+        exchanges: value.exchanges.map((exchange, index) =>
+          index === 0
+            ? { ...exchange, stableRequestDigest: `sha256:${"e".repeat(64)}` }
+            : exchange,
+        ),
+      })),
+    ).rejects.toThrow("holds no response for this");
+  });
+
+  it("refuses a transcript whose recorded clock was rewritten", async () => {
+    // Moving the clock is how you would try to reorder a run without touching
+    // its responses. It does not work, and it fails earlier than the ordering
+    // gate: the driver puts its clock readings on the wire, so a rewritten
+    // clock produces requests this transcript has no answer for.
+    await expect(
+      replay((value) => ({
+        ...value,
+        clockReadings: value.clockReadings.map((reading) =>
+          new Date(Date.parse(reading) - 3_600_000).toISOString().replace(/\.(\d{3})\d*Z$/, ".$1Z"),
+        ),
+      })),
+    ).rejects.toThrow("holds no response for this");
+  });
+
+  it("refuses a transcript whose recorded origin was not live", async () => {
+    expect(() =>
+      recordedLoupeControlPlane({ ...transcript, recordedOriginKind: "conformance" }),
+    ).toThrow("recorded from a live origin");
   });
 
   it("refuses a second, different verdict once the ledger holds one", async () => {
+    // The vulnerable build now reports the approved provider, so the mechanical
+    // tier reaches `dismissed` instead of `confirmed`. The durable ledger
+    // already holds the confirmation, and the run refuses rather than relocking.
     await expect(
-      execute({
-        submitInitialVerdict: async () => ({
-          verdictRef: "verdict.ofr007.second-opinion.v1",
-          outcome: "dismissed",
-          rationaleDigest: run.initialVerdict.rationaleDigest,
-          lockedAt: run.initialVerdict.lockedAt,
-        }),
-      }),
+      replay(
+        rewriteExchange(
+          (exchange) => exchange.route === "guest_io" && exchange.action === "read_artifact",
+          (body) => {
+            const content = body.contentBase64;
+            if (typeof content !== "string") return body;
+            const decoded = JSON.parse(Buffer.from(content, "base64").toString("utf8")) as Record<
+              string,
+              unknown
+            >;
+            if (decoded.schema !== "openagents.artifact_witness_capture.v2") return body;
+            return {
+              ...body,
+              contentBase64: Buffer.from(
+                JSON.stringify({
+                  ...decoded,
+                  symbolProviders: [
+                    {
+                      symbolName: LIVE_RUN_SPEC.finding.symbolName,
+                      providerRef: LIVE_RUN_SPEC.finding.approvedProviderRef,
+                      linkMapArtifactRef: "artifact.rewritten",
+                    },
+                  ],
+                }),
+                "utf8",
+              ).toString("base64"),
+            };
+          },
+        ),
+      ),
     ).rejects.toThrow("already durably locked");
   });
 });

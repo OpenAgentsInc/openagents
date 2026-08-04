@@ -1,0 +1,255 @@
+{
+  "schema": "openagents.loupe_verification_live_run.v2",
+  "note": "Derived summary of a live OFR-007 verification. The verifier drove three admitted OpenAgents Cloud managed sandboxes itself over one authenticated control-plane transport. Nothing here was supplied to the verifier: the plan, evidence, worker receipts and result were all derived from the control-plane responses recorded in the transcript beside this file.",
+  "transcriptFile": "loupe-control-plane-transcript.v1.json.gz",
+  "transcriptDigest": "sha256:159d5913cc7e50ffd57397b50e3208458e2e76273e7df684e6b82d8ff45b6c72",
+  "recordedOriginRef": "control-plane.live.localhost:18795.26a2c88a46799a05",
+  "exchangeCount": 26,
+  "detectorRef": "detector.coldcard.provider-provenance.v1",
+  "detectorDigest": "sha256:05c5fd88ffc6ac54721a77e5ad0d974220704c286f0efad70ffae4054bdeb67c",
+  "spec": {
+    "verificationRef": "verification.coldcard.rng-fallback.live.v2",
+    "runRef": "run.coldcard.loupe-verification.v2",
+    "findingRef": "finding.coldcard.rng-fallback.v1",
+    "discoveryActorRef": "actor.discovery.ofr014.artifact-witness.v1",
+    "verifierActorRef": "actor.verifier.ofr007.loupe.v2",
+    "runSeed": "seed.ofr007.live.v2",
+    "finding": {
+      "claim": "the pinned vulnerable Coldcard MK4 build links MicroPython's deterministic fallback rng_get",
+      "symbolName": "symbol.linked.rng_get",
+      "guardMacroName": "macro.MICROPY_HW_ENABLE_RNG",
+      "approvedProviderRef": "provider.object.boards/COLDCARD_MK4/rng.o",
+      "forbiddenProviderRef": "provider.object.rng.o"
+    },
+    "targets": {
+      "repositoryRef": "repository.github.Coldcard.firmware",
+      "vulnerable": {
+        "commitSha": "bcc2c382a324690a2fcf972c0bac3b79bf923f7b",
+        "gitTreeSha": "7abc9a4c680b5623fc8a64f70555dd2d3802e488"
+      },
+      "fixed": {
+        "commitSha": "ca72463709f4e3f8964952039d5caf955f566a87",
+        "gitTreeSha": "51f735fb2dd888865c81ea2ed1fc690a0ed5b396"
+      }
+    },
+    "worker": {
+      "imageDigest": "sha256:f79d6a8a9685832f057d1c641d0fdc11c928ed7bef9102c30b240c83b6635d4b",
+      "profileDigest": "sha256:8b0b4d6bd5fefaf26687bc6bf128f2cc79eb6d234ef383e42ff0e368a4f0f23c",
+      "profileRef": "profile.sbx.gce.e2-small.v1",
+      "provisionerRef": "provisioner-ref://openagents/oa-codex-control/gce-v1",
+      "region": "us-central1",
+      "machineClass": "e2-small",
+      "networkPolicyRef": "network-policy-ref://openagents/managed-sandbox/broker-only-v1",
+      "controlIdentityRef": "identity-ref://openagents/managed-sandbox/control",
+      "actorRef": "principal.owner.ofr007-loupe-verification",
+      "ownerRef": "owner.openagents.primary",
+      "tenantRef": "tenant.openagents.primary",
+      "programRef": "program.managed-agent-sandboxes.ofr007"
+    },
+    "limits": {
+      "buildTimeoutMillis": 3000000,
+      "leaseMillis": 3600000,
+      "sandboxBudgetMicrousd": 40000,
+      "programBudgetMicrousd": 160000
+    },
+    "guestDriverPath": "/opt/openagents-managed-sandbox/coldcard-build-driver.mjs"
+  },
+  "plan": {
+    "schema": "openagents.loupe_verification_plan.v1",
+    "verificationRef": "verification.coldcard.rng-fallback.live.v2",
+    "runRef": "run.coldcard.loupe-verification.v2",
+    "findingRef": "finding.coldcard.rng-fallback.v1",
+    "findingDigest": "sha256:03ab2c2be77f40af437e5b1f08b8b8a6e7ea709f7f9c0c64df330533b851af76",
+    "discoveryActorRef": "actor.discovery.ofr014.artifact-witness.v1",
+    "verifierActorRef": "actor.verifier.ofr007.loupe.v2",
+    "evidenceProvenance": "admitted_worker_run",
+    "sourceBundleRef": "target.coldcard.vulnerable",
+    "sourceBundleDigest": "sha256:bf8b7e47456c60c9a5937b38e0d2a7bf21745f77c30ea28ff7e689378713ea3a",
+    "dependencyManifestDigest": "sha256:daa2acbcf5fe268943f9baab0a3c534cd7065e41c40206e7049451862bcae08c",
+    "vulnerableTargetDigest": "sha256:bf8b7e47456c60c9a5937b38e0d2a7bf21745f77c30ea28ff7e689378713ea3a",
+    "fixedTargetDigest": "sha256:1081fdc9bca26ddda5fac9e26ba1926020bcd44f1f3936322bee06e993258bbb",
+    "workerImageDigest": "sha256:f79d6a8a9685832f057d1c641d0fdc11c928ed7bef9102c30b240c83b6635d4b",
+    "workerProfileDigest": "sha256:8b0b4d6bd5fefaf26687bc6bf128f2cc79eb6d234ef383e42ff0e368a4f0f23c",
+    "admittedWorkers": [
+      {
+        "workerRef": "worker.loupe.mechanical.02c34bb22fbc4d246266",
+        "sandboxRef": "sandbox.mechanical.02c34bb22fbc4d246266",
+        "resourceGeneration": 1,
+        "placementRef": "placement.loupe.93a10afa38fff44e6907"
+      },
+      {
+        "workerRef": "worker.loupe.control-vulnerable.fc9175f06e00612a27cc",
+        "sandboxRef": "sandbox.control-vulnerable.fc9175f06e00612a27cc",
+        "resourceGeneration": 1,
+        "placementRef": "placement.loupe.df5260173398938dc1fb"
+      },
+      {
+        "workerRef": "worker.loupe.control-fixed.77156c5ec30bd371f911",
+        "sandboxRef": "sandbox.control-fixed.77156c5ec30bd371f911",
+        "resourceGeneration": 1,
+        "placementRef": "placement.loupe.aed547d56e33cc081878"
+      }
+    ],
+    "createdAt": "2026-08-04T03:48:18.982Z"
+  },
+  "initialVerdict": {
+    "schema": "openagents.loupe_initial_verdict.v1",
+    "verdictRef": "verdict.loupe.0628a3de5a8a58da62c52681",
+    "verificationRef": "verification.coldcard.rng-fallback.live.v2",
+    "findingDigest": "sha256:03ab2c2be77f40af437e5b1f08b8b8a6e7ea709f7f9c0c64df330533b851af76",
+    "verifierActorRef": "actor.verifier.ofr007.loupe.v2",
+    "outcome": "confirmed",
+    "evidenceReceiptRefs": [
+      "receipt.loupe.mechanical.1.96bb0577fb2eb18f",
+      "receipt.loupe.mechanical.2.c36b58d0f85fb7a7",
+      "receipt.loupe.mechanical.3.880a20c6745ef586"
+    ],
+    "rationaleDigest": "sha256:bf7c64d36e3e8c9fe15c03705ddb153c942540ebea698ba8cd7727d17d3ad75c",
+    "lockedAt": "2026-08-04T03:51:49.101Z"
+  },
+  "result": {
+    "schema": "openagents.loupe_verification_result.v1",
+    "resultRef": "result.verification.coldcard.rng-fallback.live.v2",
+    "verificationRef": "verification.coldcard.rng-fallback.live.v2",
+    "findingRef": "finding.coldcard.rng-fallback.v1",
+    "discoveryActorRef": "actor.discovery.ofr014.artifact-witness.v1",
+    "verifierActorRef": "actor.verifier.ofr007.loupe.v2",
+    "outcome": "confirmed",
+    "evidenceProvenance": "admitted_worker_run",
+    "evidenceOriginRef": "control-plane.live.localhost:18795.26a2c88a46799a05",
+    "evidenceTier": "independently_verified",
+    "initialVerdictRef": "verdict.loupe.0628a3de5a8a58da62c52681",
+    "initialVerdictDigest": "sha256:b45cdd7e97bac64c49be4be03cddbffb152ead6b1aee9c76c987e2c1d9a65b9b",
+    "initialVerdictAuthority": "durable_first_verdict_ledger",
+    "mechanicalEvidenceReceiptRefs": [
+      "receipt.loupe.mechanical.1.96bb0577fb2eb18f",
+      "receipt.loupe.mechanical.2.c36b58d0f85fb7a7",
+      "receipt.loupe.mechanical.3.880a20c6745ef586"
+    ],
+    "evidenceReceiptRefs": [
+      "receipt.loupe.mechanical.1.96bb0577fb2eb18f",
+      "receipt.loupe.mechanical.2.c36b58d0f85fb7a7",
+      "receipt.loupe.mechanical.3.880a20c6745ef586",
+      "receipt.loupe.poc.3acb432eb9fabe2f",
+      "receipt.loupe.control.vulnerable.8bd28152e6873864",
+      "receipt.loupe.control.fixed.69ea4f30b6f4c620"
+    ],
+    "evidenceAggregateDigest": "sha256:538a00d32a2b57c8e04ced72ac4b232f34d8a3a0ac260585aa9ab84fd52ebc1c",
+    "pocReceiptRef": "receipt.loupe.poc.3acb432eb9fabe2f",
+    "vulnerableControlReceiptRef": "receipt.loupe.control.vulnerable.8bd28152e6873864",
+    "fixedControlReceiptRef": "receipt.loupe.control.fixed.69ea4f30b6f4c620",
+    "derivedVulnerableTestOutcome": "failure",
+    "derivedFixedTestOutcome": "success",
+    "vulnerableControlPassed": true,
+    "fixedControlPassed": true,
+    "circularVerificationRejected": true,
+    "admittedWorkerReceiptsResolved": true,
+    "completionAuthority": "adapter_atomic_result",
+    "productMode": "discovery_only",
+    "completedAt": "2026-08-04T04:15:32.793Z"
+  },
+  "runs": [
+    {
+      "role": "mechanical",
+      "variant": "vulnerable",
+      "sandboxRef": "sandbox.mechanical.02c34bb22fbc4d246266",
+      "workerRef": "worker.loupe.mechanical.02c34bb22fbc4d246266",
+      "resourceGeneration": 1,
+      "receiptRefs": [
+        "receipt-ref://sha256/26481c425d0283538ec4bcc4578d85ae70ff783a0c802c18f8eff394d22647cb",
+        "receipt-ref://sha256/67152eea5c658cb6de71885663b6ab32641f87d7d3070175398f0ae3d96d5232",
+        "receipt-ref://sha256/cd5f54bcf79865af8e9a48fdca5866df512c647e79d96f5557d49df921ff9a55"
+      ],
+      "capturedAt": "2026-08-04T03:48:18.982Z",
+      "captureDigest": "sha256:e7289b6416b769efe30c3093db21088e58c9d1b28417b85fc3cc2e7dd211b9c8",
+      "targetCommit": "bcc2c382a324690a2fcf972c0bac3b79bf923f7b",
+      "sourceBundleDigest": "sha256:bf8b7e47456c60c9a5937b38e0d2a7bf21745f77c30ea28ff7e689378713ea3a",
+      "buildExitStatus": 0,
+      "measuredCostMicrousd": 5560
+    },
+    {
+      "role": "control_vulnerable",
+      "variant": "vulnerable",
+      "sandboxRef": "sandbox.control-vulnerable.fc9175f06e00612a27cc",
+      "workerRef": "worker.loupe.control-vulnerable.fc9175f06e00612a27cc",
+      "resourceGeneration": 1,
+      "receiptRefs": [
+        "receipt-ref://sha256/6b195682af49bf23d4bce85ce6153e0b54464235e6b9b4d89e1980df0d5b7256",
+        "receipt-ref://sha256/efc2d9fcd79f20a7ecd4234343550723371056106c9b4e94e80fab23c54271c8",
+        "receipt-ref://sha256/aa3b8e6d50a7de725c23aa1cdd363af56e11a544a312593008598c34da0f09bc"
+      ],
+      "capturedAt": "2026-08-04T03:59:20.153Z",
+      "captureDigest": "sha256:666929a56d65574fb17594d7a4815b27201a7bf5662224e30d0c891bc8bca54b",
+      "targetCommit": "bcc2c382a324690a2fcf972c0bac3b79bf923f7b",
+      "sourceBundleDigest": "sha256:bf8b7e47456c60c9a5937b38e0d2a7bf21745f77c30ea28ff7e689378713ea3a",
+      "buildExitStatus": 0,
+      "measuredCostMicrousd": 5748,
+      "detectorExitStatus": 1,
+      "detectorObservedAt": "2026-08-04T04:00:09.936Z",
+      "detectorReport": {
+        "schema": "openagents.loupe_provider_provenance_report.v1",
+        "captureRef": "capture.coldcard.vulnerable",
+        "targetCommit": "bcc2c382a324690a2fcf972c0bac3b79bf923f7b",
+        "sourceBundleDigest": "sha256:bf8b7e47456c60c9a5937b38e0d2a7bf21745f77c30ea28ff7e689378713ea3a",
+        "approvedProviderRef": "provider.object.boards/COLDCARD_MK4/rng.o",
+        "observedProviderRefs": [
+          "provider.object.rng.o"
+        ],
+        "forbiddenProviderRef": "provider.object.rng.o",
+        "observedForbiddenSymbolCount": 6,
+        "observedForbiddenSymbolSample": [
+          "symbol.defined.d.1",
+          "symbol.defined.dat.0",
+          "symbol.defined.n.2",
+          "symbol.defined.pad.3",
+          "symbol.defined.rng_get",
+          "symbol.defined.seeded.4"
+        ],
+        "enumeratedSymbolCount": 13458,
+        "approvedProviderLinked": false,
+        "fallbackAbsent": false,
+        "satisfied": false
+      }
+    },
+    {
+      "role": "control_fixed",
+      "variant": "fixed",
+      "sandboxRef": "sandbox.control-fixed.77156c5ec30bd371f911",
+      "workerRef": "worker.loupe.control-fixed.77156c5ec30bd371f911",
+      "resourceGeneration": 1,
+      "receiptRefs": [
+        "receipt-ref://sha256/b15edf6df200c8cc1a6354695ee4ffb332cb6eca1519ac6394f7e3d65147dbb0",
+        "receipt-ref://sha256/6e5ce838223d1ddda3c61f245003c7c98889181cf56680ce0a306b207ced9b4e",
+        "receipt-ref://sha256/1e52a473b06611f4029ea174d661ccaf446ddfdb9694e4ba0741ac2c5c31bb27"
+      ],
+      "capturedAt": "2026-08-04T04:11:24.752Z",
+      "captureDigest": "sha256:0036a85ec0778f443b8473eb5a425b20674998e9bcc3d24fdfb146af28d1056d",
+      "targetCommit": "ca72463709f4e3f8964952039d5caf955f566a87",
+      "sourceBundleDigest": "sha256:1081fdc9bca26ddda5fac9e26ba1926020bcd44f1f3936322bee06e993258bbb",
+      "buildExitStatus": 0,
+      "measuredCostMicrousd": 6174,
+      "detectorExitStatus": 0,
+      "detectorObservedAt": "2026-08-04T04:12:10.802Z",
+      "detectorReport": {
+        "schema": "openagents.loupe_provider_provenance_report.v1",
+        "captureRef": "capture.coldcard.fixed",
+        "targetCommit": "ca72463709f4e3f8964952039d5caf955f566a87",
+        "sourceBundleDigest": "sha256:1081fdc9bca26ddda5fac9e26ba1926020bcd44f1f3936322bee06e993258bbb",
+        "approvedProviderRef": "provider.object.boards/COLDCARD_MK4/rng.o",
+        "observedProviderRefs": [
+          "provider.object.boards/COLDCARD_MK4/rng.o"
+        ],
+        "forbiddenProviderRef": "provider.object.rng.o",
+        "observedForbiddenSymbolCount": 0,
+        "observedForbiddenSymbolSample": [],
+        "enumeratedSymbolCount": 13453,
+        "approvedProviderLinked": true,
+        "fallbackAbsent": true,
+        "satisfied": true
+      }
+    }
+  ],
+  "completedAt": "2026-08-04T04:15:32.793Z",
+  "totalMeasuredCostMicrousd": 17482,
+  "cloudResidue": 0
+}
