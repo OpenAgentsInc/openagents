@@ -108,8 +108,10 @@ era arrives, *external* actors cash an option the culture left on the table.
 S3 explains why the nym discourse feels decisive even when it does not prove
 who moved the coins. Real-name firmware commits slightly cut against a pure
 “burner only” story—they show the same person was not exclusively hiding—but
-they do not erase the opacity. Reputation and governance guilt run high; theft
-still needs a proceeds bridge.
+they do not erase the opacity. darosior’s later take (E29) that a nym can mean
+“more eyes” / seriousness theater is a clean non-malicious version of the same
+opacity. Reputation and governance guilt run high; theft still needs a proceeds
+bridge.
 
 ### S4 — Informed non-fix
 
@@ -150,8 +152,10 @@ is upstream MicroPython fallback, not a bespoke Coinkite backdoor generator; the
 failure is a cross-module composition that looks more like chaos than craft;
 Gray’s own technical prose claims he did not know that PRNG was in the tree and
 that he zeroed a macro for the wrong reason. Empty `x` commits look more like
-haste than a careful trap. S6 should stay on the board as the hypothesis social
-media wants, but it demands intent evidence the current set does not supply.
+haste than a careful trap. darosior states the backdoor theory is “not
+compelling” and that a real backdoor would be less conspicuous (E29). S6 should
+stay on the board as the hypothesis social media wants, but it demands intent
+evidence the current set does not supply.
 
 ### S7 — RFC6979 post as a tell
 
@@ -229,7 +233,9 @@ A/B; it only resists over-reading one tweet into a confession.
 **S1–S3:** catastrophic integration negligence and OPSEC/culture failure by a
 person who controlled the critical code path, amplified by dual identity
 (including the 2020 “someday” Coldcard tweet) and ignored or mis-triaged
-signals — **without** proven long-game heist.
+signals — **without** proven long-game heist. When unsure about malice, weight
+technical third parties who say **extreme negligence > backdoor** (e.g. darosior
+E29).
 
 ### Highest-value next work
 
@@ -889,6 +895,45 @@ Additional posts reinforce E24d:
 *this* researcher; strengthens "broken acknowledgment culture delayed more
 eyes on the code."
 
+### E29 — `@darosior` on nym usage vs backdoor theory (2026-08-04)
+
+Credible technical voice (Antoine Poinsot) explicitly **down-weights intentional
+backdoor** while engaging the nym discourse.
+
+**Primary:** [2084661793624924500](https://x.com/darosior/status/2084661793624924500)
+(2026-08-04T15:24:37Z, quote-tweet; ~22 likes at probe):
+
+> The nym usage could also be explained by simply trying to portray the project
+> as more serious than it was (more eyes).
+>
+> And if you really wanted to introduce a backdoor, there would be less
+> conspicuous ways of doing it.
+>
+> **The backdoor theory is not compelling at this point.**
+
+**Quoted prior in same thread family:**
+[2084659808519463034](https://x.com/darosior/status/2084659808519463034)
+(reply to jamesob / BikesandBitcoin):
+
+> He did commit the change to libngu under doc hex, so using a nym to commit to
+> libngu itself doesn't seem to be hinting at a cover up?
+>
+> At that point i still believe **extreme negligence explains this better than
+> malice.**
+
+**Use in this log:**
+
+| Point | Bearing |
+| --- | --- |
+| Nym as “more eyes” / seriousness theater | Alternative to “nym = cover-up for theft” (S3 without S6) |
+| Real backdoors would be stealthier than public open-source composition bugs | Pressures S6 (intentional plant) |
+| Real-name DocHex commits on libngu alongside nym | Cuts pure burner-cover story; aligns with dual-authorship evidence E3–E5 |
+| Explicit “not compelling” on backdoor | Strong **non-guilt-of-theft** technical steelman (not a legal finding) |
+
+**Label:** external expert observation. Does not erase A/B identity facts or
+process guilt. Does directly support least-strained S1–S3 over S6 when the
+reader is **not sure** about malice.
+
 ---
 
 # Part III — Steelman readings
@@ -947,6 +992,8 @@ opacity + ignored warnings + catastrophic negligence**, not proven heist.
 | `@afilini` | [2083477163957694524](https://x.com/afilini/status/2083477163957694524) | MicroPython PRNG is normal upstream fallback; bug is **accidentally using it**, not inventing evil PRNG in Coldcard |
 | `@afilini` | [2083483878887399594](https://x.com/afilini/status/2083483878887399594) | Auditing fallback would be ignored if you **wrongly assumed** you weren’t on that path |
 | `@darosior` (on E23) | [2082948440720359924](https://x.com/darosior/status/2082948440720359924) | Entropy + LLM orchestration — external attacker pattern, not RFC6979 |
+| `@darosior` (nym / backdoor) | [2084661793624924500](https://x.com/darosior/status/2084661793624924500) | Nym can mean “portray more eyes”; real backdoors would be less conspicuous; **“The backdoor theory is not compelling at this point”** (E29) |
+| `@darosior` (quoted prior) | [2084659808519463034](https://x.com/darosior/status/2084659808519463034) | Gray also committed under DocHex to libngu; nym alone “doesn’t seem to be hinting at a cover up”; **extreme negligence > malice** |
 | `@zherbert` (even while identity-hunting) | [2084638910970220754](https://x.com/zherbert/status/2084638910970220754) | “Still think it is likely just **incompetence / negligence**” unless identity raises flags |
 | `@CyberTruckRonin` | [2084661432960880793](https://x.com/CyberTruckRonin/status/2084661432960880793) | Identity facts can be true without “evil maid” / intentional plant framing |
 | Dice / multisig survivors | many; e.g. diceroll reports | Mitigation paths worked as designed for users who BYOE |
@@ -957,9 +1004,10 @@ opacity + ignored warnings + catastrophic negligence**, not proven heist.
 1. **Composition bug is a classic integration failure:** same symbol names,
    `#ifndef` vs value, submodule PRNG — exactly the sort of thing that survives
    partial review (E17 “binary had TRNG, wrong `rng_get` linked”).
-2. **Nym use can be privacy / old habit / side project** without theft intent;
-   still bad OPSEC, but not a completed crime theory. Gray also commits under
-   **real name** on the same repos (hurts “pure burner” story).
+2. **Nym use can be privacy / old habit / side project / “more eyes” optics**
+   without theft intent (darosior E29); still bad OPSEC, but not a completed
+   crime theory. Gray also commits under **real name** on the same repos
+   (hurts “pure burner” / cover-up-only story).
 3. **“Unaware until today”** can mean unaware of **this root cause**, even if
    sparse unexplained drains existed and were mis-triaged (malware / user error
    assumptions).
