@@ -1,12 +1,8 @@
 import { Effect, Schema } from "effect";
-import type { Event } from "nostr-effect/pure";
-import { fetchRelayInformation } from "nostr-effect/nip11";
-import { Relay, type Subscription } from "nostr-effect/relay-client";
 
-import { CONTRACT_IDENTITY, CONTRACT_SOURCE_COMMIT, PUBLIC_MKT_KINDS } from "./generated.js";
-import { validatePublicHead } from "./validation.js";
+import { CONTRACT_IDENTITY, CONTRACT_SOURCE_COMMIT } from "./generated.js";
 
-export const NIP_MKT_SDK_VERSION = "0.1.1" as const;
+export const NIP_MKT_SDK_VERSION = "0.1.2" as const;
 export const IMMORTAL_RELAY_SOFTWARE = "https://github.com/OpenAgentsInc/immortal" as const;
 export const IMMORTAL_RELAY_EXTENSION = "nip-mkt" as const;
 
@@ -46,7 +42,6 @@ export interface ImmortalRelayProbe {
   readonly contractVersion: string;
   readonly websocketConnected: true;
   readonly snapshotComplete: true;
-  readonly validatedEvents: number;
   readonly nip11LatencyMs: number;
   readonly websocketLatencyMs: number;
   readonly totalLatencyMs: number;
@@ -64,59 +59,116 @@ function relayProbeError(code: RelayProbeCode, cause: unknown): RelayProbeError 
   });
 }
 
+function relayInformationUrl(relayUrl: string): string {
+  const url = new URL(relayUrl);
+  if (url.protocol === "wss:") url.protocol = "https:";
+  else if (url.protocol === "ws:") url.protocol = "http:";
+  else throw new Error("Relay URL must use ws:// or wss://");
+  return url.toString();
+}
+
+async function fetchRelayInformation(relayUrl: string, timeoutMs: number): Promise<unknown> {
+  const response = await fetch(relayInformationUrl(relayUrl), {
+    headers: { Accept: "application/nostr+json" },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    throw new Error(`NIP-11 returned ${response.status} ${response.statusText}`.trim());
+  }
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/nostr+json")) {
+    throw new Error(`NIP-11 returned unsupported content type ${contentType || "missing"}`);
+  }
+  return response.json();
+}
+
+function randomHex(bytes: number): string {
+  return Array.from(globalThis.crypto.getRandomValues(new Uint8Array(bytes)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
 async function probeSnapshot(
   relayUrl: string,
   timeoutMs: number,
 ): Promise<{
   readonly websocketLatencyMs: number;
-  readonly validatedEvents: number;
 }> {
-  const relay = new Relay(relayUrl);
-  const startedAt = Date.now();
-  let subscription: Subscription | undefined;
+  return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
+    const subscriptionId = `mkt-probe-${globalThis.crypto.randomUUID()}`;
+    const impossibleEventId = randomHex(32);
+    let socket: WebSocket | undefined;
+    let connectedAt: number | undefined;
+    let settled = false;
 
-  try {
-    await relay.connect(timeoutMs);
-    const connectedAt = Date.now();
-    const validatedEvents = await new Promise<number>((resolve, reject) => {
-      let count = 0;
-      let settled = false;
-      const finish = (result: { readonly count?: number; readonly error?: Error }) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        subscription?.close();
-        if (result.error !== undefined) reject(result.error);
-        else resolve(result.count ?? 0);
-      };
-      const timer = setTimeout(
-        () => finish({ error: new Error(`EOSE timeout after ${timeoutMs}ms`) }),
-        timeoutMs,
-      );
+    const finish = (result: { readonly error?: Error }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        socket?.send(JSON.stringify(["CLOSE", subscriptionId]));
+      } catch {
+        // The socket may already be closed.
+      }
+      try {
+        socket?.close();
+      } catch {
+        // Cleanup must not replace the handshake result.
+      }
+      if (result.error !== undefined) reject(result.error);
+      else resolve({ websocketLatencyMs: (connectedAt ?? Date.now()) - startedAt });
+    };
+    const timer = setTimeout(
+      () => finish({ error: new Error(`WebSocket or EOSE timeout after ${timeoutMs}ms`) }),
+      timeoutMs,
+    );
 
-      subscription = relay.subscribe([{ kinds: [...PUBLIC_MKT_KINDS], limit: 100 }], {
-        onevent: (event) => {
-          try {
-            validatePublicHead(event as Event);
-            count += 1;
-          } catch (cause) {
-            finish({
-              error: new Error(
-                `Relay returned an invalid NIP-MKT public event: ${cause instanceof Error ? cause.message : String(cause)}`,
-              ),
-            });
-          }
-        },
-        oneose: () => finish({ count }),
-        onclose: (reason) => finish({ error: new Error(reason) }),
-      });
+    try {
+      socket = new WebSocket(relayUrl);
+    } catch (cause) {
+      finish({ error: cause instanceof Error ? cause : new Error(String(cause)) });
+      return;
+    }
+
+    socket.addEventListener("open", () => {
+      connectedAt = Date.now();
+      try {
+        socket?.send(
+          JSON.stringify(["REQ", subscriptionId, { ids: [impossibleEventId], limit: 1 }]),
+        );
+      } catch (cause) {
+        finish({ error: cause instanceof Error ? cause : new Error(String(cause)) });
+      }
     });
-
-    return { websocketLatencyMs: connectedAt - startedAt, validatedEvents };
-  } finally {
-    subscription?.close();
-    relay.close();
-  }
+    socket.addEventListener("error", () =>
+      finish({ error: new Error(`WebSocket error from ${relayUrl}`) }),
+    );
+    socket.addEventListener("close", () => {
+      if (!settled) finish({ error: new Error("Relay closed before EOSE") });
+    });
+    socket.addEventListener("message", (event) => {
+      if (typeof event.data !== "string") {
+        finish({ error: new Error("Relay returned a non-text Nostr frame") });
+        return;
+      }
+      let message: unknown;
+      try {
+        message = JSON.parse(event.data);
+      } catch {
+        finish({ error: new Error("Relay returned invalid JSON") });
+        return;
+      }
+      if (!Array.isArray(message) || message[1] !== subscriptionId) return;
+      if (message[0] === "EVENT") {
+        finish({ error: new Error("Relay returned an event for an exact random event ID") });
+      } else if (message[0] === "EOSE") {
+        finish({});
+      } else if (message[0] === "CLOSED") {
+        finish({ error: new Error(String(message[2] ?? "Relay closed the subscription")) });
+      }
+    });
+  });
 }
 
 export const probeImmortalRelay = Effect.fn("NipMkt.probeImmortalRelay")(function* (
@@ -126,7 +178,7 @@ export const probeImmortalRelay = Effect.fn("NipMkt.probeImmortalRelay")(functio
   const timeoutMs = options.timeoutMs ?? 10_000;
   const startedAt = Date.now();
   const relayInformation = yield* Effect.tryPromise({
-    try: () => fetchRelayInformation(relayUrl),
+    try: () => fetchRelayInformation(relayUrl, timeoutMs),
     catch: (cause) => relayProbeError("nip11_unavailable", cause),
   });
   const information = yield* Effect.try({
@@ -172,7 +224,6 @@ export const probeImmortalRelay = Effect.fn("NipMkt.probeImmortalRelay")(functio
     contractVersion: CONTRACT_IDENTITY.crate_version,
     websocketConnected: true,
     snapshotComplete: true,
-    validatedEvents: snapshot.validatedEvents,
     nip11LatencyMs: nip11CompletedAt - startedAt,
     websocketLatencyMs: snapshot.websocketLatencyMs,
     totalLatencyMs: completedAt - startedAt,

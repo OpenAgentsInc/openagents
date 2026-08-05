@@ -1,5 +1,4 @@
 import { Effect } from "effect";
-import { useFetchImplementation } from "nostr-effect/nip11";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 
 import { probeImmortalRelay, RelayProbeError } from "./relay.js";
@@ -8,25 +7,32 @@ const originalFetch = globalThis.fetch;
 const OriginalWebSocket = globalThis.WebSocket;
 
 class FakeWebSocket {
-  onopen: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  onclose: (() => void) | null = null;
-  onmessage: ((event: { readonly data: string }) => void) | null = null;
+  private openListener: (() => void) | undefined;
+  private closeListener: (() => void) | undefined;
+  private messageListener: ((event: { readonly data: string }) => void) | undefined;
 
   constructor(readonly url: string) {
-    queueMicrotask(() => this.onopen?.());
+    queueMicrotask(() => this.openListener?.());
+  }
+
+  addEventListener(type: string, listener: (event: { readonly data: string }) => void): void {
+    if (type === "open") this.openListener = () => listener({ data: "" });
+    else if (type === "close") this.closeListener = () => listener({ data: "" });
+    else if (type === "message") this.messageListener = listener;
   }
 
   send(message: string): void {
     const parsed = JSON.parse(message) as readonly unknown[];
     if (parsed[0] === "REQ") {
       const subscriptionId = parsed[1];
-      queueMicrotask(() => this.onmessage?.({ data: JSON.stringify(["EOSE", subscriptionId]) }));
+      queueMicrotask(() =>
+        this.messageListener?.({ data: JSON.stringify(["EOSE", subscriptionId]) }),
+      );
     }
   }
 
   close(): void {
-    queueMicrotask(() => this.onclose?.());
+    queueMicrotask(() => this.closeListener?.());
   }
 }
 
@@ -43,13 +49,11 @@ function installRelayInformation(supportedExtensions: readonly string[]): void {
       { status: 200, headers: { "Content-Type": "application/nostr+json" } },
     );
   globalThis.fetch = relayInformationFetch;
-  useFetchImplementation(relayInformationFetch);
   globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
 }
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  useFetchImplementation(originalFetch);
   globalThis.WebSocket = OriginalWebSocket;
 });
 
@@ -70,7 +74,6 @@ describe("Immortal relay probe", () => {
       contractVersion: "0.0.1",
       websocketConnected: true,
       snapshotComplete: true,
-      validatedEvents: 0,
     });
     expect(result.supportedExtensions).toContain("mkt-swp:1");
   });

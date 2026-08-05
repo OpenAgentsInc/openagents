@@ -27,7 +27,7 @@ The package exports:
 - duplicate-safe public and private record validation with an explicit profile registry;
 - canonical signed-event serialization plus NIP-59 counterparty and sender-recovery wrapping on `nostr-effect`, separating cryptographically verified wrap/seal/rumor IDs from caller-supplied source provenance;
 - immutable admission with prior-result replay and relay conflict reasons, idempotency keys, quote/reservation projections, per-signer status gap/fork detection, expiry, authorization, evidence, settlement, recovery, and delivery-deduplication helpers.
-- a bounded `probeImmortalRelay` Effect that validates NIP-11 software, exact contract version, and `nip-mkt` advertisement before completing a WebSocket `REQ`/`EOSE` snapshot against the generated public-kind schemas.
+- a bounded `probeImmortalRelay` Effect that validates NIP-11 software, exact contract version, and `nip-mkt` advertisement before completing a WebSocket `REQ`/`EOSE` compatibility subscription for an exact random event ID.
 
 The probe reports all relay extensions it observes. Extensions added after the
 pinned contract are capability evidence only; this package does not claim
