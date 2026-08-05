@@ -67,8 +67,7 @@ export const en = {
   // the user's complete private financial history; say so at the download.
   "swap.history.export.sensitivity":
     "This file contains your full swap history and exit packages. It holds no keys and cannot spend funds, but it is private financial data — store it like a bank statement.",
-  "swap.history.import.refused.not_an_export":
-    "This file is not a swap history export.",
+  "swap.history.import.refused.not_an_export": "This file is not a swap history export.",
   "swap.history.import.refused.unsupported_version":
     "This export was made by a newer version of the app. Update the app, then import again.",
   "swap.history.import.refused.session_invalid":
@@ -89,6 +88,7 @@ export const en = {
   "swap.widget.engine_loading": "Loading the swap engine",
   "swap.widget.engine_failed": "The swap engine did not load. Reload to try again.",
   "swap.widget.pairs_loading": "Loading available pairs",
+  "swap.widget.no_offerings": "No providers are offering this pair.",
   "swap.widget.unsupported_direction": "This direction is not available",
   "swap.widget.enter_amount": "Enter an amount",
   "swap.widget.zero_output": "This amount is too small to cover the fees",

@@ -129,7 +129,8 @@ describe('unbuilt surfaces stay honest (SWAP-7, #9322)', () => {
     // working market.
     const html = renderToStaticMarkup(<SwapIndexPage />)
     expect(html).toContain('data-swap-widget=""')
-    expect(html).toContain('data-swap-primary-action=""')
+    expect(html).toContain('data-en-key="swap-primary-action"')
+    expect(html).toContain('data-en-component="button"')
     expect(html).toContain('data-swap-not-yet-available="swap-live-inputs"')
     expect(html).toContain('SWAP-0 (openagents#9315)')
   })
@@ -141,9 +142,8 @@ describe('unbuilt surfaces stay honest (SWAP-7, #9322)', () => {
     // blank.
     const html = renderToStaticMarkup(<SwapIndexPage />)
     expect(html).toContain('data-swap-widget-state="EngineLoading"')
-    expect(html).toContain(
-      'data-swap-primary-action-key="swap.widget.engine_loading"',
-    )
+    expect(html).toContain('data-en-tone="secondary"')
+    expect(html).toContain('data-en-loading="true"')
     expect(html).toContain('aria-busy="true"')
     expect(html).toContain('disabled=""')
     expect(html).toContain('Loading the swap engine')

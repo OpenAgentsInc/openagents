@@ -156,6 +156,14 @@ describe("swap widget typed state", () => {
     expect(stillPending._tag).toBe("VerificationPending");
   });
 
+  test("a fresh enabled gate recovers VerificationFailed to Ready", () => {
+    const ready = transitionSwapWidgetState(
+      sampleWidgetStates.VerificationFailed,
+      SwapWidgetEvent.FundingGateChanged({ gate: enabledFundingGate() }),
+    );
+    expect(ready._tag).toBe("Ready");
+  });
+
   test("session progression is monotone and never regresses", () => {
     expect(
       transitionSwapWidgetState(
@@ -175,6 +183,25 @@ describe("swap widget typed state", () => {
         SwapWidgetEvent.SessionAdvanced({ state: "refund_pending" }),
       )._tag,
     ).toBe("RefundPending");
+  });
+
+  test("a funded settlement or refund can degrade to disputed", () => {
+    for (const state of [sampleWidgetStates.SettlementPending, sampleWidgetStates.RefundPending]) {
+      expect(
+        transitionSwapWidgetState(state, SwapWidgetEvent.SessionAdvanced({ state: "disputed" }))
+          ._tag,
+      ).toBe("Disputed");
+    }
+  });
+
+  test("raw unresolved remains distinct from its failed base projection", () => {
+    expect(classifySwpState("unresolved")).toEqual({ ok: true, base: "failed" });
+    expect(
+      transitionSwapWidgetState(
+        sampleWidgetStates.FundingObserved,
+        SwapWidgetEvent.SessionAdvanced({ state: "unresolved" }),
+      )._tag,
+    ).toBe("Unresolved");
   });
 
   test("re-derived form states apply only in the form phase", () => {

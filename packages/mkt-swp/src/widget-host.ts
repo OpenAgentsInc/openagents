@@ -33,7 +33,7 @@ import {
   initialSwapWidgetState,
   transitionSwapWidgetState,
 } from "./widget-state.js";
-import type { SessionBaseState, SwapWidgetState } from "./widget-state.js";
+import type { SessionBaseState, SessionProgressState, SwapWidgetState } from "./widget-state.js";
 
 /**
  * `widget-state.ts` restates the NIP-MKT base `state` vocabulary locally so
@@ -102,7 +102,9 @@ export const makeSwapWidgetController: Effect.Effect<
       // unknown value: retained by SWAP-6, advancing nothing here.
       return yield* SubscriptionRef.get(state);
     }
-    return yield* apply(SwapWidgetEvent.SessionAdvanced({ state: classified.base }));
+    const sessionState: SessionProgressState =
+      swpState === "unresolved" ? "unresolved" : classified.base;
+    return yield* apply(SwapWidgetEvent.SessionAdvanced({ state: sessionState }));
   });
 
   const verifyTerms = Effect.fn("MktSwpWidgetHost.verifyTerms")(function* (

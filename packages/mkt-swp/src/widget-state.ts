@@ -40,6 +40,7 @@ export const SESSION_BASE_STATES = [
   "failed",
 ] as const;
 export type SessionBaseState = (typeof SESSION_BASE_STATES)[number];
+export type SessionProgressState = SessionBaseState | "unresolved";
 
 export const SwapWidgetStateSchema = Schema.TaggedUnion({
   /** 1. The relay/network is unreachable. Retryable, never permanent. */
@@ -201,7 +202,7 @@ export type SwapWidgetEvent = Data.TaggedEnum<{
   FundingGateChanged: { readonly gate: FundingGate };
   EngineRefused: { readonly identifier: SwpErrorIdentifier };
   FundingAuthorized: { readonly authorization: FundingAuthorization };
-  SessionAdvanced: { readonly state: SessionBaseState };
+  SessionAdvanced: { readonly state: SessionProgressState };
 }>;
 export const SwapWidgetEvent = Data.taggedEnum<SwapWidgetEvent>();
 
@@ -222,7 +223,7 @@ const sessionRank: Partial<Record<SwapWidgetStateTag, number>> = {
 
 const cases = SwapWidgetStateSchema.cases;
 
-const sessionTarget = (state: SessionBaseState): SwapWidgetState | undefined => {
+const sessionTarget = (state: SessionProgressState): SwapWidgetState | undefined => {
   switch (state) {
     case "funding_observed":
       return cases.FundingObserved.make({});
@@ -238,6 +239,8 @@ const sessionTarget = (state: SessionBaseState): SwapWidgetState | undefined => 
       return cases.Refunded.make({});
     case "disputed":
       return cases.Disputed.make({});
+    case "unresolved":
+      return cases.Unresolved.make({});
     case "failed":
     case "rejected":
       return cases.Failed.make({});
@@ -265,7 +268,11 @@ export const transitionSwapWidgetState = (
     SubmitPressed: () => (state._tag === "Ready" ? cases.Ordering.make({}) : state),
     FundingGateChanged: ({ gate }) => {
       if (!isFormPhase(state)) return state;
-      if (gate.enabled) return state._tag === "VerificationPending" ? cases.Ready.make({}) : state;
+      if (gate.enabled) {
+        return state._tag === "VerificationPending" || state._tag === "VerificationFailed"
+          ? cases.Ready.make({})
+          : state;
+      }
       const failed = gate.failed.at(0);
       if (failed !== undefined) {
         return cases.VerificationFailed.make({ identifier: failed.error });
@@ -286,6 +293,9 @@ export const transitionSwapWidgetState = (
       const target = sessionTarget(sessionState);
       if (target === undefined) return state;
       const targetRank = sessionRank[target._tag];
+      if (target._tag === "Disputed" && state._tag !== "Disputed" && currentRank >= 1) {
+        return target;
+      }
       return targetRank !== undefined && targetRank > currentRank ? target : state;
     },
   });

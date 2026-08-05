@@ -102,12 +102,24 @@ type StaticMessageKey = {
   [K in MessageKey]: Catalog[K] extends string ? K : never;
 }[MessageKey];
 
-const staticKeys: Partial<Record<SwapWidgetStateTag, StaticMessageKey>> = {
+type DynamicLabelStateTag =
+  | "BelowMinimum"
+  | "AboveMaximum"
+  | "CoverageGap"
+  | "UnsupportedDirection"
+  | "QuoteFailed"
+  | "InvalidDestination"
+  | "VerificationFailed"
+  | "Failed";
+
+type StaticLabelStateTag = Exclude<SwapWidgetStateTag, DynamicLabelStateTag>;
+
+const staticKeys = {
   Offline: "swap.widget.offline",
   EngineLoading: "swap.widget.engine_loading",
   EngineFailed: "swap.widget.engine_failed",
   PairsLoading: "swap.widget.pairs_loading",
-  NoOfferings: "swap.widget.pairs_loading",
+  NoOfferings: "swap.widget.no_offerings",
   Empty: "swap.widget.enter_amount",
   AmountUnparseable: "swap.widget.enter_amount",
   ZeroOutput: "swap.widget.zero_output",
@@ -128,7 +140,7 @@ const staticKeys: Partial<Record<SwapWidgetStateTag, StaticMessageKey>> = {
   Refunded: "swap.widget.refunded",
   Disputed: "swap.widget.disputed",
   Unresolved: "swap.widget.unresolved",
-};
+} satisfies Record<StaticLabelStateTag, StaticMessageKey>;
 
 interface Rendered {
   readonly label: string;
@@ -200,7 +212,7 @@ const renderLabel = (
           }
         : identifierLabel(catalog, state.identifier, "swap.widget.failed");
     default: {
-      const key: StaticMessageKey = staticKeys[state._tag] ?? "swap.widget.unresolved";
+      const key = staticKeys[state._tag];
       return { label: staticLabel(catalog, key), messageKey: key, swpError: null };
     }
   }

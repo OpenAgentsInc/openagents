@@ -35,7 +35,7 @@ export const marketSwapWidgetContractRegistry: BehaviorContractRegistryDocument 
         },
         {
           description:
-            "Offline and structural refusals are danger-toned, blocked, and never spin; a permanent refusal never spins.",
+            "Offline and structural refusals are danger-toned, blocked, and never spin; NoOfferings has its own permanent-absence label and never reuses the pair-loading label.",
           id: "swap_widget.primary_action.refusal_class",
           kind: "bun-test",
           mode: "unit",
@@ -75,7 +75,7 @@ export const marketSwapWidgetContractRegistry: BehaviorContractRegistryDocument 
         },
         {
           description:
-            "The mounted /swap surface renders the primary action from the same derivation: disabled, busy, and labelled from a typed key while the engine loads.",
+            "The mounted /swap surface lowers the primary action as a typed Effect Native Button from the same derivation: disabled, busy, and labelled from a typed key while the engine loads.",
           id: "swap_widget.primary_action.mounted_surface",
           kind: "bun-test",
           mode: "dom",
@@ -120,7 +120,7 @@ export const marketSwapWidgetContractRegistry: BehaviorContractRegistryDocument 
         },
         {
           description:
-            "AwaitingFunding is reachable only from Ordering with an engine-issued FundingAuthorization; no session Status claim advances the widget past the gate.",
+            "AwaitingFunding is reachable only from Ordering with an engine-issued FundingAuthorization; no session Status claim advances the widget past the gate, and a fresh enabled verification gate recovers a prior VerificationFailed state.",
           id: "swap_widget.funding_gate.state_machine",
           kind: "bun-test",
           mode: "unit",
@@ -148,14 +148,16 @@ export const marketSwapWidgetContractRegistry: BehaviorContractRegistryDocument 
       enforcementTier: "test-sweep",
       evidenceRefs: [
         "packages/mkt-swp/src/widget-state.ts",
+        "packages/mkt-swp/src/widget-host.ts",
         "packages/mkt-swp/src/compose.ts",
         "packages/mkt-swp/src/widget-state.test.ts",
+        "packages/mkt-swp/src/engine-boundary.test.ts",
         "github:OpenAgentsInc/openagents#9315",
       ],
       oracles: [
         {
           description:
-            "The state union is exhaustive and checked against the sample set and the schema cases, every state/event pair folds to a valid state, and every state renders a non-empty explanation in both denominations.",
+            "The state union is exhaustive and checked against the sample set and schema cases; every state/event pair folds to a valid state; funded settlement and refund states may degrade to Disputed; raw unresolved remains Unresolved after its required failed-base normalization; and every state renders a non-empty explanation in both denominations.",
           id: "swap_widget.state.exhaustive_explanation",
           kind: "bun-test",
           mode: "unit",
@@ -177,5 +179,5 @@ export const marketSwapWidgetContractRegistry: BehaviorContractRegistryDocument 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-08-04.1",
+  version: "2026-08-04.2",
 };

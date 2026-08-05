@@ -259,4 +259,19 @@ describe("the funding gate (swp_funding_not_authorized)", () => {
       }),
     );
   });
+
+  test("raw unresolved remains visible after its required failed-base normalization", async () => {
+    await run(
+      fixtureEngineLayer(),
+      Effect.gen(function* () {
+        const controller = yield* makeSwapWidgetController;
+        yield* controller.updateInputs(preVerificationInputs);
+        yield* controller.verifyTerms(fixtureSwapSession);
+        const outcome = yield* controller.submitOrder(fixtureSwapSession);
+        expect(outcome._tag).toBe("FundingAuthorized");
+        expect((yield* controller.applySwpState("funding_observed"))._tag).toBe("FundingObserved");
+        expect((yield* controller.applySwpState("unresolved"))._tag).toBe("Unresolved");
+      }),
+    );
+  });
 });

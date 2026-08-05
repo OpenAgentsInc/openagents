@@ -56,6 +56,15 @@ describe("primary-action law", () => {
     }
   });
 
+  test("NoOfferings names the permanent absence instead of reusing the loading label", () => {
+    const action = derivePrimaryAction(sampleWidgetStates.NoOfferings, catalog, "sats");
+    expect(action.messageKey).toBe("swap.widget.no_offerings");
+    expect(action.label).toBe("No providers are offering this pair.");
+    expect(action.label).not.toBe(
+      derivePrimaryAction(sampleWidgetStates.PairsLoading, catalog, "sats").label,
+    );
+  });
+
   test("state class: amount refusals state the bound in the user's current units", () => {
     const belowSats = derivePrimaryAction(sampleWidgetStates.BelowMinimum, catalog, "sats");
     expect(belowSats.label).toContain("10000 sats");

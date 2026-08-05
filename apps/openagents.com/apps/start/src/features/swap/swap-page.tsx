@@ -1,10 +1,14 @@
+import type { IntentReporter } from '@effect-native/core'
 import { initialSwapWidgetState } from '@openagentsinc/mkt-swp/view'
 import { catalogFor } from '@openagentsinc/swap-i18n'
+import { Effect } from 'effect'
 
 import { SwapNotYetAvailable } from './not-yet-available'
 import { defaultSwapSettings } from './settings'
 import { SwapSurfaceShell } from './shell'
 import { SwapWidget } from './widget'
+
+const disconnectedSwapReporter: IntentReporter = () => Effect.void
 
 /**
  * /swap — the swap widget (SWAP-0, #9315) mounted in SWAP-7's shell.
@@ -34,6 +38,7 @@ export function SwapIndexPage() {
       </header>
       <SwapWidget
         catalog={catalogFor(settings.locale)}
+        report={disconnectedSwapReporter}
         settings={settings}
         state={initialSwapWidgetState}
       />

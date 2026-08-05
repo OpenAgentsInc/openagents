@@ -123,6 +123,11 @@ describe("catalog back-fill", () => {
 });
 
 describe("parameterised messages", () => {
+  test("the no-offerings label is distinct from pair loading", () => {
+    expect(catalog["swap.widget.no_offerings"]).toBe("No providers are offering this pair.");
+    expect(catalog["swap.widget.no_offerings"]).not.toBe(catalog["swap.widget.pairs_loading"]);
+  });
+
   test("amount refusals state the limit in the user's current units", () => {
     const below = render(catalog, "swap.refusal.below_minimum", {
       minimum: "50 000",
