@@ -1,0 +1,20 @@
+flowchart TD
+    subgraph BOLTZ["One operator: Boltz"]
+        API["REST API"]
+        BACKEND["boltz-backend"]
+        FUNDS["Liquidity wallet"]
+        WEB["Web UI"]
+    end
+    ATTACK["AI-assisted probes + exploits"] -.->|takes down| BOLTZ
+    BOLTZ -->|swaps for| W1["Wallets"]
+    BOLTZ -->|swaps for| S1["Swap services"]
+    BOLTZ -->|swaps for| S2["Lightning apps"]
+    W1 --> U1["Users stranded"]
+    S1 --> U1
+    S2 --> U1
+    style ATTACK fill:#141f36,stroke:#f7768e,color:#f7768e
+    style U1 fill:#141f36,stroke:#f7768e,color:#f7768e
+    linkStyle 0 stroke:#f7768e,color:#f7768e
+    linkStyle 4 stroke:#f7768e
+    linkStyle 5 stroke:#f7768e
+    linkStyle 6 stroke:#f7768e

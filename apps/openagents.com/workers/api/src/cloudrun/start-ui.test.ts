@@ -4,7 +4,10 @@ import { describe, expect, test } from 'vitest'
 import {
   diamondHandsDeploymentEnabled,
   diamondHandsResponseHeaders,
+  infraExplainerDeploymentEnabled,
+  infraExplainerResponseHeaders,
   isDiamondHandsPath,
+  isInfraExplainerPath,
   isMarketDemoPath,
   marketDemoDeploymentEnabled,
   marketDemoResponseHeaders,
@@ -123,5 +126,64 @@ describe('Market demo static GPUI document', () => {
     expect(isMarketDemoPath('/assets/index.js')).toBe(false)
     expect(isMarketDemoPath('/dh')).toBe(false)
     expect(marketDemoResponseHeaders('/assets/index.js')).toEqual({})
+  })
+})
+
+describe('Infra explainer static GPUI document', () => {
+  test('is env-gated and deliberately enabled by the production environment', () => {
+    expect(infraExplainerDeploymentEnabled(undefined)).toBe(false)
+    expect(infraExplainerDeploymentEnabled('false')).toBe(false)
+    expect(infraExplainerDeploymentEnabled('1')).toBe(false)
+    expect(infraExplainerDeploymentEnabled('true')).toBe(true)
+
+    // Owner direction 2026-08-04: the Episode 267 infrastructure explainer
+    // ships live at /infra, so the committed production environment declares
+    // the activation explicitly.
+    const productionEnvironment = readFileSync(
+      new URL('../../scripts/cloudrun/env-production.yaml', import.meta.url),
+      'utf8',
+    )
+    expect(productionEnvironment).toContain(
+      'OPENAGENTS_INFRA_EXPLAINER_ENABLED: "true"',
+    )
+  })
+
+  test.each([
+    '/infra',
+    '/infra/',
+    '/infra/infra_explainer_web.js',
+    '/infra/infra_explainer_web_bg.wasm',
+  ])('recognizes %s as part of the isolated document', pathname => {
+    expect(isInfraExplainerPath(pathname)).toBe(true)
+  })
+
+  test.each(['/infra', '/infra/'])(
+    'maps the %s document coordinate to its static entry',
+    pathname => {
+      expect(startUiAssetRelativePath(pathname)).toBe('infra/index.html')
+    },
+  )
+
+  test('applies WebGPU/thread isolation and permits only the public relay connection', () => {
+    const headers = infraExplainerResponseHeaders('/infra')
+    expect(headers['cross-origin-opener-policy']).toBe('same-origin')
+    expect(headers['cross-origin-embedder-policy']).toBe('require-corp')
+    expect(headers['cross-origin-resource-policy']).toBe('same-origin')
+    expect(headers['content-security-policy']).toContain(
+      "connect-src 'self' https://relay.openagents.com wss://relay.openagents.com",
+    )
+    expect(headers['content-security-policy']).toContain(
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'",
+    )
+    expect(headers['content-security-policy']).toContain(
+      "worker-src 'self' blob:",
+    )
+  })
+
+  test('does not add infra policy to unrelated retained assets or sibling documents', () => {
+    expect(isInfraExplainerPath('/assets/index.js')).toBe(false)
+    expect(isInfraExplainerPath('/dh')).toBe(false)
+    expect(isInfraExplainerPath('/demo')).toBe(false)
+    expect(infraExplainerResponseHeaders('/assets/index.js')).toEqual({})
   })
 })

@@ -119,6 +119,7 @@ OPENAGENTS_FORGE_GIT_SERVICE_BASE_URL: "https://forge-git-ezxz4mgdsq-uc.a.run.ap
 OPENAGENTS_FORGE_GITHUB_MIRROR_REGISTRY: '[{"tenantRef":"tenant.openagents","repositoryRef":"omega","authorityMode":"openagents_git_authoritative","authorityGeneration":1,"destinationGithubRepository":"OpenAgentsInc/omega","destinationGithubRef":"refs/heads/forge/main","sourceRef":"refs/heads/main","sourceRefs":["30617:7649603503856e5148d571eac2766b288a8ff1e9e35d380337a1d2b0015b4f92:omega"]},{"tenantRef":"tenant.openagents","repositoryRef":"omega","authorityMode":"openagents_git_authoritative","authorityGeneration":1,"destinationGithubRepository":"OpenAgentsInc/omega","destinationGithubRef":"refs/tags/forge-omega-import-2026-07-26","sourceRef":"refs/tags/forge-omega-import-2026-07-26","sourceRefs":["30617:7649603503856e5148d571eac2766b288a8ff1e9e35d380337a1d2b0015b4f92:omega"]}]'
 OPENAGENTS_FORGE_PUBLIC_WEB_READ_REPOSITORIES: "tenant.openagents/omega"
 OPENAGENTS_AUDIO_GATEWAY_URL: "wss://openagents-audio-edge-staging-ezxz4mgdsq-uc.a.run.app/v1/stream"
+OPENAGENTS_INFRA_EXPLAINER_ENABLED: "true"
 OPENAGENTS_MARKET_DEMO_ENABLED: "true"
 OPENAGENTS_NETWORK_ADMITTED_PYLON_REF: "gcloud.gswarm508-clean2-20260325044551-contrib"
 OPENAGENTS_NETWORK_GATEWAY_APPROVAL_REF: "approval.owner.khala.6089.gateway_route.2026_06_24"

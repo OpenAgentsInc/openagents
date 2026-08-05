@@ -1,0 +1,14 @@
+flowchart TD
+    RD["Relay dies"] -->|"persisted session records"| RS["Client completes or refunds"]
+    PD["Provider dies"] -->|"unilateral script-path exit"| PS["Client claims or refunds alone"]
+    CD["Client dies"] -->|"refund ladder at expiry"| CS["Provider recovers its funds"]
+    RS --> LAW["No failure strands another role's money"]
+    PS --> LAW
+    CS --> LAW
+    style RD fill:#141f36,stroke:#f7768e,color:#f7768e
+    style PD fill:#141f36,stroke:#f7768e,color:#f7768e
+    style CD fill:#141f36,stroke:#f7768e,color:#f7768e
+    style LAW fill:#141f36,stroke:#5c96f8,color:#eef3ff
+    linkStyle 0 stroke:#f7768e
+    linkStyle 1 stroke:#f7768e
+    linkStyle 2 stroke:#f7768e

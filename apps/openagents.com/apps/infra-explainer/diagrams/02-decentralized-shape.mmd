@@ -1,0 +1,27 @@
+flowchart LR
+    subgraph CLIENTS["Clients: own keys"]
+        WALLET["Wallet"]
+        WEBC["Web app"]
+        OMEGA["Omega"]
+    end
+    subgraph RELAYS["N relays: no funds, no preimages"]
+        R1["Relay 1"]
+        R2["Relay 2"]
+        RN["Relay N"]
+    end
+    subgraph PROVIDERS["M providers: own keys, own funds"]
+        P1["Provider 1"]
+        P2["Provider 2"]
+        PM["Provider M"]
+    end
+    WALLET <-->|"discovery 39600/39601"| R1
+    WEBC <-->|"gift-wrapped RFQ/Quote"| R2
+    OMEGA <--> RN
+    R1 <--> P1
+    R2 <--> P2
+    RN <--> PM
+    P1 --> RAIL1["bitcoind + CLN"]
+    P2 --> RAIL2["bitcoind + CLN"]
+    PM --> RAILM["own rails"]
+    linkStyle 0 stroke:#5c96f8
+    linkStyle 1 stroke:#5c96f8

@@ -1,0 +1,22 @@
+flowchart TD
+    KEYS["Key file, mode 0600"] --> WALLET
+    subgraph DAEMON["immortal-provider"]
+        SESSION["Session logic<br/>RFQ, Quote, Order, Status"]
+        WALLET["Wallet<br/>script-path claim/refund"]
+        WATCH["Watchtower loop<br/>timeout ladder"]
+        LEDGER["Reservation ledger"]
+        PRICE["Pricing"]
+        SESSION --> LEDGER
+        SESSION --> PRICE
+    end
+    subgraph RAILS["Operator rails"]
+        BTC["bitcoind<br/>JSON-RPC polling"]
+        CLN["CLN + hold plugin<br/>unix socket"]
+    end
+    WALLET --> BTC
+    WATCH --> BTC
+    WALLET --> CLN
+    SESSION --> PG[("Postgres<br/>state, never keys")]
+    WATCH --> ALERT["Alert webhook<br/>pages a human"]
+    style KEYS fill:#141f36,stroke:#ff9e64,color:#ff9e64
+    style ALERT fill:#141f36,stroke:#f7768e

@@ -1,0 +1,18 @@
+[workspace]
+
+[package]
+name = "infra_diagrams_gen"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "infra_diagrams_gen"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+merman = { git = "https://github.com/zed-industries/merman", tag = "v0.6.2-with-patches", features = ["render"] }
+resvg = "0.46"
+serde_json = "1"
+usvg = "0.46"

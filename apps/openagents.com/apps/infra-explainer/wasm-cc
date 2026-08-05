@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v zig >/dev/null 2>&1; then
+  echo "infra_explainer_web requires Zig to compile secp256k1 for wasm" >&2
+  exit 1
+fi
+
+arguments=()
+for argument in "$@"; do
+  if [[ "$argument" != "--target=wasm32-unknown-unknown" ]]; then
+    arguments+=("$argument")
+  fi
+done
+
+project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec zig cc -target wasm32-freestanding \
+  -include "$project_dir/wasm-string-compat.h" \
+  "${arguments[@]}"

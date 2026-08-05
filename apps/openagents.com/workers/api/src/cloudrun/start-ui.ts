@@ -150,6 +150,43 @@ export const marketDemoResponseHeaders = (
       }
     : {}
 
+export const isInfraExplainerPath = (pathname: string): boolean =>
+  pathname === '/infra' ||
+  pathname === '/infra/' ||
+  pathname.startsWith('/infra/')
+
+export const infraExplainerDeploymentEnabled = (
+  configured = process.env['OPENAGENTS_INFRA_EXPLAINER_ENABLED'],
+): boolean => configured === 'true'
+
+export const infraExplainerResponseHeaders = (
+  pathname: string,
+): Readonly<Record<string, string>> =>
+  isInfraExplainerPath(pathname)
+    ? {
+        'content-security-policy': [
+          "default-src 'none'",
+          "base-uri 'none'",
+          // 'self' is required: the wasm-bindgen loader fetches the .wasm
+          // module over fetch(), which CSP classifies as a connection.
+          "connect-src 'self' https://relay.openagents.com wss://relay.openagents.com",
+          "font-src 'self' data:",
+          "frame-ancestors 'none'",
+          "img-src 'self' data:",
+          // 'unsafe-eval' is required beside 'wasm-unsafe-eval': wasm_thread
+          // bootstraps its workers by evaluating a JS string during init.
+          // The document stays isolated (default-src 'none', no framing,
+          // connections limited to self plus the public relay).
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'",
+          "style-src 'unsafe-inline'",
+          "worker-src 'self' blob:",
+        ].join('; '),
+        'cross-origin-embedder-policy': 'require-corp',
+        'cross-origin-opener-policy': 'same-origin',
+        'cross-origin-resource-policy': 'same-origin',
+      }
+    : {}
+
 export const diamondHandsDeploymentEnabled = (
   configured = process.env['OPENAGENTS_DIAMOND_HANDS_ENABLED'],
 ): boolean => configured === 'true'
@@ -198,7 +235,9 @@ export const startUiAssetRelativePath = (pathname: string): string | null => {
       ? 'dh/index.html'
       : decoded === '/demo' || decoded === '/demo/'
         ? 'demo/index.html'
-        : decoded.replace(/^[/\\]+/, '')
+        : decoded === '/infra' || decoded === '/infra/'
+          ? 'infra/index.html'
+          : decoded.replace(/^[/\\]+/, '')
   return relativePath
 }
 
@@ -211,6 +250,9 @@ const serveExactClientAsset = async (
     return undefined
   }
   if (isMarketDemoPath(url.pathname) && !marketDemoDeploymentEnabled()) {
+    return undefined
+  }
+  if (isInfraExplainerPath(url.pathname) && !infraExplainerDeploymentEnabled()) {
     return undefined
   }
   const filePath = exactClientFile(url.pathname)
@@ -232,6 +274,7 @@ const serveExactClientAsset = async (
           'content-type': startUiContentType(filePath),
           ...diamondHandsResponseHeaders(url.pathname),
           ...marketDemoResponseHeaders(url.pathname),
+          ...infraExplainerResponseHeaders(url.pathname),
         },
       },
     )
