@@ -2014,10 +2014,6 @@
       "reason": "Published fail-closed NIP-MKT expiry decision; openagents.com issue #9310 will call it before any demo-provider reservation or execution effect."
     },
     {
-      "ref": "packages/nip-mkt/src/state.ts#generateIdempotencyKey",
-      "reason": "Published NIP-MKT idempotency-key generator; openagents.com issue #9310 will use it when constructing new private negotiation records."
-    },
-    {
       "ref": "packages/nip-mkt/src/state.ts#reserveCapacity",
       "reason": "Published NIP-MKT reservation projection; the demo provider in openagents.com issue #9310 will call it when it adopts this SDK."
     },
@@ -2428,6 +2424,62 @@
     {
       "ref": "packages/mkt-swp-session-store/src/testkit.ts#sampleSession",
       "reason": "Deterministic session fixture exported under ./testkit for this package's suites and the SWAP-0/SWAP-6 (openagents#9315/#9321) widget and status suites."
+    },
+    {
+      "ref": "packages/behavior-contracts/src/market-swap-widget.ts#marketSwapWidgetContractRegistry",
+      "reason": "SWAP-0 (#9315) swap-widget behaviour-contract registry document, matching the sibling market-swap-* registries; the registry aggregation and reporting path consumes it, and its oracle sweep already enforces the three contracts."
+    },
+    {
+      "ref": "packages/mkt-swp/src/entropy-source.ts#webCryptoLayer",
+      "reason": "SWAP-0 (#9315) host entropy layer; the /swap route provides it when the widget host is wired to the live relay and wasm engine, and SWAP-4 (#9319) key generation seeds from it."
+    },
+    {
+      "ref": "packages/mkt-swp/src/fixture-engine.ts#fixtureEngineLayer",
+      "reason": "SWAP-0 (#9315) deterministic engine behind the SwapEngine contract; dev/staging and the SWAP-1..6 surfaces drive it until the Immortal wasm binding replaces it behind the same service tag."
+    },
+    {
+      "ref": "packages/mkt-swp/src/fixture-engine.ts#fixtureSwapSession",
+      "reason": "SWAP-0 (#9315) public-safe fixture session records; the seeded no-spend demo lane and SWAP-3 (#9318) checklist exercises consume it until immortal#14 supplies a live second provider."
+    },
+    {
+      "ref": "packages/mkt-swp/src/primary-action.ts#isPermanentRefusal",
+      "reason": "SWAP-0 (#9315) predicate distinguishing a refusal no wait can resolve; the mounted widget uses it to suppress retry affordances once SWAP-7's route wires the live engine and relay retry paths."
+    },
+    {
+      "ref": "packages/mkt-swp/src/testkit.ts#everySampleWidgetState",
+      "reason": "SWAP-0 (#9315) exhaustive state corpus exported for downstream surfaces; Omega's market_ui and the /swap rendering sweep drive their own coverage from it rather than inventing a partial set."
+    },
+    {
+      "ref": "packages/mkt-swp/src/testkit.ts#enabledFundingGate",
+      "reason": "SWAP-0 (#9315) SWAP-3 gate builder for the shared corpus; consumed with everySampleWidgetState by downstream rendering sweeps."
+    },
+    {
+      "ref": "packages/mkt-swp/src/testkit.ts#failedFundingGate",
+      "reason": "SWAP-0 (#9315) SWAP-3 gate builder for the shared corpus; consumed with everySampleWidgetState by downstream rendering sweeps."
+    },
+    {
+      "ref": "packages/mkt-swp/src/testkit.ts#pendingFundingGate",
+      "reason": "SWAP-0 (#9315) SWAP-3 gate builder for the shared corpus; consumed with everySampleWidgetState by downstream rendering sweeps."
+    },
+    {
+      "ref": "packages/mkt-swp/src/widget-host.ts#makeSwapWidgetController",
+      "reason": "SWAP-0 (#9315) widget host controller; the /swap route constructs it once the live relay subscription and wasm engine binding land, which is the next step named on the mounted surface."
+    },
+    {
+      "ref": "packages/mkt-swp/src/widget-host.ts#SwapWidgetController.updateInputs",
+      "reason": "SWAP-0 (#9315) controller method folding SWAP-1/2/3 gate outputs; called by the /swap route when the live relay subscription supplies Offerings, quotes, and destination state."
+    },
+    {
+      "ref": "packages/mkt-swp/src/widget-host.ts#SwapWidgetController.verifyTerms",
+      "reason": "SWAP-0 (#9315) controller method running verify-before-fund; called by the /swap route once the wasm engine binding is provided."
+    },
+    {
+      "ref": "packages/mkt-swp/src/widget-host.ts#SwapWidgetController.applySwpState",
+      "reason": "SWAP-0 (#9315) controller method folding per-signer Status claims; called by the /swap route once the relay subscription streams SWAP-6 status records."
+    },
+    {
+      "ref": "packages/mkt-swp/src/widget-host.ts#SwapWidgetController.submitOrder",
+      "reason": "SWAP-0 (#9315) controller method driving order to funding authorisation; called by the /swap route's primary action once the wasm engine binding is provided."
     }
   ]
 }

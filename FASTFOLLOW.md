@@ -1587,7 +1587,8 @@ sequence. The ordered Amp `initial_program` stays unchanged.
     "canonical_ref": "https://github.com/boltzexchange",
     "tracking_policy": "pinned_each_run",
     "teardown_refs": [
-      "docs/teardowns/2026-08-03-boltz-ecosystem-nostr-rebuild-teardown.md"
+      "docs/teardowns/2026-08-03-boltz-ecosystem-nostr-rebuild-teardown.md",
+      "docs/teardowns/2026-08-04-boltz-web-app-ux-parity-teardown.md"
     ],
     "lessons": [
       {

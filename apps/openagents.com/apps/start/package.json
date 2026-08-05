@@ -33,6 +33,7 @@
     "@openagentsinc/khala-sync-client": "workspace:*",
     "@openagentsinc/khala-sync-db-collection": "workspace:*",
     "@openagentsinc/managed-sandbox-contract": "workspace:*",
+    "@openagentsinc/mkt-swp": "workspace:*",
     "@openagentsinc/public-nostr-chat": "workspace:*",
     "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/swap-i18n": "workspace:*",

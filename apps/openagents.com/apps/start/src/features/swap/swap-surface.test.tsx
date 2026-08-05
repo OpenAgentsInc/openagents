@@ -5,19 +5,19 @@ import { isKnownStartDocumentPath } from '../../route-table'
 import { swapSurfaceEnabled } from './gate'
 import { SwapHistoryPage } from './history-page'
 import {
+  SWAP_LOG_MAX_ENTRIES,
   appendSwapLog,
   buildSwapLogBundle,
   readSwapLog,
-  SWAP_LOG_MAX_ENTRIES,
 } from './log'
 import { SwapRescuePage } from './rescue-page'
 import {
-  decodeSwapSettings,
   DEFAULT_SWAP_RELAY_URL,
+  SWAP_SETTINGS_STORAGE_KEY,
+  decodeSwapSettings,
   defaultSwapSettings,
   loadSwapSettings,
   saveSwapSettings,
-  SWAP_SETTINGS_STORAGE_KEY,
   validateSwapRelayUrl,
 } from './settings'
 import { SwapSettingsPage } from './settings-page'
@@ -51,7 +51,16 @@ const surfaces: ReadonlyArray<[name: string, html: string]> = [
 describe('swap serving gate (SWAP-7, #9322)', () => {
   test('fails closed for everything except the exact string true', () => {
     expect(swapSurfaceEnabled('true')).toBe(true)
-    for (const configured of [undefined, '', 'false', 'TRUE', 'True', '1', 'yes', ' true']) {
+    for (const configured of [
+      undefined,
+      '',
+      'false',
+      'TRUE',
+      'True',
+      '1',
+      'yes',
+      ' true',
+    ]) {
       expect(swapSurfaceEnabled(configured)).toBe(false)
     }
   })
@@ -113,10 +122,31 @@ describe('swap routes and nav (SWAP-7, #9322)', () => {
 })
 
 describe('unbuilt surfaces stay honest (SWAP-7, #9322)', () => {
-  test('the swap widget mount renders not-yet-available naming SWAP-0', () => {
+  test('the swap widget is mounted, and says plainly it has no live market', () => {
+    // SWAP-0 (#9315) landed the shell, so the widget itself is no longer a
+    // placeholder. What is still missing is the live relay subscription and
+    // the wasm engine, and the surface must say so instead of implying a
+    // working market.
     const html = renderToStaticMarkup(<SwapIndexPage />)
-    expect(html).toContain('data-swap-not-yet-available="swap-widget"')
+    expect(html).toContain('data-swap-widget=""')
+    expect(html).toContain('data-swap-primary-action=""')
+    expect(html).toContain('data-swap-not-yet-available="swap-live-inputs"')
     expect(html).toContain('SWAP-0 (openagents#9315)')
+  })
+
+  test('the mounted widget renders its primary action disabled and explained', () => {
+    // Oracle for openagents_web.swap_widget.primary_action_law.v1: the
+    // primary-action law asserted on the real surface — the control is
+    // always rendered, never enabled before the engine is ready, and never
+    // blank.
+    const html = renderToStaticMarkup(<SwapIndexPage />)
+    expect(html).toContain('data-swap-widget-state="EngineLoading"')
+    expect(html).toContain(
+      'data-swap-primary-action-key="swap.widget.engine_loading"',
+    )
+    expect(html).toContain('aria-busy="true"')
+    expect(html).toContain('disabled=""')
+    expect(html).toContain('Loading the swap engine')
   })
 
   test('Rescue renders not-yet-available naming SWAP-4', () => {
@@ -146,7 +176,9 @@ describe('content-security posture (SWAP-7, #9322)', () => {
     for (const [name, html] of surfaces) {
       expect(html, name).not.toMatch(/<script/i)
       expect(html, name).not.toMatch(/<iframe/i)
-      expect(html, name).not.toMatch(/<(?:img|link|source|video|audio|embed|object)[^>]*(?:src|href)="(?:https?:)?\/\//i)
+      expect(html, name).not.toMatch(
+        /<(?:img|link|source|video|audio|embed|object)[^>]*(?:src|href)="(?:https?:)?\/\//i,
+      )
     }
   })
 })
@@ -182,9 +214,9 @@ describe('swap settings persistence (SWAP-7, #9322)', () => {
   test('corrupt or version-mismatched payloads fall back to defaults', () => {
     expect(decodeSwapSettings('not json')).toEqual(defaultSwapSettings())
     expect(decodeSwapSettings('42')).toEqual(defaultSwapSettings())
-    expect(
-      decodeSwapSettings(JSON.stringify({ schemaVersion: 999 })),
-    ).toEqual(defaultSwapSettings())
+    expect(decodeSwapSettings(JSON.stringify({ schemaVersion: 999 }))).toEqual(
+      defaultSwapSettings(),
+    )
     const storage = fakeStorage()
     storage.setItem(SWAP_SETTINGS_STORAGE_KEY, '{broken')
     expect(loadSwapSettings(storage)).toEqual(defaultSwapSettings())

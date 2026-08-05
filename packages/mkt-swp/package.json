@@ -1,0 +1,27 @@
+{
+  "name": "@openagentsinc/mkt-swp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./view": "./src/view.ts"
+  },
+  "scripts": {
+    "test": "vp test --root ../.. --run packages/mkt-swp/src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@openagentsinc/mkt-swp-compare": "workspace:*",
+    "@openagentsinc/mkt-swp-destination": "workspace:*",
+    "@openagentsinc/mkt-swp-pair": "workspace:*",
+    "@openagentsinc/mkt-swp-status": "workspace:*",
+    "@openagentsinc/nip-mkt": "workspace:*",
+    "@openagentsinc/swap-i18n": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

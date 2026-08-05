@@ -1014,6 +1014,9 @@ importers:
       '@openagentsinc/managed-sandbox-contract':
         specifier: workspace:*
         version: link:../../../../packages/managed-sandbox-contract
+      '@openagentsinc/mkt-swp':
+        specifier: workspace:*
+        version: link:../../../../packages/mkt-swp
       '@openagentsinc/public-nostr-chat':
         specifier: workspace:*
         version: link:../../../../packages/public-nostr-chat
@@ -2472,6 +2475,34 @@ importers:
 
   packages/mcp-contract:
     dependencies:
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
+  packages/mkt-swp:
+    dependencies:
+      '@openagentsinc/mkt-swp-compare':
+        specifier: workspace:*
+        version: link:../mkt-swp-compare
+      '@openagentsinc/mkt-swp-destination':
+        specifier: workspace:*
+        version: link:../mkt-swp-destination
+      '@openagentsinc/mkt-swp-pair':
+        specifier: workspace:*
+        version: link:../mkt-swp-pair
+      '@openagentsinc/mkt-swp-status':
+        specifier: workspace:*
+        version: link:../mkt-swp-status
+      '@openagentsinc/nip-mkt':
+        specifier: workspace:*
+        version: link:../nip-mkt
+      '@openagentsinc/swap-i18n':
+        specifier: workspace:*
+        version: link:../swap-i18n
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94

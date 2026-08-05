@@ -79,4 +79,36 @@ export const en = {
     "This file appears to contain key material, which never belongs in a history export. Nothing was imported.",
   "swap.history.import.refused.conflicting_session":
     "A swap in this file already exists here with different content. Nothing was imported.",
+
+  // Swap widget shell (SWAP-0, openagents#9315). The primary action is always
+  // rendered and always states the single most proximate reason it cannot
+  // proceed; these are that control's labels. Amount refusals reuse the
+  // parameterised `swap.refusal.*` keys above so the limit is stated in the
+  // user's current units.
+  "swap.widget.offline": "Connection lost. Reconnect to continue.",
+  "swap.widget.engine_loading": "Loading the swap engine",
+  "swap.widget.engine_failed": "The swap engine did not load. Reload to try again.",
+  "swap.widget.pairs_loading": "Loading available pairs",
+  "swap.widget.unsupported_direction": "This direction is not available",
+  "swap.widget.enter_amount": "Enter an amount",
+  "swap.widget.zero_output": "This amount is too small to cover the fees",
+  "swap.widget.quote_refreshing": "Getting quotes",
+  "swap.widget.quote_failed": "No quote available",
+  "swap.widget.quote_expired": "That quote expired. Get a new one.",
+  "swap.widget.no_destination": "Enter a destination",
+  "swap.widget.invalid_destination": "Check the destination",
+  "swap.widget.verification_pending": "Verifying the swap terms",
+  "swap.widget.verification_failed": "Verification failed",
+  "swap.widget.action.create": "Create swap",
+  "swap.widget.action.fund": "Fund swap",
+  "swap.widget.ordering": "Creating swap",
+  "swap.widget.funding_observed": "Funding seen",
+  "swap.widget.executing": "Swap in progress",
+  "swap.widget.settlement_pending": "Waiting for settlement",
+  "swap.widget.completed": "Swap complete",
+  "swap.widget.refund_pending": "Refund in progress",
+  "swap.widget.refunded": "Refunded",
+  "swap.widget.disputed": "Disputed",
+  "swap.widget.failed": "This swap failed",
+  "swap.widget.unresolved": "Outcome unresolved",
 } as const;
