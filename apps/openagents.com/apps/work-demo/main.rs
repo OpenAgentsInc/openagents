@@ -28,11 +28,10 @@ mod web_app {
     /// The real dev authority key is produced by the seed side
     /// (OpenAgentsInc/immortal#33, running in parallel). Wiring it in means
     /// replacing this one constant; nothing else in the app needs to change.
-    /// Until then this is 64 zero nibbles, which is not a valid x-only key,
-    /// so every relay event is refused and the UI says so honestly.
+    /// Dev authority from OpenAgentsInc/immortal#33 (scripts/dev-work-authority.md).
     /// Override at runtime with `?authority=<64-hex-pubkey>`.
     const AUTHORITY_PUBKEY: &str =
-        "0000000000000000000000000000000000000000000000000000000000000000";
+        "4d68446035e6e087d6398bfd3e741598823c6e5060697499e07e4b290a2633ac";
 
     const ISSUES_SUBSCRIPTION_ID: &str = "work-items-v1";
     const KIND_WORK_RECORD: u16 = 32170;
