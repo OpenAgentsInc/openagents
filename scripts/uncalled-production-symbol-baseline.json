@@ -2216,6 +2216,46 @@
     {
       "ref": "packages/all-work-contract/src/work-cutover-authority.ts#inMemoryWorkCutoverStateStoreLayer",
       "reason": "Intentional in-memory adapter for downstream All Work SDK consumers; package and integration conformance suites call it instead of production persistence."
+    },
+    {
+      "ref": "packages/behavior-contracts/src/market-swap-destination.ts#marketSwapDestinationContractRegistry",
+      "reason": "Behaviour-contract registry for swap destination entry (openagents#9317), validated and coverage-checked by its package test; the registry report tooling and the SWAP-0 (openagents#9315) swap surface consume it when the widget shell lands."
+    },
+    {
+      "ref": "packages/mkt-swp-destination/src/entry.ts#reduceEntryEvent",
+      "reason": "Headless DestinationField reducer for openagents#9317; SWAP-0 (openagents#9315) mounts the destination-entry component in the swap widget shell and becomes its production caller."
+    },
+    {
+      "ref": "packages/mkt-swp-destination/src/resolve.ts#resolveDeferredDestination",
+      "reason": "Order-time deferred-destination resolution for openagents#9317; SWAP-0 (openagents#9315) mounts the destination-entry component in the swap widget shell and drives resolution at order creation."
+    },
+    {
+      "ref": "packages/mkt-swp-destination/src/view.ts#destinationFieldView",
+      "reason": "Render-ready DestinationField view model for openagents#9317; SWAP-0 (openagents#9315) mounts the destination-entry component in the swap widget shell and renders this view."
+    },
+    {
+      "ref": "packages/mkt-swp-destination/src/testkit.ts#encodeTestInvoice",
+      "reason": "Deterministic BOLT11 fixture builder exported under ./testkit for this package's suites and the SWAP-0/SWAP-3 (openagents#9315/#9318) widget and checklist suites."
+    },
+    {
+      "ref": "packages/mkt-swp-destination/src/testkit.ts#encodeTestSegwitAddress",
+      "reason": "Deterministic segwit-address fixture builder exported under ./testkit for this package's suites and the SWAP-0/SWAP-3 (openagents#9315/#9318) widget and checklist suites."
+    },
+    {
+      "ref": "packages/mkt-swp-destination/src/testkit.ts#encodeTestLnurl",
+      "reason": "Deterministic LNURL fixture builder exported under ./testkit for this package's suites and the SWAP-0/SWAP-3 (openagents#9315/#9318) widget and checklist suites."
+    },
+    {
+      "ref": "packages/mkt-swp-destination/src/testkit.ts#encodeTestBase58Address",
+      "reason": "Deterministic base58check fixture builder exported under ./testkit for this package's suites and the SWAP-0/SWAP-3 (openagents#9315/#9318) widget and checklist suites."
+    },
+    {
+      "ref": "packages/mkt-swp-destination/src/qr.ts#acceptScannedText",
+      "reason": "QR scan intake routing through the shared destination parser (openagents#9317 \u00a78); SWAP-0 (openagents#9315) mounts the scanner in the swap widget shell and becomes its production caller."
+    },
+    {
+      "ref": "packages/mkt-swp-destination/src/qr.ts#qrUnavailable",
+      "reason": "Default no-camera capability for hosts without a scanner (openagents#9317 \u00a78); SWAP-0 (openagents#9315) provides it where the widget shell has no camera probe."
     }
   ]
 }

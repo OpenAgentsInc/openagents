@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:d3b6e713a27f5a17e4d43fd3975615e9c4d34d17ea6660b743e5ea6b95b2c501",
+  "sourceDigest": "sha256:496dc88db05e9e3abfc5920a75d50859f2cefeea7f76c1327368ca17713a6e08",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -2074,7 +2074,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/behavior-contracts (1 tracked test file)"
+          "ref": "packages/behavior-contracts (2 tracked test files)"
         }
       ],
       "obligation": {
@@ -2596,6 +2596,23 @@
         {
           "type": "test",
           "ref": "packages/mcp-contract (1 tracked test file)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
+      "id": "package:@openagentsinc/mkt-swp-destination",
+      "kind": "package",
+      "owningPath": "packages/mkt-swp-destination",
+      "title": "@openagentsinc/mkt-swp-destination",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/mkt-swp-destination (4 tracked test files)"
         }
       ],
       "obligation": {
@@ -3523,17 +3540,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 184,
+    "totalSurfaces": 185,
     "byKind": {
       "app": 19,
       "crate": 7,
       "document": 52,
-      "package": 94,
+      "package": 95,
       "public-endpoint": 2,
       "release-pipeline": 9,
       "worker": 1
     },
-    "withOracle": 170,
+    "withOracle": 171,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3541,7 +3558,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 134,
+      "designed": 135,
       "inconclusive": 9,
       "mapped": 36,
       "out-of-scope": 5
