@@ -1,0 +1,22 @@
+{
+  "name": "@openagentsinc/mkt-swp-pair",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testkit": "./src/testkit.ts"
+  },
+  "scripts": {
+    "check": "pnpm run typecheck && pnpm run test",
+    "test": "vp test --root ../.. --run packages/mkt-swp-pair/src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@openagentsinc/nip-mkt": "workspace:*",
+    "@openagentsinc/swap-i18n": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

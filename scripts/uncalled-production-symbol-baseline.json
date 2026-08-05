@@ -2300,6 +2300,62 @@
     {
       "ref": "packages/mkt-swp-compare/src/view.ts#verifyChecklistView",
       "reason": "Render-ready verify-before-fund checklist view model for openagents#9318; SWAP-0 (openagents#9315) renders it above the fund action in the swap widget shell."
+    },
+    {
+      "ref": "packages/behavior-contracts/src/market-swap-pair.ts#marketSwapPairContractRegistry",
+      "reason": "Behaviour-contract registry for swap pair selection and the rate/fee panel (openagents#9316), validated and coverage-checked by its package test; the registry report tooling and the SWAP-0 (openagents#9315) swap surface consume it when the widget shell lands."
+    },
+    {
+      "ref": "packages/mkt-swp-pair/src/amount.ts#satsToWire",
+      "reason": "Canonical MKT-SWP wire-amount encoder for openagents#9316; SWAP-0/SWAP-3 (openagents#9315/#9318) serialize gated amounts into RFQ/Order terms through it when the widget shell and quote flow land."
+    },
+    {
+      "ref": "packages/mkt-swp-pair/src/corpus.ts#isOutputRailReachable",
+      "reason": "SWAP-1 reachability gate consumed by SWAP-2's destination entry (EntryConfig.isRailReachable) when SWAP-0 (openagents#9315) wires the widget shell; folds live-Offering reachability per output rail."
+    },
+    {
+      "ref": "packages/mkt-swp-pair/src/messages.ts#PRICE_FEED_MISMATCH_MESSAGES",
+      "reason": "Price-feed mismatch message table for openagents#9316 \u00a76; SWAP-0/SWAP-3 (openagents#9315/#9318) render the pinned-feed refusals from it when the quote flow lands."
+    },
+    {
+      "ref": "packages/mkt-swp-pair/src/price-feed.ts#checkPinnedPriceFeed",
+      "reason": "Exact price-feed pinning check (MKT-SWP \u00a73.4) for openagents#9316; SWAP-3 (openagents#9318) runs it against the requester's own fetch before Order when the quote flow lands."
+    },
+    {
+      "ref": "packages/mkt-swp-pair/src/selection.ts#initialPairSelectionState",
+      "reason": "Initial state for the headless pair-selection reducer (openagents#9316); SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and becomes its production caller."
+    },
+    {
+      "ref": "packages/mkt-swp-pair/src/selection.ts#reducePairEvent",
+      "reason": "Headless pair/direction/amount reducer for openagents#9316; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and becomes its production caller."
+    },
+    {
+      "ref": "packages/mkt-swp-pair/src/testkit.ts#TEST_FRESHNESS_HORIZON",
+      "reason": "Deterministic corpus fixture constant exported under ./testkit for this package's suites and the SWAP-0/SWAP-3 (openagents#9315/#9318) widget and quote suites."
+    },
+    {
+      "ref": "packages/mkt-swp-pair/src/testkit.ts#TEST_SECOND_CHAIN_ASSET",
+      "reason": "Deterministic second-network asset-id fixture exported under ./testkit for this package's suites and the SWAP-0/SWAP-3 (openagents#9315/#9318) chain-swap suites."
+    },
+    {
+      "ref": "packages/mkt-swp-pair/src/testkit.ts#testOffering",
+      "reason": "Deterministic Offering fixture builder exported under ./testkit for this package's suites and the SWAP-0/SWAP-3 (openagents#9315/#9318) widget and quote suites."
+    },
+    {
+      "ref": "packages/mkt-swp-pair/src/view.ts#feePanelView",
+      "reason": "Render-ready rate/fee panel view model for openagents#9316 \u00a75; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
+    },
+    {
+      "ref": "packages/mkt-swp-pair/src/view.ts#limitsView",
+      "reason": "Render-ready pre-typed limits view for openagents#9316 \u00a74; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
+    },
+    {
+      "ref": "packages/mkt-swp-pair/src/view.ts#pairSelectorView",
+      "reason": "Render-ready pair selector view with pre-selection reachability for openagents#9316 \u00a71; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
+    },
+    {
+      "ref": "packages/mkt-swp-pair/src/view.ts#primaryActionView",
+      "reason": "Render-ready primary-action gate view (single most proximate refusal) for openagents#9316 \u00a74; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
     }
   ]
 }
