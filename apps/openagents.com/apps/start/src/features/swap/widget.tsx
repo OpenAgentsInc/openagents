@@ -5,15 +5,24 @@ import {
   Stack,
   type View,
 } from '@effect-native/core'
-import { renderReactDomView } from '@effect-native/render-dom/react'
+import {
+  EffectNativeReactDomStyleSheet,
+  renderReactDomView,
+} from '@effect-native/render-dom/react'
 import { type ToneToken, khalaTheme } from '@effect-native/tokens'
 import {
+  type SwapSessionViewModel,
+  swapSessionViewModel,
+} from '@openagentsinc/mkt-swp'
+import {
+  type PrimaryActionModel,
   type PrimaryActionTone,
   type SwapWidgetState,
   derivePrimaryAction,
 } from '@openagentsinc/mkt-swp/view'
 import type { Catalog } from '@openagentsinc/swap-i18n'
 import { desktopThemeCssVariables } from '@openagentsinc/ui/desktop-workbench'
+import { Data } from 'effect'
 
 import type { SwapSettings } from './settings'
 
@@ -43,19 +52,68 @@ const buttonTone = {
   neutral: 'secondary',
 } satisfies Record<PrimaryActionTone, ToneToken>
 
-export const swapWidgetView = (
+export type SwapWidgetRenderModel = Data.TaggedEnum<{
+  PreSession: {
+    readonly widgetState: SwapWidgetState
+    readonly primaryAction: PrimaryActionModel
+  }
+  Session: { readonly viewModel: SwapSessionViewModel }
+}>
+export const SwapWidgetRenderModel = Data.taggedEnum<SwapWidgetRenderModel>()
+
+export type ResolvedSwapWidgetRenderModel = Readonly<
+  Pick<
+    SwapSessionViewModel,
+    'widgetState' | 'primaryAction' | 'fundingGate' | 'progress'
+  >
+>
+
+export const resolveSwapWidgetRenderModel = (
+  model: SwapWidgetRenderModel,
+): ResolvedSwapWidgetRenderModel =>
+  SwapWidgetRenderModel.$match(model, {
+    PreSession: ({ widgetState, primaryAction }) => ({
+      widgetState,
+      primaryAction,
+      fundingGate: null,
+      progress: null,
+    }),
+    Session: ({ viewModel }) => {
+      const resolved = swapSessionViewModel(viewModel)
+      return {
+        widgetState: resolved.widgetState,
+        primaryAction: resolved.primaryAction,
+        fundingGate: resolved.fundingGate,
+        progress: resolved.progress,
+      }
+    },
+  })
+
+/**
+ * The disconnected page still derives a pre-session action locally until
+ * Immortal's generated ABI supplies the engine-owned session model.
+ */
+export const provisionalPreSessionSwapWidgetModel = (
   catalog: Catalog,
   settings: SwapSettings,
-  state: SwapWidgetState,
+  widgetState: SwapWidgetState,
+): SwapWidgetRenderModel =>
+  SwapWidgetRenderModel.PreSession({
+    widgetState,
+    primaryAction: derivePrimaryAction(
+      widgetState,
+      catalog,
+      settings.denomination,
+      settings.decimalSeparator,
+    ),
+  })
+
+export const swapWidgetView = (
+  model: SwapWidgetRenderModel,
   slots: SwapWidgetSlots = {},
 ): View => {
-  const action = derivePrimaryAction(
-    state,
-    catalog,
-    settings.denomination,
-    settings.decimalSeparator,
-  )
-  const children: View[] = SLOT_ORDER.flatMap(slot => {
+  const { primaryAction: action } = resolveSwapWidgetRenderModel(model)
+  const children: Array<View> = SLOT_ORDER.flatMap(slot => {
     const child = slots[slot]
     return child === undefined
       ? []
@@ -114,26 +172,24 @@ export const swapWidgetView = (
 }
 
 export function SwapWidget({
-  catalog,
+  model,
   report,
-  settings,
   slots,
-  state,
 }: Readonly<{
-  catalog: Catalog
+  model: SwapWidgetRenderModel
   report: IntentReporter
-  settings: SwapSettings
   slots?: SwapWidgetSlots
-  state: SwapWidgetState
 }>) {
+  const resolved = resolveSwapWidgetRenderModel(model)
   return (
     <section
       data-effect-native-surface="dom"
       data-swap-widget=""
-      data-swap-widget-state={state._tag}
+      data-swap-widget-state={resolved.widgetState._tag}
       style={desktopThemeCssVariables(khalaTheme)}
     >
-      {renderReactDomView(swapWidgetView(catalog, settings, state, slots), {
+      <EffectNativeReactDomStyleSheet theme={khalaTheme} />
+      {renderReactDomView(swapWidgetView(model, slots), {
         report,
         theme: khalaTheme,
       })}

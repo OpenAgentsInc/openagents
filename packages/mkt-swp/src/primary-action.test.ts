@@ -142,7 +142,7 @@ describe("primary-action law", () => {
     expect(ready.busy).toBe(false);
   });
 
-  test("state class: in-flight and terminal states stay rendered and blocked", () => {
+  test("state class: in-flight and outcome states stay rendered and blocked", () => {
     for (const tag of [
       "FundingObserved",
       "Executing",

@@ -1,3 +1,11 @@
+import type { IntentReporter } from '@effect-native/core'
+import {
+  SESSION_VIEW_MODEL_VERSION,
+  SwapSessionIdentitySchema,
+  swapSessionViewModel,
+} from '@openagentsinc/mkt-swp'
+import { SwapWidgetStateSchema } from '@openagentsinc/mkt-swp/view'
+import { Effect } from 'effect'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, test } from 'vitest'
 
@@ -23,6 +31,13 @@ import {
 import { SwapSettingsPage } from './settings-page'
 import { SwapSurfaceGateClosed } from './shell'
 import { SwapIndexPage } from './swap-page'
+import {
+  SwapWidget,
+  SwapWidgetRenderModel,
+  resolveSwapWidgetRenderModel,
+} from './widget'
+
+const noopSwapReporter: IntentReporter = () => Effect.void
 
 const fakeStorage = () => {
   const map = new Map<string, string>()
@@ -147,6 +162,56 @@ describe('unbuilt surfaces stay honest (SWAP-7, #9322)', () => {
     expect(html).toContain('aria-busy="true"')
     expect(html).toContain('disabled=""')
     expect(html).toContain('Loading the swap engine')
+    expect(html).toContain('data-effect-native="dom"')
+    expect(html).toContain(
+      '[data-en-loading="true"]{color:transparent;cursor:wait;pointer-events:none;}',
+    )
+    expect(html).toContain('[data-en-loading="true"]::before')
+  })
+
+  test('the session renderer consumes the exported view-model fields by reference', () => {
+    const identity = SwapSessionIdentitySchema.make({
+      schemaVersion: SESSION_VIEW_MODEL_VERSION,
+      sessionId: '1f'.repeat(32),
+      role: 'requester',
+      send: {
+        assetId: `swp:1:bip122:${'0'.repeat(32)}:btc:chain`,
+        amount: '100000',
+      },
+      receive: {
+        assetId: `swp:1:bip122:${'0'.repeat(32)}:btc:lightning`,
+        amount: '99000',
+      },
+    })
+    const widgetState = SwapWidgetStateSchema.cases.Completed.make({})
+    const primaryAction = {
+      label: 'Engine-resolved session action',
+      messageKey: 'fixture.engine_action',
+      swpError: null,
+      tone: 'neutral' as const,
+      disabled: true,
+      busy: false,
+    }
+    const fundingGate = { enabled: true, reportEpoch: 7 } as const
+    const viewModel = swapSessionViewModel({
+      identity,
+      widgetState,
+      primaryAction,
+      fundingGate,
+    })
+    const model = SwapWidgetRenderModel.Session({ viewModel })
+    const resolved = resolveSwapWidgetRenderModel(model)
+
+    expect(resolved.widgetState).toBe(widgetState)
+    expect(resolved.primaryAction).toBe(primaryAction)
+    expect(resolved.fundingGate).toBe(fundingGate)
+    expect(resolved.progress).toBe(viewModel.progress)
+
+    const html = renderToStaticMarkup(
+      <SwapWidget model={model} report={noopSwapReporter} />,
+    )
+    expect(html).toContain('data-swap-widget-state="Completed"')
+    expect(html).toContain('Engine-resolved session action')
   })
 
   test('Rescue renders not-yet-available naming SWAP-4', () => {

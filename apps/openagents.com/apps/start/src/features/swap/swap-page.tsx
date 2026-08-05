@@ -6,7 +6,7 @@ import { Effect } from 'effect'
 import { SwapNotYetAvailable } from './not-yet-available'
 import { defaultSwapSettings } from './settings'
 import { SwapSurfaceShell } from './shell'
-import { SwapWidget } from './widget'
+import { SwapWidget, provisionalPreSessionSwapWidgetModel } from './widget'
 
 const disconnectedSwapReporter: IntentReporter = () => Effect.void
 
@@ -25,6 +25,7 @@ const disconnectedSwapReporter: IntentReporter = () => Effect.void
  */
 export function SwapIndexPage() {
   const settings = defaultSwapSettings()
+  const catalog = catalogFor(settings.locale)
 
   return (
     <SwapSurfaceShell active="swap">
@@ -37,10 +38,12 @@ export function SwapIndexPage() {
         </p>
       </header>
       <SwapWidget
-        catalog={catalogFor(settings.locale)}
+        model={provisionalPreSessionSwapWidgetModel(
+          catalog,
+          settings,
+          initialSwapWidgetState,
+        )}
         report={disconnectedSwapReporter}
-        settings={settings}
-        state={initialSwapWidgetState}
       />
       <SwapNotYetAvailable
         body="The widget shell, its typed state machine, and the engine boundary that authorizes funding are in place. The relay subscription that supplies live offers and quotes, and the wasm engine that performs verify-before-fund, are not wired up yet, so nothing here can quote, order, or fund a swap."

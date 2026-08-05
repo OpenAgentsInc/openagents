@@ -5,7 +5,7 @@
  * only inside the primary button's label effect. This union is the
  * deliberate opposite: one discriminated state a behaviour contract can be
  * written against, exhaustive over the 27 enumerated pre-creation, in-flight,
- * and terminal states.
+ * and reported outcome states.
  *
  * The refusal *reasons* are not restated here. Asset and amount refusals come
  * from SWAP-1's `primaryActionGate`, destination refusals from SWAP-2's entry
@@ -98,17 +98,17 @@ export const SwapWidgetStateSchema = Schema.TaggedUnion({
   Executing: {},
   /** 25. Settlement pending on one leg. */
   SettlementPending: {},
-  /** 26a. Terminal: completed. */
+  /** 26a. A Status reports completed; SWAP-6 Close projection owns terminality. */
   Completed: {},
   /** 26b. Refund prepared or pending. */
   RefundPending: {},
-  /** 26c. Terminal: refunded. */
+  /** 26c. A Status reports refunded; SWAP-6 Close projection owns terminality. */
   Refunded: {},
   /** 26d. Disputed. */
   Disputed: {},
-  /** 27a. Terminal: failed. */
+  /** 27a. A Status reports failed; loss accounting decides watch terminality. */
   Failed: { identifier: Schema.optionalKey(SwpErrorIdentifierSchema) },
-  /** 27b. Terminal: principal disposition unknown (§9.1). */
+  /** 27b. Principal disposition unknown (§9.1); watching must continue. */
   Unresolved: {},
 });
 export type SwapWidgetState = typeof SwapWidgetStateSchema.Type;
@@ -172,19 +172,8 @@ const formPhaseTags: ReadonlySet<SwapWidgetStateTag> = new Set([
   "Ready",
 ]);
 
-const terminalTags: ReadonlySet<SwapWidgetStateTag> = new Set([
-  "Completed",
-  "Refunded",
-  "Failed",
-  "Unresolved",
-]);
-
 /** Pre-order states, re-derivable from the composed sibling gates. */
 export const isFormPhase = (state: SwapWidgetState): boolean => formPhaseTags.has(state._tag);
-
-/** States after which no transition is accepted. */
-export const isTerminalSwapWidgetState = (state: SwapWidgetState): boolean =>
-  terminalTags.has(state._tag);
 
 export const initialSwapWidgetState: SwapWidgetState =
   SwapWidgetStateSchema.cases.EngineLoading.make({});
@@ -254,15 +243,17 @@ const sessionTarget = (state: SessionProgressState): SwapWidgetState | undefined
 
 /**
  * Fold one event into the widget state. Total: every state/event pair
- * returns a state and never throws. Guards are monotone — a terminal state
- * accepts nothing, a session state never re-enters the form phase, and
+ * returns a state and never throws. Guards are monotone along the ordinary
+ * session path, while later disputed/unresolved evidence may replace a
+ * reported outcome. A session state never re-enters the form phase, and
  * `AwaitingFunding` is reachable only with an engine-issued authorization.
+ * Stop-watching is deliberately absent: SWAP-6's `SwapProgressView` is the
+ * only authority for that decision.
  */
 export const transitionSwapWidgetState = (
   state: SwapWidgetState,
   event: SwapWidgetEvent,
 ): SwapWidgetState => {
-  if (isTerminalSwapWidgetState(state)) return state;
   return SwapWidgetEvent.$match(event, {
     FormRederived: ({ state: next }) => (isFormPhase(state) ? next : state),
     SubmitPressed: () => (state._tag === "Ready" ? cases.Ordering.make({}) : state),
@@ -293,7 +284,11 @@ export const transitionSwapWidgetState = (
       const target = sessionTarget(sessionState);
       if (target === undefined) return state;
       const targetRank = sessionRank[target._tag];
-      if (target._tag === "Disputed" && state._tag !== "Disputed" && currentRank >= 1) {
+      if (
+        (target._tag === "Disputed" || target._tag === "Unresolved") &&
+        state._tag !== target._tag &&
+        currentRank >= 1
+      ) {
         return target;
       }
       return targetRank !== undefined && targetRank > currentRank ? target : state;

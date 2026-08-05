@@ -883,6 +883,73 @@ const chromeBaseRules = [
   '@media (prefers-reduced-motion: reduce){[data-effect-native-surface="dom"] *{transition-duration:0.01ms !important;animation-duration:0.01ms !important;}}'
 ].join("")
 
+const domThemeRules = (theme: Theme): string => [
+  ":root{",
+  ...Object.entries(theme.spacing).map(([key, value]) => `--en-spacing-${cssEscape(key)}:${px(value)};`),
+  ...Object.entries(theme.color).map(([key, value]) => `--en-color-${cssEscape(key)}:${value};`),
+  ...Object.entries(theme.radius).map(([key, value]) => `--en-radius-${cssEscape(key)}:${px(value)};`),
+  ...Object.entries(theme.dimension).map(([key, value]) =>
+    `--en-dimension-${cssEscape(key)}:${typeof value === "number" ? px(value) : value};`
+  ),
+  ...Object.entries(theme.typeScale).flatMap(([key, value]) => [
+    `--en-type-${cssEscape(key)}-fontSize:${px(value.fontSize)};`,
+    `--en-type-${cssEscape(key)}-lineHeight:${px(value.lineHeight)};`,
+    `--en-type-${cssEscape(key)}-fontWeight:${value.fontWeight};`
+  ]),
+  `--en-motion-fast:${theme.motion.durationFastMs}ms;`,
+  `--en-motion-enter:${theme.motion.durationEnterMs}ms;`,
+  `--en-motion-exit:${theme.motion.durationExitMs}ms;`,
+  `--en-motion-loop:${theme.motion.durationLoopMs}ms;`,
+  `--en-ease-basic:${theme.motion.easeBasic};`,
+  `--en-ease-enter:${theme.motion.easeEnter};`,
+  `--en-ease-exit:${theme.motion.easeExit};`,
+  `--en-ease-exit-snappy:${theme.motion.easeExitSnappy};`,
+  `--en-ease-move:${theme.motion.easeMove};`,
+  `--en-elevation-overlay-shadow:${theme.elevation.overlayShadow};`,
+  `--en-elevation-hairline:0 0 0 ${px(theme.elevation.hairlineWidth)} var(--en-color-borderSubtle);`,
+  ...Object.entries(theme.control).flatMap(([key, value]) => [
+    `--en-control-${cssEscape(key)}-height:${px(value.height)};`,
+    `--en-control-${cssEscape(key)}-gutter:${px(value.gutter)};`,
+    `--en-control-${cssEscape(key)}-radius:${px(value.radius)};`,
+    `--en-control-${cssEscape(key)}-font-size:${px(value.fontSize)};`,
+    `--en-control-${cssEscape(key)}-icon:${px(value.icon)};`
+  ]),
+  ...Object.entries(iconSizeValues).map(([key, value]) =>
+    `--en-icon-size-${cssEscape(key)}:${px(value)};`
+  ),
+  ...Object.entries(theme.colorMatrix).flatMap(([tone, variantMap]) =>
+    Object.entries(variantMap as Record<string, Record<string, Record<string, string>>>).flatMap(
+      ([variant, stateMap]) =>
+        Object.entries(stateMap).flatMap(([state, cell]) =>
+          Object.entries(cell as Record<string, string>).map(([role, value]) =>
+            `--en-matrix-${cssEscape(tone)}-${cssEscape(variant)}-${cssEscape(state)}-${cssEscape(role)}:${value};`
+          )
+        )
+    )
+  ),
+  "--en-button-background:transparent;",
+  "--en-button-background-hover:transparent;",
+  "--en-button-background-active:transparent;",
+  "--en-button-background-selected:transparent;",
+  "--en-button-text:var(--en-color-textPrimary);",
+  "--en-button-border:transparent;",
+  "--en-button-height:var(--en-control-md-height);",
+  "--en-button-gutter:var(--en-control-md-gutter);",
+  "--en-button-radius:var(--en-control-md-radius);",
+  "--en-button-font-size:var(--en-control-md-font-size);",
+  "--en-button-icon-size:var(--en-control-md-icon);",
+  "--en-segmented-background:var(--en-color-surface);",
+  "--en-segmented-radius:var(--en-control-md-radius);",
+  "}"
+].join("")
+
+/** Canonical renderer CSS for SSR or hosts that lower a View without mounting a renderer. */
+export const renderDomThemeStyleSheet = (
+  theme: Theme = defaultTheme,
+  atomicRules = ""
+): string =>
+  `${domThemeRules(theme)}${componentBaseRules}${matrixAxesComponentRules}${segmentedControlBaseRules}${motionBaseRules}${loadingIndicatorBaseRules}${chromeBaseRules}${atomicRules}`
+
 class AtomicStyleSheet {
   readonly element: HTMLStyleElement
   #theme: Theme
@@ -945,99 +1012,11 @@ class AtomicStyleSheet {
   }
 
   flush(): void {
-    const themeRules = [
-      ":root{",
-      ...Object.entries(this.#theme.spacing).map(([key, value]) => `--en-spacing-${cssEscape(key)}:${px(value)};`),
-      ...Object.entries(this.#theme.color).map(([key, value]) => `--en-color-${cssEscape(key)}:${value};`),
-      ...Object.entries(this.#theme.radius).map(([key, value]) => `--en-radius-${cssEscape(key)}:${px(value)};`),
-      ...Object.entries(this.#theme.dimension).map(([key, value]) =>
-        `--en-dimension-${cssEscape(key)}:${typeof value === "number" ? px(value) : value};`
-      ),
-      ...Object.entries(this.#theme.typeScale).flatMap(([key, value]) => [
-        `--en-type-${cssEscape(key)}-fontSize:${px(value.fontSize)};`,
-        `--en-type-${cssEscape(key)}-lineHeight:${px(value.lineHeight)};`,
-        `--en-type-${cssEscape(key)}-fontWeight:${value.fontWeight};`
-      ]),
-      `--en-motion-fast:${this.#theme.motion.durationFastMs}ms;`,
-      `--en-motion-enter:${this.#theme.motion.durationEnterMs}ms;`,
-      `--en-motion-exit:${this.#theme.motion.durationExitMs}ms;`,
-      // Continuous-loop base period (#83): Spinner/LoadingDots/ShimmerText
-      // scale off this one named duration via CSS calc() multipliers instead
-      // of minting a duration token per component.
-      `--en-motion-loop:${this.#theme.motion.durationLoopMs}ms;`,
-      `--en-ease-basic:${this.#theme.motion.easeBasic};`,
-      `--en-ease-enter:${this.#theme.motion.easeEnter};`,
-      `--en-ease-exit:${this.#theme.motion.easeExit};`,
-      // Named easing tier from #76 (apps-sdk-ui harmonization C6): exitSnappy
-      // (less inertia on dismissal) and move (on-screen positional
-      // transitions). Consumed today by the generic data-entering/
-      // data-exiting motion infra below; component call sites pick up
-      // exitSnappy/move as those lifecycles land.
-      `--en-ease-exit-snappy:${this.#theme.motion.easeExitSnappy};`,
-      `--en-ease-move:${this.#theme.motion.easeMove};`,
-      `--en-elevation-overlay-shadow:${this.#theme.elevation.overlayShadow};`,
-      `--en-elevation-hairline:0 0 0 ${px(this.#theme.elevation.hairlineWidth)} var(--en-color-borderSubtle);`,
-      ...Object.entries(this.#theme.control).flatMap(([key, value]) => [
-        `--en-control-${cssEscape(key)}-height:${px(value.height)};`,
-        `--en-control-${cssEscape(key)}-gutter:${px(value.gutter)};`,
-        // Radius + font-size sub-tokens (#76 control lattice) — ready for a
-        // future `size` prop (#78/#79) to size a control's corner radius and
-        // label coherently from the same lattice step as height/gutter/icon.
-        `--en-control-${cssEscape(key)}-radius:${px(value.radius)};`,
-        `--en-control-${cssEscape(key)}-font-size:${px(value.fontSize)};`,
-        `--en-control-${cssEscape(key)}-icon:${px(value.icon)};`
-      ]),
-      // Icon-size tokens (#85): glyphs draw on a 1em box, so font-size — set
-      // from these custom properties — is the single sizing channel.
-      ...Object.entries(iconSizeValues).map(([key, value]) => `--en-icon-size-${cssEscape(key)}:${px(value)};`),
-      // Tier-2 tone × variant × state color matrix (#75), lowered to CSS
-      // custom properties so a future Button/Badge/Alert/Chip matrix (#78/
-      // #79) can select `--en-matrix-<tone>-<variant>-<state>-<role>` instead
-      // of reaching into the typed theme object at render time. Additive:
-      // nothing selects these vars yet.
-      ...Object.entries(this.#theme.colorMatrix).flatMap(([tone, variantMap]) =>
-        Object.entries(variantMap as Record<string, Record<string, Record<string, string>>>).flatMap(
-          ([variant, stateMap]) =>
-            Object.entries(stateMap).flatMap(([state, cell]) =>
-              Object.entries(cell as Record<string, string>).map(([role, value]) =>
-                `--en-matrix-${cssEscape(tone)}-${cssEscape(variant)}-${cssEscape(state)}-${cssEscape(role)}:${value};`
-              )
-            )
-        )
-      ),
-      // Component-token tier (C1 tier 3, issue #77; extended by #78's tone/
-      // variant/size matrix): default component-local vars a component's
-      // rest-state CSS rule consumes; tone/variant/size attribute selectors
-      // below re-point these per instance, mirroring the apps-sdk-ui
-      // `--button-*` indirection chain. These are renderer-owned chrome, not
-      // part of the typed authoring style contract. Defaults resolve to the
-      // "accent"/"solid"/"md" resting cell — `resolveButtonAppearance`'s
-      // defaults — so an (unexpected) unattributed button still renders a
-      // sane resting chrome.
-      "--en-button-background:transparent;",
-      "--en-button-background-hover:transparent;",
-      "--en-button-background-active:transparent;",
-      "--en-button-background-selected:transparent;",
-      "--en-button-text:var(--en-color-textPrimary);",
-      "--en-button-border:transparent;",
-      "--en-button-height:var(--en-control-md-height);",
-      "--en-button-gutter:var(--en-control-md-gutter);",
-      "--en-button-radius:var(--en-control-md-radius);",
-      "--en-button-font-size:var(--en-control-md-font-size);",
-      "--en-button-icon-size:var(--en-control-md-icon);",
-      // SegmentedControl (#81): defaults to the md lattice step; the
-      // data-en-size/data-en-pill selectors in segmentedControlBaseRules
-      // re-point --en-segmented-radius per instance.
-      "--en-segmented-background:var(--en-color-surface);",
-      "--en-segmented-radius:var(--en-control-md-radius);",
-      "}"
-    ].join("")
     const atomicRules = Array.from(this.#rules.entries())
       .filter(([key]) => this.#used.has(key))
       .map(([, rule]) => `.${rule.className}{${rule.property}:${rule.value};}`)
       .join("")
-    this.element.textContent =
-      `${themeRules}${componentBaseRules}${matrixAxesComponentRules}${segmentedControlBaseRules}${motionBaseRules}${loadingIndicatorBaseRules}${chromeBaseRules}${atomicRules}`
+    this.element.textContent = renderDomThemeStyleSheet(this.#theme, atomicRules)
   }
 
   dispose(): void {

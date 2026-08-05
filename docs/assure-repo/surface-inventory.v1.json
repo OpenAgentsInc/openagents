@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:e2a883b317b29c7605b2352b71a64523e5be84b4c9845c46f813f4570edab27b",
+  "sourceDigest": "sha256:a10f294081ecefad1b2b59437332e18751c7988287a93bfbb741e0912b7f7936",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -2520,7 +2520,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/mkt-swp (3 tracked test files)"
+          "ref": "packages/mkt-swp (4 tracked test files)"
         }
       ],
       "obligation": {

@@ -1,8 +1,13 @@
 import { afterEach, describe, expect, test } from "vitest"
 import { Effect, Stream } from "effect"
 import { Window } from "happy-dom"
+import { renderToStaticMarkup } from "react-dom/server"
 import { Button, Icon, IntentRef, Stack, Text, type IntentReporter } from "@effect-native/core"
-import { makeReactDomRenderer, makeReactViewStore } from "../src/react"
+import {
+  EffectNativeReactDomStyleSheet,
+  makeReactDomRenderer,
+  makeReactViewStore
+} from "../src/react"
 
 const restoreGlobals: Array<() => void> = []
 const installDom = () => {
@@ -36,6 +41,14 @@ afterEach(async () => {
 const noopReport: IntentReporter = () => Effect.void
 
 describe("React DOM projection boundary", () => {
+  test("SSR exports the canonical loading treatment used by the mounted renderer", () => {
+    const html = renderToStaticMarkup(EffectNativeReactDomStyleSheet({}))
+    expect(html).toContain('data-effect-native="dom"')
+    expect(html).toContain('[data-en-loading="true"]{color:transparent;cursor:wait;pointer-events:none;}')
+    expect(html).toContain('[data-en-loading="true"]::before')
+    expect(html).toContain('@keyframes en-button-spin')
+  })
+
   test("compatibility and React are mutually exclusive whole-surface backends", async () => {
     const { container, document } = installDom()
     await Effect.runPromise(Effect.scoped(Effect.gen(function*() {

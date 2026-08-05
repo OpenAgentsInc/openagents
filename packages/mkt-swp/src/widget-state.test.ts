@@ -20,7 +20,6 @@ import {
   SwapWidgetStateSchema,
   initialSwapWidgetState,
   isFormPhase,
-  isTerminalSwapWidgetState,
   transitionSwapWidgetState,
 } from "./widget-state.js";
 
@@ -82,14 +81,26 @@ describe("swap widget typed state", () => {
     }
   });
 
-  test("terminal states absorb every event", () => {
-    for (const tag of ["Completed", "Refunded", "Failed", "Unresolved"] as const) {
+  test("reported outcomes can still surface disputed or unresolved risk", () => {
+    for (const tag of ["Completed", "Refunded", "Failed"] as const) {
       const state = sampleWidgetStates[tag];
-      expect(isTerminalSwapWidgetState(state)).toBe(true);
-      for (const event of sampleEvents) {
-        expect(transitionSwapWidgetState(state, event)).toEqual(state);
-      }
+      expect(
+        transitionSwapWidgetState(state, SwapWidgetEvent.SessionAdvanced({ state: "unresolved" }))
+          ._tag,
+      ).toBe("Unresolved");
     }
+    expect(
+      transitionSwapWidgetState(
+        sampleWidgetStates.Unresolved,
+        SwapWidgetEvent.SessionAdvanced({ state: "disputed" }),
+      )._tag,
+    ).toBe("Disputed");
+    expect(
+      transitionSwapWidgetState(
+        sampleWidgetStates.Completed,
+        SwapWidgetEvent.FormRederived({ state: sampleWidgetStates.Ready }),
+      ),
+    ).toEqual(sampleWidgetStates.Completed);
   });
 
   test("SubmitPressed advances only from Ready", () => {

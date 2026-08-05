@@ -3,10 +3,11 @@ import { Component, StrictMode, createElement, useEffect, useLayoutEffect, useSy
 import { createRoot, type Root } from "react-dom/client"
 import { Deferred, Effect, Exit, Fiber, Scope, Stream } from "effect"
 import type { IntentReporter, MountedSurface, RendererAdapter, View } from "@effect-native/core"
-import { defaultTheme } from "@effect-native/tokens"
+import { defaultTheme, type Theme } from "@effect-native/tokens"
 import {
   makeDomRenderer,
   mountDomThemeStyleSheet,
+  renderDomThemeStyleSheet,
   type DomMountedSurface,
   type DomRendererOptions,
   type DomThemeStyleSheet
@@ -17,6 +18,20 @@ import { makeReactViewStore, type ReactViewSnapshot, type ReactViewStore } from 
 export const packageName = "@effect-native/render-dom/react" as const
 
 export type ReactDomBackend = "react" | "compatibility"
+
+export interface EffectNativeReactDomStyleSheetProps {
+  readonly theme?: Theme
+}
+
+/** SSR-safe form of the same stylesheet installed by the mounted renderer. */
+export const EffectNativeReactDomStyleSheet = (
+  props: EffectNativeReactDomStyleSheetProps
+): ReactElement => createElement("style", {
+  "data-effect-native": "dom",
+  dangerouslySetInnerHTML: {
+    __html: renderDomThemeStyleSheet(props.theme ?? defaultTheme)
+  }
+})
 
 export interface EffectNativeReactDomSurfaceProps extends DomRendererOptions {
   readonly viewStore: ReactViewStore
@@ -267,4 +282,4 @@ export const makeReactDomRenderer = (
 })
 
 export type { DomMountedSurface, ReactViewSnapshot, ReactViewStore }
-export { makeReactViewStore, renderReactDomView }
+export { makeReactViewStore, renderDomThemeStyleSheet, renderReactDomView }
