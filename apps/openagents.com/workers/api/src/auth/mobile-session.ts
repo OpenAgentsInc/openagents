@@ -15,9 +15,6 @@ import type { VerifiedSession } from './session'
 // working; the retired khala:// redirect is not.
 export const DEFAULT_OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID =
   'openagents-khala-mobile'
-export const DEFAULT_OPENAGENTS_DESKTOP_OPENAUTH_CLIENT_ID =
-  'openagents-desktop'
-export const OPENAGENTS_DESKTOP_OPENAUTH_LOOPBACK_PATH = '/auth/callback'
 export const OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI = 'openagents://auth'
 
 const PKCE_S256_CHALLENGE = /^[A-Za-z0-9_-]{43,128}$/
@@ -128,24 +125,10 @@ export const authIssuerAllowsRedirect = (
     query.get('code_challenge_method') === 'S256' &&
     PKCE_S256_CHALLENGE.test(query.get('code_challenge') ?? '')
 
-  if (input.clientID === DEFAULT_OPENAGENTS_DESKTOP_OPENAUTH_CLIENT_ID) {
-    const port = Number.parseInt(redirect.port, 10)
-    const isDesktopLoopback =
-      redirect.protocol === 'http:' &&
-      redirect.hostname === '127.0.0.1' &&
-      redirect.port !== '' &&
-      Number.isInteger(port) &&
-      port >= 1024 &&
-      port <= 65_535 &&
-      redirect.pathname === OPENAGENTS_DESKTOP_OPENAUTH_LOOPBACK_PATH &&
-      redirect.username === '' &&
-      redirect.password === '' &&
-      redirect.search === '' &&
-      redirect.hash === ''
-
-    return isDesktopLoopback && isGitHubCodePkce
-  }
-
+  // The `openagents-desktop` public client and its RFC 8252 loopback redirect
+  // were removed on 2026-08-05 (#9325) with the Electron app they served. No
+  // client registration replaces it, so that client id now falls through to
+  // the fail-closed refusal below like any other unknown client.
   if (input.clientID !== DEFAULT_OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID) {
     return false
   }

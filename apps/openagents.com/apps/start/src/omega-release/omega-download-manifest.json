@@ -37,6 +37,6 @@
   "knownLimitations": [
     "Alpha prerelease: Omega has not passed every release-readiness gate, and features can be incomplete, broken, or removed between candidates.",
     "Published for Apple silicon Macs only. No Intel Mac, Windows, or Linux build exists in this alpha.",
-    "Omega is a separate application from OpenAgents Desktop, with its own version line, package, and update path."
+    "Omega has its own version line, package, and update path. No other OpenAgents application installs, updates, or replaces it."
   ]
 }

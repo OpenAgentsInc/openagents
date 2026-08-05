@@ -2394,18 +2394,19 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   non-persistent in-memory Chromium partition, Electron `safeStorage` is not
   resolved, and encrypted native-session custody is neither read nor decrypted.
   Only an explicit account command may initialize OS credential custody.
-- Desktop interactive OpenAuth uses the distinct public client
-  `openagents-desktop` and only an RFC 8252 loopback redirect shaped exactly as
-  `http://127.0.0.1:{ephemeral-port}/auth/callback`. The issuer requires GitHub
-  authorization code + PKCE S256, a bounded challenge, a non-privileged port,
-  and no userinfo/query/fragment, it rejects localhost, non-loopback, HTTPS,
-  custom schemes, missing ports, and mobile-client reuse.
-- The Desktop callback listener binds only literal IPv4 loopback on an
-  OS-assigned port, accepts only the exact path, method, state, and non-empty
-  code, never reflects callback secrets, and closes after one terminal result
-  or a bounded timeout. Electron main exchanges the verifier, verifies the
-  server owner, saves any immediate rotation, and requires proof of both
-  access and refresh revocation before clearing on sign-out.
+- (Retired 2026-08-05, owner direction, #9325) Desktop interactive OpenAuth
+  registered the distinct public client `openagents-desktop` with an RFC 8252
+  loopback redirect, and the Desktop callback listener bound literal IPv4
+  loopback to exchange the verifier. The Electron app was deleted on
+  2026-08-04, and the surviving server-side half of that rule — the
+  `openagents-desktop` client registration in
+  `apps/openagents.com/workers/api/src/auth/mobile-session.ts` — was removed on
+  2026-08-05. No client registration replaces it: the issuer now refuses that
+  client id fail-closed like any other unknown client, proven by the retirement
+  oracle in `mobile-session.test.ts`. The behavior contract
+  `openagents_desktop.session.loopback_pkce_policy.v1` was retired in the same
+  change. A future native loopback client needs a new owner decision, a new
+  invariant, and its own enforcement.
 - Desktop Effect Native Settings receives only the explicit Runtime Gateway
   session phase (`signed_out`, `unverified`, `session_ready`, `denied`, or
   `unavailable`). Its typed sign-in/sign-out intents send no arguments, disable

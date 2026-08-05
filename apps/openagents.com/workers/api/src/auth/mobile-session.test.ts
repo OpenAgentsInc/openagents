@@ -11,9 +11,7 @@ import { paymentsLedgerDbFromD1 } from '../test/payments-ledger-sqlite'
 import { IDENTITY_AUTH_DOMAIN_D1_SCHEMA, makeSqliteD1 } from '../test/sqlite-d1'
 import { makeMemoryAuthKvStore } from './auth-kv'
 import {
-  DEFAULT_OPENAGENTS_DESKTOP_OPENAUTH_CLIENT_ID,
   DEFAULT_OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID,
-  OPENAGENTS_DESKTOP_OPENAUTH_LOOPBACK_PATH,
   OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI,
   authIssuerAllowsRedirect,
   isMobileAccessTokenRevoked,
@@ -300,60 +298,30 @@ describe('Khala mobile OpenAuth session policy', () => {
     ).toBe(true)
   })
 
-  test('contract openagents_desktop.session.loopback_pkce_policy.v1 allows only the exact Desktop loopback public-client tuple', () => {
+  test('the retired openagents-desktop public client is refused on every redirect shape (#9325)', () => {
+    // The Electron desktop app was deleted on 2026-08-04 (#9325) and its
+    // OpenAuth client registration was removed on 2026-08-05. The issuer must
+    // not accept that client id again — including the exact loopback tuple the
+    // retired registration used to allow.
     const allowedRequest = new Request(
       'https://auth.openagents.com/authorize?provider=github&response_type=code&code_challenge_method=S256&code_challenge=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ',
     )
-    const allowed = (
-      redirectURI: string,
-      request: Request = allowedRequest,
-      clientID = DEFAULT_OPENAGENTS_DESKTOP_OPENAUTH_CLIENT_ID,
-    ) =>
-      authIssuerAllowsRedirect({ clientID, redirectURI }, request, {
-        webClientId: 'openagents-web',
-      })
-
-    expect(OPENAGENTS_DESKTOP_OPENAUTH_LOOPBACK_PATH).toBe('/auth/callback')
-    expect(allowed('http://127.0.0.1:49152/auth/callback')).toBe(true)
-    expect(allowed('http://127.0.0.1:65535/auth/callback')).toBe(true)
-
-    for (const rejected of [
-      'http://127.0.0.1/auth/callback',
-      'http://127.0.0.1:80/auth/callback',
-      'http://localhost:49152/auth/callback',
-      'http://[::1]:49152/auth/callback',
-      'https://127.0.0.1:49152/auth/callback',
-      'http://127.0.0.1:49152/auth/callback/',
-      'http://127.0.0.1:49152/auth/callback?code=preloaded',
-      'http://127.0.0.1:49152/auth/callback#fragment',
-      'http://user@127.0.0.1:49152/auth/callback',
-    ]) {
-      expect(allowed(rejected)).toBe(false)
-    }
-
-    expect(
-      allowed(
-        'http://127.0.0.1:49152/auth/callback',
-        new Request(
-          'https://auth.openagents.com/authorize?provider=github&response_type=code&code_challenge_method=plain&code_challenge=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ',
-        ),
-      ),
-    ).toBe(false)
-    expect(
-      allowed(
-        'http://127.0.0.1:49152/auth/callback',
-        new Request(
-          'https://auth.openagents.com/authorize?provider=code&response_type=code&code_challenge_method=S256&code_challenge=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ',
-        ),
-      ),
-    ).toBe(false)
-    expect(
-      allowed(
-        'http://127.0.0.1:49152/auth/callback',
+    const allowed = (redirectURI: string) =>
+      authIssuerAllowsRedirect(
+        { clientID: 'openagents-desktop', redirectURI },
         allowedRequest,
-        DEFAULT_OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID,
-      ),
-    ).toBe(false)
+        { webClientId: 'openagents-web' },
+      )
+
+    for (const redirectURI of [
+      'http://127.0.0.1:49152/auth/callback',
+      'http://127.0.0.1:65535/auth/callback',
+      'http://localhost:49152/auth/callback',
+      'https://openagents.com/auth/callback',
+      OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI,
+    ]) {
+      expect(allowed(redirectURI)).toBe(false)
+    }
   })
 
   test('allows only exact mobile public-client native redirects with GitHub code + S256 PKCE', () => {

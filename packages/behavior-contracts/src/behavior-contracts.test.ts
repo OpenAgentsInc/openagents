@@ -149,9 +149,10 @@ describe("behavior contract registry", () => {
     // contract, the nine Full Auto contracts, the two greenfield Electron
     // shell/template contracts, and the desktop-runtime + early-mobile-sync
     // program contract — 22 in all, taking the total from 54 to 32. The
-    // desktop loopback PKCE policy stays: its oracle and evidence live in
-    // apps/openagents.com, not in the deleted app.
-    expect(decoded.contracts).toHaveLength(32)
+    // desktop loopback PKCE policy outlived that pass because its oracle and
+    // evidence lived in apps/openagents.com; its OpenAuth client registration
+    // was removed on 2026-08-05, so it is retired too — 32 to 31.
+    expect(decoded.contracts).toHaveLength(31)
     const mobileAutomaticActivity = decoded.contracts.find(
       entry => entry.contractId === "openagents_mobile.home_automatic_desktop_activity.v1",
     )
@@ -200,6 +201,9 @@ describe("behavior contract registry", () => {
       "openagents_apps.greenfield_desktop_electron.v1",
       "openagents_apps.desktop_starting_template.v1",
       "openagents_apps.desktop_runtime_and_early_mobile_sync.v1",
+      // Removed 2026-08-05 with the `openagents-desktop` OpenAuth client
+      // registration in apps/openagents.com/workers/api (#9325).
+      "openagents_desktop.session.loopback_pkce_policy.v1",
     ]) {
       expect(
         decoded.contracts.find(
@@ -311,16 +315,6 @@ describe("behavior contract registry", () => {
       "apps/openagents-mobile/tests/native-session-pkce.test.ts",
       "apps/openagents-mobile/tests/home-shell-core.test.ts",
     ])
-    const desktopLoopbackPkce = decoded.contracts.find(
-      contract =>
-        contract.contractId ===
-        "openagents_desktop.session.loopback_pkce_policy.v1",
-    )
-    expect(desktopLoopbackPkce?.state).toBe("enforced")
-    expect(desktopLoopbackPkce?.statement).toContain("never claims the mobile custom scheme")
-    expect(desktopLoopbackPkce?.oracles[0]?.ref).toBe(
-      "apps/openagents.com/workers/api/src/auth/mobile-session.test.ts",
-    )
     // Owner P0 (build 111 TestFlight feedback, 2026-07-09): the minerals
     // sheet closes only on USER intents, enforced in the mobile test sweep.
     const mineralsSheet = decoded.contracts.find(

@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:a10f294081ecefad1b2b59437332e18751c7988287a93bfbb741e0912b7f7936",
+  "sourceDigest": "sha256:4a8ac315d339a9d55da909973a4215e48cb22baff7a2df85239e6bf0de2d9cab",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -246,10 +246,6 @@
         {
           "type": "behavior-contract",
           "ref": "lead_gen_agent.no_send_without_approval_receipt.v1"
-        },
-        {
-          "type": "behavior-contract",
-          "ref": "openagents_desktop.session.loopback_pkce_policy.v1"
         },
         {
           "type": "behavior-contract",
@@ -3441,10 +3437,6 @@
         {
           "type": "behavior-contract",
           "ref": "lead_gen_agent.no_send_without_approval_receipt.v1"
-        },
-        {
-          "type": "behavior-contract",
-          "ref": "openagents_desktop.session.loopback_pkce_policy.v1"
         },
         {
           "type": "behavior-contract",

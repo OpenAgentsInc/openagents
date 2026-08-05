@@ -165,6 +165,17 @@ owner instructions, system policy, law, [`AGENTS.md`](AGENTS.md),
 higher authority. The format and resolution laws live in
 [`docs/authority/AUTHORITY_DELEGATION_SPEC.md`](docs/authority/AUTHORITY_DELEGATION_SPEC.md).
 
+Drift correction, 2026-08-05, issue #9325.
+`specs/desktop/full-auto.assurance-spec.md` became `lifecycle_state: retired` on
+2026-08-04 with the deleted Electron desktop app. A retired document is a
+historical record. It is not live authority. That path is thus removed from the
+`program.full_auto_release` authority refs. This correction removes a stale
+reference only. It does not repoint the program, and it does not add
+`specs/omega/full-auto.assurance-spec.md` or any other document as a new
+authority reference. The desktop Full Auto ProductSpec stays, because it is not
+retired and the admitted Omega Full Auto AssuranceSpec keeps it as upstream
+authority.
+
 ```authority-delegation-order
 {
   "authority_may_amplify": false,
@@ -192,7 +203,6 @@ higher authority. The format and resolution laws live in
     "outcome": "Close the Full Auto issue chain with complete AssuranceSpec design, independent admission, real adapters, signed cross-platform evidence, and a releasable real-system run.",
     "authority_refs": [
       "specs/desktop/full-auto.product-spec.md",
-      "specs/desktop/full-auto.assurance-spec.md",
       "docs/sol/MASTER_ROADMAP.md"
     ],
     "advance_when": "all_scoped_full_auto_release_issues_terminal_with_receipts"
