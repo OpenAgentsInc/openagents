@@ -12,7 +12,7 @@
     />
     <meta name="theme-color" content="#05070d" />
     <title>Immortal Infrastructure — OpenAgents</title>
-    
+
 <script type="module">
 import init, * as bindings from '/infra/infra_explainer_web.js';
 const wasm = await init({ module_or_path: '/infra/infra_explainer_web_bg.wasm' });
@@ -36,7 +36,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
       }
       @keyframes pulse { 50% { color: #5c96f8; } }
     </style>
-  <link rel="modulepreload" href="/infra/infra_explainer_web.js" crossorigin="anonymous" integrity="sha384-IVezH2bDcwj0+wZZ88MDYl5wOSt+j8R7KmgWy9mwtfZRC17ueN2agQz/WzgNRDPY"><link rel="preload" href="/infra/infra_explainer_web_bg.wasm" crossorigin="anonymous" integrity="sha384-n9K6+wNjaLW+jyo29fEfmD49vobn3zVrbBVlTxbbYpoO2laqCg9ciltIDvl7i93G" as="fetch" type="application/wasm"></head>
+  <link rel="modulepreload" href="/infra/infra_explainer_web.js" crossorigin="anonymous" integrity="sha384-IVezH2bDcwj0+wZZ88MDYl5wOSt+j8R7KmgWy9mwtfZRC17ueN2agQz/WzgNRDPY"><link rel="preload" href="/infra/infra_explainer_web_bg.wasm" crossorigin="anonymous" integrity="sha384-YKtGMHzKw7FjkJ0HirzANetvTDSq1pVqy/hSobv1dS/ubG4Y+7KqIyLD5HrjjFXV" as="fetch" type="application/wasm"></head>
   <body>
     <div id="boot" role="status">
       <p>Loading Immortal Infrastructure…</p>

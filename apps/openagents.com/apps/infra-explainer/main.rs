@@ -786,7 +786,12 @@ mod web_app {
 
     pub fn run() {
         gpui_platform::web_init();
-        let handle = gpui_platform::application().run_embedded(|cx: &mut App| {
+        // Single-threaded on purpose: this document decodes its six embedded
+        // SVG diagrams through gpui's image pipeline, and the multithreaded
+        // web dispatcher can park the main thread on a contended lock —
+        // browsers forbid Atomics.wait there, which aborted a frame mid-draw
+        // and wedged the app ("RefCell already borrowed" forever).
+        let handle = gpui_platform::single_threaded_web().run_embedded(|cx: &mut App| {
             theme::set_theme_settings_provider(
                 Box::new(WebThemeSettings {
                     ui_font: gpui::font("Lilex"),
