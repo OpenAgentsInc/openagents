@@ -14,8 +14,9 @@ fabric already generalizing past swaps into agent markets and work itself.
 
 ## Continuity from 266
 
-Episode 266 ([transcript](./266.md)) was the reaction video: Boltz taken down
-by AI-assisted attacks, a wave of dependent services failing with it, and the
+Episode 266 ([transcript](./266.md)) was the reaction video: Boltz disabling
+all swaps indefinitely under what its operators described as months of
+AI-assisted probing, a wave of dependent services degrading with it, and the
 diagnosis that the Bitcoin economy is too dependent on centralized
 coordination services. It ended with a plan: harvest the tbDEX negotiation
 grammar and the Boltz settlement physics, write NIP-MKT plus focused market
@@ -39,6 +40,89 @@ Episode 267 is the receipts episode. Since 266:
 - A public explainer page shipped at **openagents.com/infra**, and two live
   demo surfaces exist beside it: **/demo** (the market walkthrough) and
   **/work-demo** (real project work items served off the relay).
+
+## The situation, broadly
+
+The incident now has a documented ledger in this repo —
+[`docs/boltz/`](../boltz/README.md): a Coldcard-style claim table (B1–B12), a
+timeline, primary operator statements, the wallet cascade, a scenario map, and
+a machine receipt of ~336 X posts across the ~72-hour window
+(`docs/boltz/receipts/2026-08-05-72h-discourse-sweep.json`). Use it as the
+episode's factual spine; everything below is sourced there.
+
+**What happened.** 2026-08-01: Boltz disables EVM swaps only, citing an EVM
+integration bug. 2026-08-03 morning: all swap services unavailable, no ETA.
+2026-08-03 afternoon, the full statement (~1.3k likes): this is not a response
+to a single incident — months of steady, automated, AI-assisted probing;
+several exploits, each contained, losses operator-borne; a drastic
+acceleration in the last few days; "attackers now iterate faster than a team
+our size can find and patch"; actively targeted by "multiple resourceful
+groups"; after reviewing their own scans they "cannot responsibly re-enable";
+a "major paradigm shift for Bitcoin services operating on an open source
+stack"; do not expect swaps to resume shortly.
+
+**The user-safety story.** Non-custodial by design; no user funds at risk;
+the cooperative refund API stays up and unilateral refunds work without Boltz
+infrastructure at all. That is the correct atomic-swap safety story — and the
+notes discipline is to present it as an operator-plus-wallet claim until a
+technical postmortem exists, not as verified fact.
+
+**The cascade.** The outage pattern is a dependency graph, not a random
+failure: Lightning/Liquid swap UX broke or degraded in Bull Bitcoin,
+Aqua/JAN3, the Blockstream app, ZEUS (which paused its *own* Boltz instance),
+Manna, Geyser, Rootstock Atlas routes, and HodlHodl's swap partners — while
+Liquid itself and plain on-chain send/receive kept working. Key voices worth
+quoting on stream:
+
+- **Excellion** (the SPOF admission): "We were too dependent on Boltz… we
+  didn't think it was a priority to have redundancy for LN/LQ. That was a
+  mistake on our part. It will be fixed."
+- **calle** (the under-discussed cascade): Boltz Lightning going offline "took
+  Lightning in Aqua, Bull Bitcoin, Blockstream Wallet, Arkade, etc. with it."
+- **roasbeef** (the technical separation): no reports of any critical
+  money-losing Lightning bug — the vulnerabilities were in Boltz's **swap
+  server**. Lightning-the-protocol is healthy; the coordinator surface is what
+  burned.
+- **januszg** (naming hygiene): the outage proves Boltz was the
+  best-in-class swap product — and apps whose "Lightning" is a third-party
+  swap dependency should stop being called Lightning wallets.
+- **francispouliot** (the multi-vendor trap): many vendors running the same
+  core libraries with the same bugs is not redundancy. This one matters most
+  for us — see below.
+- **PPQdotAI** (peer corroboration): another small team reporting AI-powered
+  exploit pressure "every other week for months" — the asymmetric-defender
+  story is not unique to Boltz.
+
+**Same week, wider frame.** The Coldcard entropy drains and the
+Satora/LendaSwap darkness landed in the same window — publicly the worst
+multi-surface Bitcoin infrastructure week of 2026. Say the correlation, and
+say its limit: time correlation is documented; shared attackers are not
+proven. The scenario discipline from the ledger: an honest small team
+overwhelmed by AI-augmented attackers, choosing responsible self-disable
+(S1–S2), fits the public evidence best. "State-sponsored" is speculation —
+our own social line floated it once, the ledger flags that as B6
+not-established, and this episode should not promote it.
+
+**Why this lands on Immortal.** Two of the discourse's sharpest points are
+arguments *for* exactly what the repo is doing:
+
+1. Francis's library-monoculture warning cuts against "everyone run a Boltz
+   instance" as the fix — ZEUS ran its own instance and still had to pause,
+   because instances of the same code share the same holes. The answer is
+   **implementation diversity plus client-side verification**: Immortal is a
+   from-scratch, minimal-dependency, CC0 implementation, and the
+   verify-before-fund client engine means no user ever trusts a coordinator's
+   code quality with their funds.
+2. The asymmetric-defender problem (attacker iteration > small-team patching)
+   is an argument for **less attack surface per operator and no
+   irreplaceable operator**: one binary + one database per product, seven
+   dependencies, fail-closed defaults — and a network where any relay or
+   provider can die without stranding anyone's money.
+
+The honest framing sentence for the episode: this week is empirical pressure
+for multi-provider, client-verified, Nostr-discovered liquidity — it is not
+evidence that OpenAgents already replaces Boltz-class production liquidity.
+We are building the response class, in public, in the public domain.
 
 ## The deployed page: openagents.com/infra
 
@@ -240,6 +324,9 @@ the NIP-11 extension tokens for the work lane.
 
 ## Show checklist
 
+- [ ] Open on the situation: the Aug 1 → Aug 3 timeline, the E2 statement
+      quotes, the wallet-cascade list, the Excellion/calle/roasbeef/francis
+      reads — anchored to `docs/boltz/` (claim table on screen if useful).
 - [ ] openagents.com/infra — walk the six sections; point out the live
       relay badge going green.
 - [ ] `curl` the NIP-11 document on stream; read the extensions list.
@@ -256,6 +343,16 @@ the NIP-11 extension tokens for the work lane.
 
 ## Positioning and honesty boundary
 
+- Incident facts follow the `docs/boltz/` evidence labels: the pause and the
+  wallet cascade are documented; the AI-attack narrative and the no-user-funds
+  story are operator claims pending a postmortem; "the vulnerabilities were in
+  the swap server" is an expert social claim, the best framing available until
+  Boltz publishes details.
+- Do not say or imply state-sponsored attackers. Boltz said "multiple
+  resourceful groups"; attribution does not exist. Do not lean on the
+  Coldcard/Satora correlation as a shared-attacker story.
+- Say "response class," never "replacement": nothing here claims OpenAgents
+  currently provides Boltz-class production liquidity.
 - The relay and the NIP-MKT base are deployed and checkable from outside.
 - The provider daemon's funded mode, the Boltz-compatible facade, the
   shadow cutover, MuSig2 cooperative settlement end-to-end, and the second
