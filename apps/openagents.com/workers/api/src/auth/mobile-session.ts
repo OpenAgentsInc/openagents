@@ -88,6 +88,10 @@ export const authIssuerAllowsWebRedirectHostname = (
   // (apps/aiur/src/auth/owner-gate.ts) before trusting the resulting
   // session for anything.
   hostname === 'aiur.openagents.com' ||
+  // OpenAgents Pro is a separate Vercel application that uses the shared
+  // server-side web client and an exact callback host. Do not broaden this to
+  // arbitrary Vercel preview domains.
+  hostname === 'pro-five-alpha.vercel.app' ||
   hostname === 'localhost' ||
   hostname === '127.0.0.1'
 
