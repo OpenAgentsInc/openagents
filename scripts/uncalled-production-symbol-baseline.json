@@ -42,31 +42,6 @@
     "apps/openagents.com/apps/start/src/routes/-funnel-data.ts#findDocPage",
     "apps/openagents.com/apps/start/src/routes/-public-site.tsx#HoldingPage",
     "apps/openagents.com/apps/start/src/routes/-training-runs-page.tsx#TrainingRunsPage",
-    "apps/openagents.com/packages/effect-native-core/src/index.ts#Keymap.keybindingLabel",
-    "apps/openagents.com/packages/effect-native-core/src/index.ts#Keymap.pushScope",
-    "apps/openagents.com/packages/effect-native-core/src/index.ts#blurFormField",
-    "apps/openagents.com/packages/effect-native-core/src/index.ts#defineFormSpec",
-    "apps/openagents.com/packages/effect-native-core/src/index.ts#encodeIntent",
-    "apps/openagents.com/packages/effect-native-core/src/index.ts#formFieldError",
-    "apps/openagents.com/packages/effect-native-core/src/index.ts#formFieldFocused",
-    "apps/openagents.com/packages/effect-native-core/src/index.ts#formFieldValue",
-    "apps/openagents.com/packages/effect-native-core/src/index.ts#makeFormState",
-    "apps/openagents.com/packages/effect-native-core/src/index.ts#rovingTabIndex",
-    "apps/openagents.com/packages/effect-native-core/src/index.ts#setFormFieldValue",
-    "apps/openagents.com/packages/effect-native-gallery/src/index.ts#galleryPageCoverage",
-    "apps/openagents.com/packages/effect-native-gallery/src/index.ts#parseStory",
-    "apps/openagents.com/packages/effect-native-gallery/src/index.ts#parseStorybook",
-    "apps/openagents.com/packages/effect-native-gallery/src/index.ts#serializeStorybook",
-    "apps/openagents.com/packages/effect-native-gallery/src/index.ts#storyCoverage",
-    "apps/openagents.com/packages/effect-native-gallery/src/khala-ui-contract.ts#missingKhalaUiCapabilityDispositions",
-    "apps/openagents.com/packages/effect-native-render-canvas/src/headless.ts#makeHeadlessCanvasBackend",
-    "apps/openagents.com/packages/effect-native-render-canvas/src/scene.ts#decodeScene",
-    "apps/openagents.com/packages/effect-native-render-canvas/src/scene.ts#encodeScene",
-    "apps/openagents.com/packages/effect-native-render-canvas/src/scene.ts#perspectiveCamera",
-    "apps/openagents.com/packages/effect-native-render-rn/src/index.ts#makeReactNativeRenderer",
-    "apps/openagents.com/packages/effect-native-tokens/src/index.ts#decodeTheme",
-    "apps/openagents.com/packages/effect-native-tokens/src/index.ts#encodeTheme",
-    "apps/openagents.com/packages/effect-native-tokens/src/khala-ui.ts#evaluateKhalaDimension",
     "apps/openagents.com/packages/mullet-sim/src/index.ts#MARGOT_STYLE_100MW_80_20_BASELINE",
     "apps/openagents.com/packages/mullet-sim/src/index.ts#MODEL1_MEDIUM_CODING_MISSION",
     "apps/openagents.com/packages/mullet-sim/src/index.ts#MODEL1_SMALL_CODING_PATCH",
@@ -1753,22 +1728,6 @@
     "scripts/github-issue-triage.ts#issueHasAnyLabel"
   ],
   "allowed": [
-    {
-      "ref": "apps/openagents.com/packages/effect-native-core/src/index.ts#CodeEditor",
-      "reason": "Vendored @effect-native/core snapshot (apps/openagents.com/packages/effect-native-vendor.json pins OpenAgentsInc/effect-native@467bde07). Its only in-repo caller was the deleted Electron renderer (openagents#9325). Upstream owns this host component; editing the vendored tree would break the commit pin the vendor guard asserts, so it is re-adopted on the next re-vendor or by the next Effect Native host surface."
-    },
-    {
-      "ref": "apps/openagents.com/packages/effect-native-render-dom/src/index.ts#makeStubCodeEditorDriver",
-      "reason": "Vendored @effect-native/render-dom snapshot pinned by apps/openagents.com/packages/effect-native-vendor.json. The deleted Electron renderer supplied the real CodeEditor host driver; the stub driver is upstream's default host and cannot be removed without breaking the vendor commit pin the effect-native vendor guard asserts."
-    },
-    {
-      "ref": "apps/openagents.com/packages/effect-native-render-dom/src/react.ts#makeReactDomRenderer",
-      "reason": "Vendored @effect-native/render-dom React projection boundary. apps/openagents.com/scripts/check-effect-native-vendor.test.ts asserts this exact symbol is present in the pinned snapshot, and the vendor manifest pins OpenAgentsInc/effect-native@467bde07; the deleted Electron renderer was its only in-repo mount site."
-    },
-    {
-      "ref": "apps/openagents.com/packages/effect-native-render-dom/src/react.ts#EffectNativeReactDomStyleSheet",
-      "reason": "Vendored @effect-native/render-dom snapshot pinned by apps/openagents.com/packages/effect-native-vendor.json. Its last in-repo caller was the /swap widget, converted to plain React in openagents#9325 packet 3. The whole vendored tree is deleted in packet 4 of the same issue, which removes this entry with it; editing the vendored source instead would break the commit pin the vendor guard asserts."
-    },
     {
       "ref": "packages/agent-experience-memory/src/graph-memory-store.ts#GraphMemoryStoreInterface.applyDeletePlan",
       "reason": "Owner deletion half of the published graph-memory SDK contract: the typed, receipted delete plan every store layer implements. Its caller was the deleted Electron owner-lifecycle surface; hosted Sarah graph memory (openagents#9189) is the surviving composition root that owes owners a deletion path."

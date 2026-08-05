@@ -11,8 +11,6 @@ const commandComposerArtifacts = [
   'packages/composer-state/README.md',
   'packages/composer-state/src/index.ts',
   'packages/composer-state/src/index.test.ts',
-  'apps/openagents.com/packages/effect-native-core/src/index.ts',
-  'apps/openagents.com/packages/effect-native-render-dom/src/index.ts',
 ] as const
 
 const forbiddenPatterns = [

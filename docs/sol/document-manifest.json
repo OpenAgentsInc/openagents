@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-21",
-  "sourceTreeSha256": "029c24540b623da26ba77e5872ab8467229565a2d95b7420adfef005ea9f13ca",
+  "sourceTreeSha256": "8fd6213e49791c579034823fa7aece734d9bb142aeb152bcdf20dbdd80fa1cd9",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1530,7 +1530,7 @@
       "owner": "OpenAgents UI architecture",
       "disposition": "retain-historical",
       "dispatch": false,
-      "sha256": "8bcb1344355115d2b7a693f58ee2a0847e34d707f196ee4224ae01c175518ca8",
+      "sha256": "062947ff9d07595496a834128c871fe6423bc5c139dc5d54175760cb691aa940",
       "status": "retain until Khala UI is implemented, rejected, or superseded",
       "snapshot": "OpenAgents `ac287fc22d2aaa76e3783e592d695ad54a84ec47`; Effect Native `ec04d1a066d6f3ed0c67735ba451cfc90a343aa8`; Arwes `bdbaa0324900ee978d42036d1304a053c1fe54b5`",
       "reviewedAt": "2026-07-21",
@@ -1544,7 +1544,8 @@
         8846,
         8848,
         8849,
-        8850
+        8850,
+        9325
       ]
     },
     {

@@ -49,7 +49,7 @@ const isReleaseInfrastructure = (path: string): boolean =>
 const isWeb = (path: string): boolean => isUnder(path, "apps/openagents.com");
 
 const isMobile = (path: string): boolean =>
-  isUnder(path, "apps/openagents-mobile") || isUnder(path, "effect-native");
+  isUnder(path, "apps/openagents-mobile");
 
 const actionOrder = new Map<ReleaseImpactAction, number>(
   releaseImpactActions.map((action, index) => [action, index]),

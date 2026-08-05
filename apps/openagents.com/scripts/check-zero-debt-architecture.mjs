@@ -202,10 +202,6 @@ const jsonBoundaryFiles = new Set([
   'packages/sync-schema/src/json-boundary.ts',
   'packages/sync-worker/src/json-boundary.ts',
   'workers/api/src/json-boundary.ts',
-  // Named Schema-backed JSON boundary exported by the vendored Effect Native
-  // story catalog (`parseStory` and `parseStorybook`). Keep this exact-file
-  // exception instead of widening the raw JSON.parse budget.
-  'packages/effect-native-gallery/src/index.ts',
 ])
 
 const deterministicBusinessLogicFiles = sourceFiles.filter(
@@ -1016,13 +1012,6 @@ const runPromiseAllowlist = new Map([
   // neither bridge throws back into the dispatch loop. Ratchet down if the
   // hosted-runtime dispatch loop becomes an Effect program end-to-end.
   ['workers/api/src/khala-hosted-runtime-metering.ts', 2],
-  // Effect Native renderers own the final executable boundary between typed
-  // view intents and host callbacks. DOM media-query/clipboard callbacks and
-  // React Native clipboard callbacks cannot yield Effects, so each bridge is
-  // kept at that callback edge. Ratchet down only if renderer host callbacks
-  // become Effect-native programs.
-  ['packages/effect-native-render-dom/src/index.ts', 2],
-  ['packages/effect-native-render-rn/src/index.ts', 1],
 ])
 
 const runPromiseDetails = countByFile(sourceFiles, /Effect\.runPromise\(/g)

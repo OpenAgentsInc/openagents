@@ -145,7 +145,9 @@ The architectural authorities are:
 - [three-effect / canvas boundary](../effect-native/2026-07-08-three-effect-vs-effect-native.md)
 - [Node, pnpm, and Vite Plus conversion contract](./2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md)
 - [Desktop product architecture](./2026-07-10-openagents-desktop-product-architecture.md)
-- [Effect Native vendor manifest](../../apps/openagents.com/packages/effect-native-vendor.json)
+- Effect Native vendor manifest — deleted 2026-08-05 with the vendored
+  packages (#9325 packet 4); it pinned `OpenAgentsInc/effect-native@467bde07`,
+  catalog `effect-native/v43`
 
 ### Evidence boundary
 

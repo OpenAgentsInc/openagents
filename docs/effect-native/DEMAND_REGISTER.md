@@ -1,21 +1,34 @@
 # Effect Native demand register (EN-2 / #8572)
 
-Date: 2026-07-09
-Status: living register — every conversion wave appends rows. Never invent
-local one-off primitives.
+> **CLOSED 2026-08-05 (#9325). Historical record — do not append rows.**
+>
+> The demand loop this register drove no longer exists. Effect Native was
+> removed from the repo: the seven vendored `@effect-native/*` packages, the
+> vendor pin (`effect-native-vendor.json`), the drift guard test, and the
+> freshness script were all deleted, and no surface in this repo imports the
+> framework. There is no vendor pin to bump, so a gap row here can no longer
+> reach a consumer. The rows below are kept because they record what each
+> converting surface actually needed at the time, which is evidence about the
+> surfaces, not just about the framework.
+>
+> The current UI policy is in `AGENTS.md`; the removal evidence is
+> `docs/architecture/2026-08-04-effect-native-removal-audit.md`.
 
-This is the monorepo half of the catalog demand loop:
+Date: 2026-07-09
+Status: CLOSED (was: living register — every conversion wave appends rows).
+
+This was the monorepo half of the catalog demand loop:
 
 **converting surface → gap row here → upstream effect-native issue/GAPS →
 catalog version bump → vendor pin → convert-and-delete.**
 
-## Current vendor pin
+## Vendor pin (retired)
 
-See `apps/openagents.com/packages/effect-native-vendor.json`:
-
-- commit / catalog: tracked there (`412640adbe2979926c64c7aaf29721677638d4ec`,
-  `effect-native/v39` as of 2026-07-14)
-- Freshness: `pnpm --dir apps/openagents.com run check:effect-native-vendor`
+The pin lived at `apps/openagents.com/packages/effect-native-vendor.json`
+(last: `467bde0760d052ee2f4a8fa678bb2f1f6bf200d8`, `effect-native/v43`,
+vendored 2026-07-15). That file, the guard test, and the freshness script
+`pnpm --dir apps/openagents.com run check:effect-native-vendor` were deleted
+in #9325 packet 4.
 
 ## Open demand rows
 

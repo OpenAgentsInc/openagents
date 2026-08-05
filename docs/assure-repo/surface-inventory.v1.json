@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:094d3384e233167a873742292e3101ae75d262bccc1c91d7bc02c993df030617",
+  "sourceDigest": "sha256:70e70493b0e857f0e5cce1f48b1747f3057bfbcdd73130114c2be87495aa34cf",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -201,7 +201,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents.com (1158 tracked test files)"
+          "ref": "apps/openagents.com (1149 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -1471,125 +1471,6 @@
       "obligation": {
         "state": "mapped",
         "note": "mapped to intent/validation only; behavior oracle not yet designed"
-      }
-    },
-    {
-      "id": "package:@effect-native/core",
-      "kind": "package",
-      "owningPath": "apps/openagents.com/packages/effect-native-core",
-      "title": "@effect-native/core",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "apps/openagents.com/packages/effect-native-core (1 tracked test file)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
-      "id": "package:@effect-native/gallery",
-      "kind": "package",
-      "owningPath": "apps/openagents.com/packages/effect-native-gallery",
-      "title": "@effect-native/gallery",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "apps/openagents.com/packages/effect-native-gallery (1 tracked test file)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
-      "id": "package:@effect-native/khala-ui",
-      "kind": "package",
-      "owningPath": "apps/openagents.com/packages/effect-native-khala-ui",
-      "title": "@effect-native/khala-ui",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "apps/openagents.com/packages/effect-native-khala-ui (1 tracked test file)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
-      "id": "package:@effect-native/render-canvas",
-      "kind": "package",
-      "owningPath": "apps/openagents.com/packages/effect-native-render-canvas",
-      "title": "@effect-native/render-canvas",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "apps/openagents.com/packages/effect-native-render-canvas (1 tracked test file)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
-      "id": "package:@effect-native/render-dom",
-      "kind": "package",
-      "owningPath": "apps/openagents.com/packages/effect-native-render-dom",
-      "title": "@effect-native/render-dom",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "apps/openagents.com/packages/effect-native-render-dom (2 tracked test files)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
-      "id": "package:@effect-native/render-rn",
-      "kind": "package",
-      "owningPath": "apps/openagents.com/packages/effect-native-render-rn",
-      "title": "@effect-native/render-rn",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "apps/openagents.com/packages/effect-native-render-rn (1 tracked test file)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
-      "id": "package:@effect-native/tokens",
-      "kind": "package",
-      "owningPath": "apps/openagents.com/packages/effect-native-tokens",
-      "title": "@effect-native/tokens",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "apps/openagents.com/packages/effect-native-tokens (1 tracked test file)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
       }
     },
     {
@@ -3462,17 +3343,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 185,
+    "totalSurfaces": 178,
     "byKind": {
       "app": 17,
       "crate": 7,
       "document": 52,
-      "package": 102,
+      "package": 95,
       "public-endpoint": 2,
       "release-pipeline": 4,
       "worker": 1
     },
-    "withOracle": 177,
+    "withOracle": 170,
     "unverified": 8,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3480,7 +3361,7 @@
       "reference-only": 1
     },
     "byObligationState": {
-      "designed": 141,
+      "designed": 134,
       "inconclusive": 4,
       "mapped": 36,
       "out-of-scope": 4

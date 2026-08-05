@@ -2249,14 +2249,21 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   `/sarah` tombstone stays 404. This boundary is currently unenforced: its
   oracle went with the mobile drawer (see Retired Mobile Surfaces). The public
   `/sarah` tombstone keeps its own separate enforcement.
-- Effect Native React Native stacks are structural layout containers, never
-  aggregate accessibility controls. A stack may retain a catalog region/group
-  label for diagnostics, but the native View is explicitly excluded from the
-  TalkBack/VoiceOver focus order so it cannot collapse or hide interactive
-  descendants. Buttons, fields, composer actions, agent rows, and other leaf
-  controls remain independently discoverable. This boundary is enforced by
-  `apps/openagents.com/packages/effect-native-render-rn/src/index.test.ts` and
-  an Android TalkBack Release-host receipt.
+- **RETIRED 2026-08-05 (#9325 packet 4).** Effect Native React Native stacks
+  were structural layout containers, never aggregate accessibility controls: a
+  stack could retain a catalog region/group label for diagnostics, but the
+  native View was excluded from the TalkBack/VoiceOver focus order so it could
+  not collapse or hide interactive descendants, keeping buttons, fields,
+  composer actions, and agent rows independently discoverable. Its oracle was
+  the vendored React Native renderer's own index test, deleted with that
+  package — the path is deliberately not written here as a live code
+  reference, because it no longer exists. The invariant had already been dead in
+  practice since `017ae3dedb` (2026-07-27) rebuilt `apps/openagents-mobile` in
+  plain React Native with zero `@effect-native` imports — there are no Effect
+  Native stacks left to constrain. The underlying accessibility requirement
+  belongs to whatever mobile layout primitives the plain-RN app uses and is
+  not restated here on the strength of a deleted renderer's test; the Android
+  TalkBack Release-host receipt remains the standing product evidence.
 - Mobile coding navigation reads the CUT-13 catalog only from the exact
   server-verified personal scope while that scope is live. Signed-out, idle,
   refetch, unavailable, and denied phases expose no cached repository/session
