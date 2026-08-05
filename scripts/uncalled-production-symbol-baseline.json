@@ -2256,6 +2256,50 @@
     {
       "ref": "packages/mkt-swp-destination/src/qr.ts#qrUnavailable",
       "reason": "Default no-camera capability for hosts without a scanner (openagents#9317 \u00a78); SWAP-0 (openagents#9315) provides it where the widget shell has no camera probe."
+    },
+    {
+      "ref": "packages/behavior-contracts/src/market-swap-compare.ts#marketSwapCompareContractRegistry",
+      "reason": "Behaviour-contract registry for multi-provider quote comparison (openagents#9318), validated and coverage-checked by its package test; the registry report tooling and the SWAP-0 (openagents#9315) swap surface consume it when the widget shell lands."
+    },
+    {
+      "ref": "packages/mkt-swp-compare/src/reservation.ts#capacityBucketMapKey",
+      "reason": "Committed-capacity map key for reservation fork detection (openagents#9318); SWAP-0 (openagents#9315) supplies the capacity map when the widget shell wires quote ingestion."
+    },
+    {
+      "ref": "packages/mkt-swp-compare/src/reservation.ts#detectReservationForks",
+      "reason": "Reservation fork detection (openagents#9318 \u00a73); SWAP-0 (openagents#9315) runs it over ingested quotes and feeds the forks into compareTableView when the widget shell lands."
+    },
+    {
+      "ref": "packages/mkt-swp-compare/src/reservation.ts#observeReservations",
+      "reason": "Reservation observation projection (openagents#9318 \u00a73); SWAP-0 (openagents#9315) calls it on quote ingestion before fork detection when the widget shell lands."
+    },
+    {
+      "ref": "packages/mkt-swp-compare/src/selection.ts#selectOrder",
+      "reason": "Order selection discipline (openagents#9318 \u00a77); SWAP-0 (openagents#9315) calls it when the user selects a quote in the comparison table."
+    },
+    {
+      "ref": "packages/mkt-swp-compare/src/selection.ts#orderAcceptance",
+      "reason": "Indicative-quote acceptance discipline (openagents#9318 \u00a72); SWAP-0 (openagents#9315) drives it from provider Status ingestion after order creation."
+    },
+    {
+      "ref": "packages/mkt-swp-compare/src/testkit.ts#custodialMintCustody",
+      "reason": "Seeded custodial mint-route fixture (openagents#9318 \u00a75) for the comparison corpus until immortal#14 lands a second live provider; SWAP-0 demo seeding consumes it."
+    },
+    {
+      "ref": "packages/mkt-swp-compare/src/testkit.ts#testFirmHardQuote",
+      "reason": "Seeded firm/hard second-provider fixture (openagents#9318); SWAP-0 demo seeding consumes it until immortal#14 lands a live second provider."
+    },
+    {
+      "ref": "packages/mkt-swp-compare/src/testkit.ts#testVerifyReport",
+      "reason": "Seeded engine verify-report fixture (openagents#9318 \u00a76); SWAP-0 demo seeding consumes it until the engine binding lands behind the SWAP-0 boundary."
+    },
+    {
+      "ref": "packages/mkt-swp-compare/src/view.ts#compareTableView",
+      "reason": "Render-ready comparison table view model for openagents#9318; SWAP-0 (openagents#9315) mounts the comparison component in the swap widget shell and renders this view."
+    },
+    {
+      "ref": "packages/mkt-swp-compare/src/view.ts#verifyChecklistView",
+      "reason": "Render-ready verify-before-fund checklist view model for openagents#9318; SWAP-0 (openagents#9315) renders it above the fund action in the swap widget shell."
     }
   ]
 }
