@@ -44,6 +44,8 @@ import {
 } from './model-serving-policy'
 import {
   GPT_56_LUNA_MODEL_ID,
+  GPT_56_SOL_MODEL_ID,
+  GPT_56_TERRA_MODEL_ID,
   HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   HYDRALISK_GPT_OSS_120B_MODEL_ID,
@@ -539,7 +541,11 @@ export const selectAdapterPlan = (model: string): ReadonlyArray<string> => {
   // ordering never applies — a future ANTHROPIC_API_KEY must not make this
   // OpenAI model hit Anthropic's API first and fail non-retryably. Bounded
   // exact-id match, not a prefix classifier.
-  if (normalizedModel === GPT_56_LUNA_MODEL_ID) {
+  if (
+    [GPT_56_LUNA_MODEL_ID, GPT_56_TERRA_MODEL_ID, GPT_56_SOL_MODEL_ID].includes(
+      normalizedModel,
+    )
+  ) {
     return [PASSTHROUGH_OPENAI_ADAPTER_ID]
   }
   const plan = LANE_PLAN_BY_CLASS[classifyModel(normalizedModel)]

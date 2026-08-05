@@ -41,6 +41,7 @@ import {
   inferenceToolCallsFromUnknown,
   openAiWireMessageFromInferenceMessage,
 } from "./openai-chat-compat";
+import { isGpt56ModelId, isGpt56ReasoningEffort } from "./gpt56-access";
 
 // Partner HTTP response. Aliased so the adapter's transport types stay distinct
 // from the Worker's own Response-returning route surfaces (those are budgeted by
@@ -139,31 +140,12 @@ const OPENAI_FORWARDED_PARAMS = [
 // Bounded EXACT-ID set, deliberately not a `gpt-5*` prefix classifier — the same
 // discipline the model router uses for this lane. A model only joins this
 // profile after its rejection behavior is verified upstream.
-const OPENAI_RESTRICTED_REASONING_MODELS: ReadonlySet<string> = new Set(["gpt-5.6-luna"]);
-
-const isRestrictedReasoningModel = (model: string): boolean =>
-  OPENAI_RESTRICTED_REASONING_MODELS.has(model.trim().toLowerCase());
+const isRestrictedReasoningModel = (model: string): boolean => isGpt56ModelId(model);
 
 // The subset of the OpenAI allow-list the restricted reasoning profile still
 // accepts verbatim. Sampling knobs are dropped rather than clamped: sending
 // `temperature: 1` is accepted upstream, but silently rewriting a caller's 0.2
 // to 1 would misreport what was served. Dropping is the honest normalization.
-const OPENAI_REASONING_FORWARDED_PARAMS = [
-  "seed",
-  "tools",
-  "tool_choice",
-  "parallel_tool_calls",
-  "reasoning_effort",
-] as const;
-
-// Function tools on this family require `reasoning_effort: 'none'` over Chat
-// Completions; upstream otherwise returns 400 "Function tools with
-// reasoning_effort are not supported for <model> in /v1/chat/completions. To use
-// function tools, use /v1/responses or set reasoning_effort to 'none'."
-// A caller-supplied reasoning_effort still wins — we only supply the default
-// that keeps a tool-carrying request from dead-ending.
-const REASONING_EFFORT_FOR_TOOLS = "none";
-
 const ANTHROPIC_FORWARDED_PARAMS = ["temperature", "top_p", "top_k", "stop_sequences"] as const;
 
 const forwardParams = (
@@ -206,6 +188,22 @@ type OpenAiResponse = Readonly<{
   usage?: OpenAiUsage;
 }>;
 
+type OpenAiResponsesUsage = Readonly<{
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  input_tokens_details?: Readonly<{ cached_tokens?: number }>;
+  output_tokens_details?: Readonly<{ reasoning_tokens?: number }>;
+}>;
+
+type OpenAiResponsesResponse = Readonly<{
+  model?: string;
+  status?: string;
+  incomplete_details?: Readonly<{ reason?: string }>;
+  output?: ReadonlyArray<unknown>;
+  usage?: OpenAiResponsesUsage;
+}>;
+
 const openAiBody = (
   request: InferenceRequest,
   defaultMaxTokens: number,
@@ -236,18 +234,103 @@ const openAiBody = (
     };
   }
 
-  const forwarded = forwardParams(request.passthroughParams, OPENAI_REASONING_FORWARDED_PARAMS);
-  const needsToolReasoningEffort =
-    forwarded["tools"] !== undefined && forwarded["reasoning_effort"] === undefined;
+  return openAiResponsesBody(request, outputTokenBudget);
+};
+
+const responsesTool = (value: unknown): Record<string, unknown> | undefined => {
+  const tool = recordFromUnknown(value);
+  const fn = recordFromUnknown(tool?.["function"]);
+  const name = fn?.["name"];
+  if (
+    tool?.["type"] !== "function" ||
+    fn === undefined ||
+    typeof name !== "string" ||
+    name === ""
+  ) {
+    return undefined;
+  }
   return {
-    ...base,
-    // A caller's `max_completion_tokens` wins; otherwise carry their
-    // `max_tokens` budget over to the field this family actually accepts, so
-    // the caller's intended output cap is preserved rather than dropped.
-    max_completion_tokens:
+    type: "function",
+    name,
+    ...(typeof fn["description"] === "string" ? { description: fn["description"] } : {}),
+    ...(recordFromUnknown(fn["parameters"]) === undefined ? {} : { parameters: fn["parameters"] }),
+    ...(typeof fn["strict"] === "boolean" ? { strict: fn["strict"] } : {}),
+  };
+};
+
+const responsesToolChoice = (value: unknown): unknown => {
+  const choice = recordFromUnknown(value);
+  const fn = recordFromUnknown(choice?.["function"]);
+  return choice?.["type"] === "function" && typeof fn?.["name"] === "string"
+    ? { type: "function", name: fn["name"] }
+    : value;
+};
+
+const responsesMessageContent = (message: InferenceRequest["messages"][number]): unknown => {
+  if (message.contentParts === undefined) {
+    return message.content;
+  }
+  return message.contentParts.map((part) =>
+    part.type === "text"
+      ? { type: "input_text", text: part.text }
+      : {
+          type: "input_image",
+          image_url: part.image_url.url,
+          ...(part.image_url.detail === undefined ? {} : { detail: part.image_url.detail }),
+        },
+  );
+};
+
+const responsesInput = (request: InferenceRequest): ReadonlyArray<Record<string, unknown>> =>
+  request.messages.flatMap((message) => {
+    if (message.role === "tool" && message.toolCallId !== undefined) {
+      return [
+        { type: "function_call_output", call_id: message.toolCallId, output: message.content },
+      ];
+    }
+    const role = ["system", "developer", "user", "assistant"].includes(message.role)
+      ? message.role
+      : "user";
+    const items: Array<Record<string, unknown>> = [];
+    if (message.content !== "" || message.contentParts !== undefined) {
+      items.push({ type: "message", role, content: responsesMessageContent(message) });
+    }
+    for (const toolCall of message.toolCalls ?? []) {
+      items.push({
+        type: "function_call",
+        call_id: toolCall.id,
+        name: toolCall.function.name,
+        arguments: toolCall.function.arguments,
+      });
+    }
+    return items;
+  });
+
+const openAiResponsesBody = (
+  request: InferenceRequest,
+  outputTokenBudget: number,
+): Record<string, unknown> => {
+  const tools = Array.isArray(request.passthroughParams["tools"])
+    ? request.passthroughParams["tools"].flatMap((tool) => {
+        const parsed = responsesTool(tool);
+        return parsed === undefined ? [] : [parsed];
+      })
+    : [];
+  const effort = request.passthroughParams["reasoning_effort"];
+  return {
+    model: request.model.trim().toLowerCase(),
+    input: responsesInput(request),
+    stream: request.stream,
+    max_output_tokens:
       numberParam(request.passthroughParams, "max_completion_tokens") ?? outputTokenBudget,
-    ...forwarded,
-    ...(needsToolReasoningEffort ? { reasoning_effort: REASONING_EFFORT_FOR_TOOLS } : {}),
+    ...(isGpt56ReasoningEffort(effort) ? { reasoning: { effort } } : {}),
+    ...(tools.length === 0 ? {} : { tools }),
+    ...(request.passthroughParams["tool_choice"] === undefined
+      ? {}
+      : { tool_choice: responsesToolChoice(request.passthroughParams["tool_choice"]) }),
+    ...(typeof request.passthroughParams["parallel_tool_calls"] === "boolean"
+      ? { parallel_tool_calls: request.passthroughParams["parallel_tool_calls"] }
+      : {}),
   };
 };
 
@@ -274,6 +357,79 @@ const openAiResult = (request: InferenceRequest, payload: OpenAiResponse): Infer
     servedModel: payload.model ?? request.model,
     ...(toolCalls === undefined || toolCalls.length === 0 ? {} : { toolCalls }),
     usage: openAiUsage(payload.usage),
+  };
+};
+
+const openAiResponsesUsage = (usage: OpenAiResponsesUsage | undefined): InferenceUsage => {
+  const promptTokens = usage?.input_tokens ?? 0;
+  const completionTokens = usage?.output_tokens ?? 0;
+  const cached = usage?.input_tokens_details?.cached_tokens;
+  const reasoning = usage?.output_tokens_details?.reasoning_tokens;
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: usage?.total_tokens ?? promptTokens + completionTokens,
+    ...(typeof cached === "number" ? { cachedPromptTokens: cached } : {}),
+    ...(typeof reasoning === "number" ? { reasoningTokens: reasoning } : {}),
+  };
+};
+
+const responsesFinishReason = (
+  status: string | undefined,
+  incompleteReason: string | undefined,
+  hasToolCalls: boolean,
+): string => {
+  if (status === "incomplete") {
+    return incompleteReason === "content_filter" ? "content_filter" : "length";
+  }
+  return hasToolCalls ? "tool_calls" : "stop";
+};
+
+const openAiResponsesResult = (
+  request: InferenceRequest,
+  payload: OpenAiResponsesResponse,
+): InferenceResult => {
+  const output = payload.output ?? [];
+  const content = output
+    .flatMap((item) => {
+      const record = recordFromUnknown(item);
+      if (record?.["type"] !== "message" || !Array.isArray(record["content"])) {
+        return [];
+      }
+      return record["content"].flatMap((part) => {
+        const contentPart = recordFromUnknown(part);
+        const text = contentPart?.["text"];
+        const refusal = contentPart?.["refusal"];
+        if (contentPart?.["type"] === "output_text" && typeof text === "string") {
+          return [text];
+        }
+        return contentPart?.["type"] === "refusal" && typeof refusal === "string"
+          ? [refusal]
+          : [];
+      });
+    })
+    .join("");
+  const toolCalls = output.flatMap((item) => {
+    const record = recordFromUnknown(item);
+    const id = record?.["call_id"];
+    const name = record?.["name"];
+    const args = record?.["arguments"];
+    return record?.["type"] === "function_call" &&
+      typeof id === "string" &&
+      id !== "" &&
+      typeof name === "string" &&
+      name !== "" &&
+      typeof args === "string"
+      ? [{ id, type: "function" as const, function: { name, arguments: args } }]
+      : [];
+  });
+  const incompleteReason = payload.incomplete_details?.reason;
+  return {
+    content,
+    finishReason: responsesFinishReason(payload.status, incompleteReason, toolCalls.length > 0),
+    servedModel: payload.model ?? request.model,
+    ...(toolCalls.length === 0 ? {} : { toolCalls }),
+    usage: openAiResponsesUsage(payload.usage),
   };
 };
 
@@ -367,8 +523,12 @@ const anthropicResult = (
 
 // ---- HTTP plumbing -------------------------------------------------------
 
-const requestPath = (wireFormat: PassthroughWireFormat): string =>
-  wireFormat === "anthropic" ? "/v1/messages" : "/v1/chat/completions";
+const requestPath = (wireFormat: PassthroughWireFormat, model: string): string =>
+  wireFormat === "anthropic"
+    ? "/v1/messages"
+    : isGpt56ModelId(model)
+      ? "/v1/responses"
+      : "/v1/chat/completions";
 
 // Read the Redacted secret to a string at the network boundary only. The value
 // is placed on an outbound header and never logged or returned.
@@ -406,6 +566,7 @@ const safeSignal = (timeoutMs: number): AbortSignal | undefined => {
 
 const postToPartner = (
   config: PassthroughAdapterConfig,
+  model: string,
   body: unknown,
   stream: boolean,
 ): Effect.Effect<PartnerResponse, InferenceAdapterError> =>
@@ -420,7 +581,7 @@ const postToPartner = (
     try: () => {
       const fetcher = config.fetch ?? (globalThis.fetch as PassthroughFetch);
       const signal = safeSignal(config.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-      return fetcher(`${config.baseUrl}${requestPath(config.wireFormat)}`, {
+      return fetcher(`${config.baseUrl}${requestPath(config.wireFormat, model)}`, {
         body: JSON.stringify(body),
         headers: requestHeaders(config, stream),
         method: "POST",
@@ -492,9 +653,7 @@ const parseSseData = (line: string): Record<string, unknown> | undefined => {
   return parseJsonRecord(payload);
 };
 
-const firstStreamChoice = (
-  frame: Record<string, unknown>,
-): Record<string, unknown> | undefined => {
+const firstStreamChoice = (frame: Record<string, unknown>): Record<string, unknown> | undefined => {
   const choices = frame["choices"];
   if (!Array.isArray(choices) || choices.length === 0) {
     return undefined;
@@ -502,9 +661,7 @@ const firstStreamChoice = (
   return recordFromUnknown(choices[0]);
 };
 
-const streamDeltaOf = (
-  frame: Record<string, unknown>,
-): Record<string, unknown> | undefined =>
+const streamDeltaOf = (frame: Record<string, unknown>): Record<string, unknown> | undefined =>
   recordFromUnknown(firstStreamChoice(frame)?.["delta"]);
 
 const streamContentOf = (frame: Record<string, unknown>): string => {
@@ -516,8 +673,7 @@ const streamContentOf = (frame: Record<string, unknown>): string => {
 // has to infer it from prose.
 const streamReasoningOf = (frame: Record<string, unknown>): string | undefined => {
   const delta = streamDeltaOf(frame);
-  const direct =
-    delta?.["reasoning_content"] ?? delta?.["reasoning"] ?? delta?.["reasoning_delta"];
+  const direct = delta?.["reasoning_content"] ?? delta?.["reasoning"] ?? delta?.["reasoning_delta"];
   return typeof direct === "string" && direct !== "" ? direct : undefined;
 };
 
@@ -565,7 +721,9 @@ const streamUsageOf = (frame: Record<string, unknown>): InferenceUsage | undefin
   // the same wire field through different code and have drifted before.
   const completionDetails = recordFromUnknown(usage["completion_tokens_details"]);
   const reasoning =
-    completionDetails === undefined ? undefined : finiteNumber(completionDetails["reasoning_tokens"]);
+    completionDetails === undefined
+      ? undefined
+      : finiteNumber(completionDetails["reasoning_tokens"]);
   return {
     completionTokens,
     promptTokens,
@@ -591,6 +749,128 @@ const streamEventForFrame = (frame: Record<string, unknown>): InferenceStreamEve
   };
 };
 
+type ResponsesStreamState = {
+  readonly toolIndexes: Map<number, number>;
+  nextToolIndex: number;
+  sawToolCall: boolean;
+};
+
+const responsesUsageFromUnknown = (value: unknown): InferenceUsage | undefined => {
+  const usage = recordFromUnknown(value);
+  const promptTokens = finiteNumber(usage?.["input_tokens"]);
+  const completionTokens = finiteNumber(usage?.["output_tokens"]);
+  if (promptTokens === undefined || completionTokens === undefined) {
+    return undefined;
+  }
+  const inputDetails = recordFromUnknown(usage?.["input_tokens_details"]);
+  const outputDetails = recordFromUnknown(usage?.["output_tokens_details"]);
+  const cached = finiteNumber(inputDetails?.["cached_tokens"]);
+  const reasoning = finiteNumber(outputDetails?.["reasoning_tokens"]);
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: finiteNumber(usage?.["total_tokens"]) ?? promptTokens + completionTokens,
+    ...(cached === undefined ? {} : { cachedPromptTokens: cached }),
+    ...(reasoning === undefined ? {} : { reasoningTokens: reasoning }),
+  };
+};
+
+const responsesToolIndex = (
+  frame: Record<string, unknown>,
+  state: ResponsesStreamState,
+): number => {
+  const outputIndex = finiteNumber(frame["output_index"]);
+  if (outputIndex === undefined) {
+    return state.nextToolIndex;
+  }
+  const existing = state.toolIndexes.get(outputIndex);
+  if (existing !== undefined) {
+    return existing;
+  }
+  const index = state.nextToolIndex;
+  state.nextToolIndex += 1;
+  state.toolIndexes.set(outputIndex, index);
+  return index;
+};
+
+const responsesStreamEventForFrame = (
+  frame: Record<string, unknown>,
+  state: ResponsesStreamState,
+): InferenceStreamEvent => {
+  const type = frame["type"];
+  if (type === "response.output_text.delta") {
+    return {
+      contentDelta: typeof frame["delta"] === "string" ? frame["delta"] : "",
+    };
+  }
+  if (type === "response.refusal.delta") {
+    return {
+      contentDelta: typeof frame["delta"] === "string" ? frame["delta"] : "",
+    };
+  }
+  if (type === "response.reasoning_summary_text.delta") {
+    return {
+      contentDelta: "",
+      ...(typeof frame["delta"] === "string" ? { reasoningDelta: frame["delta"] } : {}),
+    };
+  }
+  if (type === "response.output_item.added") {
+    const item = recordFromUnknown(frame["item"]);
+    if (item?.["type"] === "function_call") {
+      state.sawToolCall = true;
+      const index = responsesToolIndex(frame, state);
+      const id = item["call_id"];
+      const name = item["name"];
+      const args = item["arguments"];
+      return {
+        contentDelta: "",
+        toolCallDeltas: [
+          {
+            index,
+            ...(typeof id === "string" && id !== "" ? { id } : {}),
+            type: "function",
+            function: {
+              ...(typeof name === "string" ? { name } : {}),
+              ...(typeof args === "string" && args !== "" ? { arguments: args } : {}),
+            },
+          },
+        ],
+      };
+    }
+  }
+  if (type === "response.function_call_arguments.delta") {
+    state.sawToolCall = true;
+    return {
+      contentDelta: "",
+      toolCallDeltas: [
+        {
+          index: responsesToolIndex(frame, state),
+          function: {
+            ...(typeof frame["delta"] === "string" ? { arguments: frame["delta"] } : {}),
+          },
+        },
+      ],
+    };
+  }
+  if (type === "response.completed" || type === "response.incomplete") {
+    const response = recordFromUnknown(frame["response"]);
+    const incomplete = recordFromUnknown(response?.["incomplete_details"]);
+    return {
+      contentDelta: "",
+      finishReason: responsesFinishReason(
+        typeof response?.["status"] === "string" ? response["status"] : undefined,
+        typeof incomplete?.["reason"] === "string" ? incomplete["reason"] : undefined,
+        state.sawToolCall,
+      ),
+      ...(responsesUsageFromUnknown(response?.["usage"]) === undefined
+        ? {}
+        : { usage: responsesUsageFromUnknown(response?.["usage"]) }),
+      ...(typeof response?.["model"] === "string" ? { servedModel: response["model"] } : {}),
+    };
+  }
+  return { contentDelta: "" };
+};
+
 // Build a true incremental SSE source over the partner's response body. Frames
 // are decoded and parsed AS BYTES ARRIVE — a line split across two reads is held
 // in `buffer` until it completes — and yielded one at a time, so the route pumps
@@ -601,10 +881,17 @@ const streamEventForFrame = (frame: Record<string, unknown>): InferenceStreamEve
 const makeSseSource = (
   body: ReadableStream<Uint8Array>,
   fallbackModel: string,
+  responsesApi: boolean,
+  adapterId: string,
 ): InferenceStreamSource => {
   let finishReason: string | undefined;
   let usage: InferenceUsage | undefined;
   let servedModel: string | undefined = fallbackModel;
+  const responsesState: ResponsesStreamState = {
+    nextToolIndex: 0,
+    sawToolCall: false,
+    toolIndexes: new Map(),
+  };
 
   const captureTerminal = (event: InferenceStreamEvent): void => {
     if (event.finishReason !== undefined) {
@@ -637,7 +924,16 @@ const makeSseSource = (
           buffer = buffer.slice(newlineIndex + 1);
           const frame = parseSseData(line);
           if (frame !== undefined) {
-            const event = streamEventForFrame(frame);
+            if (responsesApi && frame["type"] === "response.failed") {
+              throw new InferenceAdapterError({
+                adapterId,
+                reason: "partner response failed",
+              });
+            }
+            const event =
+              responsesApi && typeof frame["type"] === "string"
+                ? responsesStreamEventForFrame(frame, responsesState)
+                : streamEventForFrame(frame);
             captureTerminal(event);
             yield event;
           }
@@ -647,7 +943,16 @@ const makeSseSource = (
           // Flush a trailing partial line (some partners omit the final \n).
           const tail = parseSseData(buffer);
           if (tail !== undefined) {
-            const event = streamEventForFrame(tail);
+            if (responsesApi && tail["type"] === "response.failed") {
+              throw new InferenceAdapterError({
+                adapterId,
+                reason: "partner response failed",
+              });
+            }
+            const event =
+              responsesApi && typeof tail["type"] === "string"
+                ? responsesStreamEventForFrame(tail, responsesState)
+                : streamEventForFrame(tail);
             captureTerminal(event);
             yield event;
           }
@@ -705,10 +1010,17 @@ const toResult = (
   config: PassthroughAdapterConfig,
   request: InferenceRequest,
   payload: unknown,
-): InferenceResult =>
-  config.wireFormat === "anthropic"
-    ? anthropicResult(request, payload as AnthropicResponse)
+): InferenceResult => {
+  if (config.wireFormat === "anthropic") {
+    return anthropicResult(request, payload as AnthropicResponse);
+  }
+  if (!isGpt56ModelId(request.model)) {
+    return openAiResult(request, payload as OpenAiResponse);
+  }
+  return Array.isArray(recordFromUnknown(payload)?.["output"])
+    ? openAiResponsesResult(request, payload as OpenAiResponsesResponse)
     : openAiResult(request, payload as OpenAiResponse);
+};
 
 // Shared request → response path for both complete and (collected) stream.
 const runCompletion = (
@@ -716,7 +1028,7 @@ const runCompletion = (
   request: InferenceRequest,
 ): Effect.Effect<InferenceResult, InferenceAdapterError> =>
   Effect.gen(function* () {
-    const response = yield* postToPartner(config, buildBody(config, request), false);
+    const response = yield* postToPartner(config, request.model, buildBody(config, request), false);
 
     if (isRetryableStatus(response.status)) {
       return yield* fail(config.id, transportFailureReason(response.status));
@@ -734,6 +1046,13 @@ const runCompletion = (
       );
     }
 
+    if (
+      isGpt56ModelId(request.model) &&
+      recordFromUnknown(payload)?.["status"] === "failed"
+    ) {
+      return yield* fail(config.id, "partner response failed");
+    }
+
     return toResult(config, request, payload);
   });
 
@@ -748,6 +1067,7 @@ const runSseStream = (
     const streamedRequest: InferenceRequest = { ...request, stream: true };
     const response = yield* postToPartner(
       config,
+      request.model,
       buildBody(config, streamedRequest),
       true,
     );
@@ -774,7 +1094,7 @@ const runSseStream = (
       return yield* fail(config.id, "partner stream had no response body");
     }
 
-    return makeSseSource(body, request.model);
+    return makeSseSource(body, request.model, isGpt56ModelId(request.model), config.id);
   });
 
 // Build a passthrough adapter for one partner. Each registered partner gets one

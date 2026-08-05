@@ -327,8 +327,129 @@ describe("passthrough adapter — Anthropic wire format", () => {
 const lunaBody = (captured: Array<Captured>): Record<string, unknown> =>
   JSON.parse(String(captured[0]?.init.body)) as Record<string, unknown>;
 
-describe("passthrough adapter — OpenAI restricted reasoning models", () => {
-  test("sends max_completion_tokens and never max_tokens for gpt-5.6-luna", async () => {
+describe("passthrough adapter — OpenAI GPT-5.6 Responses API", () => {
+  test.each(["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"])(
+    "routes %s through Responses",
+    async (model) => {
+      const captured: Array<Captured> = [];
+      const adapter = makePassthroughAdapter(
+        openAiConfig(fetchReturning(200, openAiPayload, captured)),
+      );
+      await run(adapter.complete(request({ model })));
+      expect(captured[0]?.url).toBe("https://api.openai.com/v1/responses");
+    },
+  );
+
+  test.each(["none", "low", "medium", "high", "xhigh", "max"])(
+    "forwards reasoning effort %s in the Responses shape",
+    async (reasoningEffort) => {
+      const captured: Array<Captured> = [];
+      const adapter = makePassthroughAdapter(
+        openAiConfig(fetchReturning(200, openAiPayload, captured)),
+      );
+      await run(
+        adapter.complete(
+          request({
+            model: "gpt-5.6-sol",
+            passthroughParams: { reasoning_effort: reasoningEffort },
+          }),
+        ),
+      );
+      expect(lunaBody(captured)["reasoning"]).toEqual({ effort: reasoningEffort });
+    },
+  );
+
+  test("normalizes Responses text, tool calls, and usage into Chat semantics", async () => {
+    const adapter = makePassthroughAdapter(
+      openAiConfig(
+        fetchReturning(200, {
+          model: "gpt-5.6-sol",
+          output: [
+            {
+              type: "message",
+              content: [{ type: "output_text", text: "I will inspect it." }],
+            },
+            {
+              type: "function_call",
+              call_id: "call_1",
+              name: "read_file",
+              arguments: '{"path":"src/main.rs"}',
+            },
+          ],
+          status: "completed",
+          usage: {
+            input_tokens: 20,
+            output_tokens: 8,
+            total_tokens: 28,
+            input_tokens_details: { cached_tokens: 4 },
+            output_tokens_details: { reasoning_tokens: 3 },
+          },
+        }),
+      ),
+    );
+    const result = successValue(await run(adapter.complete(request({ model: "gpt-5.6-sol" }))));
+    expect(result.content).toBe("I will inspect it.");
+    expect(result.finishReason).toBe("tool_calls");
+    expect(result.toolCalls?.[0]).toMatchObject({
+      id: "call_1",
+      function: { name: "read_file", arguments: '{"path":"src/main.rs"}' },
+    });
+    expect(result.usage).toEqual({
+      cachedPromptTokens: 4,
+      completionTokens: 8,
+      promptTokens: 20,
+      reasoningTokens: 3,
+      totalTokens: 28,
+    });
+  });
+
+  test("preserves a non-streaming Responses refusal as visible content", async () => {
+    const adapter = makePassthroughAdapter(
+      openAiConfig(
+        fetchReturning(200, {
+          model: "gpt-5.6-sol",
+          output: [
+            {
+              type: "message",
+              content: [{ type: "refusal", refusal: "I cannot help with that." }],
+            },
+          ],
+          status: "completed",
+          usage: { input_tokens: 4, output_tokens: 6, total_tokens: 10 },
+        }),
+      ),
+    );
+
+    const result = successValue(await run(adapter.complete(request({ model: "gpt-5.6-sol" }))));
+    expect(result.content).toBe("I cannot help with that.");
+    expect(result.finishReason).toBe("stop");
+  });
+
+  test("rejects a failed non-streaming Responses result", async () => {
+    const adapter = makePassthroughAdapter(
+      openAiConfig(fetchReturning(200, { status: "failed", output: [] })),
+    );
+
+    const exit = await run(adapter.complete(request({ model: "gpt-5.6-sol" })));
+    expect(failureError(exit).reason).toBe("partner response failed");
+  });
+
+  test("maps an incomplete content-filtered Responses result", async () => {
+    const adapter = makePassthroughAdapter(
+      openAiConfig(
+        fetchReturning(200, {
+          incomplete_details: { reason: "content_filter" },
+          output: [],
+          status: "incomplete",
+        }),
+      ),
+    );
+
+    const result = successValue(await run(adapter.complete(request({ model: "gpt-5.6-sol" }))));
+    expect(result.finishReason).toBe("content_filter");
+  });
+
+  test("sends max_output_tokens and never Chat Completions token fields", async () => {
     const captured: Array<Captured> = [];
     const adapter = makePassthroughAdapter(
       openAiConfig(fetchReturning(200, openAiPayload, captured)),
@@ -348,7 +469,9 @@ describe("passthrough adapter — OpenAI restricted reasoning models", () => {
     // Upstream 400s on `max_tokens` for this family — it must be absent.
     expect(body["max_tokens"]).toBeUndefined();
     // The caller's output budget is carried over, not dropped.
-    expect(body["max_completion_tokens"]).toBe(512);
+    expect(body["max_completion_tokens"]).toBeUndefined();
+    expect(body["max_output_tokens"]).toBe(512);
+    expect(captured[0]?.url).toBe("https://api.openai.com/v1/responses");
   });
 
   test("falls back to the configured default output budget", async () => {
@@ -363,7 +486,7 @@ describe("passthrough adapter — OpenAI restricted reasoning models", () => {
 
     const body = lunaBody(captured);
     expect(body["max_tokens"]).toBeUndefined();
-    expect(body["max_completion_tokens"]).toBe(777);
+    expect(body["max_output_tokens"]).toBe(777);
   });
 
   test("an explicit max_completion_tokens wins over max_tokens", async () => {
@@ -381,7 +504,7 @@ describe("passthrough adapter — OpenAI restricted reasoning models", () => {
       ),
     );
 
-    expect(lunaBody(captured)["max_completion_tokens"]).toBe(64);
+    expect(lunaBody(captured)["max_output_tokens"]).toBe(64);
   });
 
   test("drops sampling params this family rejects with a hard 400", async () => {
@@ -433,11 +556,11 @@ describe("passthrough adapter — OpenAI restricted reasoning models", () => {
     );
 
     const body = lunaBody(captured);
-    expect(body["seed"]).toBe(42);
+    expect(body["seed"]).toBeUndefined();
     expect(body["tool_choice"]).toBe("auto");
   });
 
-  test("defaults reasoning_effort to 'none' when function tools are present", async () => {
+  test("supports function tools without forcing reasoning to none", async () => {
     const captured: Array<Captured> = [];
     const adapter = makePassthroughAdapter(
       openAiConfig(fetchReturning(200, openAiPayload, captured)),
@@ -454,9 +577,9 @@ describe("passthrough adapter — OpenAI restricted reasoning models", () => {
       ),
     );
 
-    // Upstream: "Function tools with reasoning_effort are not supported ...
-    // set reasoning_effort to 'none'."
-    expect(lunaBody(captured)["reasoning_effort"]).toBe("none");
+    const body = lunaBody(captured);
+    expect(body["reasoning"]).toBeUndefined();
+    expect(body["tools"]).toEqual([{ name: "f", type: "function" }]);
   });
 
   test("a caller-supplied reasoning_effort wins over the tool default", async () => {
@@ -477,7 +600,7 @@ describe("passthrough adapter — OpenAI restricted reasoning models", () => {
       ),
     );
 
-    expect(lunaBody(captured)["reasoning_effort"]).toBe("low");
+    expect(lunaBody(captured)["reasoning"]).toEqual({ effort: "low" });
   });
 
   test("omits reasoning_effort when no tools are sent", async () => {
@@ -488,7 +611,7 @@ describe("passthrough adapter — OpenAI restricted reasoning models", () => {
 
     await run(adapter.complete(request({ model: "gpt-5.6-luna" })));
 
-    expect(lunaBody(captured)["reasoning_effort"]).toBeUndefined();
+    expect(lunaBody(captured)["reasoning"]).toBeUndefined();
   });
 
   test("the restricted profile is an exact-id match, not a prefix rule", async () => {
@@ -530,7 +653,7 @@ describe("passthrough adapter — OpenAI restricted reasoning models", () => {
 
     const body = lunaBody(captured);
     expect(body["max_tokens"]).toBeUndefined();
-    expect(body["max_completion_tokens"]).toBe(32);
+    expect(body["max_output_tokens"]).toBe(32);
   });
 });
 
@@ -710,8 +833,8 @@ describe("passthrough adapter — streaming", () => {
 
     const chunks = successValue(await run(adapter.stream(request({ stream: true }))));
 
-    expect(chunks[0]?.toolCallDeltas?.map(delta => delta.index)).toEqual([0, 1]);
-    expect(chunks[0]?.toolCallDeltas?.map(delta => delta.function?.name)).toEqual([
+    expect(chunks[0]?.toolCallDeltas?.map((delta) => delta.index)).toEqual([0, 1]);
+    expect(chunks[0]?.toolCallDeltas?.map((delta) => delta.function?.name)).toEqual([
       "read_file",
       "list_directory",
     ]);
@@ -763,7 +886,7 @@ describe("passthrough adapter — streaming", () => {
 const chunkedSseResponse = (frames: ReadonlyArray<unknown>): Response => {
   const encoder = new TextEncoder();
   const lines = [
-    ...frames.map(frame => `data: ${JSON.stringify(frame)}\n\n`),
+    ...frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`),
     "data: [DONE]\n\n",
   ];
   let index = 0;
@@ -831,6 +954,100 @@ describe("passthrough adapter — incremental SSE pass-through", () => {
     expect(adapter.streamSse).toBeUndefined();
   });
 
+  test("normalizes Responses streaming text, reasoning, tools, and usage", async () => {
+    const adapter = makePassthroughAdapter(
+      openAiConfig(
+        fetchStreaming(() =>
+          chunkedSseResponse([
+            { type: "response.output_text.delta", delta: "Hello" },
+            { type: "response.reasoning_summary_text.delta", delta: "Checked the file." },
+            {
+              type: "response.output_item.added",
+              output_index: 1,
+              item: {
+                type: "function_call",
+                call_id: "call_1",
+                name: "read_file",
+                arguments: "",
+              },
+            },
+            {
+              type: "response.function_call_arguments.delta",
+              output_index: 1,
+              delta: '{"path":"src/main.rs"}',
+            },
+            {
+              type: "response.completed",
+              response: {
+                model: "gpt-5.6-sol",
+                status: "completed",
+                usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+              },
+            },
+          ]),
+        ),
+      ),
+    );
+    const drained = await drainSource(adapter, request({ model: "gpt-5.6-sol", stream: true }));
+    expect(drained.deltas).toEqual(["Hello"]);
+    expect(drained.reasoningDeltas).toEqual(["Checked the file."]);
+    expect(drained.toolCallDeltas).toEqual([
+      {
+        index: 0,
+        id: "call_1",
+        type: "function",
+        function: { name: "read_file" },
+      },
+      {
+        index: 0,
+        function: { arguments: '{"path":"src/main.rs"}' },
+      },
+    ]);
+    expect(drained.source.terminal()).toMatchObject({
+      finishReason: "tool_calls",
+      servedModel: "gpt-5.6-sol",
+      usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+    });
+  });
+
+  test("preserves Responses refusal deltas and rejects failed streams", async () => {
+    const refusalAdapter = makePassthroughAdapter(
+      openAiConfig(
+        fetchStreaming(() =>
+          chunkedSseResponse([
+            { type: "response.refusal.delta", delta: "I cannot help." },
+            {
+              type: "response.completed",
+              response: {
+                model: "gpt-5.6-sol",
+                status: "completed",
+                usage: { input_tokens: 2, output_tokens: 3, total_tokens: 5 },
+              },
+            },
+          ]),
+        ),
+      ),
+    );
+    expect(
+      (await drainSource(refusalAdapter, request({ model: "gpt-5.6-sol", stream: true })))
+        .deltas,
+    ).toEqual(["I cannot help."]);
+
+    const failedAdapter = makePassthroughAdapter(
+      openAiConfig(
+        fetchStreaming(() =>
+          chunkedSseResponse([{ type: "response.failed", response: { status: "failed" } }]),
+        ),
+      ),
+    );
+    await expect(
+      drainSource(failedAdapter, request({ model: "gpt-5.6-sol", stream: true })),
+    ).rejects.toMatchObject({
+      adapterId: "passthrough-openai",
+      reason: "partner response failed",
+    });
+  });
+
   test("yields each content delta as its own frame instead of one block", async () => {
     const captured: Array<Captured> = [];
     const adapter = makePassthroughAdapter(
@@ -855,10 +1072,7 @@ describe("passthrough adapter — incremental SSE pass-through", () => {
       ),
     );
 
-    const drained = await drainSource(
-      adapter,
-      request({ model: "gpt-5.6-luna", stream: true }),
-    );
+    const drained = await drainSource(adapter, request({ model: "gpt-5.6-luna", stream: true }));
 
     // THE POINT OF THIS CHANGE: two SEPARATE deltas, not one "Hello".
     expect(drained.deltas).toEqual(["Hel", "lo"]);
@@ -871,7 +1085,7 @@ describe("passthrough adapter — incremental SSE pass-through", () => {
     expect(headers.accept).toBe("text/event-stream");
 
     // Receipt-first: usage is opted into and surfaced from the terminal frame.
-    expect(body.stream_options).toEqual({ include_usage: true });
+    expect(body.stream_options).toBeUndefined();
     const terminal = drained.source.terminal();
     expect(terminal.finishReason).toBe("stop");
     expect(terminal.servedModel).toBe("gpt-5.6-luna");
@@ -966,9 +1180,7 @@ describe("passthrough adapter — incremental SSE pass-through", () => {
               choices: [
                 {
                   delta: {
-                    tool_calls: [
-                      { function: { arguments: 'th":"src/main.rs"}' }, index: 0 },
-                    ],
+                    tool_calls: [{ function: { arguments: 'th":"src/main.rs"}' }, index: 0 }],
                   },
                   index: 0,
                 },
@@ -994,7 +1206,7 @@ describe("passthrough adapter — incremental SSE pass-through", () => {
 
     // Three separate tool-call frames, arguments NOT pre-concatenated.
     expect(drained.toolCallDeltas).toHaveLength(3);
-    expect(drained.toolCallDeltas.map(delta => delta.function?.arguments)).toEqual([
+    expect(drained.toolCallDeltas.map((delta) => delta.function?.arguments)).toEqual([
       "",
       '{"pa',
       'th":"src/main.rs"}',
@@ -1006,7 +1218,7 @@ describe("passthrough adapter — incremental SSE pass-through", () => {
       type: "function",
     });
     // Every fragment stays on index 0 so an accumulating client rebuilds one call.
-    expect(drained.toolCallDeltas.every(delta => delta.index === 0)).toBe(true);
+    expect(drained.toolCallDeltas.every((delta) => delta.index === 0)).toBe(true);
     expect(drained.source.terminal().finishReason).toBe("tool_calls");
     expect(drained.source.terminal().usage?.totalTokens).toBe(159);
   });
@@ -1055,7 +1267,7 @@ describe("passthrough adapter — incremental SSE pass-through", () => {
     );
 
     const drained = await drainSource(adapter, request({ stream: true }));
-    expect(drained.toolCallDeltas.map(delta => delta.index)).toEqual([0, 1, 0]);
+    expect(drained.toolCallDeltas.map((delta) => delta.index)).toEqual([0, 1, 0]);
   });
 
   test("streams provider-labeled reasoning on its own channel", async () => {
@@ -1103,14 +1315,10 @@ describe("passthrough adapter — incremental SSE pass-through", () => {
                 start(controller) {
                   const encoder = new TextEncoder();
                   controller.enqueue(
-                    encoder.encode(
-                      'data: {"choices":[{"delta":{"content":"first"},"index":0}]}\n',
-                    ),
+                    encoder.encode('data: {"choices":[{"delta":{"content":"first"},"index":0}]}\n'),
                   );
                   controller.enqueue(
-                    encoder.encode(
-                      'data: {"choices":[{"delta":{"content":"last"},"index":0}]}',
-                    ),
+                    encoder.encode('data: {"choices":[{"delta":{"content":"last"},"index":0}]}'),
                   );
                   controller.close();
                 },
@@ -1180,7 +1388,7 @@ describe("passthrough adapter — incremental SSE pass-through", () => {
 
     const body = lunaBody(captured);
     expect(body["max_tokens"]).toBeUndefined();
-    expect(body["max_completion_tokens"]).toBe(512);
+    expect(body["max_output_tokens"]).toBe(512);
     expect(body["temperature"]).toBeUndefined();
   });
 });
@@ -1245,10 +1453,7 @@ describe("passthrough adapter reasoning-token attribution", () => {
       ),
     );
 
-    const drained = await drainSource(
-      adapter,
-      request({ model: "gpt-5.6-luna", stream: true }),
-    );
+    const drained = await drainSource(adapter, request({ model: "gpt-5.6-luna", stream: true }));
 
     expect(drained.source.terminal().usage?.reasoningTokens).toBe(92);
   });

@@ -702,6 +702,7 @@ import {
   makeHydraliskVllmPoolRuntime,
 } from './inference/hydralisk-adapter'
 import { parseInternalAccountRefs } from './inference/inference-internal-account'
+import { parseGpt56AllowedNostrPubkeys } from './inference/gpt56-access'
 import { isConfidentialComputeEnabled } from './inference/inference-privacy-entitlement'
 import {
   handleConfidentialComputeExecutionReceipt,
@@ -16516,6 +16517,9 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         // serves exactly what it advertises and quotes. INERT regardless — the
         // gateway is gated by INFERENCE_GATEWAY_ENABLED above.
         laneArming,
+        gpt56AllowedNostrPubkeys: parseGpt56AllowedNostrPubkeys(
+          env.INFERENCE_GPT56_ALLOWED_NPUBS,
+        ),
         // Abuse / fair-share / spend-cap gates (#5486): the route exposes
         // `checkFairShare` and `checkSpendCap` seams whose pure deciders live in
         // inference-abuse-controls.ts (`decideFairShare` / `decideSpendCap`).

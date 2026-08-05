@@ -241,6 +241,10 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // pure no-op (everything resolves exactly as before). The ops account ref is
   // NOT hardcoded in source; it lives in the worker `vars`.
   INFERENCE_INTERNAL_ACCOUNT_REFS?: string | undefined
+  // Exact Nostr identities allowed to use owner-funded hosted GPT-5.6 models.
+  // Accepts comma-separated canonical npubs or 64-hex public keys. Missing,
+  // empty, or malformed configuration fails closed for Luna, Terra, and Sol.
+  INFERENCE_GPT56_ALLOWED_NPUBS?: string | undefined
   // Per-internal-account daily served-token ceilings (#8600 FC-BRAIN). Format
   // `accountRef=tokens,accountRef=tokens`. A listed internal account keeps the
   // free-tier quota exemption only while its exact accrued tokens for the UTC
