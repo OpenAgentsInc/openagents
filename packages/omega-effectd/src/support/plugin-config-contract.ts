@@ -1,4 +1,4 @@
-import { Exit, Schema } from "@effect-native/core/effect"
+import { Exit, Schema } from "effect"
 
 import { decode } from "./chat-contract.ts"
 

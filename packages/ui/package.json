@@ -17,8 +17,8 @@
     "test": "vp test --run"
   },
   "dependencies": {
-    "@effect-native/core": "workspace:*",
-    "@fontsource-variable/inter": "5.2.8"
+    "@fontsource-variable/inter": "5.2.8",
+    "@openagentsinc/design-tokens": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",

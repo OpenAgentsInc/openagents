@@ -32,7 +32,6 @@
     "component:macos": "bash ./scripts/build-macos-component.sh"
   },
   "dependencies": {
-    "@effect-native/core": "workspace:*",
     "@noble/curves": "1.8.1",
     "@openagentsinc/agent-harness-contract": "0.2.1-rc.4",
     "@openagentsinc/agent-harness-environment": "0.1.0-rc.1",

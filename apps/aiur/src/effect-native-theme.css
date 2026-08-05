@@ -1,20 +1,15 @@
 /**
  * Static `--en-color-*` custom-property projection of the single canonical
- * Effect Native / khala Protoss-blue theme (openagents#8813 Lane A).
+ * khala Protoss-blue theme (openagents#8813 Lane A).
  *
- * Aiur is a plain TanStack Start + Tailwind app, not an Effect Native
- * DOM-renderer-mounted surface, so it cannot pick up the `--en-*` variables
- * the render-dom package lowers at runtime from
- * `@effect-native/tokens`'s `khalaTheme` (see
- * apps/openagents.com/packages/effect-native-render-dom/src/index.ts,
- * `renderThemeCss`). This file hand-mirrors that same `khalaTheme.color`
- * object as static CSS using the identical `--en-color-<key>` naming
- * convention, so Aiur reads the one canonical palette instead of the
- * legacy `--oa-color-khala-*` token set. Keep this
- * file in sync with
- * apps/openagents.com/packages/effect-native-tokens/src/index.ts
- * `khalaTheme.color` if that theme changes (see
- * ./effect-native-theme.test.ts).
+ * Aiur is a plain TanStack Start + Tailwind app that mounts no token-lowering
+ * runtime, so it cannot pick up `--en-*` variables from a host. This file
+ * hand-mirrors `@openagentsinc/design-tokens`'s `khalaTheme.color` object as
+ * static CSS using the same `--en-color-<key>` naming convention, so Aiur
+ * reads the one canonical palette instead of the legacy
+ * `--oa-color-khala-*` token set. Keep this file in sync with
+ * packages/design-tokens/src/index.ts `khalaTheme.color` if that theme
+ * changes (see ./effect-native-theme.test.ts).
  */
 :root {
   --en-color-background: #05070d;

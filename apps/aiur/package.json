@@ -15,7 +15,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@effect-native/tokens": "workspace:*",
+    "@openagentsinc/design-tokens": "workspace:*",
     "@openagentsinc/effect-start": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-client": "workspace:*",

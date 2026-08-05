@@ -1,4 +1,4 @@
-import type { Theme } from "@effect-native/core"
+import type { Theme } from "@openagentsinc/design-tokens"
 import type { CSSProperties } from "react"
 
 import { px } from "./internal.ts"

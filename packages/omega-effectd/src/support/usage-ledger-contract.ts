@@ -25,7 +25,7 @@
  * with a revoked refresh token for that account, and only an owner reconnect
  * (a fresh registry credential) clears it for a new session.
  */
-import { Exit, Schema } from "@effect-native/core/effect"
+import { Exit, Schema } from "effect"
 
 export const UsageLedgerSnapshotChannel = "openagents:usage-ledger:snapshot" as const
 export const UsageLedgerEventChannel = "openagents:usage-ledger:event" as const

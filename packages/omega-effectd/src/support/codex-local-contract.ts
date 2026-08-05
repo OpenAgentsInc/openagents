@@ -25,7 +25,7 @@
  * validity (receipted: `codex login status` reports "Logged in" for a
  * revoked-token home).
  */
-import { Exit, Schema } from "@effect-native/core/effect"
+import { Exit, Schema } from "effect"
 
 import { CODEX_CHILD_REASONING_EFFORT } from "./codex-child-contract.ts"
 import {

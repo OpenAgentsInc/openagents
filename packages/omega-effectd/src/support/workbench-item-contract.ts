@@ -15,7 +15,7 @@
  * (tool-cards.ts `isOpaqueBlobValue`); this contract never carries unbounded
  * payloads across the Electron boundary.
  */
-import { Exit, Schema } from "@effect-native/core/effect"
+import { Exit, Schema } from "effect"
 
 /** Which harness observed the item. */
 export const WorkbenchItemSourceSchema = Schema.Literals(["codex", "claude", "local"])

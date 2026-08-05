@@ -4,7 +4,7 @@
 /*
  * Protoss-blue theme (owner decision 2026-07-04: one UI ecosystem, no light
  * mode). Tailwind's @theme layer maps onto the shared `--en-color-*` custom
- * properties mirroring @effect-native/tokens' khalaTheme (openagents#8813
+ * properties mirroring @openagentsinc/design-tokens' khalaTheme (openagents#8813
  * Lane A) rather than hand-rolled hex values, so Aiur stays visually
  * consistent with the rest of the OpenAgents surface by construction.
  * Variable names mirror apps/openagents.com/apps/start/src/styles.css so the

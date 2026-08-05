@@ -1,14 +1,14 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { khalaTheme } from '@effect-native/tokens'
+import { khalaTheme } from '@openagentsinc/design-tokens'
 import { describe, expect, test } from 'vitest'
 
 const cssPath = fileURLToPath(new URL('./effect-native-theme.css', import.meta.url))
 
-// Aiur's static `effect-native-theme.css` hand-mirrors @effect-native/tokens'
-// khalaTheme.color (openagents#8813 Lane A) since Aiur is a plain Tailwind
-// app and never mounts the Effect Native DOM renderer that would otherwise
-// lower these `--en-color-*` vars at runtime. This test is the parity guard
+// Aiur's static `effect-native-theme.css` hand-mirrors
+// @openagentsinc/design-tokens' khalaTheme.color (openagents#8813 Lane A)
+// since Aiur is a plain Tailwind app and mounts no runtime that would
+// otherwise lower these `--en-color-*` vars. This test is the parity guard
 // against silent drift between the two.
 describe('effect-native-theme.css parity with khalaTheme.color', () => {
   const css = readFileSync(cssPath, 'utf8')

@@ -1,4 +1,4 @@
-import { Exit, Schema } from "@effect-native/core/effect"
+import { Exit, Schema } from "effect"
 import type { LiveAgentGraphPresentation } from "./agent-graph-presentation.ts"
 import { WorkbenchItemSchema } from "./workbench-item-contract.ts"
 

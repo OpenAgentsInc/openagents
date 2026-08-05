@@ -20,7 +20,7 @@
  *   bounded and path-redacted before it crosses this boundary.
  * - `openagents:claude-local:interrupt` (invoke): aborts a running turn.
  */
-import { Schema } from "@effect-native/core/effect"
+import { Schema } from "effect"
 
 import {
   DesktopThreadSchema,

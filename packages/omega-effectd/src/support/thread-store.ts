@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "n
 import path from "node:path"
 import { randomUUID } from "node:crypto"
 import { titleChatThreadFromMessage } from "@openagentsinc/khala-sync"
-import { Schema } from "@effect-native/core/effect"
+import { Schema } from "effect"
 
 import {
   decode,
