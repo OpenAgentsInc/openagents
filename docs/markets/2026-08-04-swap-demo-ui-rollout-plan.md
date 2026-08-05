@@ -107,8 +107,15 @@ The original thesis was one GPUI component set on both surfaces. A
 GPUI/WebGPU canvas is right for a demo and wrong for the page a user
 moves money on: no DOM means no screen reader, no text selection, no
 browser translation, no indexable content, and no rendering where WebGPU
-is unavailable. The repository's product-UI mandate is Effect Native.
-Both cannot hold.
+is unavailable. The repository's product-UI mandate was Effect Native at
+the time this was written. Both could not hold.
+
+**Amended 2026-08-05 (#9325).** The tension resolved by removing one side
+of it: the Effect Native mandate was withdrawn and the framework deleted.
+The web swap host is now **plain React on TanStack Start** — same DOM
+conclusion, reached for the same accessibility reason, without the second
+component vocabulary. The narrowing from components to the engine below is
+unaffected; it was always the load-bearing part.
 
 What must not give is implementing verify-before-fund twice. The profile
 and rail logic — script and tree parsing, output-key re-derivation,
@@ -131,7 +138,8 @@ SWAP-0 issue.
 
 Two implementations, one contract. `omega/crates/market_ui` is the GPUI
 set (Omega desktop, plus the `/demo` document); the web set is authored
-in Effect Native against the same exported session view-model. Neither
+in plain React against the same exported session view-model (amended
+2026-08-05, #9325 — it read "in Effect Native"). Neither
 does networking — both render typed NIP-MKT/MKT-SWP session state
 produced by the Immortal client crate. The GPUI crate must build for
 native and `wasm32` (chat_web proves the pattern).
@@ -213,19 +221,23 @@ Clone the diamond-hands crate pattern (its README is the runbook):
 - A "verify this yourself" panel shows raw signed events with copyable
   IDs — the demo doubles as protocol documentation.
 
-**Boundary with the Effect Native mandate:** the openagents.com product
-surfaces remain Effect Native/TypeScript; this wasm document is a bounded
+**Boundary with the product web surface** (amended 2026-08-05, #9325 — this
+read "Boundary with the Effect Native mandate"): the openagents.com product
+surfaces remain DOM/TypeScript — TanStack Start and plain React; this wasm document is a bounded
 demo artifact in the `/dh` lineage — a static, gated, self-contained
-page — not a change to the web app's architecture. The Effect-native
-product integration path stays #9309 (generated SDK), which later powers
+page — not a change to the web app's architecture. Whether a GPUI canvas
+may ever be an *ungated* public or money-moving surface is an OPEN owner
+decision recorded in `AGENTS.md`; `gpui_web` ships no accessibility adapter
+today, so the answer is not assumed here. The product integration path stays #9309 (generated SDK), which later powers
 any retained product-route market surface.
 
 ### 4.1 The web swap product (added 2026-08-04 for openagents#9314)
 
 Shipped, this crate stays what it is. The **product** surface is
-separate and is Effect Native, per §2.2:
+separate and is plain React on TanStack Start, per §2.2 (amended 2026-08-05,
+#9325 — it read "is Effect Native"):
 
-- Effect Native components render the exported session view-model.
+- Plain React components render the exported session view-model.
 - `@openagentsinc/nip-mkt` supplies base-envelope validation and NIP-59
   transport; the wasm engine binding supplies everything that can
   authorise funding.
@@ -282,7 +294,7 @@ separate and is Effect Native, per §2.2:
 | P1 | Live discovery: the example reads real `39600/39601` heads from `relay.openagents.com`; market-demo crate + staging serve behind the gate | P0; relay already serves MKT base |
 | P2 | Interactive demo session against the seeded no-spend provider on the public relay; Omega panel mounts the same views | P1; immortal #14 actor pointed at the public relay |
 | P3 | Omega real regtest swap with VerifyChecklist/ExitPackageBadge live; web demo gains the "watch a real regtest swap" replay | immortal #12, #18 |
-| **P4** | **Parity shell**: engine binding behind an Effect Schema contract, the Effect Native widget shell and typed state, asset/direction selection from live Offerings, amount entry, destination entry and validation — regtest only, no mainnet gate | P1; immortal #12 (landed); SWAP-0..2 |
+| **P4** | **Parity shell**: engine binding behind an Effect Schema contract, the React widget shell and typed state, asset/direction selection from live Offerings, amount entry, destination entry and validation — regtest only, no mainnet gate | P1; immortal #12 (landed); SWAP-0..2 |
 | **P5** | **Parity depth**: multi-provider quote compare with expiry and reservation class, verify-before-fund as a real checklist, key generation and the rescue ceremony, the Rescue page, History with import, and per-signer status rendering | P4; immortal #14; SWAP-3..6 |
 | **P6** | **Product surface**: nav, routes, build provenance, i18n scaffolding, and a coordinator-absent recovery proof (the §12.1 doomsday drill run as an acceptance test) before any mainnet flip | P5; immortal #18; SWAP-7..8 |
 

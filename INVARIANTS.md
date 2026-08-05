@@ -1151,7 +1151,7 @@ come from the Freerange teardown
   same `packages/khala-sync-client` store core. The host owns the database
   handle and installation identity, closes the authenticated Sync session
   before the store on process/OTA teardown, and exposes only bounded phase/
-  freshness state to Effect Native views, a local cache is never authenticated
+  freshness state to the host's views, a local cache is never authenticated
   or server-authoritative Sync.
 - Catch-up pages and advancing live deltas must cover every dense server-
   assigned scope version from the durable cursor through the advertised
@@ -1572,10 +1572,14 @@ come from the Freerange teardown
   color is expressed only through Khala semantic roles. Regression coverage
   lives in `workbench-item-contract.test.ts`, `codex-app-server-turn.test.ts`,
   `react-timeline.test.tsx`, and `tests/codex-history.test.ts`.
-- Desktop's application, component, state, projection, and typed-intent model
-  remain Effect Native. React 19 owns the renderer root, lifecycle, synchronous
+- **RETIRED 2026-08-05 (#9325 packet 5).** The rule below governed the Electron
+  desktop app, deleted 2026-08-04, and named a renderer package deleted in
+  packet 4. It binds nothing today and is kept only as the record of what that
+  app's UI contract was. Desktop's application, component, state, projection,
+  and typed-intent model
+  remained Effect Native. React 19 owned the renderer root, lifecycle, synchronous
   snapshot consumption, and declared ordinary-element lowerings through the
-  shared `@effect-native/render-dom/react` renderer. The bounded Desktop MVP
+  shared React projection of the Effect Native DOM renderer. The bounded Desktop MVP
   transition may also define ordinary renderer adapters only in the explicitly
   scanned `renderer/react-primitive-adapters.tsx`, `renderer/react-timeline.tsx`,
   `renderer/react-composer.tsx`, and `renderer/react-review.tsx` hosts. Pure,
@@ -1604,7 +1608,7 @@ come from the Freerange teardown
   `khalaTheme` token values themselves, so the rest of the app (buttons,
   settings, forms) keeps khalaTheme's default corners/tones untouched. Do not
   attempt to flatten `khalaTheme.radius` or hand-pick a custom `danger` hex to
-  achieve this — `packages/tokens` (effect-native) enforces that every color
+  achieve this — `packages/design-tokens` enforces that every color
   role derives from the palette and clears WCAG AA text contrast, and that the
   control lattice's radii stay members of the theme's radius scale, changing
   those at the token level was tried and reverted (2026-07-16) because it
@@ -1645,8 +1649,10 @@ come from the Freerange teardown
   remain left aligned beneath it. Each conversation title and its timestamp or
   status metadata share one non-wrapping row, with metadata right-justified,
   metadata may not consume a second line. Search never occupies a permanent field when
-  closed. Every glyph is named by the closed Effect Native `IconName` catalog
-  and lowered by a renderer-private adapter, enabled controls may never be
+  closed. Every glyph was named by the closed Effect Native `IconName` catalog
+  and lowered by a renderer-private adapter (that catalog went with the desktop
+  app and the vendored packages — see DESIGN.md's amended Iconography section
+  for the surviving rule), enabled controls may never be
   no-ops. Back/forward read one ephemeral bounded stack owned by the Effect
   shell SubscriptionRef. Admitted workspace, local-session, Codex-history,
   and coding-session destinations enter only after their authoritative open
@@ -1951,7 +1957,7 @@ come from the Freerange teardown
   The greenfield OpenAgents Mobile app now carries the same boundary: its Sync
   host exposes the confirmed thread-scope graph reader, the conversation
   adapter forwards `live_agent_graph` post-images into the thread snapshot, and
-  the Effect Native surface mounts one accessible agent stack above the
+  the mobile surface mounts one accessible agent stack above the
   transcript with attention auto-open, tap select/inspect of the exact typed
   agent ref, deterministic replacement fallback, a named 40-row remainder, and
   no runtime-control intent reachable from a graph row. Per-node token
@@ -2014,7 +2020,7 @@ come from the Freerange teardown
   is the only supported mobile app, and Omega, in its own repository, is the
   only supported desktop app. The Electron desktop app in this repository was
   deleted at owner direction on 2026-08-04 (#9325).
-- Shared Effect Native, Khala Sync, protocol, runtime, and QA packages remain
+- Shared Khala Sync, protocol, runtime, and QA packages remain
   only when a supported app/service consumes them. A removed client path may
   appear in historical docs or explicit negative sentinels, never in a live
   command, workspace entry, deploy gate, product claim, or runtime deep link.
@@ -2231,7 +2237,7 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   owner-local Pylon → accepted Agent Computer → owner-local journey proves the
   same refs, exact repository/diff digests, grants, cleanup, and rollback.
 - Mobile selects a visible conversation authority after native-session recovery
-  and before mounting one Effect Native Home program: confirmed personal Sync
+  and before mounting one Home program: confirmed personal Sync
   when live, otherwise the existing public-local conversation. Explicit auth
   transitions dispose and remount the program, catalogs never merge. Sync-mode
   create/append uses stable mobile refs, waits for the exact ref to become
@@ -2282,7 +2288,7 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   as hosted authority. The server rejects any owner-scope mismatch before a
   changelog write. Mobile continues to consume only server-confirmed rows. The
   deterministic mobile enforcement is currently absent: both oracles went with
-  their surface (see Retired Mobile Surfaces). The Effect Native
+  their surface (see Retired Mobile Surfaces). The mobile
   drawer groups live sessions under confirmed repositories, and one typed
   session intent reopens the exact thread and binds a closeable conversation
   subscription, new-chat and ordinary-thread navigation close that lease.
@@ -2409,7 +2415,7 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   clients withhold cached rows unless that thread scope is live.
 - Native OpenAgents user access/refresh tokens live only in platform credential
   custody: Expo SecureStore on mobile and the Electron main-process OS
-  credential boundary on Desktop. Effect Native state receives only typed
+  credential boundary on Desktop. App state receives only typed
   session phases, stored credentials are unverified until the server accepts
   them, and malformed or retired-epoch records are purged fail-closed.
 - Desktop native-session custody uses Electron `safeStorage` in main plus one
@@ -2434,7 +2440,8 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   `openagents_desktop.session.loopback_pkce_policy.v1` was retired in the same
   change. A future native loopback client needs a new owner decision, a new
   invariant, and its own enforcement.
-- Desktop Effect Native Settings receives only the explicit Runtime Gateway
+- **RETIRED 2026-08-05 (#9325 packet 5)** with the Electron app deleted
+  2026-08-04. Desktop Effect Native Settings received only the explicit Runtime Gateway
   session phase (`signed_out`, `unverified`, `session_ready`, `denied`, or
   `unavailable`). Its typed sign-in/sign-out intents send no arguments, disable
   while the host action is in flight, and never render callback, owner, or

@@ -6,11 +6,13 @@ luminous blue energy, precise high-craft, technical typography. This is the
 the Khala API surface, and (over time) the in-app product chrome. New surfaces
 inherit this. They do not invent a new palette.
 
-The canonical token source is `@effect-native/tokens`. OpenAgents surfaces use
-its `khalaTheme` projection. This file documents the Protoss *brand* layer that
-sits on top of those semantic roles: the glow palette, the energy motif, and
-how to apply them. Renderer-specific CSS variables are projections of that
-theme, not a second token authority.
+The canonical token source is `@openagentsinc/design-tokens` (it was
+`@effect-native/tokens` until Effect Native was removed on 2026-08-05, #9325;
+the token vocabulary itself was lifted across verbatim, so the values did not
+change). OpenAgents surfaces use its `khalaTheme` projection. This file
+documents the Protoss *brand* layer that sits on top of those semantic roles:
+the glow palette, the energy motif, and how to apply them. Surface-specific
+CSS variables are projections of that theme, not a second token authority.
 
 ## Theme
 
@@ -91,13 +93,19 @@ canvas behind it share one palette.
 
 ## Iconography
 
-- **Only use the closed `IconName` catalog exposed by `@effect-native/core`.**
-  Product surfaces render those names through their Effect Native renderer.
-  Do not introduce Lucide, emoji, ASCII glyphs, icon fonts, or text stand-ins
-  for icon controls.
-- If an icon is missing, add its name to the Effect Native catalog and its asset
-  to each supported renderer in the same change. App-local one-off icon assets
-  are a design-system violation.
+- **Amended 2026-08-05 (#9325).** This section used to require the closed
+  `IconName` catalog exposed by `@effect-native/core`, rendered through an
+  Effect Native renderer. That catalog was deleted with the framework, and the
+  rule it stated had already been overtaken: `lucide-react` is what the web
+  app and `packages/ui` actually use, across 28 modules, and the old text
+  named Lucide specifically as forbidden. The honest current rule:
+- **Use one icon set per surface, imported from a package, never inlined
+  per-app.** On web and in `packages/ui` that set is `lucide-react`. Do not
+  mix a second icon library into a surface, and do not substitute emoji,
+  ASCII glyphs, icon fonts, or text stand-ins for icon controls.
+- App-local one-off icon assets remain a design-system violation. If a needed
+  glyph is missing from the surface's set, add it to the shared component in
+  `packages/ui` rather than to a route.
 - Icon-only controls keep accessible labels through `aria-label`, `title`, or
   visually hidden text. The visible mark still comes from the shared catalog.
 

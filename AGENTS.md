@@ -958,8 +958,10 @@ and deterministic Effect tests. Do not skip it merely because
   The canonical order and issue set live in `docs/sol/MASTER_ROADMAP.md`.
 - **Greenfield app boundary (owner decision, 2026-07-09):** mobile and desktop
   are new applications, not rename-in-place conversions. Build OpenAgents
-  mobile at `apps/openagents-mobile` with Effect Native on a React Native/Expo
-  host, its product name is `OpenAgents`, its iOS bundle identifier and Android
+  mobile at `apps/openagents-mobile` in plain React Native on an Expo host
+  (amended 2026-08-05, #9325: this clause said "with Effect Native" until the
+  framework was removed; the app itself has been plain React Native since
+  `017ae3dedb`, 2026-07-27), its product name is `OpenAgents`, its iOS bundle identifier and Android
   application ID are exactly `com.openagents.app`, and its checked-in icon is
   the canonical `apps/openagents-mobile/assets/images/icon.png` (SHA-256
   `0a1865ac6d1efc792d365d9a37af9e6ffa3270fa7c8731f36129f35371bfc7ce`). The
@@ -989,8 +991,11 @@ and deterministic Effect tests. Do not skip it merely because
   `git show c7044f5a2870110b331c5a7288caceb85488290a:<path>`, QA-owned fixture
   contracts now live under `packages/khala-qa-harness/src/legacy-contracts`,
   while harness-neutral chat events use `packages/agent-runtime-schema`.
-  `packages/autopilot-ui`
-  stays: the live `apps/openagents.com/apps/web` app imports it. The FleetRun
+  `packages/autopilot-ui` and its only consumer, the Foldkit
+  `apps/openagents.com/apps/web` app, are both **gone** — the app was deleted
+  in `67adbe523c` (2026-07-14) and neither path exists in the tree; this
+  clause said the opposite until it was corrected on 2026-08-05 (#9325).
+  Shared React components live in `packages/ui`. The FleetRun
   authority's neutral canonical path is `/api/fleet-runs`,
   `/api/sarah/fleet-runs` remains a served compatibility alias for shipped
   desktop/mobile binaries (do not 410 it).
@@ -999,27 +1004,63 @@ and deterministic Effect tests. Do not skip it merely because
   not add runtime-specific APIs or surfaces outside the Node 24 host contract.
   The `docs/sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md`
   conversion is complete, use pnpm and Vite Plus for supported commands.
-  **UI layer (owner decision, 2026-07-08 — supersedes the 2026-07-04
-  React+Tailwind clause): the entire repo converts to Effect Native, ASAP**
-  — one typed Effect-Schema component set with typed intents, an Effect v4
-  runtime, and thin swappable renderers, per
-  `docs/sol/MASTER_ROADMAP.md` and the `docs/effect-native/` design docs, the
-  framework is public at
-  `OpenAgentsInc/effect-native` (workspace sibling `~/work/effect-native`).
-  New UI anywhere authors the Effect Native component set wherever a
-  renderer exists for that surface, React/TanStack Start and React Native
-  are renderer adapters and serving hosts only — never the architecture.
-  Effect remains the services/logic substrate everywhere. Existing Foldkit
-  surfaces in `apps/openagents.com/apps/web` are legacy, retained routes are
-  converted under #8634/#8635 and all other public pages retired, except for
-  the owner-directed 2026-07-18 restoration of the read-only
-  `/trace/{uuid}` ATIF evidence viewer in `apps/start`. The Effect Native on
-  Electron desktop target (#8574) ended with the app deletion on 2026-08-04
-  (#9325), as did the earlier React+Tailwind and Electrobun destination shells.
-  Retained web conversion PRs delete the legacy surface they replace.
-  Greenfield mobile PRs keep parity/QAM gates green while extracting shared
-  contracts, component gaps go upstream through the
-  effect-native GAPS register (EN-2 #8572), never local one-off primitives.
+  **UI layer (owner decision, 2026-08-05 — supersedes and WITHDRAWS the
+  2026-07-08 "the entire repo converts to Effect Native, ASAP" mandate):
+  there is no single component framework. Each surface uses the stack that
+  fits it.**
+  - **Services and logic, everywhere: plain Effect** (`effect` v4 + Effect
+    Schema). This is the one thing that did not change, and it is not the
+    thing that was removed — it is the substrate under the Worker, Pylon,
+    the Cloud contracts, and every web surface.
+  - **Web document, SEO, and form surfaces: TanStack Start + plain React**,
+    in `apps/openagents.com/apps/start`. That is the whole public web app.
+  - **Omega-adjacent documents and panels: GPUI** — omega-pinned Rust crates
+    built to wasm and served as static documents behind an explicit gate.
+    Today that is `/demo` (`OPENAGENTS_MARKET_DEMO_ENABLED`, on in
+    production as a labeled demo) and `/dh`
+    (`OPENAGENTS_DIAMOND_HANDS_ENABLED`, stood down per
+    `docs/hardening/2026-08-04-gpui-on-web-addendum.md` §13), plus omega's
+    own panels in the omega repo.
+  - **Mobile: plain React Native** on Expo in `apps/openagents-mobile`, per
+    the owner-directed rebuild in `017ae3dedb` (2026-07-27).
+  - Tokens are shared across surfaces through
+    `@openagentsinc/design-tokens`; shared React components through
+    `packages/ui`.
+
+  Effect Native — the typed component set with swappable renderers — was
+  removed from this repo on 2026-08-05 (#9325). The seven vendored
+  `@effect-native/*` packages, the vendor pin, its drift guard, and the
+  freshness script are deleted, and no surface imports the framework. Do not
+  reintroduce an `@effect-native/*` import, do not re-vendor it, and do not
+  read `docs/effect-native/` as current policy — those documents are design
+  history, and say so in their own headers. The public framework repo
+  `OpenAgentsInc/effect-native` is an owner disposition question, not a code
+  one. The Electron desktop target (#8574) ended with that app's deletion on
+  2026-08-04, as did the earlier React+Tailwind and Electrobun destination
+  shells; the Foldkit `apps/openagents.com/apps/web` app was deleted in
+  `67adbe523c` (2026-07-14), with the read-only `/trace/{uuid}` ATIF
+  evidence viewer restored into `apps/start` by owner direction 2026-07-18.
+  Component gaps are now solved in `packages/ui` or in the app that needs
+  them — there is no upstream GAPS register to file against, and the
+  EN-2 (#8572) demand loop is closed.
+
+  **OPEN — an owner decision that has NOT been made. Do not resolve it by
+  drift, and do not write specs or docs that assume it was answered.**
+  Whether GPUI may be used for **ungated public** web surfaces, or for
+  **money-moving** product surfaces. Today it is not: every GPUI web surface
+  in this repo is gated and labeled a demo, and the SWAP web product is DOM
+  (plain React on TanStack Start). The question is open rather than settled
+  for a concrete, measured reason — `omega/crates/gpui_web` implements
+  neither `a11y_init` nor `a11y_tree_update`, so **it ships no accessibility
+  adapter at all**: the page is an opaque `<canvas>`, and the accessibility
+  tree GPUI rebuilds every frame is discarded. No web AccessKit adapter
+  exists anywhere to fix it, in this repo or upstream. The evidence is
+  measured in `docs/architecture/2026-08-04-effect-native-removal-audit.md`
+  §5.2 and §6, alongside the other unfixed gaps (no text selection or
+  Ctrl-F, no indexing, ~70% browser reach behind a WebGPU requirement,
+  US-only keyboard mapping, broken CJK IME positioning, no touch support,
+  4-5 MB gzipped first load). Until the owner records a decision, do not
+  ship an ungated public or money-moving surface as a GPUI canvas.
 - Never stash, reset, checkout, restore, or otherwise move another agent's
   uncommitted work out of the way. If a checkout is dirty with concurrent work
   and you need a clean tree for tests, commits, or pushes, create a fresh
@@ -1033,8 +1074,10 @@ and deterministic Effect tests. Do not skip it merely because
   `crates/oa-node`, `crates/oa-workroomd`, historical
   `crates/oa-cloud-run-bridge`). These daemons are systems infrastructure
   (Firecracker/vsock microVMs, GCE capacity, managed-node lifecycle), not UI
-  or Worker logic — the Effect Native conversion mandate in the Sol master
-  roadmap governs UI surfaces and does not convert them. TypeScript callers
+  or Worker logic. The Effect Native conversion mandate that this clause once
+  had to carve them out of was withdrawn on 2026-08-05 (#9325), so the
+  carve-out is now moot — the crates stay Rust because they are systems
+  infrastructure, not because a UI mandate spared them. TypeScript callers
   never link the crates directly, they use the Effect Schema mirrors in
   `packages/cloud-contract` and the documented HTTP contracts. Product, UI,
   Worker, and Pylon logic stays on Effect/TypeScript and moves to the selected
@@ -1054,8 +1097,15 @@ and deterministic Effect tests. Do not skip it merely because
   no-Expo mandate for the framework, amended 2026-07-09):** the mobile
   destination is a new **OpenAgents** app at `apps/openagents-mobile`, built
   from scratch as one Expo React Native codebase for iOS + Android (no separate
-  Swift and Kotlin apps), authored in Effect Native with
-  React Native as renderer/host machinery and styling as typed style objects on the shared @effect-native/tokens vocabulary (NativeWind/Tailwind class strings REJECTED per docs/effect-native/2026-07-08-styling-tailwind-stylex-effect-native.md, owner-confirmed 2026-07-09), TanStack DB +
+  Swift and Kotlin apps), authored in **plain React Native** with typed style
+  objects on the shared `@openagentsinc/design-tokens` vocabulary. (Amended
+  2026-08-05, #9325: this clause read "authored in Effect Native with React
+  Native as renderer/host machinery" and named `@effect-native/tokens`, both
+  of which stopped being true at `017ae3dedb`, 2026-07-27, when the owner
+  directed the plain-RN rebuild. NativeWind/Tailwind class strings remain
+  REJECTED per `docs/effect-native/2026-07-08-styling-tailwind-stylex-effect-native.md`,
+  owner-confirmed 2026-07-09 — that part of the decision survives the
+  framework it was written about.) TanStack DB +
   `khala-sync-db-collection` as the data layer, and expo-modules ports of the
   native Swift pieces (voice/STT, Apple FM bridge). See
   `docs/fable/2026-07-04-tanstack-start-sites-and-web-app-evaluation.md`

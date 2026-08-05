@@ -1,5 +1,19 @@
 # Effect Native — The UI Layer: One Typed Component Set Across Web, Mobile, and Native Renderers
 
+> **HISTORICAL — Effect Native was removed from this repo on 2026-08-05
+> (#9325).** This document is design history, not current policy. The seven
+> vendored `@effect-native/*` packages, the vendor pin, its drift guard, and
+> the freshness script are deleted, and no surface in this repo imports the
+> framework. The current UI policy is in `AGENTS.md` (plain Effect for
+> services/logic; TanStack Start + plain React for web document/SEO/form
+> surfaces; GPUI for gated omega-adjacent documents and panels; plain React
+> Native for mobile). The evidence behind the removal is
+> `docs/architecture/2026-08-04-effect-native-removal-audit.md`. Nothing here
+> is deleted — the reasoning is worth keeping, and some of it (the styling
+> comparison's rejection of Tailwind class strings on mobile, the three-effect
+> split, the SwiftUI renderer findings) outlived the framework it was written
+> about.
+
 Date: 2026-07-08
 Status: **OWNER DECISION (2026-07-08) — pivot now.**
 

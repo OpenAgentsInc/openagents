@@ -367,8 +367,13 @@ Closed not-planned unless an owner decision explicitly reopens them:
 - managed or owner-managed workroom expansion beyond #9023, portable host
   movement/failback, autonomous provider selection, concurrent Full Auto
   fleets, voice/audio, and R7 dogfood outside their exact admitted packets,
-- a parallel app-local React Native/SwiftUI/shadcn/Zod/oRPC/TanStack
-  application architecture outside Effect Native host/renderer boundaries.
+- a parallel app-local React Native/SwiftUI/shadcn/Zod/oRPC application
+  architecture that duplicates an existing surface's stack. (Amended
+  2026-08-05, #9325: this read "outside Effect Native host/renderer
+  boundaries" and named TanStack as part of the parallel architecture.
+  TanStack Start + plain React *is* the web architecture now, and Effect
+  Native no longer exists to have boundaries. The rule that survives is the
+  one it was protecting: one stack per surface, not two.)
 
 Security, privacy, data-loss, accessibility, production-outage, active-cost
 removal, promise/API integrity, and supported compatibility repairs remain
@@ -401,7 +406,7 @@ reopened by MVP acceptance and cannot dispatch work without new owner authority.
 | R2 — Khala Sync continuity     | Canonical projections/outcomes, monotonic cursor/version, tombstones, bounded caches, idempotency, conflict/refetch                                                                                        | Cross-device change plus restart reconstructs matching refs/versions without duplicates or invented completion                                                                                                                                                                                                                                                               |
 | R3 — Fleet, targets, workrooms | Named worker/account/target, workroom lifecycle, one claim registry, approvals/controls, explicit quota/policy/isolation/fallback, usage and receipts                                                      | One real Codex+Claude fleet is controlled from both clients, owner-local, owner-managed remote, and managed targets use one registry, every command has one durable outcome with no silent provider/target/isolation substitution                                                                                                                                            |
 | R4 — interruption and movement | Offline queue, lost ACK, replay/order faults, restart/revocation, host-independent identity, stable agent graph/cursors, generation-fenced attachment, secret-free checkpoint, detach/attach/move/failback | Fault injection and real movement produce no lost accepted intent, double execution, two live generations, orphaned child, topology corruption, leaked secret, false success, or indefinite spinner, stale clients/hosts converge or fail closed                                                                                                                             |
-| R5 — Desktop workbench         | D0–D6: sessions/topology, composer, projects/files/editor/Git/PTY, commands, providers/models/MCP/permissions, settings/diagnostics, Fleet, lifecycle/distribution                                         | Everyday OpenCode-parity workflow completes in hardened Effect Native/Electron and survives restart/reconnect                                                                                                                                                                                                                                                                |
+| R5 — Desktop workbench         | D0–D6: sessions/topology, composer, projects/files/editor/Git/PTY, commands, providers/models/MCP/permissions, settings/diagnostics, Fleet, lifecycle/distribution                                         | Everyday OpenCode-parity workflow completes and survives restart/reconnect. (Exit criterion amended 2026-08-05, #9325: it named "hardened Effect Native/Electron", a host that was deleted 2026-08-04 and a framework removed 2026-08-05. Omega is the desktop destination.)                                                                                                                                                                                                                                                                |
 | R6 — mobile any-host coding    | Directory/topology, repositories/threads, rich turns, targets, compact files/changes/terminal/preview/artifacts, writeback, Fleet controls, push/deep links, stop/checkpoint/move/resume, text and voice   | Physical iOS plus Android emulator—nothing gates on physical Android—access every authorized enrolled-host session, inspect causal child activity and its transcript, use text or voice to follow up/interrupt and request a move, inspect/change/review/run/preview/write back, and supervise R3 without raw filesystem, shell, vendor, credential, or voice-only authority |
 | R7 — release and dogfood       | Signed/recoverable Desktop, iOS/Android artifacts, schema/migration/rollback, diagnostics, Sync/graph/attachment/broker/command/reconnect telemetry                                                        | Sustained cross-host/Desktop/mobile dogfood exercises voice, secret revocation, update/restart/offline/lost-ACK, move/failback, and reclaim without fork, duplication, leak, orphan, data loss, or false authority                                                                                                                                                           |
 
@@ -748,7 +753,7 @@ residual could-not-prove list and owner, and the next dependency-ready issue.
 Reconcile this master and live issue state/comments after material landings,
 owner priority changes, issue disposition, or challenge decisions. Update
 execution, cutover, and operating docs on critical-path change and at least
-weekly during the P0 burn, and update subsystem/authority/Effect Native
+weekly during the P0 burn, and update subsystem/authority/UI-layer
 contracts on boundary change and at least monthly while cited. Dated analyses and
 receipts remain pinned evidence, do not silently freshen them into current
 queues. Remove superseded current-state prose instead of stacking amendments.
