@@ -417,6 +417,20 @@ private key. `effect_bindings` contains every precomputed Section 13 effect ID
 and its role/leg tuple. `exit_package_commitments` binds participant role, leg,
 claim or refund path, package mode, and SHA-256 digest.
 
+For a submarine swap, the requester MAY leave `funding_transaction`,
+`funding_transaction_sha256`, and `output_index` absent from the Quote’s
+requester-funded `source` Bitcoin verifier because it selects the funding
+inputs and change only after accepting the Quote. The bilateral Swap Contract
+MUST add exactly those three members to that same verifier.
+`funding_transaction` MUST be lowercase raw transaction hex;
+`funding_transaction_sha256` MUST equal SHA-256 of its decoded bytes; and
+`output_index` MUST select an output whose value and scriptPubKey exactly equal
+the unchanged quoted `amount` and `script_pubkey`. The Swap Contract MUST
+replace only that source leg’s `verifier_digest` with SHA-256 of the RFC 8785
+serialization of the resolved verifier. Every other verifier byte, leg byte,
+and Quote term remains unchanged. This resolution is invalid for reverse or
+chain swaps, non-source legs, and provider-funded legs.
+
 The required leg and exit signer map is:
 
 | Swap type and leg           | Funding actor | Required requester commitment                                                                  | Required provider commitment                                                                  |
