@@ -75,7 +75,7 @@ export const marketSwapWidgetContractRegistry: BehaviorContractRegistryDocument 
         },
         {
           description:
-            "The mounted /swap surface lowers the primary action as a typed Effect Native Button from the same derivation: disabled, busy, and labelled from a typed key while the engine loads.",
+            "The mounted /swap surface renders the primary action as one button from the same derivation: disabled, busy, and labelled from a typed key while the engine loads.",
           id: "swap_widget.primary_action.mounted_surface",
           kind: "bun-test",
           mode: "dom",

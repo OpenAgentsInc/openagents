@@ -1,4 +1,4 @@
-import { khalaTheme } from "@effect-native/tokens";
+import { khalaTheme } from "@openagentsinc/design-tokens";
 import {
   ContextMeter,
   desktopAgentGroupFixtures,

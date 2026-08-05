@@ -1,17 +1,11 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
-import { LandingEnPage } from './-landing-en-page'
-
+// Retired with the Effect Native framework removal (#9325). `/landing-en` was
+// an unlinked landing re-authoring whose purpose was the framework itself; its
+// copy never cleared owner sign-off (#8565). The live landing is `/` (and
+// `/splash`).
 export const Route = createFileRoute('/landing-en')({
-  component: LandingEnPage,
-  head: () => ({
-    meta: [
-      { title: 'OpenAgents — Effect Native landing (WEB-1-EN)' },
-      {
-        name: 'description',
-        content:
-          'The OpenAgents landing re-authored as one typed Effect Native view tree from the standard marketing catalog. Copy pending owner sign-off (#8565).',
-      },
-    ],
-  }),
+  beforeLoad: () => {
+    throw redirect({ to: '/splash' })
+  },
 })

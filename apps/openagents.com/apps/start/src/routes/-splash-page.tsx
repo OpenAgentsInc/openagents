@@ -6,8 +6,8 @@ import {
   OMEGA_REPOSITORY_URL,
 } from '@/lib/public-site'
 import { trackNamedAnalyticsEvent } from '@/lib/web-analytics'
-import { makeKhalaTextSequenceFrames } from '@effect-native/khala-ui'
-import { khalaTheme } from '@effect-native/tokens'
+import { makeKhalaTextSequenceFrames } from '@/lib/khala/text'
+import { khalaTheme } from '@openagentsinc/design-tokens'
 import {
   type DesktopActivityStatus,
   type DesktopAgentActivity,

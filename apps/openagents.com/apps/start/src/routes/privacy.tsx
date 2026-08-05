@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { PrivacyEffectNativePage } from './-privacy-effect-native-page'
+import { PrivacyPage } from './-privacy-page'
 
 export const Route = createFileRoute('/privacy')({
-  component: PrivacyEffectNativePage,
+  component: PrivacyPage,
   head: () => ({
     meta: [
       { title: 'Privacy Policy - OpenAgents' },

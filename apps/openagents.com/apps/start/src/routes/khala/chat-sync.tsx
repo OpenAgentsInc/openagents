@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { LogOut, MonitorSmartphone, Plus, Search, SendHorizontal } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 
-import { khalaTheme } from '@effect-native/tokens'
+import { khalaTheme } from '@openagentsinc/design-tokens'
 import {
   decodeChatMessageEntity,
   decodeChatThreadEntity,

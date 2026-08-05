@@ -1,4 +1,4 @@
-import { Effect, Exit, Scope } from "@effect-native/core/effect";
+import { Effect, Exit, Scope } from "effect";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {

@@ -59,10 +59,6 @@
     "apps/openagents.com/packages/effect-native-gallery/src/index.ts#serializeStorybook",
     "apps/openagents.com/packages/effect-native-gallery/src/index.ts#storyCoverage",
     "apps/openagents.com/packages/effect-native-gallery/src/khala-ui-contract.ts#missingKhalaUiCapabilityDispositions",
-    "apps/openagents.com/packages/effect-native-khala-ui/src/choreography.ts#composeKhalaChoreographyPlans",
-    "apps/openagents.com/packages/effect-native-khala-ui/src/motion.ts#khalaEaseAmong",
-    "apps/openagents.com/packages/effect-native-khala-ui/src/motion.ts#khalaEaseSteps",
-    "apps/openagents.com/packages/effect-native-khala-ui/src/text.ts#khalaTextDurationMillis",
     "apps/openagents.com/packages/effect-native-render-canvas/src/headless.ts#makeHeadlessCanvasBackend",
     "apps/openagents.com/packages/effect-native-render-canvas/src/scene.ts#decodeScene",
     "apps/openagents.com/packages/effect-native-render-canvas/src/scene.ts#encodeScene",
@@ -1768,6 +1764,10 @@
     {
       "ref": "apps/openagents.com/packages/effect-native-render-dom/src/react.ts#makeReactDomRenderer",
       "reason": "Vendored @effect-native/render-dom React projection boundary. apps/openagents.com/scripts/check-effect-native-vendor.test.ts asserts this exact symbol is present in the pinned snapshot, and the vendor manifest pins OpenAgentsInc/effect-native@467bde07; the deleted Electron renderer was its only in-repo mount site."
+    },
+    {
+      "ref": "apps/openagents.com/packages/effect-native-render-dom/src/react.ts#EffectNativeReactDomStyleSheet",
+      "reason": "Vendored @effect-native/render-dom snapshot pinned by apps/openagents.com/packages/effect-native-vendor.json. Its last in-repo caller was the /swap widget, converted to plain React in openagents#9325 packet 3. The whole vendored tree is deleted in packet 4 of the same issue, which removes this entry with it; editing the vendored source instead would break the commit pin the vendor guard asserts."
     },
     {
       "ref": "packages/agent-experience-memory/src/graph-memory-store.ts#GraphMemoryStoreInterface.applyDeletePlan",

@@ -1,12 +1,13 @@
 import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * #8634 / #8635 scope 5 (live cutover): serve the retained /forum* surface
- * from the Cloud Run monolith as the Effect Native conversion, replacing the
- * legacy Foldkit SPA shell for exactly the four converted document routes.
+ * from the Cloud Run monolith, replacing the legacy Foldkit SPA shell for
+ * exactly the four converted document routes.
  *
- * The forum content is ONE typed Effect Native view tree authored in
- * `apps/openagents.com/apps/start/src/routes/-forum-page.tsx` (#8635 — the
- * canonical EN web-route pattern). The monolith serves it exactly like the
+ * The forum content is the React component tree authored in
+ * `apps/openagents.com/apps/start/src/routes/-forum-page.tsx` (#8635; the
+ * page carries its own stylesheet because this bundle ships no CSS artifact).
+ * The monolith serves it exactly like the
  * /portal surface (portal-ui.ts): a static HTML shell per converted route
  * plus a deploy-built browser bundle at `/forum/app.js`
  * (deploy-cloudrun.sh -> dist-cloudrun/forum-ui/app.js). Dev builds the

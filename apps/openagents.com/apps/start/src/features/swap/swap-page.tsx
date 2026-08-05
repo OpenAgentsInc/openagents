@@ -1,14 +1,10 @@
-import type { IntentReporter } from '@effect-native/core'
 import { initialSwapWidgetState } from '@openagentsinc/mkt-swp/view'
 import { catalogFor } from '@openagentsinc/swap-i18n'
-import { Effect } from 'effect'
 
 import { SwapNotYetAvailable } from './not-yet-available'
 import { defaultSwapSettings } from './settings'
 import { SwapSurfaceShell } from './shell'
 import { SwapWidget, provisionalPreSessionSwapWidgetModel } from './widget'
-
-const disconnectedSwapReporter: IntentReporter = () => Effect.void
 
 /**
  * /swap — the swap widget (SWAP-0, #9315) mounted in SWAP-7's shell.
@@ -43,7 +39,6 @@ export function SwapIndexPage() {
           settings,
           initialSwapWidgetState,
         )}
-        report={disconnectedSwapReporter}
       />
       <SwapNotYetAvailable
         body="The widget shell, its typed state machine, and the engine boundary that authorizes funding are in place. The relay subscription that supplies live offers and quotes, and the wasm engine that performs verify-before-fund, are not wired up yet, so nothing here can quote, order, or fund a swap."

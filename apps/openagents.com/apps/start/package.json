@@ -17,16 +17,11 @@
     "test": "pnpm run generate:docs && vp test --root ../../../.. --run --project @openagentsinc/openagents-com-start"
   },
   "dependencies": {
-    "@effect-native/core": "workspace:*",
-    "@effect-native/gallery": "workspace:*",
-    "@effect-native/khala-ui": "workspace:*",
-    "@effect-native/render-canvas": "workspace:*",
-    "@effect-native/render-dom": "workspace:*",
-    "@effect-native/tokens": "workspace:*",
     "@openagentsinc/agent-runtime-schema": "0.2.1-rc.4",
     "@openagentsinc/agent-surface": "workspace:*",
     "@openagentsinc/analytics": "workspace:*",
     "@openagentsinc/atif": "workspace:*",
+    "@openagentsinc/design-tokens": "workspace:*",
     "@openagentsinc/effect-start": "workspace:*",
     "@openagentsinc/forge-protocol": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",

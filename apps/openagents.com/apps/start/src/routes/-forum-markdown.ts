@@ -1,18 +1,48 @@
-// APP-FORUM (#8635) — forum post markdown -> typed Effect Native content.
+// APP-FORUM (#8635) — forum post markdown -> a typed, bounded content model.
 //
-// The Effect Native catalog intentionally ships no markdown parser: apps parse
-// to the typed `MarkdownBlock`/`MarkdownInline` model (see the catalog note on
-// the Markdown component) and no arbitrary HTML ever enters the view tree.
-// This module ports the legacy Foldkit forum page's bounded markdown feature
-// set (apps/web/src/page/forum.ts renderMarkdown): paragraphs, ATX headings,
+// This module is a safety boundary, not a convenience. Forum post bodies are
+// untrusted user content, so they are parsed into the closed
+// `MarkdownBlock`/`MarkdownInline` model below and the page renders that model
+// to React elements. No arbitrary HTML ever enters the rendered tree: there is
+// no raw-innerHTML escape hatch anywhere on this surface, and the app's
+// general `marked` dependency is deliberately NOT used here.
+//
+// The feature set mirrors the legacy Foldkit forum page
+// (apps/web/src/page/forum.ts renderMarkdown): paragraphs, ATX headings,
 // fenced code, blockquotes, ordered/unordered lists, horizontal rules, inline
 // code/strong/emphasis, and links with the same safe-href policy.
 //
 // Fenced code and rules have no `MarkdownBlock` representation, so the parser
-// emits typed segments the page lowers to `CodeBlock` and `Divider` catalog
-// views — still catalog-only composition, no local primitives.
+// emits typed segments the page lowers to its own code-block and rule
+// components.
+//
+// The block/inline model was previously imported from the Effect Native
+// catalog; it is defined locally now that the framework is gone (#9325).
 
-import type { MarkdownBlock, MarkdownInline } from '@effect-native/core'
+export type MarkdownInline =
+  | { readonly kind: 'text'; readonly text: string }
+  | { readonly kind: 'code'; readonly text: string }
+  | { readonly kind: 'strong'; readonly children: ReadonlyArray<MarkdownInline> }
+  | { readonly kind: 'emphasis'; readonly children: ReadonlyArray<MarkdownInline> }
+  | {
+      readonly kind: 'link'
+      readonly href: string
+      readonly children: ReadonlyArray<MarkdownInline>
+    }
+
+export type MarkdownBlock =
+  | {
+      readonly kind: 'heading'
+      readonly level: 1 | 2 | 3 | 4 | 5 | 6
+      readonly children: ReadonlyArray<MarkdownInline>
+    }
+  | { readonly kind: 'paragraph'; readonly children: ReadonlyArray<MarkdownInline> }
+  | {
+      readonly kind: 'list'
+      readonly ordered: boolean
+      readonly items: ReadonlyArray<ReadonlyArray<MarkdownBlock>>
+    }
+  | { readonly kind: 'blockquote'; readonly children: ReadonlyArray<MarkdownBlock> }
 
 export type ForumMarkdownSegment =
   | Readonly<{ kind: 'markdown'; blocks: ReadonlyArray<MarkdownBlock> }>
@@ -246,8 +276,6 @@ export const parseForumMarkdown = (
     : segments
 }
 
-// The former EN-2 origin-resolution workaround (absolutizeMarkdown*Hrefs) is
-// gone: effect-native v28 (issue #71, vendored at the pinned commit in
-// packages/effect-native-vendor.json) admits same-origin rooted paths and
-// #fragment refs on markdown link hrefs directly, so parsed trees enter the
-// Markdown component without baking in a serving origin.
+// Parsed link hrefs stay exactly as `safeForumMarkdownHref` returned them:
+// a same-origin rooted path stays relative and an absolute http(s) URL stays
+// absolute. No serving origin is ever baked into a parsed post body.

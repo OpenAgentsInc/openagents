@@ -1,13 +1,15 @@
 // APP-FORUM (#8635) — route, view, auth, moderation-visibility, accessibility,
-// and deep-link coverage for the retained /forum* Effect Native routes.
+// and deep-link coverage for the retained /forum* routes.
+//
+// Converted from an Effect Native view tree to plain React (#9325): the
+// assertions that used to inspect the serialized view tree now inspect the
+// rendered React output instead.
 
-import { viewStructure } from '@effect-native/render-dom'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { act } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, test, vi } from 'vitest'
-
-import { Effect, Exit, Scope } from '@effect-native/core/effect'
 
 import {
   parseTopicPostSortDirection,
@@ -17,9 +19,11 @@ import {
   type ForumTopicProjection,
 } from './-forum-data'
 import {
+  ForumForumPage,
   ForumIndexPage,
+  ForumPageView,
   ForumReceiptPage,
-  forumPageView,
+  ForumTopicPage,
   forumReturnPath,
   initialForumPageState,
   mountForumSurface,
@@ -137,6 +141,9 @@ const readyReceiptState: ForumPageState = {
   receipt: RECEIPT,
 }
 
+const markup = (state: ForumPageState): string =>
+  renderToStaticMarkup(<ForumPageView nowMs={NOW} state={state} />)
+
 const jsonResponse = (body: unknown): Response =>
   new Response(JSON.stringify(body), {
     status: 200,
@@ -165,8 +172,8 @@ const makeFetchStub = (
     return jsonResponse(body)
   }) as typeof fetch
 
-// The DOM renderer applies view-stream emissions on its own fiber; poll until
-// the hydrated render lands.
+// The live projections resolve on a microtask after mount; poll until the
+// loaded render lands.
 const waitFor = async (predicate: () => boolean): Promise<void> => {
   await vi.waitFor(() => {
     if (!predicate()) {
@@ -175,20 +182,28 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
   })
 }
 
-describe('APP-FORUM Effect Native routes (#8635)', () => {
-  test('React route shells are thin mount shims, never forum-content React', () => {
-    const indexHtml = renderToStaticMarkup(<ForumIndexPage />)
-    expect(indexHtml).toContain('data-route="forum"')
-    expect(indexHtml).toContain('data-forum-en-root=""')
-    expect(indexHtml).toContain('aria-label="OpenAgents Forum"')
-    expect(indexHtml).not.toContain('OpenAgents Forum</') // content lives in the EN tree
-    expect(new TextEncoder().encode(indexHtml).byteLength).toBe(112)
-
-    const receiptHtml = renderToStaticMarkup(
-      <ForumReceiptPage receiptRef="receipt_1" />,
-    )
-    expect(receiptHtml).toContain('data-route="forum-receipt"')
-    expect(receiptHtml).not.toContain('Forum receipt')
+describe('APP-FORUM /forum* routes (#8635)', () => {
+  test('all four route components server-render the real forum surface', () => {
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      [renderToStaticMarkup(<ForumIndexPage />), 'forum'],
+      [
+        renderToStaticMarkup(<ForumForumPage forumRef="product-promises" />),
+        'forum-forum',
+      ],
+      [renderToStaticMarkup(<ForumTopicPage topicId="topic-1" />), 'forum-topic'],
+      [
+        renderToStaticMarkup(<ForumReceiptPage receiptRef="receipt_1" />),
+        'forum-receipt',
+      ],
+    ]
+    for (const [html, route] of cases) {
+      expect(html).toContain(`data-route="${route}"`)
+      expect(html).toContain('aria-label="OpenAgents Forum"')
+      // The mount shim is gone: the server renders the honest loading state,
+      // not an empty container.
+      expect(html).toContain('Loading…')
+      expect(html).toContain('href="/forum"')
+    }
   })
 
   test('deep-link URL contract: the four legacy paths stay the registered routes', () => {
@@ -207,107 +222,127 @@ describe('APP-FORUM Effect Native routes (#8635)', () => {
     ).toContain("createFileRoute('/forum/receipts/$receiptRef')")
   })
 
-  test('index view is one typed Effect Native tree from the catalog', () => {
-    const tree = forumPageView(readyIndexState, NOW)
-    const structure = viewStructure(tree)
-    const serialized = JSON.stringify(tree)
+  test('index view renders the board with real headings, links and badges', () => {
+    const html = markup(readyIndexState)
 
-    expect(structure).toMatchObject({ tag: 'Stack', key: 'forum-root' })
-    expect(new TextEncoder().encode(serialized).byteLength).toBeLessThanOrEqual(5_200)
-    expect(serialized).toContain('"catalogVersion":"effect-native/v43"')
-    for (const tag of ['Stack', 'Frame', 'Card', 'Link', 'Text', 'Badge']) {
-      expect(serialized).toContain(`"_tag":"${tag}"`)
-    }
-    expect(serialized).toContain('"motif":"cut-corner-surface"')
-    expect(serialized).toContain('"motif":"signal-separator"')
-    expect(serialized.match(/"motif":"cut-corner-surface"/gu)).toHaveLength(1)
-    expect(serialized.match(/"motif":"signal-separator"/gu)).toHaveLength(1)
-    expect(serialized).toContain('OpenAgents Forum')
-    expect(serialized).toContain('Product Promises')
-    expect(serialized).toContain('"path":"/forum/f/product-promises"')
-    expect(serialized).toContain('2 topics')
-    expect(serialized).toContain('5 posts')
+    expect(html).toContain('<h1 class="forum-text forum-heading">OpenAgents Forum</h1>')
+    expect(html).toContain('Product Promises')
+    expect(html).toContain('href="/forum/f/product-promises"')
+    expect(html).toContain('2 topics')
+    expect(html).toContain('5 posts')
     // Moderation/discoverability state is visible but read-only.
-    expect(serialized).toContain('"label":"Unlisted"')
-    expect(serialized).toContain('"label":"Locked"')
-    // Adapter rule: no React class names inside the typed tree.
-    expect(serialized).not.toContain('className')
+    expect(html).toContain('Unlisted')
+    expect(html).toContain('Locked')
+    // Read-only surface: no forms and no write controls.
+    expect(html).not.toContain('<form')
+    expect(html).not.toContain('<input')
   })
 
   test('keeps Khala decoration bounded to the board and breadcrumb without changing semantic rows', () => {
-    const tree = forumPageView(readyIndexState, NOW)
-    const serialized = JSON.stringify(tree)
+    const html = markup(readyIndexState)
 
-    expect(serialized.match(/"_tag":"Frame"/gu)).toHaveLength(2)
-    expect(serialized.match(/"_tag":"Card"/gu)).toHaveLength(FORUMS.length)
-    expect(serialized).toContain('"id":"forum-board-index"')
-    expect(serialized).toContain('"id":"forum-index-crumbs-status-band"')
-    expect(serialized).toContain('Product Promises')
-    expect(serialized).toContain('Void')
+    expect(html.match(/data-en-khala-decoration="true"/gu)).toHaveLength(2)
+    expect(html.match(/data-en-khala="cut-corner-surface"/gu)).toHaveLength(1)
+    expect(html.match(/data-en-khala="signal-separator"/gu)).toHaveLength(1)
+    expect(html).toContain('id="en-khala-forum-board-index"')
+    expect(html).toContain('data-en-key="forum-index-panel"')
+    // Every decoration is inert.
+    expect(html.match(/aria-hidden="true"/gu)).toHaveLength(2)
+    expect(html).toContain('Product Promises')
+    expect(html).toContain('Void')
   })
 
   test('forum view renders the topic list with moderation state labels', () => {
-    const serialized = JSON.stringify(forumPageView(readyForumState, NOW))
-    expect(serialized).toContain('A live promise report')
-    expect(serialized).toContain('"path":"/forum/t/topic-1"')
-    expect(serialized).toContain('by Raynor')
+    const html = markup(readyForumState)
+    expect(html).toContain('A live promise report')
+    expect(html).toContain('href="/forum/t/topic-1"')
+    expect(html).toContain('by Raynor')
     // The locked topic keeps its lock label (write policy stays visible even
     // though this surface exposes no moderation controls).
-    expect(serialized).toContain('Locked topic')
-    expect(serialized).toContain('1 reply')
+    expect(html).toContain('Locked topic')
+    expect(html).toContain('1 reply')
   })
 
-  test('topic view renders markdown through the catalog Markdown/CodeBlock components', () => {
-    const serialized = JSON.stringify(forumPageView(readyTopicState, NOW))
-    expect(serialized).toContain('"_tag":"Markdown"')
-    expect(serialized).toContain('"_tag":"CodeBlock"')
-    expect(serialized).toContain('"kind":"strong"')
-    expect(serialized).toContain('"kind":"code"')
-    expect(serialized).toContain('const a = 1')
-    // Safe same-origin links stay RELATIVE in the tree — effect-native v28
-    // (issue #71) admits rooted paths on markdown link hrefs, so the old
-    // EN-2 origin-resolution workaround is gone and no serving origin is
-    // baked into the view. javascript: links are stripped to plain text.
-    expect(serialized).toContain('"href":"/forum"')
-    expect(serialized).not.toContain(`"href":"${window.location.origin}/forum"`)
-    expect(serialized).not.toContain('javascript:alert')
+  test('topic view renders post markdown as elements, never as raw HTML', () => {
+    const html = markup(readyTopicState)
+    expect(html).toContain('<strong>')
+    expect(html).toContain('<code>inline code</code>')
+    expect(html).toContain('<ul>')
+    expect(html).toContain('<figure class="forum-code" data-forum-language="ts">')
+    expect(html).toContain('const a = 1')
+    // Safe same-origin links stay RELATIVE — no serving origin is baked into
+    // a rendered post body. javascript: links are stripped to plain text.
+    expect(html).toContain('href="/forum" rel="noopener noreferrer"')
+    expect(html).not.toContain(`href="${window.location.origin}/forum"`)
+    expect(html).not.toContain('javascript:alert')
+    expect(html).toContain('unsafe link')
     // Post anchors keep the exact legacy anchor names for #post- deep links.
-    expect(serialized).toContain('"key":"post-post-a"')
-    expect(serialized).toContain('"key":"post-1"')
+    expect(html).toContain('id="post-post-a"')
+    expect(html).toContain('id="post-1"')
     // Author identity column links to the served /forum/u profile page.
-    expect(serialized).toContain('"path":"/forum/u/actor-1/raynor"')
+    expect(html).toContain('href="/forum/u/actor-1/raynor"')
     // Sort toggle offers the legacy ?sortDir deep link.
-    expect(serialized).toContain('"path":"/forum/t/topic-1?sortDir=desc"')
-    expect(serialized).toContain('Oldest first')
-    expect(serialized).toContain('Newest first')
+    expect(html).toContain('href="/forum/t/topic-1?sortDir=desc"')
+    expect(html).toContain('Oldest first')
+    expect(html).toContain('Newest first')
+    // Permalink stays a real button.
+    expect(html).toContain('<button class="forum-permalink" type="button">Permalink</button>')
+  })
+
+  test('post bodies never reach the DOM as markup', () => {
+    const injected: ForumPageState = {
+      ...readyTopicState,
+      posts: [
+        {
+          postId: 'post-x',
+          postNumber: 1,
+          subject: 'Injection attempt',
+          bodyText:
+            '<script>alert(1)</script> and <img src=x onerror=alert(1)> plus [x](javascript:alert(2))',
+          createdAt: '2026-07-09T10:00:00Z',
+          author: { displayName: 'Kerrigan' },
+        },
+      ],
+    }
+    const html = markup(injected)
+    expect(html).not.toContain('<script>')
+    expect(html).not.toContain('<img')
+    expect(html).not.toContain('javascript:alert')
+    // The literal text is still shown to the reader, fully escaped — the
+    // `onerror` substring only ever appears inside escaped text, never as an
+    // attribute.
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;')
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;')
+
+    // Same body through the real DOM: no element or handler survives.
+    const host = document.createElement('div')
+    host.innerHTML = html
+    expect(host.querySelectorAll('script, img')).toHaveLength(0)
+    for (const node of host.querySelectorAll('*')) {
+      for (const attribute of node.getAttributeNames()) {
+        expect(attribute.startsWith('on')).toBe(false)
+      }
+    }
   })
 
   test('receipt view preserves the immutable historical payment record', () => {
-    const serialized = JSON.stringify(forumPageView(readyReceiptState, NOW))
-    expect(serialized).toContain('post tip')
-    expect(serialized).toContain('25 sats of bitcoin')
-    expect(serialized).toContain('receipt_1')
-    expect(serialized).toContain('"path":"/forum/t/topic-1#post-post-a"')
-    expect(serialized).toContain('agent:raynor')
+    const html = markup(readyReceiptState)
+    expect(html).toContain('post tip')
+    expect(html).toContain('25 sats of bitcoin')
+    expect(html).toContain('receipt_1')
+    expect(html).toContain('href="/forum/t/topic-1#post-post-a"')
+    expect(html).toContain('agent:raynor')
   })
 
   test('loading and unavailable states stay honest (no fabricated content)', () => {
-    const loading = JSON.stringify(
-      forumPageView(initialForumPageState({ kind: 'index' }), NOW),
-    )
-    expect(loading).toContain('Loading…')
+    expect(markup(initialForumPageState({ kind: 'index' }))).toContain('Loading…')
 
-    const unavailable = JSON.stringify(
-      forumPageView(
-        {
-          ...initialForumPageState({ kind: 'index' }),
-          phase: 'unavailable',
-          errorMessage: 'Board index unavailable',
-        },
-        NOW,
-      ),
-    )
-    expect(unavailable).toContain('"_tag":"StatusBanner"')
+    const unavailable = markup({
+      ...initialForumPageState({ kind: 'index' }),
+      phase: 'unavailable',
+      errorMessage: 'Board index unavailable',
+    })
+    expect(unavailable).toContain('role="alert"')
     expect(unavailable).toContain('Forum unavailable · Board index unavailable')
   })
 
@@ -332,7 +367,7 @@ describe('APP-FORUM Effect Native routes (#8635)', () => {
     )
   })
 
-  test('DOM mount smoke: index renders live projections through the DOM renderer', async () => {
+  test('DOM mount smoke: index renders live projections into a real container', async () => {
     const calls: FetchCall[] = []
     const fetchStub = makeFetchStub(
       {
@@ -343,41 +378,55 @@ describe('APP-FORUM Effect Native routes (#8635)', () => {
 
     const container = document.createElement('div')
     document.body.appendChild(container)
-    const scope = await Effect.runPromise(Scope.make())
+    let surface!: Readonly<{ unmount: () => void }>
     try {
-      await Effect.runPromise(
-        Scope.provide(scope)(
-          mountForumSurface(container, { kind: 'index' }, { fetchFn: fetchStub }),
-        ),
-      )
+      await act(async () => {
+        surface = mountForumSurface(
+          container,
+          { kind: 'index' },
+          { fetchFn: fetchStub },
+        )
+      })
       await waitFor(() =>
         (container.textContent ?? '').includes('Product Promises'),
       )
+      // The board-assembly animation is still wired to the committed board
+      // decoration. This host has no Web Animations, so it takes the
+      // zero-work stable path — but it does run.
+      await waitFor(
+        () =>
+          container
+            .querySelector('#en-khala-forum-board-index')
+            ?.getAttribute('data-khala-motion') === 'unsupported-static',
+      )
       expect(container.textContent).toContain('OpenAgents Forum')
-      expect(container.querySelector('[data-en-key="forum-root"]')).not.toBeNull()
+      expect(container.querySelector('[data-route="forum"]')).not.toBeNull()
       expect(container.querySelectorAll('[data-en-khala-decoration]')).toHaveLength(2)
-      expect(container.querySelectorAll('[data-en-khala="cut-corner-surface"]')).toHaveLength(1)
-      expect(container.querySelectorAll('[data-en-khala="signal-separator"]')).toHaveLength(1)
       expect(
-        container
-          .querySelector('#en-khala-forum-board-index')
-          ?.getAttribute('data-khala-motion'),
-      ).toBe('unsupported-static')
+        container.querySelectorAll('[data-en-khala="cut-corner-surface"]'),
+      ).toHaveLength(1)
+      expect(
+        container.querySelectorAll('[data-en-khala="signal-separator"]'),
+      ).toHaveLength(1)
       expect(
         container.querySelectorAll('[data-en-key^="forum-row-"] [data-en-khala-decoration]'),
       ).toHaveLength(0)
       const undecorated = container.cloneNode(true) as HTMLElement
-      undecorated.querySelectorAll('[data-en-khala-decoration]').forEach((node) => node.remove())
+      undecorated
+        .querySelectorAll('[data-en-khala-decoration]')
+        .forEach((node) => node.remove())
       expect(undecorated.textContent).toContain('OpenAgents Forum')
       expect(undecorated.textContent).toContain('Product Promises')
       // Forum links are real anchors with real hrefs (crawlable deep links).
       const link = container.querySelector(
-        '[data-en-key="forum-row-product-promises-title"]',
+        '[data-en-key="forum-row-product-promises"] a',
       )
       expect(link?.getAttribute('href')).toBe('/forum/f/product-promises')
       expect(calls.map((call) => call.url.split('?')[0])).toEqual(['/api/forum'])
     } finally {
-      await Effect.runPromise(Scope.close(scope, Exit.void))
+      await act(async () => {
+        surface.unmount()
+      })
       container.remove()
     }
   })
@@ -389,18 +438,22 @@ describe('APP-FORUM Effect Native routes (#8635)', () => {
 
     const container = document.createElement('div')
     document.body.appendChild(container)
-    const scope = await Effect.runPromise(Scope.make())
+    let surface!: Readonly<{ unmount: () => void }>
     try {
-      await Effect.runPromise(
-        Scope.provide(scope)(
-          mountForumSurface(container, { kind: 'index' }, { fetchFn: failingFetch }),
-        ),
-      )
+      await act(async () => {
+        surface = mountForumSurface(
+          container,
+          { kind: 'index' },
+          { fetchFn: failingFetch },
+        )
+      })
       await waitFor(() =>
         (container.textContent ?? '').includes('Forum unavailable'),
       )
     } finally {
-      await Effect.runPromise(Scope.close(scope, Exit.void))
+      await act(async () => {
+        surface.unmount()
+      })
       container.remove()
     }
   })
@@ -419,43 +472,49 @@ describe('APP-FORUM Effect Native routes (#8635)', () => {
     const scrolled: string[] = []
     const container = document.createElement('div')
     document.body.appendChild(container)
-    const scope = await Effect.runPromise(Scope.make())
+    let surface!: Readonly<{ unmount: () => void }>
     try {
-      await Effect.runPromise(
-        Scope.provide(scope)(
-          mountForumSurface(
-            container,
-            { kind: 'topic', topicId: 'topic-1', sortDirection: 'asc' },
-            {
-              fetchFn: fetchStub,
-              scrollToAnchor: (anchor) => {
-                scrolled.push(anchor)
-              },
+      await act(async () => {
+        surface = mountForumSurface(
+          container,
+          { kind: 'topic', topicId: 'topic-1', sortDirection: 'asc' },
+          {
+            fetchFn: fetchStub,
+            scrollToAnchor: (anchor) => {
+              scrolled.push(anchor)
             },
-          ),
-        ),
-      )
+          },
+        )
+      })
+      await waitFor(() => scrolled.length > 0)
       expect(scrolled).toEqual(['post-post-b'])
       // The anchor target exists in the rendered DOM.
-      await waitFor(
-        () => container.querySelector('[data-en-key="post-post-b"]') !== null,
-      )
+      expect(container.querySelector('[id="post-post-b"]')).not.toBeNull()
     } finally {
-      await Effect.runPromise(Scope.close(scope, Exit.void))
+      await act(async () => {
+        surface.unmount()
+      })
       container.remove()
       window.location.hash = ''
     }
   })
 
-  test('source boundary: the page is authored from the vendored EN packages only', () => {
+  test('source boundary: the page is plain React with no framework renderer', () => {
     const source = readFileSync(join(__dirname, '-forum-page.tsx'), 'utf8')
-    expect(source).toContain("from '@effect-native/core'")
-    expect(source).toContain("from '@effect-native/render-dom'")
-    expect(source).toContain("from '@effect-native/tokens'")
-    expect(source).toContain('makeDomRenderer({ theme: khalaTheme })')
-    // React stays a thin host: no UI component libraries, no legacy imports.
+    const markdownSource = readFileSync(
+      join(__dirname, '-forum-markdown.ts'),
+      'utf8',
+    )
+    expect(source).not.toContain('@effect-native')
+    expect(markdownSource).not.toContain('@effect-native')
+    // No arbitrary HTML path exists on this surface, and the general-purpose
+    // markdown dependency is deliberately not reachable from it.
+    expect(source).not.toContain('dangerouslySetInnerHTML')
+    expect(markdownSource).not.toContain('dangerouslySetInnerHTML')
+    expect(source).not.toContain("from 'marked'")
+    expect(markdownSource).not.toContain("from 'marked'")
+    // React stays free of UI component libraries and legacy imports here.
     expect(source).not.toContain('lucide-react')
-    expect(source).not.toContain('@/components')
     expect(source).not.toContain('foldkit')
   })
 })

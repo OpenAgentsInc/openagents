@@ -1,5 +1,7 @@
-// APP-FORUM (#8635) — the retained /forum* presentation re-authored as typed
-// Effect Native view trees inside the one OpenAgents web app.
+// APP-FORUM (#8635) — the retained /forum* presentation inside the one
+// OpenAgents web app.
+//
+// Converted from an Effect Native view tree to plain React (#9325).
 //
 // Route surface (deep-link stable, identical URL contract to the legacy
 // Foldkit page in apps/web/src/page/forum.ts):
@@ -11,39 +13,28 @@
 // Authority boundary: this file is presentation only. All Forum reads hit the
 // existing public Worker projections. Content writes (topics, replies, edits,
 // tombstones), moderation, locks, identity, and work-request authority remain
-// on the Worker's /api/forum* contracts untouched. React is
-// only the thin route-shell host that mounts the Effect Native tree through
-// the DOM renderer (the EN adapter rule).
+// on the Worker's /api/forum* contracts untouched.
+//
+// Styling note: the same components are served two ways — through TanStack
+// Start (Tailwind + the khala palette present) and through the Cloud Run
+// monolith, which packs `src/forum-entry.ts` into one standalone IIFE bundle
+// with no stylesheet of its own (workers/api/scripts/deploy-cloudrun.sh). A
+// colocated `.css` file cannot reach that second host, so the surface carries
+// its own small stylesheet below. Every color reads a `--khala-*` custom
+// property with the khalaTheme hex as the fallback, so both hosts agree.
 
+import { khalaTheme } from '@openagentsinc/design-tokens'
+import { Effect } from 'effect'
 import {
-  Badge,
-  Button,
-  Card,
-  CodeBlock,
-  Divider,
-  Frame,
-  IntentRef,
-  Link,
-  Markdown,
-  Navigate,
-  Stack,
-  StaticPayload,
-  StatusBanner,
-  Text,
-  defineIntent,
-  makeIntentRegistry,
-  makeViewProgramFromState,
-  resolveIntentRef,
-  type IntentHandlers,
-  type IntentReporter,
-  type NavigationDestination,
-  type TextView,
-  type View,
-} from '@effect-native/core'
-import { makeDomRenderer } from '@effect-native/render-dom'
-import { Effect, Exit, Schema, Scope, SubscriptionRef } from '@effect-native/core/effect'
-import { khalaTheme } from '@effect-native/tokens'
-import { useEffect, useRef, type RefObject } from 'react'
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
+import { createRoot } from 'react-dom/client'
+
+import { useScopedEffect } from '@/lib/use-scoped-effect'
 
 import {
   actorDisplayName,
@@ -87,7 +78,11 @@ import {
   mountForumBoardAssembly,
   type ForumKhalaAssemblyDependencies,
 } from './-forum-khala-motion'
-import { parseForumMarkdown } from './-forum-markdown'
+import {
+  parseForumMarkdown,
+  type MarkdownBlock,
+  type MarkdownInline,
+} from './-forum-markdown'
 
 // ---------------------------------------------------------------------------
 // Route params + state
@@ -144,156 +139,518 @@ export const forumReturnPath = (params: ForumRouteParams): string =>
         : forumBoardPath
 
 // ---------------------------------------------------------------------------
-// Intents
+// Stylesheet
 // ---------------------------------------------------------------------------
 
-const PermalinkCopied = defineIntent(
-  'ForumPermalinkCopied',
-  Schema.Struct({ postId: Schema.String, href: Schema.String }),
-)
+export const forumSurfaceStyles = `
+.forum-page {
+  background: var(--khala-void, #05070d);
+  color: var(--khala-text, #eef3ff);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  min-height: 100%;
+}
+.forum-root {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: 16px;
+  width: 100%;
+}
+.forum-root *,
+.forum-root *::before,
+.forum-root *::after { box-sizing: border-box; }
+.forum-text { display: block; margin: 0; width: 100%; }
+.forum-heading { font-size: 24px; font-weight: 600; line-height: 30px; }
+.forum-title { font-size: 18px; font-weight: 600; line-height: 24px; }
+.forum-label { font-size: 13px; font-weight: 600; line-height: 18px; }
+.forum-body { font-size: 14px; font-weight: 400; line-height: 21px; }
+.forum-caption { font-size: 12px; font-weight: 500; line-height: 16px; }
+.forum-muted { color: var(--khala-text-muted, #93a4c3); }
+.forum-accent { color: var(--khala-energy, #3b82f6); }
+.forum-link { color: var(--khala-energy, #3b82f6); text-decoration: none; }
+.forum-link:hover { text-decoration: underline; }
+.forum-link:focus-visible {
+  outline: 2px solid var(--khala-energy-cyan, #38bdf8);
+  outline-offset: 2px;
+}
+.forum-frame {
+  border: none;
+  isolation: isolate;
+  overflow: visible;
+  position: relative;
+  width: 100%;
+}
+.forum-frame-decoration {
+  height: 100%;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  position: absolute;
+  width: 100%;
+  z-index: 0;
+}
+.forum-frame-content { position: relative; z-index: 1; }
+.forum-crumbs {
+  background: var(--khala-surface-raised, #141f36);
+  border: 1px solid var(--khala-border, #1f2b45);
+}
+.forum-crumbs-row {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+}
+.forum-board {
+  background: var(--khala-surface, #0b1220);
+  border: 1px solid var(--khala-border, #1f2b45);
+}
+.forum-board-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+.forum-panel {
+  background: var(--khala-surface, #0b1220);
+  border: 1px solid var(--khala-border, #1f2b45);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  width: 100%;
+}
+.forum-card {
+  border: 1px solid var(--khala-border, #1f2b45);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  width: 100%;
+}
+.forum-card-even { background: var(--khala-surface, #0b1220); }
+.forum-card-odd { background: var(--khala-surface-raised, #141f36); }
+.forum-row {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.forum-row-loose { gap: 12px; }
+.forum-col { display: flex; flex-direction: column; gap: 4px; }
+.forum-col-tight { display: flex; flex-direction: column; gap: 0; }
+.forum-badge {
+  border-radius: 9999px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  padding: 2px 8px;
+}
+.forum-badge-neutral {
+  background: var(--khala-surface-raised, #141f36);
+  color: var(--khala-text-muted, #93a4c3);
+}
+.forum-badge-warn {
+  background: var(--khala-surface-raised, #141f36);
+  color: var(--khala-warning, #f59e0b);
+}
+.forum-badge-info {
+  background: var(--khala-surface-raised, #141f36);
+  color: var(--khala-energy-cyan, #38bdf8);
+}
+.forum-banner {
+  align-items: center;
+  background: var(--khala-surface-raised, #141f36);
+  border: 1px solid var(--khala-danger, #f87171);
+  border-radius: 4px;
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  width: 100%;
+}
+.forum-post-grid {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 16px;
+  width: 100%;
+}
+.forum-post-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 160px;
+}
+.forum-post-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.forum-permalink {
+  background: var(--khala-surface, #0b1220);
+  border: 1px solid var(--khala-border, #1f2b45);
+  border-radius: 4px;
+  color: var(--khala-energy, #3b82f6);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  padding: 4px 8px;
+}
+.forum-markdown { width: 100%; }
+.forum-markdown p,
+.forum-markdown ul,
+.forum-markdown ol,
+.forum-markdown blockquote,
+.forum-markdown h4,
+.forum-markdown h5,
+.forum-markdown h6 { margin: 0 0 8px; }
+.forum-markdown h4 { font-size: 15px; line-height: 20px; }
+.forum-markdown h5 { font-size: 14px; line-height: 19px; }
+.forum-markdown h6 { font-size: 13px; line-height: 18px; }
+.forum-markdown code {
+  background: var(--khala-surface-muted, #0a0f1c);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 0 4px;
+}
+.forum-markdown blockquote {
+  border-left: 2px solid var(--khala-border-strong, #2c3d63);
+  padding-left: 12px;
+}
+.forum-markdown a { color: var(--khala-energy, #3b82f6); }
+.forum-code {
+  background: var(--khala-surface-muted, #0a0f1c);
+  border-radius: 4px;
+  margin: 0;
+  overflow-x: auto;
+  padding: 12px;
+}
+.forum-code pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  margin: 0;
+  white-space: pre;
+}
+.forum-rule {
+  border: 0;
+  border-top: 1px solid var(--khala-border, #1f2b45);
+  margin: 0;
+  width: 100%;
+}
+`
 
-const forumIntents = [PermalinkCopied, Navigate] as const
+function ForumStyleSheet() {
+  return <style data-forum-styles="">{forumSurfaceStyles}</style>
+}
 
 // ---------------------------------------------------------------------------
-// View helpers
+// Khala frame decoration
+//
+// The board panel and the breadcrumb band keep their inert Khala outlines.
+// The geometry is the closed two-motif subset this surface uses, resolved from
+// the shared `khalaTheme.khalaUi` token block so the drawing stays theme data,
+// not renderer constants. The decoration is `aria-hidden`, sits behind the
+// content layer, and is the element `-forum-khala-motion.ts` animates.
 // ---------------------------------------------------------------------------
 
-const text = (
-  key: string,
-  content: string,
-  variant: TextView['variant'] = 'body',
-  color: TextView['color'] = 'textPrimary',
-): TextView =>
-  Text({
-    key,
-    content,
-    variant,
-    color,
-    style: { width: 'full' },
+type ForumKhalaMotif = 'cut-corner-surface' | 'signal-separator'
+type KhalaLuminance = 'structural' | 'signal'
+
+type KhalaSegment = Readonly<{
+  from: readonly [number, number]
+  to: readonly [number, number]
+  role: KhalaLuminance
+  width: number
+}>
+
+const khalaStrokeColor: Readonly<Record<KhalaLuminance, string>> = {
+  structural: 'var(--khala-border-strong, #2c3d63)',
+  signal: 'var(--khala-energy, #3b82f6)',
+}
+
+const khalaCoordinate = (value: number): string =>
+  Number(value.toFixed(4)).toString()
+
+const khalaMove = (x: number, y: number): string =>
+  `M${khalaCoordinate(x)} ${khalaCoordinate(y)}`
+
+const khalaLineTo = (x: number, y: number): string =>
+  `L${khalaCoordinate(x)} ${khalaCoordinate(y)}`
+
+export const khalaFrameDomId = (id: string): string =>
+  `en-khala-${id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
+
+type KhalaPathGroup = Readonly<{
+  id: string
+  role: KhalaLuminance
+  width: number
+  data: string
+}>
+
+const khalaFramePaths = (
+  id: string,
+  motif: ForumKhalaMotif,
+  width: number,
+  height: number,
+): ReadonlyArray<KhalaPathGroup> => {
+  const ui = khalaTheme.khalaUi
+  const density = ui.density.compact
+  const collapse =
+    width < ui.responsiveCollapse.borderOnlyBelow
+      ? 'border-only'
+      : width < ui.responsiveCollapse.simplifiedBelow
+        ? 'simplified'
+        : 'full'
+  const domId = khalaFrameDomId(id)
+
+  if (motif === 'cut-corner-surface') {
+    const rawCut =
+      collapse === 'full'
+        ? ui.cutSize[density.cut]
+        : collapse === 'simplified'
+          ? ui.cutSize.small
+          : 0
+    const cut = Math.min(rawCut, width / 4, height / 4)
+    const points: ReadonlyArray<readonly [number, number]> =
+      cut === 0
+        ? [
+            [0, 0],
+            [width, 0],
+            [width, height],
+            [0, height],
+          ]
+        : [
+            [cut, 0],
+            [width - cut, 0],
+            [width, cut],
+            [width, height - cut],
+            [width - cut, height],
+            [cut, height],
+            [0, height - cut],
+            [0, cut],
+          ]
+    const [first, ...rest] = points
+    return first === undefined
+      ? []
+      : [
+          {
+            id: `${domId}-path-0`,
+            role: 'structural',
+            width: 1,
+            data: `${khalaMove(first[0], first[1])} ${rest
+              .map((point) => khalaLineTo(point[0], point[1]))
+              .join(' ')} Z`,
+          },
+        ]
+  }
+
+  const accentLength = Math.min(ui.accentLength[density.accent], width / 2)
+  const center = width / 2
+  const halfAccent = accentLength / 2
+  const gap = density.gap
+  const segment = (
+    fromX: number,
+    toX: number,
+    role: KhalaLuminance,
+    strokeWidth: number,
+  ): KhalaSegment => ({
+    from: [fromX, 0],
+    to: [toX, 0],
+    role,
+    width: strokeWidth,
   })
+  const segments: ReadonlyArray<KhalaSegment> =
+    collapse === 'full'
+      ? [
+          segment(0, center - halfAccent - gap, 'structural', ui.edgeWidth.structural),
+          segment(center - halfAccent, center + halfAccent, 'signal', ui.edgeWidth.emphasis),
+          segment(center + halfAccent + gap, width, 'structural', ui.edgeWidth.structural),
+        ]
+      : collapse === 'simplified'
+        ? [segment(center - halfAccent, center + halfAccent, 'signal', ui.edgeWidth.emphasis)]
+        : [segment(0, width, 'structural', ui.edgeWidth.structural)]
 
-const pathLink = (
-  key: string,
-  label: string,
-  path: string,
-  variant: TextView['variant'] = 'body',
-): View =>
-  Link(
-    {
-      key,
-      destination: { kind: 'path', path },
-      style: { color: 'accent' },
-    },
-    [Text({ key: `${key}-label`, content: label, variant, color: 'accent' })],
-  )
+  // Same grouping the static resolver used: one path per role+width pair, in
+  // first-appearance order.
+  const grouped = new Map<string, { role: KhalaLuminance; width: number; data: string }>()
+  for (const value of segments) {
+    const key = `${value.role}:${value.width}`
+    const data = `${khalaMove(value.from[0], value.from[1])} ${khalaLineTo(value.to[0], value.to[1])}`
+    const current = grouped.get(key)
+    if (current === undefined) {
+      grouped.set(key, { role: value.role, width: value.width, data })
+    } else {
+      current.data = `${current.data} ${data}`
+    }
+  }
+  return [...grouped.values()].map((value, index) => ({
+    id: `${domId}-path-${index}`,
+    role: value.role,
+    width: value.width,
+    data: value.data,
+  }))
+}
 
-const panelCard = (key: string, children: ReadonlyArray<View>): View =>
-  Card(
-    {
-      key,
-      padding: '4',
-      radius: 'md',
-      style: {
-        backgroundColor: 'surface',
-        borderColor: 'border',
-        borderWidth: 1,
-        width: 'full',
-      },
-    },
-    children,
+function KhalaFrame({
+  children,
+  className,
+  frameKey,
+  height,
+  id,
+  motif,
+  width,
+}: Readonly<{
+  children: ReactNode
+  className: string
+  frameKey: string
+  height: number
+  id: string
+  motif: ForumKhalaMotif
+  width: number
+}>) {
+  const paths = khalaFramePaths(id, motif, width, height)
+  return (
+    <div
+      className={`forum-frame ${className}`}
+      data-en-key={frameKey}
+      data-en-khala={motif}
+    >
+      <svg
+        aria-hidden="true"
+        className="forum-frame-decoration"
+        data-en-khala-decoration="true"
+        data-en-khala-decorative-nodes={String(paths.length + 1)}
+        focusable="false"
+        id={khalaFrameDomId(id)}
+        preserveAspectRatio="none"
+        viewBox={`0 0 ${width} ${height}`}
+      >
+        {paths.map((path) => (
+          <path
+            d={path.data}
+            data-en-khala-role={path.role}
+            fill="none"
+            id={path.id}
+            key={path.id}
+            stroke={khalaStrokeColor[path.role]}
+            strokeWidth={String(path.width)}
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+      </svg>
+      <div className="forum-frame-content" data-en-khala-content="true">
+        {children}
+      </div>
+    </div>
   )
+}
+
+// ---------------------------------------------------------------------------
+// Small presentation pieces
+// ---------------------------------------------------------------------------
+
+type TextTone = 'primary' | 'muted' | 'accent'
+
+const toneClass = (tone: TextTone): string =>
+  tone === 'muted' ? ' forum-muted' : tone === 'accent' ? ' forum-accent' : ''
+
+function BodyText({
+  children,
+  tone = 'primary',
+  variant = 'body',
+}: Readonly<{
+  children: ReactNode
+  tone?: TextTone
+  variant?: 'body' | 'caption' | 'label' | 'title'
+}>) {
+  return (
+    <p className={`forum-text forum-${variant}${toneClass(tone)}`}>{children}</p>
+  )
+}
+
+function PathLink({
+  children,
+  className,
+  href,
+}: Readonly<{ children: ReactNode; className: string; href: string }>) {
+  return (
+    <a className={`forum-link ${className}`} href={href}>
+      {children}
+    </a>
+  )
+}
+
+function Badge({
+  children,
+  tone,
+}: Readonly<{ children: ReactNode; tone: 'neutral' | 'warn' | 'info' }>) {
+  return <span className={`forum-badge forum-badge-${tone}`}>{children}</span>
+}
 
 const forumBoardFrameSize = [1180, 640] as const
 const forumBreadcrumbFrameSize = [1180, 56] as const
 
-const khalaBoardPanel = (key: string, children: ReadonlyArray<View>): View =>
-  Frame(
-    {
-      key,
-      khala: {
-        id: 'forum-board-index',
-        motif: 'cut-corner-surface',
-        width: forumBoardFrameSize[0],
-        height: forumBoardFrameSize[1],
-        density: 'compact',
-      },
-      style: {
-        backgroundColor: 'surface',
-        borderColor: 'border',
-        borderWidth: 1,
-        width: 'full',
-      },
-    },
-    [Stack({ key: `${key}-content`, direction: 'column', gap: '3', padding: '4' }, children)],
+type BreadcrumbItem = Readonly<{ key: string; label: string; path?: string }>
+
+const boardBreadcrumbItem: BreadcrumbItem = {
+  key: 'crumb-board',
+  label: 'Board index',
+  path: forumBoardPath,
+}
+
+function Breadcrumb({
+  frameKey,
+  trail,
+}: Readonly<{ frameKey: string; trail: ReadonlyArray<BreadcrumbItem> }>) {
+  return (
+    <KhalaFrame
+      className="forum-crumbs"
+      frameKey={frameKey}
+      height={forumBreadcrumbFrameSize[1]}
+      id={`${frameKey}-status-band`}
+      motif="signal-separator"
+      width={forumBreadcrumbFrameSize[0]}
+    >
+      <nav aria-label="Forum breadcrumb" className="forum-crumbs-row">
+        {trail.map((item, index) => (
+          <span className="forum-row" key={item.key}>
+            {index === 0 ? null : (
+              <span className="forum-label forum-muted">»</span>
+            )}
+            {item.path === undefined ? (
+              <span className="forum-label forum-muted">{item.label}</span>
+            ) : (
+              <PathLink className="forum-label" href={item.path}>
+                {item.label}
+              </PathLink>
+            )}
+          </span>
+        ))}
+      </nav>
+    </KhalaFrame>
   )
+}
 
-const breadcrumb = (
-  key: string,
-  trail: ReadonlyArray<Readonly<{ key: string; label: string; path?: string }>>,
-): View =>
-  Frame(
-    {
-      key,
-      khala: {
-        id: `${key}-status-band`,
-        motif: 'signal-separator',
-        width: forumBreadcrumbFrameSize[0],
-        height: forumBreadcrumbFrameSize[1],
-        density: 'compact',
-      },
-      style: {
-        backgroundColor: 'surfaceRaised',
-        borderColor: 'border',
-        borderWidth: 1,
-        width: 'full',
-      },
-    },
-    [
-      Stack(
-        { key: `${key}-row`, direction: 'row', gap: '2', padding: '3', align: 'center' },
-        trail.flatMap((item, index) => {
-          const node =
-            item.path === undefined
-              ? Text({
-                  key: item.key,
-                  content: item.label,
-                  variant: 'label',
-                  color: 'textMuted',
-                })
-              : pathLink(item.key, item.label, item.path, 'label')
-          return index === 0
-            ? [node]
-            : [
-                Text({
-                  key: `${item.key}-sep`,
-                  content: '»',
-                  variant: 'label',
-                  color: 'textMuted',
-                }),
-                node,
-              ]
-        }),
-      ),
-    ],
-  )
-
-const boardBreadcrumbItem = { key: 'crumb-board', label: 'Board index', path: forumBoardPath }
-
-const metaBadge = (key: string, label: string): View =>
-  Badge({ key, label, tone: 'neutral' })
-
-const lastPostSummaryText = (
-  key: string,
+const lastPostSummary = (
   item: Readonly<{
     lastPost?: ForumPostProjection | null
     lastPostSummary?: ForumPostProjection | null
     latestPost?: ForumPostProjection | null
   }>,
   nowMs: number,
-): View => {
+): string => {
   const lastPost = lastPostProjection(item)
   if (lastPost === null) {
-    return text(key, 'No posts', 'caption', 'textMuted')
+    return 'No posts'
   }
   const subject =
     lastPost.subject ?? lastPost.title ?? lastPost.topicTitle ?? 'Last post'
@@ -307,221 +664,366 @@ const lastPostSummaryText = (
     lastPost.createdAt ?? lastPost.updatedAt ?? lastPost.timestamp,
     nowMs,
   )
-  return text(key, `${subject} — by ${author} » ${time}`, 'caption', 'textMuted')
+  return `${subject} — by ${author} » ${time}`
 }
 
-const loadingView = (key: string): View =>
-  panelCard(key, [text(`${key}-copy`, 'Loading…', 'body', 'textMuted')])
+function UnavailableBanner({ message }: Readonly<{ message: string }>) {
+  return (
+    <div aria-live="assertive" className="forum-banner" role="alert">
+      <span className="forum-body">
+        {message === '' ? 'Forum unavailable' : `Forum unavailable · ${message}`}
+      </span>
+    </div>
+  )
+}
 
-const unavailableView = (key: string, message: string): View =>
-  StatusBanner({
-    key,
-    tone: 'danger',
-    message: message === '' ? 'Forum unavailable' : `Forum unavailable · ${message}`,
-    style: { width: 'full' },
-  })
+// ---------------------------------------------------------------------------
+// Markdown rendering
+//
+// The parsed model is a closed union (see `-forum-markdown.ts`). Every node is
+// mapped to a specific element here; there is no HTML pass-through and no
+// raw-innerHTML escape hatch anywhere on this surface. `-forum.test.tsx`
+// asserts that as a source-level boundary.
+// ---------------------------------------------------------------------------
+
+function MarkdownInlines({
+  nodes,
+}: Readonly<{ nodes: ReadonlyArray<MarkdownInline> }>) {
+  return (
+    <>
+      {nodes.map((node, index) => {
+        const key = `inline-${index}`
+        switch (node.kind) {
+          case 'text':
+            return <span key={key}>{node.text}</span>
+          case 'code':
+            return <code key={key}>{node.text}</code>
+          case 'strong':
+            return (
+              <strong key={key}>
+                <MarkdownInlines nodes={node.children} />
+              </strong>
+            )
+          case 'emphasis':
+            return (
+              <em key={key}>
+                <MarkdownInlines nodes={node.children} />
+              </em>
+            )
+          case 'link':
+            return (
+              <a href={node.href} key={key} rel="noopener noreferrer">
+                <MarkdownInlines nodes={node.children} />
+              </a>
+            )
+        }
+      })}
+    </>
+  )
+}
+
+function MarkdownBlocks({
+  blocks,
+}: Readonly<{ blocks: ReadonlyArray<MarkdownBlock> }>) {
+  return (
+    <>
+      {blocks.map((block, index) => {
+        const key = `block-${index}`
+        switch (block.kind) {
+          case 'heading': {
+            const Heading = `h${block.level}` as 'h1'
+            return (
+              <Heading key={key}>
+                <MarkdownInlines nodes={block.children} />
+              </Heading>
+            )
+          }
+          case 'paragraph':
+            return (
+              <p key={key}>
+                <MarkdownInlines nodes={block.children} />
+              </p>
+            )
+          case 'list': {
+            const List = block.ordered ? 'ol' : 'ul'
+            return (
+              <List key={key}>
+                {block.items.map((item, itemIndex) => (
+                  <li key={`${key}-item-${itemIndex}`}>
+                    <MarkdownBlocks blocks={item} />
+                  </li>
+                ))}
+              </List>
+            )
+          }
+          case 'blockquote':
+            return (
+              <blockquote key={key}>
+                <MarkdownBlocks blocks={block.children} />
+              </blockquote>
+            )
+        }
+      })}
+    </>
+  )
+}
+
+/**
+ * Plain, unhighlighted code — the same posture the previous code-block
+ * presentation had (it painted pre-tokenized lines and this page only ever
+ * produced plain tokens). `shiki` is intentionally not pulled in here.
+ */
+function ForumCodeBlock({
+  code,
+  language,
+}: Readonly<{ code: string; language: string | undefined }>) {
+  return (
+    <figure
+      className="forum-code"
+      {...(language === undefined ? {} : { 'data-forum-language': language })}
+    >
+      <pre>
+        <code>{code}</code>
+      </pre>
+    </figure>
+  )
+}
+
+function MarkdownBody({ body }: Readonly<{ body: string }>) {
+  return (
+    <>
+      {parseForumMarkdown(body).map((segment, index) => {
+        const key = `segment-${index}`
+        if (segment.kind === 'markdown') {
+          return (
+            <div className="forum-markdown" key={key}>
+              <MarkdownBlocks blocks={segment.blocks} />
+            </div>
+          )
+        }
+        if (segment.kind === 'code') {
+          return (
+            <ForumCodeBlock code={segment.code} key={key} language={segment.language} />
+          )
+        }
+        return <hr className="forum-rule" key={key} />
+      })}
+    </>
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Index view
 // ---------------------------------------------------------------------------
 
-const forumRow = (
-  forum: ForumSummaryProjection,
-  index: number,
-  nowMs: number,
-): View => {
-  const key = `forum-row-${forum.slug ?? forum.forumId ?? index}`
-  return Card(
-    {
-      key,
-      padding: '4',
-      radius: 'md',
-      style: {
-        backgroundColor: index % 2 === 0 ? 'surface' : 'surfaceRaised',
-        borderColor: 'border',
-        borderWidth: 1,
-        width: 'full',
-      },
-    },
-    [
-      Stack({ key: `${key}-head`, direction: 'column', gap: '1', align: 'start' }, [
-        pathLink(`${key}-title`, forum.title ?? 'Forum', forumPath(forum), 'title'),
-        Text({
-          key: `${key}-slug`,
-          content: forum.slug ?? forum.forumId ?? '',
-          variant: 'caption',
-          color: 'textMuted',
-        }),
-      ]),
-      text(
-        `${key}-desc`,
-        forum.description ?? forum.summary ?? forumStatusLabel(forum),
-        'caption',
-        'textMuted',
-      ),
-      Stack({ key: `${key}-meta`, direction: 'row', gap: '2', align: 'center' }, [
-        metaBadge(`${key}-topics`, topicCountText(forum.topicCount)),
-        metaBadge(`${key}-posts`, postCountText(forum.postCount)),
-        ...(forum.discoverability === 'unlisted'
-          ? [Badge({ key: `${key}-unlisted`, label: 'Unlisted', tone: 'warn' })]
-          : []),
-        ...(forum.locked === true
-          ? [Badge({ key: `${key}-locked`, label: 'Locked', tone: 'warn' })]
-          : []),
-      ]),
-      lastPostSummaryText(`${key}-last`, forum, nowMs),
-    ],
+function ForumRow({
+  forum,
+  index,
+  nowMs,
+}: Readonly<{
+  forum: ForumSummaryProjection
+  index: number
+  nowMs: number
+}>) {
+  return (
+    <section
+      className={`forum-card ${index % 2 === 0 ? 'forum-card-even' : 'forum-card-odd'}`}
+      data-en-key={`forum-row-${forum.slug ?? forum.forumId ?? index}`}
+    >
+      <div className="forum-col">
+        <h2 className="forum-text forum-title">
+          <PathLink className="forum-title" href={forumPath(forum)}>
+            {forum.title ?? 'Forum'}
+          </PathLink>
+        </h2>
+        <span className="forum-caption forum-muted">
+          {forum.slug ?? forum.forumId ?? ''}
+        </span>
+      </div>
+      <BodyText tone="muted" variant="caption">
+        {forum.description ?? forum.summary ?? forumStatusLabel(forum)}
+      </BodyText>
+      <div className="forum-row">
+        <Badge tone="neutral">{topicCountText(forum.topicCount)}</Badge>
+        <Badge tone="neutral">{postCountText(forum.postCount)}</Badge>
+        {forum.discoverability === 'unlisted' ? (
+          <Badge tone="warn">Unlisted</Badge>
+        ) : null}
+        {forum.locked === true ? <Badge tone="warn">Locked</Badge> : null}
+      </div>
+      <BodyText tone="muted" variant="caption">
+        {lastPostSummary(forum, nowMs)}
+      </BodyText>
+    </section>
   )
 }
 
-const indexView = (state: ForumPageState, nowMs: number): ReadonlyArray<View> => {
-  const rows =
-    state.forums.length === 0
-      ? [text('forum-index-empty', 'No listed forums yet.', 'body', 'textMuted')]
-      : state.forums.map((forum, index) => forumRow(forum, index, nowMs))
-  return [
-    breadcrumb('forum-index-crumbs', [boardBreadcrumbItem]),
-    khalaBoardPanel('forum-index-panel', [
-      text('forum-index-title', 'OpenAgents Forum', 'heading'),
-      ...rows,
-    ]),
-  ]
+function IndexView({
+  nowMs,
+  state,
+}: Readonly<{ nowMs: number; state: ForumPageState }>) {
+  return (
+    <>
+      <Breadcrumb frameKey="forum-index-crumbs" trail={[boardBreadcrumbItem]} />
+      <KhalaFrame
+        className="forum-board"
+        frameKey="forum-index-panel"
+        height={forumBoardFrameSize[1]}
+        id="forum-board-index"
+        motif="cut-corner-surface"
+        width={forumBoardFrameSize[0]}
+      >
+        <div className="forum-board-content">
+          <h1 className="forum-text forum-heading">OpenAgents Forum</h1>
+          {state.forums.length === 0 ? (
+            <BodyText tone="muted">No listed forums yet.</BodyText>
+          ) : (
+            state.forums.map((forum, index) => (
+              <ForumRow
+                forum={forum}
+                index={index}
+                key={`forum-row-${forum.slug ?? forum.forumId ?? index}`}
+                nowMs={nowMs}
+              />
+            ))
+          )}
+        </div>
+      </KhalaFrame>
+    </>
+  )
 }
 
 // ---------------------------------------------------------------------------
 // Forum (topic list) view
 // ---------------------------------------------------------------------------
 
-const topicRow = (
-  topic: ForumTopicProjection,
-  index: number,
-  nowMs: number,
-): View => {
-  const key = `topic-row-${topic.topicId ?? index}`
+function TopicRow({
+  index,
+  nowMs,
+  topic,
+}: Readonly<{ index: number; nowMs: number; topic: ForumTopicProjection }>) {
   const postCount = Number(topic.postCount ?? 0)
   const replies = Number(topic.replyCount ?? Math.max(postCount - 1, 0))
   const views = Number(topic.viewCount ?? topic.views ?? 0)
-  return Card(
-    {
-      key,
-      padding: '4',
-      radius: 'md',
-      style: {
-        backgroundColor: index % 2 === 0 ? 'surface' : 'surfaceRaised',
-        borderColor: 'border',
-        borderWidth: 1,
-        width: 'full',
-      },
-    },
-    [
-      pathLink(`${key}-title`, topic.title ?? 'Topic', topicPath(topic.topicId ?? ''), 'title'),
-      text(
-        `${key}-by`,
-        `by ${topic.author?.displayName ?? 'Unknown'} » ${friendlyTime(topic.createdAt ?? topic.updatedAt, nowMs)}`,
-        'caption',
-        'textMuted',
-      ),
-      Stack({ key: `${key}-meta`, direction: 'row', gap: '2', align: 'center' }, [
-        metaBadge(`${key}-replies`, replyCountText(replies)),
-        metaBadge(`${key}-views`, viewCountText(views)),
-        ...(topicStatusLabel(topic) === 'Topic'
-          ? []
-          : [Badge({ key: `${key}-status`, label: topicStatusLabel(topic), tone: 'warn' })]),
-      ]),
-      lastPostSummaryText(`${key}-last`, topic, nowMs),
-    ],
+  const statusLabel = topicStatusLabel(topic)
+  return (
+    <section
+      className={`forum-card ${index % 2 === 0 ? 'forum-card-even' : 'forum-card-odd'}`}
+      data-en-key={`topic-row-${topic.topicId ?? index}`}
+    >
+      <h2 className="forum-text forum-title">
+        <PathLink className="forum-title" href={topicPath(topic.topicId ?? '')}>
+          {topic.title ?? 'Topic'}
+        </PathLink>
+      </h2>
+      <BodyText tone="muted" variant="caption">
+        {`by ${topic.author?.displayName ?? 'Unknown'} » ${friendlyTime(topic.createdAt ?? topic.updatedAt, nowMs)}`}
+      </BodyText>
+      <div className="forum-row">
+        <Badge tone="neutral">{replyCountText(replies)}</Badge>
+        <Badge tone="neutral">{viewCountText(views)}</Badge>
+        {statusLabel === 'Topic' ? null : <Badge tone="warn">{statusLabel}</Badge>}
+      </div>
+      <BodyText tone="muted" variant="caption">
+        {lastPostSummary(topic, nowMs)}
+      </BodyText>
+    </section>
   )
 }
 
-const forumView = (state: ForumPageState, nowMs: number): ReadonlyArray<View> => {
+function ForumView({
+  nowMs,
+  state,
+}: Readonly<{ nowMs: number; state: ForumPageState }>) {
   const forum = state.forum
   if (forum === null) {
-    return [unavailableView('forum-missing', state.errorMessage)]
+    return <UnavailableBanner message={state.errorMessage} />
   }
-  const rows =
-    state.topics.length === 0
-      ? [text('forum-topics-empty', 'No topics yet.', 'body', 'textMuted')]
-      : state.topics.map((topic, index) => topicRow(topic, index, nowMs))
-  return [
-    breadcrumb('forum-crumbs', [
-      boardBreadcrumbItem,
-      { key: 'crumb-forum', label: forum.title ?? 'Forum' },
-    ]),
-    panelCard('forum-panel', [
-      text('forum-eyebrow', 'Forum', 'label', 'accent'),
-      text('forum-title', forum.title ?? 'Forum', 'heading'),
-      text(
-        'forum-counts',
-        `${topicCountText(forum.topicCount)} · ${postCountText(forum.postCount)}${forum.locked === true ? ' · Locked' : ''}`,
-        'caption',
-        'textMuted',
-      ),
-      ...rows,
-    ]),
-  ]
+  return (
+    <>
+      <Breadcrumb
+        frameKey="forum-crumbs"
+        trail={[
+          boardBreadcrumbItem,
+          { key: 'crumb-forum', label: forum.title ?? 'Forum' },
+        ]}
+      />
+      <section className="forum-panel" data-en-key="forum-panel">
+        <p className="forum-text forum-label forum-accent">Forum</p>
+        <h1 className="forum-text forum-heading">{forum.title ?? 'Forum'}</h1>
+        <BodyText tone="muted" variant="caption">
+          {`${topicCountText(forum.topicCount)} · ${postCountText(forum.postCount)}${forum.locked === true ? ' · Locked' : ''}`}
+        </BodyText>
+        {state.topics.length === 0 ? (
+          <BodyText tone="muted">No topics yet.</BodyText>
+        ) : (
+          state.topics.map((topic, index) => (
+            <TopicRow
+              index={index}
+              key={`topic-row-${topic.topicId ?? index}`}
+              nowMs={nowMs}
+              topic={topic}
+            />
+          ))
+        )}
+      </section>
+    </>
+  )
 }
 
 // ---------------------------------------------------------------------------
 // Topic (posts) view
 // ---------------------------------------------------------------------------
 
-const markdownBody = (key: string, body: string): ReadonlyArray<View> =>
-  parseForumMarkdown(body).map((segment, index) =>
-    segment.kind === 'markdown'
-      ? Markdown({
-          key: `${key}-md-${index}`,
-          blocks: segment.blocks,
-          style: { width: 'full' },
-        })
-      : segment.kind === 'code'
-        ? CodeBlock({
-            key: `${key}-code-${index}`,
-            ...(segment.language === undefined ? {} : { language: segment.language }),
-            lines: segment.code
-              .split('\n')
-              .map((line) => ({ tokens: [{ kind: 'plain' as const, text: line }] })),
-          })
-        : Divider({ key: `${key}-rule-${index}` }),
-  )
-
-const authorAside = (
-  post: ForumPostProjection,
-  key: string,
-  nowMs: number,
-): View => {
+function AuthorAside({
+  nowMs,
+  post,
+}: Readonly<{ nowMs: number; post: ForumPostProjection }>) {
   const actor = post.author ?? null
   const displayName = actorDisplayName(actor)
   const profilePath = actorProfilePath(actor)
   const postCount = actor?.postCount ?? actor?.forumPostCount ?? post.authorPostCount
   const joinedAt = actor?.joinedAt ?? actor?.firstSeenAt ?? post.authorFirstSeenAt
-  return Stack(
-    { key, direction: 'column', gap: '2', style: { minWidth: 'sm' } },
-    [
-      Stack({ key: `${key}-id`, direction: 'row', gap: '2', align: 'center' }, [
-        Badge({ key: `${key}-avatar`, label: actorInitial(actor), tone: 'info' }),
-        Stack({ key: `${key}-name-col`, direction: 'column', gap: '0' }, [
-          profilePath === null
-            ? text(`${key}-name`, displayName, 'label')
-            : pathLink(`${key}-name`, displayName, profilePath, 'label'),
-          text(`${key}-role`, actorRole(actor), 'caption', 'textMuted'),
-        ]),
-      ]),
-      ...(postCount == null
-        ? []
-        : [text(`${key}-posts`, `Posts: ${postCount}`, 'caption', 'textMuted')]),
-      ...(joinedAt == null
-        ? []
-        : [text(`${key}-joined`, `Joined: ${friendlyTime(joinedAt, nowMs)}`, 'caption', 'textMuted')]),
-    ],
+  return (
+    <div className="forum-post-aside">
+      <div className="forum-row">
+        <Badge tone="info">{actorInitial(actor)}</Badge>
+        <div className="forum-col-tight">
+          {profilePath === null ? (
+            <span className="forum-label">{displayName}</span>
+          ) : (
+            <PathLink className="forum-label" href={profilePath}>
+              {displayName}
+            </PathLink>
+          )}
+          <span className="forum-caption forum-muted">{actorRole(actor)}</span>
+        </div>
+      </div>
+      {postCount == null ? null : (
+        <BodyText tone="muted" variant="caption">{`Posts: ${postCount}`}</BodyText>
+      )}
+      {joinedAt == null ? null : (
+        <BodyText tone="muted" variant="caption">
+          {`Joined: ${friendlyTime(joinedAt, nowMs)}`}
+        </BodyText>
+      )}
+    </div>
   )
 }
 
-const postArticle = (
-  state: ForumPageState,
-  post: ForumPostProjection,
-  index: number,
-  nowMs: number,
-): View => {
+function PostArticle({
+  index,
+  nowMs,
+  onCopyPermalink,
+  post,
+  state,
+}: Readonly<{
+  index: number
+  nowMs: number
+  onCopyPermalink: (postId: string, href: string) => void
+  post: ForumPostProjection
+  state: ForumPageState
+}>) {
   const topicId = state.topic?.topicId ?? ''
   const anchor = postAnchor(post)
   const postNumber = Number(post.postNumber ?? 0)
@@ -529,246 +1031,269 @@ const postArticle = (
     post.subject ?? post.title ?? state.topic?.title ?? `Post #${postNumber}`
   const href = postPath(topicId, post)
   const copied = state.copiedPermalinkPostId === (post.postId ?? '')
-  return Card(
-    {
-      key: anchor,
-      padding: '4',
-      radius: 'md',
-      style: {
-        backgroundColor: index % 2 === 0 ? 'surface' : 'surfaceRaised',
-        borderColor: 'border',
-        borderWidth: 1,
-        width: 'full',
-      },
-    },
-    [
-      Stack(
-        { key: `${anchor}-grid`, direction: 'row', gap: '4', style: { width: 'full' } },
-        [
-          authorAside(post, `${anchor}-author`, nowMs),
-          Stack(
-            { key: `${anchor}-body`, direction: 'column', gap: '3', style: { flex: 1 } },
-            [
-              // Post-number marker keeps `#post-<n>` deep links resolvable.
-              Stack(
-                { key: postNumberAnchor(post), direction: 'column', gap: '1' },
-                [
-                  pathLink(`${anchor}-subject`, subject, href, 'title'),
-                  text(
-                    `${anchor}-meta`,
-                    `Post #${postNumber} » ${friendlyTime(post.createdAt, nowMs)}`,
-                    'caption',
-                    'textMuted',
-                  ),
-                ],
-              ),
-              ...markdownBody(anchor, post.bodyText ?? post.contentRef ?? ''),
-              Stack(
-                {
-                  key: `${anchor}-controls`,
-                  direction: 'row',
-                  gap: '2',
-                  align: 'center',
-                  style: { width: 'full' },
-                },
-                [
-                  Button({
-                    key: `${anchor}-permalink`,
-                    label: copied ? 'Copied' : 'Permalink',
-                    variant: 'ghost',
-                    onPress: IntentRef(
-                      'ForumPermalinkCopied',
-                      StaticPayload({ postId: post.postId ?? '', href }),
-                    ),
-                    style: {
-                      backgroundColor: 'surface',
-                      borderColor: 'border',
-                      borderRadius: 'md',
-                      borderWidth: 1,
-                      color: 'accent',
-                      paddingTop: '1',
-                      paddingRight: '2',
-                      paddingBottom: '1',
-                      paddingLeft: '2',
-                      typeScale: 'caption',
-                    },
-                  }),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
-    ],
+  return (
+    <section
+      className={`forum-card ${index % 2 === 0 ? 'forum-card-even' : 'forum-card-odd'}`}
+      data-en-key={anchor}
+      id={anchor}
+    >
+      <div className="forum-post-grid">
+        <AuthorAside nowMs={nowMs} post={post} />
+        <div className="forum-post-body">
+          {/* Post-number marker keeps `#post-<n>` deep links resolvable. */}
+          <div className="forum-col" data-en-key={postNumberAnchor(post)} id={postNumberAnchor(post)}>
+            <h2 className="forum-text forum-title">
+              <PathLink className="forum-title" href={href}>
+                {subject}
+              </PathLink>
+            </h2>
+            <BodyText tone="muted" variant="caption">
+              {`Post #${postNumber} » ${friendlyTime(post.createdAt, nowMs)}`}
+            </BodyText>
+          </div>
+          <MarkdownBody body={post.bodyText ?? post.contentRef ?? ''} />
+          <div className="forum-row">
+            <button
+              className="forum-permalink"
+              onClick={() => onCopyPermalink(post.postId ?? '', href)}
+              type="button"
+            >
+              {copied ? 'Copied' : 'Permalink'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
   )
 }
 
-const sortToggle = (state: ForumPageState): View => {
+function SortToggle({ state }: Readonly<{ state: ForumPageState }>) {
   const params = state.params
   const topicId = params.kind === 'topic' ? params.topicId : ''
   const active = params.kind === 'topic' ? params.sortDirection : 'asc'
-  const item = (direction: ForumTopicPostSortDirection, label: string): View =>
-    active === direction
-      ? Badge({ key: `sort-${direction}`, label, tone: 'info' })
-      : pathLink(`sort-${direction}`, label, topicSortPath(topicId, direction), 'caption')
-  return Stack({ key: 'sort-toggle', direction: 'row', gap: '2', align: 'center' }, [
-    text('sort-label', 'Post order', 'caption', 'textMuted'),
-    item('asc', 'Oldest first'),
-    item('desc', 'Newest first'),
-  ])
+  const item = (direction: ForumTopicPostSortDirection, label: string) =>
+    active === direction ? (
+      <Badge tone="info">{label}</Badge>
+    ) : (
+      <PathLink className="forum-caption" href={topicSortPath(topicId, direction)}>
+        {label}
+      </PathLink>
+    )
+  return (
+    <div className="forum-row">
+      <span className="forum-caption forum-muted">Post order</span>
+      {item('asc', 'Oldest first')}
+      {item('desc', 'Newest first')}
+    </div>
+  )
 }
 
-const topicView = (state: ForumPageState, nowMs: number): ReadonlyArray<View> => {
+function TopicView({
+  nowMs,
+  onCopyPermalink,
+  state,
+}: Readonly<{
+  nowMs: number
+  onCopyPermalink: (postId: string, href: string) => void
+  state: ForumPageState
+}>) {
   const topic = state.topic
   if (topic === null) {
-    return [unavailableView('topic-missing', state.errorMessage)]
+    return <UnavailableBanner message={state.errorMessage} />
   }
-  const forumCrumbPath = forumRefPath(topic.forumId ?? '')
-  const posts =
-    state.posts.length === 0
-      ? [text('topic-posts-empty', 'No visible posts yet.', 'body', 'textMuted')]
-      : state.posts.map((post, index) => postArticle(state, post, index, nowMs))
-  return [
-    breadcrumb('topic-crumbs', [
-      boardBreadcrumbItem,
-      { key: 'crumb-forum', label: 'Forum', path: forumCrumbPath },
-      { key: 'crumb-topic', label: topic.title ?? 'Topic' },
-    ]),
-    panelCard('topic-panel', [
-      text('topic-eyebrow', 'Thread', 'label', 'accent'),
-      text('topic-title', topic.title ?? 'Topic', 'heading'),
-      Stack(
-        { key: 'topic-meta-row', direction: 'row', gap: '3', align: 'center' },
-        [
-          text('topic-counts', postCountText(topic.postCount), 'caption', 'textMuted'),
-          ...(topicStatusLabel(topic) === 'Topic'
-            ? []
-            : [Badge({ key: 'topic-status', label: topicStatusLabel(topic), tone: 'warn' })]),
-          sortToggle(state),
-        ],
-      ),
-      ...posts,
-    ]),
-  ]
+  const statusLabel = topicStatusLabel(topic)
+  return (
+    <>
+      <Breadcrumb
+        frameKey="topic-crumbs"
+        trail={[
+          boardBreadcrumbItem,
+          {
+            key: 'crumb-forum',
+            label: 'Forum',
+            path: forumRefPath(topic.forumId ?? ''),
+          },
+          { key: 'crumb-topic', label: topic.title ?? 'Topic' },
+        ]}
+      />
+      <section className="forum-panel" data-en-key="topic-panel">
+        <p className="forum-text forum-label forum-accent">Thread</p>
+        <h1 className="forum-text forum-heading">{topic.title ?? 'Topic'}</h1>
+        <div className="forum-row forum-row-loose">
+          <span className="forum-caption forum-muted">
+            {postCountText(topic.postCount)}
+          </span>
+          {statusLabel === 'Topic' ? null : <Badge tone="warn">{statusLabel}</Badge>}
+          <SortToggle state={state} />
+        </div>
+        {state.posts.length === 0 ? (
+          <BodyText tone="muted">No visible posts yet.</BodyText>
+        ) : (
+          state.posts.map((post, index) => (
+            <PostArticle
+              index={index}
+              key={postAnchor(post)}
+              nowMs={nowMs}
+              onCopyPermalink={onCopyPermalink}
+              post={post}
+              state={state}
+            />
+          ))
+        )}
+      </section>
+    </>
+  )
 }
 
 // ---------------------------------------------------------------------------
 // Receipt view
 // ---------------------------------------------------------------------------
 
-const receiptTargetLinks = (receipt: ForumReceiptProjection): ReadonlyArray<View> => {
-  const links: View[] = []
+function ReceiptTargetLinks({
+  receipt,
+}: Readonly<{ receipt: ForumReceiptProjection }>) {
+  const links: ReactNode[] = []
   const target = receipt.target ?? null
   if (receipt.targetPostPermalink != null && receipt.targetPostPermalink !== '') {
-    links.push(pathLink('receipt-target-post', 'Post', receipt.targetPostPermalink, 'body'))
+    links.push(
+      <PathLink
+        className="forum-body"
+        href={receipt.targetPostPermalink}
+        key="receipt-target-post"
+      >
+        Post
+      </PathLink>,
+    )
   }
   if (target?.topicId != null && target.topicId !== '') {
-    links.push(pathLink('receipt-target-topic', 'Topic', topicPath(target.topicId), 'body'))
+    links.push(
+      <PathLink
+        className="forum-body"
+        href={topicPath(target.topicId)}
+        key="receipt-target-topic"
+      >
+        Topic
+      </PathLink>,
+    )
     if (
       (receipt.targetPostPermalink == null || receipt.targetPostPermalink === '') &&
       target.postId != null &&
       target.postId !== ''
     ) {
       links.push(
-        pathLink(
-          'receipt-target-topic-post',
-          'Post',
-          `${topicPath(target.topicId)}#post-${encodeURIComponent(target.postId)}`,
-          'body',
-        ),
+        <PathLink
+          className="forum-body"
+          href={`${topicPath(target.topicId)}#post-${encodeURIComponent(target.postId)}`}
+          key="receipt-target-topic-post"
+        >
+          Post
+        </PathLink>,
       )
     }
   }
-  return links.length === 0
-    ? [text('receipt-target-none', 'Forum payment', 'body', 'textMuted')]
-    : links
+  return (
+    <>
+      {links.length === 0 ? (
+        <BodyText tone="muted">Forum payment</BodyText>
+      ) : (
+        links
+      )}
+    </>
+  )
 }
 
-const receiptRowView = (
-  key: string,
-  label: string,
-  value: ReadonlyArray<View>,
-): View =>
-  Stack({ key, direction: 'column', gap: '1', style: { width: 'full' } }, [
-    text(`${key}-label`, label, 'label', 'accent'),
-    ...value,
-  ])
+function ReceiptRow({
+  children,
+  label,
+}: Readonly<{ children: ReactNode; label: string }>) {
+  return (
+    <div className="forum-col">
+      <span className="forum-label forum-accent">{label}</span>
+      {children}
+    </div>
+  )
+}
 
-const receiptView = (state: ForumPageState, nowMs: number): ReadonlyArray<View> => {
+function ReceiptView({
+  nowMs,
+  state,
+}: Readonly<{ nowMs: number; state: ForumPageState }>) {
   const receipt = state.receipt
   if (receipt === null) {
-    return [unavailableView('receipt-missing', state.errorMessage)]
+    return <UnavailableBanner message={state.errorMessage} />
   }
-  return [
-    breadcrumb('receipt-crumbs', [
-      boardBreadcrumbItem,
-      { key: 'crumb-receipt', label: 'Receipt' },
-    ]),
-    panelCard('receipt-panel', [
-      text('receipt-eyebrow', 'Forum receipt', 'label', 'accent'),
-      text('receipt-title', receiptActionText(receipt.actionKind), 'heading'),
-      text(
-        'receipt-summary',
-        `${receiptAmountText(receipt.amount)} · ${friendlyTime(receipt.createdAt, nowMs)}`,
-        'caption',
-        'textMuted',
-      ),
-      receiptRowView('receipt-ref-row', 'Receipt', [
-        text('receipt-ref', receipt.receiptRef ?? '', 'body'),
-      ]),
-      receiptRowView('receipt-target-row', 'Target', receiptTargetLinks(receipt)),
-      receiptRowView('receipt-recipient-row', 'Recipient', [
-        text(
-          'receipt-recipient',
-          receipt.recipientActorRef ?? 'OpenAgents moderation pool',
-          'body',
-        ),
-      ]),
-    ]),
-  ]
+  return (
+    <>
+      <Breadcrumb
+        frameKey="receipt-crumbs"
+        trail={[boardBreadcrumbItem, { key: 'crumb-receipt', label: 'Receipt' }]}
+      />
+      <section className="forum-panel" data-en-key="receipt-panel">
+        <p className="forum-text forum-label forum-accent">Forum receipt</p>
+        <h1 className="forum-text forum-heading">
+          {receiptActionText(receipt.actionKind)}
+        </h1>
+        <BodyText tone="muted" variant="caption">
+          {`${receiptAmountText(receipt.amount)} · ${friendlyTime(receipt.createdAt, nowMs)}`}
+        </BodyText>
+        <ReceiptRow label="Receipt">
+          <BodyText>{receipt.receiptRef ?? ''}</BodyText>
+        </ReceiptRow>
+        <ReceiptRow label="Target">
+          <ReceiptTargetLinks receipt={receipt} />
+        </ReceiptRow>
+        <ReceiptRow label="Recipient">
+          <BodyText>
+            {receipt.recipientActorRef ?? 'OpenAgents moderation pool'}
+          </BodyText>
+        </ReceiptRow>
+      </section>
+    </>
+  )
 }
 
 // ---------------------------------------------------------------------------
 // Root view
 // ---------------------------------------------------------------------------
 
-export const forumPageView = (
-  state: ForumPageState,
-  nowMs: number = Date.now(),
-): View => {
-  const body =
-    state.phase === 'loading'
-      ? [
-          breadcrumb('loading-crumbs', [boardBreadcrumbItem]),
-          loadingView('forum-loading'),
-        ]
-      : state.phase === 'unavailable'
-        ? [
-            breadcrumb('unavailable-crumbs', [boardBreadcrumbItem]),
-            unavailableView('forum-unavailable', state.errorMessage),
-          ]
-        : state.params.kind === 'index'
-          ? indexView(state, nowMs)
-          : state.params.kind === 'forum'
-            ? forumView(state, nowMs)
-            : state.params.kind === 'topic'
-              ? topicView(state, nowMs)
-              : receiptView(state, nowMs)
-  return Stack(
-    {
-      key: 'forum-root',
-      direction: 'column',
-      gap: '4',
-      padding: '4',
-      style: {
-        backgroundColor: 'background',
-        minHeight: 'full',
-        width: 'full',
-        maxWidth: 1180,
-        alignSelf: 'center',
-      },
-    },
-    body,
+const noopCopyPermalink = (): void => undefined
+
+export function ForumPageView({
+  nowMs = Date.now(),
+  onCopyPermalink = noopCopyPermalink,
+  state,
+}: Readonly<{
+  nowMs?: number
+  onCopyPermalink?: (postId: string, href: string) => void
+  state: ForumPageState
+}>) {
+  return (
+    <div className="forum-root" data-en-key="forum-root">
+      {state.phase === 'loading' ? (
+        <>
+          <Breadcrumb frameKey="loading-crumbs" trail={[boardBreadcrumbItem]} />
+          <section className="forum-panel" data-en-key="forum-loading">
+            <BodyText tone="muted">Loading…</BodyText>
+          </section>
+        </>
+      ) : state.phase === 'unavailable' ? (
+        <>
+          <Breadcrumb
+            frameKey="unavailable-crumbs"
+            trail={[boardBreadcrumbItem]}
+          />
+          <UnavailableBanner message={state.errorMessage} />
+        </>
+      ) : state.params.kind === 'index' ? (
+        <IndexView nowMs={nowMs} state={state} />
+      ) : state.params.kind === 'forum' ? (
+        <ForumView nowMs={nowMs} state={state} />
+      ) : state.params.kind === 'topic' ? (
+        <TopicView nowMs={nowMs} onCopyPermalink={onCopyPermalink} state={state} />
+      ) : (
+        <ReceiptView nowMs={nowMs} state={state} />
+      )}
+    </div>
   )
 }
 
@@ -780,271 +1305,271 @@ export type ForumSurfaceDependencies = Readonly<{
   fetchFn?: typeof fetch
   now?: () => number
   copyToClipboard?: (value: string) => Promise<void>
-  assignLocation?: (href: string) => void
   scrollToAnchor?: (anchor: string) => void
   khalaAssembly?: ForumKhalaAssemblyDependencies | false
 }>
 
-const loadForumState = (
+/**
+ * Load the live projections for one route. Fail-soft: every fetcher in
+ * `-forum-data.ts` resolves to `null` on failure, so an unreachable Worker
+ * yields the honest unavailable state and nothing is fabricated client-side.
+ */
+export const loadForumState = async (
   params: ForumRouteParams,
   fetchFn: typeof fetch,
-): Effect.Effect<Partial<ForumPageState>> =>
-  Effect.promise(async (): Promise<Partial<ForumPageState>> => {
-    if (params.kind === 'index') {
-      const forums = await fetchForumIndex(fetchFn)
-      if (forums === null) {
-        return { phase: 'unavailable', errorMessage: 'Board index unavailable' }
-      }
-      return { phase: 'ready', forums }
+): Promise<Partial<ForumPageState>> => {
+  if (params.kind === 'index') {
+    const forums = await fetchForumIndex(fetchFn)
+    if (forums === null) {
+      return { phase: 'unavailable', errorMessage: 'Board index unavailable' }
     }
-    if (params.kind === 'forum') {
-      const [forum, topics] = await Promise.all([
-        fetchForumSummary(params.forumRef, fetchFn),
-        fetchForumTopics(params.forumRef, fetchFn),
-      ])
-      if (forum === null) {
-        return { phase: 'unavailable', errorMessage: 'Forum unavailable' }
-      }
-      return { phase: 'ready', forum, topics: topics ?? [] }
+    return { phase: 'ready', forums }
+  }
+  if (params.kind === 'forum') {
+    const [forum, topics] = await Promise.all([
+      fetchForumSummary(params.forumRef, fetchFn),
+      fetchForumTopics(params.forumRef, fetchFn),
+    ])
+    if (forum === null) {
+      return { phase: 'unavailable', errorMessage: 'Forum unavailable' }
     }
-    if (params.kind === 'topic') {
-      const [detail, authMode] = await Promise.all([
-        fetchForumTopicDetail(params.topicId, params.sortDirection, fetchFn),
-        fetchForumAuthMode(fetchFn),
-      ])
-      if (detail === null) {
-        return { phase: 'unavailable', errorMessage: 'Topic unavailable' }
-      }
-      return {
-        phase: 'ready',
-        topic: detail.topic,
-        posts: detail.posts,
-        authMode,
-      }
+    return { phase: 'ready', forum, topics: topics ?? [] }
+  }
+  if (params.kind === 'topic') {
+    const [detail, authMode] = await Promise.all([
+      fetchForumTopicDetail(params.topicId, params.sortDirection, fetchFn),
+      fetchForumAuthMode(fetchFn),
+    ])
+    if (detail === null) {
+      return { phase: 'unavailable', errorMessage: 'Topic unavailable' }
     }
-    const receipt = await fetchForumReceipt(params.receiptRef, fetchFn)
-    if (receipt === null) {
-      return { phase: 'unavailable', errorMessage: 'Receipt unavailable' }
+    return {
+      phase: 'ready',
+      topic: detail.topic,
+      posts: detail.posts,
+      authMode,
     }
-    return { phase: 'ready', receipt }
-  })
+  }
+  const receipt = await fetchForumReceipt(params.receiptRef, fetchFn)
+  if (receipt === null) {
+    return { phase: 'unavailable', errorMessage: 'Receipt unavailable' }
+  }
+  return { phase: 'ready', receipt }
+}
 
 // ---------------------------------------------------------------------------
-// Mount
+// Surface component
 // ---------------------------------------------------------------------------
 
-const destinationToHref = (destination: NavigationDestination): string =>
-  destination.kind === 'path'
-    ? destination.path
-    : destination.kind === 'url'
-      ? destination.href
-      : `#${destination.id}`
+type ForumSurfaceProps = Readonly<{
+  route: string
+  params: ForumRouteParams
+  deps?: ForumSurfaceDependencies
+}>
+
+export function ForumSurface({ deps = {}, params, route }: ForumSurfaceProps) {
+  const rootRef = useRef<HTMLElement | null>(null)
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scrolledRef = useRef(false)
+  const [state, setState] = useState<ForumPageState>(() =>
+    initialForumPageState(params),
+  )
+
+  const now = deps.now ?? (() => Date.now())
+  const fetchFn = deps.fetchFn ?? fetch
+  const copyToClipboard =
+    deps.copyToClipboard ??
+    (async (value: string) => {
+      await navigator.clipboard?.writeText(value)
+    })
+  const scrollToAnchor =
+    deps.scrollToAnchor ??
+    ((anchor: string) => {
+      const root = rootRef.current
+      if (root === null) return
+      const target = root.querySelector(
+        `[id="${anchor.replace(/["\\]/gu, '\\$&')}"]`,
+      )
+      if (target instanceof HTMLElement) {
+        target.scrollIntoView({ block: 'start' })
+      }
+    })
+
+  // Load the live projections once per mounted route.
+  useEffect(() => {
+    let disposed = false
+    void loadForumState(params, fetchFn)
+      .then((loaded) => {
+        if (!disposed) {
+          setState((previous) => ({ ...previous, ...loaded }))
+        }
+      })
+      .catch(() => {
+        if (!disposed) {
+          setState((previous) => ({
+            ...previous,
+            phase: 'unavailable' as const,
+            errorMessage: 'Forum unavailable',
+          }))
+        }
+      })
+    return () => {
+      disposed = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(
+    () => () => {
+      if (copyTimerRef.current !== null) {
+        clearTimeout(copyTimerRef.current)
+      }
+    },
+    [],
+  )
+
+  // Deep-link parity: `#post-<id>` / `#post-<n>` anchors scroll to the
+  // rendered post once the data boundary has settled.
+  useEffect(() => {
+    if (
+      state.phase === 'loading' ||
+      params.kind !== 'topic' ||
+      scrolledRef.current ||
+      typeof window === 'undefined'
+    ) {
+      return
+    }
+    const rawHash = window.location.hash
+    if (!rawHash.startsWith('#post-')) {
+      return
+    }
+    scrolledRef.current = true
+    const raw = rawHash.slice(1)
+    let anchor = raw
+    try {
+      anchor = decodeURIComponent(raw)
+    } catch {
+      anchor = raw
+    }
+    scrollToAnchor(anchor)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.phase])
+
+  // Motion is attached only after the board content has committed. Semantic
+  // content never waits for it.
+  useScopedEffect(() => {
+    const root = rootRef.current
+    const khalaAssembly = deps.khalaAssembly
+    if (
+      root === null ||
+      params.kind !== 'index' ||
+      state.phase !== 'ready' ||
+      khalaAssembly === false
+    ) {
+      return Effect.void
+    }
+    return mountForumBoardAssembly(root, khalaAssembly ?? {})
+  }, [params.kind, state.phase])
+
+  const onCopyPermalink = useCallback(
+    (postId: string, href: string) => {
+      const origin = typeof window === 'undefined' ? '' : window.location.origin
+      void copyToClipboard(`${origin}${href}`)
+        .catch(() => undefined)
+        .then(() => {
+          setState((previous) => ({
+            ...previous,
+            copiedPermalinkPostId: postId,
+          }))
+          if (copyTimerRef.current !== null) {
+            clearTimeout(copyTimerRef.current)
+          }
+          copyTimerRef.current = setTimeout(() => {
+            copyTimerRef.current = null
+            setState((previous) =>
+              previous.copiedPermalinkPostId === postId
+                ? { ...previous, copiedPermalinkPostId: null }
+                : previous,
+            )
+          }, 1500)
+        })
+    },
+    [copyToClipboard],
+  )
+
+  return (
+    <main
+      aria-label="OpenAgents Forum"
+      className="forum-page"
+      data-route={route}
+      ref={rootRef}
+    >
+      <ForumStyleSheet />
+      <ForumPageView
+        nowMs={now()}
+        onCopyPermalink={onCopyPermalink}
+        state={state}
+      />
+    </main>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Standalone mount
+//
+// The Cloud Run monolith serves /forum* from a static shell plus one packed
+// browser bundle (src/forum-entry.ts). That host has no router, so it mounts
+// this same component tree into `#forum-root` directly.
+// ---------------------------------------------------------------------------
+
+const routeNameForParams = (params: ForumRouteParams): string =>
+  params.kind === 'index'
+    ? 'forum'
+    : params.kind === 'forum'
+      ? 'forum-forum'
+      : params.kind === 'topic'
+        ? 'forum-topic'
+        : 'forum-receipt'
 
 export const mountForumSurface = (
   container: HTMLElement,
   params: ForumRouteParams,
   deps: ForumSurfaceDependencies = {},
-) =>
-  Effect.gen(function* () {
-    const fetchFn = deps.fetchFn ?? fetch
-    const now = deps.now ?? (() => Date.now())
-    const assignLocation =
-      deps.assignLocation ??
-      ((href: string) => {
-        window.location.assign(href)
-      })
-    const copyToClipboard =
-      deps.copyToClipboard ??
-      (async (value: string) => {
-        await navigator.clipboard?.writeText(value)
-      })
-    const scrollToAnchor =
-      deps.scrollToAnchor ??
-      ((anchor: string) => {
-        const escaped =
-          typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
-            ? CSS.escape(anchor)
-            : anchor.replace(/"/g, '\\"')
-        const target = container.querySelector(`[data-en-key="${escaped}"]`)
-        if (target instanceof HTMLElement) {
-          target.scrollIntoView({ block: 'start' })
-        }
-      })
-    const state = yield* SubscriptionRef.make(initialForumPageState(params))
-    const program = makeViewProgramFromState(state, (value) =>
-      forumPageView(value, now()),
-    )
-
-    const handlers: IntentHandlers<typeof forumIntents> = {
-      ForumPermalinkCopied: ({ postId, href }) =>
-        Effect.gen(function* () {
-          const origin =
-            typeof window === 'undefined' ? '' : window.location.origin
-          yield* Effect.promise(() =>
-            copyToClipboard(`${origin}${href}`).catch(() => undefined),
-          )
-          yield* SubscriptionRef.update(state, (previous) => ({
-            ...previous,
-            copiedPermalinkPostId: postId,
-          }))
-          yield* Effect.sleep(1500)
-          yield* SubscriptionRef.update(state, (previous) =>
-            previous.copiedPermalinkPostId === postId
-              ? { ...previous, copiedPermalinkPostId: null }
-              : previous,
-          )
-        }),
-      Navigate: (destination) =>
-        Effect.sync(() => {
-          assignLocation(destinationToHref(destination))
-        }),
-    }
-
-    const registry = yield* makeIntentRegistry(forumIntents, handlers)
-    const report: IntentReporter = (ref, runtimeValue) =>
-      registry.dispatch(resolveIntentRef(ref, runtimeValue))
-    const surface = yield* makeDomRenderer({ theme: khalaTheme }).mount(
-      container,
-      program.viewStream,
-      report,
-    )
-
-    // Load the live projections. Fail-soft: any failure leaves the honest
-    // unavailable state; nothing is fabricated client-side.
-    yield* loadForumState(params, fetchFn).pipe(
-      Effect.flatMap((loaded) =>
-        SubscriptionRef.update(state, (previous) => ({
-          ...previous,
-          ...loaded,
-        })),
-      ),
-      Effect.catch(() =>
-        SubscriptionRef.update(state, (previous) => ({
-          ...previous,
-          phase: 'unavailable' as const,
-          errorMessage: 'Forum unavailable',
-        })),
-      ),
-    )
-
-    // Motion is attached only after the committed renderer mount and the
-    // first data boundary have yielded. Semantic content never waits for it.
-    const loadedState = yield* SubscriptionRef.get(state)
-    if (
-      params.kind === 'index' &&
-      loadedState.phase === 'ready' &&
-      deps.khalaAssembly !== false
-    ) {
-      yield* mountForumBoardAssembly(container, deps.khalaAssembly)
-    }
-
-    // Deep-link parity: `#post-<id>` / `#post-<n>` anchors scroll to the
-    // rendered post once the ready view exists.
-    if (typeof window !== 'undefined' && params.kind === 'topic') {
-      const rawHash = window.location.hash
-      if (rawHash.startsWith('#post-')) {
-        yield* Effect.sync(() => {
-          const raw = rawHash.slice(1)
-          let anchor = raw
-          try {
-            anchor = decodeURIComponent(raw)
-          } catch {
-            anchor = raw
-          }
-          scrollToAnchor(anchor)
-        })
-      }
-    }
-
-    return { state, unmount: surface.unmount }
-  })
-
-// ---------------------------------------------------------------------------
-// React route-shell hosts (thin mount shims only — no forum content in React)
-// ---------------------------------------------------------------------------
-
-const useForumMount = (
-  rootRef: RefObject<HTMLDivElement | null>,
-  makeParams: () => ForumRouteParams,
-): void => {
-  useEffect(() => {
-    const root = rootRef.current
-    if (root === null) {
-      return undefined
-    }
-
-    let disposed = false
-    let closeScope: (() => void) | undefined
-
-    void Effect.runPromise(Scope.make())
-      .then((scope) => {
-        const close = () => {
-          void Effect.runPromise(Scope.close(scope, Exit.void))
-        }
-        closeScope = close
-        if (disposed) {
-          close()
-          return undefined
-        }
-        return Effect.runPromise(
-          Scope.provide(scope)(mountForumSurface(root, makeParams())),
-        )
-      })
-      .catch(() => undefined)
-
-    return () => {
-      disposed = true
-      closeScope?.()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-}
-
-type ForumShellProps = Readonly<{
-  route: string
-  makeParams: () => ForumRouteParams
-}>
-
-const ForumShell = ({ route, makeParams }: ForumShellProps) => {
-  const rootRef = useRef<HTMLDivElement | null>(null)
-  useForumMount(rootRef, makeParams)
-  return (
-    <main
-      aria-label="OpenAgents Forum"
-      data-route={route}
-      data-forum-en=""
-    >
-      <div ref={rootRef} data-forum-en-root="" />
-    </main>
+): Readonly<{ unmount: () => void }> => {
+  const root = createRoot(container)
+  root.render(
+    <ForumSurface deps={deps} params={params} route={routeNameForParams(params)} />,
   )
+  return {
+    unmount: () => {
+      root.unmount()
+    },
+  }
 }
+
+// ---------------------------------------------------------------------------
+// TanStack Start route components
+// ---------------------------------------------------------------------------
 
 export function ForumIndexPage() {
-  return (
-    <ForumShell route="forum" makeParams={() => ({ kind: 'index' })} />
-  )
+  return <ForumSurface params={{ kind: 'index' }} route="forum" />
 }
 
 export function ForumForumPage({ forumRef }: Readonly<{ forumRef: string }>) {
-  return (
-    <ForumShell
-      route="forum-forum"
-      makeParams={() => ({ kind: 'forum', forumRef })}
-    />
-  )
+  return <ForumSurface params={{ kind: 'forum', forumRef }} route="forum-forum" />
 }
 
 export function ForumTopicPage({ topicId }: Readonly<{ topicId: string }>) {
   return (
-    <ForumShell
-      route="forum-topic"
-      makeParams={() => ({
+    <ForumSurface
+      params={{
         kind: 'topic',
         topicId,
         sortDirection: parseTopicPostSortDirection(
           typeof window === 'undefined' ? '' : window.location.search,
         ),
-      })}
+      }}
+      route="forum-topic"
     />
   )
 }
@@ -1053,9 +1578,6 @@ export function ForumReceiptPage({
   receiptRef,
 }: Readonly<{ receiptRef: string }>) {
   return (
-    <ForumShell
-      route="forum-receipt"
-      makeParams={() => ({ kind: 'receipt', receiptRef })}
-    />
+    <ForumSurface params={{ kind: 'receipt', receiptRef }} route="forum-receipt" />
   )
 }

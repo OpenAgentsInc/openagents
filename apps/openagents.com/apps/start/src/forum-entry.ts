@@ -1,16 +1,14 @@
 // #8634 / #8635 scope 5 (live cutover): browser entry for the retained
-// /forum* Effect Native surface as served by the Cloud Run monolith
+// /forum* surface as served by the Cloud Run monolith
 // (workers/api/src/cloudrun/forum-ui.ts) — the same portal-entry.ts pattern.
 //
-// The forum content is the ONE typed Effect Native view tree authored in
-// `routes/-forum-page.tsx` (#8635). This entry only parses the live URL into
-// the exact ForumRouteParams contract the TanStack Start route shims use and
-// mounts the tree through the DOM renderer. No React shell here — the DOM
-// renderer mounts the typed view program directly. Authority is untouched:
-// every read/write stays on the existing public Worker /api/forum* contracts
-// inside -forum-data.ts.
-
-import { Effect, Exit, Scope } from '@effect-native/core/effect'
+// The forum content is the React component tree authored in
+// `routes/-forum-page.tsx` (#8635; converted from an Effect Native view tree
+// to plain React in #9325). This entry only parses the live URL into the exact
+// ForumRouteParams contract the TanStack Start routes use and mounts that tree
+// into the monolith's shell element. Authority is untouched: every read/write
+// stays on the existing public Worker /api/forum* contracts inside
+// -forum-data.ts.
 
 import { parseTopicPostSortDirection } from './routes/-forum-data'
 import { mountForumSurface, type ForumRouteParams } from './routes/-forum-page'
@@ -63,7 +61,7 @@ export const parseForumEntryRoute = (
   return null
 }
 
-const boot = async (): Promise<void> => {
+const boot = (): void => {
   const root = document.getElementById('forum-root')
   if (root === null) {
     return
@@ -75,21 +73,18 @@ const boot = async (): Promise<void> => {
   if (params === null) {
     return
   }
-  const scope = await Effect.runPromise(Scope.make())
+  const surface = mountForumSurface(root, params)
   window.addEventListener('pagehide', () => {
-    void Effect.runPromise(Scope.close(scope, Exit.void))
+    surface.unmount()
   })
-  await Effect.runPromise(
-    Scope.provide(scope)(mountForumSurface(root, params)),
-  )
 }
 
 if (typeof document !== 'undefined') {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-      void boot()
+      boot()
     })
   } else {
-    void boot()
+    boot()
   }
 }

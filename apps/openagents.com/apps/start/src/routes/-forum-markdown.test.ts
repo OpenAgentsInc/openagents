@@ -1,4 +1,8 @@
 // APP-FORUM (#8635) — markdown parity tests for the typed forum post parser.
+//
+// The parser is the surface's no-arbitrary-HTML boundary: every post body is
+// reduced to the closed `MarkdownBlock`/`MarkdownInline` union defined in the
+// module itself, and unsafe hrefs never survive parsing.
 
 import { describe, expect, test } from 'vitest'
 
@@ -6,6 +10,8 @@ import {
   parseForumInlineMarkdown,
   parseForumMarkdown,
   safeForumMarkdownHref,
+  type MarkdownBlock,
+  type MarkdownInline,
 } from './-forum-markdown'
 
 describe('forum markdown parser (#8635)', () => {
@@ -94,5 +100,51 @@ describe('forum markdown parser (#8635)', () => {
     const segments = parseForumMarkdown('')
     expect(segments).toHaveLength(1)
     expect(segments[0]).toMatchObject({ kind: 'markdown' })
+  })
+
+  test('raw HTML in a post body stays text, never a parsed node', () => {
+    const segments = parseForumMarkdown(
+      '<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>',
+    )
+    const kinds = new Set<string>()
+    const collectInline = (nodes: ReadonlyArray<MarkdownInline>): void => {
+      for (const node of nodes) {
+        kinds.add(node.kind)
+        if (node.kind === 'strong' || node.kind === 'emphasis' || node.kind === 'link') {
+          collectInline(node.children)
+        }
+      }
+    }
+    const collectBlocks = (blocks: ReadonlyArray<MarkdownBlock>): void => {
+      for (const block of blocks) {
+        kinds.add(block.kind)
+        if (block.kind === 'list') {
+          for (const item of block.items) collectBlocks(item)
+        } else if (block.kind === 'blockquote') {
+          collectBlocks(block.children)
+        } else {
+          collectInline(block.children)
+        }
+      }
+    }
+    for (const segment of segments) {
+      if (segment.kind === 'markdown') collectBlocks(segment.blocks)
+    }
+    // Only members of the closed union appear — there is no html/raw node.
+    for (const kind of kinds) {
+      expect([
+        'paragraph',
+        'heading',
+        'list',
+        'blockquote',
+        'text',
+        'code',
+        'strong',
+        'emphasis',
+        'link',
+      ]).toContain(kind)
+    }
+    // The markup survives only as literal text content.
+    expect(JSON.stringify(segments)).toContain('alert(1)')
   })
 })

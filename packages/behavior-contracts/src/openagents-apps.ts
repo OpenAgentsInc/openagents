@@ -808,7 +808,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         },
         {
           description:
-            "The /portal Effect Native surface is login-gated: logged-out renders only the login gate (never engagement content), and the surface offers no foreign-engagement lookup — it can only fetch the caller's own engagement.",
+            "The /portal surface is login-gated: the server-rendered loading and logged-out phases render only the login gate (never engagement content, identity, or receipt markup), and the surface offers no foreign-engagement lookup — it can only fetch the caller's own engagement.",
           id: "openagents_web.portal_owner_scoping.surface",
           kind: "bun-test",
           mode: "dom",
@@ -849,7 +849,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         },
         {
           description:
-            "Surface proof: approve/reject dispatch typed intents, the optimistic card state commits on success with the minted receipt ref rendered inline, and a failed decision rolls the item back to draft.",
+            "Surface proof: approve/reject post the decision to the owner-scoped API, the optimistic card state commits on success with the minted receipt ref rendered inline, and a failed decision rolls the item back to draft with no receipt invented.",
           id: "openagents_web.portal_decision_receipts.surface",
           kind: "bun-test",
           mode: "dom",
@@ -881,7 +881,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       oracles: [
         {
           description:
-            "View + DOM proof: the authenticated empty state renders 'Signed in as <session email>' (login fallback, honest no-email fallback — never blank), the different-email guidance, and a 'Sign out / switch account' affordance targeting /logout.",
+            "Server-render + DOM proof: the authenticated empty state renders 'Signed in as <session email>' (login fallback, honest no-email fallback — never blank), the different-email guidance, and a 'Sign out / switch account' affordance targeting /logout.",
           id: "openagents_web.portal_empty_state_identity.surface",
           kind: "bun-test",
           mode: "dom",

@@ -1,9 +1,9 @@
 import {
   makeKhalaChoreography,
   planKhalaChoreography,
-  runKhalaDomMotion,
   type KhalaTransitionState,
-} from "@effect-native/khala-ui";
+} from "@/lib/khala/choreography";
+import { runKhalaDomMotion } from "@/lib/khala/dom-motion";
 import { Deferred, Effect, Scope } from "effect";
 
 const forumBoardAssemblyId = "forumBoardAssembly";

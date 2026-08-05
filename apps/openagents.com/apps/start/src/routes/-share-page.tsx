@@ -2,7 +2,7 @@ import type {
   ShareProjectionV1,
   WorkroomFileItem,
 } from '@openagentsinc/sync-schema'
-import { khalaTheme } from '@effect-native/tokens'
+import { khalaTheme } from '@openagentsinc/design-tokens'
 import { desktopThemeCssVariables } from '@openagentsinc/ui/desktop-workbench'
 import { Copy, ExternalLink, Terminal } from 'lucide-react'
 import type * as React from 'react'

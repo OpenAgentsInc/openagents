@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { KhalaEffectNativePage } from '../-khala-effect-native-page'
+import { KhalaPage } from '../-khala-page'
 
 export const Route = createFileRoute('/khala/')({
-  component: KhalaEffectNativePage,
+  component: KhalaPage,
   head: () => ({
     meta: [
       { title: 'Khala - OpenAgents' },

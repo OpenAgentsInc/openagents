@@ -40,6 +40,12 @@ export const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/gym$/,
   /^\/khala\/?$/,
   /^\/khala\/chat-sync$/,
+  // #9325: `/landing-en` and `/stage1` (in the alternation below) are retired
+  // Effect Native validation surfaces. Both now serve only a compatibility
+  // redirect to /splash, and both STAY listed here for the same reason `/app`,
+  // `/new`, `/code`, and `/code/download` do: an unlisted document path is
+  // 302'd to `/` by `shouldRedirectUnknownDocumentToHome` at the Worker edge,
+  // so the Start-side redirect would never run.
   /^\/landing-en$/,
   /^\/login$/,
   /^\/(?:astro|download|install)\/?$/,

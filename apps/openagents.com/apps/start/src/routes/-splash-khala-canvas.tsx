@@ -3,8 +3,8 @@ import {
   type KhalaBackgroundQuality,
   type KhalaCanvasBackgroundPolicy,
   type KhalaCanvasFrameScheduler,
-} from "@effect-native/render-canvas";
-import { useEffectNativeScopedEffect } from "@effect-native/render-dom/react";
+} from "@/lib/khala/canvas-background";
+import { useScopedEffect } from "@/lib/use-scoped-effect";
 import { Effect, Scope } from "effect";
 import { useRef, type ReactElement } from "react";
 
@@ -184,7 +184,7 @@ export const mountSplashHeroCanvas = (
 export function SplashHeroCanvas(): ReactElement {
   const canvas = useRef<HTMLCanvasElement>(null);
 
-  useEffectNativeScopedEffect(() => {
+  useScopedEffect(() => {
     const element = canvas.current;
     return element === null ? Effect.void : mountSplashHeroCanvas(element);
   }, []);

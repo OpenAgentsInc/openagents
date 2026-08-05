@@ -1,32 +1,33 @@
-// PORTAL-1 (#8652): /portal Effect Native view-program coverage.
+// PORTAL-1 (#8652): /portal client-portal surface coverage.
 //
 // Behavior-contract oracles (packages/behavior-contracts/src/openagents-apps.ts):
 //   * openagents_web.portal_owner_scoped_engagement.v1 — the surface is
 //     login-gated and renders only the caller's own engagement (the server
 //     enforces owner scoping; this surface never offers a foreign lookup).
-//   * openagents_web.portal_decision_receipts.v1 — approve/reject dispatch
-//     typed intents and render the minted decision receipt ref.
+//   * openagents_web.portal_decision_receipts.v1 — approve/reject post the
+//     decision and render the minted decision receipt ref.
 //   * openagents_web.portal_empty_state_account_identity.v1 — the
 //     authenticated empty state always names the signed-in account
 //     (email → login → honest fallback) and offers a sign-out/switch-account
 //     affordance (#8652 reopen: owner hit a mismatched-email binding blind).
-import { viewStructure } from '@effect-native/render-dom'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { act } from 'react'
+import { type Root, createRoot } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, test, vi } from 'vitest'
-
-import { Effect, Exit, Scope, SubscriptionRef } from '@effect-native/core/effect'
+import { afterEach, describe, expect, test } from 'vitest'
 
 import {
   initialPortalPageState,
-  mountPortalSurface,
   portalContentPairs,
-  portalPageView,
   type PortalPageState,
 } from './-portal-core'
-import { PortalPage } from './-portal-page'
+import { PortalPage, PortalSurface } from './-portal-page'
 import type { PortalContentItem } from './-portal-data'
+
+;(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true
 
 const item = (
   overrides: Partial<PortalContentItem> & { id: string },
@@ -71,13 +72,15 @@ const READY_STATE: PortalPageState = {
   decisionPanels: {},
 }
 
-const waitFor = async (predicate: () => boolean): Promise<void> => {
-  await vi.waitFor(() => {
-    if (!predicate()) {
-      throw new Error('condition not met')
-    }
-  })
-}
+/** Every string the login gate and the loading phase must never leak. */
+const ENGAGEMENT_CONTENT = [
+  'Content calendar',
+  'Funnel KPIs',
+  'Strategic Consulting Demo',
+  'Approve',
+  'Reject',
+  'receipt:',
+] as const
 
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -85,25 +88,93 @@ const jsonResponse = (body: unknown, status = 200): Response =>
     headers: { 'content-type': 'application/json' },
   })
 
-describe('PORTAL-1 /portal Effect Native route (#8652)', () => {
-  test('server render is only a thin mount shim, not portal-content React', () => {
+let root: Root | null = null
+let container: HTMLDivElement | null = null
+const originalFetch = globalThis.fetch
+
+afterEach(async () => {
+  if (root !== null) await act(async () => root?.unmount())
+  container?.remove()
+  root = null
+  container = null
+  globalThis.fetch = originalFetch
+})
+
+/** Flush enough microtask turns for a fetch + JSON parse chain to settle. */
+const flush = async (): Promise<void> => {
+  for (let turn = 0; turn < 8; turn += 1) {
+    await act(async () => {})
+  }
+}
+
+const mount = async (fetchFn: typeof fetch): Promise<HTMLDivElement> => {
+  globalThis.fetch = fetchFn
+  container = document.createElement('div')
+  document.body.appendChild(container)
+  root = createRoot(container)
+  await act(async () => root?.render(<PortalPage />))
+  await flush()
+  return container
+}
+
+describe('PORTAL-1 /portal route (#8652)', () => {
+  test('server render carries the portal surface, and it is the pre-session loading phase', () => {
+    // Converted from an Effect Native mount shim to plain React (#9325): the
+    // portal now renders on the server. The server has no session, so the
+    // server-rendered document is always the loading phase.
     const html = renderToStaticMarkup(<PortalPage />)
     expect(html).toContain('data-route="portal"')
     expect(html).toContain('data-portal-root=""')
-    expect(html).not.toContain('Content calendar')
-    expect(html).not.toContain('Funnel KPIs')
+    expect(html).toContain('aria-label="OpenAgents client portal"')
+    expect(html).toContain('data-portal-phase="loading"')
+    expect(html).toContain('Loading your portal…')
+    for (const leak of ENGAGEMENT_CONTENT) {
+      expect(html).not.toContain(leak)
+    }
   })
 
-  test('logged-out state renders the login gate, never engagement content', () => {
-    const serialized = JSON.stringify(
-      portalPageView({ ...initialPortalPageState, phase: 'logged_out' }),
+  test('server-rendered logged-out phase is the login gate ONLY, never engagement content', () => {
+    // Login-gate privacy (openagents_web.portal_owner_scoped_engagement.v1):
+    // now that the surface server-renders, the logged-out document itself
+    // must carry no engagement content at all.
+    const html = renderToStaticMarkup(
+      <PortalSurface
+        state={{ ...initialPortalPageState, phase: 'logged_out' }}
+      />,
     )
-    expect(serialized).toContain('"catalogVersion":"effect-native/v43"')
-    expect(serialized).toContain('Log in to view your engagement.')
-    expect(serialized).toContain('/login/github?returnTo=%2Fportal')
-    expect(serialized).not.toContain('Content calendar')
-    expect(serialized).not.toContain('Funnel KPIs')
-    expect(serialized).not.toContain('className')
+    expect(html).toContain('data-portal-phase="logged_out"')
+    expect(html).toContain('Client portal')
+    expect(html).toContain('Log in to view your engagement.')
+    expect(html).toContain(
+      'Your engagement dashboard, content calendar, and approval queue are private to your account.',
+    )
+    expect(html).toContain('Log in with GitHub')
+    expect(html).toContain('href="/login/github?returnTo=%2Fportal"')
+    for (const leak of ENGAGEMENT_CONTENT) {
+      expect(html).not.toContain(leak)
+    }
+  })
+
+  test('server-rendered logged-out phase carries no item, identity, or receipt markup', () => {
+    const html = renderToStaticMarkup(
+      <PortalSurface
+        state={{
+          ...initialPortalPageState,
+          phase: 'logged_out',
+          // Even if a stale identity/engagement ever rode along, the gate
+          // phase must render none of it.
+          identity: { email: 'client@example.com', login: 'client' },
+          engagement: READY_STATE.engagement,
+          items: READY_STATE.items,
+          kpis: READY_STATE.kpis,
+        }}
+      />,
+    )
+    expect(html).not.toContain('data-portal-item')
+    expect(html).not.toContain('data-portal-kpi')
+    expect(html).not.toContain('client@example.com')
+    expect(html).not.toContain('portal_content_decision')
+    expect(html).not.toContain('Post A')
   })
 
   test('empty state shows WHO is signed in and a switch-account affordance (#8652 reopen)', () => {
@@ -111,35 +182,39 @@ describe('PORTAL-1 /portal Effect Native route (#8652)', () => {
     // mismatched engagement binding rendered only "setup is being prepared"
     // with no account context and no way out. The empty state must always
     // name the signed-in identity and offer sign-out/switch-account.
-    const serialized = JSON.stringify(
-      portalPageView({
-        ...initialPortalPageState,
-        phase: 'empty',
-        identity: { email: 'chris@openagents.com', login: 'AtlantisPleb' },
-      }),
+    const html = renderToStaticMarkup(
+      <PortalSurface
+        state={{
+          ...initialPortalPageState,
+          phase: 'empty',
+          identity: { email: 'chris@openagents.com', login: 'AtlantisPleb' },
+        }}
+      />,
     )
-    expect(serialized).toContain('Your setup is being prepared')
-    expect(serialized).toContain(
+    expect(html).toContain('Your setup is being prepared')
+    expect(html).toContain(
       'No engagement is linked to this account yet. Signed in as chris@openagents.com.',
     )
-    expect(serialized).toContain('different email')
-    expect(serialized).toContain('Sign out / switch account')
-    expect(serialized).toContain('/logout')
-    expect(serialized).not.toContain('Approve')
+    expect(html).toContain('different email')
+    expect(html).toContain('Sign out / switch account')
+    expect(html).toContain('href="/logout"')
+    expect(html).not.toContain('Approve')
   })
 
   test('empty state never renders a blank identity (email → login → honest fallback)', () => {
-    const loginOnly = JSON.stringify(
-      portalPageView({
-        ...initialPortalPageState,
-        phase: 'empty',
-        identity: { email: null, login: 'AtlantisPleb' },
-      }),
+    const loginOnly = renderToStaticMarkup(
+      <PortalSurface
+        state={{
+          ...initialPortalPageState,
+          phase: 'empty',
+          identity: { email: null, login: 'AtlantisPleb' },
+        }}
+      />,
     )
     expect(loginOnly).toContain('Signed in as AtlantisPleb.')
 
-    const noIdentity = JSON.stringify(
-      portalPageView({ ...initialPortalPageState, phase: 'empty' }),
+    const noIdentity = renderToStaticMarkup(
+      <PortalSurface state={{ ...initialPortalPageState, phase: 'empty' }} />,
     )
     expect(noIdentity).toContain(
       'Signed in as your account (no email on this session).',
@@ -147,33 +222,83 @@ describe('PORTAL-1 /portal Effect Native route (#8652)', () => {
     expect(noIdentity).toContain('Sign out / switch account')
   })
 
-  test('ready state is one typed EN tree: header, honest KPI tiles, A/B pairs, decision intents', () => {
-    const tree = portalPageView(READY_STATE)
-    const structure = viewStructure(tree)
-    const serialized = JSON.stringify(tree)
+  test('unavailable state is honest and shows no stale or fabricated data', () => {
+    const html = renderToStaticMarkup(
+      <PortalSurface
+        state={{ ...initialPortalPageState, phase: 'unavailable' }}
+      />,
+    )
+    expect(html).toContain('Portal unavailable')
+    expect(html).toContain(
+      'The portal API is unreachable right now. Nothing is shown rather than showing stale or fabricated data.',
+    )
+    for (const leak of ENGAGEMENT_CONTENT) {
+      expect(html).not.toContain(leak)
+    }
+  })
 
-    expect(structure).toMatchObject({ tag: 'Stack', key: 'portal-root' })
+  test('ready state renders header, honest KPI tiles, A/B pairs, and decision affordances', () => {
+    const html = renderToStaticMarkup(<PortalSurface state={READY_STATE} />)
+
     // Engagement header + status badge.
-    expect(serialized).toContain('Strategic Consulting Demo')
-    expect(serialized).toContain('"_tag":"Badge"')
+    expect(html).toContain('Strategic Consulting Demo')
+    expect(html).toContain('data-slot="badge"')
+    expect(html).toContain('active')
+    expect(html).toContain(
+      'Your engagement at a glance: funnel status, the content calendar, and your approval queue.',
+    )
     // Honest KPI placeholders: em dash values, never fabricated numbers.
-    expect(serialized).toContain('"_tag":"StatTile"')
-    expect(serialized).toContain('"value":"—"')
-    expect(serialized).toContain('Honest placeholders')
+    expect(html).toContain('Funnel KPIs')
+    expect(html).toContain('data-portal-kpi="funnel_traffic"')
+    expect(html).toContain('—')
+    expect(html).toContain(
+      'Honest placeholders: KPI values appear once the live funnel wiring exists — no fabricated numbers.',
+    )
+    expect(html).toContain('>—</p>')
     // A/B variants side by side with channel/variant tags.
-    expect(serialized).toContain('"_tag":"Chip"')
-    expect(serialized).toContain('variant A')
-    expect(serialized).toContain('variant B')
-    expect(serialized).toContain('Post A')
-    expect(serialized).toContain('Post B')
-    // Typed decision intents on draft items.
-    expect(serialized).toContain('PortalDecisionSubmitted')
-    expect(serialized).toContain('"decision":"approve"')
-    expect(serialized).toContain('"decision":"reject"')
-    // Decided item renders its receipt ref, no buttons.
-    expect(serialized).toContain('receipt: portal_content_decision:pcd_1')
-    // No React/renderer leakage in the authored tree.
-    expect(serialized).not.toContain('className')
+    expect(html).toContain('Content calendar')
+    expect(html).toContain(
+      'Agent-drafted posts awaiting your decision. A/B variants render side by side; every approve or reject mints a receipt.',
+    )
+    expect(html).toContain('channel')
+    expect(html).toContain('linkedin')
+    expect(html).toContain('variant A')
+    expect(html).toContain('variant B')
+    expect(html).toContain('Post A')
+    expect(html).toContain('Post B')
+    // Draft items carry approve/reject buttons.
+    expect(html).toContain('Approve')
+    expect(html).toContain('Reject')
+    // Decided item renders its receipt ref.
+    expect(html).toContain('receipt: portal_content_decision:pcd_1')
+  })
+
+  test('KPI note switches off the honest-placeholder wording once a value is live', () => {
+    const html = renderToStaticMarkup(
+      <PortalSurface
+        state={{
+          ...READY_STATE,
+          kpis: [
+            { key: 'leads', label: 'Leads', value: 12, note: '' },
+            { key: 'conversions', label: 'Conversions', value: null, note: '' },
+          ],
+        }}
+      />,
+    )
+    expect(html).toContain('Live values where wired; placeholders stay explicit.')
+    expect(html).not.toContain('Honest placeholders')
+    expect(html).toContain('12')
+    expect(html).toContain('—')
+  })
+
+  test('empty content calendar renders the honest no-items banner', () => {
+    const html = renderToStaticMarkup(
+      <PortalSurface state={{ ...READY_STATE, items: [] }} />,
+    )
+    expect(html).toContain(
+      'No content items yet — drafts appear here as your team publishes the calendar.',
+    )
+    expect(html).not.toContain('Approve')
   })
 
   test('portalContentPairs groups A/B variants and keeps unpaired items alone', () => {
@@ -183,38 +308,26 @@ describe('PORTAL-1 /portal Effect Native route (#8652)', () => {
     expect(rows[1]!.map((entry) => entry.id)).toEqual(['item_c'])
   })
 
-  test('mount smoke: logged-out fetch renders the login gate in real DOM', async () => {
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-
-    const fetchFn = (async (input: RequestInfo | URL) => {
+  test('mount: logged-out fetch renders the login gate in real DOM, never engagement content', async () => {
+    const mounted = await mount((async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes('/api/auth/session')) {
         return jsonResponse({ authenticated: false })
       }
       return jsonResponse({ error: 'not_found' }, 404)
-    }) as typeof fetch
+    }) as typeof fetch)
 
-    const scope = await Effect.runPromise(Scope.make())
-    const surface = await Effect.runPromise(
-      Scope.provide(scope)(mountPortalSurface(container, { fetchFn })),
-    )
-
-    await waitFor(() =>
-      (container.textContent ?? '').includes('Log in to view your engagement.'),
-    )
-    expect(container.textContent).not.toContain('Content calendar')
-
-    await Effect.runPromise(surface.unmount)
-    await Effect.runPromise(Scope.close(scope, Exit.void))
-    container.remove()
+    expect(mounted.textContent).toContain('Log in to view your engagement.')
+    expect(
+      mounted.querySelector('[data-portal-phase="logged_out"]'),
+    ).not.toBeNull()
+    for (const leak of ENGAGEMENT_CONTENT) {
+      expect(mounted.textContent).not.toContain(leak)
+    }
   })
 
-  test('mount smoke: logged-in with NO engagement renders the account email in real DOM (#8652 reopen)', async () => {
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-
-    const fetchFn = (async (input: RequestInfo | URL) => {
+  test('mount: logged-in with NO engagement renders the account email in real DOM (#8652 reopen)', async () => {
+    const mounted = await mount((async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes('/api/auth/session')) {
         return jsonResponse({
@@ -232,33 +345,39 @@ describe('PORTAL-1 /portal Effect Native route (#8652)', () => {
         return jsonResponse({ engagement: null })
       }
       return jsonResponse({ error: 'not_found' }, 404)
-    }) as typeof fetch
+    }) as typeof fetch)
 
-    const scope = await Effect.runPromise(Scope.make())
-    const surface = await Effect.runPromise(
-      Scope.provide(scope)(mountPortalSurface(container, { fetchFn })),
-    )
-
-    await waitFor(() =>
-      (container.textContent ?? '').includes('Your setup is being prepared'),
-    )
-    expect(container.textContent).toContain(
-      'Signed in as chris@openagents.com',
-    )
-    expect(container.textContent).toContain('Sign out / switch account')
-    expect(container.textContent).not.toContain('Content calendar')
-
-    await Effect.runPromise(surface.unmount)
-    await Effect.runPromise(Scope.close(scope, Exit.void))
-    container.remove()
+    expect(mounted.textContent).toContain('Your setup is being prepared')
+    expect(mounted.textContent).toContain('Signed in as chris@openagents.com')
+    expect(mounted.textContent).toContain('Sign out / switch account')
+    expect(mounted.textContent).not.toContain('Content calendar')
   })
 
-  test('mount smoke: approve dispatch is optimistic and renders the receipt ref', async () => {
-    const container = document.createElement('div')
-    document.body.appendChild(container)
+  test('mount: unreachable engagement API renders the honest unavailable state', async () => {
+    const mounted = await mount((async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/auth/session')) {
+        return jsonResponse({ authenticated: true })
+      }
+      return jsonResponse({ error: 'boom' }, 503)
+    }) as typeof fetch)
 
+    expect(mounted.textContent).toContain('Portal unavailable')
+    expect(mounted.textContent).toContain(
+      'The portal API is unreachable right now.',
+    )
+    expect(mounted.textContent).not.toContain('Content calendar')
+  })
+
+  test('mount: approve is optimistic and renders the minted receipt ref', async () => {
     let decisionCalls = 0
-    const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    let decisionMethod: string | undefined
+    let decisionBody: unknown
+
+    const mounted = await mount((async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
       const url = String(input)
       if (url.includes('/api/auth/session')) {
         return jsonResponse({ authenticated: true })
@@ -297,8 +416,8 @@ describe('PORTAL-1 /portal Effect Native route (#8652)', () => {
       }
       if (url.includes('/decision')) {
         decisionCalls += 1
-        expect(init?.method).toBe('POST')
-        expect(JSON.parse(String(init?.body))).toEqual({ decision: 'approve' })
+        decisionMethod = init?.method
+        decisionBody = JSON.parse(String(init?.body))
         return jsonResponse({
           ok: true,
           item: { state: 'approved' },
@@ -307,54 +426,37 @@ describe('PORTAL-1 /portal Effect Native route (#8652)', () => {
         })
       }
       return jsonResponse({ error: 'not_found' }, 404)
-    }) as typeof fetch
+    }) as typeof fetch)
 
-    const scope = await Effect.runPromise(Scope.make())
-    const surface = await Effect.runPromise(
-      Scope.provide(scope)(mountPortalSurface(container, { fetchFn })),
-    )
+    expect(mounted.textContent).toContain('Strategic Consulting Demo')
+    expect(mounted.textContent).toContain('Post A')
 
-    await waitFor(() =>
-      (container.textContent ?? '').includes('Strategic Consulting Demo'),
-    )
-    expect(container.textContent).toContain('Post A')
-
-    const approve = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent?.includes('Approve'),
+    const approve = Array.from(mounted.querySelectorAll('button')).find(
+      button => button.textContent?.includes('Approve'),
     )
     expect(approve).toBeDefined()
-    approve!.click()
-    await waitFor(() =>
-      (container.textContent ?? '').includes(
-        'receipt: portal_content_decision:pcd_live',
-      ),
-    )
+    await act(async () => {
+      approve!.click()
+    })
+    await flush()
 
     expect(decisionCalls).toBe(1)
-    expect(container.textContent).toContain('approved')
+    expect(decisionMethod).toBe('POST')
+    expect(decisionBody).toEqual({ decision: 'approve' })
+    expect(mounted.textContent).toContain(
+      'receipt: portal_content_decision:pcd_live',
+    )
+    expect(mounted.textContent).toContain('approved')
     // Buttons are gone once decided.
     expect(
-      Array.from(container.querySelectorAll('button')).some((button) =>
+      Array.from(mounted.querySelectorAll('button')).some(button =>
         button.textContent?.includes('Approve'),
       ),
     ).toBe(false)
-
-    const state = await Effect.runPromise(SubscriptionRef.get(surface.state))
-    expect(state.items[0]?.state).toBe('approved')
-    expect(state.items[0]?.decisionReceiptRef).toBe(
-      'portal_content_decision:pcd_live',
-    )
-
-    await Effect.runPromise(surface.unmount)
-    await Effect.runPromise(Scope.close(scope, Exit.void))
-    container.remove()
   })
 
-  test('mount smoke: failed decision rolls the item back to draft', async () => {
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-
-    const fetchFn = (async (input: RequestInfo | URL) => {
+  test('mount: failed decision rolls the item back to draft', async () => {
+    const mounted = await mount((async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes('/api/auth/session')) {
         return jsonResponse({ authenticated: true })
@@ -391,60 +493,49 @@ describe('PORTAL-1 /portal Effect Native route (#8652)', () => {
         )
       }
       return jsonResponse({ error: 'not_found' }, 404)
-    }) as typeof fetch
+    }) as typeof fetch)
 
-    const scope = await Effect.runPromise(Scope.make())
-    const surface = await Effect.runPromise(
-      Scope.provide(scope)(mountPortalSurface(container, { fetchFn })),
-    )
-
-    await waitFor(() => (container.textContent ?? '').includes('Post A'))
-    const reject = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent?.includes('Reject'),
+    expect(mounted.textContent).toContain('Post A')
+    const reject = Array.from(mounted.querySelectorAll('button')).find(
+      button => button.textContent?.includes('Reject'),
     )
     expect(reject).toBeDefined()
-    reject!.click()
-    await waitFor(() =>
-      (container.textContent ?? '').includes('Decision failed'),
-    )
-    const state = await Effect.runPromise(SubscriptionRef.get(surface.state))
-    expect(state.items[0]?.state).toBe('draft')
+    await act(async () => {
+      reject!.click()
+    })
+    await flush()
 
-    await Effect.runPromise(surface.unmount)
-    await Effect.runPromise(Scope.close(scope, Exit.void))
-    container.remove()
+    expect(mounted.textContent).toContain('Decision failed · refused')
+    // Rolled back: the draft affordances are available again, and no receipt
+    // was invented for a decision the server refused.
+    expect(mounted.textContent).toContain('draft')
+    expect(mounted.textContent).not.toContain('receipt:')
+    expect(
+      Array.from(mounted.querySelectorAll('button')).some(button =>
+        button.textContent?.includes('Approve'),
+      ),
+    ).toBe(true)
   })
 
-  test('source boundary: EN packages only, no local one-off primitives', () => {
-    const source = readFileSync(
-      join(process.cwd(), 'src/routes/-portal-core.tsx').replace(
-        '-portal-core.tsx',
-        '-portal-core.ts',
-      ),
-      'utf8',
-    )
-    const routeSource = readFileSync(
-      join(process.cwd(), 'src/routes/portal.tsx'),
-      'utf8',
-    )
+  test('source boundary: no Effect Native packages, and /portal keeps its route', () => {
+    const read = (relativePath: string): string =>
+      readFileSync(join(process.cwd(), relativePath), 'utf8')
 
-    expect(source).toContain("from '@effect-native/core'")
-    expect(source).toContain("from '@effect-native/render-dom'")
-    expect(source).toContain("from '@effect-native/tokens'")
-    for (const symbol of [
-      'StatTile',
-      'StatusBanner',
-      'Badge',
-      'Chip',
-      'Divider',
-      'Card',
-      'Section',
-      'Stack',
-    ]) {
-      expect(source).toContain(symbol)
+    const core = read('src/routes/-portal-core.ts')
+    const page = read('src/routes/-portal-page.tsx')
+    const entry = read('src/portal-entry.ts')
+    const routeSource = read('src/routes/portal.tsx')
+
+    for (const source of [core, page, entry]) {
+      expect(source).not.toContain('@effect-native')
     }
-    expect(source).not.toContain('lucide-react')
-    expect(source).not.toContain('@/components')
+    // The state core stays host-free so the Cloud Run monolith entry can
+    // bundle exactly the same logic the Start route runs.
+    expect(core).not.toContain("from 'react")
+    expect(core).toContain("from './-portal-data'")
+    // The monolith entry mounts the same React surface, not a bespoke tree.
+    expect(entry).toContain("from 'react-dom/client'")
+    expect(entry).toContain("from './routes/-portal-page'")
     expect(routeSource).toContain("createFileRoute('/portal')")
   })
 })

@@ -535,24 +535,6 @@ importers:
 
   apps/openagents.com/apps/start:
     dependencies:
-      '@effect-native/core':
-        specifier: workspace:*
-        version: link:../../packages/effect-native-core
-      '@effect-native/gallery':
-        specifier: workspace:*
-        version: link:../../packages/effect-native-gallery
-      '@effect-native/khala-ui':
-        specifier: workspace:*
-        version: link:../../packages/effect-native-khala-ui
-      '@effect-native/render-canvas':
-        specifier: workspace:*
-        version: link:../../packages/effect-native-render-canvas
-      '@effect-native/render-dom':
-        specifier: workspace:*
-        version: link:../../packages/effect-native-render-dom
-      '@effect-native/tokens':
-        specifier: workspace:*
-        version: link:../../packages/effect-native-tokens
       '@openagentsinc/agent-runtime-schema':
         specifier: 0.2.1-rc.4
         version: 0.2.1-rc.4
@@ -565,6 +547,9 @@ importers:
       '@openagentsinc/atif':
         specifier: workspace:*
         version: link:../../../../packages/atif
+      '@openagentsinc/design-tokens':
+        specifier: workspace:*
+        version: link:../../../../packages/design-tokens
       '@openagentsinc/effect-start':
         specifier: workspace:*
         version: link:../../../../packages/effect-start

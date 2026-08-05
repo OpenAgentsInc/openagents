@@ -1,15 +1,4 @@
-import {
-  Button,
-  IntentRef,
-  type IntentReporter,
-  Stack,
-  type View,
-} from '@effect-native/core'
-import {
-  EffectNativeReactDomStyleSheet,
-  renderReactDomView,
-} from '@effect-native/render-dom/react'
-import { type ToneToken, khalaTheme } from '@effect-native/tokens'
+import { khalaTheme } from '@openagentsinc/design-tokens'
 import {
   type SwapSessionViewModel,
   swapSessionViewModel,
@@ -23,17 +12,23 @@ import {
 import type { Catalog } from '@openagentsinc/swap-i18n'
 import { desktopThemeCssVariables } from '@openagentsinc/ui/desktop-workbench'
 import { Data } from 'effect'
+import type { ReactNode } from 'react'
 
 import type { SwapSettings } from './settings'
 
+/**
+ * The seams the sibling SWAP packages fill. A slot is ordinary React content
+ * rendered inside the widget's composition order; the widget owns the order
+ * and the primary action, never the slot's internals.
+ */
 export type SwapWidgetSlots = Readonly<{
-  assetSelection?: View
-  amountEntry?: View
-  feePanel?: View
-  destinationEntry?: View
-  quoteCompare?: View
-  rescueCeremony?: View
-  sessionStatus?: View
+  assetSelection?: ReactNode
+  amountEntry?: ReactNode
+  feePanel?: ReactNode
+  destinationEntry?: ReactNode
+  quoteCompare?: ReactNode
+  rescueCeremony?: ReactNode
+  sessionStatus?: ReactNode
 }>
 
 const SLOT_ORDER = [
@@ -46,11 +41,18 @@ const SLOT_ORDER = [
   'sessionStatus',
 ] as const satisfies ReadonlyArray<keyof SwapWidgetSlots>
 
-const buttonTone = {
-  accent: 'accent',
-  danger: 'danger',
-  neutral: 'secondary',
-} satisfies Record<PrimaryActionTone, ToneToken>
+/**
+ * Tone is one of the four independent mechanisms of the primary-action law
+ * (label / tone / disabled / busy). It only ever selects colour: accent is
+ * the solid actionable control, danger the refusal, neutral everything else.
+ * The palette values are the Khala theme's `accent`, `danger`, `surface`,
+ * `border`, `textInverse`, and `textMuted`.
+ */
+const primaryActionToneClass = {
+  accent: 'border-khala-energy bg-khala-energy text-khala-void',
+  danger: 'border-khala-danger bg-khala-surface text-khala-danger',
+  neutral: 'border-khala-border bg-khala-surface text-khala-text-muted',
+} satisfies Record<PrimaryActionTone, string>
 
 export type SwapWidgetRenderModel = Data.TaggedEnum<{
   PreSession: {
@@ -108,91 +110,108 @@ export const provisionalPreSessionSwapWidgetModel = (
     ),
   })
 
-export const swapWidgetView = (
-  model: SwapWidgetRenderModel,
-  slots: SwapWidgetSlots = {},
-): View => {
-  const { primaryAction: action } = resolveSwapWidgetRenderModel(model)
-  const children: Array<View> = SLOT_ORDER.flatMap(slot => {
-    const child = slots[slot]
-    return child === undefined
-      ? []
-      : [
-          Stack({ direction: 'column', key: `swap-widget-slot-${slot}` }, [
-            child,
-          ]),
-        ]
-  })
-
-  children.push(
-    Button({
-      block: true,
-      disabled: action.disabled,
-      key: 'swap-primary-action',
-      label: action.label,
-      loading: action.busy,
-      onPress: IntentRef('swap.primary_action'),
-      size: 'lg',
-      style: {
-        backgroundColor: action.tone === 'accent' ? 'accent' : 'surface',
-        borderColor: action.tone === 'neutral' ? 'border' : action.tone,
-        borderRadius: 'none',
-        borderWidth: 1,
-        color:
-          action.tone === 'accent'
-            ? 'textInverse'
-            : action.tone === 'danger'
-              ? 'danger'
-              : 'textMuted',
-        fontWeight: 'semibold',
-        minHeight: 'xs',
-        padding: '4',
-        typeScale: 'label',
-        width: 'full',
-      },
-      tone: buttonTone[action.tone],
-      variant: action.tone === 'accent' ? 'solid' : 'soft',
-    }),
-  )
-
-  return Stack(
-    {
-      direction: 'column',
-      gap: '4',
-      key: 'swap-widget-content',
-      padding: '6',
-      style: {
-        backgroundColor: 'surface',
-        borderColor: 'border',
-        borderWidth: 1,
-      },
-    },
-    children,
+/**
+ * The primary action. Exactly one is rendered, always: `derivePrimaryAction`
+ * (or the engine-owned session view model) decides the label, the tone, and
+ * — independently of the label — whether it is blocked and whether it is
+ * busy. This component decides nothing; it lowers that decision to a real
+ * `<button>`. The busy spinner is decoration beside the label, not a
+ * replacement for it, so the reason the control cannot proceed stays legible
+ * and stays in the accessibility tree.
+ */
+function SwapPrimaryAction({
+  action,
+  onPress,
+}: Readonly<{
+  action: PrimaryActionModel
+  onPress?: (() => void) | undefined
+}>) {
+  const blocked = action.disabled || action.busy
+  return (
+    <button
+      {...(action.busy ? { 'aria-busy': true } : {})}
+      className={[
+        'khala-focus flex w-full items-center justify-center gap-2 border p-4 font-mono text-sm font-semibold',
+        'disabled:cursor-not-allowed disabled:opacity-50',
+        action.busy ? 'cursor-wait' : '',
+        primaryActionToneClass[action.tone],
+      ]
+        .filter(part => part !== '')
+        .join(' ')}
+      data-swap-primary-action=""
+      data-swap-primary-action-busy={String(action.busy)}
+      data-swap-primary-action-tone={action.tone}
+      disabled={blocked}
+      onClick={onPress}
+      type="button"
+    >
+      {action.busy ? (
+        <span
+          aria-hidden="true"
+          className="size-4 shrink-0 animate-spin rounded-full border-2 border-current border-r-transparent border-b-transparent"
+        />
+      ) : null}
+      {action.label}
+    </button>
   )
 }
 
+/**
+ * The widget's composition order: every filled slot in `SLOT_ORDER`, then the
+ * primary action last.
+ */
+export function SwapWidgetContent({
+  model,
+  onPrimaryAction,
+  slots = {},
+}: Readonly<{
+  model: SwapWidgetRenderModel
+  onPrimaryAction?: (() => void) | undefined
+  slots?: SwapWidgetSlots | undefined
+}>) {
+  const { primaryAction } = resolveSwapWidgetRenderModel(model)
+  return (
+    <div
+      className="flex flex-col gap-4 border border-khala-border bg-khala-surface p-6"
+      data-swap-widget-content=""
+    >
+      {SLOT_ORDER.map(slot => {
+        const child = slots[slot]
+        return child === undefined ? null : (
+          <div className="flex flex-col" data-swap-widget-slot={slot} key={slot}>
+            {child}
+          </div>
+        )
+      })}
+      <SwapPrimaryAction action={primaryAction} onPress={onPrimaryAction} />
+    </div>
+  )
+}
+
+// Converted from an Effect Native view tree to plain React (#9325). /swap is
+// a page people move money on, so its host is the DOM directly: real buttons,
+// real labels, real focus order.
 export function SwapWidget({
   model,
-  report,
+  onPrimaryAction,
   slots,
 }: Readonly<{
   model: SwapWidgetRenderModel
-  report: IntentReporter
-  slots?: SwapWidgetSlots
+  onPrimaryAction?: (() => void) | undefined
+  slots?: SwapWidgetSlots | undefined
 }>) {
   const resolved = resolveSwapWidgetRenderModel(model)
   return (
     <section
-      data-effect-native-surface="dom"
       data-swap-widget=""
       data-swap-widget-state={resolved.widgetState._tag}
       style={desktopThemeCssVariables(khalaTheme)}
     >
-      <EffectNativeReactDomStyleSheet theme={khalaTheme} />
-      {renderReactDomView(swapWidgetView(model, slots), {
-        report,
-        theme: khalaTheme,
-      })}
+      <SwapWidgetContent
+        model={model}
+        onPrimaryAction={onPrimaryAction}
+        slots={slots}
+      />
     </section>
   )
 }

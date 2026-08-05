@@ -1,11 +1,11 @@
-import type { IntentReporter } from '@effect-native/core'
 import {
   SESSION_VIEW_MODEL_VERSION,
   SwapSessionIdentitySchema,
   swapSessionViewModel,
 } from '@openagentsinc/mkt-swp'
 import { SwapWidgetStateSchema } from '@openagentsinc/mkt-swp/view'
-import { Effect } from 'effect'
+import { readFileSync, readdirSync } from 'node:fs'
+import path from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, test } from 'vitest'
 
@@ -36,8 +36,6 @@ import {
   SwapWidgetRenderModel,
   resolveSwapWidgetRenderModel,
 } from './widget'
-
-const noopSwapReporter: IntentReporter = () => Effect.void
 
 const fakeStorage = () => {
   const map = new Map<string, string>()
@@ -144,29 +142,69 @@ describe('unbuilt surfaces stay honest (SWAP-7, #9322)', () => {
     // working market.
     const html = renderToStaticMarkup(<SwapIndexPage />)
     expect(html).toContain('data-swap-widget=""')
-    expect(html).toContain('data-en-key="swap-primary-action"')
-    expect(html).toContain('data-en-component="button"')
+    expect(html).toContain('data-swap-primary-action=""')
     expect(html).toContain('data-swap-not-yet-available="swap-live-inputs"')
     expect(html).toContain('SWAP-0 (openagents#9315)')
+    // The honesty notice, in full. A surface that holds key material may not
+    // imply a capability it does not have, so this copy is load-bearing.
+    expect(html).toContain('Not yet available')
+    expect(html).toContain('This widget is not connected to a market yet')
+    expect(html).toContain(
+      'The widget shell, its typed state machine, and the engine boundary that authorizes funding are in place. The relay subscription that supplies live offers and quotes, and the wasm engine that performs verify-before-fund, are not wired up yet, so nothing here can quote, order, or fund a swap.',
+    )
   })
 
   test('the mounted widget renders its primary action disabled and explained', () => {
     // Oracle for openagents_web.swap_widget.primary_action_law.v1: the
     // primary-action law asserted on the real surface — the control is
-    // always rendered, never enabled before the engine is ready, and never
-    // blank.
+    // always rendered, exactly once, never enabled before the engine is
+    // ready, and never blank.
     const html = renderToStaticMarkup(<SwapIndexPage />)
     expect(html).toContain('data-swap-widget-state="EngineLoading"')
-    expect(html).toContain('data-en-tone="secondary"')
-    expect(html).toContain('data-en-loading="true"')
-    expect(html).toContain('aria-busy="true"')
-    expect(html).toContain('disabled=""')
-    expect(html).toContain('Loading the swap engine')
-    expect(html).toContain('data-effect-native="dom"')
-    expect(html).toContain(
-      '[data-en-loading="true"]{color:transparent;cursor:wait;pointer-events:none;}',
-    )
-    expect(html).toContain('[data-en-loading="true"]::before')
+    expect(html.match(/data-swap-primary-action=""/g)).toHaveLength(1)
+
+    const button = /<button[^>]*data-swap-primary-action=""[\s\S]*?<\/button>/.exec(
+      html,
+    )?.[0]
+    expect(button).toBeDefined()
+    // Tone, busy, and disabled are three independent decisions the model
+    // makes; the surface renders them without reinterpreting any of them.
+    expect(button).toContain('data-swap-primary-action-tone="neutral"')
+    expect(button).toContain('data-swap-primary-action-busy="true"')
+    expect(button).toContain('aria-busy="true"')
+    expect(button).toContain('disabled=""')
+    // The label stays readable and stays in the accessibility tree while the
+    // action is busy; only the spinner beside it is decorative.
+    expect(button).toContain('Loading the swap engine')
+    expect(button).toContain('aria-hidden="true"')
+  })
+
+  test('the widget renders whatever primary action the model states, and only that', () => {
+    // The other half of the same law: the widget decides nothing. Whatever
+    // label, tone, disabled, and busy the model states is what renders, once.
+    for (const tone of ['accent', 'danger', 'neutral'] as const) {
+      const html = renderToStaticMarkup(
+        <SwapWidget
+          model={SwapWidgetRenderModel.PreSession({
+            widgetState: SwapWidgetStateSchema.cases.Ready.make({}),
+            primaryAction: {
+              label: `Fixture action ${tone}`,
+              messageKey: 'fixture.action',
+              swpError: null,
+              tone,
+              disabled: false,
+              busy: false,
+            },
+          })}
+        />,
+      )
+      expect(html.match(/data-swap-primary-action=""/g), tone).toHaveLength(1)
+      expect(html, tone).toContain(`data-swap-primary-action-tone="${tone}"`)
+      expect(html, tone).toContain(`Fixture action ${tone}`)
+      expect(html, tone).toContain('data-swap-primary-action-busy="false"')
+      expect(html, tone).not.toContain('disabled=""')
+      expect(html, tone).not.toContain('aria-busy')
+    }
   })
 
   test('the session renderer consumes the exported view-model fields by reference', () => {
@@ -207,11 +245,11 @@ describe('unbuilt surfaces stay honest (SWAP-7, #9322)', () => {
     expect(resolved.fundingGate).toBe(fundingGate)
     expect(resolved.progress).toBe(viewModel.progress)
 
-    const html = renderToStaticMarkup(
-      <SwapWidget model={model} report={noopSwapReporter} />,
-    )
+    const html = renderToStaticMarkup(<SwapWidget model={model} />)
     expect(html).toContain('data-swap-widget-state="Completed"')
     expect(html).toContain('Engine-resolved session action')
+    expect(html).toContain('data-swap-primary-action-tone="neutral"')
+    expect(html).toContain('disabled=""')
   })
 
   test('Rescue renders not-yet-available naming SWAP-4', () => {
@@ -230,6 +268,34 @@ describe('unbuilt surfaces stay honest (SWAP-7, #9322)', () => {
     const html = renderToStaticMarkup(<SwapSettingsPage />)
     expect(html).toContain('data-swap-not-yet-available="secret-store"')
     expect(html).toContain('SWAP-4 (openagents#9319)')
+  })
+})
+
+describe('the swap surface is plain React (#9325)', () => {
+  test('no swap feature module depends on the removed view framework', () => {
+    // Assembled at runtime so this assertion is not itself a match, which
+    // lets the sweep cover every module in the feature including this one.
+    const removedScope = `@effect${'-'}native`
+    const directory = path.resolve(import.meta.dirname)
+    const modules = readdirSync(directory).filter(
+      entry => entry.endsWith('.ts') || entry.endsWith('.tsx'),
+    )
+    expect(modules.length).toBeGreaterThan(0)
+    for (const entry of modules) {
+      const source = readFileSync(path.join(directory, entry), 'utf8')
+      expect(source, entry).not.toContain(removedScope)
+    }
+  })
+
+  test('the widget lowers its primary action to a real button element', () => {
+    // /swap is a page people move money on, so its host is the DOM directly:
+    // a real <button>, focusable and labelled, not a canvas or a div.
+    const html = renderToStaticMarkup(<SwapIndexPage />)
+    expect(html).toMatch(
+      /<button[^>]*type="button"[^>]*>|<button[^>]*data-swap-primary-action=""/,
+    )
+    expect(html).not.toContain('<canvas')
+    expect(html).not.toContain('aria-hidden="true">Loading the swap engine')
   })
 })
 

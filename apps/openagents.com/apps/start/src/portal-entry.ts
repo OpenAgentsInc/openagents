@@ -1,30 +1,37 @@
-// PORTAL-1 (#8652): browser entry for the /portal Effect Native surface as
-// served by the Cloud Run monolith (workers/api/src/cloudrun/portal-ui.ts).
-// The monolith deploy script bundles this file with `vp build --target
-// browser`; the same EN tree also mounts through the TanStack Start route
-// shell (routes/portal.tsx) on the isolated Start service. No React here —
-// the DOM renderer mounts the typed view program directly.
+// PORTAL-1 (#8652): browser entry for the /portal surface as served by the
+// Cloud Run monolith (workers/api/src/cloudrun/portal-ui.ts). The monolith
+// deploy script bundles this file with `vp pack --platform browser`; the same
+// component also renders through the TanStack Start route shell
+// (routes/portal.tsx) on the isolated Start service.
+//
+// Converted from an Effect Native DOM-renderer mount to a React root (#9325):
+// this entry mounts exactly the PortalPage component the Start route uses, so
+// both deployments render the identical surface. This file stays `.ts` (no
+// JSX) — `createElement` keeps the pack step unchanged.
 
-import { Effect, Exit, Scope } from '@effect-native/core/effect'
+import { createElement } from 'react'
+import { createRoot } from 'react-dom/client'
 
-import { mountPortalSurface } from './routes/-portal-core'
+import { PortalPage } from './routes/-portal-page'
 
-const boot = async (): Promise<void> => {
-  const root = document.getElementById('portal-root')
-  if (root === null) {
+const boot = (): void => {
+  const container = document.getElementById('portal-root')
+  if (container === null) {
     return
   }
-  const scope = await Effect.runPromise(Scope.make())
+  const root = createRoot(container)
   window.addEventListener('pagehide', () => {
-    void Effect.runPromise(Scope.close(scope, Exit.void))
+    root.unmount()
   })
-  await Effect.runPromise(Scope.provide(scope)(mountPortalSurface(root)))
+  root.render(createElement(PortalPage))
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    void boot()
-  })
-} else {
-  void boot()
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      boot()
+    })
+  } else {
+    boot()
+  }
 }

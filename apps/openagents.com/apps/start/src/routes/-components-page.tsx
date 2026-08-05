@@ -1,7 +1,17 @@
-import { KhalaComponentsWorkbench } from "./-components-khala-page";
-import { EffectNativeStorybook, TokenStorybook } from "./-components-storybook-page";
+import { TokenStorybook } from "./-components-tokens-page";
 import { WorkbenchStorybook } from "./-components-workbench-page";
 
+/**
+ * `/components` — the internal design-system workbench.
+ *
+ * Effect Native was removed in #9325. The four families whose subject was the
+ * framework itself — the core catalog storybook, the DOM and
+ * React Native renderer galleries, and the Khala visual-effects catalog — had
+ * no subject left once the framework was deleted, so they were retired rather
+ * than reimplemented. What survives is what was never Effect Native: the
+ * shared product workbench components in `@openagentsinc/ui` and the token
+ * vocabulary in `@openagentsinc/design-tokens`.
+ */
 type ComponentFamily = Readonly<{
   id: string;
   title: string;
@@ -21,71 +31,12 @@ const families: ReadonlyArray<ComponentFamily> = [
     contract: ["Same components on Desktop and web", "Khala is the sole mounted theme"],
   },
   {
-    id: "khala",
-    title: "Khala UI",
-    module: "@effect-native/khala-ui + @effect-native/render-canvas",
-    purpose:
-      "The complete non-audio Khala visual-effects catalog: foundations, motion, choreography, frames, text, illumination, and animated backgrounds.",
-    exports: [
-      "12 frame motifs",
-      "31 easing curves",
-      "Motion and sequence drivers",
-      "Text sequence and decipher",
-      "HTML and SVG illumination",
-      "4 Canvas backgrounds",
-    ],
-    contract: [
-      "30 of 30 visual capabilities mounted",
-      "SSR-stable output; effects start after mount",
-    ],
-  },
-  {
-    id: "core",
-    title: "Effect Native core",
-    module: "@effect-native/core",
-    purpose:
-      "Renderer-neutral layout, controls, overlays, data display, composer, feedback, and public-page views.",
-    exports: ["Stack", "Text", "Button", "Card", "Composer", "Transcript", "Table", "Hero"],
-    contract: ["Typed view catalog", "No renderer-specific markup"],
-  },
-  {
     id: "tokens",
     title: "Tokens",
-    module: "@effect-native/tokens",
+    module: "@openagentsinc/design-tokens",
     purpose: "Canonical semantic theme and bounded spacing, type, radius, and control lattices.",
     exports: ["khalaTheme", "Autopilot donor roles", "colorTokens", "spacingTokens", "radiusTokens", "typeScaleTokens"],
     contract: ["Khala is the sole mounted product theme", "Autopilot grammar resolves through Khala roles"],
-  },
-  {
-    id: "render-dom",
-    title: "DOM renderer",
-    module: "@effect-native/render-dom",
-    purpose: "Lowers the typed Effect Native catalog to accessible DOM output.",
-    exports: ["makeDomRenderer", "viewStructure", "serializeDomStructure"],
-    contract: ["Core never imports a renderer", "Closed icon registry"],
-  },
-  {
-    id: "render-rn",
-    title: "React Native renderer",
-    module: "@effect-native/render-rn",
-    purpose: "Lowers the same typed catalog to native platform components and interactions.",
-    exports: ["makeReactNativeRenderer", "EffectNativeSurface"],
-    contract: ["Same core view contract", "Platform behavior stays renderer-owned"],
-  },
-  {
-    id: "training",
-    title: "Training grammar",
-    module: "oa-training-run / @openagentsinc/three-effect",
-    purpose: "Training-run visual grammar references for replay and verification.",
-    exports: [
-      "Run field",
-      "Contributor node",
-      "Replay pair",
-      "Verification gate",
-      "Receipt burst",
-      "Proof drawer",
-    ],
-    contract: ["three-effect owns visuals", "No app-local replay renderer"],
   },
 ];
 
@@ -134,21 +85,13 @@ export function ComponentsPage({ selectedFamily }: Readonly<{ selectedFamily?: s
             Component library
           </h1>
           <p className="m-0 max-w-[78ch] text-pretty text-base/7 text-khala-text-muted">
-            The active Effect Native component, token, and renderer boundaries used by OpenAgents
-            surfaces.
+            The active OpenAgents component and token boundaries used by OpenAgents surfaces.
           </p>
         </header>
-        {selectedFamily === "khala" ? (
-          <KhalaComponentsWorkbench />
-        ) : selectedFamily === "workbench" ? (
+        {selectedFamily === "workbench" ? (
           <WorkbenchStorybook />
         ) : selectedFamily === "tokens" ? (
           <TokenStorybook />
-        ) : selectedFamily === "core" ||
-          selectedFamily === "render-dom" ||
-          selectedFamily === "render-rn" ||
-          selectedFamily === "training" ? (
-          <EffectNativeStorybook family={selectedFamily} />
         ) : family === undefined ? (
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {families.map((item) => (

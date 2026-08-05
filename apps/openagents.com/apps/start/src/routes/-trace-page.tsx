@@ -1,5 +1,5 @@
 import type { AtifStep, AtifToolCall, AtifTrajectory } from '@openagentsinc/atif/trace'
-import { khalaTheme } from '@effect-native/tokens'
+import { khalaTheme } from '@openagentsinc/design-tokens'
 import {
   desktopThemeCssVariables,
   dispatchWorkbenchItem,

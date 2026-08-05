@@ -1,9 +1,8 @@
 // Shared scene layer used by legacy/interim app-shell pages that still
 // render as plain React (currently `-code-page.tsx`'s `/code` landing).
 //
-// `KhalaInfoPage` and `TassadarInfoPage`, which previously lived here, were
-// converted to the Effect Native DOM renderer under EN-4 (#8573) and moved
-// to `-khala-effect-native-page.tsx` / `-tassadar-effect-native-page.tsx`.
+// `KhalaInfoPage` and `TassadarInfoPage`, which previously lived here, now
+// live in `-khala-page.tsx` / `-tassadar-page.tsx`.
 
 export function SceneLayer({ pose }: Readonly<{ pose: 'khala' | 'tassadar' }>) {
   const nodeClass =

@@ -1,54 +1,29 @@
-// PORTAL-1 (#8652): /portal client-portal surface, authored as ONE typed
-// Effect Native view tree (catalog v29) with typed intents. React appears
-// only in the thin route-shell host (-portal-page.tsx); this module is
-// host-free so the Cloud Run monolith can bundle it directly
-// (src/portal-entry.ts) and serve openagents.com/portal.
+// PORTAL-1 (#8652): /portal client-portal state core — the phase machine, the
+// login-gated load sequence, the optimistic decision transitions, and the
+// account-identity copy the authenticated empty state renders.
 //
-// Login-gated: the surface probes /api/auth/session on mount. Logged-out
-// renders the login gate (never the engagement body); logged-in loads the
-// caller's OWN engagement from the owner-scoped Worker API. Approve/reject
-// buttons dispatch typed intents -> POST /api/portal/content/:id/decision ->
-// optimistic item state + the decision receipt ref rendered inline.
+// Converted from an Effect Native view tree to plain React (#9325): this
+// module is the data/state half (no JSX, host-free, so the Cloud Run monolith
+// browser entry can bundle it via src/portal-entry.ts) and -portal-page.tsx
+// renders it.
+//
+// Login-gated: the surface probes /api/auth/session first. Logged-out yields
+// the login gate phase (the page never renders engagement content in it);
+// logged-in loads the caller's OWN engagement from the owner-scoped Worker
+// API. Approve/reject POST /api/portal/content/:id/decision -> optimistic
+// item state + the decision receipt ref rendered inline, rolled back on
+// failure.
 //
 // KPI tiles are HONEST placeholders: values render as an em dash with the
-// server-provided "placeholder until live funnel wiring" note. Nothing is
-// fabricated client-side.
-
-import {
-  Badge,
-  Button,
-  Card,
-  Chip,
-  Divider,
-  IntentRef,
-  Section,
-  Stack,
-  StatTile,
-  StaticPayload,
-  StatusBanner,
-  Text,
-  defineIntent,
-  makeIntentRegistry,
-  makeViewProgramFromState,
-  resolveIntentRef,
-  type ButtonView,
-  type IntentHandlers,
-  type IntentReporter,
-  type TextView,
-  type View,
-} from '@effect-native/core'
-import { makeDomRenderer } from '@effect-native/render-dom'
-import { Effect, Schema, SubscriptionRef } from '@effect-native/core/effect'
-import { khalaTheme } from '@effect-native/tokens'
+// "placeholder until live funnel wiring" note. Nothing is fabricated
+// client-side.
 
 import {
   fetchPortalEngagement,
   fetchPortalSession,
-  portalLoginHref,
-  portalSignOutHref,
-  submitPortalDecision,
   type PortalContentItem,
   type PortalDecision,
+  type PortalDecisionResult,
   type PortalEngagementSummary,
   type PortalKpi,
   type PortalSessionIdentity,
@@ -86,129 +61,9 @@ export const initialPortalPageState: PortalPageState = {
 }
 
 // ---------------------------------------------------------------------------
-// Intents
+// Account identity (empty-state contract:
+// openagents_web.portal_empty_state_account_identity.v1)
 // ---------------------------------------------------------------------------
-
-const PortalDecisionSubmitted = defineIntent(
-  'PortalDecisionSubmitted',
-  Schema.Struct({ itemId: Schema.String, decision: Schema.String }),
-)
-
-const PortalNavigated = defineIntent(
-  'PortalNavigated',
-  Schema.Struct({ href: Schema.String }),
-)
-
-export const portalIntents = [PortalDecisionSubmitted, PortalNavigated] as const
-
-const navigateIntent = (href: string) =>
-  IntentRef('PortalNavigated', StaticPayload({ href }))
-
-const decisionIntent = (itemId: string, decision: PortalDecision) =>
-  IntentRef('PortalDecisionSubmitted', StaticPayload({ itemId, decision }))
-
-// ---------------------------------------------------------------------------
-// View helpers
-// ---------------------------------------------------------------------------
-
-const text = (
-  key: string,
-  content: string,
-  variant: TextView['variant'] = 'body',
-  color: TextView['color'] = 'textPrimary',
-): TextView =>
-  Text({ key, content, variant, color, style: { width: 'full' } })
-
-const actionButton = (
-  key: string,
-  label: string,
-  onPress: ReturnType<typeof navigateIntent>,
-  variant: ButtonView['variant'] = 'secondary',
-): ButtonView =>
-  Button({
-    key,
-    label,
-    variant,
-    onPress,
-    style: {
-      backgroundColor: variant === 'primary' ? 'accent' : 'surface',
-      borderColor: 'border',
-      borderRadius: 'md',
-      borderWidth: 1,
-      color: 'textPrimary',
-      fontWeight: 'semibold',
-      paddingTop: '2',
-      paddingRight: '4',
-      paddingBottom: '2',
-      paddingLeft: '4',
-      typeScale: 'label',
-    },
-  })
-
-const surfaceCard = (
-  key: string,
-  children: ReadonlyArray<View>,
-): View =>
-  Card(
-    {
-      key,
-      padding: '6',
-      radius: 'lg',
-      style: {
-        backgroundColor: 'surface',
-        borderColor: 'border',
-        borderWidth: 1,
-        gap: '3',
-        width: 'full',
-      },
-    },
-    children,
-  )
-
-const engagementStatusTone = (
-  status: string,
-): 'neutral' | 'info' | 'success' | 'warn' => {
-  if (status === 'active') return 'success'
-  if (status === 'preparing') return 'info'
-  if (status === 'paused') return 'warn'
-  return 'neutral'
-}
-
-const itemStateTone = (
-  state: string,
-): 'neutral' | 'info' | 'success' | 'warn' | 'danger' => {
-  if (state === 'approved') return 'success'
-  if (state === 'rejected') return 'danger'
-  if (state === 'published') return 'info'
-  return 'neutral'
-}
-
-// ---------------------------------------------------------------------------
-// Sections
-// ---------------------------------------------------------------------------
-
-const loginGateView = (): View =>
-  surfaceCard('portal-login-gate', [
-    text('portal-login-title', 'Client portal', 'heading'),
-    StatusBanner({
-      key: 'portal-login-banner',
-      tone: 'info',
-      message: 'Log in to view your engagement.',
-      style: { width: 'full' },
-    }),
-    text(
-      'portal-login-copy',
-      'Your engagement dashboard, content calendar, and approval queue are private to your account.',
-      'body',
-      'textMuted',
-    ),
-    actionButton(
-      'portal-login-button',
-      'Log in with GitHub',
-      navigateIntent(portalLoginHref('/portal')),
-      'primary',
-    ),
-  ])
 
 /** Human-readable signed-in identity: prefer the session email, then the
  * provider login, then an honest fallback. Never blank. */
@@ -224,198 +79,16 @@ export const portalIdentityLabel = (
   return 'your account (no email on this session)'
 }
 
-const emptyStateView = (identity: PortalSessionIdentity | null): View =>
-  surfaceCard('portal-empty', [
-    text('portal-empty-title', 'Your setup is being prepared', 'heading'),
-    text(
-      'portal-empty-copy',
-      'Your engagement has not been provisioned yet. Once your OpenAgents team activates it, your funnel status and content calendar appear here.',
-      'body',
-      'textMuted',
-    ),
-    StatusBanner({
-      key: 'portal-empty-banner',
-      tone: 'info',
-      message: `No engagement is linked to this account yet. Signed in as ${portalIdentityLabel(identity)}.`,
-      style: { width: 'full' },
-    }),
-    text(
-      'portal-empty-identity-help',
-      'If your engagement was set up under a different email, contact your OpenAgents team with the address above — or switch to the account it was set up with.',
-      'body',
-      'textMuted',
-    ),
-    actionButton(
-      'portal-empty-signout',
-      'Sign out / switch account',
-      navigateIntent(portalSignOutHref),
-      'secondary',
-    ),
-  ])
+/** The authenticated empty state always names WHICH account is signed in, so
+ * an engagement bound to a different email is self-diagnosable. */
+export const portalEmptyStateIdentityLine = (
+  identity: PortalSessionIdentity | null,
+): string =>
+  `No engagement is linked to this account yet. Signed in as ${portalIdentityLabel(identity)}.`
 
-const unavailableView = (): View =>
-  surfaceCard('portal-unavailable', [
-    text('portal-unavailable-title', 'Portal unavailable', 'heading'),
-    StatusBanner({
-      key: 'portal-unavailable-banner',
-      tone: 'warn',
-      message: 'The portal API is unreachable right now. Nothing is shown rather than showing stale or fabricated data.',
-      style: { width: 'full' },
-    }),
-  ])
-
-const kpiTilesView = (kpis: ReadonlyArray<PortalKpi>): View =>
-  Stack(
-    {
-      key: 'portal-kpis',
-      direction: 'column',
-      gap: '3',
-      style: { width: 'full' },
-    },
-    [
-      text('portal-kpis-title', 'Funnel KPIs', 'title'),
-      Stack(
-        {
-          key: 'portal-kpis-row',
-          direction: 'row',
-          gap: '3',
-          style: { width: 'full' },
-        },
-        kpis.map((kpi) =>
-          StatTile({
-            key: `portal-kpi-${kpi.key}`,
-            label: kpi.label,
-            value: kpi.value === null ? '—' : String(kpi.value),
-            tone: 'info',
-            style: {
-              backgroundColor: 'surface',
-              borderColor: 'border',
-              borderWidth: 1,
-              flex: 1,
-            },
-          }),
-        ),
-      ),
-      text(
-        'portal-kpis-note',
-        kpis.every((kpi) => kpi.value === null)
-          ? 'Honest placeholders: KPI values appear once the live funnel wiring exists — no fabricated numbers.'
-          : 'Live values where wired; placeholders stay explicit.',
-        'caption',
-        'textMuted',
-      ),
-    ],
-  )
-
-const decisionPanelView = (
-  item: PortalContentItem,
-  panel: PortalDecisionPanel | undefined,
-): ReadonlyArray<View> => {
-  if (panel?.phase === 'sending') {
-    return [
-      text(`portal-item-${item.id}-panel`, panel.message, 'caption', 'textMuted'),
-    ]
-  }
-  if (panel?.phase === 'failed') {
-    return [
-      StatusBanner({
-        key: `portal-item-${item.id}-panel`,
-        tone: 'danger',
-        message: panel.message,
-        style: { width: 'full' },
-      }),
-    ]
-  }
-  const receiptRef = panel?.receiptRef ?? item.decisionReceiptRef
-  if (item.state !== 'draft' && receiptRef !== null && receiptRef !== undefined) {
-    return [
-      text(
-        `portal-item-${item.id}-receipt`,
-        `receipt: ${receiptRef}`,
-        'caption',
-        'textMuted',
-      ),
-    ]
-  }
-  return []
-}
-
-const contentItemCard = (
-  item: PortalContentItem,
-  panel: PortalDecisionPanel | undefined,
-): View =>
-  Card(
-    {
-      key: `portal-item-${item.id}`,
-      padding: '4',
-      radius: 'lg',
-      style: {
-        backgroundColor: 'surface',
-        borderColor: 'border',
-        borderWidth: 1,
-        flex: 1,
-        gap: '2',
-        minWidth: 'md',
-      },
-    },
-    [
-      Stack(
-        {
-          key: `portal-item-${item.id}-tags`,
-          direction: 'row',
-          gap: '2',
-          style: { width: 'full' },
-        },
-        [
-          Chip({
-            key: `portal-item-${item.id}-channel`,
-            label: 'channel',
-            value: item.channel,
-            tone: 'info',
-          }),
-          Badge({
-            key: `portal-item-${item.id}-variant`,
-            label: `variant ${item.variant.toUpperCase()}`,
-            tone: 'neutral',
-          }),
-          Badge({
-            key: `portal-item-${item.id}-state`,
-            label: item.state,
-            tone: itemStateTone(item.state),
-          }),
-        ],
-      ),
-      text(`portal-item-${item.id}-title`, item.title, 'title'),
-      text(`portal-item-${item.id}-body`, item.body, 'body', 'textMuted'),
-      ...(item.state === 'draft' && panel?.phase !== 'sending'
-        ? [
-            Stack(
-              {
-                key: `portal-item-${item.id}-actions`,
-                direction: 'row',
-                gap: '2',
-                style: { width: 'full' },
-              },
-              [
-                actionButton(
-                  `portal-item-${item.id}-approve`,
-                  'Approve',
-                  decisionIntent(item.id, 'approve'),
-                  'primary',
-                ),
-                actionButton(
-                  `portal-item-${item.id}-reject`,
-                  'Reject',
-                  decisionIntent(item.id, 'reject'),
-                  'secondary',
-                ),
-              ],
-            ),
-          ]
-        : []),
-      ...decisionPanelView(item, panel),
-    ],
-  )
+// ---------------------------------------------------------------------------
+// Content layout
+// ---------------------------------------------------------------------------
 
 /** Group items into A/B pair rows (pairRef), unpaired items render alone. */
 export const portalContentPairs = (
@@ -440,258 +113,130 @@ export const portalContentPairs = (
   return rows
 }
 
-const contentCalendarView = (state: PortalPageState): View =>
-  Stack(
-    {
-      key: 'portal-calendar',
-      direction: 'column',
-      gap: '3',
-      style: { width: 'full' },
-    },
-    [
-      text('portal-calendar-title', 'Content calendar', 'title'),
-      text(
-        'portal-calendar-copy',
-        'Agent-drafted posts awaiting your decision. A/B variants render side by side; every approve or reject mints a receipt.',
-        'body',
-        'textMuted',
-      ),
-      ...(state.items.length === 0
-        ? [
-            StatusBanner({
-              key: 'portal-calendar-empty',
-              tone: 'info',
-              message: 'No content items yet — drafts appear here as your team publishes the calendar.',
-              style: { width: 'full' },
-            }),
-          ]
-        : portalContentPairs(state.items).map((pair, index) =>
-            Stack(
-              {
-                key: `portal-pair-${pair[0]?.pairRef ?? pair[0]?.id ?? index}`,
-                direction: 'row',
-                gap: '3',
-                style: { width: 'full' },
-              },
-              pair.map((item) =>
-                contentItemCard(item, state.decisionPanels[item.id]),
-              ),
-            ),
-          )),
-    ],
-  )
+/** KPI values are never fabricated: a missing value renders as an em dash. */
+export const portalKpiValueLabel = (kpi: PortalKpi): string =>
+  kpi.value === null ? '—' : String(kpi.value)
 
-const readyView = (state: PortalPageState): ReadonlyArray<View> => {
-  const engagement = state.engagement
-  if (engagement === null) return [emptyStateView(state.identity)]
-  return [
-    surfaceCard('portal-header', [
-      Stack(
-        {
-          key: 'portal-header-row',
-          direction: 'row',
-          gap: '3',
-          style: { width: 'full' },
-        },
-        [
-          text('portal-header-name', engagement.name, 'heading'),
-          Badge({
-            key: 'portal-header-status',
-            label: engagement.status,
-            tone: engagementStatusTone(engagement.status),
-          }),
-        ],
-      ),
-      text(
-        'portal-header-copy',
-        'Your engagement at a glance: funnel status, the content calendar, and your approval queue.',
-        'body',
-        'textMuted',
-      ),
-    ]),
-    kpiTilesView(state.kpis),
-    Divider({ key: 'portal-divider' }),
-    contentCalendarView(state),
-  ]
+export const portalKpiNote = (kpis: ReadonlyArray<PortalKpi>): string =>
+  kpis.every((kpi) => kpi.value === null)
+    ? 'Honest placeholders: KPI values appear once the live funnel wiring exists — no fabricated numbers.'
+    : 'Live values where wired; placeholders stay explicit.'
+
+// ---------------------------------------------------------------------------
+// Load: login gate first, then the owner-scoped engagement read
+// ---------------------------------------------------------------------------
+
+/**
+ * Fail-soft by construction: any unreachable/unparseable read resolves to the
+ * honest `unavailable` phase rather than stale or fabricated data. A 401 on
+ * the engagement read falls back to the login gate.
+ */
+export const loadPortalPageState = async (
+  fetchFn: typeof fetch = fetch,
+): Promise<PortalPageState> => {
+  try {
+    const session = await fetchPortalSession(fetchFn)
+    if (session.mode === 'LoggedOut') {
+      return { ...initialPortalPageState, phase: 'logged_out' }
+    }
+    const identity = session.identity
+    const snapshot = await fetchPortalEngagement(fetchFn)
+    if (snapshot === null) {
+      return { ...initialPortalPageState, phase: 'unavailable', identity }
+    }
+    if (snapshot.kind === 'unauthorized') {
+      return { ...initialPortalPageState, phase: 'logged_out' }
+    }
+    if (snapshot.kind === 'none') {
+      return { ...initialPortalPageState, phase: 'empty', identity }
+    }
+    return {
+      ...initialPortalPageState,
+      phase: 'ready',
+      identity,
+      engagement: snapshot.engagement,
+      items: snapshot.items,
+      kpis: snapshot.kpis,
+    }
+  } catch {
+    return { ...initialPortalPageState, phase: 'unavailable' }
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Root view
+// Decisions: optimistic flip, commit on success, roll back on failure
 // ---------------------------------------------------------------------------
 
-export const portalPageView = (state: PortalPageState): View =>
-  Stack(
-    {
-      key: 'portal-root',
-      direction: 'column',
-      gap: '0',
-      style: {
-        backgroundColor: 'background',
-        minHeight: 'full',
-        width: 'full',
-      },
-    },
-    [
-      Section(
-        {
-          key: 'portal-section',
-          width: 'contained',
-          paddingY: '12',
-          style: { backgroundColor: 'background', gap: '6', width: 'full' },
-        },
-        state.phase === 'loading'
-          ? [
-              text('portal-loading', 'Loading your portal…', 'body', 'textMuted'),
-            ]
-          : state.phase === 'logged_out'
-            ? [loginGateView()]
-            : state.phase === 'empty'
-              ? [emptyStateView(state.identity)]
-              : state.phase === 'unavailable'
-                ? [unavailableView()]
-                : readyView(state),
-      ),
-    ],
-  )
+const withItem = (
+  state: PortalPageState,
+  itemId: string,
+  update: (item: PortalContentItem) => PortalContentItem,
+): ReadonlyArray<PortalContentItem> =>
+  state.items.map((item) => (item.id === itemId ? update(item) : item))
 
-// ---------------------------------------------------------------------------
-// Mount
-// ---------------------------------------------------------------------------
+const withPanel = (
+  state: PortalPageState,
+  itemId: string,
+  panel: PortalDecisionPanel,
+): Readonly<Record<string, PortalDecisionPanel>> => ({
+  ...state.decisionPanels,
+  [itemId]: panel,
+})
 
-export type PortalSurfaceDependencies = Readonly<{
-  fetchFn?: typeof fetch
-  assignLocation?: (href: string) => void
-}>
+/**
+ * Flip the card immediately so the click feels instant. Returns null when the
+ * decision is not eligible (unknown item, already decided, unknown decision) —
+ * the caller must then NOT send the request.
+ */
+export const portalStateWithOptimisticDecision = (
+  state: PortalPageState,
+  itemId: string,
+  decision: PortalDecision,
+): PortalPageState | null => {
+  const item = state.items.find((entry) => entry.id === itemId)
+  if (item === undefined || item.state !== 'draft') return null
+  if (decision !== 'approve' && decision !== 'reject') return null
+  const optimisticState = decision === 'approve' ? 'approved' : 'rejected'
+  return {
+    ...state,
+    items: withItem(state, itemId, (entry) => ({
+      ...entry,
+      state: optimisticState,
+    })),
+    decisionPanels: withPanel(state, itemId, {
+      phase: 'sending',
+      message: decision === 'approve' ? 'Approving…' : 'Rejecting…',
+    }),
+  }
+}
 
-export const mountPortalSurface = (
-  container: HTMLElement,
-  deps: PortalSurfaceDependencies = {},
-) =>
-  Effect.gen(function* () {
-    const fetchFn = deps.fetchFn ?? fetch
-    const assignLocation =
-      deps.assignLocation ??
-      ((href: string) => {
-        window.location.assign(href)
-      })
-
-    const state = yield* SubscriptionRef.make(initialPortalPageState)
-    const program = makeViewProgramFromState(state, portalPageView)
-
-    const updatePanel = (itemId: string, panel: PortalDecisionPanel) =>
-      SubscriptionRef.update(state, (previous) => ({
-        ...previous,
-        decisionPanels: { ...previous.decisionPanels, [itemId]: panel },
-      }))
-
-    const setItemState = (
-      itemId: string,
-      itemState: string,
-      receiptRef?: string,
-    ) =>
-      SubscriptionRef.update(state, (previous) => ({
-        ...previous,
-        items: previous.items.map((item) =>
-          item.id === itemId
-            ? {
-                ...item,
-                state: itemState,
-                decisionReceiptRef: receiptRef ?? item.decisionReceiptRef,
-              }
-            : item,
-        ),
-      }))
-
-    const handlers: IntentHandlers<typeof portalIntents> = {
-      PortalDecisionSubmitted: ({ itemId, decision }) =>
-        Effect.gen(function* () {
-          const current = yield* SubscriptionRef.get(state)
-          const item = current.items.find((entry) => entry.id === itemId)
-          if (item === undefined || item.state !== 'draft') return
-          if (decision !== 'approve' && decision !== 'reject') return
-          const optimisticState =
-            decision === 'approve' ? 'approved' : 'rejected'
-
-          // Optimistic: flip the card immediately, roll back on failure.
-          yield* setItemState(itemId, optimisticState)
-          yield* updatePanel(itemId, {
-            phase: 'sending',
-            message:
-              decision === 'approve' ? 'Approving…' : 'Rejecting…',
-          })
-
-          const result = yield* Effect.promise(() =>
-            submitPortalDecision({ itemId, decision }, fetchFn),
-          )
-          if (result.ok) {
-            yield* setItemState(itemId, result.state, result.receiptRef)
-            yield* updatePanel(itemId, {
-              phase: 'decided',
-              message: 'Decision recorded',
-              receiptRef: result.receiptRef,
-            })
-            return
-          }
-          yield* setItemState(itemId, 'draft')
-          yield* updatePanel(itemId, {
-            phase: 'failed',
-            message: `Decision failed · ${result.errorMessage}`,
-          })
-        }),
-      PortalNavigated: ({ href }) =>
-        Effect.sync(() => {
-          assignLocation(href)
-        }),
+/** Commit the server's state + minted receipt ref, or roll the item back. */
+export const portalStateWithDecisionResult = (
+  state: PortalPageState,
+  itemId: string,
+  result: PortalDecisionResult,
+): PortalPageState => {
+  if (result.ok) {
+    return {
+      ...state,
+      items: withItem(state, itemId, (entry) => ({
+        ...entry,
+        state: result.state,
+        decisionReceiptRef: result.receiptRef,
+      })),
+      decisionPanels: withPanel(state, itemId, {
+        phase: 'decided',
+        message: 'Decision recorded',
+        receiptRef: result.receiptRef,
+      }),
     }
-
-    const registry = yield* makeIntentRegistry(portalIntents, handlers)
-    const report: IntentReporter = (ref, runtimeValue) =>
-      registry.dispatch(resolveIntentRef(ref, runtimeValue))
-    const surface = yield* makeDomRenderer({ theme: khalaTheme }).mount(
-      container,
-      program.viewStream,
-      report,
-    )
-
-    // Login gate first, then the owner-scoped engagement read. Fail-soft:
-    // any failure renders the honest unavailable state.
-    yield* Effect.promise(async () => {
-      const session = await fetchPortalSession(fetchFn)
-      if (session.mode === 'LoggedOut') {
-        return { phase: 'logged_out' as const }
-      }
-      const identity = session.identity
-      const snapshot = await fetchPortalEngagement(fetchFn)
-      if (snapshot === null) {
-        return { phase: 'unavailable' as const, identity }
-      }
-      if (snapshot.kind === 'unauthorized') {
-        return { phase: 'logged_out' as const }
-      }
-      if (snapshot.kind === 'none') {
-        return { phase: 'empty' as const, identity }
-      }
-      return {
-        phase: 'ready' as const,
-        identity,
-        engagement: snapshot.engagement,
-        items: snapshot.items,
-        kpis: snapshot.kpis,
-      }
-    }).pipe(
-      Effect.flatMap((loaded) =>
-        SubscriptionRef.update(state, (previous) => ({
-          ...previous,
-          ...loaded,
-        })),
-      ),
-      Effect.catch(() =>
-        SubscriptionRef.update(state, (previous) => ({
-          ...previous,
-          phase: 'unavailable' as const,
-        })),
-      ),
-    )
-
-    return { state, unmount: surface.unmount }
-  })
+  }
+  return {
+    ...state,
+    items: withItem(state, itemId, (entry) => ({ ...entry, state: 'draft' })),
+    decisionPanels: withPanel(state, itemId, {
+      phase: 'failed',
+      message: `Decision failed · ${result.errorMessage}`,
+    }),
+  }
+}

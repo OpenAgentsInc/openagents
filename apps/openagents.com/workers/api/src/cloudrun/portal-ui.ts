@@ -3,10 +3,10 @@ import { Runtime } from "@openagentsinc/runtime-platform"
  * PORTAL-1 (#8652): serve the /portal client-portal surface from the Cloud
  * Run monolith.
  *
- * The portal content is ONE typed Effect Native view tree authored in
- * `apps/openagents.com/apps/start/src/routes/-portal-core.ts` (the canonical
- * EN web-route pattern). The monolith serves it exactly like the Sarah
- * surface (apps/sarah/src/server.ts): a static HTML shell at `/portal` plus a
+ * The portal content is the React surface authored in
+ * `apps/openagents.com/apps/start/src/routes/-portal-page.tsx` (state core in
+ * `-portal-core.ts`). The monolith serves it exactly like the Sarah surface
+ * (apps/sarah/src/server.ts): a static HTML shell at `/portal` plus a
  * deploy-built browser bundle at `/portal/app.js`
  * (deploy-cloudrun.sh -> dist-cloudrun/portal-ui/app.js). Dev builds the
  * bundle once from source on demand.
@@ -37,13 +37,88 @@ export const PORTAL_PAGE_HTML = `<!doctype html>
 <title>Client portal — OpenAgents</title>
 <meta name="description" content="Your OpenAgents engagement at a glance: funnel status, content calendar, and approval queue. Private to your account." />
 <style>
+  /* The deploy step packs portal-entry.ts as JavaScript only (no Tailwind
+     build reaches this standalone shell), so the surface's Tailwind/khala
+     utility classes are inert here. These rules give the same markup a
+     readable dark-surface baseline via the stable data-* hooks the portal
+     component renders. The TanStack Start route loads the real stylesheet. */
   :root { color-scheme: dark; }
   html, body { min-height: 100%; margin: 0; }
   body {
-    background: #000;
-    color: #e8f1ff;
+    background: #05070d;
+    color: #eef3ff;
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
   }
+  [data-route="portal"] { display: block; min-height: 100vh; }
+  [data-portal-root] {
+    box-sizing: border-box;
+    display: grid;
+    gap: 1.5rem;
+    margin: 0 auto;
+    max-width: 64rem;
+    padding: 3rem 1rem;
+    width: 100%;
+  }
+  [data-portal-root] h1 { font-size: 1.25rem; }
+  [data-portal-root] h2 { font-size: 1rem; }
+  [data-portal-root] h3 { font-size: 1rem; }
+  [data-portal-root] h1,
+  [data-portal-root] h2,
+  [data-portal-root] h3,
+  [data-portal-root] p { margin: 0; }
+  [data-portal-root] hr { border: 0; border-top: 1px solid #1f2b45; margin: 0; }
+  [data-portal-root] section { display: grid; gap: 0.75rem; }
+  [data-slot="card"] { border: 1px solid #1f2b45; background: #0b1220; }
+  [data-portal-card] { display: grid; gap: 0.75rem; padding: 1.5rem; }
+  [data-portal-item] { display: grid; gap: 0.5rem; padding: 1rem; }
+  [data-portal-banner] {
+    border: 1px solid #1f2b45;
+    background: rgba(59, 130, 246, 0.1);
+    padding: 0.5rem 0.75rem;
+  }
+  [data-portal-banner="warn"] {
+    border-color: rgba(245, 158, 11, 0.4);
+    background: rgba(245, 158, 11, 0.1);
+  }
+  [data-portal-banner="danger"] {
+    border-color: rgba(248, 113, 113, 0.4);
+    background: rgba(248, 113, 113, 0.1);
+  }
+  [data-portal-kpis], [data-portal-pair] {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  }
+  [data-portal-kpi] { border: 1px solid #1f2b45; background: #0b1220; padding: 1rem; }
+  [data-slot="badge"] {
+    align-items: center;
+    border: 1px solid #1f2b45;
+    color: #8fb3ff;
+    display: inline-flex;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.125rem 0.5rem;
+    text-transform: uppercase;
+  }
+  [data-slot="button"], [data-portal-link] {
+    align-items: center;
+    background: transparent;
+    border: 1px solid #1f2b45;
+    color: #eef3ff;
+    cursor: pointer;
+    display: inline-flex;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.875rem;
+    justify-content: center;
+    min-height: 2.5rem;
+    padding: 0.5rem 1rem;
+    text-decoration: none;
+    width: fit-content;
+  }
+  [data-portal-link="login"] { background: #eef3ff; border-color: #eef3ff; color: #05070d; }
+  [data-portal-root] :focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
 </style>
 </head>
 <body>
