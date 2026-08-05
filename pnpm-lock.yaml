@@ -2538,6 +2538,19 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
+  packages/mkt-swp-status:
+    dependencies:
+      '@openagentsinc/nip-mkt':
+        specifier: workspace:*
+        version: link:../nip-mkt
+      '@openagentsinc/swap-i18n':
+        specifier: workspace:*
+        version: link:../swap-i18n
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
   packages/nip-mkt:
     dependencies:
       effect:

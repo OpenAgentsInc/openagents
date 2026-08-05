@@ -2222,6 +2222,14 @@
       "reason": "Behaviour-contract registry for swap destination entry (openagents#9317), validated and coverage-checked by its package test; the registry report tooling and the SWAP-0 (openagents#9315) swap surface consume it when the widget shell lands."
     },
     {
+      "ref": "packages/behavior-contracts/src/market-swap-status.ts#marketSwapStatusContractRegistry",
+      "reason": "Behaviour-contract registry for the swap status/progress view (openagents#9321), validated and coverage-checked by its package test; the registry report tooling and the SWAP-0 (openagents#9315) swap surface consume it when the widget shell mounts the status view."
+    },
+    {
+      "ref": "packages/mkt-swp-status/src/testkit.ts#happyPathClaims",
+      "reason": "Deterministic dual-lane Status fixture builder exported under ./testkit for this package's suites and the SWAP-0 (openagents#9315) swap widget shell suites, until immortal#14 provides a live counterparty stream."
+    },
+    {
       "ref": "packages/mkt-swp-destination/src/entry.ts#reduceEntryEvent",
       "reason": "Headless DestinationField reducer for openagents#9317; SWAP-0 (openagents#9315) mounts the destination-entry component in the swap widget shell and becomes its production caller."
     },
