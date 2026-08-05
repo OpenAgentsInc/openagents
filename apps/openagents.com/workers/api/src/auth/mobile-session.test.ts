@@ -474,12 +474,14 @@ describe('Khala mobile OpenAuth session policy', () => {
         access_token: string
         expires_in: number
         refresh_token: string
+        token_type: string
       }
 
       expect(exchanged.status).toBe(200)
       expect(tokens.access_token).toMatch(/^ey/)
       expect(tokens.refresh_token).toContain('github:12345:')
       expect(tokens.expires_in).toBeGreaterThan(0)
+      expect(tokens.token_type).toBe('Bearer')
 
       const session = await worker.fetch(
         new Request('https://openagents.com/api/mobile/auth/session', {
@@ -554,11 +556,13 @@ describe('Khala mobile OpenAuth session policy', () => {
       const refreshedTokens = (await refreshed.json()) as {
         access_token: string
         refresh_token: string
+        token_type: string
       }
 
       expect(refreshed.status).toBe(200)
       expect(refreshedTokens.access_token).toMatch(/^ey/)
       expect(refreshedTokens.refresh_token).not.toBe(tokens.refresh_token)
+      expect(refreshedTokens.token_type).toBe('Bearer')
 
       const refreshedMobileSession = await postMobileSession(
         env,

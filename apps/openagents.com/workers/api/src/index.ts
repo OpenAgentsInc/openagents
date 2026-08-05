@@ -7460,7 +7460,46 @@ const routeAuthIssuerRequest = async (
 ) => {
   const maybeGuardResponse = await maybeAuthEmailOtpGuardResponse(request, env)
 
-  return maybeGuardResponse ?? makeAuthIssuer(env).fetch(request, env, ctx)
+  const response =
+    maybeGuardResponse ?? (await makeAuthIssuer(env).fetch(request, env, ctx))
+  const url = new URL(request.url)
+
+  if (
+    url.pathname !== '/token' ||
+    !response.ok ||
+    !response.headers.get('content-type')?.includes('application/json')
+  ) {
+    return response
+  }
+
+  const body: unknown = await response.json()
+  const headers = new Headers(response.headers)
+  headers.delete('content-length')
+  if (
+    typeof body !== 'object' ||
+    body === null ||
+    !('access_token' in body) ||
+    typeof body.access_token !== 'string' ||
+    ('token_type' in body && typeof body.token_type === 'string')
+  ) {
+    return Response.json(body, {
+      headers,
+      status: response.status,
+      statusText: response.statusText,
+    })
+  }
+
+  // OpenAuth 0.4.3 omits the required RFC 6749 token_type response member.
+  // Normalize only successful token responses at the issuer boundary so
+  // standards-compliant clients such as Codex can complete PKCE login.
+  return Response.json(
+    { ...body, token_type: 'Bearer' },
+    {
+      headers,
+      status: response.status,
+      statusText: response.statusText,
+    },
+  )
 }
 
 export { findAuthorizedAgentRunBundle } from './thread-access'
