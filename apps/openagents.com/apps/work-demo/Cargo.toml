@@ -1,0 +1,35 @@
+[workspace]
+
+[package]
+name = "work_demo_web"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "work_demo_web"
+path = "main.rs"
+
+[dependencies]
+futures = "0.3.32"
+gpui = { git = "https://github.com/OpenAgentsInc/omega", rev = "b4fac63a2c90d77d6630d9df7eb9cb8a5983bac8" }
+gpui_platform = { git = "https://github.com/OpenAgentsInc/omega", rev = "b4fac63a2c90d77d6630d9df7eb9cb8a5983bac8" }
+immortal = { git = "https://github.com/OpenAgentsInc/immortal", rev = "cb13db4abf385522228031b7abbcb729369362dc", default-features = false }
+serde_json = "1"
+theme = { git = "https://github.com/OpenAgentsInc/omega", rev = "b4fac63a2c90d77d6630d9df7eb9cb8a5983bac8" }
+ui = { git = "https://github.com/OpenAgentsInc/omega", rev = "b4fac63a2c90d77d6630d9df7eb9cb8a5983bac8" }
+wasm-bindgen = "0.2.120"
+wasm-bindgen-futures = "0.4"
+web-time = "1.1.0"
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+web-sys = { version = "0.3", features = [
+    "CloseEvent",
+    "console",
+    "Event",
+    "Location",
+    "MessageEvent",
+    "UrlSearchParams",
+    "WebSocket",
+    "Window",
+] }

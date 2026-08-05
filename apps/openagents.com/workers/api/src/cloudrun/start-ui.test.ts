@@ -11,8 +11,11 @@ import {
   isMarketDemoPath,
   marketDemoDeploymentEnabled,
   marketDemoResponseHeaders,
+  isWorkDemoPath,
   startUiAssetRelativePath,
   startUiContentType,
+  workDemoDeploymentEnabled,
+  workDemoResponseHeaders,
 } from './start-ui'
 
 describe('Operation Diamond Hands static GPUI document', () => {
@@ -185,5 +188,63 @@ describe('Infra explainer static GPUI document', () => {
     expect(isInfraExplainerPath('/dh')).toBe(false)
     expect(isInfraExplainerPath('/demo')).toBe(false)
     expect(infraExplainerResponseHeaders('/assets/index.js')).toEqual({})
+  })
+})
+
+describe('Work items demo static GPUI document', () => {
+  test('is env-gated and deliberately enabled by the production environment', () => {
+    expect(workDemoDeploymentEnabled(undefined)).toBe(false)
+    expect(workDemoDeploymentEnabled('false')).toBe(false)
+    expect(workDemoDeploymentEnabled('1')).toBe(false)
+    expect(workDemoDeploymentEnabled('true')).toBe(true)
+
+    // Owner direction 2026-08-04 (omega#245): the NIP-WK/NIP-PI work items
+    // read surface ships beside the market demo, so the committed production
+    // environment declares the activation explicitly.
+    const productionEnvironment = readFileSync(
+      new URL('../../scripts/cloudrun/env-production.yaml', import.meta.url),
+      'utf8',
+    )
+    expect(productionEnvironment).toContain('OPENAGENTS_WORK_DEMO_ENABLED: "true"')
+  })
+
+  test.each([
+    '/work-demo',
+    '/work-demo/',
+    '/work-demo/work_demo_web.js',
+    '/work-demo/work_demo_web_bg.wasm',
+  ])('recognizes %s as part of the isolated document', pathname => {
+    expect(isWorkDemoPath(pathname)).toBe(true)
+  })
+
+  test.each(['/work-demo', '/work-demo/'])(
+    'maps the %s document coordinate to its static entry',
+    pathname => {
+      expect(startUiAssetRelativePath(pathname)).toBe('work-demo/index.html')
+    },
+  )
+
+  test('applies WebGPU/thread isolation and permits only the public relay connection', () => {
+    const headers = workDemoResponseHeaders('/work-demo')
+    expect(headers['cross-origin-opener-policy']).toBe('same-origin')
+    expect(headers['cross-origin-embedder-policy']).toBe('require-corp')
+    expect(headers['cross-origin-resource-policy']).toBe('same-origin')
+    expect(headers['content-security-policy']).toContain(
+      "connect-src 'self' https://relay.openagents.com wss://relay.openagents.com",
+    )
+    expect(headers['content-security-policy']).toContain(
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'",
+    )
+    expect(headers['content-security-policy']).toContain(
+      "worker-src 'self' blob:",
+    )
+  })
+
+  test('does not add work-demo policy to unrelated retained assets or sibling documents', () => {
+    expect(isWorkDemoPath('/assets/index.js')).toBe(false)
+    expect(isWorkDemoPath('/dh')).toBe(false)
+    expect(isWorkDemoPath('/demo')).toBe(false)
+    expect(isWorkDemoPath('/infra')).toBe(false)
+    expect(workDemoResponseHeaders('/assets/index.js')).toEqual({})
   })
 })

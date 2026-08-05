@@ -1,0 +1,10 @@
+[build]
+dist = "dist"
+filehash = false
+public_url = "/work-demo/"
+
+[serve]
+addresses = ["127.0.0.1"]
+port = 8083
+open = false
+headers = { "Cross-Origin-Embedder-Policy" = "require-corp", "Cross-Origin-Opener-Policy" = "same-origin" }
