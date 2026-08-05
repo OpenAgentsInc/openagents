@@ -1020,6 +1020,9 @@ importers:
       '@openagentsinc/runtime-platform':
         specifier: workspace:*
         version: link:../../../../packages/runtime-platform
+      '@openagentsinc/swap-i18n':
+        specifier: workspace:*
+        version: link:../../../../packages/swap-i18n
       '@openagentsinc/sync-schema':
         specifier: workspace:*
         version: link:../../packages/sync-schema

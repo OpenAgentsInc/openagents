@@ -1,8 +1,28 @@
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import tailwindcss from '@tailwindcss/vite'
 import viteReact from '@vitejs/plugin-react'
+import { execSync } from 'node:child_process'
 import path from 'node:path'
 import { defineConfig } from 'vite'
+
+// SWAP-7 (#9322): build provenance for key-material-bearing surfaces. The
+// deploy environment may pin the exact commit; otherwise the build reads the
+// checkout it was produced from. Consumed via src/lib/build-provenance.ts,
+// which renders "unknown" when neither source is available.
+const resolveBuildCommit = (): string => {
+  const fromEnv = process.env['OPENAGENTS_BUILD_COMMIT']?.trim()
+  if (fromEnv !== undefined && fromEnv !== '') return fromEnv
+  try {
+    return execSync('git rev-parse HEAD', {
+      cwd: __dirname,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .toString()
+      .trim()
+  } catch {
+    return 'unknown'
+  }
+}
 
 const routerSsrPackages = [
   '@tanstack/history',
@@ -30,6 +50,9 @@ const cloudRunRuntimePackages = [
 ]
 
 export default defineConfig({
+  define: {
+    __OPENAGENTS_BUILD_COMMIT__: JSON.stringify(resolveBuildCommit()),
+  },
   resolve: {
     alias: [
       {

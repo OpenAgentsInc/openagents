@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as TassadarRouteImport } from './routes/tassadar'
 import { Route as TanstackRouteImport } from './routes/tanstack'
+import { Route as SwapRouteImport } from './routes/swap'
 import { Route as StatsRouteImport } from './routes/stats'
 import { Route as Stage1RouteImport } from './routes/stage1'
 import { Route as SplashRouteImport } from './routes/splash'
@@ -40,6 +41,7 @@ import { Route as AdjutantRouteImport } from './routes/adjutant'
 import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as WorkIndexRouteImport } from './routes/work/index'
+import { Route as SwapIndexRouteImport } from './routes/swap/index'
 import { Route as KhalaIndexRouteImport } from './routes/khala/index'
 import { Route as ForumIndexRouteImport } from './routes/forum/index'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
@@ -52,6 +54,9 @@ import { Route as ArtanisIndexRouteImport } from './routes/artanis/index'
 import { Route as AisdkIndexRouteImport } from './routes/aisdk/index'
 import { Route as WorkspacesWorkspaceIdRouteImport } from './routes/workspaces/$workspaceId'
 import { Route as TraceTraceUuidRouteImport } from './routes/trace/$traceUuid'
+import { Route as SwapSettingsRouteImport } from './routes/swap/settings'
+import { Route as SwapRescueRouteImport } from './routes/swap/rescue'
+import { Route as SwapHistoryRouteImport } from './routes/swap/history'
 import { Route as ShareShareIdRouteImport } from './routes/share/$shareId'
 import { Route as PreviewSalesLandingRouteImport } from './routes/preview/sales-landing'
 import { Route as PreviewLandingRouteImport } from './routes/preview/landing'
@@ -71,6 +76,8 @@ import { Route as AdminAnalyticsRouteImport } from './routes/admin/analytics'
 import { Route as TrainingRunsIndexRouteImport } from './routes/training/runs/index'
 import { Route as AisdkDocsIndexRouteImport } from './routes/aisdk/docs/index'
 import { Route as TrainingRunsRunIdRouteImport } from './routes/training/runs/$runId'
+import { Route as SwapSSessionIdRouteImport } from './routes/swap/s.$sessionId'
+import { Route as SwapRescueActionRefRouteImport } from './routes/swap/rescue_.$actionRef'
 import { Route as ForumTTopicIdRouteImport } from './routes/forum/t.$topicId'
 import { Route as ForumReceiptsReceiptRefRouteImport } from './routes/forum/receipts.$receiptRef'
 import { Route as ForumFForumRefRouteImport } from './routes/forum/f.$forumRef'
@@ -94,6 +101,11 @@ const TassadarRoute = TassadarRouteImport.update({
 const TanstackRoute = TanstackRouteImport.update({
   id: '/tanstack',
   path: '/tanstack',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SwapRoute = SwapRouteImport.update({
+  id: '/swap',
+  path: '/swap',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StatsRoute = StatsRouteImport.update({
@@ -236,6 +248,11 @@ const WorkIndexRoute = WorkIndexRouteImport.update({
   path: '/work/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SwapIndexRoute = SwapIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SwapRoute,
+} as any)
 const KhalaIndexRoute = KhalaIndexRouteImport.update({
   id: '/khala/',
   path: '/khala/',
@@ -295,6 +312,21 @@ const TraceTraceUuidRoute = TraceTraceUuidRouteImport.update({
   id: '/trace/$traceUuid',
   path: '/trace/$traceUuid',
   getParentRoute: () => rootRouteImport,
+} as any)
+const SwapSettingsRoute = SwapSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => SwapRoute,
+} as any)
+const SwapRescueRoute = SwapRescueRouteImport.update({
+  id: '/rescue',
+  path: '/rescue',
+  getParentRoute: () => SwapRoute,
+} as any)
+const SwapHistoryRoute = SwapHistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
+  getParentRoute: () => SwapRoute,
 } as any)
 const ShareShareIdRoute = ShareShareIdRouteImport.update({
   id: '/share/$shareId',
@@ -391,6 +423,16 @@ const TrainingRunsRunIdRoute = TrainingRunsRunIdRouteImport.update({
   path: '/training/runs/$runId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SwapSSessionIdRoute = SwapSSessionIdRouteImport.update({
+  id: '/s/$sessionId',
+  path: '/s/$sessionId',
+  getParentRoute: () => SwapRoute,
+} as any)
+const SwapRescueActionRefRoute = SwapRescueActionRefRouteImport.update({
+  id: '/rescue_/$actionRef',
+  path: '/rescue/$actionRef',
+  getParentRoute: () => SwapRoute,
+} as any)
 const ForumTTopicIdRoute = ForumTTopicIdRouteImport.update({
   id: '/forum/t/$topicId',
   path: '/forum/t/$topicId',
@@ -469,6 +511,7 @@ export interface FileRoutesByFullPath {
   '/splash': typeof SplashRoute
   '/stage1': typeof Stage1Route
   '/stats': typeof StatsRoute
+  '/swap': typeof SwapRouteWithChildren
   '/tanstack': typeof TanstackRoute
   '/tassadar': typeof TassadarRoute
   '/terms': typeof TermsRoute
@@ -488,6 +531,9 @@ export interface FileRoutesByFullPath {
   '/preview/landing': typeof PreviewLandingRoute
   '/preview/sales-landing': typeof PreviewSalesLandingRoute
   '/share/$shareId': typeof ShareShareIdRoute
+  '/swap/history': typeof SwapHistoryRoute
+  '/swap/rescue': typeof SwapRescueRoute
+  '/swap/settings': typeof SwapSettingsRoute
   '/trace/$traceUuid': typeof TraceTraceUuidRoute
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
   '/aisdk/': typeof AisdkIndexRoute
@@ -500,6 +546,7 @@ export interface FileRoutesByFullPath {
   '/docs/': typeof DocsIndexRoute
   '/forum/': typeof ForumIndexRoute
   '/khala/': typeof KhalaIndexRoute
+  '/swap/': typeof SwapIndexRoute
   '/work/': typeof WorkIndexRoute
   '/aisdk/docs/$slug': typeof AisdkDocsSlugRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
@@ -507,6 +554,8 @@ export interface FileRoutesByFullPath {
   '/forum/f/$forumRef': typeof ForumFForumRefRoute
   '/forum/receipts/$receiptRef': typeof ForumReceiptsReceiptRefRoute
   '/forum/t/$topicId': typeof ForumTTopicIdRoute
+  '/swap/rescue/$actionRef': typeof SwapRescueActionRefRoute
+  '/swap/s/$sessionId': typeof SwapSSessionIdRoute
   '/training/runs/$runId': typeof TrainingRunsRunIdRoute
   '/aisdk/docs/': typeof AisdkDocsIndexRoute
   '/training/runs/': typeof TrainingRunsIndexRoute
@@ -560,6 +609,9 @@ export interface FileRoutesByTo {
   '/preview/landing': typeof PreviewLandingRoute
   '/preview/sales-landing': typeof PreviewSalesLandingRoute
   '/share/$shareId': typeof ShareShareIdRoute
+  '/swap/history': typeof SwapHistoryRoute
+  '/swap/rescue': typeof SwapRescueRoute
+  '/swap/settings': typeof SwapSettingsRoute
   '/trace/$traceUuid': typeof TraceTraceUuidRoute
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
   '/aisdk': typeof AisdkIndexRoute
@@ -572,6 +624,7 @@ export interface FileRoutesByTo {
   '/docs': typeof DocsIndexRoute
   '/forum': typeof ForumIndexRoute
   '/khala': typeof KhalaIndexRoute
+  '/swap': typeof SwapIndexRoute
   '/work': typeof WorkIndexRoute
   '/aisdk/docs/$slug': typeof AisdkDocsSlugRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
@@ -579,6 +632,8 @@ export interface FileRoutesByTo {
   '/forum/f/$forumRef': typeof ForumFForumRefRoute
   '/forum/receipts/$receiptRef': typeof ForumReceiptsReceiptRefRoute
   '/forum/t/$topicId': typeof ForumTTopicIdRoute
+  '/swap/rescue/$actionRef': typeof SwapRescueActionRefRoute
+  '/swap/s/$sessionId': typeof SwapSSessionIdRoute
   '/training/runs/$runId': typeof TrainingRunsRunIdRoute
   '/aisdk/docs': typeof AisdkDocsIndexRoute
   '/training/runs': typeof TrainingRunsIndexRoute
@@ -615,6 +670,7 @@ export interface FileRoutesById {
   '/splash': typeof SplashRoute
   '/stage1': typeof Stage1Route
   '/stats': typeof StatsRoute
+  '/swap': typeof SwapRouteWithChildren
   '/tanstack': typeof TanstackRoute
   '/tassadar': typeof TassadarRoute
   '/terms': typeof TermsRoute
@@ -634,6 +690,9 @@ export interface FileRoutesById {
   '/preview/landing': typeof PreviewLandingRoute
   '/preview/sales-landing': typeof PreviewSalesLandingRoute
   '/share/$shareId': typeof ShareShareIdRoute
+  '/swap/history': typeof SwapHistoryRoute
+  '/swap/rescue': typeof SwapRescueRoute
+  '/swap/settings': typeof SwapSettingsRoute
   '/trace/$traceUuid': typeof TraceTraceUuidRoute
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
   '/aisdk/': typeof AisdkIndexRoute
@@ -646,6 +705,7 @@ export interface FileRoutesById {
   '/docs/': typeof DocsIndexRoute
   '/forum/': typeof ForumIndexRoute
   '/khala/': typeof KhalaIndexRoute
+  '/swap/': typeof SwapIndexRoute
   '/work/': typeof WorkIndexRoute
   '/aisdk/docs/$slug': typeof AisdkDocsSlugRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
@@ -653,6 +713,8 @@ export interface FileRoutesById {
   '/forum/f/$forumRef': typeof ForumFForumRefRoute
   '/forum/receipts/$receiptRef': typeof ForumReceiptsReceiptRefRoute
   '/forum/t/$topicId': typeof ForumTTopicIdRoute
+  '/swap/rescue_/$actionRef': typeof SwapRescueActionRefRoute
+  '/swap/s/$sessionId': typeof SwapSSessionIdRoute
   '/training/runs/$runId': typeof TrainingRunsRunIdRoute
   '/aisdk/docs/': typeof AisdkDocsIndexRoute
   '/training/runs/': typeof TrainingRunsIndexRoute
@@ -690,6 +752,7 @@ export interface FileRouteTypes {
     | '/splash'
     | '/stage1'
     | '/stats'
+    | '/swap'
     | '/tanstack'
     | '/tassadar'
     | '/terms'
@@ -709,6 +772,9 @@ export interface FileRouteTypes {
     | '/preview/landing'
     | '/preview/sales-landing'
     | '/share/$shareId'
+    | '/swap/history'
+    | '/swap/rescue'
+    | '/swap/settings'
     | '/trace/$traceUuid'
     | '/workspaces/$workspaceId'
     | '/aisdk/'
@@ -721,6 +787,7 @@ export interface FileRouteTypes {
     | '/docs/'
     | '/forum/'
     | '/khala/'
+    | '/swap/'
     | '/work/'
     | '/aisdk/docs/$slug'
     | '/business/kpi/$engagementRef'
@@ -728,6 +795,8 @@ export interface FileRouteTypes {
     | '/forum/f/$forumRef'
     | '/forum/receipts/$receiptRef'
     | '/forum/t/$topicId'
+    | '/swap/rescue/$actionRef'
+    | '/swap/s/$sessionId'
     | '/training/runs/$runId'
     | '/aisdk/docs/'
     | '/training/runs/'
@@ -781,6 +850,9 @@ export interface FileRouteTypes {
     | '/preview/landing'
     | '/preview/sales-landing'
     | '/share/$shareId'
+    | '/swap/history'
+    | '/swap/rescue'
+    | '/swap/settings'
     | '/trace/$traceUuid'
     | '/workspaces/$workspaceId'
     | '/aisdk'
@@ -793,6 +865,7 @@ export interface FileRouteTypes {
     | '/docs'
     | '/forum'
     | '/khala'
+    | '/swap'
     | '/work'
     | '/aisdk/docs/$slug'
     | '/business/kpi/$engagementRef'
@@ -800,6 +873,8 @@ export interface FileRouteTypes {
     | '/forum/f/$forumRef'
     | '/forum/receipts/$receiptRef'
     | '/forum/t/$topicId'
+    | '/swap/rescue/$actionRef'
+    | '/swap/s/$sessionId'
     | '/training/runs/$runId'
     | '/aisdk/docs'
     | '/training/runs'
@@ -835,6 +910,7 @@ export interface FileRouteTypes {
     | '/splash'
     | '/stage1'
     | '/stats'
+    | '/swap'
     | '/tanstack'
     | '/tassadar'
     | '/terms'
@@ -854,6 +930,9 @@ export interface FileRouteTypes {
     | '/preview/landing'
     | '/preview/sales-landing'
     | '/share/$shareId'
+    | '/swap/history'
+    | '/swap/rescue'
+    | '/swap/settings'
     | '/trace/$traceUuid'
     | '/workspaces/$workspaceId'
     | '/aisdk/'
@@ -866,6 +945,7 @@ export interface FileRouteTypes {
     | '/docs/'
     | '/forum/'
     | '/khala/'
+    | '/swap/'
     | '/work/'
     | '/aisdk/docs/$slug'
     | '/business/kpi/$engagementRef'
@@ -873,6 +953,8 @@ export interface FileRouteTypes {
     | '/forum/f/$forumRef'
     | '/forum/receipts/$receiptRef'
     | '/forum/t/$topicId'
+    | '/swap/rescue_/$actionRef'
+    | '/swap/s/$sessionId'
     | '/training/runs/$runId'
     | '/aisdk/docs/'
     | '/training/runs/'
@@ -909,6 +991,7 @@ export interface RootRouteChildren {
   SplashRoute: typeof SplashRoute
   Stage1Route: typeof Stage1Route
   StatsRoute: typeof StatsRoute
+  SwapRoute: typeof SwapRouteWithChildren
   TanstackRoute: typeof TanstackRoute
   TassadarRoute: typeof TassadarRoute
   TermsRoute: typeof TermsRoute
@@ -971,6 +1054,13 @@ declare module '@tanstack/react-router' {
       path: '/tanstack'
       fullPath: '/tanstack'
       preLoaderRoute: typeof TanstackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/swap': {
+      id: '/swap'
+      path: '/swap'
+      fullPath: '/swap'
+      preLoaderRoute: typeof SwapRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/stats': {
@@ -1169,6 +1259,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/swap/': {
+      id: '/swap/'
+      path: '/'
+      fullPath: '/swap/'
+      preLoaderRoute: typeof SwapIndexRouteImport
+      parentRoute: typeof SwapRoute
+    }
     '/khala/': {
       id: '/khala/'
       path: '/khala'
@@ -1252,6 +1349,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/trace/$traceUuid'
       preLoaderRoute: typeof TraceTraceUuidRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/swap/settings': {
+      id: '/swap/settings'
+      path: '/settings'
+      fullPath: '/swap/settings'
+      preLoaderRoute: typeof SwapSettingsRouteImport
+      parentRoute: typeof SwapRoute
+    }
+    '/swap/rescue': {
+      id: '/swap/rescue'
+      path: '/rescue'
+      fullPath: '/swap/rescue'
+      preLoaderRoute: typeof SwapRescueRouteImport
+      parentRoute: typeof SwapRoute
+    }
+    '/swap/history': {
+      id: '/swap/history'
+      path: '/history'
+      fullPath: '/swap/history'
+      preLoaderRoute: typeof SwapHistoryRouteImport
+      parentRoute: typeof SwapRoute
     }
     '/share/$shareId': {
       id: '/share/$shareId'
@@ -1386,6 +1504,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TrainingRunsRunIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/swap/s/$sessionId': {
+      id: '/swap/s/$sessionId'
+      path: '/s/$sessionId'
+      fullPath: '/swap/s/$sessionId'
+      preLoaderRoute: typeof SwapSSessionIdRouteImport
+      parentRoute: typeof SwapRoute
+    }
+    '/swap/rescue_/$actionRef': {
+      id: '/swap/rescue_/$actionRef'
+      path: '/rescue/$actionRef'
+      fullPath: '/swap/rescue/$actionRef'
+      preLoaderRoute: typeof SwapRescueActionRefRouteImport
+      parentRoute: typeof SwapRoute
+    }
     '/forum/t/$topicId': {
       id: '/forum/t/$topicId'
       path: '/forum/t/$topicId'
@@ -1476,6 +1608,26 @@ const DocsRouteChildren: DocsRouteChildren = {
 
 const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren)
 
+interface SwapRouteChildren {
+  SwapHistoryRoute: typeof SwapHistoryRoute
+  SwapRescueRoute: typeof SwapRescueRoute
+  SwapSettingsRoute: typeof SwapSettingsRoute
+  SwapIndexRoute: typeof SwapIndexRoute
+  SwapRescueActionRefRoute: typeof SwapRescueActionRefRoute
+  SwapSSessionIdRoute: typeof SwapSSessionIdRoute
+}
+
+const SwapRouteChildren: SwapRouteChildren = {
+  SwapHistoryRoute: SwapHistoryRoute,
+  SwapRescueRoute: SwapRescueRoute,
+  SwapSettingsRoute: SwapSettingsRoute,
+  SwapIndexRoute: SwapIndexRoute,
+  SwapRescueActionRefRoute: SwapRescueActionRefRoute,
+  SwapSSessionIdRoute: SwapSSessionIdRoute,
+}
+
+const SwapRouteWithChildren = SwapRoute._addFileChildren(SwapRouteChildren)
+
 interface ForgeOwnerRepoRouteChildren {
   ForgeOwnerRepoChangesChangeRefRoute: typeof ForgeOwnerRepoChangesChangeRefRoute
   ForgeOwnerRepoWorkWorkRefRoute: typeof ForgeOwnerRepoWorkWorkRefRoute
@@ -1518,6 +1670,7 @@ const rootRouteChildren: RootRouteChildren = {
   SplashRoute: SplashRoute,
   Stage1Route: Stage1Route,
   StatsRoute: StatsRoute,
+  SwapRoute: SwapRouteWithChildren,
   TanstackRoute: TanstackRoute,
   TassadarRoute: TassadarRoute,
   TermsRoute: TermsRoute,

@@ -52,6 +52,16 @@ export const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/(?:privacy|promises|pylons|qa|run|stage1|stats|tassadar|terms)$/,
   /^\/share\/[^/]+$/,
   /^\/splash$/,
+  // SWAP-7 (#9322, parent #9314): the swap product surface — swap, Rescue,
+  // History, settings, and the deep links that resume a stored session
+  // (/swap/s/{id}) and address a recovery action (/swap/rescue/{ref}).
+  // Serving is gated fail-closed inside the /swap layout route
+  // (OPENAGENTS_SWAP_UI_ENABLED, read server-side per request); route naming
+  // remains provisional until the SWAP-0 (#9315) owner decision is recorded.
+  /^\/swap\/?$/,
+  /^\/swap\/(?:history|rescue|settings)$/,
+  /^\/swap\/rescue\/[^/]+$/,
+  /^\/swap\/s\/[^/]+$/,
   /^\/trace\/[^/]+$/,
   /^\/training\/runs(?:\/[^/]+)?\/?$/,
   // 2026-07-28 owner direction: /work is the public sales landing page (AI
