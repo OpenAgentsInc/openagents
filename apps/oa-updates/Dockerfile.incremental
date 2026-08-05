@@ -4,9 +4,9 @@ FROM ${BASE_IMAGE}
 WORKDIR /app
 
 # Preserve the immutable release assets baked into the currently deployed
-# image (the mobile Expo export in `dist/` and the Pylon binaries in
-# `pylon-dist/`) while advancing only the update-service code. This is the
-# safe path when no fresh Expo export has been staged in `dist/`.
+# image (the Pylon binaries in `pylon-dist/`) while advancing only the
+# update-service code. This is the safe path when no fresh Pylon release has
+# been staged in `pylon-dist/`.
 COPY dist-server ./dist-server
 
 EXPOSE 8080

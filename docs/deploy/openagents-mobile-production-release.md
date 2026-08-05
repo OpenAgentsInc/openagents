@@ -9,12 +9,14 @@ is fixed:
 - iOS and Android ID: `com.openagents.app`
 - Apple team: `HQWSG26L43`
 - App Store Connect app ID: `6748620735`
-- owned OTA endpoint: `https://updates.openagents.com/openagents-mobile/manifest`
-- OTA channel: `openagents-production`
+- OTA: **retired 2026-08-05 (#9325).** `app.json` sets `updates.enabled: false`
+  and configures no update URL. The owned
+  `https://updates.openagents.com/openagents-mobile/manifest` endpoint no
+  longer exists and returns 404.
 
 Builds and submissions are local. Do not use EAS Build, Submit, Update, or the
-Expo CDN. Native binary changes require a new store build. JavaScript-only
-changes may use the fingerprint-matched owned OTA path below.
+Expo CDN. **Every change — native or JavaScript-only — requires a new store
+build.** There is no OTA path.
 
 ## Clean-source and release preflight
 
@@ -170,63 +172,26 @@ that the key signed the AAB.
 Record its SHA-256 and Play Console release ID. Do not claim Play production distribution from an emulator/debug-signed
 APK.
 
-## Owned OTA publication
+## Owned OTA publication (retired)
 
-OTA is valid only when the exported update's fingerprint exactly matches the
-installed native runtime. Read the runtime from the archive and pass it as a
-fail-closed expectation. The publisher canonicalizes its repository path with
-`pwd -P` because Xcode does the same. This prevents macOS's `/tmp` →
-`/private/tmp` alias from creating a different fingerprint for identical
-source.
+The owned Expo OTA lane is gone. Owner direction on 2026-08-05 was that there
+are no installed mobile users, so `apps/oa-updates` retired the mobile surface
+rather than freezing it (#9325): the `/<owner>/manifest` route, the Expo
+Updates Protocol responses, manifest code signing, `publish-ota.sh`, and the
+`OA_SEED_*` / `OA_SIGNING_KEY` deploy inputs were all deleted.
+`apps/oa-updates` now serves the signed Pylon release feed only.
 
-It also calls Expo's native build-time fingerprint implementation. It does not
-use the Expo 57 `fingerprint:generate` silent path. The omitted
-dependency-directory hashes can disagree with the runtime embedded by Xcode.
-Publish iOS by default or set the platform explicitly for Android:
-
-```sh
-ARCHIVE_RUNTIME="$(cat /tmp/OpenAgents.xcarchive/Products/Applications/OpenAgents.app/EXUpdates.bundle/fingerprint)"
-CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config \
-  OA_MOBILE_EXPECTED_RUNTIME="$ARCHIVE_RUNTIME" \
-  bash apps/oa-updates/scripts/publish-ota.sh
-
-CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config \
-  OA_MOBILE_EXPECTED_RUNTIME="$ARCHIVE_RUNTIME" \
-  OA_MOBILE_PLATFORM=android \
-  bash apps/oa-updates/scripts/publish-ota.sh
-```
-
-The script computes the runtime fingerprint, exports the bundle, embeds public
-Expo config, mounts the signing key from Secret Manager, and deploys
-`oa-updates`. It must never receive raw signing material on the command line.
-
-Verify the candidate before shifting traffic. Use GET, not HEAD:
-
-```sh
-curl -fsS https://updates.openagents.com/openagents-mobile/manifest \
-  -o /tmp/openagents-mobile-manifest \
-  -H 'expo-protocol-version: 1' \
-  -H 'expo-platform: ios' \
-  -H 'expo-runtime-version: <exact-fingerprint>' \
-  -H 'expo-channel-name: openagents-production'
-```
-
-Require HTTP 200 and Expo protocol v1. Require the exact runtime, channel, and
-platform. Require a signed manifest and a retrievable launch asset with the
-correct byte length and hash. Confirm that the launch asset is a real bundle.
-
-A mismatched runtime must return
-`noUpdateAvailable`. Never bypass fingerprint safety to force an OTA onto an
-older native build. Also verify the Desktop release feeds still resolve before
-promoting the revision, because `oa-updates` serves both products.
+Ship JavaScript-only changes in a new store build using the sections above.
+Re-arming a mobile update path requires a new owner decision and a new
+invariant (see `INVARIANTS.md`).
 
 ## Rollback and evidence
 
 - Native rollback: restore the previous TestFlight/Play build through the
   store. Never reuse a build number.
-- OTA rollback: route Cloud Run traffic to the previous ready revision or
-  publish a newer corrective update for the same compatible runtime. Do not
-  delete immutable release evidence.
+- There is no OTA rollback lane: with OTA retired, a bad JavaScript change is
+  corrected by a new store build, not by re-pointing a feed. Do not delete
+  immutable release evidence.
 - After install/update, test cold launch, native-session recovery, Sync
   continuity, named provider turn, offline/reconnect, sign-out/revocation,
   process replacement, accessibility, diagnostics, and crash-free relaunch.

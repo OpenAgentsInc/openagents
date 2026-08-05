@@ -721,19 +721,18 @@ function startCoordinator(
         );
         return;
       }
-      const repoRoot = process.cwd();
+      // There is no executable ship lane left for either mode. The mobile OTA
+      // publish path (`publish-ota.sh`) was retired with the mobile update
+      // surface on 2026-08-05 (#9325), and native rebuilds require app-specific
+      // signing and release authority. Pylon records and escalates the decision
+      // rather than launching a deleted script or inferring a replacement
+      // release command.
       if (decision.shipMode === "ota") {
-        // CL-38: auto OTA publish to our updates server when OTA-eligible.
-        logToUi(`[ship] ${intentId} auto OTA publish -> publish-ota.sh`, "info");
-        Runtime.spawn(["bash", "apps/oa-updates/scripts/publish-ota.sh"], {
-          cwd: repoRoot,
-          stdout: "ignore",
-          stderr: "ignore",
-        });
+        logToUi(
+          `[ship] ${intentId} OTA-eligible, but the mobile OTA lane was retired (#9325) — escalating to the current app release owner for a store build`,
+          "info",
+        );
       } else if (decision.shipMode === "rebuild") {
-        // Native rebuilds require app-specific signing and release authority.
-        // Pylon records and escalates the decision; it does not launch a retired
-        // client script or infer a replacement release command.
         logToUi(
           `[ship] ${intentId} rebuild needed — escalating to the current app release owner`,
           "info",

@@ -22,7 +22,6 @@ const deployCommands = (
       OA_UPDATES_BUILT_IMAGE_DIGEST: immutableBuiltDigest,
       OA_UPDATES_SOURCE_REVISION: "c".repeat(40),
       OA_PUBLIC_URL: "https://updates.openagents.test",
-      OA_SIGNING_SECRET: "fixture-signing-key:1",
       ...environment,
     },
   })
@@ -35,7 +34,7 @@ const deployCommands = (
 };
 
 describe("oa-updates additive Cloud Run deploy command", () => {
-  test("bare code-only update (no seed) builds incrementally from the ready image digest and preserves existing mobile/Pylon env/secrets", () => {
+  test("bare code-only update (no seed) builds incrementally from the ready image digest and preserves the existing Pylon env", () => {
     const { build, deploy } = deployCommands({});
     expect(build).toContain("cloudbuild.incremental.yaml");
     expect(build).toContain(
@@ -47,50 +46,72 @@ describe("oa-updates additive Cloud Run deploy command", () => {
     );
     expect(deploy).toContain(`${immutableBase.split("@")[0]}@${immutableBuiltDigest}`);
     expect(deploy).not.toContain("--source");
-    // Additive env/secret updates are what keep the already-attached
-    // OA_PYLON_RELEASES_DIST and mobile seed vars alive across a code push.
+    // Additive env updates are what keep the already-attached
+    // OA_PYLON_RELEASES_DIST alive across a code push.
     expect(deploy).toContain("--update-env-vars");
     expect(deploy).not.toContain("--set-env-vars");
-    expect(deploy).toContain("--update-secrets");
     const env = deploy[deploy.indexOf("--update-env-vars") + 1];
-    expect(env).not.toContain("OA_SEED_DIST=");
+    expect(env).toContain("OA_PUBLIC_URL=https://updates.openagents.test");
   });
 
-  test("mobile-only update (OA_SEED_DIST) does a full --source rebuild so the fresh export actually ships", () => {
+  test("a Pylon release publish (OA_PYLON_RELEASES_DIST) does a full --source rebuild so the staged binaries actually ship", () => {
     const { build, deploy } = deployCommands({
-      OA_SEED_DIST: "/app/dist",
-      OA_SEED_RUNTIME: "fixture-runtime",
-      OA_SEED_BRANCH: "openagents-production",
+      OA_PYLON_RELEASES_DIST: "/app/pylon-dist",
     });
     expect(build).toEqual([]);
     expect(deploy).toContain("--source");
     expect(deploy).not.toContain("--image");
     expect(deploy).toContain("--update-env-vars");
     const env = deploy[deploy.indexOf("--update-env-vars") + 1];
-    expect(env).toContain("OA_SEED_DIST=/app/dist");
-    expect(env).toContain("OA_SEED_RUNTIME=fixture-runtime");
-    expect(env).toContain("OA_SEED_BRANCH=openagents-production");
+    expect(env).toContain("OA_PYLON_RELEASES_DIST=/app/pylon-dist");
   });
 
-  // The desktop app and its feeds were deleted. The deploy must no longer
-  // assert any desktop seed or ReleaseSet v2 env var, and must not resurrect
-  // one from a stale exported environment.
-  test("never emits desktop seed or ReleaseSet env vars, even when they are exported", () => {
+  // The desktop app and its feeds were deleted, and the Expo mobile OTA
+  // surface was retired on 2026-08-05 (#9325). The deploy must no longer
+  // assert any desktop or mobile seed env var, and must not resurrect one from
+  // a stale exported environment.
+  test("never emits retired mobile OTA or desktop env vars, even when they are exported", () => {
     const { deploy } = deployCommands({
+      OA_SEED_DIST: "/app/dist",
+      OA_SEED_RUNTIME: "stale-runtime",
+      OA_SEED_PLATFORM: "ios",
+      OA_SEED_BRANCH: "openagents-production",
+      OA_SEED_EXPO_CLIENT_PATH: "/app/dist/expo-client.json",
       OA_DESKTOP_RELEASES_DIST: "/app/desktop-dist",
       OA_OPENAGENTS_DESKTOP_RELEASE_DIST: "/app/openagents-desktop-dist",
       OA_DESKTOP_OTA_DIR: "/app/desktop-ota",
       OA_RELEASE_SET_BUCKET: "openagents-release-fixture",
     });
     const env = deploy[deploy.indexOf("--update-env-vars") + 1];
-    expect(env).not.toContain("OA_DESKTOP_RELEASES_DIST");
-    expect(env).not.toContain("OA_OPENAGENTS_DESKTOP_RELEASE_DIST");
-    expect(env).not.toContain("OA_DESKTOP_OTA_DIR");
-    expect(env).not.toContain("OA_RELEASE_SET_BUCKET");
-    expect(env).not.toContain("OA_RELEASE_SET_PINS_PATH");
-    // A desktop-only export is no longer a seed publish, so it stays on the
+    for (const retired of [
+      "OA_SEED_DIST",
+      "OA_SEED_RUNTIME",
+      "OA_SEED_PLATFORM",
+      "OA_SEED_BRANCH",
+      "OA_SEED_EXPO_CLIENT_PATH",
+      "OA_DESKTOP_RELEASES_DIST",
+      "OA_OPENAGENTS_DESKTOP_RELEASE_DIST",
+      "OA_DESKTOP_OTA_DIR",
+      "OA_RELEASE_SET_BUCKET",
+      "OA_RELEASE_SET_PINS_PATH",
+    ]) {
+      expect(env).not.toContain(retired);
+    }
+    // A retired-surface export is no longer a seed publish, so it stays on the
     // non-destructive incremental path.
     expect(deploy).not.toContain("--source");
+  });
+
+  // The OA_SIGNING_KEY secret signed Expo manifests only. With mobile OTA
+  // retired the running service must hold no signing material; Pylon release
+  // signatures are minted offline and verified against the pinned public key.
+  test("never attaches the retired OTA manifest code-signing secret", () => {
+    const { deploy } = deployCommands({
+      OA_SIGNING_SECRET: "oa-updates-codesign-key:latest",
+    });
+    expect(deploy).not.toContain("--update-secrets");
+    expect(deploy).not.toContain("--set-secrets");
+    expect(deploy.join(" ")).not.toContain("OA_SIGNING_KEY");
   });
 
   test("explicit OA_UPDATES_DEPLOY_MODE=full forces a full rebuild even with no seed present", () => {
@@ -111,8 +132,7 @@ describe("oa-updates additive Cloud Run deploy command", () => {
     expect(() =>
       deployCommands({
         OA_UPDATES_DEPLOY_MODE: "incremental",
-        OA_SEED_DIST: "/app/dist",
-        OA_SEED_RUNTIME: "fixture-runtime",
+        OA_PYLON_RELEASES_DIST: "/app/pylon-dist",
       }),
     ).toThrow();
   });

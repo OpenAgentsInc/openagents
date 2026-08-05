@@ -39,23 +39,20 @@ const typecheckProject = () => {
   if (run.status !== 0) throw new Error(`OA Updates strict test project failed:\n${run.stdout}${run.stderr}`)
 }
 
-const fixtureSource = ({ includeId }) => `import type { Update } from ${JSON.stringify(join(appRoot, "src/manifest-resolver.ts"))}
+// Negative fixture: a Pylon release manifest missing its required artifact
+// digest. `sha256` is the field the self-updater verifies before installing a
+// downloaded binary, so TypeScript must reject a manifest that omits it long
+// before such a release could reach the feed.
+const fixtureSource = ({ includeSha256 }) => `import type { PylonReleaseManifest } from ${JSON.stringify(join(appRoot, "src/pylon-release.ts"))}
 
-const candidate: Update = {
-  ${includeId ? 'id: "00000000-0000-4000-8000-000000000001",' : ""}
-  platform: "ios",
-  branch: "openagents-production",
-  runtimeVersion: "fixture-runtime",
-  createdAt: "2026-07-14T00:00:00.000Z",
-  launchAsset: {
-    hash: "fixture-hash",
-    key: "bundle.js",
-    contentType: "application/javascript",
-    url: "https://updates.openagents.test/assets/fixture-hash"
-  },
-  assets: [],
-  metadata: {},
-  extra: {}
+const candidate: PylonReleaseManifest = {
+  version: "1.0.0-rc.1",
+  channel: "rc",
+  platform: "darwin-arm64",
+  artifactUrl: "https://updates.openagents.test/assets/fixture-hash",
+  ${includeSha256 ? `sha256: "${"0".repeat(64)}",` : ""}
+  signature: "fixture-signature",
+  kid: "2dbe811d19f67528"
 }
 void candidate
 `
@@ -74,15 +71,15 @@ const proveBrokenFixtureFails = () => {
       include: [],
     }, null, 2)}\n`)
 
-    writeFileSync(fixturePath, fixtureSource({ includeId: true }))
+    writeFileSync(fixturePath, fixtureSource({ includeSha256: true }))
     const valid = runTsc(["-p", fixtureProjectPath, "--pretty", "false"])
     if (valid.status !== 0) throw new Error(`valid OA Updates fixture did not compile:\n${valid.stdout}${valid.stderr}`)
 
-    writeFileSync(fixturePath, fixtureSource({ includeId: false }))
+    writeFileSync(fixturePath, fixtureSource({ includeSha256: false }))
     const broken = runTsc(["-p", fixtureProjectPath, "--pretty", "false"])
     const diagnostics = `${broken.stdout}\n${broken.stderr}`
-    if (broken.status === 0 || !diagnostics.includes("Property 'id' is missing")) {
-      throw new Error(`negative fixture did not fail on required Update.id:\n${diagnostics}`)
+    if (broken.status === 0 || !diagnostics.includes("Property 'sha256' is missing")) {
+      throw new Error(`negative fixture did not fail on required PylonReleaseManifest.sha256:\n${diagnostics}`)
     }
   } finally {
     rmSync(scratch, { recursive: true, force: true })

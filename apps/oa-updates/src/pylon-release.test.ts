@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test"
 
-import { createInMemoryAssetStore } from "./asset-store.ts"
+import { assetKeyFromBytes, type AssetStore } from "./asset-store.ts"
 import {
   buildPylonFeed,
   buildPylonReleaseManifest,
@@ -13,6 +13,24 @@ import {
 } from "./pylon-release.ts"
 
 const base = "https://updates.openagents.com"
+
+// Test double for the seeding store. Production seeding uses a non-retaining
+// store (pylon-seed.ts) so a 100 MB binary is never held in memory; this one
+// retains bytes only so a test can assert the round trip.
+const testAssetStore = (baseUrl: string): AssetStore => {
+  const assets = new Map<string, Uint8Array>()
+  return {
+    async put(bytes) {
+      const hash = assetKeyFromBytes(bytes)
+      if (!assets.has(hash)) assets.set(hash, Uint8Array.from(bytes))
+      return { hash, url: `${baseUrl}/assets/${hash}` }
+    },
+    async get(hash) {
+      const bytes = assets.get(hash)
+      return bytes ? Uint8Array.from(bytes) : null
+    },
+  }
+}
 
 const seed = (
   overrides: Partial<PylonReleaseManifest> = {},
@@ -29,7 +47,7 @@ const seed = (
 
 describe("buildPylonReleaseManifest", () => {
   test("stores artifact and records its sha256 + signature", async () => {
-    const store = createInMemoryAssetStore(base)
+    const store = testAssetStore(base)
     const bytes = new TextEncoder().encode("pylon-binary-bytes")
     const result = await buildPylonReleaseManifest({
       version: "1.0.0-rc.1",
@@ -48,7 +66,7 @@ describe("buildPylonReleaseManifest", () => {
   })
 
   test("rejects unknown platform and bad rollout", async () => {
-    const store = createInMemoryAssetStore(base)
+    const store = testAssetStore(base)
     const bytes = new Uint8Array([1])
     await expect(
       buildPylonReleaseManifest({

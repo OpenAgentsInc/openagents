@@ -13,29 +13,3 @@ export function assetKeyFromBytes(bytes: Uint8Array): string {
     .replaceAll("/", "_")
     .replaceAll("=", "")
 }
-
-export function verifyAsset(bytes: Uint8Array, expectedHash: string): boolean {
-  return assetKeyFromBytes(bytes) === expectedHash
-}
-
-export function createInMemoryAssetStore(baseUrl: string): AssetStore {
-  const assets = new Map<string, Uint8Array>()
-
-  return {
-    async put(bytes) {
-      const hash = assetKeyFromBytes(bytes)
-
-      if (!assets.has(hash)) {
-        assets.set(hash, Uint8Array.from(bytes))
-      }
-
-      return { hash, url: `${baseUrl}/assets/${hash}` }
-    },
-
-    async get(hash) {
-      const bytes = assets.get(hash)
-
-      return bytes ? Uint8Array.from(bytes) : null
-    },
-  }
-}

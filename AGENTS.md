@@ -809,12 +809,14 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
 - **`docs/DEPLOYMENT.md` is the single hub for every deploy / publish / release.**
   Read it first for any of: deploying the `openagents.com` Cloud Run service,
   publishing Pylon to npm, publishing signed Pylon binaries, the
-  `updates.openagents.com` feed (mobile Expo OTA and Pylon releases only), or
-  the greenfield mobile app. The Electron OpenAgents Desktop release lane was
-  deleted with the app on 2026-08-04 (#9325): there is no desktop package,
-  publish, promote, or update command in this repository, and Omega releases
-  from the Omega repository. The deprecated Khala clients have no active
-  release lane. The hub indexes the per-surface runbooks (the sources of
+  `updates.openagents.com` feed (signed Pylon releases only), or the greenfield
+  mobile app. The Electron OpenAgents Desktop release lane was deleted with the
+  app on 2026-08-04 (#9325): there is no desktop package, publish, promote, or
+  update command in this repository, and Omega releases from the Omega
+  repository. The mobile Expo OTA lane was retired on 2026-08-05 (#9325) at
+  owner direction — there are no installed mobile users, `updates.enabled` is
+  `false` in `apps/openagents-mobile/app.json`, and JS changes ship only in a
+  new store build. The deprecated Khala clients have no active release lane. The hub indexes the per-surface runbooks (the sources of
   truth), the one-line recipe for each, the GitHub release-tag convention, and
   where the signing secrets live (`~/work/.secrets/` + GCP Secret Manager,
   project `openagentsgemini`).
@@ -1060,17 +1062,17 @@ and deterministic Effect tests. Do not skip it merely because
   §6.2–6.4. Build/ship posture stays **local-first**: `expo prebuild` +
   local Xcode/Gradle, archive with `xcodebuild`, upload to TestFlight with
   `xcrun altool` (ASC key in `.secrets/appstoreconnect.env`, Apple Team
-  `HQWSG26L43`). **Updates: we built and preserve our own drop-in EAS
-  Updates replacement — the OpenAgents Updates server (`apps/oa-updates`:
-  expo-updates protocol v1, signed manifests via `expo-signature` code
-  signing, asset store, channels/branches, runtime fingerprints), deployed
-  on OpenAgents cloud and serving `updates.openagents.com`, publish via
-  `apps/oa-updates/scripts/publish-ota.sh` (fingerprint → `expo export` →
-  seed → deploy), fully off Expo's CDN.** JS/OTA updates ship through that
-  server — never `eas update`. **Builds are local for now** (`expo
-prebuild` + Xcode/Gradle); `eas build`/`eas submit` stay unused unless
-  the owner explicitly changes that. `publish-ota.sh` targets only the
-  supported `apps/openagents-mobile` application by default.
+  `HQWSG26L43`). **Updates: there is no OTA lane.** The owned drop-in EAS
+  Updates replacement (`apps/oa-updates`: expo-updates protocol v1, signed
+  manifests via `expo-signature` code signing, asset store, channels/branches,
+  runtime fingerprints, `publish-ota.sh`) was **retired on 2026-08-05
+  (#9325)** at owner direction — there are no installed mobile users.
+  `apps/openagents-mobile/app.json` sets `updates.enabled: false` and
+  configures no update URL; the `/<owner>/manifest` route 404s.
+  `apps/oa-updates` now serves the signed Pylon release feed only. JS changes
+  ship in a **new store build**, never `eas update` and never a resurrected
+  OTA feed. **Builds are local** (`expo prebuild` + Xcode/Gradle); `eas
+  build`/`eas submit` stay unused unless the owner explicitly changes that.
   The new app's display name is exactly `OpenAgents`, its iOS bundle identifier
   and Android application ID are exactly `com.openagents.app`, its icon is the
   exact Khala Code mobile icon pinned above. Store build/version numbers and

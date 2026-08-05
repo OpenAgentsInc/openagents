@@ -1,93 +1,17 @@
 import { Runtime } from "@openagentsinc/runtime-platform"
-import type { AssetStore } from "./asset-store.ts"
-import { readExportedUpdate } from "./export-reader.ts"
-import type { PublishExportResult } from "./publish.ts"
-import type { Platform } from "./publish-builder.ts"
 import { seedPylonReleases } from "./pylon-seed.ts"
-import {
-  createUpdatesServer,
-  type UpdatesServer,
-} from "./server.ts"
+import { createUpdatesServer } from "./server.ts"
 
-type SeedFromDistInput = {
-  readonly server: UpdatesServer
-  readonly distDir: string
-  readonly platform: Platform
-  readonly branch: string
-  readonly runtimeVersion: string
-  readonly baseUrl: string
-  readonly readFile?: (path: string) => Promise<Uint8Array>
-  readonly expoClientConfig?: Record<string, unknown>
-}
-
-export async function seedFromDist(
-  input: SeedFromDistInput,
-): Promise<PublishExportResult> {
-  const shimStore: AssetStore = {
-    put: (bytes) => input.server.putAsset(bytes),
-    get: async () => null,
-  }
-  const result = await readExportedUpdate({
-    distDir: input.distDir,
-    platform: input.platform,
-    branch: input.branch,
-    runtimeVersion: input.runtimeVersion,
-    // The expo-updates client (FileDownloader.createUpdate) requires `id` to
-    // parse as a UUID and crashes with an uncaught NSInternalInconsistencyException
-    // ("update ID should be a valid UUID") otherwise — must be a real UUID, not
-    // a human-readable seed tag.
-    id: crypto.randomUUID(),
-    createdAt: new Date().toISOString(),
-    baseUrl: input.baseUrl,
-    store: shimStore,
-    readFile: input.readFile,
-    expoClientConfig: input.expoClientConfig,
-  })
-
-  input.server.registerUpdate(result.update)
-
-  return result
-}
-
+// Cloud Run entrypoint for updates.openagents.com. It seeds exactly one
+// surface: the signed per-platform Pylon release feed. The Expo mobile OTA
+// seed (`OA_SEED_DIST` / `OA_SEED_RUNTIME` / `OA_SEED_PLATFORM` /
+// `OA_SEED_BRANCH` / `OA_SEED_EXPO_CLIENT_PATH`) and the manifest code-signing
+// key (`OA_SIGNING_KEY`) were retired with the mobile update path on
+// 2026-08-05 (#9325) and are deliberately never read again, so a stale
+// operator environment cannot resurrect a feed this service no longer serves.
 if (Runtime.isMain(import.meta.url)) {
   const port = Number(process.env.PORT ?? 8080)
-  const server = createUpdatesServer({
-    port,
-    signingKeyPem: process.env.OA_SIGNING_KEY,
-  })
-
-  if (process.env.OA_SEED_DIST) {
-    if (!process.env.OA_SEED_RUNTIME) {
-      throw new Error("OA_SEED_RUNTIME is required when OA_SEED_DIST is set")
-    }
-
-    // Optional: a JSON file with the resolved public app config (the same
-    // shape `expo config --type public --json` produces), embedded into the
-    // manifest as `extra.expoClient`. Without this, expo-constants /
-    // expo-linking throw on a downloaded (non-embedded) update and
-    // expo-updates silently rolls the launch back to the cached update.
-    let expoClientConfig: Record<string, unknown> | undefined
-    if (process.env.OA_SEED_EXPO_CLIENT_PATH) {
-      const { readFile } = await import("node:fs/promises")
-      expoClientConfig = JSON.parse(
-        await readFile(process.env.OA_SEED_EXPO_CLIENT_PATH, "utf8"),
-      ) as Record<string, unknown>
-    }
-
-    await seedFromDist({
-      server,
-      distDir: process.env.OA_SEED_DIST,
-      platform: (process.env.OA_SEED_PLATFORM ?? "ios") as Platform,
-      // Branch doubles as the channel name (channelToBranch is identity for
-      // seeded updates). "production" is the legacy khala-mobile channel; the
-      // greenfield OpenAgents app (#8597) publishes to its OWN channel via
-      // OA_SEED_BRANCH so a legacy feed can never be reused by accident.
-      branch: process.env.OA_SEED_BRANCH ?? "production",
-      runtimeVersion: process.env.OA_SEED_RUNTIME,
-      baseUrl: process.env.OA_PUBLIC_URL ?? `http://localhost:${port}`,
-      expoClientConfig,
-    })
-  }
+  const server = createUpdatesServer()
 
   if (process.env.OA_PYLON_RELEASES_DIST) {
     await seedPylonReleases({

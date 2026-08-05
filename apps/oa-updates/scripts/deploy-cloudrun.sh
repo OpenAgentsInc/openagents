@@ -22,51 +22,33 @@ image_build_source="gs://${project}-cloud-build-source/source"
 #   gcloud auth login
 #   gcloud config set project <project-id>
 #   export OA_PUBLIC_URL=https://<your-cloud-run-service-url>
-#   export OA_SEED_DIST=/app/dist
-#   export OA_SEED_RUNTIME=<runtime-version>
 #
-# Optional:
-#   export OA_SEED_PLATFORM=ios
-#   export OA_SEED_EXPO_CLIENT_PATH=/app/dist/expo-client.json
+# Optional, for a Pylon release publish only:
+#   export OA_PYLON_RELEASES_DIST=/app/pylon-dist
 #
-# The Pylon release feed is driven by OA_PYLON_RELEASES_DIST=/app/pylon-dist,
-# which this script does not set: it is already attached to the service and
-# --update-env-vars below preserves it. The binaries it seeds are baked into
-# the image by the Dockerfile's `COPY pylon-dist`.
-#
-# Code signing (#8530 / CFG-14): the OTA manifest signing key reaches the
-# service as the OA_SIGNING_KEY env var mounted from GCP Secret Manager
-# (secret `oa-updates-codesign-key`, project openagentsgemini) via
-# --set-secrets. It is never passed as inline env. To point at a different
-# secret/version, export OA_SIGNING_SECRET=<secret-name>:<version>; set it
-# to the empty string to deploy without code signing (dev projects only).
+# The service serves ONE surface: the signed per-platform Pylon release feed
+# (plus Pylon node discovery). The Expo mobile OTA surface was retired on
+# 2026-08-05 (#9325) after the owner confirmed there are no installed mobile
+# users, so this script no longer emits OA_SEED_DIST, OA_SEED_RUNTIME,
+# OA_SEED_PLATFORM, OA_SEED_BRANCH, OA_SEED_EXPO_CLIENT_PATH, or the
+# OA_SIGNING_KEY manifest code-signing secret (#8530 / CFG-14) — src/serve.ts
+# no longer reads any of them, so a stale operator environment cannot
+# resurrect a retired feed.
 #
 # This script is intentionally not run by tests or setup. Run it manually when
-# the target Google Cloud project and seed export are ready.
+# the target Google Cloud project is ready.
 
 env_vars=("OA_PUBLIC_URL=${OA_PUBLIC_URL:?set OA_PUBLIC_URL}")
 
-# A seed-publishing deploy intentionally replaces the bytes baked into the
-# image for one surface (the mobile Expo export). Track whether this
-# invocation is one of those so image selection below can require the
-# matching full rebuild.
+# A seed-publishing deploy intentionally replaces the release bytes baked into
+# the image (the Pylon binaries in pylon-dist/). Track whether this invocation
+# is one of those so image selection below can require the matching full
+# rebuild.
 seed_requested=0
 
-if [[ -n "${OA_SEED_DIST:-}" || -n "${OA_SEED_RUNTIME:-}" ]]; then
+if [[ -n "${OA_PYLON_RELEASES_DIST:-}" ]]; then
   seed_requested=1
-  env_vars+=(
-    "OA_SEED_DIST=${OA_SEED_DIST:?set OA_SEED_DIST}"
-    "OA_SEED_RUNTIME=${OA_SEED_RUNTIME:?set OA_SEED_RUNTIME}"
-    "OA_SEED_PLATFORM=${OA_SEED_PLATFORM:-ios}"
-  )
-
-  if [[ -n "${OA_SEED_EXPO_CLIENT_PATH:-}" ]]; then
-    env_vars+=("OA_SEED_EXPO_CLIENT_PATH=${OA_SEED_EXPO_CLIENT_PATH}")
-  fi
-
-  if [[ -n "${OA_SEED_BRANCH:-}" ]]; then
-    env_vars+=("OA_SEED_BRANCH=${OA_SEED_BRANCH}")
-  fi
+  env_vars+=("OA_PYLON_RELEASES_DIST=${OA_PYLON_RELEASES_DIST}")
 fi
 
 env_csv="$(IFS=,; echo "${env_vars[*]}")"
@@ -74,20 +56,20 @@ env_csv="$(IFS=,; echo "${env_vars[*]}")"
 # Image selection ------------------------------------------------------------
 #
 # `--source .` bakes whatever currently sits in this checkout's gitignored
-# dist/ and pylon-dist/ directories into a brand new image layer. That is
-# correct, and required, exactly when this deploy is intentionally publishing
-# a fresh mobile seed (OA_SEED_DIST) -- publish-ota.sh always sets OA_SEED_DIST
-# right before calling this script for exactly that reason, and must keep
-# doing a full rebuild so the exported bundle actually ships.
+# pylon-dist/ directory into a brand new image layer. That is correct, and
+# required, exactly when this deploy is intentionally publishing fresh signed
+# Pylon binaries (OA_PYLON_RELEASES_DIST) -- publish-pylon-release.ts stages
+# those bytes right before this script runs for exactly that reason, and must
+# keep doing a full rebuild so the staged binaries actually ship.
 #
 # Any OTHER deploy -- notably a bare server code push -- must NOT go through
-# `--source .`, because those seed directories are almost always empty or
-# stale in an ordinary checkout at that moment, and Docker COPY of an empty
-# local directory silently erases the release bytes already baked into the
-# currently running image (the mobile Expo export and the Pylon binaries).
-# Resolve `Dockerfile.incremental` from the exact currently-ready Cloud Run
-# image digest instead, so this class of deploy only ever advances the
-# service code and can never regress an already-served seed.
+# `--source .`, because that seed directory is almost always empty or stale in
+# an ordinary checkout at that moment, and Docker COPY of an empty local
+# directory silently erases the release bytes already baked into the currently
+# running image (the Pylon binaries). Resolve `Dockerfile.incremental` from the
+# exact currently-ready Cloud Run image digest instead, so this class of deploy
+# only ever advances the service code and can never regress an already-served
+# seed.
 deploy_mode="${OA_UPDATES_DEPLOY_MODE:-auto}"
 if [[ "$deploy_mode" == "auto" ]]; then
   if [[ "$seed_requested" == "1" ]]; then
@@ -98,7 +80,7 @@ if [[ "$deploy_mode" == "auto" ]]; then
 fi
 
 if [[ "$deploy_mode" == "incremental" && "$seed_requested" == "1" ]]; then
-  echo "REFUSED: OA_UPDATES_DEPLOY_MODE=incremental cannot be combined with a seed publish (OA_SEED_DIST/OA_SEED_RUNTIME); Dockerfile.incremental never bakes those directories, so this would silently drop the requested seed" >&2
+  echo "REFUSED: OA_UPDATES_DEPLOY_MODE=incremental cannot be combined with a seed publish (OA_PYLON_RELEASES_DIST); Dockerfile.incremental never bakes that directory, so this would silently drop the requested seed" >&2
   exit 1
 fi
 
@@ -184,9 +166,8 @@ case "$deploy_mode" in
       --port 8080 \
       # Additive by construction: gcloud's update form preserves every
       # existing env mapping not named in this invocation. This branch also
-      # never touches the mobile Expo export or Pylon seed layers baked into
-      # $base_image, so a code-only deploy can neither remove nor silently
-      # blank either seed.
+      # never touches the Pylon seed layer baked into $base_image, so a
+      # code-only deploy can neither remove nor silently blank it.
       --update-env-vars "$env_csv"
     )
     ;;
@@ -196,12 +177,12 @@ case "$deploy_mode" in
     ;;
 esac
 
-# OA_SIGNING_KEY is mounted from Secret Manager, never inline (#8530).
-# Update only this named secret; unrelated secret mappings remain attached.
-signing_secret="${OA_SIGNING_SECRET-oa-updates-codesign-key:latest}"
-if [[ -n "$signing_secret" ]]; then
-  args+=(--update-secrets "OA_SIGNING_KEY=${signing_secret}")
-fi
+# No secret is attached by this deploy. The OA_SIGNING_KEY mapping this script
+# used to set (#8530 / CFG-14) signed Expo manifests only, and the mobile OTA
+# surface it served was retired on 2026-08-05 (#9325). Pylon release signatures
+# are minted offline by scripts/sign-release.ts and verified by clients against
+# the pinned public key in keys/release-pubkey.json, so the running service
+# holds no signing material at all.
 
 if [[ "${OA_UPDATES_DEPLOY_DRY_RUN:-0}" == "1" ]]; then
   if [[ "${#build_args[@]}" -gt 0 ]]; then

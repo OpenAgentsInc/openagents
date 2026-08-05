@@ -81,28 +81,26 @@ describe("contract openagents_mobile.identity.v1", () => {
     expect(digest).toBe(PINNED_ICON_SHA256)
   })
 
-  test("OTA feed is the owned OpenAgents Updates server on the app's OWN channel", () => {
-    // The owned oa-updates server (never EAS / Expo CDN) …
-    expect(appConfig.expo.updates?.enabled).toBe(true)
-    expect(appConfig.expo.updates?.url).toBe(
-      "https://updates.openagents.com/openagents-mobile/manifest",
-    )
-    // … on a channel that belongs to THIS app.
-    expect(appConfig.expo.updates?.requestHeaders?.["expo-channel-name"]).toBe(
-      "openagents-production",
-    )
-    // Runtime compatibility is fingerprint-based, matching the publish path.
-    expect(appConfig.expo.runtimeVersion?.policy).toBe("fingerprint")
+  test("OTA is explicitly disabled, not left pointing at a retired endpoint", () => {
+    // The mobile OTA surface on updates.openagents.com was retired on
+    // 2026-08-05 (#9325) at owner direction — there are no installed mobile
+    // users, and the `/<owner>/manifest` route now 404s. expo-updates is still
+    // linked into the binary and `updates.enabled` DEFAULTS TO TRUE, so the
+    // key must be present and false: deleting it would leave the client
+    // enabled with no configured URL, which is the misconfiguration rather
+    // than the fix. JS changes now ship only in a new store build.
+    expect(appConfig.expo.updates?.enabled).toBe(false)
+    expect(appConfig.expo.updates?.url).toBeUndefined()
+    expect(appConfig.expo.updates?.requestHeaders).toBeUndefined()
   })
 
-  test("OTA feed is NOT any legacy channel (khala / AutopilotRemoteControl / bare production)", () => {
-    const serialized = JSON.stringify(appConfig.expo.updates).toLowerCase()
+  test("no update endpoint of any kind is configured — owned, legacy, or Expo CDN", () => {
+    const serialized = JSON.stringify(appConfig.expo.updates ?? {}).toLowerCase()
+    expect(serialized).not.toContain("http")
+    expect(serialized).not.toContain("updates.openagents.com")
     expect(serialized).not.toContain("khala")
     expect(serialized).not.toContain("autopilot")
     expect(serialized).not.toContain("u.expo.dev")
-    expect(
-      appConfig.expo.updates?.requestHeaders?.["expo-channel-name"],
-    ).not.toBe("production")
   })
 
   test("microphone permission is exact and background audio stays disabled", () => {

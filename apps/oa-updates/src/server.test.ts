@@ -1,257 +1,8 @@
-import { generateKeyPairSync } from "node:crypto"
 import { describe, expect, test } from "vite-plus/test"
 
-import { verifyManifestSignature } from "./code-signing.ts"
 import { createUpdatesServer } from "./server.ts"
-import type { Update } from "./manifest-resolver.ts"
-
-// Parse a named part out of an expo-updates multipart/mixed response: returns
-// the part's JSON body + its part headers. Mirrors what expo-updates does.
-const parsePart = async (
-  response: Response,
-  name: string,
-): Promise<{ json: unknown; rawBody: string; headers: Record<string, string> }> => {
-  const contentType = response.headers.get("content-type") ?? ""
-  const match = contentType.match(/boundary=([^;]+)/)
-  if (!match) throw new Error(`not multipart: ${contentType}`)
-  const boundary = match[1]
-  const text = await response.text()
-  const segments = text.split(`--${boundary}`)
-  for (const seg of segments) {
-    const trimmed = seg.replace(/^\r\n/, "").replace(/\r\n$/, "")
-    if (trimmed === "" || trimmed === "--") continue
-    const sep = trimmed.indexOf("\r\n\r\n")
-    if (sep < 0) continue
-    const headerBlock = trimmed.slice(0, sep)
-    const body = trimmed.slice(sep + 4)
-    const headers: Record<string, string> = {}
-    for (const line of headerBlock.split("\r\n")) {
-      const i = line.indexOf(":")
-      if (i > 0) headers[line.slice(0, i).trim().toLowerCase()] = line.slice(i + 1).trim()
-    }
-    const disposition = headers["content-disposition"] ?? ""
-    if (disposition.includes(`name="${name}"`)) {
-      return { json: JSON.parse(body), rawBody: body, headers }
-    }
-  }
-  throw new Error(`part "${name}" not found`)
-}
-
-const manifestRequest = (runtimeVersion: string): Request =>
-  new Request("http://updates.openagents.test/openagents/manifest", {
-    headers: {
-      "Expo-Platform": "ios",
-      "Expo-Runtime-Version": runtimeVersion,
-      "Expo-Channel-Name": "production",
-    },
-  })
 
 describe("updates server", () => {
-  test("serves a resolved manifest from registered updates", async () => {
-    const server = createUpdatesServer({ port: 4321 })
-    const launchBytes = new TextEncoder().encode("console.log('launch')")
-    const imageBytes = new Uint8Array([1, 2, 3, 4])
-    const launchAsset = await server.putAsset(launchBytes)
-    const imageAsset = await server.putAsset(imageBytes)
-    const update: Update = {
-      id: "update-1",
-      platform: "ios",
-      branch: "production",
-      runtimeVersion: "1.0.0",
-      createdAt: "2026-06-13T12:00:00.000Z",
-      launchAsset: {
-        key: "bundles/ios/main.js",
-        hash: launchAsset.hash,
-        contentType: "application/javascript",
-        fileExtension: ".js",
-        url: launchAsset.url,
-      },
-      assets: [
-        {
-          key: "assets/icon.png",
-          hash: imageAsset.hash,
-          contentType: "image/png",
-          fileExtension: ".png",
-          url: imageAsset.url,
-        },
-      ],
-      metadata: {},
-      extra: {},
-    }
-
-    server.registerUpdate(update)
-
-    const response = await server.fetch(manifestRequest("1.0.0"))
-
-    expect(response.status).toBe(200)
-    expect(response.headers.get("content-type")).toContain("multipart/mixed")
-    expect(response.headers.get("expo-protocol-version")).toBe("1")
-    expect(response.headers.get("expo-sfv-version")).toBe("0")
-    const part = await parsePart(response, "manifest")
-    expect(part.json).toEqual(update)
-  })
-
-  test("returns noUpdateAvailable for a runtimeVersion mismatch", async () => {
-    const server = createUpdatesServer()
-    const launchAsset = await server.putAsset(new TextEncoder().encode("launch"))
-
-    server.registerUpdate({
-      id: "update-1",
-      platform: "ios",
-      branch: "production",
-      runtimeVersion: "1.0.0",
-      createdAt: "2026-06-13T12:00:00.000Z",
-      launchAsset: {
-        key: "bundles/ios/main.js",
-        hash: launchAsset.hash,
-        contentType: "application/javascript",
-        fileExtension: ".js",
-        url: launchAsset.url,
-      },
-      assets: [],
-      metadata: {},
-      extra: {},
-    })
-
-    const response = await server.fetch(manifestRequest("2.0.0"))
-
-    expect(response.status).toBe(200)
-    expect(response.headers.get("content-type")).toContain("multipart/mixed")
-    const part = await parsePart(response, "directive")
-    expect(part.json).toEqual({ type: "noUpdateAvailable" })
-  })
-
-  test("signs manifest responses when a signing key is configured", async () => {
-    const { privateKey, publicKey } = generateKeyPairSync("rsa", {
-      modulusLength: 2048,
-    })
-    const signingKeyPem = privateKey.export({
-      type: "pkcs1",
-      format: "pem",
-    }).toString()
-    const publicKeyPem = publicKey.export({
-      type: "pkcs1",
-      format: "pem",
-    }).toString()
-    const server = createUpdatesServer({
-      signingKeyPem,
-      keyid: "test-key",
-    })
-    const launchBytes = new TextEncoder().encode("console.log('launch')")
-    const imageBytes = new Uint8Array([1, 2, 3, 4])
-    const launchAsset = await server.putAsset(launchBytes)
-    const imageAsset = await server.putAsset(imageBytes)
-    const update: Update = {
-      id: "update-1",
-      platform: "ios",
-      branch: "production",
-      runtimeVersion: "1.0.0",
-      createdAt: "2026-06-13T12:00:00.000Z",
-      launchAsset: {
-        key: "bundles/ios/main.js",
-        hash: launchAsset.hash,
-        contentType: "application/javascript",
-        fileExtension: ".js",
-        url: launchAsset.url,
-      },
-      assets: [
-        {
-          key: "assets/icon.png",
-          hash: imageAsset.hash,
-          contentType: "image/png",
-          fileExtension: ".png",
-          url: imageAsset.url,
-        },
-      ],
-      metadata: {},
-      extra: {},
-    }
-
-    server.registerUpdate(update)
-
-    const response = await server.fetch(manifestRequest("1.0.0"))
-
-    expect(response.status).toBe(200)
-    expect(response.headers.get("content-type")).toContain("multipart/mixed")
-    expect(response.headers.get("expo-protocol-version")).toBe("1")
-    expect(response.headers.get("expo-sfv-version")).toBe("0")
-    // Signature travels as a part header on the manifest part, over the part body.
-    const part = await parsePart(response, "manifest")
-    const signature = part.headers["expo-signature"]
-    expect(signature).toBeDefined()
-    expect(verifyManifestSignature(part.rawBody, signature ?? "", publicKeyPem)).toBe(true)
-    expect(part.json).toEqual(update)
-  })
-
-  test("serves registered asset bytes by hash", async () => {
-    const server = createUpdatesServer()
-    const bytes = new Uint8Array([9, 8, 7, 6])
-    const storedAsset = await server.putAsset(bytes)
-
-    server.registerUpdate({
-      id: "update-1",
-      platform: "ios",
-      branch: "production",
-      runtimeVersion: "1.0.0",
-      createdAt: "2026-06-13T12:00:00.000Z",
-      launchAsset: {
-        key: "bundles/ios/main.js",
-        hash: "different-launch-hash",
-        contentType: "application/javascript",
-        fileExtension: ".js",
-        url: "http://localhost:3000/assets/different-launch-hash",
-      },
-      assets: [
-        {
-          key: "assets/icon.png",
-          hash: storedAsset.hash,
-          contentType: "image/png",
-          fileExtension: ".png",
-          url: storedAsset.url,
-        },
-      ],
-      metadata: {},
-      extra: {},
-    })
-
-    const response = await server.fetch(
-      new Request(`http://updates.openagents.test/assets/${storedAsset.hash}`),
-    )
-
-    expect(response.status).toBe(200)
-    expect(response.headers.get("content-type")).toBe("image/png")
-    expect(response.headers.get("cache-control")).toBe(
-      "public, max-age=31536000, immutable",
-    )
-    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes)
-  })
-
-  // The Electron/Electrobun desktop surface was deleted with the desktop app.
-  // This service now serves only the Expo mobile OTA and Pylon release feeds;
-  // every former desktop route must be an ordinary 404, with no lockout
-  // document, no feed, and no ReleaseSet pointer left behind.
-  test.each([
-    "/desktop/stable/feed.json",
-    "/desktop/rc/feed.json",
-    "/desktop/khala-code-desktop/rc/feed.json",
-    "/desktop/openagents/rc/manifest.json",
-    "/desktop/openagents/rc/manifest.sig.json",
-    "/desktop/openagents/rc/release.json",
-    "/desktop/openagents/stable/pointer.json",
-    "/desktop/openagents/stable/v2/pointer.json",
-    "/desktop/openagents/stable/release-set.json",
-    "/desktop/rc-darwin-arm64-update.json",
-    "/metrics/release-set.json",
-  ])("no longer serves the removed desktop route %s", async (pathname) => {
-    const server = createUpdatesServer()
-
-    const response = await server.fetch(
-      new Request(`https://updates.openagents.test${pathname}`),
-    )
-
-    expect(response.status).toBe(404)
-  })
-
   test("serves signed pylon feeds by channel + platform, drops yanked", async () => {
     const server = createUpdatesServer()
     const release = (version: string, extra = {}) => ({
@@ -296,5 +47,106 @@ describe("updates server", () => {
       new Request("https://updates.openagents.test/pylon/rc/windows-x64/feed.json"),
     )
     expect(response.status).toBe(404)
+  })
+
+  test("registers and lists Pylon discovery nodes for an owner", async () => {
+    const server = createUpdatesServer()
+
+    const registered = await server.fetch(
+      new Request("https://updates.openagents.test/chris/nodes", {
+        method: "POST",
+        body: JSON.stringify({
+          nodeRef: "pylon.abc",
+          updatedAt: new Date().toISOString(),
+        }),
+      }),
+    )
+    expect(registered.status).toBe(200)
+
+    const listed = await server.fetch(
+      new Request("https://updates.openagents.test/chris/nodes"),
+    )
+    expect(listed.status).toBe(200)
+    const body = (await listed.json()) as { nodes: { nodeRef: string }[] }
+    expect(body.nodes.map((node) => node.nodeRef)).toEqual(["pylon.abc"])
+  })
+
+  test("serves a registered disk asset by hash and 404s an unknown hash", async () => {
+    const server = createUpdatesServer()
+    server.registerDiskAsset(
+      "fixture-hash",
+      new URL("./server.test.ts", import.meta.url).pathname,
+      "application/octet-stream",
+    )
+
+    const found = await server.fetch(
+      new Request("https://updates.openagents.test/assets/fixture-hash"),
+    )
+    expect(found.status).toBe(200)
+    expect(found.headers.get("content-type")).toBe("application/octet-stream")
+    expect(found.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, immutable",
+    )
+
+    const missing = await server.fetch(
+      new Request("https://updates.openagents.test/assets/not-a-real-hash"),
+    )
+    expect(missing.status).toBe(404)
+  })
+
+  // The Electron/Electrobun desktop surface was deleted with the desktop app,
+  // and the Expo mobile OTA surface was retired on 2026-08-05 (#9325) after the
+  // owner confirmed there are no installed mobile users. This service now
+  // serves only the Pylon release feed and Pylon node discovery; every retired
+  // route must be an ordinary 404, with no manifest, no directive, no lockout
+  // document, no feed, and no ReleaseSet pointer left behind.
+  test.each([
+    // Retired Expo mobile OTA manifest routes (expo-updates protocol v1).
+    "/openagents-mobile/manifest",
+    "/openagents/manifest",
+    "/khala-mobile/manifest",
+    // Retired Electron / Electrobun desktop routes.
+    "/desktop/stable/feed.json",
+    "/desktop/rc/feed.json",
+    "/desktop/khala-code-desktop/rc/feed.json",
+    "/desktop/openagents/rc/manifest.json",
+    "/desktop/openagents/rc/manifest.sig.json",
+    "/desktop/openagents/rc/release.json",
+    "/desktop/openagents/stable/pointer.json",
+    "/desktop/openagents/stable/v2/pointer.json",
+    "/desktop/openagents/stable/release-set.json",
+    "/desktop/rc-darwin-arm64-update.json",
+    "/metrics/release-set.json",
+  ])("no longer serves the retired route %s", async (pathname) => {
+    const server = createUpdatesServer()
+
+    const response = await server.fetch(
+      new Request(`https://updates.openagents.test${pathname}`),
+    )
+
+    expect(response.status).toBe(404)
+  })
+
+  // The Expo Updates client sends its channel/runtime/platform negotiation as
+  // request headers. A retired manifest route must stay a flat 404 for those
+  // too — never a multipart/mixed body a stranded client could act on.
+  test("answers a fully-formed Expo Updates manifest request with a plain 404", async () => {
+    const server = createUpdatesServer()
+
+    const response = await server.fetch(
+      new Request("https://updates.openagents.test/openagents-mobile/manifest", {
+        headers: {
+          "Expo-Platform": "ios",
+          "Expo-Runtime-Version": "fixture-runtime",
+          "Expo-Channel-Name": "openagents-production",
+          "Expo-Protocol-Version": "1",
+        },
+      }),
+    )
+
+    expect(response.status).toBe(404)
+    expect(response.headers.get("content-type")).not.toContain("multipart/mixed")
+    expect(response.headers.get("expo-protocol-version")).toBeNull()
+    expect(response.headers.get("expo-sfv-version")).toBeNull()
   })
 })

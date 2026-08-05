@@ -11,10 +11,12 @@ publish only to our Google Cloud infra**
 (`updates.openagents.com`, the `oa-updates` Cloud Run service, project
 `openagentsgemini`).
 
-The surfaces this key currently protects are the **Pylon release feed**
-(`/pylon/<channel>/<platform>/feed.json`) and the **OpenAgents Mobile OTA**
-manifests. The Electron/Electrobun desktop feeds it used to protect were
-removed with the desktop app.
+The surface this key currently protects is the **Pylon release feed**
+(`/pylon/<channel>/<platform>/feed.json`). The Electron/Electrobun desktop
+feeds it used to protect were removed with the desktop app, and the OpenAgents
+Mobile Expo OTA manifests it used to protect were retired on 2026-08-05
+(#9325) — that surface, its `OA_SIGNING_KEY` manifest code-signing secret, and
+its routes are gone.
 
 ## The key (ed25519)
 
@@ -61,11 +63,13 @@ node --import tsx apps/oa-updates/scripts/verify-release.ts <artifact> <artifact
 
 ## Publish (GCP only)
 
-When a fresh Expo export is staged in `dist/`, use the normal `Dockerfile` and
-deployment script. When advancing service code without replacing the currently
-published mobile assets, build `Dockerfile.incremental` with the immutable
-digest of the currently ready Cloud Run image as `BASE_IMAGE`. That preserves
-the baked release inputs instead of silently deploying an empty seed.
+When fresh signed Pylon binaries are staged in `pylon-dist/`, use the normal
+`Dockerfile` and deployment script (`OA_PYLON_RELEASES_DIST` selects that full
+`--source` rebuild). When advancing service code without replacing the
+currently published Pylon binaries, the script builds `Dockerfile.incremental`
+with the immutable digest of the currently ready Cloud Run image as
+`BASE_IMAGE`. That preserves the baked release inputs instead of silently
+deploying an empty seed.
 
 Build → sign → publish the artifact **and** its `.sig.json`/signed manifest to
 `updates.openagents.com` (the `oa-updates` Cloud Run service, project

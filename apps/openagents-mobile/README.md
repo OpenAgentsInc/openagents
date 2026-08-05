@@ -201,21 +201,20 @@ Use Apple Team `HQWSG26L43` for iOS signing. Follow the mobile release entry in
 Sarah voice changes the native permission and native audio module. Do not ship
 this change as an OTA update. Use a new store build.
 
-## OTA updates
+## OTA updates (retired)
 
-`app.json` points Expo Updates at the owned
-`https://updates.openagents.com/openagents-mobile/manifest` feed on the
-`openagents-production` channel with fingerprint runtime compatibility. Expo
-checks the feed on app load. There is no custom three-second polling loop in
-the current app.
+There is no OTA lane. `app.json` sets `updates.enabled: false` and configures
+no update URL. The owned `https://updates.openagents.com/openagents-mobile/manifest`
+feed was retired on 2026-08-05 (#9325) at owner direction — there are no
+installed mobile users — and that route now 404s.
 
-Publish only through the owned update path:
+The `updates` key stays present and false rather than being deleted:
+`expo-updates` is still linked into the binary and `updates.enabled` defaults
+to true, so removing the key would leave the client enabled with no configured
+URL.
 
-```sh
-pnpm --dir apps/openagents-mobile run publish:ota
-```
-
-This command delegates to `apps/oa-updates/scripts/publish-ota.sh`. Read
-`docs/DEPLOYMENT.md` and the indexed OTA runbook before publishing. Do not
-describe an OTA export as installed-device evidence until the target device has
-actually loaded and verified it.
+Ship JS changes in a **new store build**. Never `eas update`, and never point
+this app at a new update endpoint without an owner decision and a new
+invariant. The in-app update row on the home screen still reads the
+`expo-updates` runtime for build/runtime diagnostics; with updates disabled its
+manual check cannot succeed.

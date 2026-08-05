@@ -1,14 +1,4 @@
 import { Runtime } from "@openagentsinc/runtime-platform"
-import {
-  createInMemoryAssetStore,
-  type AssetStore,
-} from "./asset-store.ts"
-import {
-  parseManifestRequest,
-  resolveManifest,
-  type Update,
-} from "./manifest-resolver.ts"
-import { buildSignedManifestResponse } from "./signed-response.ts"
 import { createNodeRegistry, type NodeRegistration } from "./node-registry.ts"
 import {
   buildPylonFeed,
@@ -17,29 +7,13 @@ import {
   type PylonReleaseManifest,
 } from "./pylon-release.ts"
 
-type CreateUpdatesServerOptions = {
-  port?: number
-  signingKeyPem?: string
-  keyid?: string
-}
-
 export type UpdatesServer = {
   fetch: (request: Request) => Promise<Response>
-  registerUpdate: (update: Update) => void
   registerPylonUpdate: (manifest: PylonReleaseManifest) => void
   // Serve a large asset (e.g. a Pylon binary) straight from disk by hash,
   // streamed — so the seed never loads hundreds of MB into memory at boot.
   registerDiskAsset: (hash: string, path: string, contentType?: string) => void
-  putAsset: (
-    bytes: Uint8Array,
-    contentType?: string,
-  ) => Promise<{ hash: string; url: string }>
 }
-
-const defaultPort = 3000
-
-const headersFromRequest = (request: Request): Record<string, string> =>
-  Object.fromEntries(request.headers.entries())
 
 const jsonResponse = (
   body: unknown,
@@ -52,70 +26,17 @@ const jsonResponse = (
     },
   })
 
-// Expo Updates Protocol requires manifest/directive responses as multipart/mixed
-// with a part named "manifest" or "directive". A bare application/json body is
-// parsed by expo-updates as a manifest and crashes on the missing required `id`
-// (Manifest.swift requiredValue) — this is what crashed build 13 on launch.
-const OTA_BOUNDARY = "oa-updates-boundary"
-
-const multipartMixedResponse = (
-  parts: { name: string; body: string; partHeaders?: Record<string, string> }[],
-  responseHeaders: Record<string, string> = {},
-): Response => {
-  const crlf = "\r\n"
-  let body = ""
-  for (const part of parts) {
-    body += `--${OTA_BOUNDARY}${crlf}`
-    body += `content-disposition: form-data; name="${part.name}"${crlf}`
-    body += `content-type: application/json${crlf}`
-    for (const [k, v] of Object.entries(part.partHeaders ?? {})) {
-      body += `${k}: ${v}${crlf}`
-    }
-    body += crlf
-    body += part.body + crlf
-  }
-  body += `--${OTA_BOUNDARY}--${crlf}`
-  return new Response(body, {
-    headers: {
-      ...responseHeaders,
-      "content-type": `multipart/mixed; boundary=${OTA_BOUNDARY}`,
-    },
-  })
-}
-
-const assetContentType = (
-  updates: Iterable<Update>,
-  hash: string,
-): string => {
-  for (const update of updates) {
-    if (update.launchAsset.hash === hash) {
-      return update.launchAsset.contentType
-    }
-
-    const asset = update.assets.find((candidate) => candidate.hash === hash)
-
-    if (asset !== undefined) {
-      return asset.contentType
-    }
-  }
-
-  return "application/octet-stream"
-}
-
-export function createUpdatesServer(
-  options: CreateUpdatesServerOptions = {},
-): UpdatesServer {
-  const port = options.port ?? defaultPort
-  const updates = new Map<string, Update>()
-  const channelToBranch = new Map<string, string>()
+// This service serves the signed Pylon release feed and the Pylon node
+// discovery registry. The Expo mobile OTA surface it used to also carry —
+// `/<owner>/manifest`, the multipart/mixed Expo Updates Protocol responses,
+// manifest code signing, and the in-memory published-asset store — was retired
+// with the mobile update path on 2026-08-05 (#9325). Those routes are ordinary
+// 404s now, exactly like the Electron desktop routes deleted before them.
+export function createUpdatesServer(): UpdatesServer {
   // key: `${channel}/${platform}` -> releases (latest first)
   const pylonFeeds = new Map<string, PylonReleaseManifest[]>()
   // hash -> on-disk file served by streaming (large binaries never held in memory)
   const diskAssets = new Map<string, { path: string; contentType: string }>()
-  const assetContentTypes = new Map<string, string>()
-  const assetStore: AssetStore = createInMemoryAssetStore(
-    `http://localhost:${port}`,
-  )
   const nodeRegistry = createNodeRegistry()
 
   return {
@@ -123,57 +44,14 @@ export function createUpdatesServer(
       const url = new URL(request.url)
 
       if (request.method === "GET") {
-        const manifestMatch = url.pathname.match(/^\/([^/]+)\/manifest$/)
-
-        if (manifestMatch !== null) {
-          const requestHeaders = headersFromRequest(request)
-          const parsedRequest = parseManifestRequest(requestHeaders)
-          const result = resolveManifest({
-            updates: [...updates.values()],
-            channelToBranch: Object.fromEntries(channelToBranch.entries()),
-            request: parsedRequest,
-          })
-
-          if (result.kind === "manifest") {
-            if (options.signingKeyPem !== undefined) {
-              const signedResponse = buildSignedManifestResponse({
-                manifest: result.manifest,
-                privateKeyPem: options.signingKeyPem,
-                keyid: options.keyid,
-              })
-
-              // Signature travels as a part header on the manifest part.
-              return multipartMixedResponse(
-                [
-                  {
-                    name: "manifest",
-                    body: signedResponse.body,
-                    partHeaders: { "expo-signature": signedResponse.headers["expo-signature"] },
-                  },
-                ],
-                result.responseHeaders,
-              )
-            }
-
-            return multipartMixedResponse(
-              [{ name: "manifest", body: JSON.stringify(result.manifest) }],
-              result.responseHeaders,
-            )
-          }
-
-          return multipartMixedResponse(
-            [{ name: "directive", body: JSON.stringify(result.directive) }],
-            result.responseHeaders,
-          )
-        }
-
         const assetMatch = url.pathname.match(/^\/assets\/([^/]+)$/)
 
         if (assetMatch !== null) {
           const hash = assetMatch[1]
 
           // Disk-backed assets (Pylon binaries) stream straight from the file —
-          // bounded memory regardless of size.
+          // bounded memory regardless of size. Nothing else is served here now
+          // that mobile OTA publication is retired.
           const disk = diskAssets.get(hash)
           if (disk !== undefined) {
             return new Response(Runtime.file(disk.path).stream(), {
@@ -184,20 +62,7 @@ export function createUpdatesServer(
             })
           }
 
-          const bytes = await assetStore.get(hash)
-
-          if (bytes === null) {
-            return new Response("Not found", { status: 404 })
-          }
-
-          return new Response(Uint8Array.from(bytes).buffer, {
-            headers: {
-              "cache-control": "public, max-age=31536000, immutable",
-              "content-type":
-                assetContentTypes.get(hash) ??
-                assetContentType(updates.values(), hash),
-            },
-          })
+          return new Response("Not found", { status: 404 })
         }
 
         // Pylon OTA feed: /pylon/<channel>/<platform>/feed.json — per-platform,
@@ -221,12 +86,11 @@ export function createUpdatesServer(
           })
         }
 
-        // Discovery: list this owner's registered nodes (the app auto-connects
-        // to the tailnet-first reachable one — no QR/paste).
+        // Discovery: list this owner's registered Pylon nodes.
         const nodesGet = url.pathname.match(/^\/([^/]+)\/nodes$/)
         if (nodesGet !== null) {
           // Prune before listing so a stale/dead node (no heartbeat within
-          // ~6× the 20s interval) never gets handed to the phone, which picks
+          // ~6× the 20s interval) never gets handed to a client, which picks
           // the first reachable node. Keeps the in-memory list self-cleaning.
           nodeRegistry.pruneStale(Date.now(), 120_000)
           return jsonResponse({ nodes: nodeRegistry.listForOwner(nodesGet[1]) })
@@ -246,11 +110,6 @@ export function createUpdatesServer(
       return new Response("Not found", { status: 404 })
     },
 
-    registerUpdate(update) {
-      updates.set(update.id, update)
-      channelToBranch.set(update.branch, update.branch)
-    },
-
     registerDiskAsset(hash, path, contentType) {
       diskAssets.set(hash, { path, contentType: contentType ?? "application/octet-stream" })
     },
@@ -262,15 +121,6 @@ export function createUpdatesServer(
         manifest,
         ...current.filter((candidate) => candidate.version !== manifest.version),
       ])
-    },
-
-    async putAsset(bytes, contentType) {
-      const stored = await assetStore.put(bytes)
-      if (contentType !== undefined) {
-        assetContentTypes.set(stored.hash, contentType)
-      }
-
-      return stored
     },
   }
 }

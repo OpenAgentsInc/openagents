@@ -33,13 +33,7 @@
       "policy": "fingerprint"
     },
     "updates": {
-      "enabled": true,
-      "checkAutomatically": "ON_LOAD",
-      "fallbackToCacheTimeout": 0,
-      "url": "https://updates.openagents.com/openagents-mobile/manifest",
-      "requestHeaders": {
-        "expo-channel-name": "openagents-production"
-      }
+      "enabled": false
     },
     "plugins": [
       "./plugins/with-source-built-expo-modules.cjs",
