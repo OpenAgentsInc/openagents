@@ -91,7 +91,7 @@ export const authIssuerAllowsWebRedirectHostname = (
   // OpenAgents Pro is a separate Vercel application that uses the shared
   // server-side web client and an exact callback host. Do not broaden this to
   // arbitrary Vercel preview domains.
-  hostname === 'pro-five-alpha.vercel.app' ||
+  hostname === 'pro.openagents.com' ||
   hostname === 'localhost' ||
   hostname === '127.0.0.1'
 

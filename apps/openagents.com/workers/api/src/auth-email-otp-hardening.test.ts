@@ -193,9 +193,7 @@ describe('auth email OTP hardening', () => {
     expect(authIssuerAllowsRedirectHostname('127.0.0.1')).toBe(true)
     // Aiur (#8499): separate Cloud Run service, same downstream web client id.
     expect(authIssuerAllowsRedirectHostname('aiur.openagents.com')).toBe(true)
-    expect(authIssuerAllowsRedirectHostname('pro-five-alpha.vercel.app')).toBe(
-      true,
-    )
+    expect(authIssuerAllowsRedirectHostname('pro.openagents.com')).toBe(true)
 
     expect(authIssuerAllowsRedirectHostname('openagents.example.com')).toBe(
       false,
@@ -210,6 +208,9 @@ describe('auth email OTP hardening', () => {
     ).toBe(false)
     expect(authIssuerAllowsRedirectHostname('www.openagents.com')).toBe(false)
     expect(authIssuerAllowsRedirectHostname('pro-preview.vercel.app')).toBe(
+      false,
+    )
+    expect(authIssuerAllowsRedirectHostname('pro-five-alpha.vercel.app')).toBe(
       false,
     )
   })
