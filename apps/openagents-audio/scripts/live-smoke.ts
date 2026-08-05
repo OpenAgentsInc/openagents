@@ -48,11 +48,13 @@ const exported = await retentionOperation("export")
 if (exported.objectCount !== sequence + 1 || exported.receipt?.operation !== "export" || exported.receipt.segmentIds?.length !== sequence + 1) throw new Error("retention export receipt was incomplete")
 const deleted = await retentionOperation("delete")
 if (deleted.receipt?.operation !== "delete" || deleted.receipt.segmentIds?.length !== sequence + 1 || !deleted.receipt.remainingLawfulRecords?.includes("access_receipt")) throw new Error("retention delete receipt was incomplete")
-const expectedAction = process.env.OPENAGENTS_AUDIO_EXPECT_ACTION
-let selectedAction: string | undefined
-if (expectedAction) {
-  const { selectVoiceAction } = await import("../../openagents-desktop/src/renderer/voice-actions")
-  selectedAction = selectVoiceAction(finalText).kind
-  if (selectedAction !== expectedAction) throw new Error(`live smoke selected ${selectedAction}, expected ${expectedAction}`)
-}
-console.log(JSON.stringify({ schema: "openagents.audio.stt_smoke.v1", finalCount, gapCount, ackCount, retainedSequenceCount: sequence + 1, reconciliation, exportedObjects: exported.objectCount, deletedSegments: deleted.receipt.segmentIds?.length, remainingLawfulRecords: deleted.receipt.remainingLawfulRecords, audioBytes: pcm.byteLength, latencyMs: Date.now() - started, transcriptLogged: false, ...(selectedAction === undefined ? {} : { selectedAction }) }))
+// The `OPENAGENTS_AUDIO_EXPECT_ACTION` assertion was removed with the Electron
+// desktop app (openagents#9325). It asserted that a final transcript routed to
+// a desktop renderer command through
+// `apps/openagents-desktop/src/renderer/voice-actions.ts`, whose route catalog
+// was bound to the desktop command registry. That surface no longer exists, so
+// the assertion has no product behavior left to falsify. This smoke keeps
+// proving the audio service contract: streaming, gap/ack accounting, retention
+// reconciliation, and the export/delete receipts.
+void finalText
+console.log(JSON.stringify({ schema: "openagents.audio.stt_smoke.v1", finalCount, gapCount, ackCount, retainedSequenceCount: sequence + 1, reconciliation, exportedObjects: exported.objectCount, deletedSegments: deleted.receipt.segmentIds?.length, remainingLawfulRecords: deleted.receipt.remainingLawfulRecords, audioBytes: pcm.byteLength, latencyMs: Date.now() - started, transcriptLogged: false }))

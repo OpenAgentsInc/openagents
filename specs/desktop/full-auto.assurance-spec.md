@@ -4,15 +4,58 @@ assurance_spec_id: "assurance.full.auto.codex.composer.loop"
 assurance_revision: 7
 title: "Full Auto Autonomous-Run AssuranceSpec"
 artifact_type: "product_assurance"
-lifecycle_state: "admitted"
+lifecycle_state: "retired"
 author: "OpenAgents"
 admitted_by: "euler_owner_designated_independent_reviewer_2026_07_24"
 admitted_at: "2026-07-26T08:12:49Z"
 admitted_receipt_ref: "authority.decision.5989f4ea96ed7fc3e2f368fd4141f331"
 admitted_receipt_path: "docs/assurance/receipts/authority.decision.5989f4ea96ed7fc3e2f368fd4141f331.json"
+retired_at: "2026-08-04T00:00:00Z"
+retired_by: "owner_directive"
+retired_reason: "OpenAgentsInc/openagents#9325 deleted apps/openagents-desktop. The subject product this proof design was authored against no longer exists; Omega is the desktop product and specs/omega/full-auto.assurance-spec.md is the live Full Auto proof design."
 ---
 
 ## Assurance Objective
+
+**RETIRED 2026-08-04.** `lifecycle_state` is `retired` (ASSURANCE_SPEC.md §8: "intentionally no longer
+active"). On 2026-08-04 the owner directed the deletion of the Electron desktop
+app (OpenAgentsInc/openagents#9325): "we don't use a fucking Electron app,
+desktop has been replaced with Omega. So there's no confusion I want that
+Electron app deleted." `apps/openagents-desktop/` and its test suite are gone.
+
+Consequences for this document, stated exactly:
+
+- **The subject is unchanged and still exact.** The Subject block below stays
+  byte-bound to `specs/desktop/full-auto.product-spec.md` revision 14. This
+  retirement edits only the frontmatter and adds this section; it does not
+  rewrite an obligation, oracle, criterion, gate, or digest. A retired document
+  is a historical record of what proof design was admitted, not a live claim.
+- **Most named oracles no longer exist.** 43 of the 61 criteria that reproduced
+  at the executable tier named test files under `apps/openagents-desktop/`.
+  Those files were deleted, so those criteria are now honestly unobserved:
+  41 fall back to designed-only and 2 (`FA-AC-07`, `FA-AC-29`) fall back to the
+  `GATE-DEV-TWO-PROCESS` smoke tier their obligations already declared. They are
+  NOT retargeted onto surviving tests: a `packages/omega-effectd` unit does not
+  observe an Electron renderer, restart, or packaged-release criterion, and
+  claiming otherwise would round up an evidence tier.
+- **18 criteria keep a real oracle** in `packages/omega-effectd` and
+  `packages/assurance-spec`, and the 5 receipt-backed criteria keep their
+  `docs/sol/evidence/2026-07-18-full-auto-real-owner-acceptance.json` receipt.
+  Those artifacts survive on their own terms; this retired document is not their
+  authority.
+- **No admission, release, or public claim is created or preserved by
+  retirement.** The 2026-07-26 admission receipt records what was true then.
+  Retirement does not re-open, re-admit, or transfer it.
+
+The live Full Auto proof design is `specs/omega/full-auto.assurance-spec.md`
+(Omega Full Auto Host AssuranceSpec), whose subject is
+`specs/omega/full-auto.product-spec.md` and whose oracles are
+`packages/omega-effectd` tests. `AUTHORITY.md`'s `program.full_auto_release`
+still lists this path among its `authority_refs`; updating that program is an
+owner action and is deliberately not performed here.
+
+Everything below this notice is the admitted revision-7 objective text,
+preserved verbatim as the historical record it now is.
 
 This revision reconciles the Full Auto AssuranceSpec to ProductSpec rev 14, including MemoHarness's released bundle identity, frozen pre-run adaptation, terminal-only experience compilation, independent Blueprint release gate, and Effect/Rust ownership boundary. It preserves rev 3's complete FA-AC-01..68 subject set and adds one explicit obligation for each new FA-AC-69..76 criterion. It establishes what confidence this document is designed to support and what it explicitly does not yet establish.
 

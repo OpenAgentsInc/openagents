@@ -27,7 +27,7 @@ import type { PylonPortableCheckpointBundle } from "../src/portable-session-oper
 
 const GIT_SHA = /^[a-f0-9]{40}$/u;
 const RECEIPT_REPOSITORY_PATH =
-  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-checkpoint-admission-faults.json";
+  "benchmarks/ide/2026-07-20-ide-13-checkpoint-admission-faults.json";
 const DEADLINE_MILLISECONDS = 30_000;
 const SCENARIOS = [
   "corrupt_checkpoint",

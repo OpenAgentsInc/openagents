@@ -6,7 +6,6 @@ import {
   SyncVersion,
   SyncVersionWatermark,
   decodeLiveAgentGraphEntity,
-  emptyLiveAgentGraphEntity,
   projectLiveAgentGraphPostImage,
   threadScope,
   type SyncScope,
@@ -31,11 +30,16 @@ const graphEntry = (
   threadRef = THREAD,
   nodeCount = 0,
 ) => {
-  const empty = emptyLiveAgentGraphEntity({
+  const empty = decodeLiveAgentGraphEntity({
+    schema: "openagents.live_agent_graph.v1",
     graphRef,
     sessionRef: "session.live-agent-graph.fixture",
     threadRef,
     attachmentGeneration: 1,
+    cursor: 0,
+    lastDeltaRef: null,
+    nodes: [],
+    edges: [],
     updatedAt: new Date(Date.parse(NOW) + version * 1_000).toISOString(),
   })
   const graph = decodeLiveAgentGraphEntity({

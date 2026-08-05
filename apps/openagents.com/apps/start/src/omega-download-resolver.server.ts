@@ -1,17 +1,16 @@
 /**
  * Omega download identity (#9280, Omega alpha roadmap Wave 3 / EP263-07).
  *
- * Omega is a SEPARATE product from OpenAgents Desktop. This resolver serves
- * the signed Omega alpha download truth beside — never instead of — the
- * DIST-10 Desktop resolver (`desktop-download-resolver.server.ts`). The
- * Electron Desktop artifact is never relabeled as Omega, and Omega artifacts
- * never enter the Desktop ReleaseSet.
+ * Omega is the OpenAgents desktop application. This resolver serves the
+ * signed Omega alpha download truth, and is the only download resolver on
+ * `/download`. The DIST-10 Electron Desktop resolver and its ReleaseSet feed
+ * were deleted with the Electron app itself (#9325).
  *
  * ## Signed manifest — the single Omega download truth
  *
  * The download surface renders exclusively from ONE Ed25519-signed manifest
  * (`openagents.omega.download_manifest.v1`), signed by the same pinned
- * OpenAgents release/provenance key the Desktop ReleaseSet uses
+ * OpenAgents release/provenance key
  * (`PRODUCTION_RELEASE_KEY_PIN`, kid `2dbe811d19f67528`; see
  * `apps/oa-updates/docs/release-signing-runbook.md`). There is no second
  * unsigned download truth: no handwritten artifact URL, no live GitHub API
@@ -57,8 +56,7 @@ import {
 
 // ---------------------------------------------------------------------------
 // Public paths (admitted through the Cloud Run Start seam in
-// `workers/api/src/cloudrun/start-ui.ts`, same pattern as the Desktop
-// resolver's `/api/public/desktop-download` paths)
+// `workers/api/src/cloudrun/start-ui.ts`)
 // ---------------------------------------------------------------------------
 
 export const OMEGA_DOWNLOAD_RESOLUTION_PATH = '/api/public/omega-download'
@@ -253,7 +251,7 @@ export const verifySignedOmegaDownloadManifest = (
 
 // ---------------------------------------------------------------------------
 // Typed resolution contract (the client-safe mirror lives in
-// `routes/-omega-download-data.ts`, same split as the Desktop resolver)
+// `routes/-omega-download-data.ts`)
 // ---------------------------------------------------------------------------
 
 export const OMEGA_DOWNLOAD_RESOLUTION_SCHEMA_ID =

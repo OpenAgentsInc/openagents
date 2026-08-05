@@ -61,10 +61,10 @@ const Ref = Schema.String.check(
 );
 const GIT_SHA = /^[a-f0-9]{40}$/u;
 const COHORT_EVIDENCE_REPOSITORY_PATHS = new Set([
-  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-cohort.json",
-  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-performance.json",
-  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-fault-matrix.json",
-  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json",
+  "benchmarks/ide/2026-07-20-ide-13-owner-local-real-cohort.json",
+  "benchmarks/ide/2026-07-20-ide-13-owner-local-performance.json",
+  "benchmarks/ide/2026-07-20-ide-13-owner-local-real-fault-matrix.json",
+  "benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json",
 ]);
 
 export const Ide13OwnerLocalRealCohortReceiptSchema = Schema.Struct({
@@ -1274,7 +1274,7 @@ if (import.meta.main) {
   const repositoryRoot = resolve(join(import.meta.dirname, "../../.."));
   const outputPath = resolve(
     repositoryRoot,
-    "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-cohort.json",
+    "benchmarks/ide/2026-07-20-ide-13-owner-local-real-cohort.json",
   );
   const candidateCommitSha = process.env.OPENAGENTS_IDE13_CANDIDATE_COMMIT_SHA;
   const receipt = await runIde13OwnerLocalRealCohort({

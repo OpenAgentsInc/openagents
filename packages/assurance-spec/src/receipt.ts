@@ -40,7 +40,6 @@ export const AssuranceReceiptSchema = S.Struct({
   }),
 })
 export type AssuranceReceipt = typeof AssuranceReceiptSchema.Type
-export const decodeAssuranceReceipt = S.decodeUnknownSync(AssuranceReceiptSchema)
 
 export const ORACLE_SENSITIVITY_RECEIPT_FORMAT_VERSION = "0.1" as const
 export const ORACLE_SENSITIVITY_RECEIPT_KIND = "oracle_sensitivity_receipt.v1" as const

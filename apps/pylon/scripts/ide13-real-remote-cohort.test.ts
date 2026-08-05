@@ -13,7 +13,7 @@ describe("IDE-13 real remote cohort receipt", () => {
       const source = JSON.parse(
         await readFile(
           resolve(
-            "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-cohort.json",
+            "benchmarks/ide/2026-07-20-ide-13-owner-local-real-cohort.json",
           ),
           "utf8",
         ),

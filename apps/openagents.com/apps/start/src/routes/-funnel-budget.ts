@@ -26,7 +26,7 @@ const routeBudgets = [
     path: '/code/download',
     marker: 'Install paths, with the Codex requirement kept visible',
   },
-  { path: '/download', marker: 'Download OpenAgents Desktop' },
+  { path: '/download', marker: 'Download Omega' },
   {
     path: '/pylon/codex/assignments/assignment.public.khala_coding.chatcmpl_example',
     marker: 'Pylon Codex assignment',

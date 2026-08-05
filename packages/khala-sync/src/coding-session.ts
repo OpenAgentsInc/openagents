@@ -205,12 +205,6 @@ export const decodeCodingWorktreeEntity = S.decodeUnknownSync(CodingWorktreeEnti
 export const decodeCodingSessionEntity = S.decodeUnknownSync(CodingSessionEntity)
 export const decodeCodingNavigationEntity = S.decodeUnknownSync(CodingNavigationEntity)
 
-export const encodeCodingProjectEntity = S.encodeSync(CodingProjectEntity)
-export const encodeCodingRepositoryEntity = S.encodeSync(CodingRepositoryEntity)
-export const encodeCodingWorktreeEntity = S.encodeSync(CodingWorktreeEntity)
-export const encodeCodingSessionEntity = S.encodeSync(CodingSessionEntity)
-export const encodeCodingNavigationEntity = S.encodeSync(CodingNavigationEntity)
-
 export type CodingSessionCatalog = Readonly<{
   projects: ReadonlyArray<CodingProjectEntity>
   repositories: ReadonlyArray<CodingRepositoryEntity>
@@ -464,24 +458,3 @@ export const resolveCodingNavigation = (
     session,
   }
 }
-
-export type CodingSessionCatalogQuery = Readonly<{
-  projectRef?: string
-  repositoryRef?: string
-  states?: ReadonlyArray<CodingSessionEntity["state"]>
-  updatedAtOrAfter?: string
-}>
-
-/** Structured catalog filtering only. Semantic text search belongs upstream. */
-export const queryCodingSessions = (
-  catalog: CodingSessionCatalog,
-  query: CodingSessionCatalogQuery,
-): ReadonlyArray<CodingSessionEntity> => catalog.sessions
-  .filter(session => query.projectRef === undefined || session.projectRef === query.projectRef)
-  .filter(session => query.repositoryRef === undefined || session.repositoryRef === query.repositoryRef)
-  .filter(session => query.states === undefined || query.states.includes(session.state))
-  .filter(session => query.updatedAtOrAfter === undefined || session.updatedAt >= query.updatedAtOrAfter)
-  .sort((left, right) =>
-    Number(left.state === "archived") - Number(right.state === "archived") ||
-    right.lastActiveAt.localeCompare(left.lastActiveAt) ||
-    left.sessionRef.localeCompare(right.sessionRef))

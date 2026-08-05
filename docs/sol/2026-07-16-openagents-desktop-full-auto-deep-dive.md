@@ -148,9 +148,9 @@ app launch
 
 ### Renderer responsibility
 
-[`react-composer.tsx`](../../apps/openagents-desktop/src/renderer/react-composer.tsx)
+`react-composer.tsx`
 renders the toggle and reports `DesktopFullAutoToggled`.
-[`shell.ts`](../../apps/openagents-desktop/src/renderer/shell.ts) keeps a
+`shell.ts` keeps a
 renderer-local boolean, persists a toggle through `fullAutoHost.set`, and sends
 `fullAuto: true` with the user's first turn. The old renderer `while` loop is
 gone; one user submit produces one renderer send.
@@ -161,7 +161,7 @@ enabled state against the new identifier before dispatching the turn.
 
 ### IPC boundary
 
-[`codex-local-contract.ts`](../../apps/openagents-desktop/src/codex-local-contract.ts)
+`codex-local-contract.ts`
 defines bounded set/get request schemas. The thread ref is non-empty and at
 most 120 characters; set also carries a boolean. The preload validates before
 invoking main, and main decodes again before mutating the registry.
@@ -172,7 +172,7 @@ on thread switches; see Finding 1.
 
 ### Durable registry
 
-[`full-auto-registry.ts`](../../apps/openagents-desktop/src/full-auto-registry.ts)
+`full-auto-registry.ts`
 stores this v1 record under Electron `userData/full-auto/registry.json`:
 
 ```text
@@ -197,7 +197,7 @@ account, model, reasoning effort, or expected terminal predecessor.
 
 ### Reconciliation decision
 
-[`full-auto-reconcile.ts`](../../apps/openagents-desktop/src/full-auto-reconcile.ts)
+`full-auto-reconcile.ts`
 is shared by the live-completion and startup paths. Each call:
 
 1. snapshots the set of threads with nonterminal local-turn journal rows;
@@ -213,7 +213,7 @@ steps 1–6.
 
 ### Main-process wiring
 
-[`main.ts`](../../apps/openagents-desktop/src/main.ts) opens the registry beside
+`main.ts` opens the registry beside
 the local-turn journal. A renderer-initiated send and main-initiated
 continuation both call `dispatchCodexLocalTurn`, so transcript persistence,
 turn-journal recording, runtime execution, usage recording, and terminal
@@ -232,7 +232,7 @@ main broadcasts the updated thread through
 
 ### Runtime behavior
 
-[`codex-local-runtime.ts`](../../apps/openagents-desktop/src/codex-local-runtime.ts)
+`codex-local-runtime.ts`
 prefixes the Full Auto instruction and changes approval policy from
 `on-request` to `never`. Both the control-plane gate and app-server request see
 the `danger-full-access` sandbox mode.
@@ -293,16 +293,16 @@ are dispatch-eligible; count 21 disables the record and produces no dispatch.
 
 ### Tests directly about Full Auto
 
-- [`react-composer.test.tsx`](../../apps/openagents-desktop/src/renderer/react-composer.test.tsx)
+- `react-composer.test.tsx`
   proves one off-by-default toggle, `aria-pressed`, and intent reporting.
-- [`codex-local-runtime.test.ts`](../../apps/openagents-desktop/src/codex-local-runtime.test.ts)
+- `codex-local-runtime.test.ts`
   proves Full Auto uses `approvalPolicy: "never"` and the instruction prefix,
   while an ordinary turn remains `on-request` and unprefixed.
-- [`shell.test.ts`](../../apps/openagents-desktop/src/renderer/shell.test.ts)
+- `shell.test.ts`
   proves the renderer sends one flagged turn and does not loop, persists toggle
   transitions for an existing thread, persists an enabled new thread after it
   receives an id, and sends no flag when off.
-- [`full-auto-restart.e2e.test.ts`](../../apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts)
+- `full-auto-restart.e2e.test.ts`
   proves four plain-module cases: enabled file reopened and dispatched, an
   explicitly nonterminal thread skipped, an off record remains stopped, and a
   count at 20 disables on the next reconcile.
@@ -323,7 +323,7 @@ module proof, but it does not exercise:
 
 The analogy to local-turn restart proof is incomplete. Local-turn recovery has
 both a plain-module `local-turn-restart.e2e.test.ts` and
-[`local-turn-restart-smoke.ts`](../../apps/openagents-desktop/scripts/local-turn-restart-smoke.ts),
+`local-turn-restart-smoke.ts`,
 which actually spawns Electron twice against the same temporary user-data
 directory. Full Auto has no equivalent two-process smoke.
 
@@ -496,7 +496,7 @@ choice that needs an explicit test.
 The adopted ProductSpec revision 2 correctly describes main ownership, but
 several other committed authorities or near-authorities remain stale:
 
-- [`GUARANTEES.md`](../../apps/openagents-desktop/GUARANTEES.md) says the loop
+- `GUARANTEES.md` says the loop
   is renderer-owned, switching threads stops it, and it does not survive a
   restart.
 - The historical
@@ -606,8 +606,8 @@ required before release/live/owner-accepted claims.**
 ## Addendum — fable, 2026-07-16
 
 Two additional gaps, traced directly in
-[`codex-local-runtime.ts`](../../apps/openagents-desktop/src/codex-local-runtime.ts)
-and [`full-auto-registry.ts`](../../apps/openagents-desktop/src/full-auto-registry.ts),
+`codex-local-runtime.ts`
+and `full-auto-registry.ts`,
 plus one concrete interim mitigation for Finding 2 that does not require the
 full hardening order to land first.
 

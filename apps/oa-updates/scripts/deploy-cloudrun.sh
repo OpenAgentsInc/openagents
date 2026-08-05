@@ -28,10 +28,11 @@ image_build_source="gs://${project}-cloud-build-source/source"
 # Optional:
 #   export OA_SEED_PLATFORM=ios
 #   export OA_SEED_EXPO_CLIENT_PATH=/app/dist/expo-client.json
-#   export OA_DESKTOP_RELEASES_DIST=/app/desktop-dist
-#   export OA_OPENAGENTS_DESKTOP_RELEASE_DIST=/app/openagents-desktop-dist
-#   export OA_RELEASE_SET_BUCKET=<dedicated-gcs-bucket>
-#   export OA_RELEASE_SET_PINS_PATH=/app/openagents-desktop-dist/release-set-pins.json
+#
+# The Pylon release feed is driven by OA_PYLON_RELEASES_DIST=/app/pylon-dist,
+# which this script does not set: it is already attached to the service and
+# --update-env-vars below preserves it. The binaries it seeds are baked into
+# the image by the Dockerfile's `COPY pylon-dist`.
 #
 # Code signing (#8530 / CFG-14): the OTA manifest signing key reaches the
 # service as the OA_SIGNING_KEY env var mounted from GCP Secret Manager
@@ -46,9 +47,9 @@ image_build_source="gs://${project}-cloud-build-source/source"
 env_vars=("OA_PUBLIC_URL=${OA_PUBLIC_URL:?set OA_PUBLIC_URL}")
 
 # A seed-publishing deploy intentionally replaces the bytes baked into the
-# image for one surface (the mobile Expo export, or the legacy Desktop v1
-# archive tree). Track whether this invocation is one of those so image
-# selection below can require the matching full rebuild.
+# image for one surface (the mobile Expo export). Track whether this
+# invocation is one of those so image selection below can require the
+# matching full rebuild.
 seed_requested=0
 
 if [[ -n "${OA_SEED_DIST:-}" || -n "${OA_SEED_RUNTIME:-}" ]]; then
@@ -68,47 +69,25 @@ if [[ -n "${OA_SEED_DIST:-}" || -n "${OA_SEED_RUNTIME:-}" ]]; then
   fi
 fi
 
-if [[ -n "${OA_DESKTOP_RELEASES_DIST:-}" ]]; then
-  seed_requested=1
-  env_vars+=("OA_DESKTOP_RELEASES_DIST=${OA_DESKTOP_RELEASES_DIST}")
-fi
-
-if [[ -n "${OA_OPENAGENTS_DESKTOP_RELEASE_DIST:-}" ]]; then
-  env_vars+=("OA_OPENAGENTS_DESKTOP_RELEASE_DIST=${OA_OPENAGENTS_DESKTOP_RELEASE_DIST}")
-fi
-
-# The signed ReleaseSet v2 desktop feed is wired by default so every deploy
-# keeps the stable and rc channels served (REL-FEED-01 #8993). The pins file is
-# committed under openagents-desktop-dist and baked into the image at the
-# container path below. Override only when deploying a different environment.
-env_vars+=(
-  "OA_RELEASE_SET_BUCKET=${OA_RELEASE_SET_BUCKET:-openagentsgemini-oa-updates-release-set}"
-  "OA_RELEASE_SET_PINS_PATH=${OA_RELEASE_SET_PINS_PATH:-/app/openagents-desktop-dist/release-set-pins.json}"
-)
-
 env_csv="$(IFS=,; echo "${env_vars[*]}")"
 
 # Image selection ------------------------------------------------------------
 #
 # `--source .` bakes whatever currently sits in this checkout's gitignored
-# dist/, desktop-dist/, pylon-dist/, and desktop-ota/ directories into a brand
-# new image layer. That is correct, and required, exactly when this deploy is
-# intentionally publishing a fresh mobile (OA_SEED_DIST) or legacy Desktop v1
-# (OA_DESKTOP_RELEASES_DIST) seed -- publish-ota.sh always sets OA_SEED_DIST
+# dist/ and pylon-dist/ directories into a brand new image layer. That is
+# correct, and required, exactly when this deploy is intentionally publishing
+# a fresh mobile seed (OA_SEED_DIST) -- publish-ota.sh always sets OA_SEED_DIST
 # right before calling this script for exactly that reason, and must keep
 # doing a full rebuild so the exported bundle actually ships.
 #
-# Any OTHER deploy -- a bare server code push, a ReleaseSet v2 bucket/pin
-# config change, or staging a new v2 RC manifest in the git-tracked
-# openagents-desktop-dist/ tree -- must NOT go through `--source .`, because
-# those seed directories are almost always empty or stale in an ordinary
-# checkout at that moment, and Docker COPY of an empty local directory
-# silently erases the release bytes already baked into the currently running
-# image (the mobile Expo export, the Desktop v1 archives, Pylon binaries).
+# Any OTHER deploy -- notably a bare server code push -- must NOT go through
+# `--source .`, because those seed directories are almost always empty or
+# stale in an ordinary checkout at that moment, and Docker COPY of an empty
+# local directory silently erases the release bytes already baked into the
+# currently running image (the mobile Expo export and the Pylon binaries).
 # Resolve `Dockerfile.incremental` from the exact currently-ready Cloud Run
 # image digest instead, so this class of deploy only ever advances the
-# service code and the independent (git-tracked, always-present) Desktop v2
-# descriptor tree, and can never regress an already-served seed.
+# service code and can never regress an already-served seed.
 deploy_mode="${OA_UPDATES_DEPLOY_MODE:-auto}"
 if [[ "$deploy_mode" == "auto" ]]; then
   if [[ "$seed_requested" == "1" ]]; then
@@ -119,7 +98,7 @@ if [[ "$deploy_mode" == "auto" ]]; then
 fi
 
 if [[ "$deploy_mode" == "incremental" && "$seed_requested" == "1" ]]; then
-  echo "REFUSED: OA_UPDATES_DEPLOY_MODE=incremental cannot be combined with a seed publish (OA_SEED_DIST/OA_SEED_RUNTIME/OA_DESKTOP_RELEASES_DIST); Dockerfile.incremental never bakes those directories, so this would silently drop the requested seed" >&2
+  echo "REFUSED: OA_UPDATES_DEPLOY_MODE=incremental cannot be combined with a seed publish (OA_SEED_DIST/OA_SEED_RUNTIME); Dockerfile.incremental never bakes those directories, so this would silently drop the requested seed" >&2
   exit 1
 fi
 
@@ -205,9 +184,9 @@ case "$deploy_mode" in
       --port 8080 \
       # Additive by construction: gcloud's update form preserves every
       # existing env mapping not named in this invocation. This branch also
-      # never touches the mobile/Desktop-v1/Pylon seed layers baked into
-      # $base_image, so a Desktop-v2-only publication can neither remove nor
-      # silently blank the mobile seed.
+      # never touches the mobile Expo export or Pylon seed layers baked into
+      # $base_image, so a code-only deploy can neither remove nor silently
+      # blank either seed.
       --update-env-vars "$env_csv"
     )
     ;;

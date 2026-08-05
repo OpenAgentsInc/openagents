@@ -1759,7 +1759,6 @@ sequence. The ordered Amp `initial_program` stays unchanged.
       "openagents.synthesis#target_native_adaptation"
     ],
     "target_scopes": [
-      "apps/openagents-desktop",
       "packages/agent-runtime-schema",
       "packages/world-client"
     ],
@@ -1798,7 +1797,6 @@ sequence. The ordered Amp `initial_program` stays unchanged.
       "pingdotgg.t3code#provider_neutral_cqrs"
     ],
     "target_scopes": [
-      "apps/openagents-desktop",
       "apps/pylon",
       "packages/pylon-core"
     ],
@@ -1837,7 +1835,6 @@ sequence. The ordered Amp `initial_program` stays unchanged.
       "openagents.synthesis#complete_graph_causal_ui"
     ],
     "target_scopes": [
-      "apps/openagents-desktop",
       "packages/assurance-spec",
       "packages/agent-runtime-schema",
       "packages/probe"
@@ -1881,7 +1878,6 @@ sequence. The ordered Amp `initial_program` stays unchanged.
       "maddiedreese.multaiplayer#persist_before_publish_room_outbox"
     ],
     "target_scopes": [
-      "apps/openagents-desktop",
       "apps/openagents-mobile",
       "apps/pylon",
       "packages/pylon-core",
@@ -1923,7 +1919,6 @@ sequence. The ordered Amp `initial_program` stays unchanged.
       "openai.chatgpt_desktop#plugin_skill_app_layers"
     ],
     "target_scopes": [
-      "apps/openagents-desktop",
       "apps/pylon",
       "packages/agent-client-protocol"
     ],
@@ -1970,7 +1965,6 @@ sequence. The ordered Amp `initial_program` stays unchanged.
       "openagents.synthesis#target_native_adaptation"
     ],
     "target_scopes": [
-      "apps/openagents-desktop",
       "packages/agent-runtime-schema",
       "packages/assurance-spec",
       "crates",
@@ -1988,13 +1982,13 @@ sequence. The ordered Amp `initial_program` stays unchanged.
     "constraints": [
       "The accepted Omega plan owns packet order and implementation admission.",
       "Use one exact Zed pin, a tracked upstream relationship, a patch budget, provenance, source delivery, and a deletion path.",
-      "Extract the Electron-main product control plane into packaged omega-effectd before a complete Omega comparison.",
+      "Extract the retained product control plane into packaged omega-effectd before a complete Omega comparison.",
       "Give every project, document, thread, run, command, credential, Sync, update, and receipt domain one writable owner.",
       "Do not deploy Buzz or copy an external agent home, credential store, memory store, or configuration into Omega.",
       "An attached agent keeps its existing custody boundary. Omega uses an explicit adapter and shows unsupported capabilities.",
       "A Rust port needs differential semantic proof, versioned migration, atomic cutover, old-path deletion, and rollback.",
       "A signed Nostr event, relay acknowledgement, or membership never becomes an OpenAgents command or accepted outcome.",
-      "The current Electron application remains the supported release and rollback source until the cutover gate passes."
+      "The Electron application was deleted at owner direction on 2026-08-04 (#9325). It is not a release, rollback, or evidence source, and Omega carries the Desktop product."
     ],
     "acceptance_refs": [
       "FF-AC-03",
@@ -2026,7 +2020,6 @@ sequence. The ordered Amp `initial_program` stays unchanged.
       "maddiedreese.multaiplayer#bounded_room_runtime_projection"
     ],
     "target_scopes": [
-      "apps/openagents-desktop",
       "packages/agent-client-protocol",
       "packages/codex-app-server-protocol",
       "packages/provider-lane"
@@ -2061,7 +2054,6 @@ sequence. The ordered Amp `initial_program` stays unchanged.
       "openagents.synthesis#target_native_adaptation"
     ],
     "target_scopes": [
-      "apps/openagents-desktop",
       "packages",
       "crates"
     ],
@@ -2095,7 +2087,6 @@ sequence. The ordered Amp `initial_program` stays unchanged.
       "openagents.synthesis#complete_graph_causal_ui"
     ],
     "target_scopes": [
-      "apps/openagents-desktop",
       "apps/openagents-mobile",
       "packages/agent-runtime-schema",
       "packages/world-client"
@@ -2145,7 +2136,6 @@ sequence. The ordered Amp `initial_program` stays unchanged.
       "zed_industries.zed#project_bound_agent_context"
     ],
     "target_scopes": [
-      "apps/openagents-desktop",
       "apps/openagents-mobile",
       "packages/ui"
     ],
@@ -2182,7 +2172,6 @@ sequence. The ordered Amp `initial_program` stays unchanged.
       "maddiedreese.multaiplayer#fail_stop_relay_durability"
     ],
     "target_scopes": [
-      "apps/openagents-desktop",
       "apps/pylon",
       "packages/pylon-core"
     ],
@@ -2224,7 +2213,6 @@ sequence. The ordered Amp `initial_program` stays unchanged.
     "target_scopes": [
       "packages/probe",
       "packages/assurance-spec",
-      "apps/openagents-desktop",
       "docs/khala"
     ],
     "desired_outcome": "An explicit correction or solved problem can become a provenance-bound candidate preference, behavior contract, test, skill, or authored capability without widening authority or silently mining private history.",
@@ -2272,7 +2260,6 @@ sequence. The ordered Amp `initial_program` stays unchanged.
       "zed_industries.zed#wasm_guest_vs_host_effect"
     ],
     "target_scopes": [
-      "apps/openagents-desktop",
       "apps/pylon",
       "crates",
       "packages/environment-auth",
@@ -2308,7 +2295,6 @@ sequence. The ordered Amp `initial_program` stays unchanged.
       "maddiedreese.multaiplayer#signed_collaboration_journey"
     ],
     "target_scopes": [
-      "apps/openagents-desktop",
       "apps/oa-updates",
       "docs/deploy"
     ],

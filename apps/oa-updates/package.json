@@ -8,11 +8,9 @@
     "build:server": "vp pack src/serve.ts --out-dir dist-server --format esm --platform node --target node24 --minify",
     "test": "vp test --run",
     "typecheck": "node scripts/verify-test-typecheck.mjs",
-    "serve": "node --import tsx src/serve.ts",
-    "desktop:publish": "node --import tsx scripts/publish-desktop-release.ts"
+    "serve": "node --import tsx src/serve.ts"
   },
   "dependencies": {
-    "@openagentsinc/release-contract": "workspace:*",
     "@openagentsinc/runtime-platform": "workspace:*"
   },
   "devDependencies": {

@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vite-plus/test";
 
-import { decodeFleetRunClientProjection } from "./fleet-run-client-projection.js";
+import { Schema as S } from "effect";
+
+import { FleetRunClientProjection } from "./fleet-run-client-projection.js";
+
+const decodeFleetRunClientProjection = (value: unknown): FleetRunClientProjection =>
+  S.decodeUnknownSync(FleetRunClientProjection)(value, { onExcessProperty: "error" });
 
 const timestamp = "2026-07-13T10:55:20.179Z";
 

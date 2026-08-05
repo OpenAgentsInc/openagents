@@ -185,7 +185,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/public/INSTALL.md",
-      "sha256": "eb6d983718c9463202fce7b75ae4cb80e1fdacb27f274182e7accbb83410c4e6",
+      "sha256": "1f7a90f1ecd266d2f7ba9c1f733e9e42ae19018d2334b4a1a5a0528b82a8795a",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

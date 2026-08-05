@@ -5,7 +5,7 @@
 - Owner authority: current owner conversation
 - Status: active. Revision-2 RC authority admitted, concrete matrix adapters remain #8917/#8926
 - Trigger evidence: [#8995](https://github.com/OpenAgentsInc/openagents/issues/8995) and Desktop RC17–RC20
-- Normative release contract: [cross-platform Desktop ProductSpec](../deploy/openagents-desktop-cross-platform-release.md)
+- Normative release contract: `cross-platform Desktop ProductSpec`
 
 ## Owner direction
 

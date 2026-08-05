@@ -4,9 +4,11 @@ import path from "node:path";
 /**
  * AFS-00 package-boundary, subpath-export, and import-cycle check.
  *
- * It mirrors `apps/openagents-desktop/scripts/check-ide-boundaries.ts` for the
- * new AFS root packages. A root-core package must not import an app, a platform
- * API (Electron, Node, React, or React Native), a provider SDK, a SQL driver,
+ * It was originally modelled on the IDE-boundary check that shipped with the
+ * (now removed) Electron Desktop app, and is the surviving boundary authority
+ * for the AFS root packages. A root-core package must not import an app, a
+ * platform API (Electron, Node, React, or React Native), a provider SDK, a SQL
+ * driver,
  * or a cloud client. The Apple FM package keeps Node host authority in its
  * `./node` subpath only. The turn kernel must not import the Apple FM adapter or
  * a concrete store.

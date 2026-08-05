@@ -18,7 +18,6 @@ packages:
   - apps/openagents-mobile
   - apps/openagents-audio
   - apps/openagents-audio-edge
-  - apps/openagents-desktop
   - apps/pylon
   - apps/pylon/packages/*
   - packages/*
@@ -26,14 +25,13 @@ packages:
   - packages/probe/packages/*
   - types/*
   - apps/ai-sdk-harness-poc
-  - apps/electron-ai-sdk-test
 
 publicHoistPattern:
-  - "*electron*"
   - fs-xattr
   - macos-alias
 
-# Electron Forge currently resolves its maintained node-gyp fork from Git.
+# Several workspace dependencies (for example nostr-effect) resolve from Git
+# tarball URLs rather than the registry.
 blockExoticSubdeps: false
 
 catalog:
@@ -46,10 +44,8 @@ catalog:
   vite-plus: 0.2.4
 
 allowBuilds:
-  "@electron/node-gyp": true
   "@openrouter/sdk": false
   "@shopify/react-native-skia": true
-  electron: true
   esbuild: true
   fs-xattr: true
   macos-alias: true
@@ -57,14 +53,10 @@ allowBuilds:
   onnxruntime-node: true
   protobufjs: true
   sharp: true
-  "@electron/node-gyp@https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2": true
   nostr-effect@https://codeload.github.com/OpenAgentsInc/nostr-effect/tar.gz/2bb57870eeeb214ed80ca8a275292f5e4dd89863: false
   nostr-effect@https://github.com/OpenAgentsInc/nostr-effect/archive/2bb57870eeeb214ed80ca8a275292f5e4dd89863.tar.gz: false
   nostr-effect@https://codeload.github.com/OpenAgentsInc/nostr-effect/tar.gz/77073343c68f159f3dea80ddbe9e9896b1f052f2: false
   nostr-effect@https://github.com/OpenAgentsInc/nostr-effect/archive/77073343c68f159f3dea80ddbe9e9896b1f052f2.tar.gz: false
-  # app-builder-lib carries the Windows installer helper as an optional peer;
-  # Linux AppImage generation never executes its install script.
-  electron-winstaller: false
 
 overrides:
   "@effect/platform-browser": 4.0.0-beta.94
@@ -81,8 +73,6 @@ packageExtensions:
 patchedDependencies:
   "@livekit/agents@1.6.0": patches/@livekit__agents@1.6.0.patch
   "@livekit/agents-plugin-openai@1.6.0": patches/@livekit__agents-plugin-openai@1.6.0.patch
-  electron-installer-common@0.10.4: patches/electron-installer-common@0.10.4.patch
-  electron-installer-redhat@3.4.0: patches/electron-installer-redhat@3.4.0.patch
   foldkit@0.102.1: patches/foldkit@0.102.1.patch
 
 peerDependencyRules:

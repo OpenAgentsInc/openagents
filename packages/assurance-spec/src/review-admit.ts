@@ -146,8 +146,6 @@ export const classifyReviewTiers = (
 // Execution plan (reproduce the executable oracles)
 // ---------------------------------------------------------------------------
 
-const DESKTOP_PREFIX = "apps/openagents-desktop/"
-
 export interface OracleBatch {
   readonly batch_id: string
   /** Working directory, relative to the repository root. */
@@ -163,11 +161,16 @@ export interface OracleBatch {
 }
 
 /**
- * Group the executable oracle files into at most two batches that reproduce
- * exactly the way the review packet documents: the desktop suite from
- * `apps/openagents-desktop` with `--root ../..`, and any non-desktop oracle
- * (the assurance-spec self-check) from the repository root with `--root .`
- * using the desktop-installed vp binary.
+ * Group the executable oracle files into one repository-root batch reproduced
+ * with the workspace-root vp binary and `--root .`.
+ *
+ * Earlier revisions also emitted a separate `desktop-oracles` batch that ran
+ * from `apps/openagents-desktop` with `--root ../..` and borrowed that app's
+ * installed vp binary for the repository batch. `apps/openagents-desktop` was
+ * deleted by owner directive (#9325, 2026-08-04), so neither that working
+ * directory nor that binary exists; the split is removed rather than left as a
+ * plan that can never be executed. Historical receipts that recorded a
+ * `desktop-oracles` batch stay exactly as they were observed.
  */
 export const planOracleReproduction = (
   classifications: ReadonlyArray<CriterionClassification>,
@@ -176,30 +179,16 @@ export const planOracleReproduction = (
   for (const entry of classifications) {
     if (entry.tier === "executable" && entry.evaluator_ref !== undefined) executableFiles.add(entry.evaluator_ref)
   }
-  const desktop = [...executableFiles].filter((path) => path.startsWith(DESKTOP_PREFIX)).sort()
-  const other = [...executableFiles].filter((path) => !path.startsWith(DESKTOP_PREFIX)).sort()
-  const batches: OracleBatch[] = []
-  if (desktop.length > 0) {
-    batches.push({
-      batch_id: "desktop-oracles",
-      cwd: DESKTOP_PREFIX.replace(/\/$/, ""),
-      binary: "./node_modules/.bin/vp",
-      root: "../..",
-      file_args: desktop.map((path) => path.slice(DESKTOP_PREFIX.length)),
-      evaluator_refs: desktop,
-    })
-  }
-  if (other.length > 0) {
-    batches.push({
-      batch_id: "repo-oracles",
-      cwd: ".",
-      binary: "./apps/openagents-desktop/node_modules/.bin/vp",
-      root: ".",
-      file_args: other,
-      evaluator_refs: other,
-    })
-  }
-  return batches
+  const files = [...executableFiles].sort()
+  if (files.length === 0) return []
+  return [{
+    batch_id: "repo-oracles",
+    cwd: ".",
+    binary: "./node_modules/.bin/vp",
+    root: ".",
+    file_args: files,
+    evaluator_refs: files,
+  }]
 }
 
 export interface BatchReproduction {

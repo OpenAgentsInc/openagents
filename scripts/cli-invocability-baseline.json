@@ -8,7 +8,6 @@
   ],
   "baselinedAt": "2026-07-31",
   "inheritedDebt": [
-    "apps/openagents-desktop/scripts/grade-runs.ts",
     "apps/openagents.com/scripts/gym-harbor-full-trace-archive.ts",
     "apps/openagents.com/scripts/gym-harbor-progress-push.ts",
     "apps/openagents.com/workers/api/scripts/probe-gepa-stage0-no-spend-campaign.ts",

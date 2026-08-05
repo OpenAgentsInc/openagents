@@ -279,7 +279,7 @@ The three highest-priority conclusions are:
 - **Location:** Arwes
   [`formatFrameDimension.ts`](https://github.com/arwes/arwes/blob/bdbaa0324900ee978d42036d1304a053c1fe54b5/packages/frames/src/internal/formatFrameDimension.ts)
   and [`renderFrameElements.ts`](https://github.com/arwes/arwes/blob/bdbaa0324900ee978d42036d1304a053c1fe54b5/packages/frames/src/internal/renderFrameElements.ts);
-  [`apps/openagents-desktop/index.html`](../../apps/openagents-desktop/index.html).
+  `apps/openagents-desktop/index.html`.
 - **Category:** security, CSP, implementation correctness.
 - **Impact:** Arwes evaluates frame dimension strings with `eval` and permits
   string elements through `innerHTML`. Electron correctly allows only

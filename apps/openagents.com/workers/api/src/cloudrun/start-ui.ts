@@ -42,11 +42,9 @@ const REQUIRED_DOCS_CLIENT_ARTIFACTS = [
 // other /api path.
 const START_SERVER_REQUEST_PATHS = new Set([
   '/api/public/qa-board',
-  // DIST-10 (#8923): Desktop download resolver + verified artifact redirect.
-  '/api/public/desktop-download',
-  '/api/public/desktop-download/artifact',
-  // #9280: Omega download resolver + verified artifact redirect — a SEPARATE
-  // signed product feed beside the Desktop one, never a relabeling of it.
+  // #9280: Omega download resolver + verified artifact redirect. The Electron
+  // Desktop resolver paths are retired with the app itself, so this signed
+  // product feed is the only download resolver Start serves.
   '/api/public/omega-download',
   '/api/public/omega-download/artifact',
 ])

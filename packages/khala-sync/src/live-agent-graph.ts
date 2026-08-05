@@ -1,9 +1,6 @@
 import {
-  LiveAgentGraphSchemaLiteral,
   LiveAgentGraphSnapshot,
-  applyLiveAgentGraphDelta,
   validateLiveAgentGraphSnapshot,
-  type LiveAgentGraphDelta,
   type LiveAgentGraphSnapshot as LiveAgentGraphSnapshotType,
 } from "@openagentsinc/agent-runtime-schema"
 import { Schema as S } from "effect"
@@ -59,35 +56,5 @@ export const projectLiveAgentGraphPostImage = (
   }
 }
 
-export const advanceLiveAgentGraphPostImage = (
-  current: LiveAgentGraphPostImage,
-  delta: LiveAgentGraphDelta,
-): LiveAgentGraphPostImage => {
-  if (
-    current.entityType !== LIVE_AGENT_GRAPH_ENTITY_TYPE ||
-    current.entityId !== current.value.graphRef
-  ) throw new Error("live-agent graph post-image identity mismatch")
-  return projectLiveAgentGraphPostImage(applyLiveAgentGraphDelta(current.value, delta))
-}
-
 export const decodeLiveAgentGraphPostImageJson = (json: string): LiveAgentGraphEntity =>
   decodeLiveAgentGraphEntity(JSON.parse(json))
-
-export const emptyLiveAgentGraphEntity = (input: Readonly<{
-  graphRef: string
-  sessionRef: string
-  threadRef: string
-  attachmentGeneration: number
-  updatedAt: string
-}>): LiveAgentGraphEntity => decodeLiveAgentGraphEntity({
-  schema: LiveAgentGraphSchemaLiteral,
-  graphRef: input.graphRef,
-  sessionRef: input.sessionRef,
-  threadRef: input.threadRef,
-  attachmentGeneration: input.attachmentGeneration,
-  cursor: 0,
-  lastDeltaRef: null,
-  nodes: [],
-  edges: [],
-  updatedAt: input.updatedAt,
-})

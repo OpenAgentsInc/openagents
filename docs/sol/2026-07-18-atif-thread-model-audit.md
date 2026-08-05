@@ -108,13 +108,13 @@ window. These are replication semantics, not agent-trajectory semantics.
 
 ### Desktop conversation and workbench
 
-[`apps/openagents-desktop/src/chat-contract.ts`](../../apps/openagents-desktop/src/chat-contract.ts)
+`apps/openagents-desktop/src/chat-contract.ts`
 defines the Effect Schema for `DesktopThread` and `DesktopMessage`. A message can
 carry typed per-turn model/token metadata, tool traces, recovery generation,
 interactive provider questions, tool approvals, plan reviews, plans, child
 agents, queued follow-ups, and renderer-local graph/meter projections.
 
-[`apps/openagents-desktop/src/thread-store.ts`](../../apps/openagents-desktop/src/thread-store.ts)
+`apps/openagents-desktop/src/thread-store.ts`
 also has thread-local retention, restore, rename, append/upsert/remove, and fork
 semantics. A fork creates a distinct local thread; it is not merely another
 sequential ATIF step.

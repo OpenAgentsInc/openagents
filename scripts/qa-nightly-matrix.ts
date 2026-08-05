@@ -53,7 +53,6 @@ const khalaCodeQaSeedScenariosById = new Map(
 export type QaNightlyStepId =
   | "harness-suite"
   | "behavior-contracts"
-  | "desktop-verify"
   | "monkey-night"
   | "model-based"
   | "mobile-signed-in-thread-smoke"
@@ -455,7 +454,6 @@ export type QaNightlyReportHistoryEntry = Readonly<{
 const QA_NIGHTLY_STEP_IDS = new Set<QaNightlyStepId>([
   "harness-suite",
   "behavior-contracts",
-  "desktop-verify",
   "monkey-night",
   "model-based",
   "mobile-signed-in-thread-smoke",
@@ -844,7 +842,6 @@ export const emitQaNightlyBehaviorContractArtifacts = async (input: Readonly<{
     },
   )
   const behaviorStep = input.steps.find(step => step.id === "behavior-contracts")
-  const desktopVerifyStep = input.steps.find(step => step.id === "desktop-verify")
   const stepCheck = (id: string, step: QaNightlyStepResult | undefined) => ({
     evidenceRefs: step === undefined ? [] : [step.logRef],
     id,
@@ -860,7 +857,6 @@ export const emitQaNightlyBehaviorContractArtifacts = async (input: Readonly<{
     runId: input.runId,
     sweepChecks: [
       stepCheck("nightly_step.behavior_contracts", behaviorStep),
-      stepCheck("nightly_step.desktop_verify", desktopVerifyStep),
     ],
   })
   await writeFile(receiptPath, `${JSON.stringify({
@@ -1067,12 +1063,6 @@ export const buildQaNightlySteps = (input: Readonly<{
       cwd: ".",
       id: "behavior-contracts",
       label: "Behavior-contract registry suite",
-    },
-    {
-      command: ["pnpm", "--dir", "apps/openagents-desktop", "run", "verify"],
-      cwd: ".",
-      id: "desktop-verify",
-      label: "OpenAgents Desktop verify",
     },
     {
       command: [
@@ -1401,7 +1391,7 @@ ${failed.map(step => `- \`${step.id}\` ${step.status}, exit ${step.exitCode}, lo
 
 ### Expected behavior
 
-The full fixture QA matrix should pass: harness suite, desktop verify, visual smokes, monkey night, model-based tier, and property tier.
+The full fixture QA matrix should pass: harness suite, behavior contracts, monkey night, model-based tier, and property tier.
 
 ### Reproduction steps
 

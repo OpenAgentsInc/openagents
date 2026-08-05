@@ -510,7 +510,7 @@ audit. It was reconciled against live GitHub issue state and `origin/main` at
   client downgrade refusal, uninstall/reinstall, and diagnostics acceptance.
   The live RC feed remains RC5; retained mobile OTA still answers successfully;
   legacy Desktop feeds remain typed `410`. The repeatable production procedure
-  is [`../deploy/openagents-desktop-production-release.md`](../deploy/openagents-desktop-production-release.md).
+  is `../deploy/openagents-desktop-production-release.md`.
 - The named Codex credential mismatch that previously blocked the physical
   journey is cleared: the serving `~/.pylon-fable` inventory has ready isolated
   `codex-2`, `codex-4`, and `codex-5` accounts under the fenced supervisor.

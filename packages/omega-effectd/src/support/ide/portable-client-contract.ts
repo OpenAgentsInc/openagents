@@ -4,7 +4,6 @@ import {
   PortableAttachmentSchema,
   PortableCodingSessionSchema,
   PortableCommandProjectionSchema,
-  PortableSessionCommandSchema,
   PortableTargetDirectoryProjectionSchema,
 } from "@openagentsinc/portable-session-contract"
 
@@ -47,32 +46,3 @@ export const IdePortableClientCommandResultSchema = Schema.Union([
   }),
 ])
 export type IdePortableClientCommandResult = typeof IdePortableClientCommandResultSchema.Type
-
-export const emptyIdePortableClientSnapshot = (): IdePortableClientSnapshot =>
-  IdePortableClientSnapshotSchema.make({
-    status: { phase: "unavailable", cursor: null, pendingCommandCount: 0 },
-    sessions: [],
-    targetDirectories: [],
-    attachments: [],
-    commands: [],
-    issues: [],
-  })
-
-const decodeSnapshot = Schema.decodeUnknownOption(IdePortableClientSnapshotSchema)
-const decodeCommand = Schema.decodeUnknownOption(PortableSessionCommandSchema)
-const decodeResult = Schema.decodeUnknownOption(IdePortableClientCommandResultSchema)
-
-export const decodeIdePortableClientSnapshot = (value: unknown): IdePortableClientSnapshot | null => {
-  const decoded = decodeSnapshot(value)
-  return decoded._tag === "Some" ? decoded.value : null
-}
-
-export const decodeIdePortableClientCommand = (value: unknown): typeof PortableSessionCommandSchema.Type | null => {
-  const decoded = decodeCommand(value)
-  return decoded._tag === "Some" ? decoded.value : null
-}
-
-export const decodeIdePortableClientCommandResult = (value: unknown): IdePortableClientCommandResult | null => {
-  const decoded = decodeResult(value)
-  return decoded._tag === "Some" ? decoded.value : null
-}

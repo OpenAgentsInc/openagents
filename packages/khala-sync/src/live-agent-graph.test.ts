@@ -2,21 +2,34 @@ import { describe, expect, test } from "vite-plus/test"
 
 import {
   LiveAgentGraphSchemaLiteral,
+  applyLiveAgentGraphDelta,
   type LiveAgentGraphDelta,
   type LiveAgentGraphNode,
 } from "@openagentsinc/agent-runtime-schema"
 
 import {
   LIVE_AGENT_GRAPH_ENTITY_TYPE,
-  advanceLiveAgentGraphPostImage,
+  decodeLiveAgentGraphEntity,
   decodeLiveAgentGraphPostImageJson,
-  emptyLiveAgentGraphEntity,
   liveAgentGraphScope,
   projectLiveAgentGraphPostImage,
 } from "./index.js"
 
 const at = (second: number): string =>
   `2026-07-11T20:00:${String(second).padStart(2, "0")}.000Z`
+
+const emptyGraph = () => decodeLiveAgentGraphEntity({
+  schema: LiveAgentGraphSchemaLiteral,
+  graphRef: "graph.sync.1",
+  sessionRef: "session.graph.sync.1",
+  threadRef: "thread.canonical.sync.1",
+  attachmentGeneration: 1,
+  cursor: 0,
+  lastDeltaRef: null,
+  nodes: [],
+  edges: [],
+  updatedAt: at(0),
+})
 
 const node = (index: number): LiveAgentGraphNode => ({
   agentRef: `agent.codex.${index}`,
@@ -63,13 +76,7 @@ const delta = (
 
 describe("Khala Sync live-agent graph entity", () => {
   test("projects one validated full post-image under the stable graph identity", () => {
-    const empty = emptyLiveAgentGraphEntity({
-      graphRef: "graph.sync.1",
-      sessionRef: "session.graph.sync.1",
-      threadRef: "thread.canonical.sync.1",
-      attachmentGeneration: 1,
-      updatedAt: at(0),
-    })
+    const empty = emptyGraph()
     const projected = projectLiveAgentGraphPostImage(empty)
     expect(projected.entityType).toBe(LIVE_AGENT_GRAPH_ENTITY_TYPE)
     expect(projected.entityId).toBe("graph.sync.1")
@@ -77,35 +84,18 @@ describe("Khala Sync live-agent graph entity", () => {
     expect(decodeLiveAgentGraphPostImageJson(projected.postImageJson)).toEqual(empty)
   })
 
-  test("advances by the shared exact-cursor reducer and replays as one durable post-image", () => {
-    const initial = projectLiveAgentGraphPostImage(emptyLiveAgentGraphEntity({
-      graphRef: "graph.sync.1",
-      sessionRef: "session.graph.sync.1",
-      threadRef: "thread.canonical.sync.1",
-      attachmentGeneration: 1,
-      updatedAt: at(0),
-    }))
-    const firstDelta = delta(0, 1, [node(1)])
-    const current = advanceLiveAgentGraphPostImage(initial, firstDelta)
-    expect(current.value.cursor).toBe(1)
-    expect(current.value.nodes).toHaveLength(1)
-    expect(advanceLiveAgentGraphPostImage(current, firstDelta)).toEqual(current)
-    expect(() => advanceLiveAgentGraphPostImage(current, delta(2, 3, []))).toThrow("exact durable cursor")
-  })
-
   test("round-trips a bounded 2,000-node graph without changing canonical bytes", () => {
-    const initial = projectLiveAgentGraphPostImage(emptyLiveAgentGraphEntity({
-      graphRef: "graph.sync.1",
-      sessionRef: "session.graph.sync.1",
-      threadRef: "thread.canonical.sync.1",
-      attachmentGeneration: 1,
-      updatedAt: at(0),
-    }))
     const nodes = Array.from({ length: 2_000 }, (_, index) => node(index))
-    const projected = advanceLiveAgentGraphPostImage(initial, delta(0, 1, nodes))
+    const projected = projectLiveAgentGraphPostImage(
+      applyLiveAgentGraphDelta(emptyGraph(), delta(0, 1, nodes)),
+    )
     const decoded = decodeLiveAgentGraphPostImageJson(projected.postImageJson)
     expect(decoded.nodes).toHaveLength(2_000)
     expect(JSON.stringify(decoded)).toBe(projected.postImageJson)
-    expect(() => advanceLiveAgentGraphPostImage(initial, delta(0, 1, [...nodes, node(2_001)]))).toThrow()
+    expect(() =>
+      projectLiveAgentGraphPostImage(
+        applyLiveAgentGraphDelta(emptyGraph(), delta(0, 1, [...nodes, node(2_001)])),
+      ),
+    ).toThrow()
   })
 })

@@ -21,7 +21,7 @@ export type {
 
 import type { OmegaDownloadResolution } from '../omega-download-resolver.server'
 
-import type { Loadable } from './-download-data'
+import type { Loadable } from './-loadable'
 
 export const OMEGA_DOWNLOAD_RESOLUTION_URL = '/api/public/omega-download'
 export const OMEGA_DOWNLOAD_ARTIFACT_URL = '/api/public/omega-download/artifact'
@@ -134,7 +134,7 @@ export const omegaDownloadArtifactHref = (
   format: OmegaDownloadFormat,
 ): string => `${OMEGA_DOWNLOAD_ARTIFACT_URL}?target=${target}&format=${format}`
 
-// Fail-soft fetch (same posture as -download-data.ts): any network/HTTP/shape
+// Fail-soft fetch: any network/HTTP/shape
 // error renders an honest unavailable state, never a fabricated download.
 export const fetchOmegaDownloadResolution = async (
   fetchFn: typeof fetch = fetch,

@@ -6,10 +6,12 @@ distribute them as current products.
 
 ## OpenAgents apps
 
-The supported web product is <https://openagents.com>. OpenAgents mobile and
-OpenAgents Desktop are owned at `apps/openagents-mobile` and
-`apps/openagents-desktop`. Public installation remains gated on their current
-signed release receipts.
+The supported web product is <https://openagents.com>. OpenAgents mobile is
+owned at `apps/openagents-mobile`. The desktop application is Omega, published
+from its own repository and downloadable at
+<https://openagents.com/download>; the former Electron OpenAgents Desktop app
+is retired and removed. Public installation remains gated on current signed
+release receipts.
 
 ## Connect Codex capacity with Pylon
 

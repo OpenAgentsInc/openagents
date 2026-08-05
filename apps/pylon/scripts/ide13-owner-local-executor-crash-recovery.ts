@@ -14,7 +14,7 @@ import {
 } from "../src/portable-session-owner-local-work-resumer.js";
 
 const EVIDENCE_PATH =
-  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-executor-crash-recovery.json";
+  "benchmarks/ide/2026-07-20-ide-13-owner-local-executor-crash-recovery.json";
 const GIT_SHA = /^[0-9a-f]{40}$/u;
 const execFileAsync = promisify(execFile);
 const sessionRef = "session.ide13.owner-local.crash-recovery";

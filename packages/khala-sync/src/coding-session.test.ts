@@ -12,12 +12,6 @@ import {
   decodeCodingRepositoryEntity,
   decodeCodingSessionEntity,
   decodeCodingWorktreeEntity,
-  encodeCodingNavigationEntity,
-  encodeCodingProjectEntity,
-  encodeCodingRepositoryEntity,
-  encodeCodingSessionEntity,
-  encodeCodingWorktreeEntity,
-  queryCodingSessions,
   resolveCodingNavigation,
   validateCodingSessionCatalog,
   type CodingSessionCatalog,
@@ -73,7 +67,7 @@ const worktree = (overrides: Record<string, unknown> = {}) => decodeCodingWorktr
   ...overrides,
 })
 
-const session = (overrides: Record<string, unknown> = {}) => decodeCodingSessionEntity({
+const sessionInput = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
   schema,
   sessionRef: "session.openagents.1",
   ownerScopeRef,
@@ -100,6 +94,9 @@ const session = (overrides: Record<string, unknown> = {}) => decodeCodingSession
   archivedAt: null,
   ...overrides,
 })
+
+const session = (overrides: Record<string, unknown> = {}) =>
+  decodeCodingSessionEntity(sessionInput(overrides))
 
 const navigation = (overrides: Record<string, unknown> = {}) => decodeCodingNavigationEntity({
   schema,
@@ -138,16 +135,11 @@ describe("CUT-13 canonical coding catalog schemas", () => {
       "coding_session",
       "coding_navigation",
     ])
-    expect(decodeCodingProjectEntity(encodeCodingProjectEntity(project()))).toEqual(project())
-    expect(decodeCodingRepositoryEntity(encodeCodingRepositoryEntity(repository()))).toEqual(repository())
-    expect(decodeCodingWorktreeEntity(encodeCodingWorktreeEntity(worktree()))).toEqual(worktree())
-    expect(decodeCodingSessionEntity(encodeCodingSessionEntity(session()))).toEqual(session())
-    expect(decodeCodingNavigationEntity(encodeCodingNavigationEntity(navigation()))).toEqual(navigation())
   })
 
   test("structurally strips placement, provider-session, credential, and raw-path fields", () => {
     const decoded = decodeCodingSessionEntity({
-      ...encodeCodingSessionEntity(session()),
+      ...sessionInput(),
       hostname: "owner-imac",
       localPath: "/Users/owner/work/openagents",
       processId: 1234,
@@ -295,26 +287,6 @@ describe("CUT-13 restart navigation resolver", () => {
       }
     }
     expect(cases).toBe(64)
-  })
-
-  test("structured query sorts recent active sessions and never implements text retrieval", () => {
-    const sessions = [
-      session({ sessionRef: "session.old", lastActiveAt: at(8), updatedAt: at(8) }),
-      session({ sessionRef: "session.archived", state: "archived", archivedAt: at(11) }),
-      session({ sessionRef: "session.new", lastActiveAt: at(11) }),
-      session({ sessionRef: "session.other", projectRef: "project.other", lastActiveAt: at(12) }),
-    ]
-    expect(queryCodingSessions(catalog({ sessions }), {
-      projectRef: "project.openagents",
-      updatedAtOrAfter: at(8),
-    }).map(value => value.sessionRef)).toEqual([
-      "session.new",
-      "session.old",
-      "session.archived",
-    ])
-    expect(queryCodingSessions(catalog({ sessions }), {
-      states: ["archived"],
-    }).map(value => value.sessionRef)).toEqual(["session.archived"])
   })
 
   test("an empty navigation remains usable without inventing a current session", () => {

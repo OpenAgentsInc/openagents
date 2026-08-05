@@ -177,7 +177,7 @@ if (import.meta.main) {
   const repositoryRoot = resolve(join(import.meta.dirname, "../../.."));
   const outputPath = resolve(
     repositoryRoot,
-    "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-performance.json",
+    "benchmarks/ide/2026-07-20-ide-13-owner-local-performance.json",
   );
   const candidateCommitSha = process.env.OPENAGENTS_IDE13_CANDIDATE_COMMIT_SHA;
   const repetitionsText = process.env.OPENAGENTS_IDE13_PERFORMANCE_REPETITIONS;

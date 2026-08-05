@@ -934,17 +934,16 @@ const repositorySubtitle = (run: AgentRunRecord): string =>
 // (a free-form runner-callback envelope — `rawEventPayloadRecord` above
 // already unwraps the `dataJson`/`rawPayloadJson` nesting), which carries
 // EITHER Codex-style `ThreadItem`-shaped fields (`commandExecution`,
-// `fileChange`, `mcpToolCall`, ...; see
-// `apps/openagents-desktop/src/workbench-item-contract.ts`'s
-// `workbenchItemFromThreadItem`) OR Claude Agent SDK content-block shapes
-// (`tool_use`/`tool_result` with a tool `name` from the same vocabulary
-// `apps/openagents-desktop/src/renderer/tool-cards.ts`'s
-// `humanizeToolInvocation` names — `Bash`, `Write`, `Edit`, `Read`, `Grep`,
-// `Glob`, `Agent`, `mcp__*`), depending on which backend executed the run.
-// Reusing `workbenchItemFromThreadItem`/`humanizeToolInvocation` directly
-// isn't possible: both live in `apps/openagents-desktop`, an Electron
-// application package, and this Cloud Run API must not depend on another
-// app's package. This classifier is a deliberate, tolerant SERVER-SIDE
+// `fileChange`, `mcpToolCall`, ...) OR Claude Agent SDK content-block shapes
+// (`tool_use`/`tool_result` with a tool `name` from the same vocabulary —
+// `Bash`, `Write`, `Edit`, `Read`, `Grep`, `Glob`, `Agent`, `mcp__*`),
+// depending on which backend executed the run. The Electron
+// `apps/openagents-desktop` package that originally owned the
+// `workbenchItemFromThreadItem`/`humanizeToolInvocation` implementations of
+// these two vocabularies is deleted; the shared typed card components live in
+// `@openagentsinc/ui/desktop-workbench`, and this Cloud Run API deliberately
+// does not depend on an app package for classification. This classifier is a
+// deliberate, tolerant SERVER-SIDE
 // equivalent covering the same two vocabularies, with the same redaction/
 // bounding discipline `safePublicText` already applies here, so the
 // fallback below (unchanged from the pre-#8871 behavior) still runs for any

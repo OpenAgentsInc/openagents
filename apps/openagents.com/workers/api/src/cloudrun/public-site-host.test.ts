@@ -31,14 +31,11 @@ describe('public Start homepage host boundary', () => {
   test('routes only the admitted Start server APIs through the seam', () => {
     expect(isStartServerRequestPath('/api/public/qa-board')).toBe(true)
     expect(isStartServerRequestPath('/api/public/qa-board/')).toBe(false)
-    // DIST-10 (#8923): Desktop download resolver + verified artifact redirect
-    // are Start-served and must cross the Cloud Run adapter (QA-4 lesson).
-    expect(isStartServerRequestPath('/api/public/desktop-download')).toBe(true)
-    expect(isStartServerRequestPath('/api/public/desktop-download/artifact')).toBe(true)
-    expect(isStartServerRequestPath('/api/public/desktop-download/')).toBe(false)
-    expect(isStartServerRequestPath('/api/public/desktop-download/other')).toBe(false)
-    // #9280: Omega download resolver + verified artifact redirect are the
-    // SEPARATE Omega product feed beside the Desktop one.
+    // #9280: the Omega download resolver + verified artifact redirect are
+    // Start-served and must cross the Cloud Run adapter (QA-4 lesson). The
+    // retired Electron Desktop resolver paths are no longer admitted.
+    expect(isStartServerRequestPath('/api/public/desktop-download')).toBe(false)
+    expect(isStartServerRequestPath('/api/public/desktop-download/artifact')).toBe(false)
     expect(isStartServerRequestPath('/api/public/omega-download')).toBe(true)
     expect(isStartServerRequestPath('/api/public/omega-download/artifact')).toBe(true)
     expect(isStartServerRequestPath('/api/public/omega-download/')).toBe(false)

@@ -16,14 +16,14 @@
   [Codex subagent rendering analysis](../teardowns/2026-07-10-codex-subagents-rendering-analysis.md),
   [OpenAgents subagent design frame](../teardowns/2026-07-10-openagents-subagents-design.md),
   [Desktop parity audit](./2026-07-10-opencode-khala-openagents-desktop-parity-audit.md),
-  [current Desktop guarantees](../../apps/openagents-desktop/GUARANTEES.md)
+  `current Desktop guarantees`
 
 This document records the selected architecture and its original dependency
 order. The process/data/authority topology remains a design boundary where
 current contracts and tests enforce it; the F0–F7 delivery order and status
 prose are historical and cannot select current work. Current guaranteed
 behavior comes from
-[`apps/openagents-desktop/GUARANTEES.md`](../../apps/openagents-desktop/GUARANTEES.md),
+`apps/openagents-desktop/GUARANTEES.md`,
 current code, tests, and receipts.
 
 ## Decision in one sentence

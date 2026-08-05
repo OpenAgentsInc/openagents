@@ -1,7 +1,7 @@
 import {
   LIVE_AGENT_GRAPH_ENTITY_TYPE,
   decodeLiveAgentGraphPostImageJson,
-  emptyLiveAgentGraphEntity,
+  decodeLiveAgentGraphEntity,
   liveAgentGraphScope,
 } from "@openagentsinc/khala-sync"
 import { SQL } from "@openagentsinc/postgres-runtime"
@@ -15,11 +15,16 @@ import { runMigrations } from "./migrate.js"
 import type { SyncSql } from "./sql.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
-const graph = () => emptyLiveAgentGraphEntity({
+const graph = () => decodeLiveAgentGraphEntity({
+  schema: "openagents.live_agent_graph.v1",
   graphRef: "graph.server.1",
   sessionRef: "session.server.1",
   threadRef: "thread.server.1",
   attachmentGeneration: 1,
+  cursor: 0,
+  lastDeltaRef: null,
+  nodes: [],
+  edges: [],
   updatedAt: "2026-07-11T20:00:00.000Z",
 })
 

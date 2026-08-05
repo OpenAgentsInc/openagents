@@ -4,7 +4,6 @@ import { describe, expect, test } from "vite-plus/test"
 import { verifyManifestSignature } from "./code-signing.ts"
 import { createUpdatesServer } from "./server.ts"
 import type { Update } from "./manifest-resolver.ts"
-import { admitOpenAgentsDesktopRelease, sha256 } from "./openagents-desktop-release.ts"
 
 // Parse a named part out of an expo-updates multipart/mixed response: returns
 // the part's JSON body + its part headers. Mirrors what expo-updates does.
@@ -48,45 +47,6 @@ const manifestRequest = (runtimeVersion: string): Request =>
   })
 
 describe("updates server", () => {
-  test("serves the independent OpenAgents Desktop manifest bytes and detached signature", async () => {
-    const server = createUpdatesServer()
-    const manifest = {
-      schema: "openagents.desktop.update_manifest.v1",
-      app: "openagents-desktop",
-      channel: "rc",
-      version: "0.1.0-rc.1",
-      artifactName: "OpenAgents-0.1.0-rc.1-arm64.zip",
-      artifactSha256: "a".repeat(64),
-      artifactByteLength: 123,
-      releasedAt: "2026-07-12T06:00:00.000Z",
-    }
-    const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest))
-    const signature = {
-      alg: "ed25519" as const,
-      kid: "release.1",
-      sha256: sha256(manifestBytes),
-      signature: "fixture",
-    }
-    server.registerOpenAgentsDesktopRelease(admitOpenAgentsDesktopRelease({
-      manifestBytes,
-      signature,
-      artifactUrl: "https://updates.openagents.com/assets/abc",
-    }))
-
-    const manifestResponse = await server.fetch(new Request(
-      "https://updates.openagents.com/desktop/openagents/rc/manifest.json",
-    ))
-    expect(manifestResponse.status).toBe(200)
-    expect(manifestResponse.headers.get("cache-control")).toBe("no-store")
-    expect(new Uint8Array(await manifestResponse.arrayBuffer())).toEqual(manifestBytes)
-    const signatureResponse = await server.fetch(new Request(
-      "https://updates.openagents.com/desktop/openagents/rc/manifest.sig.json",
-    ))
-    expect(await signatureResponse.json()).toEqual(signature)
-    expect((await server.fetch(new Request(
-      "https://updates.openagents.com/desktop/openagents/stable/manifest.json",
-    ))).status).toBe(404)
-  })
   test("serves a resolved manifest from registered updates", async () => {
     const server = createUpdatesServer({ port: 4321 })
     const launchBytes = new TextEncoder().encode("console.log('launch')")
@@ -266,75 +226,30 @@ describe("updates server", () => {
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes)
   })
 
-  test("serves desktop update feeds by channel", async () => {
-    // Historical read-only serving: the CUT-26 legacy lockout (armed by
-    // default; see legacy-desktop-lockout.test.ts) is explicitly disarmed.
-    const server = createUpdatesServer({
-      legacyDesktopLockout: "disarmed_historical_read_only",
-    })
-
-    server.registerDesktopUpdate("stable", {
-      version: "1.2.0",
-      artifactUrl: "https://updates.openagents.test/assets/full-1.2.0",
-      sha256: "full-sha",
-      bsdiffFromVersion: "1.1.0",
-      bsdiffUrl: "https://updates.openagents.test/assets/delta-1.1.0-1.2.0",
-      bsdiffSha256: "delta-sha",
-    })
+  // The Electron/Electrobun desktop surface was deleted with the desktop app.
+  // This service now serves only the Expo mobile OTA and Pylon release feeds;
+  // every former desktop route must be an ordinary 404, with no lockout
+  // document, no feed, and no ReleaseSet pointer left behind.
+  test.each([
+    "/desktop/stable/feed.json",
+    "/desktop/rc/feed.json",
+    "/desktop/khala-code-desktop/rc/feed.json",
+    "/desktop/openagents/rc/manifest.json",
+    "/desktop/openagents/rc/manifest.sig.json",
+    "/desktop/openagents/rc/release.json",
+    "/desktop/openagents/stable/pointer.json",
+    "/desktop/openagents/stable/v2/pointer.json",
+    "/desktop/openagents/stable/release-set.json",
+    "/desktop/rc-darwin-arm64-update.json",
+    "/metrics/release-set.json",
+  ])("no longer serves the removed desktop route %s", async (pathname) => {
+    const server = createUpdatesServer()
 
     const response = await server.fetch(
-      new Request("https://updates.openagents.test/desktop/stable/feed.json"),
+      new Request(`https://updates.openagents.test${pathname}`),
     )
 
-    expect(response.status).toBe(200)
-    expect(response.headers.get("cache-control")).toBe("no-store")
-    expect(await response.json()).toEqual([
-      {
-        version: "1.2.0",
-        artifactUrl: "https://updates.openagents.test/assets/full-1.2.0",
-        sha256: "full-sha",
-        bsdiffFromVersion: "1.1.0",
-        bsdiffUrl: "https://updates.openagents.test/assets/delta-1.1.0-1.2.0",
-        bsdiffSha256: "delta-sha",
-      },
-    ])
-  })
-
-  test("serves Khala Code desktop feeds on a product-specific path", async () => {
-    // Historical read-only serving: the CUT-26 legacy lockout (armed by
-    // default; see legacy-desktop-lockout.test.ts) is explicitly disarmed.
-    const server = createUpdatesServer({
-      legacyDesktopLockout: "disarmed_historical_read_only",
-    })
-
-    server.registerDesktopUpdate(
-      "rc",
-      {
-        version: "0.1.0-rc.1",
-        artifactUrl: "https://updates.openagents.test/assets/khala-code-rc",
-        sha256: "khala-sha",
-      },
-      "khala-code-desktop",
-    )
-
-    const khalaResponse = await server.fetch(
-      new Request(
-        "https://updates.openagents.test/desktop/khala-code-desktop/rc/feed.json",
-      ),
-    )
-    const defaultResponse = await server.fetch(
-      new Request("https://updates.openagents.test/desktop/rc/feed.json"),
-    )
-
-    expect(khalaResponse.status).toBe(200)
-    expect(await khalaResponse.json()).toEqual([
-      {
-        version: "0.1.0-rc.1",
-        artifactUrl: "https://updates.openagents.test/assets/khala-code-rc",
-        sha256: "khala-sha",
-      },
-    ])
-    expect(await defaultResponse.json()).toEqual([])
+    expect(response.status).toBe(404)
   })
 
   test("serves signed pylon feeds by channel + platform, drops yanked", async () => {

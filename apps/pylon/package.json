@@ -73,6 +73,7 @@
     "@openagentsinc/agent-runtime-schema": "0.2.1-rc.4",
     "@openagentsinc/autopilot-control-protocol": "workspace:*",
     "@openagentsinc/blueprint-contracts": "workspace:*",
+    "@openagentsinc/codex-app-server-protocol": "workspace:*",
     "@openagentsinc/effect-boundary": "workspace:*",
     "@openagentsinc/environment-auth": "workspace:*",
     "@openagentsinc/forge-protocol": "workspace:*",

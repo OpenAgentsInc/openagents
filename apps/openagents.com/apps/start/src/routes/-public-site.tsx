@@ -48,11 +48,11 @@ const operatingFacts = [
 ] as const
 
 const questions = [
-  ['Does OpenAgents replace Codex?', 'No. Codex remains the engine and source of truth. OpenAgents Desktop adds a durable workroom around the session you already use.'],
-  ['Do I need an OpenAgents account?', 'Not for the Desktop MVP. It uses your ordinary logged-in Codex session and keeps the core workroom local-first.'],
+  ['Does OpenAgents replace Codex?', 'No. Codex remains the engine and source of truth. Omega adds a durable workroom around the session you already use.'],
+  ['Do I need an OpenAgents account?', 'Not for the core workroom. It uses your ordinary logged-in Codex session and stays local-first.'],
   ['Can the review UI change my files?', 'No. Repository status and diff views are deliberately read-only. Changes still happen through the active agent turn, where the cause and result remain visible.'],
   ['What happens after a restart or interrupted turn?', 'OpenAgents restores stable session identity, then reconciles the latest known turn state. It does not silently replay tools or pretend interrupted work completed.'],
-  ['What is available today?', 'Platform and version availability comes from the signed release feed, never a guess or a hard-coded platform claim — the download page shows exactly what is available today for macOS, Windows, and Linux as each ships. The product is still an MVP, so the download and docs describe the supported boundary precisely.'],
+  ['What is available today?', 'Platform and version availability comes from the signed Omega release manifest, never a guess or a hard-coded platform claim — the download page shows exactly what is available today, and nothing more. Omega is an early alpha, so the download page and docs describe the supported boundary precisely.'],
 ] as const
 
 export function PublicSiteShell({ children }: { children: ReactNode }) {
@@ -73,7 +73,7 @@ export function DesktopLandingPage() {
           <div className="oa-hero-copy">
             <p className="oa-kicker">Codex, made durable.</p>
             <h1>A serious place<br />for serious agent work.</h1>
-            <p className="oa-hero-summary">OpenAgents Desktop is a local-first workroom around your ordinary Codex session—built to find work, follow the turn, review changes, and resume without losing the thread.</p>
+            <p className="oa-hero-summary">Omega, the OpenAgents desktop application, is a local-first workroom around your ordinary Codex session—built to find work, follow the turn, review changes, and resume without losing the thread.</p>
             <div className="oa-actions"><a className="oa-button oa-button-primary" href={OMEGA_REPOSITORY_URL} rel="noreferrer" target="_blank">View Omega on GitHub</a><InternalLink className="oa-button oa-button-secondary" href={DOCS_URL} preload="render">Read the docs</InternalLink></div>
           </div>
           <div className="oa-hero-signal" aria-hidden="true"><span>session.open</span><span>turn.streaming</span><span>change.reviewable</span><span>restart.reconciled</span></div>
@@ -101,7 +101,7 @@ export function DesktopLandingPage() {
                 <div className="oa-composer"><span>Steer the current turn…</span><div><span>openagents / main</span><button type="button" aria-label="Stop current turn">■</button></div></div>
               </div>
             </div>
-            <figcaption>Product frame for layout validation. Replace this figure with the current Desktop screenshot before homepage cutover.</figcaption>
+            <figcaption>Product frame for layout validation. Replace this figure with the current Omega screenshot before homepage cutover.</figcaption>
           </figure>
         </div>
       </section>

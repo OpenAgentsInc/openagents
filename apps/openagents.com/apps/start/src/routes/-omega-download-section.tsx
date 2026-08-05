@@ -1,17 +1,17 @@
 /**
  * Omega product entry on `/download` (#9280, EP263-07).
  *
- * Omega is a SEPARATE product beside OpenAgents Desktop: this section renders
+ * Omega is the OpenAgents desktop application. This section renders
  * exclusively from the `openagents.omega.download_resolution.v1` projection,
  * which the server derives from the Ed25519-signed Omega download manifest.
  * There is no handwritten artifact URL and no hard-coded version label. Every
  * CTA crosses the `/api/public/omega-download/artifact` redirect, and a
  * verification failure renders an honest unavailable state with zero URLs.
  *
- * The Electron OpenAgents Desktop entry above is never relabeled as Omega,
- * and this section never borrows its release data.
+ * The retired Electron OpenAgents Desktop entry was removed from this page
+ * with the app itself (#9325); Omega is now the only download on it.
  */
-import type { Loadable } from './-download-data'
+import type { Loadable } from './-loadable'
 import {
   omegaDownloadArtifactHref,
   type OmegaDownloadArtifact,
@@ -85,10 +85,10 @@ function OmegaAlphaPositioning() {
   return (
     <>
       <p>
-        Omega is the Zed-based OpenAgents IDE, published here as an early alpha for
-        experienced developers and coding agent power users. It is a separate product from
-        OpenAgents Desktop above: a different application with its own version line, package,
-        and update path. Downloading Omega does not change OpenAgents Desktop.
+        Omega is the Zed-based OpenAgents IDE and the OpenAgents desktop application,
+        published here as an early alpha for experienced developers and coding agent power
+        users. It has its own version line, package, and update path. The earlier
+        Electron-based OpenAgents Desktop is retired and is no longer distributed.
       </p>
       <ul className="oa-omega-alpha-warnings">
         <li>
@@ -102,7 +102,7 @@ function OmegaAlphaPositioning() {
         </li>
         <li>
           <strong>Support boundary:</strong> alpha support happens in the tester channels
-          inside Omega, not through OpenAgents Desktop support paths.
+          inside Omega.
         </li>
         <li>
           <strong>Data risk:</strong> alpha builds can lose or corrupt data. Do not point

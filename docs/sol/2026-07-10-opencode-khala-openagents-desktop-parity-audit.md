@@ -79,7 +79,7 @@ desktop, and IDE product and that Desktop can connect to a WSL-hosted server:
 OpenAgents evidence is the checked-in code and tests, not issue prose or visual
 similarity. The most relevant local sources are:
 
-- [`apps/openagents-desktop`](../../apps/openagents-desktop/README.md)
+- `apps/openagents-desktop`
 - [`docs/terra/DESKTOP_PARITY.md`](../terra/DESKTOP_PARITY.md)
 - [`docs/terra/CURRENT_STATE.md`](../terra/CURRENT_STATE.md)
 - [`docs/khala-code/2026-07-05-opencode-desktop-parity-gap-audit.md`](../khala-code/2026-07-05-opencode-desktop-parity-gap-audit.md)
@@ -303,7 +303,7 @@ Accounts:
 
 ### Documentation and proof drift found by this audit
 
-- [`apps/openagents-desktop/README.md`](../../apps/openagents-desktop/README.md)
+- `apps/openagents-desktop/README.md`
   still says the titlebar exposes **Open Fleet** and describes its deployment
   brief as visible. The current renderer deliberately removed that control.
 - The README's `smokeOpenFleetDesk` helper remains in `main.ts` but is not called

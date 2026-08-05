@@ -42,7 +42,7 @@ test("runs honest owner-local injected faults and records the missing seams", as
         await readFile(
           resolve(
             import.meta.dirname,
-            "../../openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json",
+            "../../../benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json",
           ),
           "utf8",
         ),
@@ -164,7 +164,7 @@ test.each([
   const repositoryRoot = resolve(import.meta.dirname, "../../..");
   const sourcePath = join(
     repositoryRoot,
-    "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json",
+    "benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json",
   );
   const recoveryReceiptPath = join(root, "recovery.json");
   try {
@@ -183,7 +183,7 @@ test("uses the recovery proof's stable ancestor base instead of the verifier bra
   const repositoryRoot = resolve(import.meta.dirname, "../../..");
   const sourcePath = join(
     repositoryRoot,
-    "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json",
+    "benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json",
   );
   const recoveryReceiptPath = join(root, "recovery.json");
   const stableAncestorBase = "f6c4c669d032ad5c06518c7cbe6e7a6788ab540d";

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test"
-import { emptyLiveAgentGraphEntity, type LiveAgentGraphEntity } from "@openagentsinc/khala-sync"
+import { decodeLiveAgentGraphEntity, type LiveAgentGraphEntity } from "@openagentsinc/khala-sync"
 import { Effect, Schema } from "effect"
 
 import type {
@@ -69,11 +69,16 @@ const timeline = (
   }],
 })
 
-const graph = (cursor: number): LiveAgentGraphEntity => emptyLiveAgentGraphEntity({
+const graph = (cursor: number): LiveAgentGraphEntity => decodeLiveAgentGraphEntity({
+  schema: "openagents.live_agent_graph.v1",
   graphRef: "graph.runtime.run.live.fixture",
   sessionRef: "session.runtime.thread.live.fixture",
   threadRef,
   attachmentGeneration: 1,
+  cursor: 0,
+  lastDeltaRef: null,
+  nodes: [],
+  edges: [],
   updatedAt: new Date(Date.parse("2026-07-11T00:00:00.000Z") + cursor * 1_000).toISOString(),
 })
 

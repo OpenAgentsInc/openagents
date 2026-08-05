@@ -20,7 +20,7 @@ import {
 
 const GIT_SHA = /^[a-f0-9]{40}$/u;
 const RECEIPT_REPOSITORY_PATH =
-  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json";
+  "benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json";
 const DEADLINE_MILLISECONDS = 120_000;
 const REF = Schema.String.check(
   Schema.isMinLength(3),

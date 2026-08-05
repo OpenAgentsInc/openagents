@@ -35,7 +35,7 @@ The model state is `NotUsed`, and each arm has exact zero model calls and zero
 provider tokens.
 
 The public aggregate is
-[`2026-07-22-evaluation.json`](../../../apps/openagents-desktop/benchmarks/graph-memory/2026-07-22-evaluation.json).
+`2026-07-22-evaluation.json`.
 Its file SHA-256 digest is
 `d8c1ad77677b6b10d4a0efa1f23dd237d7476f815262adb47709893256ef2178`.
 The owner-local row detail had digest
@@ -79,7 +79,7 @@ archive. The final inspection has no current graph and has zero counts in each
 plane.
 
 The aggregate is
-[`2026-07-22-owner-lifecycle.json`](../../../apps/openagents-desktop/benchmarks/graph-memory/2026-07-22-owner-lifecycle.json).
+`2026-07-22-owner-lifecycle.json`.
 Its file SHA-256 digest is
 `211617dc8a635b1c521433e931f8277b5e6cbef4adf2d94f45aa999f934a7145`.
 The custody rung is `standalone_proof_process_wrapping_key`. It is not an

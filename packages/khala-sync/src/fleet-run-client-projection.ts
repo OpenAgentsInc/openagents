@@ -78,10 +78,3 @@ export const FleetRunClientProjection = S.Struct({
   runs: S.Array(FleetRunClientRunProjection).check(S.isMaxLength(20)),
 });
 export type FleetRunClientProjection = typeof FleetRunClientProjection.Type;
-
-export const decodeFleetRunClientProjection = (
-  value: unknown,
-): FleetRunClientProjection =>
-  S.decodeUnknownSync(FleetRunClientProjection)(value, {
-    onExcessProperty: "error",
-  });

@@ -10,7 +10,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, test } from 'vitest'
 
-import type { Loadable } from './-download-data'
+import type { Loadable } from './-loadable'
 import {
   decodeOmegaDownloadResolution,
   omegaDownloadArtifactHref,
@@ -132,7 +132,9 @@ describe('OmegaDownloadSection (available)', () => {
     expect(html).toContain('Support boundary:')
     expect(html).toContain('tester channels')
     expect(html).toContain('Data risk:')
-    expect(html).toContain('separate product from OpenAgents Desktop')
+    expect(html).toContain('the OpenAgents desktop application')
+    // The retired Electron app must not be presented as a current download (#9325).
+    expect(html).not.toContain('OpenAgents Desktop support paths')
   })
 
   test('renders known limitations and the GitHub release links', () => {

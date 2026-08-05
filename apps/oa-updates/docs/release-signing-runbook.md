@@ -1,7 +1,7 @@
 # Release signing & GCP-only deploy runbook
 
 Date: 2026-06-15. The OpenAgents **release/provenance** key signs each artifact
-and authoritative manifest. Thus, Pylons, Autopilot, and users can verify the
+and authoritative manifest. Thus, Pylons and users can verify the
 OpenAgents source. They **fail closed** when verification fails. See
 `docs/ota/2026-06-15-ota-autoupdate-plan.md` §6b.
 
@@ -10,6 +10,11 @@ custody, backup, signing, and rotation procedures. **The signed artifacts
 publish only to our Google Cloud infra**
 (`updates.openagents.com`, the `oa-updates` Cloud Run service, project
 `openagentsgemini`).
+
+The surfaces this key currently protects are the **Pylon release feed**
+(`/pylon/<channel>/<platform>/feed.json`) and the **OpenAgents Mobile OTA**
+manifests. The Electron/Electrobun desktop feeds it used to protect were
+removed with the desktop app.
 
 ## The key (ed25519)
 
@@ -85,10 +90,15 @@ published feed manifests is tracked in #5043 / the OTA epic #5039.)
 ## Apple Developer ID (macOS code signing / notarization)
 
 Separate from the ed25519 release key above. The **Developer ID Application**
-cert signs + notarizes the Autopilot Desktop and Khala Code Desktop
-`.app`/`.dmg` artifacts so Gatekeeper accepts them (#5048 / Autopilot v1.0-rc
-#5046, #8245 for Khala Code). It does **not** sign Pylon CLI binaries — those
-use the ed25519 release key. Headless Pylon needs no Apple signing.
+cert signs + notarizes macOS `.app`/`.dmg` artifacts so Gatekeeper accepts them.
+
+**No artifact in this repo currently consumes it.** The desktop apps that did
+(Autopilot Desktop, Khala Code Desktop, and the Electron OpenAgents Desktop)
+have all been deleted. It does **not** sign Pylon CLI binaries — those use the
+ed25519 release key, and headless Pylon needs no Apple signing. The identity and
+its custody/recovery procedure are recorded here because the certificate is a
+live organizational secret that must stay backed up and revocable, and because
+the repo root `AGENTS.md` points here for it.
 
 - **Identity:** `Developer ID Application: OpenAgents, Inc. (HQWSG26L43)`, issued
   by Apple Developer ID CA (G2), team `HQWSG26L43`, valid 2026-06-15 → 2031.
@@ -103,16 +113,10 @@ use the ed25519 release key. Headless Pylon needs no Apple signing.
   must list `HQWSG26L43`.
 - **Env wiring:** `.secrets/appstoreconnect.env` sets
   `OA_DEVELOPER_ID_APPLICATION="Developer ID Application: OpenAgents, Inc. (HQWSG26L43)"`
-  (quoted — value has spaces/parens) alongside the `ASC_API_*` notary key.
-  `apps/autopilot-desktop/scripts/notarize-macos.sh` reads both.
-- **Khala Code Desktop (historical only):** the Electrobun app and its
-  `desktop/khala-code-desktop` feed are deprecated and frozen. Do not run its
-  release command or create new tags/artifacts. Its scripts remain temporarily
-  as signing/migration evidence. The shared desktop publish script rejects new
-  `khala-code-desktop` and `autopilot-desktop` writes while keeping old feeds
-  readable. The greenfield Electron app at
-  `apps/openagents-desktop` must establish an independent release/feed contract
-  under #8574 before any OpenAgents Desktop RC.
+  (quoted — value has spaces/parens) alongside the `ASC_API_*` notary key. The
+  `ASC_API_*` notary key is still used for iOS/App Store Connect submission of
+  OpenAgents Mobile; the `OA_DEVELOPER_ID_APPLICATION` value has no consumer in
+  this repo now that the desktop apps are deleted.
 
 ### Backup & recovery (device loss)
 

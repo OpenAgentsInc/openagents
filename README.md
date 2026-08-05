@@ -43,20 +43,19 @@ evidence the IDE.
 
 ## One product, Desktop first
 
-The OpenAgents product identity spans Desktop and mobile. Desktop is The Agent
-IDE today. Mobile is the retained compact companion. The accepted first product
-shape is deliberately narrower:
+The OpenAgents product identity spans Desktop and mobile. Omega is the Desktop
+Agent IDE, and it lives in its own repository. Mobile is the retained compact
+companion in this monorepo. The Electron OpenAgents Desktop application that
+held the Desktop role before Omega was deleted at owner direction on 2026-08-04
+(#9325).
 
-| App                    | Current role                                                                                                                                                                   |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **OpenAgents Desktop** | The primary local-first Agent IDE: a signed workroom around the user's ordinary logged-in Codex session, usable without an OpenAgents account                                  |
-| **OpenAgents mobile**  | The retained companion built on the same product identity and typed application model. Physical distribution and broader remote-coding claims remain separately evidence-gated |
+| App                   | Current role                                                                                                                                                                   |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Omega**             | The Desktop Agent IDE, released from the Omega repository and downloaded from `openagents.com/download`                                                                        |
+| **OpenAgents mobile** | The retained companion built on the same product identity and typed application model. Physical distribution and broader remote-coding claims remain separately evidence-gated |
 
 Codex is the first engine. Codex owns its model, agent, and tool loop.
-OpenAgents owns the durable product around it. The current Desktop MVP keeps
-its visible path intentionally small—New Chat, Chat, Project Home, and
-Settings—while making sessions, typed activity, child agents, bounded
-repository review, controls, recovery, updates, and diagnostics coherent.
+OpenAgents owns the durable product around it.
 
 ProductSpec and AssuranceSpec remain underlying authoring and verification
 tooling. They are not user-facing destinations in the MVP. Fleet, broad
@@ -140,19 +139,13 @@ other platforms remain explicitly untested. Execution is tracked in
 the wider reference set remains indexed in
 [Product Teardowns](docs/teardowns/README.md).
 
-Desktop Settings now schema-decodes a main-owned Grok/Cursor projection with
-probe-verified executable identity, validated alternate executable selection,
-advertised authentication state, session/cancellation/recovery state, and
-stable-versus-extension configuration provenance. Grok uses the existing local
-cached-token session for headless ACP by default—no API key is required. An
-intentionally supplied `XAI_API_KEY` remains an optional peer-advertised path.
-Cursor exposes only its advertised `cursor_login` flow. The
-support artifact is constructed in main from a closed refs-only schema and
-omits executable paths, environment, auth payloads, prompts, files, terminal
-content, and native events. Desktop derives its label from trusted-profile
-admission evidence. The pinned matrix remains the release authority and is not
-loaded by the renderer. The checked Grok and Cursor builds remain visibly
-experimental, and evidence for one can never promote the other.
+Grok uses the existing local cached-token session for headless ACP by
+default—no API key is required. An intentionally supplied `XAI_API_KEY` remains
+an optional peer-advertised path. Cursor exposes only its advertised
+`cursor_login` flow. The checked Grok and Cursor builds remain visibly
+experimental, and evidence for one can never promote the other. The Settings
+projection, support artifact, and pinned release matrix described here belonged
+to the deleted Electron Desktop app, and Omega owns that surface now.
 
 ## The front door to an open agent network
 
@@ -190,7 +183,7 @@ credentials, or repository data.
 
 | Layer        | Meaning                                                                                                                                                                        |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Product**  | The Agent IDE: OpenAgents Desktop today and the retained OpenAgents mobile companion                                                                                           |
+| **Product**  | The Agent IDE: Omega on Desktop and the retained OpenAgents mobile companion                                                                                                   |
 | **Platform** | The typed runtime, workspace capabilities, Effect Native, receipts, and broader retained Sync, Pylon, and Agent Computer substrate. Not all of it is required by the local MVP |
 | **Network**  | The intended open coordination topology being bootstrapped behind the Agent IDE: agents, tools, compute, people, verification, and accepted outcomes                           |
 | **Lab**      | Research, evaluation, and open-model work that improves the available workers while keeping the Agent IDE neutral among them                                                   |
@@ -212,8 +205,6 @@ thesis narrowed into the current Desktop product without disappearing.
 This is a Node.js, pnpm, Vite Plus, Effect, and Effect Schema monorepo. The
 current toolchain is pinned in [`package.json`](package.json).
 
-- [`apps/openagents-desktop`](apps/openagents-desktop/README.md) — Electron
-  host, tokenless Runtime Gateway, and the primary Agent IDE.
 - [`apps/openagents-mobile`](apps/openagents-mobile/README.md) — React
   Native/Expo host for the compact OpenAgents client.
 - [`apps/openagents.com`](apps/openagents.com/README.md) — public, auth, API,
@@ -233,7 +224,6 @@ changed:
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm run test:openagents-desktop
 pnpm run test:openagents-mobile
 pnpm run test:openagents.com
 pnpm run check:fast

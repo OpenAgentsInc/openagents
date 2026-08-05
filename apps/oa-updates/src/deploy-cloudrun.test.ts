@@ -35,11 +35,8 @@ const deployCommands = (
 };
 
 describe("oa-updates additive Cloud Run deploy command", () => {
-  test("Desktop-v2-only update (no seed) builds incrementally from the ready image digest and preserves existing mobile env/secrets", () => {
-    const { build, deploy } = deployCommands({
-      OA_RELEASE_SET_BUCKET: "openagents-release-fixture",
-      OA_RELEASE_SET_PINS_PATH: "/app/openagents-desktop-dist/release-set-pins.json",
-    });
+  test("bare code-only update (no seed) builds incrementally from the ready image digest and preserves existing mobile/Pylon env/secrets", () => {
+    const { build, deploy } = deployCommands({});
     expect(build).toContain("cloudbuild.incremental.yaml");
     expect(build).toContain(
       "projects/openagentsgemini/serviceAccounts/oa-cloud-image-builder@openagentsgemini.iam.gserviceaccount.com",
@@ -50,24 +47,16 @@ describe("oa-updates additive Cloud Run deploy command", () => {
     );
     expect(deploy).toContain(`${immutableBase.split("@")[0]}@${immutableBuiltDigest}`);
     expect(deploy).not.toContain("--source");
+    // Additive env/secret updates are what keep the already-attached
+    // OA_PYLON_RELEASES_DIST and mobile seed vars alive across a code push.
     expect(deploy).toContain("--update-env-vars");
     expect(deploy).not.toContain("--set-env-vars");
     expect(deploy).toContain("--update-secrets");
     const env = deploy[deploy.indexOf("--update-env-vars") + 1];
-    expect(env).toContain("OA_RELEASE_SET_BUCKET=openagents-release-fixture");
     expect(env).not.toContain("OA_SEED_DIST=");
   });
 
-  test("bare code-only update (no seed, no ReleaseSet config change) also builds incrementally", () => {
-    const { build, deploy } = deployCommands({});
-    expect(build).toContain("cloudbuild.incremental.yaml");
-    expect(build).toContain(
-      `_BASE_IMAGE=${immutableBase},_IMAGE=${immutableBase.split("@")[0]}:source-${"c".repeat(40)}`,
-    );
-    expect(deploy).not.toContain("--source");
-  });
-
-  test("mobile-only update (OA_SEED_DIST) does a full --source rebuild so the fresh export actually ships, and preserves existing Desktop v2 env", () => {
+  test("mobile-only update (OA_SEED_DIST) does a full --source rebuild so the fresh export actually ships", () => {
     const { build, deploy } = deployCommands({
       OA_SEED_DIST: "/app/dist",
       OA_SEED_RUNTIME: "fixture-runtime",
@@ -79,25 +68,29 @@ describe("oa-updates additive Cloud Run deploy command", () => {
     expect(deploy).toContain("--update-env-vars");
     const env = deploy[deploy.indexOf("--update-env-vars") + 1];
     expect(env).toContain("OA_SEED_DIST=/app/dist");
-    // REL-FEED-01 (#8993, 0f3f25419f) changed HOW the Desktop v2 feed is
-    // preserved: the deploy no longer omits the ReleaseSet vars and relies on
-    // --update-env-vars leaving them alone, it re-asserts the production
-    // defaults on every deploy. A mobile-only publish must therefore still
-    // carry them, so it cannot drop the signed stable/rc Desktop channels.
-    expect(env).toContain("OA_RELEASE_SET_BUCKET=openagentsgemini-oa-updates-release-set");
-    expect(env).toContain(
-      "OA_RELEASE_SET_PINS_PATH=/app/openagents-desktop-dist/release-set-pins.json",
-    );
+    expect(env).toContain("OA_SEED_RUNTIME=fixture-runtime");
+    expect(env).toContain("OA_SEED_BRANCH=openagents-production");
   });
 
-  test("legacy Desktop v1 seed update (OA_DESKTOP_RELEASES_DIST) also does a full --source rebuild", () => {
-    const { build, deploy } = deployCommands({
+  // The desktop app and its feeds were deleted. The deploy must no longer
+  // assert any desktop seed or ReleaseSet v2 env var, and must not resurrect
+  // one from a stale exported environment.
+  test("never emits desktop seed or ReleaseSet env vars, even when they are exported", () => {
+    const { deploy } = deployCommands({
       OA_DESKTOP_RELEASES_DIST: "/app/desktop-dist",
+      OA_OPENAGENTS_DESKTOP_RELEASE_DIST: "/app/openagents-desktop-dist",
+      OA_DESKTOP_OTA_DIR: "/app/desktop-ota",
+      OA_RELEASE_SET_BUCKET: "openagents-release-fixture",
     });
-    expect(build).toEqual([]);
-    expect(deploy).toContain("--source");
     const env = deploy[deploy.indexOf("--update-env-vars") + 1];
-    expect(env).toContain("OA_DESKTOP_RELEASES_DIST=/app/desktop-dist");
+    expect(env).not.toContain("OA_DESKTOP_RELEASES_DIST");
+    expect(env).not.toContain("OA_OPENAGENTS_DESKTOP_RELEASE_DIST");
+    expect(env).not.toContain("OA_DESKTOP_OTA_DIR");
+    expect(env).not.toContain("OA_RELEASE_SET_BUCKET");
+    expect(env).not.toContain("OA_RELEASE_SET_PINS_PATH");
+    // A desktop-only export is no longer a seed publish, so it stays on the
+    // non-destructive incremental path.
+    expect(deploy).not.toContain("--source");
   });
 
   test("explicit OA_UPDATES_DEPLOY_MODE=full forces a full rebuild even with no seed present", () => {
@@ -106,11 +99,9 @@ describe("oa-updates additive Cloud Run deploy command", () => {
     expect(deploy).toContain("--source");
   });
 
-  test("explicit OA_UPDATES_DEPLOY_MODE=incremental forces the incremental path even with only ReleaseSet config", () => {
+  test("explicit OA_UPDATES_DEPLOY_MODE=incremental forces the incremental path", () => {
     const { build, deploy } = deployCommands({
       OA_UPDATES_DEPLOY_MODE: "incremental",
-      OA_RELEASE_SET_BUCKET: "openagents-release-fixture",
-      OA_RELEASE_SET_PINS_PATH: "/app/openagents-desktop-dist/release-set-pins.json",
     });
     expect(build).toContain("cloudbuild.incremental.yaml");
     expect(deploy).not.toContain("--source");

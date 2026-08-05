@@ -234,13 +234,10 @@ not waive these controls:
   equivalent Keychain dump/probe during an unattended run. Those commands can
   open one blocking password dialog per probe and make owner-AFK automation
   unusable. Do not inspect or decrypt the `OpenAgents Safe Storage` item.
-- For signed-out or local-only Desktop verification, use the existing
-  double-gated isolated app proof: set
-  `OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF=1` and place
-  `OPENAGENTS_DESKTOP_USER_DATA` strictly beneath the OS temporary directory.
-  That mode uses Chromium's mock keychain and deliberately disables the native
-  session vault, it can never prove authenticated Sync.
-- For authenticated Desktop verification, launch the signed app against its
+- The Electron Desktop isolated-app-proof mode that used to serve signed-out
+  verification was deleted with the app on 2026-08-04 (#9325). Do not look for
+  `OPENAGENTS_DESKTOP_*` environment gates.
+- For authenticated app verification, launch the signed app against its
   existing normal profile and consume only the app's public-safe session state,
   IPC results, and visible UI. Never extract credentials as a diagnostic. Use
   typed app/API controls or safe visible UI automation when the action is
@@ -317,11 +314,11 @@ not waive these controls:
 - `docs/mvp/` owns the canonical first-deployable-product package: its exact
   ProductSpec, supporting audit, and reading-order README. The ProductSpec owns
   intent, `docs/sol/MASTER_ROADMAP.md` still owns priority and sequencing.
-- `apps/openagents-desktop/src/product-spec-workroom*` owns the implemented
-  ProductSpec plan/packet/lease/evidence/verification-ref/owner-
-  disposition runtime loop. Assurance may feed it exact receipt references,
-  it does not replace that state or turn workroom `verified` into release or
-  public-claim authority.
+- The desktop ProductSpec workroom that owned the implemented
+  plan/packet/lease/evidence/verification-ref/owner-disposition runtime loop was
+  deleted with the Electron app on 2026-08-04 (#9325). Assurance may feed a
+  successor exact receipt references, it does not replace that state or turn
+  workroom `verified` into release or public-claim authority.
 - `docs/assurance/` owns the proposed AssuranceSpec companion format, Observer
   architecture, current-system map, and MVP-first dogfood plan. It owns proof
   design, not product intent, test execution, release decisions, or public
@@ -335,8 +332,8 @@ not waive these controls:
   authority.
 - `docs/qa/` owns QA execution notes, operational runbooks, oracle descriptions,
   and retained historical evidence. Most current files describe the frozen
-  Khala Code migration source, their dated green state is not evidence for
-  `apps/openagents-desktop`. AssuranceSpec semantics do not live there.
+  Khala Code migration source, and their dated green state is not evidence for
+  any current surface. AssuranceSpec semantics do not live there.
 - `docs/forum/`, `docs/nostr/`, and `docs/research/` own dated audits for
   those areas.
 
@@ -811,13 +808,16 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
 
 - **`docs/DEPLOYMENT.md` is the single hub for every deploy / publish / release.**
   Read it first for any of: deploying the `openagents.com` Cloud Run service,
-  publishing Pylon to npm, cutting a future OpenAgents Desktop Electron release
-  from `apps/openagents-desktop` (including the signed/notarized macOS DMG), the
-  `updates.openagents.com` OTA feed, or the greenfield mobile app. The deprecated
-  Khala clients have no active release lane. The hub indexes the per-surface
-  runbooks (the sources of truth), the one-line
-  recipe for each, the GitHub release-tag convention, and where the signing
-  secrets live (`~/work/.secrets/` + GCP Secret Manager, project `openagentsgemini`).
+  publishing Pylon to npm, publishing signed Pylon binaries, the
+  `updates.openagents.com` feed (mobile Expo OTA and Pylon releases only), or
+  the greenfield mobile app. The Electron OpenAgents Desktop release lane was
+  deleted with the app on 2026-08-04 (#9325): there is no desktop package,
+  publish, promote, or update command in this repository, and Omega releases
+  from the Omega repository. The deprecated Khala clients have no active
+  release lane. The hub indexes the per-surface runbooks (the sources of
+  truth), the one-line recipe for each, the GitHub release-tag convention, and
+  where the signing secrets live (`~/work/.secrets/` + GCP Secret Manager,
+  project `openagentsgemini`).
 - **Google Cloud Authentication (`gcloud` on Chris's dev machine):** Do NOT attempt interactive `gcloud auth login` or user OAuth. Prefix all `gcloud` commands and deployment scripts with `CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config` (or `/Users/christopherdavid/work/.secrets/gcloud-sa-config`). This uses the pre-authenticated workspace service account (`oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com`).
   Example:
   `CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config bash apps/openagents.com/workers/api/scripts/deploy-cloudrun.sh production`
@@ -899,21 +899,11 @@ and deterministic Effect tests. Do not skip it merely because
   `--no-verify` is for docs-only changes (and for pushing a worktree commit that
   already ran `pnpm run check` green, where the hook would only re-run the same
   gate) — it is NEVER a shortcut to land unverified code.
-- **The owner dev launcher is repository-owned.** Its canonical source is
-  `apps/openagents-desktop/scripts/oa-dev-launch`, keep the installed
-  `~/.local/bin/oa-dev-launch` copy aligned with it. Dependency synchronization
-  must use the frozen pnpm lockfile with lifecycle scripts disabled, because a
-  normal app launch may not run all 80 workspace projects' `prepare` hooks.
-  The launcher verifies and repairs Electron's required runtime explicitly
-  after dependency materialization. A running OpenAgents Dev process and its
-  `.oa-launch` worktree are one live generation: agents must never manually
-  fast-forward/reset/clean that worktree or directly kill its pnpm, dev-server,
-  Electron, or app process tree. Apply a new main-process generation only with
-  `oa-dev --restart`, whose launchd-owned coordinator pins `origin/main`, takes
-  durable ownership before shutdown, drains the old process group, synchronizes
-  the worktree only after it is empty, and records replacement readiness. With
-  unrestricted host authority this is an agent policy and canonical-tool
-  boundary, not a claim that arbitrary `/bin/kill` can be intercepted.
+- **The owner dev launcher was deleted with the Electron app (2026-08-04,
+  #9325).** `oa-dev-launch`, `oa-dev --restart`, and the managed `.oa-launch`
+  worktree generation belonged to that app. Do not look for them, install them,
+  or treat an existing `~/.local/bin/oa-dev-launch` copy as repository-owned. A
+  future owner launcher needs a new decision and its own rules.
 - Read `INVARIANTS.md` before changing authority, routing, payment,
   projection, or public-claim surfaces.
 - **One completion gate:** `pnpm run check` is the repository definition of
@@ -948,9 +938,12 @@ and deterministic Effect tests. Do not skip it merely because
   too large or out of scope for the current change, fix what is cheap and **explicitly
   flag the rest** (in the report, and a tracking issue if it will persist) — never
   silently leave a red, and never describe a partially-green run as clean.
-- **Product shape (owner decision, 2026-07-09, amended 2026-07-18):** there
-  are three product apps: the OpenAgents web app (`/`, `/forum`, and
-  `/promises`), the **OpenAgents** mobile app, and **OpenAgents Desktop**.
+- **Product shape (owner decision, 2026-07-09, amended 2026-07-18 and
+  2026-08-04):** there are three product apps: the OpenAgents web app (`/`,
+  `/forum`, and `/promises`), the **OpenAgents** mobile app, and **Omega** on
+  Desktop. Omega lives in the Omega repository. The Electron OpenAgents Desktop
+  app that used to hold the Desktop slot was deleted at owner direction on
+  2026-08-04 (#9325).
   The standalone Sarah surface remains removed: `/sarah` and every
   `/sarah/api/*` route are 404 tombstones and `apps/sarah` is deleted. The
   2026-07-18 reboot makes `principal.sarah` an authenticated owner-orchestrator
@@ -967,21 +960,12 @@ and deterministic Effect tests. Do not skip it merely because
   host, its product name is `OpenAgents`, its iOS bundle identifier and Android
   application ID are exactly `com.openagents.app`, and its checked-in icon is
   the canonical `apps/openagents-mobile/assets/images/icon.png` (SHA-256
-  `0a1865ac6d1efc792d365d9a37af9e6ffa3270fa7c8731f36129f35371bfc7ce`). Build
-  OpenAgents Desktop at `apps/openagents-desktop` with Effect Native on an
-  Electron host, using
-  `https://github.com/LuanRoger/electron-shadcn` as the required starting
-  template (reviewed local mirror `~/work/projects/repos/electron-shadcn`). Pin
-  the imported upstream commit and preserve its MIT attribution. The reviewed
-  template enables `contextIsolation` but also enables `nodeIntegration`, turn
-  `nodeIntegration` off, set `sandbox: true`, remove its upstream updater and
-  Forge publisher target before first launch/package, install deny-by-default
-  permission/navigation/window-open handling, and replace its broad starter
-  IPC/application state with the narrow, mechanically checked Effect Schema/
-  Effect Native boundary before adding product capability. Freeze the full
-  platform/protocol/data/update/OAuth identity set in `NEEDS_OWNER.md` before
-  the first packaged build. The retired Khala mobile clients were removed on
-  2026-07-14 and must not be restored or imported into the supported apps.
+  `0a1865ac6d1efc792d365d9a37af9e6ffa3270fa7c8731f36129f35371bfc7ce`). The
+  greenfield Electron desktop half of this decision ended on 2026-08-04
+  (#9325): the desktop app was deleted and Omega carries Desktop from its own
+  repository. Do not rebuild an Electron host here. The retired Khala mobile
+  clients were removed on 2026-07-14 and must not be restored or imported into
+  the supported apps.
 - **Supersession removals (owner decision, 2026-07-14):** the owner directed
   ("khala-code-desktop must itself be deprecated and all relevant promises
   removed (OpenAgents desktop supercedes it). ditto for apps/autopilot-desktop.
@@ -997,7 +981,7 @@ and deterministic Effect tests. Do not skip it merely because
   A later owner direction on 2026-07-14 removed all three remaining `clients/`
   applications (`khala-cli`, `khala-ios`, and `khala-mobile`) and their live
   release/onboarding dependents. Historical evidence remains recoverable from
-  Git, Pylon, OpenAgents mobile, and OpenAgents Desktop are the supported paths.
+  Git, and Pylon, OpenAgents mobile, and Omega are the supported paths.
   `clients/khala-code-desktop` was deleted after its live Pylon/QA dependents
   were migrated in #8793. Recover its final source with
   `git show c7044f5a2870110b331c5a7288caceb85488290a:<path>`, QA-owned fixture
@@ -1027,13 +1011,12 @@ and deterministic Effect tests. Do not skip it merely because
   surfaces in `apps/openagents.com/apps/web` are legacy, retained routes are
   converted under #8634/#8635 and all other public pages retired, except for
   the owner-directed 2026-07-18 restoration of the read-only
-  `/trace/{uuid}` ATIF evidence viewer in `apps/start`. The
-  OpenAgents Desktop target is **Effect Native on Electron** (#8574 on the
-  effect-native Phase 4 epic #20/#21–#43), the previously planned
-  React+Tailwind and Electrobun destination shells are cancelled. Retained web
-  conversion PRs delete the legacy surface they replace. Greenfield mobile and
-  desktop PRs keep parity/QAM gates green while extracting shared contracts,
-  component gaps go upstream through the
+  `/trace/{uuid}` ATIF evidence viewer in `apps/start`. The Effect Native on
+  Electron desktop target (#8574) ended with the app deletion on 2026-08-04
+  (#9325), as did the earlier React+Tailwind and Electrobun destination shells.
+  Retained web conversion PRs delete the legacy surface they replace.
+  Greenfield mobile PRs keep parity/QAM gates green while extracting shared
+  contracts, component gaps go upstream through the
   effect-native GAPS register (EN-2 #8572), never local one-off primitives.
 - Never stash, reset, checkout, restore, or otherwise move another agent's
   uncommitted work out of the way. If a checkout is dirty with concurrent work
@@ -1059,7 +1042,7 @@ and deterministic Effect tests. Do not skip it merely because
   Desktop media helper. It owns microphone/playback device I/O, resampling,
   bounded audio buffers, packetization, the direct authenticated media socket,
   and prompt cancellation only. Effect Schema in `packages/audio-contract`
-  remains canonical, Electron/Runtime Gateway supervision, identity, policy,
+  remains canonical, and host supervision, identity, policy,
   commands, conversations, Sync, storage orchestration, Google adapters,
   receipts, and all UI remain Effect/TypeScript. The helper never becomes a
   Tauri/WGPUI shell, links into the renderer, or learns command/Sync/storage

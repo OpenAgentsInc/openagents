@@ -17,8 +17,8 @@ export const DOWNLOAD_URL = '/download'
 
 // DIST-11 (#8924): there is no hard-coded release constant. Version, size,
 // format, and artifact links are resolver-derived on /download from the
-// currently promoted SIGNED release set (see
-// `../desktop-download-resolver.server.ts`); every public CTA routes to
+// SIGNED Omega download manifest (see
+// `../omega-download-resolver.server.ts`); every public CTA routes to
 // DOWNLOAD_URL, never to a mutable artifact.
 
 export const PRODUCT_BOUNDARIES = [

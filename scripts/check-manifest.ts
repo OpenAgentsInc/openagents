@@ -52,10 +52,6 @@ export const rootTestTargets: readonly CheckTarget[] = [
     command: ["pnpm", "exec", "vp", "test", "--run", "scripts/qa-nightly-matrix.test.ts"],
   },
   {
-    name: "qa-visual-smoke-gate",
-    command: ["pnpm", "exec", "vp", "test", "--run", "scripts/qa-visual-smoke-gate.test.ts"],
-  },
-  {
     name: "github-issue-triage",
     command: ["pnpm", "exec", "vp", "test", "--run", "scripts/github-issue-triage.test.ts"],
   },
@@ -147,7 +143,6 @@ export const componentExclusions: Readonly<Partial<Record<CheckComponent, readon
 };
 
 /** A workspace may expose a stronger completion script than its ordinary script. */
-export const componentOverrides: Readonly<Record<string, Partial<Record<CheckComponent, string>>>> =
-  {
-    "apps/openagents-desktop": { test: "verify" },
-  };
+export const componentOverrides: Readonly<
+  Record<string, Partial<Record<CheckComponent, string>>>
+> = {};

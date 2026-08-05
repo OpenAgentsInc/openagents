@@ -1,8 +1,8 @@
 # OpenAgents IDE roadmap
 
 Date: 2026-07-19
-Updated: 2026-07-23
-Status: superseded Electron implementation sequence
+Updated: 2026-08-04
+Status: retired Electron implementation sequence, retained as a record
 Baseline: OpenAgents `43b5dbc56e`. Cursor evidence through 3.11.13
 
 ## 2026-07-23 owner disposition
@@ -17,11 +17,19 @@ An attached agent, such as Hermes, keeps its existing home and configuration.
 The separate Buzz installation and standalone relay and forge program are
 canceled.
 
-This roadmap remains the factual record for the current Electron IDE.
+This roadmap remains the factual record for the Electron IDE.
 Its landed Effect services, contracts, tests, and receipts are migration input.
 They are not discarded.
 This roadmap no longer dispatches new Electron shell or editor-parity packets.
 Live defect, release, and current-issue authority remains unchanged.
+
+## 2026-08-04 owner direction (#9325)
+
+The owner directed that the Electron application be deleted. The desktop app
+tree, its release pipeline, and its update feed are gone. Every path this
+document names under that tree is recoverable only with
+`git show <commit>:<path>`. The IDE benchmark artifacts moved to
+repository-root `benchmarks/ide/`. Omega owns the Desktop and IDE product.
 
 Omega implementation cannot start from this supersession note.
 It first requires the ProductSpec, AssuranceSpec, invariant, release, and
@@ -441,24 +449,28 @@ Issue [#9015](https://github.com/OpenAgentsInc/openagents/issues/9015) is the
 exact delivery receipt for this packet. Its closing comment records the landed
 `main` SHA and final command results. The implementation evidence is:
 
-- `apps/openagents-desktop/src/ide/project-contract.ts`: the identified,
-  schema-first project graph, branded refs/generations, tagged lifecycle and
-  navigation variants, excerpts, proposals, and boundary decoders.
-- `apps/openagents-desktop/src/ide/project-service.ts`: the scoped
-  `Context.Service` / `Layer.effect` implementation with named operations,
-  decoded inputs, typed expected failures, atomic generation changes,
-  capability stop semantics, and late-result fencing.
-- `apps/openagents-desktop/src/workspace-contract.ts` and the editor recovery
-  schema: the shipped Files boundary types now derive from their schemas
-  instead of mirroring them by hand.
-- `apps/openagents-desktop/scripts/check-ide-boundaries.ts`: the mechanical
-  guard against raw parallel contracts, unchecked IDE authority casts,
-  widget/native authority, Rust schema mirrors, or removal of required Effect
-  lifecycle primitives.
-- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-00-baseline.json`
-  and its raw/startup companions: public-safe p50/p95/p99 observations plus
-  explicit gaps for Finder, input-to-paint, real PTY, worker cancellation, and
-  split Electron resource telemetry.
+The desktop source this receipt describes was deleted with the Electron app on
+2026-08-04 (#9325). Recover any of it with `git show <commit>:<path>`. The
+benchmark artifacts moved to repository-root `benchmarks/ide/` and remain
+readable.
+
+- the desktop IDE project contract: the identified, schema-first project graph,
+  branded refs/generations, tagged lifecycle and navigation variants, excerpts,
+  proposals, and boundary decoders.
+- the desktop IDE project service: the scoped `Context.Service` /
+  `Layer.effect` implementation with named operations, decoded inputs, typed
+  expected failures, atomic generation changes, capability stop semantics, and
+  late-result fencing.
+- the desktop workspace contract and the editor recovery schema: the shipped
+  Files boundary types derived from their schemas instead of mirroring them by
+  hand.
+- the desktop IDE boundary check script: the mechanical guard against raw
+  parallel contracts, unchecked IDE authority casts, widget/native authority,
+  Rust schema mirrors, or removal of required Effect lifecycle primitives.
+- `benchmarks/ide/2026-07-19-ide-00-baseline.json` and its raw/startup
+  companions: public-safe p50/p95/p99 observations plus explicit gaps for
+  Finder, input-to-paint, real PTY, worker cancellation, and split resource
+  telemetry.
 - behavior contract
   `openagents_desktop.ide_project_generation_fencing.v1` and the project,
   shell, workspace-editor, Files, search, Git, terminal, recovery, and launch

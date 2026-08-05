@@ -2,8 +2,11 @@ import { afterEach, describe, expect, test } from "vite-plus/test"
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { resolve } from "node:path"
+import { Schema } from "effect"
 
-import { computeEnvironmentProfileDigest, decodeAssuranceReceipt, decodeMutationPlan, decodeOracleSensitivityReceipt, executeMutationPlan, mutationSetDigestForPlan, OPENAGENTS_MUTATION_MAX_MUTANTS, sha256Digest, type AssuranceEnvironmentProfileDocument, type AssuranceExecutionUnit, type AssuranceManifest } from "../src/index.ts"
+import { AssuranceReceiptSchema, computeEnvironmentProfileDigest, decodeMutationPlan, decodeOracleSensitivityReceipt, executeMutationPlan, mutationSetDigestForPlan, OPENAGENTS_MUTATION_MAX_MUTANTS, sha256Digest, type AssuranceEnvironmentProfileDocument, type AssuranceExecutionUnit, type AssuranceManifest } from "../src/index.ts"
+
+const decodeAssuranceReceipt = Schema.decodeUnknownSync(AssuranceReceiptSchema)
 
 const roots: string[] = []
 const repositoryRoot = resolve(import.meta.dirname, "../../..")

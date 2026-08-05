@@ -154,7 +154,6 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
         "https://github.com/OpenAgentsInc/openagents/issues/8668",
         "packages/khala-sync-client/src/chat.ts",
         "packages/khala-sync-client/src/conversation.ts",
-        "apps/openagents-desktop/src/desktop-sync-host.ts",
       ],
       oracles: [],
       productArea: "khala sync native conversation continuity",

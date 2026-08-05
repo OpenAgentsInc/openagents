@@ -20,11 +20,13 @@ import { userFacingCopy } from './-share-fetch'
 // rolled Tailwind card CSS. `workers/api/src/share-projections.ts` now emits
 // the widened `WorkroomTimelinePart` union (reasoning, command, fileChange,
 // toolCall, plan, approval, agent, notice, compaction, meter — mirroring the
-// desktop `WorkbenchItem` model) for every kind BUT plain inline text, so
-// this module now projects each non-text part into the same
-// `WorkbenchDispatchItem` shape `apps/openagents-desktop`'s timeline
-// dispatches, and renders it through `@openagentsinc/ui/desktop-workbench`'s
-// `dispatchWorkbenchItem` — the EXACT same typed components desktop uses.
+// the shared `WorkbenchItem` model) for every kind BUT plain inline text, so
+// this module now projects each non-text part into the
+// `WorkbenchDispatchItem` shape and renders it through
+// `@openagentsinc/ui/desktop-workbench`'s `dispatchWorkbenchItem` — the
+// shared typed workbench components. (The Electron `apps/openagents-desktop`
+// app that first dispatched this shape is deleted; the components it used
+// live on in `@openagentsinc/ui`.)
 // The legacy `tool`/`diff`/`file` kinds keep working (older persisted shares
 // still decode and render), projected onto the nearest widened shape.
 //

@@ -22,7 +22,6 @@
     "access": "public"
   },
   "scripts": {
-    "assure:mvp": "node --import tsx scripts/run-mvp-assurance.ts",
     "test": "vp test --run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "pack:public": "node --import tsx scripts/pack-public.ts",

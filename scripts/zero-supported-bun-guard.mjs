@@ -47,8 +47,6 @@ const reviewedNegativePaths = new Set([
   "scripts/effect-authority-boundary-scan.ts",
   "scripts/zero-supported-bun-guard.mjs",
   "scripts/zero-supported-bun-guard.test.mjs",
-  "apps/openagents-desktop/scripts/release-preflight.ts",
-  "apps/openagents-desktop/tests/electron-boundary.test.ts",
   "apps/pylon/tests/gcloud-setup-script.test.ts",
   "packages/behavior-contracts/src/sarah-retired.ts",
   "packages/khala-sync-server/src/test/local-postgres.ts",

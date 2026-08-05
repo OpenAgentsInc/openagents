@@ -18,7 +18,7 @@ import { homedir } from "node:os";
 
 import { Schema } from "effect";
 
-import { openCodexAppServerClient } from "../../../openagents-desktop/src/codex-app-server-client.ts";
+import { openCodexAppServerClient } from "./codex-app-server-client.ts";
 
 export const NATIVE_CODEX_AUTH_MAX_BYTES = 256 * 1024;
 export const NATIVE_CODEX_AUTH_DEFAULT_TIMEOUT_MS = 20_000;

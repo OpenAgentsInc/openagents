@@ -19,7 +19,6 @@ describe("qa nightly matrix plan", () => {
     expect(steps.map(step => step.id)).toEqual([
       "harness-suite",
       "behavior-contracts",
-      "desktop-verify",
       "monkey-night",
       "model-based",
     ])
@@ -60,7 +59,6 @@ describe("qa nightly matrix report", () => {
       expect(calls).toEqual([
         "harness-suite",
         "behavior-contracts",
-        "desktop-verify",
         "monkey-night",
         "model-based",
       ])
@@ -174,8 +172,8 @@ describe("qa nightly matrix report", () => {
     const root = await mkdtemp(join(tmpdir(), "qa-nightly-fail-"))
     const commandRunner: QaNightlyCommandRunner = async step => ({
       durationMs: 3,
-      exitCode: step.id === "desktop-verify" ? 1 : 0,
-      stderr: step.id === "desktop-verify" ? "fixture failure" : "",
+      exitCode: step.id === "behavior-contracts" ? 1 : 0,
+      stderr: step.id === "behavior-contracts" ? "fixture failure" : "",
       stdout: "",
     })
     const filed: string[] = []
@@ -183,7 +181,7 @@ describe("qa nightly matrix report", () => {
       filed.push(input.title)
       const body = await readFile(input.bodyPath, "utf8")
       expect(body).toContain("### Affected surface")
-      expect(body).toContain("desktop-verify")
+      expect(body).toContain("behavior-contracts")
       return {
         issueUrl: "https://github.com/OpenAgentsInc/openagents/issues/9999",
         status: "filed",
@@ -400,8 +398,8 @@ describe("qa nightly matrix report", () => {
       attemptsByStep.set(step.id, attempt)
       return {
         durationMs: 4,
-        exitCode: step.id === "desktop-verify" && attempt === 1 ? 1 : 0,
-        stderr: step.id === "desktop-verify" && attempt === 1 ? "intermittent desktop suite error" : "",
+        exitCode: step.id === "behavior-contracts" && attempt === 1 ? 1 : 0,
+        stderr: step.id === "behavior-contracts" && attempt === 1 ? "intermittent behavior-contract suite error" : "",
         stdout: "",
       }
     }
@@ -410,9 +408,9 @@ describe("qa nightly matrix report", () => {
       filed.push(input.title)
       const body = await readFile(input.bodyPath, "utf8")
       if (input.title.includes("flake quarantined")) {
-        expect(body).toContain("desktop-verify")
-        expect(body).toContain("desktop-verify.log")
-        expect(body).toContain("desktop-verify.retry.log")
+        expect(body).toContain("behavior-contracts")
+        expect(body).toContain("behavior-contracts.log")
+        expect(body).toContain("behavior-contracts.retry.log")
       }
       return {
         issueUrl: `https://github.com/OpenAgentsInc/openagents/issues/${filed.length}`,
@@ -432,16 +430,16 @@ describe("qa nightly matrix report", () => {
         now: () => "2026-07-02T13:00:00.000Z",
         root,
       })
-      const desktopStep = report.steps.find(step => step.id === "desktop-verify")
+      const flakyStep = report.steps.find(step => step.id === "behavior-contracts")
       const quarantine = JSON.parse(await readFile(join(root, report.quarantineLedgerPath), "utf8"))
 
       expect(report.status).toBe("failed")
-      expect(desktopStep?.status).toBe("flaky")
-      expect(desktopStep?.attempts.map(attempt => attempt.status)).toEqual(["failed", "passed"])
+      expect(flakyStep?.status).toBe("flaky")
+      expect(flakyStep?.attempts.map(attempt => attempt.status)).toEqual(["failed", "passed"])
       expect(quarantine.entries).toHaveLength(1)
-      expect(quarantine.entries[0].stepId).toBe("desktop-verify")
+      expect(quarantine.entries[0].stepId).toBe("behavior-contracts")
       expect(report.quarantineIssueStatus?.status).toBe("filed")
-      expect(filed).toContain("[Bug]: Khala Code QA flake quarantined desktop-verify")
+      expect(filed).toContain("[Bug]: Khala Code QA flake quarantined behavior-contracts")
     } finally {
       await rm(root, { force: true, recursive: true })
     }

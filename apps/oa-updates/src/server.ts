@@ -11,87 +11,32 @@ import {
 import { buildSignedManifestResponse } from "./signed-response.ts"
 import { createNodeRegistry, type NodeRegistration } from "./node-registry.ts"
 import {
-  DEFAULT_DESKTOP_RELEASE_PRODUCT,
-  normalizeDesktopReleaseProduct,
-  sortDesktopFeed,
-  type DesktopReleaseProduct,
-  type DesktopUpdateManifest,
-} from "./desktop-release.ts"
-import {
   buildPylonFeed,
   normalizePylonPlatform,
   type PylonPlatform,
   type PylonReleaseManifest,
 } from "./pylon-release.ts"
-import type { OpenAgentsDesktopRelease } from "./openagents-desktop-release.ts"
-import {
-  isLegacyLockedDesktopProduct,
-  LEGACY_DESKTOP_OTA_SURFACE,
-  legacyDesktopLockoutResponse,
-  type LegacyDesktopLockoutMode,
-} from "./legacy-desktop-lockout.ts"
-import type {
-  AdmitReleaseSetCandidateInput,
-  ReleaseSetCandidate,
-  ReleaseSetChannel,
-  ReleaseSetFeed,
-  ReleaseSetPointer,
-} from "./release-set-feed.ts"
 
 type CreateUpdatesServerOptions = {
   port?: number
   signingKeyPem?: string
   keyid?: string
-  /**
-   * Legacy Electrobun desktop lockout (CUT-26, openagents#8706). ARMED by
-   * default — the deprecated khala-code-desktop / autopilot-desktop feeds
-   * and OTA files answer with one typed 410 lockout document. Pass
-   * "disarmed_historical_read_only" only for archival inspection.
-   */
-  legacyDesktopLockout?: LegacyDesktopLockoutMode
-  releaseSetFeed?: ReleaseSetFeed
 }
 
 export type UpdatesServer = {
   fetch: (request: Request) => Promise<Response>
   registerUpdate: (update: Update) => void
-  registerDesktopUpdate: (
-    channel: string,
-    manifest: DesktopUpdateManifest,
-    product?: DesktopReleaseProduct,
-  ) => void
   registerPylonUpdate: (manifest: PylonReleaseManifest) => void
-  registerOpenAgentsDesktopRelease: (release: OpenAgentsDesktopRelease) => void
   // Serve a large asset (e.g. a Pylon binary) straight from disk by hash,
   // streamed — so the seed never loads hundreds of MB into memory at boot.
   registerDiskAsset: (hash: string, path: string, contentType?: string) => void
-  // Serve an Electrobun desktop OTA artifact (<prefix>-update.json / .tar.zst /
-  // .dmg / .patch) at /desktop/<filename>, streamed from disk.
-  registerDesktopOtaFile: (filename: string, path: string, contentType?: string) => void
   putAsset: (
     bytes: Uint8Array,
     contentType?: string,
   ) => Promise<{ hash: string; url: string }>
-  admitReleaseSetCandidate: (
-    input: AdmitReleaseSetCandidateInput,
-  ) => Promise<ReleaseSetCandidate>
-  promoteReleaseSet: (
-    channel: ReleaseSetChannel,
-    generation: string,
-    expectedRevision: number | null,
-  ) => Promise<ReleaseSetPointer>
-  rollbackReleaseSet: (
-    channel: ReleaseSetChannel,
-    expectedRevision: number,
-  ) => Promise<ReleaseSetPointer>
 }
 
 const defaultPort = 3000
-
-const desktopFeedKey = (
-  product: DesktopReleaseProduct,
-  channel: string,
-): string => `${product}/${channel}`
 
 const headersFromRequest = (request: Request): Record<string, string> =>
   Object.fromEntries(request.headers.entries())
@@ -161,20 +106,12 @@ export function createUpdatesServer(
   options: CreateUpdatesServerOptions = {},
 ): UpdatesServer {
   const port = options.port ?? defaultPort
-  // Fail closed: the legacy desktop lockout is armed unless explicitly and
-  // exactly disarmed for historical read-only serving.
-  const legacyLockoutArmed =
-    (options.legacyDesktopLockout ?? "armed") !== "disarmed_historical_read_only"
   const updates = new Map<string, Update>()
   const channelToBranch = new Map<string, string>()
-  const desktopFeeds = new Map<string, DesktopUpdateManifest[]>()
-  const openAgentsDesktopReleases = new Map<string, OpenAgentsDesktopRelease>()
   // key: `${channel}/${platform}` -> releases (latest first)
   const pylonFeeds = new Map<string, PylonReleaseManifest[]>()
   // hash -> on-disk file served by streaming (large binaries never held in memory)
   const diskAssets = new Map<string, { path: string; contentType: string }>()
-  // filename -> on-disk Electrobun desktop OTA artifact, served at /desktop/<filename>
-  const desktopOtaFiles = new Map<string, { path: string; contentType: string }>()
   const assetContentTypes = new Map<string, string>()
   const assetStore: AssetStore = createInMemoryAssetStore(
     `http://localhost:${port}`,
@@ -185,39 +122,7 @@ export function createUpdatesServer(
     async fetch(request) {
       const url = new URL(request.url)
 
-      const releaseSetResponse = await options.releaseSetFeed?.fetch(request)
-      if (releaseSetResponse !== undefined && releaseSetResponse !== null) {
-        return releaseSetResponse
-      }
-
       if (request.method === "GET") {
-        const openAgentsDesktopMatch = url.pathname.match(
-          /^\/desktop\/openagents\/(stable|rc)\/(manifest|manifest\.sig|release)\.json$/,
-        )
-        if (openAgentsDesktopMatch !== null) {
-          const release = openAgentsDesktopReleases.get(openAgentsDesktopMatch[1])
-          if (release === undefined) return new Response("Not found", { status: 404 })
-          if (openAgentsDesktopMatch[2] === "manifest") {
-            return new Response(Uint8Array.from(release.manifestBytes).buffer, {
-              headers: { "cache-control": "no-store", "content-type": "application/json" },
-            })
-          }
-          if (openAgentsDesktopMatch[2] === "manifest.sig") {
-            return jsonResponse(release.signature, { "cache-control": "no-store" })
-          }
-          // release.json: artifact TRANSPORT discovery only. The client trusts
-          // exclusively the signed manifest bytes (name/sha256/byteLength) —
-          // this unsigned pointer can redirect the download, never the trust.
-          return jsonResponse(
-            {
-              channel: release.channel,
-              version: release.manifest.version,
-              artifactName: release.manifest.artifactName,
-              artifactUrl: release.artifactUrl,
-            },
-            { "cache-control": "no-store" },
-          )
-        }
         const manifestMatch = url.pathname.match(/^\/([^/]+)\/manifest$/)
 
         if (manifestMatch !== null) {
@@ -295,92 +200,6 @@ export function createUpdatesServer(
           })
         }
 
-        const productDesktopFeedMatch = url.pathname.match(
-          /^\/desktop\/([^/]+)\/([^/]+)\/feed\.json$/,
-        )
-
-        if (productDesktopFeedMatch !== null) {
-          let product: DesktopReleaseProduct
-          try {
-            product = normalizeDesktopReleaseProduct(productDesktopFeedMatch[1])
-          } catch {
-            return new Response("Unknown desktop product", { status: 404 })
-          }
-          if (legacyLockoutArmed) {
-            return legacyDesktopLockoutResponse(product)
-          }
-          const channel = productDesktopFeedMatch[2]
-          return jsonResponse(
-            sortDesktopFeed(desktopFeeds.get(desktopFeedKey(product, channel)) ?? []),
-            {
-              "cache-control": "no-store",
-            },
-          )
-        }
-
-        // Legacy product-scoped Electrobun OTA path: the deprecated
-        // khala-code-desktop updater polls
-        // /desktop/khala-code-desktop/<channel>-<os>-<arch>-update.json
-        // (release.baseUrl + flat file). When the lockout is armed this is
-        // the exact surface that must answer with the typed refusal.
-        const legacyProductOtaMatch = url.pathname.match(
-          /^\/desktop\/([^/]+)\/([^/]+)$/,
-        )
-        if (
-          legacyProductOtaMatch !== null &&
-          isLegacyLockedDesktopProduct(legacyProductOtaMatch[1])
-        ) {
-          if (legacyLockoutArmed) {
-            return legacyDesktopLockoutResponse(legacyProductOtaMatch[1])
-          }
-          return new Response("Not found", { status: 404 })
-        }
-
-        const desktopFeedMatch = url.pathname.match(
-          /^\/desktop\/([^/]+)\/feed\.json$/,
-        )
-
-        if (desktopFeedMatch !== null) {
-          if (legacyLockoutArmed) {
-            return legacyDesktopLockoutResponse(DEFAULT_DESKTOP_RELEASE_PRODUCT)
-          }
-          const channel = desktopFeedMatch[1]
-          return jsonResponse(
-            sortDesktopFeed(
-              desktopFeeds.get(
-                desktopFeedKey(DEFAULT_DESKTOP_RELEASE_PRODUCT, channel),
-              ) ?? [],
-            ),
-            {
-              "cache-control": "no-store",
-            },
-          )
-        }
-
-        // Electrobun desktop OTA artifact: /desktop/<filename> (the updater fetches
-        // <prefix>-update.json and <prefix>-…tar.zst / .patch from release.baseUrl).
-        const desktopOtaMatch = url.pathname.match(/^\/desktop\/([^/]+)$/)
-        if (desktopOtaMatch !== null) {
-          if (legacyLockoutArmed) {
-            return legacyDesktopLockoutResponse(LEGACY_DESKTOP_OTA_SURFACE)
-          }
-          const file = desktopOtaFiles.get(desktopOtaMatch[1])
-          if (file !== undefined) {
-            // update.json must not be cached (it's the freshness signal); the
-            // immutable artifacts can cache hard.
-            const noCache = desktopOtaMatch[1].endsWith("update.json")
-            return new Response(Runtime.file(file.path).stream(), {
-              headers: {
-                "cache-control": noCache
-                  ? "no-store"
-                  : "public, max-age=31536000, immutable",
-                "content-type": file.contentType,
-              },
-            })
-          }
-          return new Response("Not found", { status: 404 })
-        }
-
         // Pylon OTA feed: /pylon/<channel>/<platform>/feed.json — per-platform,
         // signed releases (yanked dropped, latest first). The self-updater
         // verifies each release's signature against the pinned key + sha256.
@@ -432,29 +251,8 @@ export function createUpdatesServer(
       channelToBranch.set(update.branch, update.branch)
     },
 
-    registerDesktopUpdate(channel, manifest, product = DEFAULT_DESKTOP_RELEASE_PRODUCT) {
-      const normalizedChannel = channel.trim()
-      const key = desktopFeedKey(product, normalizedChannel)
-      const current = desktopFeeds.get(key) ?? []
-      desktopFeeds.set(key, [
-        manifest,
-        ...current.filter((candidate) => candidate.version !== manifest.version),
-      ])
-    },
-
     registerDiskAsset(hash, path, contentType) {
       diskAssets.set(hash, { path, contentType: contentType ?? "application/octet-stream" })
-    },
-
-    registerDesktopOtaFile(filename, path, contentType) {
-      desktopOtaFiles.set(filename, {
-        path,
-        contentType:
-          contentType ??
-          (filename.endsWith(".json")
-            ? "application/json"
-            : "application/octet-stream"),
-      })
     },
 
     registerPylonUpdate(manifest) {
@@ -466,10 +264,6 @@ export function createUpdatesServer(
       ])
     },
 
-    registerOpenAgentsDesktopRelease(release) {
-      openAgentsDesktopReleases.set(release.channel, release)
-    },
-
     async putAsset(bytes, contentType) {
       const stored = await assetStore.put(bytes)
       if (contentType !== undefined) {
@@ -477,27 +271,6 @@ export function createUpdatesServer(
       }
 
       return stored
-    },
-
-    async admitReleaseSetCandidate(input) {
-      if (options.releaseSetFeed === undefined) {
-        throw new Error("ReleaseSet v2 feed is not configured")
-      }
-      return options.releaseSetFeed.admitCandidate(input)
-    },
-
-    async promoteReleaseSet(channel, generation, expectedRevision) {
-      if (options.releaseSetFeed === undefined) {
-        throw new Error("ReleaseSet v2 feed is not configured")
-      }
-      return options.releaseSetFeed.promote(channel, generation, expectedRevision)
-    },
-
-    async rollbackReleaseSet(channel, expectedRevision) {
-      if (options.releaseSetFeed === undefined) {
-        throw new Error("ReleaseSet v2 feed is not configured")
-      }
-      return options.releaseSetFeed.rollback(channel, expectedRevision)
     },
   }
 }

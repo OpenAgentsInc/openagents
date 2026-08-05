@@ -200,16 +200,21 @@ More specific invariant ledgers apply inside imported apps and packages.
 
 ## QA Swarm Assurance Execution
 
-- The current Desktop swarm target is exactly `apps/openagents-desktop` under
-  `openagents.desktop.current`, deleted Khala client paths are never execution
-  targets or evidence authority.
-- `apps/qa-runner/src/assurance-swarm.ts` partitions every exact Assurance
-  Manifest unit once across the six typed scripted-browser, seeded-monkey,
-  LLM-explorer, performance, terminal, and macOS-native lanes. Each lane has an
-  independent action, duration, and model-token budget. Observed adapter output
-  emits independently digestible normalized Assurance Receipts. Those receipts bind the exact
-  ProductSpec, AssuranceSpec, admission, Manifest, environment, locked adapter,
-  execution unit, command, source, native report, and artifact commitment.
+- (Retired 2026-08-04, owner direction, #9325) The swarm target was the
+  Electron desktop app under `openagents.desktop.current`. That app and the
+  assurance-swarm partitioner in `apps/qa-runner` were deleted, so there is no
+  current Desktop swarm target and no swarm execution path. The lane model
+  below is retained as the design record. A future swarm target needs a new
+  owner decision, a new invariant, and its own enforcement. Deleted Khala
+  client paths are never execution targets or evidence authority.
+- The retired partitioner assigned every exact Assurance Manifest unit once
+  across the six typed scripted-browser, seeded-monkey, LLM-explorer,
+  performance, terminal, and macOS-native lanes. Each lane had an independent
+  action, duration, and model-token budget. Observed adapter output emitted
+  independently digestible normalized Assurance Receipts. Those receipts bound
+  the exact ProductSpec, AssuranceSpec, admission, Manifest, environment,
+  locked adapter, execution unit, command, source, native report, and artifact
+  commitment.
 - Real execution, provider spend, and native control require explicit arming.
   Unsupported, missing, failed, or unarmed adapters remain `INCONCLUSIVE` with
   no fabricated native report, artifact commitment, or Assurance Receipt, they
@@ -517,9 +522,10 @@ come from the Freerange teardown
 
 - Full Auto's autonomous-run authority (`specs/desktop/full-auto.product-spec.md`
   rev >= 10, epic #8967, issue #8968) is scoped exactly as follows. The
-  `FullAutoRun` model itself (FA-RUN-01, #8969) is implemented in
-  `apps/openagents-desktop/src/full-auto-run-registry.ts` and its control-API
-  surface (`full-auto-control-server.ts`, routes under `/v1/full-auto/runs`):
+  `FullAutoRun` model itself (FA-RUN-01, #8969) was implemented in the desktop
+  run registry and its control-API surface (routes under `/v1/full-auto/runs`),
+  both deleted with the Electron app on 2026-08-04 (#9325). The contract below
+  is the model any replacement must satisfy, not a description of live code:
   a run's `runRef` is durable and independent of any `threadRef` it is
   currently bound to, multiple active (non-terminal) Full Auto runs may
   coexist in one Desktop profile only as distinct `runRef` + `threadRef`
@@ -727,195 +733,56 @@ come from the Freerange teardown
 
 ## Desktop Development Restart Authority
 
-- The managed `.oa-launch` checkout and its running OpenAgents Dev process tree
-  are one immutable launch generation. A new source revision cannot be applied
-  by mutating that checkout beneath the live app or by asking an in-app agent to
-  kill its own host and relaunch afterward.
-- `oa-dev --restart` is the sole supported apply-main restart transaction. It
-  pins one exact `origin/main` commit and hands the transaction to a distinct
-  launchd-owned coordinator before any shutdown. The coordinator must prove it
-  is outside the old process group, drain that complete group, observe the
-  renderer port released, and only then synchronize `.oa-launch` and start a
-  replacement in a fresh process group.
-- Restart requests are single-flight. Every accepted request writes a private,
-  atomic durable receipt that binds old and target commits, old process
-  identity/outcome, coordinator identity, replacement identities, readiness or
-  bounded failure, and the `oa-dev` recovery command. Handoff or relaunch
-  failure preserves an owner-visible receipt, expected supervised SIGTERM/143
-  is lifecycle evidence, not an unexplained crash.
-- Each accepted restart is a one-shot launchd transaction with `KeepAlive`
-  disabled. A terminal coordinator outcome must never be relaunched implicitly,
-  and one request may claim at most one owner-visible failure notification,
-  retry requires a new explicit `oa-dev --restart` request.
-- This boundary is enforced by
-  `apps/openagents-desktop/tests/oa-dev-supervisor.test.ts` and the launcher
-  assertions in `apps/openagents-desktop/tests/electron-boundary.test.ts`.
+- (Retired 2026-08-04, owner direction, #9325) This invariant governed the
+  `oa-dev` launcher, the managed `.oa-launch` checkout, and the launchd-owned
+  coordinator that applied a new `origin/main` generation to the running
+  Electron app. The launcher lived inside the desktop app and was deleted with
+  it, so no code in this repository is bound by the single-flight restart
+  transaction, the process-group drain, or its durable receipt rules. Recover
+  the retired launcher and its supervisor tests with
+  `git show <commit>:<path>`. Any future in-app restart transaction needs a new
+  owner decision, a new invariant, and its own enforcement.
 
 ## Desktop Release Artifact Authority
 
-- Khala Code Desktop public distribution is not a code-complete claim until the
-  owner records public-safe receipts for the signed app, notarized app, stapled
-  app, recreated/signed/notarized/stapled DMG, updates-feed upload, GitHub
-  release, and clean-Mac first-run smoke. The smoke must prove the app boots
-  from the DMG and shows the honest Codex install/login path when Codex is
-  missing or unauthenticated.
-- Khala Code Desktop releases publish only to the product-specific feed
-  `desktop/khala-code-desktop/<channel>/feed.json` and tag as
-  `khala-code-desktop-v<version>`. The legacy `/desktop/<channel>/feed.json`
-  route remains the default Autopilot Desktop lane. RC/prerelease Khala builds
-  must use the `rc` channel and GitHub `--prerelease --latest=false`, stable
-  latest eligibility is reserved for non-prerelease versions.
-- Public Khala Code install or download surfaces may route users to Codex
-  prerequisites, the npm `khala` CLI, and source-build instructions, but must
-  keep desktop DMG availability marked pending until the receipt set above
-  exists. Public download counters must be exact grouped
-  `khala_code_download_events` rows or an explicit empty response with blocker
-  refs, page views, feed presence, or planned artifacts are not install counts.
-- (CUT-26, #8706) The legacy Electrobun desktop serving lanes above are
-  historical: the **legacy desktop lockout**
-  (`apps/oa-updates/src/legacy-desktop-lockout.ts`) is ARMED BY DEFAULT, and
-  every legacy desktop feed/OTA route (`/desktop/<channel>/feed.json`,
-  `/desktop/{khala-code-desktop,autopilot-desktop}/...`, and the flat
-  Electrobun `/desktop/<file>` OTA route) answers one typed `410`
-  `openagents.desktop.legacy_lockout.v1` document instead of content. Only
-  the exact `OA_LEGACY_DESKTOP_LOCKOUT=disarmed-historical-read-only` value
-  re-enables archival read-only serving, every other value stays armed (fail
-  closed). Publishing new legacy releases remains refused independently
-  (`assertDesktopReleaseProductPublishable`), and the deprecated clients
-  receive no new features — including no remote kill-switch capability.
-- (2026-07-14 owner supersession) The `apps/autopilot-desktop` source tree
-  itself was deleted at owner direction ("OpenAgents desktop supercedes it"),
-  recover via `git show c7044f5a2870110b331c5a7288caceb85488290a:<path>`. The
-  CUT-26 lockout routes above are unaffected: `updates.openagents.com` keeps
-  answering the legacy `autopilot-desktop`/legacy-feed routes with the typed
-  `410` lockout document — the route tombstones outlive the source tree.
-  `clients/khala-code-desktop` was deleted in #8793 after its Pylon and QA
-  dependents migrated. No executable package, import, smoke, or QA matrix may
-  depend on that path again, `scripts/khala-code-desktop-removal.test.ts`
-  enforces the bounded absence oracle. Historical evidence resolves through
-  git at `c7044f5a28` and the backroom supersession intake.
-- (CUT-26, #8706) OpenAgents Desktop releases publish ONLY through the
-  scripted flow (`apps/openagents-desktop/scripts/publish-release.ts`) into
-  the `openagents-desktop-release.json` descriptor + signed
-  `update_manifest.v1` shape served at
-  `/desktop/openagents/<channel>/manifest.json` + `manifest.sig.json` +
-  `release.json`. Version monotonicity and channel rules (strictly newer
-  only, no pre-release on stable, downgrades refused unconditionally) are
-  enforced at publish time, the signed bytes are self-verified through the
-  exact client verification seam before staging, the seed boundary re-checks
-  the manifest digest at boot, and the client verifies against its pinned
-  release key — all fail closed. The ed25519 release private key enters the
-  publisher only through the documented env seam
-  (`OPENAGENTS_RELEASE_SIGNING_PRIVATE_JWK_D` + `_KID` or
-  `OPENAGENTS_RELEASE_SECRETS_PATH`) and is never printed, tests use
-  in-process fixture keypairs only, and a key claiming the production kid
-  whose derived public key differs from the committed pin is refused at
-  publish time. The unsigned `artifactUrl` is transport only — the download
-  is gated by the SIGNED sha256/byteLength.
-- (DIST-01, #8914) Cross-platform Desktop release policy is owned by
-  `docs/deploy/openagents-desktop-cross-platform-release.md`. ReleaseSet v2
-  preserves the pinned Ed25519 authority above while closing target keys to
-  `darwin-{arm64,x64}`, `win32-x64`, and
-  `linux-{arm64,x64}`. Stable and RC are separate application identities and
-  state roots. Exactly one version/source revision must converge across all
-  required target/format cells before atomic promotion, a declared maker,
-  runner, candidate, or download is not a support claim. Owner amendment
-  2026-07-20 (#8920) makes `win32-x64` an OPTIONAL experimental cell that is not
-  required for convergence or atomic promotion. The required cells are
-  `darwin-{arm64,x64}` and `linux-{arm64,x64}`, and Windows x64 ships only as an
-  unsigned experimental portable excluded from the signed ReleaseSet. The intended
-  automated boundaries are the ReleaseSet schema/canonicalization/signature
-  tests, channel/state identity model, target staging/component-ledger gates,
-  coordinator convergence model, and download resolver contract. The release
-  boundary is the signed ReleaseSet plus native per-target install/update/
-  rollback-or-explicit-no-rollback receipts and one promotion receipt.
-- (DIST-01, #8914) Desktop production signing has no unsigned fallback on macOS or
-  Linux. macOS retains its app+nested-code+DMG Developer ID, notarization,
-  staple, and Gatekeeper gates, Linux packages remain gated by the signed
-  ReleaseSet digest/length and native package/payload oracles. Owner amendment
-  2026-07-20 (#8920) removes the Windows Authenticode and Azure Trusted Signing
-  requirement. Windows x64 ships only as an unsigned experimental portable that
-  is excluded from the signed ReleaseSet, promotion, and auto-update and makes
-  no support claim. A future signed Windows path needs its own issue and would
-  restore a `Valid` Authenticode from exactly `OpenAgents, Inc.` gate before
-  publication and install. Making `win32-x64` optional in the ReleaseSet schema
-  and coordinator required-cells is a tracked code follow-up. Credential-
-  absence, unsigned-marker, wrong-publisher, foreign-architecture, and
-  unledgered-component tests are the intended automated boundary, native
-  downloaded-artifact receipts are the release boundary.
-- (DIST-01, #8914) Remote Desktop versions are strictly monotonic and never
-  use `allowDowngrade`. Rollback is only the local immediately retained slot
-  after a typed first-launch failure. macOS DMG, Windows NSIS, and Linux
-  AppImage may claim retained-slot rollback after their native receipts,
-  macOS ZIP and Linux DEB/RPM explicitly have no app-owned rollback claim.
-  Reducer/model/property and restart-interruption tests are the intended
-  automated boundary, N-1 update, deliberate first-launch failure, recovery,
-  and format-specific rollback receipts are the release boundary.
-- (DIST-01, #8914) Desktop builds/tests/signing/publication/promotion run only
-  on owned orchestration and target-capable owned workers, GitHub Actions and
-  GitHub-hosted CI remain prohibited. A concrete runner registry must bind
-  opaque worker identity, native OS/architecture, image/toolchain revision,
-  signing-access class, native acceptance host, attestation, freshness, and
-  quarantine. Repository authority guards and runner-registry validation are
-  the intended automated boundary, owned worker and native-host attestations
-  are the release boundary.
-- (DIST-01, #8914) GitHub Releases is a verified prerelease transport and
-  discovery mirror, never update authority. An asset is uploaded only from an
-  exact local path whose length and SHA-256 match the publication manifest,
-  then GitHub's server-reported digest is rechecked before the draft is made
-  public. A published tag/version is immutable: assets are never replaced in
-  place, byte disagreement fails closed, and a corrected build receives a new
-  monotonically increasing RC version. This is the durable RC17 lesson.
-- (DIST-01, #8914) `oa-updates` Desktop publication must preserve the complete
-  mobile OTA export, manifest selection, headers, assets, and known-good probe.
-  A Desktop metadata-only deploy cannot replace the service image. Route/asset
-  regressions and candidate-feed fixtures are the intended automated boundary,
-  pre- and post-promotion mobile manifest/asset receipts are the release
-  boundary and any failure blocks or rolls back Cloud Run traffic.
-- (DIST-01, #8914) `/download` resolves only the verified promoted Desktop
-  ReleaseSet and cannot contain handwritten artifact URLs or infer support
-  from a requested OS. Public availability requires the target/format native
-  receipt, direct DEB/RPM downloads never imply a package repository,
-  unattended update, or app-owned rollback. Typed resolver/route/accessibility
-  and telemetry-redaction tests are the intended automated boundary, public
-  target-resolution/download receipts are the release boundary. The server-side
-  resolver enforcing this (DIST-10, #8923) is
-  `apps/openagents.com/apps/start/src/desktop-download-resolver.server.ts`
-  (`/api/public/desktop-download` + `/artifact` redirect), integrated against
-  the real, now-landed ReleaseSet v2 feed (DIST-09, #8922,
-  `apps/oa-updates/src/release-set-feed.ts`): the resolver fetches the
-  channel's mutable pointer, then fetches ONLY the immutable candidate it
-  names by generation (never a "current" alias directly), binds the
-  candidate's `x-openagents-release-generation` header and the SHA-256 of its
-  actual bytes to the pointer's declared generation/hashes, and only then
-  verifies the Ed25519 signature — the signature, not the pointer's own
-  unsigned hash labels, is the actual root of trust. Each resolver instance
-  also rejects any new pointer whose revision/publishedAt moves backward,
-  forks at the same revision, or breaks the observed `previousGeneration`
-  chain (anti-replay/rollback), singleflights concurrent revalidation per
-  channel so a slower stale fetch can never clobber a fresher one, and reads
-  every response through a capped streaming reader that fails closed on
-  overflow or stream error rather than buffering an unbounded body. The
-  bounded v1 darwin-arm64 migration path (used only while #8922 did not yet
-  exist) has been retired now that the real v2 authority is live: it fails
-  closed to an unavailable projection with no URL, per-channel TTL cache
-  that never serves an expired snapshot, and schema-validated public-safe
-  download telemetry — covered by `desktop-download-resolver.server.test.ts`
-  including URL/hash/target mutation proofs. The public `/download` page consuming it (DIST-11,
-  #8924) renders exclusively from that resolver projection via an SSR route
-  loader (`routes/download.tsx` + `routes/-download-page.tsx`): a platform
-  renders as available exactly when the promoted release set carries its
-  target, unknown/unsupported clients get the explicit chooser or truthful
-  unavailable state, every CTA crosses the `/artifact` redirect (the sole
-  download-telemetry emission point — page render emits nothing), no
-  marketing surface carries a hard-coded version or artifact URL, and the
-  no-JavaScript/fetch-failure page is the same server-rendered honest state —
-  covered by `routes/-download.test.tsx`.
-- (#9280, EP263-07) Omega is a SEPARATE download product beside OpenAgents
-  Desktop on `openagents.com/download`, with distinct name, version line,
-  package, and update path. The Electron Desktop artifact is never relabeled
-  as Omega, and Omega artifacts never enter the Desktop ReleaseSet. The Omega
-  entry renders exclusively from ONE Ed25519-signed manifest
+- (Retired 2026-08-04, owner direction, #9325) The Electron OpenAgents Desktop
+  application was deleted, and the Desktop release pipeline, the Desktop
+  ReleaseSet, the Desktop update feed, and the Desktop `/download` section went
+  with it. The CUT-26 and DIST-01 rules that used to sit here governed the
+  desktop publish and staging scripts, the root release entrypoint, the
+  ReleaseSet v2 feed, the Desktop download resolver and page, per-target
+  signing and rollback, the owned-runner registry, the GitHub prerelease
+  transport, the packaging target descriptor, the release changelog pair, and
+  candidate feedback intake. None of those surfaces exist, so none of those
+  rules bind current code and none may be cited as current authority. The
+  CUT-26 legacy desktop lockout that answered a typed `410` on every legacy
+  desktop feed and OTA route was deleted at the same time: those routes are
+  ordinary 404s now. The historical text stays recoverable through git, and the
+  dated release receipts under `docs/deploy/receipts/` stay as the record of
+  what was actually built and published.
+- The Khala Code Desktop and Electrobun distribution rules retired earlier are
+  covered by the same removal. `clients/khala-code-desktop` was deleted in
+  #8793 after its Pylon and QA dependents migrated, and `apps/autopilot-desktop`
+  was deleted at owner direction on 2026-07-14. No executable package, import,
+  smoke, or QA matrix may depend on those paths again, and
+  `scripts/khala-code-desktop-removal.test.ts` enforces the bounded absence
+  oracle. Historical evidence resolves through git and the backroom
+  supersession intake.
+- What survives is the signing contract, not a desktop lane.
+  `packages/release-contract` owns the release/update schema and the pinned
+  Ed25519 release authority. `apps/oa-updates` serves exactly two surfaces, the
+  OpenAgents mobile Expo OTA feed and the signed per-platform Pylon release
+  feed, and a deploy to it must preserve both. The pinned public key stays at
+  `apps/oa-updates/keys/release-pubkey.json`. A future desktop distribution
+  lane requires a new owner decision, a new invariant, and its own
+  enforcement.
+- (#9280, EP263-07, amended 2026-08-04 by #9325) Omega is the OpenAgents
+  download product on `openagents.com/download`, with its own name, version
+  line, package, and update path. It was admitted as a separate entry beside
+  the Electron OpenAgents Desktop entry, and it is now the only entry: the
+  Electron artifact and its ReleaseSet were deleted, and no other artifact may
+  be relabeled as Omega. The Omega entry renders exclusively from ONE
+  Ed25519-signed manifest
   (`openagents.omega.download_manifest.v1`, signed by the pinned release key
   kid `2dbe811d19f67528`, generated + self-verified by
   `apps/openagents.com/apps/start/scripts/sign-omega-download-manifest.ts`,
@@ -935,121 +802,6 @@ come from the Freerange teardown
   URL-escape/target-conflict fail-closed proofs plus verification of the
   checked-in manifest against the production public pin) and
   `routes/-omega-download.test.tsx`.
-- (DIST-01, #8914) Once DIST-13 lands, the only documented production Desktop
-  release entrypoint is root `pnpm run release` mapped exactly to
-  `node --import tsx scripts/release.ts`. It owns freeze, target-capable owned
-  worker bring-up, five-target build/test/sign, candidate smoke, changelog
-  generation, atomic promotion, `/download`/homepage/`/changelog` verification,
-  and the one final public-safe receipt. Dry-run, durable resume, partial-matrix
-  refusal, idempotence, and pre-promotion failure tests are the intended
-  automated boundary, a real RC command receipt is the release boundary. The
-  v1 macOS compatibility runbook is the sole temporary exception until #8915.
-- (DIST-01, #8914) Every Desktop release has a release-operator-reviewed
-  public changelog and a detailed public-safe agent changelog with the exact
-  ProductSpec §15.1 names. Under the revision-2 autonomous RC grant, the
-  delegated release operator performs this review without a second owner
-  ceremony, stable still follows its explicit owner gate. Both artifacts bind
-  trigger kind/ref, release actor, exact authority revision/grant, release URL,
-  and source-feedback refs in addition to the bounded human notes and
-  digest-bound refs that enter ReleaseSet v2 before its signature.
-  `/changelog`, `/download`, GitHub, and the in-app prompt cannot diverge from
-  those signed inputs. Accumulator generation, bounds, roll-forward
-  idempotence, route state, attribution, and cross-artifact consistency tests
-  are the intended automated boundary, the two indefinitely retained dated
-  artifacts and signed ReleaseSet notes refs are the release boundary.
-- Candidate feedback intake binds every GitHub or Forum tester comment to the
-  exact generated `Candidate-Version` field. Requested-tester identity and
-  comment chronology alone are not release correlation, an unbound or
-  wrong-version comment cannot be acknowledged, mint a follow-up issue, or
-  trigger another candidate. A direct GitHub issue is a separate bounded
-  intake shape: its author must be a requested tester, its creation must be
-  strictly after the candidate marker, and its body must contain an exact
-  source-issue shorthand or canonical OpenAgents issue URL. Only then may the
-  collaborator-owned adapter additively restore the canonical bug/release/
-  Desktop labels GitHub drops for non-collaborators. It never relabels an
-  unrelated issue or infers severity from prose. Bounded PASS/BLOCKED parsing
-  and unstructured triage occur only after their applicable binding succeeds.
-- (DIST-03, #8916) Desktop packaging entrypoints require an EXPLICIT target
-  build descriptor (`openagents.desktop.target_build_descriptor.v1`, the six
-  closed target keys, EXACT per-target format coverage — darwin dmg+zip,
-  win32 nsis, linux appimage+deb+rpm, subsets are refused). Host inference
-  (`process.arch`/`process.platform`) never selects a release target. Staging
-  (`apps/openagents-desktop/scripts/stage-target.ts`) runs in a clean
-  per-target temporary workspace: the EXACT source revision is exported into
-  it, the immutable lockfile identity is verified against the descriptor
-  before any install, runtime and Electron/Forge pins derive from the
-  EXPORTED source manifest and its own frozen-lockfile install (never the
-  live checkout's manifest or node_modules), the staging plan's locked
-  target-only production install EXECUTES there (pnpm, frozen lockfile,
-  target `supportedArchitectures`), the exact provider runtime packages
-  materialize from THAT install — unavailable runtimes are a typed
-  `missing_runtime_package` failure and a staged runtime version differing
-  from the exact locked version is a typed `runtime_version_mismatch`
-  failure, both BEFORE any app build, native build, or maker/signing work —
-  and owned native components (`oa-desktop-audio`) build only with the
-  descriptor's explicit Rust target triple, with build output inside the
-  staging workspace (path-prefix remapped for cross-run determinism).
-  Auto-created staging workspaces are cleaned up on success AND error, only
-  an explicit `--retain` keeps one for debug/proof runs. The developer
-  checkout, shared node_modules, and the shared cargo target directory are
-  never the packaged source: Electron Forge requires
-  `OA_DESKTOP_STAGING_WORKSPACE`, decodes the staged descriptor once,
-  decodes/validates the staged ledger, binds every descriptor identity
-  field, recomputes the ledger ref, re-hashes the CURRENT staged bytes
-  against the component digests BEFORE copy and again post-package (a
-  mutated or reused workspace can never produce a receipt referencing stale
-  proof), refuses when its ACTUALLY installed Electron/Forge versions differ
-  from the ledger's locked toolchain, discards its checkout copy wholesale,
-  and packages ONLY the staged tree, after package/asar assembly a LIVE gate
-  re-audits the REAL app.asar entry list through `stagedTreeViolations`,
-  verifies per-closure-entry packed/unpacked/extraResource placement
-  fidelity against the ledger plan, and re-hashes shipped unpacked/
-  extra-resource closure bytes before any maker/signing work.
-  The staged-tree oracle fails closed on one foreign-architecture or
-  universal binary, unknown/truncated executable identity (including at
-  allowlisted/runtime destinations), unallowlisted executable, escaping
-  symlink (recorded via lstat), source-checkout or staging-workspace path,
-  development file, or unexpected ASAR entry. Every target build emits a
-  public-safe §9 native-component ledger (`native_component_ledger.v1`,
-  explicitly typed `phase: pre-maker-staging` with PLANNED maker identities
-  only — final artifact evidence lives exclusively in the receipt, whose
-  per-artifact `makerRef` structurally refuses planned/pending refs)
-  enumerating the per-FILE native dependency closure — bundled runtimes,
-  CLIs, native modules, shared libraries, helpers, WASM modules, and
-  executables, each with header-derived architecture, embedded signing
-  state, and planned ASAR placement — plus the lockfile digest, OS image
-  identity, and Electron/Node/pnpm/Forge/maker/Rust/compiler toolchain
-  identity, with relative destinations only (never absolute paths). The
-  ledger's canonical-JSON sha256 identity is deterministic across repeat
-  staging from the same inputs (signer/notary bytes are the sole documented
-  nondeterminism and never enter the ledger). Each build also emits a build
-  receipt (`build_receipt.v1`) binding the descriptor (source revision,
-  version, channel, lockfile identity), the full toolchain, structural
-  `pass` results for the staged-tree and live ASAR gates, the ledger
-  reference, canonical version-first artifact identities, and opaque worker
-  identity. ReleaseSet v2 (#8915) consumes only the `sha256:<hex>`
-  ledger/receipt references exported by
-  `packages/release-contract/src/release-staging-contract.ts`. Unsigned-dev
-  output is structurally inadmissible: an `unsigned-dev` descriptor can never
-  construct a receipt and `UNSIGNED-DEV`-marked artifact names fail the
-  receipt schema. Descriptor/ledger/receipt schema tests and the injected
-  single-defect negative oracles in
-  `apps/openagents-desktop/tests/release-staging.test.ts` are the automated
-  boundary, per-target ledgers and receipts inside the signed release set are
-  the release boundary.
-- OpenAgents Desktop macOS artifacts carry the product-owned
-  `resources/openagents-icon.icns` bundle. Finder, Dock, ZIP, and DMG output
-  must never fall back to Electron's atom icon, the packaging contract test
-  validates both the Forge input and the ICNS container before release.
-- Khala Code outside-user run evidence is opt-in only. The desktop may offer a
-  "post run receipt" control, but it must not phone home or submit evidence on
-  startup, refresh, harness inspection, or page view. Public run receipts may
-  contain only app version, platform, architecture, distribution channel, and
-  bounded harness readiness, they must not store or project paths, prompts,
-  logs, tokens, account identifiers, machine identifiers, request body blobs, or
-  user identity. A run receipt is evidence only: it does not replace the signed
-  DMG/notary/update-feed receipt set and does not by itself flip a product
-  promise green.
 
 ## Background Agent Definition Tool Authority
 
@@ -1484,14 +1236,12 @@ come from the Freerange teardown
   process host owns replaceable runtime/workspace/Sync/account/history slots,
   WorkContext/session/window replacement and app teardown close each owned
   finalizer once, abort in-flight native sign-in, and leave zero active slots.
-  Regression and built-host coverage lives in
-  `apps/openagents-desktop/src/desktop-host-lifecycle.test.ts`,
-  `apps/openagents-desktop/src/desktop-operation-context.test.ts`,
-  `apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts`, and the normal
-  Desktop Electron smoke. Dense-gap, store-version, and native adapter parity
-  regressions live in `packages/khala-sync-client/src/session.test.ts`,
-  `packages/khala-sync-client/src/sqlite-store.test.ts`, and
-  `apps/openagents-desktop/tests/native-timeline-fault-convergence.e2e.test.ts`.
+  The regression, built-host, and native-timeline coverage for this boundary
+  lived in the desktop app and was deleted with it on 2026-08-04 (#9325); this
+  bullet is the retained contract, not a description of live code. Dense-gap
+  and store-version regressions still live in
+  `packages/khala-sync-client/src/session.test.ts` and
+  `packages/khala-sync-client/src/sqlite-store.test.ts`.
 - A Desktop workspace exists after the owner explicitly launches the app from
   a directory, chooses one with the directory picker, or asks macOS to open one
   bounded supported code document with the packaged application, and remains one
@@ -1526,13 +1276,9 @@ come from the Freerange teardown
   worker failure/exit, WorkContext replacement, or app disposal settles each
   task exactly once. Worker results are schema-decoded and never return the
   selected root. Subscriber close, WorkContext replacement, and app disposal
-  close the watcher exactly once. The core boundary and adversarial fixtures
-  live in
-  `apps/openagents-desktop/src/workspace-service.ts` and
-  `apps/openagents-desktop/tests/workspace-service.test.ts`, worker lifecycle
-  and real built-artifact coverage live in
-  `apps/openagents-desktop/src/workspace-search-host.test.ts` and
-  `apps/openagents-desktop/tests/build.test.ts`. Fixed tree,
+  close the watcher exactly once. The core boundary, its adversarial fixtures,
+  and the worker-lifecycle and built-artifact coverage lived in the desktop app
+  and were deleted with it on 2026-08-04 (#9325). Fixed tree,
   refresh, subscribe/unsubscribe, and decoded change-event channels now cross
   main/preload only for the trusted top-level bundled renderer. Preload
   reference-counts local consumers, main keeps one exact subscription per
@@ -1549,8 +1295,8 @@ come from the Freerange teardown
   reveal operations accept and return only relative refs. Hidden, secret,
   Git-ignored, traversal, symlink, stale-revision, existing-target, non-empty-
   directory, and permission-loss cases fail with typed outcomes, only confirmed
-  mutations advance the WorkContext epoch. Their adversarial core fixtures live
-  in `apps/openagents-desktop/tests/workspace-service.test.ts`. Fixed decoded
+  mutations advance the WorkContext epoch. Their adversarial core fixtures were
+  deleted with the desktop app. Fixed decoded
   create/rename/delete/reveal main-preload operations now cross only for the
   trusted top-level bundled renderer, Electron main injects reveal authority
   into each selected WorkContext and no absolute path returns. Desktop Files
@@ -1868,10 +1614,10 @@ come from the Freerange teardown
   Portable renderer modules remain
   `.ts`, React-free, and free of `className`/`ReactNode`, no Zustand, Effect
   Atom React, TanStack router, Zod, arbitrary JSX component, or second theme/
-  icon system may become application authority. The Electron renderer remains
-  tokenless and Node-free. This boundary and `.tsx` scanner coverage are
-  enforced by `apps/openagents-desktop/tests/electron-boundary.test.ts` and
-  `apps/openagents-desktop/src/renderer/design-conformance.test.ts`.
+  icon system may become application authority. The Electron renderer and the
+  boundary and `.tsx` scanner tests that enforced this were deleted with the
+  desktop app on 2026-08-04 (#9325); the typography and module rules above
+  still bind every surviving surface that uses `@openagentsinc/ui`.
 - Desktop React sidebar chrome follows one stable top-left anatomy: native
   macOS traffic lights share the first row with the sidebar expander and
   navigation-history slots, the next row is the `OpenAgents` identity with an
@@ -2122,8 +1868,8 @@ come from the Freerange teardown
   decoded listener before append, uses one fenced subscription through exact-
   message and terminal confirmation, and closes with one exact unsubscribe.
   It retains only one-shot queries for initial catalog/detail or final timeout
-  diagnosis, no recurring 100 ms timeline loop remains. This boundary is
-  enforced by `apps/openagents-desktop/src/renderer/runtime-conversation.test.ts`.
+  diagnosis, no recurring 100 ms timeline loop remains. The renderer test that
+  enforced this was deleted with the desktop app on 2026-08-04 (#9325).
 
 **Planned live-agent portability model boundary:**
 
@@ -2195,10 +1941,9 @@ come from the Freerange teardown
   is loss-accounted `Unreported` — token facts are never synthesized from the
   canonical graph, which deliberately carries no usage fields.
   This CUT-12 client boundary is enforced by
-  `packages/khala-sync-client/src/live-agent-graph-presentation.test.ts`,
-  `apps/openagents-desktop/src/renderer/runtime-conversation.test.ts`, and
-  `apps/openagents-desktop/src/renderer/runtime-agent-graph.test.ts`, physical-
-  device equivalence remains pending.
+  `packages/khala-sync-client/src/live-agent-graph-presentation.test.ts`. Its
+  desktop renderer tests were deleted with the desktop app on 2026-08-04
+  (#9325), and physical-device equivalence remains pending.
 
 ## Retired Mobile Surfaces
 
@@ -2246,8 +1991,9 @@ come from the Freerange teardown
   removed by owner direction on 2026-07-14. They are Git-history evidence, not
   workspace members, install surfaces, release inputs, or compatibility roots.
 - Pylon is the supported terminal/Codex-capacity path, `apps/openagents-mobile`
-  is the only supported mobile app, `apps/openagents-desktop` is the only
-  supported desktop app.
+  is the only supported mobile app, and Omega, in its own repository, is the
+  only supported desktop app. The Electron desktop app in this repository was
+  deleted at owner direction on 2026-08-04 (#9325).
 - Shared Effect Native, Khala Sync, protocol, runtime, and QA packages remain
   only when a supported app/service consumes them. A removed client path may
   appear in historical docs or explicit negative sentinels, never in a live
@@ -2284,11 +2030,11 @@ come from the Freerange teardown
   live, malformed and cross-owner rows are ignored and the shared resolver
   revalidates the resulting relationship graph. This is enforced by
   `packages/khala-sync-client/src/coding-session.test.ts`. Desktop persistence
-  now uses the same schemas through the local-authority store, process restart,
-  duplicate open, typed focus/route restore, structured query, archive, missing-
-  worktree recovery, IPC redaction, and built renderer reload are enforced by
-  `apps/openagents-desktop/tests/desktop-coding-catalog.test.ts`,
-  `apps/openagents-desktop/src/renderer/shell.test.ts`, and the normal Electron
+  used the same schemas through the local-authority store, and its process
+  restart, duplicate open, typed focus/route restore, structured query,
+  archive, missing-worktree recovery, IPC redaction, and built renderer reload
+  oracles went with the deleted desktop app on 2026-08-04 (#9325), along with
+  the normal Electron
   smoke journey.
 
 - Master Roadmap and
@@ -2524,8 +2270,9 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   both native listeners and clears the queue. This is currently unenforced:
   its oracle went with the mobile delivery surface (see Retired Mobile
   Surfaces). Physical iOS/Android receipts remain CUT-14 work.
-- Desktop command metadata has one canonical typed registry at
-  `apps/openagents-desktop/src/desktop-command-contract.ts`. Each command names
+- Desktop command metadata had one canonical typed registry in the desktop
+  command contract, deleted with the app on 2026-08-04 (#9325). The rules below
+  are the retained contract, not live code. Each command names
   its stable id, intent, scope, readiness, authorization, argument/result
   shape, default bindings, and palette visibility, the renderer palette derives
   from it rather than maintaining a second list. User chord aliases normalize
@@ -2555,12 +2302,10 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   Git ignore classification sends relative refs as NUL-delimited literal
   stdin paths and fails closed on classifier failure, so arbitrary valid names
   cannot be reinterpreted as pathspec magic or erase the admitted tree. The
-  adapter/package boundary and literal-path regression are enforced by
-  `apps/openagents-desktop/tests/pierre-tree-package.test.ts`,
-  `apps/openagents-desktop/src/renderer/ide/pierre-tree-adapter.test.ts`, and
-  `apps/openagents-desktop/tests/workspace-service.test.ts`.
-- Desktop agent editing has one main-owned, generation-fenced code graph at
-  `apps/openagents-desktop/src/ide/agent-code-contract.ts`. An attachment binds
+  adapter/package boundary and literal-path regressions were desktop tests and
+  went with the app on 2026-08-04 (#9325).
+- Desktop agent editing had one main-owned, generation-fenced code graph in the
+  desktop IDE agent-code contract, deleted with the app. An attachment binds
   the exact project, root, worktree, coding session, workspace grant,
   placement generation, and attachment generation. Its context manifest
   accounts exactly for every included or omitted item, destination,
@@ -2592,8 +2337,9 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   oracle, and the packaged IDE-08 journey. It implements the local agent-code
   loop only, IDE-09 inline completion and IDE-10 terminal/run breadth remain
   separate authorities while IDE-11+ debug/SCM/portable breadth remains open.
-- Desktop terminal, task, test, and Output behavior has one main-owned Effect
-  run graph at `apps/openagents-desktop/src/ide/run-contract.ts`. Boundary data
+- Desktop terminal, task, test, and Output behavior had one main-owned Effect
+  run graph in the desktop IDE run contract, deleted with the app on 2026-08-04
+  (#9325). The rules below are the retained contract. Boundary data
   is strictly decoded from Effect Schema. Attachment, run, stream, task,
   discovery, test, and artifact identities carry exact generations. Xterm is a
   disposable screen projection and has no process, filesystem, policy,

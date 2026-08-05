@@ -3,21 +3,11 @@ import type { AssetStore } from "./asset-store.ts"
 import { readExportedUpdate } from "./export-reader.ts"
 import type { PublishExportResult } from "./publish.ts"
 import type { Platform } from "./publish-builder.ts"
-import { seedDesktopReleases } from "./desktop-seed.ts"
 import { seedPylonReleases } from "./pylon-seed.ts"
-import { seedOpenAgentsDesktopRelease } from "./openagents-desktop-seed.ts"
-import {
-  LEGACY_DESKTOP_LOCKOUT_ENV,
-  resolveLegacyDesktopLockoutMode,
-} from "./legacy-desktop-lockout.ts"
 import {
   createUpdatesServer,
   type UpdatesServer,
 } from "./server.ts"
-import { createPublicReleaseSetArtifactVerifier } from "./release-set-artifact-verifier.ts"
-import { createReleaseSetFeed, type ReleaseSetFeed } from "./release-set-feed.ts"
-import { createGoogleCloudReleaseSetFeedStore } from "./release-set-gcs-store.ts"
-import type { PinnedReleaseKey } from "@openagentsinc/release-contract/update-contract"
 
 type SeedFromDistInput = {
   readonly server: UpdatesServer
@@ -61,52 +51,9 @@ export async function seedFromDist(
 
 if (Runtime.isMain(import.meta.url)) {
   const port = Number(process.env.PORT ?? 8080)
-  let releaseSetFeed: ReleaseSetFeed | undefined
-  if (process.env.OA_RELEASE_SET_BUCKET) {
-    if (!process.env.OA_RELEASE_SET_PINS_PATH) {
-      throw new Error("OA_RELEASE_SET_PINS_PATH is required with OA_RELEASE_SET_BUCKET")
-    }
-    const { readFile } = await import("node:fs/promises")
-    const rawPins = JSON.parse(
-      await readFile(process.env.OA_RELEASE_SET_PINS_PATH, "utf8"),
-    ) as unknown
-    if (!Array.isArray(rawPins) || rawPins.length === 0 || rawPins.length > 8) {
-      throw new Error("ReleaseSet pin set rejected")
-    }
-    const pins = new Map<string, PinnedReleaseKey>()
-    for (const value of rawPins) {
-      if (typeof value !== "object" || value === null || Array.isArray(value)) {
-        throw new Error("ReleaseSet pin rejected")
-      }
-      const row = value as Record<string, unknown>
-      if (
-        row.alg !== "ed25519" || typeof row.kid !== "string" ||
-        row.kid === "" || row.kid.length > 64 || typeof row.x !== "string" ||
-        !/^[A-Za-z0-9_-]{43}$/.test(row.x) ||
-        Buffer.from(row.x, "base64url").byteLength !== 32
-      ) throw new Error("ReleaseSet pin rejected")
-      const pin: PinnedReleaseKey = { alg: "ed25519", kid: row.kid, x: row.x }
-      if (pins.has(pin.kid)) throw new Error("ReleaseSet duplicate key id rejected")
-      pins.set(pin.kid, pin)
-    }
-    releaseSetFeed = createReleaseSetFeed({
-      store: createGoogleCloudReleaseSetFeedStore({
-        bucket: process.env.OA_RELEASE_SET_BUCKET,
-      }),
-      pins,
-      verifyArtifact: createPublicReleaseSetArtifactVerifier(),
-      log: (entry) => console.log(JSON.stringify({ component: "release_set_feed", ...entry })),
-    })
-  }
   const server = createUpdatesServer({
     port,
     signingKeyPem: process.env.OA_SIGNING_KEY,
-    // CUT-26 legacy lockout: ARMED unless explicitly disarmed for archival
-    // read-only serving (see legacy-desktop-lockout.ts).
-    legacyDesktopLockout: resolveLegacyDesktopLockoutMode(
-      process.env[LEGACY_DESKTOP_LOCKOUT_ENV],
-    ),
-    ...(releaseSetFeed === undefined ? {} : { releaseSetFeed }),
   })
 
   if (process.env.OA_SEED_DIST) {
@@ -142,14 +89,6 @@ if (Runtime.isMain(import.meta.url)) {
     })
   }
 
-  if (process.env.OA_DESKTOP_RELEASES_DIST) {
-    await seedDesktopReleases({
-      server,
-      distDir: process.env.OA_DESKTOP_RELEASES_DIST,
-      baseUrl: process.env.OA_PUBLIC_URL ?? `http://localhost:${port}`,
-    })
-  }
-
   if (process.env.OA_PYLON_RELEASES_DIST) {
     await seedPylonReleases({
       server,
@@ -159,23 +98,6 @@ if (Runtime.isMain(import.meta.url)) {
       // the feed JSON stays on this service, artifactUrls point at OA_ASSET_BASE_URL.
       ...(process.env.OA_ASSET_BASE_URL ? { assetBaseUrl: process.env.OA_ASSET_BASE_URL } : {}),
     })
-  }
-
-  if (process.env.OA_OPENAGENTS_DESKTOP_RELEASE_DIST) {
-    await seedOpenAgentsDesktopRelease({
-      server,
-      distDir: process.env.OA_OPENAGENTS_DESKTOP_RELEASE_DIST,
-    })
-  }
-
-  // Electrobun desktop OTA artifacts: register each file in OA_DESKTOP_OTA_DIR so
-  // the updater can fetch /desktop/<prefix>-update.json + the tarball/patches.
-  if (process.env.OA_DESKTOP_OTA_DIR) {
-    const { readdir } = await import("node:fs/promises")
-    const dir = process.env.OA_DESKTOP_OTA_DIR
-    for (const name of await readdir(dir)) {
-      server.registerDesktopOtaFile(name, `${dir}/${name}`)
-    }
   }
 
   Runtime.serve({ port, fetch: server.fetch })

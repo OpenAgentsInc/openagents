@@ -13,22 +13,24 @@ not advertise a new release.
 
 Quick map — what do you want to install?
 
-| Product             | What it is                                                          | Fastest path                                                                                                     |
-| ------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| **OpenAgents apps** | Sarah-first web, greenfield mobile, and greenfield Electron desktop | Web is live. Mobile/desktop are not installable until their release gates pass — [section 1](#1-openagents-apps) |
-| **Pylon**           | Headless contributor node (the agent path)                          | `npx @openagentsinc/pylon` — [section 2](#2-pylon-headless-contributor-node)                                     |
+| Product             | What it is                                                  | Fastest path                                                                                            |
+| ------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **OpenAgents apps** | Sarah-first web, Omega on Desktop, and greenfield mobile     | Web and the Omega alpha are live. Mobile is not installable until its release gates pass — [section 1](#1-openagents-apps) |
+| **Pylon**           | Headless contributor node (the agent path)                  | `npx @openagentsinc/pylon` — [section 2](#2-pylon-headless-contributor-node)                             |
 
 ## 1. OpenAgents apps
 
-The supported product surface today is <https://openagents.com>. The new
-OpenAgents mobile app (`apps/openagents-mobile`, Effect Native + React
-Native/Expo) and OpenAgents Desktop (`apps/openagents-desktop`, Effect Native +
-Electron) are greenfield builds tracked by #8597 and #8574. They are not yet
-installable and must not be represented as released.
+The supported product surface today is <https://openagents.com>. Omega is the
+Desktop application, released from the Omega repository and downloaded from
+<https://openagents.com/download>. The new OpenAgents mobile app
+(`apps/openagents-mobile`, Effect Native + React Native/Expo) is a greenfield
+build tracked by #8597. It is not yet installable and must not be represented
+as released.
 
-All former `clients/` applications have been removed. Do not recover or
-distribute them as current products. Use OpenAgents mobile, OpenAgents Desktop,
-or Pylon.
+The Electron OpenAgents Desktop application was deleted at owner direction on
+2026-08-04 (#9325). It has no install, download, or update path. All former
+`clients/` applications have been removed. Do not recover or distribute any of
+them as current products. Use Omega, OpenAgents mobile, or Pylon.
 
 **Connect coding capacity from the terminal**
 

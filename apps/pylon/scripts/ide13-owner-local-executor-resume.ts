@@ -102,7 +102,7 @@ export interface Ide13OwnerLocalExecutorResumeReceipt extends Schema.Schema.Type
 const decodeReceipt = Schema.decodeUnknownSync(Ide13OwnerLocalExecutorResumeReceiptSchema);
 const GIT_SHA = /^[a-f0-9]{40}$/u;
 const EVIDENCE_PATH =
-  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-executor-resume.json";
+  "benchmarks/ide/2026-07-20-ide-13-owner-local-executor-resume.json";
 
 const sha256 = (value: string | Uint8Array): string =>
   createHash("sha256").update(value).digest("hex");

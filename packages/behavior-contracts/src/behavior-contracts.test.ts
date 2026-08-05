@@ -143,19 +143,15 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    // FAV-01..04 (#9111-#9114) each added one enforced Full Auto contract
-    // (readiness-gated routing, four-lane rotation parity, Apple FM advisory,
-    // capacity ledger), taking the total from 43 to 47. HANDS-2 (#9173) added
-    // one enforced Full Auto autonomy contract (host-verified completion),
-    // taking the total to 48. HANDS-6 (#9184) added one enforced Full Auto
-    // autonomy contract (initiative without a GitHub claim), taking it to 49.
-    // omega#46 exit 4 added one enforced owner-private contract (the room can
-    // distinguish a complete view from a short one), taking it to 50.
-    // Public Nostr chat (#9258) adds one enforced deployment contract. The
-    // Omega mobile zero base (#9261) adds two enforced home contracts. The
-    // owner's no-internal-issue-references mandate (2026-07-28) adds one
-    // enforced desktop-mirror display contract, taking it to 54.
-    expect(decoded.contracts).toHaveLength(54)
+    // The Electron desktop app (apps/openagents-desktop) was deleted, so every
+    // contract that asserted its live behavior was retired from the registry:
+    // the nine IDE-00..IDE-08 contracts, the working-indicator motion
+    // contract, the nine Full Auto contracts, the two greenfield Electron
+    // shell/template contracts, and the desktop-runtime + early-mobile-sync
+    // program contract — 22 in all, taking the total from 54 to 32. The
+    // desktop loopback PKCE policy stays: its oracle and evidence live in
+    // apps/openagents.com, not in the deleted app.
+    expect(decoded.contracts).toHaveLength(32)
     const mobileAutomaticActivity = decoded.contracts.find(
       entry => entry.contractId === "openagents_mobile.home_automatic_desktop_activity.v1",
     )
@@ -166,84 +162,51 @@ describe("behavior contract registry", () => {
     )
     expect(mobileHonestConnection?.state).toBe("enforced")
     expect(mobileHonestConnection?.oracles).toHaveLength(1)
-    const hostVerifiedCompletion = decoded.contracts.find(
-      contract => contract.contractId === "openagents_desktop.full_auto_host_verified_completion.v1",
-    )
-    expect(hostVerifiedCompletion?.state).toBe("enforced")
-    expect(hostVerifiedCompletion?.enforcementTier).toBe("test-sweep")
-    expect(hostVerifiedCompletion?.oracles).toHaveLength(1)
-    expect(hostVerifiedCompletion?.statement).toContain("self-reported completion is treated as evidence only")
-    const autonomyInitiative = decoded.contracts.find(
-      contract => contract.contractId === "openagents_desktop.full_auto_autonomy_initiative.v1",
-    )
-    expect(autonomyInitiative?.state).toBe("enforced")
-    expect(autonomyInitiative?.enforcementTier).toBe("test-sweep")
-    expect(autonomyInitiative?.oracles).toHaveLength(1)
-    expect(autonomyInitiative?.statement).toContain("does not sit idle waiting for a pre-existing GitHub issue")
+    // No contract may claim a surface the repository no longer ships.
+    expect(
+      decoded.contracts.filter(
+        contract =>
+          contract.evidenceRefs.some(ref => ref.startsWith("apps/openagents-desktop/")) ||
+          contract.oracles.some(oracle => oracle.ref.startsWith("apps/openagents-desktop/")),
+      ),
+    ).toEqual([])
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
-    // FA-UX-01 (#8974) flipped 3 Full Auto contracts from pending to
-    // enforced: openagents_desktop.full_auto_dedicated_launcher.v1,
-    // full_auto_read_only_run_view.v1, full_auto_play_pause_stop_lifecycle.v1.
-    // Public Nostr chat is enforced after the live relay and browser proofs.
-    expect(pending).toHaveLength(9)
-    const ideProjectGraph = decoded.contracts.find(
-      contract => contract.contractId === "openagents_desktop.ide_project_generation_fencing.v1",
-    )
-    expect(ideProjectGraph?.state).toBe("enforced")
-    expect(ideProjectGraph?.enforcementTier).toBe("test-sweep")
-    expect(ideProjectGraph?.oracles).toHaveLength(4)
-    expect(ideProjectGraph?.statement).toContain("generation-fenced project graph")
-    const idePackageAdmission = decoded.contracts.find(
-      contract => contract.contractId === "openagents_desktop.ide_package_admission.v1",
-    )
-    expect(idePackageAdmission?.state).toBe("enforced")
-    expect(idePackageAdmission?.enforcementTier).toBe("test-sweep")
-    expect(idePackageAdmission?.oracles).toHaveLength(4)
-    expect(idePackageAdmission?.statement).toContain("first-party contract")
-    const ideCompletePathIndex = decoded.contracts.find(
-      contract => contract.contractId === "openagents_desktop.ide_complete_path_index.v1",
-    )
-    expect(ideCompletePathIndex?.state).toBe("enforced")
-    expect(ideCompletePathIndex?.enforcementTier).toBe("test-sweep")
-    expect(ideCompletePathIndex?.oracles).toHaveLength(4)
-    expect(ideCompletePathIndex?.statement).toContain("complete Effect-owned generation-fenced path index")
-    const ideMonaco = decoded.contracts.find(
-      contract => contract.contractId === "openagents_desktop.ide_monaco_document_runtime.v1",
-    )
-    expect(ideMonaco?.state).toBe("enforced")
-    expect(ideMonaco?.enforcementTier).toBe("test-sweep")
-    expect(ideMonaco?.oracles).toHaveLength(5)
-    expect(ideMonaco?.statement).toContain("Vim is built in")
-    const ideWorkbench = decoded.contracts.find(
-      contract => contract.contractId === "openagents_desktop.ide_daily_workbench.v1",
-    )
-    expect(ideWorkbench?.state).toBe("enforced")
-    expect(ideWorkbench?.oracles).toHaveLength(4)
-    expect(ideWorkbench?.statement).toContain("schema-first daily IDE workbench")
-    const ideReview = decoded.contracts.find(
-      contract => contract.contractId === "openagents_desktop.ide_versioned_pierre_review.v1",
-    )
-    expect(ideReview?.state).toBe("enforced")
-    expect(ideReview?.oracles).toHaveLength(4)
-    expect(ideReview?.statement).toContain("Git HEAD/index/worktree")
-    const ideLanguage = decoded.contracts.find(
-      contract => contract.contractId === "openagents_desktop.ide_generation_safe_language.v1",
-    )
-    expect(ideLanguage?.state).toBe("enforced")
-    expect(ideLanguage?.oracles).toHaveLength(4)
-    expect(ideLanguage?.statement).toContain("two visible tiers")
-    const ideAgentCode = decoded.contracts.find(
-      contract => contract.contractId === "openagents_desktop.ide_agent_native_code_graph.v1",
-    )
-    expect(ideAgentCode?.state).toBe("enforced")
-    expect(ideAgentCode?.oracles).toHaveLength(4)
-    expect(ideAgentCode?.statement).toContain("code↔turn backlinks")
-    const ideBasicAcceptance = decoded.contracts.find(
-      contract => contract.contractId === "openagents_desktop.ide_basic_ide_acceptance.v1",
-    )
-    expect(ideBasicAcceptance?.state).toBe("enforced")
-    expect(ideBasicAcceptance?.oracles).toHaveLength(4)
-    expect(ideBasicAcceptance?.statement).toContain("OpenAgents basic IDE")
+    // Deleting the Electron desktop app removed 3 pending contracts
+    // (greenfield_desktop_electron, desktop_starting_template,
+    // desktop_runtime_and_early_mobile_sync), taking pending from 9 to 6.
+    expect(pending).toHaveLength(6)
+    // The IDE-00..IDE-08 and Full Auto contract ids belonged to the deleted
+    // Electron desktop app; they must not reappear in the registry.
+    for (const retiredDesktopContractId of [
+      "openagents_desktop.ide_project_generation_fencing.v1",
+      "openagents_desktop.ide_agent_native_code_graph.v1",
+      "openagents_desktop.ide_package_admission.v1",
+      "openagents_desktop.ide_complete_path_index.v1",
+      "openagents_desktop.ide_monaco_document_runtime.v1",
+      "openagents_desktop.ide_daily_workbench.v1",
+      "openagents_desktop.ide_versioned_pierre_review.v1",
+      "openagents_desktop.ide_generation_safe_language.v1",
+      "openagents_desktop.ide_basic_ide_acceptance.v1",
+      "openagents_desktop.working_indicator_continuous_motion.v1",
+      "openagents_desktop.full_auto_host_verified_completion.v1",
+      "openagents_desktop.full_auto_autonomy_initiative.v1",
+      "openagents_desktop.full_auto_dedicated_launcher.v1",
+      "openagents_desktop.full_auto_read_only_run_view.v1",
+      "openagents_desktop.full_auto_play_pause_stop_lifecycle.v1",
+      "openagents_desktop.full_auto_readiness_gated_routing.v1",
+      "openagents_desktop.full_auto_four_lane_rotation_parity.v1",
+      "openagents_desktop.full_auto_apple_fm_advisory.v1",
+      "openagents_desktop.full_auto_capacity_ledger.v1",
+      "openagents_apps.greenfield_desktop_electron.v1",
+      "openagents_apps.desktop_starting_template.v1",
+      "openagents_apps.desktop_runtime_and_early_mobile_sync.v1",
+    ]) {
+      expect(
+        decoded.contracts.find(
+          contract => contract.contractId === retiredDesktopContractId,
+        ),
+      ).toBeUndefined()
+    }
     expect(
       decoded.contracts.find(
         contract =>
@@ -255,24 +218,6 @@ describe("behavior contract registry", () => {
         contract.contractId === "openagents_apps.sarah_first_khala_capabilities.v1",
     )
     expect(retiredSarahFirst?.state).toBe("retired")
-    const desktopRuntime = decoded.contracts.find(
-      contract =>
-        contract.contractId ===
-        "openagents_apps.desktop_runtime_and_early_mobile_sync.v1",
-    )
-    expect(desktopRuntime?.state).toBe("pending")
-    expect(desktopRuntime?.statement).toContain("mobile sync working soon")
-    const workingIndicator = decoded.contracts.find(
-      contract => contract.contractId === "openagents_desktop.working_indicator_continuous_motion.v1",
-    )
-    expect(workingIndicator?.state).toBe("enforced")
-    expect(workingIndicator?.enforcementTier).toBe("test-sweep")
-    expect(workingIndicator?.statement).toBe(
-      "[working] bars stopped animating — fix it, in ~/work/openagents",
-    )
-    expect(workingIndicator?.oracles[0]?.ref).toBe(
-      "apps/openagents-desktop/tests/working-indicator-motion.e2e.test.ts",
-    )
     const portableSessions = decoded.contracts.find(
       contract =>
         contract.contractId === "openagents_apps.remote_first_portable_sessions.v1",

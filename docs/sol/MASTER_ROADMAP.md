@@ -2,8 +2,8 @@
 
 - Class: authority
 - Date: 2026-07-10
-- Updated: 2026-08-03
-- Revision: 142
+- Updated: 2026-08-04
+- Revision: 143
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: no active `roadmap:sol` product issue. Current work comes from
   an exact live issue or owner-accepted packet. OpenAgentsInc/omega#199 through
@@ -30,7 +30,7 @@ proof, dated plans and analyses are evidence only.
 
 ## Active P0 — Omega primary-surface transition
 
-The owner selected [`Omega`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md), a tracked Zed fork, as the primary Desktop, IDE, and company workroom destination. The new [`Omega roadmap`](../omega/ROADMAP.md) owns the accelerated implementation order. First, release the fully branded `v0.2.0-rc1` bootstrap candidate. Next, port current OpenAgents Desktop behavior. Then add the selected Buzz workroom and Nostr outcomes. The bootstrap release is not a feature-parity or primary-cutover claim. Omega Rust is the application core. Packaged Node 24 and Effect first carry the current product control plane. Bounded packets can move suitable domains to Rust through one-authority cutovers. Existing configured agents, such as Hermes, attach through explicit adapters. They keep their homes, credentials, memory, skills, tools, and sessions. Standard Nostr support is an interoperability boundary, not relay authority. The separate Buzz deployment and standalone relay program stay canceled. Issues #9185 and #9194 through #9204 closed as not planned on 2026-07-23. The current Electron application remains the supported evidence and rollback subject until all cutover gates pass. Omega does not reroute the pending Full Auto release closure. The 2026-08-02 owner reconciliation made the [`entropy-first Coldcard dashboard`](../loupe/2026-08-02-entropy-first-omega-dashboard-roadmap.md) the first Omega-native workbench slice. Omega issues #199 through #202 delivered it in order across commits `6fd2767b5d`, `4ebde0f20d`, `a18287b216`, and `15ffc050aa`: edit one visible prompt, watch read-only repository traversal, inspect source observations, compare immutable reruns, then run the source-aware 15-project campaign. The broader evidence reader follows it; the interface owns presentation, Omega owns authority, and live forensic controls remain unavailable while #9289, #9290, and #9300 are open. Each Omega mutation still needs its issue claim or accepted packet.
+The owner selected [`Omega`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md), a tracked Zed fork, as the primary Desktop, IDE, and company workroom destination. The new [`Omega roadmap`](../omega/ROADMAP.md) owns the accelerated implementation order. First, release the fully branded `v0.2.0-rc1` bootstrap candidate. Next, port current OpenAgents Desktop behavior. Then add the selected Buzz workroom and Nostr outcomes. The bootstrap release is not a feature-parity or primary-cutover claim. Omega Rust is the application core. Packaged Node 24 and Effect first carry the current product control plane. Bounded packets can move suitable domains to Rust through one-authority cutovers. Existing configured agents, such as Hermes, attach through explicit adapters. They keep their homes, credentials, memory, skills, tools, and sessions. Standard Nostr support is an interoperability boundary, not relay authority. The separate Buzz deployment and standalone relay program stay canceled. Issues #9185 and #9194 through #9204 closed as not planned on 2026-07-23. The owner completed the cutover on 2026-08-04 (#9325) by directing that the Electron application be deleted: it is not an evidence, support, or rollback subject, and Omega is the only Desktop product. Omega does not reroute the pending Full Auto release closure. The 2026-08-02 owner reconciliation made the [`entropy-first Coldcard dashboard`](../loupe/2026-08-02-entropy-first-omega-dashboard-roadmap.md) the first Omega-native workbench slice. Omega issues #199 through #202 delivered it in order across commits `6fd2767b5d`, `4ebde0f20d`, `a18287b216`, and `15ffc050aa`: edit one visible prompt, watch read-only repository traversal, inspect source observations, compare immutable reruns, then run the source-aware 15-project campaign. The broader evidence reader follows it; the interface owns presentation, Omega owns authority, and live forensic controls remain unavailable while #9289, #9290, and #9300 are open. Each Omega mutation still needs its issue claim or accepted packet.
 
 **2026-08-02 All Work program.** Omega #208 owns the client program and closes
 last. OpenAgents #9303 delivered the generated Effect/Rust read boundary in
@@ -264,9 +264,9 @@ AssuranceSpec program queue remains.
 
 1. **The ProductSpec-native Codex Workroom MVP is the accepted baseline.** Its signed local-first Desktop journey stays proven, closed R0–R7 successors do not silently reopen.
 2. **Sarah is an authenticated owner orchestrator, not a standalone app or public front door.** `/sarah/*` stays tombstoned, `principal.sarah` lives in the stable owner-private mobile thread and receives only exact brokered actions. The SBX-07 broker and SBX-09 acceptance are complete. SBX-10 does not create a public cloud claim or a generic administration surface.
-3. **Omega is the primary Desktop, IDE, and company workroom destination, mobile has the T3 ledger plus closed #8980 first-screen proof, and web is the public trust/API surface.** The current Electron application stays supported until the Omega cutover gate. Unpacketized expansion cannot preempt Full Auto.
+3. **Omega is the Desktop, IDE, and company workroom destination, mobile has the T3 ledger plus closed #8980 first-screen proof, and web is the public trust/API surface.** The owner cut over on 2026-08-04 (#9325) and directed that the Electron application be deleted rather than held to a gate. The desktop app tree, the Electron AI SDK test app, the Desktop release pipeline, the Desktop update feed, and the Desktop `/download` section are gone. Omega is now the only Desktop product and there is no Electron rollback target. Unpacketized expansion cannot preempt Full Auto.
 4. **Omega implements the useful Buzz outcomes natively.** Native GPUI workrooms keep conversation, code, reviews, decisions, agent work, approvals, and receipts together. Existing configured agents attach through explicit adapters and retain their custody boundaries. The separate Buzz installation and standalone relay and forge product are canceled.
-5. **Omega client code and reusable OpenAgents services have separate source homes.** The Omega repository owns the tracked Zed fork, Rust/GPUI client, and Omega-only integration. The OpenAgents monorepo owns consumable TypeScript packages, Effect services and contracts, current Electron migration code, React Native mobile, web, Pylon, and cloud services. Omega pins immutable monorepo artifacts. One generated protocol and one owner per domain prevent split authority.
+5. **Omega client code and reusable OpenAgents services have separate source homes.** The Omega repository owns the tracked Zed fork, Rust/GPUI client, and Omega-only integration. The OpenAgents monorepo owns consumable TypeScript packages, Effect services and contracts, React Native mobile, web, Pylon, and cloud services. The Electron migration code that used to sit beside them was deleted on 2026-08-04 (#9325). The release and update signing contract survives as `packages/release-contract`. Omega pins immutable monorepo artifacts. One generated protocol and one owner per domain prevent split authority.
 6. **Khala Sync is cross-device authority, not chat transport.** It carries owner-scoped projections and durable outcomes, local stores remain bounded caches/offline queues.
 7. **Sol owns dispatch sequence.** Fable's 2026-07-17 analysis is reconciled evidence and an outcome crosswalk, never a parallel queue.
 8. **Omega and mobile are independent OpenAgents clients.** Omega is the tracked-fork Desktop destination in its own repository. React Native mobile stays in this monorepo unless a separate migration packet proves a better repository boundary. Deprecated clients are extraction sources, and the accepted mobile identity and icon stay unchanged.
@@ -275,7 +275,7 @@ AssuranceSpec program queue remains.
 11. **Cross-device, mixed-fleet, and portability claims stay proof-rung bounded.** The completed MVP implies none of them.
 12. **Mobile expansion is exact-plan bounded.** The T3 ledger is active authority and #8980 is closed bounded evidence, Khala/T3 source behavior alone is not.
 13. **Remote workrooms are exact-admission substrate.** Closed proofs do not create a general remote-execution program, #9023 now admits only the named GCP managed-sandbox lifecycle, compatibility, IDE, Sarah, supervision, and proof packets.
-14. **Each client stays tokenless across its host boundary.** The current Electron renderer receives projections and emits closed intents through its host-owned Runtime Gateway. Omega GPUI uses its generated local protocol and Rust supervisor. Credentials, raw runtime, processes, and durable authority do not enter either view layer.
+14. **Each client stays tokenless across its host boundary.** Omega GPUI uses its generated local protocol and Rust supervisor, and mobile and web use their own host boundaries. Credentials, raw runtime, processes, and durable authority do not enter any view layer. The deleted Electron renderer followed the same rule through its host-owned Runtime Gateway.
 15. **Active expansion is explicit.** Full Auto #8967, managed sandboxes #9023, release #8913, and the Amp/T3 ledgers own their bounded scopes, closed #8980 and prior tombstones are evidence, not queues.
 16. **Parent/subagent history is loss-accounted.** Every supported item renders once or becomes an explicit redaction/gap, provider-native history stays owner-local until typed adoption.
 17. **Predictable visible behavior is a release contract.** Paint, paging, failure/privacy, accessibility, restart, and host/device journeys need executable UX proof, media only demonstrates.
@@ -313,7 +313,7 @@ AssuranceSpec program queue remains.
 
 ## Product and authority model
 
-**Active product:** OpenAgents is a local-first, ProductSpec-native company workbench. Omega is the separate-repository primary Desktop and IDE. It consumes immutable monorepo artifacts. The current Electron app remains the migration host. Mobile remains the independent monorepo client, openagents.com remains the public trust/API surface, and named Full Auto runs remain the flagship short-term journey.
+**Active product:** OpenAgents is a local-first, ProductSpec-native company workbench. Omega is the separate-repository Desktop and IDE. It consumes immutable monorepo artifacts. The Electron migration host was deleted on 2026-08-04 (#9325). Mobile remains the independent monorepo client, openagents.com remains the public trust/API surface, and named Full Auto runs remain the flagship short-term journey.
 
 **Dormant design horizon:** managed-target breadth beyond #9023, portable host
 movement/failback, concurrent Full Auto portfolios, autonomous provider
@@ -417,19 +417,13 @@ Desktop depth remains seven explicit acceptance gates:
 | D5   | Server-authoritative Fleet attention/control/outcomes/receipts                                                                          | Desktop/mobile show matching state and durable controls converge under replay/reconnect                                                                     |
 | D6   | Fuses, signing/notarization, install/update/rollback/recovery, legacy lockout, support diagnostics                                      | Clean machine completes install, first run, update/interruption/resume, rollback/reinstall, uninstall, and support export                                   |
 
-### Current Electron host boundary during Omega migration
+### Retired Electron host boundary
 
-- The current Electron Runtime Gateway is private host composition, not a
-  public server, second
-  Pylon, claim registry, run database, or state authority.
-- Electron keeps sandbox/context isolation, `nodeIntegration: false`,
-  restrictive CSP, deny-by-default permission/navigation/window-open policy,
-  origin/sender validation, and fixed schema-decoded least-authority preload
-  methods.
-- CPU-heavy history/watch, PTY, engine supervision, and executable extensions
-  move behind one utility process before broad D3/D4 use without changing the
-  renderer protocol. Monaco/editor and terminal depth are typed foreign-host
-  nodes, never generic renderer filesystem/process authority.
+The Electron application was deleted on 2026-08-04 at owner direction (#9325).
+The Runtime Gateway composition, the sandbox/context-isolation and preload
+rules, and the utility-process plan they described no longer bind any code in
+this repository. They are retained here only as the design record that Omega
+inherited. Omega's host boundary is governed by its own repository.
 
 ## Identity, Sync, workroom, and movement contracts
 
@@ -460,7 +454,7 @@ The binding R1/R2 detail is
 - Optimistic/local state is explicit and reversible. Approval, stop, payment,
   claim, credential, and destructive actions are not committed before
   authoritative acknowledgement.
-- Omega, Electron, mobile, and web use versioned monorepo contracts for shared
+- Omega, mobile, and web use versioned monorepo contracts for shared
   identifiers, Sync semantics, intents, and outcomes.
   They do not share a renderer or client-local store.
 
@@ -688,7 +682,7 @@ that cites it.
 21. **Effect scope direction is enforced.** Wider scopes never capture
     narrower authority, ambient cwd, AsyncLocalStorage, renderer paths, and
     module singletons do not select runtime authority.
-22. **One request processor, many transports.** Embedded, Electron, Omega,
+22. **One request processor, many transports.** Embedded, Omega,
     socket, remote Pylon, mobile Sync, browser, and tests use versioned
     monorepo contracts for the same processor. Native bridges stay in named
     perimeter modules.

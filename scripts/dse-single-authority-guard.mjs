@@ -2,11 +2,9 @@
 // Fail on a duplicate implementation, workspace fallback, mixed SDK version,
 // or unresolved required entry point.
 import { existsSync, globSync, readFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 const root = process.argv[2] ?? ".";
-const desktopRequire = createRequire(resolve(root, "apps/openagents-desktop/package.json"));
 const train = "0.2.1-rc.4";
 const failures = [];
 const trainPackages = [
@@ -20,25 +18,6 @@ const trainPackages = [
   "@openagentsinc/history-corpus",
   "@openagentsinc/rlm",
   "@openagentsinc/conformance-kit",
-];
-const desktopRuntimePackages = [
-  "@openagentsinc/agent-harness-contract",
-  "@openagentsinc/agent-runtime-schema",
-  "@openagentsinc/ai",
-  "@openagentsinc/dse",
-  "@openagentsinc/graph-corpus",
-  "@openagentsinc/history-corpus",
-  "@openagentsinc/rlm",
-];
-const requiredSdkEntrypoints = [
-  "@openagentsinc/dse",
-  "@openagentsinc/dse/contract",
-  "@openagentsinc/dse/optimizer",
-  "@openagentsinc/dse/runtime",
-  "@openagentsinc/graph-corpus",
-  "@openagentsinc/graph-corpus/archive",
-  "@openagentsinc/graph-corpus/ranking",
-  "@openagentsinc/graph-corpus/rlm",
 ];
 
 for (const dir of ["packages/dse", "packages/graph-corpus"]) {
@@ -62,35 +41,19 @@ for (const manifest of manifests) {
   }
 }
 
-const desktopManifest = JSON.parse(
-  readFileSync(join(root, "apps/openagents-desktop/package.json"), "utf8"),
-);
-for (const name of desktopRuntimePackages) {
-  const spec = desktopManifest.dependencies?.[name];
-  if (spec !== train) failures.push(`apps/openagents-desktop/package.json: ${name} is ${spec}`);
-}
-if (desktopManifest.devDependencies?.["@openagentsinc/conformance-kit"] !== train) {
-  failures.push(
-    `apps/openagents-desktop/package.json: @openagentsinc/conformance-kit must use ${train}`,
-  );
-}
-
 const lockfile = readFileSync(join(root, "pnpm-lock.yaml"), "utf8");
 for (const name of trainPackages) {
   const escapedName = name.replace("/", "\\/");
   const versions = new Set(
     [...lockfile.matchAll(new RegExp(`${escapedName}@([^':()\\s]+)`, "g"))].map((match) => match[1]),
   );
-  if (versions.size !== 1 || !versions.has(train)) {
-    failures.push(`pnpm-lock.yaml: ${name} versions are ${[...versions].join(", ") || "absent"}`);
-  }
-}
-
-for (const entrypoint of requiredSdkEntrypoints) {
-  try {
-    desktopRequire.resolve(entrypoint);
-  } catch {
-    failures.push(`installed SDK entry point does not resolve: ${entrypoint}`);
+  // Absent is allowed: deleting the Electron desktop app (#9325) removed the
+  // only consumer of several train packages, and zero resolved copies cannot
+  // be a mixed train. What this guard still forbids is any copy that is not
+  // the exact train, which is the drift it was written for (#9163).
+  const offTrain = [...versions].filter((version) => version !== train);
+  if (offTrain.length > 0) {
+    failures.push(`pnpm-lock.yaml: ${name} versions are ${[...versions].join(", ")}`);
   }
 }
 

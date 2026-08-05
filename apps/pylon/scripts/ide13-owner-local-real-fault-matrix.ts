@@ -31,9 +31,9 @@ const REF = Schema.String.check(
   Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u),
 );
 const RECEIPT_REPOSITORY_PATH =
-  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-fault-matrix.json";
+  "benchmarks/ide/2026-07-20-ide-13-owner-local-real-fault-matrix.json";
 const RECOVERY_RECEIPT_REPOSITORY_PATH =
-  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json";
+  "benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json";
 const DEADLINE_MILLISECONDS = 120_000;
 
 const FaultCaseSchema = Schema.Struct({

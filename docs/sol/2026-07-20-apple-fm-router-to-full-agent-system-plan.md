@@ -2061,9 +2061,9 @@ roadmap order.
 - [`portable-session-contract/README.md`](../../packages/portable-session-contract/README.md)
 - [`pylon-core/README.md`](../../packages/pylon-core/README.md)
 - [`khala-sync/README.md`](../../packages/khala-sync/README.md)
-- [`apple-fm-native-helper.ts`](../../apps/openagents-desktop/src/apple-fm-native-helper.ts)
-- [`provider-lane.ts`](../../apps/openagents-desktop/src/provider-lane.ts)
-- [`local-turn-journal.ts`](../../apps/openagents-desktop/src/local-turn-journal.ts)
+- `apple-fm-native-helper.ts`
+- `provider-lane.ts`
+- `local-turn-journal.ts`
 - [`apple-fm`](../../apps/pylon/packages/runtime/src/backends/apple-fm/)
 - [`apple-fm node adapters`](../../apps/pylon/src/node/)
 - [`foundation-bridge`](../../apps/pylon/swift/foundation-bridge/)

@@ -25,180 +25,12 @@
     "apps/oa-updates/src/manifest-validate.ts#validateExpoManifest",
     "apps/oa-updates/src/multipart-body.ts#buildMultipartMixed",
     "apps/oa-updates/src/pylon-release.ts#selectPylonUpdate",
-    "apps/oa-updates/src/release-set-feed.ts#createInMemoryReleaseSetFeedStore",
     "apps/oa-updates/src/update-channel-config.ts#buildUpdatesUrl",
     "apps/oa-updates/src/update-channel-config.ts#parseChannelFromHeaders",
     "apps/oa-updates/src/update-channel-config.ts#resolveBranchForChannel",
     "apps/openagents-audio/src/storage.ts#MemoryPrivateObjectStore",
     "apps/openagents-audio/src/stt.ts#FakeSttAdapter",
     "apps/openagents-audio/src/tts.ts#FakeTtsAdapter",
-    "apps/openagents-desktop/forge.config.ts#OPENAGENTS_DESKTOP_BUNDLE_ID",
-    "apps/openagents-desktop/forge.config.ts#OPENAGENTS_DESKTOP_PROTOCOL",
-    "apps/openagents-desktop/scripts/full-auto-mcp-tools.ts#FULL_AUTO_AUTHORITY_GRANTING_OPERATIONS",
-    "apps/openagents-desktop/scripts/full-auto-mcp-tools.ts#FULL_AUTO_MODEL_CALLABLE_OPERATIONS",
-    "apps/openagents-desktop/scripts/full-auto-mcp-tools.ts#FULL_AUTO_REMOVED_MODEL_CALLABLE_START_TOOLS",
-    "apps/openagents-desktop/scripts/full-auto-mcp-tools.ts#FULL_AUTO_UNEXPOSED_OPERATIONS",
-    "apps/openagents-desktop/scripts/stage-target.ts#finalizeDesktopBuildReceipt",
-    "apps/openagents-desktop/src/afs-11-claim-evidence.ts#afs11ClaimLedger",
-    "apps/openagents-desktop/src/afs-11-claim-evidence.ts#afs11EvidenceDocRef",
-    "apps/openagents-desktop/src/afs-11-claim-evidence.ts#citedProofRefs",
-    "apps/openagents-desktop/src/afs-11-claim-evidence.ts#ledgerViolations",
-    "apps/openagents-desktop/src/afs-11-claim-evidence.ts#missingCapabilityIds",
-    "apps/openagents-desktop/src/afs-11-claim-evidence.ts#versionOneCutLineSourceRef",
-    "apps/openagents-desktop/src/apple-fm-contract.ts#decodeAppleFmStatus",
-    "apps/openagents-desktop/src/apple-fm-contract.ts#decodeAppleFmStopResult",
-    "apps/openagents-desktop/src/apple-fm-contract.ts#decodeAppleFmTurnResult",
-    "apps/openagents-desktop/src/apple-fm-contract.ts#notSupportedAppleFmStatus",
-    "apps/openagents-desktop/src/apple-fm-contract.ts#refusedNotReadyAppleFmTurn",
-    "apps/openagents-desktop/src/apple-fm-contract.ts#refusedUnsupportedAppleFmTurn",
-    "apps/openagents-desktop/src/apple-fm-contract.ts#unavailableAppleFmStatus",
-    "apps/openagents-desktop/src/apple-fm-contract.ts#unavailableAppleFmStopResult",
-    "apps/openagents-desktop/src/assurance-receipt-bridge.ts#bridgeAssuranceReceipt",
-    "apps/openagents-desktop/src/builtin-productspec-skill.ts#installBuiltinAssuranceSpecWorkSkill",
-    "apps/openagents-desktop/src/capability-registry.ts#AUDIT_PROSE_SUMMARY",
-    "apps/openagents-desktop/src/capability-registry.ts#CAPABILITY_TABLE_DISTRIBUTION",
-    "apps/openagents-desktop/src/capability-registry.ts#capabilityStatusCounts",
-    "apps/openagents-desktop/src/capability-registry.ts#isWired",
-    "apps/openagents-desktop/src/codex-app-server-client.ts#registerAssuranceSpecSkill",
-    "apps/openagents-desktop/src/codex-child-runtime.ts#fixtureCodex401TokenInvalidatedStderr",
-    "apps/openagents-desktop/src/codex-child-runtime.ts#fixtureCodexMalformedAuthStderr",
-    "apps/openagents-desktop/src/codex-child-runtime.ts#fixtureCodexMissingAuthStdout",
-    "apps/openagents-desktop/src/codex-child-runtime.ts#fixtureCodexNetworkRefusedStdout",
-    "apps/openagents-desktop/src/codex-child-runtime.ts#fixtureCodexRateLimitStdout",
-    "apps/openagents-desktop/src/codex-child-runtime.ts#fixtureCodexRefreshTokenInvalidatedStderr",
-    "apps/openagents-desktop/src/codex-child-runtime.ts#fixtureCodexShortAuthStdout",
-    "apps/openagents-desktop/src/codex-child-runtime.ts#fixtureCodexUsageLimitStdout",
-    "apps/openagents-desktop/src/codex-conformance.ts#evaluateCodexReleaseGate",
-    "apps/openagents-desktop/src/codex-conformance.ts#publicCodexDiagnostics",
-    "apps/openagents-desktop/src/codex-connect-contract.ts#decodeCodexAccountsResult",
-    "apps/openagents-desktop/src/codex-connect-contract.ts#decodeCodexConnectStatus",
-    "apps/openagents-desktop/src/codex-history-contract.ts#decodeCodexHistoryCatalog",
-    "apps/openagents-desktop/src/codex-history-contract.ts#decodeCodexHistoryPage",
-    "apps/openagents-desktop/src/codex-history-contract.ts#decodeCodexHistorySearchResponse",
-    "apps/openagents-desktop/src/coding-catalog-contract.ts#filterDesktopCodingCatalog",
-    "apps/openagents-desktop/src/coding-catalog-contract.ts#parseDesktopCodingCatalogQuery",
-    "apps/openagents-desktop/src/contracts/ux-contracts.ts#openAgentsDesktopUxContractRegistry",
-    "apps/openagents-desktop/src/desktop-command-contract.ts#decodeDesktopDeferredCommand",
-    "apps/openagents-desktop/src/desktop-headless-host.ts#HeadlessHost.fullAutoRuns",
-    "apps/openagents-desktop/src/desktop-headless-receipt.ts#screenDelegatedTurn",
-    "apps/openagents-desktop/src/desktop-launch-context.ts#desktopLaunchContextFromArgv",
-    "apps/openagents-desktop/src/desktop-operation-context.ts#makeDesktopOperationContext",
-    "apps/openagents-desktop/src/desktop-session-recovery.ts#recoverVerifiedDesktopSession",
-    "apps/openagents-desktop/src/electron-trace-acceptance.ts#traceAcceptanceJourney",
-    "apps/openagents-desktop/src/electron-trace-acceptance.ts#traceAcceptanceReload",
-    "apps/openagents-desktop/src/extension-lifecycle-contract.ts#decodeExtensionLifecycleAudit",
-    "apps/openagents-desktop/src/full-auto-acceptance-driver.ts#executeFullAutoAcceptanceTest",
-    "apps/openagents-desktop/src/full-auto-acceptance-driver.ts#makeFixtureLaneExecutor",
-    "apps/openagents-desktop/src/full-auto-acceptance-driver.ts#openFullAutoAcceptanceHarness",
-    "apps/openagents-desktop/src/full-auto-acceptance.ts#acceptanceTitleDisposition",
-    "apps/openagents-desktop/src/full-auto-advisory.ts#adviseFullAutoRoute",
-    "apps/openagents-desktop/src/full-auto-advisory.ts#decodeFullAutoAdvisoryAnalysis",
-    "apps/openagents-desktop/src/full-auto-advisory.ts#decodeFullAutoRouteRecommendation",
-    "apps/openagents-desktop/src/full-auto-initiative.ts#decideFullAutoInitiative",
-    "apps/openagents-desktop/src/full-auto-objective-selection.ts#fullAutoObjectiveFromCandidate",
-    "apps/openagents-desktop/src/full-auto-objective-selection.ts#proposeFullAutoObjectiveCandidates",
-    "apps/openagents-desktop/src/full-auto-run-analyzer.ts#compareFullAutoRunAnalyses",
-    "apps/openagents-desktop/src/full-auto-run-analyzer.ts#requestFullAutoRunModelAssistedReview",
-    "apps/openagents-desktop/src/ide/cursor-claude-provider.ts#decodeIdeCursorClaudeOutput",
-    "apps/openagents-desktop/src/ide/cursor-contract.ts#decodeIdeCursorRequest",
-    "apps/openagents-desktop/src/ide/cursor-fixture.ts#ideCursorFixtureDecision",
-    "apps/openagents-desktop/src/ide/cursor-workspace-authority.ts#makeIdeCursorWorkspaceAuthorityLayer",
-    "apps/openagents-desktop/src/ide/dap-transport.ts#DapMessageDecoder.bufferedBytes",
-    "apps/openagents-desktop/src/ide/debug-fixture.ts#ideDebugFixtureConfiguration",
-    "apps/openagents-desktop/src/ide/debug-fixture.ts#ideDebugFixtureSnapshot",
-    "apps/openagents-desktop/src/ide/language-fixture.ts#makeIdeLanguageResultFixture",
-    "apps/openagents-desktop/src/ide/monaco-runtime-loader.ts#ideMonacoRuntimeResources",
-    "apps/openagents-desktop/src/ide/path-index-service.ts#IdePathIndexServiceShape.filterPath",
-    "apps/openagents-desktop/src/ide/path-index-service.ts#IdePathIndexServiceShape.updateBadges",
-    "apps/openagents-desktop/src/ide/portable-coordinator-service.ts#IdePortableCoordinatorShape.authorizeMutation",
-    "apps/openagents-desktop/src/ide/portable-coordinator-service.ts#makeIdePortableCoordinatorLayer",
-    "apps/openagents-desktop/src/ide/portable-destination-settings.ts#makeIdePortableDestinationSettingsActivation",
-    "apps/openagents-desktop/src/ide/project-fixture.ts#makeIdeDocumentFixture",
-    "apps/openagents-desktop/src/ide/project-service.ts#IdeProjectServiceShape.advanceGeneration",
-    "apps/openagents-desktop/src/ide/project-service.ts#IdeProjectServiceShape.recordCapability",
-    "apps/openagents-desktop/src/ide/project-service.ts#IdeProjectServiceShape.upsertDocument",
-    "apps/openagents-desktop/src/ide/project-service.ts#makeIdeProjectLayer",
-    "apps/openagents-desktop/src/ide/review-contract.ts#reviewActionDisposition",
-    "apps/openagents-desktop/src/ide/run-fixture.ts#ideRunFixtureController",
-    "apps/openagents-desktop/src/ide/run-fixture.ts#ideRunFixtureSnapshot",
-    "apps/openagents-desktop/src/ide/run-fixture.ts#ideRunFixtureTask",
-    "apps/openagents-desktop/src/ide/source-control-fixture.ts#ideSourceControlFixtureSnapshot",
-    "apps/openagents-desktop/src/ide/vim-mode-contract.ts#ide01VimDecision",
-    "apps/openagents-desktop/src/ide/workbench-contract.ts#exportIdeEditorSettings",
-    "apps/openagents-desktop/src/identity-contract.ts#decodeIdentityStatus",
-    "apps/openagents-desktop/src/live-agent-graph-contract.ts#decodeLiveAgentGraphHostSnapshot",
-    "apps/openagents-desktop/src/live-agent-graph-local.ts#isLocalAgentGraphApplied",
-    "apps/openagents-desktop/src/managed-rlm-corpus-policy.ts#managedRlmCorpusInput",
-    "apps/openagents-desktop/src/managed-rlm-workroom-store.ts#makeManagedRlmWorkroomStore",
-    "apps/openagents-desktop/src/meta-agent-acp-server.ts#startMetaAgentAcpServerIfEnabled",
-    "apps/openagents-desktop/src/provider-accounts-contract.ts#decodeProviderAccountUsageResult",
-    "apps/openagents-desktop/src/provider-accounts-contract.ts#decodeProviderAccountsListResult",
-    "apps/openagents-desktop/src/provider-runtime-compatibility.ts#decodeProviderRuntimeCompatibility",
-    "apps/openagents-desktop/src/provider-runtime-host.ts#resolveInstalledCodexExecutable",
-    "apps/openagents-desktop/src/renderer/assurance-spec-workspace.ts#assuranceSpecWorkspaceStateFromSource",
-    "apps/openagents-desktop/src/renderer/assurance-spec-workspace.ts#assuranceSpecWorkspaceView",
-    "apps/openagents-desktop/src/renderer/assurance-spec-workspace.ts#makeAssuranceSpecWorkspaceHandlers",
-    "apps/openagents-desktop/src/renderer/composer-shortcuts.ts#handleComposerShiftTab",
-    "apps/openagents-desktop/src/renderer/full-auto-workspace.ts#activeFullAutoRuns",
-    "apps/openagents-desktop/src/renderer/history-recall-card.ts#projectHistoryRecallToolCard",
-    "apps/openagents-desktop/src/renderer/history-recall-semantic-card.ts#projectSemanticRecallToolCard",
-    "apps/openagents-desktop/src/renderer/history-restore.ts#historyRestoreFetchPlan",
-    "apps/openagents-desktop/src/renderer/history-restore.ts#restorableHistoryThreadRef",
-    "apps/openagents-desktop/src/renderer/history-workspace.ts#historySearchOpenAnchor",
-    "apps/openagents-desktop/src/renderer/history-workspace.ts#projectHistoryTimelineEvents",
-    "apps/openagents-desktop/src/renderer/ide/pierre-tree-adapter.tsx#pierreWorkspaceMoveDestination",
-    "apps/openagents-desktop/src/renderer/ide/pierre-tree-adapter.tsx#pierreWorkspaceNodeAtPath",
-    "apps/openagents-desktop/src/renderer/ide/pierre-tree-adapter.tsx#pierreWorkspaceRenameParent",
-    "apps/openagents-desktop/src/renderer/mvp-assurance-congruence.ts#mvpAssuranceCongruenceViolations",
-    "apps/openagents-desktop/src/renderer/mvp-assurance-congruence.ts#renderMvpAssuranceCoverageMarkdown",
-    "apps/openagents-desktop/src/renderer/mvp-visible-surfaces.ts#desktopMvpSurfaceViolations",
-    "apps/openagents-desktop/src/renderer/product-spec-workspace.ts#emptyProductSpecWorkspaceState",
-    "apps/openagents-desktop/src/renderer/product-spec-workspace.ts#makeProductSpecWorkspaceHandlers",
-    "apps/openagents-desktop/src/renderer/product-spec-workspace.ts#productSpecPacketPrompt",
-    "apps/openagents-desktop/src/renderer/product-spec-workspace.ts#productSpecWorkspaceView",
-    "apps/openagents-desktop/src/renderer/react-review.tsx#ReviewSurface",
-    "apps/openagents-desktop/src/renderer/runtime-cards.ts#runtimeCardFromNote",
-    "apps/openagents-desktop/src/renderer/runtime-conversation.ts#selectDesktopChatHost",
-    "apps/openagents-desktop/src/renderer/runtime-interactions.ts#answerDesktopRuntimeInteraction",
-    "apps/openagents-desktop/src/renderer/runtime-interactions.ts#makeDesktopRuntimeInteractionHost",
-    "apps/openagents-desktop/src/renderer/settings.ts#decodeClaudeAccountsView",
-    "apps/openagents-desktop/src/renderer/settings.ts#decodeHarnessMaintenanceListView",
-    "apps/openagents-desktop/src/renderer/shell.ts#delegateTranscriptForAgent",
-    "apps/openagents-desktop/src/renderer/shell.ts#nextSelectableProviderLane",
-    "apps/openagents-desktop/src/renderer/shell.ts#withPending",
-    "apps/openagents-desktop/src/renderer/sidebar-accounts.ts#sidebarAccountsView",
-    "apps/openagents-desktop/src/renderer/voice-mode.ts#voiceBehaviorContractIds",
-    "apps/openagents-desktop/src/runtime-gateway-contract.ts#decodeDesktopRuntimeGatewayEvent",
-    "apps/openagents-desktop/src/runtime-gateway-contract.ts#decodeDesktopRuntimeGatewayResponse",
-    "apps/openagents-desktop/src/service-topology.ts#assertValidDesktopServiceSourceCoupling",
-    "apps/openagents-desktop/src/service-topology.ts#assertValidDesktopServiceTopology",
-    "apps/openagents-desktop/src/thread-event-search-bridge-contract.ts#invokeDesktopThreadEventSearch",
-    "apps/openagents-desktop/src/thread-event-search-electron-host.ts#openDesktopThreadEventSearchElectronHost",
-    "apps/openagents-desktop/src/thread-export-bridge-contract.ts#invokeDesktopThreadExportWrite",
-    "apps/openagents-desktop/src/thread-export-create-bridge-contract.ts#invokeDesktopThreadExportCreate",
-    "apps/openagents-desktop/src/thread-export-electron-host.ts#openDesktopThreadExportElectronHost",
-    "apps/openagents-desktop/src/thread-export-workflow.ts#runDesktopThreadExportWorkflow",
-    "apps/openagents-desktop/src/thread-visibility-bridge-contract.ts#invokeDesktopThreadVisibilityApply",
-    "apps/openagents-desktop/src/thread-visibility-main-composition.ts#openDesktopThreadVisibilityMainComposition",
-    "apps/openagents-desktop/src/thread-visibility-policy-store.ts#desktopThreadVisibilityPolicyFileName",
-    "apps/openagents-desktop/src/thread-visibility-publication-transport.ts#publishDesktopThreadPublicVisibility",
-    "apps/openagents-desktop/src/thread-visibility-sync-authority.ts#evaluateDesktopThreadVisibilityFromConfirmedSync",
-    "apps/openagents-desktop/src/thread-visibility-workspace-publication-transport.ts#publishDesktopThreadWorkspaceVisibility",
-    "apps/openagents-desktop/src/turn-checkpoint-contract.ts#TURN_CHECKPOINT_CONTRACT",
-    "apps/openagents-desktop/src/turn/ambient-tasks.ts#forkDesktopAmbientTask",
-    "apps/openagents-desktop/src/turn/ambient-tasks.ts#runDesktopAmbientTask",
-    "apps/openagents-desktop/src/turn/conversation-coherence-grade.ts#gradeConversationCoherence",
-    "apps/openagents-desktop/src/turn/desktop-provider-lane.ts#makeDesktopLaneProvider",
-    "apps/openagents-desktop/src/turn/desktop-turn-ipc.ts#decodeDesktopTurnSubmitResult",
-    "apps/openagents-desktop/src/turn/desktop-turn-ipc.ts#makeDesktopTurnFence",
-    "apps/openagents-desktop/src/turn/desktop-turn-policy.ts#desktopTurnPolicyHostToolCapabilities",
-    "apps/openagents-desktop/src/turn/desktop-turn-policy.ts#desktopTurnPolicyHostTools",
-    "apps/openagents-desktop/src/turn/desktop-turn-policy.ts#hostToolsForDesktopTurn",
-    "apps/openagents-desktop/src/turn/editor-context-binding.ts#decodeEditorContextBinding",
-    "apps/openagents-desktop/src/turn/editor-context-binding.ts#makeEditorContextRegistry",
-    "apps/openagents-desktop/src/voice-permission-policy.ts#decideDesktopMediaPermission",
-    "apps/openagents-desktop/src/workspace-contract.ts#decodeWorkspaceChange",
-    "apps/openagents-desktop/src/workspace-contract.ts#decodeWorkspaceSearchCancelResult",
     "apps/openagents-mobile/src/workroom/omega-device-bridge-client.ts#OmegaDeviceBridgeClient.observeRelay",
     "apps/openagents-mobile/src/workroom/omega-device-bridge-client.ts#createMemoryOmegaDeviceBridgeStore",
     "apps/openagents.com/apps/start/src/agent-surface/web-agent-surface-read-model.ts#readWebAgentSurfaceFactSummary",
@@ -1161,7 +993,6 @@
     "apps/pylon/src/tas/work-intake.ts#normalizeIntake",
     "apps/pylon/src/tas/workspace-boundary.ts#classifyFileAccess",
     "apps/pylon/src/virtual-merge-queue.ts#simulateVirtualMergeQueue",
-    "apps/qa-runner/src/assurance-swarm.ts#runQaSwarmAssuranceManifest",
     "apps/qa-runner/src/backend.ts#CloudVmProvisionerV2.provisionVm",
     "apps/qa-runner/src/backend.ts#cloudVmBackend",
     "apps/qa-runner/src/backend.ts#inertCloudVmProvisioner",
@@ -1754,17 +1585,8 @@
     "packages/omega-effectd/src/engine/full-auto-recall.ts#FullAutoRecallLedger.usageLedgerInputs",
     "packages/omega-effectd/src/engine/full-auto-recall.ts#applyFullAutoRecallToContinuation",
     "packages/omega-effectd/src/engine/full-auto-recall.ts#fullAutoRecallContinuationFragment",
-    "packages/omega-effectd/src/engine/full-auto-recall.ts#fullAutoRoadmapRecallText",
     "packages/omega-effectd/src/engine/full-auto-recall.ts#makeFullAutoRecallLedger",
     "packages/omega-effectd/src/engine/full-auto-recall.ts#runFullAutoRecall",
-    "packages/omega-effectd/src/engine/full-auto-reconcile.ts#applyFullAutoComposerToggle",
-    "packages/omega-effectd/src/support/claude-local-contract.ts#decodeClaudeLocalMcpServerConfigs",
-    "packages/omega-effectd/src/support/claude-local-contract.ts#decodeClaudeLocalPickedImages",
-    "packages/omega-effectd/src/support/harness-lowering.ts#lowerHarnessEvents",
-    "packages/omega-effectd/src/support/history-recall-host.ts#desktopHostToolCapabilitiesForTurn",
-    "packages/omega-effectd/src/support/history-recall-host.ts#isHistoryRecallHostTool",
-    "packages/omega-effectd/src/support/history-recall-host.ts#makeDesktopRlmToolHandler",
-    "packages/omega-effectd/src/support/workbench-item-contract.ts#decodeWorkbenchItem",
     "packages/pipeline-signals/src/index.ts#awaitPipelineSignal",
     "packages/portable-session-contract/src/capability-broker.ts#makeOpenAgentsManagedCapabilityAdapter",
     "packages/portable-session-contract/src/capability-broker.ts#makeOwnerLocalCapabilityAdapter",
@@ -1854,9 +1676,6 @@
     "packages/reactor-contracts/src/index.ts#selectReactorCapabilityCopyEvalRefs",
     "packages/release-contract/src/release-set-contract.ts#decodeReleaseSelection",
     "packages/release-contract/src/release-set-contract.ts#finalizeReleaseSet",
-    "packages/release-contract/src/release-staging-contract.ts#desktopBuildReceiptRef",
-    "packages/release-contract/src/update-contract.ts#createLaunchReceipt",
-    "packages/release-contract/src/update-contract.ts#evaluateLaunchReceipt",
     "packages/review-round/src/index.ts#aggregateRound",
     "packages/review-round/src/index.ts#roundIsClean",
     "packages/sarah/src/community-arbitration/identity.ts#OWNER_APPEAL_IDENTITY_REGISTRY_PATH",
@@ -1946,172 +1765,28 @@
   ],
   "allowed": [
     {
-      "ref": "packages/nip-mkt/src/generated.ts#CLOSED_REASONS",
-      "reason": "Published relay CLOSED vocabulary for the generated NIP-MKT SDK; openagents.com issue #9310 will classify recipient-gated market query failures when it adopts this package."
+      "ref": "apps/openagents.com/packages/effect-native-core/src/index.ts#CodeEditor",
+      "reason": "Vendored @effect-native/core snapshot (apps/openagents.com/packages/effect-native-vendor.json pins OpenAgentsInc/effect-native@467bde07). Its only in-repo caller was the deleted Electron renderer (openagents#9325). Upstream owns this host component; editing the vendored tree would break the commit pin the vendor guard asserts, so it is re-adopted on the next re-vendor or by the next Effect Native host surface."
     },
     {
-      "ref": "packages/nip-mkt/src/generated.ts#CONTRACT_SHA256",
-      "reason": "Published contract provenance for the generated NIP-MKT SDK; openagents.com issue #9310 will display and diagnose the pinned Immortal contract when it adopts this package."
+      "ref": "apps/openagents.com/packages/effect-native-render-dom/src/index.ts#makeStubCodeEditorDriver",
+      "reason": "Vendored @effect-native/render-dom snapshot pinned by apps/openagents.com/packages/effect-native-vendor.json. The deleted Electron renderer supplied the real CodeEditor host driver; the stub driver is upstream's default host and cannot be removed without breaking the vendor commit pin the effect-native vendor guard asserts."
     },
     {
-      "ref": "packages/nip-mkt/src/generated.ts#CONTRACT_SOURCE_COMMIT",
-      "reason": "Published contract provenance for the generated NIP-MKT SDK; openagents.com issue #9310 will display and diagnose the pinned Immortal contract when it adopts this package."
+      "ref": "apps/openagents.com/packages/effect-native-render-dom/src/react.ts#makeReactDomRenderer",
+      "reason": "Vendored @effect-native/render-dom React projection boundary. apps/openagents.com/scripts/check-effect-native-vendor.test.ts asserts this exact symbol is present in the pinned snapshot, and the vendor manifest pins OpenAgentsInc/effect-native@467bde07; the deleted Electron renderer was its only in-repo mount site."
     },
     {
-      "ref": "packages/nip-mkt/src/generated.ts#FIXTURE_MANIFEST_SHA256",
-      "reason": "Published conformance provenance for the generated NIP-MKT SDK; openagents.com issue #9310 will expose it in market diagnostics when it adopts this package."
+      "ref": "packages/agent-experience-memory/src/graph-memory-store.ts#GraphMemoryStoreInterface.applyDeletePlan",
+      "reason": "Owner deletion half of the published graph-memory SDK contract: the typed, receipted delete plan every store layer implements. Its caller was the deleted Electron owner-lifecycle surface; hosted Sarah graph memory (openagents#9189) is the surviving composition root that owes owners a deletion path."
     },
     {
-      "ref": "packages/nip-mkt/src/generated.ts#GATEWAY_LIMITS",
-      "reason": "Published generated relay configuration catalog; openagents.com issue #9310 will use the pinned recipient-rate environment name in local market diagnostics."
+      "ref": "packages/agent-experience-memory/src/graph-memory-store.ts#GraphMemoryStoreInterface.exportArchive",
+      "reason": "Owner data-portability half of the published graph-memory SDK contract, implemented by every store layer and paired with the live importArchive. Its caller was the deleted Electron owner-lifecycle surface; hosted Sarah graph memory (openagents#9189) is the surviving composition root that owes owners an export path."
     },
     {
-      "ref": "packages/nip-mkt/src/generated.ts#MKT_KIND_DEFINITIONS",
-      "reason": "Published generated kind metadata for downstream NIP-MKT clients; openagents.com issue #9310 will use publication and enforcement scope when presenting discovery and negotiation records."
-    },
-    {
-      "ref": "packages/nip-mkt/src/generated.ts#MKT_KINDS",
-      "reason": "Published generated kind catalog for downstream NIP-MKT clients; openagents.com issue #9310 will use it when building discovery and negotiation filters."
-    },
-    {
-      "ref": "packages/nip-mkt/src/generated.ts#OPAQUE_TRANSPORT",
-      "reason": "Published NIP-MKT transport policy for SDK consumers; openagents.com issue #9310 will use it to select wrapped private delivery and recipient-scoped reads."
-    },
-    {
-      "ref": "packages/nip-mkt/src/generated.ts#REASON_PREFIXES",
-      "reason": "Published relay reason-prefix vocabulary for the generated NIP-MKT SDK; openagents.com issue #9310 will classify authenticated read and publish failures when it adopts this package."
-    },
-    {
-      "ref": "packages/nip-mkt/src/state.ts#activeSupersedingQuote",
-      "reason": "Published NIP-MKT client projection; openagents.com issue #9310 will call it when the negotiation UI adopts this SDK."
-    },
-    {
-      "ref": "packages/nip-mkt/src/state.ts#analyzeStatusSequence",
-      "reason": "Published NIP-MKT gap and fork projection; openagents.com issue #9310 will call it when the negotiation UI adopts this SDK."
-    },
-    {
-      "ref": "packages/nip-mkt/src/state.ts#admitPrivateRecord",
-      "reason": "Published immutable private-record admission operation; openagents.com issue #9310 will call it from its local negotiation record store when it adopts this SDK."
-    },
-    {
-      "ref": "packages/nip-mkt/src/state.ts#authorizationDecision",
-      "reason": "Published NIP-MKT signer authorization decision; openagents.com issue #9310 will call it before advancing Status, Cancel, or Close state."
-    },
-    {
-      "ref": "packages/nip-mkt/src/state.ts#createPrivateAdmissionStore",
-      "reason": "Published in-memory NIP-MKT admission store constructor; the demo provider in openagents.com issue #9310 will use it for its throwaway local negotiation session."
-    },
-    {
-      "ref": "packages/nip-mkt/src/state.ts#deliveryDeduplicationDecision",
-      "reason": "Published NIP-MKT logical-delivery decision; openagents.com issue #9310 will call it before applying rewrapped inbox deliveries."
-    },
-    {
-      "ref": "packages/nip-mkt/src/state.ts#evidenceDecision",
-      "reason": "Published NIP-MKT evidence projection; openagents.com issue #9310 will call it for evidence-rung display when it adopts this SDK."
-    },
-    {
-      "ref": "packages/nip-mkt/src/state.ts#expiryDecision",
-      "reason": "Published fail-closed NIP-MKT expiry decision; openagents.com issue #9310 will call it before any demo-provider reservation or execution effect."
-    },
-    {
-      "ref": "packages/nip-mkt/src/state.ts#reserveCapacity",
-      "reason": "Published NIP-MKT reservation projection; the demo provider in openagents.com issue #9310 will call it when it adopts this SDK."
-    },
-    {
-      "ref": "packages/nip-mkt/src/transport.ts#serializeSignedEvent",
-      "reason": "Published canonical NIP-MKT serializer; openagents.com issue #9310 will call it before gift wrapping when it adopts this SDK."
-    },
-    {
-      "ref": "packages/nip-mkt/src/transport.ts#unwrapPrivateRecord",
-      "reason": "Published NIP-MKT recipient transport operation; openagents.com issue #9310 will call it when its negotiation inbox adopts this SDK."
-    },
-    {
-      "ref": "packages/nip-mkt/src/transport.ts#wrapPrivateRecordCopies",
-      "reason": "Published NIP-MKT counterparty and sender-recovery operation; openagents.com issue #9310 will call it for every private negotiation record it sends."
-    },
-    {
-      "ref": "packages/forensic-contract/src/historical-scan.ts#runHistoricalFingerprintScan",
-      "reason": "Published deterministic historical scanner; the native forensic worker route will call it after immutable bundle or private brokered Bitcoin Core materialization on an admitted OpenAgents Cloud worker."
-    },
-    {
-      "ref": "packages/forensic-contract/src/historical-scan.ts#validateHistoricalWideScanLedger",
-      "reason": "Published wide-scan ledger validator; the same native forensic worker route that calls runHistoricalFingerprintScan will call it when a wide scan on an admitted worker persists its per-block eligibility and match ledger, alongside the 2026-08-01 ledger it already gates in fixtures."
-    },
-    {
-      "ref": "packages/forensic-contract/src/coldcard-generator.ts#LIBNGU_INITIAL_YASMARANG_STATE",
-      "reason": "Published pinned libngu initial state; the native forensic worker vector builder will use it for admitted vulnerable and mutation reproductions."
-    },
-    {
-      "ref": "packages/forensic-contract/src/coldcard-generator.ts#buildColdcardGeneratorTrace",
-      "reason": "Published digest-only trace builder; the native forensic worker route will call it when an admitted OpenAgents Cloud generator reproduction is persisted."
-    },
-    {
-      "ref": "packages/forensic-contract/src/coldcard-generator.ts#calculateForensicWorkFactor",
-      "reason": "Published explicit-assumption estimator; the forensic evaluator route will call it after admitted OpenAgents Cloud throughput receipts are available."
-    },
-    {
-      "ref": "packages/forensic-contract/src/coldcard-generator.ts#evaluateColdcardGeneratorVector",
-      "reason": "Published frozen-vector evaluator; the native forensic worker route will call it for vulnerable, fixed, and mutation suites on admitted OpenAgents Cloud workers."
-    },
-    {
-      "ref": "packages/forensic-contract/src/coldcard-generator.ts#admitColdcardGeneratorEvidence",
-      "reason": "Published generator-evidence admission gate for OFR-015; the forensic evaluator route will call it once golden vectors are sourced independently of our own reproduction and a throughput measurement exists from an admitted OpenAgents Cloud worker. It currently refuses the checked-in corpus, which is the honest state."
-    },
-    {
-      "ref": "packages/forensic-contract/src/coldcard-generator.ts#reproduceColdcardOwnedFixture",
-      "reason": "Published secret-safe reproduction boundary; the forensic evaluator route will call it only for synthetic or explicitly owner-authorized fixtures after the OpenAgents Cloud execution adapter lands."
-    },
-    {
-      "ref": "packages/forensic-contract/src/artifact-witness.ts#evaluateArtifactWitness",
-      "reason": "Published deterministic artifact evaluator; the native forensic worker route will call it when the code-to-artifact suite moves from checked-in conformance fixtures to admitted OpenAgents Cloud capture bytes."
-    },
-    {
-      "ref": "packages/forensic-contract/src/artifact-witness.ts#evaluateColdcardArtifactWitnessSuite",
-      "reason": "Published vulnerable/fixed/fault matrix gate; the forensic evaluator route will call it when all three admitted OpenAgents Cloud captures are persisted for a suite run."
-    },
-    {
-      "ref": "packages/forensic-contract/src/canonical.ts#canonicalizeForensicContract",
-      "reason": "Published forensic contract API; OFR-002 and OFR-003 will call it from source materialization and run persistence when those issues land."
-    },
-    {
-      "ref": "packages/forensic-contract/src/claims.ts#evaluateClaimGate",
-      "reason": "Published forensic contract API; OFR-004 and OFR-008 will call it from evidence adjudication and Omega review when those issues land."
-    },
-    {
-      "ref": "packages/forensic-contract/src/claims.ts#evaluateClaimRevisionOrigin",
-      "reason": "Published forensic contract API; OFR-004 and OFR-008 will call it from append-only claim revision and Omega review when those issues land."
-    },
-    {
-      "ref": "packages/forensic-contract/src/index.ts#FORENSIC_CONTRACT_SCHEMA_IDS",
-      "reason": "Published forensic contract registry; OFR-003 will consume it for run storage and contract-version negotiation when that issue lands."
-    },
-    {
-      "ref": "packages/forensic-contract/src/lifecycle.ts#evaluateForensicRunTransition",
-      "reason": "Published forensic contract API; OFR-003 will call it from the durable run lifecycle authority when that issue lands."
-    },
-    {
-      "ref": "packages/forensic-contract/src/projection.ts#projectForensicRunPublicSafe",
-      "reason": "Published forensic contract API; OFR-008 and OFR-017 will call it from Omega and public-forensics projections when those issues land."
-    },
-    {
-      "ref": "packages/forensic-contract/src/projection.ts#projectForensicScorecardPublicSafe",
-      "reason": "Published public-safe forensic aggregate projector; OFR-012 will call it after deterministic scorecard projection lands in Omega."
-    },
-    {
-      "ref": "packages/forensic-contract/src/evidence-derivation.ts#deriveEvidenceGraph",
-      "reason": "Published deterministic graph builder; the native forensic worker route will call it after admitted OpenAgents Cloud historical scan and report evidence is persisted."
-    },
-    {
-      "ref": "packages/forensic-contract/src/evidence-derivation.ts#reconcileEvidenceFigures",
-      "reason": "Published precision-aware reconciliation boundary; the forensic evaluator route will call it when independently derived and published figure artifacts are available."
-    },
-    {
-      "ref": "packages/forensic-contract/src/evidence-derivation.ts#appendClaimHistoryEvent",
-      "reason": "Published append-only history transition; the forensic claim authority will call it when evidence promotion and correction persistence is connected."
-    },
-    {
-      "ref": "packages/forensic-contract/src/evidence-derivation.ts#claimEvidenceIsIsolatedToRung",
-      "reason": "Published claim-rung diagnostic; the Omega evidence-ladder adapter will call it when OFR-018 renders isolated fingerprint, component, unauthorized-movement, and identity gates."
+      "ref": "packages/agent-surface/src/index.ts#projectSafeMessageChain",
+      "reason": "AFS-12 compose half of the cross-surface safe projection. The package documents web and mobile as READ/COMPOSE hosts that compose the same bounded message chains; both depend on @openagentsinc/agent-surface today, and the deleted Electron providers were the first callers. The read half safeMessageChainOf stays live."
     },
     {
       "ref": "packages/all-work-contract/src/client.generated.ts#ALL_WORK_FIXTURE_FACTORIES",
@@ -2130,10 +1805,6 @@
       "reason": "Published generated SDK method; Omega and other All Work clients will call it after they adopt the v0.2 client package."
     },
     {
-      "ref": "packages/all-work-contract/src/client.generated.ts#AllWorkClient.workSnapshotRead",
-      "reason": "Published generated SDK method; Omega and other All Work clients will call it after they adopt the v0.2 client package."
-    },
-    {
       "ref": "packages/all-work-contract/src/client.generated.ts#AllWorkClient.workroomActivityCommit",
       "reason": "Published generated SDK method; TypeScript All Work clients will call it when they adopt the v0.2 signed Workroom client used by Omegas installed Rust consumer."
     },
@@ -2148,6 +1819,10 @@
     {
       "ref": "packages/all-work-contract/src/client.generated.ts#AllWorkClient.workroomActivityPublish",
       "reason": "Published generated SDK method; TypeScript All Work clients will call it when they adopt the v0.2 signed Workroom publication flow used by Omegas installed Rust consumer."
+    },
+    {
+      "ref": "packages/all-work-contract/src/client.generated.ts#AllWorkClient.workSnapshotRead",
+      "reason": "Published generated SDK method; Omega and other All Work clients will call it after they adopt the v0.2 client package."
     },
     {
       "ref": "packages/all-work-contract/src/client.generated.ts#makeAllWorkClient",
@@ -2182,10 +1857,6 @@
       "reason": "Intentional operator provisioning API; the installed Omega bootstrap will call it when non-human organization grant provisioning moves out of its current conformance fixture."
     },
     {
-      "ref": "packages/all-work-contract/src/signed-workroom-actor-grant-store.ts#provisionFileSignedWorkroomActorGrantState",
-      "reason": "Intentional owner-local provisioning API; installed Omega operators call it to replace the complete signed Workroom actor-grant ledger under an optimistic revision fence."
-    },
-    {
       "ref": "packages/all-work-contract/src/planning-authority.ts#inMemoryPlanningStateStoreLayer",
       "reason": "Intentional in-memory adapter for downstream All Work SDK consumers; package and integration conformance suites call it instead of production persistence."
     },
@@ -2196,6 +1867,10 @@
     {
       "ref": "packages/all-work-contract/src/repository-claim-authority.ts#inMemoryRepositoryClaimStateStoreLayer",
       "reason": "Intentional in-memory adapter for downstream All Work SDK consumers; package and integration conformance suites call it instead of production persistence."
+    },
+    {
+      "ref": "packages/all-work-contract/src/signed-workroom-actor-grant-store.ts#provisionFileSignedWorkroomActorGrantState",
+      "reason": "Intentional owner-local provisioning API; installed Omega operators call it to replace the complete signed Workroom actor-grant ledger under an optimistic revision fence."
     },
     {
       "ref": "packages/all-work-contract/src/signed-workroom-authority.ts#makeSignedWorkroomActorGrantResolverLayer",
@@ -2214,56 +1889,132 @@
       "reason": "Intentional in-memory adapter for downstream All Work SDK consumers; package and integration conformance suites call it instead of production persistence."
     },
     {
+      "ref": "packages/apple-fm-runtime/src/supervisor.ts#AppleFmSupervisor.ensureStarted",
+      "reason": "Idempotent start seam of the neutral Apple FM runtime, which apps/pylon/packages/runtime re-exports wholesale (export * as AppleFmNeutralRuntime). The deleted Electron apple-fm host was the in-repo caller; the sibling members status/refresh/runTurn/stop stay and would be unusable without a start."
+    },
+    {
+      "ref": "packages/behavior-contracts/src/market-swap-compare.ts#marketSwapCompareContractRegistry",
+      "reason": "Behaviour-contract registry for multi-provider quote comparison (openagents#9318), validated and coverage-checked by its package test; the registry report tooling and the SWAP-0 (openagents#9315) swap surface consume it when the widget shell lands."
+    },
+    {
       "ref": "packages/behavior-contracts/src/market-swap-destination.ts#marketSwapDestinationContractRegistry",
       "reason": "Behaviour-contract registry for swap destination entry (openagents#9317), validated and coverage-checked by its package test; the registry report tooling and the SWAP-0 (openagents#9315) swap surface consume it when the widget shell lands."
+    },
+    {
+      "ref": "packages/behavior-contracts/src/market-swap-pair.ts#marketSwapPairContractRegistry",
+      "reason": "Behaviour-contract registry for swap pair selection and the rate/fee panel (openagents#9316), validated and coverage-checked by its package test; the registry report tooling and the SWAP-0 (openagents#9315) swap surface consume it when the widget shell lands."
+    },
+    {
+      "ref": "packages/behavior-contracts/src/market-swap-session-store.ts#marketSwapSessionStoreContractRegistry",
+      "reason": "Behaviour-contract registry for the swap session store (openagents#9320), validated and coverage-checked by its package test; the registry report tooling and the SWAP-0 (openagents#9315) swap surface consume it when the widget shell lands."
     },
     {
       "ref": "packages/behavior-contracts/src/market-swap-status.ts#marketSwapStatusContractRegistry",
       "reason": "Behaviour-contract registry for the swap status/progress view (openagents#9321), validated and coverage-checked by its package test; the registry report tooling and the SWAP-0 (openagents#9315) swap surface consume it when the widget shell mounts the status view."
     },
     {
-      "ref": "packages/mkt-swp-status/src/testkit.ts#happyPathClaims",
-      "reason": "Deterministic dual-lane Status fixture builder exported under ./testkit for this package's suites and the SWAP-0 (openagents#9315) swap widget shell suites, until immortal#14 provides a live counterparty stream."
+      "ref": "packages/behavior-contracts/src/market-swap-widget.ts#marketSwapWidgetContractRegistry",
+      "reason": "SWAP-0 (#9315) swap-widget behaviour-contract registry document, matching the sibling market-swap-* registries; the registry aggregation and reporting path consumes it, and its oracle sweep already enforces the three contracts."
     },
     {
-      "ref": "packages/mkt-swp-destination/src/entry.ts#reduceEntryEvent",
-      "reason": "Headless DestinationField reducer for openagents#9317; SWAP-0 (openagents#9315) mounts the destination-entry component in the swap widget shell and becomes its production caller."
+      "ref": "packages/codex-app-server-protocol/src/parity.ts#bundledCodex01441ProtocolManifest",
+      "reason": "Protocol-inventory authority for the pinned bundled Codex 0.144.1 build; it is the independent denominator the drift check compares current source against. The deleted Electron codex-conformance reporter was its in-repo production reader; pylon's codex-app-server client depends on the same pinned build."
     },
     {
-      "ref": "packages/mkt-swp-destination/src/resolve.ts#resolveDeferredDestination",
-      "reason": "Order-time deferred-destination resolution for openagents#9317; SWAP-0 (openagents#9315) mounts the destination-entry component in the swap widget shell and drives resolution at order creation."
+      "ref": "packages/codex-app-server-protocol/src/parity.ts#currentSourceProtocolManifest",
+      "reason": "Protocol-inventory authority for the current Codex app-server source, used to detect drift against the bundled build. Its execution site is the conformance test by design; the deleted Electron codex-conformance reporter was the in-repo production reader, and pylon's codex-app-server client rides the same generated decoders."
     },
     {
-      "ref": "packages/mkt-swp-destination/src/view.ts#destinationFieldView",
-      "reason": "Render-ready DestinationField view model for openagents#9317; SWAP-0 (openagents#9315) mounts the destination-entry component in the swap widget shell and renders this view."
+      "ref": "packages/forensic-contract/src/artifact-witness.ts#evaluateArtifactWitness",
+      "reason": "Published deterministic artifact evaluator; the native forensic worker route will call it when the code-to-artifact suite moves from checked-in conformance fixtures to admitted OpenAgents Cloud capture bytes."
     },
     {
-      "ref": "packages/mkt-swp-destination/src/testkit.ts#encodeTestInvoice",
-      "reason": "Deterministic BOLT11 fixture builder exported under ./testkit for this package's suites and the SWAP-0/SWAP-3 (openagents#9315/#9318) widget and checklist suites."
+      "ref": "packages/forensic-contract/src/artifact-witness.ts#evaluateColdcardArtifactWitnessSuite",
+      "reason": "Published vulnerable/fixed/fault matrix gate; the forensic evaluator route will call it when all three admitted OpenAgents Cloud captures are persisted for a suite run."
     },
     {
-      "ref": "packages/mkt-swp-destination/src/testkit.ts#encodeTestSegwitAddress",
-      "reason": "Deterministic segwit-address fixture builder exported under ./testkit for this package's suites and the SWAP-0/SWAP-3 (openagents#9315/#9318) widget and checklist suites."
+      "ref": "packages/forensic-contract/src/canonical.ts#canonicalizeForensicContract",
+      "reason": "Published forensic contract API; OFR-002 and OFR-003 will call it from source materialization and run persistence when those issues land."
     },
     {
-      "ref": "packages/mkt-swp-destination/src/testkit.ts#encodeTestLnurl",
-      "reason": "Deterministic LNURL fixture builder exported under ./testkit for this package's suites and the SWAP-0/SWAP-3 (openagents#9315/#9318) widget and checklist suites."
+      "ref": "packages/forensic-contract/src/claims.ts#evaluateClaimGate",
+      "reason": "Published forensic contract API; OFR-004 and OFR-008 will call it from evidence adjudication and Omega review when those issues land."
     },
     {
-      "ref": "packages/mkt-swp-destination/src/testkit.ts#encodeTestBase58Address",
-      "reason": "Deterministic base58check fixture builder exported under ./testkit for this package's suites and the SWAP-0/SWAP-3 (openagents#9315/#9318) widget and checklist suites."
+      "ref": "packages/forensic-contract/src/claims.ts#evaluateClaimRevisionOrigin",
+      "reason": "Published forensic contract API; OFR-004 and OFR-008 will call it from append-only claim revision and Omega review when those issues land."
     },
     {
-      "ref": "packages/mkt-swp-destination/src/qr.ts#acceptScannedText",
-      "reason": "QR scan intake routing through the shared destination parser (openagents#9317 \u00a78); SWAP-0 (openagents#9315) mounts the scanner in the swap widget shell and becomes its production caller."
+      "ref": "packages/forensic-contract/src/coldcard-generator.ts#admitColdcardGeneratorEvidence",
+      "reason": "Published generator-evidence admission gate for OFR-015; the forensic evaluator route will call it once golden vectors are sourced independently of our own reproduction and a throughput measurement exists from an admitted OpenAgents Cloud worker. It currently refuses the checked-in corpus, which is the honest state."
     },
     {
-      "ref": "packages/mkt-swp-destination/src/qr.ts#qrUnavailable",
-      "reason": "Default no-camera capability for hosts without a scanner (openagents#9317 \u00a78); SWAP-0 (openagents#9315) provides it where the widget shell has no camera probe."
+      "ref": "packages/forensic-contract/src/coldcard-generator.ts#buildColdcardGeneratorTrace",
+      "reason": "Published digest-only trace builder; the native forensic worker route will call it when an admitted OpenAgents Cloud generator reproduction is persisted."
     },
     {
-      "ref": "packages/behavior-contracts/src/market-swap-compare.ts#marketSwapCompareContractRegistry",
-      "reason": "Behaviour-contract registry for multi-provider quote comparison (openagents#9318), validated and coverage-checked by its package test; the registry report tooling and the SWAP-0 (openagents#9315) swap surface consume it when the widget shell lands."
+      "ref": "packages/forensic-contract/src/coldcard-generator.ts#calculateForensicWorkFactor",
+      "reason": "Published explicit-assumption estimator; the forensic evaluator route will call it after admitted OpenAgents Cloud throughput receipts are available."
+    },
+    {
+      "ref": "packages/forensic-contract/src/coldcard-generator.ts#evaluateColdcardGeneratorVector",
+      "reason": "Published frozen-vector evaluator; the native forensic worker route will call it for vulnerable, fixed, and mutation suites on admitted OpenAgents Cloud workers."
+    },
+    {
+      "ref": "packages/forensic-contract/src/coldcard-generator.ts#LIBNGU_INITIAL_YASMARANG_STATE",
+      "reason": "Published pinned libngu initial state; the native forensic worker vector builder will use it for admitted vulnerable and mutation reproductions."
+    },
+    {
+      "ref": "packages/forensic-contract/src/coldcard-generator.ts#reproduceColdcardOwnedFixture",
+      "reason": "Published secret-safe reproduction boundary; the forensic evaluator route will call it only for synthetic or explicitly owner-authorized fixtures after the OpenAgents Cloud execution adapter lands."
+    },
+    {
+      "ref": "packages/forensic-contract/src/evidence-derivation.ts#appendClaimHistoryEvent",
+      "reason": "Published append-only history transition; the forensic claim authority will call it when evidence promotion and correction persistence is connected."
+    },
+    {
+      "ref": "packages/forensic-contract/src/evidence-derivation.ts#claimEvidenceIsIsolatedToRung",
+      "reason": "Published claim-rung diagnostic; the Omega evidence-ladder adapter will call it when OFR-018 renders isolated fingerprint, component, unauthorized-movement, and identity gates."
+    },
+    {
+      "ref": "packages/forensic-contract/src/evidence-derivation.ts#deriveEvidenceGraph",
+      "reason": "Published deterministic graph builder; the native forensic worker route will call it after admitted OpenAgents Cloud historical scan and report evidence is persisted."
+    },
+    {
+      "ref": "packages/forensic-contract/src/evidence-derivation.ts#reconcileEvidenceFigures",
+      "reason": "Published precision-aware reconciliation boundary; the forensic evaluator route will call it when independently derived and published figure artifacts are available."
+    },
+    {
+      "ref": "packages/forensic-contract/src/historical-scan.ts#runHistoricalFingerprintScan",
+      "reason": "Published deterministic historical scanner; the native forensic worker route will call it after immutable bundle or private brokered Bitcoin Core materialization on an admitted OpenAgents Cloud worker."
+    },
+    {
+      "ref": "packages/forensic-contract/src/historical-scan.ts#validateHistoricalWideScanLedger",
+      "reason": "Published wide-scan ledger validator; the same native forensic worker route that calls runHistoricalFingerprintScan will call it when a wide scan on an admitted worker persists its per-block eligibility and match ledger, alongside the 2026-08-01 ledger it already gates in fixtures."
+    },
+    {
+      "ref": "packages/forensic-contract/src/index.ts#FORENSIC_CONTRACT_SCHEMA_IDS",
+      "reason": "Published forensic contract registry; OFR-003 will consume it for run storage and contract-version negotiation when that issue lands."
+    },
+    {
+      "ref": "packages/forensic-contract/src/lifecycle.ts#evaluateForensicRunTransition",
+      "reason": "Published forensic contract API; OFR-003 will call it from the durable run lifecycle authority when that issue lands."
+    },
+    {
+      "ref": "packages/forensic-contract/src/projection.ts#projectForensicRunPublicSafe",
+      "reason": "Published forensic contract API; OFR-008 and OFR-017 will call it from Omega and public-forensics projections when those issues land."
+    },
+    {
+      "ref": "packages/forensic-contract/src/projection.ts#projectForensicScorecardPublicSafe",
+      "reason": "Published public-safe forensic aggregate projector; OFR-012 will call it after deterministic scorecard projection lands in Omega."
+    },
+    {
+      "ref": "packages/khala-sync/src/index.ts#deviceLocalScope",
+      "reason": "The only correct constructor for a scope.device_local.* SyncScope, paired with the live isDeviceLocalScope validator that khala-sync-client's store enforces before writeLocalEntities. The live coding-composer-drafts path requires such a scope as input; the deleted Electron sync host supplied it, and the web/mobile local-first hosts are the successors."
+    },
+    {
+      "ref": "packages/khala-sync/src/khala-code.ts#decodeKhalaCodeTeamMembershipEntity",
+      "reason": "Read half of a wire whose write half is live: khala-sync-server's khala-code-product-state-projection encodes team_memberships post-images with encodeKhalaCodeTeamMembershipEntity. The client-side decoder lost its caller with the deleted Electron thread-visibility authority; the web/mobile Khala Code clients read the same changelog."
     },
     {
       "ref": "packages/mkt-swp-compare/src/reservation.ts#capacityBucketMapKey",
@@ -2271,23 +2022,23 @@
     },
     {
       "ref": "packages/mkt-swp-compare/src/reservation.ts#detectReservationForks",
-      "reason": "Reservation fork detection (openagents#9318 \u00a73); SWAP-0 (openagents#9315) runs it over ingested quotes and feeds the forks into compareTableView when the widget shell lands."
+      "reason": "Reservation fork detection (openagents#9318 §3); SWAP-0 (openagents#9315) runs it over ingested quotes and feeds the forks into compareTableView when the widget shell lands."
     },
     {
       "ref": "packages/mkt-swp-compare/src/reservation.ts#observeReservations",
-      "reason": "Reservation observation projection (openagents#9318 \u00a73); SWAP-0 (openagents#9315) calls it on quote ingestion before fork detection when the widget shell lands."
-    },
-    {
-      "ref": "packages/mkt-swp-compare/src/selection.ts#selectOrder",
-      "reason": "Order selection discipline (openagents#9318 \u00a77); SWAP-0 (openagents#9315) calls it when the user selects a quote in the comparison table."
+      "reason": "Reservation observation projection (openagents#9318 §3); SWAP-0 (openagents#9315) calls it on quote ingestion before fork detection when the widget shell lands."
     },
     {
       "ref": "packages/mkt-swp-compare/src/selection.ts#orderAcceptance",
-      "reason": "Indicative-quote acceptance discipline (openagents#9318 \u00a72); SWAP-0 (openagents#9315) drives it from provider Status ingestion after order creation."
+      "reason": "Indicative-quote acceptance discipline (openagents#9318 §2); SWAP-0 (openagents#9315) drives it from provider Status ingestion after order creation."
+    },
+    {
+      "ref": "packages/mkt-swp-compare/src/selection.ts#selectOrder",
+      "reason": "Order selection discipline (openagents#9318 §7); SWAP-0 (openagents#9315) calls it when the user selects a quote in the comparison table."
     },
     {
       "ref": "packages/mkt-swp-compare/src/testkit.ts#custodialMintCustody",
-      "reason": "Seeded custodial mint-route fixture (openagents#9318 \u00a75) for the comparison corpus until immortal#14 lands a second live provider; SWAP-0 demo seeding consumes it."
+      "reason": "Seeded custodial mint-route fixture (openagents#9318 §5) for the comparison corpus until immortal#14 lands a second live provider; SWAP-0 demo seeding consumes it."
     },
     {
       "ref": "packages/mkt-swp-compare/src/testkit.ts#testFirmHardQuote",
@@ -2295,7 +2046,7 @@
     },
     {
       "ref": "packages/mkt-swp-compare/src/testkit.ts#testVerifyReport",
-      "reason": "Seeded engine verify-report fixture (openagents#9318 \u00a76); SWAP-0 demo seeding consumes it until the engine binding lands behind the SWAP-0 boundary."
+      "reason": "Seeded engine verify-report fixture (openagents#9318 §6); SWAP-0 demo seeding consumes it until the engine binding lands behind the SWAP-0 boundary."
     },
     {
       "ref": "packages/mkt-swp-compare/src/view.ts#compareTableView",
@@ -2306,8 +2057,40 @@
       "reason": "Render-ready verify-before-fund checklist view model for openagents#9318; SWAP-0 (openagents#9315) renders it above the fund action in the swap widget shell."
     },
     {
-      "ref": "packages/behavior-contracts/src/market-swap-pair.ts#marketSwapPairContractRegistry",
-      "reason": "Behaviour-contract registry for swap pair selection and the rate/fee panel (openagents#9316), validated and coverage-checked by its package test; the registry report tooling and the SWAP-0 (openagents#9315) swap surface consume it when the widget shell lands."
+      "ref": "packages/mkt-swp-destination/src/entry.ts#reduceEntryEvent",
+      "reason": "Headless DestinationField reducer for openagents#9317; SWAP-0 (openagents#9315) mounts the destination-entry component in the swap widget shell and becomes its production caller."
+    },
+    {
+      "ref": "packages/mkt-swp-destination/src/qr.ts#acceptScannedText",
+      "reason": "QR scan intake routing through the shared destination parser (openagents#9317 §8); SWAP-0 (openagents#9315) mounts the scanner in the swap widget shell and becomes its production caller."
+    },
+    {
+      "ref": "packages/mkt-swp-destination/src/qr.ts#qrUnavailable",
+      "reason": "Default no-camera capability for hosts without a scanner (openagents#9317 §8); SWAP-0 (openagents#9315) provides it where the widget shell has no camera probe."
+    },
+    {
+      "ref": "packages/mkt-swp-destination/src/resolve.ts#resolveDeferredDestination",
+      "reason": "Order-time deferred-destination resolution for openagents#9317; SWAP-0 (openagents#9315) mounts the destination-entry component in the swap widget shell and drives resolution at order creation."
+    },
+    {
+      "ref": "packages/mkt-swp-destination/src/testkit.ts#encodeTestBase58Address",
+      "reason": "Deterministic base58check fixture builder exported under ./testkit for this package's suites and the SWAP-0/SWAP-3 (openagents#9315/#9318) widget and checklist suites."
+    },
+    {
+      "ref": "packages/mkt-swp-destination/src/testkit.ts#encodeTestInvoice",
+      "reason": "Deterministic BOLT11 fixture builder exported under ./testkit for this package's suites and the SWAP-0/SWAP-3 (openagents#9315/#9318) widget and checklist suites."
+    },
+    {
+      "ref": "packages/mkt-swp-destination/src/testkit.ts#encodeTestLnurl",
+      "reason": "Deterministic LNURL fixture builder exported under ./testkit for this package's suites and the SWAP-0/SWAP-3 (openagents#9315/#9318) widget and checklist suites."
+    },
+    {
+      "ref": "packages/mkt-swp-destination/src/testkit.ts#encodeTestSegwitAddress",
+      "reason": "Deterministic segwit-address fixture builder exported under ./testkit for this package's suites and the SWAP-0/SWAP-3 (openagents#9315/#9318) widget and checklist suites."
+    },
+    {
+      "ref": "packages/mkt-swp-destination/src/view.ts#destinationFieldView",
+      "reason": "Render-ready DestinationField view model for openagents#9317; SWAP-0 (openagents#9315) mounts the destination-entry component in the swap widget shell and renders this view."
     },
     {
       "ref": "packages/mkt-swp-pair/src/amount.ts#satsToWire",
@@ -2319,11 +2102,11 @@
     },
     {
       "ref": "packages/mkt-swp-pair/src/messages.ts#PRICE_FEED_MISMATCH_MESSAGES",
-      "reason": "Price-feed mismatch message table for openagents#9316 \u00a76; SWAP-0/SWAP-3 (openagents#9315/#9318) render the pinned-feed refusals from it when the quote flow lands."
+      "reason": "Price-feed mismatch message table for openagents#9316 §6; SWAP-0/SWAP-3 (openagents#9315/#9318) render the pinned-feed refusals from it when the quote flow lands."
     },
     {
       "ref": "packages/mkt-swp-pair/src/price-feed.ts#checkPinnedPriceFeed",
-      "reason": "Exact price-feed pinning check (MKT-SWP \u00a73.4) for openagents#9316; SWAP-3 (openagents#9318) runs it against the requester's own fetch before Order when the quote flow lands."
+      "reason": "Exact price-feed pinning check (MKT-SWP §3.4) for openagents#9316; SWAP-3 (openagents#9318) runs it against the requester's own fetch before Order when the quote flow lands."
     },
     {
       "ref": "packages/mkt-swp-pair/src/selection.ts#initialPairSelectionState",
@@ -2347,23 +2130,19 @@
     },
     {
       "ref": "packages/mkt-swp-pair/src/view.ts#feePanelView",
-      "reason": "Render-ready rate/fee panel view model for openagents#9316 \u00a75; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
+      "reason": "Render-ready rate/fee panel view model for openagents#9316 §5; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
     },
     {
       "ref": "packages/mkt-swp-pair/src/view.ts#limitsView",
-      "reason": "Render-ready pre-typed limits view for openagents#9316 \u00a74; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
+      "reason": "Render-ready pre-typed limits view for openagents#9316 §4; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
     },
     {
       "ref": "packages/mkt-swp-pair/src/view.ts#pairSelectorView",
-      "reason": "Render-ready pair selector view with pre-selection reachability for openagents#9316 \u00a71; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
+      "reason": "Render-ready pair selector view with pre-selection reachability for openagents#9316 §1; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
     },
     {
       "ref": "packages/mkt-swp-pair/src/view.ts#primaryActionView",
-      "reason": "Render-ready primary-action gate view (single most proximate refusal) for openagents#9316 \u00a74; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
-    },
-    {
-      "ref": "packages/behavior-contracts/src/market-swap-session-store.ts#marketSwapSessionStoreContractRegistry",
-      "reason": "Behaviour-contract registry for the swap session store (openagents#9320), validated and coverage-checked by its package test; the registry report tooling and the SWAP-0 (openagents#9315) swap surface consume it when the widget shell lands."
+      "reason": "Render-ready primary-action gate view (single most proximate refusal) for openagents#9316 §4; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
     },
     {
       "ref": "packages/mkt-swp-session-store/src/export.ts#exportPrivateHistory",
@@ -2426,8 +2205,8 @@
       "reason": "Deterministic session fixture exported under ./testkit for this package's suites and the SWAP-0/SWAP-6 (openagents#9315/#9321) widget and status suites."
     },
     {
-      "ref": "packages/behavior-contracts/src/market-swap-widget.ts#marketSwapWidgetContractRegistry",
-      "reason": "SWAP-0 (#9315) swap-widget behaviour-contract registry document, matching the sibling market-swap-* registries; the registry aggregation and reporting path consumes it, and its oracle sweep already enforces the three contracts."
+      "ref": "packages/mkt-swp-status/src/testkit.ts#happyPathClaims",
+      "reason": "Deterministic dual-lane Status fixture builder exported under ./testkit for this package's suites and the SWAP-0 (openagents#9315) swap widget shell suites, until immortal#14 provides a live counterparty stream."
     },
     {
       "ref": "packages/mkt-swp/src/entropy-source.ts#webCryptoLayer",
@@ -2446,12 +2225,12 @@
       "reason": "SWAP-0 (#9315) predicate distinguishing a refusal no wait can resolve; the mounted widget uses it to suppress retry affordances once SWAP-7's route wires the live engine and relay retry paths."
     },
     {
-      "ref": "packages/mkt-swp/src/testkit.ts#everySampleWidgetState",
-      "reason": "SWAP-0 (#9315) exhaustive state corpus exported for downstream surfaces; Omega's market_ui and the /swap rendering sweep drive their own coverage from it rather than inventing a partial set."
-    },
-    {
       "ref": "packages/mkt-swp/src/testkit.ts#enabledFundingGate",
       "reason": "SWAP-0 (#9315) SWAP-3 gate builder for the shared corpus; consumed with everySampleWidgetState by downstream rendering sweeps."
+    },
+    {
+      "ref": "packages/mkt-swp/src/testkit.ts#everySampleWidgetState",
+      "reason": "SWAP-0 (#9315) exhaustive state corpus exported for downstream surfaces; Omega's market_ui and the /swap rendering sweep drive their own coverage from it rather than inventing a partial set."
     },
     {
       "ref": "packages/mkt-swp/src/testkit.ts#failedFundingGate",
@@ -2466,6 +2245,14 @@
       "reason": "SWAP-0 (#9315) widget host controller; the /swap route constructs it once the live relay subscription and wasm engine binding land, which is the next step named on the mounted surface."
     },
     {
+      "ref": "packages/mkt-swp/src/widget-host.ts#SwapWidgetController.applySwpState",
+      "reason": "SWAP-0 (#9315) controller method folding per-signer Status claims; called by the /swap route once the relay subscription streams SWAP-6 status records."
+    },
+    {
+      "ref": "packages/mkt-swp/src/widget-host.ts#SwapWidgetController.submitOrder",
+      "reason": "SWAP-0 (#9315) controller method driving order to funding authorisation; called by the /swap route's primary action once the wasm engine binding is provided."
+    },
+    {
       "ref": "packages/mkt-swp/src/widget-host.ts#SwapWidgetController.updateInputs",
       "reason": "SWAP-0 (#9315) controller method folding SWAP-1/2/3 gate outputs; called by the /swap route when the live relay subscription supplies Offerings, quotes, and destination state."
     },
@@ -2474,12 +2261,172 @@
       "reason": "SWAP-0 (#9315) controller method running verify-before-fund; called by the /swap route once the wasm engine binding is provided."
     },
     {
-      "ref": "packages/mkt-swp/src/widget-host.ts#SwapWidgetController.applySwpState",
-      "reason": "SWAP-0 (#9315) controller method folding per-signer Status claims; called by the /swap route once the relay subscription streams SWAP-6 status records."
+      "ref": "packages/nip-mkt/src/generated.ts#CLOSED_REASONS",
+      "reason": "Published relay CLOSED vocabulary for the generated NIP-MKT SDK; openagents.com issue #9310 will classify recipient-gated market query failures when it adopts this package."
     },
     {
-      "ref": "packages/mkt-swp/src/widget-host.ts#SwapWidgetController.submitOrder",
-      "reason": "SWAP-0 (#9315) controller method driving order to funding authorisation; called by the /swap route's primary action once the wasm engine binding is provided."
+      "ref": "packages/nip-mkt/src/generated.ts#CONTRACT_SHA256",
+      "reason": "Published contract provenance for the generated NIP-MKT SDK; openagents.com issue #9310 will display and diagnose the pinned Immortal contract when it adopts this package."
+    },
+    {
+      "ref": "packages/nip-mkt/src/generated.ts#CONTRACT_SOURCE_COMMIT",
+      "reason": "Published contract provenance for the generated NIP-MKT SDK; openagents.com issue #9310 will display and diagnose the pinned Immortal contract when it adopts this package."
+    },
+    {
+      "ref": "packages/nip-mkt/src/generated.ts#FIXTURE_MANIFEST_SHA256",
+      "reason": "Published conformance provenance for the generated NIP-MKT SDK; openagents.com issue #9310 will expose it in market diagnostics when it adopts this package."
+    },
+    {
+      "ref": "packages/nip-mkt/src/generated.ts#GATEWAY_LIMITS",
+      "reason": "Published generated relay configuration catalog; openagents.com issue #9310 will use the pinned recipient-rate environment name in local market diagnostics."
+    },
+    {
+      "ref": "packages/nip-mkt/src/generated.ts#MKT_KIND_DEFINITIONS",
+      "reason": "Published generated kind metadata for downstream NIP-MKT clients; openagents.com issue #9310 will use publication and enforcement scope when presenting discovery and negotiation records."
+    },
+    {
+      "ref": "packages/nip-mkt/src/generated.ts#MKT_KINDS",
+      "reason": "Published generated kind catalog for downstream NIP-MKT clients; openagents.com issue #9310 will use it when building discovery and negotiation filters."
+    },
+    {
+      "ref": "packages/nip-mkt/src/generated.ts#OPAQUE_TRANSPORT",
+      "reason": "Published NIP-MKT transport policy for SDK consumers; openagents.com issue #9310 will use it to select wrapped private delivery and recipient-scoped reads."
+    },
+    {
+      "ref": "packages/nip-mkt/src/generated.ts#REASON_PREFIXES",
+      "reason": "Published relay reason-prefix vocabulary for the generated NIP-MKT SDK; openagents.com issue #9310 will classify authenticated read and publish failures when it adopts this package."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#activeSupersedingQuote",
+      "reason": "Published NIP-MKT client projection; openagents.com issue #9310 will call it when the negotiation UI adopts this SDK."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#admitPrivateRecord",
+      "reason": "Published immutable private-record admission operation; openagents.com issue #9310 will call it from its local negotiation record store when it adopts this SDK."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#analyzeStatusSequence",
+      "reason": "Published NIP-MKT gap and fork projection; openagents.com issue #9310 will call it when the negotiation UI adopts this SDK."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#authorizationDecision",
+      "reason": "Published NIP-MKT signer authorization decision; openagents.com issue #9310 will call it before advancing Status, Cancel, or Close state."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#createPrivateAdmissionStore",
+      "reason": "Published in-memory NIP-MKT admission store constructor; the demo provider in openagents.com issue #9310 will use it for its throwaway local negotiation session."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#deliveryDeduplicationDecision",
+      "reason": "Published NIP-MKT logical-delivery decision; openagents.com issue #9310 will call it before applying rewrapped inbox deliveries."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#evidenceDecision",
+      "reason": "Published NIP-MKT evidence projection; openagents.com issue #9310 will call it for evidence-rung display when it adopts this SDK."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#expiryDecision",
+      "reason": "Published fail-closed NIP-MKT expiry decision; openagents.com issue #9310 will call it before any demo-provider reservation or execution effect."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#reserveCapacity",
+      "reason": "Published NIP-MKT reservation projection; the demo provider in openagents.com issue #9310 will call it when it adopts this SDK."
+    },
+    {
+      "ref": "packages/nip-mkt/src/transport.ts#serializeSignedEvent",
+      "reason": "Published canonical NIP-MKT serializer; openagents.com issue #9310 will call it before gift wrapping when it adopts this SDK."
+    },
+    {
+      "ref": "packages/nip-mkt/src/transport.ts#unwrapPrivateRecord",
+      "reason": "Published NIP-MKT recipient transport operation; openagents.com issue #9310 will call it when its negotiation inbox adopts this SDK."
+    },
+    {
+      "ref": "packages/nip-mkt/src/transport.ts#wrapPrivateRecordCopies",
+      "reason": "Published NIP-MKT counterparty and sender-recovery operation; openagents.com issue #9310 will call it for every private negotiation record it sends."
+    },
+    {
+      "ref": "packages/omega-effectd/scripts/full-auto-control-client.ts#buildFullAutoPolicyOptions",
+      "reason": "Published Full Auto control client shipped under the package's ./scripts/* export. Omega (github.com/OpenAgentsInc/omega, pinned by pack:digest, never a workspace path) is the surviving caller; docs/omega/2026-07-24-full-auto-port-audit.md §8.1 keeps the control server and its client until the framed protocol replaces them."
+    },
+    {
+      "ref": "packages/omega-effectd/scripts/full-auto-control-client.ts#readControlConnection",
+      "reason": "Published Full Auto control client connection reader (./scripts/* export). The deleted Electron full-auto CLI was its in-repo caller; Omega's packaged omega-effectd is the surviving caller per docs/omega/2026-07-24-full-auto-port-audit.md §8.1."
+    },
+    {
+      "ref": "packages/omega-effectd/src/engine/full-auto-churn.ts#buildFullAutoTurnAction",
+      "reason": "Full Auto turn-action classifier in the ./engine/* published surface. Its Schema is already consumed by full-auto-run-registry; the constructor's caller was the deleted Electron main process, and Omega GPUI becomes the fourth caller of the ported engine (docs/omega/2026-07-24-full-auto-port-audit.md §7.2)."
+    },
+    {
+      "ref": "packages/omega-effectd/src/engine/full-auto-churn.ts#detectFullAutoChurn",
+      "reason": "Full Auto churn detector whose decision type is consumed by the live full-auto-reconcile module. The deleted Electron run analyzer was the in-repo caller; Omega drives the ported engine through omega-effectd (docs/omega/2026-07-24-full-auto-port-audit.md)."
+    },
+    {
+      "ref": "packages/omega-effectd/src/engine/full-auto-churn.ts#parseFullAutoChangedPaths",
+      "reason": "Bounded changed-path parser feeding churn detection in the published ./engine/* surface; its caller was the deleted Electron main process and is being re-established by Omega's Full Auto port (docs/omega/2026-07-24-full-auto-port-audit.md)."
+    },
+    {
+      "ref": "packages/omega-effectd/src/engine/full-auto-control-server.ts#isFullAutoControlEnabled",
+      "reason": "Env gate for the Full Auto loopback control API. docs/omega/2026-07-24-full-auto-port-audit.md §8.1 explicitly keeps the control server and contract in omega-effectd until the framed protocol replaces them; the deleted Electron main process was the in-repo starter."
+    },
+    {
+      "ref": "packages/omega-effectd/src/engine/full-auto-control-server.ts#startFullAutoControlServer",
+      "reason": "The OpenAPI-documented Full Auto loopback control server. docs/omega/2026-07-24-full-auto-port-audit.md §8.1 keeps it in omega-effectd until the framed protocol supersedes it; its FullAutoControlCapabilities type is already consumed by the live protocol/server.ts and full-auto-run-actions.ts."
+    },
+    {
+      "ref": "packages/omega-effectd/src/engine/full-auto-lane.ts#fullAutoPrompt",
+      "reason": "Lane prompt builder in the published ./engine/* surface. The deleted Electron codex runtime was its in-repo caller; Omega dispatches admitted provider turns through the same ported lane (docs/omega/2026-07-24-full-auto-port-audit.md §7.1)."
+    },
+    {
+      "ref": "packages/omega-effectd/src/engine/full-auto-mission.ts#appendFullAutoQueuedInstruction",
+      "reason": "Mission queued-instruction appender; docs/omega/2026-07-24-full-auto-port-audit.md §8.1 keeps mission/verification/completion in omega-effectd. The module's compile/render functions are already live in protocol/server.ts; only the queued-instruction path lost its Electron caller."
+    },
+    {
+      "ref": "packages/omega-effectd/src/engine/full-auto-plan.ts#advanceFullAutoPlanFromTurn",
+      "reason": "Full Auto plan advancement from a turn transcript, in the published ./engine/* surface. The deleted Electron main process was the in-repo caller; Omega GPUI becomes the fourth caller of the same ported action surface (docs/omega/2026-07-24-full-auto-port-audit.md §7.2)."
+    },
+    {
+      "ref": "packages/omega-effectd/src/engine/full-auto-plan.ts#makeFullAutoPlan",
+      "reason": "Plan constructor for the ported Full Auto engine; FullAutoPlanSchema is already consumed by the live full-auto-run-registry. Its caller was the deleted Electron objective selector and is re-established by Omega's Full Auto port (docs/omega/2026-07-24-full-auto-port-audit.md)."
+    },
+    {
+      "ref": "packages/omega-effectd/src/engine/full-auto-plan.ts#parseFullAutoStepMarkers",
+      "reason": "Plan step-marker parser in the published ./engine/* surface; the deleted Electron main process was its in-repo caller and Omega drives the same ported plan path (docs/omega/2026-07-24-full-auto-port-audit.md)."
+    },
+    {
+      "ref": "packages/omega-effectd/src/engine/full-auto-routing.ts#makeFullAutoRoutingLaneGate",
+      "reason": "Fail-closed routing lane gate. docs/omega/2026-07-24-full-auto-port-audit.md §8.1 keeps full-auto-routing and readiness in omega-effectd; the module's policy validator and lane-gate type are already consumed by the live control server, readiness, and capacity modules."
+    },
+    {
+      "ref": "packages/portable-session-contract/src/ide13-model.ts#checkIdePortableModel",
+      "reason": "Bounded model checker over the IDE-13 portable-session state machine: it enumerates the reachable state space and returns counterexamples for the exclusive-writer, monotonic-generation, and checkpoint-before-attach invariants. A checker's correct execution site is its invariant test; the deleted Electron ide-portable-evidence script merely emitted its receipt, and apps/pylon/scripts/ide13-* continue the program."
+    },
+    {
+      "ref": "packages/product-spec/src/index.ts#applyProductSpecEvidenceAttachmentEdit",
+      "reason": "PSEL-1 owner-confirmed, digest-fenced writer of an evidence-attachment-only ProductSpec edit, documented in the package README. Its only host was the deleted Electron ProductSpec workroom; deleting it would also strand planProductSpecEvidenceAttachmentEdit, whose typed intent-projection proof is the whole PSEL-1 contract."
+    },
+    {
+      "ref": "packages/release-contract/src/ide/portable-evidence-contract.ts#validateIdePortableEvidenceReceipt",
+      "reason": "The only staleness fence on an IDE-13 portable-evidence receipt (candidate/base commit equality) on top of the schema's semantic filter. Its runners were the deleted Electron acceptance scripts; the IDE-13 acceptance program continues in apps/pylon/scripts/ide13-* against benchmarks/ide/, which will re-adopt it rather than re-derive staleness."
+    },
+    {
+      "ref": "packages/release-contract/src/release-set-contract.ts#selectReleaseArtifact",
+      "reason": "Deterministic signed ReleaseSet v2 artifact selection (channel, monotonic version, target, preferred format, minimum OS, Rosetta migration). Kept rather than deleted because this package is the Ed25519 release-signing contract behind Omega download verification; the deleted Electron updater was its caller and any future Omega ReleaseSet v2 updater is the successor."
+    },
+    {
+      "ref": "packages/sovereign-identity/src/machinery/retire.ts#ReadOnlyLegacyPlaintextGuardInterface.deleteFile",
+      "reason": "Fail-closed half of the read-only legacy-plaintext guard: it exists to REFUSE deleting a protected legacy file while verification is active. Its sibling writeFile is unflagged only because .writeFile collides with common production dot-accesses; dropping the delete refusal would leave the guard able to block writes but not deletions."
+    },
+    {
+      "ref": "packages/assurance-spec/src/manifest.ts#compileAssuranceManifest",
+      "reason": "Compiles an AssuranceSpec into its obligation manifest. Its only in-repo production caller was packages/assurance-spec/scripts/run-mvp-assurance.ts, which was hard-wired to pnpm --dir apps/openagents-desktop run verify and was deleted with the Electron app (#9325). The kit still compiles manifests for the surviving admitted specs; the successor caller is the replacement assurance runner for specs/omega/full-auto.assurance-spec.md."
+    },
+    {
+      "ref": "packages/assurance-spec/src/admission.ts#assuranceReviewSetDigest",
+      "reason": "Digests the review set an admission decision is bound to, so a later run can prove the reviewed bytes did not change. Its only production caller was the deleted run-mvp-assurance.ts (#9325). It is needed again by the replacement assurance runner that admits the surviving Omega Full Auto spec."
+    },
+    {
+      "ref": "packages/assurance-spec/src/full-gate.ts#parseVitePlusTestSummary",
+      "reason": "Parses a vite-plus test summary into the full-gate pass/fail counts an assurance receipt records. Its only production caller was the deleted run-mvp-assurance.ts (#9325). The replacement assurance runner for the surviving admitted specs is the successor caller."
     }
   ]
 }

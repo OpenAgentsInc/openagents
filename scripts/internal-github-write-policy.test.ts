@@ -11,8 +11,6 @@ describe("internal GitHub writer cutover audit", () => {
     const guardedSources = [
       "packages/khala-qa-harness/src/lag-profiling-sweep.ts",
       "scripts/qa-observer.ts",
-      "scripts/release-feedback.ts",
-      "apps/openagents-desktop/src/git-github-host.ts",
       "apps/openagents.com/workers/api/scripts/marching-orders-agent.ts",
       "apps/openagents.com/workers/api/src/artanis-operator-tools.ts",
       "apps/pylon/scripts/codex-supervisor/standing-tasks.sh",
@@ -32,10 +30,6 @@ describe("internal GitHub writer cutover audit", () => {
     const backlogFaucet = read("apps/openagents.com/scripts/backlog-faucet-list.ts");
     expect(backlogFaucet).toContain("listedIssueCommentBody");
     expect(backlogFaucet).not.toContain("internal_claim_comment");
-
-    const releaseCommunication = read("scripts/release-communications.ts");
-    expect(releaseCommunication).toContain("releaseCommunicationMarker");
-    expect(releaseCommunication).not.toContain("internal_claim_comment");
   });
 
   test("keeps strict public bug intake as ingress instead of an internal issue writer", () => {

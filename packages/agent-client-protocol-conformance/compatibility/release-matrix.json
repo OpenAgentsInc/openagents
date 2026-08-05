@@ -370,8 +370,7 @@
           "requiredForSupported": true,
           "result": "live-pass",
           "evidenceRefs": [
-            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json",
-            "apps/openagents-desktop/src/acp-provider-contract.ts"
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
           ],
           "safeDetail": "The serialized production-host support bundle had zero matches for prompt, private path, authorization, cached-provider-auth, or provider-secret canaries."
         },
@@ -452,8 +451,7 @@
           "requiredForSupported": true,
           "result": "live-pass",
           "evidenceRefs": [
-            "packages/agent-client-protocol-conformance/compatibility/live/desktop-grok-release-run-2026-07-16-darwin-arm64.json",
-            "apps/openagents-desktop/scripts/acp-packaged-release-smoke.ts"
+            "packages/agent-client-protocol-conformance/compatibility/live/desktop-grok-release-run-2026-07-16-darwin-arm64.json"
           ],
           "safeDetail": "The packaged Grok lane refused a mismatched workspace, interrupted a running turn across app exit, settled the old turn on restart, preserved its one-session-per-process admission rule, restarted cleanly, completed the original durable thread, disabled, and shut down."
         },
@@ -462,7 +460,6 @@
           "requiredForSupported": true,
           "result": "live-pass",
           "evidenceRefs": [
-            "apps/openagents-desktop/src/acp-provider-contract.ts",
             "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json",
             "docs/qa/2026-07-16-acp-provider-lanes/README.md"
           ],
@@ -808,8 +805,7 @@
           "requiredForSupported": true,
           "result": "live-pass",
           "evidenceRefs": [
-            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json",
-            "apps/openagents-desktop/src/acp-provider-contract.ts"
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
           ],
           "safeDetail": "The serialized production-host support bundle had zero matches for prompt, private path, authorization, cached-provider-auth, or provider-secret canaries."
         },
@@ -894,8 +890,7 @@
           "requiredForSupported": true,
           "result": "live-pass",
           "evidenceRefs": [
-            "packages/agent-client-protocol-conformance/compatibility/live/desktop-cursor-release-run-2026-07-16-darwin-arm64.json",
-            "apps/openagents-desktop/scripts/acp-packaged-release-smoke.ts"
+            "packages/agent-client-protocol-conformance/compatibility/live/desktop-cursor-release-run-2026-07-16-darwin-arm64.json"
           ],
           "safeDetail": "The packaged Cursor lane refused a mismatched workspace, interrupted a running turn across app exit, settled the old turn on restart, re-enabled the same durable thread, completed a real continuation, disabled, and shut down cleanly."
         },
@@ -904,7 +899,6 @@
           "requiredForSupported": true,
           "result": "live-pass",
           "evidenceRefs": [
-            "apps/openagents-desktop/src/acp-provider-contract.ts",
             "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json",
             "docs/qa/2026-07-16-acp-provider-lanes/README.md"
           ],
