@@ -17,7 +17,7 @@ import {
 import { createPublicReleaseSetArtifactVerifier } from "./release-set-artifact-verifier.ts"
 import { createReleaseSetFeed, type ReleaseSetFeed } from "./release-set-feed.ts"
 import { createGoogleCloudReleaseSetFeedStore } from "./release-set-gcs-store.ts"
-import type { PinnedReleaseKey } from "../../openagents-desktop/src/update-contract.ts"
+import type { PinnedReleaseKey } from "@openagentsinc/release-contract/update-contract"
 
 type SeedFromDistInput = {
   readonly server: UpdatesServer

@@ -4,7 +4,7 @@ import { dirname, join, resolve } from "node:path";
 
 import { Schema } from "effect";
 
-import { IdePortableEvidenceMetricSchema } from "../../openagents-desktop/src/ide/portable-evidence-contract.ts";
+import { IdePortableEvidenceMetricSchema } from "@openagentsinc/release-contract/ide/portable-evidence-contract";
 import {
   type Ide13OwnerLocalRealCohortReceipt,
   runIde13OwnerLocalRealCohort,

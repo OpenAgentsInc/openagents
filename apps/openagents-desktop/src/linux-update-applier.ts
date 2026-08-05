@@ -17,7 +17,7 @@ import {
 import path from "node:path";
 import { spawn } from "node:child_process";
 
-import { isMonotonicUpgrade, type UpdateChannel } from "./update-contract.ts";
+import { isMonotonicUpgrade, type UpdateChannel } from "@openagentsinc/release-contract/update-contract";
 import type {
   DesktopPlatformUpdateApplier,
   PlatformUpdateResult,

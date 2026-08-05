@@ -8,8 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 
-import { verifySignedReleaseSet } from "../apps/openagents-desktop/src/release-set-contract.js";
-import type { PinnedReleaseKey } from "../apps/openagents-desktop/src/update-contract.js";
+import { verifySignedReleaseSet } from "@openagentsinc/release-contract/release-set-contract";
+import type { PinnedReleaseKey } from "@openagentsinc/release-contract/update-contract";
 import type { ReleaseIo, ReleasePlan, ReleaseTargetKey } from "./release.js";
 import { releaseTargetKeys } from "./release.js";
 import {

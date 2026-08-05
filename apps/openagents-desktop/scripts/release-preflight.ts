@@ -43,7 +43,7 @@ import {
   isMonotonicUpgrade,
   parseReleaseVersion,
   updateChannels,
-} from "../src/update-contract.ts"
+} from "@openagentsinc/release-contract/update-contract"
 import {
   checkArtifactNotUnsignedDev,
   checkSigningCredentialsPresent,

@@ -36,7 +36,7 @@ import {
   PRODUCTION_RELEASE_KEY_PIN,
   updateChannels,
   type UpdateChannel,
-} from "../src/update-contract.ts"
+} from "@openagentsinc/release-contract/update-contract"
 import {
   RELEASE_DESCRIPTOR_FILE,
   artifactExtension,
@@ -45,7 +45,7 @@ import {
   decodeUpdateManifest,
   type ReleaseDescriptorEntry,
   type ReleaseSigningKey,
-} from "../src/release-publish.ts"
+} from "@openagentsinc/release-contract/release-publish"
 import { UNSIGNED_DEV_MARKER, isUnsignedDevArtifactName } from "./macos-gatekeeper.ts"
 
 interface Args {

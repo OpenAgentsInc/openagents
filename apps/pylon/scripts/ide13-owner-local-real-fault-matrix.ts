@@ -11,7 +11,7 @@ import {
   IDE_PORTABLE_REQUIRED_FAULT_CASES,
   IdePortableEvidenceClassSchema,
   IdePortablePhaseSchema,
-} from "../../openagents-desktop/src/ide/portable-evidence-contract.ts";
+} from "@openagentsinc/release-contract/ide/portable-evidence-contract";
 import {
   type Ide13OwnerLocalAuthorityFaultProof,
   type Ide13OwnerLocalAuthorityFaultScenario,

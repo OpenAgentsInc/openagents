@@ -20,10 +20,10 @@ import {
   type ReleaseFormat,
   type ReleaseSet,
   type ReleaseTargetKey,
-} from "../src/release-set-contract.ts";
-import type { PinnedReleaseKey, UpdateManifest } from "../src/update-contract.ts";
-import type { ReleaseSigningKey } from "../src/release-publish.ts";
-import { desktopArtifactFormats, desktopTargetKeys } from "../src/release-staging-contract.ts";
+} from "./release-set-contract.ts";
+import type { PinnedReleaseKey, UpdateManifest } from "./update-contract.ts";
+import type { ReleaseSigningKey } from "./release-publish.ts";
+import { desktopArtifactFormats, desktopTargetKeys } from "./release-staging-contract.ts";
 
 // Ephemeral fixture keypair only. Production private material is never read.
 const fixturePair = generateKeyPairSync("ed25519");
@@ -430,7 +430,7 @@ describe("ReleaseSet deterministic selection and bounded v1 migration", () => {
 
   test("v1 remains readable only as typed macOS arm64 compatibility input through the promised interval", () => {
     const v1 = JSON.parse(
-      readFileSync(path.join(import.meta.dirname, "fixtures/release-set-v1.json"), "utf8"),
+      readFileSync(path.join(import.meta.dirname, "../fixtures/release-set-v1.json"), "utf8"),
     ) as UpdateManifest;
     expect(decodeReleaseSelection(v1, V1_MIGRATION_END)).toEqual({
       kind: "v1-darwin-arm64",
@@ -451,7 +451,7 @@ describe("ReleaseSet deterministic selection and bounded v1 migration", () => {
 
   test("golden v2 canonical digest detects schema/canonicalization drift", () => {
     const golden = JSON.parse(
-      readFileSync(path.join(import.meta.dirname, "fixtures/release-set-v2.json"), "utf8"),
+      readFileSync(path.join(import.meta.dirname, "../fixtures/release-set-v2.json"), "utf8"),
     ) as unknown;
     expect(decodeReleaseSet(golden)).toMatchObject({ ok: true });
     expect(createHash("sha256").update(canonicalizeReleaseSet(golden)).digest("hex")).toBe(

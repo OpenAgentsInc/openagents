@@ -24,10 +24,10 @@ import { describe, expect, test } from 'vitest'
 import {
   signReleasePayload,
   type ReleaseSigningKey,
-} from '../../../../../apps/openagents-desktop/src/release-publish.ts'
+} from '@openagentsinc/release-contract/release-publish'
 import {
   canonicalizeReleaseSet,
-} from '../../../../../apps/openagents-desktop/src/release-set-contract.ts'
+} from '@openagentsinc/release-contract/release-set-contract'
 import {
   DESKTOP_DOWNLOAD_ARTIFACT_PATH,
   DESKTOP_DOWNLOAD_RESOLUTION_PATH,
@@ -59,7 +59,7 @@ const otherKey: ReleaseSigningKey = { d: otherSeed, kid: 'fixture-release-set-v2
 const fixtureRaw = readFileSync(
   path.resolve(
     import.meta.dirname,
-    '../../../../../apps/openagents-desktop/tests/fixtures/release-set-v2.json',
+    '../../../../../packages/release-contract/fixtures/release-set-v2.json',
   ),
   'utf8',
 )

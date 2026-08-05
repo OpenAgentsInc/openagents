@@ -131,6 +131,7 @@
     "@openagentsinc/product-spec": "workspace:*",
     "@openagentsinc/pylon-core": "workspace:*",
     "@openagentsinc/pylon-runtime": "workspace:*",
+    "@openagentsinc/release-contract": "workspace:*",
     "@openagentsinc/rlm": "0.2.1-rc.4",
     "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/sovereign-identity": "workspace:*",

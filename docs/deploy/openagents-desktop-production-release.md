@@ -341,7 +341,7 @@ Run the existing focused contract gates and build:
 ```sh
 pnpm exec vp test --run --max-concurrency 1 \
   apps/openagents-desktop/tests/release-preflight.test.ts \
-  apps/openagents-desktop/tests/update-contract.test.ts \
+  packages/release-contract/src/update-contract.test.ts \
   apps/openagents-desktop/tests/publish-release.test.ts \
   apps/openagents-desktop/tests/package-macos.test.ts \
   apps/openagents-desktop/tests/macos-gatekeeper.test.ts \

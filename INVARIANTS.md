@@ -1029,7 +1029,7 @@ come from the Freerange teardown
   reference, canonical version-first artifact identities, and opaque worker
   identity. ReleaseSet v2 (#8915) consumes only the `sha256:<hex>`
   ledger/receipt references exported by
-  `apps/openagents-desktop/src/release-staging-contract.ts`. Unsigned-dev
+  `packages/release-contract/src/release-staging-contract.ts`. Unsigned-dev
   output is structurally inadmissible: an `unsigned-dev` descriptor can never
   construct a receipt and `UNSIGNED-DEV`-marked artifact names fail the
   receipt schema. Descriptor/ledger/receipt schema tests and the injected

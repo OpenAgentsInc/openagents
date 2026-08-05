@@ -17,7 +17,7 @@ import {
   IdePortablePlacementCohortSchema,
   IDE_PORTABLE_NON_PHASE_ACCEPTANCE_METRICS,
   IDE_PORTABLE_PHASES,
-} from "../../openagents-desktop/src/ide/portable-evidence-contract.ts";
+} from "@openagentsinc/release-contract/ide/portable-evidence-contract";
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap.js";
 import { PYLON_DEV_CHECK_SCHEMA, type PylonDevCheckProjection } from "../src/dev-loop.js";
 import {

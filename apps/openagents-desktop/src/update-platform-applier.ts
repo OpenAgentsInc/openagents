@@ -1,4 +1,4 @@
-import type { DesktopArtifactFormat, DesktopTargetKey } from "./release-staging-contract.ts";
+import type { DesktopArtifactFormat, DesktopTargetKey } from "@openagentsinc/release-contract/release-staging-contract";
 
 export const childRuntimeKinds = [
   "agent",

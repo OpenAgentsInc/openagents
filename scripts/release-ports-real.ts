@@ -39,11 +39,11 @@ import {
   minimumOsByTarget,
   preferredFormatByTarget,
   verifySignedReleaseSet,
-} from "../apps/openagents-desktop/src/release-set-contract.js";
+} from "@openagentsinc/release-contract/release-set-contract";
 import {
   type PinnedReleaseKey,
   PRODUCTION_RELEASE_KEY_PIN,
-} from "../apps/openagents-desktop/src/update-contract.js";
+} from "@openagentsinc/release-contract/update-contract";
 import {
   type AtomicChannelPromoter,
   type CandidateAcceptanceGate,

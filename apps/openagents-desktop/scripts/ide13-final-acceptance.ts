@@ -8,7 +8,7 @@ import {
   IDE_PORTABLE_REQUIRED_FAULT_CASES,
   IdePortableEvidenceReceiptSchema,
   validateIdePortableEvidenceReceipt,
-} from "../src/ide/portable-evidence-contract.ts";
+} from "@openagentsinc/release-contract/ide/portable-evidence-contract";
 
 const [mainCommitSha, reviewerReceiptRef, outputPath] = process.argv.slice(2);
 if (!mainCommitSha || !reviewerReceiptRef || !outputPath) {

@@ -6,12 +6,12 @@ import {
   canonicalizeReleaseSet,
   decodeReleaseSet,
   type ReleaseSet,
-} from "../../openagents-desktop/src/release-set-contract.ts"
+} from "@openagentsinc/release-contract/release-set-contract"
 import {
   deriveReleaseKeyPin,
   signReleasePayload,
   type ReleaseSigningKey,
-} from "../../openagents-desktop/src/release-publish.ts"
+} from "@openagentsinc/release-contract/release-publish"
 import {
   createInMemoryReleaseSetFeedStore,
   createReleaseSetFeed,
@@ -27,7 +27,7 @@ const pin = deriveReleaseKeyPin(signingKey)
 
 const fixture = async (): Promise<ReleaseSet> => {
   const raw = JSON.parse(await readFile(
-    new URL("../../openagents-desktop/tests/fixtures/release-set-v2.json", import.meta.url),
+    new URL("../../../packages/release-contract/fixtures/release-set-v2.json", import.meta.url),
     "utf8",
   )) as unknown
   const decoded = decodeReleaseSet(raw)

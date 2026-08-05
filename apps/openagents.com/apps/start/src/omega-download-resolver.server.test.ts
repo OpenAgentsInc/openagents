@@ -13,8 +13,8 @@ import { describe, expect, test } from 'vitest'
 import {
   signReleasePayload,
   type ReleaseSigningKey,
-} from '../../../../../apps/openagents-desktop/src/release-publish.ts'
-import { PRODUCTION_RELEASE_KEY_PIN } from '../../../../../apps/openagents-desktop/src/update-contract.ts'
+} from '@openagentsinc/release-contract/release-publish'
+import { PRODUCTION_RELEASE_KEY_PIN } from '@openagentsinc/release-contract/update-contract'
 import { generateKeyPairSync } from 'node:crypto'
 
 import {

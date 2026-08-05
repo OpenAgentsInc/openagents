@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
-import { buildUpdateManifestForArtifact, deriveReleaseKeyPin, signUpdateManifest } from "./release-publish.ts"
+import { buildUpdateManifestForArtifact, deriveReleaseKeyPin, signUpdateManifest } from "@openagentsinc/release-contract/release-publish"
 import { openDesktopUpdateScheduler, type DesktopUpdateSchedulerHost } from "./desktop-update-scheduler.ts"
 import { openDesktopUpdateStagingHost, type DesktopUpdateProjection } from "./update-staging-host.ts"
 

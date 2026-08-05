@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 
-import type { UpdateChannel } from "./update-contract.ts"
+import type { UpdateChannel } from "@openagentsinc/release-contract/update-contract"
 import type { DesktopUpdateProjection } from "./update-staging-host.ts"
 
 export const DesktopUpdateStagingChannel = "openagents-desktop/update-staging" as const

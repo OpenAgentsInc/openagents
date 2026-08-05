@@ -93,11 +93,11 @@ import {
 // ---------------------------------------------------------------------------
 // Mirrored release vocabulary
 //
-// These constants mirror the Desktop release contracts
-// (apps/openagents-desktop/src/update-contract.ts and
-// src/release-set-contract.ts). Root scripts deliberately do not import app
-// sources; scripts/release.test.ts guards the mirror against drift by reading
-// those contract sources.
+// These constants mirror the release contracts
+// (packages/release-contract/src/update-contract.ts and
+// packages/release-contract/src/release-set-contract.ts). Root scripts
+// deliberately do not import those sources; scripts/release.test.ts guards
+// the mirror against drift by reading those contract sources.
 // ---------------------------------------------------------------------------
 
 export const releaseChannels = ["stable", "rc"] as const;
@@ -111,7 +111,7 @@ export const RELEASE_VERSION_PATTERN =
 // `win32-x64` is an OPTIONAL, unsigned experimental portable that is excluded
 // from this set, so its absence never blocks convergence or promotion. This
 // mirrors `releaseTargetKeys` in
-// apps/openagents-desktop/src/release-set-contract.ts (guarded by
+// packages/release-contract/src/release-set-contract.ts (guarded by
 // scripts/release.test.ts).
 export const releaseTargetKeys = [
   "darwin-arm64",

@@ -37,7 +37,7 @@ import {
   PinnedReleaseKeySchema,
   type PinnedReleaseKey,
   type UpdateChannel,
-} from "./update-contract.ts"
+} from "@openagentsinc/release-contract/update-contract"
 
 export const DESKTOP_UPDATE_FEED_BASE_URL_ENV = "OPENAGENTS_DESKTOP_UPDATE_FEED_BASE_URL" as const
 export const DESKTOP_UPDATE_FEED_STAGING_PIN_ENV = "OPENAGENTS_DESKTOP_UPDATE_FEED_STAGING_PIN" as const

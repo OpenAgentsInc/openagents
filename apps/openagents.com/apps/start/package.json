@@ -35,6 +35,7 @@
     "@openagentsinc/managed-sandbox-contract": "workspace:*",
     "@openagentsinc/mkt-swp": "workspace:*",
     "@openagentsinc/public-nostr-chat": "workspace:*",
+    "@openagentsinc/release-contract": "workspace:*",
     "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/swap-i18n": "workspace:*",
     "@openagentsinc/sync-schema": "workspace:*",

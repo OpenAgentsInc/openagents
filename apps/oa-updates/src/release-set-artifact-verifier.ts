@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 
-import type { ReleaseSetArtifact } from "../../openagents-desktop/src/release-set-contract.ts"
+import type { ReleaseSetArtifact } from "@openagentsinc/release-contract/release-set-contract"
 import type { ReleaseSetArtifactVerifier } from "./release-set-feed.ts"
 
 const MAX_REDIRECTS = 0

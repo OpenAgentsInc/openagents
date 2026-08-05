@@ -99,12 +99,12 @@ import {
   type ReleaseSet,
   type ReleaseSetTarget,
   type ReleaseTargetKey,
-} from '../../../../../apps/openagents-desktop/src/release-set-contract.ts'
+} from '@openagentsinc/release-contract/release-set-contract'
 import {
   PRODUCTION_RELEASE_KEY_PIN,
   type PinnedReleaseKey,
   type UpdateChannel,
-} from '../../../../../apps/openagents-desktop/src/update-contract.ts'
+} from '@openagentsinc/release-contract/update-contract'
 
 // ---------------------------------------------------------------------------
 // Public paths (admitted through the Cloud Run Start seam in

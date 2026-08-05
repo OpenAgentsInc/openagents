@@ -54,6 +54,7 @@ const isDesktopRuntime = (path: string): boolean =>
   isUnder(path, "packages/agent-runtime-schema") ||
   path.includes("@openagentsinc/agent-runtime-schema") ||
   isUnder(path, "packages/codex-app-server-protocol") ||
+  isUnder(path, "packages/release-contract") ||
   isUnder(path, "packages/runtime-platform") ||
   isUnder(path, "packages/ui") ||
   isUnder(path, "packages/effect-native") ||

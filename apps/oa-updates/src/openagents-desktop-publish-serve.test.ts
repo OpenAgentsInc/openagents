@@ -2,7 +2,7 @@
  * Publish → seed → serve → client-verify round-trip (CUT-26, openagents#8706).
  *
  * The cross-shape contract proof: the dist dir is produced by the REAL
- * desktop publisher core (`apps/openagents-desktop/src/release-publish.ts`),
+ * desktop publisher core (`packages/release-contract/src/release-publish.ts`),
  * seeded by THIS service's real `seedOpenAgentsDesktopRelease`, served by
  * the real server routes, and finally re-verified through the desktop
  * client's own verification seam — the same manifest bytes end to end, all
@@ -20,12 +20,12 @@ import {
   RELEASE_DESCRIPTOR_FILE,
   computeDesktopReleasePublish,
   type ReleaseSigningKey,
-} from "../../openagents-desktop/src/release-publish.ts"
+} from "@openagentsinc/release-contract/release-publish"
 import {
   verifyArtifactDigest,
   verifySignedUpdateManifest,
   type PinnedReleaseKey,
-} from "../../openagents-desktop/src/update-contract.ts"
+} from "@openagentsinc/release-contract/update-contract"
 import { seedOpenAgentsDesktopRelease } from "./openagents-desktop-seed.ts"
 import { createUpdatesServer } from "./server.ts"
 

@@ -19,7 +19,7 @@ import {
   type PinnedReleaseKey,
   verifyArtifactDigest,
   verifySignedUpdateManifest,
-} from "../src/update-contract.ts"
+} from "@openagentsinc/release-contract/update-contract"
 import {
   RELEASE_DESCRIPTOR_FILE,
   artifactExtension,
@@ -32,7 +32,7 @@ import {
   deriveReleaseKeyPin,
   planDesktopReleasePublish,
   type ReleaseSigningKey,
-} from "../src/release-publish.ts"
+} from "@openagentsinc/release-contract/release-publish"
 
 // --- fixture keypair (NEVER the production key) ----------------------------
 

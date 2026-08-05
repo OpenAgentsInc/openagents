@@ -7,7 +7,7 @@ import { Schema } from "effect";
 import {
   IdePortablePlacementCohortSchema,
   type IdePortablePlacementCohort,
-} from "../../openagents-desktop/src/ide/portable-evidence-contract.ts";
+} from "@openagentsinc/release-contract/ide/portable-evidence-contract";
 import { Ide13OwnerLocalRealCohortReceiptSchema } from "./ide13-owner-local-real-cohort.ts";
 
 const Ref = Schema.String.check(

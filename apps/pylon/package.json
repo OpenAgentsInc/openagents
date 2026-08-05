@@ -96,6 +96,7 @@
   },
   "devDependencies": {
     "@openagentsinc/durable-stream": "workspace:*",
+    "@openagentsinc/release-contract": "workspace:*",
     "fast-check": "^4.8.0"
   },
   "optionalDependencies": {

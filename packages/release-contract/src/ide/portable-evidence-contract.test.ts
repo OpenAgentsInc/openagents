@@ -262,7 +262,7 @@ describe("IDE-13 portability evidence contract", () => {
         readFileSync(
           path.resolve(
             import.meta.dirname,
-            "../../benchmarks/ide/2026-07-20-ide-13-portability.json",
+            "../../../../apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-portability.json",
           ),
           "utf8",
         ),

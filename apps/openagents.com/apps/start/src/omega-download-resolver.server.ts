@@ -48,7 +48,7 @@ import {
   PRODUCTION_RELEASE_KEY_PIN,
   UpdateSignatureSchema,
   type PinnedReleaseKey,
-} from '../../../../../apps/openagents-desktop/src/update-contract.ts'
+} from '@openagentsinc/release-contract/update-contract'
 
 import {
   omegaDownloadManifestPayload,

@@ -2,7 +2,7 @@ import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readF
 import path from "node:path"
 import { spawn } from "node:child_process"
 
-import { isMonotonicUpgrade, type UpdateChannel } from "./update-contract.ts"
+import { isMonotonicUpgrade, type UpdateChannel } from "@openagentsinc/release-contract/update-contract"
 import type { DesktopPlatformUpdateApplier } from "./update-platform-applier.ts"
 
 export const MACOS_UPDATE_TRANSACTION_SCHEMA = "openagents.desktop.macos_update_transaction.v1" as const

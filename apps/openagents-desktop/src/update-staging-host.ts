@@ -11,8 +11,8 @@ import {
   isMonotonicUpgrade,
   verifyArtifactDigest,
   verifySignedUpdateManifest,
-} from "./update-contract.ts"
-import { assertCredentialFreeHttpsUrl, decodeUpdateManifest } from "./release-publish.ts"
+} from "@openagentsinc/release-contract/update-contract"
+import { assertCredentialFreeHttpsUrl, decodeUpdateManifest } from "@openagentsinc/release-contract/release-publish"
 import type { MacOSUpdateApplier } from "./macos-update-applier.ts"
 import {
   type ApplicationArchitecture,
@@ -24,7 +24,7 @@ import {
   selectReleaseArtifact,
   verifyReleaseSetArtifact,
   verifySignedReleaseSet,
-} from "./release-set-contract.ts"
+} from "@openagentsinc/release-contract/release-set-contract"
 import { childRuntimeKinds, type ChildRuntimeDrainReceipt, type DesktopPlatformUpdateApplier } from "./update-platform-applier.ts"
 import { initialUpdateState, migrationCategories, runUpdateEvents, type MigrationLedger } from "./update-rollback.ts"
 import { decodeUpdateMigrationEvidence, migrationLedgerFromEvidence, type UpdateMigrationEvidence } from "./update-migration-evidence.ts"

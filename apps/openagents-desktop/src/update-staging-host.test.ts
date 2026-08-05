@@ -4,8 +4,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os"
 import path from "node:path"
 
-import { buildUpdateManifestForArtifact, deriveReleaseKeyPin, signReleasePayload, signUpdateManifest } from "./release-publish.ts"
-import { canonicalizeReleaseSet, type ReleaseSet } from "./release-set-contract.ts"
+import { buildUpdateManifestForArtifact, deriveReleaseKeyPin, signReleasePayload, signUpdateManifest } from "@openagentsinc/release-contract/release-publish"
+import { canonicalizeReleaseSet, type ReleaseSet } from "@openagentsinc/release-contract/release-set-contract"
 import { openDesktopUpdateStagingHost, updateRecoveryRequiresStartupExit } from "./update-staging-host.ts"
 
 const roots: string[] = []
@@ -87,7 +87,7 @@ describe("Desktop signed update staging host", () => {
   test("verifies ReleaseSet v2 and resolves native host architecture instead of translated app architecture", async () => {
     const h = fixture(); const pair = generateKeyPairSync("ed25519"); const privateJwk = pair.privateKey.export({ format: "jwk" }) as { d: string }
     const key = { d: privateJwk.d, kid: "fixture-host-v2" }
-    const raw = JSON.parse(readFileSync(path.join(import.meta.dirname, "../tests/fixtures/release-set-v2.json"), "utf8"))
+    const raw = JSON.parse(readFileSync(path.join(import.meta.dirname, "../../../packages/release-contract/fixtures/release-set-v2.json"), "utf8"))
     const artifact = new TextEncoder().encode("native arm64 full artifact")
     const selected = raw.targets.find((row: { target: string }) => row.target === "darwin-arm64").artifacts.find((row: { format: string }) => row.format === "dmg")
     selected.sha256 = createHash("sha256").update(artifact).digest("hex"); selected.byteLength = artifact.byteLength; raw.signingPolicy.keyId = key.kid

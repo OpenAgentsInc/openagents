@@ -8,7 +8,7 @@ import { describe, expect, test } from "vite-plus/test"
 import {
   type UpdateManifest,
   UPDATE_CONTRACT_SCHEMA_ID,
-} from "../src/update-contract.ts"
+} from "@openagentsinc/release-contract/update-contract"
 import {
   type UpdateEvent,
   type UpdateMachineState,

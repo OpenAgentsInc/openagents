@@ -32,7 +32,7 @@ import {
   nativeComponentLedgerRef,
   NATIVE_COMPONENT_LEDGER_SCHEMA_ID,
   TARGET_BUILD_DESCRIPTOR_SCHEMA_ID,
-} from "../src/release-staging-contract.ts";
+} from "@openagentsinc/release-contract/release-staging-contract";
 import {
   asarPlacementViolations,
   buildNativeComponentLedger,

@@ -4,12 +4,12 @@ import {
   verifySignedReleaseSet,
   type ReleaseSet,
   type ReleaseSetArtifact,
-} from "../../openagents-desktop/src/release-set-contract.ts"
+} from "@openagentsinc/release-contract/release-set-contract"
 import type {
   PinnedReleaseKey,
   UpdateSignature,
-} from "../../openagents-desktop/src/update-contract.ts"
-import { isMonotonicUpgrade } from "../../openagents-desktop/src/update-contract.ts"
+} from "@openagentsinc/release-contract/update-contract"
+import { isMonotonicUpgrade } from "@openagentsinc/release-contract/update-contract"
 
 export type ReleaseSetChannel = "stable" | "rc"
 

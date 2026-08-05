@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:be2c62d261829060a9c18145c8d2f37a7bc729e032eda298f14bf9f2cace1dad",
+  "sourceDigest": "sha256:d9a05f4fc0ef1d4cfa5ac223030dc6022c6b123a4e38b544e479473e9cc00931",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -302,7 +302,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents-desktop (381 tracked test files)"
+          "ref": "apps/openagents-desktop (378 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -3091,6 +3091,23 @@
       }
     },
     {
+      "id": "package:@openagentsinc/release-contract",
+      "kind": "package",
+      "owningPath": "packages/release-contract",
+      "title": "@openagentsinc/release-contract",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/release-contract (3 tracked test files)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
       "id": "package:@openagentsinc/review-round",
       "kind": "package",
       "owningPath": "packages/review-round",
@@ -3642,17 +3659,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 191,
+    "totalSurfaces": 192,
     "byKind": {
       "app": 19,
       "crate": 7,
       "document": 52,
-      "package": 101,
+      "package": 102,
       "public-endpoint": 2,
       "release-pipeline": 9,
       "worker": 1
     },
-    "withOracle": 177,
+    "withOracle": 178,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3660,7 +3677,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 141,
+      "designed": 142,
       "inconclusive": 9,
       "mapped": 36,
       "out-of-scope": 5

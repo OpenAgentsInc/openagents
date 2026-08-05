@@ -28,7 +28,7 @@ import {
   type DesktopTargetBuildDescriptor,
   decodeDesktopTargetBuildDescriptor,
   desktopTargets,
-} from "./src/release-staging-contract.ts";
+} from "@openagentsinc/release-contract/release-staging-contract";
 import { macOSCodeDocumentTypes } from "./src/macos-document-open.ts";
 
 /**

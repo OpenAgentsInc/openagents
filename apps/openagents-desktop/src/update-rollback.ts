@@ -48,7 +48,7 @@ import {
   type UpdateManifest,
   type UpdateVerificationFailure,
   isMonotonicUpgrade,
-} from "./update-contract.ts"
+} from "@openagentsinc/release-contract/update-contract"
 
 export const UPDATE_ROLLBACK_SCHEMA_ID = "openagents.desktop.update_rollback.v1" as const
 

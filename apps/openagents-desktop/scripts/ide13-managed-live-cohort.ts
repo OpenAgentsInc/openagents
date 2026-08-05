@@ -7,7 +7,7 @@ import {
   IDE_PORTABLE_NON_PHASE_ACCEPTANCE_METRICS,
   IDE_PORTABLE_PHASES,
   IdePortablePlacementCohortSchema,
-} from "../src/ide/portable-evidence-contract.ts";
+} from "@openagentsinc/release-contract/ide/portable-evidence-contract";
 
 const [inputPath, outputPath] = process.argv.slice(2);
 if (!inputPath || !outputPath) {

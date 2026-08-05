@@ -15,7 +15,7 @@ import { Schema } from "effect";
 import {
   IDE_PORTABLE_EVIDENCE_CLASSES,
   IDE_PORTABLE_FAULT_SCENARIOS,
-} from "../../openagents-desktop/src/ide/portable-evidence-contract.ts";
+} from "@openagentsinc/release-contract/ide/portable-evidence-contract";
 import type { PylonPortableControlSessionLifecycle } from "../src/node/control-sessions.js";
 import {
   makePylonPortableDestinationHelperSupervisor,

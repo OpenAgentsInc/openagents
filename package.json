@@ -189,6 +189,7 @@
   "devDependencies": {
     "@effect/language-service": "^0.86.2",
     "@openagentsinc/nip90": "workspace:*",
+    "@openagentsinc/release-contract": "workspace:*",
     "@openagentsinc/runtime-platform": "workspace:*",
     "@oxlint/plugins": "1.68.0",
     "@playwright/test": "^1.61.0",

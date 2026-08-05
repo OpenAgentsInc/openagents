@@ -17,7 +17,7 @@ import {
   IdePortablePhaseSchema,
   IdePortablePlacementCohortSchema,
   validateIdePortableEvidenceReceipt,
-} from "../src/ide/portable-evidence-contract.ts";
+} from "@openagentsinc/release-contract/ide/portable-evidence-contract";
 
 const appRoot = path.resolve(import.meta.dirname, "..");
 const repositoryRoot = path.resolve(appRoot, "../..");

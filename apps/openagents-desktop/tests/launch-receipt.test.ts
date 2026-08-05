@@ -16,7 +16,7 @@ import {
   UPDATE_CONTRACT_SCHEMA_ID,
   createLaunchReceipt,
   evaluateLaunchReceipt,
-} from "../src/update-contract.ts"
+} from "@openagentsinc/release-contract/update-contract"
 import {
   type UpdateEvent,
   type UpdateMachineState,

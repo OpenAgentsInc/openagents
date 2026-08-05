@@ -32,13 +32,13 @@ import {
   canonicalizeReleaseSet,
   decodeReleaseSet,
   type ReleaseSet,
-} from "../../openagents-desktop/src/release-set-contract.ts"
+} from "@openagentsinc/release-contract/release-set-contract"
 import {
   deriveReleaseKeyPin,
   signReleasePayload,
   type ReleaseSigningKey,
-} from "../../openagents-desktop/src/release-publish.ts"
-import { PRODUCTION_RELEASE_KEY_PIN } from "../../openagents-desktop/src/update-contract.ts"
+} from "@openagentsinc/release-contract/release-publish"
+import { PRODUCTION_RELEASE_KEY_PIN } from "@openagentsinc/release-contract/update-contract"
 import {
   DESKTOP_UPDATE_FEED_BASE_URL_ENV,
   DESKTOP_UPDATE_FEED_STAGING_PIN_ENV,
@@ -72,7 +72,7 @@ const buildSignedSet = (version: string): {
   signatureBytes: Uint8Array
 } => {
   const text = readFileSync(
-    path.join(import.meta.dirname, "../../openagents-desktop/tests/fixtures/release-set-v2.json"),
+    path.join(import.meta.dirname, "../../../packages/release-contract/fixtures/release-set-v2.json"),
     "utf8",
   ).replaceAll("2.4.0-rc.3", version)
   const raw = JSON.parse(text) as {

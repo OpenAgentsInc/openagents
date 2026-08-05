@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test"
 
-import { PRODUCTION_RELEASE_KEY_PIN } from "./update-contract.ts"
+import { PRODUCTION_RELEASE_KEY_PIN } from "@openagentsinc/release-contract/update-contract"
 import {
   DESKTOP_UPDATE_FEED_BASE_URL_ENV,
   DESKTOP_UPDATE_FEED_STAGING_PIN_ENV,

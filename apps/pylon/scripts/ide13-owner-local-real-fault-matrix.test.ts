@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { Schema } from "effect";
 import { expect, test } from "vite-plus/test";
 
-import { IDE_PORTABLE_REQUIRED_FAULT_CASES } from "../../openagents-desktop/src/ide/portable-evidence-contract.js";
+import { IDE_PORTABLE_REQUIRED_FAULT_CASES } from "@openagentsinc/release-contract/ide/portable-evidence-contract";
 import {
   Ide13OwnerLocalRealFaultMatrixReceiptSchema,
   runIde13OwnerLocalRealFaultMatrix,

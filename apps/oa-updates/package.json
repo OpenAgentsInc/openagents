@@ -12,6 +12,7 @@
     "desktop:publish": "node --import tsx scripts/publish-desktop-release.ts"
   },
   "dependencies": {
+    "@openagentsinc/release-contract": "workspace:*",
     "@openagentsinc/runtime-platform": "workspace:*"
   },
   "devDependencies": {

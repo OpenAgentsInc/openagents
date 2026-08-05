@@ -2,7 +2,7 @@ import { createHash } from "node:crypto"
 
 import { describe, expect, test } from "vite-plus/test"
 
-import type { ReleaseSetArtifact } from "../../openagents-desktop/src/release-set-contract.ts"
+import type { ReleaseSetArtifact } from "@openagentsinc/release-contract/release-set-contract"
 import { createPublicReleaseSetArtifactVerifier } from "./release-set-artifact-verifier.ts"
 
 const bytes = new TextEncoder().encode("signed artifact bytes")

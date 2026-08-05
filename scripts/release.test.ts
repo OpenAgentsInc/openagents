@@ -200,14 +200,14 @@ describe("mirrored release vocabulary", () => {
   const repoRoot = join(import.meta.dirname, "..");
   test("target keys and channels match the Desktop release contracts", () => {
     const releaseSetSource = readFileSync(
-      join(repoRoot, "apps/openagents-desktop/src/release-set-contract.ts"),
+      join(repoRoot, "packages/release-contract/src/release-set-contract.ts"),
       "utf8",
     );
     for (const target of releaseTargetKeys) {
       expect(releaseSetSource).toContain(`"${target}"`);
     }
     const updateContractSource = readFileSync(
-      join(repoRoot, "apps/openagents-desktop/src/update-contract.ts"),
+      join(repoRoot, "packages/release-contract/src/update-contract.ts"),
       "utf8",
     );
     for (const channel of releaseChannels) {
