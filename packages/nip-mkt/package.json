@@ -1,6 +1,6 @@
 {
   "name": "@openagentsinc/nip-mkt",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "files": [
     "contract",
@@ -12,6 +12,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./generated": "./src/generated.ts",
+    "./relay": "./src/relay.ts",
     "./contract": "./contract/immortal-contract.json",
     "./fixtures": "./contract/immortal-fixtures.json"
   },

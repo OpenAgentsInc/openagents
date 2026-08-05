@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:70e70493b0e857f0e5cce1f48b1747f3057bfbcdd73130114c2be87495aa34cf",
+  "sourceDigest": "sha256:0a97eb50f4e3bcfc0e160e3da542ae87b095bace4a8b72b83471a7851c89a0bf",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -2533,7 +2533,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/nip-mkt (5 tracked test files)"
+          "ref": "packages/nip-mkt (6 tracked test files)"
         }
       ],
       "obligation": {

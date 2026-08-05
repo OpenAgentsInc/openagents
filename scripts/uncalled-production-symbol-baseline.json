@@ -2221,10 +2221,6 @@
       "reason": "Published contract provenance for the generated NIP-MKT SDK; openagents.com issue #9310 will display and diagnose the pinned Immortal contract when it adopts this package."
     },
     {
-      "ref": "packages/nip-mkt/src/generated.ts#CONTRACT_SOURCE_COMMIT",
-      "reason": "Published contract provenance for the generated NIP-MKT SDK; openagents.com issue #9310 will display and diagnose the pinned Immortal contract when it adopts this package."
-    },
-    {
       "ref": "packages/nip-mkt/src/generated.ts#FIXTURE_MANIFEST_SHA256",
       "reason": "Published conformance provenance for the generated NIP-MKT SDK; openagents.com issue #9310 will expose it in market diagnostics when it adopts this package."
     },
@@ -2247,6 +2243,10 @@
     {
       "ref": "packages/nip-mkt/src/generated.ts#REASON_PREFIXES",
       "reason": "Published relay reason-prefix vocabulary for the generated NIP-MKT SDK; openagents.com issue #9310 will classify authenticated read and publish failures when it adopts this package."
+    },
+    {
+      "ref": "packages/nip-mkt/src/relay.ts#probeImmortalRelay",
+      "reason": "Public SDK relay handshake used by the OpenAgentsInc/pro production settings integration; that downstream repository invokes the Effect to verify Immortal NIP-11, contract version, WebSocket connectivity, and the REQ/EOSE snapshot boundary."
     },
     {
       "ref": "packages/nip-mkt/src/state.ts#activeSupersedingQuote",
