@@ -21,20 +21,28 @@ mod web_app {
 
     const RELAY_URL: &str = "https://relay.openagents.com";
 
-    // Terminal palette: black void, amber command surfaces, market green/red.
-    const VOID: u32 = 0x000000;
-    const PANEL: u32 = 0x0a0a08;
-    const RAISED: u32 = 0x12110c;
-    const HAIRLINE: u32 = 0x2a2417;
-    const AMBER: u32 = 0xff9f0a;
-    const AMBER_DIM: u32 = 0xb8770e;
-    const BODY: u32 = 0xd8d4c8;
-    const SECONDARY: u32 = 0x9a958a;
-    const FAINT: u32 = 0x6a665c;
-    const GREEN: u32 = 0x2fd575;
-    const RED: u32 = 0xff4d42;
-    const CYAN: u32 = 0x4fd0ff;
-    const SOFT_BLUE: u32 = 0x8fb6ff;
+    // Aiur palette (omega assets/themes/aiur/aiur.json).
+    const VOID: u32 = 0x05070d; // editor.background — the page
+    const PANEL: u32 = 0x0b1220; // background — panels
+    const RAISED: u32 = 0x141f36; // element.background — headers, cards
+    const HAIRLINE: u32 = 0x1f2b45; // border
+    const RULE: u32 = 0x16203a; // border.variant — table row rules
+    const RULE_FAINT: u32 = 0x121a2e; // dimmer rule for the dense event tape
+    const ACCENT: u32 = 0x5c96f8; // terminal.ansi.bright_blue — primary accent
+    const ACCENT_DIM: u32 = 0x2f6fe0; // terminal.ansi.dim_blue — quiet accent
+    const ACCENT_STRONG: u32 = 0x3b82f6; // text.accent — filled emphasis
+    const BODY: u32 = 0xeef3ff; // text
+    const SECONDARY: u32 = 0xa9b1d6; // text.muted
+    const FAINT: u32 = 0x5b6486; // dimmed muted
+    const GREEN: u32 = 0x9ece6a; // terminal.ansi.green — pass / active
+    const RED: u32 = 0xf7768e; // terminal.ansi.red — failure / refusal
+    const ORANGE: u32 = 0xff9e64; // warning / custody / weak-guarantee accent
+    const CYAN: u32 = 0x7dcfff; // terminal.ansi.cyan — protocol / transport
+    const SOFT_BLUE: u32 = 0x8fb6ff; // claim rung — lighter than the accent
+    const WARN_BG: u32 = 0x3a2415; // orange-tinted chip behind the DEMO banner
+    const CALLOUT_BG: u32 = 0x0e1525; // accent-tinted closing callout
+    const GAP_BG: u32 = 0x1d131b; // red-tinted sequence-gap row
+    const GAP_BORDER: u32 = 0x4a2835; // red-tinted sequence-gap border
 
     struct WebThemeSettings {
         ui_font: Font,
@@ -63,38 +71,38 @@ mod web_app {
         }
     }
 
-    // Terminal-tuned surface values applied over Omega's theme machinery.
-    const TERMINAL_JSON: &str = r##"{
+    // Aiur surface values applied over Omega's theme machinery.
+    const AIUR_JSON: &str = r##"{
       "themes": [{
         "style": {
-          "border": "#2a2417ff",
-          "border.variant": "#1c1810ff",
-          "border.focused": "#ff9f0aff",
-          "elevated_surface.background": "#12110cff",
-          "surface.background": "#0a0a08ff",
-          "background": "#000000ff",
-          "panel.background": "#0a0a08ff",
-          "editor.background": "#000000ff",
-          "element.background": "#12110cff",
-          "element.hover": "#ff9f0a14",
-          "element.active": "#ff9f0a21",
-          "element.selected": "#ff9f0a29",
-          "ghost_element.hover": "#ff9f0a14",
-          "ghost_element.selected": "#ff9f0a29",
-          "text": "#d8d4c8ff",
-          "text.muted": "#9a958aff",
-          "text.placeholder": "#6a665cff",
-          "text.disabled": "#4c483fff",
-          "text.accent": "#ff9f0aff",
-          "icon": "#d8d4c8ff",
-          "icon.muted": "#9a958aff",
-          "icon.accent": "#ff9f0aff",
-          "status_bar.background": "#0a0a08ff",
-          "title_bar.background": "#0a0a08ff",
-          "toolbar.background": "#000000ff",
-          "tab_bar.background": "#0a0a08ff",
-          "tab.active_background": "#000000ff",
-          "tab.inactive_background": "#0a0a08ff"
+          "border": "#1f2b45ff",
+          "border.variant": "#16203aff",
+          "border.focused": "#5c96f8ff",
+          "elevated_surface.background": "#141f36ff",
+          "surface.background": "#0b1220ff",
+          "background": "#05070dff",
+          "panel.background": "#0b1220ff",
+          "editor.background": "#05070dff",
+          "element.background": "#141f36ff",
+          "element.hover": "#5c96f814",
+          "element.active": "#5c96f821",
+          "element.selected": "#5c96f829",
+          "ghost_element.hover": "#5c96f814",
+          "ghost_element.selected": "#5c96f829",
+          "text": "#eef3ffff",
+          "text.muted": "#a9b1d6ff",
+          "text.placeholder": "#5b6486ff",
+          "text.disabled": "#3c4460ff",
+          "text.accent": "#5c96f8ff",
+          "icon": "#eef3ffff",
+          "icon.muted": "#a9b1d6ff",
+          "icon.accent": "#5c96f8ff",
+          "status_bar.background": "#0b1220ff",
+          "title_bar.background": "#0b1220ff",
+          "toolbar.background": "#05070dff",
+          "tab_bar.background": "#0b1220ff",
+          "tab.active_background": "#05070dff",
+          "tab.inactive_background": "#0b1220ff"
         }
       }]
     }"##;
@@ -225,7 +233,7 @@ mod web_app {
             seq: Some(1),
             state: "funding_observed",
             rung: "measured",
-            rung_color: AMBER,
+            rung_color: ORANGE,
             detail: "lock output seen; not verification",
         },
         TimelineRow {
@@ -414,7 +422,7 @@ mod web_app {
                 tape: vec![TapeEvent {
                     clock: format_clock(now_secs()),
                     kind: "BOOT",
-                    kind_color: AMBER,
+                    kind_color: ACCENT,
                     text: "terminal online — seeded DEMO market loaded".to_owned(),
                 }],
                 wraps_relayed: 4_182,
@@ -458,12 +466,12 @@ mod web_app {
                     ),
                     (
                         "HEAD",
-                        AMBER_DIM,
+                        ACCENT_DIM,
                         "offering 39601 head refreshed: aurora-lp btc/btc-ln",
                     ),
                     (
                         "HEAD",
-                        AMBER_DIM,
+                        ACCENT_DIM,
                         "provider 39600 heartbeat: meridian-swaps active",
                     ),
                     (
@@ -563,7 +571,7 @@ mod web_app {
                 self.sessions_closed += 1;
                 self.push_tape(
                     "CLSE",
-                    AMBER,
+                    ACCENT,
                     "close 39609 outcome=completed · public receipt 39603 [DEMO]".to_owned(),
                     cx,
                 );
@@ -600,7 +608,7 @@ mod web_app {
                         Label::new(title)
                             .size(LabelSize::XSmall)
                             .weight(FontWeight::BOLD)
-                            .color(Color::Custom(rgb(AMBER).into())),
+                            .color(Color::Custom(rgb(ACCENT).into())),
                     )
                     .child(mono(right.unwrap_or_default(), FAINT)),
             )
@@ -629,10 +637,7 @@ mod web_app {
                 RelayProbe::Checking => (Color::Muted, "RELAY: PROBING".to_owned(), FAINT),
                 RelayProbe::Online { mkt, .. } => (
                     Color::Success,
-                    format!(
-                        "RELAY: LIVE NIP-11{}",
-                        if *mkt { " · NIP-MKT" } else { "" }
-                    ),
+                    format!("RELAY: LIVE NIP-11{}", if *mkt { " · NIP-MKT" } else { "" }),
                     GREEN,
                 ),
                 RelayProbe::Unreachable(_) => {
@@ -646,7 +651,7 @@ mod web_app {
                 .py_1p5()
                 .bg(rgb(RAISED))
                 .border_b_1()
-                .border_color(rgb(AMBER_DIM))
+                .border_color(rgb(ACCENT_DIM))
                 .child(
                     h_flex()
                         .gap_3()
@@ -655,9 +660,9 @@ mod web_app {
                             Label::new("OPENAGENTS MARKETS")
                                 .size(LabelSize::Small)
                                 .weight(FontWeight::EXTRA_BOLD)
-                                .color(Color::Custom(rgb(AMBER).into())),
+                                .color(Color::Custom(rgb(ACCENT).into())),
                         )
-                        .child(mono("<OAMKT>", AMBER_DIM))
+                        .child(mono("<OAMKT>", ACCENT_DIM))
                         .child(mono("NEGOTIATED SWAPS · NIP-MKT v0.1", SECONDARY)),
                 )
                 .child(
@@ -676,17 +681,22 @@ mod web_app {
                             div()
                                 .px_2()
                                 .py_0p5()
-                                .bg(rgb(0x2a1f0a))
+                                .bg(rgb(WARN_BG))
                                 .border_1()
-                                .border_color(rgb(AMBER))
-                                .child(mono("DEMO — NO FUNDS ON THIS SURFACE", AMBER)),
+                                .border_color(rgb(ORANGE))
+                                .child(mono("DEMO — NO FUNDS ON THIS SURFACE", ORANGE)),
                         ),
                 )
         }
 
         fn render_stage_strip(&self, cx: &mut Context<Self>) -> impl IntoElement {
             const STAGES: [&str; 6] = [
-                "1 MARKET", "2 RFQ", "3 QUOTES", "4 VERIFY", "5 SESSION", "6 CLOSE",
+                "1 MARKET",
+                "2 RFQ",
+                "3 QUOTES",
+                "4 VERIFY",
+                "5 SESSION",
+                "6 CLOSE",
             ];
             let current = self.stage.index();
             let mut strip = h_flex().gap_1().items_center().px_3().py_1().bg(rgb(VOID));
@@ -697,9 +707,9 @@ mod web_app {
                     div()
                         .px_2()
                         .py_0p5()
-                        .bg(rgb(if active { AMBER } else { PANEL }))
+                        .bg(rgb(if active { ACCENT_STRONG } else { PANEL }))
                         .border_1()
-                        .border_color(rgb(if reached { AMBER_DIM } else { HAIRLINE }))
+                        .border_color(rgb(if reached { ACCENT_DIM } else { HAIRLINE }))
                         .child(
                             Label::new(*label)
                                 .size(LabelSize::XSmall)
@@ -708,7 +718,7 @@ mod web_app {
                                     rgb(if active {
                                         VOID
                                     } else if reached {
-                                        AMBER_DIM
+                                        ACCENT
                                     } else {
                                         FAINT
                                     })
@@ -752,7 +762,7 @@ mod web_app {
                         .px_2()
                         .py_1()
                         .border_b_1()
-                        .border_color(rgb(0x14120c))
+                        .border_color(rgb(RULE))
                         .child(
                             div().w(px(104.)).child(
                                 v_flex()
@@ -766,7 +776,7 @@ mod web_app {
                             } else {
                                 format!("{} bps", row.bps)
                             },
-                            if row.providers == 0 { FAINT } else { AMBER },
+                            if row.providers == 0 { FAINT } else { ACCENT },
                         )))
                         .child(div().w(px(40.)).child(mono(delta_text, delta_color)))
                         .child(div().w(px(34.)).child(mono(
@@ -789,7 +799,11 @@ mod web_app {
                 RelayProbe::Online { name, mkt } => (
                     format!(
                         "{name}{}",
-                        if *mkt { " · nip-mkt" } else { " · nip-mkt off" }
+                        if *mkt {
+                            " · nip-mkt"
+                        } else {
+                            " · nip-mkt off"
+                        }
                     ),
                     GREEN,
                 ),
@@ -819,7 +833,7 @@ mod web_app {
                     .child(key_value(
                         "law",
                         "relay acceptance proves transport only".to_owned(),
-                        AMBER_DIM,
+                        ACCENT_DIM,
                     )),
             )
         }
@@ -844,7 +858,7 @@ mod web_app {
                         .px_2()
                         .py_1()
                         .border_b_1()
-                        .border_color(rgb(0x14120c))
+                        .border_color(rgb(RULE))
                         .child(
                             div().w(px(128.)).child(
                                 v_flex()
@@ -864,7 +878,7 @@ mod web_app {
                                     }))
                                     .child(mono(
                                         provider.status,
-                                        if active { GREEN } else { AMBER },
+                                        if active { GREEN } else { ORANGE },
                                     )),
                             ),
                         )
@@ -874,7 +888,7 @@ mod web_app {
                             if provider.reservation == "hard" {
                                 GREEN
                             } else if provider.reservation == "soft" {
-                                AMBER
+                                ORANGE
                             } else {
                                 FAINT
                             },
@@ -894,9 +908,13 @@ mod web_app {
                         .gap_2()
                         .items_start()
                         .border_b_1()
-                        .border_color(rgb(0x100e09))
+                        .border_color(rgb(RULE_FAINT))
                         .child(div().min_w(px(72.)).child(mono(event.clock.clone(), FAINT)))
-                        .child(div().min_w(px(38.)).child(mono(event.kind, event.kind_color)))
+                        .child(
+                            div()
+                                .min_w(px(38.))
+                                .child(mono(event.kind, event.kind_color)),
+                        )
                         .child(mono(event.text.clone(), SECONDARY)),
                 );
             }
@@ -1006,7 +1024,7 @@ mod web_app {
                                 );
                                 this.push_tape(
                                     "QUOT",
-                                    AMBER,
+                                    ORANGE,
                                     "quote 39605 indicative/soft from meridian-swaps [DEMO]"
                                         .to_owned(),
                                     cx,
@@ -1028,7 +1046,7 @@ mod web_app {
                         .p_2()
                         .bg(rgb(RAISED))
                         .border_1()
-                        .border_color(rgb(if firm { AMBER_DIM } else { HAIRLINE }))
+                        .border_color(rgb(if firm { ACCENT_DIM } else { HAIRLINE }))
                         .child(
                             h_flex()
                                 .justify_between()
@@ -1043,10 +1061,10 @@ mod web_app {
                                                 .weight(FontWeight::BOLD)
                                                 .color(Color::Custom(rgb(BODY).into())),
                                         )
-                                        .child(tag(quote.kind, if firm { GREEN } else { AMBER }))
+                                        .child(tag(quote.kind, if firm { GREEN } else { ORANGE }))
                                         .child(tag(
                                             quote.reservation,
-                                            if firm { GREEN } else { AMBER },
+                                            if firm { GREEN } else { ORANGE },
                                         )),
                                 )
                                 .child(
@@ -1125,7 +1143,7 @@ mod web_app {
                             })),
                     )
                 } else {
-                    h_flex().pt_1().child(mono("verifying…", AMBER))
+                    h_flex().pt_1().child(mono("verifying…", ACCENT))
                 })
         }
 
@@ -1139,9 +1157,9 @@ mod web_app {
                         .items_center()
                         .px_2()
                         .py_1()
-                        .bg(rgb(if is_gap { 0x1a0d0d } else { RAISED }))
+                        .bg(rgb(if is_gap { GAP_BG } else { RAISED }))
                         .border_1()
-                        .border_color(rgb(if is_gap { 0x3a1d1d } else { HAIRLINE }))
+                        .border_color(rgb(if is_gap { GAP_BORDER } else { HAIRLINE }))
                         .child(div().min_w(px(70.)).child(mono(row.signer, FAINT)))
                         .child(div().min_w(px(44.)).child(mono(
                             match row.seq {
@@ -1177,7 +1195,7 @@ mod web_app {
                 ))
                 .child(rows)
                 .child(if done {
-                    h_flex().child(mono("session terminal — close below", AMBER))
+                    h_flex().child(mono("session terminal — close below", ACCENT))
                 } else {
                     h_flex().child(
                         Button::new("advance", "NEXT STATUS RECORD →")
@@ -1201,7 +1219,7 @@ mod web_app {
                         .bg(rgb(RAISED))
                         .border_1()
                         .border_color(rgb(HAIRLINE))
-                        .child(mono("CLOSE (39609) + PUBLIC RECEIPT (39603)", AMBER))
+                        .child(mono("CLOSE (39609) + PUBLIC RECEIPT (39603)", ACCENT))
                         .child(key_value("outcome", "completed".into(), GREEN))
                         .child(key_value(
                             "close",
@@ -1217,24 +1235,23 @@ mod web_app {
                         ))
                         .child(key_value(
                             "rung",
-                            "still a signer's claim — settled needs exact external proof"
-                                .into(),
-                            AMBER,
+                            "still a signer's claim — settled needs exact external proof".into(),
+                            ORANGE,
                         )),
                 )
                 .child(
                     div()
                         .mx_3()
                         .p_2()
-                        .bg(rgb(0x0f0c04))
+                        .bg(rgb(CALLOUT_BG))
                         .border_1()
-                        .border_color(rgb(AMBER))
+                        .border_color(rgb(ACCENT))
                         .child(mono(
                             "Boltz and Satora went dark because one company's API was the \
                              market. This market is signed events on relays: any provider \
                              can join, any client can verify, and this terminal is just \
                              one window onto it.",
-                            AMBER,
+                            ACCENT,
                         )),
                 )
                 .child(
@@ -1274,7 +1291,7 @@ mod web_app {
                 .py_1()
                 .bg(rgb(RAISED))
                 .border_t_1()
-                .border_color(rgb(AMBER_DIM))
+                .border_color(rgb(ACCENT_DIM))
                 .child(mono(
                     "synthetic DEMO market · protocol NIP-MKT v0.1 · relay probe is the \
                      only live data",
@@ -1290,52 +1307,48 @@ mod web_app {
     impl Render for MarketTerminal {
         fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             let _theme = cx.theme();
-            div()
-                .size_full()
-                .bg(rgb(VOID))
-                .overflow_hidden()
-                .child(
-                    v_flex()
-                        .size_full()
-                        .child(self.render_top_bar(cx))
-                        .child(self.render_stage_strip(cx))
-                        .child(
-                            div()
-                                .id("terminal-scroll")
-                                .flex_1()
-                                .overflow_y_scroll()
-                                .child(
-                                    h_flex()
-                                        .items_start()
-                                        .gap_2()
-                                        .p_2()
-                                        .child(
-                                            v_flex()
-                                                .w(px(268.))
-                                                .flex_none()
-                                                .gap_2()
-                                                .child(self.render_market_watch(cx))
-                                                .child(self.render_network(cx)),
-                                        )
-                                        .child(
-                                            v_flex()
-                                                .flex_1()
-                                                .min_w(px(430.))
-                                                .gap_2()
-                                                .child(self.render_session_panel(cx)),
-                                        )
-                                        .child(
-                                            v_flex()
-                                                .w(px(354.))
-                                                .flex_none()
-                                                .gap_2()
-                                                .child(self.render_providers(cx))
-                                                .child(self.render_tape(cx)),
-                                        ),
-                                ),
-                        )
-                        .child(self.render_status_bar(cx)),
-                )
+            div().size_full().bg(rgb(VOID)).overflow_hidden().child(
+                v_flex()
+                    .size_full()
+                    .child(self.render_top_bar(cx))
+                    .child(self.render_stage_strip(cx))
+                    .child(
+                        div()
+                            .id("terminal-scroll")
+                            .flex_1()
+                            .overflow_y_scroll()
+                            .child(
+                                h_flex()
+                                    .items_start()
+                                    .gap_2()
+                                    .p_2()
+                                    .child(
+                                        v_flex()
+                                            .w(px(268.))
+                                            .flex_none()
+                                            .gap_2()
+                                            .child(self.render_market_watch(cx))
+                                            .child(self.render_network(cx)),
+                                    )
+                                    .child(
+                                        v_flex()
+                                            .flex_1()
+                                            .min_w(px(430.))
+                                            .gap_2()
+                                            .child(self.render_session_panel(cx)),
+                                    )
+                                    .child(
+                                        v_flex()
+                                            .w(px(354.))
+                                            .flex_none()
+                                            .gap_2()
+                                            .child(self.render_providers(cx))
+                                            .child(self.render_tape(cx)),
+                                    ),
+                            ),
+                    )
+                    .child(self.render_status_bar(cx)),
+            )
         }
     }
 
@@ -1398,8 +1411,8 @@ mod web_app {
         }
     }
 
-    fn apply_terminal_theme(cx: &mut App) {
-        let parsed: serde_json::Value = match serde_json::from_str(TERMINAL_JSON) {
+    fn apply_aiur_theme(cx: &mut App) {
+        let parsed: serde_json::Value = match serde_json::from_str(AIUR_JSON) {
             Ok(value) => value,
             Err(_) => return,
         };
@@ -1490,7 +1503,7 @@ mod web_app {
                 cx,
             );
             theme::init(theme::LoadThemes::JustBase, cx);
-            apply_terminal_theme(cx);
+            apply_aiur_theme(cx);
             let bounds = Bounds::centered(None, size(px(1440.), px(880.)), cx);
             match cx.open_window(
                 WindowOptions {

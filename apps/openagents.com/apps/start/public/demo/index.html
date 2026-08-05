@@ -27,16 +27,16 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
     <style>
       * { box-sizing: border-box; }
       html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #05070d; }
-      body { color: #c9d2dd; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+      body { color: #a9b1d6; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
       canvas { position: fixed; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; outline: none; }
       #boot { position: fixed; inset: 0; display: grid; place-items: center; background: #05070d; }
-      #boot p { max-width: 34rem; margin: 0; padding: 1.5rem; color: #aeb9c6; line-height: 1.65; text-align: center; }
+      #boot p { max-width: 34rem; margin: 0; padding: 1.5rem; color: #a9b1d6; line-height: 1.65; text-align: center; }
       @media (prefers-reduced-motion: no-preference) {
         #boot p { animation: pulse 2.4s ease-in-out infinite; }
       }
-      @keyframes pulse { 50% { color: #8fb6ff; } }
+      @keyframes pulse { 50% { color: #5c96f8; } }
     </style>
-  <link rel="modulepreload" href="/demo/market_demo_web.js" crossorigin="anonymous" integrity="sha384-WdomZ18IdjPMhWjKsIzapZJNP3UGVGygiJesfV54qZ35zPhgtVewZKC7vEKAd1A/"><link rel="preload" href="/demo/market_demo_web_bg.wasm" crossorigin="anonymous" integrity="sha384-85oSwn37Z6m1/NvjaLK1GUCr3BsC8iJDNRPRrEbDFHhzUJJCF7UDnw5eR5h1uUsj" as="fetch" type="application/wasm"></head>
+  <link rel="modulepreload" href="/demo/market_demo_web.js" crossorigin="anonymous" integrity="sha384-WdomZ18IdjPMhWjKsIzapZJNP3UGVGygiJesfV54qZ35zPhgtVewZKC7vEKAd1A/"><link rel="preload" href="/demo/market_demo_web_bg.wasm" crossorigin="anonymous" integrity="sha384-gIHV95V0n65u6Bjsog5YrCkadAV4nyUmwvqEKZA+RfmvSh9oW6NMkkO92G5vVO5G" as="fetch" type="application/wasm"></head>
   <body>
     <div id="boot" role="status">
       <p>Loading the OpenAgents Markets swap demo…</p>
