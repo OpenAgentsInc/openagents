@@ -276,13 +276,14 @@ export const KHALA_MODEL_ID = 'openagents/khala'
 export const GEMINI_FLASH_MODEL_ID = 'gemini-3.6-flash'
 export const KIMI_K3_MODEL_ID = 'kimi-k3'
 export const KIMI_K3_FIREWORKS_MODEL_ID = 'accounts/fireworks/models/kimi-k3'
-// OpenAI GPT-5.6 "Luna" served over the partner passthrough-openai adapter for
-// the Omega hosted lane (owner direction 2026-07-30: the core Omega Agent
-// defaults to gpt-5.6-luna through our API). DELIBERATELY absent from
-// MODEL_PRICING_TABLE: the hosted Omega lane meters no-spend, `SupplyLane` has
+// OpenAI GPT-5.6 hosted models served over the partner passthrough-openai
+// adapter for Omega. DELIBERATELY absent from MODEL_PRICING_TABLE: the hosted
+// Omega lane meters no-spend, `SupplyLane` has
 // no passthrough variant, and keeping it un-tabled keeps `classifyModel` at
 // `unknown` so nothing else in the priced catalog/quote surface learns the id.
 export const GPT_56_LUNA_MODEL_ID = 'gpt-5.6-luna'
+export const GPT_56_TERRA_MODEL_ID = 'gpt-5.6-terra'
+export const GPT_56_SOL_MODEL_ID = 'gpt-5.6-sol'
 export const KHALA_MINI_MODEL_ID = 'openagents/khala-mini'
 export const KHALA_CODE_MODEL_ID = 'openagents/khala-code'
 export const HYDRALISK_GLM_52_REAP_504B_MODEL_ID =

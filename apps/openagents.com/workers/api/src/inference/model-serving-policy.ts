@@ -19,11 +19,11 @@
 // handles nor can leak a credential. PURE: no D1, no clock, no network. It moves
 // no money and changes no promise state — it only narrows what the public
 // catalog advertises to what is genuinely servable.
+import { isGpt56ModelId } from './gpt56-access'
 import type { ModelCatalogEntry } from './model-catalog'
 import { DEFAULT_GLM_52_REAP_504B_OWNED_COST_PROFILE_REF } from './owned-inference-cost'
 import {
   GEMINI_FLASH_MODEL_ID,
-  GPT_56_LUNA_MODEL_ID,
   HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   HYDRALISK_GPT_OSS_120B_MODEL_ID,
@@ -104,9 +104,9 @@ export const isPublicModelId = (modelId: string): boolean =>
   normalizeKhalaModelId(modelId) === KHALA_MODEL_ID
 
 export const isHostedLaneModelId = (modelId: string): boolean =>
-  [GEMINI_FLASH_MODEL_ID, KIMI_K3_MODEL_ID, GPT_56_LUNA_MODEL_ID].includes(
+  [GEMINI_FLASH_MODEL_ID, KIMI_K3_MODEL_ID].includes(
     normalizePricingModelId(modelId),
-  )
+  ) || isGpt56ModelId(modelId)
 
 // The presence-only env shape the arming is derived from. Every field is the
 // SAME worker secret/flag name the corresponding adapter already reads; we only
@@ -823,7 +823,7 @@ export const resolveHostedLaneModelServability = (
   // serves over the partner passthrough-openai adapter, so its arming is the
   // presence of OPENAI_API_KEY rather than a `SupplyLane`. Optional field
   // absent = unarmed (ALL_LANES_UNARMED semantics).
-  if (normalizePricingModelId(modelId) === GPT_56_LUNA_MODEL_ID) {
+  if (isGpt56ModelId(modelId)) {
     return arming.passthroughOpenAi === true
   }
   const entry = lookupModel(modelId)

@@ -17,6 +17,8 @@ import { makePassthroughAdapter } from './passthrough-adapter'
 import {
   GEMINI_FLASH_MODEL_ID,
   GPT_56_LUNA_MODEL_ID,
+  GPT_56_SOL_MODEL_ID,
+  GPT_56_TERRA_MODEL_ID,
   KHALA_MODEL_ID,
   KIMI_K3_FIREWORKS_MODEL_ID,
   KIMI_K3_MODEL_ID,
@@ -30,6 +32,10 @@ import { stubEchoAdapter } from './stub-echo-adapter'
 
 const authOk: InferenceAuth = async () => ({ accountRef: 'agent:test-user' })
 const authNone: InferenceAuth = async () => undefined
+const GPT56_OWNER_PUBKEY =
+  '84b1282f95032fc0c45dd158d3f972eb60c007f42a1fa39b005fb950903819bf'
+const GPT56_OWNER_ACCOUNT_REF = `openauth:nostr:${GPT56_OWNER_PUBKEY}`
+const GPT56_ALLOWED = new Set([GPT56_OWNER_PUBKEY])
 
 const deps = (
   overrides: Partial<ChatCompletionsDeps> = {},
@@ -335,7 +341,11 @@ describe('chat completions no-spend admission', () => {
     expect(calls).toEqual([VERTEX_GEMINI_ADAPTER_ID])
   })
 
-  test('allows an OpenAuth session to select gpt-5.6-luna over passthrough-openai', async () => {
+  test.each([
+    GPT_56_LUNA_MODEL_ID,
+    GPT_56_TERRA_MODEL_ID,
+    GPT_56_SOL_MODEL_ID,
+  ])('allows the whitelisted Nostr session to select %s over passthrough-openai', async model => {
     const calls: Array<{ adapterId: string; request: InferenceRequest }> = []
     const registry = new InferenceProviderRegistry()
     registry.register({
@@ -365,11 +375,12 @@ describe('chat completions no-spend admission', () => {
 
     const response = await Effect.runPromise(
       handleChatCompletions(
-        hostedRequest(GPT_56_LUNA_MODEL_ID),
+        hostedRequest(model),
         deps({
           authenticate: async () => ({
-            accountRef: 'openauth:omega-desktop-user',
+            accountRef: GPT56_OWNER_ACCOUNT_REF,
           }),
+          gpt56AllowedNostrPubkeys: GPT56_ALLOWED,
           laneArming: { ...hostedLaneArming, passthroughOpenAi: true },
           lanePlan: selectAdapterPlan,
           registry,
@@ -380,7 +391,83 @@ describe('chat completions no-spend admission', () => {
     expect(response.status).toBe(200)
     expect(calls).toHaveLength(1)
     expect(calls[0]?.adapterId).toBe(PASSTHROUGH_OPENAI_ADAPTER_ID)
-    expect(calls[0]?.request.model).toBe(GPT_56_LUNA_MODEL_ID)
+    expect(calls[0]?.request.model).toBe(model)
+  })
+
+  test.each([
+    ['unlisted Nostr', `openauth:nostr:${'d'.repeat(64)}`],
+    ['non-Nostr OpenAuth', 'openauth:owner-user'],
+    ['internal agent', 'agent:internal-user'],
+  ])('refuses GPT-5.6 for an %s identity before dispatch', async (_label, accountRef) => {
+    const { calls, registry } = makeHostedRegistry()
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        hostedRequest(GPT_56_SOL_MODEL_ID),
+        deps({
+          authenticate: async () => ({ accountRef }),
+          gpt56AllowedNostrPubkeys: GPT56_ALLOWED,
+          internalAccountRefs: new Set([accountRef]),
+          laneArming: { ...hostedLaneArming, passthroughOpenAi: true },
+          lanePlan: selectAdapterPlan,
+          registry,
+        }),
+      ),
+    )
+    expect(response.status).toBe(403)
+    expect(await response.json()).toEqual({ error: 'gpt56_identity_not_allowed' })
+    expect(calls).toHaveLength(0)
+  })
+
+  test('checks the GPT-5.6 identity before exposing effort validation', async () => {
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        new Request('https://openagents.com/v1/chat/completions', {
+          body: JSON.stringify({
+            messages: [{ content: 'hello', role: 'user' }],
+            model: GPT_56_SOL_MODEL_ID,
+            reasoning_effort: 'minimal',
+          }),
+          method: 'POST',
+        }),
+        deps({
+          authenticate: async () => ({
+            accountRef: `openauth:nostr:${'d'.repeat(64)}`,
+          }),
+          gpt56AllowedNostrPubkeys: GPT56_ALLOWED,
+        }),
+      ),
+    )
+    expect(response.status).toBe(403)
+    expect(await response.json()).toEqual({ error: 'gpt56_identity_not_allowed' })
+  })
+
+  test('rejects an unsupported GPT-5.6 reasoning effort before dispatch', async () => {
+    const { calls, registry } = makeHostedRegistry()
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        new Request('https://openagents.com/v1/chat/completions', {
+          body: JSON.stringify({
+            messages: [{ content: 'hello', role: 'user' }],
+            model: GPT_56_TERRA_MODEL_ID,
+            reasoning_effort: 'minimal',
+          }),
+          method: 'POST',
+        }),
+        deps({
+          authenticate: async () => ({ accountRef: GPT56_OWNER_ACCOUNT_REF }),
+          gpt56AllowedNostrPubkeys: GPT56_ALLOWED,
+          laneArming: { ...hostedLaneArming, passthroughOpenAi: true },
+          lanePlan: selectAdapterPlan,
+          registry,
+        }),
+      ),
+    )
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({
+      error: 'invalid_reasoning_effort',
+      allowed: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+    })
+    expect(calls).toHaveLength(0)
   })
 
   // REGRESSION — omega#160. The hosted Luna lane rendered NOTHING in Omega:
@@ -494,8 +581,9 @@ describe('chat completions no-spend admission', () => {
         }),
         deps({
           authenticate: async () => ({
-            accountRef: 'openauth:omega-desktop-user',
+            accountRef: GPT56_OWNER_ACCOUNT_REF,
           }),
+          gpt56AllowedNostrPubkeys: GPT56_ALLOWED,
           laneArming: { ...hostedLaneArming, passthroughOpenAi: true },
           lanePlan: selectAdapterPlan,
           registry,
@@ -542,8 +630,9 @@ describe('chat completions no-spend admission', () => {
         hostedRequest(GPT_56_LUNA_MODEL_ID),
         deps({
           authenticate: async () => ({
-            accountRef: 'openauth:omega-desktop-user',
+            accountRef: GPT56_OWNER_ACCOUNT_REF,
           }),
+          gpt56AllowedNostrPubkeys: GPT56_ALLOWED,
           // No `passthroughOpenAi` field: absent must mean unarmed.
           laneArming: hostedLaneArming,
           lanePlan: selectAdapterPlan,
@@ -637,6 +726,7 @@ describe('self-provisioned daily ceiling', () => {
           hostedRequest(model),
           deps({
             authenticate: async () => ({ accountRef: selfProvisionedRef }),
+            gpt56AllowedNostrPubkeys: new Set(['a'.repeat(64)]),
             checkSelfProvisionedDailyCeiling: async () => ({
               error: 'free_tier_daily_token_ceiling_reached' as const,
               retryAfterSeconds: 3_600,

@@ -123,6 +123,12 @@ import {
 } from './khala-telemetry'
 import { type MeteringHook, type MeteringOutcome } from './metering-hook'
 import {
+  GPT_56_REASONING_EFFORTS,
+  isGpt56AccountAllowed,
+  isGpt56ModelId,
+  isGpt56ReasoningEffort,
+} from './gpt56-access'
+import {
   type DispatchDeps,
   type DispatchHedgingPolicy,
   type DispatchLoadSheddingPolicy,
@@ -609,6 +615,10 @@ export type ChatCompletionsDeps = Readonly<{
   // `/v1/quote`). Omitting it preserves the prior serve-everything behaviour.
   // Presence-only; no secret value is read here.
   laneArming?: SupplyLaneArming
+  // Exact canonical Nostr public keys admitted to the owner-funded GPT-5.6
+  // hosted lanes. Empty or absent fails closed. The route accepts only a
+  // verified OpenAuth Nostr subject whose public key is in this set.
+  gpt56AllowedNostrPubkeys?: ReadonlySet<string> | undefined
   resolveFineTunedModel?: FineTunedModelResolver | undefined
   // Routing overflow knobs (backoff + injected sleep) forwarded to
   // `dispatchWithOverflow`. Tests inject `sleep: () => Effect.void` so overflow
@@ -2664,6 +2674,32 @@ export const handleChatCompletions = (
       fineTunedModelResolution === undefined
         ? rawRequestedModel
         : fineTunedModelResolution.baseModel
+    const gpt56Request = isGpt56ModelId(requestedModel)
+    if (
+      gpt56Request &&
+      !isGpt56AccountAllowed(
+        session.accountRef,
+        deps.gpt56AllowedNostrPubkeys ?? new Set<string>(),
+      )
+    ) {
+      return noStoreJsonResponse(
+        { error: 'gpt56_identity_not_allowed' },
+        { status: 403 },
+      )
+    }
+    if (
+      gpt56Request &&
+      rawBody['reasoning_effort'] !== undefined &&
+      !isGpt56ReasoningEffort(rawBody['reasoning_effort'])
+    ) {
+      return noStoreJsonResponse(
+        {
+          allowed: GPT_56_REASONING_EFFORTS,
+          error: 'invalid_reasoning_effort',
+        },
+        { status: 400 },
+      )
+    }
     const autopilotConcierge = isAutopilotConciergeModel(requestedModel)
       ? resolveAutopilotConciergeConfig(rawBody)
       : undefined

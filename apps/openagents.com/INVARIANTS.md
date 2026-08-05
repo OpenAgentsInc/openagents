@@ -28,6 +28,25 @@ This is the invariant ledger for `openagents`.
 
 ## 2026-07-28 Omega Nostr per-install self-provisioning
 
+### Owner-only hosted GPT-5.6 lanes
+
+- `gpt-5.6-luna`, `gpt-5.6-terra`, and `gpt-5.6-sol` are owner-funded hosted
+  lanes. They require a verified `openauth:nostr:<64-hex-pubkey>` session whose
+  public key appears in `INFERENCE_GPT56_ALLOWED_NPUBS`. The configuration
+  accepts canonical npubs or 64-hex public keys and normalizes both to hex.
+  Missing, empty, malformed, non-Nostr, agent-token, internal-account, and
+  unlisted identities fail closed before coding delegation or provider dispatch.
+- These exact models route only to `passthrough-openai`, are armed only by the
+  presence of `OPENAI_API_KEY`, and use OpenAI Responses upstream. The accepted
+  reasoning efforts are exactly `none`, `low`, `medium`, `high`, `xhigh`, and
+  `max`. Function tools remain available at every accepted effort. The gateway
+  translates Responses text, tool calls, streaming deltas, finish state, and
+  receipt-first usage back into its OpenAI Chat Completions-compatible surface.
+- The hosted model IDs remain absent from the public priced catalog. Regression
+  coverage lives in `workers/api/src/inference/gpt56-access.test.ts`,
+  `passthrough-adapter.test.ts`, `model-serving-policy.test.ts`,
+  `model-router.test.ts`, and `chat-completions-routes.test.ts`.
+
 - `POST /api/omega/auth/session` accepts a NIP-98 proof from each public key.
   It no longer restricts the signer to `SARAH_NOSTR_OWNER_PUBKEY`. Each NIP-98
   term stays mandatory: the event kind, the Schnorr signature, the empty

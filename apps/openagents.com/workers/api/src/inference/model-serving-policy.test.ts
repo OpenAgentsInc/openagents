@@ -26,6 +26,8 @@ import {
 import {
   GEMINI_FLASH_MODEL_ID,
   GPT_56_LUNA_MODEL_ID,
+  GPT_56_SOL_MODEL_ID,
+  GPT_56_TERRA_MODEL_ID,
   HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   HYDRALISK_GPT_OSS_120B_MODEL_ID,
@@ -598,22 +600,37 @@ describe('resolveNamedModelServability', () => {
     ).toBe(false)
   })
 
-  it('classifies the hosted lane ids (including gpt-5.6-luna) and nothing else', () => {
+  it('classifies all exact GPT-5.6 hosted lane ids and nothing else', () => {
     expect(isHostedLaneModelId(GEMINI_FLASH_MODEL_ID)).toBe(true)
     expect(isHostedLaneModelId(KIMI_K3_MODEL_ID)).toBe(true)
     expect(isHostedLaneModelId(KIMI_K3_FIREWORKS_MODEL_ID)).toBe(true)
     expect(isHostedLaneModelId(GPT_56_LUNA_MODEL_ID)).toBe(true)
+    expect(isHostedLaneModelId(GPT_56_TERRA_MODEL_ID)).toBe(true)
+    expect(isHostedLaneModelId(GPT_56_SOL_MODEL_ID)).toBe(true)
     expect(isHostedLaneModelId('GPT-5.6-Luna')).toBe(true)
     expect(isHostedLaneModelId(KHALA_MODEL_ID)).toBe(false)
     expect(isHostedLaneModelId('openai/gpt-5.6-luna')).toBe(false)
+    expect(isHostedLaneModelId('fireworks/gpt-5.6-sol')).toBe(false)
+    expect(
+      isHostedLaneModelId('accounts/fireworks/models/gpt-5.6-sol'),
+    ).toBe(false)
   })
 
-  it('arms gpt-5.6-luna hosted servability from OPENAI_API_KEY presence only', () => {
+  it('arms GPT-5.6 hosted servability from OPENAI_API_KEY presence only', () => {
     const armed = resolveSupplyLaneArming({ OPENAI_API_KEY: 'sk-test' })
     expect(armed.passthroughOpenAi).toBe(true)
     expect(resolveHostedLaneModelServability(GPT_56_LUNA_MODEL_ID, armed)).toBe(
       true,
     )
+    expect(resolveHostedLaneModelServability(GPT_56_TERRA_MODEL_ID, armed)).toBe(
+      true,
+    )
+    expect(resolveHostedLaneModelServability(GPT_56_SOL_MODEL_ID, armed)).toBe(
+      true,
+    )
+    expect(
+      resolveHostedLaneModelServability('fireworks/gpt-5.6-sol', armed),
+    ).toBe(false)
     // Blank/absent key => unarmed.
     expect(
       resolveSupplyLaneArming({ OPENAI_API_KEY: '  ' }).passthroughOpenAi,
