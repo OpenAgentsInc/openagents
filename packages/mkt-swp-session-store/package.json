@@ -1,0 +1,23 @@
+{
+  "name": "@openagentsinc/mkt-swp-session-store",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testkit": "./src/testkit.ts"
+  },
+  "scripts": {
+    "check": "pnpm run typecheck && pnpm run test",
+    "test": "vp test --root ../.. --run packages/mkt-swp-session-store/src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@noble/hashes": "1.7.1",
+    "@openagentsinc/swap-i18n": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

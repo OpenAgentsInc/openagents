@@ -2356,6 +2356,70 @@
     {
       "ref": "packages/mkt-swp-pair/src/view.ts#primaryActionView",
       "reason": "Render-ready primary-action gate view (single most proximate refusal) for openagents#9316 \u00a74; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
+    },
+    {
+      "ref": "packages/behavior-contracts/src/market-swap-session-store.ts#marketSwapSessionStoreContractRegistry",
+      "reason": "Behaviour-contract registry for the swap session store (openagents#9320), validated and coverage-checked by its package test; the registry report tooling and the SWAP-0 (openagents#9315) swap surface consume it when the widget shell lands."
+    },
+    {
+      "ref": "packages/mkt-swp-session-store/src/export.ts#exportPrivateHistory",
+      "reason": "History export for openagents#9320; SWAP-0/SWAP-7 (openagents#9315/#9322) mount the History surface in the swap shell and wire the export download as its production caller."
+    },
+    {
+      "ref": "packages/mkt-swp-session-store/src/export.ts#importPrivateHistory",
+      "reason": "History import for openagents#9320 (the escape hatch Boltz never shipped); SWAP-0/SWAP-7 (openagents#9315/#9322) mount the History surface and wire the import file picker as its production caller."
+    },
+    {
+      "ref": "packages/mkt-swp-session-store/src/history.ts#HISTORY_EMPTY_KEY",
+      "reason": "Empty-state message key for the History surface (openagents#9320); SWAP-0 (openagents#9315) renders the History list in the swap shell and becomes its production caller."
+    },
+    {
+      "ref": "packages/mkt-swp-session-store/src/history.ts#historyRows",
+      "reason": "Actionability-first History view model for openagents#9320; SWAP-0 (openagents#9315) renders the History list in the swap shell and becomes its production caller."
+    },
+    {
+      "ref": "packages/mkt-swp-session-store/src/history.ts#RELOAD_GUARD_KEY",
+      "reason": "Reload-guard prompt key for openagents#9320; SWAP-0 (openagents#9315) wires the navigation guard in the swap shell and becomes its production caller."
+    },
+    {
+      "ref": "packages/mkt-swp-session-store/src/resume.ts#planResume",
+      "reason": "App-wide resume planner for openagents#9320; SWAP-0 (openagents#9315) runs it at swap-shell boot to re-attach every outstanding session's subscription."
+    },
+    {
+      "ref": "packages/mkt-swp-session-store/src/resume.ts#reloadGuard",
+      "reason": "Irreversible-effect navigation-guard verdict for openagents#9320; SWAP-0 (openagents#9315) wires it to beforeunload in the swap shell."
+    },
+    {
+      "ref": "packages/mkt-swp-session-store/src/store.ts#openSessionStore",
+      "reason": "Session-store constructor for openagents#9320; SWAP-0 (openagents#9315) opens the store at swap-shell boot over the browser storage binding and becomes its production caller."
+    },
+    {
+      "ref": "packages/mkt-swp-session-store/src/store.ts#SessionStore.appendSignedRecord",
+      "reason": "Signed-record ingestion for openagents#9320; the SWAP-0 (openagents#9315) engine boundary appends accepted records from the live subscription fold."
+    },
+    {
+      "ref": "packages/mkt-swp-session-store/src/store.ts#SessionStore.priorEffectResult",
+      "reason": "Resume idempotency gate for openagents#9320; the SWAP-0 (openagents#9315) engine boundary consults it before re-driving any external wallet effect."
+    },
+    {
+      "ref": "packages/mkt-swp-session-store/src/store.ts#SessionStore.recordEffectRequest",
+      "reason": "Durable pre-effect request recording for openagents#9320; the SWAP-0 (openagents#9315) engine boundary records every wallet/broadcast request before running it."
+    },
+    {
+      "ref": "packages/mkt-swp-session-store/src/store.ts#SessionStore.recordEffectResult",
+      "reason": "Durable effect-result recording for openagents#9320; the SWAP-0 (openagents#9315) engine boundary records wallet/broadcast results to close the idempotency window."
+    },
+    {
+      "ref": "packages/mkt-swp-session-store/src/testkit.ts#CrashingKv.survivingKv",
+      "reason": "Crash-simulation testkit surface exported under ./testkit for this package's crash-mid-write suites and the SWAP-0/SWAP-4 (openagents#9315/#9319) drill suites."
+    },
+    {
+      "ref": "packages/mkt-swp-session-store/src/testkit.ts#crashingStringKv",
+      "reason": "Fault-injection storage driver exported under ./testkit for this package's crash-mid-write suites and the SWAP-0/SWAP-4 (openagents#9315/#9319) drill suites."
+    },
+    {
+      "ref": "packages/mkt-swp-session-store/src/testkit.ts#sampleSession",
+      "reason": "Deterministic session fixture exported under ./testkit for this package's suites and the SWAP-0/SWAP-6 (openagents#9315/#9321) widget and status suites."
     }
   ]
 }
