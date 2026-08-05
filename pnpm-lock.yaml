@@ -242,8 +242,8 @@ importers:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
       nostr-effect:
-        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz
-        version: https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz
+        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz
+        version: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz
       postgres:
         specifier: 3.4.9
         version: 3.4.9
@@ -465,8 +465,8 @@ importers:
         specifier: ~57.0.0
         version: 57.0.0(expo@57.0.2)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))
       nostr-effect:
-        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz
-        version: https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz
+        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz
+        version: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz
       react:
         specifier: 19.2.7
         version: 19.2.7
@@ -659,8 +659,8 @@ importers:
         specifier: 18.0.6
         version: 18.0.6
       nostr-effect:
-        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz
-        version: https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz
+        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz
+        version: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz
       react:
         specifier: 19.2.7
         version: 19.2.7
@@ -990,8 +990,8 @@ importers:
         specifier: 2.17.0
         version: 2.17.0
       nostr-effect:
-        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz
-        version: https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz
+        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz
+        version: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz
       postgres:
         specifier: 3.4.9
         version: 3.4.9
@@ -2186,8 +2186,8 @@ importers:
   packages/nip90:
     dependencies:
       nostr-effect:
-        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz
-        version: https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz
+        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz
+        version: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -2391,8 +2391,8 @@ importers:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
       nostr-effect:
-        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz
-        version: https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz
+        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz
+        version: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -2552,8 +2552,8 @@ importers:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
       nostr-effect:
-        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz
-        version: https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz
+        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz
+        version: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz
       ws:
         specifier: 8.18.3
         version: 8.18.3
@@ -2589,8 +2589,8 @@ importers:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
       nostr-effect:
-        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz
-        version: https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz
+        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz
+        version: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -8149,11 +8149,6 @@ packages:
   node-releases@2.0.51:
     resolution: {integrity: sha512-wRNIrw4DmVLKQlbgOMdkMx27Wrpzes2hh5Jtbi2bjPd+4wJstWIqP5A+lscnqbm0xxmT5Bpg8Lec5ItEBwx6BQ==}
     engines: {node: '>=18'}
-
-  nostr-effect@https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz:
-    resolution: {integrity: sha512-WW12/cS9II6SIjcgzewOd8DYoqEJKrw7+Fl//+PXvALkZQ0yVNhzlDOvHS/S38Aw68IJE4NWioJdJ+S1waY88Q==, tarball: https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz}
-    version: 0.0.13
-    engines: {node: '>=24'}
 
   nostr-effect@https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz:
     resolution: {integrity: sha512-pFAlUHoZVm+XwZCYrrjj/3x0v0EQKSdR9UHWGHjv+jKP9tiyq+V6udmawA88zTIjSo1oxEpuhlOP6xtYRu+b9w==, tarball: https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz}
@@ -15528,22 +15523,6 @@ snapshots:
       es6-promise: 3.3.1
 
   node-releases@2.0.51: {}
-
-  nostr-effect@https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz:
-    dependencies:
-      '@noble/ciphers': 1.2.1
-      '@noble/curves': 1.8.1
-      '@noble/hashes': 1.7.1
-      '@scure/base': 1.2.4
-      '@scure/bip32': 1.6.2
-      '@scure/bip39': 1.5.4
-      effect: 4.0.0-beta.94
-      pako: 2.1.0
-      postgres: 3.4.9
-      ws: 8.21.1
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
 
   nostr-effect@https://github.com/OpenAgentsInc/nostr-effect/archive/46548d34fb1e6502763a951ee4790f37a5d838ad.tar.gz:
     dependencies:

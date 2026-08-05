@@ -13,6 +13,14 @@ rumor `d` requirement, so its byte-for-byte replay is constructed with the
 low-level NIP-59 primitives in its conformance test. Production wrapping and
 unwrapping fail closed without `d`.
 
+All live workspace consumers pin `nostr-effect` revision
+`46548d34fb1e6502763a951ee4790f37a5d838ad`. It descends from the earlier
+`1314ed6ee6cc508ba9a54d03372fe1c71a984815` train through the NIP-29 relay
+fixes and the strict NIP-59 verification and unwrap-provenance commits.
+NIP-MKT uses those exported transport primitives; it does not maintain a
+parallel NIP-44 or NIP-59 implementation. Historical implementation records
+and conformance receipts retain the revision that produced them.
+
 The package exports:
 
 - generated per-kind event schemas, required-tag codecs, bounds, enums, identifiers, content-envelope schemas, and relay reason codes;
