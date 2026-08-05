@@ -323,7 +323,7 @@ A Quote commits:
 - public keys used by each claim and refund path;
 - confirmation, reorg, RBF, replacement, and zero-confirmation policy;
 - every absolute time, chain height, CLTV value, and safety margin in the
-  timeout ladder;
+  timeout ladder, including `hold_expiry_height` for a reverse swap;
 - the cooperative MuSig2 path and unilateral script-path exits;
 - evidence requirements, verifier policy, recovery channel, and exit-package
   requirements;
@@ -639,7 +639,12 @@ requester enters refund preparation. The requester broadcasts at or after
 
 Let:
 
-- `H_hold_expiry` be the shortest incoming Lightning HTLC expiry;
+- `H_hold_expiry` be the signed `hold_expiry_height` value in the Quote and
+  matching Swap Contract records. It is the minimum acceptable value of the
+  shortest incoming Lightning HTLC expiry, not an observation that an HTLC
+  already exists;
+- `H_observed_shortest` be the provider node's observed shortest absolute
+  expiry across every incoming HTLC part accepted for the bound hold invoice;
 - `H_lock_last` be the last safe provider lock height;
 - `H_user_claim` be the requester's last safe chain-claim height; and
 - `H_provider_refund` be the first provider-refund height.
@@ -653,12 +658,29 @@ H_user_claim + broadcast_safety_blocks + reorg_safety_blocks < H_provider_refund
 H_provider_refund + broadcast_safety_blocks + lightning_settlement_blocks < H_hold_expiry
 ```
 
+Before it funds the chain lock, the provider MUST observe at least one held
+incoming HTLC for the bound payment and MUST verify:
+
+```text
+H_observed_shortest >= H_hold_expiry
+```
+
+For a multipart payment, the comparison uses the shortest expiry across all
+accepted parts, not the longest part or an average. The provider MUST NOT fund
+while the held-payment part set is incomplete. If that set changes before
+funding, the provider recomputes the minimum. A value below the signed minimum
+invalidates the funding gate. The provider cancels the held payment without
+funding and reports `swp_timeout_ladder_unsafe`. The observed height is local
+rail evidence; it does not replace or mutate the signed `hold_expiry_height`
+term.
+
 The provider cancels held Lightning HTLCs without funding if it misses
 `H_lock_last`. The requester claims only after verifying the provider output.
 Its claim reveals the preimage. The provider settles the hold invoice only
 after it verifies that preimage. If the requester never claims, the provider
 refunds at `H_provider_refund` and cancels the still-held invoice before
-`H_hold_expiry`.
+the observed shortest expiry. The signed `H_hold_expiry` remains the minimum
+against which that observation is checked.
 
 ### 8.3 Chain swap
 
@@ -1266,19 +1288,21 @@ heights, verifier inputs, and expected evidence rung.
 
 ### 18.1 Positive
 
-| Fixture                                  | Required result                                                                                         |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `swp-v1-offering-btc-ln-enabled`         | Accept canonical pair, bounds, fee promise, and `evm_extension=unsupported`.                            |
-| `swp-v1-contract-matching-bilateral`     | Accept requester/provider `kind:39610` records with one shared contract digest and complementary roles. |
-| `swp-v1-submarine-regtest-cooperative`   | Complete invoice payment and MuSig2 provider claim after all verification gates.                        |
-| `swp-v1-submarine-regtest-script-refund` | Provider disappears; requester broadcasts the bound refund after `H_refund`.                            |
-| `swp-v1-reverse-regtest-cooperative`     | Hold invoice, provider lock, requester claim, preimage settlement, and finality complete.               |
-| `swp-v1-reverse-regtest-provider-refund` | Requester never claims; provider refunds and cancels held Lightning HTLCs.                              |
-| `swp-v1-chain-regtest-cooperative`       | Source and destination locks, requester claim, provider claim, both final.                              |
-| `swp-v1-chain-regtest-dual-refund`       | Destination is unclaimed; provider and requester execute the safe ordered refunds.                      |
-| `swp-v1-covenant-hard-reservation`       | Independent verifier admits the covenant-enforced minimum once.                                         |
-| `swp-v1-price-feed-exact-pointer`        | Exact URL, response digest, RFC 6901 pointer, and observed value reproduce terms.                       |
-| `swp-v1-public-receipt-redacted`         | Receipt exposes only consented outcome and verifier reference.                                          |
+| Fixture                                    | Required result                                                                                         |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `swp-v1-offering-btc-ln-enabled`           | Accept canonical pair, bounds, fee promise, and `evm_extension=unsupported`.                            |
+| `swp-v1-contract-matching-bilateral`       | Accept requester/provider `kind:39610` records with one shared contract digest and complementary roles. |
+| `swp-v1-submarine-regtest-cooperative`     | Complete invoice payment and MuSig2 provider claim after all verification gates.                        |
+| `swp-v1-submarine-regtest-script-refund`   | Provider disappears; requester broadcasts the bound refund after `H_refund`.                            |
+| `swp-v1-reverse-regtest-cooperative`       | Hold invoice, provider lock, requester claim, preimage settlement, and finality complete.               |
+| `swp-v1-reverse-regtest-provider-refund`   | Requester never claims; provider refunds and cancels held Lightning HTLCs.                              |
+| `swp-v1-reverse-hold-expiry-at-minimum`    | Accept observed shortest incoming expiry equal to signed `hold_expiry_height`.                          |
+| `swp-v1-reverse-hold-expiry-above-minimum` | Accept observed shortest incoming expiry above signed `hold_expiry_height`.                             |
+| `swp-v1-chain-regtest-cooperative`         | Source and destination locks, requester claim, provider claim, both final.                              |
+| `swp-v1-chain-regtest-dual-refund`         | Destination is unclaimed; provider and requester execute the safe ordered refunds.                      |
+| `swp-v1-covenant-hard-reservation`         | Independent verifier admits the covenant-enforced minimum once.                                         |
+| `swp-v1-price-feed-exact-pointer`          | Exact URL, response digest, RFC 6901 pointer, and observed value reproduce terms.                       |
+| `swp-v1-public-receipt-redacted`           | Receipt exposes only consented outcome and verifier reference.                                          |
 
 ### 18.2 Negative verification and grammar
 
@@ -1299,6 +1323,7 @@ heights, verifier inputs, and expected evidence rung.
 | `swp-v1-negative-taproot-tree`                           | `swp_script_commitment_mismatch`                                            |
 | `swp-v1-negative-refund-key`                             | `swp_terms_mismatch`                                                        |
 | `swp-v1-negative-timeout-ladder`                         | `swp_timeout_ladder_unsafe`                                                 |
+| `swp-v1-negative-hold-expiry-below-minimum`              | `swp_timeout_ladder_unsafe`                                                 |
 | `swp-v1-negative-rbf-forbidden`                          | `swp_rbf_policy_violation`                                                  |
 | `swp-v1-negative-insufficient-confirmations`             | `swp_confirmation_insufficient`                                             |
 | `swp-v1-negative-order-mutation`                         | `swp_order_selection_invalid`                                               |
@@ -1395,6 +1420,15 @@ parses records is not an executable MKT-SWP client.
 - [Arkade, solver, Mostro, Cashu, and WDK teardown](../teardowns/2026-08-04-ark-solver-mostro-cashu-rails-teardown.md)
 
 ## Changelog
+
+**v1 draft correction (2026-08-04)**
+
+- Defined `hold_expiry_height` and `H_hold_expiry` as the signed minimum
+  acceptable shortest incoming HTLC expiry. The provider compares its node's
+  observed shortest expiry with `>=` before it funds the reverse-swap chain
+  lock.
+- Added conformance fixtures for the equality/above boundary and the
+  below-minimum refusal.
 
 **v1 draft (2026-08-04)**
 
