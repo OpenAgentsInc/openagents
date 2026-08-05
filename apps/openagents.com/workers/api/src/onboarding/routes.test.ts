@@ -6,6 +6,7 @@ import {
   GitHubRepositoryListFailed,
   GitHubRepositoryReadFailed,
   GitHubRepositoryService,
+  GitHubRepositoryToolFailed,
 } from './github'
 import { makeOnboardingRoutes } from './routes'
 import type { OnboardingGitHubRepository } from './schema'
@@ -234,6 +235,7 @@ type FakeGitHubServiceOptions = Readonly<{
   hasNextPage?: boolean
   unauthorized?: boolean
   notFound?: boolean
+  toolResult?: unknown
 }>
 
 const fakeGitHubRepositoryServiceLayer = (
@@ -269,6 +271,14 @@ const fakeGitHubRepositoryServiceLayer = (
         perPage,
         hasNextPage: options.hasNextPage ?? false,
       })
+    },
+    executeTool: () => {
+      if (options.unauthorized) {
+        return Effect.fail(
+          new GitHubRepositoryToolFailed({ reason: 'unauthorized', status: 401 }),
+        )
+      }
+      return Effect.succeed(options.toolResult ?? { ok: true })
     },
   })
 
@@ -533,5 +543,63 @@ describe('mobile-bearer repo API (MM-B1, #8471)', () => {
     await expect(response.json()).resolves.toEqual({
       repository: fakeRepository('OpenAgentsInc', 'openagents'),
     })
+  })
+
+  test('POST /api/mobile/github/tools executes a user-scoped GitHub tool', async () => {
+    const result = { issues: [{ number: 1, title: 'Ship it' }] }
+    const response = await runMobileRoute(
+      { user: { userId: 'github:1' } },
+      new Request('https://openagents.com/api/mobile/github/tools', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'list_issues',
+          owner: 'OpenAgentsInc',
+          name: 'openagents',
+          state: 'open',
+        }),
+      }),
+      'valid-token',
+      { toolResult: result },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({ result })
+  })
+
+  test('POST /api/mobile/github/tools fails closed for an expired GitHub token', async () => {
+    const response = await runMobileRoute(
+      { user: { userId: 'github:1' } },
+      new Request('https://openagents.com/api/mobile/github/tools', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'get_contents',
+          owner: 'OpenAgentsInc',
+          name: 'openagents',
+        }),
+      }),
+      'expired-token',
+      { unauthorized: true },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toEqual({
+      error: 'github_token_expired',
+    })
+  })
+
+  test('POST /api/mobile/github/tools rejects invalid action input', async () => {
+    const response = await runMobileRoute(
+      { user: { userId: 'github:1' } },
+      new Request('https://openagents.com/api/mobile/github/tools', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'delete_repository' }),
+      }),
+      'valid-token',
+    )
+
+    expect(response.status).toBe(400)
   })
 })

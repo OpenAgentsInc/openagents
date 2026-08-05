@@ -28,6 +28,7 @@ import {
   GitHubRepositoryListFailed,
   GitHubRepositoryReadFailed,
   GitHubRepositoryService,
+  GitHubRepositoryToolFailed,
   githubIdentityTokenKey,
 } from './github'
 import {
@@ -40,6 +41,7 @@ import {
 } from './repository'
 import {
   type OnboardingGitHubRepository,
+  MobileGitHubToolRequest,
   SelectOnboardingRepositoryRequest,
   SubmitOnboardingGoalRequest,
 } from './schema'
@@ -151,6 +153,7 @@ class OnboardingRepositoryNotFound extends S.TaggedErrorClass<OnboardingReposito
 type OnboardingRouteError =
   | GitHubRepositoryListFailed
   | GitHubRepositoryReadFailed
+  | GitHubRepositoryToolFailed
   | CustomerOrderStorageError
   | CustomerOrderAgentAuthFailure
   | OnboardingBadRequest
@@ -201,6 +204,14 @@ const routeErrorResponse = (error: OnboardingRouteError): Response => {
         noStoreJsonResponse(
           { error: 'github_repository_lookup_failed' },
           { status: 502 },
+        ),
+      GitHubRepositoryToolFailed: ({ reason, status }) =>
+        noStoreJsonResponse(
+          {
+            error: 'github_tool_failed',
+            ...(status >= 400 && status < 500 ? { reason } : {}),
+          },
+          { status: status >= 400 && status < 500 ? status : 502 },
         ),
       OnboardingBadRequest: ({ reason }) =>
         noStoreJsonResponse({ error: 'bad_request', reason }, { status: 400 }),
@@ -906,6 +917,40 @@ export const makeOnboardingRoutes = <
       }),
     )
 
+  const mobileGitHubToolResponse = (
+    request: Request,
+    env: RouteEnv,
+    ctx: ExecutionContext,
+  ) =>
+    runRoute(
+      env,
+      Effect.gen(function* () {
+        const session = yield* requireMobileBearerSession(
+          dependencies,
+          request,
+          env,
+          ctx,
+        )
+        const input = yield* decodeJsonBody(request, MobileGitHubToolRequest)
+        const token = yield* requireMobileGitHubToken(env, session.user.userId)
+        const github = yield* GitHubRepositoryService
+        const result = yield* asMobileTokenExpiredWhenUnauthorized(
+          github.executeTool(token, input).pipe(
+            Effect.mapError(error =>
+              error instanceof GitHubRepositoryToolFailed
+                ? error
+                : new GitHubRepositoryToolFailed({
+                    reason: 'GitHub tool response was invalid.',
+                    status: 502,
+                  }),
+            ),
+          ),
+          error => error.status === 401,
+        )
+        return noStoreJsonResponse({ result })
+      }),
+    )
+
   const saveRepositoryResponse = (
     mode: 'select' | 'update',
     request: Request,
@@ -1048,6 +1093,12 @@ export const makeOnboardingRoutes = <
         return request.method === 'GET'
           ? mobileRepositoriesResponse(request, env, ctx)
           : Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      if (url.pathname === '/api/mobile/github/tools') {
+        return request.method === 'POST'
+          ? mobileGitHubToolResponse(request, env, ctx)
+          : Effect.succeed(methodNotAllowed(['POST']))
       }
 
       const mobileRepositoryDetailMatch =

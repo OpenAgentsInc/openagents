@@ -94,6 +94,67 @@ export const MobileRepositoryDetailResponse = S.Struct({
 export type MobileRepositoryDetailResponse =
   typeof MobileRepositoryDetailResponse.Type
 
+const GitHubOwner = S.String.check(S.isMinLength(1), S.isMaxLength(100))
+const GitHubRepositoryName = S.String.check(
+  S.isMinLength(1),
+  S.isMaxLength(100),
+)
+const GitHubRef = S.String.check(S.isMinLength(1), S.isMaxLength(255))
+const GitHubPath = S.String.check(S.isMaxLength(1_024))
+
+const GitHubRepositoryTarget = {
+  owner: GitHubOwner,
+  name: GitHubRepositoryName,
+}
+
+export const MobileGitHubToolRequest = S.Union([
+  S.Struct({
+    action: S.Literal('get_contents'),
+    ...GitHubRepositoryTarget,
+    path: S.optional(GitHubPath),
+    ref: S.optional(GitHubRef),
+  }),
+  S.Struct({
+    action: S.Literal('list_issues'),
+    ...GitHubRepositoryTarget,
+    state: S.optional(S.Literals(['open', 'closed', 'all'])),
+    limit: S.optional(
+      S.Number.check(S.isInt(), S.isBetween({ minimum: 1, maximum: 100 })),
+    ),
+  }),
+  S.Struct({
+    action: S.Literal('create_issue'),
+    ...GitHubRepositoryTarget,
+    title: S.String.check(S.isMinLength(1), S.isMaxLength(256)),
+    body: S.optional(S.String.check(S.isMaxLength(65_536))),
+  }),
+  S.Struct({
+    action: S.Literal('create_branch'),
+    ...GitHubRepositoryTarget,
+    branch: GitHubRef,
+    fromRef: GitHubRef,
+  }),
+  S.Struct({
+    action: S.Literal('upsert_file'),
+    ...GitHubRepositoryTarget,
+    path: S.String.check(S.isMinLength(1), S.isMaxLength(1_024)),
+    content: S.String.check(S.isMaxLength(1_000_000)),
+    message: S.String.check(S.isMinLength(1), S.isMaxLength(256)),
+    branch: GitHubRef,
+    sha: S.optional(S.String.check(S.isMinLength(1), S.isMaxLength(64))),
+  }),
+  S.Struct({
+    action: S.Literal('create_pull_request'),
+    ...GitHubRepositoryTarget,
+    title: S.String.check(S.isMinLength(1), S.isMaxLength(256)),
+    body: S.optional(S.String.check(S.isMaxLength(65_536))),
+    head: GitHubRef,
+    base: GitHubRef,
+    draft: S.optional(S.Boolean),
+  }),
+])
+export type MobileGitHubToolRequest = typeof MobileGitHubToolRequest.Type
+
 export const SelectOnboardingRepositoryByIdRequest = S.Struct({
   repositoryId: S.String,
 })
