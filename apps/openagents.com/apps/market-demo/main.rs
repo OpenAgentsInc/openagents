@@ -299,10 +299,42 @@ mod web_app {
         Unreachable(String),
     }
 
+    /// Where a tape line came from. Rendered as a fixed-width chip so the
+    /// disclosure sits left of the free text and can never be truncated by a
+    /// long line or a narrow window.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum TapeOrigin {
+        /// Seeded, locally generated market fiction.
+        Demo,
+        /// Observed from a real network response.
+        Live,
+        /// A message about this page itself. Not market data either way.
+        Local,
+    }
+
+    impl TapeOrigin {
+        fn label(self) -> &'static str {
+            match self {
+                TapeOrigin::Demo => "DEMO",
+                TapeOrigin::Live => "LIVE",
+                TapeOrigin::Local => "LOCAL",
+            }
+        }
+
+        fn color(self) -> u32 {
+            match self {
+                TapeOrigin::Demo => ORANGE,
+                TapeOrigin::Live => GREEN,
+                TapeOrigin::Local => FAINT,
+            }
+        }
+    }
+
     struct TapeEvent {
         clock: String,
         kind: &'static str,
         kind_color: u32,
+        origin: TapeOrigin,
         text: String,
     }
 
@@ -354,7 +386,8 @@ mod web_app {
                         }
                         RelayProbe::Checking => "NIP-11 probe pending".to_owned(),
                     };
-                    this.push_tape("RELAY", CYAN, line, cx);
+                    // The only tape line backed by a real network response.
+                    this.push_tape("RELAY", CYAN, TapeOrigin::Live, line, cx);
                     this.relay = probe;
                     cx.notify();
                 })
@@ -423,6 +456,8 @@ mod web_app {
                     clock: format_clock(now_secs()),
                     kind: "BOOT",
                     kind_color: ACCENT,
+                    // A local startup message, not market data and not a live feed.
+                    origin: TapeOrigin::Local,
                     text: "terminal online — seeded DEMO market loaded".to_owned(),
                 }],
                 wraps_relayed: 4_182,
@@ -458,30 +493,16 @@ mod web_app {
             let roll = self.next_rng();
             if roll % 4 == 0 {
                 self.wraps_relayed += 1 + (roll % 3);
+                // Short enough to render whole in the tape column, so the DEMO
+                // chip is never the part that gets clipped.
                 let samples: [(&str, u32, &str); 4] = [
-                    (
-                        "WRAP",
-                        SOFT_BLUE,
-                        "kind 1059 gift wrap relayed (contents opaque)",
-                    ),
-                    (
-                        "HEAD",
-                        ACCENT_DIM,
-                        "offering 39601 head refreshed: aurora-lp btc/btc-ln",
-                    ),
-                    (
-                        "HEAD",
-                        ACCENT_DIM,
-                        "provider 39600 heartbeat: meridian-swaps active",
-                    ),
-                    (
-                        "WRAP",
-                        SOFT_BLUE,
-                        "kind 1059 gift wrap relayed to npub1mer…x0q4",
-                    ),
+                    ("WRAP", SOFT_BLUE, "1059 wrap relayed"),
+                    ("HEAD", ACCENT_DIM, "39601 head: aurora-lp"),
+                    ("HEAD", ACCENT_DIM, "39600 beat: meridian"),
+                    ("WRAP", SOFT_BLUE, "1059 wrap → npub1mer…"),
                 ];
                 let pick = &samples[(roll as usize / 7) % samples.len()];
-                self.push_tape(pick.0, pick.1, format!("{} [DEMO]", pick.2), cx);
+                self.push_tape(pick.0, pick.1, TapeOrigin::Demo, pick.2.to_owned(), cx);
             }
             cx.notify();
         }
@@ -490,6 +511,7 @@ mod web_app {
             &mut self,
             kind: &'static str,
             kind_color: u32,
+            origin: TapeOrigin,
             text: String,
             _cx: &mut Context<Self>,
         ) {
@@ -499,6 +521,7 @@ mod web_app {
                     clock: format_clock(now_secs()),
                     kind,
                     kind_color,
+                    origin,
                     text,
                 },
             );
@@ -511,7 +534,13 @@ mod web_app {
             self.verify_done = 0;
             self.verifying = false;
             self.timeline_shown = 0;
-            self.push_tape("SESS", FAINT, "session reset".to_owned(), cx);
+            self.push_tape(
+                "SESS",
+                FAINT,
+                TapeOrigin::Demo,
+                "session reset".to_owned(),
+                cx,
+            );
             cx.notify();
         }
 
@@ -525,7 +554,8 @@ mod web_app {
             self.push_tape(
                 "ORDR",
                 GREEN,
-                "order 39606 signed — quote terms committed by event id [DEMO]".to_owned(),
+                TapeOrigin::Demo,
+                "order 39606 signed — quote terms committed by event id".to_owned(),
                 cx,
             );
             cx.notify();
@@ -539,6 +569,7 @@ mod web_app {
                         this.push_tape(
                             "VRFY",
                             GREEN,
+                            TapeOrigin::Demo,
                             format!("{} — ok", VERIFY_STEPS[step].0.to_lowercase()),
                             cx,
                         );
@@ -559,11 +590,11 @@ mod web_app {
             if self.timeline_shown < TIMELINE.len() {
                 let row = &TIMELINE[self.timeline_shown];
                 let line = match row.seq {
-                    Some(seq) => format!("status 39607 seq {seq}: {} [DEMO]", row.state),
-                    None => "status seq 3 missing — gap surfaced [DEMO]".to_owned(),
+                    Some(seq) => format!("status 39607 seq {seq}: {}", row.state),
+                    None => "status seq 3 missing — gap surfaced".to_owned(),
                 };
                 let color = if row.seq.is_none() { RED } else { SOFT_BLUE };
-                self.push_tape("STAT", color, line, cx);
+                self.push_tape("STAT", color, TapeOrigin::Demo, line, cx);
                 self.timeline_shown += 1;
             }
             if self.timeline_shown == TIMELINE.len() {
@@ -572,7 +603,8 @@ mod web_app {
                 self.push_tape(
                     "CLSE",
                     ACCENT,
-                    "close 39609 outcome=completed · public receipt 39603 [DEMO]".to_owned(),
+                    TapeOrigin::Demo,
+                    "close 39609 outcome=completed · public receipt 39603".to_owned(),
                     cx,
                 );
             }
@@ -909,11 +941,25 @@ mod web_app {
                         .items_start()
                         .border_b_1()
                         .border_color(rgb(RULE_FAINT))
-                        .child(div().min_w(px(72.)).child(mono(event.clock.clone(), FAINT)))
+                        .child(
+                            div()
+                                .min_w(px(72.))
+                                .flex_none()
+                                .child(mono(event.clock.clone(), FAINT)),
+                        )
                         .child(
                             div()
                                 .min_w(px(38.))
+                                .flex_none()
                                 .child(mono(event.kind, event.kind_color)),
+                        )
+                        // Origin chip. Fixed column, left of the free text, so
+                        // the disclosure survives any line length or window width.
+                        .child(
+                            div()
+                                .min_w(px(40.))
+                                .flex_none()
+                                .child(mono(event.origin.label(), event.origin.color())),
                         )
                         .child(mono(event.text.clone(), SECONDARY)),
                 );
@@ -968,8 +1014,8 @@ mod web_app {
                                 this.push_tape(
                                     "RFQ",
                                     CYAN,
-                                    "rfq 39604 sealed in per-recipient 1059 wraps [DEMO]"
-                                        .to_owned(),
+                                    TapeOrigin::Demo,
+                                    "rfq 39604 sealed in per-recipient 1059 wraps".to_owned(),
                                     cx,
                                 );
                                 cx.notify();
@@ -1019,14 +1065,15 @@ mod web_app {
                                 this.push_tape(
                                     "QUOT",
                                     GREEN,
-                                    "quote 39605 firm/hard from aurora-lp [DEMO]".to_owned(),
+                                    TapeOrigin::Demo,
+                                    "quote 39605 firm/hard from aurora-lp".to_owned(),
                                     cx,
                                 );
                                 this.push_tape(
                                     "QUOT",
                                     ORANGE,
-                                    "quote 39605 indicative/soft from meridian-swaps [DEMO]"
-                                        .to_owned(),
+                                    TapeOrigin::Demo,
+                                    "quote 39605 indicative/soft from meridian-swaps".to_owned(),
                                     cx,
                                 );
                                 cx.notify();
