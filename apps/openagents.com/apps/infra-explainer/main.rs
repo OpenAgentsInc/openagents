@@ -2,12 +2,14 @@
 
 #[cfg(target_family = "wasm")]
 mod web_app {
+    use std::cell::Cell;
+    use std::rc::Rc;
     use std::sync::{Arc, OnceLock};
 
     use gpui::prelude::*;
     use gpui::{
-        App, Bounds, Context, Font, FontWeight, Image, ImageFormat, ImageSource, Pixels, Task,
-        Window, WindowBounds, WindowOptions, div, img, px, rgb, size,
+        App, Bounds, Context, Font, FontWeight, Image, ImageFormat, ImageSource, Pixels, Point,
+        ScrollHandle, Task, Window, WindowBounds, WindowOptions, div, img, point, px, rgb, size,
     };
     use theme::{ActiveTheme as _, ThemeSettingsProvider, UiDensity};
     use ui::{Color, Indicator, Label, LabelCommon as _, LabelSize, h_flex, v_flex};
@@ -107,8 +109,33 @@ mod web_app {
 
     /// Content column width in layout pixels.
     const COLUMN_WIDTH: f32 = 940.;
-    /// Diagrams never shrink below this scale; wider ones scroll sideways.
+    /// Horizontal room a diagram gets inside the column, minus frame padding.
+    const DIAGRAM_VIEWPORT_WIDTH: f32 = COLUMN_WIDTH - 36.;
+    /// Diagrams never shrink below this scale; wider ones pan sideways.
     const MIN_DIAGRAM_SCALE: f32 = 0.72;
+    /// A diagram box never grows past this height; taller ones pan vertically.
+    const MAX_DIAGRAM_HEIGHT: f32 = 820.;
+
+    /// Per-diagram pan state.
+    ///
+    /// `handle` is the scroll state GPUI itself maintains for the diagram's
+    /// viewport; `settled` is the last in-range offset this document observed,
+    /// which is what makes the wheel-propagation decision exact (see
+    /// [`InfraDocument::diagram_panel`]).
+    #[derive(Clone)]
+    struct DiagramPan {
+        handle: ScrollHandle,
+        settled: Rc<Cell<Point<Pixels>>>,
+    }
+
+    impl DiagramPan {
+        fn new() -> Self {
+            Self {
+                handle: ScrollHandle::new(),
+                settled: Rc::new(Cell::new(Point::default())),
+            }
+        }
+    }
 
     fn diagram_images() -> &'static [Arc<Image>; 6] {
         static IMAGES: OnceLock<[Arc<Image>; 6]> = OnceLock::new();
@@ -252,6 +279,7 @@ mod web_app {
 
     pub struct InfraDocument {
         relay: RelayProbe,
+        pans: [DiagramPan; 6],
         _tasks: Vec<Task<()>>,
     }
 
@@ -267,6 +295,7 @@ mod web_app {
             });
             Self {
                 relay: RelayProbe::Checking,
+                pans: std::array::from_fn(|_| DiagramPan::new()),
                 _tasks: vec![probe],
             }
         }
@@ -296,55 +325,132 @@ mod web_app {
         )
     }
 
-    fn diagram_panel(index: usize, caption: &'static str) -> impl IntoElement {
-        let (natural_w, natural_h) = svg_dimensions(DIAGRAM_SOURCES[index]);
-        let fit = (COLUMN_WIDTH - 34.) / natural_w;
-        let scale = if fit >= 1.0 { 1.0 } else { fit.max(MIN_DIAGRAM_SCALE) };
-        let display_w = natural_w * scale;
-        let display_h = natural_h * scale;
-        let scrolls = display_w > COLUMN_WIDTH - 34.;
+    impl InfraDocument {
+        /// One diagram in its own pannable viewport.
+        ///
+        /// Wheel ownership is decided per axis, and never traps the reader.
+        /// GPUI dispatches wheel events to the innermost element first, and its
+        /// built-in scroll listener has already applied this tick's delta to
+        /// the viewport by the time the listener below runs. So the listener
+        /// only has to answer one question: did the diagram actually move?
+        /// It compares the viewport's current in-range offset against the last
+        /// in-range offset it recorded. If they differ the diagram consumed the
+        /// wheel and propagation stops, so the page stays put. If they match —
+        /// because that axis has no overflow, or because the diagram is already
+        /// against its limit — propagation continues and the page scrolls
+        /// normally. `restrict_scroll_to_axis` keeps a vertical wheel from
+        /// being remapped onto the horizontal axis, which is what makes
+        /// ordinary reading over a wide diagram behave like ordinary reading.
+        fn diagram_panel(&self, index: usize, caption: &'static str) -> gpui::AnyElement {
+            let (natural_w, natural_h) = svg_dimensions(DIAGRAM_SOURCES[index]);
+            let fit = DIAGRAM_VIEWPORT_WIDTH / natural_w;
+            let scale = if fit >= 1.0 {
+                1.0
+            } else {
+                fit.max(MIN_DIAGRAM_SCALE)
+            };
+            let display_w = natural_w * scale;
+            let display_h = natural_h * scale;
+            let viewport_h = display_h.min(MAX_DIAGRAM_HEIGHT);
+            // At the default column width these are the only diagrams wider
+            // than their box. A narrower window pans more of them, which the
+            // same viewport handles because GPUI measures the real layout.
+            let pans_horizontally = display_w > DIAGRAM_VIEWPORT_WIDTH;
+            let pans_vertically = display_h > viewport_h;
 
-        let image = img(ImageSource::Image(diagram_images()[index].clone()))
-            .w(px(display_w))
-            .h(px(display_h));
+            let pan = self.pans[index].clone();
+            let handle = pan.handle.clone();
+            let settled = pan.settled.clone();
 
-        let inner: gpui::AnyElement = if scrolls {
-            div()
-                .id(("diagram-scroll", index))
+            let image = img(ImageSource::Image(diagram_images()[index].clone()))
+                .flex_none()
+                .w(px(display_w))
+                .h(px(display_h));
+
+            // A diagram that fits its box never becomes a scroll target at all,
+            // so the wheel over it is always the page's.
+            if !pans_horizontally && !pans_vertically {
+                return Self::diagram_frame(
+                    div().w_full().flex().justify_center().child(image),
+                    caption,
+                    "",
+                );
+            }
+
+            let mut viewport = div()
+                .id(("diagram-viewport", index))
                 .w_full()
-                .overflow_x_scroll()
-                .child(div().w(px(display_w + 8.)).child(image))
-                .into_any_element()
-        } else {
-            div()
-                .w_full()
-                .flex()
-                .justify_center()
-                .child(image)
-                .into_any_element()
-        };
+                .h(px(viewport_h))
+                .track_scroll(&pan.handle)
+                .child(image);
+            // Enable exactly the axes that overflow. That is what lets GPUI
+            // treat a plain vertical wheel as a sideways pan on a diagram that
+            // only overflows horizontally (its rule: remap y onto x only when
+            // the y axis is not itself scrollable), so a mouse without a
+            // horizontal wheel can still read the wide diagrams.
+            if pans_horizontally {
+                viewport = viewport.overflow_x_scroll();
+            }
+            if pans_vertically {
+                viewport = viewport.overflow_y_scroll();
+                // When both axes move, keep them honest: vertical reading must
+                // not be hijacked into sideways motion.
+                viewport.style().restrict_scroll_to_axis = Some(true);
+            }
+            let viewport = viewport.on_scroll_wheel(move |_event, _window, cx| {
+                let max = handle.max_offset();
+                let offset = handle.offset();
+                // GPUI keeps scroll offsets in [-max, 0] and clamps on the next
+                // prepaint; clamp here so an overshoot at a limit still reads
+                // as "did not move".
+                let in_range = point(
+                    offset.x.clamp(-max.x, px(0.)),
+                    offset.y.clamp(-max.y, px(0.)),
+                );
+                if in_range != settled.get() {
+                    settled.set(in_range);
+                    cx.stop_propagation();
+                }
+            });
 
-        v_flex()
-            .w_full()
-            .bg(rgb(VOID))
-            .border_1()
-            .border_color(rgb(HAIRLINE))
-            .child(div().p_2().child(inner))
-            .child(
-                h_flex()
-                    .justify_between()
-                    .items_center()
-                    .px_2()
-                    .py_1()
-                    .bg(rgb(PANEL))
-                    .border_t_1()
-                    .border_color(rgb(HAIRLINE))
-                    .child(small(caption, FAINT))
-                    .child(small(
-                        if scrolls { "scroll sideways for the full diagram" } else { "" },
-                        FAINT,
-                    )),
-            )
+            let hint = if pans_horizontally && pans_vertically {
+                "scroll inside the diagram to pan it"
+            } else if pans_horizontally {
+                "scroll inside the diagram to pan right · page resumes at the edge"
+            } else if pans_vertically {
+                "scroll inside the diagram to pan it"
+            } else {
+                ""
+            };
+
+            Self::diagram_frame(viewport, caption, hint)
+        }
+
+        fn diagram_frame(
+            body: impl IntoElement,
+            caption: &'static str,
+            hint: &'static str,
+        ) -> gpui::AnyElement {
+            v_flex()
+                .w_full()
+                .bg(rgb(VOID))
+                .border_1()
+                .border_color(rgb(HAIRLINE))
+                .child(div().p_2().w_full().child(body))
+                .child(
+                    h_flex()
+                        .justify_between()
+                        .items_center()
+                        .px_2()
+                        .py_1()
+                        .bg(rgb(PANEL))
+                        .border_t_1()
+                        .border_color(rgb(HAIRLINE))
+                        .child(small(caption, FAINT))
+                        .child(small(hint, FAINT)),
+                )
+                .into_any_element()
+        }
     }
 
     impl InfraDocument {
@@ -442,7 +548,7 @@ mod web_app {
                         ),
                 )
                 .child(prose)
-                .child(diagram_panel(section.diagram, section.caption))
+                .child(self.diagram_panel(section.diagram, section.caption))
         }
 
         fn render_footer(&self) -> impl IntoElement {
