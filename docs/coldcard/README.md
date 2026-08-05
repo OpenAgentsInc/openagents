@@ -50,13 +50,11 @@ Until those dependencies close with accepted receipts:
    [`../grok/2026-08-04-x-api-and-xai-x-search-access.md`](../grok/2026-08-04-x-api-and-xai-x-search-access.md).
 8. [`2026-08-04-cto-inside-job-thesis-analysis.md`](2026-08-04-cto-inside-job-thesis-analysis.md)
    — **single consolidated** CTO / inside-job thesis: claims A–I, evidence
-   E1–E34 (E29 full Hanlon/darosior thread; E29Δ later replies; E30 official
-   public-record article; E31 inverse_hanlon longform; E32 adam3us; E33 domain
-   registrar vs rename check; E34 hodlonaut amplification), steelmans, scenario
-   essays, collection and on-chain plans. Machine receipts:
-   [`receipts/2026-08-04-switck-x-archive.json`](receipts/2026-08-04-switck-x-archive.json),
-   [`receipts/2026-08-04-darosior-bikes-hanlon-thread.json`](receipts/2026-08-04-darosior-bikes-hanlon-thread.json),
-   [`receipts/2026-08-04-later-discourse-sweep.json`](receipts/2026-08-04-later-discourse-sweep.json).
+   E1–E39 (through overnight 2026-08-05: E35 jamesob tripwire dashboard,
+   E36 DocHex rogue-QR resurfacing, E37 official personal silence, E38
+   de-escalation color, E39 framing pushback + phishing note), steelmans,
+   scenario essays, collection and on-chain plans. Machine receipts under
+   [`receipts/`](receipts/).
 
 The broader rationale and current product sequence live in the
 [`docs/loupe` entry point](../loupe/README.md), the

@@ -3,13 +3,14 @@
 Status: **single consolidated document** (claims + full evidence log +
 scenarios + collection plans). Not a legal finding and not a public product claim.
 
-Last updated: 2026-08-04 ~21:15Z (later discourse sweep E30–E34; E29 delta).
+Last updated: 2026-08-05 ~06:05Z (overnight sweep E35–E39; DocHex still silent).
 
 Related receipts (machine data, kept beside this file):
 
 - [`receipts/2026-08-04-switck-x-archive.json`](receipts/2026-08-04-switck-x-archive.json) — full `@switck` timeline dump (52 posts)
 - [`receipts/2026-08-04-darosior-bikes-hanlon-thread.json`](receipts/2026-08-04-darosior-bikes-hanlon-thread.json) — full E29 thread (92 posts: BikesandBitcoin Hanlon root + darosior QT conversation)
 - [`receipts/2026-08-04-later-discourse-sweep.json`](receipts/2026-08-04-later-discourse-sweep.json) — later sweep ~16:54Z–21:15Z (117 posts after E29 cutoff; verifications)
+- [`receipts/2026-08-05-overnight-discourse-sweep.json`](receipts/2026-08-05-overnight-discourse-sweep.json) — overnight sweep ~21:00Z Aug 4 – 06:05Z Aug 5 (~315 posts; tripwire dashboard)
 
 ## Working thesis
 
@@ -1418,6 +1419,133 @@ evidence, not new crypto beyond corroboration of E3.
 
 ---
 
+
+### E35 — jamesob live tripwire dashboard (`cktripwire.com`) (2026-08-04 night)
+
+**Highest-signal new artifact of the overnight window.**
+
+**Primary:** [2084769501661331589](https://x.com/jamesob/status/2084769501661331589)
+(~971 likes / ~121k views at probe) + follow-up
+[2084769504299487543](https://x.com/jamesob/status/2084769504299487543)
+→ **https://cktripwire.com**
+
+**Method (public claim):**
+
+- Deploy tripwire UTXOs on **broken default seeds** with graded added entropy:
+  dice-roll ladders (5, 10, 15, …) and passphrase-word ladders (1, 2, 3, …).
+- Goal: approximate the **active confiscation frontier** (how far attackers have
+  brute-forced partial user mitigations).
+- **Control** UTXO with **no** added entropy was **swept within about one hour**.
+- Calibrated “good bad entropy” emulator from **real Mk3 measurements**; control
+  confiscation used as proof the emulator matches attacker tooling.
+- Credits `@Rob1Ham` `@otaliptus` `@PortlandHODL` and other redteamers.
+
+**Bearing:**
+
+| Point | Bearing |
+| --- | --- |
+| Control swept in ~1h | Attack is **still live**; pure device-default keyspace is trivial for current operators |
+| Graded dice/passphrase tripwires | Maps **how much extra entropy** is currently economic for attackers — feeds on-chain plan / claim D timing |
+| Independent redteam dashboard | Third-party measurement lane, not Coinkite messaging |
+| Does **not** identify operators | Still no staff↔proceeds; strengthens **ongoing external (or any) exploitation** observation |
+
+**Use:** add `cktripwire.com` as a standing observation source for Lane 1
+(on-chain). Re-check frontier movement over time; do not treat a single control
+sweep as proof of insider knowledge.
+
+`@darosior` RTs the dashboard post (amplification only).
+
+---
+
+### E36 — `@zherbert` resurfaces DocHex 2020 “rogue QR lib” thought experiment
+
+**Primary:** [2084830882968330259](https://x.com/zherbert/status/2084830882968330259)
+(“No comment”, ~31 likes) **quotes** `@DocHex`
+[1288894727866245120](https://x.com/DocHex/status/1288894727866245120)
+(2020-07-30):
+
+> QR Code library is actually a great example! My rogue QR lib would (sometimes)
+> grind a little and present a bogus payment address that matches first and last
+> few chars of what's expected. Very few victims would notice that.
+
+**Same night cluster:**
+
+| Post | Point |
+| --- | --- |
+| [2084843982052340101](https://x.com/zherbert/status/2084843982052340101) | “Unplugged the RNG” (reply context) |
+| [2084800982643302678](https://x.com/zherbert/status/2084800982643302678) | Matrix / “clues about Switck, Cyber, and the white rabbit” (~64 likes) |
+| [2084836189681397893](https://x.com/zherbert/status/2084836189681397893) | Nym motive maybe “for fun”; points at switck “itch scratched” on merge |
+| [2084838524113551567](https://x.com/zherbert/status/2084838524113551567) | Quotes switck “itch scratched” (2021-01-14) |
+| [2084751726704226455](https://x.com/zherbert/status/2084751726704226455) | Confirms to hodlonaut on identity ask |
+
+**Bearing:** **cultural / adversarial-thinking color**, not a cryptographic link
+to 2026 drains. Steelman guilt reading: CTO previously daydreamed stealthy
+payment-address tricks. Steelman non-guilt: normal security-engineer threat
+modeling years before the entropy bug. Label **dual-use discourse**; do not
+promote to intent proof without more.
+
+---
+
+### E37 — Official product line: personal silence; migrate; AI review reiteration
+
+**`@COLDCARDwallet` overnight pattern:** mostly support/migration replies under
+the public-record article (E30). Material policy line:
+
+[2084799249582014629](https://x.com/COLDCARDwallet/status/2084799249582014629)
+(~7 likes):
+
+> The team is heads down helping ppl migrate, there is no value in their
+> personal comments at this moment. NVK issued a statement on his account.
+
+[2084800653143003206](https://x.com/COLDCARDwallet/status/2084800653143003206):
+reiterates latest AI models + third-party AI review; points back to E30 article;
+notes Kimi K3 “without safety” released days before the attack.
+
+**`@DocHex`:** still **zero** original posts in the 21:00Z–06:05Z window
+(search `from:DocHex` empty). CTO personal silence continues while product
+account runs migration ops.
+
+**`@nvk`:** RTs of news/how-to content; no new technical rebuttal of nym/GPG
+claims in this window’s sample.
+
+**Bearing:** consistent with damage-control ops + intentional non-engagement on
+identity discourse. Dual-use (focus on victims vs avoid answering A/B facts).
+
+---
+
+### E38 — Non-guilt / de-escalation color (overnight)
+
+| Voice | Link | Point |
+| --- | --- | --- |
+| `@stack2thefuture` | [2084760618322526298](https://x.com/stack2thefuture/status/2084760618322526298) | Toronto Star **Nov 2013** shows Peter Gray as public Coinkite figure early; may have grown private — not proof of flight plan. [Star article](https://www.thestar.com/news/gta/bitcoin-entrepreneurs-want-to-put-virtual-coins-in-your-wallet/article_ec1cf783-5cf5-585e-a6d3-71615e1102f4.html) |
+| `@IfindCoretards` | [2084750261055037705](https://x.com/IfindCoretards/status/2084750261055037705) | Not inside job; nym+migration “bizarre” / “catastrophically sloppy”; **not malicious, just unserious** |
+| `@PraveenPerera` (on zherbert thread) | [2084835187062341682](https://x.com/PraveenPerera/status/2084835187062341682) | If premeditated malice, why so obvious? |
+
+Aligns S1–S3 preference; does not erase G/process indictment.
+
+---
+
+### E39 — Pushback on “submodule boundary / AI miss” framing + phishing note
+
+| Voice | Link | Point |
+| --- | --- | --- |
+| `@janrothen` | [2084770248327123333](https://x.com/janrothen/status/2084770248327123333) | Aircraft metaphor: interface/seam is **first** audit target, not edge case |
+| `@AndrewBTC` | [2084769067211391023](https://x.com/AndrewBTC/status/2084769067211391023) | “Test submodule boundaries” advice from Coinkite reads as 🚩; stop lecturing industry, help victims |
+| `@mattcrv` | [2084773088009294057](https://x.com/mattcrv/status/2084773088009294057) | Coinkite not in position to recommend practices to other teams |
+
+**Phishing:** impersonator handle `@Coldcardwalleet` posting “send support a DM”
+under real COLDCARD threads (multiple ~05:00Z Aug 5). Ops note only — users
+should use documented support email, not random DMs.
+
+**Backdoor-as-code discourse** (`@FlyTheElephant1` etc. on XOR / low-variance
+streams) continues without new primary tickets or proceeds links — already
+covered by E17/E31 interpretation lanes; no status flip.
+
+**Noise filtered:** identity re-spreads, bigotry against switck presentation,
+“fleeing to Israel” fanfic, pure RT volume.
+
+---
+
 # Part III — Steelman readings
 
 ## Steelman: readings that pull toward **guilt / bad faith**
@@ -1437,6 +1565,8 @@ then still separate fact from leap.
 | `@inverse_hanlon` | [2084689208627925384](https://x.com/inverse_hanlon/status/2084689208627925384) | Full inverse-Hanlon timeline essay: dice architecture, dual warnings, alleged “LNGU Clean up” Signal, AI-blame vs prior report (E31) |
 | `@hodlonaut` | [2084692918506295583](https://x.com/hodlonaut/status/2084692918506295583) | High-amplification switck=Gray + libngu ask (~278 likes) (E34) |
 | `@FlyTheElephant1` | [2084698458640802059](https://x.com/FlyTheElephant1/status/2084698458640802059) | Why assume negligence if weak entropy benefits a party with UID list? (E29Δ) |
+| `@zherbert` | [2084830882968330259](https://x.com/zherbert/status/2084830882968330259) | Resurfaces DocHex 2020 “rogue QR lib” payment-address trick thought experiment (E36; dual-use) |
+| `@jamesob` (tripwire) | [2084769501661331589](https://x.com/jamesob/status/2084769501661331589) | Live attack mapping: control seed swept in ~1h (E35) — not guilt of staff, but live exploitation truth |
 | `@zherbert` | [2084647957526167853](https://x.com/zherbert/status/2084647957526167853) | Multi-channel identity verification (GPG + phone digits claim) |
 | `@AtlantisPleb` | [2084660832596570417](https://x.com/AtlantisPleb/status/2084660832596570417) | Migration advice is “logical if complicit”; who else knew? |
 | `@hodlonaut` | [2084633601845363006](https://x.com/hodlonaut/status/2084633601845363006) | Authorship + post-attack messaging inconsistency |
@@ -1491,6 +1621,9 @@ opacity + ignored warnings + catastrophic negligence**, not proven heist.
 | `@adam3us` | [2084706074095910954](https://x.com/adam3us/status/2084706074095910954) | Don’t tea-leaf PGP; senior merge/update workflow can explain signing (E32; limited vs dual authorship) |
 | `@darosior` (same-key dig) | [2084700696369135972](https://x.com/darosior/status/2084700696369135972) | Still non-malice, but multi-account privacy that reuses one signing key is absurd (E29Δ) |
 | Official COLDCARD article | [2084731768632991801](https://x.com/COLDCARDwallet/status/2084731768632991801) | Submodule-boundary bug; AI reviews missed; historical-disclosures page (E30) |
+| `@stack2thefuture` | [2084760618322526298](https://x.com/stack2thefuture/status/2084760618322526298) | Gray was public in 2013 Toronto Star; privacy growth ≠ flight plan (E38) |
+| `@IfindCoretards` | [2084750261055037705](https://x.com/IfindCoretards/status/2084750261055037705) | “Not malicious, just unserious” (E38) |
+| Official product silence line | [2084799249582014629](https://x.com/COLDCARDwallet/status/2084799249582014629) | Team heads-down on migration; personal comments deferred (E37) |
 | `@zherbert` (even while identity-hunting) | [2084638910970220754](https://x.com/zherbert/status/2084638910970220754) | “Still think it is likely just **incompetence / negligence**” unless identity raises flags |
 | `@CyberTruckRonin` | [2084661432960880793](https://x.com/CyberTruckRonin/status/2084661432960880793) | Identity facts can be true without “evil maid” / intentional plant framing |
 | Dice / multisig survivors | many; e.g. diceroll reports | Mitigation paths worked as designed for users who BYOE |
@@ -1543,6 +1676,7 @@ Part IV of this document.
 - [ ] Mk3 weak keyspace reproduction + address intersect
 - [ ] Prior-victim address membership tests (when addresses available)
 - [ ] Galaxy/Kelbie ledger JSON receipt + collector clustering
+- [ ] Watch **https://cktripwire.com** frontier movement (E35; jamesob tripwires)
 
 ---
 
@@ -1565,6 +1699,9 @@ Part IV of this document.
 | easyDNS registrar match conalgo.com ↔ switck.com | **Done** E33 |
 | GitHub rename peter-conalgo→doc-hex pre-bug story | **Refuted** as stated (E33) |
 | Official historical-disclosures page snapshot | **Done** E30 (live page + X article) |
+| jamesob cktripwire.com live frontier dashboard | **Standing watch** E35 |
+| DocHex personal public response on nym/GPG | **Still none** through 2026-08-05 06:05Z (E37) |
+| Phishing impersonators on COLDCARD threads | **Noted** E39 (`@Coldcardwalleet`) |
 
 ---
 
