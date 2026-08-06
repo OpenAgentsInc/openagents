@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-14.3'
+export const PublicProductPromisesVersion = '2026-08-06.1'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 const tassadarPsionicBackroomArchiveRef =
@@ -395,6 +395,7 @@ export const publicProductPromisesDocument = () => {
         'apps/pylon/docs/launch-gates-no-overclaim.md',
       ],
       caveats: [
+        'Registry 2026-08-06.1 corrects contributors.bounties_surface.v1 from planned to red, matching its standing Episode 225 claim, lapsed openagents.com/bounties surface, safe copy, and introduction changelog. The bounty surface remains unavailable and affirmative copy stays blocked. The docs-only bounties.openagents_bounty_board.v1 candidate ID is superseded by this canonical record. Green stays 25; planned moves 54 -> 53 and red moves 2 -> 3.',
         'Registry 2026-07-14.3 retires and removes clients/khala-cli, clients/khala-ios, and clients/khala-mobile at owner direction. The green khala.cli_terminal_client.v1 claim is withdrawn and points to Pylon as the supported terminal successor; green moves 26 -> 25 and withdrawn 46 -> 47 relative to registry .2. OpenAgents mobile identity, push deep links, install copy, QA gates, and build/release authority now point only at apps/openagents-mobile. Deleted source remains recoverable from Git at the pre-removal commit recorded in docs/sol/2026-07-14-clients-retirement-after-action.md.',
         'Registry 2026-07-14.1 is the owner-directed supersession withdrawal pass ("khala-code-desktop must itself be deprecated and all relevant promises removed (OpenAgents desktop supercedes it). ditto for apps/autopilot-desktop. sarah get rid of that too etc", 2026-07-14). It withdraws seven promises whose surfaces are superseded by OpenAgents Desktop — autopilot.agent_character_creation.v1, autopilot.agent_world_scene.v1, autopilot.bitcoin_payment_visualization.v1, autopilot.builtin_compute_agent.v1, autopilot.local_apple_fm_tool_chat.v1, autopilot.pylon_growth_visualization.v1, and khala_code.bundled_fleet_skill.v1 — moving green 34 -> 33 (agent_world_scene was green; withdrawal is a downgrade and needs no transition receipt per the mobile.autopilot_remote_control.v1 precedent). The apps/autopilot-desktop tree, packages/sarah-take-scoreboard, and the canonical .agents/skills/khala-fleet skill were deleted in the same change; #8793 later migrated the remaining Pylon/QA dependents and deleted clients/khala-code-desktop, while packages/autopilot-ui stays because the live openagents.com web app imports it. The FleetRun authority gains the neutral canonical path /api/fleet-runs while /api/sarah/fleet-runs remains a served compatibility alias for shipped desktop/mobile binaries. Deleted evidence paths dereference through git history at the pre-removal commit recorded in docs/promises/2026-07-14-owner-supersession-removals.md.',
         'Registry 2026-07-12.1 is the LG-4 operator route-anchor binding pass. It binds the existing admin-bearer outreach template-approval route and approval-gated outreach-send route to planned autopilot.lead_gen.v1 as route-level operator approval/send evidence only. The promise stays planned and green stays exactly 34; all four Lead Gen blockers remain. These route refs prove the route anchors for recording an operator approval receipt and a send receipt, but they are not a live customer run, not a real LG-4 send-approval receipt, not customer-result proof, not self-serve availability, and not Apollo/contact-reveal/payment/payout/settlement authority.',
@@ -5138,7 +5139,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'contributors.bounties_surface.v1',
         productArea: 'contributors',
         audience: ['contributor', 'agent', 'public'],
-        state: 'planned',
+        state: 'red',
         claim:
           'openagents.com/bounties lists current contributor bounties and how to claim them.',
         safeCopy:
@@ -5771,6 +5772,7 @@ export const publicProductPromisesDocument = () => {
   return {
     ...document,
     notes: [
+      'Registry 2026-08-06.1 corrects contributors.bounties_surface.v1 from planned to red, matching its standing Episode 225 claim, lapsed openagents.com/bounties surface, safe copy, and introduction changelog. The bounty surface remains unavailable and affirmative copy stays blocked. The docs-only bounties.openagents_bounty_board.v1 candidate ID is superseded by this canonical record. Green stays 25; planned moves 54 -> 53 and red moves 2 -> 3.',
       'Registry 2026-07-14.3 is the owner-directed final clients/ retirement pass. clients/khala-cli, clients/khala-ios, and clients/khala-mobile plus their live release, QA, and onboarding dependents are removed. khala.cli_terminal_client.v1 moves green -> withdrawn with Pylon as successor; no removed client remains an install or release destination.',
       'Registry 2026-07-14.2 is the VP-1 money, market, and Sites retirement pass. Stable promise IDs and public-safe historical evidence remain, but active discovery and product copy are withdrawn. No paid or credit-gated capacity becomes free capacity.',
       ...document.notes,

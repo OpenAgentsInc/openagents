@@ -131,6 +131,21 @@ describe('public product promises document', () => {
     expect(registry).toContain('changes no promise state')
   })
 
+  test('marks the lapsed bounty surface red under its canonical promise id', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const bountySurface = decoded.promises.find(
+      promise => promise.promiseId === 'contributors.bounties_surface.v1',
+    )
+    const registry = readFileSync(repoFile('docs/promises/registry.md'), 'utf8')
+
+    expect(bountySurface?.state).toBe('red')
+    expect(bountySurface?.safeCopy).toContain('this record enters red')
+    expect(registry).toContain('`contributors.bounties_surface.v1`')
+    expect(registry).not.toContain('| `bounties.openagents_bounty_board.v1`')
+  })
+
   test('keeps the exported registry version aligned with the newest registry note', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
@@ -487,8 +502,8 @@ describe('public product promises document', () => {
     // (autopilot.agent_world_scene.v1 was the one green), planned 78 -> 72.
     expect(stateCounts).toEqual({
       green: 25,
-      planned: 54,
-      red: 2,
+      planned: 53,
+      red: 3,
       withdrawn: 47,
       yellow: 17,
     })
