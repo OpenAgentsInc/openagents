@@ -126,6 +126,7 @@ const CHAIN_SIGNERS: Readonly<Record<string, AdmittedSigner>> = {
   accepted: "provider",
   rejected: "provider",
   source_lock_terms_ready: "provider",
+  source_funding_required: "provider",
   destination_lock_terms_ready: "provider",
   provider_destination_broadcast: "provider",
   provider_destination_refund_prepared: "provider",

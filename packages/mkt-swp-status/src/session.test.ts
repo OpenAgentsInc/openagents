@@ -168,7 +168,12 @@ describe("rungs (contract: openagents_web.swap_status.rung_never_inferred_upward
   test("provider status alone can never produce a rung above pledged", () => {
     const view = session(happyPathClaims("submarine", "accepted"), {
       evidence: [
-        evidence({ class: "bitcoin_spend", authority: "provider_status", rung: "settled", final: true }),
+        evidence({
+          class: "bitcoin_spend",
+          authority: "provider_status",
+          rung: "settled",
+          final: true,
+        }),
       ],
     });
     expect(view.rung.proven).toBe("pledged");
@@ -177,6 +182,26 @@ describe("rungs (contract: openagents_web.swap_status.rung_never_inferred_upward
 });
 
 describe("signer and transition discipline", () => {
+  test("a requester cannot claim the chain source-funding instruction", () => {
+    const view = session(
+      [
+        ...happyPathClaims("chain", "requester_source_verified"),
+        claim("requester", 1, "source_funding_required"),
+      ],
+      { flow: "chain" },
+    );
+    const invalid = view.retained.find(
+      (retained) =>
+        retained.claim.swpState === "source_funding_required" &&
+        retained.claim.role === "requester",
+    )!;
+    expect(invalid.disposition).toEqual({
+      kind: "invalid",
+      reason: "swp_status_signer_invalid",
+    });
+    expect(view.lastValidSwpState).toBe("requester_source_verified");
+  });
+
   test("a status from a signer the state machine does not admit is retained invalid", () => {
     const view = session([
       ...happyPathClaims("submarine", "funding_final"),

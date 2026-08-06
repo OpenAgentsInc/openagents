@@ -101,6 +101,7 @@ describe("signer map", () => {
     expect(admittedSignerFor("reverse", "provider_funding_broadcast")).toBe("provider");
     expect(admittedSignerFor("reverse", "requester_claimed")).toBe("requester");
     expect(admittedSignerFor("chain", "destination_lock_terms_ready")).toBe("provider");
+    expect(admittedSignerFor("chain", "source_funding_required")).toBe("provider");
     expect(admittedSignerFor("chain", "requester_source_broadcast")).toBe("requester");
     expect(admittedSignerFor("chain", "provider_source_claimed")).toBe("provider");
   });
