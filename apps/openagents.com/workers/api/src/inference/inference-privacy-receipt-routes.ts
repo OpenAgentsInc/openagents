@@ -1,6 +1,7 @@
 import { Effect, Schema as S } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
+import { type PathRefMatch, pathRefFromPrefix } from '../http/router'
 import type {
   InferenceEntitlementsMirror,
   InferenceEntitlementsNonGateReads,
@@ -599,13 +600,16 @@ export const handleConfidentialComputeExecutionReceipt = (
 export const PUBLIC_PRIVACY_RECEIPT_PATH_PREFIX =
   '/api/public/inference/privacy-receipts/'
 
-const publicPrivacyReceiptRefFromPath = (pathname: string): string | null =>
-  pathname.startsWith(PUBLIC_PRIVACY_RECEIPT_PATH_PREFIX) &&
-  pathname.length > PUBLIC_PRIVACY_RECEIPT_PATH_PREFIX.length
-    ? decodeURIComponent(
-        pathname.slice(PUBLIC_PRIVACY_RECEIPT_PATH_PREFIX.length),
-      )
-    : null
+/**
+ * PRO-101: the decode is guarded by the shared `pathRefFromPrefix` seam. A
+ * malformed percent-escape reports `malformed` instead of throwing a `URIError`
+ * out of the matcher, where it became a Worker defect answered with 500 plus a
+ * `severity: 'critical'` backend incident. The mount still CLAIMS such a path
+ * (only `no_match` falls through) and the handler answers 404, exactly as it
+ * does for a well-formed unknown ref.
+ */
+const publicPrivacyReceiptRefFromPath = (pathname: string): PathRefMatch =>
+  pathRefFromPrefix(pathname, PUBLIC_PRIVACY_RECEIPT_PATH_PREFIX)
 
 export const handlePublicPrivacyReceiptRead = (
   request: Request,
@@ -617,15 +621,15 @@ export const handlePublicPrivacyReceiptRead = (
     }
 
     const url = new URL(request.url)
-    const receiptRef = publicPrivacyReceiptRefFromPath(url.pathname)
-    if (receiptRef === null) {
+    const match = publicPrivacyReceiptRefFromPath(url.pathname)
+    if (match._tag !== 'ref') {
       return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
     }
 
     const projection = yield* Effect.tryPromise(() =>
       readPublicPrivacyReceipt(
         deps.db,
-        receiptRef,
+        match.ref,
         deps.nowIso?.() ?? currentIsoTimestamp(),
         deps.nonGateReads,
       ),
@@ -653,7 +657,8 @@ export const makePublicPrivacyReceiptRoutes = <Bindings>(
     request: Request,
     env: Bindings,
   ): Effect.Effect<globalThis.Response> | undefined =>
-    publicPrivacyReceiptRefFromPath(new URL(request.url).pathname) === null
+    publicPrivacyReceiptRefFromPath(new URL(request.url).pathname)._tag ===
+    'no_match'
       ? undefined
       : handlePublicPrivacyReceiptRead(request, dependencies.makeDeps(env))
 

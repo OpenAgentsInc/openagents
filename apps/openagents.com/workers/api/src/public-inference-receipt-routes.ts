@@ -6,6 +6,7 @@ import {
   noStoreJsonResponse,
   serverError,
 } from './http/responses'
+import { pathRefFromPrefix } from './http/router'
 import {
   type InferenceReceiptReadStore,
   publicInferenceReceiptFromRecord,
@@ -18,10 +19,19 @@ export type PublicInferenceReceiptRouteDependencies<Bindings> = Readonly<{
   nowIso: () => string
 }>
 
-const receiptRefFromPath = (pathname: string, prefix: string): string | null =>
-  pathname.startsWith(prefix) && pathname.length > prefix.length
-    ? decodeURIComponent(pathname.slice(prefix.length))
-    : null
+const RECEIPT_PATH_PREFIX = '/api/public/inference/receipts/'
+
+/**
+ * A ref whose percent-escapes are malformed (PRO-101). Answered exactly like a
+ * well-formed unknown ref — 404 on GET, 405 on anything else — because the two
+ * are indistinguishable to a caller. Previously the unguarded decode threw a
+ * `URIError` defect out of the route matcher, which surfaced as 500 plus a
+ * `severity: 'critical'` backend incident.
+ */
+const malformedRefResponse = (request: Request): Effect.Effect<HttpResponse> =>
+  Effect.succeed(
+    request.method === 'GET' ? notFound() : methodNotAllowed(['GET']),
+  )
 
 const readReceiptResponse = <Bindings>(
   dependencies: PublicInferenceReceiptRouteDependencies<Bindings>,
@@ -56,14 +66,18 @@ export const makePublicInferenceReceiptRoutes = <Bindings>(
     request: Request,
     env: Bindings,
   ): Effect.Effect<HttpResponse> | undefined => {
-    const receiptRef = receiptRefFromPath(
+    const match = pathRefFromPrefix(
       new URL(request.url).pathname,
-      '/api/public/inference/receipts/',
+      RECEIPT_PATH_PREFIX,
     )
 
-    return receiptRef === null
-      ? undefined
-      : readReceiptResponse(dependencies, request, env, receiptRef)
+    if (match._tag === 'no_match') {
+      return undefined
+    }
+
+    return match._tag === 'malformed'
+      ? malformedRefResponse(request)
+      : readReceiptResponse(dependencies, request, env, match.ref)
   }
 
   return { routePublicInferenceReceiptRequest }

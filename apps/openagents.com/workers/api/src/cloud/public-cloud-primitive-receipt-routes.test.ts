@@ -63,6 +63,30 @@ const route = async (
   return Effect.runPromise(response)
 }
 
+/**
+ * Route a RAW path tail, without `encodeURIComponent`, so a malformed escape
+ * survives into the matcher (PRO-101).
+ */
+const routeRawPathTail = async (
+  store: CloudPrimitiveReceiptReadStore,
+  rawTail: string,
+  init?: RequestInit,
+) => {
+  const response = routesFor().routePublicCloudPrimitiveReceiptRequest(
+    new Request(
+      `https://openagents.com/api/public/cloud/receipts/${rawTail}`,
+      init,
+    ),
+    { store },
+  )
+
+  if (response === undefined) {
+    throw new Error('cloud primitive receipt route did not match')
+  }
+
+  return Effect.runPromise(response)
+}
+
 describe('public cloud primitive receipt routes', () => {
   test('serves a paid sandbox rental charge receipt without payment material', async () => {
     const ref = 'receipt.cloud.sandbox_compute.rental.charge.sbx_1'
@@ -136,5 +160,44 @@ describe('public cloud primitive receipt routes', () => {
     )
 
     expect(response.status).toBe(405)
+  })
+
+  // PRO-101. This is the reader the production repro used:
+  //   GET /api/public/cloud/receipts/receipt.test.abc -> 404 (correct)
+  //   GET /api/public/cloud/receipts/%               -> 500 (the defect)
+  // The unguarded `decodeURIComponent` threw `URIError` as an Effect DEFECT,
+  // so under `Effect.runPromise` these assertions also trip on the defect.
+  describe('a malformed percent-escape reads like an unknown ref, not a fault', () => {
+    test('a bare `%` is a 404, not a 500', async () => {
+      const response = await routeRawPathTail(storeFor([]), '%')
+
+      expect(response.status).toBe(404)
+    })
+
+    test('other malformed escapes are 404 too', async () => {
+      const responses = await Promise.all(
+        [
+          '%zz',
+          'receipt.cloud.sandbox_compute.rental.charge.%',
+          '%E0%A4%A',
+        ].map(rawTail => routeRawPathTail(storeFor([]), rawTail)),
+      )
+
+      expect(responses.map(response => response.status)).toEqual([404, 404, 404])
+    })
+
+    test('a well-formed unknown ref is still a 404', async () => {
+      const response = await route(storeFor([]), 'receipt.test.abc')
+
+      expect(response.status).toBe(404)
+    })
+
+    test('a malformed escape is still refused by method before ref', async () => {
+      const response = await routeRawPathTail(storeFor([]), '%', {
+        method: 'POST',
+      })
+
+      expect(response.status).toBe(405)
+    })
   })
 })

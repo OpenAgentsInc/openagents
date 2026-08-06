@@ -63,6 +63,30 @@ const route = async (
   return Effect.runPromise(response)
 }
 
+/**
+ * Route a RAW path tail, without `encodeURIComponent`, so a malformed escape
+ * survives into the matcher (PRO-101).
+ */
+const routeRawPathTail = async (
+  store: InferenceReceiptReadStore,
+  rawTail: string,
+  init?: RequestInit,
+) => {
+  const response = routesFor(store).routePublicInferenceReceiptRequest(
+    new Request(
+      `https://openagents.com/api/public/inference/receipts/${rawTail}`,
+      init,
+    ),
+    { store },
+  )
+
+  if (response === undefined) {
+    throw new Error('receipt route did not match')
+  }
+
+  return Effect.runPromise(response)
+}
+
 describe('public inference receipt routes', () => {
   test('serves paid inference charge receipts without private payment material', async () => {
     const response = await route(
@@ -193,5 +217,42 @@ describe('public inference receipt routes', () => {
     )
 
     expect(response.status).toBe(405)
+  })
+
+  // PRO-101. Before the fix, the unguarded `decodeURIComponent` in the path
+  // matcher threw `URIError` as an Effect DEFECT. Under `Effect.runPromise`
+  // that REJECTS the promise, so each assertion below is also a tripwire for
+  // the defect itself — in production the same defect answered 500 and filed a
+  // `severity: 'critical'` backend incident.
+  describe('a malformed percent-escape reads like an unknown ref, not a fault', () => {
+    test('a bare `%` is a 404, not a 500', async () => {
+      const response = await routeRawPathTail(storeFor([]), '%')
+
+      expect(response.status).toBe(404)
+    })
+
+    test('other malformed escapes are 404 too', async () => {
+      const responses = await Promise.all(
+        ['%zz', 'receipt.inference.charge.%', '%E0%A4%A'].map(rawTail =>
+          routeRawPathTail(storeFor([]), rawTail),
+        ),
+      )
+
+      expect(responses.map(response => response.status)).toEqual([404, 404, 404])
+    })
+
+    test('a well-formed unknown ref is still a 404', async () => {
+      const response = await route(storeFor([]), 'receipt.test.abc')
+
+      expect(response.status).toBe(404)
+    })
+
+    test('a malformed escape is still refused by method before ref', async () => {
+      const response = await routeRawPathTail(storeFor([]), '%', {
+        method: 'POST',
+      })
+
+      expect(response.status).toBe(405)
+    })
   })
 })

@@ -17,6 +17,7 @@ import {
   noStoreJsonResponse,
   serverError,
 } from '../http/responses'
+import { pathRefFromPrefix } from '../http/router'
 import {
   type CloudPrimitiveReceiptReadStore,
   publicCloudPrimitiveReceiptFromRecord,
@@ -31,11 +32,17 @@ export type PublicCloudPrimitiveReceiptRouteDependencies<Bindings> = Readonly<{
 
 const RECEIPT_PATH_PREFIX = '/api/public/cloud/receipts/'
 
-const receiptRefFromPath = (pathname: string): string | null =>
-  pathname.startsWith(RECEIPT_PATH_PREFIX) &&
-  pathname.length > RECEIPT_PATH_PREFIX.length
-    ? decodeURIComponent(pathname.slice(RECEIPT_PATH_PREFIX.length))
-    : null
+/**
+ * A ref whose percent-escapes are malformed (PRO-101). Answered exactly like a
+ * well-formed unknown ref — 404 on GET, 405 on anything else — because the two
+ * are indistinguishable to a caller. Previously the unguarded decode threw a
+ * `URIError` defect out of the route matcher, which surfaced as 500 plus a
+ * `severity: 'critical'` backend incident.
+ */
+const malformedRefResponse = (request: Request): Effect.Effect<HttpResponse> =>
+  Effect.succeed(
+    request.method === 'GET' ? notFound() : methodNotAllowed(['GET']),
+  )
 
 const readReceiptResponse = <Bindings>(
   dependencies: PublicCloudPrimitiveReceiptRouteDependencies<Bindings>,
@@ -75,11 +82,18 @@ export const makePublicCloudPrimitiveReceiptRoutes = <Bindings>(
     request: Request,
     env: Bindings,
   ): Effect.Effect<HttpResponse> | undefined => {
-    const receiptRef = receiptRefFromPath(new URL(request.url).pathname)
+    const match = pathRefFromPrefix(
+      new URL(request.url).pathname,
+      RECEIPT_PATH_PREFIX,
+    )
 
-    return receiptRef === null
-      ? undefined
-      : readReceiptResponse(dependencies, request, env, receiptRef)
+    if (match._tag === 'no_match') {
+      return undefined
+    }
+
+    return match._tag === 'malformed'
+      ? malformedRefResponse(request)
+      : readReceiptResponse(dependencies, request, env, match.ref)
   }
 
   return { routePublicCloudPrimitiveReceiptRequest }

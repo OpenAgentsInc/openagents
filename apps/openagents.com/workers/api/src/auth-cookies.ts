@@ -6,6 +6,20 @@ export const AUTH_STATE_COOKIE = 'oa_auth_state'
 export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 400
 export const AUTH_STATE_MAX_AGE_SECONDS = 60 * 10
 
+// Cookie values are fully attacker-controlled, and `decodeURIComponent`
+// throws on a malformed escape (`Cookie: oa_access=%`). Several callers run
+// under `Effect.promise`, where a rejection is a defect rather than a typed
+// failure, so an unguarded throw here surfaces as a 500 plus a critical
+// incident on unauthenticated auth routes. An undecodable value is kept raw:
+// it cannot match a real credential, so callers reject it normally.
+const decodeCookieValue = (value: string): string => {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
 export const parseCookies = (request: Request): ReadonlyMap<string, string> => {
   const cookies = new Map<string, string>()
   const header = request.headers.get('cookie')
@@ -21,7 +35,7 @@ export const parseCookies = (request: Request): ReadonlyMap<string, string> => {
       continue
     }
 
-    cookies.set(rawName, decodeURIComponent(rawValue.join('=')))
+    cookies.set(rawName, decodeCookieValue(rawValue.join('=')))
   }
 
   return cookies
