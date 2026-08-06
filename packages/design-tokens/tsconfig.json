@@ -8,5 +8,5 @@
     "allowImportingTsExtensions": true,
     "types": ["node", "vite-plus-matchers"]
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "scripts/**/*"]
 }

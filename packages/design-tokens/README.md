@@ -12,9 +12,17 @@ for `Schema`.
 
 ## Exports
 
-- `khalaTheme` — the single Khala Protoss-blue dark theme. Product surfaces
-  mount exactly this one; there is no light variant and no runtime switch.
-- `defaultTheme` — the neutral fixture theme.
+- `khalaTheme` — the canonical Khala Protoss-blue dark theme mounted by
+  supported OpenAgents product surfaces.
+- `defaultTheme` — the complete light semantic projection. It keeps role and
+  contrast parity for consumers that explicitly opt into a light surface.
+- `@openagentsinc/design-tokens/native` — React Native data derived from those
+  themes, including standard and reduced-motion variants.
+- `@openagentsinc/design-tokens/web.css` — generated CSS variables and Tailwind
+  v4 `@theme` aliases. `:root` is dark; `[data-oa-theme="light"]` opts in to the
+  light projection; `prefers-reduced-motion` zeros every shared duration.
+- `@openagentsinc/design-tokens/contrast` — the WCAG contrast oracle used by
+  the package check.
 - `Theme` and its parts (`ColorTheme`, `SpacingTheme`, `ControlTheme`, …) —
   the theme type consumed by anything that lowers tokens into a host, e.g.
   `@openagentsinc/ui`'s `desktopThemeCssVariables`.
@@ -22,6 +30,26 @@ for `Schema`.
   and their schemas, for surfaces that validate token names.
 - `khalaPalette` and `withAlpha` — the tier-1 ramp steps and the only
   sanctioned way to mint a translucent color from them.
+
+The attention precedence is a closed semantic set shared by every renderer:
+`attentionApproval` (amber), `attentionInput` (indigo), `attentionWorking`
+(sky), `attentionFailed` (red), and `attentionDone` (emerald). These are
+text-bearing signal colors and pass WCAG AA on every semantic surface.
+
+## Change workflow
+
+Edit the typed themes in `src/index.ts`, then run:
+
+```sh
+pnpm --filter @openagentsinc/design-tokens run generate
+pnpm --filter @openagentsinc/design-tokens run check
+```
+
+The first command rewrites `src/web.generated.css`. The second byte-compares
+that generated projection, checks both themes for WCAG AA, and runs the token
+and cross-renderer parity tests. A semantic rename therefore changes the web
+and native projections in one source commit. Consumer applications may add
+ergonomic aliases, but must not add new literal token values.
 
 ## Provenance
 

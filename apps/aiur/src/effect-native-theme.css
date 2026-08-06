@@ -1,29 +1,28 @@
 /**
- * Static `--en-color-*` custom-property projection of the single canonical
- * khala Protoss-blue theme (openagents#8813 Lane A).
+ * Compatibility aliases from Effect Native's historical `--en-color-*`
+ * names to the generated OpenAgents web projection.
  *
  * Aiur is a plain TanStack Start + Tailwind app that mounts no token-lowering
  * runtime, so it cannot pick up `--en-*` variables from a host. This file
- * hand-mirrors `@openagentsinc/design-tokens`'s `khalaTheme.color` object as
- * static CSS using the same `--en-color-<key>` naming convention, so Aiur
- * reads the one canonical palette instead of the legacy
- * `--oa-color-khala-*` token set. Keep this file in sync with
- * packages/design-tokens/src/index.ts `khalaTheme.color` if that theme
- * changes (see ./effect-native-theme.test.ts).
+ * imports the tracked `@openagentsinc/design-tokens` projection, then maps
+ * the legacy names without copying any color values. A semantic-token change
+ * therefore reaches Aiur, Pro, and React Native from the same source commit.
  */
+@import '@openagentsinc/design-tokens/web.css';
+
 :root {
-  --en-color-background: #05070d;
-  --en-color-surface: #0b1220;
-  --en-color-surfaceRaised: #141f36;
-  --en-color-border: #1f2b45;
-  --en-color-borderStrong: #2c3d63;
-  --en-color-accent: #3b82f6;
-  --en-color-accentHover: #5c96f8;
-  --en-color-info: #38bdf8;
-  --en-color-textPrimary: #eef3ff;
-  --en-color-textMuted: #93a4c3;
-  --en-color-textFaint: #6b7ca1;
-  --en-color-success: #22c55e;
-  --en-color-warning: #f59e0b;
-  --en-color-danger: #f87171;
+  --en-color-background: var(--oa-color-background);
+  --en-color-surface: var(--oa-color-surface);
+  --en-color-surfaceRaised: var(--oa-color-surface-raised);
+  --en-color-border: var(--oa-color-border);
+  --en-color-borderStrong: var(--oa-color-border-strong);
+  --en-color-accent: var(--oa-color-accent);
+  --en-color-accentHover: var(--oa-color-accent-hover);
+  --en-color-info: var(--oa-color-info);
+  --en-color-textPrimary: var(--oa-color-text-primary);
+  --en-color-textMuted: var(--oa-color-text-muted);
+  --en-color-textFaint: var(--oa-color-text-faint);
+  --en-color-success: var(--oa-color-success);
+  --en-color-warning: var(--oa-color-warning);
+  --en-color-danger: var(--oa-color-danger);
 }

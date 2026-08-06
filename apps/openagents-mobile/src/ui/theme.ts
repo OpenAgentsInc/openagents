@@ -1,49 +1,45 @@
+import { khalaNativeTheme } from "@openagentsinc/design-tokens/native";
+
 /**
- * The Omega desktop palette, as mobile tokens.
- *
- * These values are the desktop's own `Aiur dark` theme
- * (`omega/assets/themes/aiur/aiur.json`), read field for field, so a person
- * moving between the two surfaces sees one product rather than two that share
- * a name. The house language behind it is `DESIGN.md`: a blue-tinted void lit
- * by one committed blue, carried by hairlines and markers rather than fills.
- *
- * Structure follows the arcade idiom (flat consts, no provider), because the
- * owner directed this app onto arcade patterns in plain React Native on
- * 2026-07-27. That direction supersedes DESIGN.md's pointer at the Effect
- * Native token package, which this app no longer depends on.
+ * Mobile ergonomic aliases over the canonical semantic projection. The app
+ * owns no color, spacing, radius, or motion values: a source change in
+ * `@openagentsinc/design-tokens` reaches both this layer and the web CSS
+ * projection from the same package commit.
  */
+const semantic = khalaNativeTheme.color;
+const matrix = khalaNativeTheme.colorMatrix;
 
 const palette = {
-  void: "#05070d",
-  panel: "#0b1220",
-  raised: "#141f36",
-  sunken: "#05070d",
+  void: semantic.background,
+  panel: semantic.surface,
+  raised: semantic.surfaceRaised,
+  sunken: semantic.background,
 
-  hairline: "#1f2b45",
-  hairlineQuiet: "#16203a",
-  hairlineEnergized: "rgba(59, 130, 246, 0.35)",
+  hairline: semantic.border,
+  hairlineQuiet: semantic.borderSubtle,
+  hairlineEnergized: semantic.stateSelected,
 
-  energy: "#3b82f6",
-  energyHot: "#5c96f8",
-  energyInk: "#8fb3ff",
-  energyGlow: "rgba(59, 130, 246, 0.16)",
+  energy: semantic.accent,
+  energyHot: semantic.accentHover,
+  energyInk: semantic.focus,
+  energyGlow: semantic.stateSelected,
 
-  white: "#eef3ff",
-  body: "#c6cfe6",
-  secondary: "#a9b1d6",
-  faint: "#7b85a8",
+  white: semantic.textPrimary,
+  body: semantic.textBody,
+  secondary: semantic.textMuted,
+  faint: semantic.textFaint,
 
-  live: "#22c55e",
-  liveGlow: "rgba(34, 197, 94, 0.14)",
-  warn: "#f59e0b",
-  warnGlow: "rgba(245, 158, 11, 0.14)",
-  fault: "#f87171",
-  faultGlow: "rgba(248, 113, 113, 0.14)",
+  live: semantic.attentionDone,
+  liveGlow: matrix.success.soft.rest.background,
+  warn: semantic.attentionApproval,
+  warnGlow: matrix.warning.soft.rest.background,
+  fault: semantic.attentionFailed,
+  faultGlow: matrix.danger.soft.rest.background,
 } as const;
 
 export const colors = {
   palette,
-  transparent: "rgba(0, 0, 0, 0)",
+  transparent: khalaNativeTheme.transparent,
 
   background: palette.panel,
   surface: palette.raised,
@@ -69,24 +65,30 @@ export const colors = {
   warnGlow: palette.warnGlow,
   fault: palette.fault,
   faultGlow: palette.faultGlow,
+
+  attentionApproval: semantic.attentionApproval,
+  attentionInput: semantic.attentionInput,
+  attentionWorking: semantic.attentionWorking,
+  attentionFailed: semantic.attentionFailed,
+  attentionDone: semantic.attentionDone,
 } as const;
 
 export const spacing = {
-  micro: 2,
-  tiny: 4,
-  extraSmall: 8,
-  small: 12,
-  medium: 16,
-  large: 24,
-  extraLarge: 32,
-  huge: 48,
+  micro: khalaNativeTheme.spacing["0.5"],
+  tiny: khalaNativeTheme.spacing["1"],
+  extraSmall: khalaNativeTheme.spacing["2"],
+  small: khalaNativeTheme.spacing["3"],
+  medium: khalaNativeTheme.spacing["4"],
+  large: khalaNativeTheme.spacing["6"],
+  extraLarge: khalaNativeTheme.spacing["8"],
+  huge: khalaNativeTheme.spacing["12"],
 } as const;
 
 export const radius = {
-  small: 4,
-  medium: 8,
-  large: 12,
-  pill: 999,
+  small: khalaNativeTheme.radius.md,
+  medium: khalaNativeTheme.radius.xl,
+  large: khalaNativeTheme.radius["2xl"],
+  pill: khalaNativeTheme.radius.full,
 } as const;
 
 /**
@@ -120,6 +122,11 @@ export const fontAssets = {
 } as const;
 
 export const timing = {
-  quick: 140,
-  regular: 220,
+  quick: khalaNativeTheme.motion.standard.durationFastMs,
+  regular: khalaNativeTheme.motion.standard.durationExitMs,
+} as const;
+
+export const reducedTiming = {
+  quick: khalaNativeTheme.motion.reduced.durationFastMs,
+  regular: khalaNativeTheme.motion.reduced.durationExitMs,
 } as const;

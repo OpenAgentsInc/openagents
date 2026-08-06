@@ -1,18 +1,25 @@
 {
   "name": "@openagentsinc/design-tokens",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./contrast": "./src/contrast.ts",
+    "./native": "./src/native.ts",
+    "./web": "./src/web.ts",
+    "./web.css": "./src/web.generated.css"
   },
   "scripts": {
-    "test": "vp test --root ../.. --run packages/design-tokens/src",
+    "generate": "node scripts/generate-web-css.ts",
+    "generate:check": "node scripts/generate-web-css.ts --check",
+    "contrast:check": "node scripts/check-contrast.ts",
+    "test": "pnpm run generate:check && pnpm run contrast:check && vp test --root ../.. --run packages/design-tokens/src",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check": "pnpm run typecheck && pnpm run test"
   },
   "dependencies": {
-    "effect": "catalog:"
+    "effect": "4.0.0-beta.94"
   },
   "devDependencies": {
     "typescript": "catalog:"

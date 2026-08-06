@@ -65,13 +65,15 @@ const mobileContextSourceRef = (kind: WorkComposerContext["kind"], label: string
 const attentionTone = (state: string): string => {
   switch (state) {
     case "approval":
-      return colors.warn;
+      return colors.attentionApproval;
+    case "input":
+      return colors.attentionInput;
     case "failed":
-      return colors.fault;
+      return colors.attentionFailed;
     case "working":
-      return colors.accentInk;
+      return colors.attentionWorking;
     case "done_unseen":
-      return colors.live;
+      return colors.attentionDone;
     default:
       return colors.textDim;
   }

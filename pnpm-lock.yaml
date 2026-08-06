@@ -404,6 +404,9 @@ importers:
       '@openagentsinc/client-command-outbox':
         specifier: workspace:*
         version: link:../../packages/client-command-outbox
+      '@openagentsinc/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
       '@openagentsinc/khala-sync':
         specifier: workspace:*
         version: link:../../packages/khala-sync

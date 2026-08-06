@@ -40,11 +40,17 @@ describe("khalaTheme resolves the pinned hex values", () => {
     ["accentHover", "#5c96f8"],
     ["info", "#38bdf8"],
     ["textPrimary", "#eef3ff"],
+    ["textBody", "#d6e0f5"],
     ["textMuted", "#93a4c3"],
-    ["textFaint", "#6b7ca1"],
+    ["textFaint", "#8990ad"],
     ["success", "#22c55e"],
     ["warning", "#f59e0b"],
     ["danger", "#f87171"],
+    ["attentionApproval", "#fbbf24"],
+    ["attentionInput", "#a5b4fc"],
+    ["attentionWorking", "#7dd3fc"],
+    ["attentionFailed", "#f87171"],
+    ["attentionDone", "#4ade80"],
   ];
 
   test.each(pins)("color.%s is %s", (role, value) => {
