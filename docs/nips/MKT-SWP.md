@@ -132,14 +132,27 @@ Deployments MUST allowlist supported references. Human names such as
 `mainnet`, `testnet`, and `regtest` are display labels only.
 
 The exact network grammar is `^bip122:[0-9a-f]{32}$`. The exact asset grammar
-is `^swp:1:bip122:[0-9a-f]{32}:btc:(chain|lightning)$`.
+is one of:
+
+```text
+^swp:1:bip122:[0-9a-f]{32}:btc:(chain|lightning)$
+^swp:1:bip122:[0-9a-f]{32}:elements:[0-9a-f]{64}:liquid$
+```
 
 MKT-SWP distinguishes the same bitcoin unit on different settlement rails:
 
 ```text
 swp:1:<network_id>:btc:chain
 swp:1:<network_id>:btc:lightning
+swp:1:<network_id>:elements:<asset_id>:liquid
 ```
+
+For an Elements rail, `<asset_id>` is the lowercase 32-byte display-order
+asset identifier returned by the configured full node. The L-BTC identifier
+MUST equal that network's `pegged_asset` from `getsidechaininfo`; a ticker,
+asset label, or provider-supplied alias is insufficient. V1 Liquid execution
+allowlists only that pegged asset. Other issued assets require a later
+profile revision with their own issuance and freeze authority.
 
 These exact strings are `asset_id` values. A market is the ordered
 `[input_asset_id, output_asset_id]` pair. A ticker, display name, symbol, or
@@ -154,8 +167,11 @@ V1 supports these `swap_type` and pair shapes:
 | `reverse`   | Lightning     | Bitcoin chain | requester pays a hold invoice; provider locks chain                        |
 | `chain`     | Bitcoin chain | Bitcoin chain | requester locks the source network; provider locks the destination network |
 
-For `chain`, the two network IDs MUST differ. Liquid, Ark, EVM, mint, and
-fiat legs are unsupported in v1.
+For this table, a chain leg is either the Bitcoin `chain` rail or the Elements
+`liquid` rail. Submarine and reverse swaps admit either chain rail. A chain
+swap MUST have distinct asset IDs and V1 admits Bitcoin BTC to or from the
+configured network's pegged L-BTC only. Ark, EVM, mint, non-pegged Elements
+assets, and fiat legs are unsupported in v1.
 
 ### 3.2 Canonical amounts
 
@@ -694,6 +710,56 @@ The local Bitcoin view determines whether the output exists.
 Any failed check produces a typed error from Section 17 and leaves funding
 disabled.
 
+### 7.5 Liquid funding and exit checks
+
+A Liquid leg uses `rail=liquid`, an allowlisted Elements network ID, and the
+network's exact pegged-asset identifier from Section 3.1. The Quote and both
+Swap Contracts bind the raw transaction digest, output index, asset ID,
+amount, scriptPubKey, confidentiality mode, and every serialized commitment
+present on the selected output. A transaction ID or provider-decoded JSON is
+only a lookup hint.
+
+The output's Taproot key, leaf scripts, control blocks, hashlock, and timelock
+are re-derived under the same BIP-341/BIP-342 tree rules as the Bitcoin leg.
+The Elements transaction and signature hash include Elements-specific asset,
+value, nonce, issuance, and witness fields. A client MUST NOT apply the
+Bitcoin transaction parser or Bitcoin Taproot sighash to those bytes. Its
+Liquid adapter parses the Elements envelope, checks the exact selected output
+and tree locally, and submits a completed spend to its allowlisted full node's
+consensus and mempool policy before broadcast.
+
+`confidentiality` is closed to these shapes:
+
+```json
+{"mode":"explicit","asset":"<64-lower-hex>","amount":"<canonical sats>"}
+{"mode":"recipient_blinded","asset_commitment":"<66-lower-hex>","value_commitment":"<66-lower-hex>","nonce":"<66-lower-hex>","rangeproof_sha256":"<64-lower-hex>","surjectionproof_sha256":"<64-lower-hex>"}
+```
+
+For `recipient_blinded`, the receiver uses its own wallet blinding key through
+its local Elements node to run `unblindrawtransaction`, then decodes that exact
+result. It requires the selected output to reveal the signed asset ID and
+amount, retain the signed scriptPubKey and output index, and correspond to the
+commitments in the original raw transaction. Failure to unblind is failure to
+fund or claim. A sender may use its locally retained blinding data to perform
+the same check before broadcast.
+
+V1 does not implement secp256k1-zkp range-proof or surjection-proof
+verification in the client core and does not claim to validate an arbitrary
+third-party confidential output. The allowlisted local Elements node verifies
+consensus proofs and chain state. The client verifies only an output that it
+authored or can unblind, and it records this authority as
+`local_elementsd_unblind`, never `independent_ct_proof`. An explicit output is
+valid only when the Quote permitted `explicit`; a confidential-only side
+cannot be silently downgraded.
+
+The participant that can lose Liquid principal persists a Liquid unilateral
+exit package before funding. It binds the Elements transaction format,
+selected asset, selected output, exact script path, timelock, fee output, and
+either a complete signed transaction or a wallet/external-signer handle under
+Section 12. No blinding key, value blinder, asset blinder, seed, or spend key
+may enter a Swap Contract, relay artifact, provider database, or retained lab
+record.
+
 ## 8. Timeout ladders
 
 Every height is a canonical decimal string. Every Unix time is an integer.
@@ -986,7 +1052,8 @@ Every evidence reference includes:
 ```
 
 Allowed classes are `invoice`, `lightning_htlc`, `lightning_payment`,
-`bitcoin_transaction`, `bitcoin_output`, `bitcoin_spend`, `reservation`,
+`bitcoin_transaction`, `bitcoin_output`, `bitcoin_spend`,
+`liquid_transaction`, `liquid_output`, `liquid_spend`, `reservation`,
 `covenant_reserve`, `claim`, `refund`, `reorg`, and `replacement`.
 `reference` is a BOLT payment hash, Bitcoin `txid:vout`, transaction ID, or
 digest-bound external receipt identifier appropriate to the class. Full
@@ -1001,13 +1068,13 @@ Evidence rungs are monotonic only for the exact artifact and policy:
 | `measured` | A named observer saw the rail object in its stated view.                                      |
 | `verified` | An allowlisted verifier re-derived the artifact and terms under the pinned policy.            |
 | `paid`     | The relevant Lightning node or payment proof establishes payment under the Quote.             |
-| `settled`  | Bitcoin or Lightning finality rules in the Quote are satisfied in the verifier's stated view. |
+| `settled`  | Bitcoin, Liquid, or Lightning finality rules in the Quote are satisfied in the verifier's stated view. |
 
 The local wallet is the authority for whether it enables a fund, claim, or
-refund action. Bitcoin consensus and the Lightning rail determine external
-settlement. A relay-signed observation, provider Status, explorer response,
-API response, NIP-57 receipt, or Close cannot independently produce `paid` or
-`settled`.
+refund action. Bitcoin or Elements consensus and the Lightning rail determine
+external settlement. A relay-signed observation, provider Status, explorer
+response, API response, NIP-57 receipt, or Close cannot independently produce
+`paid` or `settled`.
 
 Reorg and replacement verification is continuous until the quoted finality
 threshold. A displaced funding or claim transaction lowers the local state,
@@ -1026,6 +1093,14 @@ Esplora-compatible sources. It verifies headers according to its configured
 trust model, parses transaction bytes locally, applies the exact confirmation
 and replacement policy, and continues reorg monitoring through the quoted
 finality threshold. An explorer's JSON classification is not finality.
+
+The Liquid adapter obtains raw Elements transactions, outputs, spends,
+headers, and chain tips from a wallet-selected Elements full node. It requires
+the configured genesis reference and `pegged_asset` to match the signed
+network and asset IDs. For a confidential output it uses only the local
+wallet's blinding authority described in Section 7.5. RPC JSON cannot replace
+the bound raw transaction, and successful unblinding cannot upgrade local
+node trust into independent range-proof verification.
 
 The Lightning adapter uses the participant's local node or wallet to parse
 the invoice and query HTLC/payment state. For reverse swaps, the provider
@@ -1336,6 +1411,10 @@ Profile errors are stable lowercase identifiers:
 | `swp_payment_hash_mismatch`       | Invoice, script, Quote, and local secret commitment disagree.                     |
 | `swp_script_invalid`              | Script or Taproot tree is malformed or unsupported.                               |
 | `swp_script_commitment_mismatch`  | Re-derived scriptPubKey/address differs.                                          |
+| `swp_liquid_network_mismatch`     | Elements genesis reference or pegged asset differs from signed terms.             |
+| `swp_liquid_output_invalid`       | Elements output envelope, commitments, index, or fee shape is invalid.            |
+| `swp_liquid_unblind_failed`       | The participant cannot unblind its selected confidential output.                  |
+| `swp_liquid_unblind_mismatch`     | Locally revealed asset, amount, script, or output differs from signed terms.      |
 | `swp_musig_transcript_invalid`    | Key order, tweak, nonce, message, or partial signature check failed.              |
 | `swp_confirmation_insufficient`   | Rail object has fewer confirmations than quoted.                                  |
 | `swp_rbf_policy_violation`        | Funding violates replacement policy.                                              |
@@ -1388,6 +1467,9 @@ heights, verifier inputs, and expected evidence rung.
 | `swp-v1-reverse-hold-expiry-above-minimum` | Accept observed shortest incoming expiry above signed `hold_expiry_height`.                             |
 | `swp-v1-chain-regtest-cooperative`         | Source and destination locks, requester claim, provider claim, both final.                              |
 | `swp-v1-chain-regtest-dual-refund`         | Destination is unclaimed; provider and requester execute the safe ordered refunds.                      |
+| `swp-v1-liquid-submarine-regtest-refund`   | Requester verifies its pegged-asset output, persists the Liquid exit, and refunds after timeout.         |
+| `swp-v1-liquid-reverse-regtest-claim`      | Requester unblinds the provider lock, verifies amount/asset/script, and claims without coordinator keys. |
+| `swp-v1-btc-liquid-chain-regtest`          | Both chain legs verify their own asset, output, timeout, and unilateral exit before either funds.        |
 | `swp-v1-covenant-hard-reservation`         | Independent verifier admits the covenant-enforced minimum once.                                         |
 | `swp-v1-price-feed-exact-pointer`          | Exact URL, response digest, RFC 6901 pointer, and observed value reproduce terms.                       |
 | `swp-v1-public-receipt-redacted`           | Receipt exposes only consented outcome and verifier reference.                                          |
@@ -1409,6 +1491,12 @@ heights, verifier inputs, and expected evidence rung.
 | `swp-v1-negative-invoice-amountless`                     | `swp_invoice_invalid`                                                       |
 | `swp-v1-negative-payment-hash`                           | `swp_payment_hash_mismatch`                                                 |
 | `swp-v1-negative-taproot-tree`                           | `swp_script_commitment_mismatch`                                            |
+| `swp-v1-negative-liquid-ticker-asset`                    | `swp_invalid_asset_id`                                                      |
+| `swp-v1-negative-liquid-pegged-asset`                    | `swp_liquid_network_mismatch`                                               |
+| `swp-v1-negative-liquid-output-commitment`               | `swp_liquid_output_invalid`                                                 |
+| `swp-v1-negative-liquid-unblind-foreign-output`          | `swp_liquid_unblind_failed`                                                 |
+| `swp-v1-negative-liquid-unblind-amount`                  | `swp_liquid_unblind_mismatch`                                               |
+| `swp-v1-negative-liquid-bitcoin-sighash`                 | `swp_liquid_output_invalid`                                                 |
 | `swp-v1-negative-refund-key`                             | `swp_terms_mismatch`                                                        |
 | `swp-v1-negative-timeout-ladder`                         | `swp_timeout_ladder_unsafe`                                                 |
 | `swp-v1-negative-hold-expiry-below-minimum`              | `swp_timeout_ladder_unsafe`                                                 |
@@ -1456,6 +1544,7 @@ heights, verifier inputs, and expected evidence rung.
 | `swp-v1-privacy-macaroon-tripwire`           | Reject with `swp_secret_material_forbidden`.                                                             |
 | `swp-v1-privacy-claim-key-tripwire`          | Reject with `swp_secret_material_forbidden`.                                                             |
 | `swp-v1-privacy-musig-secret-nonce-tripwire` | Reject with `swp_secret_material_forbidden`.                                                             |
+| `swp-v1-privacy-liquid-blinding-key-tripwire` | Reject with `swp_secret_material_forbidden`.                                                             |
 
 ### 18.5 Reorg, replacement, and recovery
 
@@ -1467,6 +1556,7 @@ heights, verifier inputs, and expected evidence rung.
 | `swp-v1-doomsday-submarine-provider-gone`   | Requester refunds from signed records and exit package with coordinator permanently absent. |
 | `swp-v1-doomsday-reverse-coordinator-gone`  | Counterparties complete or provider refunds/cancels using direct recovery and rail state.   |
 | `swp-v1-doomsday-chain-counterparty-gone`   | Each principal executes its unilateral timeout path in safe order.                          |
+| `swp-v1-doomsday-liquid-coordinator-gone`   | Participant unblinds its own bound output and executes the persisted Liquid script path.    |
 | `swp-v1-doomsday-keyless-esplora-broadcast` | Static executor broadcasts a pre-signed exit without any key material.                      |
 | `swp-v1-recovery-missing-signed-record`     | Report explicit loss and refuse reconstructed history.                                      |
 | `swp-v1-recovery-unusable-exit-package`     | Fail with `swp_exit_package_unusable` before funding.                                       |
@@ -1495,6 +1585,14 @@ A conforming client implements the lifecycle, verify-before-fund, external
 effect, privacy, exit-package, and doomsday fixtures. A client that only
 parses records is not an executable MKT-SWP client.
 
+A client or provider that advertises a Liquid pair additionally passes the
+Section 7.5 Elements parser, pegged-asset, own-output unblinding,
+verify-before-fund, unilateral-exit, reorg, and doomsday fixtures against its
+configured `elementsd`. It describes confidential-transaction authority as
+local-node plus own-output unblinding. It MUST NOT claim independent proof
+verification unless a later profile and implementation add and test the
+required secp256k1-zkp primitives.
+
 ## References
 
 - [NIP-MKT](MKT.md)
@@ -1502,12 +1600,23 @@ parses records is not an executable MKT-SWP client.
 - BIP-341 and BIP-342 Taproot and tapscript
 - BIP-174 PSBT and BIP-370 PSBT v2
 - BOLT 11 invoices and Lightning HTLC settlement
+- Elements transaction format and Confidential Assets RPC workflow
 - RFC 6901 JSON Pointer
 - [Boltz ecosystem teardown](../teardowns/2026-08-03-boltz-ecosystem-nostr-rebuild-teardown.md)
 - [Satora/LendaSwap outage teardown](../teardowns/2026-08-04-satora-lendaswap-outage-teardown.md)
 - [Arkade, solver, Mostro, Cashu, and WDK teardown](../teardowns/2026-08-04-ark-solver-mostro-cashu-rails-teardown.md)
 
 ## Changelog
+
+**v1 Liquid addendum (2026-08-05)**
+
+- Added Elements network and pegged-asset identifiers without allocating a
+  new event kind.
+- Added Liquid legs for submarine, reverse, and BTC/L-BTC chain swaps.
+- Defined own-output unblinding, exact commitment binding, local `elementsd`
+  authority, unilateral exits, errors, and conformance fixtures.
+- Kept arbitrary third-party range-proof and surjection-proof verification
+  outside v1 claims.
 
 **v1 draft correction (2026-08-04)**
 

@@ -21,13 +21,14 @@ hardening rails against the same event model.
 > implementation in [Immortal](https://github.com/OpenAgentsInc/immortal)
 > with a fixture corpus and machine-readable contract export. Focused
 > MKT-SWP, MKT-P2P, MKT-PFI, MKT-MINT, MKT-LSP, and MKT-INTENT are complete
-> upstream drafts with collision-reviewed profile kinds. No executable
-> profile is implemented anywhere yet.
+> upstream drafts with collision-reviewed profile kinds. Implementation and
+> deployment claims belong to each consuming repository's conformance record;
+> these documents do not grant an executable-profile claim.
 
 | Spec       | Market stream                                                              | Kinds                                                     | File                             |
 | ---------- | -------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------- |
 | NIP-MKT    | Negotiated-market base; public discovery, private signed execution control | 39600-39609; profile block 39610-39699                    | [`MKT.md`](MKT.md)               |
-| MKT-SWP    | BTC/Lightning submarine, reverse, and chain swaps                          | 39610                                                     | [`MKT-SWP.md`](MKT-SWP.md)       |
+| MKT-SWP    | BTC, L-BTC, and Lightning submarine, reverse, and chain swaps              | 39610                                                     | [`MKT-SWP.md`](MKT-SWP.md)       |
 | MKT-P2P    | NIP-69/Mostro-compatible peer trades and dispute resolution                | 39620                                                     | [`MKT-P2P.md`](MKT-P2P.md)       |
 | MKT-PFI    | Credentialed provider/fiat-interface negotiation                           | 39630                                                     | [`MKT-PFI.md`](MKT-PFI.md)       |
 | MKT-MINT   | Cashu mint/melt and Fedimint gateway negotiation                           | 39640                                                     | [`MKT-MINT.md`](MKT-MINT.md)     |
