@@ -1,6 +1,9 @@
-import { createContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { openMobileClientOutboxRuntime, type MobileClientOutboxRuntime } from "./client-outbox-runtime";
+import {
+  openMobileClientOutboxRuntime,
+  type MobileClientOutboxRuntime,
+} from "./client-outbox-runtime";
 
 export type MobileClientOutboxState =
   | Readonly<{ phase: "initializing"; runtime: null; error: null }>
@@ -13,8 +16,15 @@ const MobileClientOutboxContext = createContext<MobileClientOutboxState>({
   error: null,
 });
 
+export const useMobileClientOutbox = (): MobileClientOutboxState =>
+  useContext(MobileClientOutboxContext);
+
 export const MobileClientOutboxProvider = ({ children }: { readonly children: ReactNode }) => {
-  const [state, setState] = useState<MobileClientOutboxState>({ phase: "initializing", runtime: null, error: null });
+  const [state, setState] = useState<MobileClientOutboxState>({
+    phase: "initializing",
+    runtime: null,
+    error: null,
+  });
 
   useEffect(() => {
     let current: MobileClientOutboxRuntime | null = null;
@@ -33,7 +43,10 @@ export const MobileClientOutboxProvider = ({ children }: { readonly children: Re
           setState({
             phase: "failed",
             runtime: null,
-            error: error instanceof Error ? error : new Error("The mobile command outbox failed to initialize."),
+            error:
+              error instanceof Error
+                ? error
+                : new Error("The mobile command outbox failed to initialize."),
           });
         }
       });
@@ -44,5 +57,9 @@ export const MobileClientOutboxProvider = ({ children }: { readonly children: Re
   }, []);
 
   const value = useMemo(() => state, [state]);
-  return <MobileClientOutboxContext.Provider value={value}>{children}</MobileClientOutboxContext.Provider>;
+  return (
+    <MobileClientOutboxContext.Provider value={value}>
+      {children}
+    </MobileClientOutboxContext.Provider>
+  );
 };

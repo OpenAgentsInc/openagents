@@ -1,20 +1,18 @@
-import { useState } from "react";
 import { useFonts } from "expo-font";
 import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { ControllerRoot } from "./controller/controller-root";
+import { ControllerSessionProvider } from "./controller/session-provider";
 import { MobileClientOutboxProvider } from "./outbox/client-outbox-provider";
-import { OmegaHomeScreen } from "./screens/omega-home-screen";
-import { SarahVoiceScreen } from "./screens/sarah-voice-screen";
 import { colors, fontAssets } from "./ui/theme";
 
 /**
  * The OpenAgents mobile app.
  *
- * Owner direction 2026-07-27: one surface, the desktop mirror, built from the
- * arcade component patterns in plain React Native. Effect Native is gone from
- * this app. The only Effect left is inside the device-bridge client, which is
- * transport code rather than a user-interface framework.
+ * The app is a bounded native controller for the Pro work projection. It reads
+ * reactive state directly from Convex and sends every durable command through
+ * the authenticated Pro capability broker and the device outbox.
  *
  * The desktop's own faces load before the first frame. Rendering through a
  * pending load would show the system font and then reflow the whole transcript
@@ -23,8 +21,6 @@ import { colors, fontAssets } from "./ui/theme";
  * holding the app hostage to a font.
  */
 export const App = () => {
-  const [surface, setSurface] = useState<"omega" | "sarah_voice">("omega");
-  const [desktopThreadRef, setDesktopThreadRef] = useState<string | null>(null);
   const [loaded, error] = useFonts(fontAssets);
   if (!loaded && error === null) {
     return <View style={{ flex: 1, backgroundColor: colors.background }} />;
@@ -32,19 +28,9 @@ export const App = () => {
   return (
     <MobileClientOutboxProvider>
       <SafeAreaProvider>
-        {surface === "sarah_voice" ? (
-          <SarahVoiceScreen
-            desktopThreadRef={desktopThreadRef}
-            onClose={() => setSurface("omega")}
-          />
-        ) : (
-          <OmegaHomeScreen
-            onSarahVoicePressed={(threadRef) => {
-              setDesktopThreadRef(threadRef);
-              setSurface("sarah_voice");
-            }}
-          />
-        )}
+        <ControllerSessionProvider>
+          <ControllerRoot />
+        </ControllerSessionProvider>
       </SafeAreaProvider>
     </MobileClientOutboxProvider>
   );

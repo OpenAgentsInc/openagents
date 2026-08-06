@@ -5,7 +5,7 @@
     "scheme": "openagents",
     "version": "0.5.2",
     "icon": "./assets/images/icon.png",
-    "orientation": "portrait",
+    "orientation": "default",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#05070d",
     "newArchEnabled": true,
