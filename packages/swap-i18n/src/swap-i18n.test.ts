@@ -20,8 +20,8 @@ const NON_REFUSAL_IDENTIFIERS = new Set([
 ]);
 
 describe("MKT-SWP §17 identifier vocabulary", () => {
-  test("carries all 54 identifiers, unique, in protocol shape", () => {
-    expect(SWP_ERROR_IDENTIFIERS.length).toBe(54);
+  test("carries all 58 identifiers, unique, in protocol shape", () => {
+    expect(SWP_ERROR_IDENTIFIERS.length).toBe(58);
     expect(new Set(SWP_ERROR_IDENTIFIERS).size).toBe(SWP_ERROR_IDENTIFIERS.length);
     for (const identifier of SWP_ERROR_IDENTIFIERS) {
       expect(identifier).toMatch(/^swp_[a-z0-9_]+$/);
@@ -155,6 +155,7 @@ describe("parameterised messages", () => {
 
   test("static keys render without parameters", () => {
     expect(render(catalog, "swap.error.swp_funding_not_authorized")).toContain("Refused:");
+    expect(render(catalog, "swap.error.swp_liquid_output_invalid")).toContain("Liquid");
   });
 });
 

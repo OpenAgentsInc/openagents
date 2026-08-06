@@ -15,6 +15,15 @@ import { fundingGate, VERIFY_CHECK_IDS } from "./verify.js";
 import { verifyChecklistView } from "./view.js";
 
 describe("fundingGate", () => {
+  test("swp-v1-btc-liquid-chain-regtest: exact transaction and mempool preflight are mandatory rows", () => {
+    expect(VERIFY_CHECK_IDS).toContain("funding_transaction");
+    expect(VERIFY_CHECK_IDS).toContain("mempool_acceptance");
+    expect(fundingGate(testVerifyReport(), 1)).toEqual({
+      enabled: true,
+      reportEpoch: 1,
+    });
+  });
+
   test("no report: disabled with swp_funding_not_authorized", () => {
     const gate = fundingGate(null, 1);
     expect(gate.enabled).toBe(false);
@@ -31,10 +40,8 @@ describe("fundingGate", () => {
   });
 
   test("any unresolved row keeps funding disabled and names the row", () => {
-    const rows = allPassRows().map(row =>
-      row.id === "timeout_ladder"
-        ? ({ id: row.id, status: "unresolved" } as const)
-        : row,
+    const rows = allPassRows().map((row) =>
+      row.id === "timeout_ladder" ? ({ id: row.id, status: "unresolved" } as const) : row,
     );
     const gate = fundingGate(testVerifyReport({ rows }), 1);
     expect(gate.enabled).toBe(false);
@@ -45,14 +52,14 @@ describe("fundingGate", () => {
   });
 
   test("a missing row is unresolved, never implicitly passed", () => {
-    const rows = allPassRows().filter(row => row.id !== "exit_package");
+    const rows = allPassRows().filter((row) => row.id !== "exit_package");
     const gate = fundingGate(testVerifyReport({ rows }), 1);
     expect(gate.enabled).toBe(false);
     if (!gate.enabled) expect(gate.unresolved).toEqual(["exit_package"]);
   });
 
   test("any failed row keeps funding disabled with its typed identifier", () => {
-    const rows = allPassRows().map(row =>
+    const rows = allPassRows().map((row) =>
       row.id === "output_key_rederived"
         ? ({
             id: row.id,
@@ -74,11 +81,43 @@ describe("fundingGate", () => {
     }
   });
 
-  test("all rows pass but the engine verdict is blocked: still disabled — the UI never overrides the engine", () => {
-    const gate = fundingGate(
-      testVerifyReport({ verdict: "verification_blocked" }),
-      1,
+  test("swp-v1-negative-btc-liquid-destination-signature: invalid provider transaction fails closed", () => {
+    const rows = allPassRows().map((row) =>
+      row.id === "funding_transaction"
+        ? ({
+            id: row.id,
+            status: "fail",
+            error: "swp_liquid_output_invalid",
+          } as const)
+        : row,
     );
+    const gate = fundingGate(testVerifyReport({ rows }), 1);
+    expect(gate.enabled).toBe(false);
+    if (!gate.enabled) {
+      expect(gate.failed).toEqual([
+        {
+          id: "funding_transaction",
+          status: "fail",
+          error: "swp_liquid_output_invalid",
+        },
+      ]);
+    }
+  });
+
+  test("swp-v1-negative-btc-liquid-destination-mempool: absent acceptance fails closed", () => {
+    const rows = allPassRows().map((row) =>
+      row.id === "mempool_acceptance" ? ({ id: row.id, status: "unresolved" } as const) : row,
+    );
+    const gate = fundingGate(testVerifyReport({ rows }), 1);
+    expect(gate.enabled).toBe(false);
+    if (!gate.enabled) {
+      expect(gate.error).toBe("swp_funding_not_authorized");
+      expect(gate.unresolved).toEqual(["mempool_acceptance"]);
+    }
+  });
+
+  test("all rows pass but the engine verdict is blocked: still disabled — the UI never overrides the engine", () => {
+    const gate = fundingGate(testVerifyReport({ verdict: "verification_blocked" }), 1);
     expect(gate.enabled).toBe(false);
     if (!gate.enabled) expect(gate.reason).toBe("engine_verdict_blocked");
   });
@@ -98,13 +137,13 @@ describe("verifyChecklistView", () => {
   });
 
   test("every failing row is individually identifiable: id, label, and §17 identifier", () => {
-    const rows = allPassRows().map(row =>
+    const rows = allPassRows().map((row) =>
       row.id === "lightning_invoice"
         ? ({ id: row.id, status: "fail", error: "swp_invoice_invalid" } as const)
         : row,
     );
     const view = verifyChecklistView(testVerifyReport({ rows }), 1);
-    const failing = view.rows.filter(row => row.status === "fail");
+    const failing = view.rows.filter((row) => row.status === "fail");
     expect(failing).toHaveLength(1);
     expect(failing[0]?.id).toBe("lightning_invoice");
     expect(failing[0]?.error).toBe("swp_invoice_invalid");
@@ -115,8 +154,8 @@ describe("verifyChecklistView", () => {
 
   test("no two checklist rows share a label — a failure names its row, never a generic page", () => {
     const view = verifyChecklistView(null, 1);
-    const keys = view.rows.map(row => row.label.key);
-    const messages = view.rows.map(row => row.label.message);
+    const keys = view.rows.map((row) => row.label.key);
+    const messages = view.rows.map((row) => row.label.message);
     expect(new Set(keys).size).toBe(view.rows.length);
     expect(new Set(messages).size).toBe(view.rows.length);
   });

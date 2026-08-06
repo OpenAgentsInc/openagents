@@ -76,6 +76,14 @@ export const swapErrorMessages = {
     "Refused: the on-chain script or Taproot tree is malformed or unsupported.",
   "swap.error.swp_script_commitment_mismatch":
     "Refused: the independently re-derived address does not match the one the counterparty supplied.",
+  "swap.error.swp_liquid_network_mismatch":
+    "Refused: the Liquid network or pegged-asset identifier differs from the signed terms.",
+  "swap.error.swp_liquid_output_invalid":
+    "Refused: the Liquid transaction, selected output, commitments, or required signatures failed verification.",
+  "swap.error.swp_liquid_unblind_failed":
+    "Refused: this wallet could not unblind the selected Liquid output.",
+  "swap.error.swp_liquid_unblind_mismatch":
+    "Refused: the unblinded Liquid asset, amount, script, or output differs from the signed terms.",
   "swap.error.swp_musig_transcript_invalid":
     "Refused: the cooperative signing transcript failed verification.",
   "swap.error.swp_confirmation_insufficient":

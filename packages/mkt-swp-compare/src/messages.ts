@@ -41,18 +41,15 @@ export const COMMITMENT_MESSAGES = {
   },
   "indicative:soft": {
     key: "swap.compare.commitment.indicative_soft",
-    message:
-      "Indicative with a soft reserve claim. The provider must still accept your order.",
+    message: "Indicative with a soft reserve claim. The provider must still accept your order.",
   },
   "indicative:hard": {
     key: "swap.compare.commitment.indicative_hard",
-    message:
-      "Indicative with a hard reserve behind it. The provider must still accept your order.",
+    message: "Indicative with a hard reserve behind it. The provider must still accept your order.",
   },
   "firm:none": {
     key: "swap.compare.commitment.firm_none",
-    message:
-      "Nonconforming: a firm quote must reserve capacity (soft or hard).",
+    message: "Nonconforming: a firm quote must reserve capacity (soft or hard).",
   },
   "firm:soft": {
     key: "swap.compare.commitment.firm_soft",
@@ -64,7 +61,9 @@ export const COMMITMENT_MESSAGES = {
     message:
       "Firm, hard reserve — the provider declares acceptance and backs it with a capacity proof. The declaration itself is still not proven.",
   },
-} as const satisfies Readonly<Record<`${"indicative" | "firm"}:${"none" | "soft" | "hard"}`, CompareMessage>>;
+} as const satisfies Readonly<
+  Record<`${"indicative" | "firm"}:${"none" | "soft" | "hard"}`, CompareMessage>
+>;
 
 export type CommitmentKey = keyof typeof COMMITMENT_MESSAGES;
 
@@ -72,9 +71,7 @@ export type CommitmentKey = keyof typeof COMMITMENT_MESSAGES;
  * Proof-class labels (§5 table). Each names the evidence, because a signed
  * claim and a covenant-enforced reserve must not render the same.
  */
-export const PROOF_CLASS_MESSAGES: Readonly<
-  Record<ReservationProofClass, CompareMessage>
-> = {
+export const PROOF_CLASS_MESSAGES: Readonly<Record<ReservationProofClass, CompareMessage>> = {
   provider_signed: {
     key: "swap.compare.proof.provider_signed",
     message: "Provider-signed claim — no independent capacity proof",
@@ -130,9 +127,7 @@ export const CUSTODY_DURATION_MESSAGES = {
 } as const;
 
 /** Verify-checklist row labels — each row individually identifiable. */
-export const VERIFY_CHECK_MESSAGES: Readonly<
-  Record<VerifyCheckId, CompareMessage>
-> = {
+export const VERIFY_CHECK_MESSAGES: Readonly<Record<VerifyCheckId, CompareMessage>> = {
   signatures_and_references: {
     key: "swap.compare.verify.signatures_and_references",
     message: "Signatures, causal references, and terms verified",
@@ -140,6 +135,10 @@ export const VERIFY_CHECK_MESSAGES: Readonly<
   external_effect_ids: {
     key: "swap.compare.verify.external_effect_ids",
     message: "External-effect IDs recomputed",
+  },
+  funding_transaction: {
+    key: "swap.compare.verify.funding_transaction",
+    message: "Exact funding transaction and required signatures verified",
   },
   script_tree_parsed: {
     key: "swap.compare.verify.script_tree_parsed",
@@ -164,6 +163,10 @@ export const VERIFY_CHECK_MESSAGES: Readonly<
   chain_policy: {
     key: "swap.compare.verify.chain_policy",
     message: "Confirmation, RBF, replacement, and reorg policy as quoted",
+  },
+  mempool_acceptance: {
+    key: "swap.compare.verify.mempool_acceptance",
+    message: "Local full node accepts the exact transaction under mempool policy",
   },
   unsupported_constructs_refused: {
     key: "swap.compare.verify.unsupported_constructs_refused",

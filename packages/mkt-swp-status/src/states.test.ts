@@ -69,6 +69,17 @@ describe("§9 base-state derivation", () => {
     }
   });
 
+  test("chain broadcast names map explicitly to funding_observed", () => {
+    expect(classifySwpState("requester_source_broadcast")).toEqual({
+      ok: true,
+      base: "funding_observed",
+    });
+    expect(classifySwpState("provider_destination_broadcast")).toEqual({
+      ok: true,
+      base: "funding_observed",
+    });
+  });
+
   test("contract_pending and contract_bound are local projections a claim can never establish", () => {
     for (const local of LOCAL_ONLY_PROJECTIONS) {
       expect(classifySwpState(local)).toEqual({
@@ -135,6 +146,44 @@ describe("transition edges", () => {
     expect(allowedSuccessors("submarine", "accepted")).not.toContain("lightning_paid");
     expect(allowedSuccessors("submarine", "accepted")).not.toContain("completed");
     expect(allowedSuccessors("reverse", "hold_invoice_ready")).not.toContain("requester_claimed");
+  });
+
+  test("swp-v1-btc-liquid-chain-regtest: destination preflight precedes Bitcoin source funding", () => {
+    expect(allowedSuccessors("chain", "requester_source_verified")).toEqual([
+      "destination_lock_terms_ready",
+    ]);
+    expect(allowedSuccessors("chain", "destination_lock_terms_ready")).toEqual([
+      "requester_destination_verified",
+    ]);
+    expect(allowedSuccessors("chain", "requester_destination_verified")).toEqual([
+      "source_funding_required",
+    ]);
+    expect(allowedSuccessors("chain", "source_funding_final")).toContain(
+      "provider_destination_broadcast",
+    );
+  });
+
+  test("swp-v1-negative-btc-liquid-source-before-preflight: source funding fails closed", () => {
+    expect(allowedSuccessors("chain", "requester_source_verified")).not.toContain(
+      "source_funding_required",
+    );
+    expect(allowedSuccessors("chain", "destination_lock_terms_ready")).not.toContain(
+      "source_funding_required",
+    );
+  });
+
+  test("reverse counterparty-lock confirmation states cannot be skipped", () => {
+    expect(allowedSuccessors("reverse", "provider_funding_broadcast")).toEqual([
+      "funding_observed",
+      "provider_refund_prepared",
+      "disputed",
+      "failed",
+      "unresolved",
+    ]);
+    expect(allowedSuccessors("reverse", "funding_observed")).not.toContain(
+      "requester_claim_pending",
+    );
+    expect(allowedSuccessors("reverse", "funding_final")).toContain("requester_claim_pending");
   });
 });
 

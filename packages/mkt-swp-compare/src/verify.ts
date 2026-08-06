@@ -3,7 +3,7 @@
  * (openagents#9318 §6, MKT-SWP §7, mkt-swp-client.md).
  *
  * Verification truth is ENGINE truth. The MKT-SWP client engine (Immortal
- * client crate behind the SWAP-0 boundary) performs the §7.1–§7.4 checks —
+ * client crate behind the SWAP-0 boundary) performs the §7.1–§7.5 checks —
  * signatures and causal references, recomputed external-effect IDs, scripts
  * and trees parsed from bytes, re-derived output key, payment hash and
  * timelocks, timeout-ladder inequalities, exit-package digest, and the
@@ -28,16 +28,17 @@ import type { SwpErrorIdentifier } from "@openagentsinc/swap-i18n";
 import { Effect, Schema } from "effect";
 
 /**
- * The §7.1–§7.4 checklist rows, in profile order. `lightning_invoice` and
- * `musig_transcript` apply per rail/path; the engine report marks a
- * non-applicable row `pass` explicitly rather than omitting it, so an
- * incomplete report can never read as complete.
+ * The §7.1–§7.5 checklist rows, in profile order. Rail- and path-specific
+ * rows are marked `pass` explicitly when they do not apply, so an incomplete
+ * report can never read as complete.
  */
 export const VERIFY_CHECK_IDS = [
   /** §7.1.1 signatures, causal references, profile tuple, expiry, terms. */
   "signatures_and_references",
   /** §7.1.2 recomputed external-effect IDs (§13). */
   "external_effect_ids",
+  /** §7.1 / §7.5 exact funding transaction bytes and required signatures. */
+  "funding_transaction",
   /** §7.1.3 scripts and Taproot trees parsed from bytes, never addresses. */
   "script_tree_parsed",
   /** §7.1.4 output key/address re-derived from keys, tree, network, tweak. */
@@ -50,6 +51,8 @@ export const VERIFY_CHECK_IDS = [
   "exit_package",
   /** §7.1.8 confirmation, RBF, replacement, reorg, relay-fee, dust policy. */
   "chain_policy",
+  /** §7.5 local full node accepts the exact transaction under mempool policy. */
+  "mempool_acceptance",
   /** §7.1.9 unknown versions / hidden composition / non-null evm_leg refused. */
   "unsupported_constructs_refused",
   /** §7.2 complete local invoice parse and coupling checks. */
@@ -115,11 +118,7 @@ export interface FundingDisabled {
   readonly enabled: false;
   /** §17: verify-before-fund authority is absent. */
   readonly error: "swp_funding_not_authorized";
-  readonly reason:
-    | "no_report"
-    | "stale_report"
-    | "engine_verdict_blocked"
-    | "rows_incomplete";
+  readonly reason: "no_report" | "stale_report" | "engine_verdict_blocked" | "rows_incomplete";
   /** Ids of rows still unresolved (empty when reason is no/stale report). */
   readonly unresolved: readonly VerifyCheckId[];
   /** Failed rows with their typed identifiers, individually identifiable. */
@@ -165,7 +164,7 @@ export const fundingGate = (
   if (report === null) return disabled("no_report");
   if (report.epoch !== currentEpoch) return disabled("stale_report");
 
-  const byId = new Map(report.rows.map(row => [row.id, row]));
+  const byId = new Map(report.rows.map((row) => [row.id, row]));
   const unresolved: VerifyCheckId[] = [];
   const failed: Extract<VerifyCheckRow, { status: "fail" }>[] = [];
   for (const id of VERIFY_CHECK_IDS) {

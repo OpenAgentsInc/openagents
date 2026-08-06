@@ -182,6 +182,24 @@ describe("rungs (contract: openagents_web.swap_status.rung_never_inferred_upward
 });
 
 describe("signer and transition discipline", () => {
+  test("the chain source-funding instruction is invalid until destination preflight is signed", () => {
+    const view = session(
+      [
+        ...happyPathClaims("chain", "requester_source_verified"),
+        claim("provider", 2, "source_funding_required"),
+      ],
+      { flow: "chain" },
+    );
+    const invalid = view.retained.find(
+      (retained) => retained.claim.swpState === "source_funding_required",
+    )!;
+    expect(invalid.disposition).toEqual({
+      kind: "invalid",
+      reason: "swp_status_transition_invalid",
+    });
+    expect(view.lastValidSwpState).toBe("requester_source_verified");
+  });
+
   test("a requester cannot claim the chain source-funding instruction", () => {
     const view = session(
       [
