@@ -3,6 +3,7 @@ import {
   ObservationCacheEntry,
   OutboxTransportError,
   authorizeImmediateCommand,
+  buildQueuedCommand,
   drainClientOutbox,
   enqueueClientCommand,
   projectObservation,
@@ -18,9 +19,11 @@ import { openDatabaseAsync, type SQLiteDatabase } from "expo-sqlite";
 
 import {
   initializeExpoSqliteOutbox,
+  deleteExpoObservationCache,
   listExpoSqliteQuarantine,
   listExpoSqliteReceipts,
   makeExpoSqliteOutboxLayer,
+  putExpoSqliteCommandAndDeleteObservation,
   readExpoObservationCache,
   writeExpoObservationCache,
   type ExpoSqliteDatabase,
@@ -58,19 +61,28 @@ export class MobileClientOutboxRuntime {
     return Effect.runPromise(enqueueClientCommand(input).pipe(Effect.provide(this.#storeLayer)));
   }
 
+  async enqueueAndClearObservation(input: EnqueueInput, key: string) {
+    const command = buildQueuedCommand(input);
+    await putExpoSqliteCommandAndDeleteObservation(this.#adapter, command, key);
+    return command;
+  }
+
   drain(transport: MobileCommandTransport, gate: DeliveryGate, nowMs = Date.now()) {
     const transportLayer = Layer.succeed(ClientCommandTransport, {
       send: (command) =>
         Effect.tryPromise({
           try: () => transport.send(command),
-          catch: (error) => new OutboxTransportError({
-            detail: error instanceof Error ? error.message : "Command transport failed.",
-            retryable: true,
-          }),
+          catch: (error) =>
+            new OutboxTransportError({
+              detail: error instanceof Error ? error.message : "Command transport failed.",
+              retryable: true,
+            }),
         }),
     });
     return Effect.runPromise(
-      drainClientOutbox(gate, nowMs).pipe(Effect.provide(Layer.merge(this.#storeLayer, transportLayer))),
+      drainClientOutbox(gate, nowMs).pipe(
+        Effect.provide(Layer.merge(this.#storeLayer, transportLayer)),
+      ),
     );
   }
 
@@ -110,6 +122,10 @@ export class MobileClientOutboxRuntime {
       synchronizing: input.synchronizing,
       nowMs: input.nowMs ?? Date.now(),
     });
+  }
+
+  async removeObservation(key: string): Promise<void> {
+    await deleteExpoObservationCache(this.#adapter, key);
   }
 
   async close(): Promise<void> {

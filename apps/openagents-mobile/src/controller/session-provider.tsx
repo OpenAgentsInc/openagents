@@ -44,6 +44,7 @@ type ControllerSessionValue = ControllerSessionState &
         shellLive: boolean;
         decisionRevisions: Readonly<Record<string, string>>;
       }>,
+      options?: Readonly<{ clearObservationKey?: string }>,
     ) => Promise<Readonly<{ delivered: number; terminal: number; pending: number }>>;
     interrupt: (commandId: string, target: ControllerTarget) => Promise<TransportResult>;
   }>;
@@ -165,11 +166,16 @@ export const ControllerSessionProvider = ({ children }: { readonly children: Rea
         shellLive: boolean;
         decisionRevisions: Readonly<Record<string, string>>;
       }>,
+      options?: Readonly<{ clearObservationKey?: string }>,
     ) => {
       if (outbox.phase !== "ready") throw new Error("The command outbox is not ready.");
       const credential = credentialRef.current;
       if (credential === null) throw new Error("Sign in before sending a command.");
-      await outbox.runtime.enqueue(command);
+      if (options?.clearObservationKey === undefined) {
+        await outbox.runtime.enqueue(command);
+      } else {
+        await outbox.runtime.enqueueAndClearObservation(command, options.clearObservationKey);
+      }
       return await outbox.runtime.drain(
         makeControllerTransport({
           credential: () => {

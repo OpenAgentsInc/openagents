@@ -216,6 +216,35 @@ must link the candidate to canonical Work, but that link does not grant Work
 command authority. Both ingress and triage return idempotent receipts whose
 GitHub-write count is structurally zero.
 
+## Semantic transcript projection
+
+`WorkTranscriptPage` is the portable, provider-neutral detail projection used
+by Pro web and the native controller, with generated artifacts for future MCP
+readers and Omega renderers. Its closed
+tagged union covers user/assistant messages, work entries, turn boundaries and
+folds, plans, working state, provider/runtime errors, and approval/input
+requests. It deliberately has no raw provider payload variant.
+
+Each row may retain five independent command acknowledgements: admission,
+effect, turn, quiescence, and verification. Approval/input rows carry the exact
+request revision, expiry, command, effect disclosure, and terminal response.
+`WorkComposerDraft` carries bounded text and typed file, terminal, review, and
+skill references. Both DTOs are live implemented roots with positive and
+negative cross-runtime fixtures.
+
+Browser/native bundles import the generated-only, Node-free subpath:
+
+```ts
+import {
+  WorkComposerDraftSchema,
+  WorkTranscriptPageSchema,
+} from "@openagentsinc/all-work-contract/projection";
+```
+
+The projection grants no command authority. A renderer may show only the
+server-projected choices and acknowledgements; target command admission remains
+with the owning capability/runtime.
+
 ## Generate and verify
 
 ```bash

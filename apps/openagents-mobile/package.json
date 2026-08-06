@@ -17,6 +17,7 @@
     "@noble/hashes": "1.7.1",
     "@openagentsinc/agent-runtime-schema": "0.2.1-rc.4",
     "@openagentsinc/agent-surface": "workspace:*",
+    "@openagentsinc/all-work-contract": "workspace:*",
     "@openagentsinc/audio-contract": "workspace:*",
     "@openagentsinc/behavior-contracts": "workspace:*",
     "@openagentsinc/client-command-outbox": "workspace:*",

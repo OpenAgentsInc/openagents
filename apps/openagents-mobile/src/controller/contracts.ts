@@ -1,4 +1,21 @@
 import { Schema as S } from "effect";
+import {
+  WorkComposerDraftSchema,
+  WorkTranscriptPageSchema,
+  type WorkComposerContext,
+  type WorkComposerDraft,
+  type WorkTranscriptPage,
+  type WorkTranscriptRow,
+} from "@openagentsinc/all-work-contract/projection";
+
+export {
+  WorkComposerDraftSchema,
+  WorkTranscriptPageSchema,
+  type WorkComposerContext,
+  type WorkComposerDraft,
+  type WorkTranscriptPage,
+  type WorkTranscriptRow,
+};
 
 export const MOBILE_CONTROLLER_VERSION = "openagents.mobile_controller.v1" as const;
 
@@ -59,19 +76,6 @@ export class AttentionShell extends S.Class<AttentionShell>("AttentionShell")({
 
 export const AttentionInbox = S.Array(AttentionShell);
 
-export class WorkDetail extends S.Class<WorkDetail>("WorkDetail")({
-  aggregateType: AggregateType,
-  aggregateId: S.String,
-  detailId: S.String,
-  kind: S.String,
-  state: S.String,
-  payload: S.Unknown,
-  recordedAt: S.Number,
-  updatedAt: S.Number,
-}) {}
-
-export const WorkDetails = S.Array(WorkDetail);
-
 export class WorkShell extends S.Class<WorkShell>("WorkShell")({
   aggregateType: AggregateType,
   aggregateId: S.String,
@@ -101,6 +105,9 @@ export type ControllerTarget = Readonly<{
 
 export const decodeControllerBootstrap = S.decodeUnknownSync(ControllerBootstrap);
 export const decodeAttentionInbox = S.decodeUnknownSync(AttentionInbox);
-export const decodeWorkDetails = S.decodeUnknownSync(WorkDetails);
+export const decodeWorkTranscriptPage = (input: unknown): WorkTranscriptPage =>
+  S.decodeUnknownSync(WorkTranscriptPageSchema)(input, { onExcessProperty: "error" });
+export const decodeWorkComposerDraft = (input: unknown): WorkComposerDraft =>
+  S.decodeUnknownSync(WorkComposerDraftSchema)(input, { onExcessProperty: "error" });
 export const decodeWorkShell = S.decodeUnknownSync(S.NullOr(WorkShell));
 export const decodeTransportReceipt = S.decodeUnknownSync(ControllerTransportReceipt);

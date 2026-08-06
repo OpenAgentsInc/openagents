@@ -45,6 +45,8 @@ const FixtureIndexSchema = S.Struct({
         "WorkReadRequestFrame",
         "WorkReadResponseFrame",
         "RepositoryClaimExecuteRequest",
+        "WorkTranscriptPage",
+        "WorkComposerDraft",
       ]),
       valid: S.Boolean,
       canonical: S.Boolean,

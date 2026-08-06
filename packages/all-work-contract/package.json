@@ -15,6 +15,7 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
+    "./projection": "./src/generated.ts",
     "./forensic-prior-work-authority": "./src/forensic-prior-work-authority.ts",
     "./forensic-prior-work-file-store": "./src/forensic-prior-work-file-store.ts",
     "./bootstrap/v0.2.0": "./bootstrap/v0.2.0-github-source.json",

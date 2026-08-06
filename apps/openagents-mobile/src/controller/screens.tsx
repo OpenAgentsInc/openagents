@@ -1,7 +1,7 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useQuery } from "convex/react";
 import * as Crypto from "expo-crypto";
-import { useCallback, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -19,18 +19,22 @@ import {
 } from "react-native";
 
 import { SarahVoiceScreen } from "../screens/sarah-voice-screen";
+import { useMobileClientOutbox } from "../outbox/client-outbox-provider";
 import { Button } from "../ui/button";
 import { Text } from "../ui/text";
 import { colors, radius, spacing, typography } from "../ui/theme";
 import {
   decodeAttentionInbox,
-  decodeWorkDetails,
+  decodeWorkComposerDraft,
+  decodeWorkTranscriptPage,
   decodeWorkShell,
   type AttentionShell,
   type ControllerTarget,
-  type WorkDetail,
+  type WorkComposerContext,
+  type WorkComposerDraft,
+  type WorkTranscriptRow,
 } from "./contracts";
-import { attentionInboxQuery, workDetailsQuery, workShellQuery } from "./convex-functions";
+import { attentionInboxQuery, workShellQuery, workTranscriptQuery } from "./convex-functions";
 import { initialFeedAnchorState, reduceFeedAnchor, shouldMaintainFeedEnd } from "./feed-anchor";
 import { controllerLayout } from "./layout";
 import type { ControllerRouteParams } from "./routes";
@@ -40,19 +44,6 @@ import { createSubmissionGuard } from "./submission-guard";
 type HomeProps = NativeStackScreenProps<ControllerRouteParams, "Home">;
 type ThreadProps = NativeStackScreenProps<ControllerRouteParams, "Thread">;
 
-const payloadObject = (value: unknown): Record<string, unknown> =>
-  value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-
-const payloadText = (detail: WorkDetail): string => {
-  const payload = payloadObject(detail.payload);
-  for (const key of ["text", "summary", "message", "reason"]) {
-    if (typeof payload[key] === "string") return payload[key];
-  }
-  return detail.kind.replaceAll(".", " ");
-};
-
 const formatAge = (timestamp: number): string => {
   const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1_000));
   if (seconds < 60) return "now";
@@ -60,6 +51,15 @@ const formatAge = (timestamp: number): string => {
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
+};
+
+const mobileContextSourceRef = (kind: WorkComposerContext["kind"], label: string): string => {
+  const safe = label
+    .trim()
+    .replace(/[^A-Za-z0-9._:/-]+/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .slice(0, 140);
+  return `${kind}:${safe || "context"}`;
 };
 
 const attentionTone = (state: string): string => {
@@ -262,42 +262,111 @@ export const ControllerHomeScreen = ({ navigation }: HomeProps) => {
   );
 };
 
-const DetailRow = ({ detail }: { readonly detail: WorkDetail }) => {
-  const user = detail.kind === "message.user" || payloadObject(detail.payload).role === "user";
-  const request = detail.kind === "approval.request" || detail.kind === "input.request";
-  if (request) return null;
+const semanticRowText = (row: WorkTranscriptRow): string => {
+  switch (row.kind) {
+    case "user":
+    case "assistant":
+      return row.text;
+    case "work_entry":
+      return row.summary ?? row.body ?? row.title;
+    case "turn_boundary":
+      return row.label;
+    case "folded_turn":
+      return `${row.summary} · ${row.rowCount} rows`;
+    case "proposed_plan":
+      return row.title;
+    case "working_indicator":
+      return row.label;
+    case "provider_error":
+    case "runtime_error":
+      return row.summary;
+    case "approval_request":
+    case "input_request":
+      return row.summary;
+  }
+};
+
+const DetailRow = ({
+  row,
+  onPlanAction,
+}: {
+  readonly row: WorkTranscriptRow;
+  readonly onPlanAction: (
+    row: Extract<WorkTranscriptRow, { readonly kind: "proposed_plan" }>,
+    action: "refine" | "implement",
+  ) => void;
+}) => {
+  const user = row.kind === "user";
+  if (row.kind === "approval_request" || row.kind === "input_request") return null;
   return (
     <View style={user ? $userTurn : $agentTurn}>
       <Text preset="label" color={user ? colors.accentInk : colors.textFaint}>
-        {user ? "YOU" : detail.kind.replaceAll(".", " ").toUpperCase()}
+        {user ? "YOU" : row.kind.replaceAll("_", " ").toUpperCase()}
       </Text>
-      <Text preset={user ? "mono" : "body"}>{payloadText(detail)}</Text>
+      <Text preset={user ? "mono" : "body"}>{semanticRowText(row)}</Text>
+      {row.kind === "user" && row.context.length > 0 ? (
+        <View style={$rowMeta}>
+          {row.context.map((context) => (
+            <Text
+              key={`${context.kind}:${context.sourceRef}`}
+              preset="caption"
+              color={colors.accentInk}
+            >
+              {`${context.kind}: ${context.label}`}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+      {row.kind === "proposed_plan" ? (
+        <View>
+          {row.steps.map((step) => (
+            <Text
+              key={step.id}
+              preset="caption"
+              color={step.state === "completed" ? colors.live : colors.textDim}
+            >
+              {`${step.state === "completed" ? "✓" : "○"} ${step.label}`}
+            </Text>
+          ))}
+          {row.completed ? (
+            <View style={$requestActions}>
+              <Button
+                label="Refine"
+                preset="secondary"
+                onPress={() => onPlanAction(row, "refine")}
+              />
+              <Button label="Implement" onPress={() => onPlanAction(row, "implement")} />
+            </View>
+          ) : null}
+        </View>
+      ) : null}
       <Text preset="label" color={colors.textFaint}>
-        {`${detail.state} · ${formatAge(detail.updatedAt)}`}
+        {`${row.state} · ${formatAge(row.updatedAtMs)}`}
       </Text>
     </View>
   );
 };
 
 const PendingRequestCard = ({
-  detail,
+  row,
   busy,
   onRespond,
   onDisclosure,
 }: {
-  readonly detail: WorkDetail;
+  readonly row: Extract<WorkTranscriptRow, { readonly kind: "approval_request" | "input_request" }>;
   readonly busy: boolean;
   readonly onRespond: (response: string | boolean) => void;
   readonly onDisclosure: (open: boolean) => void;
 }) => {
-  const approval = detail.kind === "approval.request";
+  const approval = row.kind === "approval_request";
   const [answer, setAnswer] = useState("");
   return (
     <View style={$requestCard} accessibilityRole="alert">
       <Text preset="label" color={colors.warn}>
         {approval ? "APPROVAL REQUIRED" : "INPUT REQUIRED"}
       </Text>
-      <Text preset="bodyStrong">{payloadText(detail)}</Text>
+      <Text preset="bodyStrong">{row.summary}</Text>
+      <Text preset="caption" color={colors.textDim}>{`${row.commandName} · ${row.effect}`}</Text>
       {approval ? (
         <View style={$requestActions}>
           <Button label="Approve" disabled={busy} onPress={() => onRespond(true)} />
@@ -336,23 +405,79 @@ const ThreadComposer = ({
   target,
   running,
   pendingRequest,
-  decisionRevision,
+  preset,
   shellLive,
   onDisclosure,
 }: {
   readonly target: ControllerTarget;
   readonly running: boolean;
-  readonly pendingRequest: WorkDetail | null;
-  readonly decisionRevision: string;
+  readonly pendingRequest: Extract<
+    WorkTranscriptRow,
+    { readonly kind: "approval_request" | "input_request" }
+  > | null;
+  readonly preset: Readonly<{
+    key: string;
+    text: string;
+    context: ReadonlyArray<WorkComposerContext>;
+  }> | null;
   readonly shellLive: boolean;
   readonly onDisclosure: (open: boolean) => void;
 }) => {
   const session = useControllerSession();
+  const outbox = useMobileClientOutbox();
   const [draft, setDraft] = useState("");
+  const [context, setContext] = useState<Array<WorkComposerContext>>([]);
+  const [contextKind, setContextKind] = useState<WorkComposerContext["kind"]>("file");
+  const [contextLabel, setContextLabel] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [phase, setPhase] = useState<"idle" | "submitting">("idle");
   const [notice, setNotice] = useState<string | null>(null);
   const submissionGuard = useRef(createSubmissionGuard());
+  const loadedDraftKey = useRef<string | null>(null);
+  const appliedPreset = useRef<string | null>(null);
+  const observationKey = `composer:${target.aggregateType}:${target.aggregateId}`;
+
+  useEffect(() => {
+    if (outbox.phase !== "ready" || loadedDraftKey.current === observationKey) return;
+    loadedDraftKey.current = observationKey;
+    void outbox.runtime
+      .observation({ key: observationKey, connected: true, synchronizing: false })
+      .then((observation) => {
+        if (observation === null) return;
+        const restored = decodeWorkComposerDraft(observation.value);
+        setDraft(restored.text);
+        setContext([...restored.context]);
+      })
+      .catch(() => setNotice("The saved draft could not be restored."));
+  }, [observationKey, outbox]);
+
+  useEffect(() => {
+    if (preset === null || appliedPreset.current === preset.key) return;
+    appliedPreset.current = preset.key;
+    setDraft(preset.text);
+    setContext([...preset.context]);
+    setExpanded(true);
+  }, [preset]);
+
+  useEffect(() => {
+    if (outbox.phase !== "ready" || loadedDraftKey.current !== observationKey) return;
+    const timeout = setTimeout(() => {
+      const value: WorkComposerDraft = {
+        schemaVersion: "openagents.composer_draft.v1",
+        aggregateType: target.aggregateType,
+        aggregateId: target.aggregateId,
+        text: draft.slice(0, 8_000),
+        context: context.slice(0, 16),
+        updatedAtMs: Date.now(),
+      };
+      if (value.text.trim() === "" && value.context.length === 0) {
+        void outbox.runtime.removeObservation(observationKey);
+      } else {
+        void outbox.runtime.cacheObservation(observationKey, value);
+      }
+    }, 250);
+    return () => clearTimeout(timeout);
+  }, [context, draft, observationKey, outbox, target]);
 
   const guarded = useCallback(async (task: () => Promise<void>) => {
     if (submissionGuard.current.phase() !== "idle") return;
@@ -369,26 +494,32 @@ const ThreadComposer = ({
       if (pendingRequest === null) return;
       void guarded(async () => {
         const operation =
-          pendingRequest.kind === "approval.request" ? "approval.respond" : "input.respond";
+          pendingRequest.kind === "approval_request" ? "approval.respond" : "input.respond";
         const summary = await session.enqueueAndDrain(
           {
             commandId: `cmd_mobile_${Crypto.randomUUID()}`,
             operation,
             orderingKey: `${target.aggregateType}:${target.aggregateId}`,
-            payload: { ...target, requestId: pendingRequest.detailId, response },
+            payload: {
+              ...target,
+              requestId: pendingRequest.requestId,
+              decisionRevision: pendingRequest.decisionRevision,
+              expiresAtMs: pendingRequest.expiresAtMs,
+              response,
+            },
             createdAtMs: Date.now(),
-            decisionRevision,
-            expiresAtMs: Date.now() + 5 * 60_000,
+            decisionRevision: pendingRequest.decisionRevision,
+            expiresAtMs: pendingRequest.expiresAtMs,
           },
           {
             shellLive,
-            decisionRevisions: { [operation]: decisionRevision },
+            decisionRevisions: { [operation]: pendingRequest.decisionRevision },
           },
         );
         setNotice(summary.delivered > 0 ? "Response received." : "Response queued for delivery.");
       });
     },
-    [decisionRevision, guarded, pendingRequest, session, shellLive, target],
+    [guarded, pendingRequest, session, shellLive, target],
   );
 
   const send = useCallback(() => {
@@ -400,18 +531,20 @@ const ThreadComposer = ({
           commandId: `cmd_mobile_${Crypto.randomUUID()}`,
           operation: "thread.message.send",
           orderingKey: `${target.aggregateType}:${target.aggregateId}`,
-          payload: { ...target, text },
+          payload: { ...target, text, context },
           createdAtMs: Date.now(),
         },
         { shellLive, decisionRevisions: {} },
+        { clearObservationKey: observationKey },
       );
       setDraft("");
+      setContext([]);
       setExpanded(false);
       setNotice(
         summary.delivered > 0 ? "Message queued." : "Saved offline. It will send when live.",
       );
     });
-  }, [draft, guarded, session, shellLive, target]);
+  }, [context, draft, guarded, observationKey, session, shellLive, target]);
 
   const stop = useCallback(() => {
     void guarded(async () => {
@@ -420,11 +553,25 @@ const ThreadComposer = ({
     });
   }, [guarded, session, target]);
 
+  const addContext = useCallback(() => {
+    const label = contextLabel.trim();
+    if (label === "" || context.length >= 16) return;
+    setContext((current) => [
+      ...current,
+      {
+        kind: contextKind,
+        sourceRef: mobileContextSourceRef(contextKind, label),
+        label: label.slice(0, 160),
+      },
+    ]);
+    setContextLabel("");
+  }, [context.length, contextKind, contextLabel]);
+
   if (pendingRequest !== null) {
     return (
       <View style={$composerRegion}>
         <PendingRequestCard
-          detail={pendingRequest}
+          row={pendingRequest}
           busy={phase === "submitting"}
           onRespond={respond}
           onDisclosure={onDisclosure}
@@ -448,12 +595,65 @@ const ThreadComposer = ({
           style={$composerInput}
         />
         <Button
-          label={running ? "Stop" : "Send"}
-          preset={running ? "danger" : "primary"}
-          disabled={phase === "submitting" || (!running && draft.trim() === "")}
-          onPress={running ? stop : send}
+          label="Send"
+          disabled={phase === "submitting" || draft.trim() === ""}
+          onPress={send}
         />
+        {running ? (
+          <Button label="Stop" preset="danger" disabled={phase === "submitting"} onPress={stop} />
+        ) : null}
       </View>
+      {context.length === 0 ? null : (
+        <View style={$rowMeta}>
+          {context.map((item, index) => (
+            <Pressable
+              accessibilityLabel={`Remove ${item.label} context`}
+              accessibilityRole="button"
+              key={`${item.kind}:${item.sourceRef}:${index}`}
+              onPress={() =>
+                setContext((current) => current.filter((_, itemIndex) => itemIndex !== index))
+              }
+            >
+              <Text
+                preset="caption"
+                color={colors.accentInk}
+              >{`${item.kind}: ${item.label} ×`}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+      {expanded ? (
+        <View style={$inputAnswer}>
+          <Button
+            label={contextKind}
+            preset="secondary"
+            onPress={() => {
+              const kinds: ReadonlyArray<WorkComposerContext["kind"]> = [
+                "file",
+                "terminal",
+                "review",
+                "skill",
+              ];
+              const index = kinds.indexOf(contextKind);
+              setContextKind(kinds[(index + 1) % kinds.length] ?? "file");
+            }}
+          />
+          <TextInput
+            accessibilityLabel="Context reference"
+            value={contextLabel}
+            onChangeText={setContextLabel}
+            placeholder="Add context"
+            placeholderTextColor={colors.textFaint}
+            style={$input}
+          />
+          <Button
+            label="Add"
+            preset="secondary"
+            disabled={contextLabel.trim() === ""}
+            onPress={addContext}
+          />
+        </View>
+      ) : null}
       {notice === null ? null : <Text preset="caption">{notice}</Text>}
     </View>
   );
@@ -470,7 +670,7 @@ const ThreadPane = ({
     aggregateType: target.aggregateType,
     aggregateId: target.aggregateId,
   });
-  const detailsRaw = useQuery(workDetailsQuery, {
+  const transcriptRaw = useQuery(workTranscriptQuery, {
     aggregateType: target.aggregateType,
     aggregateId: target.aggregateId,
     limit: 200,
@@ -479,28 +679,30 @@ const ThreadPane = ({
     () => (shellRaw === undefined ? undefined : decodeWorkShell(shellRaw)),
     [shellRaw],
   );
-  const details = useMemo(
-    () => (detailsRaw === undefined ? [] : decodeWorkDetails(detailsRaw)),
-    [detailsRaw],
-  );
-  const sortedDetails = useMemo(
-    () => details.toSorted((left, right) => left.recordedAt - right.recordedAt),
-    [details],
+  const transcript = useMemo(
+    () => (transcriptRaw === undefined ? undefined : decodeWorkTranscriptPage(transcriptRaw)),
+    [transcriptRaw],
   );
   const pendingRequest = useMemo(() => {
-    for (let index = sortedDetails.length - 1; index >= 0; index -= 1) {
-      const detail = sortedDetails[index];
+    const rows = transcript?.rows ?? [];
+    for (let index = rows.length - 1; index >= 0; index -= 1) {
+      const row = rows[index];
       if (
-        detail !== undefined &&
-        detail.state === "pending" &&
-        (detail.kind === "approval.request" || detail.kind === "input.request")
+        row !== undefined &&
+        row.state === "pending" &&
+        (row.kind === "approval_request" || row.kind === "input_request")
       ) {
-        return detail;
+        return row;
       }
     }
     return null;
-  }, [sortedDetails]);
-  const listRef = useRef<FlatList<WorkDetail>>(null);
+  }, [transcript]);
+  const listRef = useRef<FlatList<WorkTranscriptRow>>(null);
+  const [composerPreset, setComposerPreset] = useState<{
+    key: string;
+    text: string;
+    context: ReadonlyArray<WorkComposerContext>;
+  } | null>(null);
   const [anchor, dispatchAnchor] = useReducer(reduceFeedAnchor, initialFeedAnchorState);
 
   const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -517,18 +719,58 @@ const ThreadPane = ({
     if (!anchor.initialized) dispatchAnchor({ type: "initial_scroll" });
   }, [anchor]);
 
-  const renderDetail = useCallback(
-    ({ item }: ListRenderItemInfo<WorkDetail>) => <DetailRow detail={item} />,
+  const planAction = useCallback(
+    (
+      row: Extract<WorkTranscriptRow, { readonly kind: "proposed_plan" }>,
+      action: "refine" | "implement",
+    ) => {
+      setComposerPreset({
+        key: `${row.planId}:${row.planRevision}:${action}:${Date.now()}`,
+        text:
+          action === "refine"
+            ? `Refine plan ${row.planId} revision ${row.planRevision}: `
+            : `Implement plan ${row.planId} revision ${row.planRevision}.`,
+        context: [
+          {
+            kind: "skill",
+            sourceRef: `skill:plan:${row.planId}`.slice(0, 160),
+            label: `${row.title} · revision ${row.planRevision}`.slice(0, 160),
+          },
+        ],
+      });
+    },
     [],
+  );
+  const renderDetail = useCallback(
+    ({ item }: ListRenderItemInfo<WorkTranscriptRow>) => (
+      <DetailRow row={item} onPlanAction={planAction} />
+    ),
+    [planAction],
+  );
+  const outline = useMemo(
+    () =>
+      (transcript?.rows ?? [])
+        .map((row, index) => ({ row, index }))
+        .filter(({ row }) =>
+          [
+            "user",
+            "proposed_plan",
+            "approval_request",
+            "input_request",
+            "provider_error",
+            "runtime_error",
+            "turn_boundary",
+          ].includes(row.kind),
+        )
+        .slice(-12),
+    [transcript],
   );
   const running = shell?.status === "working" || shell?.status === "queued";
   const targetWithGeneration: ControllerTarget = {
     aggregateType: target.aggregateType,
     aggregateId: target.aggregateId,
-    ...(shell === null || shell === undefined ? {} : { expectedGeneration: shell.generation }),
+    ...(transcript === undefined ? {} : { expectedGeneration: transcript.generation }),
   };
-  const decisionRevision =
-    pendingRequest === null ? "none" : `${pendingRequest.detailId}:${pendingRequest.updatedAt}`;
 
   return (
     <KeyboardAvoidingView
@@ -554,16 +796,50 @@ const ThreadPane = ({
           <Button label="Terminal" preset="ghost" onPress={() => onOpenSurface("Terminal")} />
         </View>
       </View>
-      {detailsRaw === undefined ? (
+      {outline.length < 4 ? null : (
+        <View style={$outline} accessibilityRole="toolbar">
+          <Text preset="label" color={colors.textFaint}>
+            JUMP
+          </Text>
+          {outline.map(({ row, index }) => (
+            <Pressable
+              accessibilityLabel={`Jump to ${row.kind.replaceAll("_", " ")}`}
+              accessibilityRole="button"
+              key={`${row.rowId}:${index}`}
+              onPress={() => listRef.current?.scrollToIndex({ index, viewPosition: 0.5 })}
+              style={$outlineMarker}
+            >
+              <Text
+                preset="label"
+                color={
+                  row.kind === "approval_request" || row.kind === "input_request"
+                    ? colors.warn
+                    : row.kind === "provider_error" || row.kind === "runtime_error"
+                      ? colors.fault
+                      : colors.textDim
+                }
+              >
+                •
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+      {transcript === undefined ? (
         <View style={$center}>
           <ActivityIndicator color={colors.accent} />
         </View>
       ) : (
         <FlatList
           ref={listRef}
-          data={sortedDetails}
+          data={transcript.rows}
           renderItem={renderDetail}
-          keyExtractor={(item) => item.detailId}
+          keyExtractor={(item) => item.rowId}
+          ListHeaderComponent={
+            transcript.hasOlder ? (
+              <Text preset="caption">Older rows are outside this bounded 200-row window.</Text>
+            ) : null
+          }
           contentContainerStyle={$feedContent}
           maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 24 }}
           onScroll={onScroll}
@@ -579,7 +855,7 @@ const ThreadPane = ({
         target={targetWithGeneration}
         running={running}
         pendingRequest={pendingRequest}
-        decisionRevision={decisionRevision}
+        preset={composerPreset}
         shellLive={shell !== undefined && shell !== null}
         onDisclosure={(open) => dispatchAnchor({ type: "disclosure", open })}
       />
@@ -675,6 +951,21 @@ export const ControllerSarahVoiceScreen = ({
 
 const $root: ViewStyle = { flex: 1, backgroundColor: colors.background };
 const $grow: ViewStyle = { flex: 1 };
+const $outline: ViewStyle = {
+  minHeight: 28,
+  paddingHorizontal: spacing.medium,
+  flexDirection: "row",
+  alignItems: "center",
+  gap: spacing.tiny,
+  borderBottomWidth: 1,
+  borderBottomColor: colors.borderQuiet,
+};
+const $outlineMarker: ViewStyle = {
+  minWidth: 20,
+  minHeight: 20,
+  alignItems: "center",
+  justifyContent: "center",
+};
 const $adaptiveRow: ViewStyle = { flex: 1, flexDirection: "row" };
 const $workspaceHeader: ViewStyle = {
   minHeight: 64,

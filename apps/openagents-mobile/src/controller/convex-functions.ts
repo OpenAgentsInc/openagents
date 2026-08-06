@@ -1,6 +1,6 @@
 import { makeFunctionReference } from "convex/server";
 
-import type { AttentionShell, AggregateType, WorkDetail, WorkShell } from "./contracts";
+import type { AttentionShell, AggregateType, WorkShell, WorkTranscriptPage } from "./contracts";
 
 export const attentionInboxQuery = makeFunctionReference<
   "query",
@@ -8,11 +8,11 @@ export const attentionInboxQuery = makeFunctionReference<
   ReadonlyArray<AttentionShell>
 >("workShells:attentionInbox");
 
-export const workDetailsQuery = makeFunctionReference<
+export const workTranscriptQuery = makeFunctionReference<
   "query",
   { aggregateType: AggregateType; aggregateId: string; limit?: number },
-  ReadonlyArray<WorkDetail>
->("workShells:listDetails");
+  WorkTranscriptPage
+>("workShells:listTranscript");
 
 export const workShellQuery = makeFunctionReference<
   "query",

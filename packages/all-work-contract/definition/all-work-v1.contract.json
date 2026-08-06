@@ -81,7 +81,9 @@
     "StrictBugCandidateReceipt",
     "StrictBugCandidateExecuteResult",
     "StrictBugCandidateReadRequest",
-    "StrictBugCandidateReadResult"
+    "StrictBugCandidateReadResult",
+    "WorkTranscriptPage",
+    "WorkComposerDraft"
   ],
   "semanticChecks": [
     "issue_projection_work_ref_matches_snapshot_work_ref",
@@ -107,7 +109,10 @@
     "organization_membership_reads_are_account_principal_and_generation_fenced",
     "strict_bug_ingress_is_untrusted_until_explicit_disposition",
     "strict_bug_ingress_is_delivery_idempotent_and_public_safe",
-    "strict_bug_candidate_admission_does_not_grant_command_authority"
+    "strict_bug_candidate_admission_does_not_grant_command_authority",
+    "transcript_rows_are_semantic_projections_not_provider_messages",
+    "transcript_acknowledgements_remain_independent",
+    "transcript_decisions_bind_exact_revision_and_expiry"
   ],
   "types": [
     {
@@ -1957,6 +1962,401 @@
       "fields": [{ "name": "ledger", "type": "StrictBugCandidateLedger" }]
     },
     {
+      "name": "WorkTranscriptVersion",
+      "kind": "enum",
+      "values": ["openagents.work_transcript.v1"]
+    },
+    {
+      "name": "WorkTranscriptText",
+      "kind": "string",
+      "minLength": 1,
+      "maxLength": 8000,
+      "formatClass": "text"
+    },
+    {
+      "name": "WorkComposerText",
+      "kind": "string",
+      "minLength": 0,
+      "maxLength": 8000,
+      "formatClass": "text"
+    },
+    {
+      "name": "WorkTranscriptLineNumber",
+      "kind": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    {
+      "name": "WorkTranscriptLimit",
+      "kind": "integer",
+      "minimum": 1,
+      "maximum": 200
+    },
+    {
+      "name": "WorkTranscriptReturned",
+      "kind": "integer",
+      "minimum": 0,
+      "maximum": 201
+    },
+    {
+      "name": "WorkTranscriptRowCount",
+      "kind": "integer",
+      "minimum": 0,
+      "maximum": 10000
+    },
+    {
+      "name": "WorkTranscriptRef",
+      "kind": "string",
+      "minLength": 1,
+      "maxLength": 320,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,319}$",
+      "formatClass": "reference"
+    },
+    {
+      "name": "WorkComposerDraftVersion",
+      "kind": "enum",
+      "values": ["openagents.composer_draft.v1"]
+    },
+    {
+      "name": "WorkTranscriptAggregateType",
+      "kind": "enum",
+      "values": ["thread", "issue", "order"]
+    },
+    {
+      "name": "WorkTranscriptRowState",
+      "kind": "enum",
+      "values": ["pending", "active", "resolved", "completed", "failed"]
+    },
+    {
+      "name": "WorkTranscriptAdmissionState",
+      "kind": "enum",
+      "values": ["admitted", "rejected"]
+    },
+    {
+      "name": "WorkTranscriptEffectState",
+      "kind": "enum",
+      "values": ["not_requested", "pending", "claimed", "completed", "failed"]
+    },
+    {
+      "name": "WorkTranscriptTurnState",
+      "kind": "enum",
+      "values": ["not_started", "queued", "running", "completed", "failed"]
+    },
+    {
+      "name": "WorkTranscriptQuiescenceState",
+      "kind": "enum",
+      "values": ["not_quiesced", "quiesced"]
+    },
+    {
+      "name": "WorkTranscriptVerificationState",
+      "kind": "enum",
+      "values": ["unverified", "pending", "verified", "failed"]
+    },
+    {
+      "name": "WorkTranscriptPlanStepState",
+      "kind": "enum",
+      "values": ["pending", "working", "completed", "failed"]
+    },
+    {
+      "name": "WorkTranscriptFollowUpKind",
+      "kind": "enum",
+      "values": ["refine", "implement"]
+    },
+    {
+      "name": "WorkComposerContext",
+      "kind": "taggedUnion",
+      "discriminator": "kind",
+      "variants": [
+        {
+          "name": "File",
+          "tag": "file",
+          "fields": [
+            { "name": "sourceRef", "type": "SourceRef" },
+            { "name": "label", "type": "ShortText" },
+            { "name": "lineStart", "type": { "optional": "WorkTranscriptLineNumber" } },
+            { "name": "lineEnd", "type": { "optional": "WorkTranscriptLineNumber" } }
+          ]
+        },
+        {
+          "name": "Terminal",
+          "tag": "terminal",
+          "fields": [
+            { "name": "sourceRef", "type": "SourceRef" },
+            { "name": "label", "type": "ShortText" }
+          ]
+        },
+        {
+          "name": "Review",
+          "tag": "review",
+          "fields": [
+            { "name": "sourceRef", "type": "SourceRef" },
+            { "name": "label", "type": "ShortText" }
+          ]
+        },
+        {
+          "name": "Skill",
+          "tag": "skill",
+          "fields": [
+            { "name": "sourceRef", "type": "SourceRef" },
+            { "name": "label", "type": "ShortText" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "WorkTranscriptAcknowledgements",
+      "kind": "record",
+      "fields": [
+        { "name": "commandId", "type": "IntentRef" },
+        { "name": "admission", "type": "WorkTranscriptAdmissionState" },
+        { "name": "effect", "type": "WorkTranscriptEffectState" },
+        { "name": "turn", "type": "WorkTranscriptTurnState" },
+        { "name": "quiescence", "type": "WorkTranscriptQuiescenceState" },
+        { "name": "verification", "type": "WorkTranscriptVerificationState" }
+      ]
+    },
+    {
+      "name": "WorkTranscriptPlanStep",
+      "kind": "record",
+      "fields": [
+        { "name": "id", "type": "SourceRef" },
+        { "name": "label", "type": "ShortText" },
+        { "name": "state", "type": "WorkTranscriptPlanStepState" }
+      ]
+    },
+    {
+      "name": "WorkTranscriptPlanFollowUp",
+      "kind": "record",
+      "fields": [
+        { "name": "kind", "type": "WorkTranscriptFollowUpKind" },
+        { "name": "label", "type": "ShortText" }
+      ]
+    },
+    {
+      "name": "WorkTranscriptResponse",
+      "kind": "taggedUnion",
+      "discriminator": "kind",
+      "variants": [
+        {
+          "name": "Boolean",
+          "tag": "boolean",
+          "fields": [{ "name": "value", "type": "boolean" }]
+        },
+        {
+          "name": "Text",
+          "tag": "text",
+          "fields": [{ "name": "value", "type": "LongText" }]
+        }
+      ]
+    },
+    {
+      "name": "WorkTranscriptRow",
+      "kind": "taggedUnion",
+      "discriminator": "kind",
+      "variants": [
+        {
+          "name": "User",
+          "tag": "user",
+          "fields": [
+            { "name": "schemaVersion", "type": "WorkTranscriptVersion" },
+            { "name": "rowId", "type": "WorkTranscriptRef" },
+            { "name": "state", "type": "WorkTranscriptRowState" },
+            { "name": "recordedAtMs", "type": "SafeInteger" },
+            { "name": "updatedAtMs", "type": "SafeInteger" },
+            { "name": "acknowledgements", "type": { "nullable": "WorkTranscriptAcknowledgements" } },
+            { "name": "text", "type": "WorkTranscriptText" },
+            { "name": "context", "type": { "array": "WorkComposerContext", "maxItems": 16 } }
+          ]
+        },
+        {
+          "name": "Assistant",
+          "tag": "assistant",
+          "fields": [
+            { "name": "schemaVersion", "type": "WorkTranscriptVersion" },
+            { "name": "rowId", "type": "WorkTranscriptRef" },
+            { "name": "state", "type": "WorkTranscriptRowState" },
+            { "name": "recordedAtMs", "type": "SafeInteger" },
+            { "name": "updatedAtMs", "type": "SafeInteger" },
+            { "name": "acknowledgements", "type": { "nullable": "WorkTranscriptAcknowledgements" } },
+            { "name": "text", "type": "WorkTranscriptText" }
+          ]
+        },
+        {
+          "name": "WorkEntry",
+          "tag": "work_entry",
+          "fields": [
+            { "name": "schemaVersion", "type": "WorkTranscriptVersion" },
+            { "name": "rowId", "type": "WorkTranscriptRef" },
+            { "name": "state", "type": "WorkTranscriptRowState" },
+            { "name": "recordedAtMs", "type": "SafeInteger" },
+            { "name": "updatedAtMs", "type": "SafeInteger" },
+            { "name": "acknowledgements", "type": { "nullable": "WorkTranscriptAcknowledgements" } },
+            { "name": "entryKind", "type": "ShortText" },
+            { "name": "title", "type": "ShortText" },
+            { "name": "summary", "type": { "nullable": "LongText" } },
+            { "name": "body", "type": { "nullable": "LongText" } }
+          ]
+        },
+        {
+          "name": "TurnBoundary",
+          "tag": "turn_boundary",
+          "fields": [
+            { "name": "schemaVersion", "type": "WorkTranscriptVersion" },
+            { "name": "rowId", "type": "WorkTranscriptRef" },
+            { "name": "state", "type": "WorkTranscriptRowState" },
+            { "name": "recordedAtMs", "type": "SafeInteger" },
+            { "name": "updatedAtMs", "type": "SafeInteger" },
+            { "name": "acknowledgements", "type": { "nullable": "WorkTranscriptAcknowledgements" } },
+            { "name": "turnId", "type": "WorkTranscriptRef" },
+            { "name": "label", "type": "ShortText" }
+          ]
+        },
+        {
+          "name": "FoldedTurn",
+          "tag": "folded_turn",
+          "fields": [
+            { "name": "schemaVersion", "type": "WorkTranscriptVersion" },
+            { "name": "rowId", "type": "WorkTranscriptRef" },
+            { "name": "state", "type": "WorkTranscriptRowState" },
+            { "name": "recordedAtMs", "type": "SafeInteger" },
+            { "name": "updatedAtMs", "type": "SafeInteger" },
+            { "name": "acknowledgements", "type": { "nullable": "WorkTranscriptAcknowledgements" } },
+            { "name": "turnId", "type": "WorkTranscriptRef" },
+            { "name": "summary", "type": "LongText" },
+            { "name": "rowCount", "type": "WorkTranscriptRowCount" }
+          ]
+        },
+        {
+          "name": "ProposedPlan",
+          "tag": "proposed_plan",
+          "fields": [
+            { "name": "schemaVersion", "type": "WorkTranscriptVersion" },
+            { "name": "rowId", "type": "WorkTranscriptRef" },
+            { "name": "state", "type": "WorkTranscriptRowState" },
+            { "name": "recordedAtMs", "type": "SafeInteger" },
+            { "name": "updatedAtMs", "type": "SafeInteger" },
+            { "name": "acknowledgements", "type": { "nullable": "WorkTranscriptAcknowledgements" } },
+            { "name": "planId", "type": "WorkTranscriptRef" },
+            { "name": "planRevision", "type": "SafeInteger" },
+            { "name": "title", "type": "ShortText" },
+            { "name": "completed", "type": "boolean" },
+            { "name": "steps", "type": { "array": "WorkTranscriptPlanStep", "maxItems": 64 } },
+            { "name": "followUps", "type": { "array": "WorkTranscriptPlanFollowUp", "maxItems": 2 } }
+          ]
+        },
+        {
+          "name": "WorkingIndicator",
+          "tag": "working_indicator",
+          "fields": [
+            { "name": "schemaVersion", "type": "WorkTranscriptVersion" },
+            { "name": "rowId", "type": "WorkTranscriptRef" },
+            { "name": "state", "type": "WorkTranscriptRowState" },
+            { "name": "recordedAtMs", "type": "SafeInteger" },
+            { "name": "updatedAtMs", "type": "SafeInteger" },
+            { "name": "acknowledgements", "type": { "nullable": "WorkTranscriptAcknowledgements" } },
+            { "name": "label", "type": "ShortText" }
+          ]
+        },
+        {
+          "name": "ProviderError",
+          "tag": "provider_error",
+          "fields": [
+            { "name": "schemaVersion", "type": "WorkTranscriptVersion" },
+            { "name": "rowId", "type": "WorkTranscriptRef" },
+            { "name": "state", "type": "WorkTranscriptRowState" },
+            { "name": "recordedAtMs", "type": "SafeInteger" },
+            { "name": "updatedAtMs", "type": "SafeInteger" },
+            { "name": "acknowledgements", "type": { "nullable": "WorkTranscriptAcknowledgements" } },
+            { "name": "summary", "type": "LongText" },
+            { "name": "detail", "type": { "nullable": "LongText" } },
+            { "name": "retryable", "type": "boolean" }
+          ]
+        },
+        {
+          "name": "RuntimeError",
+          "tag": "runtime_error",
+          "fields": [
+            { "name": "schemaVersion", "type": "WorkTranscriptVersion" },
+            { "name": "rowId", "type": "WorkTranscriptRef" },
+            { "name": "state", "type": "WorkTranscriptRowState" },
+            { "name": "recordedAtMs", "type": "SafeInteger" },
+            { "name": "updatedAtMs", "type": "SafeInteger" },
+            { "name": "acknowledgements", "type": { "nullable": "WorkTranscriptAcknowledgements" } },
+            { "name": "summary", "type": "LongText" },
+            { "name": "detail", "type": { "nullable": "LongText" } },
+            { "name": "retryable", "type": "boolean" }
+          ]
+        },
+        {
+          "name": "ApprovalRequest",
+          "tag": "approval_request",
+          "fields": [
+            { "name": "schemaVersion", "type": "WorkTranscriptVersion" },
+            { "name": "rowId", "type": "WorkTranscriptRef" },
+            { "name": "state", "type": "WorkTranscriptRowState" },
+            { "name": "recordedAtMs", "type": "SafeInteger" },
+            { "name": "updatedAtMs", "type": "SafeInteger" },
+            { "name": "acknowledgements", "type": { "nullable": "WorkTranscriptAcknowledgements" } },
+            { "name": "requestId", "type": "WorkTranscriptRef" },
+            { "name": "summary", "type": "LongText" },
+            { "name": "commandName", "type": "ShortText" },
+            { "name": "effect", "type": "LongText" },
+            { "name": "decisionRevision", "type": "WorkTranscriptRef" },
+            { "name": "expiresAtMs", "type": "SafeInteger" },
+            { "name": "response", "type": { "nullable": "WorkTranscriptResponse" } }
+          ]
+        },
+        {
+          "name": "InputRequest",
+          "tag": "input_request",
+          "fields": [
+            { "name": "schemaVersion", "type": "WorkTranscriptVersion" },
+            { "name": "rowId", "type": "WorkTranscriptRef" },
+            { "name": "state", "type": "WorkTranscriptRowState" },
+            { "name": "recordedAtMs", "type": "SafeInteger" },
+            { "name": "updatedAtMs", "type": "SafeInteger" },
+            { "name": "acknowledgements", "type": { "nullable": "WorkTranscriptAcknowledgements" } },
+            { "name": "requestId", "type": "WorkTranscriptRef" },
+            { "name": "summary", "type": "LongText" },
+            { "name": "commandName", "type": "ShortText" },
+            { "name": "effect", "type": "LongText" },
+            { "name": "decisionRevision", "type": "WorkTranscriptRef" },
+            { "name": "expiresAtMs", "type": "SafeInteger" },
+            { "name": "response", "type": { "nullable": "WorkTranscriptResponse" } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "WorkTranscriptPage",
+      "kind": "record",
+      "fields": [
+        { "name": "schemaVersion", "type": "WorkTranscriptVersion" },
+        { "name": "aggregateType", "type": "WorkTranscriptAggregateType" },
+        { "name": "aggregateId", "type": "WorkTranscriptRef" },
+        { "name": "generation", "type": "SafeInteger" },
+        { "name": "status", "type": "ShortText" },
+        { "name": "limit", "type": "WorkTranscriptLimit" },
+        { "name": "returned", "type": "WorkTranscriptReturned" },
+        { "name": "hasOlder", "type": "boolean" },
+        { "name": "oldestRecordedAtMs", "type": { "nullable": "SafeInteger" } },
+        { "name": "newestRecordedAtMs", "type": { "nullable": "SafeInteger" } },
+        { "name": "rows", "type": { "array": "WorkTranscriptRow", "maxItems": 201 } }
+      ]
+    },
+    {
+      "name": "WorkComposerDraft",
+      "kind": "record",
+      "fields": [
+        { "name": "schemaVersion", "type": "WorkComposerDraftVersion" },
+        { "name": "aggregateType", "type": "WorkTranscriptAggregateType" },
+        { "name": "aggregateId", "type": "WorkTranscriptRef" },
+        { "name": "text", "type": "WorkComposerText" },
+        { "name": "context", "type": { "array": "WorkComposerContext", "maxItems": 16 } },
+        { "name": "updatedAtMs", "type": "SafeInteger" }
+      ]
+    },
+    {
       "name": "ProtocolCapability",
       "kind": "enum",
       "values": [
@@ -2535,6 +2935,8 @@
     "StrictBugCandidateExecuteResult",
     "StrictBugCandidateReadRequest",
     "StrictBugCandidateReadResult",
+    "WorkTranscriptPage",
+    "WorkComposerDraft",
     "IssueProjection",
     "ProtocolError",
     "ProtocolInitializeRequest",
@@ -3061,6 +3463,131 @@
         "id": "request-bad",
         "version": "omega-effectd.v2",
         "params": {}
+      }
+    },
+    {
+      "file": "valid/work-transcript-page.json",
+      "schema": "WorkTranscriptPage",
+      "valid": true,
+      "value": {
+        "schemaVersion": "openagents.work_transcript.v1",
+        "aggregateType": "thread",
+        "aggregateId": "thread:fixture:41",
+        "generation": 7,
+        "status": "working",
+        "limit": 200,
+        "returned": 3,
+        "hasOlder": true,
+        "oldestRecordedAtMs": 1786046400000,
+        "newestRecordedAtMs": 1786046402000,
+        "rows": [
+          {
+            "kind": "user",
+            "schemaVersion": "openagents.work_transcript.v1",
+            "rowId": "row:user:1",
+            "state": "completed",
+            "recordedAtMs": 1786046400000,
+            "updatedAtMs": 1786046400000,
+            "acknowledgements": {
+              "commandId": "cmd:fixture:1",
+              "admission": "admitted",
+              "effect": "completed",
+              "turn": "completed",
+              "quiescence": "quiesced",
+              "verification": "verified"
+            },
+            "text": "Implement the approved plan.",
+            "context": [
+              {
+                "kind": "file",
+                "sourceRef": "file:src/controller.ts",
+                "label": "controller.ts",
+                "lineStart": 12,
+                "lineEnd": 40
+              }
+            ]
+          },
+          {
+            "kind": "proposed_plan",
+            "schemaVersion": "openagents.work_transcript.v1",
+            "rowId": "row:plan:1",
+            "state": "completed",
+            "recordedAtMs": 1786046401000,
+            "updatedAtMs": 1786046401000,
+            "acknowledgements": null,
+            "planId": "plan:fixture:1",
+            "planRevision": 2,
+            "title": "Controller rollout",
+            "completed": true,
+            "steps": [
+              { "id": "step:1", "label": "Publish projection", "state": "completed" }
+            ],
+            "followUps": [
+              { "kind": "refine", "label": "Refine" },
+              { "kind": "implement", "label": "Implement" }
+            ]
+          },
+          {
+            "kind": "approval_request",
+            "schemaVersion": "openagents.work_transcript.v1",
+            "rowId": "row:approval:1",
+            "state": "pending",
+            "recordedAtMs": 1786046402000,
+            "updatedAtMs": 1786046402000,
+            "acknowledgements": null,
+            "requestId": "request:approval:1",
+            "summary": "Deploy the controller",
+            "commandName": "controller.deploy",
+            "effect": "Deploy the current verified build to production.",
+            "decisionRevision": "request:approval:1:revision:1",
+            "expiresAtMs": 1786047302000,
+            "response": null
+          }
+        ]
+      }
+    },
+    {
+      "file": "valid/work-composer-draft.json",
+      "schema": "WorkComposerDraft",
+      "valid": true,
+      "value": {
+        "schemaVersion": "openagents.composer_draft.v1",
+        "aggregateType": "thread",
+        "aggregateId": "thread:fixture:41",
+        "text": "",
+        "context": [
+          { "kind": "skill", "sourceRef": "skill:verification", "label": "Verification" }
+        ],
+        "updatedAtMs": 1786046400000
+      }
+    },
+    {
+      "file": "invalid/work-transcript-unknown-kind.json",
+      "schema": "WorkTranscriptPage",
+      "valid": false,
+      "value": {
+        "schemaVersion": "openagents.work_transcript.v1",
+        "aggregateType": "thread",
+        "aggregateId": "thread:fixture:41",
+        "generation": 7,
+        "status": "working",
+        "limit": 200,
+        "returned": 1,
+        "hasOlder": false,
+        "oldestRecordedAtMs": 1786046400000,
+        "newestRecordedAtMs": 1786046400000,
+        "rows": [
+          {
+            "kind": "provider_raw_message",
+            "schemaVersion": "openagents.work_transcript.v1",
+            "rowId": "row:raw:1",
+            "state": "active",
+            "recordedAtMs": 1786046400000,
+            "updatedAtMs": 1786046400000,
+            "acknowledgements": null,
+            "text": "Raw provider payload"
+          }
+        ]
       }
     }
   ]

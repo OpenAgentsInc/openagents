@@ -392,6 +392,9 @@ importers:
       '@openagentsinc/agent-surface':
         specifier: workspace:*
         version: link:../../packages/agent-surface
+      '@openagentsinc/all-work-contract':
+        specifier: workspace:*
+        version: link:../../packages/all-work-contract
       '@openagentsinc/audio-contract':
         specifier: workspace:*
         version: link:../../packages/audio-contract

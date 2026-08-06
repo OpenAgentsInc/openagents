@@ -14,12 +14,17 @@ type SqliteBinding = string | number | null | Uint8Array;
 
 export interface ExpoSqliteTransaction {
   readonly runAsync: (sql: string, ...params: ReadonlyArray<SqliteBinding>) => Promise<unknown>;
-  readonly getAllAsync: <Row>(sql: string, ...params: ReadonlyArray<SqliteBinding>) => Promise<Array<Row>>;
+  readonly getAllAsync: <Row>(
+    sql: string,
+    ...params: ReadonlyArray<SqliteBinding>
+  ) => Promise<Array<Row>>;
 }
 
 export interface ExpoSqliteDatabase extends ExpoSqliteTransaction {
   readonly execAsync: (sql: string) => Promise<void>;
-  readonly withExclusiveTransactionAsync: (task: (transaction: ExpoSqliteTransaction) => Promise<void>) => Promise<void>;
+  readonly withExclusiveTransactionAsync: (
+    task: (transaction: ExpoSqliteTransaction) => Promise<void>,
+  ) => Promise<void>;
 }
 
 interface RawRow {
@@ -39,10 +44,14 @@ interface CacheRow {
   readonly observed_at_ms: number;
 }
 
-const decodeJson = <Schema extends S.ConstraintDecoder<unknown, never>>(schema: Schema, raw: string): Schema["Type"] =>
+const decodeJson = <Schema extends S.ConstraintDecoder<unknown, never>>(
+  schema: Schema,
+  raw: string,
+): Schema["Type"] =>
   S.decodeUnknownSync(schema)(JSON.parse(raw) as unknown, { onExcessProperty: "error" });
 
-const opaqueRaw = (raw: string): string => `redacted:sha256:${bytesToHex(sha256(utf8ToBytes(raw)))}`;
+const opaqueRaw = (raw: string): string =>
+  `redacted:sha256:${bytesToHex(sha256(utf8ToBytes(raw)))}`;
 
 const storageFailure = (action: string, error: unknown): OutboxStorageError =>
   new OutboxStorageError({ action, error });
@@ -78,7 +87,9 @@ export const initializeExpoSqliteOutbox = async (database: ExpoSqliteDatabase): 
   `);
 };
 
-export const makeExpoSqliteOutboxLayer = (database: ExpoSqliteDatabase): Layer.Layer<ClientOutboxStore> =>
+export const makeExpoSqliteOutboxLayer = (
+  database: ExpoSqliteDatabase,
+): Layer.Layer<ClientOutboxStore> =>
   Layer.succeed(ClientOutboxStore, {
     put: (command) =>
       Effect.tryPromise({
@@ -142,7 +153,10 @@ export const makeExpoSqliteOutboxLayer = (database: ExpoSqliteDatabase): Layer.L
                     recordedAtMs,
                   }),
                 );
-                await transaction.runAsync("DELETE FROM client_command_outbox WHERE command_id = ?", row.command_id);
+                await transaction.runAsync(
+                  "DELETE FROM client_command_outbox WHERE command_id = ?",
+                  row.command_id,
+                );
               }
             }
           });
@@ -152,7 +166,10 @@ export const makeExpoSqliteOutboxLayer = (database: ExpoSqliteDatabase): Layer.L
       }),
     remove: (commandId) =>
       Effect.tryPromise({
-        try: () => database.runAsync("DELETE FROM client_command_outbox WHERE command_id = ?", commandId).then(() => undefined),
+        try: () =>
+          database
+            .runAsync("DELETE FROM client_command_outbox WHERE command_id = ?", commandId)
+            .then(() => undefined),
         catch: (error) => storageFailure("remove", error),
       }),
     recordReceipt: (receipt) =>
@@ -184,7 +201,9 @@ export const makeExpoSqliteOutboxLayer = (database: ExpoSqliteDatabase): Layer.L
       }),
   });
 
-export const listExpoSqliteReceipts = async (database: ExpoSqliteDatabase): Promise<ReadonlyArray<CommandReceipt>> => {
+export const listExpoSqliteReceipts = async (
+  database: ExpoSqliteDatabase,
+): Promise<ReadonlyArray<CommandReceipt>> => {
   const rows = await database.getAllAsync<RawRow>(
     "SELECT raw FROM client_command_receipts ORDER BY recorded_at_ms, command_id",
   );
@@ -231,5 +250,48 @@ export const readExpoObservationCache = async (
   const row = rows[0];
   return row === undefined
     ? null
-    : new ObservationCacheEntry({ key: row.cache_key, valueJson: row.value_json, observedAtMs: row.observed_at_ms });
+    : new ObservationCacheEntry({
+        key: row.cache_key,
+        valueJson: row.value_json,
+        observedAtMs: row.observed_at_ms,
+      });
+};
+
+export const deleteExpoObservationCache = async (
+  database: ExpoSqliteDatabase,
+  key: string,
+): Promise<void> => {
+  await database.runAsync("DELETE FROM client_observation_cache WHERE cache_key = ?", key);
+};
+
+/** Admits the command and removes the matching draft in one SQLite transaction. */
+export const putExpoSqliteCommandAndDeleteObservation = async (
+  database: ExpoSqliteDatabase,
+  command: QueuedCommand,
+  observationKey: string,
+): Promise<void> => {
+  await database.withExclusiveTransactionAsync(async (transaction) => {
+    const existing = await transaction.getAllAsync<RawRow>(
+      "SELECT raw FROM client_command_outbox WHERE command_id = ?",
+      command.commandId,
+    );
+    if (existing[0] !== undefined) {
+      const persisted = decodeJson(QueuedCommand, existing[0].raw);
+      if (persisted.fingerprint !== command.fingerprint) {
+        throw new Error("A command ID cannot identify two fingerprints.");
+      }
+    } else {
+      await transaction.runAsync(
+        "INSERT INTO client_command_outbox (command_id, ordering_key, created_at_ms, raw) VALUES (?, ?, ?, ?)",
+        command.commandId,
+        command.orderingKey,
+        command.createdAtMs,
+        JSON.stringify(command),
+      );
+    }
+    await transaction.runAsync(
+      "DELETE FROM client_observation_cache WHERE cache_key = ?",
+      observationKey,
+    );
+  });
 };

@@ -17,6 +17,7 @@ import {
   listExpoSqliteQuarantine,
   listExpoSqliteReceipts,
   makeExpoSqliteOutboxLayer,
+  putExpoSqliteCommandAndDeleteObservation,
   readExpoObservationCache,
   writeExpoObservationCache,
   type ExpoSqliteDatabase,
@@ -30,8 +31,10 @@ const openTestDatabase = (): ExpoSqliteDatabase => {
   databases.push(node);
   const transaction = (database: NodeTestDatabase): ExpoSqliteTransaction => ({
     runAsync: async (sql, ...params) => database.run(sql, ...params),
-    getAllAsync: async <Row,>(sql: string, ...params: ReadonlyArray<string | number | null | Uint8Array>) =>
-      database.query<Row>(sql).all(...params),
+    getAllAsync: async <Row>(
+      sql: string,
+      ...params: ReadonlyArray<string | number | null | Uint8Array>
+    ) => database.query<Row>(sql).all(...params),
   });
   return {
     ...transaction(node),
@@ -66,9 +69,14 @@ describe("Expo SQLite client outbox", () => {
           attempts += 1;
           if (attempts === 1) {
             effects += 1;
-            return Effect.fail(new OutboxTransportError({ detail: "Response lost after commit.", retryable: true }));
+            return Effect.fail(
+              new OutboxTransportError({ detail: "Response lost after commit.", retryable: true }),
+            );
           }
-          return Effect.succeed({ status: "duplicate" as const, receiptRef: `receipt.convex.${command.commandId}` });
+          return Effect.succeed({
+            status: "duplicate" as const,
+            receiptRef: `receipt.convex.${command.commandId}`,
+          });
         }),
     });
     const layer = Layer.merge(storeLayer, transportLayer);
@@ -85,27 +93,31 @@ describe("Expo SQLite client outbox", () => {
     const afterRelaunch = makeExpoSqliteOutboxLayer(database);
     const reloadedLayer = Layer.merge(afterRelaunch, transportLayer);
     const pending = await Effect.runPromise(
-      drainClientOutbox({ convexConnected: false, shellLive: true, decisionRevisions: {} }, 110).pipe(
-        Effect.provide(reloadedLayer),
-      ),
+      drainClientOutbox(
+        { convexConnected: false, shellLive: true, decisionRevisions: {} },
+        110,
+      ).pipe(Effect.provide(reloadedLayer)),
     );
     expect(pending.pending).toBe(1);
     expect(attempts).toBe(0);
 
     await Effect.runPromise(
-      drainClientOutbox({ convexConnected: true, shellLive: true, decisionRevisions: {} }, 120).pipe(
-        Effect.provide(reloadedLayer),
-      ),
+      drainClientOutbox(
+        { convexConnected: true, shellLive: true, decisionRevisions: {} },
+        120,
+      ).pipe(Effect.provide(reloadedLayer)),
     );
     await Effect.runPromise(
-      drainClientOutbox({ convexConnected: true, shellLive: true, decisionRevisions: {} }, 130).pipe(
-        Effect.provide(reloadedLayer),
-      ),
+      drainClientOutbox(
+        { convexConnected: true, shellLive: true, decisionRevisions: {} },
+        130,
+      ).pipe(Effect.provide(reloadedLayer)),
     );
     await Effect.runPromise(
-      drainClientOutbox({ convexConnected: true, shellLive: true, decisionRevisions: {} }, 140).pipe(
-        Effect.provide(reloadedLayer),
-      ),
+      drainClientOutbox(
+        { convexConnected: true, shellLive: true, decisionRevisions: {} },
+        140,
+      ).pipe(Effect.provide(reloadedLayer)),
     );
     expect(attempts).toBe(2);
     expect(effects).toBe(1);
@@ -160,13 +172,48 @@ describe("Expo SQLite client outbox", () => {
     await initializeExpoSqliteOutbox(database);
     await writeExpoObservationCache(
       database,
-      new ObservationCacheEntry({ key: "shell", valueJson: '{"state":"running"}', observedAtMs: 100 }),
+      new ObservationCacheEntry({
+        key: "shell",
+        valueJson: '{"state":"running"}',
+        observedAtMs: 100,
+      }),
     );
     const entry = await readExpoObservationCache(database, "shell");
-    expect(projectObservation({ entry, connected: false, synchronizing: false, nowMs: 175 })).toEqual({
+    expect(
+      projectObservation({ entry, connected: false, synchronizing: false, nowMs: 175 }),
+    ).toEqual({
       phase: "cached",
       ageMs: 75,
       value: { state: "running" },
     });
+  });
+
+  it("admits a message and clears its composer draft atomically", async () => {
+    const database = openTestDatabase();
+    await initializeExpoSqliteOutbox(database);
+    await writeExpoObservationCache(
+      database,
+      new ObservationCacheEntry({
+        key: "composer:thread:demo",
+        valueJson: '{"text":"durable"}',
+        observedAtMs: 100,
+      }),
+    );
+    const command = buildQueuedCommand({
+      commandId: "cmd-draft-atomic",
+      operation: "thread.message.send",
+      orderingKey: "thread:demo",
+      payload: { text: "durable" },
+      createdAtMs: 101,
+    });
+    await putExpoSqliteCommandAndDeleteObservation(database, command, "composer:thread:demo");
+    expect(await readExpoObservationCache(database, "composer:thread:demo")).toBeNull();
+    const rows = await Effect.runPromise(
+      Effect.gen(function* () {
+        const store = yield* ClientOutboxStore;
+        return yield* store.list();
+      }).pipe(Effect.provide(makeExpoSqliteOutboxLayer(database))),
+    );
+    expect(rows.map((row) => row.commandId)).toEqual(["cmd-draft-atomic"]);
   });
 });

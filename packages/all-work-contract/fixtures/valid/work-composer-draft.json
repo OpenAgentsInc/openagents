@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "openagents.composer_draft.v1",
+  "aggregateType": "thread",
+  "aggregateId": "thread:fixture:41",
+  "text": "",
+  "context": [
+    {
+      "kind": "skill",
+      "sourceRef": "skill:verification",
+      "label": "Verification"
+    }
+  ],
+  "updatedAtMs": 1786046400000
+}

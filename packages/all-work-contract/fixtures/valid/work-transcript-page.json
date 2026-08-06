@@ -1,0 +1,86 @@
+{
+  "schemaVersion": "openagents.work_transcript.v1",
+  "aggregateType": "thread",
+  "aggregateId": "thread:fixture:41",
+  "generation": 7,
+  "status": "working",
+  "limit": 200,
+  "returned": 3,
+  "hasOlder": true,
+  "oldestRecordedAtMs": 1786046400000,
+  "newestRecordedAtMs": 1786046402000,
+  "rows": [
+    {
+      "kind": "user",
+      "schemaVersion": "openagents.work_transcript.v1",
+      "rowId": "row:user:1",
+      "state": "completed",
+      "recordedAtMs": 1786046400000,
+      "updatedAtMs": 1786046400000,
+      "acknowledgements": {
+        "commandId": "cmd:fixture:1",
+        "admission": "admitted",
+        "effect": "completed",
+        "turn": "completed",
+        "quiescence": "quiesced",
+        "verification": "verified"
+      },
+      "text": "Implement the approved plan.",
+      "context": [
+        {
+          "kind": "file",
+          "sourceRef": "file:src/controller.ts",
+          "label": "controller.ts",
+          "lineStart": 12,
+          "lineEnd": 40
+        }
+      ]
+    },
+    {
+      "kind": "proposed_plan",
+      "schemaVersion": "openagents.work_transcript.v1",
+      "rowId": "row:plan:1",
+      "state": "completed",
+      "recordedAtMs": 1786046401000,
+      "updatedAtMs": 1786046401000,
+      "acknowledgements": null,
+      "planId": "plan:fixture:1",
+      "planRevision": 2,
+      "title": "Controller rollout",
+      "completed": true,
+      "steps": [
+        {
+          "id": "step:1",
+          "label": "Publish projection",
+          "state": "completed"
+        }
+      ],
+      "followUps": [
+        {
+          "kind": "refine",
+          "label": "Refine"
+        },
+        {
+          "kind": "implement",
+          "label": "Implement"
+        }
+      ]
+    },
+    {
+      "kind": "approval_request",
+      "schemaVersion": "openagents.work_transcript.v1",
+      "rowId": "row:approval:1",
+      "state": "pending",
+      "recordedAtMs": 1786046402000,
+      "updatedAtMs": 1786046402000,
+      "acknowledgements": null,
+      "requestId": "request:approval:1",
+      "summary": "Deploy the controller",
+      "commandName": "controller.deploy",
+      "effect": "Deploy the current verified build to production.",
+      "decisionRevision": "request:approval:1:revision:1",
+      "expiresAtMs": 1786047302000,
+      "response": null
+    }
+  ]
+}

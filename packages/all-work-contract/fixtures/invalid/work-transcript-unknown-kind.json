@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "openagents.work_transcript.v1",
+  "aggregateType": "thread",
+  "aggregateId": "thread:fixture:41",
+  "generation": 7,
+  "status": "working",
+  "limit": 200,
+  "returned": 1,
+  "hasOlder": false,
+  "oldestRecordedAtMs": 1786046400000,
+  "newestRecordedAtMs": 1786046400000,
+  "rows": [
+    {
+      "kind": "provider_raw_message",
+      "schemaVersion": "openagents.work_transcript.v1",
+      "rowId": "row:raw:1",
+      "state": "active",
+      "recordedAtMs": 1786046400000,
+      "updatedAtMs": 1786046400000,
+      "acknowledgements": null,
+      "text": "Raw provider payload"
+    }
+  ]
+}

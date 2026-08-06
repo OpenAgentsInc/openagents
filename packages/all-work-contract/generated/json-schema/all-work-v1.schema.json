@@ -151,6 +151,12 @@
       "$ref": "#/$defs/StrictBugCandidateReadResult"
     },
     {
+      "$ref": "#/$defs/WorkTranscriptPage"
+    },
+    {
+      "$ref": "#/$defs/WorkComposerDraft"
+    },
+    {
       "$ref": "#/$defs/IssueProjection"
     },
     {
@@ -4956,6 +4962,1151 @@
       ],
       "additionalProperties": false
     },
+    "WorkTranscriptVersion": {
+      "type": "string",
+      "title": "WorkTranscriptVersion",
+      "enum": [
+        "openagents.work_transcript.v1"
+      ]
+    },
+    "WorkTranscriptText": {
+      "type": "string",
+      "title": "WorkTranscriptText",
+      "x-openagents-brand": "WorkTranscriptText",
+      "minLength": 1,
+      "maxLength": 8000
+    },
+    "WorkComposerText": {
+      "type": "string",
+      "title": "WorkComposerText",
+      "x-openagents-brand": "WorkComposerText",
+      "minLength": 0,
+      "maxLength": 8000
+    },
+    "WorkTranscriptLineNumber": {
+      "type": "integer",
+      "title": "WorkTranscriptLineNumber",
+      "minimum": 1,
+      "maximum": 9007199254740991,
+      "x-openagents-integer-representation": "json-safe-integer"
+    },
+    "WorkTranscriptLimit": {
+      "type": "integer",
+      "title": "WorkTranscriptLimit",
+      "minimum": 1,
+      "maximum": 200,
+      "x-openagents-integer-representation": "json-safe-integer"
+    },
+    "WorkTranscriptReturned": {
+      "type": "integer",
+      "title": "WorkTranscriptReturned",
+      "minimum": 0,
+      "maximum": 201,
+      "x-openagents-integer-representation": "json-safe-integer"
+    },
+    "WorkTranscriptRowCount": {
+      "type": "integer",
+      "title": "WorkTranscriptRowCount",
+      "minimum": 0,
+      "maximum": 10000,
+      "x-openagents-integer-representation": "json-safe-integer"
+    },
+    "WorkTranscriptRef": {
+      "type": "string",
+      "title": "WorkTranscriptRef",
+      "x-openagents-brand": "WorkTranscriptRef",
+      "minLength": 1,
+      "maxLength": 320,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,319}$"
+    },
+    "WorkComposerDraftVersion": {
+      "type": "string",
+      "title": "WorkComposerDraftVersion",
+      "enum": [
+        "openagents.composer_draft.v1"
+      ]
+    },
+    "WorkTranscriptAggregateType": {
+      "type": "string",
+      "title": "WorkTranscriptAggregateType",
+      "enum": [
+        "thread",
+        "issue",
+        "order"
+      ]
+    },
+    "WorkTranscriptRowState": {
+      "type": "string",
+      "title": "WorkTranscriptRowState",
+      "enum": [
+        "pending",
+        "active",
+        "resolved",
+        "completed",
+        "failed"
+      ]
+    },
+    "WorkTranscriptAdmissionState": {
+      "type": "string",
+      "title": "WorkTranscriptAdmissionState",
+      "enum": [
+        "admitted",
+        "rejected"
+      ]
+    },
+    "WorkTranscriptEffectState": {
+      "type": "string",
+      "title": "WorkTranscriptEffectState",
+      "enum": [
+        "not_requested",
+        "pending",
+        "claimed",
+        "completed",
+        "failed"
+      ]
+    },
+    "WorkTranscriptTurnState": {
+      "type": "string",
+      "title": "WorkTranscriptTurnState",
+      "enum": [
+        "not_started",
+        "queued",
+        "running",
+        "completed",
+        "failed"
+      ]
+    },
+    "WorkTranscriptQuiescenceState": {
+      "type": "string",
+      "title": "WorkTranscriptQuiescenceState",
+      "enum": [
+        "not_quiesced",
+        "quiesced"
+      ]
+    },
+    "WorkTranscriptVerificationState": {
+      "type": "string",
+      "title": "WorkTranscriptVerificationState",
+      "enum": [
+        "unverified",
+        "pending",
+        "verified",
+        "failed"
+      ]
+    },
+    "WorkTranscriptPlanStepState": {
+      "type": "string",
+      "title": "WorkTranscriptPlanStepState",
+      "enum": [
+        "pending",
+        "working",
+        "completed",
+        "failed"
+      ]
+    },
+    "WorkTranscriptFollowUpKind": {
+      "type": "string",
+      "title": "WorkTranscriptFollowUpKind",
+      "enum": [
+        "refine",
+        "implement"
+      ]
+    },
+    "WorkComposerContext": {
+      "title": "WorkComposerContext",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "file"
+            },
+            "sourceRef": {
+              "$ref": "#/$defs/SourceRef"
+            },
+            "label": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "lineStart": {
+              "$ref": "#/$defs/WorkTranscriptLineNumber"
+            },
+            "lineEnd": {
+              "$ref": "#/$defs/WorkTranscriptLineNumber"
+            }
+          },
+          "required": [
+            "kind",
+            "sourceRef",
+            "label"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "terminal"
+            },
+            "sourceRef": {
+              "$ref": "#/$defs/SourceRef"
+            },
+            "label": {
+              "$ref": "#/$defs/ShortText"
+            }
+          },
+          "required": [
+            "kind",
+            "sourceRef",
+            "label"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "review"
+            },
+            "sourceRef": {
+              "$ref": "#/$defs/SourceRef"
+            },
+            "label": {
+              "$ref": "#/$defs/ShortText"
+            }
+          },
+          "required": [
+            "kind",
+            "sourceRef",
+            "label"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "skill"
+            },
+            "sourceRef": {
+              "$ref": "#/$defs/SourceRef"
+            },
+            "label": {
+              "$ref": "#/$defs/ShortText"
+            }
+          },
+          "required": [
+            "kind",
+            "sourceRef",
+            "label"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "WorkTranscriptAcknowledgements": {
+      "type": "object",
+      "title": "WorkTranscriptAcknowledgements",
+      "properties": {
+        "commandId": {
+          "$ref": "#/$defs/IntentRef"
+        },
+        "admission": {
+          "$ref": "#/$defs/WorkTranscriptAdmissionState"
+        },
+        "effect": {
+          "$ref": "#/$defs/WorkTranscriptEffectState"
+        },
+        "turn": {
+          "$ref": "#/$defs/WorkTranscriptTurnState"
+        },
+        "quiescence": {
+          "$ref": "#/$defs/WorkTranscriptQuiescenceState"
+        },
+        "verification": {
+          "$ref": "#/$defs/WorkTranscriptVerificationState"
+        }
+      },
+      "required": [
+        "commandId",
+        "admission",
+        "effect",
+        "turn",
+        "quiescence",
+        "verification"
+      ],
+      "additionalProperties": false
+    },
+    "WorkTranscriptPlanStep": {
+      "type": "object",
+      "title": "WorkTranscriptPlanStep",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "label": {
+          "$ref": "#/$defs/ShortText"
+        },
+        "state": {
+          "$ref": "#/$defs/WorkTranscriptPlanStepState"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "state"
+      ],
+      "additionalProperties": false
+    },
+    "WorkTranscriptPlanFollowUp": {
+      "type": "object",
+      "title": "WorkTranscriptPlanFollowUp",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/WorkTranscriptFollowUpKind"
+        },
+        "label": {
+          "$ref": "#/$defs/ShortText"
+        }
+      },
+      "required": [
+        "kind",
+        "label"
+      ],
+      "additionalProperties": false
+    },
+    "WorkTranscriptResponse": {
+      "title": "WorkTranscriptResponse",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "boolean"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "text"
+            },
+            "value": {
+              "$ref": "#/$defs/LongText"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "WorkTranscriptRow": {
+      "title": "WorkTranscriptRow",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "user"
+            },
+            "schemaVersion": {
+              "$ref": "#/$defs/WorkTranscriptVersion"
+            },
+            "rowId": {
+              "$ref": "#/$defs/WorkTranscriptRef"
+            },
+            "state": {
+              "$ref": "#/$defs/WorkTranscriptRowState"
+            },
+            "recordedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "updatedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "acknowledgements": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WorkTranscriptAcknowledgements"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "text": {
+              "$ref": "#/$defs/WorkTranscriptText"
+            },
+            "context": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/WorkComposerContext"
+              },
+              "maxItems": 16
+            }
+          },
+          "required": [
+            "kind",
+            "schemaVersion",
+            "rowId",
+            "state",
+            "recordedAtMs",
+            "updatedAtMs",
+            "acknowledgements",
+            "text",
+            "context"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "assistant"
+            },
+            "schemaVersion": {
+              "$ref": "#/$defs/WorkTranscriptVersion"
+            },
+            "rowId": {
+              "$ref": "#/$defs/WorkTranscriptRef"
+            },
+            "state": {
+              "$ref": "#/$defs/WorkTranscriptRowState"
+            },
+            "recordedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "updatedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "acknowledgements": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WorkTranscriptAcknowledgements"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "text": {
+              "$ref": "#/$defs/WorkTranscriptText"
+            }
+          },
+          "required": [
+            "kind",
+            "schemaVersion",
+            "rowId",
+            "state",
+            "recordedAtMs",
+            "updatedAtMs",
+            "acknowledgements",
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "work_entry"
+            },
+            "schemaVersion": {
+              "$ref": "#/$defs/WorkTranscriptVersion"
+            },
+            "rowId": {
+              "$ref": "#/$defs/WorkTranscriptRef"
+            },
+            "state": {
+              "$ref": "#/$defs/WorkTranscriptRowState"
+            },
+            "recordedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "updatedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "acknowledgements": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WorkTranscriptAcknowledgements"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "entryKind": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "title": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "summary": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/LongText"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "body": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/LongText"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "schemaVersion",
+            "rowId",
+            "state",
+            "recordedAtMs",
+            "updatedAtMs",
+            "acknowledgements",
+            "entryKind",
+            "title",
+            "summary",
+            "body"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "turn_boundary"
+            },
+            "schemaVersion": {
+              "$ref": "#/$defs/WorkTranscriptVersion"
+            },
+            "rowId": {
+              "$ref": "#/$defs/WorkTranscriptRef"
+            },
+            "state": {
+              "$ref": "#/$defs/WorkTranscriptRowState"
+            },
+            "recordedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "updatedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "acknowledgements": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WorkTranscriptAcknowledgements"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "turnId": {
+              "$ref": "#/$defs/WorkTranscriptRef"
+            },
+            "label": {
+              "$ref": "#/$defs/ShortText"
+            }
+          },
+          "required": [
+            "kind",
+            "schemaVersion",
+            "rowId",
+            "state",
+            "recordedAtMs",
+            "updatedAtMs",
+            "acknowledgements",
+            "turnId",
+            "label"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "folded_turn"
+            },
+            "schemaVersion": {
+              "$ref": "#/$defs/WorkTranscriptVersion"
+            },
+            "rowId": {
+              "$ref": "#/$defs/WorkTranscriptRef"
+            },
+            "state": {
+              "$ref": "#/$defs/WorkTranscriptRowState"
+            },
+            "recordedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "updatedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "acknowledgements": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WorkTranscriptAcknowledgements"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "turnId": {
+              "$ref": "#/$defs/WorkTranscriptRef"
+            },
+            "summary": {
+              "$ref": "#/$defs/LongText"
+            },
+            "rowCount": {
+              "$ref": "#/$defs/WorkTranscriptRowCount"
+            }
+          },
+          "required": [
+            "kind",
+            "schemaVersion",
+            "rowId",
+            "state",
+            "recordedAtMs",
+            "updatedAtMs",
+            "acknowledgements",
+            "turnId",
+            "summary",
+            "rowCount"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "proposed_plan"
+            },
+            "schemaVersion": {
+              "$ref": "#/$defs/WorkTranscriptVersion"
+            },
+            "rowId": {
+              "$ref": "#/$defs/WorkTranscriptRef"
+            },
+            "state": {
+              "$ref": "#/$defs/WorkTranscriptRowState"
+            },
+            "recordedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "updatedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "acknowledgements": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WorkTranscriptAcknowledgements"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "planId": {
+              "$ref": "#/$defs/WorkTranscriptRef"
+            },
+            "planRevision": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "title": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "completed": {
+              "type": "boolean"
+            },
+            "steps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/WorkTranscriptPlanStep"
+              },
+              "maxItems": 64
+            },
+            "followUps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/WorkTranscriptPlanFollowUp"
+              },
+              "maxItems": 2
+            }
+          },
+          "required": [
+            "kind",
+            "schemaVersion",
+            "rowId",
+            "state",
+            "recordedAtMs",
+            "updatedAtMs",
+            "acknowledgements",
+            "planId",
+            "planRevision",
+            "title",
+            "completed",
+            "steps",
+            "followUps"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "working_indicator"
+            },
+            "schemaVersion": {
+              "$ref": "#/$defs/WorkTranscriptVersion"
+            },
+            "rowId": {
+              "$ref": "#/$defs/WorkTranscriptRef"
+            },
+            "state": {
+              "$ref": "#/$defs/WorkTranscriptRowState"
+            },
+            "recordedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "updatedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "acknowledgements": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WorkTranscriptAcknowledgements"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "label": {
+              "$ref": "#/$defs/ShortText"
+            }
+          },
+          "required": [
+            "kind",
+            "schemaVersion",
+            "rowId",
+            "state",
+            "recordedAtMs",
+            "updatedAtMs",
+            "acknowledgements",
+            "label"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "provider_error"
+            },
+            "schemaVersion": {
+              "$ref": "#/$defs/WorkTranscriptVersion"
+            },
+            "rowId": {
+              "$ref": "#/$defs/WorkTranscriptRef"
+            },
+            "state": {
+              "$ref": "#/$defs/WorkTranscriptRowState"
+            },
+            "recordedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "updatedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "acknowledgements": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WorkTranscriptAcknowledgements"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "summary": {
+              "$ref": "#/$defs/LongText"
+            },
+            "detail": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/LongText"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "retryable": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "schemaVersion",
+            "rowId",
+            "state",
+            "recordedAtMs",
+            "updatedAtMs",
+            "acknowledgements",
+            "summary",
+            "detail",
+            "retryable"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "runtime_error"
+            },
+            "schemaVersion": {
+              "$ref": "#/$defs/WorkTranscriptVersion"
+            },
+            "rowId": {
+              "$ref": "#/$defs/WorkTranscriptRef"
+            },
+            "state": {
+              "$ref": "#/$defs/WorkTranscriptRowState"
+            },
+            "recordedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "updatedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "acknowledgements": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WorkTranscriptAcknowledgements"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "summary": {
+              "$ref": "#/$defs/LongText"
+            },
+            "detail": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/LongText"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "retryable": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "schemaVersion",
+            "rowId",
+            "state",
+            "recordedAtMs",
+            "updatedAtMs",
+            "acknowledgements",
+            "summary",
+            "detail",
+            "retryable"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "approval_request"
+            },
+            "schemaVersion": {
+              "$ref": "#/$defs/WorkTranscriptVersion"
+            },
+            "rowId": {
+              "$ref": "#/$defs/WorkTranscriptRef"
+            },
+            "state": {
+              "$ref": "#/$defs/WorkTranscriptRowState"
+            },
+            "recordedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "updatedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "acknowledgements": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WorkTranscriptAcknowledgements"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "requestId": {
+              "$ref": "#/$defs/WorkTranscriptRef"
+            },
+            "summary": {
+              "$ref": "#/$defs/LongText"
+            },
+            "commandName": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "effect": {
+              "$ref": "#/$defs/LongText"
+            },
+            "decisionRevision": {
+              "$ref": "#/$defs/WorkTranscriptRef"
+            },
+            "expiresAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "response": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WorkTranscriptResponse"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "schemaVersion",
+            "rowId",
+            "state",
+            "recordedAtMs",
+            "updatedAtMs",
+            "acknowledgements",
+            "requestId",
+            "summary",
+            "commandName",
+            "effect",
+            "decisionRevision",
+            "expiresAtMs",
+            "response"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "input_request"
+            },
+            "schemaVersion": {
+              "$ref": "#/$defs/WorkTranscriptVersion"
+            },
+            "rowId": {
+              "$ref": "#/$defs/WorkTranscriptRef"
+            },
+            "state": {
+              "$ref": "#/$defs/WorkTranscriptRowState"
+            },
+            "recordedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "updatedAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "acknowledgements": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WorkTranscriptAcknowledgements"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "requestId": {
+              "$ref": "#/$defs/WorkTranscriptRef"
+            },
+            "summary": {
+              "$ref": "#/$defs/LongText"
+            },
+            "commandName": {
+              "$ref": "#/$defs/ShortText"
+            },
+            "effect": {
+              "$ref": "#/$defs/LongText"
+            },
+            "decisionRevision": {
+              "$ref": "#/$defs/WorkTranscriptRef"
+            },
+            "expiresAtMs": {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            "response": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WorkTranscriptResponse"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "schemaVersion",
+            "rowId",
+            "state",
+            "recordedAtMs",
+            "updatedAtMs",
+            "acknowledgements",
+            "requestId",
+            "summary",
+            "commandName",
+            "effect",
+            "decisionRevision",
+            "expiresAtMs",
+            "response"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "WorkTranscriptPage": {
+      "type": "object",
+      "title": "WorkTranscriptPage",
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/WorkTranscriptVersion"
+        },
+        "aggregateType": {
+          "$ref": "#/$defs/WorkTranscriptAggregateType"
+        },
+        "aggregateId": {
+          "$ref": "#/$defs/WorkTranscriptRef"
+        },
+        "generation": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "status": {
+          "$ref": "#/$defs/ShortText"
+        },
+        "limit": {
+          "$ref": "#/$defs/WorkTranscriptLimit"
+        },
+        "returned": {
+          "$ref": "#/$defs/WorkTranscriptReturned"
+        },
+        "hasOlder": {
+          "type": "boolean"
+        },
+        "oldestRecordedAtMs": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "newestRecordedAtMs": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SafeInteger"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkTranscriptRow"
+          },
+          "maxItems": 201
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "aggregateType",
+        "aggregateId",
+        "generation",
+        "status",
+        "limit",
+        "returned",
+        "hasOlder",
+        "oldestRecordedAtMs",
+        "newestRecordedAtMs",
+        "rows"
+      ],
+      "additionalProperties": false
+    },
+    "WorkComposerDraft": {
+      "type": "object",
+      "title": "WorkComposerDraft",
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/WorkComposerDraftVersion"
+        },
+        "aggregateType": {
+          "$ref": "#/$defs/WorkTranscriptAggregateType"
+        },
+        "aggregateId": {
+          "$ref": "#/$defs/WorkTranscriptRef"
+        },
+        "text": {
+          "$ref": "#/$defs/WorkComposerText"
+        },
+        "context": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkComposerContext"
+          },
+          "maxItems": 16
+        },
+        "updatedAtMs": {
+          "$ref": "#/$defs/SafeInteger"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "aggregateType",
+        "aggregateId",
+        "text",
+        "context",
+        "updatedAtMs"
+      ],
+      "additionalProperties": false
+    },
     "ProtocolCapability": {
       "type": "string",
       "title": "ProtocolCapability",
@@ -6283,7 +7434,7 @@
     "profileVersion": "openagents.contract_profile.v1",
     "contractRef": "openagents.all_work_boundary.v1",
     "contractVersion": 1,
-    "definitionSha256": "df850124a53029e549f4f8281c77ee9d8c583e617d2adcc36f0be7abe8bca654",
+    "definitionSha256": "ae4029ee1b46e681903a309584b1a510ec6112794e17bdc6645faf187efafe11",
     "owningDomain": "all_work_boundary",
     "authoritativeRuntime": "effect",
     "relationship": "projection",
@@ -6327,7 +7478,10 @@
       "organization_membership_reads_are_account_principal_and_generation_fenced",
       "strict_bug_ingress_is_untrusted_until_explicit_disposition",
       "strict_bug_ingress_is_delivery_idempotent_and_public_safe",
-      "strict_bug_candidate_admission_does_not_grant_command_authority"
+      "strict_bug_candidate_admission_does_not_grant_command_authority",
+      "transcript_rows_are_semantic_projections_not_provider_messages",
+      "transcript_acknowledgements_remain_independent",
+      "transcript_decisions_bind_exact_revision_and_expiry"
     ],
     "implementationStatus": {
       "ContractVersion": "structural_only",
@@ -6489,6 +7643,32 @@
       "StrictBugCandidateExecuteResult": "implemented",
       "StrictBugCandidateReadRequest": "implemented",
       "StrictBugCandidateReadResult": "implemented",
+      "WorkTranscriptVersion": "structural_only",
+      "WorkTranscriptText": "structural_only",
+      "WorkComposerText": "structural_only",
+      "WorkTranscriptLineNumber": "structural_only",
+      "WorkTranscriptLimit": "structural_only",
+      "WorkTranscriptReturned": "structural_only",
+      "WorkTranscriptRowCount": "structural_only",
+      "WorkTranscriptRef": "structural_only",
+      "WorkComposerDraftVersion": "structural_only",
+      "WorkTranscriptAggregateType": "structural_only",
+      "WorkTranscriptRowState": "structural_only",
+      "WorkTranscriptAdmissionState": "structural_only",
+      "WorkTranscriptEffectState": "structural_only",
+      "WorkTranscriptTurnState": "structural_only",
+      "WorkTranscriptQuiescenceState": "structural_only",
+      "WorkTranscriptVerificationState": "structural_only",
+      "WorkTranscriptPlanStepState": "structural_only",
+      "WorkTranscriptFollowUpKind": "structural_only",
+      "WorkComposerContext": "structural_only",
+      "WorkTranscriptAcknowledgements": "structural_only",
+      "WorkTranscriptPlanStep": "structural_only",
+      "WorkTranscriptPlanFollowUp": "structural_only",
+      "WorkTranscriptResponse": "structural_only",
+      "WorkTranscriptRow": "structural_only",
+      "WorkTranscriptPage": "implemented",
+      "WorkComposerDraft": "implemented",
       "ProtocolCapability": "structural_only",
       "ProtocolErrorCode": "structural_only",
       "ProtocolError": "structural_only",
