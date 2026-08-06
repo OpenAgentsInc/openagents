@@ -1027,6 +1027,14 @@ verified and durably retained the referenced bytes.
   and complete loss accounting.
 - `unresolved` records missing evidence, an unexecutable exit, or principal
   whose terminal disposition is unknown.
+
+For a chain swap whose source was funded and refunded before the destination
+was funded, the destination leg's terminal Close evidence uses class
+`reservation`, references the exact Contract `reservation_id`, and has rung
+`verified`. The verifier MUST establish that the reservation was released and
+that no `provider_destination_broadcast`, destination funding effect, or
+contracted destination outpoint exists. Source funding or refund evidence MUST
+NOT be duplicated as evidence for the unfunded destination leg.
 - `cancelled` is valid only when no irreversible external effect remains.
 - `expired` is valid before funding, or after all funded effects have reached
   a separately proved refund/release outcome.
@@ -1745,6 +1753,13 @@ required secp256k1-zkp primitives.
 - Required a chain provider's terminal `refunded` Status to consume the exact
   requester `requester_source_refunded` Status after destination funding, so
   both funded principals have signed release evidence before terminal close.
+
+**v1 unfunded-destination evidence clarification (2026-08-06)**
+
+- Bound a source-only chain refund's destination evidence to the exact released
+  reservation and verified absence of destination funding.
+- Prohibited duplicating source evidence as the unfunded destination leg's
+  terminal proof.
 
 **v1 Liquid sequencing correction (2026-08-06)**
 
