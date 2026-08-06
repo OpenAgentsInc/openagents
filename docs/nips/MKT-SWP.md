@@ -610,6 +610,80 @@ reuse across any message. It verifies every received public nonce and partial
 signature before aggregation. Cooperative failure never removes the quoted
 script-path exit.
 
+#### 7.3.1 Cooperative signing transcript
+
+Cooperative signing uses ordinary private Status records. The Status carries
+`state=executing`, `swp_state=cooperative_signing_pending`, and one
+`cooperative_signing` object. It remains a signed inner record inside the
+recipient-gated NIP-59 transport; the relay does not inspect it. The
+requester key is participant index `0` and the provider key is participant
+index `1` for every swap type and leg.
+
+The context has this exact logical shape:
+
+```json
+{
+  "schema": "openagents.mkt-swp.cooperative-signing.v1",
+  "order_id": "<64-lower-hex>",
+  "swap_contract_sha256": "<64-lower-hex>",
+  "effect_id": "<Section 13 cooperative_sign effect ID>",
+  "leg_id": "source|destination",
+  "unsigned_transaction": "<lowercase raw transaction hex without witness>",
+  "transaction_sha256": "<64-lower-hex>",
+  "input_index": 0,
+  "prevouts": [{"amount":"<canonical sats>","script_pubkey":"<lower-hex>"}],
+  "signature_hash": "<64-lower-hex>",
+  "sighash_type": "DEFAULT",
+  "participant_keys": ["<requester compressed key>","<provider compressed key>"],
+  "tweaks": [{"value":"<64-lower-hex>","xonly":true}],
+  "aggregate_key": "<64-lower-hex>",
+  "exit_package_sha256": "<64-lower-hex>",
+  "latest_safe_height": "500"
+}
+```
+
+`context_sha256` is SHA-256 of the RFC 8785 bytes of the complete context.
+Every contribution repeats that context and digest plus its
+`participant_index` and one action. The receiver re-parses the unsigned
+transaction, recomputes its digest and BIP-341 `SIGHASH_DEFAULT`, verifies
+that the selected prevout pays the tweaked aggregate key, and verifies the
+effect ID and unilateral exit-package commitment before accepting any
+contribution.
+
+The action shapes are closed:
+
+- `nonce_commitment` carries only `nonce_commitment`, SHA-256 of the exact
+  66-byte BIP-327 public nonce.
+- `public_nonce` carries that same `nonce_commitment` and `public_nonce`. A
+  public nonce before both participants' prior exact commitments is invalid.
+- `partial_signature` carries the two `public_nonces` in participant-key
+  order and the author's `partial_signature`. Both reveals must already be
+  present and the partial signature must verify before it is retained or
+  forwarded.
+- `final_signature` carries both `public_nonces`, both
+  `partial_signatures`, and the aggregate `final_signature`. Every partial
+  and the aggregate signature are independently verified.
+- `aborted` carries only `abort_reason` and `fallback=script_path`.
+  `abort_reason` is `timeout`, `counterparty_unavailable`,
+  `transcript_invalid`, or `wallet_refused`.
+
+One participant may emit successive Status records with the same
+`cooperative_signing_pending` state only when its normal Status sequence and
+`previous` reference are contiguous, the context digest is unchanged, and
+the action advances in the order above. A duplicate action under another
+record identity, changed context under one digest, partial before both nonce
+reveals, final signature before both partials, or a transcript that is both
+finalized and aborted is `swp_musig_transcript_invalid`.
+
+The signing wallet owns the secret nonce and must bind its one-time use to
+`context_sha256`. Client and provider snapshots may retain public requests,
+commitments, nonces, signatures, and an opaque wallet reference; they MUST
+NOT retain the secret nonce. Exact signed-record replay is idempotent. A
+changed replay conflicts. No transcript contribution is valid after either
+participant aborts. An abort or deadline expiry destroys the local
+nonce session and continues through the already-verified unilateral
+script-path package without changing the lifecycle truth.
+
 ### 7.4 Funding-output checks
 
 After funding is observed, the verifier checks transaction ID, output index,
@@ -746,7 +820,7 @@ The base `state` is determined from `swp_state` as follows:
 | any `*_terms_ready`, `*_verified`, `verification_passed`, or `hold_invoice_ready`                                        | `awaiting_input`     |
 | `funding_required` or `source_funding_required`                                                                          | `funding_required`   |
 | any `*_funding_broadcast` or `*_funding_observed`                                                                        | `funding_observed`   |
-| any `*_funding_final`, `*_payment_pending`, `*_htlcs_held`, `*_claim_pending`, or `*_claimed` before both legs are final | `executing`          |
+| any `*_funding_final`, `*_payment_pending`, `*_htlcs_held`, `*_claim_pending`, `*_claimed`, or `cooperative_signing_pending` before both legs are final | `executing`          |
 | `lightning_settlement_pending` or `provider_source_claim_pending`                                                        | `settlement_pending` |
 | `completed`                                                                                                              | `completed`          |
 | any `*_refund_prepared`, `*_refund_pending`, `invoice_cancel_pending`, or `refund_prepared`                              | `refund_pending`     |
