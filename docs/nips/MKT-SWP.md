@@ -1010,6 +1010,7 @@ The v1 cross-participant gates are:
 | `requester_destination_claim_pending` | provider `destination_funding_final` |
 | provider `provider_source_claim_pending` | requester `requester_destination_claimed` |
 | `requester_source_refund_pending` after destination funding | provider `provider_destination_refunded` |
+| provider terminal `refunded` after destination funding | requester `requester_source_refunded` |
 
 The `status` reference is additional to the same-author `previous` reference.
 An implementation retains a missing, foreign, ambiguous, forked, or
@@ -1741,6 +1742,9 @@ required secp256k1-zkp primitives.
   counterparty Status they consume with the existing `status` marker.
 - Rejected record-set existence, relay order, and author-controlled
   `created_at` as proof that a cross-signer prerequisite preceded an action.
+- Required a chain provider's terminal `refunded` Status to consume the exact
+  requester `requester_source_refunded` Status after destination funding, so
+  both funded principals have signed release evidence before terminal close.
 
 **v1 Liquid sequencing correction (2026-08-06)**
 
