@@ -1,6 +1,6 @@
 # Pro #41 transcript and composer work packet
 
-- Status: implementation and full repository verification complete; Pro production canary pending
+- Status: complete; implementation, full repository verification, and Pro production canary passed
 - Source: current owner direction to complete every open Pro issue; Pro issue #41
 - Outcome: publish one cross-runtime semantic transcript projection and use it in Pro web plus the native mobile controller
 - Repository: `OpenAgentsInc/openagents`
@@ -60,5 +60,9 @@ or delivery policy changed.
 - Contract, generated-file, mobile typecheck, and 90 focused mobile tests pass.
   The repository-wide gate also passes: 2,387 Vite Plus files (20,166 tests),
   23 Node suites (177 passing, one intentional skip), Rust conformance, policy
-  guards, and drift inventories. The Pro production journey remains the final
-  closure gate.
+  guards, and drift inventories.
+- Pro production deployment `dpl_Hyqo2ycABKy4zv8Ldc1XkZDftDYk` and authenticated
+  canary `mobile-controller-canary-12d1ad53-20b1-47ad-b163-45034da3637f`
+  passed. The client observed live generations 1–5, one-time replay, the
+  semantic user/request rows, a stale-decision refusal without state change,
+  and the accepted exact-revision response.
