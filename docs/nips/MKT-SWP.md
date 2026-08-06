@@ -963,19 +963,19 @@ passes Section 4.5. Neither value is established by a Status claim.
 
 The base `state` is determined from `swp_state` as follows:
 
-| MKT-SWP state class                                                                                                                                     | Base `state`         |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `accepted`                                                                                                                                              | `accepted`           |
-| any `*_terms_ready`, `*_verified`, `verification_passed`, or `hold_invoice_ready`                                                                       | `awaiting_input`     |
-| `funding_required` or `source_funding_required`                                                                                                         | `funding_required`   |
-| `funding_observed`, `requester_source_broadcast`, `provider_destination_broadcast`, or any `*_funding_broadcast` or `*_funding_observed`                | `funding_observed`   |
-| any `*_funding_final`, `*_payment_pending`, `*_htlcs_held`, `*_claim_pending`, `*_claimed`, or `cooperative_signing_pending` before both legs are final | `executing`          |
-| `lightning_settlement_pending` or `provider_source_claim_pending`                                                                                       | `settlement_pending` |
-| `completed`                                                                                                                                             | `completed`          |
-| any `*_refund_prepared`, `*_refund_pending`, `invoice_cancel_pending`, or `refund_prepared`                                                             | `refund_pending`     |
-| `refunded`, `*_refunded`, or `invoice_cancelled` after all principal is released                                                                        | `refunded`           |
-| `disputed`                                                                                                                                              | `disputed`           |
-| `failed` or `unresolved`                                                                                                                                | `failed`             |
+| MKT-SWP state class                                                                                                                                                                                                                  | Base `state`         |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- |
+| `accepted`                                                                                                                                                                                                                           | `accepted`           |
+| any `*_terms_ready`, `*_verified`, `verification_passed`, or `hold_invoice_ready`                                                                                                                                                    | `awaiting_input`     |
+| `funding_required` or `source_funding_required`                                                                                                                                                                                      | `funding_required`   |
+| `funding_observed`, `requester_source_broadcast`, `provider_destination_broadcast`, any `*_funding_broadcast` or `*_funding_observed`, `funding_zero_conf_accepted`, `funding_confirmation_required`, or either source-prefixed form | `funding_observed`   |
+| any `*_funding_final`, `*_payment_pending`, `*_htlcs_held`, `*_claim_pending`, `*_claimed`, or `cooperative_signing_pending` before both legs are final                                                                              | `executing`          |
+| `lightning_settlement_pending` or `provider_source_claim_pending`                                                                                                                                                                    | `settlement_pending` |
+| `completed`                                                                                                                                                                                                                          | `completed`          |
+| any `*_refund_prepared`, `*_refund_pending`, `invoice_cancel_pending`, or `refund_prepared`                                                                                                                                          | `refund_pending`     |
+| `refunded`, `*_refunded`, or `invoice_cancelled` after all principal is released                                                                                                                                                     | `refunded`           |
+| `disputed`                                                                                                                                                                                                                           | `disputed`           |
+| `failed` or `unresolved`                                                                                                                                                                                                             | `failed`             |
 
 `contract_pending` and `contract_bound` have no Status mapping. A value that
 matches no row is `swp_status_transition_invalid`.
@@ -1018,7 +1018,85 @@ pre-published dependency as an invalid claim and MUST NOT perform the action's
 external effect. A participant creates the dependent Status only after it has
 verified and durably retained the referenced bytes.
 
-### 9.1 Common terminal rules
+### 9.1 Provider zero-confirmation acceptance
+
+Zero-confirmation acceptance is an optional provider risk decision. It is
+disabled by default and is available only when the Quote selects
+`zero_confirmation=allowed`, `rbf=reject`, and `replacement=track`. A
+provider can enable it independently for an exact
+`(swap_type, source_network_id, destination_network_id)` direction. In v1,
+the only eligible legs are requester-funded Bitcoin in a submarine swap and
+the requester-funded Bitcoin source of a chain swap. A requester never uses
+this policy to advance its own verification, funding, claim, refund, or
+settlement gates. A reverse swap therefore still requires `funding_final`
+before `requester_claim_pending`.
+
+Before accepting an unconfirmed funding outpoint, the provider MUST use its
+own configured `bitcoind` mempool view and establish all of the following:
+
+- the exact contracted transaction ID, output index, script, and amount are
+  present;
+- every transaction input has sequence at least `0xfffffffe`, so it does not
+  signal BIP 125 replacement;
+- the transaction has no unconfirmed ancestor;
+- the amount does not exceed the configured per-swap cap; and
+- an atomic durable reservation of that amount does not make the aggregate
+  accepted-but-not-final in-flight amount exceed its configured cap.
+
+The reservation survives process restart. It is released only after the exact
+funding outpoint becomes final under the Quote, the session reaches a proved
+terminal recovery state, or a downgrade removes the authority before any
+risk-increasing external effect occurs. If an effect already occurred, the
+amount remains in the aggregate in-flight total until finality or proved
+terminal recovery. A remote explorer, relay claim, requester Status, cached
+mempool response, or provider signature does not establish these checks.
+
+The provider reports a successful decision with
+`funding_zero_conf_accepted` for a submarine swap or
+`source_funding_zero_conf_accepted` for a chain swap. It includes this
+private Status detail:
+
+```json
+{
+  "zero_confirmation_acceptance": {
+    "decision": "accepted",
+    "transaction_id": "<64-lower-hex>",
+    "output_index": "0",
+    "amount": "100000",
+    "policy_id": "btc-0conf-bounded-no-rbf",
+    "view": "provider_local_bitcoind"
+  }
+}
+```
+
+`output_index` and `amount` are canonical decimal strings. The transaction,
+outpoint, amount, and policy MUST equal the bound Contract and Quote. The
+`view` value is exact. The Status records the provider's decision; it does
+not promote funding evidence to `funding_final`.
+
+Immediately before every risk-increasing external effect and until the exact
+outpoint is final, the provider MUST recheck its local mempool and chain view.
+Replacement, a competing spend, disappearance without confirmation, or a
+previously confirmed ancestor becoming unconfirmed removes zero-confirmation
+authority. The provider performs no later risk-increasing effect from that
+authority and emits `funding_confirmation_required` or
+`source_funding_confirmation_required` with the same fields, with
+`decision=confirmation_required`, and with a `reason` member containing
+exactly one of:
+`replacement`, `conflict`, `mempool_missing`, or
+`ancestor_unconfirmed`. The `zero_confirmation_acceptance` object MAY
+include one `replacement_transaction_id`; when present, it is 64-character
+lowercase hex.
+
+A downgrade never rewrites or hides an external effect that already happened.
+Such a session remains below funding finality, retains both signed decisions
+and both rail views, and enters its confirmation wait, dispute, recovery,
+failure, or unresolved branch as the evidence requires. A later
+`funding_final` or `source_funding_final` is valid only for the exact
+contracted outpoint. The replacement transaction cannot inherit the original
+acceptance.
+
+### 9.2 Common terminal rules
 
 - `completed` requires verified completion of both legs under the Quote's
   finality rules.
@@ -1040,7 +1118,7 @@ NOT be duplicated as evidence for the unfunded destination leg.
 - `expired` is valid before funding, or after all funded effects have reached
   a separately proved refund/release outcome.
 
-### 9.2 Submarine transitions
+### 9.3 Submarine transitions
 
 ```text
 ordered -> accepted -> contract_pending -> contract_bound
@@ -1051,24 +1129,36 @@ ordered -> accepted -> contract_pending -> contract_bound
         -> provider_claim_pending -> provider_claimed -> completed
 ```
 
+The optional provider-risk path replaces the `funding_final` gate before
+`lightning_payment_pending`:
+
+```text
+funding_observed -> funding_zero_conf_accepted
+        -> lightning_payment_pending
+funding_zero_conf_accepted -> funding_confirmation_required
+        -> funding_final -> lightning_payment_pending
+```
+
 Recovery branches:
 
 ```text
 accepted|contract_pending|contract_bound|lock_terms_ready
         |requester_verification_passed -> cancelled|expired
-requester_funding_broadcast|funding_observed|funding_final
+requester_funding_broadcast|funding_observed|funding_zero_conf_accepted
+        |funding_confirmation_required|funding_final
         -> refund_prepared -> refund_pending -> refunded
 any funded state -> disputed|failed|unresolved
 ```
 
 The provider signs `accepted`, `lock_terms_ready`,
-`lightning_payment_pending`, `lightning_paid`, `provider_claim_pending`, and
-`provider_claimed`. The requester signs `requester_verification_passed`,
+`funding_zero_conf_accepted`, `funding_confirmation_required`,
+`lightning_payment_pending`, `lightning_paid`, `provider_claim_pending`,
+and `provider_claimed`. The requester signs `requester_verification_passed`,
 `requester_funding_broadcast`, `refund_prepared`, and `refund_pending`.
 Either may report observations, but only an admitted verifier raises their
 evidence rung.
 
-### 9.3 Reverse transitions
+### 9.4 Reverse transitions
 
 ```text
 ordered -> accepted -> contract_pending -> contract_bound
@@ -1099,7 +1189,7 @@ The provider signs `accepted`, `hold_invoice_ready`,
 `lightning_payment_pending`, `requester_lock_verified`,
 `requester_claim_pending`, and `requester_claimed`.
 
-### 9.4 Chain transitions
+### 9.5 Chain transitions
 
 ```text
 ordered -> accepted -> contract_pending -> contract_bound
@@ -1113,6 +1203,17 @@ ordered -> accepted -> contract_pending -> contract_bound
         -> requester_destination_claimed
         -> provider_source_claim_pending -> provider_source_claimed
         -> completed
+```
+
+The optional provider-risk path replaces the source-finality gate before the
+provider funds the destination:
+
+```text
+source_funding_observed -> source_funding_zero_conf_accepted
+        -> provider_destination_broadcast
+source_funding_zero_conf_accepted
+        -> source_funding_confirmation_required
+        -> source_funding_final -> provider_destination_broadcast
 ```
 
 Recovery branches:
@@ -1130,12 +1231,14 @@ destination funded, requester did not claim
 any funded state -> disputed|failed|unresolved
 ```
 
-The requester signs requester-prefixed actions. The provider signs
-provider-prefixed actions and `accepted`, `source_lock_terms_ready`,
+The requester signs requester-prefixed actions except
+`source_funding_zero_conf_accepted` and
+`source_funding_confirmation_required`. The provider signs those two states,
+all provider-prefixed actions, and `accepted`, `source_lock_terms_ready`,
 `destination_lock_terms_ready`, and `source_funding_required`. Each
 participant may report a rail observation without promoting its rung.
 
-### 9.5 Illegal transitions, gaps, and forks
+### 9.6 Illegal transitions, gaps, and forks
 
 A Status that skips a required action is retained as an invalid claim and
 does not advance the session. A missing sequence number is
@@ -1568,68 +1671,71 @@ shape and silently execute it.
 
 Profile errors are stable lowercase identifiers:
 
-| Error                             | Meaning                                                                           |
-| --------------------------------- | --------------------------------------------------------------------------------- |
-| `swp_unsupported_profile`         | Profile ID is not `mkt-swp`.                                                      |
-| `swp_unsupported_version`         | Profile or verifier revision is unsupported.                                      |
-| `swp_unsupported_critical_member` | A critical member is unknown.                                                     |
-| `swp_unsupported_extension`       | A non-v1 rail or EVM leg was requested.                                           |
-| `swp_invalid_asset_id`            | Asset identifier is malformed or unallowlisted.                                   |
-| `swp_invalid_pair`                | Ordered asset pair does not match the swap type.                                  |
-| `swp_side_disabled`               | Offering has `max="0"` for the selected side.                                     |
-| `swp_invalid_amount`              | Amount is non-canonical, zero where executable, out of range, or over `u64`.      |
-| `swp_invalid_fee`                 | Fee field is malformed or exceeds policy.                                         |
-| `swp_amount_equation_mismatch`    | Output does not reproduce from quoted terms.                                      |
-| `swp_quote_expired`               | Quote or reservation is expired.                                                  |
-| `swp_order_selection_invalid`     | Order changes a non-selectable term.                                              |
-| `swp_contract_missing`            | Both complementary Swap Contract records are not present before funding.          |
-| `swp_contract_signer_invalid`     | Swap Contract author or role does not match the Order and Quote.                  |
-| `swp_contract_digest_mismatch`    | Party records do not commit the same RFC 8785 contract bytes.                     |
-| `swp_contract_terms_mismatch`     | Swap Contract differs from the Quote or allowed Order selection.                  |
-| `swp_price_feed_invalid`          | URL, pointer, value, digest, redirect, or response is invalid.                    |
-| `swp_price_feed_stale`            | Exact pinned feed observation exceeds maximum age.                                |
-| `swp_terms_mismatch`              | Invoice, script, amount, policy, or Status differs from Quote.                    |
-| `swp_reservation_missing`         | Required reservation terms or proof are absent.                                   |
-| `swp_reservation_expired`         | Reservation expired before effective Order.                                       |
-| `swp_reservation_overallocated`   | Active reservation sum exceeds committed capacity.                                |
-| `swp_reservation_fork`            | Provider equivocated in reservation sequence or active set.                       |
-| `swp_reservation_proof_invalid`   | Proof does not establish its claimed class.                                       |
-| `swp_covenant_reserve_invalid`    | Covenant, amount, fill rule, or double-use check failed.                          |
-| `swp_timeout_ladder_unsafe`       | Required height/time inequality is false or not computable.                       |
-| `swp_invoice_invalid`             | Invoice parse, network, amount, expiry, hash, or CLTV check failed.               |
-| `swp_payment_hash_mismatch`       | Invoice, script, Quote, and local secret commitment disagree.                     |
-| `swp_script_invalid`              | Script or Taproot tree is malformed or unsupported.                               |
-| `swp_script_commitment_mismatch`  | Re-derived scriptPubKey/address differs.                                          |
-| `swp_liquid_network_mismatch`     | Elements genesis reference or pegged asset differs from signed terms.             |
-| `swp_liquid_output_invalid`       | Elements output envelope, commitments, index, or fee shape is invalid.            |
-| `swp_liquid_unblind_failed`       | The participant cannot unblind its selected confidential output.                  |
-| `swp_liquid_unblind_mismatch`     | Locally revealed asset, amount, script, or output differs from signed terms.      |
-| `swp_musig_transcript_invalid`    | Key order, tweak, nonce, message, or partial signature check failed.              |
-| `swp_confirmation_insufficient`   | Rail object has fewer confirmations than quoted.                                  |
-| `swp_rbf_policy_violation`        | Funding violates replacement policy.                                              |
-| `swp_replacement`                 | A tracked transaction was replaced.                                               |
-| `swp_reorg`                       | A previously observed or finality-pending transaction was displaced.              |
-| `swp_funding_not_authorized`      | Verify-before-fund or external wallet authority is absent.                        |
-| `swp_status_signer_invalid`       | Author cannot claim the stated action.                                            |
-| `swp_status_transition_invalid`   | Transition is not in the selected state machine.                                  |
-| `swp_status_gap`                  | Author sequence is incomplete.                                                    |
-| `swp_status_fork`                 | Author signed two records at one sequence.                                        |
-| `swp_cancel_ineffective`          | Cancellation lacks consent or follows an irreversible effect.                     |
-| `swp_evidence_unavailable`        | Bound evidence cannot be retrieved.                                               |
-| `swp_evidence_mismatch`           | Artifact, digest, terms, or rail view differs.                                    |
-| `swp_settlement_overclaim`        | Claimed rung exceeds verifier evidence.                                           |
-| `swp_exit_package_missing`        | Required package was not persisted before funding.                                |
-| `swp_exit_package_mismatch`       | Package digest or terms differ from the Swap Contract.                            |
-| `swp_exit_package_unusable`       | Package still depends on unavailable coordination or secrets it does not possess. |
-| `swp_secret_material_forbidden`   | A relay/server artifact contains prohibited custody material.                     |
-| `swp_external_signature_invalid`  | An external signer returned malformed bytes or an invalid signature.              |
-| `swp_external_signature_mismatch` | An external signer changed the exact event or transaction template it was given.  |
-| `swp_privacy_violation`           | Field audience or receipt consent was exceeded.                                   |
-| `swp_external_effect_conflict`    | One effect ID maps to different external operations.                              |
-| `swp_idempotency_conflict`        | Same signed-record or effect key has changed input.                               |
-| `swp_refund_failed`               | A required refund was rejected, conflicted, or became unsafe.                     |
-| `swp_coordinator_unavailable`     | Coordination is unavailable; client must enter direct recovery.                   |
-| `swp_unresolved_loss`             | Terminal principal, fee, record, or rail state remains unknown.                   |
+| Error                             | Meaning                                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------------------------ |
+| `swp_unsupported_profile`         | Profile ID is not `mkt-swp`.                                                               |
+| `swp_unsupported_version`         | Profile or verifier revision is unsupported.                                               |
+| `swp_unsupported_critical_member` | A critical member is unknown.                                                              |
+| `swp_unsupported_extension`       | A non-v1 rail or EVM leg was requested.                                                    |
+| `swp_invalid_asset_id`            | Asset identifier is malformed or unallowlisted.                                            |
+| `swp_invalid_pair`                | Ordered asset pair does not match the swap type.                                           |
+| `swp_side_disabled`               | Offering has `max="0"` for the selected side.                                              |
+| `swp_invalid_amount`              | Amount is non-canonical, zero where executable, out of range, or over `u64`.               |
+| `swp_invalid_fee`                 | Fee field is malformed or exceeds policy.                                                  |
+| `swp_amount_equation_mismatch`    | Output does not reproduce from quoted terms.                                               |
+| `swp_quote_expired`               | Quote or reservation is expired.                                                           |
+| `swp_order_selection_invalid`     | Order changes a non-selectable term.                                                       |
+| `swp_contract_missing`            | Both complementary Swap Contract records are not present before funding.                   |
+| `swp_contract_signer_invalid`     | Swap Contract author or role does not match the Order and Quote.                           |
+| `swp_contract_digest_mismatch`    | Party records do not commit the same RFC 8785 contract bytes.                              |
+| `swp_contract_terms_mismatch`     | Swap Contract differs from the Quote or allowed Order selection.                           |
+| `swp_price_feed_invalid`          | URL, pointer, value, digest, redirect, or response is invalid.                             |
+| `swp_price_feed_stale`            | Exact pinned feed observation exceeds maximum age.                                         |
+| `swp_terms_mismatch`              | Invoice, script, amount, policy, or Status differs from Quote.                             |
+| `swp_reservation_missing`         | Required reservation terms or proof are absent.                                            |
+| `swp_reservation_expired`         | Reservation expired before effective Order.                                                |
+| `swp_reservation_overallocated`   | Active reservation sum exceeds committed capacity.                                         |
+| `swp_reservation_fork`            | Provider equivocated in reservation sequence or active set.                                |
+| `swp_reservation_proof_invalid`   | Proof does not establish its claimed class.                                                |
+| `swp_covenant_reserve_invalid`    | Covenant, amount, fill rule, or double-use check failed.                                   |
+| `swp_timeout_ladder_unsafe`       | Required height/time inequality is false or not computable.                                |
+| `swp_invoice_invalid`             | Invoice parse, network, amount, expiry, hash, or CLTV check failed.                        |
+| `swp_payment_hash_mismatch`       | Invoice, script, Quote, and local secret commitment disagree.                              |
+| `swp_script_invalid`              | Script or Taproot tree is malformed or unsupported.                                        |
+| `swp_script_commitment_mismatch`  | Re-derived scriptPubKey/address differs.                                                   |
+| `swp_liquid_network_mismatch`     | Elements genesis reference or pegged asset differs from signed terms.                      |
+| `swp_liquid_output_invalid`       | Elements output envelope, commitments, index, or fee shape is invalid.                     |
+| `swp_liquid_unblind_failed`       | The participant cannot unblind its selected confidential output.                           |
+| `swp_liquid_unblind_mismatch`     | Locally revealed asset, amount, script, or output differs from signed terms.               |
+| `swp_musig_transcript_invalid`    | Key order, tweak, nonce, message, or partial signature check failed.                       |
+| `swp_confirmation_insufficient`   | Rail object has fewer confirmations than quoted.                                           |
+| `swp_rbf_policy_violation`        | Funding violates replacement policy.                                                       |
+| `swp_zero_conf_not_allowed`       | Zero-confirmation acceptance is disabled for the selected policy or direction.             |
+| `swp_zero_conf_unsafe_mempool`    | The view is not local or has RBF signaling, an unconfirmed ancestor, or no exact outpoint. |
+| `swp_zero_conf_limit_exceeded`    | The per-swap or durable aggregate in-flight cap would be exceeded.                         |
+| `swp_replacement`                 | A tracked transaction was replaced.                                                        |
+| `swp_reorg`                       | A previously observed or finality-pending transaction was displaced.                       |
+| `swp_funding_not_authorized`      | Verify-before-fund or external wallet authority is absent.                                 |
+| `swp_status_signer_invalid`       | Author cannot claim the stated action.                                                     |
+| `swp_status_transition_invalid`   | Transition is not in the selected state machine.                                           |
+| `swp_status_gap`                  | Author sequence is incomplete.                                                             |
+| `swp_status_fork`                 | Author signed two records at one sequence.                                                 |
+| `swp_cancel_ineffective`          | Cancellation lacks consent or follows an irreversible effect.                              |
+| `swp_evidence_unavailable`        | Bound evidence cannot be retrieved.                                                        |
+| `swp_evidence_mismatch`           | Artifact, digest, terms, or rail view differs.                                             |
+| `swp_settlement_overclaim`        | Claimed rung exceeds verifier evidence.                                                    |
+| `swp_exit_package_missing`        | Required package was not persisted before funding.                                         |
+| `swp_exit_package_mismatch`       | Package digest or terms differ from the Swap Contract.                                     |
+| `swp_exit_package_unusable`       | Package still depends on unavailable coordination or secrets it does not possess.          |
+| `swp_secret_material_forbidden`   | A relay/server artifact contains prohibited custody material.                              |
+| `swp_external_signature_invalid`  | An external signer returned malformed bytes or an invalid signature.                       |
+| `swp_external_signature_mismatch` | An external signer changed the exact event or transaction template it was given.           |
+| `swp_privacy_violation`           | Field audience or receipt consent was exceeded.                                            |
+| `swp_external_effect_conflict`    | One effect ID maps to different external operations.                                       |
+| `swp_idempotency_conflict`        | Same signed-record or effect key has changed input.                                        |
+| `swp_refund_failed`               | A required refund was rejected, conflicted, or became unsafe.                              |
+| `swp_coordinator_unavailable`     | Coordination is unavailable; client must enter direct recovery.                            |
+| `swp_unresolved_loss`             | Terminal principal, fee, record, or rail state remains unknown.                            |
 
 Unsupported versions and critical extensions fail closed. Implementations
 retain the original signed record, error, observed rail view, and every
@@ -1658,6 +1764,8 @@ heights, verifier inputs, and expected evidence rung.
 | `swp-v1-reverse-hold-expiry-above-minimum`   | Accept observed shortest incoming expiry above signed `hold_expiry_height`.                                                                                            |
 | `swp-v1-chain-regtest-cooperative`           | Provider signs the source-funding instruction; source and destination locks, requester claim, provider claim, both final.                                              |
 | `swp-v1-chain-regtest-dual-refund`           | Destination is unclaimed; provider and requester execute the safe ordered refunds.                                                                                     |
+| `swp-v1-submarine-zero-conf-bounded`         | Provider admits exact non-RBF requester funding from local `bitcoind` under both caps without promoting it to final.                                                   |
+| `swp-v1-chain-source-zero-conf-bounded`      | Provider admits an exact Bitcoin source outpoint and funds the destination while the client finality and recovery gates stay unchanged.                                |
 | `swp-v1-liquid-submarine-regtest-refund`     | Requester verifies its pegged-asset output, persists the Liquid exit, and refunds after timeout.                                                                       |
 | `swp-v1-liquid-reverse-regtest-claim`        | Requester unblinds the provider lock, verifies amount/asset/script, and claims without coordinator keys.                                                               |
 | `swp-v1-liquid-exit-wallet-claim`            | Persist the exact Liquid template, input, signature digest, tree commitment, fee output, distinct local recovery refs, and local-node broadcast policy before funding. |
@@ -1700,6 +1808,12 @@ heights, verifier inputs, and expected evidence rung.
 | `swp-v1-negative-hold-expiry-below-minimum`                | `swp_timeout_ladder_unsafe`                                                 |
 | `swp-v1-negative-liquid-reverse-cross-domain-timeout`      | `swp_timeout_ladder_unsafe`                                                 |
 | `swp-v1-negative-rbf-forbidden`                            | `swp_rbf_policy_violation`                                                  |
+| `swp-v1-negative-zero-conf-disabled`                       | `swp_zero_conf_not_allowed`                                                 |
+| `swp-v1-negative-zero-conf-rbf`                            | `swp_zero_conf_unsafe_mempool`                                              |
+| `swp-v1-negative-zero-conf-unconfirmed-ancestor`           | `swp_zero_conf_unsafe_mempool`                                              |
+| `swp-v1-negative-zero-conf-per-swap-cap`                   | `swp_zero_conf_limit_exceeded`                                              |
+| `swp-v1-negative-zero-conf-aggregate-cap`                  | `swp_zero_conf_limit_exceeded`                                              |
+| `swp-v1-negative-zero-conf-remote-mempool`                 | `swp_zero_conf_unsafe_mempool`                                              |
 | `swp-v1-negative-insufficient-confirmations`               | `swp_confirmation_insufficient`                                             |
 | `swp-v1-negative-order-mutation`                           | `swp_order_selection_invalid`                                               |
 | `swp-v1-negative-bare-swap-contract`                       | NIP-MKT bare-private rejection `restricted: mkt-private-requires-gift-wrap` |
@@ -1751,19 +1865,22 @@ heights, verifier inputs, and expected evidence rung.
 
 ### 18.5 Reorg, replacement, and recovery
 
-| Fixture                                     | Required result                                                                             |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `swp-v1-reorg-funding-before-finality`      | Lower local rung, record both views, and wait or recover.                                   |
-| `swp-v1-reorg-claim-before-finality`        | Remove settlement claim and resume claim/refund monitoring.                                 |
-| `swp-v1-replacement-tracked`                | Bind replacement lineage under quoted policy.                                               |
-| `swp-v1-doomsday-submarine-provider-gone`   | Requester refunds from signed records and exit package with coordinator permanently absent. |
-| `swp-v1-doomsday-reverse-coordinator-gone`  | Counterparties complete or provider refunds/cancels using direct recovery and rail state.   |
-| `swp-v1-doomsday-chain-counterparty-gone`   | Each principal executes its unilateral timeout path in safe order.                          |
-| `swp-v1-doomsday-liquid-coordinator-gone`   | Participant unblinds its own bound output and executes the persisted Liquid script path.    |
-| `swp-v1-doomsday-keyless-esplora-broadcast` | Static executor broadcasts a pre-signed exit without any key material.                      |
-| `swp-v1-recovery-missing-signed-record`     | Report explicit loss and refuse reconstructed history.                                      |
-| `swp-v1-recovery-unusable-exit-package`     | Fail with `swp_exit_package_unusable` before funding.                                       |
-| `swp-v1-recovery-mutual-close-disagreement` | Preserve both Close records and their separate evidence.                                    |
+| Fixture                                        | Required result                                                                                                                      |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `swp-v1-reorg-funding-before-finality`         | Lower local rung, record both views, and wait or recover.                                                                            |
+| `swp-v1-reorg-claim-before-finality`           | Remove settlement claim and resume claim/refund monitoring.                                                                          |
+| `swp-v1-replacement-tracked`                   | Bind replacement lineage under quoted policy.                                                                                        |
+| `swp-v1-zero-conf-rbf-replacement-downgrade`   | Revoke the acceptance, retain both views, require exact-outpoint confirmation, and perform no later risk-increasing effect.          |
+| `swp-v1-zero-conf-double-spend-downgrade`      | Treat the competing spend as a conflict, retain the in-flight reservation when an effect occurred, and enter wait or recovery.       |
+| `swp-v1-zero-conf-ancestor-eviction-downgrade` | Downgrade when a previously confirmed ancestor becomes unconfirmed or the exact funding transaction disappears without confirmation. |
+| `swp-v1-doomsday-submarine-provider-gone`      | Requester refunds from signed records and exit package with coordinator permanently absent.                                          |
+| `swp-v1-doomsday-reverse-coordinator-gone`     | Counterparties complete or provider refunds/cancels using direct recovery and rail state.                                            |
+| `swp-v1-doomsday-chain-counterparty-gone`      | Each principal executes its unilateral timeout path in safe order.                                                                   |
+| `swp-v1-doomsday-liquid-coordinator-gone`      | Participant unblinds its own bound output and executes the persisted Liquid script path.                                             |
+| `swp-v1-doomsday-keyless-esplora-broadcast`    | Static executor broadcasts a pre-signed exit without any key material.                                                               |
+| `swp-v1-recovery-missing-signed-record`        | Report explicit loss and refuse reconstructed history.                                                                               |
+| `swp-v1-recovery-unusable-exit-package`        | Fail with `swp_exit_package_unusable` before funding.                                                                                |
+| `swp-v1-recovery-mutual-close-disagreement`    | Preserve both Close records and their separate evidence.                                                                             |
 
 ## 19. Relay and client conformance
 
@@ -1810,6 +1927,16 @@ required secp256k1-zkp primitives.
 - [Arkade, solver, Mostro, Cashu, and WDK teardown](../teardowns/2026-08-04-ark-solver-mostro-cashu-rails-teardown.md)
 
 ## Changelog
+
+**v1 provider zero-confirmation acceptance correction (2026-08-06)**
+
+- Added provider-signed zero-confirmation acceptance and
+  confirmation-required states without promoting funding finality.
+- Limited the opt-in to requester-funded Bitcoin directions, local
+  `bitcoind` views, non-RBF transactions without unconfirmed ancestors, and
+  durable per-swap and aggregate in-flight caps.
+- Required immediate downgrade on replacement, conflict, mempool loss, or a
+  newly unconfirmed ancestor and added the matching conformance fixtures.
 
 **v1 cross-participant causality correction (2026-08-06)**
 
