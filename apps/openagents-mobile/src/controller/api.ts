@@ -16,6 +16,8 @@ import {
 export const PRO_CONTROLLER_BASE_URL = "https://pro.openagents.com" as const;
 export const PRO_CONTROLLER_TOKEN_PATH = "/api/mobile/controller/token" as const;
 export const PRO_CONTROLLER_COMMAND_PATH = "/api/mobile/controller/command" as const;
+export const PRO_CONTROLLER_DEVICE_PATH = "/api/mobile/controller/device" as const;
+export const PRO_CONTROLLER_HARNESS_PATH = "/api/mobile/controller/harness" as const;
 const REFRESH_HEADER = "x-openagents-refresh-token";
 
 const headersFor = (credential: NativeSessionCredential): Record<string, string> => ({
@@ -76,6 +78,75 @@ export class ControllerApiError extends Error {
     this.name = "ControllerApiError";
   }
 }
+
+export const screenshotGrantFromUrl = (input: string): string | null => {
+  try {
+    const url = new URL(input);
+    if (url.protocol !== "openagents:" || url.hostname !== "harness") return null;
+    const grant = url.searchParams.get("grant")?.trim();
+    return grant && grant.length <= 2_048 ? grant : null;
+  } catch {
+    return null;
+  }
+};
+
+export const fetchScreenshotHarnessBootstrap = async (input: {
+  readonly grant: string;
+  readonly fetch?: typeof globalThis.fetch;
+  readonly baseUrl?: string;
+}): Promise<ControllerBootstrap> => {
+  const response = await (input.fetch ?? globalThis.fetch)(
+    `${input.baseUrl ?? PRO_CONTROLLER_BASE_URL}${PRO_CONTROLLER_HARNESS_PATH}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ grant: input.grant }),
+    },
+  );
+  if (response.status === 401 || response.status === 403) {
+    throw new ControllerApiError("signed_out", "The disposable screenshot session expired.");
+  }
+  if (!response.ok) {
+    throw new ControllerApiError("unavailable", "The screenshot harness is unavailable.");
+  }
+  return decodeControllerBootstrap(await response.json());
+};
+
+export const registerMobilePushDevice = async (input: {
+  readonly deviceId: string;
+  readonly pushToken: string;
+  readonly platform: "ios" | "android";
+  readonly credential: NativeSessionCredential;
+  readonly secureStore: NativeSessionSecureStore;
+  readonly fetch?: typeof globalThis.fetch;
+  readonly baseUrl?: string;
+}): Promise<Readonly<{ credential: NativeSessionCredential }>> => {
+  const response = await (input.fetch ?? globalThis.fetch)(
+    `${input.baseUrl ?? PRO_CONTROLLER_BASE_URL}${PRO_CONTROLLER_DEVICE_PATH}`,
+    {
+      method: "POST",
+      headers: { ...headersFor(input.credential), "content-type": "application/json" },
+      body: JSON.stringify({
+        deviceId: input.deviceId,
+        provider: "expo",
+        pushToken: input.pushToken,
+        platform: input.platform,
+      }),
+    },
+  );
+  if (response.status === 401 || response.status === 403) {
+    throw new ControllerApiError("signed_out", "Sign in before registering this device.");
+  }
+  if (!response.ok) {
+    throw new ControllerApiError("unavailable", "Push registration is temporarily unavailable.");
+  }
+  const body = (await response.json()) as {
+    rotatedTokens?: { access: string; refresh: string; expiresIn: number };
+  };
+  return {
+    credential: await persistRotation(input.secureStore, input.credential, body.rotatedTokens),
+  };
+};
 
 export const makeControllerTransport = (input: {
   readonly credential: () => NativeSessionCredential;

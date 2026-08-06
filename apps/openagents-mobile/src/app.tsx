@@ -1,7 +1,9 @@
 import { useFonts } from "expo-font";
+import { ShareIntentProvider } from "expo-share-intent";
 import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { AmbientProvider } from "./ambient/ambient-provider";
 import { ControllerRoot } from "./controller/controller-root";
 import { ControllerSessionProvider } from "./controller/session-provider";
 import { MobileClientOutboxProvider } from "./outbox/client-outbox-provider";
@@ -26,12 +28,16 @@ export const App = () => {
     return <View style={{ flex: 1, backgroundColor: colors.background }} />;
   }
   return (
-    <MobileClientOutboxProvider>
-      <SafeAreaProvider>
-        <ControllerSessionProvider>
-          <ControllerRoot />
-        </ControllerSessionProvider>
-      </SafeAreaProvider>
-    </MobileClientOutboxProvider>
+    <ShareIntentProvider options={{ scheme: "openagents", resetOnBackground: false }}>
+      <MobileClientOutboxProvider>
+        <SafeAreaProvider>
+          <ControllerSessionProvider>
+            <AmbientProvider>
+              <ControllerRoot />
+            </AmbientProvider>
+          </ControllerSessionProvider>
+        </SafeAreaProvider>
+      </MobileClientOutboxProvider>
+    </ShareIntentProvider>
   );
 };

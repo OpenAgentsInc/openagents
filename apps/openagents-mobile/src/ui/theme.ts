@@ -1,4 +1,7 @@
 import { khalaNativeTheme } from "@openagentsinc/design-tokens/native";
+import { defaultTheme } from "@openagentsinc/design-tokens";
+import { projectNativeTheme } from "@openagentsinc/design-tokens/native";
+import { DynamicColorIOS, Platform } from "react-native";
 
 /**
  * Mobile ergonomic aliases over the canonical semantic projection. The app
@@ -8,33 +11,39 @@ import { khalaNativeTheme } from "@openagentsinc/design-tokens/native";
  */
 const semantic = khalaNativeTheme.color;
 const matrix = khalaNativeTheme.colorMatrix;
+const lightTheme = projectNativeTheme(defaultTheme);
+const lightSemantic = lightTheme.color;
+const lightMatrix = lightTheme.colorMatrix;
+
+const adaptive = (dark: string, light: string): string =>
+  Platform.OS === "ios" ? (DynamicColorIOS({ dark, light }) as unknown as string) : dark;
 
 const palette = {
-  void: semantic.background,
-  panel: semantic.surface,
-  raised: semantic.surfaceRaised,
-  sunken: semantic.background,
+  void: adaptive(semantic.background, lightSemantic.background),
+  panel: adaptive(semantic.surface, lightSemantic.surface),
+  raised: adaptive(semantic.surfaceRaised, lightSemantic.surfaceRaised),
+  sunken: adaptive(semantic.background, lightSemantic.background),
 
-  hairline: semantic.border,
-  hairlineQuiet: semantic.borderSubtle,
-  hairlineEnergized: semantic.stateSelected,
+  hairline: adaptive(semantic.border, lightSemantic.border),
+  hairlineQuiet: adaptive(semantic.borderSubtle, lightSemantic.borderSubtle),
+  hairlineEnergized: adaptive(semantic.stateSelected, lightSemantic.stateSelected),
 
-  energy: semantic.accent,
-  energyHot: semantic.accentHover,
-  energyInk: semantic.focus,
-  energyGlow: semantic.stateSelected,
+  energy: adaptive(semantic.accent, lightSemantic.accent),
+  energyHot: adaptive(semantic.accentHover, lightSemantic.accentHover),
+  energyInk: adaptive(semantic.focus, lightSemantic.focus),
+  energyGlow: adaptive(semantic.stateSelected, lightSemantic.stateSelected),
 
-  white: semantic.textPrimary,
-  body: semantic.textBody,
-  secondary: semantic.textMuted,
-  faint: semantic.textFaint,
+  white: adaptive(semantic.textPrimary, lightSemantic.textPrimary),
+  body: adaptive(semantic.textBody, lightSemantic.textBody),
+  secondary: adaptive(semantic.textMuted, lightSemantic.textMuted),
+  faint: adaptive(semantic.textFaint, lightSemantic.textFaint),
 
-  live: semantic.attentionDone,
-  liveGlow: matrix.success.soft.rest.background,
-  warn: semantic.attentionApproval,
-  warnGlow: matrix.warning.soft.rest.background,
-  fault: semantic.attentionFailed,
-  faultGlow: matrix.danger.soft.rest.background,
+  live: adaptive(semantic.attentionDone, lightSemantic.attentionDone),
+  liveGlow: adaptive(matrix.success.soft.rest.background, lightMatrix.success.soft.rest.background),
+  warn: adaptive(semantic.attentionApproval, lightSemantic.attentionApproval),
+  warnGlow: adaptive(matrix.warning.soft.rest.background, lightMatrix.warning.soft.rest.background),
+  fault: adaptive(semantic.attentionFailed, lightSemantic.attentionFailed),
+  faultGlow: adaptive(matrix.danger.soft.rest.background, lightMatrix.danger.soft.rest.background),
 } as const;
 
 export const colors = {
@@ -66,12 +75,24 @@ export const colors = {
   fault: palette.fault,
   faultGlow: palette.faultGlow,
 
-  attentionApproval: semantic.attentionApproval,
-  attentionInput: semantic.attentionInput,
-  attentionWorking: semantic.attentionWorking,
-  attentionFailed: semantic.attentionFailed,
-  attentionDone: semantic.attentionDone,
+  attentionApproval: adaptive(semantic.attentionApproval, lightSemantic.attentionApproval),
+  attentionInput: adaptive(semantic.attentionInput, lightSemantic.attentionInput),
+  attentionWorking: adaptive(semantic.attentionWorking, lightSemantic.attentionWorking),
+  attentionFailed: adaptive(semantic.attentionFailed, lightSemantic.attentionFailed),
+  attentionDone: adaptive(semantic.attentionDone, lightSemantic.attentionDone),
 } as const;
+
+export const navigationColors = (scheme: string | null | undefined) => {
+  const selected = scheme === "light" ? lightTheme : khalaNativeTheme;
+  return {
+    primary: selected.color.accent,
+    background: selected.color.surface,
+    card: selected.color.background,
+    text: selected.color.textPrimary,
+    border: selected.color.border,
+    notification: selected.color.attentionApproval,
+  };
+};
 
 export const spacing = {
   micro: khalaNativeTheme.spacing["0.5"],

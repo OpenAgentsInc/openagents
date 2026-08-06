@@ -6,8 +6,13 @@
     "version": "0.5.2",
     "icon": "./assets/images/icon.png",
     "orientation": "default",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "backgroundColor": "#05070d",
+    "extra": {
+      "openagents": {
+        "pushProjectId": "9b2d1e62-fd84-4fa4-928f-fce07b733014"
+      }
+    },
     "newArchEnabled": true,
     "splash": {
       "backgroundColor": "#05070d",
@@ -38,6 +43,20 @@
     "plugins": [
       "./plugins/with-source-built-expo-modules.cjs",
       "expo-notifications",
+      "expo-live-activity",
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsText": true,
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebPageWithMaxCount": 1,
+            "NSExtensionActivationSupportsImageWithMaxCount": 10
+          },
+          "androidIntentFilters": ["text/*", "image/*"],
+          "androidMultiIntentFilters": ["image/*"]
+        }
+      ],
       "expo-updates",
       "expo-secure-store",
       [

@@ -1,15 +1,27 @@
 import { NavigationContainer, type Theme } from "@react-navigation/native";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { ActivityIndicator, View, useWindowDimensions, type ViewStyle } from "react-native";
+import {
+  createNativeStackNavigator,
+  type NativeStackScreenProps,
+} from "@react-navigation/native-stack";
+import type { ComponentProps } from "react";
+import {
+  ActivityIndicator,
+  View,
+  useColorScheme,
+  useWindowDimensions,
+  type ViewStyle,
+} from "react-native";
 
 import { Button } from "../ui/button";
 import { Text } from "../ui/text";
-import { colors, spacing } from "../ui/theme";
+import { colors, navigationColors, spacing } from "../ui/theme";
 import { controllerLayout } from "./layout";
-import { controllerLinking, type ControllerRouteParams } from "./routes";
+import type { ControllerRouteParams } from "./routes";
+import { runtimeControllerLinking } from "./runtime-linking";
 import {
   ControllerConnectionsScreen,
   ControllerHomeScreen,
+  ControllerIntakeScreen,
   ControllerNewTaskScreen,
   ControllerSarahVoiceScreen,
   ControllerSettingsScreen,
@@ -20,6 +32,7 @@ import { useControllerSession } from "./session-provider";
 import { ControllerSignInScreen } from "./sign-in-screen";
 
 const Stack = createNativeStackNavigator<ControllerRouteParams>();
+type InboxProps = NativeStackScreenProps<ControllerRouteParams, "Inbox">;
 
 const TerminalScreen = () => (
   <ControllerSurfaceScreen
@@ -49,30 +62,24 @@ const GitScreen = () => (
   />
 );
 
-const navigationTheme: Theme = {
-  dark: true,
-  colors: {
-    primary: colors.accent,
-    background: colors.background,
-    card: colors.surfaceSunken,
-    text: colors.text,
-    border: colors.border,
-    notification: colors.warn,
-  },
-  fonts: {
-    regular: { fontFamily: "IBMPlexSans-Regular", fontWeight: "400" },
-    medium: { fontFamily: "IBMPlexSans-SemiBold", fontWeight: "600" },
-    bold: { fontFamily: "IBMPlexSans-SemiBold", fontWeight: "600" },
-    heavy: { fontFamily: "Lilex-Bold", fontWeight: "700" },
-  },
-};
-
 const ControllerNavigator = () => {
   const { width, height } = useWindowDimensions();
+  const scheme = useColorScheme();
   const layout = controllerLayout(width, height);
   const presentation = layout.useSheets ? "formSheet" : "card";
+  const resolvedColors = navigationColors(scheme);
+  const navigationTheme: Theme = {
+    dark: scheme !== "light",
+    colors: resolvedColors,
+    fonts: {
+      regular: { fontFamily: "IBMPlexSans-Regular", fontWeight: "400" },
+      medium: { fontFamily: "IBMPlexSans-SemiBold", fontWeight: "600" },
+      bold: { fontFamily: "IBMPlexSans-SemiBold", fontWeight: "600" },
+      heavy: { fontFamily: "Lilex-Bold", fontWeight: "700" },
+    },
+  };
   return (
-    <NavigationContainer linking={controllerLinking} theme={navigationTheme}>
+    <NavigationContainer linking={runtimeControllerLinking} theme={navigationTheme}>
       <Stack.Navigator
         screenOptions={{
           headerStyle: { backgroundColor: colors.surfaceSunken },
@@ -87,9 +94,14 @@ const ControllerNavigator = () => {
           options={{ headerShown: false }}
         />
         <Stack.Screen
+          name="Inbox"
+          component={ControllerInboxScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
           name="Thread"
           component={ControllerThreadScreen}
-          options={({ route }) => ({ title: route.params.label })}
+          options={({ route }) => ({ title: route.params.label ?? "Work" })}
         />
         <Stack.Screen
           name="Terminal"
@@ -113,6 +125,11 @@ const ControllerNavigator = () => {
           options={{ presentation }}
         />
         <Stack.Screen
+          name="Intake"
+          component={ControllerIntakeScreen}
+          options={{ title: "Share inbox", presentation }}
+        />
+        <Stack.Screen
           name="NewTask"
           component={ControllerNewTaskScreen}
           options={{ title: "New task", presentation }}
@@ -131,6 +148,11 @@ const ControllerNavigator = () => {
     </NavigationContainer>
   );
 };
+
+type HomeNavigation = ComponentProps<typeof ControllerHomeScreen>["navigation"];
+const ControllerInboxScreen = ({ navigation }: InboxProps) => (
+  <ControllerHomeScreen navigation={navigation as HomeNavigation} />
+);
 
 export const ControllerRoot = () => {
   const session = useControllerSession();

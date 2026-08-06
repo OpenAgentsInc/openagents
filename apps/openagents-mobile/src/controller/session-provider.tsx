@@ -1,6 +1,7 @@
 import type { EnqueueInput, TransportResult } from "@openagentsinc/client-command-outbox";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import * as SecureStore from "expo-secure-store";
+import * as Linking from "expo-linking";
 import {
   createContext,
   useCallback,
@@ -23,15 +24,24 @@ import { useMobileClientOutbox } from "../outbox/client-outbox-provider";
 import {
   ControllerApiError,
   fetchControllerBootstrap,
+  fetchScreenshotHarnessBootstrap,
   makeControllerTransport,
+  registerMobilePushDevice,
+  screenshotGrantFromUrl,
   sendImmediateInterrupt,
 } from "./api";
 import type { ControllerBootstrap, ControllerTarget } from "./contracts";
+import { readScreenshotLaunch } from "./screenshot-launch";
 
 export type ControllerSessionState =
   | Readonly<{ phase: "initializing"; bootstrap: null; message: null }>
   | Readonly<{ phase: "signed_out"; bootstrap: null; message: null }>
-  | Readonly<{ phase: "ready"; bootstrap: ControllerBootstrap; message: null }>
+  | Readonly<{
+      phase: "ready";
+      bootstrap: ControllerBootstrap;
+      message: null;
+      sessionKind: "device" | "screenshot_harness";
+    }>
   | Readonly<{ phase: "failed"; bootstrap: null; message: string }>;
 
 type ControllerSessionValue = ControllerSessionState &
@@ -47,6 +57,11 @@ type ControllerSessionValue = ControllerSessionState &
       options?: Readonly<{ clearObservationKey?: string }>,
     ) => Promise<Readonly<{ delivered: number; terminal: number; pending: number }>>;
     interrupt: (commandId: string, target: ControllerTarget) => Promise<TransportResult>;
+    registerPushDevice: (input: {
+      readonly deviceId: string;
+      readonly pushToken: string;
+      readonly platform: "ios" | "android";
+    }) => Promise<void>;
   }>;
 
 const initialState: ControllerSessionState = {
@@ -105,16 +120,50 @@ export const ControllerSessionProvider = ({ children }: { readonly children: Rea
     });
     clientRef.current = nextClient;
     setClient(nextClient);
-    setState({ phase: "ready", bootstrap: initial.bootstrap, message: null });
+    setState({
+      phase: "ready",
+      bootstrap: initial.bootstrap,
+      message: null,
+      sessionKind: "device",
+    });
+  }, []);
+
+  const connectHarness = useCallback(async (grant: string) => {
+    const bootstrap = await fetchScreenshotHarnessBootstrap({ grant });
+    credentialRef.current = null;
+    const nextClient = new ConvexReactClient(bootstrap.convexUrl, {
+      unsavedChangesWarning: false,
+    });
+    nextClient.setAuth(async () => bootstrap.token);
+    clientRef.current = nextClient;
+    setClient(nextClient);
+    setState({
+      phase: "ready",
+      bootstrap,
+      message: null,
+      sessionKind: "screenshot_harness",
+    });
   }, []);
 
   useEffect(() => {
     let active = true;
-    void loadNativeSessionCredential(secureStore)
-      .then(async (credential) => {
+    void readScreenshotLaunch()
+      .then(async (screenshotLaunch) => {
+        if (!active) return;
+        if (screenshotLaunch !== null) {
+          await connectHarness(screenshotLaunch.grant);
+          return;
+        }
+        const credential = await loadNativeSessionCredential(secureStore);
         if (!active) return;
         if (credential === null) {
-          setState({ phase: "signed_out", bootstrap: null, message: null });
+          const initialUrl = await Linking.getInitialURL();
+          const grant = initialUrl === null ? null : screenshotGrantFromUrl(initialUrl);
+          if (grant !== null) {
+            await connectHarness(grant);
+          } else {
+            setState({ phase: "signed_out", bootstrap: null, message: null });
+          }
           return;
         }
         await connect(credential);
@@ -136,7 +185,25 @@ export const ControllerSessionProvider = ({ children }: { readonly children: Rea
       active = false;
       disconnect();
     };
-  }, [connect, disconnect]);
+  }, [connect, connectHarness, disconnect]);
+
+  useEffect(() => {
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      const grant = screenshotGrantFromUrl(url);
+      if (grant === null) return;
+      disconnect();
+      setState(initialState);
+      void connectHarness(grant).catch((error: unknown) =>
+        setState({
+          phase: "failed",
+          bootstrap: null,
+          message:
+            error instanceof Error ? error.message : "The screenshot harness could not start.",
+        }),
+      );
+    });
+    return () => subscription.remove();
+  }, [connectHarness, disconnect]);
 
   const acceptCredential = useCallback(
     async (credential: NativeSessionCredential) => {
@@ -215,9 +282,34 @@ export const ControllerSessionProvider = ({ children }: { readonly children: Rea
     [outbox, updateCredential],
   );
 
+  const registerPushDevice = useCallback(
+    async (input: {
+      readonly deviceId: string;
+      readonly pushToken: string;
+      readonly platform: "ios" | "android";
+    }) => {
+      const credential = credentialRef.current;
+      if (credential === null) throw new Error("Sign in before registering this device.");
+      const registered = await registerMobilePushDevice({
+        ...input,
+        credential,
+        secureStore,
+      });
+      credentialRef.current = registered.credential;
+    },
+    [],
+  );
+
   const value = useMemo<ControllerSessionValue>(
-    () => ({ ...state, acceptCredential, signOut, enqueueAndDrain, interrupt }),
-    [acceptCredential, enqueueAndDrain, interrupt, signOut, state],
+    () => ({
+      ...state,
+      acceptCredential,
+      signOut,
+      enqueueAndDrain,
+      interrupt,
+      registerPushDevice,
+    }),
+    [acceptCredential, enqueueAndDrain, interrupt, registerPushDevice, signOut, state],
   );
 
   const content = (

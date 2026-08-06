@@ -1,18 +1,19 @@
 # OpenAgents mobile
 
-The current OpenAgents iOS and Android source has two plain React Native
-surfaces. The released app can mirror an admitted Omega desktop. The source
-also implements a managed Sarah voice session with the protected mobile device
-identity. The live service and physical-device release proof are pending. Expo
-provides the native host, local build tools, camera access, microphone access,
-secure storage, and the owned OTA feed. Effect Native is not part of the
-mounted UI.
+The current OpenAgents iOS and Android app mounts a bounded Pro controller. It
+reads the owner's reactive work projection from Convex and sends mutations only
+through Pro's authenticated capability broker and durable device outbox. The
+source still contains the earlier Omega desktop mirror and managed Sarah voice
+implementations, but they are not the mounted root. Physical-device release
+proof remains pending. Expo provides the native host, local build tools,
+notifications, Live Activities, share intake, quick actions, camera access,
+microphone access, and secure storage. Effect Native is not part of the mounted
+UI.
 
 - Display name: `OpenAgents`
 - iOS bundle identifier / Android application ID: `com.openagents.app`
 - App entry: `src/app.tsx`
-- Mounted screens: `src/screens/omega-home-screen.tsx` and
-  `src/screens/sarah-voice-screen.tsx`
+- Mounted root: `src/controller/controller-root.tsx`
 - Device bridge protocol: `openagents.omega.device_bridge.v1`
 - Sarah voice protocol: `openagents.sarah.voice.v1`
 
@@ -22,10 +23,11 @@ settings, and mobile command surfaces. The managed Sarah voice surface uses
 only the protected device identity and a normal OpenAgents session. Historical
 receipts remain evidence only for the commits that they identify.
 
-## What exists today
+## Legacy Omega mirror and Sarah voice
 
-The app opens a signed device identity from Expo SecureStore and connects to an
-Omega desktop bridge over WebSocket. A person can:
+The source can open a signed device identity from Expo SecureStore and connect
+to an Omega desktop bridge over WebSocket. Those modules remain available for
+future composition but are not mounted by `src/app.tsx`. They support:
 
 - scan the short-lived QR bootstrap shown by Omega desktop, with the in-app
   scanner or with the phone camera app. The QR can carry the raw bootstrap
@@ -94,15 +96,14 @@ reconnect budget after each provider-confirmed stable connection.
 
 ## Capability boundary
 
-The Omega surface is a read-only desktop mirror. It does not render a transcript
-composer because the mounted surface does not open the signed relay command
-lane. The Sarah surface is voice-first and has no device command authority. The
-app does not currently:
+The mounted controller is an authenticated projection and command client, not
+execution authority. Notifications, Live Activities, share intake, and quick
+actions can navigate or collect local input; they cannot execute work. Every
+mutation still passes Pro's capability checks and durable outbox. The app does
+not currently:
 
-- create, append to, steer, interrupt, or approve desktop work
 - synchronize general account conversations
-- start Full Auto or control managed sandboxes, terminals, files, diffs, or Git
-- register or consume push notifications
+- run a managed sandbox, terminal, filesystem, Git operation, or model locally
 - run a model, shell, cloud SDK, or desktop authority on the phone.
 
 The managed gateway runs Sarah outside the phone. The phone has no provider
@@ -111,8 +112,12 @@ candidate-bound evidence before a TestFlight upload.
 
 ## Architecture
 
-- `src/app.tsx` loads the bundled faces. It then mounts `OmegaHomeScreen` or
-  `SarahVoiceScreen` inside the safe-area provider.
+- `src/app.tsx` loads the bundled faces, durable command outbox, controller
+  session, ambient surfaces, and `ControllerRoot` inside the safe-area provider.
+- `src/controller/` owns signed session bootstrap, Convex projections,
+  deep-link routing, screens, and the disposable screenshot launch adapter.
+- `src/ambient/` owns strict notification/Live Activity contracts, atomic tap
+  deduplication, durable share intake, and launcher shortcuts.
 - `src/screens/omega-home-screen.tsx` owns QR scanning, connection notices,
   activity ordering, selection, and the clock the relative stamps read against.
 - `src/screens/sarah-voice-screen.tsx` owns the foreground voice lifecycle,
@@ -140,6 +145,32 @@ candidate-bound evidence before a TestFlight upload.
 
 The device bridge is the environment boundary. The phone renders its bounded
 projection. It does not become execution authority.
+
+## Ambient surfaces
+
+The Pro controller adds four native, projection-only entry surfaces:
+
+- `expo-notifications` opens an exact owner workspace and work aggregate after
+  an atomic SQLite notification-ID claim, so cold-start and live listeners
+  cannot handle one tap twice;
+- `expo-live-activity` generates the iOS widget extension and reconciles a
+  bounded, generic status from the current work-shell generation;
+- `expo-share-intent` generates the iOS Share Extension and Android intent
+  filters, then copies shared text, URLs, and images into a durable local
+  intake inbox;
+- `expo-quick-actions` exposes fixed routes for the attention inbox, share
+  inbox, and new-task entry point.
+
+Push and Live Activity payloads never contain transcript text, summaries,
+project names, or thread titles. These surfaces can navigate or collect local
+intake only; commands still require the authenticated Pro capability broker and
+durable client outbox.
+
+Pro owns the one-command real-backend screenshot matrix. From the Pro checkout,
+run `OPENAGENTS_REPO=../openagents pnpm mobile:screenshots` to build the release
+iOS workspace, capture Home/Thread/Inbox/Review in light and dark on disposable
+phone/tablet simulators, validate dimensions and color mode, and destroy the
+seeded Convex workspace.
 
 ## Run it
 
@@ -176,7 +207,10 @@ The current focused suite covers:
 - Sarah session authentication, canonical owner bootstrap, ticket handling,
   credit errors, heartbeat/reconnect, sequence checks, durable transcript
   appends, brokered command activity, unsupported-device-tool refusal, audio
-  bounds, and background cleanup.
+  bounds, and background cleanup
+- strict ambient payloads, atomic notification claims, exact deep links,
+  durable share intake, Live Activity reconciliation, Pro harness bootstrap,
+  and the native SDK configuration.
 
 These tests do not replace a signed Omega host run, a live managed Sarah
 gateway run, or a physical-device run.

@@ -5,12 +5,14 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   TextInput,
   View,
   useWindowDimensions,
+  type ImageStyle,
   type ListRenderItemInfo,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -18,6 +20,7 @@ import {
   type ViewStyle,
 } from "react-native";
 
+import { useAmbient } from "../ambient/ambient-provider";
 import { SarahVoiceScreen } from "../screens/sarah-voice-screen";
 import { useMobileClientOutbox } from "../outbox/client-outbox-provider";
 import { Button } from "../ui/button";
@@ -149,6 +152,7 @@ const ControllerSidebar = ({
   onSelect,
   onNewTask,
   onConnections,
+  onIntake,
 }: {
   readonly rows: ReadonlyArray<AttentionShell>;
   readonly loading: boolean;
@@ -156,6 +160,7 @@ const ControllerSidebar = ({
   readonly onSelect: (shell: AttentionShell) => void;
   readonly onNewTask: () => void;
   readonly onConnections: () => void;
+  readonly onIntake: () => void;
 }) => {
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<AttentionShell>) => (
@@ -173,6 +178,7 @@ const ControllerSidebar = ({
           <Text preset="caption">Live from Convex</Text>
         </View>
         <View style={$headerActions}>
+          <Button label="Intake" preset="ghost" onPress={onIntake} />
           <Button label="Connections" preset="ghost" onPress={onConnections} />
           <Button label="New" preset="secondary" onPress={onNewTask} />
         </View>
@@ -204,7 +210,11 @@ const ControllerSidebar = ({
   );
 };
 
-export const ControllerHomeScreen = ({ navigation }: HomeProps) => {
+export const ControllerHomeScreen = ({
+  navigation,
+}: {
+  readonly navigation: HomeProps["navigation"];
+}) => {
   const raw = useQuery(attentionInboxQuery, { limit: 100 });
   const rows = useMemo(() => (raw === undefined ? [] : decodeAttentionInbox(raw)), [raw]);
   const { width, height } = useWindowDimensions();
@@ -238,6 +248,7 @@ export const ControllerHomeScreen = ({ navigation }: HomeProps) => {
             onSelect={select}
             onNewTask={() => navigation.navigate("NewTask")}
             onConnections={() => navigation.navigate("Connections")}
+            onIntake={() => navigation.navigate("Intake")}
           />
         </View>
         {layout.mode === "split" ? (
@@ -865,16 +876,95 @@ const ThreadPane = ({
   );
 };
 
-export const ControllerThreadScreen = ({ route, navigation }: ThreadProps) => (
-  <View style={$root}>
-    <ThreadPane
-      target={route.params}
-      onOpenSurface={(surface) =>
-        navigation.navigate(surface, { aggregateId: route.params.aggregateId })
+export const ControllerThreadScreen = ({ route, navigation }: ThreadProps) => {
+  const session = useControllerSession();
+  const routeWorkspace = route.params.workspaceId;
+  if (
+    session.phase !== "ready" ||
+    (routeWorkspace !== undefined && routeWorkspace !== session.bootstrap.workspace.workspaceId)
+  ) {
+    return (
+      <View style={$sheet} accessibilityRole="alert">
+        <Text preset="heading">This work is unavailable.</Text>
+        <Text preset="body" color={colors.textDim}>
+          The link does not belong to the signed-in workspace.
+        </Text>
+        <Button label="Back to attention" onPress={() => navigation.navigate("Home")} />
+      </View>
+    );
+  }
+  return (
+    <View style={$root}>
+      <ThreadPane
+        target={{
+          aggregateType: route.params.aggregateType,
+          aggregateId: route.params.aggregateId,
+          label: route.params.label ?? "Work",
+        }}
+        onOpenSurface={(surface) =>
+          navigation.navigate(surface, { aggregateId: route.params.aggregateId })
+        }
+      />
+    </View>
+  );
+};
+
+export const ControllerIntakeScreen = () => {
+  const ambient = useAmbient();
+  if (ambient.phase === "initializing") {
+    return (
+      <View style={$center}>
+        <ActivityIndicator color={colors.accent} />
+      </View>
+    );
+  }
+  if (ambient.phase === "failed") {
+    return (
+      <View style={$sheet} accessibilityRole="alert">
+        <Text preset="heading">Share inbox unavailable</Text>
+        <Text preset="body" color={colors.textDim}>
+          Device storage could not be opened.
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <FlatList
+      style={$root}
+      contentContainerStyle={$feedContent}
+      data={ambient.items}
+      keyExtractor={(item) => item.intakeId}
+      ListEmptyComponent={
+        <View style={$empty}>
+          <Text preset="subheading">Nothing shared yet.</Text>
+          <Text preset="body" color={colors.textDim}>
+            Share text, a URL, or an image to OpenAgents. It stays in this durable device inbox
+            until you remove it.
+          </Text>
+        </View>
       }
+      renderItem={({ item }) => (
+        <View style={$requestCard}>
+          <Text preset="label" color={colors.accentInk}>
+            {item.kind.toUpperCase()}
+          </Text>
+          {item.kind === "image" ? (
+            <Image source={{ uri: item.value }} resizeMode="contain" style={$intakeImage} />
+          ) : (
+            <Text preset="body" numberOfLines={8}>
+              {item.value}
+            </Text>
+          )}
+          <Button
+            label="Remove"
+            preset="ghost"
+            onPress={() => void ambient.remove(item.intakeId)}
+          />
+        </View>
+      )}
     />
-  </View>
-);
+  );
+};
 
 export const ControllerSettingsScreen = () => {
   const session = useControllerSession();
@@ -1105,6 +1195,12 @@ const $requestCard: ViewStyle = {
   borderRadius: radius.large,
   padding: spacing.medium,
   gap: spacing.small,
+};
+const $intakeImage: ImageStyle = {
+  width: "100%",
+  height: 240,
+  borderRadius: radius.medium,
+  backgroundColor: colors.surfaceSunken,
 };
 const $requestActions: ViewStyle = { flexDirection: "row", gap: spacing.small };
 const $inputAnswer: ViewStyle = { gap: spacing.small };

@@ -7,7 +7,10 @@ import type {
 } from "../src/auth/native-session-vault.ts";
 import {
   fetchControllerBootstrap,
+  fetchScreenshotHarnessBootstrap,
   makeControllerTransport,
+  registerMobilePushDevice,
+  screenshotGrantFromUrl,
   sendImmediateInterrupt,
 } from "../src/controller/api.ts";
 
@@ -31,6 +34,26 @@ const memoryStore = (): NativeSessionSecureStore & { value: string | null } => (
 });
 
 describe("Pro mobile controller API", () => {
+  it("exchanges only the dedicated deep-link grant for a real read-only bootstrap", async () => {
+    expect(screenshotGrantFromUrl("openagents://harness?grant=signed.grant")).toBe("signed.grant");
+    expect(screenshotGrantFromUrl("https://example.com/?grant=signed.grant")).toBeNull();
+    const bootstrap = await fetchScreenshotHarnessBootstrap({
+      grant: "signed.grant",
+      fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
+        expect(String(url)).toBe("https://pro.openagents.com/api/mobile/controller/harness");
+        expect(JSON.parse(String(init?.body))).toEqual({ grant: "signed.grant" });
+        return Response.json({
+          version: "openagents.mobile_controller.v1",
+          token: "read-only-convex-jwt",
+          convexUrl: "https://convex.openagents.com",
+          actor: { userId: "screenshot:fixture", name: "OpenAgents QA", avatarUrl: "" },
+          workspace: { workspaceId: "screenshot:fixture", label: "Disposable QA workspace" },
+        });
+      }) as typeof fetch,
+    });
+    expect(bootstrap.workspace.workspaceId).toBe("screenshot:fixture");
+  });
+
   it("accepts only the server-derived owner and persists token rotation", async () => {
     const store = memoryStore();
     const result = await fetchControllerBootstrap({
@@ -103,5 +126,38 @@ describe("Pro mobile controller API", () => {
     });
     expect(receipt).toEqual({ status: "accepted", receiptRef: "evt_interrupt" });
     expect(store.value).toBeNull();
+  });
+
+  it("registers an Expo address through the authenticated controller and persists rotation", async () => {
+    const store = memoryStore();
+    let observedUrl = "";
+    const result = await registerMobilePushDevice({
+      deviceId: "device.mobile-api",
+      pushToken: "ExponentPushToken[mobile_api]",
+      platform: "ios",
+      credential: original,
+      secureStore: store,
+      fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
+        observedUrl = String(url);
+        expect(new Headers(init?.headers).get("authorization")).toBe("Bearer access-original");
+        expect(JSON.parse(String(init?.body))).toEqual({
+          deviceId: "device.mobile-api",
+          provider: "expo",
+          pushToken: "ExponentPushToken[mobile_api]",
+          platform: "ios",
+        });
+        return Response.json({
+          deviceId: "device.mobile-api",
+          registered: true,
+          rotatedTokens: { access: "access-next", refresh: "refresh-next", expiresIn: 300 },
+        });
+      }) as typeof fetch,
+    });
+    expect(observedUrl).toBe("https://pro.openagents.com/api/mobile/controller/device");
+    expect(result.credential).toEqual({
+      ownerUserId: original.ownerUserId,
+      accessToken: "access-next",
+      refreshToken: "refresh-next",
+    });
   });
 });

@@ -30,12 +30,14 @@ describe("mobile controller geometry and routes", () => {
   it("publishes every typed controller route as a deep link", () => {
     expect(Object.keys(controllerLinking.config.screens)).toEqual([
       "Home",
+      "Inbox",
       "Thread",
       "Terminal",
       "Review",
       "Files",
       "Git",
       "Connections",
+      "Intake",
       "NewTask",
       "Settings",
       "SarahVoice",
