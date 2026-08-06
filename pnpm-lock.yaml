@@ -398,6 +398,9 @@ importers:
       '@openagentsinc/behavior-contracts':
         specifier: workspace:*
         version: link:../../packages/behavior-contracts
+      '@openagentsinc/client-command-outbox':
+        specifier: workspace:*
+        version: link:../../packages/client-command-outbox
       '@openagentsinc/khala-sync':
         specifier: workspace:*
         version: link:../../packages/khala-sync
@@ -1464,6 +1467,22 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
+
+  packages/client-command-outbox:
+    dependencies:
+      '@noble/hashes':
+        specifier: 1.7.1
+        version: 1.7.1
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.2.4(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(esbuild@0.28.1)(happy-dom@20.10.6)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0)
 
   packages/cloud-contract:
     dependencies:

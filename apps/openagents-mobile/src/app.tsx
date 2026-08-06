@@ -3,6 +3,7 @@ import { useFonts } from "expo-font";
 import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { MobileClientOutboxProvider } from "./outbox/client-outbox-provider";
 import { OmegaHomeScreen } from "./screens/omega-home-screen";
 import { SarahVoiceScreen } from "./screens/sarah-voice-screen";
 import { colors, fontAssets } from "./ui/theme";
@@ -29,20 +30,22 @@ export const App = () => {
     return <View style={{ flex: 1, backgroundColor: colors.background }} />;
   }
   return (
-    <SafeAreaProvider>
-      {surface === "sarah_voice" ? (
-        <SarahVoiceScreen
-          desktopThreadRef={desktopThreadRef}
-          onClose={() => setSurface("omega")}
-        />
-      ) : (
-        <OmegaHomeScreen
-          onSarahVoicePressed={(threadRef) => {
-            setDesktopThreadRef(threadRef);
-            setSurface("sarah_voice");
-          }}
-        />
-      )}
-    </SafeAreaProvider>
+    <MobileClientOutboxProvider>
+      <SafeAreaProvider>
+        {surface === "sarah_voice" ? (
+          <SarahVoiceScreen
+            desktopThreadRef={desktopThreadRef}
+            onClose={() => setSurface("omega")}
+          />
+        ) : (
+          <OmegaHomeScreen
+            onSarahVoicePressed={(threadRef) => {
+              setDesktopThreadRef(threadRef);
+              setSurface("sarah_voice");
+            }}
+          />
+        )}
+      </SafeAreaProvider>
+    </MobileClientOutboxProvider>
   );
 };

@@ -19,6 +19,7 @@
     "@openagentsinc/agent-surface": "workspace:*",
     "@openagentsinc/audio-contract": "workspace:*",
     "@openagentsinc/behavior-contracts": "workspace:*",
+    "@openagentsinc/client-command-outbox": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-client": "workspace:*",
     "@openagentsinc/managed-sandbox-contract": "workspace:*",
