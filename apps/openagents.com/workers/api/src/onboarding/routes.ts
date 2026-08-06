@@ -19,6 +19,7 @@ import {
   CustomerOrderStore,
 } from '../customer-orders'
 import { methodNotAllowed, noStoreJsonResponse } from '../http/responses'
+import { decodedPathSegmentOrRaw } from '../http/router'
 import { identityDbForEnv, type IdentityDb, type IdentityDbEnv } from '../identity-db'
 import { logWorkerRouteError } from '../observability'
 import { openAgentsDatabase } from '../runtime'
@@ -1107,8 +1108,8 @@ export const makeOnboardingRoutes = <
       if (mobileRepositoryDetailMatch !== null) {
         return request.method === 'GET'
           ? mobileRepositoryDetailResponse(
-              decodeURIComponent(mobileRepositoryDetailMatch[1] ?? ''),
-              decodeURIComponent(mobileRepositoryDetailMatch[2] ?? ''),
+              decodedPathSegmentOrRaw(mobileRepositoryDetailMatch[1] ?? ''),
+              decodedPathSegmentOrRaw(mobileRepositoryDetailMatch[2] ?? ''),
               request,
               env,
               ctx,

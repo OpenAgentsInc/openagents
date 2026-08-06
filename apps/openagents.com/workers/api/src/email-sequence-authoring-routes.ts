@@ -73,6 +73,7 @@ import {
   updateEmailSequenceStatus,
 } from './email-sequence-authoring'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import { readJsonObject } from './json-boundary'
 
 type EmailSequenceAuthoringEnv = Readonly<{
@@ -262,7 +263,9 @@ const slugFromMatch = (
 ): string | undefined => {
   const match = pattern.exec(pathname)
 
-  return match?.[1] === undefined ? undefined : decodeURIComponent(match[1])
+  return match?.[1] === undefined
+    ? undefined
+    : decodedPathSegmentOrRaw(match[1])
 }
 
 const handleCreate = <

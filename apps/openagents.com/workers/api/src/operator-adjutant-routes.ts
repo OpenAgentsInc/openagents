@@ -109,6 +109,7 @@ import {
   makeExaClient,
 } from './exa'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import {
   OA_JOB_TOPIC_ADJUTANT_ENRICHMENT,
   makeOaJobEnqueueForEnv,
@@ -6227,7 +6228,7 @@ export const makeOperatorAdjutantRoutes = <
 
       if (preflightMatch !== null) {
         return preflightAssignment(
-          decodeURIComponent(preflightMatch[1] ?? ''),
+          decodedPathSegmentOrRaw(preflightMatch[1] ?? ''),
           request,
           env,
           ctx,
@@ -6241,7 +6242,7 @@ export const makeOperatorAdjutantRoutes = <
 
       if (clearCurrentRunMatch !== null) {
         return clearCurrentRun(
-          decodeURIComponent(clearCurrentRunMatch[1] ?? ''),
+          decodedPathSegmentOrRaw(clearCurrentRunMatch[1] ?? ''),
           request,
           env,
           ctx,
@@ -6255,7 +6256,7 @@ export const makeOperatorAdjutantRoutes = <
 
       if (launchMatch !== null) {
         return launchAssignment(
-          decodeURIComponent(launchMatch[1] ?? ''),
+          decodedPathSegmentOrRaw(launchMatch[1] ?? ''),
           request,
           env,
           ctx,
@@ -6269,7 +6270,7 @@ export const makeOperatorAdjutantRoutes = <
 
       if (adjustmentMatch !== null) {
         return requestAdjustment(
-          decodeURIComponent(adjustmentMatch[1] ?? ''),
+          decodedPathSegmentOrRaw(adjustmentMatch[1] ?? ''),
           request,
           env,
           ctx,
@@ -6283,7 +6284,7 @@ export const makeOperatorAdjutantRoutes = <
 
       if (enrichmentPlanMatch !== null) {
         return planEnrichment(
-          decodeURIComponent(enrichmentPlanMatch[1] ?? ''),
+          decodedPathSegmentOrRaw(enrichmentPlanMatch[1] ?? ''),
           request,
           env,
           ctx,
@@ -6297,7 +6298,7 @@ export const makeOperatorAdjutantRoutes = <
 
       if (enrichmentRunMatch !== null) {
         return runEnrichment(
-          decodeURIComponent(enrichmentRunMatch[1] ?? ''),
+          decodedPathSegmentOrRaw(enrichmentRunMatch[1] ?? ''),
           request,
           env,
           ctx,
@@ -6312,7 +6313,7 @@ export const makeOperatorAdjutantRoutes = <
 
       if (enrichmentRefreshMatch !== null) {
         return runEnrichment(
-          decodeURIComponent(enrichmentRefreshMatch[1] ?? ''),
+          decodedPathSegmentOrRaw(enrichmentRefreshMatch[1] ?? ''),
           request,
           env,
           ctx,
@@ -6327,7 +6328,7 @@ export const makeOperatorAdjutantRoutes = <
 
       if (enrichmentEnqueueMatch !== null) {
         return enqueueEnrichment(
-          decodeURIComponent(enrichmentEnqueueMatch[1] ?? ''),
+          decodedPathSegmentOrRaw(enrichmentEnqueueMatch[1] ?? ''),
           request,
           env,
           ctx,
@@ -6341,7 +6342,7 @@ export const makeOperatorAdjutantRoutes = <
 
       if (sourceRefsMatch !== null) {
         return createPublicSourceRef(
-          decodeURIComponent(sourceRefsMatch[1] ?? ''),
+          decodedPathSegmentOrRaw(sourceRefsMatch[1] ?? ''),
           request,
           env,
           ctx,
@@ -6355,8 +6356,8 @@ export const makeOperatorAdjutantRoutes = <
 
       if (sourceRefReviewMatch !== null) {
         return reviewPublicSourceRef(
-          decodeURIComponent(sourceRefReviewMatch[1] ?? ''),
-          decodeURIComponent(sourceRefReviewMatch[2] ?? ''),
+          decodedPathSegmentOrRaw(sourceRefReviewMatch[1] ?? ''),
+          decodedPathSegmentOrRaw(sourceRefReviewMatch[2] ?? ''),
           request,
           env,
           ctx,
@@ -6370,8 +6371,8 @@ export const makeOperatorAdjutantRoutes = <
 
       if (sourceCardReviewMatch !== null) {
         return reviewSourceCard(
-          decodeURIComponent(sourceCardReviewMatch[1] ?? ''),
-          decodeURIComponent(sourceCardReviewMatch[2] ?? ''),
+          decodedPathSegmentOrRaw(sourceCardReviewMatch[1] ?? ''),
+          decodedPathSegmentOrRaw(sourceCardReviewMatch[2] ?? ''),
           request,
           env,
           ctx,
@@ -6385,8 +6386,8 @@ export const makeOperatorAdjutantRoutes = <
 
       if (researchBriefReviewMatch !== null) {
         return reviewResearchBrief(
-          decodeURIComponent(researchBriefReviewMatch[1] ?? ''),
-          decodeURIComponent(researchBriefReviewMatch[2] ?? ''),
+          decodedPathSegmentOrRaw(researchBriefReviewMatch[1] ?? ''),
+          decodedPathSegmentOrRaw(researchBriefReviewMatch[2] ?? ''),
           request,
           env,
           ctx,
@@ -6400,7 +6401,7 @@ export const makeOperatorAdjutantRoutes = <
 
       if (enrichmentMatch !== null) {
         return readEnrichment(
-          decodeURIComponent(enrichmentMatch[1] ?? ''),
+          decodedPathSegmentOrRaw(enrichmentMatch[1] ?? ''),
           request,
           env,
           ctx,
@@ -6414,7 +6415,7 @@ export const makeOperatorAdjutantRoutes = <
 
       if (researchPolicyMatch !== null) {
         return researchPolicy(
-          decodeURIComponent(researchPolicyMatch[1] ?? ''),
+          decodedPathSegmentOrRaw(researchPolicyMatch[1] ?? ''),
           request,
           env,
           ctx,
@@ -6426,7 +6427,7 @@ export const makeOperatorAdjutantRoutes = <
 
       if (assignmentMatch !== null) {
         return readAssignment(
-          decodeURIComponent(assignmentMatch[1] ?? ''),
+          decodedPathSegmentOrRaw(assignmentMatch[1] ?? ''),
           request,
           env,
           ctx,
@@ -6440,7 +6441,7 @@ export const makeOperatorAdjutantRoutes = <
 
       if (orderAssignMatch !== null) {
         return assignOrder(
-          decodeURIComponent(orderAssignMatch[1] ?? ''),
+          decodedPathSegmentOrRaw(orderAssignMatch[1] ?? ''),
           request,
           env,
           ctx,
@@ -6452,7 +6453,7 @@ export const makeOperatorAdjutantRoutes = <
 
       if (siteAssignMatch !== null) {
         return assignSite(
-          decodeURIComponent(siteAssignMatch[1] ?? ''),
+          decodedPathSegmentOrRaw(siteAssignMatch[1] ?? ''),
           request,
           env,
           ctx,

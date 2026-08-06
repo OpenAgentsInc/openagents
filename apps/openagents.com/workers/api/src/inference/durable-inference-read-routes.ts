@@ -27,6 +27,7 @@ import {
   type DurableStreamNamespace,
   replayFromOffsetDO,
 } from './durable-inference-do-transport'
+import { decodedPathSegmentOrRaw } from '../http/router'
 
 const DURABLE_PREFIX = '/v1/chat/completions/durable/'
 
@@ -50,7 +51,7 @@ const requestIdFromPath = (pathname: string): string | undefined => {
   if (raw.length === 0 || raw.includes('/')) {
     return undefined
   }
-  return decodeURIComponent(raw)
+  return decodedPathSegmentOrRaw(raw)
 }
 
 const jsonError = (error: string, status: number): Response =>

@@ -23,6 +23,7 @@ import {
   noStoreJsonResponse,
   unauthorized,
 } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import { decodeUnknownWithSchema, parseJsonUnknown } from './json-boundary'
 import {
   currentIsoTimestamp,
@@ -1523,10 +1524,10 @@ export const makeTraceStoreRoutes = <
     // BEFORE the single-segment read route below.
     const blobMatch = /^\/api\/traces\/([^/]+)\/blob\/(.+)$/.exec(url.pathname)
     if (blobMatch !== null) {
-      const traceUuid = decodeURIComponent(blobMatch[1] ?? '')
+      const traceUuid = decodedPathSegmentOrRaw(blobMatch[1] ?? '')
       const r2Key = (blobMatch[2] ?? '')
         .split('/')
-        .map(decodeURIComponent)
+        .map(segment => decodedPathSegmentOrRaw(segment))
         .join('/')
       if (request.method === 'GET') {
         return routeBlobServe(
@@ -1560,7 +1561,7 @@ export const makeTraceStoreRoutes = <
 
     const readMatch = /^\/api\/traces\/([^/]+)$/.exec(url.pathname)
     if (readMatch !== null) {
-      const traceUuid = decodeURIComponent(readMatch[1] ?? '')
+      const traceUuid = decodedPathSegmentOrRaw(readMatch[1] ?? '')
       if (request.method === 'GET') {
         return routeRead(
           dependencies,

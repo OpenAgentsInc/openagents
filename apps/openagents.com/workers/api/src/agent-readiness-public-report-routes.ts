@@ -39,6 +39,7 @@ import {
 } from './business-pipeline-queue'
 import { recordBusinessFunnelEvent } from './business-funnel-dashboard'
 import { methodNotAllowed, noStoreJsonResponse, unauthorized } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import { optionalString, readJsonObject } from './json-boundary'
 import { logWorkerRouteWarning } from './observability'
 import {
@@ -270,7 +271,7 @@ export const handlePublicAgentReadinessReportApi = (
       }),
     )
   }
-  const reportToken = decodeURIComponent(match[1] ?? '')
+  const reportToken = decodedPathSegmentOrRaw(match[1] ?? '')
 
   return Effect.tryPromise({
     catch: asUnexpectedError,

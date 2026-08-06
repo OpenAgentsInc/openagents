@@ -32,6 +32,7 @@ import {
   methodNotAllowed,
   noStoreJsonResponse,
 } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import type { NativeListsServiceShape } from './native-lists'
 import { currentIsoTimestamp } from './runtime-primitives'
 
@@ -75,13 +76,17 @@ const notFound = (): HttpResponse =>
 const listIdFromSubscribersPath = (pathname: string): string | undefined => {
   const match = /^\/api\/lists\/([^/]+)\/subscribers$/.exec(pathname)
 
-  return match?.[1] === undefined ? undefined : decodeURIComponent(match[1])
+  return match?.[1] === undefined
+    ? undefined
+    : decodedPathSegmentOrRaw(match[1])
 }
 
 const listIdFromListPath = (pathname: string): string | undefined => {
   const match = /^\/api\/lists\/([^/]+)$/.exec(pathname)
 
-  return match?.[1] === undefined ? undefined : decodeURIComponent(match[1])
+  return match?.[1] === undefined
+    ? undefined
+    : decodedPathSegmentOrRaw(match[1])
 }
 
 const decodeLeadCaptureRequest = (

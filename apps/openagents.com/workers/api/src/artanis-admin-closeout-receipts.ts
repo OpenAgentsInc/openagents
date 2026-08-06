@@ -2,6 +2,7 @@ import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-
 import { Schema as S } from 'effect'
 
 import { friendlyBlueprintMissionBriefingTime } from './blueprint/services/continuation-mission-briefing'
+import { decodedPathSegmentOrRaw } from './http/router'
 import { parseJsonStringArray } from './json-boundary'
 import {
   liveAtReadStaleness,
@@ -114,7 +115,7 @@ const closeoutReceiptPrefix = 'receipt.nexus_pylon.artanis_admin_closeout.'
 const digestPattern = /([a-f0-9]{64})/
 
 const normalizeLookupRef = (receiptRef: string): string =>
-  decodeURIComponent(receiptRef).trim()
+  decodedPathSegmentOrRaw(receiptRef).trim()
 
 export const artanisAdminCloseoutReceiptRef = (
   assignmentRef: string,

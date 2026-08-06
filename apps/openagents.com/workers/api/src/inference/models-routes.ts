@@ -17,6 +17,7 @@
 import { Effect } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
+import { decodedPathSegmentOrRaw } from '../http/router'
 import { currentEpochSeconds } from '../runtime-primitives'
 import {
   buildModelCatalog,
@@ -177,6 +178,6 @@ export const routeModelRetrieveRequest = (
   if (encodedModelId === '' || encodedModelId.includes('/')) {
     return undefined
   }
-  const modelId = decodeURIComponent(encodedModelId)
+  const modelId = decodedPathSegmentOrRaw(encodedModelId)
   return handleModelRetrieve(request, modelId, deps)
 }

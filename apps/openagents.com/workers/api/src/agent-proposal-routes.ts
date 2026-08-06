@@ -36,6 +36,7 @@ import {
   serverError,
   unauthorized,
 } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import {
   arrayFromUnknown,
   optionalString,
@@ -1501,7 +1502,7 @@ export const makeAgentProposalRoutes = <
           dependencies,
           request,
           env,
-          decodeURIComponent(publicReadMatch[1] ?? ''),
+          decodedPathSegmentOrRaw(publicReadMatch[1] ?? ''),
         ),
       )
     }
@@ -1521,7 +1522,7 @@ export const makeAgentProposalRoutes = <
       return undefined
     }
 
-    const proposalId = decodeURIComponent(operatorMatch[1] ?? '')
+    const proposalId = decodedPathSegmentOrRaw(operatorMatch[1] ?? '')
     const action = operatorMatch[2]
 
     if (action === 'promote' || action === 'reject') {

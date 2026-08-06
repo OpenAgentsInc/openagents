@@ -3,6 +3,7 @@ import { notFound } from '@openagentsinc/sync-worker'
 import { Data, Effect, Schema as S } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import { parseJsonUnknown } from './json-boundary'
 import {
   PublicProjectionStalenessContract,
@@ -688,10 +689,16 @@ const normalizeBody = (
   }
 }
 
+// A malformed percent-escape (PRO-1215) is kept RAW rather than thrown: an
+// unguarded `decodeURIComponent('%')` threw a `URIError` defect out of this
+// matcher, which surfaced as 500 plus a `severity: 'critical'` backend incident
+// on an unauthenticated path. A raw `%` cannot satisfy `receiptRefPattern`
+// below, so the read answers its normal 404 — and does so before the store is
+// consulted, so a malformed ref costs no lookup.
 const receiptRefFromPath = (pathname: string): string | null => {
   const prefix = `${KHALA_CODE_TRACE_PLUGIN_REVENUE_SHARE_PUBLIC_ENDPOINT}/`
   return pathname.startsWith(prefix) && pathname.length > prefix.length
-    ? decodeURIComponent(pathname.slice(prefix.length))
+    ? decodedPathSegmentOrRaw(pathname.slice(prefix.length))
     : null
 }
 

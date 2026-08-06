@@ -24,6 +24,7 @@ import {
   type ForgeGitHubMirrorWorkerShape,
 } from './forge-github-mirror-worker'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import {
   decodeUnknownWithSchema,
   parseJsonStringArray,
@@ -753,7 +754,7 @@ const routeChangeStatus = async <Bindings>(
   const status = await dependencies.makeStore(env).recordStatus({
     tenantRef: body.tenantRef,
     statusRef: body.statusRef,
-    subjectRef: decodeURIComponent(changeRef),
+    subjectRef: decodedPathSegmentOrRaw(changeRef),
     state: body.state,
     actorRef: body.actorRef,
     sourceRefs: body.sourceRefs ?? [],

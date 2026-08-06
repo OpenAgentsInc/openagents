@@ -26,6 +26,7 @@ import {
 import { DEFAULT_CRM_TENANT_REF } from './crm-store'
 import { isRecord, stringArrayFromUnknown } from './json-boundary'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 
 type HttpResponse = globalThis.Response
 
@@ -124,7 +125,7 @@ export const makeCrmMcpGrantRoutes = <Bindings extends CrmMcpGrantEnv>(
         if (request.method !== 'DELETE') {
           return Effect.succeed(methodNotAllowed(['DELETE']))
         }
-        const grantRef = decodeURIComponent(item[1] ?? '')
+        const grantRef = decodedPathSegmentOrRaw(item[1] ?? '')
         return guard(request, env, async db =>
           noStoreJsonResponse({ revoked: await revokeCrmMcpGrant(db, tenantOf(url), grantRef) }),
         )

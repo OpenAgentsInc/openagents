@@ -24,6 +24,7 @@
 import { Effect, Schema as S } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
+import { decodedPathSegmentOrRaw } from '../http/router'
 import { parseJsonRecord } from '../json-boundary'
 import { workerLogEntry } from '../observability'
 import {
@@ -650,5 +651,9 @@ export const routeSandboxRequest = (
   if (encodedSandboxId === '' || encodedSandboxId.includes('/')) {
     return undefined
   }
-  return handleSandboxGet(request, decodeURIComponent(encodedSandboxId), deps)
+  return handleSandboxGet(
+    request,
+    decodedPathSegmentOrRaw(encodedSandboxId),
+    deps,
+  )
 }

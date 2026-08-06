@@ -40,6 +40,7 @@
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import { parseJsonUnknown, readJsonObject } from './json-boundary'
 import {
   type OmniWorkroomLifecycleDecisionRecord,
@@ -120,7 +121,9 @@ const workroomIdFromDecisionPath = (
     pathname,
   )
 
-  return match?.[1] === undefined ? undefined : decodeURIComponent(match[1])
+  return match?.[1] === undefined
+    ? undefined
+    : decodedPathSegmentOrRaw(match[1])
 }
 
 const audienceFromRequest = (request: Request): OmniWorkroomLifecycleAudience =>

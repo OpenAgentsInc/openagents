@@ -38,6 +38,7 @@ import { Effect, Schema as S } from 'effect'
 
 import { AgentRateLimitPolicy } from '../agent-rate-limit-policy'
 import { noStoreJsonResponse } from '../http/responses'
+import { decodedPathSegmentOrRaw } from '../http/router'
 import { parseJsonRecord } from '../json-boundary'
 import { workerLogEntry } from '../observability'
 import { readAgentBalance } from '../payments-ledger'
@@ -2135,7 +2136,7 @@ export const routeCloudCodingSessionRequest = (
   }
   const prefix = `${CLOUD_CODING_SESSIONS_BASE}/`
   if (pathname.startsWith(prefix)) {
-    const sessionId = decodeURIComponent(pathname.slice(prefix.length))
+    const sessionId = decodedPathSegmentOrRaw(pathname.slice(prefix.length))
     // A trailing-slash-only or nested path is not a valid session id.
     if (sessionId === '' || sessionId.includes('/')) {
       return undefined

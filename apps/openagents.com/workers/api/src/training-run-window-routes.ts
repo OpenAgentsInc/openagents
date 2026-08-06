@@ -6,6 +6,7 @@ import {
   noStoreJsonResponse,
   unauthorized,
 } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import { decodeUnknownWithSchema, readJsonObject } from './json-boundary'
 import { moneySurfaceRetiredResponse } from './money-surface-retirement'
 import type { NexusTreasuryPayoutLedgerStore } from './nexus-treasury-payout-ledger'
@@ -2356,7 +2357,7 @@ export const makeTrainingRunWindowRoutes = <
 
     if (leaderboardLaneMatch !== null) {
       return requireMethod(request, ['GET'], () => {
-        const lane = decodeURIComponent(leaderboardLaneMatch[1]!)
+        const lane = decodedPathSegmentOrRaw(leaderboardLaneMatch[1]!)
 
         if (!TrainingLeaderboardLanes.some(knownLane => knownLane === lane)) {
           return Effect.succeed(
@@ -2392,7 +2393,7 @@ export const makeTrainingRunWindowRoutes = <
           dependencies,
           request,
           env,
-          decodeURIComponent(publicRunSettlementsListMatch[1]!),
+          decodedPathSegmentOrRaw(publicRunSettlementsListMatch[1]!),
         ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
       )
     }
@@ -2406,7 +2407,7 @@ export const makeTrainingRunWindowRoutes = <
         routeReadPublicRun(
           dependencies,
           env,
-          decodeURIComponent(publicRunReadMatch[1]!),
+          decodedPathSegmentOrRaw(publicRunReadMatch[1]!),
         ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
       )
     }
@@ -2468,7 +2469,7 @@ export const makeTrainingRunWindowRoutes = <
           dependencies,
           request,
           env,
-          decodeURIComponent(bootstrapGrantMatch[1]!),
+          decodedPathSegmentOrRaw(bootstrapGrantMatch[1]!),
         ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
       )
     }
@@ -2484,7 +2485,7 @@ export const makeTrainingRunWindowRoutes = <
           dependencies,
           request,
           env,
-          decodeURIComponent(standbyDispatchPreflightMatch[1]!),
+          decodedPathSegmentOrRaw(standbyDispatchPreflightMatch[1]!),
         ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
       )
     }
@@ -2500,7 +2501,7 @@ export const makeTrainingRunWindowRoutes = <
           dependencies,
           request,
           env,
-          decodeURIComponent(curtailmentDrillPreflightMatch[1]!),
+          decodedPathSegmentOrRaw(curtailmentDrillPreflightMatch[1]!),
         ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
       )
     }
@@ -2516,7 +2517,7 @@ export const makeTrainingRunWindowRoutes = <
           dependencies,
           request,
           env,
-          decodeURIComponent(runEvidenceMatch[1]!),
+          decodedPathSegmentOrRaw(runEvidenceMatch[1]!),
         ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
       )
     }
@@ -2532,7 +2533,7 @@ export const makeTrainingRunWindowRoutes = <
           dependencies,
           request,
           env,
-          decodeURIComponent(sweepEvidenceMatch[1]!),
+          decodedPathSegmentOrRaw(sweepEvidenceMatch[1]!),
         ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
       )
     }
@@ -2548,7 +2549,7 @@ export const makeTrainingRunWindowRoutes = <
           dependencies,
           request,
           env,
-          decodeURIComponent(realGradientEvidenceMatch[1]!),
+          decodedPathSegmentOrRaw(realGradientEvidenceMatch[1]!),
         ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
       )
     }
@@ -2564,7 +2565,7 @@ export const makeTrainingRunWindowRoutes = <
           dependencies,
           request,
           env,
-          decodeURIComponent(refineryEvidenceMatch[1]!),
+          decodedPathSegmentOrRaw(refineryEvidenceMatch[1]!),
         ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
       )
     }
@@ -2580,7 +2581,7 @@ export const makeTrainingRunWindowRoutes = <
           dependencies,
           request,
           env,
-          decodeURIComponent(alignmentEvidenceMatch[1]!),
+          decodedPathSegmentOrRaw(alignmentEvidenceMatch[1]!),
         ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
       )
     }
@@ -2604,7 +2605,7 @@ export const makeTrainingRunWindowRoutes = <
           dependencies,
           request,
           env,
-          decodeURIComponent(runTransitionMatch[1]!),
+          decodedPathSegmentOrRaw(runTransitionMatch[1]!),
           nextState,
         ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
       })
@@ -2620,7 +2621,7 @@ export const makeTrainingRunWindowRoutes = <
           dependencies,
           request,
           env,
-          decodeURIComponent(runAdmitMatch[1]!),
+          decodedPathSegmentOrRaw(runAdmitMatch[1]!),
         ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
       )
     }
@@ -2636,7 +2637,7 @@ export const makeTrainingRunWindowRoutes = <
           dependencies,
           request,
           env,
-          decodeURIComponent(executorTraceCloseoutMatch[1]!),
+          decodedPathSegmentOrRaw(executorTraceCloseoutMatch[1]!),
         ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
       )
     }
@@ -2650,7 +2651,7 @@ export const makeTrainingRunWindowRoutes = <
           dependencies,
           request,
           env,
-          decodeURIComponent(runSettlementMatch[1]!),
+          decodedPathSegmentOrRaw(runSettlementMatch[1]!),
         ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
       )
     }
@@ -2664,7 +2665,7 @@ export const makeTrainingRunWindowRoutes = <
           dependencies,
           request,
           env,
-          decodeURIComponent(runSettlementsListMatch[1]!),
+          decodedPathSegmentOrRaw(runSettlementsListMatch[1]!),
         ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
       )
     }
@@ -2676,7 +2677,7 @@ export const makeTrainingRunWindowRoutes = <
         routeReadRun(
           dependencies,
           env,
-          decodeURIComponent(runReadMatch[1]!),
+          decodedPathSegmentOrRaw(runReadMatch[1]!),
         ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
       )
     }
@@ -2700,7 +2701,7 @@ export const makeTrainingRunWindowRoutes = <
           dependencies,
           request,
           env,
-          decodeURIComponent(windowTransitionMatch[1]!),
+          decodedPathSegmentOrRaw(windowTransitionMatch[1]!),
           `window_${action}`,
           nextState,
         ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
@@ -2716,7 +2717,7 @@ export const makeTrainingRunWindowRoutes = <
         routeReadWindow(
           dependencies,
           env,
-          decodeURIComponent(windowReadMatch[1]!),
+          decodedPathSegmentOrRaw(windowReadMatch[1]!),
         ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
       )
     }

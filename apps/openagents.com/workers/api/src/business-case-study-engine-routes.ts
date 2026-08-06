@@ -8,6 +8,7 @@ import {
   publicBusinessCaseStudyProjection,
 } from './business-case-study-engine'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { pathRefFromPrefix } from './http/router'
 import { currentIsoTimestamp } from './runtime-primitives'
 
 type HttpResponse = globalThis.Response
@@ -16,13 +17,21 @@ export type BusinessCaseStudyRoutesDependencies<Bindings> = Readonly<{
   makeCaseStudyStore: (env: Bindings) => BusinessCaseStudyStore
 }>
 
-const caseStudyRefFromPath = (
-  pathname: string,
-  prefix: string,
-): string | null =>
-  pathname.startsWith(prefix) && pathname.length > prefix.length
-    ? decodeURIComponent(pathname.slice(prefix.length))
-    : null
+/**
+ * The 404 a caller gets for a ref this reader does not publish. A ref whose
+ * percent-escapes are malformed (PRO-1215) is answered with exactly this, after
+ * the method check, because the two cases are indistinguishable to a caller and
+ * 404 declines to leak that the ref was parsed at all. Previously the unguarded
+ * decode threw a `URIError` defect out of the route matcher, which surfaced as
+ * 500 plus a `severity: 'critical'` backend incident.
+ */
+const caseStudyNotFoundResponse = (): Effect.Effect<HttpResponse> =>
+  Effect.succeed(
+    noStoreJsonResponse(
+      { error: 'not_found', reason: 'Case study not found.' },
+      { status: 404 },
+    ),
+  )
 
 export const makeBusinessCaseStudyRoutes = <Bindings>(
   dependencies: BusinessCaseStudyRoutesDependencies<Bindings>,
@@ -49,12 +58,12 @@ export const makeBusinessCaseStudyRoutes = <Bindings>(
       )
     }
 
-    const caseStudyRef = caseStudyRefFromPath(
+    const match = pathRefFromPrefix(
       url.pathname,
       `${BusinessCaseStudyEndpoint}/`,
     )
 
-    if (caseStudyRef === null) {
+    if (match._tag === 'no_match') {
       return undefined
     }
 
@@ -62,18 +71,19 @@ export const makeBusinessCaseStudyRoutes = <Bindings>(
       return Effect.succeed(methodNotAllowed(['GET']))
     }
 
+    if (match._tag === 'malformed') {
+      return caseStudyNotFoundResponse()
+    }
+
+    const caseStudyRef = match.ref
+
     const caseStudy = dependencies
       .makeCaseStudyStore(env)
       .list()
       .find(input => input.caseStudyRef === caseStudyRef)
 
     if (caseStudy === undefined || caseStudy.status !== 'published') {
-      return Effect.succeed(
-        noStoreJsonResponse(
-          { error: 'not_found', reason: 'Case study not found.' },
-          { status: 404 },
-        ),
-      )
+      return caseStudyNotFoundResponse()
     }
 
     return Effect.succeed(

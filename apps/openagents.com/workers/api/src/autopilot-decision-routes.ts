@@ -34,6 +34,7 @@ import {
   noStoreJsonResponse,
   unauthorized,
 } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import { readJsonObject } from './json-boundary'
 import { currentIsoTimestamp } from './runtime-primitives'
 
@@ -521,7 +522,9 @@ const reviewActionForCommand = (
 const decisionActionsRefFromPath = (pathname: string): string | undefined => {
   const match = /^\/api\/autopilot\/decisions\/([^/]+)\/actions$/.exec(pathname)
 
-  return match?.[1] === undefined ? undefined : decodeURIComponent(match[1])
+  return match?.[1] === undefined
+    ? undefined
+    : decodedPathSegmentOrRaw(match[1])
 }
 
 const workOrderRefFromDecisionRef = (
@@ -684,13 +687,17 @@ const closeoutRefFromPath = (pathname: string): string | undefined => {
     pathname,
   )
 
-  return match?.[1] === undefined ? undefined : decodeURIComponent(match[1])
+  return match?.[1] === undefined
+    ? undefined
+    : decodedPathSegmentOrRaw(match[1])
 }
 
 const decisionsWorkOrderRefFromPath = (pathname: string): string | undefined => {
   const match = /^\/api\/autopilot\/work\/([^/]+)\/decisions$/.exec(pathname)
 
-  return match?.[1] === undefined ? undefined : decodeURIComponent(match[1])
+  return match?.[1] === undefined
+    ? undefined
+    : decodedPathSegmentOrRaw(match[1])
 }
 
 const readDecisionCloseout = <Bindings extends AutopilotDecisionRouteEnv>(

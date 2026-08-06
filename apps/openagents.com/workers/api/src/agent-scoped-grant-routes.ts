@@ -10,6 +10,7 @@ import {
   serverError,
   unauthorized,
 } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import {
   arrayFromUnknown,
   optionalString,
@@ -1237,7 +1238,7 @@ export const makeAgentScopedGrantRoutes = <
       return undefined
     }
 
-    const grantId = decodeURIComponent(revokeMatch[1] ?? '')
+    const grantId = decodedPathSegmentOrRaw(revokeMatch[1] ?? '')
 
     return Effect.promise(() =>
       revokeGrantResponse(dependencies, request, env, ctx, grantId),

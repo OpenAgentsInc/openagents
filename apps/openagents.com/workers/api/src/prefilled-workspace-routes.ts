@@ -6,6 +6,7 @@ import {
   noStoreJsonResponse,
   serverError,
 } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import { readJsonObject } from './json-boundary'
 import {
   type CreatePrefilledWorkspaceInput,
@@ -101,7 +102,9 @@ const dependencyPromise = <A>(
 const workspaceIdFromPath = (pathname: string): string | undefined => {
   const match = /^\/api\/workspaces\/([^/]+)$/.exec(pathname)
 
-  return match?.[1] === undefined ? undefined : decodeURIComponent(match[1])
+  return match?.[1] === undefined
+    ? undefined
+    : decodedPathSegmentOrRaw(match[1])
 }
 
 const workspaceEngagementIdFromPath = (
@@ -109,7 +112,9 @@ const workspaceEngagementIdFromPath = (
 ): string | undefined => {
   const match = /^\/api\/workspaces\/([^/]+)\/engagement$/.exec(pathname)
 
-  return match?.[1] === undefined ? undefined : decodeURIComponent(match[1])
+  return match?.[1] === undefined
+    ? undefined
+    : decodedPathSegmentOrRaw(match[1])
 }
 
 const isWorkspacesCollectionPath = (pathname: string): boolean =>

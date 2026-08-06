@@ -28,6 +28,7 @@ import {
   noStoreJsonResponse,
   unauthorized,
 } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import { decodeUnknownWithSchema, readJsonObject } from './json-boundary'
 import { PUBLIC_PYLON_STATS_MINIMUM_CLIENT_VERSION } from './public-pylon-stats'
 import {
@@ -3589,7 +3590,7 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
         dependencies,
         request,
         env,
-        decodeURIComponent(operatorCloseoutMatch[1]!),
+        decodedPathSegmentOrRaw(operatorCloseoutMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 
@@ -3605,7 +3606,7 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
         dependencies,
         request,
         env,
-        decodeURIComponent(operatorQuarantineMatch[1]!),
+        decodedPathSegmentOrRaw(operatorQuarantineMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 
@@ -3622,7 +3623,7 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
         dependencies,
         request,
         env,
-        decodeURIComponent(assignmentListMatch[1]!),
+        decodedPathSegmentOrRaw(assignmentListMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 
@@ -3645,7 +3646,7 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
         dependencies,
         request,
         env,
-        decodeURIComponent(fleetRunManagedCapacityMatch[1]!),
+        decodedPathSegmentOrRaw(fleetRunManagedCapacityMatch[1]!),
       )
     }
 
@@ -3804,7 +3805,7 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
       return routeRead(
         dependencies,
         env,
-        decodeURIComponent(readMatch[1]!),
+        decodedPathSegmentOrRaw(readMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 
@@ -3820,7 +3821,7 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
       return routeEvent(dependencies, request, env, {
         eventKind: 'heartbeat',
         fallbackStatus: 'online',
-        pylonRef: decodeURIComponent(heartbeatMatch[1]!),
+        pylonRef: decodedPathSegmentOrRaw(heartbeatMatch[1]!),
         schema: PylonApiHeartbeatRequest,
       }).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
@@ -3836,7 +3837,7 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
       return routeEvent(dependencies, request, env, {
         eventKind: 'wallet_readiness',
         fallbackStatus: 'reported',
-        pylonRef: decodeURIComponent(walletReadinessMatch[1]!),
+        pylonRef: decodedPathSegmentOrRaw(walletReadinessMatch[1]!),
         schema: PylonApiWalletReadinessRequest,
       }).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
@@ -3852,7 +3853,7 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
       return routeEvent(dependencies, request, env, {
         eventKind: 'payout_target_admission',
         fallbackStatus: 'requested',
-        pylonRef: decodeURIComponent(payoutTargetMatch[1]!),
+        pylonRef: decodedPathSegmentOrRaw(payoutTargetMatch[1]!),
         schema: PylonApiPayoutTargetAdmissionRequest,
       }).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
@@ -3872,7 +3873,7 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
         dependencies,
         request,
         env,
-        decodeURIComponent(sparkPayoutTargetMatch[1]!),
+        decodedPathSegmentOrRaw(sparkPayoutTargetMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 
@@ -3926,10 +3927,10 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
                     }
 
       return routeEvent(dependencies, request, env, {
-        assignmentRef: decodeURIComponent(assignmentMatch[2]!),
+        assignmentRef: decodedPathSegmentOrRaw(assignmentMatch[2]!),
         eventKind: route.eventKind,
         fallbackStatus: route.fallbackStatus,
-        pylonRef: decodeURIComponent(assignmentMatch[1]!),
+        pylonRef: decodedPathSegmentOrRaw(assignmentMatch[1]!),
         ...('rejectExcessProperties' in route
           ? { rejectExcessProperties: route.rejectExcessProperties }
           : {}),

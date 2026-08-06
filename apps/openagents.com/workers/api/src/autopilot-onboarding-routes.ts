@@ -40,6 +40,7 @@ import {
   runOnboardingTurn,
 } from './autopilot-onboarding-program'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import { openAgentsDatabase } from './runtime'
 import { makeSupervisionLongtailMirrorForEnv } from './supervision-longtail-domain-store'
 import { currentIsoTimestamp } from './runtime-primitives'
@@ -569,7 +570,7 @@ export const makeAutopilotOnboardingRoutes = <Env extends OnboardingRouteEnv>(
         }
         return resumeReadResponse(
           env,
-          decodeURIComponent(resumeMatch[1] ?? ''),
+          decodedPathSegmentOrRaw(resumeMatch[1] ?? ''),
           Number(resumeMatch[2] ?? '0'),
           url.searchParams.get('offset') ?? undefined,
         )
@@ -584,7 +585,7 @@ export const makeAutopilotOnboardingRoutes = <Env extends OnboardingRouteEnv>(
           return Effect.succeed(methodNotAllowed(['POST']))
         }
 
-        const sessionId = decodeURIComponent(match[1] ?? '')
+        const sessionId = decodedPathSegmentOrRaw(match[1] ?? '')
         const makeStreamClient = dependencies.makeStreamClient
 
         // Content-negotiated: an `Accept: text/event-stream` request streams when
@@ -602,7 +603,10 @@ export const makeAutopilotOnboardingRoutes = <Env extends OnboardingRouteEnv>(
         if (request.method !== 'GET') {
           return Effect.succeed(methodNotAllowed(['GET']))
         }
-        return sessionResponse(env, decodeURIComponent(sessionMatch[1] ?? ''))
+        return sessionResponse(
+          env,
+          decodedPathSegmentOrRaw(sessionMatch[1] ?? ''),
+        )
       }
 
       return undefined

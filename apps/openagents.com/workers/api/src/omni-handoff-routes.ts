@@ -27,6 +27,7 @@ import { readRequestJsonEffect } from '@openagentsinc/effect-boundary'
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import { OmniAcceptedOutcomeWorkKind } from './omni-accepted-outcome-contracts'
 import {
   type OmniHandoffInput,
@@ -316,7 +317,7 @@ export const makeOmniHandoffRoutes = <Bindings extends OmniHandoffRouteEnv>(
       return undefined
     }
 
-    const workroomId = decodeURIComponent(match[1])
+    const workroomId = decodedPathSegmentOrRaw(match[1])
 
     return M.value(request.method).pipe(
       M.when('POST', () =>

@@ -82,3 +82,24 @@ export const pathRefFromPrefix = (
     ? { _tag: 'malformed' }
     : { _tag: 'ref', ref: decoded }
 }
+
+/**
+ * Decode one captured path segment, keeping it RAW when the escape is malformed.
+ *
+ * The counterpart to `pathRefFromPrefix`, for the many matchers that capture a
+ * ref with a regex and hand it straight to a handler. Those routes have no
+ * `malformed` branch to return to, and most of them are auth-gated: the decode
+ * sits in the MATCHER, which runs before the handler's auth check, so an
+ * unguarded throw hands an unauthenticated caller a 500 plus a
+ * `severity: 'critical'` incident where the route's own answer would have been
+ * 401 or 404.
+ *
+ * Keeping the segment raw restores exactly that answer. A raw segment still
+ * containing `%` cannot match any stored ref, so the route runs its normal path
+ * — its own method check, then its own auth check, then its own not-found — and
+ * decides the status itself. This is the same reasoning `parseCookies` uses for
+ * an undecodable cookie value, and it changes no behavior for a well-formed
+ * request, since a legal escape always decodes.
+ */
+export const decodedPathSegmentOrRaw = (value: string): string =>
+  safeDecodeUriComponent(value) ?? value

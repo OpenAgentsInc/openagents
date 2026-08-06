@@ -64,6 +64,7 @@ import {
   publicOmniProofBundleProjection,
 } from './omni-public-proof-bundles'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import { readJsonObject } from './json-boundary'
 import { OmniAcceptedOutcomeWorkKind } from './omni-accepted-outcome-contracts'
 import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
@@ -691,7 +692,7 @@ export const makeOmniBundleRoutes = <Bindings extends OmniBundleRouteEnv>(
     const proofHandoffPage = proofHandoffPagePattern.exec(url.pathname)
 
     if (proofHandoffPage?.[1] !== undefined) {
-      const id = decodeURIComponent(proofHandoffPage[1])
+      const id = decodedPathSegmentOrRaw(proofHandoffPage[1])
 
       return M.value(request.method).pipe(
         M.when('GET', () =>
@@ -718,7 +719,7 @@ export const makeOmniBundleRoutes = <Bindings extends OmniBundleRouteEnv>(
     const evidenceDetail = evidenceDetailPattern.exec(url.pathname)
 
     if (evidenceDetail?.[1] !== undefined) {
-      const id = decodeURIComponent(evidenceDetail[1])
+      const id = decodedPathSegmentOrRaw(evidenceDetail[1])
 
       return M.value(request.method).pipe(
         M.when('GET', () => readEvidenceBundle(dependencies, request, env, id)),
@@ -729,7 +730,7 @@ export const makeOmniBundleRoutes = <Bindings extends OmniBundleRouteEnv>(
     const proofDetail = proofDetailPattern.exec(url.pathname)
 
     if (proofDetail?.[1] !== undefined) {
-      const id = decodeURIComponent(proofDetail[1])
+      const id = decodedPathSegmentOrRaw(proofDetail[1])
 
       return M.value(request.method).pipe(
         M.when('GET', () => readProofBundle(dependencies, request, env, id)),

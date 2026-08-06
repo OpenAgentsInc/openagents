@@ -5,6 +5,7 @@ import {
   noStoreJsonResponse,
   serverError,
 } from './http/responses'
+import { pathRefFromPrefix } from './http/router'
 import type { EcommerceCampaignReceiptStore } from './ecommerce-campaign-receipt-store'
 import { firstPaidEcommerceCampaignDeliveryReceiptFixture } from './ecommerce-campaign-delivery-receipt-fixture'
 import {
@@ -20,13 +21,19 @@ export type EcommerceCampaignReceiptRoutesDependencies<Bindings> = Readonly<{
   makeClaimStore: (env: Bindings) => EcommerceCampaignPaidDeliveryClaimStore
 }>
 
-const receiptRefFromPath = (
-  pathname: string,
-  prefix: string,
-): string | null =>
-  pathname.startsWith(prefix) && pathname.length > prefix.length
-    ? decodeURIComponent(pathname.slice(prefix.length))
-    : null
+const RECEIPT_PATH_PREFIX = '/api/public/ecommerce-campaign/receipts/'
+
+/**
+ * A ref whose percent-escapes are malformed (PRO-1215). Answered exactly like a
+ * well-formed unknown ref — 404 on GET, 405 on anything else — because the two
+ * are indistinguishable to a caller. Previously the unguarded decode threw a
+ * `URIError` defect out of the route matcher, which surfaced as 500 plus a
+ * `severity: 'critical'` backend incident.
+ */
+const malformedRefResponse = (request: Request): Effect.Effect<HttpResponse> =>
+  Effect.succeed(
+    request.method === 'GET' ? notFound() : methodNotAllowed(['GET']),
+  )
 
 const readReceiptResponse = <Bindings>(
   dependencies: EcommerceCampaignReceiptRoutesDependencies<Bindings>,
@@ -76,15 +83,14 @@ export const makeEcommerceCampaignReceiptRoutes = <Bindings>(
       )
     }
 
-    const receiptRef = receiptRefFromPath(
-      url.pathname,
-      '/api/public/ecommerce-campaign/receipts/',
-    )
+    const match = pathRefFromPrefix(url.pathname, RECEIPT_PATH_PREFIX)
 
-    if (receiptRef !== null) {
-      return readReceiptResponse(dependencies, request, env, receiptRef)
+    if (match._tag === 'no_match') {
+      return undefined
     }
 
-    return undefined
+    return match._tag === 'malformed'
+      ? malformedRefResponse(request)
+      : readReceiptResponse(dependencies, request, env, match.ref)
   },
 })

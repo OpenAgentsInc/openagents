@@ -52,6 +52,7 @@ import {
   DURABLE_INFERENCE_TTL_SECONDS,
 } from './durable-inference-proxy'
 import { type DurableStreamNamespace } from './durable-inference-do-transport'
+import { decodedPathSegmentOrRaw } from '../http/router'
 import { acquireSharedPostgresClient } from '../khala-sync-postgres-pool'
 
 // The DO addressed streams at `/v1/stream/{streamId}` (durable-stream
@@ -266,7 +267,7 @@ export const makeDurableInferenceStreamNamespace = (
     if (rawId.length === 0) {
       return plainResponse(404)
     }
-    const streamId = decodeURIComponent(rawId)
+    const streamId = decodedPathSegmentOrRaw(rawId)
 
     switch (request.method.toUpperCase()) {
       case 'PUT':

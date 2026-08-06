@@ -30,6 +30,7 @@ import {
 import { type CrmResendDeps } from './crm-resend'
 import { DEFAULT_CRM_TENANT_REF } from './crm-store'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 
 type HttpResponse = globalThis.Response
 
@@ -55,7 +56,7 @@ const tenantOf = (url: URL, bodyTenant?: unknown): string => {
 
 const captured = (pattern: RegExp, path: string): string | null => {
   const match = pattern.exec(path)
-  return match === null ? null : decodeURIComponent(match[1] ?? '')
+  return match === null ? null : decodedPathSegmentOrRaw(match[1] ?? '')
 }
 
 export const makeCrmCommandRoutes = <Bindings extends CrmCommandEnv>(

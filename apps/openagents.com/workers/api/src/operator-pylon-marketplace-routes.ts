@@ -11,6 +11,7 @@ import {
   triagePylonMarketplaceJobIntake,
 } from './pylon-marketplace-service'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import { decodeUnknownWithSchema, readJsonObject } from './json-boundary'
 import {
   currentEpochMillis,
@@ -355,7 +356,7 @@ export const makeOperatorPylonMarketplaceRoutes = <
         request,
         env,
         ctx,
-        decodeURIComponent(triageMatch[1]!),
+        decodedPathSegmentOrRaw(triageMatch[1]!),
       ).pipe(
         Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
       )

@@ -43,6 +43,7 @@ import {
 import { Effect, Layer, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
+import { decodedPathSegmentOrRaw } from './http/router'
 import { parseJsonUnknown } from './json-boundary'
 import {
   currentDate,
@@ -2010,8 +2011,8 @@ const matchRoute = (request: Request): RouteMatch | undefined => {
   if (promptStatus !== null && request.method === 'GET') {
     return {
       operation: 'promptRunStatus',
-      boxId: decodeURIComponent(promptStatus[1]!),
-      promptId: decodeURIComponent(promptStatus[2]!),
+      boxId: decodedPathSegmentOrRaw(promptStatus[1]!),
+      promptId: decodedPathSegmentOrRaw(promptStatus[2]!),
     }
   }
   const nested =
@@ -2019,7 +2020,7 @@ const matchRoute = (request: Request): RouteMatch | undefined => {
       pathname,
     )
   if (nested !== null) {
-    const boxId = decodeURIComponent(nested[1]!)
+    const boxId = decodedPathSegmentOrRaw(nested[1]!)
     const segment = nested[2]!
     const operation =
       segment === 'files'
@@ -2047,7 +2048,7 @@ const matchRoute = (request: Request): RouteMatch | undefined => {
   }
   const single = /^\/v1\/boxes\/([^/]+)$/.exec(pathname)
   if (single !== null) {
-    const boxId = decodeURIComponent(single[1]!)
+    const boxId = decodedPathSegmentOrRaw(single[1]!)
     if (request.method === 'GET') return { operation: 'get', boxId }
     if (request.method === 'PATCH') return { operation: 'update', boxId }
     if (request.method === 'DELETE') return { operation: 'remove', boxId }

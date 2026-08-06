@@ -20,6 +20,7 @@ import {
   sendCrmEmailViaResend,
 } from './crm-resend'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 
 type HttpResponse = globalThis.Response
 
@@ -56,7 +57,7 @@ export const makeCrmResendRoutes = <Bindings extends CrmResendEnv>(
     if (request.method !== 'POST') {
       return Effect.succeed(methodNotAllowed(['POST']))
     }
-    const contactId = decodeURIComponent(match[1] ?? '')
+    const contactId = decodedPathSegmentOrRaw(match[1] ?? '')
     const tenantParam = url.searchParams.get('tenant')
 
     return Effect.gen(function* () {

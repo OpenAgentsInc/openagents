@@ -6,6 +6,7 @@ import {
   projectCodingQuickWinReceiptRead,
 } from './coding-quick-win-claim-upgrade'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { pathRefFromPrefix } from './http/router'
 import type { PublicProjectionStalenessContract } from './public-projection-staleness'
 
 type HttpResponse = globalThis.Response
@@ -25,13 +26,21 @@ export type CodingQuickWinReceiptRoutesDependencies<Bindings> = Readonly<{
   makeClaimStore: (env: Bindings) => CodingQuickWinPaidDeliveryClaimStore
 }>
 
-const receiptRefFromPath = (
-  pathname: string,
-  prefix: string,
-): string | null =>
-  pathname.startsWith(prefix) && pathname.length > prefix.length
-    ? decodeURIComponent(pathname.slice(prefix.length))
-    : null
+/**
+ * The 404 a caller gets for a ref this reader does not know. A ref whose
+ * percent-escapes are malformed (PRO-1215) is answered with exactly this, after
+ * the method check, because the two cases are indistinguishable to a caller and
+ * 404 declines to leak that the ref was parsed at all. Previously the unguarded
+ * decode threw a `URIError` defect out of the route matcher, which surfaced as
+ * 500 plus a `severity: 'critical'` backend incident.
+ */
+const receiptNotFoundResponse = (): Effect.Effect<HttpResponse> =>
+  Effect.succeed(
+    noStoreJsonResponse(
+      { error: 'not_found', reason: 'Receipt not found.' },
+      { status: 404 },
+    ),
+  )
 
 export const makeCodingQuickWinReceiptPublicRoutes = <Bindings>(
   dependencies: CodingQuickWinReceiptRoutesDependencies<Bindings>,
@@ -57,12 +66,12 @@ export const makeCodingQuickWinReceiptPublicRoutes = <Bindings>(
       )
     }
 
-    const receiptRef = receiptRefFromPath(
+    const match = pathRefFromPrefix(
       url.pathname,
       `${CodingQuickWinReceiptsEndpoint}/`,
     )
 
-    if (receiptRef === null) {
+    if (match._tag === 'no_match') {
       return undefined
     }
 
@@ -70,18 +79,19 @@ export const makeCodingQuickWinReceiptPublicRoutes = <Bindings>(
       return Effect.succeed(methodNotAllowed(['GET']))
     }
 
+    if (match._tag === 'malformed') {
+      return receiptNotFoundResponse()
+    }
+
+    const receiptRef = match.ref
+
     const receipt = dependencies
       .makeClaimStore(env)
       .list()
       .find(input => input.receiptRef === receiptRef)
 
     if (receipt === undefined) {
-      return Effect.succeed(
-        noStoreJsonResponse(
-          { error: 'not_found', reason: 'Receipt not found.' },
-          { status: 404 },
-        ),
-      )
+      return receiptNotFoundResponse()
     }
 
     return Effect.succeed(

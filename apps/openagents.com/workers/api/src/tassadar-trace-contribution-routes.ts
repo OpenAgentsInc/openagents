@@ -13,6 +13,7 @@ import {
   noStoreJsonResponse,
   unauthorized,
 } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import { decodeUnknownWithSchema, readJsonObject } from './json-boundary'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
 import { tassadarExecutorTraceVerificationChallengeRequest } from './tassadar-executor-trace-homework'
@@ -547,7 +548,7 @@ export const makeTassadarTraceContributionRoutes = <
         dependencies,
         request,
         env,
-        decodeURIComponent(traceSubmissionMatch[1]!),
+        decodedPathSegmentOrRaw(traceSubmissionMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 
@@ -576,7 +577,7 @@ export const makeTassadarTraceContributionRoutes = <
         dependencies,
         request,
         env,
-        decodeURIComponent(replayVerdictMatch[1]!),
+        decodedPathSegmentOrRaw(replayVerdictMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 

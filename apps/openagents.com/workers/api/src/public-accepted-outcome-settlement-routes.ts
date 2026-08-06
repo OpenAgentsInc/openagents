@@ -22,6 +22,7 @@
 import { notFound } from '@openagentsinc/sync-worker'
 import { Effect } from 'effect'
 
+import { pathRefFromPrefix } from './http/router'
 import { publicOmniAcceptedOutcomeSettlementBundleProjection } from './omni-accepted-outcome-settlement-bundle'
 import { dereferenceOmniAcceptedOutcomeSettlementBundle } from './omni-accepted-outcome-settlement-bundle-store'
 import {
@@ -63,10 +64,18 @@ const SETTLEMENT_PROJECTION_REBUILDS_ON = [
 
 const PREFIX = '/api/public/accepted-outcome/settlement/'
 
-const economicsIdFromPath = (pathname: string): string | null =>
-  pathname.startsWith(PREFIX) && pathname.length > PREFIX.length
-    ? decodeURIComponent(pathname.slice(PREFIX.length))
-    : null
+/**
+ * An id whose percent-escapes are malformed (PRO-1215). Answered exactly like a
+ * well-formed unknown id — 404 on GET, 405 on anything else — because the two
+ * are indistinguishable to a caller. Previously the unguarded decode threw a
+ * `URIError` defect out of the route matcher, which surfaced as 500 plus a
+ * `severity: 'critical'` backend incident. Short-circuiting here also keeps an
+ * attacker-controlled malformed id from reaching the database at all.
+ */
+const malformedIdResponse = (request: Request): Effect.Effect<HttpResponse> =>
+  Effect.succeed(
+    request.method === 'GET' ? notFound() : methodNotAllowed(['GET']),
+  )
 
 /**
  * Public, read-only projection of one accepted outcome's INERT settlement
@@ -114,11 +123,15 @@ export const makePublicAcceptedOutcomeSettlementRoutes = <Bindings>(
     request: Request,
     env: Bindings,
   ): Effect.Effect<HttpResponse> | undefined => {
-    const economicsId = economicsIdFromPath(new URL(request.url).pathname)
+    const match = pathRefFromPrefix(new URL(request.url).pathname, PREFIX)
 
-    return economicsId === null
-      ? undefined
-      : readSettlementBundleResponse(dependencies, request, env, economicsId)
+    if (match._tag === 'no_match') {
+      return undefined
+    }
+
+    return match._tag === 'malformed'
+      ? malformedIdResponse(request)
+      : readSettlementBundleResponse(dependencies, request, env, match.ref)
   }
 
   return { routePublicAcceptedOutcomeSettlementRequest }

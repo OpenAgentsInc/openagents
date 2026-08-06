@@ -40,6 +40,7 @@ import {
 import { DEFAULT_CRM_TENANT_REF, recordCrmActivity } from './crm-store'
 import { readEmailSendEligibility } from './email-preferences'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 
 type HttpResponse = globalThis.Response
 
@@ -65,7 +66,7 @@ const tenantOf = (url: URL): string => {
 
 const captured = (pattern: RegExp, path: string): string | null => {
   const match = pattern.exec(path)
-  return match === null ? null : decodeURIComponent(match[1] ?? '')
+  return match === null ? null : decodedPathSegmentOrRaw(match[1] ?? '')
 }
 
 const channelOf = (raw: unknown): CrmSendChannel =>

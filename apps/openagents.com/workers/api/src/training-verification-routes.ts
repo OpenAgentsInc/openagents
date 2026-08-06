@@ -5,6 +5,7 @@ import {
   noStoreJsonResponse,
   unauthorized,
 } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import { decodeUnknownWithSchema, readJsonObject } from './json-boundary'
 import { liveAtReadStaleness } from './public-projection-staleness'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
@@ -435,7 +436,7 @@ export const makeTrainingVerificationRoutes = <
         return Effect.succeed(methodNotAllowed(['POST']))
       }
 
-      const challengeRef = decodeURIComponent(actionMatch[1]!)
+      const challengeRef = decodedPathSegmentOrRaw(actionMatch[1]!)
       const action = actionMatch[2]!
 
       if (action === 'retry') {
@@ -481,7 +482,7 @@ export const makeTrainingVerificationRoutes = <
       return routeReadPublicChallenge(
         dependencies,
         env,
-        decodeURIComponent(publicReadMatch[1]!),
+        decodedPathSegmentOrRaw(publicReadMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 
@@ -498,7 +499,7 @@ export const makeTrainingVerificationRoutes = <
       return routeReadChallenge(
         dependencies,
         env,
-        decodeURIComponent(readMatch[1]!),
+        decodedPathSegmentOrRaw(readMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 

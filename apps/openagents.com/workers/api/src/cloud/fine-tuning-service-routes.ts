@@ -23,6 +23,7 @@
 import { Effect, Schema as S } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
+import { decodedPathSegmentOrRaw } from '../http/router'
 import { parseJsonRecord } from '../json-boundary'
 import { workerLogEntry } from '../observability'
 import { compactRandomId, currentIsoTimestamp } from '../runtime-primitives'
@@ -683,5 +684,9 @@ export const routeFineTuningJobRequest = (
   if (encodedJobId === '' || encodedJobId.includes('/')) {
     return undefined
   }
-  return handleFineTuningJobGet(request, decodeURIComponent(encodedJobId), deps)
+  return handleFineTuningJobGet(
+    request,
+    decodedPathSegmentOrRaw(encodedJobId),
+    deps,
+  )
 }

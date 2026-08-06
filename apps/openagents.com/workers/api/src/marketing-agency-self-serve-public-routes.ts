@@ -1,5 +1,6 @@
 import { Effect } from 'effect'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { pathRefFromPrefix } from './http/router'
 import {
   type MarketingAgencySelfServeClaimStore,
   projectMarketingAgencySelfServeClaims,
@@ -10,13 +11,21 @@ import { currentIsoTimestamp } from './runtime-primitives'
 
 type HttpResponse = globalThis.Response
 
-const workspaceRefFromPath = (
-  pathname: string,
-  prefix: string,
-): string | null =>
-  pathname.startsWith(prefix) && pathname.length > prefix.length
-    ? decodeURIComponent(pathname.slice(prefix.length))
-    : null
+/**
+ * The 404 a caller gets for a workspace ref this reader does not know. A ref
+ * whose percent-escapes are malformed (PRO-1215) is answered with exactly this,
+ * after the method check, because the two cases are indistinguishable to a
+ * caller and 404 declines to leak that the ref was parsed at all. Previously the
+ * unguarded decode threw a `URIError` defect out of the route matcher, which
+ * surfaced as 500 plus a `severity: 'critical'` backend incident.
+ */
+const deliverabilityNotFoundResponse = (): Effect.Effect<HttpResponse> =>
+  Effect.succeed(
+    noStoreJsonResponse(
+      { error: 'not_found', reason: 'Deliverability record not found.' },
+      { status: 404 },
+    ),
+  )
 
 export type MarketingAgencySelfServeRoutesDependencies<Bindings> = Readonly<{
   makeClaimStore: (env: Bindings) => MarketingAgencySelfServeClaimStore
@@ -50,18 +59,24 @@ export const makeMarketingAgencySelfServePublicRoutes = <Bindings>(
       )
     }
 
-    const workspaceRef = workspaceRefFromPath(
+    const match = pathRefFromPrefix(
       url.pathname,
       '/api/public/marketing-agency/self-serve/deliverability/',
     )
 
-    if (workspaceRef === null) {
+    if (match._tag === 'no_match') {
       return undefined
     }
 
     if (request.method !== 'GET') {
       return Effect.succeed(methodNotAllowed(['GET']))
     }
+
+    if (match._tag === 'malformed') {
+      return deliverabilityNotFoundResponse()
+    }
+
+    const workspaceRef = match.ref
 
     // Expose the mocked self-serve deliverability fixture for the blocker.
     if (workspaceRef === selfServeDeliverabilityFixture.workspaceId) {
@@ -74,12 +89,7 @@ export const makeMarketingAgencySelfServePublicRoutes = <Bindings>(
       )
     }
 
-    return Effect.succeed(
-      noStoreJsonResponse(
-        { error: 'not_found', reason: 'Deliverability record not found.' },
-        { status: 404 },
-      ),
-    )
+    return deliverabilityNotFoundResponse()
   }
 
   return { routeMarketingAgencySelfServeRequest }

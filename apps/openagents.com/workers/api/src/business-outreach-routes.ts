@@ -9,6 +9,7 @@ import {
   type BusinessOutreachTemplateApprovalInput,
 } from './business-outreach'
 import { methodNotAllowed, noStoreJsonResponse, unauthorized } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import {
   optionalInteger,
   optionalString,
@@ -316,7 +317,7 @@ export const makeOperatorBusinessOutreachRoutes = <Bindings>(
     if (match === null) return undefined
     if (request.method !== 'POST') return Effect.succeed(methodNotAllowed(['POST']))
 
-    const pipelineRef = decodeURIComponent(match[1] ?? '')
+    const pipelineRef = decodedPathSegmentOrRaw(match[1] ?? '')
     return match[2] === 'outreach-drafts'
       ? routeRenderDraft(dependencies, request, env, pipelineRef)
       : routeRecordSend(dependencies, request, env, pipelineRef)

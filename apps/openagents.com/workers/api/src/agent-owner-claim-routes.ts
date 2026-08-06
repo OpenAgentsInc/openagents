@@ -23,6 +23,7 @@ import {
   serverError,
   unauthorized,
 } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import {
   identityAuthMirrorFromEnv,
   type IdentityAuthMirror,
@@ -2544,7 +2545,7 @@ export const makeAgentOwnerClaimRoutes = <
     const claimPageMatch = /^\/agents\/claims\/([^/]+)$/.exec(url.pathname)
 
     if (claimPageMatch !== null) {
-      const claimId = decodeURIComponent(claimPageMatch[1] ?? '')
+      const claimId = decodedPathSegmentOrRaw(claimPageMatch[1] ?? '')
 
       return Effect.promise(() =>
         ownerClaimPageResponse(dependencies, request, env, claimId),
@@ -2555,7 +2556,7 @@ export const makeAgentOwnerClaimRoutes = <
       /^\/api\/agents\/claims\/rewards\/([^/]+)\/dispatch$/.exec(url.pathname)
 
     if (rewardDispatchMatch !== null) {
-      const rewardId = decodeURIComponent(rewardDispatchMatch[1] ?? '')
+      const rewardId = decodedPathSegmentOrRaw(rewardDispatchMatch[1] ?? '')
 
       return Effect.promise(() =>
         dispatchRewardResponse(dependencies, request, env, rewardId),
@@ -2582,7 +2583,7 @@ export const makeAgentOwnerClaimRoutes = <
     )
 
     if (rewardStatusMatch !== null) {
-      const rewardRef = decodeURIComponent(rewardStatusMatch[1] ?? '')
+      const rewardRef = decodedPathSegmentOrRaw(rewardStatusMatch[1] ?? '')
 
       return Effect.promise(() =>
         xClaimRewardEligibilityStatusResponse(
@@ -2602,7 +2603,7 @@ export const makeAgentOwnerClaimRoutes = <
       )
 
     if (xClaimActionMatch !== null) {
-      const claimId = decodeURIComponent(xClaimActionMatch[1] ?? '')
+      const claimId = decodedPathSegmentOrRaw(xClaimActionMatch[1] ?? '')
       const action = xClaimActionMatch[2]
 
       if (action === 'challenge') {
@@ -2625,7 +2626,7 @@ export const makeAgentOwnerClaimRoutes = <
       return undefined
     }
 
-    const claimId = decodeURIComponent(claimActionMatch[1] ?? '')
+    const claimId = decodedPathSegmentOrRaw(claimActionMatch[1] ?? '')
     const action = claimActionMatch[2]
 
     if (action === 'approve') {

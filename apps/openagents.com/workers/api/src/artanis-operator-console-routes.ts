@@ -44,6 +44,7 @@ import {
 } from './artanis-work-routing'
 import { friendlyBlueprintMissionBriefingTime } from './blueprint/services/continuation-mission-briefing'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import { decodeUnknownWithSchema } from './json-boundary'
 import {
   currentEpochMillis,
@@ -638,7 +639,7 @@ const applyApprovalAction = (
   nowIso: string,
 ) =>
   Effect.gen(function* () {
-    const gateRef = decodeURIComponent(encodedGateRef)
+    const gateRef = decodedPathSegmentOrRaw(encodedGateRef)
     const rows = yield* readRows(db, 'approval_gate', 50)
     const records = decodeRows(rows, ArtanisApprovalGateRecord)
     const existingDecisionRef = (source: ArtanisApprovalGateRecord) =>

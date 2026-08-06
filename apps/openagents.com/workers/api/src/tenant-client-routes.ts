@@ -5,6 +5,7 @@ import {
   noStoreJsonResponse,
   unauthorized,
 } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import { type TenantRef } from './tenant-custom-hostnames'
 import {
   type TenantClientWorkroomViewError,
@@ -62,7 +63,9 @@ const WORKROOM_PATH = /^\/api\/tenant\/client\/workrooms\/([^/]+)$/
 const workroomIdFromPath = (pathname: string): string | undefined => {
   const match = WORKROOM_PATH.exec(pathname)
 
-  return match?.[1] === undefined ? undefined : decodeURIComponent(match[1])
+  return match?.[1] === undefined
+    ? undefined
+    : decodedPathSegmentOrRaw(match[1])
 }
 
 const denialStatus = (error: TenantClientWorkroomViewError): number => {

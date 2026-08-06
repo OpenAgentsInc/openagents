@@ -11,6 +11,7 @@ import {
   systemBusinessPipelineRuntime,
 } from './business-pipeline-queue'
 import { methodNotAllowed, noStoreJsonResponse, unauthorized } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import {
   optionalBoolean,
   optionalInteger,
@@ -493,7 +494,7 @@ export const makeOperatorBusinessPipelineRoutes = <Bindings>(
 
     if (match === null) return undefined
 
-    const pipelineRef = decodeURIComponent(match[1] ?? '')
+    const pipelineRef = decodedPathSegmentOrRaw(match[1] ?? '')
     const action = match[2]
 
     if (action === 'advance') {

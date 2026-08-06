@@ -36,6 +36,7 @@ import {
   makeAgentGoalRepositoryLayerForEnv,
 } from './agent-runtime-store'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp } from './runtime-primitives'
 import { publishAgentGoalSyncIfBound } from './sync-notifier'
@@ -1267,7 +1268,7 @@ export const makeAgentGoalRoutes = <
               request,
               env,
               ctx,
-              decodeURIComponent(browserActionMatch[1] ?? ''),
+              decodedPathSegmentOrRaw(browserActionMatch[1] ?? ''),
               browserActionMatch[2] as
                 | 'pause'
                 | 'resume'
@@ -1287,7 +1288,7 @@ export const makeAgentGoalRoutes = <
               request,
               env,
               ctx,
-              decodeURIComponent(browserGoalMatch[1] ?? ''),
+              decodedPathSegmentOrRaw(browserGoalMatch[1] ?? ''),
             )
           : Effect.succeed(methodNotAllowed(['GET', 'PATCH']))
       }
@@ -1313,7 +1314,7 @@ export const makeAgentGoalRoutes = <
               request,
               env,
               ctx,
-              decodeURIComponent(operatorGoalMatch[1] ?? ''),
+              decodedPathSegmentOrRaw(operatorGoalMatch[1] ?? ''),
             )
           : Effect.succeed(methodNotAllowed(['GET', 'PATCH']))
       }
@@ -1329,7 +1330,7 @@ export const makeAgentGoalRoutes = <
               request,
               env,
               ctx,
-              decodeURIComponent(operatorActionMatch[1] ?? ''),
+              decodedPathSegmentOrRaw(operatorActionMatch[1] ?? ''),
               operatorActionMatch[2] as
                 | 'pause'
                 | 'resume'
@@ -1360,7 +1361,7 @@ export const makeAgentGoalRoutes = <
               request,
               env,
               ctx,
-              decodeURIComponent(agentTerminalMatch[1] ?? ''),
+              decodedPathSegmentOrRaw(agentTerminalMatch[1] ?? ''),
               agentTerminalMatch[2] as 'complete' | 'blocked',
             )
           : Effect.succeed(methodNotAllowed(['POST']))
@@ -1376,7 +1377,7 @@ export const makeAgentGoalRoutes = <
               request,
               env,
               ctx,
-              decodeURIComponent(agentUpdateMatch[1] ?? ''),
+              decodedPathSegmentOrRaw(agentUpdateMatch[1] ?? ''),
             )
           : Effect.succeed(methodNotAllowed(['POST']))
       }
@@ -1391,7 +1392,7 @@ export const makeAgentGoalRoutes = <
               request,
               env,
               ctx,
-              decodeURIComponent(agentGoalMatch[1] ?? ''),
+              decodedPathSegmentOrRaw(agentGoalMatch[1] ?? ''),
             )
           : Effect.succeed(methodNotAllowed(['GET']))
       }
@@ -1406,7 +1407,7 @@ export const makeAgentGoalRoutes = <
           ? publicAgentGoalResponse(
               request,
               env,
-              decodeURIComponent(publicAgentGoalMatch[1] ?? ''),
+              decodedPathSegmentOrRaw(publicAgentGoalMatch[1] ?? ''),
             )
           : Effect.succeed(methodNotAllowed(['GET']))
       }
@@ -1420,7 +1421,7 @@ export const makeAgentGoalRoutes = <
           ? publicGoalResponse(
               request,
               env,
-              decodeURIComponent(publicGoalMatch[1] ?? ''),
+              decodedPathSegmentOrRaw(publicGoalMatch[1] ?? ''),
             )
           : Effect.succeed(methodNotAllowed(['GET']))
       }
@@ -1433,7 +1434,7 @@ export const makeAgentGoalRoutes = <
           ? publicGoalResponse(
               request,
               env,
-              decodeURIComponent(publicGoalSnapshotMatch[1] ?? ''),
+              decodedPathSegmentOrRaw(publicGoalSnapshotMatch[1] ?? ''),
             )
           : Effect.succeed(methodNotAllowed(['GET']))
       }

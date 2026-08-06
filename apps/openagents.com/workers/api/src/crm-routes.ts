@@ -25,6 +25,7 @@ import {
 import { Effect } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { decodedPathSegmentOrRaw } from './http/router'
 import {
   CrmStorageError,
   DEFAULT_CRM_TENANT_REF,
@@ -123,7 +124,7 @@ const ALL_PATTERNS: ReadonlyArray<RegExp> = [
 
 const captured = (pattern: RegExp, path: string): string | null => {
   const match = pattern.exec(path)
-  return match === null ? null : decodeURIComponent(match[1] ?? '')
+  return match === null ? null : decodedPathSegmentOrRaw(match[1] ?? '')
 }
 
 export const makeCrmRoutes = <Bindings extends CrmRouteEnv>(
