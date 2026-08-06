@@ -339,7 +339,9 @@ A Quote commits:
 - public keys used by each claim and refund path;
 - confirmation, reorg, RBF, replacement, and zero-confirmation policy;
 - every absolute time, chain height, CLTV value, and safety margin in the
-  timeout ladder, including `hold_expiry_height` for a reverse swap;
+  timeout ladder, including the selected-chain and Lightning height domains,
+  their pinned observation time and block-interval assumptions, and
+  `hold_expiry_height` for a reverse swap;
 - the cooperative MuSig2 path and unilateral script-path exits;
 - evidence requirements, verifier policy, recovery channel, and exit-package
   requirements;
@@ -820,6 +822,10 @@ requester enters refund preparation. The requester broadcasts at or after
 
 Let:
 
+- `H_chain_now` be the signed `current_height` in the selected chain leg's
+  height domain;
+- `H_lightning_now` be the signed `lightning_current_height` in the
+  Lightning/Bitcoin CLTV height domain;
 - `H_hold_expiry` be the signed `hold_expiry_height` value in the Quote and
   matching Swap Contract records. It is the minimum acceptable value of the
   shortest incoming Lightning HTLC expiry, not an observation that an HTLC
@@ -833,11 +839,61 @@ Let:
 The Quote MUST satisfy:
 
 ```text
-current_height < H_lock_last
+H_chain_now < H_lock_last
 H_lock_last + chain_finality_blocks <= H_user_claim
 H_user_claim + broadcast_safety_blocks + reorg_safety_blocks < H_provider_refund
-H_provider_refund + broadcast_safety_blocks + lightning_settlement_blocks < H_hold_expiry
+H_lightning_now < H_hold_expiry
 ```
+
+When the chain leg and Lightning use the same Bitcoin height domain, the
+Quote also MUST satisfy:
+
+```text
+H_provider_refund + broadcast_safety_blocks
+                  + lightning_settlement_blocks < H_hold_expiry
+```
+
+When they use different height domains, such as Liquid and Lightning, their
+heights MUST NOT be compared directly. The signed timeout ladder instead
+includes:
+
+- `height_observed_at`, the Unix time at which both signed tip heights were
+  sampled;
+- positive `height_observation_max_age_seconds`, bounded to 120 seconds in
+  v1;
+- positive `chain_block_interval_seconds` and
+  `lightning_block_interval_seconds` assumptions;
+- positive `cross_domain_safety_seconds`;
+- `provider_refund_expected_at`, calculated as
+  `height_observed_at + (H_provider_refund - H_chain_now +
+  broadcast_safety_blocks) * chain_block_interval_seconds`; and
+- `hold_expiry_expected_at`, calculated as
+  `height_observed_at + (H_hold_expiry - H_lightning_now) *
+  lightning_block_interval_seconds`.
+
+The exact integer calculations MUST be recomputable without overflow and
+MUST satisfy:
+
+```text
+provider_refund_expected_at
+  + lightning_settlement_blocks * lightning_block_interval_seconds
+  + cross_domain_safety_seconds < hold_expiry_expected_at
+```
+
+These signed intervals are disclosed operational assumptions, not a claim
+that either chain has deterministic block production. A requester verifies
+the pinned tips against its configured nodes and rejects stale, weakened, or
+uncomputable assumptions. A provider MUST NOT fund after the remaining
+locally observed conversion margin falls below the signed inequality. A
+profile advertising a cross-domain reverse pair MUST publish the permitted
+interval and safety ranges; mutable provider defaults cannot fill missing
+values. At Quote receipt, a participant's local observation time MUST NOT
+exceed `height_observed_at + height_observation_max_age_seconds +
+clock_skew_seconds`; only a replacement Quote before Order can refresh those
+signed terms. Immediately before funding, the provider refreshes both local
+tips and recomputes the remaining margin under the signed intervals. It
+refuses funding if the inequality no longer holds; it does not mutate an
+effective Order's timeout ladder.
 
 Before it funds the chain lock, the provider MUST observe at least one held
 incoming HTLC for the bound payment and MUST verify:
@@ -1496,6 +1552,7 @@ heights, verifier inputs, and expected evidence rung.
 | `swp-v1-chain-regtest-dual-refund`         | Destination is unclaimed; provider and requester execute the safe ordered refunds.                                                                                    |
 | `swp-v1-liquid-submarine-regtest-refund`   | Requester verifies its pegged-asset output, persists the Liquid exit, and refunds after timeout.                                                                      |
 | `swp-v1-liquid-reverse-regtest-claim`      | Requester unblinds the provider lock, verifies amount/asset/script, and claims without coordinator keys.                                                              |
+| `swp-v1-liquid-reverse-cross-domain-timeout` | Accept separately pinned Liquid and Lightning heights whose signed wall-time conversion preserves the refund and settlement margin.                                  |
 | `swp-v1-btc-liquid-chain-regtest`          | Requester verifies the provider-signed Liquid transaction, output/tree, claim exit, and local mempool acceptance at zero confirmations before Bitcoin source funding. |
 | `swp-v1-covenant-hard-reservation`         | Independent verifier admits the covenant-enforced minimum once.                                                                                                       |
 | `swp-v1-price-feed-exact-pointer`          | Exact URL, response digest, RFC 6901 pointer, and observed value reproduce terms.                                                                                     |
@@ -1530,6 +1587,7 @@ heights, verifier inputs, and expected evidence rung.
 | `swp-v1-negative-refund-key`                               | `swp_terms_mismatch`                                                        |
 | `swp-v1-negative-timeout-ladder`                           | `swp_timeout_ladder_unsafe`                                                 |
 | `swp-v1-negative-hold-expiry-below-minimum`                | `swp_timeout_ladder_unsafe`                                                 |
+| `swp-v1-negative-liquid-reverse-cross-domain-timeout`      | `swp_timeout_ladder_unsafe`                                                 |
 | `swp-v1-negative-rbf-forbidden`                            | `swp_rbf_policy_violation`                                                  |
 | `swp-v1-negative-insufficient-confirmations`               | `swp_confirmation_insufficient`                                             |
 | `swp-v1-negative-order-mutation`                           | `swp_order_selection_invalid`                                               |
@@ -1649,6 +1707,15 @@ required secp256k1-zkp primitives.
   after source finality.
 - Made zero confirmations valid for that unbroadcast destination preflight.
   Reverse counterparty locks still require their signed confirmation policy.
+
+**v1 cross-domain timeout correction (2026-08-06)**
+
+- Separated the selected chain height from Lightning's Bitcoin CLTV height.
+- Prohibited direct Liquid-height versus Bitcoin-height comparisons and
+  required a signed, recomputable wall-time conversion with an explicit
+  safety margin for cross-domain reverse swaps.
+- Retained the stronger direct-height inequality when both legs share the
+  Bitcoin height domain.
 
 **v1 Liquid addendum (2026-08-05)**
 
