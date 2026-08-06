@@ -866,10 +866,10 @@ includes:
 - positive `cross_domain_safety_seconds`;
 - `provider_refund_expected_at`, calculated as
   `height_observed_at + (H_provider_refund - H_chain_now +
-  broadcast_safety_blocks) * chain_block_interval_seconds`; and
+broadcast_safety_blocks) * chain_block_interval_seconds`; and
 - `hold_expiry_expected_at`, calculated as
   `height_observed_at + (H_hold_expiry - H_lightning_now) *
-  lightning_block_interval_seconds`.
+lightning_block_interval_seconds`.
 
 The exact integer calculations MUST be recomputable without overflow and
 MUST satisfy:
@@ -993,24 +993,24 @@ causal edge.
 
 The v1 cross-participant gates are:
 
-| Action Status | Required referenced Status |
-| --- | --- |
-| `requester_verification_passed` | provider `lock_terms_ready` |
-| provider `lightning_htlcs_held` | requester `lightning_payment_pending` |
-| `requester_invoice_verified` | provider `hold_invoice_ready` |
-| `requester_lock_verified` | provider `provider_lock_terms_ready` |
-| provider `provider_funding_broadcast` | requester `requester_lock_verified` |
-| `requester_claim_pending` | provider `funding_final` |
-| provider `lightning_settlement_pending` | requester `requester_claimed` |
-| `requester_source_verified` | provider `source_lock_terms_ready` |
-| provider `destination_lock_terms_ready` | requester `requester_source_verified` |
-| `requester_destination_verified` | provider `destination_lock_terms_ready` |
-| provider `source_funding_required` | requester `requester_destination_verified` |
-| `requester_source_broadcast` | provider `source_funding_required` |
-| `requester_destination_claim_pending` | provider `destination_funding_final` |
-| provider `provider_source_claim_pending` | requester `requester_destination_claimed` |
-| `requester_source_refund_pending` after destination funding | provider `provider_destination_refunded` |
-| provider terminal `refunded` after destination funding | requester `requester_source_refunded` |
+| Action Status                                               | Required referenced Status                 |
+| ----------------------------------------------------------- | ------------------------------------------ |
+| `requester_verification_passed`                             | provider `lock_terms_ready`                |
+| provider `lightning_htlcs_held`                             | requester `lightning_payment_pending`      |
+| `requester_invoice_verified`                                | provider `hold_invoice_ready`              |
+| `requester_lock_verified`                                   | provider `provider_lock_terms_ready`       |
+| provider `provider_funding_broadcast`                       | requester `requester_lock_verified`        |
+| `requester_claim_pending`                                   | provider `funding_final`                   |
+| provider `lightning_settlement_pending`                     | requester `requester_claimed`              |
+| `requester_source_verified`                                 | provider `source_lock_terms_ready`         |
+| provider `destination_lock_terms_ready`                     | requester `requester_source_verified`      |
+| `requester_destination_verified`                            | provider `destination_lock_terms_ready`    |
+| provider `source_funding_required`                          | requester `requester_destination_verified` |
+| `requester_source_broadcast`                                | provider `source_funding_required`         |
+| `requester_destination_claim_pending`                       | provider `destination_funding_final`       |
+| provider `provider_source_claim_pending`                    | requester `requester_destination_claimed`  |
+| `requester_source_refund_pending` after destination funding | provider `provider_destination_refunded`   |
+| provider terminal `refunded` after destination funding      | requester `requester_source_refunded`      |
 
 The `status` reference is additional to the same-author `previous` reference.
 An implementation retains a missing, foreign, ambiguous, forked, or
@@ -1035,6 +1035,7 @@ was funded, the destination leg's terminal Close evidence uses class
 that no `provider_destination_broadcast`, destination funding effect, or
 contracted destination outpoint exists. Source funding or refund evidence MUST
 NOT be duplicated as evidence for the unfunded destination leg.
+
 - `cancelled` is valid only when no irreversible external effect remains.
 - `expired` is valid before funding, or after all funded effects have reached
   a separately proved refund/release outcome.
@@ -1265,6 +1266,7 @@ serialized with RFC 8785 and has this logical shape:
   "effect_id": "<64-lower-hex>",
   "funding": {
     "transaction_id": null,
+    "transaction_template": "<lowercase transaction hex>",
     "transaction_template_sha256": "<64-lower-hex>",
     "output_index": 0,
     "amount": "100000",
@@ -1275,11 +1277,14 @@ serialized with RFC 8785 and has this logical shape:
     "mode": "presigned|wallet_sign|external_signer",
     "path": "claim|refund",
     "transaction_template_sha256": "<64-lower-hex>",
+    "transaction_template": "<lowercase transaction hex>",
     "signed_transaction": null,
     "signer_ref": null,
     "transaction_version": 2,
     "lock_time": 0,
     "input_sequence": 0,
+    "input_index": null,
+    "signature_hash": null,
     "sighash_type": "DEFAULT",
     "destination_script_pubkey": "<lowercase hex>",
     "earliest_broadcast_height": "0",
@@ -1293,7 +1298,13 @@ serialized with RFC 8785 and has this logical shape:
   "verification": {
     "swap_tree_sha256": "<64-lower-hex>",
     "quote_id": "<64-lower-hex>",
-    "verifier_digest": "<64-lower-hex>"
+    "verifier_digest": "<64-lower-hex>",
+    "taproot_script": "<lowercase hex>",
+    "taproot_control_block": "<lowercase hex>",
+    "taproot_tree": [],
+    "genesis_hash": null,
+    "fee_output_index": null,
+    "fee_amount": null
   },
   "secret_commitments": {
     "payment_hash": "<64-lower-hex>",
@@ -1305,6 +1316,55 @@ serialized with RFC 8785 and has this logical shape:
   }
 }
 ```
+
+`funding.transaction_template` is the exact funding serialization whose
+SHA-256 digest is `funding.transaction_template_sha256`. The
+`exit.transaction_template` member is the exact serialization authorized for
+the unilateral path. It is unsigned for `wallet_sign` or `external_signer` and
+may equal `signed_transaction` for `presigned`. A package MUST NOT require a
+wallet to reconstruct either serialization from mutable coordinator state.
+
+Bitcoin packages carry `swap_tree_sha256`, `taproot_script`,
+`taproot_control_block`, and the complete `taproot_tree`. Liquid packages
+carry `swap_tree_sha256`, `taproot_script`, `taproot_control_block`, the full
+Elements `genesis_hash`, `fee_output_index`, and canonical decimal-string
+`fee_amount`. For Liquid, `exit.input_index` selects the exact input and
+`exit.signature_hash` binds the Elements-specific signature digest;
+`taproot_tree` may be omitted because the signed verifier and
+`swap_tree_sha256` bind the complete tree. The conditional Liquid members are
+absent, not `null`, on a Bitcoin package. Unknown members fail closed.
+
+For a Liquid leg, the `broadcast` member is the following exact local-node
+policy instead of an Esplora policy:
+
+```json
+{
+  "broadcast": {
+    "mode": "local_elementsd",
+    "rpc_method": "sendrawtransaction",
+    "network_id": "bip122:<reference>",
+    "genesis_hash": "<64-lower-hex>"
+  }
+}
+```
+
+`network_id` and the full `genesis_hash` MUST equal the verified funding leg.
+The client derives a typed request containing those members, the signed
+transaction's SHA-256 digest, and an opaque reference to the dedicated private
+broadcast artifact that holds the exact bytes. The executor loads those bytes
+through the reference and requires their digest to match before any RPC.
+Wallet signing alone is not a completed claim or refund effect. The effect is
+recorded only after the exact `sendrawtransaction` request succeeds or the
+local node proves those same transaction bytes are already known; a
+conflicting transaction fails closed.
+
+A completed hashlock claim transaction discloses its preimage to the rail.
+The durable client session snapshot MUST NOT duplicate that transaction,
+witness, or preimage in its retained external-effect request map. It retains
+the effect ID, transaction digest or ID, result digest, and an opaque reference
+to the dedicated private wallet or broadcast artifact that owns exact-byte
+retry. This rule does not weaken exact-byte idempotency and does not make the
+artifact a relay or provider record.
 
 The package contains a fully signed unilateral transaction when the rail and
 known outpoint permit it. Otherwise it contains the complete deterministic
@@ -1562,6 +1622,8 @@ Profile errors are stable lowercase identifiers:
 | `swp_exit_package_mismatch`       | Package digest or terms differ from the Swap Contract.                            |
 | `swp_exit_package_unusable`       | Package still depends on unavailable coordination or secrets it does not possess. |
 | `swp_secret_material_forbidden`   | A relay/server artifact contains prohibited custody material.                     |
+| `swp_external_signature_invalid`  | An external signer returned malformed bytes or an invalid signature.              |
+| `swp_external_signature_mismatch` | An external signer changed the exact event or transaction template it was given.  |
 | `swp_privacy_violation`           | Field audience or receipt consent was exceeded.                                   |
 | `swp_external_effect_conflict`    | One effect ID maps to different external operations.                              |
 | `swp_idempotency_conflict`        | Same signed-record or effect key has changed input.                               |
@@ -1584,25 +1646,26 @@ heights, verifier inputs, and expected evidence rung.
 
 ### 18.1 Positive
 
-| Fixture                                    | Required result                                                                                                                                                       |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `swp-v1-offering-btc-ln-enabled`           | Accept canonical pair, bounds, fee promise, and `evm_extension=unsupported`.                                                                                          |
-| `swp-v1-contract-matching-bilateral`       | Accept requester/provider `kind:39610` records with one shared contract digest and complementary roles.                                                               |
-| `swp-v1-submarine-regtest-cooperative`     | Complete invoice payment and MuSig2 provider claim after all verification gates.                                                                                      |
-| `swp-v1-submarine-regtest-script-refund`   | Provider disappears; requester broadcasts the bound refund after `H_refund`.                                                                                          |
-| `swp-v1-reverse-regtest-cooperative`       | Hold invoice, provider lock, requester claim, preimage settlement, and finality complete.                                                                             |
-| `swp-v1-reverse-regtest-provider-refund`   | Requester never claims; provider refunds and cancels held Lightning HTLCs.                                                                                            |
-| `swp-v1-reverse-hold-expiry-at-minimum`    | Accept observed shortest incoming expiry equal to signed `hold_expiry_height`.                                                                                        |
-| `swp-v1-reverse-hold-expiry-above-minimum` | Accept observed shortest incoming expiry above signed `hold_expiry_height`.                                                                                           |
-| `swp-v1-chain-regtest-cooperative`         | Provider signs the source-funding instruction; source and destination locks, requester claim, provider claim, both final.                                             |
-| `swp-v1-chain-regtest-dual-refund`         | Destination is unclaimed; provider and requester execute the safe ordered refunds.                                                                                    |
-| `swp-v1-liquid-submarine-regtest-refund`   | Requester verifies its pegged-asset output, persists the Liquid exit, and refunds after timeout.                                                                      |
-| `swp-v1-liquid-reverse-regtest-claim`      | Requester unblinds the provider lock, verifies amount/asset/script, and claims without coordinator keys.                                                              |
-| `swp-v1-liquid-reverse-cross-domain-timeout` | Accept separately pinned Liquid and Lightning heights whose signed wall-time conversion preserves the refund and settlement margin.                                  |
-| `swp-v1-btc-liquid-chain-regtest`          | Requester verifies the provider-signed Liquid transaction, output/tree, claim exit, and local mempool acceptance at zero confirmations before Bitcoin source funding. |
-| `swp-v1-covenant-hard-reservation`         | Independent verifier admits the covenant-enforced minimum once.                                                                                                       |
-| `swp-v1-price-feed-exact-pointer`          | Exact URL, response digest, RFC 6901 pointer, and observed value reproduce terms.                                                                                     |
-| `swp-v1-public-receipt-redacted`           | Receipt exposes only consented outcome and verifier reference.                                                                                                        |
+| Fixture                                      | Required result                                                                                                                                                        |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `swp-v1-offering-btc-ln-enabled`             | Accept canonical pair, bounds, fee promise, and `evm_extension=unsupported`.                                                                                           |
+| `swp-v1-contract-matching-bilateral`         | Accept requester/provider `kind:39610` records with one shared contract digest and complementary roles.                                                                |
+| `swp-v1-submarine-regtest-cooperative`       | Complete invoice payment and MuSig2 provider claim after all verification gates.                                                                                       |
+| `swp-v1-submarine-regtest-script-refund`     | Provider disappears; requester broadcasts the bound refund after `H_refund`.                                                                                           |
+| `swp-v1-reverse-regtest-cooperative`         | Hold invoice, provider lock, requester claim, preimage settlement, and finality complete.                                                                              |
+| `swp-v1-reverse-regtest-provider-refund`     | Requester never claims; provider refunds and cancels held Lightning HTLCs.                                                                                             |
+| `swp-v1-reverse-hold-expiry-at-minimum`      | Accept observed shortest incoming expiry equal to signed `hold_expiry_height`.                                                                                         |
+| `swp-v1-reverse-hold-expiry-above-minimum`   | Accept observed shortest incoming expiry above signed `hold_expiry_height`.                                                                                            |
+| `swp-v1-chain-regtest-cooperative`           | Provider signs the source-funding instruction; source and destination locks, requester claim, provider claim, both final.                                              |
+| `swp-v1-chain-regtest-dual-refund`           | Destination is unclaimed; provider and requester execute the safe ordered refunds.                                                                                     |
+| `swp-v1-liquid-submarine-regtest-refund`     | Requester verifies its pegged-asset output, persists the Liquid exit, and refunds after timeout.                                                                       |
+| `swp-v1-liquid-reverse-regtest-claim`        | Requester unblinds the provider lock, verifies amount/asset/script, and claims without coordinator keys.                                                               |
+| `swp-v1-liquid-exit-wallet-claim`            | Persist the exact Liquid template, input, signature digest, tree commitment, fee output, distinct local recovery refs, and local-node broadcast policy before funding. |
+| `swp-v1-liquid-reverse-cross-domain-timeout` | Accept separately pinned Liquid and Lightning heights whose signed wall-time conversion preserves the refund and settlement margin.                                    |
+| `swp-v1-btc-liquid-chain-regtest`            | Requester verifies the provider-signed Liquid transaction, output/tree, claim exit, and local mempool acceptance at zero confirmations before Bitcoin source funding.  |
+| `swp-v1-covenant-hard-reservation`           | Independent verifier admits the covenant-enforced minimum once.                                                                                                        |
+| `swp-v1-price-feed-exact-pointer`            | Exact URL, response digest, RFC 6901 pointer, and observed value reproduce terms.                                                                                      |
+| `swp-v1-public-receipt-redacted`             | Receipt exposes only consented outcome and verifier reference.                                                                                                         |
 
 ### 18.2 Negative verification and grammar
 
@@ -1627,6 +1690,7 @@ heights, verifier inputs, and expected evidence rung.
 | `swp-v1-negative-liquid-unblind-foreign-output`            | `swp_liquid_unblind_failed`                                                 |
 | `swp-v1-negative-liquid-unblind-amount`                    | `swp_liquid_unblind_mismatch`                                               |
 | `swp-v1-negative-liquid-bitcoin-sighash`                   | `swp_liquid_output_invalid`                                                 |
+| `swp-v1-negative-liquid-exit-schema`                       | `swp_exit_package_unusable`                                                 |
 | `swp-v1-negative-btc-liquid-destination-signature`         | `swp_liquid_output_invalid`                                                 |
 | `swp-v1-negative-btc-liquid-destination-mempool`           | `swp_funding_not_authorized`                                                |
 | `swp-v1-negative-btc-liquid-source-before-preflight`       | `swp_status_transition_invalid`                                             |
@@ -1645,6 +1709,8 @@ heights, verifier inputs, and expected evidence rung.
 | `swp-v1-negative-contract-order-mismatch`                  | `swp_contract_terms_mismatch`                                               |
 | `swp-v1-negative-nonnull-evm-leg`                          | `swp_unsupported_extension`                                                 |
 | `swp-v1-negative-missing-exit-package`                     | `swp_exit_package_missing`                                                  |
+| `swp-v1-negative-external-signature-invalid`               | `swp_external_signature_invalid`                                            |
+| `swp-v1-negative-external-signature-mismatch`              | `swp_external_signature_mismatch`                                           |
 | `swp-v1-negative-provider-claims-requester-verification`   | `swp_status_signer_invalid`                                                 |
 | `swp-v1-negative-requester-claims-source-funding-required` | `swp_status_signer_invalid`                                                 |
 | `swp-v1-negative-settlement-overclaim`                     | `swp_settlement_overclaim`                                                  |
@@ -1670,17 +1736,18 @@ heights, verifier inputs, and expected evidence rung.
 
 ### 18.4 Privacy and custody
 
-| Fixture                                       | Required result                                                                                          |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `swp-v1-privacy-public-offering`              | Secret scanner finds no exact amount, live inventory, invoice, address, script, or reserve witness.      |
-| `swp-v1-privacy-wrap-recipient`               | Only requester, provider, sender recovery copy, and declared handler can decrypt their intended records. |
-| `swp-v1-privacy-public-receipt-overreach`     | Reject with `swp_privacy_violation`.                                                                     |
-| `swp-v1-privacy-seed-tripwire`                | Reject with `swp_secret_material_forbidden`.                                                             |
-| `swp-v1-privacy-preimage-tripwire`            | Reject unsafe relay/server artifact with `swp_secret_material_forbidden`.                                |
-| `swp-v1-privacy-macaroon-tripwire`            | Reject with `swp_secret_material_forbidden`.                                                             |
-| `swp-v1-privacy-claim-key-tripwire`           | Reject with `swp_secret_material_forbidden`.                                                             |
-| `swp-v1-privacy-musig-secret-nonce-tripwire`  | Reject with `swp_secret_material_forbidden`.                                                             |
-| `swp-v1-privacy-liquid-blinding-key-tripwire` | Reject with `swp_secret_material_forbidden`.                                                             |
+| Fixture                                       | Required result                                                                                                           |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `swp-v1-privacy-public-offering`              | Secret scanner finds no exact amount, live inventory, invoice, address, script, or reserve witness.                       |
+| `swp-v1-privacy-wrap-recipient`               | Only requester, provider, sender recovery copy, and declared handler can decrypt their intended records.                  |
+| `swp-v1-privacy-public-receipt-overreach`     | Reject with `swp_privacy_violation`.                                                                                      |
+| `swp-v1-privacy-seed-tripwire`                | Reject with `swp_secret_material_forbidden`.                                                                              |
+| `swp-v1-privacy-preimage-tripwire`            | Reject unsafe relay/server artifact with `swp_secret_material_forbidden`.                                                 |
+| `swp-v1-privacy-macaroon-tripwire`            | Reject with `swp_secret_material_forbidden`.                                                                              |
+| `swp-v1-privacy-claim-key-tripwire`           | Reject with `swp_secret_material_forbidden`.                                                                              |
+| `swp-v1-privacy-musig-secret-nonce-tripwire`  | Reject with `swp_secret_material_forbidden`.                                                                              |
+| `swp-v1-privacy-liquid-blinding-key-tripwire` | Reject with `swp_secret_material_forbidden`.                                                                              |
+| `swp-v1-privacy-post-claim-snapshot`          | Retain effect and result evidence, but no claim witness, signed transaction, or preimage in the durable session snapshot. |
 
 ### 18.5 Reorg, replacement, and recovery
 
@@ -1760,6 +1827,18 @@ required secp256k1-zkp primitives.
   reservation and verified absence of destination funding.
 - Prohibited duplicating source evidence as the unfunded destination leg's
   terminal proof.
+
+**v1 Liquid exit-package correction (2026-08-06)**
+
+- Made the exact funding and unilateral transaction serializations explicit
+  and defined the Liquid input, Elements signature digest, tree commitment,
+  genesis, and fee members.
+- Required exact `sendrawtransaction` idempotency through the bound local
+  `elementsd` network and genesis policy.
+- Kept completed claim witnesses and preimages out of durable client session
+  snapshots while retaining digest-bound private-artifact recovery.
+- Added external-signer error vocabulary and conformance fixtures for the
+  corrected package, signing, and snapshot boundaries.
 
 **v1 Liquid sequencing correction (2026-08-06)**
 
