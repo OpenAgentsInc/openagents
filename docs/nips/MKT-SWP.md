@@ -980,6 +980,43 @@ The base `state` is determined from `swp_state` as follows:
 `contract_pending` and `contract_bound` have no Status mapping. A value that
 matches no row is `swp_status_transition_invalid`.
 
+### Cross-participant causal gates
+
+When an action Status consumes a counterparty-authored prerequisite Status,
+it MUST carry exactly one `e` reference marked `status` to that exact signed
+prerequisite. The referenced Status MUST be present, signature-valid,
+contiguous in its author's `seq`/`previous` stream, valid for the same
+session, Order, and profile, and valid for the required signer, state, terms,
+and evidence. A matching state elsewhere in the record set, relay arrival
+order, array order, or a `created_at` comparison does not establish this
+causal edge.
+
+The v1 cross-participant gates are:
+
+| Action Status | Required referenced Status |
+| --- | --- |
+| `requester_verification_passed` | provider `lock_terms_ready` |
+| provider `lightning_htlcs_held` | requester `lightning_payment_pending` |
+| `requester_invoice_verified` | provider `hold_invoice_ready` |
+| `requester_lock_verified` | provider `provider_lock_terms_ready` |
+| provider `provider_funding_broadcast` | requester `requester_lock_verified` |
+| `requester_claim_pending` | provider `funding_final` |
+| provider `lightning_settlement_pending` | requester `requester_claimed` |
+| `requester_source_verified` | provider `source_lock_terms_ready` |
+| provider `destination_lock_terms_ready` | requester `requester_source_verified` |
+| `requester_destination_verified` | provider `destination_lock_terms_ready` |
+| provider `source_funding_required` | requester `requester_destination_verified` |
+| `requester_source_broadcast` | provider `source_funding_required` |
+| `requester_destination_claim_pending` | provider `destination_funding_final` |
+| provider `provider_source_claim_pending` | requester `requester_destination_claimed` |
+| `requester_source_refund_pending` after destination funding | provider `provider_destination_refunded` |
+
+The `status` reference is additional to the same-author `previous` reference.
+An implementation retains a missing, foreign, ambiguous, forked, or
+pre-published dependency as an invalid claim and MUST NOT perform the action's
+external effect. A participant creates the dependent Status only after it has
+verified and durably retained the referenced bytes.
+
 ### 9.1 Common terminal rules
 
 - `completed` requires verified completion of both legs under the Quote's
@@ -1584,6 +1621,7 @@ heights, verifier inputs, and expected evidence rung.
 | `swp-v1-negative-btc-liquid-destination-signature`         | `swp_liquid_output_invalid`                                                 |
 | `swp-v1-negative-btc-liquid-destination-mempool`           | `swp_funding_not_authorized`                                                |
 | `swp-v1-negative-btc-liquid-source-before-preflight`       | `swp_status_transition_invalid`                                             |
+| `swp-v1-negative-cross-signer-status-prepublish`           | `swp_status_transition_invalid`                                             |
 | `swp-v1-negative-refund-key`                               | `swp_terms_mismatch`                                                        |
 | `swp-v1-negative-timeout-ladder`                           | `swp_timeout_ladder_unsafe`                                                 |
 | `swp-v1-negative-hold-expiry-below-minimum`                | `swp_timeout_ladder_unsafe`                                                 |
@@ -1696,6 +1734,13 @@ required secp256k1-zkp primitives.
 - [Arkade, solver, Mostro, Cashu, and WDK teardown](../teardowns/2026-08-04-ark-solver-mostro-cashu-rails-teardown.md)
 
 ## Changelog
+
+**v1 cross-participant causality correction (2026-08-06)**
+
+- Required effect-authorizing Status records to reference the exact
+  counterparty Status they consume with the existing `status` marker.
+- Rejected record-set existence, relay order, and author-controlled
+  `created_at` as proof that a cross-signer prerequisite preceded an action.
 
 **v1 Liquid sequencing correction (2026-08-06)**
 
