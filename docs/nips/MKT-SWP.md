@@ -1,6 +1,6 @@
 # NIP-MKT-SWP
 
-## Bitcoin and Lightning Atomic Swaps
+## Bitcoin, Lightning, Liquid, and Ark Atomic Swaps
 
 `draft` `optional`
 
@@ -137,6 +137,7 @@ is one of:
 ```text
 ^swp:1:bip122:[0-9a-f]{32}:btc:(chain|lightning)$
 ^swp:1:bip122:[0-9a-f]{32}:elements:[0-9a-f]{64}:liquid$
+^swp:1:bip122:[0-9a-f]{32}:btc:ark:(arkade|bark):[0-9a-f]{64}$
 ```
 
 MKT-SWP distinguishes the same bitcoin unit on different settlement rails:
@@ -145,6 +146,7 @@ MKT-SWP distinguishes the same bitcoin unit on different settlement rails:
 swp:1:<network_id>:btc:chain
 swp:1:<network_id>:btc:lightning
 swp:1:<network_id>:elements:<asset_id>:liquid
+swp:1:<network_id>:btc:ark:<protocol_family>:<operator_identity_sha256>
 ```
 
 For an Elements rail, `<asset_id>` is the lowercase 32-byte display-order
@@ -154,6 +156,47 @@ asset label, or provider-supplied alias is insufficient. V1 Liquid execution
 allowlists only that pegged asset. Other issued assets require a later
 profile revision with their own issuance and freeze authority.
 
+An Ark asset identifies one protocol family and one operator policy. The
+`protocol_family` value is `arkade` for the Arkade OS transaction-tree
+protocol or `bark` for the ark-bitcoin signed-transaction-chain protocol.
+These values do not assert wire compatibility. An adapter MUST implement one
+family explicitly and MUST NOT translate a VTXO from one family into the
+other.
+
+`operator_identity_sha256` is SHA-256 of the RFC 8785 serialization of this
+public descriptor:
+
+```json
+{
+  "network_id": "bip122:<reference>",
+  "protocol_family": "arkade|bark",
+  "protocol_version": "<1-32 ASCII identifier>",
+  "operator_keys": {
+    "signer_pubkey": "<lowercase public-key hex or null>",
+    "forfeit_pubkey": "<lowercase public-key hex or null>",
+    "server_pubkey": "<lowercase public-key hex or null>"
+  },
+  "operator_policy_sha256": "<64-lower-hex>"
+}
+```
+
+Arkade requires `signer_pubkey` and `forfeit_pubkey`; Bark requires
+`server_pubkey`. Inapplicable key members are `null`. Public keys are exact
+serialized keys returned by the pinned family protocol and are not converted
+between compressed and x-only encodings. The policy digest binds the complete
+public operator parameters needed to verify amount limits, VTXO expiry,
+unilateral-exit delay, tree or chain bounds, fee rules, and the Bitcoin
+network. The endpoint is excluded from the identity so an operator can move a
+service without changing existing VTXO identity. A Quote still pins the exact
+endpoint, operator identity, and policy digest.
+
+`protocol_version` matches `^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$`. Each public
+key is lowercase x-only or compressed SEC hex and matches
+`^(?:[0-9a-f]{64}|(?:02|03)[0-9a-f]{64})$`. A canonical Ark VTXO or Bitcoin
+outpoint matches `^[0-9a-f]{64}:(0|[1-9][0-9]{0,9})$`, and its output index
+MUST fit `u32`. Alternate transaction-byte order, uppercase hex, a leading
+zero in the index, or a family-local alias is invalid.
+
 These exact strings are `asset_id` values. A market is the ordered
 `[input_asset_id, output_asset_id]` pair. A ticker, display name, symbol, or
 provider-local pair code MUST NOT be used for matching, grouping, pricing,
@@ -161,17 +204,19 @@ or replay identity.
 
 V1 supports these `swap_type` and pair shapes:
 
-| `swap_type` | Input rail    | Output rail   | Direction                                                                  |
-| ----------- | ------------- | ------------- | -------------------------------------------------------------------------- |
-| `submarine` | Bitcoin chain | Lightning     | requester locks chain; provider pays Lightning                             |
-| `reverse`   | Lightning     | Bitcoin chain | requester pays a hold invoice; provider locks chain                        |
-| `chain`     | Bitcoin chain | Bitcoin chain | requester locks the source network; provider locks the destination network |
+| `swap_type` | Input rail         | Output rail        | Direction                                                              |
+| ----------- | ------------------ | ------------------ | ---------------------------------------------------------------------- |
+| `submarine` | Bitcoin settlement | Lightning          | requester locks the settlement leg; provider pays Lightning            |
+| `reverse`   | Lightning          | Bitcoin settlement | requester pays a hold invoice; provider locks the settlement leg       |
+| `chain`     | Bitcoin settlement | Bitcoin settlement | requester locks the source asset; provider locks the destination asset |
 
-For this table, a chain leg is either the Bitcoin `chain` rail or the Elements
-`liquid` rail. Submarine and reverse swaps admit either chain rail. A chain
-swap MUST have distinct asset IDs and V1 admits Bitcoin BTC to or from the
-configured network's pegged L-BTC only. Ark, EVM, mint, non-pegged Elements
-assets, and fiat legs are unsupported in v1.
+For this table, a Bitcoin settlement leg is the Bitcoin `chain`, Elements
+`liquid`, or operator-bound `ark` rail. Submarine and reverse swaps admit any
+one of those settlement rails. A chain swap MUST have distinct asset IDs. V1
+admits Bitcoin BTC to or from the configured network's pegged L-BTC, and
+Bitcoin chain BTC to or from one exact Ark operator asset on the same Bitcoin
+network. Ark-to-Ark, Ark-to-Liquid, cross-network Ark, EVM, mint, non-pegged
+Elements assets, and fiat legs are unsupported in v1.
 
 ### 3.2 Canonical amounts
 
@@ -272,7 +317,7 @@ An MKT-SWP Offering requires:
     "swap_types": ["submarine", "reverse", "chain"],
     "sides": [],
     "networks": [],
-    "script_modes": ["taproot-musig2-script-exit"],
+    "script_modes": ["taproot-musig2-script-exit", "ark-presigned-exit-v1"],
     "reservation_proof_classes": [],
     "confirmation_policies": [],
     "availability": "available",
@@ -287,9 +332,10 @@ Live inventory, UTXOs, channel balances, invoices, addresses, scripts,
 payment hashes, and reserve witnesses MUST NOT appear in a public Offering.
 
 `networks` contains 1-8 exact `network_id` strings. `sides` contains 1-16
-objects with the Section 3.2 shape. `script_modes` contains only
-`taproot-musig2-script-exit` in v1. `reservation_proof_classes` contains 1-8
-values from Section 5. `confirmation_policies` contains 1-8 objects:
+objects with the Section 3.2 shape. `script_modes` contains
+`taproot-musig2-script-exit` and, when an Ark side is present,
+`ark-presigned-exit-v1`. `reservation_proof_classes` contains 1-8 values from
+Section 5. `confirmation_policies` contains 1-8 objects:
 
 ```json
 {
@@ -308,6 +354,33 @@ profile identifier grammar. `zero_confirmation` is `forbidden` or `allowed`;
 policy is an advertised option. The Quote copies the selected values and may
 tighten them; it cannot weaken the requester's RFQ constraints.
 
+`ark_operators` is absent when no side uses Ark. Otherwise it contains 1-8
+duplicate-free objects:
+
+```json
+{
+  "asset_id": "swp:1:bip122:<reference>:btc:ark:arkade:<operator_identity_sha256>",
+  "protocol_family": "arkade",
+  "protocol_version": "v1",
+  "operator_identity_sha256": "<64-lower-hex>",
+  "operator_policy_sha256": "<64-lower-hex>",
+  "endpoint": "https://ark.example.invalid",
+  "endpoint_transport": "grpc_tls|https|grpc_plaintext_regtest",
+  "custody_disclosure": "operator-coordination-with-presigned-unilateral-exit"
+}
+```
+
+Each Ark side references exactly one matching asset and descriptor. The
+endpoint is an absolute HTTPS URL without userinfo, query, or fragment, or an
+absolute `https` gRPC target represented as a URL. The only plaintext exception
+is `grpc_plaintext_regtest`: the selected BIP-122 reference MUST be locally
+allowlisted as regtest, the adapter MUST be in its structurally regtest-only
+lab profile, and the endpoint MUST be an absolute HTTP URL that resolves inside
+the owned lab namespace. That mode cannot be advertised or enabled in another
+configuration. Redirects and endpoint substitution fail closed. The public
+descriptor carries no macaroon, token, wallet seed, signing key, VTXO bytes,
+inventory, or reserve witness.
+
 ### 4.2 RFQ
 
 An RFQ specifies `swap_type`, the ordered asset pair, exact amount or bounded
@@ -316,7 +389,9 @@ desired completion time, and whether a firm Quote is required. A reverse RFQ
 includes only a payment-hash commitment and requester claim public key. A
 submarine RFQ carries an encrypted BOLT11 invoice or an audience-restricted
 invoice reference. A chain RFQ carries the requester claim and refund public
-keys for the two named networks.
+keys for the two named networks. An RFQ whose settlement leg is Ark also
+selects one advertised Ark asset and `ark-presigned-exit-v1`; it carries no
+operator credential or spend authorization.
 
 For reverse and chain swaps, the requester generates the preimage and reveals
 only its SHA-256 hash. For submarine swaps, the requester's Lightning invoice
@@ -449,16 +524,69 @@ serialization of the resolved verifier. Every other verifier byte, leg byte,
 and Quote term remains unchanged. This resolution is invalid for reverse or
 chain swaps, non-source legs, and provider-funded legs.
 
+An Ark leg uses `verifier_policy=mkt-swp-ark-v1` and carries this exact
+family-neutral logical object in `verifier_inputs`:
+
+```json
+{
+  "verifier_policy": "mkt-swp-ark-v1",
+  "leg_id": "source|destination",
+  "network_id": "bip122:<reference>",
+  "asset_id": "<Ark asset_id>",
+  "amount": "<decimal sats>",
+  "protocol_family": "arkade|bark",
+  "protocol_version": "<1-32 ASCII identifier>",
+  "operator_identity_sha256": "<64-lower-hex>",
+  "operator_policy_sha256": "<64-lower-hex>",
+  "endpoint": "https://ark.example.invalid",
+  "endpoint_transport": "grpc_tls|https|grpc_plaintext_regtest",
+  "input_vtxo_ids": ["<txid>:<vout>"],
+  "output_vtxo_id": "<txid>:<vout>",
+  "output_vtxo_commitment_sha256": "<64-lower-hex>",
+  "owner_pubkey": "<lowercase public-key hex>",
+  "payment_hash": "<64-lower-hex>",
+  "claim_path_sha256": "<64-lower-hex>",
+  "refund_path_sha256": "<64-lower-hex>",
+  "expiry": { "domain": "block_height|unix_time", "value": "<decimal>" },
+  "unilateral_exit_delay": { "domain": "blocks|seconds", "value": "<decimal>" },
+  "anchor_outpoint": "<txid>:<vout>",
+  "signed_vtxo_graph_sha256": "<64-lower-hex>",
+  "exit_package_sha256": "<64-lower-hex>"
+}
+```
+
+`output_vtxo_commitment_sha256` is SHA-256 of the RFC 8785 serialization of
+the object containing exactly `asset_id`, `output_vtxo_id`, `amount`,
+`owner_pubkey`, `payment_hash`, `claim_path_sha256`, `refund_path_sha256`,
+`expiry`, `unilateral_exit_delay`, and `anchor_outpoint` with the values above.
+
+Every VTXO ID and anchor is a canonical Bitcoin outpoint. `input_vtxo_ids`
+contains 1-32 unique entries in lexicographic order. The signed VTXO graph is
+the complete bounded family-native public transaction tree or signed
+transaction chain needed to derive the output from the anchor. The graph and
+exit package remain private participant artifacts; only their digests enter a
+Swap Contract.
+
+The Quote MAY omit `input_vtxo_ids`, `output_vtxo_id`, `anchor_outpoint`,
+`signed_vtxo_graph_sha256`, and `exit_package_sha256` only when the funding
+actor cannot select its exact VTXOs before Order. The bilateral Swap Contract
+MUST resolve all five without changing any other Ark verifier member. The
+resolved graph MUST deterministically derive the selected output VTXO and its
+committed amount, owner, payment hash, claim path, refund path, expiry, and
+exit delay. This resolution can consume existing participant VTXOs; it cannot
+authorize an operator debit, round registration, or signing effect.
+
 The required leg and exit signer map is:
 
-| Swap type and leg           | Funding actor | Required requester commitment                                                                  | Required provider commitment                                                                  |
-| --------------------------- | ------------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| submarine chain lock        | requester     | funding template plus unilateral refund package                                                | claim template and cooperative-signing transcript commitment                                  |
-| submarine Lightning payment | provider      | invoice digest and local receipt-verifier input                                                | payment effect binding and node-local recovery-handle commitment                              |
-| reverse hold invoice        | requester     | payment effect binding, payment-hash commitment, and local preimage-recovery-handle commitment | hold-invoice digest, settle/cancel effect bindings, and node-local recovery-handle commitment |
-| reverse chain lock          | provider      | claim template and cooperative-signing transcript commitment                                   | funding template plus unilateral refund package                                               |
-| chain source lock           | requester     | funding template plus unilateral source-refund package                                         | source-claim template and cooperative-signing transcript commitment                           |
-| chain destination lock      | provider      | destination-claim template and cooperative-signing transcript commitment                       | complete provider-signed funding transaction plus unilateral destination-refund package       |
+| Swap type and leg           | Funding actor              | Required requester commitment                                                                  | Required provider commitment                                                                   |
+| --------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| submarine chain lock        | requester                  | funding template plus unilateral refund package                                                | claim template and cooperative-signing transcript commitment                                   |
+| submarine Lightning payment | provider                   | invoice digest and local receipt-verifier input                                                | payment effect binding and node-local recovery-handle commitment                               |
+| reverse hold invoice        | requester                  | payment effect binding, payment-hash commitment, and local preimage-recovery-handle commitment | hold-invoice digest, settle/cancel effect bindings, and node-local recovery-handle commitment  |
+| reverse chain lock          | provider                   | claim template and cooperative-signing transcript commitment                                   | funding template plus unilateral refund package                                                |
+| chain source lock           | requester                  | funding template plus unilateral source-refund package                                         | source-claim template and cooperative-signing transcript commitment                            |
+| chain destination lock      | provider                   | destination-claim template and cooperative-signing transcript commitment                       | complete provider-signed funding transaction plus unilateral destination-refund package        |
+| any Ark settlement leg      | selected leg funding actor | exact input/output VTXO graph and its complete pre-signed unilateral-exit package              | independently derived output VTXO, claim/refund paths, operator policy, and package commitment |
 
 A commitment is a digest and public execution description. It does not carry
 the preimage, private claim/refund key, secret nonce, seed, macaroon, NWC
@@ -531,6 +659,40 @@ observation alone is not proof that the covenant is safe. An on-chain output
 whose price must be changed by spending it is not a Quote mechanism and MUST
 NOT become an on-relay orderbook.
 
+A Bitcoin covenant reserve identifies its unit as `<txid>:<vout>`. An Ark
+covenant reserve identifies it as
+`ark:<protocol_family>:<operator_identity_sha256>:<vtxo_txid>:<vout>` and
+adds these exact proof inputs:
+
+```json
+{
+  "ark_reserve": {
+    "asset_id": "<Ark asset_id>",
+    "protocol_family": "arkade|bark",
+    "operator_identity_sha256": "<64-lower-hex>",
+    "reserve_vtxo_id": "<txid>:<vout>",
+    "reserve_vtxo_commitment_sha256": "<64-lower-hex>",
+    "signed_vtxo_graph_sha256": "<64-lower-hex>",
+    "program_sha256": "<64-lower-hex>",
+    "eligible_fill_sha256": "<64-lower-hex>",
+    "fee_rule_sha256": "<64-lower-hex>",
+    "minimum_output": "<decimal sats>",
+    "expires_at": 1785859200,
+    "exit_package_sha256": "<64-lower-hex>"
+  }
+}
+```
+
+The verifier derives the reserve VTXO from the complete signed graph, checks
+the exact covenant or tapscript program and eligible-fill predicate, proves
+that every accepted fill preserves at least `minimum_output` after the bound
+fee rule, and verifies that the pre-signed exit package remains usable without
+the operator. An operator inventory response, stream event, VTXO identifier,
+or signature over arbitrary reserve prose is insufficient. The canonical Ark
+funding reference is the reserve-unit identity for global double-use locking;
+the same VTXO cannot back active reservations in different buckets or under a
+different operator alias.
+
 An indicative Quote defaults to `reservation=none`. A firm Quote MUST use
 `soft` or `hard` and state the effect of proof unavailability. Expiry releases
 only the reservation accounting entry. It does not cancel, refund, settle, or
@@ -561,6 +723,12 @@ The arrays state each leg and phase. V1 applies these rules:
   with a cooperative path and a unilateral script path.
 - A reverse hold invoice remains controlled by Lightning HTLC rules until
   preimage settlement or cancellation.
+- An Ark operator coordinates VTXO creation and transfer and can delay or
+  censor the cooperative path. The participant retains only the control proven
+  by its complete signed VTXO graph and pre-signed unilateral exit. Operator
+  availability, VTXO expiry, unilateral-exit delay, and operator sweep paths
+  MUST appear as separate custody facts; an Ark leg is not custody-equivalent
+  to an immediately spendable Bitcoin output.
 - MuSig2 cooperative execution needs both public-key participants. The
   unilateral leaf MUST remain independently executable after its timeout.
 - The relay and coordination handler control no principal, inventory, claim,
@@ -568,6 +736,10 @@ The arrays state each leg and phase. V1 applies these rules:
 - Bitcoin consensus is the chain settlement authority. The involved
   Lightning implementations and BOLT rules are the Lightning settlement
   authority.
+- Arkade or Bark protocol validation determines whether an off-chain VTXO and
+  exit graph are usable. Bitcoin consensus becomes final authority only for
+  the anchor and broadcast exit transactions. An operator API, indexer, or
+  signed status response is not settlement authority.
 - Recourse is cryptographic claim or refund plus any separately named legal
   or guarantee path. A support URL is not recourse.
 
@@ -789,6 +961,51 @@ BTC-to-L-BTC chain swap. A reverse swap verifies the provider's already
 broadcast counterparty lock and MUST still reach the signed confirmation
 policy before the requester may claim it.
 
+### 7.6 Ark VTXO and exit checks
+
+An Ark verifier accepts at most 32 input VTXOs, 64 graph transactions, 32
+parent edges from anchor to selected output, and 262,144 decoded graph bytes.
+Exceeding a bound is `swp_ark_graph_invalid`; the verifier does not truncate a
+graph and continue. It parses every transaction locally, recomputes every
+transaction ID, checks each parent outpoint and amount, rejects cycles and
+duplicate spends, and derives the selected VTXO from an allowlisted Bitcoin
+anchor observed through the participant's full node or configured header
+authority.
+
+The verifier then checks the exact network, operator identity and policy,
+protocol version, owner public key, amount, payment hash, claim/refund
+tapscripts, VTXO expiry, unilateral-exit delay, and signed exit graph against
+the Quote and both Swap Contracts. Every signature and Taproot commitment is
+verified over the family-native transaction bytes. An operator `GetInfo`,
+indexer response, stream event, wallet balance, or `spendable` label is a
+lookup or liveness observation only.
+
+For `protocol_family=arkade`, the policy binds the exact signer and forfeit
+public keys, checkpoint tapscript, network, VTXO limits, tree expiry,
+unilateral-exit delay, fee schedule, and maximum transaction weight. The
+verifier checks the complete signed batch-output/VTXO transaction tree and
+the selected output's tapscript paths. A deprecated signer is accepted only
+when the signed policy explicitly allowlists that key and preserves a valid
+exit.
+
+For `protocol_family=bark`, the policy binds the exact protocol version,
+server public key, network, VTXO exit and expiry deltas, maximum exit depth,
+amount limits, and fee schedule. The verifier decodes the complete
+family-native signed transaction chain, checks the selected VTXO policy and
+server/user key commitments, and verifies every required forfeit, connector,
+checkpoint, and exit transaction that appears in that chain. A valid Bark
+object is not accepted as an Arkade tree or the reverse.
+
+Before any counterparty effect depends on an Ark transfer, the receiver MUST
+possess the complete public signed graph and the Section 12 pre-signed exit
+package, verify both, and persist the package digest. The participant then
+observes the exact selected VTXO under the pinned operator and separately
+observes its anchor state. If the operator disappears, contradicts the graph,
+reports the VTXO spent, or approaches the signed safe-exit deadline, the
+client stops cooperative progression and executes or schedules the bound
+unilateral exit. It never asks Immortal, a relay, or the swap provider to
+reconstruct missing Ark bytes.
+
 ## 8. Timeout ladders
 
 Every height is a canonical decimal string. Every Unix time is an integer.
@@ -942,7 +1159,35 @@ the provider refunds it before the requester source refund becomes valid.
 An implementation MUST reject a ladder whose worst-case graph cannot be
 calculated without a mutable provider default.
 
-### 8.4 Clock and policy changes
+### 8.4 Ark expiry and unilateral exit
+
+An Ark leg records its VTXO expiry, every transaction lock in the pre-signed
+exit graph, the family-native unilateral-exit delay, the maximum graph depth,
+and the Bitcoin height used for conversion. A seconds-based Arkade parameter
+and a block-based Bark parameter remain in their native domains; the Quote
+records the conservative block-interval assumption used only to compare the
+two swap legs.
+
+Let `T_ark_expiry` be the earliest time or height at which the operator's
+sweep path can invalidate the selected VTXO, and `T_exit_duration` the
+worst-case time for every ordered exit transaction to become valid and reach
+the signed Bitcoin finality threshold. The Quote MUST prove:
+
+```text
+current_observation + T_exit_duration
+                    + broadcast_margin
+                    + reorg_margin < T_ark_expiry
+```
+
+The latest safe Ark exit start MUST also precede the counterparty leg's last
+safe claim or refund decision by the complete cross-rail safety margin. A
+client cannot use the operator's advertised round interval, an average block
+time, or a cooperative transfer estimate to shorten `T_exit_duration`. When
+the inequality no longer holds, cooperative progression stops and the client
+enters the persisted exit graph even if the operator still reports the VTXO
+as spendable.
+
+### 8.5 Clock and policy changes
 
 The maximum accepted wall-clock skew is quoted in `clock_skew_seconds` and
 MUST NOT exceed 120 seconds in v1. `created_at` is not trusted time. A provider
@@ -1238,7 +1483,27 @@ all provider-prefixed actions, and `accepted`, `source_lock_terms_ready`,
 `destination_lock_terms_ready`, and `source_funding_required`. Each
 participant may report a rail observation without promoting its rung.
 
-### 9.6 Illegal transitions, gaps, and forks
+### 9.6 Ark rail substitutions
+
+An Ark settlement leg uses the same signer map and causal position as the
+corresponding Bitcoin or Liquid settlement leg. A `*_funding_broadcast`
+Status means the funding actor submitted the exact contract-bound VTXO
+transfer effect to the pinned operator. It does not claim a Bitcoin broadcast.
+A following `*_funding_observed` means the receiver possesses and has verified
+the complete signed VTXO graph and pre-signed exit package. `*_funding_final`
+means that verification still holds and the graph's Bitcoin anchor satisfies
+the signed confirmation policy. Operator acceptance alone reaches none of
+these states.
+
+Claim and refund states bind the exact Ark VTXO and exit-package digest. A
+cooperative Ark spend may advance a claim only after the receiver verifies the
+new VTXO graph. A unilateral Ark refund enters `*_refund_pending` when the
+first required exit transaction is broadcast or scheduled under an unmet
+relative lock and reaches `*_refunded` only when the participant's final
+Bitcoin output satisfies the signed finality policy. Missing operator service
+does not make a session failed while the bound exit remains usable.
+
+### 9.7 Illegal transitions, gaps, and forks
 
 A Status that skips a required action is retained as an invalid claim and
 does not advance the session. A missing sequence number is
@@ -1287,26 +1552,29 @@ Every evidence reference includes:
 Allowed classes are `invoice`, `lightning_htlc`, `lightning_payment`,
 `bitcoin_transaction`, `bitcoin_output`, `bitcoin_spend`,
 `liquid_transaction`, `liquid_output`, `liquid_spend`, `reservation`,
-`covenant_reserve`, `claim`, `refund`, `reorg`, and `replacement`.
-`reference` is a BOLT payment hash, Bitcoin `txid:vout`, transaction ID, or
-digest-bound external receipt identifier appropriate to the class. Full
-private artifacts stay off-relay.
+`covenant_reserve`, `ark_vtxo`, `ark_exit`, `claim`, `refund`, `reorg`, and
+`replacement`. `reference` is a BOLT payment hash, Bitcoin `txid:vout`,
+canonical operator-bound Ark VTXO ID, transaction ID, or digest-bound external
+receipt identifier appropriate to the class. Full private artifacts stay
+off-relay.
 
 Evidence rungs are monotonic only for the exact artifact and policy:
 
-| Rung       | Authority                                                                                              |
-| ---------- | ------------------------------------------------------------------------------------------------------ |
-| `pledged`  | Evidence producer signed a claim.                                                                      |
-| `reserved` | A reservation proof policy admitted a capacity commitment.                                             |
-| `measured` | A named observer saw the rail object in its stated view.                                               |
-| `verified` | An allowlisted verifier re-derived the artifact and terms under the pinned policy.                     |
-| `paid`     | The relevant Lightning node or payment proof establishes payment under the Quote.                      |
-| `settled`  | Bitcoin, Liquid, or Lightning finality rules in the Quote are satisfied in the verifier's stated view. |
+| Rung       | Authority                                                                                                               |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `pledged`  | Evidence producer signed a claim.                                                                                       |
+| `reserved` | A reservation proof policy admitted a capacity commitment.                                                              |
+| `measured` | A named observer saw the rail object in its stated view.                                                                |
+| `verified` | An allowlisted verifier re-derived the artifact and terms under the pinned policy.                                      |
+| `paid`     | The relevant Lightning node or payment proof establishes payment under the Quote.                                       |
+| `settled`  | Bitcoin, Liquid, Ark-anchor/exit, or Lightning finality rules in the Quote are satisfied in the verifier's stated view. |
 
 The local wallet is the authority for whether it enables a fund, claim, or
-refund action. Bitcoin or Elements consensus and the Lightning rail determine
-external settlement. A relay-signed observation, provider Status, explorer
-response, API response, NIP-57 receipt, or Close cannot independently produce
+refund action. Bitcoin consensus determines Bitcoin and Ark anchor/exit
+settlement, Elements consensus determines Liquid settlement, and the
+Lightning rail determines Lightning settlement. A relay-signed observation,
+provider Status, explorer response, API response, NIP-57 receipt, or Close
+cannot independently produce
 `paid` or `settled`.
 
 Reorg and replacement verification is continuous until the quoted finality
@@ -1334,6 +1602,23 @@ network and asset IDs. For a confidential output it uses only the local
 wallet's blinding authority described in Section 7.5. RPC JSON cannot replace
 the bound raw transaction, and successful unblinding cannot upgrade local
 node trust into independent range-proof verification.
+
+The Ark adapter obtains the public operator descriptor, complete signed VTXO
+graph, selected VTXO state, and family-native protocol version from the exact
+Quote-pinned endpoint. It parses and verifies those bytes locally under
+Section 7.6 and obtains the anchor, exit transactions, headers, and chain tip
+from the participant's Bitcoin authority. Operator RPC is needed for the
+cooperative transfer path but never supplies Bitcoin finality or reconstructs
+a missing exit package. The adapter stores credentials only inside the
+participant's external wallet boundary; no token, macaroon, seed, VTXO spend
+key, or operator signing key enters an MKT record, Immortal process, relay,
+provider database, or retained evidence record.
+
+Arkade and Bark are separate adapter modes behind this common contract. Each
+mode pins its own decoder and verifier-policy digest. A provider that supports
+one family MUST NOT advertise the other, and a client that cannot verify the
+selected family fails before Order rather than delegating verification to the
+operator.
 
 The Lightning adapter uses the participant's local node or wallet to parse
 the invoice and query HTLC/payment state. For reverse swaps, the provider
@@ -1437,6 +1722,92 @@ Elements `genesis_hash`, `fee_output_index`, and canonical decimal-string
 `swap_tree_sha256` bind the complete tree. The conditional Liquid members are
 absent, not `null`, on a Bitcoin package. Unknown members fail closed.
 
+An Ark package replaces the Bitcoin `funding`, `exit`, and `verification`
+members with these exact shapes:
+
+```json
+{
+  "funding": {
+    "vtxo_id": "<txid>:<vout>",
+    "input_vtxo_ids": ["<txid>:<vout>"],
+    "anchor_outpoint": "<txid>:<vout>",
+    "signed_vtxo_graph": ["<lowercase raw transaction hex>"],
+    "signed_vtxo_graph_sha256": "<64-lower-hex>",
+    "amount": "<decimal sats>",
+    "owner_pubkey": "<lowercase public-key hex>"
+  },
+  "exit": {
+    "mode": "presigned",
+    "fee_funding_mode": "prefunded_presigned",
+    "path": "claim|refund|unilateral_exit",
+    "fee_child_outpoints": ["<txid>:<vout>"],
+    "signed_transactions": [
+      {
+        "transaction_id": "<64-lower-hex>",
+        "signed_transaction": "<lowercase raw transaction hex>",
+        "parent_transaction_id": "<64-lower-hex or null>",
+        "earliest_broadcast_height": "<decimal>",
+        "latest_safe_broadcast_height": "<decimal>"
+      }
+    ],
+    "final_destination_script_pubkey": "<lowercase hex>",
+    "fee_policy": {
+      "target_blocks": "2",
+      "maximum_total_fee": "<decimal sats>",
+      "bump_mode": "cpfp|replacement_forbidden"
+    }
+  },
+  "verification": {
+    "network_id": "bip122:<reference>",
+    "asset_id": "<Ark asset_id>",
+    "protocol_family": "arkade|bark",
+    "protocol_version": "<1-32 ASCII identifier>",
+    "operator_identity_sha256": "<64-lower-hex>",
+    "operator_policy_sha256": "<64-lower-hex>",
+    "vtxo_commitment_sha256": "<64-lower-hex>",
+    "payment_hash": "<64-lower-hex>",
+    "claim_path_sha256": "<64-lower-hex>",
+    "refund_path_sha256": "<64-lower-hex>",
+    "expiry": { "domain": "block_height|unix_time", "value": "<decimal>" },
+    "unilateral_exit_delay": { "domain": "blocks|seconds", "value": "<decimal>" }
+  }
+}
+```
+
+`signed_vtxo_graph_sha256` is SHA-256 of the RFC 8785 serialization of
+`signed_vtxo_graph`. `exit_package_sha256` is SHA-256 of the RFC 8785
+serialization of the complete Ark package, including the ordered exit
+transaction list. Both MUST equal the Swap Contract commitments. The graph
+and exit bounds are those in Section 7.6. The
+`verification.vtxo_commitment_sha256` value MUST equal the Contract's
+`output_vtxo_commitment_sha256`. `fee_child_outpoints` contains 1-64 unique
+canonical outpoints, each consumed at most once by the package. Every exit
+transaction is complete and signed; an Ark package never uses `wallet_sign` or
+`external_signer` because losing the operator before obtaining a required
+signature is the failure this package must survive. A package whose first
+child is not derivable from the selected VTXO, whose later transaction does
+not spend the preceding committed output, or whose final output differs from
+`final_destination_script_pubkey` is `swp_ark_exit_unsafe`.
+
+Only a pre-funded, fully pre-signed fee mode is admissible. For Arkade this is
+its funded package mode: a splitter transaction has already funded every
+signed fee child named by `fee_child_outpoints`. An Arkade graph-mode package,
+a Bark equivalent requiring runtime fee signing, and any self-executable
+bundle containing a fee key fail with `swp_secret_material_forbidden`. The
+verifier decodes every witness before persistence and rejects a package
+containing a payment preimage, spend key, private nonce, or other condition
+secret. The selected recovery path therefore uses no confidential condition
+witness. This restriction preserves the keyless-exit shape without placing fee
+or swap custody material in the client core, provider, relay, or their state.
+
+An Ark package uses the normal Esplora URL policy with
+`broadcast.mode=keyless_esplora_sequence`. The executor broadcasts only the
+next transaction whose parent is known and whose absolute or relative lock is
+satisfied. Exact already-known bytes are success; a conflicting spend or a
+different transaction under the same package/effect identity fails closed.
+The executor accepts no key, signer reference, operator credential, seed, or
+preimage.
+
 For a Liquid leg, the `broadcast` member is the following exact local-node
 policy instead of an Esplora policy:
 
@@ -1487,6 +1858,11 @@ index then bind the future outpoint without changing this package.
 only for the participant that owns the preimage. No local reference appears
 in a Swap Contract; only its package digest does.
 
+The Ark alternative carries those fields per ordered
+`exit.signed_transactions` member and has no `signer_ref`. Its package is
+invalid unless every transaction needed to reach the final participant output
+is already signed.
+
 The requester additionally persists the reverse-swap preimage in its own
 secret store and binds only the payment hash and a local recovery handle in
 the package. The provider persists the hold-invoice lookup handle in its own
@@ -1503,6 +1879,14 @@ participant receives only:
 - a direct or relay-agnostic authenticated counterparty channel; and
 - Bitcoin and Lightning access, including a keyless transaction broadcaster
   that can use an Esplora-compatible endpoint.
+
+For an Ark case, the test also permanently removes the selected Ark operator,
+its indexer, and every operator wallet endpoint after the VTXO transfer. The
+participant starts with only its signed records, verified VTXO graph, bound
+pre-signed exit package, and Bitcoin access. The test passes only when the
+keyless executor broadcasts the exact ordered exit transactions as their
+locks mature and the final participant output reaches the signed Bitcoin
+finality threshold. Restarting or querying the operator invalidates the test.
 
 The test passes only when both parties independently derive the same funded
 rail objects and reach `completed`, `refunded`, or a justified unilateral
@@ -1534,7 +1918,8 @@ effect_id = sha256(
 Allowed `effect_role` values are `reserve`, `invoice_create`,
 `invoice_pay`, `invoice_settle`, `invoice_cancel`, `chain_fund`,
 `chain_claim`, `chain_refund`, `cooperative_sign`, and
-`evidence_publish`. `leg_id` is `source`, `destination`, or `lightning`.
+`evidence_publish`; an Ark leg additionally uses `ark_transfer` and
+`ark_exit_broadcast`. `leg_id` is `source`, `destination`, or `lightning`.
 
 The actor persists `effect_id`, exact Order ID, request digest, external rail
 identifier, and result before it reports success. An identical replay returns
@@ -1543,6 +1928,13 @@ the persisted result. A replay with different input is
 outpoint, claim, refund, signature transcript, or evidence artifact. A wallet
 or provider crash cannot cause a second payment, lock, claim, refund, or
 reservation.
+
+An `ark_transfer` result binds the selected operator identity, exact input
+VTXO set, output VTXO ID, and signed VTXO graph digest. An
+`ark_exit_broadcast` result binds the exit-package digest, ordered transaction
+index, exact transaction ID, and broadcaster result. Restart can resume the
+next unbroadcast package member but cannot repeat a transfer or substitute a
+new exit transaction.
 
 Delivery retries re-wrap the same signed NIP-MKT record. They do not create a
 new event, reservation, or external effect.
@@ -1568,6 +1960,10 @@ status artifact:
 - raw claim or refund private keys;
 - preimages before their safe rail revelation;
 - Lightning node macaroons, NWC connection strings, or bank credentials;
+- Ark operator tokens, wallet seeds, VTXO spend keys, private signing nonces,
+  or live pre-signed exit-package bytes. The exported conformance corpus may
+  contain synthetic, fixture-labeled package bytes after the custody scanner
+  proves that they contain no secret or live rail material;
 - MuSig2 secret nonces or unprotected signing sessions; and
 - bearer credentials or raw wallet RPC payloads.
 
@@ -1676,7 +2072,7 @@ Profile errors are stable lowercase identifiers:
 | `swp_unsupported_profile`         | Profile ID is not `mkt-swp`.                                                               |
 | `swp_unsupported_version`         | Profile or verifier revision is unsupported.                                               |
 | `swp_unsupported_critical_member` | A critical member is unknown.                                                              |
-| `swp_unsupported_extension`       | A non-v1 rail or EVM leg was requested.                                                    |
+| `swp_unsupported_extension`       | An unknown rail, protocol family, or EVM leg was requested.                                |
 | `swp_invalid_asset_id`            | Asset identifier is malformed or unallowlisted.                                            |
 | `swp_invalid_pair`                | Ordered asset pair does not match the swap type.                                           |
 | `swp_side_disabled`               | Offering has `max="0"` for the selected side.                                              |
@@ -1707,6 +2103,10 @@ Profile errors are stable lowercase identifiers:
 | `swp_liquid_output_invalid`       | Elements output envelope, commitments, index, or fee shape is invalid.                     |
 | `swp_liquid_unblind_failed`       | The participant cannot unblind its selected confidential output.                           |
 | `swp_liquid_unblind_mismatch`     | Locally revealed asset, amount, script, or output differs from signed terms.               |
+| `swp_ark_operator_mismatch`       | Ark family, version, endpoint observation, identity, keys, network, or policy differs.     |
+| `swp_ark_graph_invalid`           | VTXO graph is malformed, over bounds, cyclic, unsigned, disconnected, or has a bad spend.  |
+| `swp_ark_vtxo_invalid`            | Selected VTXO amount, owner, script, expiry, state, anchor, or commitment differs.         |
+| `swp_ark_exit_unsafe`             | Pre-signed exit graph is incomplete, conflicting, expired, or misses its safe-start bound. |
 | `swp_musig_transcript_invalid`    | Key order, tweak, nonce, message, or partial signature check failed.                       |
 | `swp_confirmation_insufficient`   | Rail object has fewer confirmations than quoted.                                           |
 | `swp_rbf_policy_violation`        | Funding violates replacement policy.                                                       |
@@ -1727,7 +2127,7 @@ Profile errors are stable lowercase identifiers:
 | `swp_exit_package_missing`        | Required package was not persisted before funding.                                         |
 | `swp_exit_package_mismatch`       | Package digest or terms differ from the Swap Contract.                                     |
 | `swp_exit_package_unusable`       | Package still depends on unavailable coordination or secrets it does not possess.          |
-| `swp_secret_material_forbidden`   | A relay/server artifact contains prohibited custody material.                              |
+| `swp_secret_material_forbidden`   | An MKT-SWP artifact or state contains prohibited custody material.                         |
 | `swp_external_signature_invalid`  | An external signer returned malformed bytes or an invalid signature.                       |
 | `swp_external_signature_mismatch` | An external signer changed the exact event or transaction template it was given.           |
 | `swp_privacy_violation`           | Field audience or receipt consent was exceeded.                                            |
@@ -1771,6 +2171,11 @@ heights, verifier inputs, and expected evidence rung.
 | `swp-v1-liquid-exit-wallet-claim`            | Persist the exact Liquid template, input, signature digest, tree commitment, fee output, distinct local recovery refs, and local-node broadcast policy before funding. |
 | `swp-v1-liquid-reverse-cross-domain-timeout` | Accept separately pinned Liquid and Lightning heights whose signed wall-time conversion preserves the refund and settlement margin.                                    |
 | `swp-v1-btc-liquid-chain-regtest`            | Requester verifies the provider-signed Liquid transaction, output/tree, claim exit, and local mempool acceptance at zero confirmations before Bitcoin source funding.  |
+| `swp-v1-arkade-submarine-vtxo`               | Verify the selected Arkade operator identity, complete transaction tree, received VTXO, and pre-signed exit before paying Lightning.                                   |
+| `swp-v1-bark-reverse-vtxo`                   | Verify the selected Bark operator identity, complete signed transaction chain, received VTXO, and pre-signed exit before settling the hold invoice.                    |
+| `swp-v1-ark-chain-regtest`                   | Complete a Bitcoin-chain-to-Ark swap after the requester verifies the exact provider VTXO graph, covenant reserve, exit package, and Bitcoin anchor.                   |
+| `swp-v1-ark-covenant-hard-reservation`       | Independently verify and lock one exact operator-bound VTXO reserve without counting the same input twice.                                                             |
+| `swp-v1-ark-exit-keyless`                    | Broadcast the complete ordered pre-signed Ark exit graph through the keyless Esplora sequence executor and reach the participant's Bitcoin output.                     |
 | `swp-v1-covenant-hard-reservation`           | Independent verifier admits the covenant-enforced minimum once.                                                                                                        |
 | `swp-v1-price-feed-exact-pointer`            | Exact URL, response digest, RFC 6901 pointer, and observed value reproduce terms.                                                                                      |
 | `swp-v1-public-receipt-redacted`             | Receipt exposes only consented outcome and verifier reference.                                                                                                         |
@@ -1802,6 +2207,20 @@ heights, verifier inputs, and expected evidence rung.
 | `swp-v1-negative-btc-liquid-destination-signature`         | `swp_liquid_output_invalid`                                                 |
 | `swp-v1-negative-btc-liquid-destination-mempool`           | `swp_funding_not_authorized`                                                |
 | `swp-v1-negative-btc-liquid-source-before-preflight`       | `swp_status_transition_invalid`                                             |
+| `swp-v1-negative-ark-operator-identity`                    | `swp_ark_operator_mismatch`                                                 |
+| `swp-v1-negative-ark-family-substitution`                  | `swp_ark_operator_mismatch`                                                 |
+| `swp-v1-negative-ark-cross-operator-pair`                  | `swp_invalid_pair`                                                          |
+| `swp-v1-negative-ark-cross-network-pair`                   | `swp_invalid_pair`                                                          |
+| `swp-v1-negative-ark-graph-cycle`                          | `swp_ark_graph_invalid`                                                     |
+| `swp-v1-negative-ark-graph-over-bounds`                    | `swp_ark_graph_invalid`                                                     |
+| `swp-v1-negative-ark-graph-signature`                      | `swp_ark_graph_invalid`                                                     |
+| `swp-v1-negative-ark-vtxo-owner`                           | `swp_ark_vtxo_invalid`                                                      |
+| `swp-v1-negative-ark-vtxo-amount`                          | `swp_ark_vtxo_invalid`                                                      |
+| `swp-v1-negative-ark-vtxo-expiry`                          | `swp_ark_vtxo_invalid`                                                      |
+| `swp-v1-negative-ark-exit-incomplete`                      | `swp_ark_exit_unsafe`                                                       |
+| `swp-v1-negative-ark-exit-safe-start`                      | `swp_ark_exit_unsafe`                                                       |
+| `swp-v1-negative-ark-exit-fee-key`                         | `swp_secret_material_forbidden`                                             |
+| `swp-v1-negative-ark-exit-condition-preimage`              | `swp_secret_material_forbidden`                                             |
 | `swp-v1-negative-cross-signer-status-prepublish`           | `swp_status_transition_invalid`                                             |
 | `swp-v1-negative-refund-key`                               | `swp_terms_mismatch`                                                        |
 | `swp-v1-negative-timeout-ladder`                           | `swp_timeout_ladder_unsafe`                                                 |
@@ -1831,56 +2250,62 @@ heights, verifier inputs, and expected evidence rung.
 
 ### 18.3 Reservation, replay, fork, and expiry
 
-| Fixture                                 | Required result                                                                     |
-| --------------------------------------- | ----------------------------------------------------------------------------------- |
-| `swp-v1-replay-identical-order`         | Return the persisted result; create no second external effect.                      |
-| `swp-v1-replay-rewrapped-quote`         | Admit the same signed Quote once and preserve its reservation.                      |
-| `swp-v1-replay-rewrapped-swap-contract` | Admit the same signed Swap Contract once and preserve the original contract result. |
-| `swp-v1-conflict-swap-contract-d`       | Reject changed bytes under one `(pubkey,39610,d)` with `swp_idempotency_conflict`.  |
-| `swp-v1-replay-effect-after-crash`      | Recover the original external identifier and result.                                |
-| `swp-v1-conflict-order-idempotency`     | Reject with `swp_idempotency_conflict`.                                             |
-| `swp-v1-conflict-effect-binding`        | Reject with `swp_external_effect_conflict`.                                         |
-| `swp-v1-reservation-overallocation`     | Reject new allocation with `swp_reservation_overallocated`.                         |
-| `swp-v1-reservation-sequence-fork`      | Retain both claims and surface `swp_reservation_fork`.                              |
-| `swp-v1-covenant-double-count`          | Reject with `swp_covenant_reserve_invalid`.                                         |
-| `swp-v1-status-gap`                     | Retain history and expose `swp_status_gap`.                                         |
-| `swp-v1-status-fork`                    | Retain both Status records and expose `swp_status_fork`.                            |
-| `swp-v1-expired-quote`                  | Refuse Order; release only reservation state.                                       |
-| `swp-v1-expired-after-funding`          | Enter refund graph; do not emit effective cancellation.                             |
+| Fixture                                 | Required result                                                                            |
+| --------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `swp-v1-replay-identical-order`         | Return the persisted result; create no second external effect.                             |
+| `swp-v1-replay-rewrapped-quote`         | Admit the same signed Quote once and preserve its reservation.                             |
+| `swp-v1-replay-rewrapped-swap-contract` | Admit the same signed Swap Contract once and preserve the original contract result.        |
+| `swp-v1-conflict-swap-contract-d`       | Reject changed bytes under one `(pubkey,39610,d)` with `swp_idempotency_conflict`.         |
+| `swp-v1-replay-effect-after-crash`      | Recover the original external identifier and result.                                       |
+| `swp-v1-conflict-order-idempotency`     | Reject with `swp_idempotency_conflict`.                                                    |
+| `swp-v1-conflict-effect-binding`        | Reject with `swp_external_effect_conflict`.                                                |
+| `swp-v1-reservation-overallocation`     | Reject new allocation with `swp_reservation_overallocated`.                                |
+| `swp-v1-reservation-sequence-fork`      | Retain both claims and surface `swp_reservation_fork`.                                     |
+| `swp-v1-covenant-double-count`          | Reject with `swp_covenant_reserve_invalid`.                                                |
+| `swp-v1-ark-reserve-double-use`         | Reject a second reservation of one canonical Ark VTXO with `swp_covenant_reserve_invalid`. |
+| `swp-v1-status-gap`                     | Retain history and expose `swp_status_gap`.                                                |
+| `swp-v1-status-fork`                    | Retain both Status records and expose `swp_status_fork`.                                   |
+| `swp-v1-expired-quote`                  | Refuse Order; release only reservation state.                                              |
+| `swp-v1-expired-after-funding`          | Enter refund graph; do not emit effective cancellation.                                    |
 
 ### 18.4 Privacy and custody
 
-| Fixture                                       | Required result                                                                                                           |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `swp-v1-privacy-public-offering`              | Secret scanner finds no exact amount, live inventory, invoice, address, script, or reserve witness.                       |
-| `swp-v1-privacy-wrap-recipient`               | Only requester, provider, sender recovery copy, and declared handler can decrypt their intended records.                  |
-| `swp-v1-privacy-public-receipt-overreach`     | Reject with `swp_privacy_violation`.                                                                                      |
-| `swp-v1-privacy-seed-tripwire`                | Reject with `swp_secret_material_forbidden`.                                                                              |
-| `swp-v1-privacy-preimage-tripwire`            | Reject unsafe relay/server artifact with `swp_secret_material_forbidden`.                                                 |
-| `swp-v1-privacy-macaroon-tripwire`            | Reject with `swp_secret_material_forbidden`.                                                                              |
-| `swp-v1-privacy-claim-key-tripwire`           | Reject with `swp_secret_material_forbidden`.                                                                              |
-| `swp-v1-privacy-musig-secret-nonce-tripwire`  | Reject with `swp_secret_material_forbidden`.                                                                              |
-| `swp-v1-privacy-liquid-blinding-key-tripwire` | Reject with `swp_secret_material_forbidden`.                                                                              |
-| `swp-v1-privacy-post-claim-snapshot`          | Retain effect and result evidence, but no claim witness, signed transaction, or preimage in the durable session snapshot. |
+| Fixture                                        | Required result                                                                                                           |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `swp-v1-privacy-public-offering`               | Secret scanner finds no exact amount, live inventory, invoice, address, script, or reserve witness.                       |
+| `swp-v1-privacy-wrap-recipient`                | Only requester, provider, sender recovery copy, and declared handler can decrypt their intended records.                  |
+| `swp-v1-privacy-public-receipt-overreach`      | Reject with `swp_privacy_violation`.                                                                                      |
+| `swp-v1-privacy-seed-tripwire`                 | Reject with `swp_secret_material_forbidden`.                                                                              |
+| `swp-v1-privacy-preimage-tripwire`             | Reject unsafe relay/server artifact with `swp_secret_material_forbidden`.                                                 |
+| `swp-v1-privacy-macaroon-tripwire`             | Reject with `swp_secret_material_forbidden`.                                                                              |
+| `swp-v1-privacy-claim-key-tripwire`            | Reject with `swp_secret_material_forbidden`.                                                                              |
+| `swp-v1-privacy-musig-secret-nonce-tripwire`   | Reject with `swp_secret_material_forbidden`.                                                                              |
+| `swp-v1-privacy-liquid-blinding-key-tripwire`  | Reject with `swp_secret_material_forbidden`.                                                                              |
+| `swp-v1-privacy-ark-operator-token-tripwire`   | Reject with `swp_secret_material_forbidden`.                                                                              |
+| `swp-v1-privacy-ark-vtxo-key-tripwire`         | Reject with `swp_secret_material_forbidden`.                                                                              |
+| `swp-v1-privacy-ark-raw-exit-package-tripwire` | Reject a relay/server artifact carrying the private raw package with `swp_secret_material_forbidden`.                     |
+| `swp-v1-privacy-post-claim-snapshot`           | Retain effect and result evidence, but no claim witness, signed transaction, or preimage in the durable session snapshot. |
 
 ### 18.5 Reorg, replacement, and recovery
 
-| Fixture                                        | Required result                                                                                                                      |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `swp-v1-reorg-funding-before-finality`         | Lower local rung, record both views, and wait or recover.                                                                            |
-| `swp-v1-reorg-claim-before-finality`           | Remove settlement claim and resume claim/refund monitoring.                                                                          |
-| `swp-v1-replacement-tracked`                   | Bind replacement lineage under quoted policy.                                                                                        |
-| `swp-v1-zero-conf-rbf-replacement-downgrade`   | Revoke the acceptance, retain both views, require exact-outpoint confirmation, and perform no later risk-increasing effect.          |
-| `swp-v1-zero-conf-double-spend-downgrade`      | Treat the competing spend as a conflict, retain the in-flight reservation when an effect occurred, and enter wait or recovery.       |
-| `swp-v1-zero-conf-ancestor-eviction-downgrade` | Downgrade when a previously confirmed ancestor becomes unconfirmed or the exact funding transaction disappears without confirmation. |
-| `swp-v1-doomsday-submarine-provider-gone`      | Requester refunds from signed records and exit package with coordinator permanently absent.                                          |
-| `swp-v1-doomsday-reverse-coordinator-gone`     | Counterparties complete or provider refunds/cancels using direct recovery and rail state.                                            |
-| `swp-v1-doomsday-chain-counterparty-gone`      | Each principal executes its unilateral timeout path in safe order.                                                                   |
-| `swp-v1-doomsday-liquid-coordinator-gone`      | Participant unblinds its own bound output and executes the persisted Liquid script path.                                             |
-| `swp-v1-doomsday-keyless-esplora-broadcast`    | Static executor broadcasts a pre-signed exit without any key material.                                                               |
-| `swp-v1-recovery-missing-signed-record`        | Report explicit loss and refuse reconstructed history.                                                                               |
-| `swp-v1-recovery-unusable-exit-package`        | Fail with `swp_exit_package_unusable` before funding.                                                                                |
-| `swp-v1-recovery-mutual-close-disagreement`    | Preserve both Close records and their separate evidence.                                                                             |
+| Fixture                                        | Required result                                                                                                                                  |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `swp-v1-reorg-funding-before-finality`         | Lower local rung, record both views, and wait or recover.                                                                                        |
+| `swp-v1-reorg-claim-before-finality`           | Remove settlement claim and resume claim/refund monitoring.                                                                                      |
+| `swp-v1-replacement-tracked`                   | Bind replacement lineage under quoted policy.                                                                                                    |
+| `swp-v1-zero-conf-rbf-replacement-downgrade`   | Revoke the acceptance, retain both views, require exact-outpoint confirmation, and perform no later risk-increasing effect.                      |
+| `swp-v1-zero-conf-double-spend-downgrade`      | Treat the competing spend as a conflict, retain the in-flight reservation when an effect occurred, and enter wait or recovery.                   |
+| `swp-v1-zero-conf-ancestor-eviction-downgrade` | Downgrade when a previously confirmed ancestor becomes unconfirmed or the exact funding transaction disappears without confirmation.             |
+| `swp-v1-doomsday-submarine-provider-gone`      | Requester refunds from signed records and exit package with coordinator permanently absent.                                                      |
+| `swp-v1-doomsday-reverse-coordinator-gone`     | Counterparties complete or provider refunds/cancels using direct recovery and rail state.                                                        |
+| `swp-v1-doomsday-chain-counterparty-gone`      | Each principal executes its unilateral timeout path in safe order.                                                                               |
+| `swp-v1-doomsday-liquid-coordinator-gone`      | Participant unblinds its own bound output and executes the persisted Liquid script path.                                                         |
+| `swp-v1-doomsday-keyless-esplora-broadcast`    | Static executor broadcasts a pre-signed exit without any key material.                                                                           |
+| `swp-v1-doomsday-ark-operator-gone`            | With the operator, indexer, and wallet endpoint permanently removed, execute the bound Ark exit graph to the participant's final Bitcoin output. |
+| `swp-v1-ark-exit-deadline-recovery`            | Stop cooperative progression and start the bound unilateral exit before the signed latest-safe height.                                           |
+| `swp-v1-recovery-missing-signed-record`        | Report explicit loss and refuse reconstructed history.                                                                                           |
+| `swp-v1-recovery-unusable-exit-package`        | Fail with `swp_exit_package_unusable` before funding.                                                                                            |
+| `swp-v1-recovery-mutual-close-disagreement`    | Preserve both Close records and their separate evidence.                                                                                         |
 
 ## 19. Relay and client conformance
 
@@ -1913,6 +2338,15 @@ local-node plus own-output unblinding. It MUST NOT claim independent proof
 verification unless a later profile and implementation add and test the
 required secp256k1-zkp primitives.
 
+A client or provider that advertises an Ark pair additionally implements the
+selected Arkade or Bark family explicitly and passes the operator-identity,
+bounded graph, VTXO, covenant-reserve, pre-signed exit, expiry, keyless
+broadcast, and operator-removal fixtures. The relay can validate the public
+Offering's Ark asset and operator-descriptor grammar. It cannot validate an
+encrypted VTXO graph, infer spendability from an operator response, or claim
+Bitcoin settlement before the exit or cooperative spend reaches the signed
+Bitcoin finality threshold.
+
 ## References
 
 - [NIP-MKT](MKT.md)
@@ -1921,12 +2355,29 @@ required secp256k1-zkp primitives.
 - BIP-174 PSBT and BIP-370 PSBT v2
 - BOLT 11 invoices and Lightning HTLC settlement
 - Elements transaction format and Confidential Assets RPC workflow
+- Arkade OS `arkd` transaction-tree protocol at revision `8b34e3528595`
+- Arkade unilateral-exit executor at revision `d9c949d3be7c`
+- ark-bitcoin Bark transaction-chain protocol vocabulary at revision
+  `815faff30228` (ideas-only review; no license file and no code copied)
 - RFC 6901 JSON Pointer
 - [Boltz ecosystem teardown](../teardowns/2026-08-03-boltz-ecosystem-nostr-rebuild-teardown.md)
 - [Satora/LendaSwap outage teardown](../teardowns/2026-08-04-satora-lendaswap-outage-teardown.md)
 - [Arkade, solver, Mostro, Cashu, and WDK teardown](../teardowns/2026-08-04-ark-solver-mostro-cashu-rails-teardown.md)
 
 ## Changelog
+
+**v1 Ark settlement rail extension (2026-08-06)**
+
+- Added operator-bound Arkade and Bark asset identities without assigning a
+  new event kind or asserting compatibility between the two protocol families.
+- Required bounded local verification of the complete VTXO graph, covenant
+  reserve, Bitcoin anchor, and a complete pre-signed exit before a
+  counterparty effect.
+- Added keyless unilateral-exit and permanent-operator-removal recovery gates,
+  while keeping operator credentials, spend keys, and raw private packages
+  outside relay and server artifacts.
+- This specification change creates no OpenAgents web settlement surface,
+  custody authority, deployment, or public replacement claim.
 
 **v1 provider zero-confirmation acceptance correction (2026-08-06)**
 

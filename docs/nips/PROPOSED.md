@@ -415,7 +415,7 @@ market into Organization-owned Work.
 | NIP        | Name                                      | Reserved block              | Draft                            |
 | ---------- | ----------------------------------------- | --------------------------- | -------------------------------- |
 | NIP-MKT    | Negotiated Markets base                   | 39600-39609                 | [`MKT.md`](MKT.md)               |
-| MKT-SWP    | Bitcoin and Lightning Atomic Swaps        | 39610; 39611-39619 retained | [`MKT-SWP.md`](MKT-SWP.md)       |
+| MKT-SWP    | Bitcoin, Lightning, Liquid, and Ark Swaps | 39610; 39611-39619 retained | [`MKT-SWP.md`](MKT-SWP.md)       |
 | MKT-P2P    | Peer-to-Peer Bitcoin Trades               | 39620; 39621-39629 retained | [`MKT-P2P.md`](MKT-P2P.md)       |
 | MKT-PFI    | Credentialed Provider and Fiat Interfaces | 39630; 39631-39639 retained | [`MKT-PFI.md`](MKT-PFI.md)       |
 | MKT-MINT   | Cashu and Fedimint Routes                 | 39640; 39641-39649 retained | [`MKT-MINT.md`](MKT-MINT.md)     |

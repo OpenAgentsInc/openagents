@@ -28,7 +28,7 @@ hardening rails against the same event model.
 | Spec       | Market stream                                                              | Kinds                                                     | File                             |
 | ---------- | -------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------- |
 | NIP-MKT    | Negotiated-market base; public discovery, private signed execution control | 39600-39609; profile block 39610-39699                    | [`MKT.md`](MKT.md)               |
-| MKT-SWP    | BTC, L-BTC, and Lightning submarine, reverse, and chain swaps              | 39610                                                     | [`MKT-SWP.md`](MKT-SWP.md)       |
+| MKT-SWP    | BTC, L-BTC, Ark, and Lightning submarine, reverse, and chain swaps         | 39610                                                     | [`MKT-SWP.md`](MKT-SWP.md)       |
 | MKT-P2P    | NIP-69/Mostro-compatible peer trades and dispute resolution                | 39620                                                     | [`MKT-P2P.md`](MKT-P2P.md)       |
 | MKT-PFI    | Credentialed provider/fiat-interface negotiation                           | 39630                                                     | [`MKT-PFI.md`](MKT-PFI.md)       |
 | MKT-MINT   | Cashu mint/melt and Fedimint gateway negotiation                           | 39640                                                     | [`MKT-MINT.md`](MKT-MINT.md)     |
@@ -109,15 +109,16 @@ coordinator-independent recovery floor for profiles, the profile
 field-vocabulary laws, and an informative implementation record (the
 Immortal relay base).
 
-### MKT-SWP — Bitcoin and Lightning Atomic Swaps
+### MKT-SWP — Bitcoin, Lightning, Liquid, and Ark Atomic Swaps
 
-Defines the BTC/Lightning v1 swap contract over the NIP-MKT negotiation spine:
-submarine, reverse, and chain lifecycles; verify-before-fund rules; reservation
-proof classes; timeout ladders; external evidence and finality authorities;
-and coordinator-independent claim/refund exits. Private immutable `kind:39610`
-binds the accepted Order, exact rail verifier inputs, and exit-package
-commitments without carrying seeds, preimages, private keys, or node
-credentials. The remaining `39611-39619` family is unallocated.
+Defines the BTC, Lightning, Liquid, and operator-bound Ark v1 swap contract
+over the NIP-MKT negotiation spine: submarine, reverse, and chain lifecycles;
+verify-before-fund rules; reservation proof classes; timeout ladders; external
+evidence and finality authorities; and coordinator-independent claim/refund
+exits. Private immutable `kind:39610` binds the accepted Order, exact rail
+verifier inputs, and exit-package commitments without carrying seeds,
+preimages, private keys, or node credentials. The remaining `39611-39619`
+family is unallocated.
 
 ### MKT-PFI — Credentialed Provider and Fiat Interfaces
 

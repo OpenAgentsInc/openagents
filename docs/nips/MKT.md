@@ -631,7 +631,7 @@ remaining noncustodial.
 Expected focused profiles include:
 
 - **MKT-SWP** — Boltz-class submarine, reverse, and chain swaps with scripts,
-  trees, invoices, timeouts, claim/refund paths, and Bitcoin, Liquid, or
+  trees, invoices, timeouts, claim/refund paths, and Bitcoin, Liquid, Ark, or
   Lightning proof.
   The draft SHOULD reserve cross-chain contract-leg vocabulary (chain
   identifier, contract address, token asset ID, claim/refund signature
