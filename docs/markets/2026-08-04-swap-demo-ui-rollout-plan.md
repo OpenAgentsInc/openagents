@@ -5,6 +5,10 @@
   (openagents#9314). The amendment changes the custody clause, splits
   the shared source into *engine* and *components*, expands the
   component set, and adds the parity phases. Everything else stands.
+- Execution update: 2026-08-07. `/demo` now validates live 39600/39601
+  heads and proves the browser-owned signed no-spend session against a
+  loopback Immortal relay/provider. The public relay currently produces
+  a verified empty snapshot, so no deployed-provider claim is made.
 - Status: owner-directed product-rollout plan for the Liquidity Market's
   first visible surfaces
 - Owning issues: omega#244 (Omega market panel), openagents#9310 (web
@@ -34,8 +38,10 @@ view-model**, not one widget toolkit. Both surfaces render the same
 contract; behaviour contracts hold both to the same laws. See §2.1 for
 why the original "one GPUI component set, two surfaces" thesis narrowed.
 
-The `/demo` document keeps its current job unchanged: a scripted,
-protocol-real walkthrough in the `/dh` lineage, gated as it is today.
+The `/demo` document keeps its scripted, protocol-real walkthrough in the
+`/dh` lineage, gated as it is today. A separate live lane shows verified
+discovery and activates a no-spend exchange only when the selected relay
+advertises a signed `mode=no_spend` provider.
 
 Every piece of infrastructure this needs already exists and was proven
 this week. The plan below is assembly, not invention.
@@ -210,14 +216,17 @@ Clone the diamond-hands crate pattern (its README is the runbook):
   fail-closed gate shape `/dh` uses). Route naming is an owner call
   recorded at flip time; until then the gate stays off in production and
   the demo runs on dev/staging.
-- The browser opens its own WebSocket to `wss://relay.openagents.com`
-  (and one fallback relay when available), does the NIP-11 check, and
-  renders live `39600/39601` heads plus a demo session.
+- The browser opens its own WebSocket to `wss://relay.openagents.com`, or
+  to an explicitly selected loopback relay for local proof, does the
+  NIP-11 check, and renders live `39600/39601` heads plus the separately
+  labeled scripted DEMO session.
 - Demo interactivity: a throwaway in-browser key (generated per visit,
   clearly labeled), RFQs against the **no-spend seeded provider actor**
-  (immortal #9/#14) running against the public relay's demo market;
-  every amount and outcome badge carries a DEMO label; the page states
-  plainly that no funds exist on this surface.
+  (immortal #9/#14); the automated gate runs this against the loopback
+  dev relay. A public-relay interaction is not claimed until that actor
+  is independently deployed. Every scripted amount and outcome badge
+  carries a DEMO label; the page states plainly that no funds exist on
+  this surface.
 - A "verify this yourself" panel shows raw signed events with copyable
   IDs — the demo doubles as protocol documentation.
 
@@ -292,14 +301,16 @@ separate and is plain React on TanStack Start, per §2.2 (amended 2026-08-05,
 | --- | --- | --- |
 | P0 | `market_ui` crate + `swap_web`-style example rendering the exported fixture corpus (static data, no network); runs native and wasm | Nothing — start now |
 | P1 | Live discovery: the example reads real `39600/39601` heads from `relay.openagents.com`; market-demo crate + staging serve behind the gate | P0; relay already serves MKT base |
-| P2 | Interactive demo session against the seeded no-spend provider on the public relay; Omega panel mounts the same views | P1; immortal #14 actor pointed at the public relay |
+| P2a | Browser-owned interactive session against the seeded no-spend provider on the loopback dev relay, including exact bounded requests and zero-spend Close proof | P1; immortal #14 |
+| P2b | The same interactive proof against an independently deployed public provider; Omega panel mounts the same views | P2a; deployment evidence; omega#244 |
 | P3 | Omega real regtest swap with VerifyChecklist/ExitPackageBadge live; web demo gains the "watch a real regtest swap" replay | immortal #12, #18 |
 | **P4** | **Parity shell**: engine binding behind an Effect Schema contract, the React widget shell and typed state, asset/direction selection from live Offerings, amount entry, destination entry and validation — regtest only, no mainnet gate | P1; immortal #12 (landed); SWAP-0..2 |
 | **P5** | **Parity depth**: multi-provider quote compare with expiry and reservation class, verify-before-fund as a real checklist, key generation and the rescue ceremony, the Rescue page, History with import, and per-signer status rendering | P4; immortal #14; SWAP-3..6 |
 | **P6** | **Product surface**: nav, routes, build provenance, i18n scaffolding, and a coordinator-absent recovery proof (the §12.1 doomsday drill run as an acceptance test) before any mainnet flip | P5; immortal #18; SWAP-7..8 |
 
 P0/P1 are pure UI + existing infrastructure and can ship this week; the
-demo goes online at P1 (watch-only) and gets interactive at P2. P4-P6 are
+demo goes online at P1 (watch-only) and gets interactive locally at P2a.
+Public interaction remains P2b until deployment evidence exists. P4-P6 are
 the parity program; no mainnet path opens before the doomsday drill
 passes at P6 and the M12 lab (immortal#18) is green.
 

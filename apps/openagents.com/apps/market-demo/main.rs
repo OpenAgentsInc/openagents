@@ -1,25 +1,50 @@
 #![cfg_attr(not(target_family = "wasm"), allow(dead_code, unused_imports))]
 
+mod market_live;
+
 #[cfg(target_family = "wasm")]
 mod web_app {
     use std::time::Duration;
 
+    use futures::{StreamExt as _, channel::mpsc};
     use gpui::prelude::*;
     use gpui::{
         App, Bounds, Context, Font, FontWeight, Pixels, Task, Window, WindowBounds, WindowOptions,
         div, px, rgb, size,
     };
+    use immortal_client::mkt_swp_client::{
+        Cancellation, MktSigningRequest, ParticipantRole, RequesterContractLocalInputs,
+        RequesterContractSigningInput, RequesterExitPackageCommitment, RequesterOrderInput,
+        StatusState, SwapClientConfig, SwapRecordFactory, SwapType,
+    };
+    use immortal_core::{
+        domain::{
+            Event as NostrEvent, MKT_CANCEL_KIND, MKT_CLOSE_KIND, MKT_QUOTE_KIND, MKT_STATUS_KIND,
+            MKT_SWP_PROFILE_ID, MKT_SWP_PROFILE_VERSION, MKT_SWP_SWAP_CONTRACT_KIND,
+            MktProfileSupport, Tag,
+        },
+        market::{MarketSigner, WrapMaterial, unwrap_mkt_record, wrap_mkt_record},
+    };
+    use serde_json::{Map, Value, json};
     use theme::{ActiveTheme as _, ThemeSettingsProvider, UiDensity};
     use ui::{
         Button, ButtonCommon as _, ButtonStyle, Clickable as _, Color, Indicator, Label,
         LabelCommon as _, LabelSize, h_flex, v_flex,
     };
-    use wasm_bindgen::{JsCast as _, JsValue};
+    use wasm_bindgen::{JsCast as _, JsValue, closure::Closure};
     use wasm_bindgen_futures::JsFuture;
-    use web_sys::{Request, RequestInit, Response, console};
+    use web_sys::{
+        CloseEvent, Event, MessageEvent, Request, RequestInit, Response, UrlSearchParams,
+        WebSocket, console,
+    };
     use web_time::{SystemTime, UNIX_EPOCH};
 
-    const RELAY_URL: &str = "https://relay.openagents.com";
+    use crate::market_live::{
+        DiscoveryBook, DiscoveryFrame, SESSION_SUBSCRIPTION_ID, discovery_subscription,
+        session_subscription,
+    };
+
+    const DEFAULT_RELAY_WS_URL: &str = "wss://relay.openagents.com";
 
     // Aiur palette (omega assets/themes/aiur/aiur.json).
     const VOID: u32 = 0x05070d; // editor.background — the page
@@ -114,33 +139,15 @@ mod web_app {
 
     struct DemoProvider {
         name: &'static str,
-        short_key: &'static str,
-        status: &'static str,
-        class: &'static str,
-        reservation: &'static str,
     }
 
     const PROVIDERS: [DemoProvider; 3] = [
-        DemoProvider {
-            name: "aurora-lp",
-            short_key: "npub1aur…9f2k",
-            status: "active",
-            class: "firm",
-            reservation: "hard",
-        },
+        DemoProvider { name: "aurora-lp" },
         DemoProvider {
             name: "meridian-swaps",
-            short_key: "npub1mer…x0q4",
-            status: "active",
-            class: "indicative",
-            reservation: "soft",
         },
         DemoProvider {
             name: "southpaw-liquidity",
-            short_key: "npub1sth…77vd",
-            status: "paused",
-            class: "—",
-            reservation: "—",
         },
     ];
 
@@ -299,6 +306,204 @@ mod web_app {
         Unreachable(String),
     }
 
+    #[derive(Clone)]
+    struct DemoConfig {
+        relay_ws_url: String,
+        relay_http_url: String,
+        problem: Option<String>,
+    }
+
+    impl DemoConfig {
+        fn from_location() -> Self {
+            let mut relay_ws_url = DEFAULT_RELAY_WS_URL.to_owned();
+            let mut problem = None;
+            if let Some(window) = web_sys::window()
+                && let Ok(search) = window.location().search()
+                && let Ok(params) = UrlSearchParams::new_with_str(&search)
+                && let Some(candidate) = params.get("relay")
+            {
+                if allowed_relay_url(&candidate) {
+                    relay_ws_url = candidate;
+                } else {
+                    problem = Some(
+                        "ignored ?relay override — only the public relay or loopback ws:// URLs are allowed"
+                            .to_owned(),
+                    );
+                }
+            }
+            let relay_http_url = relay_http_url(&relay_ws_url)
+                .unwrap_or_else(|| "https://relay.openagents.com".to_owned());
+            Self {
+                relay_ws_url,
+                relay_http_url,
+                problem,
+            }
+        }
+
+        fn is_loopback(&self) -> bool {
+            self.relay_ws_url.starts_with("ws://127.0.0.1:")
+                || self.relay_ws_url.starts_with("ws://localhost:")
+        }
+    }
+
+    fn allowed_relay_url(value: &str) -> bool {
+        if value == DEFAULT_RELAY_WS_URL {
+            return true;
+        }
+        if value.len() > 128 {
+            return false;
+        }
+        let Some(authority) = value.strip_prefix("ws://") else {
+            return false;
+        };
+        if authority
+            .bytes()
+            .any(|byte| matches!(byte, b'/' | b'?' | b'#'))
+        {
+            return false;
+        }
+        let Some((host, port)) = authority.rsplit_once(':') else {
+            return false;
+        };
+        matches!(host, "127.0.0.1" | "localhost") && port.parse::<u16>().is_ok_and(|port| port != 0)
+    }
+
+    fn relay_http_url(value: &str) -> Option<String> {
+        value
+            .strip_prefix("wss://")
+            .map(|authority| format!("https://{authority}"))
+            .or_else(|| {
+                value
+                    .strip_prefix("ws://")
+                    .map(|authority| format!("http://{authority}"))
+            })
+    }
+
+    #[derive(Clone, PartialEq, Eq)]
+    enum DiscoveryConnection {
+        Connecting,
+        Snapshotting,
+        Live,
+        Empty,
+        Stale(String),
+    }
+
+    enum RelayInput {
+        Opened,
+        Text(String),
+        Closed { code: u16, reason: String },
+        Error(String),
+    }
+
+    struct BrowserRelay {
+        socket: WebSocket,
+        _open: Closure<dyn FnMut(Event)>,
+        _message: Closure<dyn FnMut(MessageEvent)>,
+        _close: Closure<dyn FnMut(CloseEvent)>,
+        _error: Closure<dyn FnMut(Event)>,
+    }
+
+    impl BrowserRelay {
+        fn connect(
+            url: &str,
+            initial_request: String,
+            sender: mpsc::UnboundedSender<RelayInput>,
+        ) -> Result<Self, String> {
+            let socket = WebSocket::new(url)
+                .map_err(|error| format!("browser refused relay WebSocket: {error:?}"))?;
+
+            let open_socket = socket.clone();
+            let open_sender = sender.clone();
+            let open = Closure::<dyn FnMut(Event)>::new(move |_event| {
+                if let Err(error) = open_socket.send_with_str(&initial_request) {
+                    send_relay_input(
+                        &open_sender,
+                        RelayInput::Error(format!("failed to send discovery REQ: {error:?}")),
+                    );
+                    return;
+                }
+                send_relay_input(&open_sender, RelayInput::Opened);
+            });
+            socket.set_onopen(Some(open.as_ref().unchecked_ref()));
+
+            let message_sender = sender.clone();
+            let message = Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {
+                if let Some(text) = event.data().as_string() {
+                    send_relay_input(&message_sender, RelayInput::Text(text));
+                } else {
+                    send_relay_input(
+                        &message_sender,
+                        RelayInput::Error("relay sent a non-text WebSocket frame".to_owned()),
+                    );
+                }
+            });
+            socket.set_onmessage(Some(message.as_ref().unchecked_ref()));
+
+            let close_sender = sender.clone();
+            let close = Closure::<dyn FnMut(CloseEvent)>::new(move |event: CloseEvent| {
+                send_relay_input(
+                    &close_sender,
+                    RelayInput::Closed {
+                        code: event.code(),
+                        reason: event.reason(),
+                    },
+                );
+            });
+            socket.set_onclose(Some(close.as_ref().unchecked_ref()));
+
+            let error = Closure::<dyn FnMut(Event)>::new(move |_event| {
+                send_relay_input(
+                    &sender,
+                    RelayInput::Error("browser reported a relay WebSocket error".to_owned()),
+                );
+            });
+            socket.set_onerror(Some(error.as_ref().unchecked_ref()));
+
+            Ok(Self {
+                socket,
+                _open: open,
+                _message: message,
+                _close: close,
+                _error: error,
+            })
+        }
+
+        fn send(&self, frame: &str) -> Result<(), String> {
+            if self.socket.ready_state() != WebSocket::OPEN {
+                return Err("relay WebSocket is not open".to_owned());
+            }
+            self.socket
+                .send_with_str(frame)
+                .map_err(|error| format!("failed to send relay frame: {error:?}"))
+        }
+    }
+
+    impl Drop for BrowserRelay {
+        fn drop(&mut self) {
+            self.socket.set_onopen(None);
+            self.socket.set_onmessage(None);
+            self.socket.set_onclose(None);
+            self.socket.set_onerror(None);
+            if matches!(
+                self.socket.ready_state(),
+                WebSocket::CONNECTING | WebSocket::OPEN
+            ) && let Err(error) = self.socket.close()
+            {
+                console::warn_1(&JsValue::from_str(&format!(
+                    "failed to close market relay socket: {error:?}"
+                )));
+            }
+        }
+    }
+
+    fn send_relay_input(sender: &mpsc::UnboundedSender<RelayInput>, input: RelayInput) {
+        if sender.unbounded_send(input).is_err() {
+            console::warn_1(&JsValue::from_str(
+                "market relay event arrived after the GPUI view closed",
+            ));
+        }
+    }
+
     /// Where a tape line came from. Rendered as a fixed-width chip so the
     /// disclosure sits left of the free text and can never be truncated by a
     /// long line or a narrow window.
@@ -338,13 +543,41 @@ mod web_app {
         text: String,
     }
 
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum LiveSessionPhase {
+        AwaitingQuote,
+        AwaitingProviderContract,
+        AwaitingProviderStatus,
+        AwaitingClose,
+        Complete,
+        Failed,
+    }
+
+    struct LiveNoSpendSession {
+        signer: MarketSigner,
+        factory: SwapRecordFactory,
+        rfq: NostrEvent,
+        order: Option<NostrEvent>,
+        contract: Option<Value>,
+        records: Vec<NostrEvent>,
+        phase: LiveSessionPhase,
+        detail: String,
+    }
+
     pub struct MarketTerminal {
+        config: DemoConfig,
         stage: Stage,
         selected_quote: Option<usize>,
         verify_done: usize,
         verifying: bool,
         timeline_shown: usize,
         relay: RelayProbe,
+        discovery: DiscoveryBook,
+        discovery_connection: DiscoveryConnection,
+        discovery_relay: Option<BrowserRelay>,
+        auth_challenge: Option<String>,
+        reconnect_attempt: u32,
+        live_session: Option<LiveNoSpendSession>,
         clock: String,
         prices: Vec<PriceRow>,
         tape: Vec<TapeEvent>,
@@ -371,10 +604,162 @@ mod web_app {
             .unwrap_or(0)
     }
 
+    fn shorten_text(value: &str, maximum: usize) -> String {
+        let count = value.chars().count();
+        if count <= maximum {
+            return value.to_owned();
+        }
+        let keep = maximum.saturating_sub(1);
+        format!("{}…", value.chars().take(keep).collect::<String>())
+    }
+
+    fn kind_label(kind: u16) -> &'static str {
+        match kind {
+            MKT_QUOTE_KIND => "QUOT",
+            MKT_SWP_SWAP_CONTRACT_KIND => "CNTR",
+            MKT_STATUS_KIND => "STAT",
+            MKT_CANCEL_KIND => "CNCL",
+            MKT_CLOSE_KIND => "CLSE",
+            _ => "LIVE",
+        }
+    }
+
+    fn set_page_title(title: &str) {
+        if let Some(document) = web_sys::window().and_then(|window| window.document()) {
+            document.set_title(title);
+        }
+    }
+
+    fn random_32() -> Result<[u8; 32], String> {
+        let window = web_sys::window().ok_or_else(|| "browser window is absent".to_owned())?;
+        let crypto = window
+            .crypto()
+            .map_err(|error| format!("WebCrypto is unavailable: {error:?}"))?;
+        let js_bytes = js_sys::Uint8Array::new_with_length(32);
+        crypto
+            .get_random_values_with_js_u8_array(&js_bytes)
+            .map_err(|error| format!("WebCrypto entropy failed: {error:?}"))?;
+        let mut bytes = [0_u8; 32];
+        js_bytes.copy_to(&mut bytes);
+        Ok(bytes)
+    }
+
+    fn random_hex_32() -> Result<String, String> {
+        Ok(random_32()?
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect())
+    }
+
+    fn random_market_signer() -> Result<MarketSigner, String> {
+        for _ in 0..32 {
+            let bytes = random_32()?;
+            if let Ok(signer) = MarketSigner::from_secret_bytes(bytes) {
+                return Ok(signer);
+            }
+        }
+        Err("WebCrypto did not produce a valid requester key".to_owned())
+    }
+
+    fn random_wrap_material() -> Result<WrapMaterial, String> {
+        let now = now_secs();
+        let seal_nonce = random_32()?;
+        let wrap_nonce = random_32()?;
+        for _ in 0..32 {
+            let wrap_secret = random_32()?;
+            if MarketSigner::from_secret_bytes(wrap_secret).is_ok() {
+                return Ok(WrapMaterial {
+                    seal_created_at: now.saturating_sub(u64::from(seal_nonce[0]) * 10),
+                    wrap_created_at: now.saturating_sub(u64::from(wrap_nonce[0]) * 10),
+                    seal_nonce,
+                    wrap_nonce,
+                    wrap_secret,
+                });
+            }
+        }
+        Err("WebCrypto did not produce a valid one-time wrap key".to_owned())
+    }
+
+    fn swp_profiles() -> [MktProfileSupport<'static>; 1] {
+        [MktProfileSupport {
+            profile_id: MKT_SWP_PROFILE_ID,
+            version: MKT_SWP_PROFILE_VERSION,
+            critical_members: &[],
+            understood_members: &[],
+        }]
+    }
+
+    fn sign_request(
+        request: MktSigningRequest,
+        signer: &MarketSigner,
+    ) -> Result<NostrEvent, String> {
+        let event = signer.sign(
+            request.created_at,
+            request.kind,
+            request.tags.clone(),
+            request.content.clone(),
+        );
+        request
+            .verify_signed(event)
+            .map_err(|error| format!("request signature failed: {error}"))
+    }
+
+    fn no_spend_rfq_profile() -> Value {
+        json!({
+            "constraints":{
+                "allowed_script_modes":["taproot-musig2-script-exit"],
+                "asset_pair":[
+                    "swp:1:bip122:00000000000000000000000000000000:btc:chain",
+                    "swp:1:bip122:00000000000000000000000000000000:btc:lightning"
+                ],
+                "confirmation_policy":{
+                    "minimum_confirmations":"1",
+                    "rbf":"reject",
+                    "reorg_safety_blocks":"6",
+                    "replacement":"reject",
+                    "zero_confirmation":"forbidden"
+                },
+                "desired_completion_time":2000,
+                "firm_quote_required":true,
+                "input_amount":"100000",
+                "invoice_sha256":"b0a570bb4ee56b4c1a2dfa43e1238af4be827e9bee7b17dd5ab85e27f01fead6",
+                "maximum_total_fee":"99000",
+                "payment_hash":"96c772a829fb7c780410f1d85cf12a89e8b3c78c0bac5fb47f62758bf961ec30",
+                "requester_public_keys":[{
+                    "leg_id":"source",
+                    "path":"refund",
+                    "public_key":"716022efaca232dd8a7927619a9e5f1eb8f1c8b87436a52a03ae7e1239a1662a"
+                }],
+                "swap_type":"submarine"
+            }
+        })
+    }
+
+    fn record_profile(event: &NostrEvent) -> Result<Map<String, Value>, String> {
+        immortal_core::domain::parse_json_without_duplicate_members(
+            &event.content,
+            "live MKT-SWP record",
+        )?
+        .get("mkt_swp")
+        .and_then(Value::as_object)
+        .cloned()
+        .ok_or_else(|| "live record has no MKT-SWP profile".to_owned())
+    }
+
+    fn tag_value<'a>(event: &'a NostrEvent, name: &str) -> Option<&'a str> {
+        event
+            .tags
+            .iter()
+            .find(|tag| tag.name() == Some(name))
+            .and_then(|tag| tag.value())
+    }
+
     impl MarketTerminal {
         pub fn new(cx: &mut Context<Self>) -> Self {
+            let config = DemoConfig::from_location();
+            let nip11_url = config.relay_http_url.clone();
             let probe = cx.spawn(async move |this, cx| {
-                let probe = probe_relay().await;
+                let probe = probe_relay(&nip11_url).await;
                 this.update(cx, |this, cx| {
                     let line = match &probe {
                         RelayProbe::Online { name, mkt } => format!(
@@ -386,8 +771,12 @@ mod web_app {
                         }
                         RelayProbe::Checking => "NIP-11 probe pending".to_owned(),
                     };
-                    // The only tape line backed by a real network response.
-                    this.push_tape("RELAY", CYAN, TapeOrigin::Live, line, cx);
+                    let origin = if matches!(&probe, RelayProbe::Online { .. }) {
+                        TapeOrigin::Live
+                    } else {
+                        TapeOrigin::Local
+                    };
+                    this.push_tape("NIP11", CYAN, origin, line, cx);
                     this.relay = probe;
                     cx.notify();
                 })
@@ -410,13 +799,20 @@ mod web_app {
                 }
             });
 
-            Self {
+            let mut terminal = Self {
+                config,
                 stage: Stage::Market,
                 selected_quote: None,
                 verify_done: 0,
                 verifying: false,
                 timeline_shown: 0,
                 relay: RelayProbe::Checking,
+                discovery: DiscoveryBook::default(),
+                discovery_connection: DiscoveryConnection::Connecting,
+                discovery_relay: None,
+                auth_challenge: None,
+                reconnect_attempt: 0,
+                live_session: None,
                 clock: format_clock(now_secs()),
                 prices: vec![
                     PriceRow {
@@ -464,7 +860,605 @@ mod web_app {
                 sessions_closed: 137,
                 rng: 0x9e37_79b9_7f4a_7c15,
                 _tasks: vec![probe, ticker],
+            };
+            if let Some(problem) = terminal.config.problem.clone() {
+                terminal.push_tape("CONFIG", RED, TapeOrigin::Local, problem, cx);
             }
+            terminal.open_discovery(cx);
+            terminal
+        }
+
+        fn open_discovery(&mut self, cx: &mut Context<Self>) {
+            self.discovery.begin_snapshot();
+            self.discovery_connection = DiscoveryConnection::Connecting;
+            let request = discovery_subscription();
+            let (sender, mut receiver) = mpsc::unbounded();
+            match BrowserRelay::connect(&self.config.relay_ws_url, request, sender) {
+                Ok(relay) => self.discovery_relay = Some(relay),
+                Err(error) => {
+                    self.discovery_connection = DiscoveryConnection::Stale(error.clone());
+                    self.push_tape("SOCKET", RED, TapeOrigin::Local, error, cx);
+                    self.schedule_reconnect(cx);
+                    return;
+                }
+            }
+            let task = cx.spawn(async move |this, cx| {
+                while let Some(input) = receiver.next().await {
+                    if this
+                        .update(cx, |this, cx| this.handle_relay_input(input, cx))
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            });
+            self._tasks.push(task);
+        }
+
+        fn schedule_reconnect(&mut self, cx: &mut Context<Self>) {
+            self.reconnect_attempt = self.reconnect_attempt.saturating_add(1).min(8);
+            let seconds = 1_u64 << self.reconnect_attempt.min(5);
+            let task = cx.spawn(async move |this, cx| {
+                cx.background_executor()
+                    .timer(Duration::from_secs(seconds))
+                    .await;
+                this.update(cx, |this, cx| {
+                    this.discovery_relay = None;
+                    this.open_discovery(cx);
+                    cx.notify();
+                })
+                .ok();
+            });
+            self._tasks.push(task);
+        }
+
+        fn handle_relay_input(&mut self, input: RelayInput, cx: &mut Context<Self>) {
+            match input {
+                RelayInput::Opened => {
+                    self.reconnect_attempt = 0;
+                    self.discovery_connection = DiscoveryConnection::Snapshotting;
+                    self.push_tape(
+                        "SOCKET",
+                        CYAN,
+                        TapeOrigin::Local,
+                        format!("WebSocket opened — {}", self.config.relay_ws_url),
+                        cx,
+                    );
+                }
+                RelayInput::Text(text) => {
+                    self.handle_session_frame(&text, cx);
+                    match self.discovery.ingest_text(&text, now_secs()) {
+                        Ok(DiscoveryFrame::Challenge(challenge)) => {
+                            self.auth_challenge = Some(challenge);
+                        }
+                        Ok(DiscoveryFrame::Head {
+                            kind,
+                            address,
+                            replaced,
+                        }) => {
+                            self.push_tape(
+                                "HEAD",
+                                ACCENT_DIM,
+                                TapeOrigin::Live,
+                                format!(
+                                    "verified {} {}{}",
+                                    kind.label(),
+                                    shorten_text(&address, 34),
+                                    if replaced { " (replacement)" } else { "" }
+                                ),
+                                cx,
+                            );
+                        }
+                        Ok(DiscoveryFrame::EndOfStoredEvents) => {
+                            let providers = self.discovery.provider_count();
+                            let offerings = self.discovery.offering_count();
+                            self.discovery_connection = if providers + offerings == 0 {
+                                DiscoveryConnection::Empty
+                            } else {
+                                DiscoveryConnection::Live
+                            };
+                            self.push_tape(
+                                "EOSE",
+                                GREEN,
+                                TapeOrigin::Live,
+                                format!(
+                                    "verified snapshot: {providers} provider heads, {offerings} offerings"
+                                ),
+                                cx,
+                            );
+                        }
+                        Ok(DiscoveryFrame::Closed(reason)) => {
+                            self.discovery_connection = DiscoveryConnection::Stale(reason.clone());
+                            self.push_tape("CLOSED", RED, TapeOrigin::Local, reason, cx);
+                        }
+                        Ok(DiscoveryFrame::Notice(notice)) => {
+                            self.push_tape(
+                                "NOTICE",
+                                ORANGE,
+                                TapeOrigin::Local,
+                                shorten_text(&notice, 120),
+                                cx,
+                            );
+                        }
+                        Ok(DiscoveryFrame::Ignored) => {}
+                        Err(error) => {
+                            self.push_tape(
+                                "REFUSE",
+                                RED,
+                                TapeOrigin::Local,
+                                shorten_text(&error, 120),
+                                cx,
+                            );
+                        }
+                    }
+                }
+                RelayInput::Closed { code, reason } => {
+                    let detail = if reason.is_empty() {
+                        format!("WebSocket closed ({code})")
+                    } else {
+                        format!("WebSocket closed ({code}): {}", shorten_text(&reason, 96))
+                    };
+                    self.discovery_connection = DiscoveryConnection::Stale(detail.clone());
+                    self.push_tape("SOCKET", RED, TapeOrigin::Local, detail, cx);
+                    self.schedule_reconnect(cx);
+                }
+                RelayInput::Error(error) => {
+                    self.push_tape("SOCKET", RED, TapeOrigin::Local, error, cx);
+                }
+            }
+            cx.notify();
+        }
+
+        fn start_live_no_spend(&mut self, cx: &mut Context<Self>) {
+            if self.live_session.as_ref().is_some_and(|session| {
+                !matches!(
+                    session.phase,
+                    LiveSessionPhase::Complete | LiveSessionPhase::Failed
+                )
+            }) {
+                return;
+            }
+            let Some(challenge) = self.auth_challenge.clone() else {
+                self.push_tape(
+                    "LIVE",
+                    RED,
+                    TapeOrigin::Local,
+                    "relay has not supplied a bounded NIP-42 challenge".to_owned(),
+                    cx,
+                );
+                return;
+            };
+            let Some((provider, offering)) = self.discovery.no_spend_offering() else {
+                self.push_tape(
+                    "LIVE",
+                    RED,
+                    TapeOrigin::Local,
+                    "no verified active no-spend provider Offering is available".to_owned(),
+                    cx,
+                );
+                return;
+            };
+            set_page_title("Swap Demo — OpenAgents Markets");
+            let provider_pubkey = provider.event.pubkey.clone();
+            let offering_address = offering.address.clone();
+            let start = (|| -> Result<LiveNoSpendSession, String> {
+                let signer = random_market_signer()?;
+                let session_id = random_hex_32()?;
+                let config = SwapClientConfig {
+                    session_id,
+                    requester_pubkey: signer.pubkey().to_owned(),
+                    provider_pubkey: provider_pubkey.clone(),
+                    offering_address,
+                    provider_route: None,
+                };
+                let factory = SwapRecordFactory::new(config)
+                    .map_err(|error| format!("could not initialize requester engine: {error}"))?;
+                let now = now_secs();
+                let rfq = sign_request(
+                    factory
+                        .rfq(
+                            now,
+                            &random_hex_32()?,
+                            now.saturating_add(300),
+                            no_spend_rfq_profile(),
+                        )
+                        .map_err(|error| format!("could not construct live RFQ: {error}"))?,
+                    &signer,
+                )?;
+                Ok(LiveNoSpendSession {
+                    signer,
+                    factory,
+                    rfq: rfq.clone(),
+                    order: None,
+                    contract: None,
+                    records: vec![rfq],
+                    phase: LiveSessionPhase::AwaitingQuote,
+                    detail: "authenticated; RFQ published; awaiting provider Quote".to_owned(),
+                })
+            })();
+            let session = match start {
+                Ok(session) => session,
+                Err(error) => {
+                    self.push_tape("LIVE", RED, TapeOrigin::Local, error, cx);
+                    return;
+                }
+            };
+            let auth = session.signer.sign(
+                now_secs(),
+                22_242,
+                vec![
+                    Tag::new(vec!["relay".into(), self.config.relay_ws_url.clone()]),
+                    Tag::new(vec!["challenge".into(), challenge]),
+                ],
+                String::new(),
+            );
+            let auth_frame = json!(["AUTH", auth]).to_string();
+            let subscription = session_subscription(session.signer.pubkey());
+            let send_setup = self
+                .discovery_relay
+                .as_ref()
+                .ok_or_else(|| "relay WebSocket is absent".to_owned())
+                .and_then(|relay| relay.send(&auth_frame))
+                .and_then(|()| {
+                    self.discovery_relay
+                        .as_ref()
+                        .ok_or_else(|| "relay WebSocket is absent".to_owned())?
+                        .send(&subscription)
+                });
+            if let Err(error) = send_setup {
+                self.push_tape("LIVE", RED, TapeOrigin::Local, error, cx);
+                return;
+            }
+            self.live_session = Some(session);
+            let rfq = self
+                .live_session
+                .as_ref()
+                .map(|session| session.rfq.clone());
+            if let Some(rfq) = rfq {
+                if let Err(error) = self.publish_live_record(&rfq) {
+                    self.fail_live_session(error, cx);
+                    return;
+                }
+                self.push_tape(
+                    "RFQ",
+                    CYAN,
+                    TapeOrigin::Live,
+                    format!(
+                        "published verified no-spend RFQ {}",
+                        shorten_text(&rfq.id, 18)
+                    ),
+                    cx,
+                );
+            }
+            cx.notify();
+        }
+
+        fn publish_live_record(&self, event: &NostrEvent) -> Result<(), String> {
+            let session = self
+                .live_session
+                .as_ref()
+                .ok_or_else(|| "live session is absent".to_owned())?;
+            let raw = serde_json::to_vec(event)
+                .map_err(|error| format!("could not serialize live record: {error}"))?;
+            let wrapped = wrap_mkt_record(
+                &raw,
+                &session.signer,
+                &session.factory.config().provider_pubkey,
+                random_wrap_material()?,
+            )?;
+            let frame = json!(["EVENT", wrapped.event]).to_string();
+            self.discovery_relay
+                .as_ref()
+                .ok_or_else(|| "relay WebSocket is absent".to_owned())?
+                .send(&frame)
+        }
+
+        fn handle_session_frame(&mut self, text: &str, cx: &mut Context<Self>) {
+            if self.live_session.is_none() || text.len() > 512 * 1024 {
+                return;
+            }
+            let value: Value = match immortal_core::domain::parse_json_without_duplicate_members(
+                text,
+                "live session relay frame",
+            ) {
+                Ok(value) => value,
+                Err(_) => return,
+            };
+            let Some(fields) = value.as_array() else {
+                return;
+            };
+            if fields.len() != 3
+                || fields.first().and_then(Value::as_str) != Some("EVENT")
+                || fields.get(1).and_then(Value::as_str) != Some(SESSION_SUBSCRIPTION_ID)
+            {
+                return;
+            }
+            let Some(wrap_value) = fields.get(2).cloned() else {
+                return;
+            };
+            let wrap: NostrEvent = match serde_json::from_value(wrap_value) {
+                Ok(wrap) => wrap,
+                Err(error) => {
+                    self.fail_live_session(format!("session wrap shape is invalid: {error}"), cx);
+                    return;
+                }
+            };
+            let delivered = if let Some(session) = self.live_session.as_ref() {
+                unwrap_mkt_record(&wrap, &session.signer, &swp_profiles())
+            } else {
+                return;
+            };
+            let delivered = match delivered {
+                Ok(delivered) => delivered,
+                Err(error) => {
+                    self.fail_live_session(format!("refused provider wrap: {error}"), cx);
+                    return;
+                }
+            };
+            let event = delivered.record().event().clone();
+            let Some(expected) = self.live_session.as_ref() else {
+                return;
+            };
+            if delivered.record().envelope().session_id != expected.factory.config().session_id {
+                return;
+            }
+            if event.pubkey != expected.factory.config().provider_pubkey {
+                self.fail_live_session(
+                    "refused live session record from a non-provider signer".to_owned(),
+                    cx,
+                );
+                return;
+            }
+            self.handle_provider_record(event, cx);
+        }
+
+        fn handle_provider_record(&mut self, event: NostrEvent, cx: &mut Context<Self>) {
+            let Some(mut session) = self.live_session.take() else {
+                return;
+            };
+            if session.records.iter().any(|record| record.id == event.id) {
+                self.live_session = Some(session);
+                return;
+            }
+            if session.records.len() >= 64 {
+                session.phase = LiveSessionPhase::Failed;
+                session.detail = "signed session record bound reached".to_owned();
+                self.live_session = Some(session);
+                return;
+            }
+            let event_kind = event.kind;
+            let mut outgoing = Vec::new();
+            let result = (|| -> Result<(), String> {
+                match event.kind {
+                    MKT_QUOTE_KIND if session.phase == LiveSessionPhase::AwaitingQuote => {
+                        let now = now_secs().max(event.created_at.saturating_add(1));
+                        let order = sign_request(
+                            session
+                                .factory
+                                .requester_order(RequesterOrderInput {
+                                    rfq: &session.rfq,
+                                    quote: &event,
+                                    created_at: now,
+                                    observed_at: now_secs(),
+                                    distinct: &random_hex_32()?,
+                                    selection: None,
+                                })
+                                .map_err(|error| {
+                                    format!("requester engine refused Quote: {error}")
+                                })?,
+                            &session.signer,
+                        )?;
+                        let status = sign_request(
+                            session
+                                .factory
+                                .status(
+                                    ParticipantRole::Requester,
+                                    now.saturating_add(1),
+                                    &random_hex_32()?,
+                                    &order.id,
+                                    StatusState {
+                                        sequence: 0,
+                                        previous: None,
+                                        base_state: "awaiting_input",
+                                        swp_state: "requester_verification_passed",
+                                    },
+                                    Map::new(),
+                                )
+                                .map_err(|error| {
+                                    format!("could not construct requester Status: {error}")
+                                })?,
+                            &session.signer,
+                        )?;
+                        let mut local_inputs =
+                            RequesterContractLocalInputs::for_swap_type(SwapType::Submarine);
+                        local_inputs
+                            .exit_package_commitments
+                            .push(RequesterExitPackageCommitment {
+                            participant_role: "requester".to_owned(),
+                            leg_id: "source".to_owned(),
+                            path: "refund".to_owned(),
+                            package_mode: "presigned".to_owned(),
+                            package_sha256:
+                                "77abefe30c067cc2f46a9947c38c09a0f6bfd9aedff026fa3760ce1c319adb11"
+                                    .to_owned(),
+                        });
+                        let contract = session
+                            .factory
+                            .requester_contract_draft(
+                                &session.rfq,
+                                &event,
+                                &order,
+                                now_secs(),
+                                local_inputs,
+                            )
+                            .map_err(|error| {
+                                format!("could not compose no-spend Contract: {error}")
+                            })?;
+                        let requester_contract = sign_request(
+                            session
+                                .factory
+                                .requester_contract(RequesterContractSigningInput {
+                                    rfq: &session.rfq,
+                                    quote: &event,
+                                    order: &order,
+                                    order_observed_at: now_secs(),
+                                    created_at: now.saturating_add(2),
+                                    distinct: &random_hex_32()?,
+                                    contract: contract.clone(),
+                                })
+                                .map_err(|error| {
+                                    format!("requester engine refused Contract: {error}")
+                                })?,
+                            &session.signer,
+                        )?;
+                        session.records.push(event.clone());
+                        session.records.push(order.clone());
+                        session.records.push(status.clone());
+                        session.records.push(requester_contract.clone());
+                        session.order = Some(order.clone());
+                        session.contract = Some(contract);
+                        session.phase = LiveSessionPhase::AwaitingProviderContract;
+                        session.detail =
+                            "Quote verified; Order, requester Status, and no-spend Contract published"
+                                .to_owned();
+                        outgoing.extend([order, status, requester_contract]);
+                    }
+                    MKT_SWP_SWAP_CONTRACT_KIND
+                        if session.phase == LiveSessionPhase::AwaitingProviderContract =>
+                    {
+                        let profile = record_profile(&event)?;
+                        if profile.get("contract") != session.contract.as_ref() {
+                            return Err(
+                                "provider countersigned different Contract terms".to_owned()
+                            );
+                        }
+                        session.records.push(event);
+                        session.phase = LiveSessionPhase::AwaitingProviderStatus;
+                        session.detail =
+                            "provider countersigned the exact Contract; awaiting Status".to_owned();
+                    }
+                    MKT_STATUS_KIND
+                        if session.phase == LiveSessionPhase::AwaitingProviderStatus =>
+                    {
+                        let profile = record_profile(&event)?;
+                        if tag_value(&event, "seq") != Some("0")
+                            || profile.get("swp_state").and_then(Value::as_str) != Some("accepted")
+                        {
+                            return Err(
+                                "provider Status is not the expected accepted seq 0".to_owned()
+                            );
+                        }
+                        let order = session
+                            .order
+                            .as_ref()
+                            .ok_or_else(|| "live session has no Order".to_owned())?;
+                        let cancel = sign_request(
+                            session
+                                .factory
+                                .cancel(
+                                    ParticipantRole::Requester,
+                                    now_secs().max(event.created_at.saturating_add(1)),
+                                    &random_hex_32()?,
+                                    &order.id,
+                                    Cancellation {
+                                        action: "request",
+                                        reason: "browser_no_spend_demo",
+                                        request_id: None,
+                                        accepted_id: None,
+                                    },
+                                    json!({"disposition":"no_funding_authorized"}),
+                                )
+                                .map_err(|error| {
+                                    format!("could not construct no-spend Cancel: {error}")
+                                })?,
+                            &session.signer,
+                        )?;
+                        session.records.push(event);
+                        session.records.push(cancel.clone());
+                        session.phase = LiveSessionPhase::AwaitingClose;
+                        session.detail =
+                            "provider Status verified; cancellation requested before funding"
+                                .to_owned();
+                        outgoing.push(cancel);
+                    }
+                    MKT_CANCEL_KIND if session.phase == LiveSessionPhase::AwaitingClose => {
+                        let action = tag_value(&event, "action")
+                            .ok_or_else(|| "provider Cancel has no action".to_owned())?
+                            .to_owned();
+                        if !matches!(action.as_str(), "accepted" | "effective") {
+                            return Err(format!("provider returned unexpected Cancel {action}"));
+                        }
+                        session.records.push(event);
+                        session.detail = format!("provider cancellation {action}; awaiting Close");
+                    }
+                    MKT_CLOSE_KIND if session.phase == LiveSessionPhase::AwaitingClose => {
+                        let profile = record_profile(&event)?;
+                        let zero_spend = tag_value(&event, "outcome") == Some("cancelled")
+                            && profile
+                                .get("external_spend_effects")
+                                .and_then(Value::as_u64)
+                                == Some(0)
+                            && profile
+                                .get("loss_accounting")
+                                .and_then(|loss| loss.get("input_committed"))
+                                .and_then(Value::as_str)
+                                == Some("0");
+                        if !zero_spend {
+                            return Err(
+                                "provider Close does not prove exact zero-spend accounting"
+                                    .to_owned(),
+                            );
+                        }
+                        session.records.push(event);
+                        session.phase = LiveSessionPhase::Complete;
+                        session.detail =
+                            "Close verified: cancelled, external_spend_effects=0, input_committed=0"
+                                .to_owned();
+                        set_page_title("Swap Demo — zero-spend verified");
+                    }
+                    _ => return Ok(()),
+                }
+                Ok(())
+            })();
+            if let Err(error) = result {
+                session.phase = LiveSessionPhase::Failed;
+                session.detail = error;
+            }
+            let detail = session.detail.clone();
+            let phase = session.phase;
+            self.live_session = Some(session);
+            if phase == LiveSessionPhase::Failed {
+                self.push_tape("LIVE", RED, TapeOrigin::Local, detail, cx);
+                return;
+            }
+            self.push_tape(
+                kind_label(event_kind),
+                if phase == LiveSessionPhase::Complete {
+                    GREEN
+                } else {
+                    CYAN
+                },
+                TapeOrigin::Live,
+                detail,
+                cx,
+            );
+            for record in outgoing {
+                if let Err(error) = self.publish_live_record(&record) {
+                    self.fail_live_session(error, cx);
+                    return;
+                }
+            }
+            cx.notify();
+        }
+
+        fn fail_live_session(&mut self, error: String, cx: &mut Context<Self>) {
+            if let Some(session) = &mut self.live_session {
+                session.phase = LiveSessionPhase::Failed;
+                session.detail = error.clone();
+            }
+            self.push_tape("LIVE", RED, TapeOrigin::Local, error, cx);
+            set_page_title("Swap Demo — no-spend session failed");
+            cx.notify();
         }
 
         fn next_rng(&mut self) -> u64 {
@@ -665,15 +1659,28 @@ mod web_app {
 
     impl MarketTerminal {
         fn render_top_bar(&self, _cx: &mut Context<Self>) -> impl IntoElement {
-            let (relay_dot, relay_text, relay_color) = match &self.relay {
-                RelayProbe::Checking => (Color::Muted, "RELAY: PROBING".to_owned(), FAINT),
-                RelayProbe::Online { mkt, .. } => (
+            let (relay_dot, relay_text, relay_color) = match &self.discovery_connection {
+                DiscoveryConnection::Connecting => {
+                    (Color::Muted, "WS: CONNECTING".to_owned(), FAINT)
+                }
+                DiscoveryConnection::Snapshotting => {
+                    (Color::Muted, "WS: VERIFYING SNAPSHOT".to_owned(), CYAN)
+                }
+                DiscoveryConnection::Live => (
                     Color::Success,
-                    format!("RELAY: LIVE NIP-11{}", if *mkt { " · NIP-MKT" } else { "" }),
+                    format!(
+                        "WS: LIVE · {} VERIFIED HEADS",
+                        self.discovery.provider_count() + self.discovery.offering_count()
+                    ),
                     GREEN,
                 ),
-                RelayProbe::Unreachable(_) => {
-                    (Color::Warning, "RELAY: UNREACHABLE".to_owned(), RED)
+                DiscoveryConnection::Empty => (
+                    Color::Success,
+                    "WS: LIVE · VERIFIED EMPTY".to_owned(),
+                    GREEN,
+                ),
+                DiscoveryConnection::Stale(_) => {
+                    (Color::Warning, "WS: STALE / RECONNECTING".to_owned(), RED)
                 }
             };
             h_flex()
@@ -841,12 +1848,31 @@ mod web_app {
                 ),
                 RelayProbe::Unreachable(reason) => (reason.clone(), RED),
             };
-            panel_frame("NETWORK", Some("1 relay probed live".into())).child(
+            let discovery = match &self.discovery_connection {
+                DiscoveryConnection::Connecting => "WebSocket connecting".to_owned(),
+                DiscoveryConnection::Snapshotting => "validating until EOSE".to_owned(),
+                DiscoveryConnection::Live => format!(
+                    "EOSE + live · {} profiles / {} offerings",
+                    self.discovery.provider_count(),
+                    self.discovery.offering_count()
+                ),
+                DiscoveryConnection::Empty => "EOSE · verified empty snapshot".to_owned(),
+                DiscoveryConnection::Stale(reason) => {
+                    format!("stale · {}", shorten_text(reason, 44))
+                }
+            };
+            panel_frame("NETWORK", Some("HTTP + browser WebSocket".into())).child(
                 v_flex()
                     .px_2()
                     .py_1()
                     .gap_1()
-                    .child(key_value("relay", relay_line.0, relay_line.1))
+                    .child(key_value("NIP-11", relay_line.0, relay_line.1))
+                    .child(key_value(
+                        "endpoint",
+                        self.config.relay_ws_url.clone(),
+                        SECONDARY,
+                    ))
+                    .child(key_value("discovery", discovery, CYAN))
                     .child(key_value(
                         "wraps",
                         format!("{} relayed (DEMO counter)", self.wraps_relayed),
@@ -878,13 +1904,20 @@ mod web_app {
                     .py_0p5()
                     .border_b_1()
                     .border_color(rgb(HAIRLINE))
-                    .child(div().w(px(128.)).child(mono("PROVIDER", FAINT)))
+                    .child(div().w(px(160.)).child(mono("SIGNED PROVIDER", FAINT)))
                     .child(div().w(px(64.)).child(mono("STATUS", FAINT)))
-                    .child(div().w(px(70.)).child(mono("QUOTES", FAINT)))
-                    .child(div().w(px(56.)).child(mono("RESV", FAINT))),
+                    .child(div().w(px(48.)).child(mono("OFFR", FAINT)))
+                    .child(div().w(px(72.)).child(mono("PROFILE", FAINT))),
             );
-            for provider in PROVIDERS.iter() {
+            for provider in self.discovery.providers() {
                 let active = provider.status == "active";
+                let claimed_name = provider
+                    .content
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(|name| format!("claimed: {}", shorten_text(name, 28)))
+                    .unwrap_or_else(|| "no self-asserted name".to_owned());
+                let offerings = self.discovery.offerings_for_provider(&provider.address);
                 rows = rows.child(
                     h_flex()
                         .px_2()
@@ -892,10 +1925,18 @@ mod web_app {
                         .border_b_1()
                         .border_color(rgb(RULE))
                         .child(
-                            div().w(px(128.)).child(
+                            div().w(px(160.)).child(
                                 v_flex()
-                                    .child(mono(provider.name, BODY))
-                                    .child(mono(provider.short_key, FAINT)),
+                                    .child(mono(provider.distinct.clone(), BODY))
+                                    .child(mono(
+                                        format!(
+                                            "{} · published {}",
+                                            provider.short_pubkey(),
+                                            provider.published_at
+                                        ),
+                                        FAINT,
+                                    ))
+                                    .child(mono(claimed_name, FAINT)),
                             ),
                         )
                         .child(
@@ -909,25 +1950,51 @@ mod web_app {
                                         Color::Warning
                                     }))
                                     .child(mono(
-                                        provider.status,
+                                        provider.status.clone(),
                                         if active { GREEN } else { ORANGE },
                                     )),
                             ),
                         )
-                        .child(div().w(px(70.)).child(mono(provider.class, SECONDARY)))
-                        .child(div().w(px(56.)).child(mono(
-                            provider.reservation,
-                            if provider.reservation == "hard" {
-                                GREEN
-                            } else if provider.reservation == "soft" {
-                                ORANGE
-                            } else {
-                                FAINT
-                            },
-                        ))),
+                        .child(
+                            div()
+                                .w(px(48.))
+                                .child(mono(offerings.to_string(), SECONDARY)),
+                        )
+                        .child(
+                            div()
+                                .w(px(72.))
+                                .child(mono(shorten_text(&provider.profile_label(), 16), CYAN)),
+                        ),
                 );
             }
-            panel_frame("PROVIDERS · KIND 39600", Some("3 heads".into())).child(rows)
+            if self.discovery.provider_count() == 0 {
+                let message = match &self.discovery_connection {
+                    DiscoveryConnection::Connecting | DiscoveryConnection::Snapshotting => {
+                        "No snapshot committed — validating signed heads until EOSE"
+                    }
+                    DiscoveryConnection::Empty => {
+                        "EOSE received: the relay returned zero verified provider heads"
+                    }
+                    DiscoveryConnection::Stale(_) => {
+                        "No retained verified heads; relay connection is stale"
+                    }
+                    DiscoveryConnection::Live => "No verified provider heads",
+                };
+                rows = rows.child(div().p_2().child(mono(message, FAINT)));
+            }
+            let right = match &self.discovery_connection {
+                DiscoveryConnection::Live => format!(
+                    "{} heads · {} offerings",
+                    self.discovery.provider_count(),
+                    self.discovery.offering_count()
+                ),
+                DiscoveryConnection::Empty => "EOSE · empty".to_owned(),
+                DiscoveryConnection::Stale(_) => "stale".to_owned(),
+                DiscoveryConnection::Connecting | DiscoveryConnection::Snapshotting => {
+                    "pending EOSE".to_owned()
+                }
+            };
+            panel_frame("VERIFIED LIVE DISCOVERY", Some(right)).child(rows)
         }
 
         fn render_tape(&self, _cx: &mut Context<Self>) -> impl IntoElement {
@@ -973,16 +2040,102 @@ mod web_app {
             )
         }
 
+        fn render_live_no_spend(&self, cx: &mut Context<Self>) -> impl IntoElement {
+            let ready = matches!(&self.discovery_connection, DiscoveryConnection::Live)
+                && self.discovery.no_spend_offering().is_some()
+                && self.auth_challenge.is_some();
+            let mut body = v_flex().p_2().gap_1();
+            body = body.child(mono(
+                "LIVE proof: an in-browser throwaway requester exchanges signed NIP-59 records with immortal-provider --no-spend, then cancels before funding. Completion requires the provider Close to state external_spend_effects=0 and input_committed=0.",
+                SECONDARY,
+            ));
+            if let Some(session) = &self.live_session {
+                let (phase, color) = match session.phase {
+                    LiveSessionPhase::AwaitingQuote => ("awaiting Quote", CYAN),
+                    LiveSessionPhase::AwaitingProviderContract => {
+                        ("awaiting provider Contract", CYAN)
+                    }
+                    LiveSessionPhase::AwaitingProviderStatus => ("awaiting provider Status", CYAN),
+                    LiveSessionPhase::AwaitingClose => ("awaiting zero-spend Close", ORANGE),
+                    LiveSessionPhase::Complete => ("complete · zero-spend verified", GREEN),
+                    LiveSessionPhase::Failed => ("failed closed", RED),
+                };
+                body = body
+                    .child(key_value("state", phase.to_owned(), color))
+                    .child(key_value(
+                        "records",
+                        format!("{} signed records", session.records.len()),
+                        BODY,
+                    ))
+                    .child(key_value("evidence", session.detail.clone(), color));
+            } else if let Some((provider, offering)) = self.discovery.no_spend_offering() {
+                body = body
+                    .child(key_value(
+                        "provider",
+                        format!("{} · {}", provider.distinct, provider.short_pubkey()),
+                        GREEN,
+                    ))
+                    .child(key_value(
+                        "offering",
+                        format!("{} · provider-signed claim", offering.distinct),
+                        CYAN,
+                    ));
+            } else {
+                body = body.child(key_value(
+                    "provider",
+                    "no verified active mode=no_spend Offering in the committed snapshot"
+                        .to_owned(),
+                    ORANGE,
+                ));
+            }
+            let can_start = self.live_session.as_ref().is_none_or(|session| {
+                matches!(
+                    session.phase,
+                    LiveSessionPhase::Complete | LiveSessionPhase::Failed
+                )
+            });
+            if ready && can_start {
+                body = body.child(
+                    h_flex().pt_1().child(
+                        Button::new("run-live-no-spend", "RUN LIVE NO-SPEND SESSION")
+                            .style(ButtonStyle::Filled)
+                            .on_click(cx.listener(|this, _event, _window, cx| {
+                                this.start_live_no_spend(cx);
+                            })),
+                    ),
+                );
+            } else if self.config.is_loopback() && self.live_session.is_none() {
+                body = body.child(mono(
+                    "Start scripts/dev-relay.sh and immortal-provider --no-spend, then reload after the signed Offering reaches EOSE.",
+                    FAINT,
+                ));
+            } else if self.live_session.is_none() {
+                body = body.child(mono(
+                    "The public relay has no verified no-spend provider right now. Use ?relay=ws://127.0.0.1:18080 under the local Trunk preview for the developer proof.",
+                    FAINT,
+                ));
+            }
+            panel_frame(
+                "LIVE NO-SPEND PROVIDER PROOF",
+                Some(
+                    if self.config.is_loopback() {
+                        "loopback relay"
+                    } else {
+                        "public relay"
+                    }
+                    .to_owned(),
+                ),
+            )
+            .child(body)
+        }
+
         fn render_session_market(&self, cx: &mut Context<Self>) -> impl IntoElement {
             v_flex()
                 .px_3()
                 .py_2()
                 .gap_2()
                 .child(mono(
-                    "Public discovery is live on relays: Provider Profiles (39600) and \
-                     Offerings (39601) are signed addressable events any client verifies \
-                     itself. Run the flow below — one negotiated swap session, every \
-                     protocol law visible.",
+                    "The walkthrough below is scripted DEMO data. The separate live proof exchanges signed records with the verified no-spend provider; this walkthrough keeps the gap, fork, and rung laws visible even when the relay snapshot is empty.",
                     SECONDARY,
                 ))
                 .child(
@@ -1173,15 +2326,13 @@ mod web_app {
                 .py_2()
                 .gap_2()
                 .child(mono(
-                    "VERIFY BEFORE FUND — the law Boltz taught. Nothing is funded until \
-                     the client itself verified every term; the engine refuses funding \
-                     readiness until all checks pass.",
+                    "SCRIPTED DEMO CHECKLIST — illustrates verify-before-fund. These rows are not live funding authorization and this surface holds no funds.",
                     BODY,
                 ))
                 .child(checklist)
                 .child(if complete {
                     h_flex().pt_1().child(
-                        Button::new("fund", "ALL CHECKS GREEN — FUND & WATCH SESSION →")
+                        Button::new("fund", "DEMO CHECKLIST COMPLETE — SIMULATE SESSION →")
                             .style(ButtonStyle::Filled)
                             .on_click(cx.listener(|this, _event, _window, cx| {
                                 this.stage = Stage::Timeline;
@@ -1266,7 +2417,7 @@ mod web_app {
                         .bg(rgb(RAISED))
                         .border_1()
                         .border_color(rgb(HAIRLINE))
-                        .child(mono("CLOSE (39609) + PUBLIC RECEIPT (39603)", ACCENT))
+                        .child(mono("DEMO CLOSE (39609) + PUBLIC RECEIPT (39603)", ACCENT))
                         .child(key_value("outcome", "completed".into(), GREEN))
                         .child(key_value(
                             "close",
@@ -1327,7 +2478,11 @@ mod web_app {
                 Stage::Timeline => "stage 5 · session",
                 Stage::Closed => "stage 6 · close",
             };
-            panel_frame("SWAP SESSION · KINDS 39604-39609", Some(subtitle.into())).child(body)
+            panel_frame(
+                "SCRIPTED DEMO SESSION · KINDS 39604-39609",
+                Some(subtitle.into()),
+            )
+            .child(body)
         }
 
         fn render_status_bar(&self, _cx: &mut Context<Self>) -> impl IntoElement {
@@ -1340,8 +2495,7 @@ mod web_app {
                 .border_t_1()
                 .border_color(rgb(ACCENT_DIM))
                 .child(mono(
-                    "synthetic DEMO market · protocol NIP-MKT v0.1 · relay probe is the \
-                     only live data",
+                    "scripted session is DEMO · discovery and no-spend proof are signed live data · relay acceptance is transport only",
                     FAINT,
                 ))
                 .child(mono(
@@ -1382,6 +2536,7 @@ mod web_app {
                                             .flex_1()
                                             .min_w(px(430.))
                                             .gap_2()
+                                            .child(self.render_live_no_spend(cx))
                                             .child(self.render_session_panel(cx)),
                                     )
                                     .child(
@@ -1399,13 +2554,13 @@ mod web_app {
         }
     }
 
-    async fn probe_relay() -> RelayProbe {
+    async fn probe_relay(relay_url: &str) -> RelayProbe {
         let Some(window) = web_sys::window() else {
             return RelayProbe::Unreachable("no browser window".to_owned());
         };
         let options = RequestInit::new();
         options.set_method("GET");
-        let request = match Request::new_with_str_and_init(RELAY_URL, &options) {
+        let request = match Request::new_with_str_and_init(relay_url, &options) {
             Ok(request) => request,
             Err(error) => {
                 return RelayProbe::Unreachable(format!("request build failed: {error:?}"));
