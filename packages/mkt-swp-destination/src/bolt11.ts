@@ -69,10 +69,17 @@ export type ParseBolt11Result =
 export const looksLikeBolt11 = (lower: string): boolean =>
   HRP_NETWORKS.some(([hrp]) => lower.startsWith(hrp)) && lower.includes("1");
 
-const wordsToNumber = (words: readonly number[]): number => {
-  let value = 0;
-  for (const word of words) value = value * 32 + word;
-  return value;
+/**
+ * Decode a big-endian 5-bit-word integer, refusing values a double cannot
+ * represent exactly. Unbounded accumulation would let a crafted `x` field
+ * silently round, giving this pre-check and the engine two different
+ * readings of the same invoice bytes — one reading per invoice, always.
+ */
+const wordsToNumber = (words: readonly number[]): number | null => {
+  let value = 0n;
+  for (const word of words) value = value * 32n + BigInt(word);
+  if (value > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+  return Number(value);
 };
 
 const wordsToBytes = (words: readonly number[]): Uint8Array | null => {
@@ -158,12 +165,13 @@ export const parseBolt11 = (
   }
 
   const timestampSeconds = wordsToNumber(words.slice(0, TIMESTAMP_WORDS));
+  if (timestampSeconds === null) return malformed("timestamp out of range");
   const tagged = words.slice(TIMESTAMP_WORDS, words.length - SIGNATURE_WORDS);
 
   let paymentHashHex: string | null = null;
   let description: InvoiceDescriptionCommitment | null = null;
-  let expirySeconds = DEFAULT_EXPIRY_SECONDS;
-  let minFinalCltvExpiryDelta = DEFAULT_MIN_FINAL_CLTV;
+  let expirySeconds: number | null = null;
+  let minFinalCltvExpiryDelta: number | null = null;
   let routeHintCount = 0;
   let hasPaymentSecret = false;
 
@@ -215,11 +223,23 @@ export const parseBolt11 = (
         break;
       }
       case TAG_EXPIRY: {
-        expirySeconds = wordsToNumber(data);
+        // Last-field-wins assignment would give two readings of the same
+        // invoice; a duplicate is refused instead, like p/d/h.
+        if (expirySeconds !== null) return malformed("duplicate expiry field");
+        const value = wordsToNumber(data);
+        if (value === null) return malformed("expiry value out of range");
+        expirySeconds = value;
         break;
       }
       case TAG_MIN_FINAL_CLTV: {
-        minFinalCltvExpiryDelta = wordsToNumber(data);
+        if (minFinalCltvExpiryDelta !== null) {
+          return malformed("duplicate min-final-cltv field");
+        }
+        const value = wordsToNumber(data);
+        if (value === null) {
+          return malformed("min-final-cltv value out of range");
+        }
+        minFinalCltvExpiryDelta = value;
         break;
       }
       case TAG_ROUTE_HINT: {
@@ -243,6 +263,10 @@ export const parseBolt11 = (
   if (paymentHashHex === null) return malformed("missing payment hash");
   if (description === null) return malformed("missing description commitment");
 
+  const effectiveExpirySeconds = expirySeconds ?? DEFAULT_EXPIRY_SECONDS;
+  const effectiveMinFinalCltv =
+    minFinalCltvExpiryDelta ?? DEFAULT_MIN_FINAL_CLTV;
+
   if (network !== context.network) {
     return failure({
       mode: "invoice_network_mismatch",
@@ -252,7 +276,7 @@ export const parseBolt11 = (
     });
   }
 
-  const expiresAtSeconds = timestampSeconds + expirySeconds;
+  const expiresAtSeconds = timestampSeconds + effectiveExpirySeconds;
   if (expiresAtSeconds <= context.nowSeconds) {
     return failure({
       mode: "invoice_expired",
@@ -271,9 +295,9 @@ export const parseBolt11 = (
       amountMsat: amount.msat,
       paymentHashHex,
       timestampSeconds,
-      expirySeconds,
+      expirySeconds: effectiveExpirySeconds,
       expiresAtSeconds,
-      minFinalCltvExpiryDelta,
+      minFinalCltvExpiryDelta: effectiveMinFinalCltv,
       description,
       routeHintCount,
       hasPaymentSecret,

@@ -61,6 +61,14 @@ export interface TestInvoiceOptions {
   readonly omitPaymentHash?: boolean;
   /** Drop both description commitments (malformed). */
   readonly omitDescription?: boolean;
+  /**
+   * Raw tagged fields appended after the standard ones, for crafted
+   * invoices (duplicate `x`/`c` fields, out-of-range values).
+   */
+  readonly extraTaggedFields?: readonly {
+    readonly type: number;
+    readonly data: readonly number[];
+  }[];
 }
 
 export const DEFAULT_TEST_TIMESTAMP = 1_754_265_600; // 2026-08-04T00:00:00Z
@@ -100,6 +108,9 @@ export const encodeTestInvoice = (options: TestInvoiceOptions = {}): string => {
   if (options.includePaymentSecret === true) {
     const secret = new Uint8Array(32).fill(0x03);
     words.push(...taggedField(16, bytesToWords(secret)));
+  }
+  for (const field of options.extraTaggedFields ?? []) {
+    words.push(...taggedField(field.type, [...field.data]));
   }
 
   // 65-byte dummy signature (r || s || recovery) → 104 words exactly.

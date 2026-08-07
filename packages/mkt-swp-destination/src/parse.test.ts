@@ -227,6 +227,35 @@ describe("parseDestination failure modes (negative-case table)", () => {
       mode: "invoice_amountless",
     },
     {
+      // Last-field-wins would let one invoice carry two expiry readings.
+      name: "invoice with a duplicate expiry field",
+      input: encodeTestInvoice({
+        expirySeconds: 3600,
+        extraTaggedFields: [{ type: 6, data: [1] }],
+      }),
+      context: lightningRegtest,
+      mode: "invoice_malformed",
+    },
+    {
+      name: "invoice with a duplicate min-final-cltv field",
+      input: encodeTestInvoice({
+        minFinalCltv: 18,
+        extraTaggedFields: [{ type: 24, data: [1] }],
+      }),
+      context: lightningRegtest,
+      mode: "invoice_malformed",
+    },
+    {
+      // 12 words = 60 bits: past MAX_SAFE_INTEGER, where an unbounded
+      // parser silently rounds and diverges from the engine's reading.
+      name: "invoice with an out-of-range expiry value",
+      input: encodeTestInvoice({
+        extraTaggedFields: [{ type: 6, data: Array.from({ length: 12 }, () => 31) }],
+      }),
+      context: lightningRegtest,
+      mode: "invoice_malformed",
+    },
+    {
       name: "lnurl with corrupted payload",
       input: mutate(encodeTestLnurl("https://pay.example.com/lnurlp/alice")),
       context: lightningRegtest,

@@ -9,6 +9,7 @@
  */
 import { describe, expect, test } from "vite-plus/test";
 
+import { parseBolt11 } from "./bolt11.js";
 import {
   effectiveAmountMsat,
   fundingGate,
@@ -43,7 +44,7 @@ describe("amountless-invoice refusal (contract: amountless_invoice_refused.v1)",
     expect(next.bound).toBeNull();
     expect(next.failure?.mode).toBe("invoice_amountless");
     expect(next.failure?.swpError).toBe("swp_invoice_invalid");
-    expect(fundingGate(next)).toBe("blocked");
+    expect(fundingGate(next, NOW)).toBe("blocked");
 
     const view = destinationFieldView(next, "unavailable", NOW);
     expect(view.validity.state).toBe("invalid");
@@ -170,7 +171,7 @@ describe("staleness guards", () => {
     );
     // The stale pass is dropped: verification still pending, gate blocked.
     expect(afterStale.verification.status).toBe("pending");
-    expect(fundingGate(afterStale)).toBe("blocked");
+    expect(fundingGate(afterStale, NOW)).toBe("blocked");
   });
 
   test("a superseded resolution outcome is dropped", () => {
@@ -210,7 +211,7 @@ describe("verification verdicts gate funding", () => {
       },
       reachableAll,
     );
-    expect(fundingGate(next)).toBe("blocked");
+    expect(fundingGate(next, NOW)).toBe("blocked");
     const view = destinationFieldView(next, "unavailable", NOW);
     expect(view.validity.state).toBe("verification_failed");
     if (view.validity.state === "verification_failed") {
@@ -231,7 +232,7 @@ describe("verification verdicts gate funding", () => {
       },
       reachableAll,
     );
-    expect(fundingGate(next)).toBe("eligible");
+    expect(fundingGate(next, NOW)).toBe("eligible");
   });
 });
 
@@ -264,5 +265,201 @@ describe("direction changes from the shell", () => {
     );
     expect(next.bound).toBeNull();
     expect(next.text).toBe("");
+  });
+});
+
+describe("deferred destinations verify their resolved invoice (audit gap 1)", () => {
+  const resolvedInvoice = () => {
+    const parsed = parseBolt11(encodeTestInvoice({ amount: "2500u" }), {
+      network: "regtest",
+      nowSeconds: NOW,
+    });
+    if (!parsed.ok) throw new Error("fixture invoice failed to parse");
+    return parsed.invoice;
+  };
+
+  test("binding a deferred destination requests no verification and stays blocked", () => {
+    const state = initialEntryState("lightning", "regtest");
+    const { state: next, intents } = input(state, "alice@pay.example.com");
+    expect(next.bound?.kind).toBe("deferred_lightning_address");
+    // The verifier port has no operation for a deferred destination;
+    // nothing is requested and the gate stays blocked until resolution.
+    expect(next.verification.status).toBe("idle");
+    expect(intents).toHaveLength(0);
+    expect(fundingGate(next, NOW)).toBe("blocked");
+  });
+
+  test("the resolved invoice must earn its own verdict before the gate opens", () => {
+    // The audit's exact reachable order: amount edit, paste a lightning
+    // address, a pass verdict at the current epoch, then resolution.
+    let state = initialEntryState("lightning", "regtest");
+    state = reduceEntryEvent(
+      state,
+      { type: "amount_edited", amountMsat: 250_000_000n },
+      reachableAll,
+    ).state;
+    state = input(state, "alice@pay.example.com").state;
+    state = reduceEntryEvent(
+      state,
+      {
+        type: "verdict",
+        epoch: state.epoch,
+        verdict: { verdict: "pass", epoch: state.epoch },
+      },
+      reachableAll,
+    ).state;
+    // No request was outstanding, so that pass is dropped.
+    expect(state.verification.status).toBe("idle");
+
+    state = reduceEntryEvent(
+      state,
+      { type: "resolution_started", epoch: state.epoch },
+      reachableAll,
+    ).state;
+    const invoice = resolvedInvoice();
+    const { state: resolved, intents } = reduceEntryEvent(
+      state,
+      {
+        type: "resolution",
+        epoch: state.epoch,
+        outcome: { outcome: "resolved", invoice },
+      },
+      reachableAll,
+    );
+    // The invoice the payment actually goes to has no verdict yet: the
+    // gate is blocked and a verification request for *that invoice* went
+    // out at the current epoch.
+    expect(fundingGate(resolved, NOW)).toBe("blocked");
+    expect(resolved.verification).toEqual({
+      status: "pending",
+      epoch: resolved.epoch,
+    });
+    const request = intents.find((i) => i.intent === "request_verification");
+    if (request?.intent !== "request_verification") {
+      throw new Error("expected a verification request for the invoice");
+    }
+    expect(request.destination.kind).toBe("bolt11_invoice");
+    if (request.destination.kind === "bolt11_invoice") {
+      expect(request.destination.invoice).toBe(invoice.invoice);
+    }
+    // The view says verifying, not valid, while that request is out.
+    expect(
+      destinationFieldView(resolved, "unavailable", NOW).validity.state,
+    ).toBe("verifying");
+
+    // Only the engine's pass on the resolved invoice opens the gate.
+    const { state: verified } = reduceEntryEvent(
+      resolved,
+      {
+        type: "verdict",
+        epoch: resolved.epoch,
+        verdict: { verdict: "pass", epoch: resolved.epoch },
+      },
+      reachableAll,
+    );
+    expect(fundingGate(verified, NOW)).toBe("eligible");
+    expect(effectiveAmountMsat(verified)).toBe(250_000_000n);
+  });
+
+  test("the request carries the session's expected payment hash", () => {
+    const expected = "ab".repeat(32);
+    const config: EntryConfig = {
+      isRailReachable: () => true,
+      expectedPaymentHashHex: expected,
+    };
+    const state = initialEntryState("lightning", "regtest");
+    const { intents } = reduceEntryEvent(
+      state,
+      {
+        type: "input",
+        source: "paste",
+        text: encodeTestInvoice({ amount: "2500u" }),
+        nowSeconds: NOW,
+      },
+      config,
+    );
+    const request = intents.find((i) => i.intent === "request_verification");
+    if (request?.intent !== "request_verification") {
+      throw new Error("expected a verification request");
+    }
+    expect(request.expectedPaymentHashHex).toBe(expected);
+  });
+});
+
+describe("amount edits keep a path back to eligibility (audit gap 3)", () => {
+  test("editing the amount on a bound address re-requests verification", () => {
+    let state = initialEntryState("chain", "regtest");
+    state = input(state, encodeTestSegwitAddress("regtest", 0, 20)).state;
+    state = reduceEntryEvent(
+      state,
+      {
+        type: "verdict",
+        epoch: state.epoch,
+        verdict: { verdict: "pass", epoch: state.epoch },
+      },
+      reachableAll,
+    ).state;
+    expect(fundingGate(state, NOW)).toBe("eligible");
+
+    const { state: next, intents } = reduceEntryEvent(
+      state,
+      { type: "amount_edited", amountMsat: 100_000n },
+      reachableAll,
+    );
+    expect(fundingGate(next, NOW)).toBe("blocked");
+    expect(next.verification).toEqual({ status: "pending", epoch: next.epoch });
+    const request = intents.find((i) => i.intent === "request_verification");
+    if (request?.intent !== "request_verification") {
+      throw new Error("expected a re-verification request");
+    }
+    expect(request.epoch).toBe(next.epoch);
+    // The field never renders `valid` while the gate is blocked with a
+    // verdict outstanding.
+    expect(destinationFieldView(next, "unavailable", NOW).validity.state).toBe(
+      "verifying",
+    );
+
+    const { state: verified } = reduceEntryEvent(
+      next,
+      {
+        type: "verdict",
+        epoch: next.epoch,
+        verdict: { verdict: "pass", epoch: next.epoch },
+      },
+      reachableAll,
+    );
+    expect(fundingGate(verified, NOW)).toBe("eligible");
+    expect(
+      destinationFieldView(verified, "unavailable", NOW).validity.state,
+    ).toBe("valid");
+  });
+});
+
+describe("invoice expiry after entry (audit gap 4)", () => {
+  test("an invoice that expires while the field sits open blocks funding", () => {
+    let state = initialEntryState("lightning", "regtest");
+    state = input(
+      state,
+      encodeTestInvoice({ amount: "2500u", expirySeconds: 120 }),
+    ).state;
+    state = reduceEntryEvent(
+      state,
+      {
+        type: "verdict",
+        epoch: state.epoch,
+        verdict: { verdict: "pass", epoch: state.epoch },
+      },
+      reachableAll,
+    ).state;
+    expect(fundingGate(state, NOW)).toBe("eligible");
+
+    const afterExpiry = DEFAULT_TEST_TIMESTAMP + 121;
+    expect(fundingGate(state, afterExpiry)).toBe("blocked");
+    const view = destinationFieldView(state, "unavailable", afterExpiry);
+    expect(view.fundingGate).toBe("blocked");
+    expect(view.validity.state).toBe("invalid");
+    if (view.validity.state === "invalid") {
+      expect(view.validity.mode).toBe("invoice_expired");
+    }
   });
 });

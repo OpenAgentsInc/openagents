@@ -50,7 +50,14 @@ export interface VerifyAddressRequest {
 
 export interface VerifyInvoiceRequest {
   readonly invoice: string;
-  /** Expected payment hash from the session, hex. */
+  /**
+   * Expected payment hash from the session, hex. Produced by the entry
+   * reducer's `request_verification` intent, which threads it from
+   * `EntryConfig.expectedPaymentHashHex` (the shell supplies the session's
+   * value). Expiry, minimum final CLTV delta, and route-hint policy have
+   * no comparand here on purpose: the engine checks them against the
+   * quote inside `verify_before_fund` (MKT-SWP §7.2).
+   */
   readonly expectedPaymentHashHex: string | null;
   readonly epoch: number;
 }

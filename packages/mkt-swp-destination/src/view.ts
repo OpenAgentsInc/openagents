@@ -5,6 +5,7 @@
  * left implicit in the reducer state.
  */
 import {
+  concreteInvoice,
   effectiveAmountMsat,
   fundingGate,
   type DestinationEntryState,
@@ -63,7 +64,10 @@ export interface DestinationFieldView {
   readonly fundingGate: "blocked" | "eligible";
 }
 
-const validityOf = (state: DestinationEntryState): DestinationValidityView => {
+const validityOf = (
+  state: DestinationEntryState,
+  nowSeconds: number,
+): DestinationValidityView => {
   if (state.failure !== null) {
     if (state.failure.mode === "empty") return { state: "empty" };
     return {
@@ -74,6 +78,17 @@ const validityOf = (state: DestinationEntryState): DestinationValidityView => {
     };
   }
   if (state.bound === null) return { state: "empty" };
+  // An invoice that expired while the field sat open is invalid now, not
+  // valid-until-reparse (audit gap 4). The gate blocks on the same clock.
+  const invoice = concreteInvoice(state);
+  if (invoice !== null && invoice.expiresAtSeconds <= nowSeconds) {
+    return {
+      state: "invalid",
+      mode: "invoice_expired",
+      message: DESTINATION_FAILURE_MESSAGES.invoice_expired,
+      swpError: null,
+    };
+  }
   if (state.verification.status === "failed") {
     const error = state.verification.verdict.error;
     return {
@@ -83,10 +98,27 @@ const validityOf = (state: DestinationEntryState): DestinationValidityView => {
     };
   }
   if (
-    state.verification.status === "pending" &&
-    state.verification.epoch === state.epoch
+    state.bound.kind === "onchain_address" ||
+    state.bound.kind === "bolt11_invoice"
   ) {
-    return { state: "verifying" };
+    // A concrete destination renders `valid` only when its current-epoch
+    // verdict is a pass. Anything else — pending, or a verdict dropped by
+    // the staleness guard — is still being verified; the field never
+    // renders `valid` while the gate is blocked with the verdict missing
+    // (audit gap 3).
+    return state.verification.status === "verified" &&
+      state.verification.epoch === state.epoch
+      ? { state: "valid" }
+      : { state: "verifying" };
+  }
+  // Deferred destination: parse-valid until resolution starts; once it
+  // resolves, the resolved invoice's own verification decides.
+  if (state.resolution.status === "pending") return { state: "verifying" };
+  if (state.resolution.status === "resolved") {
+    return state.verification.status === "verified" &&
+      state.verification.epoch === state.epoch
+      ? { state: "valid" }
+      : { state: "verifying" };
   }
   return { state: "valid" };
 };
@@ -125,12 +157,12 @@ export const destinationFieldView = (
   return {
     fieldKind: state.rail === "chain" ? "address" : "invoice",
     text: state.text,
-    validity: validityOf(state),
+    validity: validityOf(state, nowSeconds),
     invoice,
     deferred,
     effectiveAmountMsat: effectiveAmountMsat(state),
     notices: state.notices.map((n) => ENTRY_NOTICE_MESSAGES[n.notice]),
     qrScanVisible: qrAvailability === "available",
-    fundingGate: fundingGate(state),
+    fundingGate: fundingGate(state, nowSeconds),
   };
 };

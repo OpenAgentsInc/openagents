@@ -20,6 +20,14 @@
  * Every async step (engine verdicts, deferred resolution) carries the
  * entry epoch it was computed for and is dropped when superseded, so a
  * stale result can never overwrite a newer field value.
+ *
+ * Verification always refers to a concrete artifact. A deferred
+ * destination (LNURL, lightning address, BOLT12 offer) has nothing the
+ * verifier port can check, so binding one requests no verification and the
+ * funding gate stays blocked; when it resolves, the reducer requests
+ * verification for the *resolved invoice* — the artifact the payment
+ * actually goes to — and the gate opens only on that verdict (acceptance
+ * audit gap 1 on issue #9317).
  */
 import type {
   BitcoinNetwork,
@@ -41,6 +49,21 @@ export type BoundDestination =
   | OnchainAddressDestination
   | Bolt11InvoiceDestination
   | DeferredDestination;
+
+/**
+ * What the verifier port can actually verify: script bytes for an address,
+ * the complete invoice string for an invoice. A deferred destination is
+ * never verifiable — its resolved invoice is.
+ */
+export type VerifiableDestination =
+  | OnchainAddressDestination
+  | Bolt11InvoiceDestination;
+
+const isVerifiable = (
+  destination: BoundDestination,
+): destination is VerifiableDestination =>
+  destination.kind === "onchain_address" ||
+  destination.kind === "bolt11_invoice";
 
 export type EntryNotice =
   | {
@@ -135,7 +158,19 @@ export type EntryIntent =
   | {
       readonly intent: "request_verification";
       readonly epoch: number;
-      readonly destination: BoundDestination;
+      /**
+       * Always a concrete artifact the verifier port has an operation for.
+       * For a deferred destination this is the invoice it resolved to.
+       */
+      readonly destination: VerifiableDestination;
+      /**
+       * The session's expected payment hash (the comparand the verifier
+       * port declares), threaded from `EntryConfig` so it has a producer
+       * inside the reducer's contract. `null` when the session has not
+       * bound one yet — the engine then verifies everything except the
+       * hash correlation.
+       */
+      readonly expectedPaymentHashHex: string | null;
     };
 
 export interface EntryConfig {
@@ -145,6 +180,12 @@ export interface EntryConfig {
    * `route_unreachable`) when this returns false.
    */
   readonly isRailReachable: (rail: DestinationRail) => boolean;
+  /**
+   * The swap session's expected payment hash, when the session has bound
+   * one (MKT-SWP §7.2). The shell supplies it; every
+   * `request_verification` intent carries it to the verifier port.
+   */
+  readonly expectedPaymentHashHex?: string | null;
 }
 
 export interface EntryTransition {
@@ -185,20 +226,55 @@ export const effectiveAmountMsat = (
 };
 
 /**
- * Funding eligibility as this component can see it: a destination is bound
- * and the engine verdict for the *current* epoch is a pass. This is a
- * necessary condition only — the full verify-before-fund checklist lives
- * behind the engine boundary (SWAP-0/SWAP-3) and this surface never
- * substitutes for it.
+ * The concrete invoice funding would pay, if any: the bound invoice, or
+ * the invoice a deferred destination resolved to at the current epoch.
+ */
+export const concreteInvoice = (
+  state: DestinationEntryState,
+): Bolt11InvoiceDestination | null => {
+  if (state.bound?.kind === "bolt11_invoice") return state.bound;
+  if (
+    state.resolution.status === "resolved" &&
+    state.resolution.epoch === state.epoch
+  ) {
+    return state.resolution.invoice;
+  }
+  return null;
+};
+
+/**
+ * Funding eligibility as this component can see it: a destination is bound,
+ * the engine verdict for the *current* epoch is a pass, that verdict covers
+ * a concrete artifact (a deferred destination is eligible only once its
+ * resolved invoice has its own current-epoch pass), and no concrete invoice
+ * has expired against the injected clock. This is a necessary condition
+ * only — the full verify-before-fund checklist lives behind the engine
+ * boundary (SWAP-0/SWAP-3) and this surface never substitutes for it.
  */
 export const fundingGate = (
   state: DestinationEntryState,
-): "blocked" | "eligible" =>
-  state.bound !== null &&
-  state.verification.status === "verified" &&
-  state.verification.epoch === state.epoch
-    ? "eligible"
-    : "blocked";
+  nowSeconds: number,
+): "blocked" | "eligible" => {
+  if (state.bound === null) return "blocked";
+  if (
+    state.verification.status !== "verified" ||
+    state.verification.epoch !== state.epoch
+  ) {
+    return "blocked";
+  }
+  const invoice = concreteInvoice(state);
+  if (!isVerifiable(state.bound) && invoice === null) {
+    // Deferred destination not yet resolved: the pass, however it landed,
+    // cannot cover the artifact the payment goes to.
+    return "blocked";
+  }
+  if (invoice !== null && invoice.expiresAtSeconds <= nowSeconds) {
+    // An invoice that expired while the field sat open stops being
+    // fundable, without waiting for a re-parse (audit gap 4).
+    return "blocked";
+  }
+  return "eligible";
+};
 
 interface Candidate {
   readonly destination: BoundDestination;
@@ -250,11 +326,23 @@ const failedTransition = (
   intents: [],
 });
 
+const requestVerification = (
+  epoch: number,
+  destination: VerifiableDestination,
+  config: EntryConfig,
+): EntryIntent => ({
+  intent: "request_verification",
+  epoch,
+  destination,
+  expectedPaymentHashHex: config.expectedPaymentHashHex ?? null,
+});
+
 const bindCandidate = (
   state: DestinationEntryState,
   text: string,
   candidate: Candidate,
   switched: boolean,
+  config: EntryConfig,
 ): EntryTransition => {
   const epoch = state.epoch + 1;
   const notices: EntryNotice[] = [];
@@ -288,6 +376,9 @@ const bindCandidate = (
     amountSource = "uri";
   }
 
+  // Only a concrete artifact can be verified; a deferred destination's
+  // verification is requested when its resolved invoice arrives.
+  const verifiable = isVerifiable(candidate.destination);
   const nextState: DestinationEntryState = {
     ...state,
     epoch,
@@ -298,18 +389,18 @@ const bindCandidate = (
     typedAmountMsat,
     amountSource,
     notices,
-    verification: { status: "pending", epoch },
+    verification: verifiable
+      ? { status: "pending", epoch }
+      : { status: "idle" },
     resolution: { status: "none" },
   };
   const intents: EntryIntent[] = [
     ...(switched
       ? [{ intent: "switch_rail", rail: candidate.rail } as const]
       : []),
-    {
-      intent: "request_verification",
-      epoch,
-      destination: candidate.destination,
-    },
+    ...(isVerifiable(candidate.destination)
+      ? [requestVerification(epoch, candidate.destination, config)]
+      : []),
   ];
   return { state: nextState, intents };
 };
@@ -329,7 +420,7 @@ const reduceInput = (
 
   const candidate = chooseCandidate(result.destination, state.rail);
   if (candidate.rail === state.rail) {
-    return bindCandidate(state, text, candidate, false);
+    return bindCandidate(state, text, candidate, false, config);
   }
   // Paste-driven route switching (issue #9317 §3): reconfigure the
   // direction rather than refuse, subject to SWAP-1 reachability.
@@ -340,7 +431,7 @@ const reduceInput = (
       requiredRail: candidate.rail,
     });
   }
-  return bindCandidate(state, text, candidate, true);
+  return bindCandidate(state, text, candidate, true, config);
 };
 
 export const reduceEntryEvent = (
@@ -373,7 +464,26 @@ export const reduceEntryEvent = (
           intents: [],
         };
       }
-      // Deferred destinations bind their amount at order time and survive.
+      if (state.bound !== null && isVerifiable(state.bound)) {
+        // The epoch bump invalidates the old verdict; re-request one so an
+        // amount edit never strands the gate blocked with nothing in
+        // flight (audit gap 3).
+        return {
+          state: {
+            ...state,
+            epoch,
+            typedAmountMsat: event.amountMsat,
+            amountSource: "typed",
+            notices: [],
+            verification: { status: "pending", epoch },
+            resolution: { status: "none" },
+          },
+          intents: [requestVerification(epoch, state.bound, config)],
+        };
+      }
+      // Deferred destinations bind their amount at order time and survive;
+      // any pending resolution (and the verification of a resolved
+      // invoice) belongs to the superseded amount and is discarded.
       return {
         state: {
           ...state,
@@ -381,6 +491,7 @@ export const reduceEntryEvent = (
           typedAmountMsat: event.amountMsat,
           amountSource: "typed",
           notices: [],
+          verification: { status: "idle" },
           resolution: { status: "none" },
         },
         intents: [],
@@ -412,7 +523,7 @@ export const reduceEntryEvent = (
       if (!result.ok) return { state: cleared, intents: [] };
       const candidate = chooseCandidate(result.destination, event.rail);
       if (candidate.rail !== event.rail) return { state: cleared, intents: [] };
-      return bindCandidate(cleared, state.text, candidate, false);
+      return bindCandidate(cleared, state.text, candidate, false, config);
     }
 
     case "clear":
@@ -428,6 +539,15 @@ export const reduceEntryEvent = (
     case "verdict": {
       // Staleness guard: a superseded verdict never lands (issue #9317 §3).
       if (event.epoch !== state.epoch) return { state, intents: [] };
+      // A verdict only lands against an outstanding request: an unrequested
+      // pass (e.g. one computed for a deferred destination rather than a
+      // concrete artifact) can never set `verified`.
+      if (
+        state.verification.status !== "pending" ||
+        state.verification.epoch !== event.epoch
+      ) {
+        return { state, intents: [] };
+      }
       if (event.verdict.verdict === "pass") {
         return {
           state: {
@@ -462,6 +582,10 @@ export const reduceEntryEvent = (
       // Staleness guard: resolution for superseded input is dropped.
       if (event.epoch !== state.epoch) return { state, intents: [] };
       if (event.outcome.outcome === "resolved") {
+        // The resolved invoice is the artifact the payment actually goes
+        // to. Any verdict obtained so far did not cover it, so
+        // verification restarts here: the gate cannot open until the
+        // engine passes *this invoice* (audit gap 1).
         return {
           state: {
             ...state,
@@ -470,8 +594,11 @@ export const reduceEntryEvent = (
               epoch: event.epoch,
               invoice: event.outcome.invoice,
             },
+            verification: { status: "pending", epoch: event.epoch },
           },
-          intents: [],
+          intents: [
+            requestVerification(event.epoch, event.outcome.invoice, config),
+          ],
         };
       }
       return {
