@@ -1,0 +1,77 @@
+{
+  "schema": "openagents.mkt-swp.discovery-fixture.v1",
+  "observed_at": 1800000100,
+  "provider_old": {
+    "kind": 39600,
+    "created_at": 1800000000,
+    "tags": [
+      ["d", "provider-one"],
+      ["status", "active"],
+      ["profile", "mkt-swp", "1"],
+      ["published_at", "1800000000"]
+    ],
+    "content": "{}",
+    "pubkey": "1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
+    "id": "b046b9ae876011b04db80302d26969e4513a04d875d64546b38466a1640e5d0e",
+    "sig": "217ac4c29ffe95602ee144e9660817379dffcb2cd10e1371eccddd1a7f025f3159118f71f0a1e8354b883e35f25bc53274e8ad73805b943f00c095899d7a9020"
+  },
+  "provider_new": {
+    "kind": 39600,
+    "created_at": 1800000001,
+    "tags": [
+      ["d", "provider-one"],
+      ["status", "paused"],
+      ["profile", "mkt-swp", "1"],
+      ["published_at", "1800000001"]
+    ],
+    "content": "{}",
+    "pubkey": "1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
+    "id": "6b606e9017fbf7bd752e3a3fd6861f640f120ba67085ca37b014961c625b2743",
+    "sig": "48fe4efa8be7e31eada138ec848c9803c77a226ec51a9fa32f87606622480baed3713f79897a607587211dde868a647aef8ab8354b4f13405e8e58fba065e4f8"
+  },
+  "offering_old": {
+    "kind": 39601,
+    "created_at": 1800000000,
+    "tags": [
+      ["d", "offering-one"],
+      ["profile", "mkt-swp", "1"],
+      ["status", "active"],
+      ["provider", "39600:1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f:provider-one"],
+      ["published_at", "1800000000"]
+    ],
+    "content": "{\"mkt_swp\":{\"availability\":\"available\",\"sides\":[{\"input_asset_id\":\"swp:1:bip122:00000000000000000000000000000000:btc:chain\",\"output_asset_id\":\"swp:1:bip122:00000000000000000000000000000000:btc:lightning\",\"min\":\"10000\",\"max\":\"1000000\",\"fee_bps\":\"25\"}]}}",
+    "pubkey": "1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
+    "id": "aec112fbbf23356231cede45efe32a8eb87bb0b718ded4d22d0da9c115d4a030",
+    "sig": "ae7e63623e33cd17b8e60eb1625e7e8eda6072bc2b0f5990301ab13d8a91947315ca702a8f3e45249d7a237971edf95cd2476839aa34eb935744aaad89d0975a"
+  },
+  "offering_tie_a": {
+    "kind": 39601,
+    "created_at": 1800000002,
+    "tags": [
+      ["d", "offering-one"],
+      ["profile", "mkt-swp", "1"],
+      ["status", "active"],
+      ["provider", "39600:1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f:provider-one"],
+      ["published_at", "1800000002"]
+    ],
+    "content": "{\"mkt_swp\":{\"availability\":\"limited\",\"sides\":[{\"input_asset_id\":\"swp:1:bip122:00000000000000000000000000000000:btc:chain\",\"output_asset_id\":\"swp:1:bip122:00000000000000000000000000000000:btc:lightning\",\"min\":\"10000\",\"max\":\"1000000\",\"fee_bps\":\"30\"}]}}",
+    "pubkey": "1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
+    "id": "bc4f6992a90c21cf95b4be00c5bba19cf5b1d5235790293dda42a480396783a8",
+    "sig": "ff36d79c02fdeebf04d9a022d53badf8420b808b14f06678f6fa55e7aaf6a522260866fce05892a97c35f3596af0a6bbcf8624bb553cb8557ff09b5bfd121a44"
+  },
+  "offering_tie_b": {
+    "kind": 39601,
+    "created_at": 1800000002,
+    "tags": [
+      ["d", "offering-one"],
+      ["profile", "mkt-swp", "1"],
+      ["status", "active"],
+      ["provider", "39600:1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f:provider-one"],
+      ["published_at", "1800000002"]
+    ],
+    "content": "{\"mkt_swp\":{\"availability\":\"available\",\"sides\":[{\"input_asset_id\":\"swp:1:bip122:00000000000000000000000000000000:btc:chain\",\"output_asset_id\":\"swp:1:bip122:00000000000000000000000000000000:btc:lightning\",\"min\":\"10000\",\"max\":\"1000000\",\"fee_bps\":\"35\"}]}}",
+    "pubkey": "1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
+    "id": "cb87c301f3aa14206b30efc34515007a298086f68c278ef87b064b72cbbe3393",
+    "sig": "a8f572c42078ee359852f4c5816874ba0db8718c2217ab73b918ccaea50df1fa2b03b039dd9b380971da32b543327fb491b1f3b836ec78b9f75efd8331a94d34"
+  }
+}

@@ -43,9 +43,9 @@ export interface PrimaryActionModel {
 }
 
 /**
- * The only pressable states. `AwaitingFunding` carries an engine-issued
- * `FundingAuthorization` by construction, so the fund action is enabled only
- * after the engine's verdict and every verify-before-fund row passed.
+ * The only pressable states. `AwaitingFunding` carries Immortal's exact
+ * prepared external-effect request by construction, so the fund action is
+ * enabled only after local verification prepared that request.
  */
 const enabledTags: ReadonlySet<SwapWidgetStateTag> = new Set(["Ready", "AwaitingFunding"]);
 

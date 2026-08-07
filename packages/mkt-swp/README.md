@@ -1,84 +1,76 @@
 # `@openagentsinc/mkt-swp`
 
-SWAP-0 (openagents#9315): the swap widget's typed state, the engine
-boundary, and the exported session view-model. Plan:
-`docs/markets/2026-08-04-swap-demo-ui-rollout-plan.md` §2.2, §4.1.
+Shared, framework-neutral MKT-SWP requester contracts. The browser product and
+its concrete relay, storage, signing, wallet, and rendering hosts live in
+`OpenAgentsInc/bazaar`.
 
-This package owns three things and deliberately no more. Every refusal it
-renders was computed by a sibling package; every profile-level verdict was
-computed by the engine.
+## Production engine boundary
 
-## 1. The engine boundary — `swap-engine.ts`, `engine-binding.ts`
+`immortal-browser-abi.ts` is the only supported production engine binding. It
+consumes Immortal browser ABI v1 from commit
+`d62a4f7c6c34a11d191fe78316fd8d4ce4da1d34` and pins requester contract digest
+`bf52fda5f4d349fbbe195e4cff58af59a3930e1ee8ab1f1413b6338ba44fb3a8`.
 
-MKT-SWP profile logic exists once, in the Immortal client crate
-(immortal#12): script and tree parsing, output-key re-derivation, invoice
-checks, MuSig2 transcript checks, timeout ladders, exit packages, and the
-typestate fund-authorisation flow. It builds for `wasm32` and takes key
-material as bytes with no randomness of its own. `swap-engine.ts` is the
-Effect Schema contract that binding satisfies.
+The adapter rejects imported WASM authority, mismatched metadata, bounds, or
+operation inventories, duplicate JSON members, widened responses, invalid
+operation results, and concurrent access to the ABI's pointer-free global
+buffer. Its Effect service and operation wrappers expose typed failures and
+strictly decoded results. Funding remains an external host effect: the engine
+returns an exact action descriptor and never receives signer, wallet, relay,
+or custody authority.
 
-SWAP-3 (#9318) had already declared the half of the boundary its checklist
-consumes — `FundVerifier`, `VerifyBeforeFundReport`, `VERIFY_CHECK_IDS` — so
-`SwapEngine.Interface extends FundVerifier` and the compare surface consumes
-this engine with no adapter. This module adds the rest of what can authorise
-funding: `validateProfileRecord`, `openSession`, `buildExitPackage`,
-`authorizeFunding`, `constructFundingTransaction`.
+The earlier `SwapEngine`, `EngineModuleLoader`, `fixtureEngineLayer`, and
+`SwapWidgetHost` prototype has been removed. Presentation state now carries
+the exact engine-prepared `ImmortalFundingRequest`; there is no alternate
+funding authorization contract in this package.
 
-**Loading**: the wasm module is never statically imported. `engine-binding.ts`
-takes an `EngineModuleLoader` port (`loaderLayer(async () => …)` wraps a
-wasm-bindgen entry point) and `engineLayer` turns it into the service. Load
-failure is a typed `EngineLoadFailed`, so `EngineLoading` and `EngineFailed`
-are real lifecycle states and a failed load can never read as a pass. There
-is no fallback engine — a fallback would be a second implementation of the
-thing that authorises funding. `fixtureEngineLayer` satisfies the same tag
-for dev/staging and every test.
+## Discovery boundary
 
-**Entropy**: `entropy-source.ts`. The engine has none; the host supplies
-WebCrypto bytes.
+`live-discovery.ts` owns deterministic, transport-neutral Nostr subscription
+framing and reduction for signed Provider and Offering heads. It verifies each
+event through `@openagentsinc/nip-mkt`, enforces frame and head bounds, applies
+replaceable-event ordering, publishes an atomic snapshot only at EOSE, and
+projects serviceable MKT-SWP Offerings into `@openagentsinc/mkt-swp-pair`.
 
-## 2. The exported session view-model — `view-model.ts`
+The host owns WebSocket lifecycle, reconnect, NIP-42 policy, private gift-wrap
+delivery, and relay selection. Those capabilities are not implied by this
+package.
 
-The one contract both renderers consume: the web components here and Omega's
-`market_ui` GPUI components. It is a composition — SWAP-6's
-`SwapProgressView` for lanes/gaps/forks/rungs, SWAP-3's `FundingGate`, the
-engine's exit package and funding authorization — plus what no sibling can
-own: the session identity, the widget state, and the resolved primary action.
-Nothing another package owns is redefined.
+## Presentation contracts
 
-## 3. The typed state and the primary-action law
+`widget-state.ts`, `primary-action.ts`, `compose.ts`, and `view-model.ts` retain
+the shared state and primary-action law used by existing renderers. They do
+not perform profile verification or authorize funding. New product code should
+derive protocol state from `ImmortalRequesterSessionView` returned by the
+production ABI.
 
-`widget-state.ts` is the discriminated state union with a total transition
-fold. `compose.ts` is the derivation precedence over the siblings' verdicts —
-the ordering _is_ the widget's behaviour, because the law says exactly one
-refusal, the most proximate, is stated at a time.
+## Ownership
 
-`AwaitingFunding` is constructible only with an engine-issued
-`FundingAuthorization`, so the fund action cannot be enabled while any
-verify-before-fund check is unresolved or failed
-(`swp_funding_not_authorized`). SWAP-3's `fundingGate` is the UI pre-check
-that can only keep funding disabled; this typestate is the other half.
+| Concern                                         | Owner                                  |
+| ----------------------------------------------- | -------------------------------------- |
+| Browser ABI validation and requester operations | this package                           |
+| Deterministic public-head discovery reducer     | this package                           |
+| Pair, amount, fee, and rate model               | `@openagentsinc/mkt-swp-pair`          |
+| Destination parsing and verification            | `@openagentsinc/mkt-swp-destination`   |
+| Local session persistence and migration         | `@openagentsinc/mkt-swp-session-store` |
+| Concrete browser product and host effects       | `OpenAgentsInc/bazaar`                 |
+| Protocol engine and executable fixtures         | `OpenAgentsInc/immortal`               |
 
-`primary-action.ts` computes label, tone, disabled, and busy independently.
-Labels resolve through SWAP-8's catalog (`@openagentsinc/swap-i18n`) — amount
-refusals through the parameterised `swap.refusal.*` keys so the limit is
-stated in the user's current units, typed §17 identifiers through the shared
-error table. No counterparty prose reaches a label.
+No key material, preimages, wallet action, relay transport, or mainnet claim
+lives here.
 
-## What lives elsewhere
+## Verification
 
-| Concern                                               | Owner                                           |
-| ----------------------------------------------------- | ----------------------------------------------- |
-| §17 identifiers, message catalog, locales             | `@openagentsinc/swap-i18n` (SWAP-8)             |
-| Asset/direction selection, amounts, limits, fees      | `@openagentsinc/mkt-swp-pair` (SWAP-1)          |
-| Destination parse, verification, QR                   | `@openagentsinc/mkt-swp-destination` (SWAP-2)   |
-| Quote compare, custody, `fundingGate`, `FundVerifier` | `@openagentsinc/mkt-swp-compare` (SWAP-3)       |
-| Session store, history, resume, export/import         | `@openagentsinc/mkt-swp-session-store` (SWAP-5) |
-| Per-signer status, §9 `classifySwpState`, rungs       | `@openagentsinc/mkt-swp-status` (SWAP-6)        |
-| Routes, nav, gate, provenance, settings               | `apps/openagents.com/apps/start` (SWAP-7)       |
+The ordinary package gate uses static fixtures and skips the cross-repository
+compiled-WASM test. Reproduce the executable compatibility gate from a clean
+Immortal checkout at the pinned revision:
 
-The mounted markup is
-`apps/openagents.com/apps/start/src/features/swap/widget.tsx`; this package
-stays framework-neutral so Omega renders the same contract.
+```sh
+IMMORTAL_SOURCE_DIR=/path/to/immortal-d62 \
+  pnpm --filter @openagentsinc/mkt-swp run test:immortal-integration
+```
 
-No key material, no relay transport, and no mainnet path live here. Keys and
-preimages arrive with SWAP-4 and stay in the browser.
+The script refuses any other Immortal revision, rebuilds the WASM with its
+source revision embedded, and runs Order, session create/ingest/restore,
+funding preparation, exact-request authorization, and mismatch refusal against
+Immortal's upstream fixtures.

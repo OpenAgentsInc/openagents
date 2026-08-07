@@ -97,30 +97,32 @@ export const marketSwapWidgetContractRegistry: BehaviorContractRegistryDocument 
     },
     {
       authorityBoundary:
-        "This contract covers the client-side funding gate only. Passing it authorizes no broadcast, spend, or custody action, and an engine authorization is not evidence of provider reservation or settlement.",
+        "This contract covers the client-side funding gate only. Passing it authorizes no broadcast, spend, or custody action, and an engine-prepared request is not evidence of provider reservation or settlement.",
       blockerRefs: [],
       contractId: "openagents_web.swap_widget.funding_gate.v1",
       enforcementTier: "test-sweep",
       evidenceRefs: [
-        "packages/mkt-swp/src/swap-engine.ts",
+        "packages/mkt-swp/src/immortal-browser-abi.ts",
+        "packages/mkt-swp/src/immortal-browser-abi.test.ts",
+        "packages/mkt-swp/src/immortal-browser-abi.integration.test.ts",
+        "packages/mkt-swp/fixtures/swp-browser-abi-v1.json",
         "packages/mkt-swp/src/widget-state.ts",
         "packages/mkt-swp-compare/src/verify.ts",
-        "packages/mkt-swp/src/engine-boundary.test.ts",
         "packages/mkt-swp/src/widget-state.test.ts",
         "github:OpenAgentsInc/openagents#9315",
       ],
       oracles: [
         {
           description:
-            "The engine refuses authorizeFunding with swp_funding_not_authorized while any verify-before-fund row is failed or unresolved, when the verdict is blocked, when verification never ran, and refuses an exit package not digest-bound to the verified contract pair.",
+            "The pinned ABI rejects widened funding actions, preserves the engine's swp_funding_not_authorized refusal, and the explicit compiled-WASM gate proves an exact prepared request succeeds while a mismatched request is refused.",
           id: "swap_widget.funding_gate.engine",
           kind: "bun-test",
           mode: "unit",
-          ref: "packages/mkt-swp/src/engine-boundary.test.ts",
+          ref: "packages/mkt-swp/src/immortal-browser-abi.test.ts",
         },
         {
           description:
-            "AwaitingFunding is reachable only from Ordering with an engine-issued FundingAuthorization; no session Status claim advances the widget past the gate, and a fresh enabled verification gate recovers a prior VerificationFailed state.",
+            "AwaitingFunding is reachable only from Ordering with an engine-prepared external-effect request; no session Status claim advances the widget past the gate, and a fresh enabled verification gate recovers a prior VerificationFailed state.",
           id: "swap_widget.funding_gate.state_machine",
           kind: "bun-test",
           mode: "unit",
@@ -138,7 +140,7 @@ export const marketSwapWidgetContractRegistry: BehaviorContractRegistryDocument 
         "The fund action cannot be enabled while any verify-before-fund check is unresolved or failed (swp_funding_not_authorized).",
       surface: "openagents.com swap widget",
       verification:
-        "The mkt-swp package test sweep drives a fixture session through order, verification, and funding authorisation, and asserts both the engine refusal and the state-machine guard fail closed.",
+        "The ordinary mkt-swp package sweep asserts strict ABI decoding, engine refusal propagation, and the state-machine guard. The pinned test:immortal-integration command also builds Immortal WASM and proves exact-request success and mismatch refusal against upstream fixtures.",
     },
     {
       authorityBoundary:
@@ -148,10 +150,9 @@ export const marketSwapWidgetContractRegistry: BehaviorContractRegistryDocument 
       enforcementTier: "test-sweep",
       evidenceRefs: [
         "packages/mkt-swp/src/widget-state.ts",
-        "packages/mkt-swp/src/widget-host.ts",
         "packages/mkt-swp/src/compose.ts",
         "packages/mkt-swp/src/widget-state.test.ts",
-        "packages/mkt-swp/src/engine-boundary.test.ts",
+        "packages/mkt-swp/src/testkit.ts",
         "github:OpenAgentsInc/openagents#9315",
       ],
       oracles: [
@@ -179,5 +180,5 @@ export const marketSwapWidgetContractRegistry: BehaviorContractRegistryDocument 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-08-04.2",
+  version: "2026-08-06.1",
 };

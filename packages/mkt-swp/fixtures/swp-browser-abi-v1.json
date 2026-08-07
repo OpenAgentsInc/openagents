@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema": "openagents.immortal.mkt-swp.browser-abi.v1",
+  "abi_version": 1,
+  "requester_api_sha256": "bf52fda5f4d349fbbe195e4cff58af59a3930e1ee8ab1f1413b6338ba44fb3a8",
+  "maximum_request_bytes": 2097152,
+  "maximum_response_bytes": 8388608,
+  "wire": {
+    "request": {
+      "required": ["abi_version", "operation", "input"],
+      "additionalProperties": false
+    },
+    "response": {
+      "required": [
+        "schema",
+        "abi_version",
+        "source_revision",
+        "requester_api_sha256"
+      ],
+      "result_xor_error": true
+    }
+  },
+  "operations": [
+    "metadata",
+    "validate_offering",
+    "validate_delivery",
+    "verify_signed",
+    "requester_rfq",
+    "requester_order",
+    "requester_contract_draft",
+    "requester_contract",
+    "requester_cancel",
+    "requester_close",
+    "exit_package_inspect",
+    "session_create",
+    "session_ingest",
+    "session_restore",
+    "prepare_funding_request",
+    "verify_before_fund"
+  ],
+  "host_authority": {
+    "owned_by_engine": [],
+    "owned_by_host": [
+      "entropy",
+      "nostr_signing",
+      "gift_wrap",
+      "relay_transport",
+      "snapshot_storage",
+      "wallet_actions",
+      "rail_observation"
+    ]
+  },
+  "laws": {
+    "unknown_members_fail_closed": true,
+    "version_mismatch_is_typed": true,
+    "source_revision_can_be_pinned": true,
+    "requester_contract_digest_is_pinned": true,
+    "wasm_imports_are_empty": true,
+    "raw_memory_pointers_do_not_cross_the_abi": true,
+    "funding_requires_exact_prepared_request_host_authorization": true
+  }
+}

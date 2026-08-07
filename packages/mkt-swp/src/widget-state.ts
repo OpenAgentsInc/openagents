@@ -15,8 +15,11 @@
  */
 import { Data, Schema } from "effect";
 import type { FundingGate } from "@openagentsinc/mkt-swp-compare";
-import { SwpErrorIdentifierSchema, FundingAuthorizationSchema } from "./swap-engine.js";
-import type { FundingAuthorization } from "./swap-engine.js";
+import { SWP_ERROR_IDENTIFIERS } from "@openagentsinc/swap-i18n";
+import { ImmortalFundingRequestSchema } from "./immortal-browser-abi.js";
+import type { ImmortalFundingRequest } from "./immortal-browser-abi.js";
+
+export const SwpErrorIdentifierSchema = Schema.Literals(SWP_ERROR_IDENTIFIERS);
 
 /**
  * The NIP-MKT base `state` vocabulary, restated as a local literal union so
@@ -86,12 +89,11 @@ export const SwapWidgetStateSchema = Schema.TaggedUnion({
   /** 21. Order submission in flight. Blocked without a fresh explanation. */
   Ordering: {},
   /**
-   * 22. Funding is authorised. Reachable only with an engine-issued
-   * `FundingAuthorization`, so the fund action cannot be enabled while any
-   * verify-before-fund check is unresolved or failed
-   * (`swp_funding_not_authorized`).
+   * 22. Funding is ready for explicit host authorization. Reachable only with
+   * the exact external-effect request prepared by Immortal after local
+   * verification, so provider claims cannot enable the fund action.
    */
-  AwaitingFunding: { authorization: FundingAuthorizationSchema },
+  AwaitingFunding: { fundingRequest: ImmortalFundingRequestSchema },
   /** 23. Funding observed on the rail. */
   FundingObserved: {},
   /** 24. Both legs executing. */
@@ -190,7 +192,7 @@ export type SwapWidgetEvent = Data.TaggedEnum<{
   SubmitPressed: Record<never, never>;
   FundingGateChanged: { readonly gate: FundingGate };
   EngineRefused: { readonly identifier: SwpErrorIdentifier };
-  FundingAuthorized: { readonly authorization: FundingAuthorization };
+  FundingPrepared: { readonly fundingRequest: ImmortalFundingRequest };
   SessionAdvanced: { readonly state: SessionProgressState };
 }>;
 export const SwapWidgetEvent = Data.taggedEnum<SwapWidgetEvent>();
@@ -234,7 +236,7 @@ const sessionTarget = (state: SessionProgressState): SwapWidgetState | undefined
     case "rejected":
       return cases.Failed.make({});
     // `accepted`, `awaiting_input`, and `funding_required` do not move the
-    // widget: funding readiness is established by `FundingAuthorized` only,
+    // widget: funding readiness is established by `FundingPrepared` only,
     // so a provider claiming `funding_required` cannot open the fund action.
     default:
       return undefined;
@@ -246,7 +248,7 @@ const sessionTarget = (state: SessionProgressState): SwapWidgetState | undefined
  * returns a state and never throws. Guards are monotone along the ordinary
  * session path, while later disputed/unresolved evidence may replace a
  * reported outcome. A session state never re-enters the form phase, and
- * `AwaitingFunding` is reachable only with an engine-issued authorization.
+ * `AwaitingFunding` is reachable only with an engine-prepared external effect.
  * Stop-watching is deliberately absent: SWAP-6's `SwapProgressView` is the
  * only authority for that decision.
  */
@@ -276,8 +278,8 @@ export const transitionSwapWidgetState = (
       state._tag === "Ordering" || isFormPhase(state)
         ? cases.VerificationFailed.make({ identifier })
         : state,
-    FundingAuthorized: ({ authorization }) =>
-      state._tag === "Ordering" ? cases.AwaitingFunding.make({ authorization }) : state,
+    FundingPrepared: ({ fundingRequest }) =>
+      state._tag === "Ordering" ? cases.AwaitingFunding.make({ fundingRequest }) : state,
     SessionAdvanced: ({ state: sessionState }) => {
       const currentRank = sessionRank[state._tag];
       if (currentRank === undefined) return state;

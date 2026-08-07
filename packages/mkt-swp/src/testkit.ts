@@ -4,18 +4,23 @@
  * state set rather than inventing a partial one.
  */
 import type { FundingGate, VerifyCheckRow } from "@openagentsinc/mkt-swp-compare";
-import { FundingAuthorizationSchema } from "./swap-engine.js";
+import { ImmortalFundingRequestSchema } from "./immortal-browser-abi.js";
 import { SWAP_WIDGET_STATE_TAGS, SwapWidgetStateSchema } from "./widget-state.js";
 import type { SwapWidgetState, SwapWidgetStateTag } from "./widget-state.js";
 
 const cases = SwapWidgetStateSchema.cases;
 
-export const sampleFundingAuthorization = FundingAuthorizationSchema.make({
-  sessionId: "1f".repeat(32),
-  contractDigest: "ab".repeat(32),
-  exitPackageDigest: "cd".repeat(32),
-  reportEpoch: 1,
-  authorizedAtEpochSeconds: 0,
+export const sampleFundingRequest = ImmortalFundingRequestSchema.make({
+  session_id: "1f".repeat(32),
+  order_id: "ab".repeat(32),
+  quote_id: "cd".repeat(32),
+  swap_type: "submarine",
+  action: {
+    action: "broadcast_bitcoin",
+    effect_id: "ef".repeat(32),
+    leg_id: "source",
+    raw_transaction: "00",
+  },
 });
 
 /** One sample per state tag: the exhaustive iteration base for the suites. */
@@ -44,7 +49,7 @@ export const sampleWidgetStates: Record<SwapWidgetStateTag, SwapWidgetState> = {
   VerificationFailed: cases.VerificationFailed.make({ identifier: "swp_script_invalid" }),
   Ready: cases.Ready.make({}),
   Ordering: cases.Ordering.make({}),
-  AwaitingFunding: cases.AwaitingFunding.make({ authorization: sampleFundingAuthorization }),
+  AwaitingFunding: cases.AwaitingFunding.make({ fundingRequest: sampleFundingRequest }),
   FundingObserved: cases.FundingObserved.make({}),
   Executing: cases.Executing.make({}),
   SettlementPending: cases.SettlementPending.make({}),

@@ -2161,16 +2161,48 @@
       "reason": "Deterministic dual-lane Status fixture builder exported under ./testkit for this package's suites and the SWAP-0 (openagents#9315) swap widget shell suites, until immortal#14 provides a live counterparty stream."
     },
     {
-      "ref": "packages/mkt-swp/src/entropy-source.ts#webCryptoLayer",
-      "reason": "SWAP-0 (#9315) host entropy layer; the /swap route provides it when the widget host is wired to the live relay and wasm engine, and SWAP-4 (#9319) key generation seeds from it."
+      "ref": "packages/mkt-swp/src/immortal-browser-abi.ts#createRequesterSession",
+      "reason": "Shared Immortal ABI session constructor for openagents#9315; Bazaar #3 calls it after its signed RFQ, Quote, Order, and bilateral Contract records are available."
     },
     {
-      "ref": "packages/mkt-swp/src/fixture-engine.ts#fixtureEngineLayer",
-      "reason": "SWAP-0 (#9315) deterministic engine behind the SwapEngine contract; dev/staging and the SWAP-1..6 surfaces drive it until the Immortal wasm binding replaces it behind the same service tag."
+      "ref": "packages/mkt-swp/src/immortal-browser-abi.ts#ingestRequesterSession",
+      "reason": "Shared Immortal ABI session reducer for openagents#9315; Bazaar #3 calls it for each verified private record delivered by the product-owned relay host."
     },
     {
-      "ref": "packages/mkt-swp/src/fixture-engine.ts#fixtureSwapSession",
-      "reason": "SWAP-0 (#9315) public-safe fixture session records; the seeded no-spend demo lane and SWAP-3 (#9318) checklist exercises consume it until immortal#14 supplies a live second provider."
+      "ref": "packages/mkt-swp/src/immortal-browser-abi.ts#prepareFundingRequest",
+      "reason": "Shared fail-closed funding preparation for openagents#9315; Bazaar #3 calls it before presenting any product-owned wallet action."
+    },
+    {
+      "ref": "packages/mkt-swp/src/immortal-browser-abi.ts#requesterOrder",
+      "reason": "Shared Immortal requester Order constructor for openagents#9315; Bazaar #3 calls it when its user accepts a verified Quote."
+    },
+    {
+      "ref": "packages/mkt-swp/src/immortal-browser-abi.ts#requesterRfq",
+      "reason": "Shared Immortal requester RFQ constructor for openagents#9315; Bazaar #3 calls it when its product-owned negotiation host starts a swap."
+    },
+    {
+      "ref": "packages/mkt-swp/src/immortal-browser-abi.ts#restoreRequesterSession",
+      "reason": "Shared Immortal ABI snapshot restoration for openagents#9315; Bazaar #3 calls it when resuming a locally persisted swap session."
+    },
+    {
+      "ref": "packages/mkt-swp/src/immortal-browser-abi.ts#verifyBeforeFund",
+      "reason": "Shared exact-request funding authorization for openagents#9315; Bazaar #3 calls it only after the user authorizes the engine-prepared external effect."
+    },
+    {
+      "ref": "packages/mkt-swp/src/live-discovery.ts#MktDiscoveryBook",
+      "reason": "Transport-neutral verified-head reducer for openagents#9315; Bazaar #2 constructs it behind the product-owned WebSocket lifecycle after adopting the shared package."
+    },
+    {
+      "ref": "packages/mkt-swp/src/live-discovery.ts#mktDiscoveryClose",
+      "reason": "Bounded Nostr CLOSE frame for openagents#9315; Bazaar #2 sends it when its product-owned discovery subscription is replaced or stopped."
+    },
+    {
+      "ref": "packages/mkt-swp/src/live-discovery.ts#mktDiscoveryRequest",
+      "reason": "Bounded Nostr public-head REQ frame for openagents#9315; Bazaar #2 sends it when its product-owned discovery transport opens."
+    },
+    {
+      "ref": "packages/mkt-swp/src/live-discovery.ts#projectDiscoveredOfferings",
+      "reason": "Verified Provider/Offering projection for openagents#9315; Bazaar #2 consumes it to populate the Boltz-parity pair picker after EOSE."
     },
     {
       "ref": "packages/mkt-swp/src/primary-action.ts#isPermanentRefusal",
@@ -2193,24 +2225,8 @@
       "reason": "SWAP-0 (#9315) SWAP-3 gate builder for the shared corpus; consumed with everySampleWidgetState by downstream rendering sweeps."
     },
     {
-      "ref": "packages/mkt-swp/src/widget-host.ts#makeSwapWidgetController",
-      "reason": "SWAP-0 (#9315) widget host controller; the /swap route constructs it once the live relay subscription and wasm engine binding land, which is the next step named on the mounted surface."
-    },
-    {
-      "ref": "packages/mkt-swp/src/widget-host.ts#SwapWidgetController.applySwpState",
-      "reason": "SWAP-0 (#9315) controller method folding per-signer Status claims; called by the /swap route once the relay subscription streams SWAP-6 status records."
-    },
-    {
-      "ref": "packages/mkt-swp/src/widget-host.ts#SwapWidgetController.submitOrder",
-      "reason": "SWAP-0 (#9315) controller method driving order to funding authorisation; called by the /swap route's primary action once the wasm engine binding is provided."
-    },
-    {
-      "ref": "packages/mkt-swp/src/widget-host.ts#SwapWidgetController.updateInputs",
-      "reason": "SWAP-0 (#9315) controller method folding SWAP-1/2/3 gate outputs; called by the /swap route when the live relay subscription supplies Offerings, quotes, and destination state."
-    },
-    {
-      "ref": "packages/mkt-swp/src/widget-host.ts#SwapWidgetController.verifyTerms",
-      "reason": "SWAP-0 (#9315) controller method running verify-before-fund; called by the /swap route once the wasm engine binding is provided."
+      "ref": "packages/mkt-swp/src/widget-state.ts#transitionSwapWidgetState",
+      "reason": "Shared deterministic presentation reducer for openagents#9315; Bazaar #3 will call it from the product-owned swap controller when adopting the Immortal ABI boundary."
     },
     {
       "ref": "packages/nip-mkt/src/generated.ts#CLOSED_REASONS",
@@ -2279,6 +2295,10 @@
     {
       "ref": "packages/nip-mkt/src/state.ts#expiryDecision",
       "reason": "Published fail-closed NIP-MKT expiry decision; openagents.com issue #9310 will call it before any demo-provider reservation or execution effect."
+    },
+    {
+      "ref": "packages/nip-mkt/src/state.ts#generateIdempotencyKey",
+      "reason": "Published NIP-MKT idempotency helper; Bazaar #3 will call it when its product-owned negotiation host creates a private requester operation outside the Immortal session engine."
     },
     {
       "ref": "packages/nip-mkt/src/state.ts#reserveCapacity",

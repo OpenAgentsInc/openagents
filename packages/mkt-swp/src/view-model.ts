@@ -22,15 +22,16 @@
 import { Schema } from "effect";
 import type { FundingGate } from "@openagentsinc/mkt-swp-compare";
 import type { SwapProgressView } from "@openagentsinc/mkt-swp-status";
-import type { PrimaryActionModel } from "./primary-action.js";
 import {
-  ExitPackageDescriptorSchema,
-  FundingAuthorizationSchema,
-  Hex64Schema,
-} from "./swap-engine.js";
+  ImmortalExitPackageInspectionSchema,
+  ImmortalFundingRequestSchema,
+} from "./immortal-browser-abi.js";
+import type { PrimaryActionModel } from "./primary-action.js";
 import type { SwapWidgetState } from "./widget-state.js";
 
 export const SESSION_VIEW_MODEL_VERSION = "openagents.mkt_swp.session_view.v1" as const;
+
+const Hex64Schema = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/));
 
 /**
  * MKT-SWP §3.1 asset identity. Tickers, display names, symbols, and
@@ -65,8 +66,8 @@ export const SwapSessionIdentitySchema = Schema.Struct({
   receive: AssetSideSchema,
   quoteEventId: Schema.optionalKey(Hex64Schema),
   orderEventId: Schema.optionalKey(Hex64Schema),
-  exitPackage: Schema.optionalKey(ExitPackageDescriptorSchema),
-  fundingAuthorization: Schema.optionalKey(FundingAuthorizationSchema),
+  exitPackageInspection: Schema.optionalKey(ImmortalExitPackageInspectionSchema),
+  fundingRequest: Schema.optionalKey(ImmortalFundingRequestSchema),
 });
 export interface SwapSessionIdentity extends Schema.Schema.Type<typeof SwapSessionIdentitySchema> {}
 

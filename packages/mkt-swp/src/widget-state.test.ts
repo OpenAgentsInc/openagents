@@ -11,7 +11,7 @@ import {
   everySampleWidgetState,
   failedFundingGate,
   pendingFundingGate,
-  sampleFundingAuthorization,
+  sampleFundingRequest,
   sampleWidgetStates,
 } from "./testkit.js";
 import {
@@ -40,7 +40,7 @@ const sampleEvents: ReadonlyArray<SwapWidgetEvent> = [
     }),
   }),
   SwapWidgetEvent.EngineRefused({ identifier: "swp_quote_expired" }),
-  SwapWidgetEvent.FundingAuthorized({ authorization: sampleFundingAuthorization }),
+  SwapWidgetEvent.FundingPrepared({ fundingRequest: sampleFundingRequest }),
   SwapWidgetEvent.SessionAdvanced({ state: "funding_observed" }),
   SwapWidgetEvent.SessionAdvanced({ state: "executing" }),
   SwapWidgetEvent.SessionAdvanced({ state: "completed" }),
@@ -111,16 +111,14 @@ describe("swap widget typed state", () => {
     }
   });
 
-  test("AwaitingFunding is reachable only from Ordering with an engine authorization", () => {
-    const event = SwapWidgetEvent.FundingAuthorized({
-      authorization: sampleFundingAuthorization,
+  test("AwaitingFunding is reachable only from Ordering with an engine-prepared request", () => {
+    const event = SwapWidgetEvent.FundingPrepared({
+      fundingRequest: sampleFundingRequest,
     });
     for (const state of everySampleWidgetState()) {
       const next = transitionSwapWidgetState(state, event);
       if (state._tag === "Ordering") {
-        expect(next).toEqual(
-          cases.AwaitingFunding.make({ authorization: sampleFundingAuthorization }),
-        );
+        expect(next).toEqual(cases.AwaitingFunding.make({ fundingRequest: sampleFundingRequest }));
       } else {
         expect(next).toEqual(state);
       }
@@ -129,7 +127,7 @@ describe("swap widget typed state", () => {
 
   test("no session claim advances the widget past the funding gate", () => {
     // A provider Status claiming `funding_required` — or anything else —
-    // cannot open the fund action. Only `FundingAuthorized` does.
+    // cannot open the fund action. Only `FundingPrepared` does.
     for (const claim of ["funding_required", "funding_observed", "completed"] as const) {
       const next = transitionSwapWidgetState(
         sampleWidgetStates.Ordering,
