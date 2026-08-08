@@ -5,7 +5,11 @@
  */
 import { describe, expect, test } from "vite-plus/test";
 
-import { FEE_PROMISE_MESSAGE } from "./messages.js";
+import {
+  FEE_PROMISE_MESSAGE,
+  PRICE_FEED_NONE_MESSAGE,
+  PRICE_FEED_UNCHECKED_MESSAGE,
+} from "./messages.js";
 import { verifyQuoteTerms, type SwapQuoteTerms } from "./quote.js";
 import {
   initialPairSelectionState,
@@ -13,15 +17,24 @@ import {
   type PairEvent,
   type PairSelectionState,
 } from "./selection.js";
-import { TEST_FOLD_NOW, TEST_FRESHNESS_HORIZON, testOffering } from "./testkit.js";
+import {
+  TEST_CHAIN_ASSET,
+  TEST_FOLD_NOW,
+  TEST_FRESHNESS_HORIZON,
+  TEST_LIGHTNING_ASSET,
+  testOffering,
+} from "./testkit.js";
 import { feePanelView } from "./view.js";
 
 /**
  * Exact fixture: input 100000, fee_bps 25 → provider_fee floor(100000 *
  * 25 / 10000) = 250; miner 1200; routing 30; output 100000 - 250 - 1200 -
- * 30 = 98520; maximum_total_fee 1480.
+ * 30 = 98520; maximum_total_fee 1480. Distinct per-component payers pin
+ * that no fan-out of one scalar can reproduce the rendered rows.
  */
 const goodTerms: SwapQuoteTerms = {
+  inputAssetId: TEST_CHAIN_ASSET,
+  outputAssetId: TEST_LIGHTNING_ASSET,
   inputAmount: "100000",
   outputAmount: "98520",
   feeBps: "25",
@@ -29,7 +42,11 @@ const goodTerms: SwapQuoteTerms = {
   minerFeeBudget: "1200",
   lightningRoutingFeeBudget: "30",
   maximumTotalFee: "1480",
-  feePayer: "requester",
+  feePayers: {
+    providerFee: "requester",
+    minerFeeBudget: "requester",
+    lightningRoutingFeeBudget: "provider",
+  },
   rounding: "floor_output_sats",
   amountEquation: "input_minus_provider_and_quoted_fees",
   priceFeed: null,
@@ -118,12 +135,15 @@ describe("verifyQuoteTerms reproduces the output from the quoted terms", () => {
     });
   }
 
-  test("both allowlisted equations verify with the same arithmetic", () => {
+  test("both identifiers denote the single §3.3 equation, so either label describes the arithmetic", () => {
     const oneToOne = verifyQuoteTerms({
       ...goodTerms,
       amountEquation: "one_to_one_less_quoted_fees",
     });
     expect(oneToOne.ok).toBe(true);
+    if (oneToOne.ok) {
+      expect(oneToOne.amounts.amountEquation).toBe("one_to_one_less_quoted_fees");
+    }
   });
 });
 
@@ -142,9 +162,16 @@ describe("fee_output_promise.v1: the panel renders the promise, never an unrepro
       offerings: [testOffering()],
       config,
     });
+  /** Corpus loaded and the quote's exact input amount entered (binding). */
+  const withAmount = (): PairSelectionState =>
+    reduce(
+      withCorpus(),
+      { type: "denomination_toggled" },
+      { type: "amount_edited", side: "input", text: "100000" },
+    );
 
-  test("a verified quote renders separated components, payer, rounding, equation, and the promise framing", () => {
-    const state = reduce(withCorpus(), {
+  test("a verified quote renders separated components, per-component payers, rounding, equation, and the promise framing", () => {
+    const state = reduce(withAmount(), {
       type: "quote_applied",
       terms: goodTerms,
     });
@@ -156,26 +183,29 @@ describe("fee_output_promise.v1: the panel renders the promise, never an unrepro
         {
           component: "provider_fee",
           amountSats: 250n,
-          amount: "0.0000025",
+          amount: "250",
           paidBy: "requester",
         },
         {
           component: "miner_fee_budget",
           amountSats: 1_200n,
-          amount: "0.000012",
+          amount: "1200",
           paidBy: "requester",
         },
         {
           component: "lightning_routing_fee_budget",
           amountSats: 30n,
-          amount: "0.0000003",
-          paidBy: "requester",
+          amount: "30",
+          paidBy: "provider",
         },
       ]);
       expect(panel.roundingRule).toBe("floor_output_sats");
       expect(panel.amountEquation).toBe("input_minus_provider_and_quoted_fees");
       expect(panel.promise).toEqual(FEE_PROMISE_MESSAGE);
-      expect(panel.priceFeed).toBe(null);
+      expect(panel.priceFeed).toEqual({
+        state: "none_pinned",
+        message: PRICE_FEED_NONE_MESSAGE,
+      });
     }
   });
 
@@ -204,9 +234,9 @@ describe("fee_output_promise.v1: the panel renders the promise, never an unrepro
 
   test("editing the amount clears the held quote with an explicit notice", () => {
     const state = reduce(
-      withCorpus(),
+      withAmount(),
       { type: "quote_applied", terms: goodTerms },
-      { type: "amount_edited", side: "input", text: "0.002" },
+      { type: "amount_edited", side: "input", text: "200000" },
     );
     expect(state.quote).toBe(null);
     expect(state.notices).toEqual([
@@ -217,7 +247,7 @@ describe("fee_output_promise.v1: the panel renders the promise, never an unrepro
 
   test("changing direction clears the held quote with an explicit notice", () => {
     const state = reduce(
-      withCorpus(),
+      withAmount(),
       { type: "quote_applied", terms: goodTerms },
       { type: "direction_toggled" },
     );
@@ -227,8 +257,50 @@ describe("fee_output_promise.v1: the panel renders the promise, never an unrepro
     });
   });
 
-  test("a pinned price feed renders its provenance verbatim", () => {
+  test("a quote for a different ordered pair refuses as swp_invalid_pair instead of rendering", () => {
+    const state = reduce(withAmount(), {
+      type: "quote_applied",
+      terms: {
+        ...goodTerms,
+        inputAssetId: TEST_LIGHTNING_ASSET,
+        outputAssetId: TEST_CHAIN_ASSET,
+      },
+    });
+    expect(state.quote?.status).toBe("refused");
+    expect(feePanelView(state)).toMatchObject({
+      state: "refused",
+      swpError: "swp_invalid_pair",
+    });
+  });
+
+  test("a quote for a different amount than entered refuses as swp_terms_mismatch", () => {
+    const state = reduce(
+      withCorpus(),
+      { type: "denomination_toggled" },
+      { type: "amount_edited", side: "input", text: "99999" },
+      { type: "quote_applied", terms: goodTerms },
+    );
+    expect(state.quote?.status).toBe("refused");
+    expect(feePanelView(state)).toMatchObject({
+      state: "refused",
+      swpError: "swp_terms_mismatch",
+    });
+  });
+
+  test("a quote with no entered amount to bind refuses instead of rendering beside an empty field", () => {
     const state = reduce(withCorpus(), {
+      type: "quote_applied",
+      terms: goodTerms,
+    });
+    expect(state.quote?.status).toBe("refused");
+    expect(feePanelView(state)).toMatchObject({
+      state: "refused",
+      swpError: "swp_terms_mismatch",
+    });
+  });
+
+  test("a pinned price feed renders its provenance verbatim, in its own unchecked state", () => {
+    const state = reduce(withAmount(), {
       type: "quote_applied",
       terms: {
         ...goodTerms,
@@ -246,12 +318,16 @@ describe("fee_output_promise.v1: the panel renders the promise, never an unrepro
     expect(panel.state).toBe("verified");
     if (panel.state === "verified") {
       expect(panel.priceFeed).toEqual({
-        url: "https://feed.example/rate",
-        jsonPointer: "/data/value",
-        observedValue: "100000000",
-        observedAtSeconds: TEST_FOLD_NOW - 10,
-        maxAgeSeconds: 30,
-        responseSha256: "ab".repeat(32),
+        state: "unchecked",
+        message: PRICE_FEED_UNCHECKED_MESSAGE,
+        provenance: {
+          url: "https://feed.example/rate",
+          jsonPointer: "/data/value",
+          observedValue: "100000000",
+          observedAtSeconds: TEST_FOLD_NOW - 10,
+          maxAgeSeconds: 30,
+          responseSha256: "ab".repeat(32),
+        },
       });
     }
   });

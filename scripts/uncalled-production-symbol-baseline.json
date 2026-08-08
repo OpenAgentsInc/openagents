@@ -2053,14 +2053,6 @@
       "reason": "SWAP-1 reachability gate consumed by SWAP-2's destination entry (EntryConfig.isRailReachable) when SWAP-0 (openagents#9315) wires the widget shell; folds live-Offering reachability per output rail."
     },
     {
-      "ref": "packages/mkt-swp-pair/src/messages.ts#PRICE_FEED_MISMATCH_MESSAGES",
-      "reason": "Price-feed mismatch message table for openagents#9316 §6; SWAP-0/SWAP-3 (openagents#9315/#9318) render the pinned-feed refusals from it when the quote flow lands."
-    },
-    {
-      "ref": "packages/mkt-swp-pair/src/price-feed.ts#checkPinnedPriceFeed",
-      "reason": "Exact price-feed pinning check (MKT-SWP §3.4) for openagents#9316; SWAP-3 (openagents#9318) runs it against the requester's own fetch before Order when the quote flow lands."
-    },
-    {
       "ref": "packages/mkt-swp-pair/src/selection.ts#initialPairSelectionState",
       "reason": "Initial state for the headless pair-selection reducer (openagents#9316); SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and becomes its production caller."
     },

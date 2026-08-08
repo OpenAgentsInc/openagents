@@ -80,6 +80,13 @@ const fromPairRefusal = (gate: Extract<PrimaryActionGate, { enabled: false }>): 
       });
     case "quote_terms_refused":
       return cases.QuoteFailed.make({ identifier: refusal.refusal.error });
+    case "quote_input_unserviceable":
+      return cases.QuoteFailed.make({ identifier: refusal.swpError });
+    case "price_feed_unchecked":
+      // The pinned feed still needs the requester's own fetch (§3.4).
+      return cases.VerificationPending.make({});
+    case "price_feed_refused":
+      return cases.QuoteFailed.make({ identifier: refusal.swpError });
   }
 };
 

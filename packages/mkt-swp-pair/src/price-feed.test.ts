@@ -3,6 +3,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   PRICE_FEED_MISMATCH_MODES,
   checkPinnedPriceFeed,
+  isPinnedFeedUrlValid,
   priceFeedProvenanceView,
   type PinnedPriceFeed,
   type PriceFeedFetchRecord,
@@ -78,6 +79,30 @@ describe("exact price-feed pinning (MKT-SWP §3.4)", () => {
       });
     });
   }
+
+  const malformedPinnedUrls: readonly { readonly name: string; readonly url: string }[] = [
+    { name: "an http pinned URL", url: "http://feed.example/rate" },
+    { name: "a pinned URL with userinfo", url: "https://user:pw@feed.example/rate" },
+    { name: "a pinned URL with a fragment", url: "https://feed.example/rate#latest" },
+    { name: "an unparseable pinned URL", url: "not a url" },
+  ];
+  for (const c of malformedPinnedUrls) {
+    test(`${c.name} breaks the §3.4 form rules and is refused as pinned_url_invalid`, () => {
+      expect(isPinnedFeedUrlValid(c.url)).toBe(false);
+      const badPinned = { ...pinned, url: c.url };
+      expect(
+        checkPinnedPriceFeed(badPinned, { ...matchingFetch, url: c.url }, NOW),
+      ).toEqual({
+        ok: false,
+        error: "swp_price_feed_invalid",
+        mode: "pinned_url_invalid",
+      });
+    });
+  }
+
+  test("the exact pinned HTTPS URL passes the §3.4 form rules", () => {
+    expect(isPinnedFeedUrlValid(pinned.url)).toBe(true);
+  });
 
   test("an observation older than max_age_seconds is swp_price_feed_stale", () => {
     const late = pinned.observedAtSeconds + pinned.maxAgeSeconds + 1;

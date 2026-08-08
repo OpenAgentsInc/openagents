@@ -17,6 +17,10 @@ import {
   EMPTY_CORPUS_MESSAGE,
   FEE_PROMISE_MESSAGE,
   PAIR_NOTICE_MESSAGES,
+  PRICE_FEED_MISMATCH_MESSAGES,
+  PRICE_FEED_NONE_MESSAGE,
+  PRICE_FEED_STALE_MESSAGE,
+  PRICE_FEED_UNCHECKED_MESSAGE,
   denominationLabel,
   primaryActionRefusalMessage,
   type PairMessage,
@@ -28,6 +32,7 @@ import {
   selectedAvailability,
   selectedDirection,
   type AmountSide,
+  type HeldQuotePriceFeed,
   type PairSelectionState,
 } from "./selection.js";
 
@@ -182,7 +187,14 @@ export const limitsView = (state: PairSelectionState): LimitsView | null => {
  * (SWAP-0 primary-action law).
  */
 export type PrimaryActionView =
-  | { readonly enabled: true; readonly amountSats: bigint }
+  | {
+      readonly enabled: true;
+      /** Which field the enabled amount was measured on. */
+      readonly side: AmountSide;
+      readonly amountSats: bigint;
+      /** The validated input a consumer may fund; `null` pre-quote on the output side. */
+      readonly fundableInputSats: bigint | null;
+    }
   | {
       readonly enabled: false;
       readonly messageKey: string;
@@ -222,6 +234,27 @@ export interface FeeRowView {
   readonly paidBy: "requester" | "provider";
 }
 
+/**
+ * Pinned-feed rendering with its own verification status, distinct from
+ * the panel's terms verification: provenance renders verbatim in every
+ * state that has it, but only `verified` says the requester's own fetch
+ * reproduced the pinned observation (MKT-SWP §3.4).
+ */
+export type FeePanelPriceFeedView =
+  | { readonly state: "none_pinned"; readonly message: PairMessage }
+  | {
+      readonly state: "unchecked";
+      readonly provenance: PriceFeedProvenanceView;
+      readonly message: PairMessage;
+    }
+  | { readonly state: "verified"; readonly provenance: PriceFeedProvenanceView }
+  | {
+      readonly state: "refused";
+      readonly provenance: PriceFeedProvenanceView;
+      readonly swpError: "swp_price_feed_invalid" | "swp_price_feed_stale";
+      readonly message: PairMessage;
+    };
+
 export type FeePanelView =
   | { readonly state: "no_quote" }
   | {
@@ -231,6 +264,12 @@ export type FeePanelView =
       readonly detail: string;
     }
   | {
+      /**
+       * The quote's terms reproduced arithmetically. This state does NOT
+       * assert the pinned feed passed: `priceFeed` carries its own
+       * verification status and the primary action stays gated until a
+       * pinned feed verifies.
+       */
       readonly state: "verified";
       readonly collapsed: {
         readonly totalFeeSats: bigint;
@@ -245,8 +284,37 @@ export type FeePanelView =
       readonly promise: PairMessage;
       readonly inputSats: bigint;
       readonly outputSats: bigint;
-      readonly priceFeed: PriceFeedProvenanceView | null;
+      readonly priceFeed: FeePanelPriceFeedView;
     };
+
+const feePanelPriceFeedView = (
+  feed: HeldQuotePriceFeed,
+  provenance: PriceFeedProvenanceView | null,
+): FeePanelPriceFeedView => {
+  if (feed.state === "none_pinned" || provenance === null) {
+    return { state: "none_pinned", message: PRICE_FEED_NONE_MESSAGE };
+  }
+  switch (feed.state) {
+    case "unchecked":
+      return {
+        state: "unchecked",
+        provenance,
+        message: PRICE_FEED_UNCHECKED_MESSAGE,
+      };
+    case "verified":
+      return { state: "verified", provenance };
+    case "refused":
+      return {
+        state: "refused",
+        provenance,
+        swpError: feed.check.error,
+        message:
+          feed.check.error === "swp_price_feed_stale"
+            ? PRICE_FEED_STALE_MESSAGE
+            : PRICE_FEED_MISMATCH_MESSAGES[feed.check.mode],
+      };
+  }
+};
 
 export const feePanelView = (state: PairSelectionState): FeePanelView => {
   if (state.quote === null) return { state: "no_quote" };
@@ -284,19 +352,19 @@ export const feePanelView = (state: PairSelectionState): FeePanelView => {
         component: "provider_fee",
         amountSats: amounts.providerFeeSats,
         amount: format(amounts.providerFeeSats),
-        paidBy: terms.feePayer,
+        paidBy: terms.feePayers.providerFee,
       },
       {
         component: "miner_fee_budget",
         amountSats: amounts.minerFeeBudgetSats,
         amount: format(amounts.minerFeeBudgetSats),
-        paidBy: terms.feePayer,
+        paidBy: terms.feePayers.minerFeeBudget,
       },
       {
         component: "lightning_routing_fee_budget",
         amountSats: amounts.lightningRoutingFeeBudgetSats,
         amount: format(amounts.lightningRoutingFeeBudgetSats),
-        paidBy: terms.feePayer,
+        paidBy: terms.feePayers.lightningRoutingFeeBudget,
       },
     ],
     roundingRule: "floor_output_sats",
@@ -304,7 +372,9 @@ export const feePanelView = (state: PairSelectionState): FeePanelView => {
     promise: FEE_PROMISE_MESSAGE,
     inputSats: amounts.inputSats,
     outputSats: amounts.outputSats,
-    priceFeed:
+    priceFeed: feePanelPriceFeedView(
+      state.quote.priceFeed,
       terms.priceFeed === null ? null : priceFeedProvenanceView(terms.priceFeed),
+    ),
   };
 };

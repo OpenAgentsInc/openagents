@@ -13,8 +13,13 @@ import {
   DIRECTION_UNREACHABLE_MESSAGES,
   EMPTY_CORPUS_MESSAGE,
   PAIR_NOTICE_MESSAGES,
+  PRICE_FEED_MISMATCH_MESSAGES,
+  PRICE_FEED_NONE_MESSAGE,
+  PRICE_FEED_STALE_MESSAGE,
+  PRICE_FEED_UNCHECKED_MESSAGE,
   primaryActionRefusalMessage,
 } from "./messages.js";
+import type { SwapQuoteTerms } from "./quote.js";
 import {
   initialPairSelectionState,
   primaryActionGate,
@@ -220,8 +225,18 @@ describe("amount validation states the most proximate refusal in the current den
       primaryActionGate(
         reduce(base, { type: "amount_edited", side: "input", text }),
       );
-    expect(at("10000")).toEqual({ enabled: true, amountSats: 10_000n });
-    expect(at("1000000")).toEqual({ enabled: true, amountSats: 1_000_000n });
+    expect(at("10000")).toEqual({
+      enabled: true,
+      side: "input",
+      amountSats: 10_000n,
+      fundableInputSats: 10_000n,
+    });
+    expect(at("1000000")).toEqual({
+      enabled: true,
+      side: "input",
+      amountSats: 1_000_000n,
+      fundableInputSats: 1_000_000n,
+    });
     expect(at("9999").enabled).toBe(false);
     expect(at("1000001").enabled).toBe(false);
   });
@@ -284,6 +299,203 @@ describe("amount validation states the most proximate refusal in the current den
     expect(gate.enabled).toBe(false);
     if (!gate.enabled) expect(gate.refusal.kind).toBe("above_maximum");
   });
+
+  test("an enabled output-side gate names its side and offers no fundable input pre-quote", () => {
+    // 9999 is below the offering's 10000 input minimum. As an *output*
+    // figure it is legitimately reachable (input 10000, fees 1), so the
+    // gate enables — but the amount is typed as the output side's, and
+    // `fundableInputSats` is null: no consumer can fund 9999 as an input
+    // that was never checked against the minimum.
+    const state = reduce(
+      populated(),
+      { type: "denomination_toggled" },
+      { type: "amount_edited", side: "output", text: "9999" },
+    );
+    expect(primaryActionGate(state)).toEqual({
+      enabled: true,
+      side: "output",
+      amountSats: 9_999n,
+      fundableInputSats: null,
+    });
+  });
+});
+
+describe("a held quote binds the entered amount and names the fundable input", () => {
+  const boundTerms = (
+    overrides: Partial<SwapQuoteTerms> = {},
+  ): SwapQuoteTerms => ({
+    inputAssetId: TEST_CHAIN_ASSET,
+    outputAssetId: TEST_LIGHTNING_ASSET,
+    inputAmount: "100000",
+    outputAmount: "98520",
+    feeBps: "25",
+    providerFee: "250",
+    minerFeeBudget: "1200",
+    lightningRoutingFeeBudget: "30",
+    maximumTotalFee: "1480",
+    feePayers: {
+      providerFee: "requester",
+      minerFeeBudget: "requester",
+      lightningRoutingFeeBudget: "provider",
+    },
+    rounding: "floor_output_sats",
+    amountEquation: "input_minus_provider_and_quoted_fees",
+    priceFeed: null,
+    ...overrides,
+  });
+
+  test("a verified quote on the output side names its validated input as fundable", () => {
+    const state = reduce(
+      populated(),
+      { type: "denomination_toggled" },
+      { type: "amount_edited", side: "output", text: "98520" },
+      { type: "quote_applied", terms: boundTerms() },
+    );
+    expect(state.quote?.status).toBe("verified");
+    expect(primaryActionGate(state)).toEqual({
+      enabled: true,
+      side: "output",
+      amountSats: 98_520n,
+      fundableInputSats: 100_000n,
+    });
+  });
+
+  test("a quote whose input violates the offering minimum refuses as quote_input_unserviceable", () => {
+    // Output 9999 with zero fees quotes input 9999, below the 10000
+    // minimum: the amount that would fund is refused here rather than
+    // discovered by the engine at Order time.
+    const state = reduce(
+      populated(),
+      { type: "denomination_toggled" },
+      { type: "amount_edited", side: "output", text: "9999" },
+      {
+        type: "quote_applied",
+        terms: boundTerms({
+          inputAmount: "9999",
+          outputAmount: "9999",
+          feeBps: "0",
+          providerFee: "0",
+          minerFeeBudget: "0",
+          lightningRoutingFeeBudget: "0",
+          maximumTotalFee: "0",
+        }),
+      },
+    );
+    expect(state.quote?.status).toBe("verified");
+    const gate = primaryActionGate(state);
+    expect(gate.enabled).toBe(false);
+    if (!gate.enabled) {
+      expect(gate.refusal).toEqual({
+        kind: "quote_input_unserviceable",
+        inputSats: 9_999n,
+        minimumSats: 10_000n,
+        maximumSats: 1_000_000n,
+        swpError: "swp_invalid_amount",
+      });
+    }
+  });
+
+  const pinnedFeed = {
+    url: "https://feed.example/rate",
+    valuePointer: "/data/value",
+    observedValue: "100000000",
+    observedAtSeconds: TEST_FOLD_NOW - 10,
+    maxAgeSeconds: 30,
+    responseSha256: "ab".repeat(32),
+  };
+  const matchingFetch = {
+    url: pinnedFeed.url,
+    valuePointer: pinnedFeed.valuePointer,
+    value: pinnedFeed.observedValue,
+    fetchedAtSeconds: TEST_FOLD_NOW - 5,
+    responseSha256: pinnedFeed.responseSha256,
+  };
+  const withPinnedQuote = (): PairSelectionState =>
+    reduce(
+      populated(),
+      { type: "denomination_toggled" },
+      { type: "amount_edited", side: "input", text: "100000" },
+      { type: "quote_applied", terms: boundTerms({ priceFeed: pinnedFeed }) },
+    );
+
+  test("a pinned feed gates the action until the requester's own fetch verifies it", () => {
+    const unchecked = primaryActionGate(withPinnedQuote());
+    expect(unchecked).toEqual({
+      enabled: false,
+      refusal: { kind: "price_feed_unchecked" },
+    });
+    const checked = reduce(withPinnedQuote(), {
+      type: "price_feed_checked",
+      fetched: matchingFetch,
+      nowSeconds: TEST_FOLD_NOW,
+    });
+    expect(primaryActionGate(checked)).toEqual({
+      enabled: true,
+      side: "input",
+      amountSats: 100_000n,
+      fundableInputSats: 100_000n,
+    });
+  });
+
+  test("a substituted feed host refuses as swp_price_feed_invalid at the gate", () => {
+    const state = reduce(withPinnedQuote(), {
+      type: "price_feed_checked",
+      fetched: { ...matchingFetch, url: "https://mirror.example/rate" },
+      nowSeconds: TEST_FOLD_NOW,
+    });
+    const gate = primaryActionGate(state);
+    expect(gate.enabled).toBe(false);
+    if (!gate.enabled) {
+      expect(gate.refusal).toEqual({
+        kind: "price_feed_refused",
+        check: {
+          ok: false,
+          error: "swp_price_feed_invalid",
+          mode: "substituted_url",
+        },
+        swpError: "swp_price_feed_invalid",
+      });
+    }
+  });
+
+  test("a stale pinned observation refuses as swp_price_feed_stale", () => {
+    const state = reduce(withPinnedQuote(), {
+      type: "price_feed_checked",
+      fetched: matchingFetch,
+      nowSeconds: pinnedFeed.observedAtSeconds + pinnedFeed.maxAgeSeconds + 1,
+    });
+    const gate = primaryActionGate(state);
+    expect(gate.enabled).toBe(false);
+    if (!gate.enabled) {
+      expect(gate.refusal).toMatchObject({
+        kind: "price_feed_refused",
+        swpError: "swp_price_feed_stale",
+      });
+    }
+  });
+
+  test("a pinned URL breaking the §3.4 form rules refuses at apply, before any fetch", () => {
+    const state = reduce(
+      populated(),
+      { type: "denomination_toggled" },
+      { type: "amount_edited", side: "input", text: "100000" },
+      {
+        type: "quote_applied",
+        terms: boundTerms({
+          priceFeed: { ...pinnedFeed, url: "http://feed.example/rate" },
+        }),
+      },
+    );
+    const gate = primaryActionGate(state);
+    expect(gate.enabled).toBe(false);
+    if (!gate.enabled) {
+      expect(gate.refusal).toMatchObject({
+        kind: "price_feed_refused",
+        check: { mode: "pinned_url_invalid" },
+        swpError: "swp_price_feed_invalid",
+      });
+    }
+  });
 });
 
 describe("MAX affordance", () => {
@@ -293,7 +505,9 @@ describe("MAX affordance", () => {
     expect(state.authoritativeSide).toBe("input");
     expect(primaryActionGate(state)).toEqual({
       enabled: true,
+      side: "input",
       amountSats: 1_000_000n,
+      fundableInputSats: 1_000_000n,
     });
   });
 
@@ -378,6 +592,10 @@ describe("message distinctness", () => {
       ...Object.values(DIRECTION_UNREACHABLE_MESSAGES),
       ...Object.values(AMOUNT_PARSE_FAILURE_MESSAGES),
       ...Object.values(PAIR_NOTICE_MESSAGES),
+      ...Object.values(PRICE_FEED_MISMATCH_MESSAGES),
+      PRICE_FEED_NONE_MESSAGE,
+      PRICE_FEED_STALE_MESSAGE,
+      PRICE_FEED_UNCHECKED_MESSAGE,
       EMPTY_CORPUS_MESSAGE,
     ];
     const texts = messages.map((m) => m.message);

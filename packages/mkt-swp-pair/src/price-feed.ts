@@ -30,6 +30,7 @@ export interface PriceFeedFetchRecord {
 }
 
 export const PRICE_FEED_MISMATCH_MODES = [
+  "pinned_url_invalid",
   "substituted_url",
   "substituted_pointer",
   "value_mismatch",
@@ -48,6 +49,27 @@ export type PriceFeedCheck =
   | { readonly ok: false; readonly error: "swp_price_feed_stale" };
 
 /**
+ * The §3.4 URL form rules for the pinned feed itself: exact HTTPS, no
+ * userinfo, no fragment. A pinned URL violating them is refused before
+ * any fetch comparison (`pinned_url_invalid`) — checked at quote
+ * application, not just against a later fetch.
+ */
+export const isPinnedFeedUrlValid = (url: string): boolean => {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return (
+    parsed.protocol === "https:" &&
+    parsed.username === "" &&
+    parsed.password === "" &&
+    parsed.hash === ""
+  );
+};
+
+/**
  * Check the requester's fetch against the pinned terms. URL comparison is
  * exact string equality: a substitute host, mirror, or fallback endpoint —
  * however semantically equivalent — is `swp_price_feed_invalid`
@@ -59,6 +81,13 @@ export const checkPinnedPriceFeed = (
   fetched: PriceFeedFetchRecord,
   nowSeconds: number,
 ): PriceFeedCheck => {
+  if (!isPinnedFeedUrlValid(pinned.url)) {
+    return {
+      ok: false,
+      error: "swp_price_feed_invalid",
+      mode: "pinned_url_invalid",
+    };
+  }
   if (fetched.url !== pinned.url) {
     return { ok: false, error: "swp_price_feed_invalid", mode: "substituted_url" };
   }

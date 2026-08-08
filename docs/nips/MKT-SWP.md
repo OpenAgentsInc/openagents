@@ -264,6 +264,24 @@ Every Quote states:
 - `amount_equation`, an ASCII expression identifier from the v1 allowlist:
   `input_minus_provider_and_quoted_fees` or `one_to_one_less_quoted_fees`.
 
+Each fee component names its own payer; a Quote MAY assign different payers
+to different components.
+
+Both v1 `amount_equation` identifiers denote the single integer-satoshi
+equation
+
+```
+provider_fee  = floor(input_amount * fee_bps / 10000)
+output_amount = input_amount - provider_fee - miner_fee_budget
+                - lightning_routing_fee_budget
+```
+
+`one_to_one_less_quoted_fees` names that equation for v1's same-asset 1:1
+pairs; `input_minus_provider_and_quoted_fees` is the general spelling. A
+verifier MUST apply exactly this arithmetic to whichever identifier a Quote
+declares, so a rendered equation label always describes the arithmetic that
+produced the output amount.
+
 The output amount is the fill promise. A provider MUST NOT reduce it after
 Order because its route or miner fee changed. A selectable input amount is
 allowed only within the Quote's declared range and deterministic amount

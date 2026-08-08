@@ -151,6 +151,11 @@ export const FEE_PROMISE_MESSAGE: PairMessage = {
 export const PRICE_FEED_MISMATCH_MESSAGES: Readonly<
   Record<PriceFeedMismatchMode, PairMessage>
 > = {
+  pinned_url_invalid: {
+    key: "swap.pair.price_feed.pinned_url_invalid",
+    message:
+      "The pinned price feed URL breaks the exact-pinning rules (HTTPS only, no userinfo, no fragment).",
+  },
   substituted_url: {
     key: "swap.pair.price_feed.substituted_url",
     message:
@@ -177,6 +182,25 @@ export const PRICE_FEED_NONE_MESSAGE: PairMessage = {
   key: "swap.pair.price_feed.none",
   message: "No price feed is pinned — this quote's terms are fixed amounts.",
 };
+
+export const PRICE_FEED_STALE_MESSAGE: PairMessage = {
+  key: "swap.pair.price_feed.stale",
+  message:
+    "The pinned price feed observation is older than its maximum age — fresh terms are needed.",
+};
+
+export const PRICE_FEED_UNCHECKED_MESSAGE: PairMessage = {
+  key: "swap.pair.price_feed.unchecked",
+  message:
+    "This quote pins a price feed that has not been verified with your own fetch yet.",
+};
+
+export const QUOTE_INPUT_UNSERVICEABLE_MESSAGES = {
+  key: "swap.pair.quote.input_unserviceable",
+  /** Parameterised locally; migrates to a SWAP-8 function message. */
+  message: (input: string, minimum: string, maximum: string, denomination: string) =>
+    `The quote's input amount ${input} ${denomination} is outside the offered limits (${minimum} to ${maximum} ${denomination}).`,
+} as const;
 
 const DENOMINATION_LABELS: Readonly<Record<Denomination, string>> = {
   btc: "BTC",
@@ -242,5 +266,21 @@ export const primaryActionRefusalMessage = (
         key: `swap.error.${refusal.refusal.error}`,
         message: messageForSwpError(catalog, refusal.refusal.error),
       };
+    case "quote_input_unserviceable":
+      return {
+        key: QUOTE_INPUT_UNSERVICEABLE_MESSAGES.key,
+        message: QUOTE_INPUT_UNSERVICEABLE_MESSAGES.message(
+          formatAmountText(refusal.inputSats, denomination, separator),
+          formatAmountText(refusal.minimumSats, denomination, separator),
+          formatAmountText(refusal.maximumSats, denomination, separator),
+          unit,
+        ),
+      };
+    case "price_feed_unchecked":
+      return PRICE_FEED_UNCHECKED_MESSAGE;
+    case "price_feed_refused":
+      return refusal.check.error === "swp_price_feed_stale"
+        ? PRICE_FEED_STALE_MESSAGE
+        : PRICE_FEED_MISMATCH_MESSAGES[refusal.check.mode];
   }
 };

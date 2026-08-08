@@ -143,22 +143,36 @@ describe("formatting round-trips are exact over atomic units", () => {
   });
 });
 
-describe("no floating-point path exists in the amount code", () => {
-  test("amount.ts contains no float construct", async () => {
-    const source = await readFile(
-      new URL("./amount.ts", import.meta.url),
-      "utf8",
-    );
-    for (const forbidden of [
-      "parseFloat",
-      "parseInt",
-      "Number(",
-      "Math.",
-      "toFixed",
-      "* 1e",
-      "/ 1e",
-    ]) {
-      expect(source.includes(forbidden)).toBe(false);
-    }
-  });
+describe("no floating-point path exists anywhere money flows in this package", () => {
+  // The package header claims no floating-point value ever represents
+  // money in this package — so the guard reads every source module, not
+  // just amount.ts.
+  const sources = [
+    "amount.ts",
+    "asset.ts",
+    "corpus.ts",
+    "index.ts",
+    "messages.ts",
+    "price-feed.ts",
+    "quote.ts",
+    "selection.ts",
+    "testkit.ts",
+    "view.ts",
+  ];
+  for (const file of sources) {
+    test(`${file} contains no float construct`, async () => {
+      const source = await readFile(new URL(`./${file}`, import.meta.url), "utf8");
+      for (const forbidden of [
+        "parseFloat",
+        "parseInt",
+        "Number(",
+        "Math.",
+        "toFixed",
+        "* 1e",
+        "/ 1e",
+      ]) {
+        expect(source.includes(forbidden)).toBe(false);
+      }
+    });
+  }
 });

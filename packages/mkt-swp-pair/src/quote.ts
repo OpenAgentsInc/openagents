@@ -15,6 +15,14 @@
 import { satsFromWire } from "./amount.js";
 import type { PinnedPriceFeed } from "./price-feed.js";
 
+/**
+ * The v1 `amount_equation` allowlist. MKT-SWP §3.3 defines both
+ * identifiers as names for the single v1 integer-satoshi equation
+ * (`output = input - provider_fee - miner_fee_budget -
+ * lightning_routing_fee_budget`); a verifier applies that arithmetic to
+ * whichever identifier is declared, so the rendered label always
+ * describes the arithmetic that produced the number.
+ */
 export const AMOUNT_EQUATIONS = [
   "input_minus_provider_and_quoted_fees",
   "one_to_one_less_quoted_fees",
@@ -24,15 +32,34 @@ export type AmountEquation = (typeof AMOUNT_EQUATIONS)[number];
 
 export const ROUNDING_RULE = "floor_output_sats";
 
-/** MKT-SWP §4.4: who pays, from the Quote's finite fee-payer list. */
 export type FeePayer = "requester" | "provider";
+
+/**
+ * Who pays each fee component (MKT-SWP §3.3: every Quote states "who pays
+ * each miner and routing fee"). One payer per component — a Quote where
+ * the requester funds the miner budget while the provider absorbs the
+ * routing budget is representable and rendered per row, never collapsed
+ * to one scalar stamped onto every component. The §4.4 finite list of
+ * *selectable* fee-payer options belongs to the Order flow (SWAP-3);
+ * these are the payers of the Quote the session holds.
+ */
+export interface FeePayerAssignment {
+  readonly providerFee: FeePayer;
+  readonly minerFeeBudget: FeePayer;
+  readonly lightningRoutingFeeBudget: FeePayer;
+}
 
 /**
  * The amount and fee members of one Quote's `terms`, verbatim wire
  * strings. The session holds whichever Quote SWAP-3 selected; this module
- * only renders and re-derives its terms.
+ * only renders and re-derives its terms. The ordered asset-id pair the
+ * Quote commits (§4.3) rides along so applying the quote can bind it to
+ * the selected direction rather than trusting call ordering.
  */
 export interface SwapQuoteTerms {
+  /** The Quote's committed ordered pair (§4.3), exact `asset_id` strings. */
+  readonly inputAssetId: string;
+  readonly outputAssetId: string;
   readonly inputAmount: string;
   readonly outputAmount: string;
   readonly feeBps: string;
@@ -40,7 +67,7 @@ export interface SwapQuoteTerms {
   readonly minerFeeBudget: string;
   readonly lightningRoutingFeeBudget: string;
   readonly maximumTotalFee: string;
-  readonly feePayer: FeePayer;
+  readonly feePayers: FeePayerAssignment;
   readonly rounding: string;
   readonly amountEquation: string;
   /** Exact pinned price feed (MKT-SWP §3.4), `null` when none is pinned. */

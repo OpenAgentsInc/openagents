@@ -35,6 +35,12 @@ import {
   type DiscoveredOffering,
   type OfferingCorpusFold,
 } from "./corpus.js";
+import {
+  checkPinnedPriceFeed,
+  isPinnedFeedUrlValid,
+  type PriceFeedCheck,
+  type PriceFeedFetchRecord,
+} from "./price-feed.js";
 import { verifyQuoteTerms, type QuoteTermsVerification, type SwapQuoteTerms } from "./quote.js";
 
 export type AmountSide = "input" | "output";
@@ -44,12 +50,49 @@ export type PairNotice =
   | { readonly notice: "quote_cleared_by_amount_edit" }
   | { readonly notice: "quote_cleared_by_direction_change" };
 
+/**
+ * A quote that verifies arithmetically can still fail to bind to this
+ * session: its committed pair must be the selected direction
+ * (`swp_invalid_pair`) and its authoritative-side amount must be exactly
+ * the amount the user entered (`swp_terms_mismatch`, §4.4's "one
+ * `input_amount` within a range explicitly offered by that Quote"). The
+ * binding holds by construction here, not by SWAP-3's call ordering.
+ */
+export interface QuoteBindingRefusal {
+  readonly ok: false;
+  readonly error: "swp_invalid_pair" | "swp_terms_mismatch";
+  readonly detail: string;
+}
+
+/**
+ * Pinned-feed verification state for a held verified quote (MKT-SWP
+ * §3.4). "Terms reproduced" and "pinned feed checked" are distinct
+ * states: a quote that pins a feed stays `unchecked` — and the primary
+ * action stays gated — until the requester's own fetch is delivered via
+ * `price_feed_checked` and passes `checkPinnedPriceFeed`.
+ */
+export type HeldQuotePriceFeed =
+  | { readonly state: "none_pinned" }
+  | { readonly state: "unchecked" }
+  | { readonly state: "verified"; readonly fetched: PriceFeedFetchRecord }
+  | {
+      readonly state: "refused";
+      readonly check: Extract<PriceFeedCheck, { ok: false }>;
+      readonly fetched: PriceFeedFetchRecord | null;
+    };
+
 export type HeldQuote =
-  | { readonly status: "verified"; readonly terms: SwapQuoteTerms }
+  | {
+      readonly status: "verified";
+      readonly terms: SwapQuoteTerms;
+      readonly priceFeed: HeldQuotePriceFeed;
+    }
   | {
       readonly status: "refused";
       readonly terms: SwapQuoteTerms;
-      readonly refusal: Extract<QuoteTermsVerification, { ok: false }>;
+      readonly refusal:
+        | Extract<QuoteTermsVerification, { ok: false }>
+        | QuoteBindingRefusal;
     };
 
 export interface PairSelectionState {
@@ -105,6 +148,12 @@ export type PairEvent =
       readonly separator: DecimalSeparator;
     }
   | { readonly type: "quote_applied"; readonly terms: SwapQuoteTerms }
+  | {
+      /** The requester's own fetch of the pinned feed (MKT-SWP §3.4). */
+      readonly type: "price_feed_checked";
+      readonly fetched: PriceFeedFetchRecord;
+      readonly nowSeconds: number;
+    }
   | { readonly type: "quote_cleared" };
 
 /** The selected ordered direction, when both sides are chosen. */
@@ -340,6 +389,18 @@ export const reducePairEvent = (
           notices: [],
         };
       }
+      // A held quote binds the selected direction and the entered amount
+      // by construction, not by SWAP-3's call ordering: a quote for a
+      // different pair or a different amount refuses instead of rendering
+      // its terms beside the user's number.
+      const binding = bindQuoteToSelection(state, event.terms, verification.amounts);
+      if (binding !== null) {
+        return {
+          ...state,
+          quote: { status: "refused", terms: event.terms, refusal: binding },
+          notices: [],
+        };
+      }
       // The quote's amounts are authoritative for the derived side: render
       // the promise, in the user's current denomination.
       const amounts = verification.amounts;
@@ -359,10 +420,44 @@ export const reducePairEvent = (
                 state.decimalSeparator,
               ),
             };
+      // A pinned feed starts unchecked (the requester's own fetch arrives
+      // via `price_feed_checked`); a pinned URL breaking the §3.4 form
+      // rules refuses immediately, before any fetch.
+      const priceFeed: HeldQuotePriceFeed =
+        event.terms.priceFeed === null
+          ? { state: "none_pinned" }
+          : isPinnedFeedUrlValid(event.terms.priceFeed.url)
+            ? { state: "unchecked" }
+            : {
+                state: "refused",
+                check: {
+                  ok: false,
+                  error: "swp_price_feed_invalid",
+                  mode: "pinned_url_invalid",
+                },
+                fetched: null,
+              };
       return {
         ...state,
-        quote: { status: "verified", terms: event.terms },
+        quote: { status: "verified", terms: event.terms, priceFeed },
         amountText: { ...state.amountText, ...derived },
+        notices: [],
+      };
+    }
+
+    case "price_feed_checked": {
+      if (state.quote === null || state.quote.status !== "verified") {
+        return { ...state, notices: [] };
+      }
+      const pinned = state.quote.terms.priceFeed;
+      if (pinned === null) return { ...state, notices: [] };
+      const check = checkPinnedPriceFeed(pinned, event.fetched, event.nowSeconds);
+      const priceFeed: HeldQuotePriceFeed = check.ok
+        ? { state: "verified", fetched: event.fetched }
+        : { state: "refused", check, fetched: event.fetched };
+      return {
+        ...state,
+        quote: { ...state.quote, priceFeed },
         notices: [],
       };
     }
@@ -372,6 +467,59 @@ export const reducePairEvent = (
   }
 };
 
+/**
+ * Bind an arithmetically verified quote to the current selection: the
+ * quote's committed pair must equal the selected direction, and its
+ * amount on the user's authoritative side must equal the entered amount
+ * exactly (§4.4). Returns the typed refusal, or `null` when bound.
+ */
+const bindQuoteToSelection = (
+  state: PairSelectionState,
+  terms: SwapQuoteTerms,
+  amounts: { readonly inputSats: bigint; readonly outputSats: bigint },
+): QuoteBindingRefusal | null => {
+  const direction = selectedDirection(state);
+  if (direction === null) {
+    return {
+      ok: false,
+      error: "swp_invalid_pair",
+      detail: "no direction is selected to bind the quote's pair to",
+    };
+  }
+  if (
+    terms.inputAssetId !== direction.inputAssetId ||
+    terms.outputAssetId !== direction.outputAssetId
+  ) {
+    return {
+      ok: false,
+      error: "swp_invalid_pair",
+      detail: `the quote's ordered pair ${terms.inputAssetId} -> ${terms.outputAssetId} is not the selected direction`,
+    };
+  }
+  const side = state.authoritativeSide;
+  const parsed = parseAmountText(
+    state.amountText[side],
+    state.denomination,
+    state.decimalSeparator,
+  );
+  if (!parsed.ok) {
+    return {
+      ok: false,
+      error: "swp_terms_mismatch",
+      detail: `no entered ${side} amount to bind the quote to`,
+    };
+  }
+  const quotedSats = side === "input" ? amounts.inputSats : amounts.outputSats;
+  if (parsed.sats !== quotedSats) {
+    return {
+      ok: false,
+      error: "swp_terms_mismatch",
+      detail: `the quote's ${side} amount ${quotedSats} is not the entered amount ${parsed.sats}`,
+    };
+  }
+  return null;
+};
+
 // ---------------------------------------------------------------------------
 // Primary-action gate
 // ---------------------------------------------------------------------------
@@ -379,11 +527,31 @@ export const reducePairEvent = (
 /**
  * The single most proximate refusal, walked in a fixed precedence
  * (SWAP-0 primary-action law): corpus, direction, reachability, amount
- * presence, amount validity, then limits — so the button always states
- * exactly one reason, the nearest one to being fixed by the user.
+ * presence, amount validity, limits, then held-quote binding — so the
+ * button always states exactly one reason, the nearest one to being
+ * fixed by the user.
+ *
+ * An enabled gate names the side its amount was measured on: `amountSats`
+ * is the entered amount on `side`, never an implicit input amount. The
+ * amount a consumer may fund is `fundableInputSats` — the entered input
+ * when `side` is `"input"`, the held verified quote's input (validated
+ * against the Offering limits) when `side` is `"output"`, and `null`
+ * when no quote yet names an input. An output-side figure can never be
+ * misread as an input amount to fund.
  */
 export type PrimaryActionGate =
-  | { readonly enabled: true; readonly amountSats: bigint }
+  | {
+      readonly enabled: true;
+      /** Which field the enabled amount was measured on. */
+      readonly side: AmountSide;
+      /** The entered amount on `side`, exact satoshis. */
+      readonly amountSats: bigint;
+      /**
+       * The input amount a consumer may fund, validated against the
+       * Offering limits; `null` while only an output amount is known.
+       */
+      readonly fundableInputSats: bigint | null;
+    }
   | { readonly enabled: false; readonly refusal: PrimaryActionRefusal };
 
 export type PrimaryActionRefusal =
@@ -422,7 +590,26 @@ export type PrimaryActionRefusal =
     }
   | {
       readonly kind: "quote_terms_refused";
-      readonly refusal: Extract<QuoteTermsVerification, { ok: false }>;
+      readonly refusal:
+        | Extract<QuoteTermsVerification, { ok: false }>
+        | QuoteBindingRefusal;
+    }
+  | {
+      /** The held quote's input violates the folded Offering limits. */
+      readonly kind: "quote_input_unserviceable";
+      readonly inputSats: bigint;
+      readonly minimumSats: bigint;
+      readonly maximumSats: bigint;
+      readonly swpError: "swp_invalid_amount";
+    }
+  | {
+      /** A pinned feed exists and the requester's fetch has not run yet. */
+      readonly kind: "price_feed_unchecked";
+    }
+  | {
+      readonly kind: "price_feed_refused";
+      readonly check: Extract<PriceFeedCheck, { ok: false }>;
+      readonly swpError: "swp_price_feed_invalid" | "swp_price_feed_stale";
     };
 
 export const primaryActionGate = (
@@ -547,5 +734,55 @@ export const primaryActionGate = (
     };
   }
 
-  return { enabled: true, amountSats };
+  // A held verified quote names the input that would actually fund. That
+  // input must satisfy the folded Offering limits regardless of which
+  // side the user typed — the output branch above cannot check the
+  // minimum pre-quote, so the check lands here, on the amount that funds.
+  let fundableInputSats: bigint | null = side === "input" ? amountSats : null;
+  if (state.quote?.status === "verified") {
+    const verification = verifyQuoteTerms(state.quote.terms);
+    if (verification.ok) {
+      const quoteInputSats = verification.amounts.inputSats;
+      const serviceable =
+        quoteInputSats >= availability.minSats &&
+        quoteInputSats <= availability.maxSats &&
+        availability.sides.some(
+          (source) =>
+            quoteInputSats >= source.minSats &&
+            quoteInputSats <= source.maxSats,
+        );
+      if (!serviceable) {
+        return {
+          enabled: false,
+          refusal: {
+            kind: "quote_input_unserviceable",
+            inputSats: quoteInputSats,
+            minimumSats: availability.minSats,
+            maximumSats: availability.maxSats,
+            swpError: "swp_invalid_amount",
+          },
+        };
+      }
+      fundableInputSats = quoteInputSats;
+    }
+    // A pinned feed gates funding until the requester's own fetch has
+    // verified it (MKT-SWP §3.4): unchecked fails closed, a failed check
+    // refuses with its §17 identifier.
+    const feed = state.quote.priceFeed;
+    if (feed.state === "refused") {
+      return {
+        enabled: false,
+        refusal: {
+          kind: "price_feed_refused",
+          check: feed.check,
+          swpError: feed.check.error,
+        },
+      };
+    }
+    if (feed.state === "unchecked") {
+      return { enabled: false, refusal: { kind: "price_feed_unchecked" } };
+    }
+  }
+
+  return { enabled: true, side, amountSats, fundableInputSats };
 };
