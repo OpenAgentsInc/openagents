@@ -4,13 +4,14 @@
  * task cannot lose an update), signed-record replay idempotency, the
  * effect-ledger binding rules, and the custody tripwire.
  */
-import { Effect } from "effect";
+import { Deferred, Effect, Fiber } from "effect";
 import { describe, expect, test } from "vite-plus/test";
 
 import {
   EffectBindingConflictError,
   SecretMaterialError,
   SessionAlreadyExistsError,
+  SessionNotFoundError,
   SignedRecordConflictError,
 } from "./errors.js";
 import { memoryStringKv } from "./kv.js";
@@ -160,6 +161,88 @@ describe("session store", () => {
     expect(finalSession.signedRecords.length).toBe(rounds * 2);
   });
 
+  test("a delete concurrent with a mid-flight update cannot resurrect the session", async () => {
+    // The audit's reachable trace: a background fold enters update, reads,
+    // and awaits its effectful modify; the user confirms Delete; the fold's
+    // persist then re-commits the record the delete just removed. The locks
+    // must compose so the delete WAITS for the in-flight update and the
+    // session stays gone.
+    const kv = memoryStringKv();
+    const outcome = await Effect.runPromise(
+      Effect.gen(function* () {
+        const store = yield* openSessionStore({ kv });
+        yield* store.create(sampleSession("victim"));
+        const updateEntered = yield* Deferred.make<void>();
+        const releaseUpdate = yield* Deferred.make<void>();
+        const updater = yield* Effect.forkChild(
+          store.update("victim", (session) =>
+            Effect.gen(function* () {
+              yield* Deferred.succeed(updateEntered, undefined);
+              yield* Deferred.await(releaseUpdate);
+              return {
+                ...session,
+                projection: { ...session.projection, state: "funding_broadcast" },
+              };
+            }),
+          ),
+        );
+        // The update is provably inside its modify when delete is issued.
+        yield* Deferred.await(updateEntered);
+        const deleter = yield* Effect.forkChild(store.delete("victim"));
+        yield* Effect.yieldNow;
+        yield* Deferred.succeed(releaseUpdate, undefined);
+        yield* Fiber.join(updater);
+        yield* Fiber.join(deleter);
+        const lookup = yield* Effect.flip(store.get("victim"));
+        // And a later update finds nothing to resurrect either.
+        const lateUpdate = yield* Effect.flip(
+          store.update("victim", (session) => Effect.succeed(session)),
+        );
+        return { lookup, lateUpdate, snapshot: kv.snapshot() };
+      }),
+    );
+    expect(outcome.lookup).toBeInstanceOf(SessionNotFoundError);
+    expect(outcome.lateUpdate).toBeInstanceOf(SessionNotFoundError);
+    // Storage agrees: no record and no staging remnant survived the delete.
+    expect(Object.keys(outcome.snapshot)).toEqual([]);
+  });
+
+  test("effect failure binding: definitive failure needs a request, cannot follow a result, and a retry success clears it", async () => {
+    const kv = memoryStringKv();
+    const request = { operation: "reverse_invoice_payment", invoiceDigest: "ef".repeat(32) };
+    const outcome = await Effect.runPromise(
+      Effect.gen(function* () {
+        const store = yield* openSessionStore({ kv });
+        yield* store.create(sampleSession("flaky"));
+        const orphanFailure = yield* Effect.flip(
+          store.recordEffectFailure("flaky", "pay-9", "cancelled", "no request"),
+        );
+        yield* store.recordEffectRequest("flaky", "pay-1", request);
+        yield* store.recordEffectFailure("flaky", "pay-1", "cancelled", "user dismissed the prompt");
+        const afterFailure = yield* store.get("flaky");
+        // The failed attempt does NOT suppress a legitimate retry.
+        const priorAfterFailure = yield* store.priorEffectResult("flaky", "pay-1", request);
+        // The retry succeeds: the failure is cleared, the result binds.
+        yield* store.recordEffectResult("flaky", "pay-1", { paymentId: "12".repeat(32) }, null);
+        const afterRetry = yield* store.get("flaky");
+        const failureAfterResult = yield* Effect.flip(
+          store.recordEffectFailure("flaky", "pay-1", "failed", "too late"),
+        );
+        return { orphanFailure, afterFailure, priorAfterFailure, afterRetry, failureAfterResult };
+      }),
+    );
+    expect((outcome.orphanFailure as EffectBindingConflictError).reason).toBe(
+      "failure_without_request",
+    );
+    expect(outcome.afterFailure.effectLedger[0]?.failure?.reason).toBe("cancelled");
+    expect(outcome.priorAfterFailure).toBeNull();
+    expect(outcome.afterRetry.effectLedger[0]?.failure).toBeNull();
+    expect(outcome.afterRetry.effectLedger[0]?.result).not.toBeNull();
+    expect((outcome.failureAfterResult as EffectBindingConflictError).reason).toBe(
+      "failure_after_result",
+    );
+  });
+
   test("signed-record exact replay is idempotent; changed bytes fail closed", async () => {
     const kv = memoryStringKv();
     const record = signedRecord("ff".repeat(32), 100);
@@ -236,6 +319,28 @@ describe("session store", () => {
     expect(error.path).toContain("mnemonic");
     expect(JSON.stringify(error)).not.toContain("abandon");
     // And nothing reached storage.
+    expect(Object.keys(kv.snapshot()).length).toBe(0);
+  });
+
+  test("the tripwire catches secret member names by stem, not only canonical spellings", async () => {
+    // The audit's exact escapes: refundKey, preimageHex, claimPrivateKeyWif.
+    const kv = memoryStringKv();
+    for (const [member, value] of [
+      ["refundKey", "03".repeat(33)],
+      ["preimageHex", "ab".repeat(32)],
+      ["claimPrivateKeyWif", "not-echoed"],
+    ] as const) {
+      const outcome = await Effect.runPromise(
+        Effect.gen(function* () {
+          const store = yield* openSessionStore({ kv });
+          return yield* Effect.flip(
+            store.create(sampleSession(`leaky-${member}`, { engineSnapshot: { [member]: value } })),
+          );
+        }),
+      );
+      expect(outcome).toBeInstanceOf(SecretMaterialError);
+      expect((outcome as SecretMaterialError).path).toContain(member);
+    }
     expect(Object.keys(kv.snapshot()).length).toBe(0);
   });
 });

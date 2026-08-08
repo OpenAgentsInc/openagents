@@ -16,8 +16,14 @@ import { Effect } from "effect";
 import { MigrationStepMissingError, UnsupportedSchemaVersionError } from "./errors.js";
 import type { RecordEnvelope } from "./journal.js";
 
-/** Version 1 is the first shipped schema (`model.ts` StoredSwapSession). */
-export const CURRENT_SCHEMA_VERSION = 1;
+/**
+ * Version 1 was the first shipped schema. Version 2 added the definitive
+ * `failure` state to every effect-ledger entry (`model.ts`
+ * `ExternalEffectRecord.failure`), so a cancelled or rejected wallet call
+ * can release the reload guard without teaching `priorEffectResult` to
+ * suppress a legitimate retry.
+ */
+export const CURRENT_SCHEMA_VERSION = 2;
 
 export interface SessionSchemaMigration {
   /** Source version. `to` is always `from + 1`; steps never skip. */
@@ -28,11 +34,27 @@ export interface SessionSchemaMigration {
 }
 
 /**
- * The shipped migration chain. Empty at version 1 — the hook and its tests
- * exist from day one so the first real migration is a data change, not an
- * architecture change.
+ * The shipped migration chain. Every step rewrites one whole record payload;
+ * `openSessionStore` runs the chain over every stored record at open, and
+ * `importPrivateHistory` runs it per imported session, so a document from an
+ * older build always ingests.
  */
-export const SESSION_STORE_MIGRATIONS: ReadonlyArray<SessionSchemaMigration> = [];
+export const SESSION_STORE_MIGRATIONS: ReadonlyArray<SessionSchemaMigration> = [
+  {
+    from: 1,
+    to: 2,
+    // v1 effect-ledger entries had no `failure` member (pending was simply
+    // `result === null`). v2 makes "definitively failed" a distinct state;
+    // every v1 entry migrates as never-failed.
+    migrate: (payload) => {
+      const session = payload as { readonly effectLedger?: ReadonlyArray<Record<string, unknown>> };
+      return {
+        ...(payload as Record<string, unknown>),
+        effectLedger: (session.effectLedger ?? []).map((entry) => ({ ...entry, failure: null })),
+      };
+    },
+  },
+];
 
 export interface MigratedPayload {
   readonly payload: unknown;

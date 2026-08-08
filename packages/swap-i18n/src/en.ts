@@ -78,6 +78,8 @@ export const en = {
     "This file appears to contain key material, which never belongs in a history export. Nothing was imported.",
   "swap.history.import.refused.conflicting_session":
     "A swap in this file already exists here with different content. Nothing was imported.",
+  "swap.history.import.refused.storage_failure":
+    "This device's storage failed while importing (it may be full). The import was rolled back; nothing was imported.",
 
   // Swap widget shell (SWAP-0, openagents#9315). The primary action is always
   // rendered and always states the single most proximate reason it cannot

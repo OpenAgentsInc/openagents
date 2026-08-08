@@ -15,7 +15,9 @@
  * that the SWAP-4 store will resolve. Nothing behind a handle ever passes
  * through this package.
  *
- * The tripwire matches bounded, well-known member names and value prefixes.
+ * The tripwire matches bounded, well-known member names (exact and by
+ * high-signal stem, so `preimageHex` or `claimPrivateKeyWif` cannot slip by
+ * on a suffix) and value prefixes.
  * That is deterministic parsing of bounded fields on an already-selected
  * path, which the workspace semantic-routing rule permits; it is a tripwire
  * (defence in depth behind the engine's own recursive validator), not the
@@ -50,6 +52,31 @@ export const FORBIDDEN_SECRET_MEMBER_NAMES: ReadonlyArray<string> = [
   "nsec",
 ];
 
+/**
+ * High-signal stems matched as SUBSTRINGS of the normalised member name, so
+ * `refundKey`, `preimageHex`, and `claimPrivateKeyWif` trip exactly like
+ * their canonical spellings. Stems here must be specific enough that a
+ * legitimate public member cannot contain them; short/ambiguous tokens
+ * (`seed`, `nwc`, `nsec`) stay exact-match only in the list above, and
+ * serialized key material is caught by value prefix regardless of its name.
+ */
+export const FORBIDDEN_SECRET_NAME_STEMS: ReadonlyArray<string> = [
+  "mnemonic",
+  "privatekey",
+  "privkey",
+  "secretkey",
+  "preimage",
+  "macaroon",
+  "seedphrase",
+  "seedwords",
+  "signingnonce",
+  "secnonce",
+  "musignonce",
+  "refundkey",
+  "claimkey",
+  "xprv",
+];
+
 /** String-value prefixes that denote serialized key material. */
 const FORBIDDEN_VALUE_PREFIXES = ["xprv", "tprv", "nsec1"] as const;
 
@@ -57,6 +84,10 @@ const normaliseMemberName = (name: string): string =>
   name.toLowerCase().replaceAll(/[_\-\s]/gu, "");
 
 const forbiddenNames = new Set(FORBIDDEN_SECRET_MEMBER_NAMES);
+
+const isForbiddenMemberName = (normalised: string): boolean =>
+  forbiddenNames.has(normalised) ||
+  FORBIDDEN_SECRET_NAME_STEMS.some((stem) => normalised.includes(stem));
 
 const scan = (value: unknown, path: string): string | null => {
   if (typeof value === "string") {
@@ -75,7 +106,7 @@ const scan = (value: unknown, path: string): string | null => {
   }
   for (const [key, member] of Object.entries(value)) {
     const memberPath = `${path}.${key}`;
-    if (forbiddenNames.has(normaliseMemberName(key))) return memberPath;
+    if (isForbiddenMemberName(normaliseMemberName(key))) return memberPath;
     const hit = scan(member, memberPath);
     if (hit !== null) return hit;
   }

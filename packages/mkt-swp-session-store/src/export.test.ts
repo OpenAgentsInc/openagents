@@ -13,15 +13,19 @@
 import { Effect } from "effect";
 import { describe, expect, test } from "vite-plus/test";
 
+import { makeCatalog } from "@openagentsinc/swap-i18n";
+
 import { contentDigestHex } from "./canonical.js";
-import { HistoryImportError } from "./errors.js";
+import { HISTORY_IMPORT_REFUSAL_REASONS, HistoryImportError, SecretMaterialError, StorageDriverError } from "./errors.js";
 import {
+  EXPORT_SENSITIVITY_KEY,
   SWAP_HISTORY_EXPORT_FORMAT,
   exportPrivateHistory,
   importPrivateHistory,
+  importRefusalKeyOf,
   type SwapHistoryExport,
 } from "./export.js";
-import { memoryStringKv } from "./kv.js";
+import { memoryStringKv, type StringKv } from "./kv.js";
 import { planResume } from "./resume.js";
 import { assertNoSecretMaterial } from "./secret-boundary.js";
 import { openSessionStore, type SessionStore } from "./store.js";
@@ -104,6 +108,82 @@ describe("export/import round trip (openagents_web.swap_history.export_import_ro
     expect(outcome.document.format).toBe(SWAP_HISTORY_EXPORT_FORMAT);
     expect(outcome.result.imported).toEqual([]);
     expect([...outcome.result.identical].sort()).toEqual(["swap-a", "swap-b"]);
+  });
+
+  test("the tripwire runs on the export path itself, whatever wrote the store", async () => {
+    // A store whose in-memory state carries secret-looking material (a bug
+    // upstream of persist, by construction): exportPrivateHistory must
+    // refuse rather than emit it.
+    const smuggling = sampleSession("mule", {
+      engineSnapshot: { restore: { preimageHex: "ab".repeat(32) } },
+    });
+    const fakeStore: SessionStore = {
+      list: () => Effect.succeed([smuggling]),
+      get: () => Effect.die("unused"),
+      create: () => Effect.die("unused"),
+      update: () => Effect.die("unused"),
+      appendSignedRecord: () => Effect.die("unused"),
+      recordEffectRequest: () => Effect.die("unused"),
+      recordEffectResult: () => Effect.die("unused"),
+      recordEffectFailure: () => Effect.die("unused"),
+      priorEffectResult: () => Effect.die("unused"),
+      delete: () => Effect.die("unused"),
+      putValidated: () => Effect.die("unused"),
+    };
+    const refusal = await Effect.runPromise(Effect.flip(exportPrivateHistory(fakeStore)));
+    expect(refusal).toBeInstanceOf(SecretMaterialError);
+    expect(refusal.path).toContain("preimageHex");
+    expect(JSON.stringify(refusal)).not.toContain("ab".repeat(32));
+  });
+
+  test("a v1 export imports with DEFAULT arguments: the shipped chain migrates it", async () => {
+    // The promised case: a document produced by an older build. v1 ledger
+    // entries had no `failure` member; the shipped v1→v2 step adds it.
+    const request = { operation: "funding_broadcast", templateDigest: "ab".repeat(32) };
+    const modern = sampleSession("legacy", {
+      effectLedger: [
+        {
+          effectId: "fund-1",
+          requestDigestHex: contentDigestHex(request),
+          request,
+          result: null,
+          failure: null,
+        },
+      ],
+    });
+    const v1Session = {
+      ...modern,
+      effectLedger: modern.effectLedger.map(({ failure: _failure, ...v1Entry }) => v1Entry),
+    };
+    const v1Document = {
+      format: SWAP_HISTORY_EXPORT_FORMAT,
+      schemaVersion: 1,
+      exportedAt: 0,
+      sessions: [
+        { schemaVersion: 1, contentDigestHex: contentDigestHex(v1Session), session: v1Session },
+      ],
+    };
+    const outcome = await Effect.runPromise(
+      Effect.gen(function* () {
+        const target = yield* cleanStore();
+        const result = yield* importPrivateHistory(target, v1Document);
+        const imported = yield* target.get("legacy");
+        return { result, imported };
+      }),
+    );
+    expect(outcome.result.imported).toEqual(["legacy"]);
+    expect(outcome.imported.effectLedger[0]?.failure).toBeNull();
+  });
+
+  test("every refusal reason maps to a catalog key that renders", () => {
+    const catalog = makeCatalog();
+    expect(typeof catalog[EXPORT_SENSITIVITY_KEY]).toBe("string");
+    for (const reason of HISTORY_IMPORT_REFUSAL_REASONS) {
+      const key = importRefusalKeyOf(new HistoryImportError({ reason, detail: "test" }));
+      const message = catalog[key];
+      expect(typeof message).toBe("string");
+      expect((message as string).length).toBeGreaterThan(0);
+    }
   });
 });
 
@@ -203,6 +283,49 @@ describe("import refuses foreign and corrupt documents, all-or-nothing", () => {
     });
     expect((refusal as HistoryImportError).reason).toBe("secret_material");
     expect(after.length).toBe(0);
+  });
+
+  test("a mid-apply storage failure rolls back this import's writes and refuses typed", async () => {
+    // Quota-style driver: writes fail after a budget; deletes always work
+    // (freeing space) — the realistic browser-storage failure shape.
+    const quotaStringKv = (allowedSets: number): StringKv & { snapshot: () => Record<string, string> } => {
+      const inner = memoryStringKv();
+      let sets = 0;
+      return {
+        get: inner.get,
+        keys: inner.keys,
+        delete: inner.delete,
+        set: (key, value) => {
+          sets += 1;
+          return sets > allowedSets
+            ? Effect.fail(new StorageDriverError({ operation: "set", key, detail: "quota exceeded" }))
+            : inner.set(key, value);
+        },
+        snapshot: inner.snapshot,
+      };
+    };
+    const document = await Effect.runPromise(
+      Effect.gen(function* () {
+        const source = yield* seedStore();
+        return yield* exportPrivateHistory(source);
+      }),
+    );
+    // Budget covers the first session's two-phase commit (staging + base)
+    // and dies inside the second session's write.
+    const kv = quotaStringKv(2);
+    const outcome = await Effect.runPromise(
+      Effect.gen(function* () {
+        const target = yield* openSessionStore({ kv });
+        const refusal = yield* Effect.flip(importPrivateHistory(target, document));
+        const after = yield* target.list();
+        return { refusal, after };
+      }),
+    );
+    expect(outcome.refusal).toBeInstanceOf(HistoryImportError);
+    expect((outcome.refusal as HistoryImportError).reason).toBe("storage_failure");
+    // Rolled back: the store is as it was, and storage holds no session.
+    expect(outcome.after.length).toBe(0);
+    expect(Object.keys(kv.snapshot()).length).toBe(0);
   });
 
   test("a session id that exists locally with different content refuses with conflicting_session", async () => {

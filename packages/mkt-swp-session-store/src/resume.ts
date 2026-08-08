@@ -14,7 +14,7 @@
  * the callback, so a reload can never duplicate a funding broadcast or
  * payment (MKT §"Idempotency").
  */
-import type { StoredSwapSession } from "./model.js";
+import { isEffectPending, type StoredSwapSession } from "./model.js";
 
 export type ResumeReason = "in_flight" | "terminal_unclaimed";
 
@@ -77,15 +77,18 @@ export interface ReloadGuardVerdict {
 
 /**
  * A session has an irreversible effect pending when an external-effect
- * request was durably recorded but its result has not been: the wallet may
- * be broadcasting or paying RIGHT NOW. The host wires this to a
- * beforeunload/navigation guard. Recovery stays honest either way — the
- * persisted request is exactly what the resume path replays — but the guard
- * spares the user the crash-window ceremony.
+ * request was durably recorded and neither a result nor a definitive
+ * failure has been: the wallet may be broadcasting or paying RIGHT NOW.
+ * The host wires this to a beforeunload/navigation guard. A recorded
+ * definitive failure (`SessionStore.recordEffectFailure` — the user
+ * cancelled the prompt, the call was rejected) releases the guard; an
+ * UNKNOWN outcome keeps it, because recovery stays honest either way —
+ * the persisted request is exactly what the resume path replays — and the
+ * guard spares the user the crash-window ceremony.
  */
 export const reloadGuard = (sessions: ReadonlyArray<StoredSwapSession>): ReloadGuardVerdict => {
   const pendingSessionIds = sessions
-    .filter((session) => session.effectLedger.some((entry) => entry.result === null))
+    .filter((session) => session.effectLedger.some(isEffectPending))
     .map((session) => session.sessionId);
   return { blocked: pendingSessionIds.length > 0, pendingSessionIds };
 };

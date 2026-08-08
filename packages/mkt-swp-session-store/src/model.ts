@@ -68,11 +68,32 @@ export const SignedNostrRecord = Schema.Struct({
 export type SignedNostrRecord = typeof SignedNostrRecord.Type;
 
 /**
+ * Why a recorded external effect definitively did NOT take effect. A failure
+ * may only be recorded when the wallet/provider reported that no side effect
+ * happened (the user cancelled the prompt, the call was rejected before
+ * anything ran, the provider returned a definitive error). When the outcome
+ * is UNKNOWN — a timeout, a crash mid-call — the entry must stay pending so
+ * the crash-window replay and the reload guard stay honest.
+ */
+export const EFFECT_FAILURE_REASONS = ["cancelled", "rejected", "failed"] as const;
+export type EffectFailureReason = (typeof EFFECT_FAILURE_REASONS)[number];
+
+/**
  * One external effect (wallet call, payment initiation, broadcast) with its
  * deterministic effect ID. The request is stored as typed public metadata so
  * the same operation can be reconstructed after a crash; a persisted result
  * suppresses the callback on resume. Binding one effect ID to a different
  * request or result digest fails closed (`EffectBindingConflictError`).
+ *
+ * The ledger has three states, and they mean different things:
+ * - `result === null && failure === null` — PENDING: the operation may be
+ *   running right now. The reload guard blocks and History pins the exit.
+ * - `result !== null` — SUCCEEDED: the operation ran; resume suppresses the
+ *   callback and reuses the persisted result.
+ * - `failure !== null` (and `result === null`) — FAILED DEFINITIVELY: the
+ *   operation did not take effect. The guard releases, History unpins, and
+ *   a retry is legitimate — `priorEffectResult` returns null so the caller
+ *   re-drives the exact persisted request.
  */
 export const ExternalEffectRecord = Schema.Struct({
   effectId: Schema.String,
@@ -90,8 +111,28 @@ export const ExternalEffectRecord = Schema.Struct({
       result: Schema.Unknown,
     }),
   ),
+  /**
+   * The latest definitive failure of this effect, or null. Cleared when a
+   * retry succeeds (`result` set). Never set while `result` is non-null.
+   */
+  failure: Schema.NullOr(
+    Schema.Struct({
+      reason: Schema.Literals([...EFFECT_FAILURE_REASONS]),
+      /** Host-supplied public detail (an error code, never key material). */
+      detail: Schema.String,
+      observedAt: Schema.Number,
+    }),
+  ),
 });
 export type ExternalEffectRecord = typeof ExternalEffectRecord.Type;
+
+/**
+ * True while the effect's outcome is unknown: requested, no result, no
+ * definitive failure. This is the predicate the reload guard and the History
+ * exit pin share — a definitively failed effect is NOT pending.
+ */
+export const isEffectPending = (entry: ExternalEffectRecord): boolean =>
+  entry.result === null && entry.failure === null;
 
 /**
  * A §12 exit package reference: the typed public package document plus its

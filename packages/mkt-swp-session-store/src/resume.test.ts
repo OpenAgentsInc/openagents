@@ -148,4 +148,29 @@ describe("reload guard", () => {
     expect(verdicts.during).toEqual({ blocked: true, pendingSessionIds: ["guarded"] });
     expect(verdicts.after.blocked).toBe(false);
   });
+
+  test("a definitive failure releases the guard without suppressing the retry", async () => {
+    // The wallet call the user cancels must not leave navigation guarded
+    // forever — and recording that failure must not hand the failed attempt
+    // back as a prior result, which would suppress a legitimate retry.
+    const kv = memoryStringKv();
+    const request = { operation: "funding_broadcast", templateDigest: "cc".repeat(32) };
+    const outcome = await Effect.runPromise(
+      Effect.gen(function* () {
+        const store = yield* openSessionStore({ kv });
+        yield* store.create(sampleSession("cancelled"));
+        yield* store.recordEffectRequest("cancelled", "fund-1", request);
+        const during = reloadGuard(yield* store.list());
+        yield* store.recordEffectFailure("cancelled", "fund-1", "cancelled", "user dismissed the wallet prompt");
+        const after = reloadGuard(yield* store.list());
+        // Reopen (the reload) and check the retry window is open.
+        const reopened = yield* openSessionStore({ kv });
+        const prior = yield* reopened.priorEffectResult("cancelled", "fund-1", request);
+        return { during, after, prior };
+      }),
+    );
+    expect(outcome.during.blocked).toBe(true);
+    expect(outcome.after.blocked).toBe(false);
+    expect(outcome.prior).toBeNull();
+  });
 });

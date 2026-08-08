@@ -105,7 +105,13 @@ export class EffectBindingConflictError extends Schema.TaggedErrorClass<EffectBi
   {
     sessionId: Schema.String,
     effectId: Schema.String,
-    reason: Schema.Literals(["request_digest_mismatch", "result_digest_mismatch", "result_without_request"]),
+    reason: Schema.Literals([
+      "request_digest_mismatch",
+      "result_digest_mismatch",
+      "result_without_request",
+      "failure_without_request",
+      "failure_after_result",
+    ]),
   },
 ) {}
 
@@ -131,6 +137,13 @@ export const HISTORY_IMPORT_REFUSAL_REASONS = [
   "secret_material",
   /** A session id already exists locally with different content. */
   "conflicting_session",
+  /**
+   * The storage driver failed while applying an already-validated document
+   * (quota exhaustion is the realistic case). Every session this import had
+   * written is rolled back before this refusal surfaces, so the profile is
+   * as it was — the all-or-nothing clause holds for the apply phase too.
+   */
+  "storage_failure",
 ] as const;
 
 export type HistoryImportRefusalReason = (typeof HISTORY_IMPORT_REFUSAL_REASONS)[number];

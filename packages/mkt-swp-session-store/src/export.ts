@@ -22,13 +22,22 @@
  * decoded structurally, every session's content digest is re-verified, the
  * custody tripwire runs, versions newer than this build are refused, and a
  * session id that already exists locally with DIFFERENT content refuses the
- * whole document. All-or-nothing: any refusal means zero writes.
+ * whole document. All-or-nothing: a validation refusal means zero writes,
+ * and a driver failure mid-apply rolls back this import's writes before
+ * refusing (`storage_failure`).
  */
 import { Effect } from "effect";
 
+import type { MessageKey } from "@openagentsinc/swap-i18n";
+
 import { contentDigestHex } from "./canonical.js";
-import { HistoryImportError } from "./errors.js";
-import { CURRENT_SCHEMA_VERSION, migrateEnvelopePayload, type SessionSchemaMigration } from "./migrate.js";
+import { HistoryImportError, type HistoryImportRefusalReason, type SecretMaterialError } from "./errors.js";
+import {
+  CURRENT_SCHEMA_VERSION,
+  SESSION_STORE_MIGRATIONS,
+  migrateEnvelopePayload,
+  type SessionSchemaMigration,
+} from "./migrate.js";
 import { decodeStoredSwapSession, type StoredSwapSession } from "./model.js";
 import { assertNoSecretMaterial } from "./secret-boundary.js";
 import type { SessionStore } from "./store.js";
@@ -57,9 +66,15 @@ export interface SwapHistoryExport {
 export const exportPrivateHistory = (
   store: SessionStore,
   now: () => number = () => Date.now(),
-): Effect.Effect<SwapHistoryExport> =>
+): Effect.Effect<SwapHistoryExport, SecretMaterialError> =>
   Effect.gen(function* () {
     const sessions = yield* store.list();
+    // The tripwire runs ON THE EXPORT PATH, per session, not only
+    // transitively at persist time: a document that would carry key
+    // material is never emitted, whatever wrote the store.
+    for (const session of sessions) {
+      yield* assertNoSecretMaterial(session, `export(${session.sessionId})`);
+    }
     return {
       format: SWAP_HISTORY_EXPORT_FORMAT,
       schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -93,7 +108,10 @@ interface ValidatedImport {
 export const importPrivateHistory = (
   store: SessionStore,
   document: unknown,
-  migrations: ReadonlyArray<SessionSchemaMigration> = [],
+  // The default MUST be the shipped chain, exactly as store open defaults
+  // to it: a default-argument import of an older build's export is the
+  // promised case, not an error.
+  migrations: ReadonlyArray<SessionSchemaMigration> = SESSION_STORE_MIGRATIONS,
   currentVersion: number = CURRENT_SCHEMA_VERSION,
 ): Effect.Effect<ImportOutcome, HistoryImportError> =>
   Effect.gen(function* () {
@@ -194,8 +212,13 @@ export const importPrivateHistory = (
       validated.push({ session: decoded, identical: existingDigest !== undefined });
     }
 
-    // Phase 2 — apply. Every write already validated; driver failures are
-    // defects here (the document itself was acceptable).
+    // Phase 2 — apply. Every applied session is strictly NEW (identical
+    // ones are skipped, conflicting ones were refused), so a mid-apply
+    // driver failure (quota exhaustion is the realistic case) rolls back by
+    // deleting exactly the sessions this import wrote, restoring the
+    // profile as it was, and refuses typed (`storage_failure`) — the
+    // all-or-nothing clause holds for the apply phase, not only for
+    // validation refusals.
     const imported: string[] = [];
     const identical: string[] = [];
     for (const entry of validated) {
@@ -203,8 +226,46 @@ export const importPrivateHistory = (
         identical.push(entry.session.sessionId);
         continue;
       }
-      yield* store.putValidated(entry.session).pipe(Effect.orDie);
+      const write = yield* store.putValidated(entry.session).pipe(Effect.exit);
+      if (write._tag === "Failure") {
+        const rollbackFailures: string[] = [];
+        for (const sessionId of imported) {
+          const rollback = yield* store.delete(sessionId).pipe(Effect.exit);
+          if (rollback._tag === "Failure") rollbackFailures.push(sessionId);
+        }
+        return yield* new HistoryImportError({
+          reason: "storage_failure",
+          detail:
+            rollbackFailures.length === 0
+              ? `storage failed writing session ${entry.session.sessionId}; ${imported.length} prior write(s) rolled back`
+              : `storage failed writing session ${entry.session.sessionId}; rollback ALSO failed for: ${rollbackFailures.join(", ")}`,
+        });
+      }
       imported.push(entry.session.sessionId);
     }
     return { imported, identical };
   });
+
+/**
+ * The `@openagentsinc/swap-i18n` notice surfaces MUST present alongside the
+ * export download (see the module doc's SENSITIVITY paragraph).
+ */
+export const EXPORT_SENSITIVITY_KEY: MessageKey = "swap.history.export.sensitivity";
+
+const IMPORT_REFUSAL_KEYS: Readonly<Record<HistoryImportRefusalReason, MessageKey>> = {
+  not_an_export: "swap.history.import.refused.not_an_export",
+  unsupported_version: "swap.history.import.refused.unsupported_version",
+  session_invalid: "swap.history.import.refused.session_invalid",
+  digest_mismatch: "swap.history.import.refused.digest_mismatch",
+  secret_material: "swap.history.import.refused.secret_material",
+  conflicting_session: "swap.history.import.refused.conflicting_session",
+  storage_failure: "swap.history.import.refused.storage_failure",
+};
+
+/**
+ * The typed message key for one import refusal — the producer that binds
+ * every `HistoryImportError.reason` to its catalog copy, so a removed or
+ * renamed refusal message fails typecheck here instead of rendering blank.
+ */
+export const importRefusalKeyOf = (error: HistoryImportError): MessageKey =>
+  IMPORT_REFUSAL_KEYS[error.reason];

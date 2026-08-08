@@ -6,7 +6,14 @@
  * - Serialised read-modify-write under a named per-session lock plus one
  *   store-wide lock for create/delete/import, because a status fold and a
  *   background task WILL race (teardown §5: Boltz serialises per swap id and
- *   takes a second global lock for claims).
+ *   takes a second global lock for claims). The two locks COMPOSE: every
+ *   store-wide operation acquires the store lock first and then the target
+ *   session's lock, so a delete waits for an in-flight update to finish and
+ *   a mid-flight update can never re-commit a record the delete removed.
+ *   `update` takes only the session lock (never the store lock), so the
+ *   acquisition order is store→session everywhere and cannot deadlock.
+ *   Session semaphores are never discarded — dropping one while a waiter is
+ *   queued would hand two later updates two different locks for one id.
  * - Schema versioning with sequential migrations that rewrite every record
  *   at open (`migrate.ts`); future versions are refused loudly.
  * - The custody tripwire runs on every payload before it touches storage.
@@ -34,7 +41,12 @@ import {
 import { commitRecord, deleteRecord, loadRecord, sealEnvelope } from "./journal.js";
 import type { StringKv } from "./kv.js";
 import { CURRENT_SCHEMA_VERSION, SESSION_STORE_MIGRATIONS, migrateEnvelopePayload, type SessionSchemaMigration } from "./migrate.js";
-import { StoredSwapSession, type ExternalEffectRecord, type SignedNostrRecord } from "./model.js";
+import {
+  StoredSwapSession,
+  type EffectFailureReason,
+  type ExternalEffectRecord,
+  type SignedNostrRecord,
+} from "./model.js";
 import { assertNoSecretMaterial } from "./secret-boundary.js";
 
 export const DEFAULT_KEY_PREFIX = "oa.swp.";
@@ -49,7 +61,8 @@ export type SessionStoreOpenError =
   | TornSessionRecordError
   | UnsupportedSchemaVersionError
   | MigrationStepMissingError
-  | SessionRecordInvalidError;
+  | SessionRecordInvalidError
+  | SecretMaterialError;
 
 export interface SessionStore {
   /** Every stored session, unordered. */
@@ -90,6 +103,22 @@ export interface SessionStore {
     effectId: string,
     result: unknown,
     externalId: string | null,
+  ) => Effect.Effect<void, SessionNotFoundError | SessionWriteError | EffectBindingConflictError>;
+  /**
+   * Durably record that a requested effect definitively did NOT take effect
+   * (the wallet prompt was cancelled, the call was rejected before any side
+   * effect). This releases the reload guard and the History exit pin while
+   * keeping `priorEffectResult` honest: it returns null afterwards, so a
+   * retry legitimately re-drives the persisted request. Only record a
+   * failure the wallet/provider reported definitively; an UNKNOWN outcome
+   * (timeout, crash) must stay pending. Failing an effect that already has
+   * a result fails closed; a retry that succeeds clears the failure.
+   */
+  readonly recordEffectFailure: (
+    sessionId: string,
+    effectId: string,
+    reason: EffectFailureReason,
+    detail: string,
   ) => Effect.Effect<void, SessionNotFoundError | SessionWriteError | EffectBindingConflictError>;
   /**
    * The idempotency gate for resume: a persisted result for this effectId
@@ -155,6 +184,10 @@ export const openSessionStore = (
           }),
       });
       if (migrated.rewritten) {
+        // The migration rewrite is a persist path like any other: a step
+        // that introduced secret-looking material must refuse here, not be
+        // committed and later exported unscanned.
+        yield* assertNoSecretMaterial(migrated.payload, `migrated(${key})`);
         const nextSeq = envelope.writeSeq + 1;
         yield* commitRecord(kv, key, sealEnvelope(currentVersion, nextSeq, migrated.payload));
         writeSeqs.set(key, nextSeq);
@@ -165,6 +198,10 @@ export const openSessionStore = (
     }
 
     const storeLock = Semaphore.makeUnsafe(1);
+    // One semaphore per session id, kept for the lifetime of the store
+    // instance. Entries are NEVER removed: dropping a semaphore while a
+    // fiber holds or awaits it would hand later callers a different lock
+    // for the same id and silently end serialisation.
     const sessionLocks = new Map<string, Semaphore.Semaphore>();
     const lockOf = (sessionId: string): Semaphore.Semaphore => {
       const existing = sessionLocks.get(sessionId);
@@ -173,6 +210,16 @@ export const openSessionStore = (
       sessionLocks.set(sessionId, created);
       return created;
     };
+    /**
+     * Store-wide operations (create, delete, import upsert) hold BOTH locks:
+     * the store lock (their mutual exclusion) and then the target session's
+     * lock, so they serialise against any in-flight `update` of that
+     * session. Acquisition order is store→session everywhere; `update`
+     * never takes the store lock, so the ordering is acyclic.
+     */
+    const withStoreAndSessionLock = (sessionId: string) =>
+      <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+        storeLock.withPermits(1)(lockOf(sessionId).withPermits(1)(effect));
 
     const persist = (
       session: StoredSwapSession,
@@ -229,7 +276,7 @@ export const openSessionStore = (
       list: () => Effect.sync(() => [...cache.values()]),
       get: getOrFail,
       create: (session) =>
-        storeLock.withPermits(1)(
+        withStoreAndSessionLock(session.sessionId)(
           Effect.gen(function* () {
             if (cache.has(session.sessionId)) {
               return yield* new SessionAlreadyExistsError({ sessionId: session.sessionId });
@@ -271,6 +318,7 @@ export const openSessionStore = (
                 requestDigestHex,
                 request,
                 result: null,
+                failure: null,
               };
               return { ...session, effectLedger: [...session.effectLedger, entry] };
             }),
@@ -299,9 +347,12 @@ export const openSessionStore = (
                 }
                 return session;
               }
+              // A success supersedes and clears an earlier definitive
+              // failure: the retry ran and took effect.
               const updated: ExternalEffectRecord = {
                 ...existing,
                 result: { resultDigestHex, externalId, observedAt: now(), result },
+                failure: null,
               };
               return {
                 ...session,
@@ -312,6 +363,38 @@ export const openSessionStore = (
             }),
           );
         }),
+      recordEffectFailure: (sessionId, effectId, reason, detail) =>
+        update(sessionId, (session) =>
+          Effect.gen(function* () {
+            const existing = session.effectLedger.find((entry) => entry.effectId === effectId);
+            if (existing === undefined) {
+              return yield* new EffectBindingConflictError({
+                sessionId,
+                effectId,
+                reason: "failure_without_request",
+              });
+            }
+            if (existing.result !== null) {
+              // The operation already took effect; a later "failure" claim
+              // cannot un-run it and must not reopen the retry window.
+              return yield* new EffectBindingConflictError({
+                sessionId,
+                effectId,
+                reason: "failure_after_result",
+              });
+            }
+            const failed: ExternalEffectRecord = {
+              ...existing,
+              failure: { reason, detail, observedAt: now() },
+            };
+            return {
+              ...session,
+              effectLedger: session.effectLedger.map((entry) =>
+                entry.effectId === effectId ? failed : entry,
+              ),
+            };
+          }),
+        ).pipe(Effect.asVoid),
       priorEffectResult: (sessionId, effectId, request) =>
         Effect.gen(function* () {
           const session = yield* getOrFail(sessionId);
@@ -328,15 +411,16 @@ export const openSessionStore = (
           return entry.result === null ? null : entry;
         }),
       delete: (sessionId) =>
-        storeLock.withPermits(1)(
+        withStoreAndSessionLock(sessionId)(
           Effect.gen(function* () {
             yield* deleteRecord(kv, keyOf(sessionId));
             cache.delete(sessionId);
-            sessionLocks.delete(sessionId);
+            writeSeqs.delete(keyOf(sessionId));
+            // The semaphore stays in `sessionLocks` deliberately (see above).
           }),
         ),
       putValidated: (session) =>
-        storeLock.withPermits(1)(persist({ ...session })),
+        withStoreAndSessionLock(session.sessionId)(persist({ ...session })),
     };
 
     return store;

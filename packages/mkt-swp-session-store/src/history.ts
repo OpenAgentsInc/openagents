@@ -15,21 +15,40 @@
  */
 import type { MessageKey } from "@openagentsinc/swap-i18n";
 
-import type { EvidenceRung, StoredSwapSession, TerminalOutcome } from "./model.js";
+import { isEffectPending, type EvidenceRung, type StoredSwapSession, type TerminalOutcome } from "./model.js";
 import { resumeReasonOf } from "./resume.js";
 
 /**
  * Chain facts for one session, from the host's observation adapter. `null`
  * facts (adapter unavailable) degrade honestly: nothing is claimed to be
  * claimable, and ordering falls back to resume/chronology.
+ *
+ * Refund actionability is re-derived HERE from the tip height and the
+ * refund locktime, not accepted as an adapter boolean: the adapter reports
+ * heights and spendability (facts it can observe), and this module decides
+ * `tipHeight >= refundLocktimeHeight`. A null tip or null locktime never
+ * claims a refund is unlocked.
  */
 export interface SessionChainFacts {
+  /** Current chain tip height, or null when the adapter has no view. */
   readonly tipHeight: number | null;
   /** A destination output attributable to this user is funded and claimable. */
   readonly destinationClaimable: boolean;
-  /** The refund timeout has passed and the refund path is spendable. */
-  readonly refundUnlocked: boolean;
+  /**
+   * Absolute locktime height of this session's refund path (from the §12
+   * exit package / contract terms), or null when the session has none.
+   */
+  readonly refundLocktimeHeight: number | null;
+  /** The refundable output is still unspent on the source chain. */
+  readonly refundOutputSpendable: boolean;
 }
+
+/** True when the chain facts prove the refund path is executable NOW. */
+export const refundUnlocked = (facts: SessionChainFacts): boolean =>
+  facts.refundOutputSpendable &&
+  facts.refundLocktimeHeight !== null &&
+  facts.tipHeight !== null &&
+  facts.tipHeight >= facts.refundLocktimeHeight;
 
 export type HistoryAction = "claim" | "refund" | "exit" | "resume";
 
@@ -70,10 +89,12 @@ export interface HistoryRow {
   readonly outcome: TerminalOutcome | null;
   readonly outcomeLabelKey: MessageKey | null;
   /**
-   * Evidence-rung label for the outcome. A terminal outcome without a
-   * verified rung renders "claimed only" — the rung is never inferred up.
+   * Evidence-rung label for the TERMINAL outcome, or null while the session
+   * is in flight (no outcome yet — there is nothing to qualify). A terminal
+   * outcome without a verified rung renders "claimed only" — the rung is
+   * never inferred up.
    */
-  readonly rungLabelKey: MessageKey;
+  readonly rungLabelKey: MessageKey | null;
   /** Per-row delete requires confirmation with this copy. */
   readonly deleteConfirmKey: MessageKey;
 }
@@ -82,11 +103,12 @@ const actionOf = (
   session: StoredSwapSession,
   facts: SessionChainFacts | null,
 ): HistoryAction | null => {
+  // Crash window first: an external effect is pending (requested, no result,
+  // no definitive failure) — the unilateral exit path must be finished
+  // before anything else, including a claim the chain already shows.
+  if (session.effectLedger.some(isEffectPending)) return "exit";
   if (facts?.destinationClaimable === true) return "claim";
-  if (facts?.refundUnlocked === true) return "refund";
-  // Crash window: an external effect was requested but never resulted —
-  // the unilateral exit path must be finished before anything else.
-  if (session.effectLedger.some((entry) => entry.result === null)) return "exit";
+  if (facts !== null && refundUnlocked(facts)) return "refund";
   if (resumeReasonOf(session) !== null) return "resume";
   return null;
 };
@@ -110,7 +132,12 @@ export const historyRowOf = (
     actionLabelKey: action === null ? null : ACTION_LABEL_KEYS[action],
     outcome,
     outcomeLabelKey: outcome === null ? null : OUTCOME_LABEL_KEYS[outcome],
-    rungLabelKey: rung === null ? "swap.history.rung.claimed_only" : RUNG_LABEL_KEYS[rung],
+    rungLabelKey:
+      outcome === null
+        ? null
+        : rung === null
+          ? "swap.history.rung.claimed_only"
+          : RUNG_LABEL_KEYS[rung],
     deleteConfirmKey: "swap.history.delete_confirm",
   };
 };

@@ -2089,6 +2089,14 @@
       "reason": "Render-ready primary-action gate view (single most proximate refusal) for openagents#9316 §4; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
     },
     {
+      "ref": "packages/mkt-swp-session-store/src/export.ts#EXPORT_SENSITIVITY_KEY",
+      "reason": "Typed sensitivity-notice key surfaces must present alongside the history export download (openagents#9320 audit follow-up); SWAP-0/SWAP-7 (openagents#9315/#9322) mount the History surface and render it next to the export action."
+    },
+    {
+      "ref": "packages/mkt-swp-session-store/src/export.ts#importRefusalKeyOf",
+      "reason": "Producer binding every HistoryImportError.reason to its swap-i18n catalog key (openagents#9320 audit follow-up: the refusal keys previously had no producer); SWAP-0/SWAP-7 (openagents#9315/#9322) render import refusals through it."
+    },
+    {
       "ref": "packages/mkt-swp-session-store/src/export.ts#exportPrivateHistory",
       "reason": "History export for openagents#9320; SWAP-0/SWAP-7 (openagents#9315/#9322) mount the History surface in the swap shell and wire the export download as its production caller."
     },
@@ -2127,6 +2135,10 @@
     {
       "ref": "packages/mkt-swp-session-store/src/store.ts#SessionStore.priorEffectResult",
       "reason": "Resume idempotency gate for openagents#9320; the SWAP-0 (openagents#9315) engine boundary consults it before re-driving any external wallet effect."
+    },
+    {
+      "ref": "packages/mkt-swp-session-store/src/store.ts#SessionStore.recordEffectFailure",
+      "reason": "Definitive external-effect failure recording for openagents#9320 (releases the reload guard without suppressing a legitimate retry); the SWAP-0 (openagents#9315) engine boundary records wallet cancellations/rejections through it."
     },
     {
       "ref": "packages/mkt-swp-session-store/src/store.ts#SessionStore.recordEffectRequest",

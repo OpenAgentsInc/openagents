@@ -40,7 +40,7 @@ export const marketSwapSessionStoreContractRegistry: BehaviorContractRegistryDoc
         "If we emit an export, we ingest it: export then import into a clean profile reproduces every session's actionable state, including the ability to execute a unilateral exit, and a foreign or corrupt document is refused with a typed error rather than partially applied.",
       surface: "openagents.com/swap",
       verification:
-        "packages/mkt-swp-session-store tests export a seeded store, import into a clean store, and assert session-set equality, resume-plan equality, exit-package presence, and prior-effect-result queryability; refusal tests cover not_an_export, unsupported_version, digest_mismatch, session_invalid, secret_material, and conflicting_session, each asserting zero writes.",
+        "packages/mkt-swp-session-store tests export a seeded store (the custody tripwire runs per session on the export path itself), import into a clean store with default arguments (the shipped migration chain, so an older build's document ingests), and assert session-set equality, resume-plan equality, exit-package presence, and prior-effect-result queryability; refusal tests cover not_an_export, unsupported_version, digest_mismatch, session_invalid, secret_material, and conflicting_session, each asserting zero writes, plus storage_failure, asserting a mid-apply driver failure rolls this import's writes back before refusing.",
     },
     {
       authorityBoundary:
@@ -74,9 +74,9 @@ export const marketSwapSessionStoreContractRegistry: BehaviorContractRegistryDoc
         "A session interrupted by a reload resumes without user action and without duplicating an external effect; resume is app-wide, re-attaching every non-terminal stored session plus terminal-but-unclaimed ones, with a catch-up read before the live fold is trusted.",
       surface: "openagents.com/swap",
       verification:
-        "packages/mkt-swp-session-store tests persist a mid-flight session with a recorded effect request and result, reopen the store as a fresh instance, and assert the resume plan includes the session, the prior result is returned for the exact persisted request (suppressing the callback), a mismatched request fails closed, and an unresulted request survives for the crash-window replay.",
+        "packages/mkt-swp-session-store tests persist a mid-flight session with a recorded effect request and result, reopen the store as a fresh instance, and assert the resume plan includes the session, the prior result is returned for the exact persisted request (suppressing the callback), a mismatched request fails closed, an unresulted request survives for the crash-window replay, and a definitively failed effect (recordEffectFailure) releases the reload guard while priorEffectResult still permits the retry.",
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-08-04.2",
+  version: "2026-08-07.1",
 };
