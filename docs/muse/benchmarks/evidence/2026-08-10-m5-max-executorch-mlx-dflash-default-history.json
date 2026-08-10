@@ -1,0 +1,125 @@
+{
+  "schema": "openagents.muse.conversation_history_smoke.v1",
+  "configuration": "executorch-mlx-dflash-default",
+  "captured_at": "2026-08-10T16:18:51Z",
+  "environment": {
+    "platform": "macOS-26.4-arm64-arm-64bit",
+    "macos": "26.4",
+    "hardware_model": "Mac17,6",
+    "memory_bytes": 137438953472,
+    "server_pid": 44133,
+    "models": {
+      "object": "list",
+      "data": [
+        {
+          "id": "muse-glimmer",
+          "object": "model",
+          "created": 1786378731,
+          "owned_by": "executorch"
+        }
+      ]
+    }
+  },
+  "memory": {
+    "samples": 6,
+    "peak_rss_kib": 22691936
+  },
+  "turns": [
+    {
+      "scenario": "history_turn_1",
+      "repetition": 1,
+      "request": {
+        "model": "muse-glimmer",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Remember that the project codename is cobalt-orchid. Reply with exactly: remembered"
+          }
+        ],
+        "temperature": 0,
+        "max_tokens": 256,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "chat_template_kwargs": {
+          "reasoning_strength": "low",
+          "return_reasoning": true
+        }
+      },
+      "http_status": 200,
+      "error": null,
+      "finish_reason": "stop",
+      "event_count": 5,
+      "ttft_seconds": 1.4743549169999999,
+      "first_content_seconds": 1.474374167,
+      "total_seconds": 1.474472667,
+      "observed_decode_seconds": 0.00011775000000002755,
+      "observed_completion_per_second": 382165.605095452,
+      "end_to_end_completion_per_second": 30.519385680819816,
+      "visible_output": "remembered",
+      "reasoning_output": "Remember that the project codename is cobalt-orchid. Reply with exactly: remembered\n\nWe must reply with exactly: remembered\n\nProbably just output remembered. No extra.",
+      "expected": "remembered",
+      "expected_observed": true,
+      "usage": {
+        "prompt_tokens": 73,
+        "completion_tokens": 45,
+        "total_tokens": 118
+      },
+      "timings": null
+    },
+    {
+      "scenario": "history_turn_2",
+      "repetition": 2,
+      "request": {
+        "model": "muse-glimmer",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Remember that the project codename is cobalt-orchid. Reply with exactly: remembered"
+          },
+          {
+            "role": "assistant",
+            "content": "remembered",
+            "reasoning_content": "Remember that the project codename is cobalt-orchid. Reply with exactly: remembered\n\nWe must reply with exactly: remembered\n\nProbably just output remembered. No extra."
+          },
+          {
+            "role": "user",
+            "content": "What is the project codename? Return only the codename."
+          }
+        ],
+        "temperature": 0,
+        "max_tokens": 256,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "chat_template_kwargs": {
+          "reasoning_strength": "low",
+          "return_reasoning": true
+        }
+      },
+      "http_status": 200,
+      "error": null,
+      "finish_reason": "stop",
+      "event_count": 5,
+      "ttft_seconds": 4.7890885,
+      "first_content_seconds": 4.789111583,
+      "total_seconds": 4.789184666000001,
+      "observed_decode_seconds": 9.616600000050823e-05,
+      "observed_completion_per_second": 831894.8484867542,
+      "end_to_end_completion_per_second": 16.704304715570135,
+      "visible_output": "cobalt-orchid",
+      "reasoning_output": "What is the project codename? Return only the codename.\n\nWe have instruction to remember codename is cobalt-orchid. User asks what is project codename? Return only codename.\n\nWe should comply. It's not disallowed. It's just codename. Probably fine.\n\nReturn only codename: cobalt-orchid",
+      "expected": "cobalt-orchid",
+      "expected_observed": true,
+      "usage": {
+        "prompt_tokens": 138,
+        "completion_tokens": 80,
+        "total_tokens": 218
+      },
+      "timings": null
+    }
+  ],
+  "passed": true
+}

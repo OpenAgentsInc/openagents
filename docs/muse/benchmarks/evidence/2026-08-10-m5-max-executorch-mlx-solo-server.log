@@ -1,0 +1,78 @@
+INFO:__main__:Starting Muse Glimmer worker subprocess (loads the model once).
+INFO:executorch.examples.llm_server.python.worker_client:Starting model worker: /Users/christopherdavid/work/executorch/cmake-out/examples/models/muse-glimmer/muse_glimmer_worker
+I tokenizers:regex.cpp:27] Registering override fallback regex
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1786377320.444771 197488921 re2.cc:237] Error parsing '([^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?i:'s|'t|'re|'ve|'m|'l...': invalid perl operator: (?!
+I tokenizers:re2_regex.cpp:27] Re2 failed to compile regex: ([^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?i:'s|'t|'re|'ve|'m|'ll|'d)?|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*(?i:'s|'t|'re|'ve|'m|'ll|'d)?|\p{N}{1,3}| $
+I tokenizers:regex_lookahead.cpp:26] Creating PCRE2 regex
+I 00:00:00.673056 executorch:muse_glimmer_engine.cpp:1166] MuseGlimmerEngine: detected autoregressive artifact
+I 00:00:00.673192 executorch:llm_runner_helper.cpp:137] Metadata: use_sdpa_with_kv_cache = 0
+I 00:00:00.673197 executorch:llm_runner_helper.cpp:137] Metadata: use_kv_cache = 1
+I 00:00:00.673200 executorch:llm_runner_helper.cpp:135] Method get_max_context_len not found, using the default value 128
+I 00:00:00.673201 executorch:llm_runner_helper.cpp:137] Metadata: get_max_context_len = 128
+I 00:00:00.673203 executorch:llm_runner_helper.cpp:137] Metadata: get_max_seq_len = 131072
+I 00:00:00.673204 executorch:llm_runner_helper.cpp:137] Metadata: enable_dynamic_shape = 1
+I 00:00:00.673205 executorch:llm_runner_helper.cpp:148] Setting kMaxContextLen to kMaxSeqLen value: 131072
+I 00:00:00.673349 executorch:muse_glimmer_engine.cpp:332] MuseGlimmerEngine: MLX clear_cache_interval=1
+I 00:00:02.588541 executorch:muse_glimmer_engine.cpp:1457] MuseGlimmerEngine: per-session rebinding unavailable; serving capacity clamped to 1 session.
+INFO:executorch.examples.llm_server.python.worker_client:Model worker ready (max_named_sessions=0).
+/tmp/muse-307-executorch-venv/lib/python3.12/site-packages/executorch/examples/models/muse_glimmer/serving/serve.py:378: DeprecationWarning:
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+  @app.on_event("shutdown")
+INFO:     Started server process [13702]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:18002 (Press CTRL+C to quit)
+INFO:     127.0.0.1:49591 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49592 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+E 00:00:40.239987 executorch:muse_glimmer_engine.cpp:564] prefill_tokens: top_k/top_p/seed require a sampling model (export with --sample); only temperature is supported otherwise
+INFO:     127.0.0.1:49593 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49821 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=62 reused_prompt_tokens=0 prefilled_prompt_tokens=62 completion_tokens=59 prefill_ms=653.1 prefill_tok_s=94.9 decode_ms=3567.6 decode_tok_s=16.5 total_ms=4220.9 finish=stop
+INFO:     127.0.0.1:49863 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50062 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=62 reused_prompt_tokens=0 prefilled_prompt_tokens=62 completion_tokens=59 prefill_ms=379.4 prefill_tok_s=163.4 decode_ms=2772.7 decode_tok_s=21.3 total_ms=3152.4 finish=stop
+INFO:     127.0.0.1:50081 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=62 reused_prompt_tokens=0 prefilled_prompt_tokens=62 completion_tokens=59 prefill_ms=829.1 prefill_tok_s=74.8 decode_ms=3113.3 decode_tok_s=19.0 total_ms=3942.6 finish=stop
+INFO:     127.0.0.1:50113 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=62 reused_prompt_tokens=0 prefilled_prompt_tokens=62 completion_tokens=59 prefill_ms=647.7 prefill_tok_s=95.7 decode_ms=2888.9 decode_tok_s=20.4 total_ms=3536.8 finish=stop
+INFO:     127.0.0.1:50136 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=90 reused_prompt_tokens=0 prefilled_prompt_tokens=90 completion_tokens=256 prefill_ms=968.3 prefill_tok_s=92.9 decode_ms=16957.4 decode_tok_s=15.1 total_ms=17926.0 finish=length
+INFO:     127.0.0.1:50269 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=90 reused_prompt_tokens=0 prefilled_prompt_tokens=90 completion_tokens=256 prefill_ms=725.0 prefill_tok_s=124.1 decode_ms=16901.2 decode_tok_s=15.1 total_ms=17626.5 finish=length
+INFO:     127.0.0.1:50370 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=90 reused_prompt_tokens=0 prefilled_prompt_tokens=90 completion_tokens=256 prefill_ms=980.0 prefill_tok_s=91.8 decode_ms=17352.3 decode_tok_s=14.8 total_ms=18332.7 finish=length
+INFO:     127.0.0.1:50500 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=112 reused_prompt_tokens=0 prefilled_prompt_tokens=112 completion_tokens=384 prefill_ms=1238.3 prefill_tok_s=90.4 decode_ms=24888.7 decode_tok_s=15.4 total_ms=26127.4 finish=length
+INFO:     127.0.0.1:50697 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=112 reused_prompt_tokens=0 prefilled_prompt_tokens=112 completion_tokens=384 prefill_ms=1389.7 prefill_tok_s=80.6 decode_ms=26795.3 decode_tok_s=14.3 total_ms=28185.5 finish=length
+INFO:     127.0.0.1:50891 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=112 reused_prompt_tokens=0 prefilled_prompt_tokens=112 completion_tokens=384 prefill_ms=1087.4 prefill_tok_s=103.0 decode_ms=21761.7 decode_tok_s=17.6 total_ms=22849.3 finish=length
+INFO:     127.0.0.1:51054 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=18073 reused_prompt_tokens=0 prefilled_prompt_tokens=18073 completion_tokens=66 prefill_ms=139914.9 prefill_tok_s=129.2 decode_ms=4700.8 decode_tok_s=14.0 total_ms=145151.2 finish=stop
+INFO:     127.0.0.1:52165 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=18073 reused_prompt_tokens=0 prefilled_prompt_tokens=18073 completion_tokens=66 prefill_ms=159545.5 prefill_tok_s=113.3 decode_ms=6083.4 decode_tok_s=10.8 total_ms=166024.8 finish=stop
+INFO:     127.0.0.1:52621 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=18073 reused_prompt_tokens=0 prefilled_prompt_tokens=18073 completion_tokens=66 prefill_ms=152704.4 prefill_tok_s=118.4 decode_ms=5585.5 decode_tok_s=11.8 total_ms=158502.5 finish=stop
+INFO:     127.0.0.1:52905 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=98 reused_prompt_tokens=0 prefilled_prompt_tokens=98 completion_tokens=62 prefill_ms=1261.2 prefill_tok_s=77.7 decode_ms=3814.0 decode_tok_s=16.3 total_ms=5075.7 finish=stop
+INFO:     127.0.0.1:52906 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=98 reused_prompt_tokens=0 prefilled_prompt_tokens=98 completion_tokens=62 prefill_ms=1246.1 prefill_tok_s=78.6 decode_ms=3886.0 decode_tok_s=16.0 total_ms=5132.9 finish=stop
+INFO:     127.0.0.1:52919 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=98 reused_prompt_tokens=0 prefilled_prompt_tokens=98 completion_tokens=62 prefill_ms=1178.7 prefill_tok_s=83.1 decode_ms=3796.6 decode_tok_s=16.3 total_ms=4975.9 finish=stop
+INFO:     127.0.0.1:52940 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=95 reused_prompt_tokens=0 prefilled_prompt_tokens=95 completion_tokens=135 prefill_ms=937.1 prefill_tok_s=101.4 decode_ms=8686.8 decode_tok_s=15.5 total_ms=9624.5 finish=stop
+INFO:     127.0.0.1:52947 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=95 reused_prompt_tokens=0 prefilled_prompt_tokens=95 completion_tokens=135 prefill_ms=898.9 prefill_tok_s=105.7 decode_ms=9871.2 decode_tok_s=13.7 total_ms=10770.7 finish=stop
+INFO:     127.0.0.1:52964 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=95 reused_prompt_tokens=0 prefilled_prompt_tokens=95 completion_tokens=135 prefill_ms=842.0 prefill_tok_s=112.8 decode_ms=9628.3 decode_tok_s=14.0 total_ms=10470.9 finish=stop
+INFO:     127.0.0.1:52998 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53010 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=73 reused_prompt_tokens=0 prefilled_prompt_tokens=73 completion_tokens=45 prefill_ms=464.8 prefill_tok_s=157.1 decode_ms=2058.5 decode_tok_s=21.9 total_ms=2523.5 finish=stop
+INFO:     127.0.0.1:53021 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:executorch.examples.llm_server.python.serving_chat:llm_turn_stats session_id=<scratch> reason=new prompt_tokens=138 reused_prompt_tokens=0 prefilled_prompt_tokens=138 completion_tokens=80 prefill_ms=1242.2 prefill_tok_s=111.1 decode_ms=6667.0 decode_tok_s=12.0 total_ms=7909.5 finish=stop
+INFO:     127.0.0.1:53038 - "GET /v1/models HTTP/1.1" 200 OK

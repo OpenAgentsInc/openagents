@@ -1,0 +1,26 @@
+I tokenizers:regex.cpp:27] Registering override fallback regex
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1786377200.547737 197471976 re2.cc:237] Error parsing '([^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?i:'s|'t|'re|'ve|'m|'l...': invalid perl operator: (?!
+I tokenizers:re2_regex.cpp:27] Re2 failed to compile regex: ([^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?i:'s|'t|'re|'ve|'m|'ll|'d)?|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*(?i:'s|'t|'re|'ve|'m|'ll|'d)?|\p{N}{1,3}| $
+I tokenizers:regex_lookahead.cpp:26] Creating PCRE2 regex
+E [muse_glimmer_engine.cpp:564] prefill_tokens: top_k/top_p/seed require a sampling model (export with --sample); only temperature is supported otherwise
+E [solo.cpp:557] prefill failed
+Prompt tokens: 6
+        6.72 real         0.54 user         2.21 sys
+         18126946304  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+               -1096  page reclaims
+             1113232  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                1479  voluntary context switches
+               55916  involuntary context switches
+         24093675448  instructions retired
+         11646661066  cycles elapsed
+          2135520552  peak memory footprint

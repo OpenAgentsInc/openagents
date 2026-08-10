@@ -1,0 +1,30 @@
+I tokenizers:regex.cpp:27] Registering override fallback regex
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1786377240.130527 197478016 re2.cc:237] Error parsing '([^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?i:'s|'t|'re|'ve|'m|'l...': invalid perl operator: (?!
+I tokenizers:re2_regex.cpp:27] Re2 failed to compile regex: ([^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?i:'s|'t|'re|'ve|'m|'ll|'d)?|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*(?i:'s|'t|'re|'ve|'m|'ll|'d)?|\p{N}{1,3}| $
+I tokenizers:regex_lookahead.cpp:26] Creating PCRE2 regex
+E [program.cpp:67] No method named 'use_sampling' in program
+Prefill: 6 tokens in 261.0 ms (23.0 tok/s)
+ Paris. It is the most populous city in France and the most populous city proper in the European Union. The Paris Region had a population of 12,405,426 in January 2023, the largest in the European Union, while the population of the city proper was 2,175,601.
+Decode: 64 tokens in 10249.0 ms (6.2 tok/s)
+Prompt tokens: 6
+PyTorchObserver {"prefill_token_per_sec":22.9885,"decode_token_per_sec":6.24451,"prompt_tokens":6,"generated_tokens":64,"model_load_start_ms":1786377239844,"model_load_end_ms":1786377241218,"inference_start_ms":1786377241218,"inference_end_ms":1786377251728,"model_execution_start_ms":0,"model_execution_end_ms":0,"prompt_eval_end_ms":1786377241479,"first_token_ms":1786377242564,"aggregate_sampling_time_ms":0,"aggregate_model_execution_time_ms":0,"SCALING_FACTOR_UNITS_PER_SECOND":1000}
+DFlashDecodeTiming {"cycles":34,"speculative_cycles":34,"target_only_cycles":0,"total_cycle_ms":10248.094,"avg_cycle_ms":301.415,"draft_execute_ms":1822.506,"avg_draft_execute_ms":53.603,"draft_logits_copy_ms":15.353,"avg_draft_logits_copy_ms":0.452,"draft_sampling_ms":36.770,"avg_draft_sampling_ms":1.081,"target_execute_ms":8355.375,"avg_target_execute_ms":245.746,"target_logits_copy_ms":11.428,"avg_target_logits_copy_ms":0.336,"target_hidden_copy_ms":0.743,"avg_target_hidden_copy_ms":0.022,"accept_correction_ms":4.462,"avg_accept_correction_ms":0.131,"state_commit_ms":0.046,"avg_state_commit_ms":0.001,"accounted_percent":100.0,"draft_attempts_by_row":[34,20,8,2],"draft_accepts_by_row":[20,8,2,0]}
+       13.07 real         1.57 user         2.78 sys
+         22054977536  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             1381790  page reclaims
+                  48  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                  12  voluntary context switches
+               24926  involuntary context switches
+         27662443924  instructions retired
+         15506764604  cycles elapsed
+          2811724024  peak memory footprint

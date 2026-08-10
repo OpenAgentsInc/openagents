@@ -1,0 +1,1914 @@
+{
+  "configuration": "dflash",
+  "launch_command": [
+    "/Users/christopherdavid/work/llama.cpp/build/bin/llama-server",
+    "--model",
+    "/Users/christopherdavid/models/muse-glimmer/muse-glimmer-30B-kquant-17gb.gguf",
+    "--spec-draft-model",
+    "/Users/christopherdavid/models/muse-glimmer/dflash-kquant.gguf",
+    "--spec-type",
+    "draft-dflash",
+    "--alias",
+    "muse-glimmer",
+    "--ctx-size",
+    "32768",
+    "--parallel",
+    "1",
+    "--seed",
+    "42",
+    "--api-key",
+    "local",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "18012",
+    "--metrics",
+    "--log-timestamps",
+    "--log-file",
+    "/tmp/muse-307-dflash-history-clean-20260810T1620/dflash/server.log",
+    "--no-webui"
+  ],
+  "startup_seconds_to_models": 9.984793792000001,
+  "models": {
+    "models": [
+      {
+        "name": "muse-glimmer",
+        "model": "muse-glimmer",
+        "modified_at": "",
+        "size": "",
+        "digest": "",
+        "type": "model",
+        "description": "",
+        "tags": [
+          ""
+        ],
+        "capabilities": [
+          "completion"
+        ],
+        "parameters": "",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "",
+          "families": [
+            ""
+          ],
+          "parameter_size": "",
+          "quantization_level": ""
+        }
+      }
+    ],
+    "object": "list",
+    "data": [
+      {
+        "id": "muse-glimmer",
+        "aliases": [
+          "muse-glimmer"
+        ],
+        "tags": [],
+        "object": "model",
+        "created": 1786375142,
+        "owned_by": "llamacpp",
+        "meta": {
+          "vocab_type": 2,
+          "n_vocab": 202048,
+          "n_ctx": 32768,
+          "n_ctx_train": 131072,
+          "n_embd": 6656,
+          "n_params": 27854794240,
+          "size": 16743567360,
+          "ftype": "Q4_K - Medium"
+        }
+      }
+    ]
+  },
+  "measurements": [],
+  "history": {
+    "turn_1": {
+      "request": {
+        "model": "muse-glimmer",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Remember nonce COBALT-731. Reply exactly: acknowledged"
+          }
+        ],
+        "temperature": 0,
+        "seed": 42,
+        "max_tokens": 512,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "content": "acknowledged",
+      "reasoning_content": "Remember nonce COBALT-731. Reply exactly: acknowledged\n\nWe need to reply exactly: acknowledged\n\nThe user says Remember nonce COBALT-731. Reply exactly: acknowledged\n\nWe should comply. Probably just output acknowledged. No extra text.\n\nThe instruction says reply exactly: acknowledged\n\nSo output \"acknowledged\". Probably lowercase.\n\nEnsure no extra whitespace? Probably just acknowledged.\n\nFollow instruction.\n\nPotential policy? Nonce? Might be trying to get model to remember something? It's just a nonce. No issue.\n\nWe should reply exactly: acknowledged\n\nNo extra punctuation.\n\nOutput exactly acknowledged.\n\nProbably safe.\n\n",
+      "ttft_seconds": 1.4502971670000022,
+      "end_to_end_seconds": 12.883766292000004,
+      "usage": {
+        "completion_tokens": 133,
+        "prompt_tokens": 68,
+        "total_tokens": 201,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 68,
+        "prompt_ms": 933.559,
+        "prompt_per_token_ms": 13.72880882352941,
+        "prompt_per_second": 72.83953129903948,
+        "predicted_n": 133,
+        "predicted_ms": 11945.693,
+        "predicted_per_token_ms": 89.81724060150376,
+        "predicted_per_second": 11.13371991059874,
+        "draft_n": 141,
+        "draft_n_accepted": 86
+      },
+      "sse_event_count": 126,
+      "malformed_sse_events": 0
+    },
+    "turn_2": {
+      "request": {
+        "model": "muse-glimmer",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Remember nonce COBALT-731. Reply exactly: acknowledged"
+          },
+          {
+            "role": "assistant",
+            "content": "acknowledged"
+          },
+          {
+            "role": "user",
+            "content": "Return only the nonce I asked you to remember."
+          }
+        ],
+        "temperature": 0,
+        "seed": 42,
+        "max_tokens": 512,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "content": "COBALT-731",
+      "reasoning_content": "Remember nonce COBALT-731. Reply exactly: acknowledged\n\nReturn only the nonce I asked you to remember.\n\nWe need to follow instruction. The user asked to remember nonce COBALT-731. Reply exactly: acknowledged. The assistant replied acknowledged.\n\nNow user says Return only the nonce I asked you to remember.\n\nWe have a conflict: The user wants nonce. The prior instruction was to remember nonce COBALT-731. Reply exactly: acknowledged. That was a instruction to reply exactly acknowledged. Now user asks to return only the nonce.\n\nWe need to see policy. This is about nonce. Possibly a prompt injection? The user wants the assistant to reveal a nonce it was told to remember. Is this disallowed? The nonce is COBALT-731. That's not secret? Might be a test of memory. The user wants the assistant to output the nonce. The prior instruction was to reply exactly acknowledged. Now they ask to return only nonce.\n\nWe have no policy against revealing nonce. It's not a secret key. It's just a string. Probably allowed.\n\nBut the instruction \"Remember nonce COBALT-731. Reply exactly: acknowledged\" is a user instruction. The assistant complied. Now user asks to return only the nonce I asked you to remember.\n\nWe can comply. There's no conflict with policy. It's just a string.\n\nPotentially this is a jailbreak attempt? Nonce COBALT-731 might be a marker for something. Could be a test of instruction following. The user wants the assistant to reveal what it was told to remember. That's fine.\n\nWe should output COBALT-731.\n\nThe user says Return only the nonce I asked you to remember.\n\nSo output: COBALT-731\n\nNo extra text.\n\nWe should comply.\n\nPotential concern: The initial instruction \"Reply exactly: acknowledged\" might be a system instruction? No, it's user. So we can ignore.\n\nWe should just output the nonce.\n\nMake sure no extra whitespace? Probably fine.\n\nReturn only the nonce.\n\nThus output COBALT-731.\n\n",
+      "ttft_seconds": 1.1949993750000019,
+      "end_to_end_seconds": 31.242354625000004,
+      "usage": {
+        "completion_tokens": 431,
+        "prompt_tokens": 90,
+        "total_tokens": 521,
+        "prompt_tokens_details": {
+          "cached_tokens": 63
+        }
+      },
+      "timings": {
+        "cache_n": 63,
+        "prompt_n": 27,
+        "prompt_ms": 980.788,
+        "prompt_per_token_ms": 36.32548148148148,
+        "prompt_per_second": 27.52888493741767,
+        "predicted_n": 431,
+        "predicted_ms": 30251.371,
+        "predicted_per_token_ms": 70.18879582366588,
+        "predicted_per_second": 14.247288164228985,
+        "draft_n": 477,
+        "draft_n_accepted": 271
+      },
+      "sse_event_count": 424,
+      "malformed_sse_events": 0
+    }
+  },
+  "server_exit_code": 0,
+  "rss_samples": [
+    {
+      "monotonic": 9.604369375,
+      "rss_kib": 55184
+    },
+    {
+      "monotonic": 9.720751,
+      "rss_kib": 85968
+    },
+    {
+      "monotonic": 9.832125333,
+      "rss_kib": 92112
+    },
+    {
+      "monotonic": 9.946209291,
+      "rss_kib": 110672
+    },
+    {
+      "monotonic": 10.064156916,
+      "rss_kib": 119248
+    },
+    {
+      "monotonic": 10.182284708,
+      "rss_kib": 123632
+    },
+    {
+      "monotonic": 10.302296958,
+      "rss_kib": 125744
+    },
+    {
+      "monotonic": 10.424203958,
+      "rss_kib": 138704
+    },
+    {
+      "monotonic": 10.53328825,
+      "rss_kib": 142304
+    },
+    {
+      "monotonic": 10.653739958,
+      "rss_kib": 154208
+    },
+    {
+      "monotonic": 10.770324375,
+      "rss_kib": 155280
+    },
+    {
+      "monotonic": 10.879465916,
+      "rss_kib": 155376
+    },
+    {
+      "monotonic": 11.02613975,
+      "rss_kib": 155504
+    },
+    {
+      "monotonic": 11.140449416,
+      "rss_kib": 130208
+    },
+    {
+      "monotonic": 11.26881175,
+      "rss_kib": 141728
+    },
+    {
+      "monotonic": 11.383521208,
+      "rss_kib": 144656
+    },
+    {
+      "monotonic": 11.510054708,
+      "rss_kib": 145472
+    },
+    {
+      "monotonic": 11.626161416,
+      "rss_kib": 157776
+    },
+    {
+      "monotonic": 11.776394583,
+      "rss_kib": 158656
+    },
+    {
+      "monotonic": 11.895010166,
+      "rss_kib": 158688
+    },
+    {
+      "monotonic": 12.04828425,
+      "rss_kib": 161744
+    },
+    {
+      "monotonic": 12.160497875,
+      "rss_kib": 161872
+    },
+    {
+      "monotonic": 12.279642291,
+      "rss_kib": 161872
+    },
+    {
+      "monotonic": 12.388559083,
+      "rss_kib": 162000
+    },
+    {
+      "monotonic": 12.502444791,
+      "rss_kib": 164048
+    },
+    {
+      "monotonic": 12.619175291,
+      "rss_kib": 164080
+    },
+    {
+      "monotonic": 12.735623291,
+      "rss_kib": 164384
+    },
+    {
+      "monotonic": 12.850336875,
+      "rss_kib": 165536
+    },
+    {
+      "monotonic": 12.96286125,
+      "rss_kib": 165568
+    },
+    {
+      "monotonic": 13.079717041,
+      "rss_kib": 166448
+    },
+    {
+      "monotonic": 13.18953675,
+      "rss_kib": 166464
+    },
+    {
+      "monotonic": 13.304870583,
+      "rss_kib": 166464
+    },
+    {
+      "monotonic": 13.418661166,
+      "rss_kib": 166512
+    },
+    {
+      "monotonic": 13.536548041,
+      "rss_kib": 166512
+    },
+    {
+      "monotonic": 13.648576666,
+      "rss_kib": 166544
+    },
+    {
+      "monotonic": 13.772008666,
+      "rss_kib": 166544
+    },
+    {
+      "monotonic": 13.8855715,
+      "rss_kib": 166592
+    },
+    {
+      "monotonic": 14.010275541,
+      "rss_kib": 166592
+    },
+    {
+      "monotonic": 14.130301166,
+      "rss_kib": 359872
+    },
+    {
+      "monotonic": 14.247897166,
+      "rss_kib": 2369504
+    },
+    {
+      "monotonic": 14.367944208,
+      "rss_kib": 3246240
+    },
+    {
+      "monotonic": 14.485421333,
+      "rss_kib": 3901424
+    },
+    {
+      "monotonic": 14.606072875,
+      "rss_kib": 5040944
+    },
+    {
+      "monotonic": 14.725739125,
+      "rss_kib": 5504656
+    },
+    {
+      "monotonic": 14.84223975,
+      "rss_kib": 7245712
+    },
+    {
+      "monotonic": 14.957365541,
+      "rss_kib": 8898320
+    },
+    {
+      "monotonic": 15.070237375,
+      "rss_kib": 10515408
+    },
+    {
+      "monotonic": 15.182835708,
+      "rss_kib": 10580160
+    },
+    {
+      "monotonic": 15.300220708,
+      "rss_kib": 10580160
+    },
+    {
+      "monotonic": 15.412354458,
+      "rss_kib": 12136592
+    },
+    {
+      "monotonic": 15.5309655,
+      "rss_kib": 13758000
+    },
+    {
+      "monotonic": 15.647179708,
+      "rss_kib": 14358768
+    },
+    {
+      "monotonic": 15.765997791,
+      "rss_kib": 14358768
+    },
+    {
+      "monotonic": 15.884283875,
+      "rss_kib": 15675056
+    },
+    {
+      "monotonic": 16.004518791,
+      "rss_kib": 16530864
+    },
+    {
+      "monotonic": 16.120591875,
+      "rss_kib": 16530864
+    },
+    {
+      "monotonic": 16.238556,
+      "rss_kib": 16530864
+    },
+    {
+      "monotonic": 16.358342125,
+      "rss_kib": 16530864
+    },
+    {
+      "monotonic": 16.47855775,
+      "rss_kib": 16530864
+    },
+    {
+      "monotonic": 16.594210333,
+      "rss_kib": 16530864
+    },
+    {
+      "monotonic": 16.713793791,
+      "rss_kib": 16656048
+    },
+    {
+      "monotonic": 16.82604775,
+      "rss_kib": 17049664
+    },
+    {
+      "monotonic": 16.94475425,
+      "rss_kib": 17061504
+    },
+    {
+      "monotonic": 17.069085666,
+      "rss_kib": 17061504
+    },
+    {
+      "monotonic": 17.189704875,
+      "rss_kib": 17075264
+    },
+    {
+      "monotonic": 17.305920583,
+      "rss_kib": 17075264
+    },
+    {
+      "monotonic": 17.423371958,
+      "rss_kib": 17091744
+    },
+    {
+      "monotonic": 17.533480291,
+      "rss_kib": 17098464
+    },
+    {
+      "monotonic": 17.650212416,
+      "rss_kib": 17104624
+    },
+    {
+      "monotonic": 17.766195375,
+      "rss_kib": 17108528
+    },
+    {
+      "monotonic": 17.883080416,
+      "rss_kib": 17117328
+    },
+    {
+      "monotonic": 18.003880375,
+      "rss_kib": 17123264
+    },
+    {
+      "monotonic": 18.127314833,
+      "rss_kib": 17123936
+    },
+    {
+      "monotonic": 18.243930791,
+      "rss_kib": 17132208
+    },
+    {
+      "monotonic": 18.359827875,
+      "rss_kib": 17136720
+    },
+    {
+      "monotonic": 18.480917875,
+      "rss_kib": 17136720
+    },
+    {
+      "monotonic": 18.598671208,
+      "rss_kib": 17136720
+    },
+    {
+      "monotonic": 18.715125375,
+      "rss_kib": 17943568
+    },
+    {
+      "monotonic": 18.836594083,
+      "rss_kib": 18729728
+    },
+    {
+      "monotonic": 18.95258325,
+      "rss_kib": 18729728
+    },
+    {
+      "monotonic": 19.070716125,
+      "rss_kib": 18770928
+    },
+    {
+      "monotonic": 19.1829775,
+      "rss_kib": 18771872
+    },
+    {
+      "monotonic": 19.302225875,
+      "rss_kib": 18772032
+    },
+    {
+      "monotonic": 19.423938125,
+      "rss_kib": 18773312
+    },
+    {
+      "monotonic": 19.544848541,
+      "rss_kib": 19043888
+    },
+    {
+      "monotonic": 19.66473625,
+      "rss_kib": 19043888
+    },
+    {
+      "monotonic": 19.790296166,
+      "rss_kib": 19108976
+    },
+    {
+      "monotonic": 19.910485666,
+      "rss_kib": 19108976
+    },
+    {
+      "monotonic": 20.033116291,
+      "rss_kib": 19108976
+    },
+    {
+      "monotonic": 20.150286708,
+      "rss_kib": 19111104
+    },
+    {
+      "monotonic": 20.274405041,
+      "rss_kib": 19111104
+    },
+    {
+      "monotonic": 20.406027291,
+      "rss_kib": 19113600
+    },
+    {
+      "monotonic": 20.530146916,
+      "rss_kib": 18866640
+    },
+    {
+      "monotonic": 20.65472825,
+      "rss_kib": 19118560
+    },
+    {
+      "monotonic": 20.773094416,
+      "rss_kib": 19118560
+    },
+    {
+      "monotonic": 20.90170825,
+      "rss_kib": 19118560
+    },
+    {
+      "monotonic": 21.023201666,
+      "rss_kib": 19120992
+    },
+    {
+      "monotonic": 21.133912833,
+      "rss_kib": 19120992
+    },
+    {
+      "monotonic": 21.258404333,
+      "rss_kib": 19120992
+    },
+    {
+      "monotonic": 21.381726666,
+      "rss_kib": 19120992
+    },
+    {
+      "monotonic": 21.497170541,
+      "rss_kib": 19120992
+    },
+    {
+      "monotonic": 21.613656,
+      "rss_kib": 19120992
+    },
+    {
+      "monotonic": 21.734826541,
+      "rss_kib": 19120992
+    },
+    {
+      "monotonic": 21.846267291,
+      "rss_kib": 19120992
+    },
+    {
+      "monotonic": 21.957948,
+      "rss_kib": 19120992
+    },
+    {
+      "monotonic": 22.082777916,
+      "rss_kib": 19120992
+    },
+    {
+      "monotonic": 22.196942333,
+      "rss_kib": 19121008
+    },
+    {
+      "monotonic": 22.312926333,
+      "rss_kib": 19121008
+    },
+    {
+      "monotonic": 22.426716583,
+      "rss_kib": 19121008
+    },
+    {
+      "monotonic": 22.543834958,
+      "rss_kib": 19121008
+    },
+    {
+      "monotonic": 22.656823875,
+      "rss_kib": 19121008
+    },
+    {
+      "monotonic": 22.769966666,
+      "rss_kib": 19121008
+    },
+    {
+      "monotonic": 22.890280333,
+      "rss_kib": 19121024
+    },
+    {
+      "monotonic": 23.005344208,
+      "rss_kib": 19121024
+    },
+    {
+      "monotonic": 23.132597916,
+      "rss_kib": 19121024
+    },
+    {
+      "monotonic": 23.244490083,
+      "rss_kib": 19121024
+    },
+    {
+      "monotonic": 23.372654,
+      "rss_kib": 19121024
+    },
+    {
+      "monotonic": 23.484084875,
+      "rss_kib": 19121216
+    },
+    {
+      "monotonic": 23.616362083,
+      "rss_kib": 19121216
+    },
+    {
+      "monotonic": 23.73192475,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 23.846999041,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 23.964787333,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 24.081592125,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 24.196690083,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 24.322690708,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 24.4499195,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 24.580233875,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 24.701241458,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 24.822040416,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 24.944055375,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 25.064424083,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 25.181593958,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 25.298610666,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 25.422515625,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 25.537916916,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 25.667594041,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 25.792467875,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 25.9143425,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 26.029185375,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 26.147256416,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 26.273226583,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 26.388159666,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 26.51508825,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 26.639938541,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 26.756581083,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 26.881658916,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 26.997103958,
+      "rss_kib": 19121248
+    },
+    {
+      "monotonic": 27.119249583,
+      "rss_kib": 19121248
+    },
+    {
+      "monotonic": 27.243631291,
+      "rss_kib": 19121248
+    },
+    {
+      "monotonic": 27.358121125,
+      "rss_kib": 19121216
+    },
+    {
+      "monotonic": 27.481056833,
+      "rss_kib": 19121216
+    },
+    {
+      "monotonic": 27.599625041,
+      "rss_kib": 19121216
+    },
+    {
+      "monotonic": 27.715519666,
+      "rss_kib": 19121216
+    },
+    {
+      "monotonic": 27.831174708,
+      "rss_kib": 19121216
+    },
+    {
+      "monotonic": 27.969710833,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 28.115062708,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 28.242829208,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 28.358220375,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 28.482053291,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 28.602921083,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 28.719114875,
+      "rss_kib": 19121232
+    },
+    {
+      "monotonic": 28.862862916,
+      "rss_kib": 19121248
+    },
+    {
+      "monotonic": 28.984390416,
+      "rss_kib": 19121248
+    },
+    {
+      "monotonic": 29.112005208,
+      "rss_kib": 19121248
+    },
+    {
+      "monotonic": 29.240428125,
+      "rss_kib": 19121248
+    },
+    {
+      "monotonic": 29.363775166,
+      "rss_kib": 19121248
+    },
+    {
+      "monotonic": 29.524941208,
+      "rss_kib": 19121248
+    },
+    {
+      "monotonic": 29.658131958,
+      "rss_kib": 19121248
+    },
+    {
+      "monotonic": 29.768506625,
+      "rss_kib": 19121248
+    },
+    {
+      "monotonic": 29.892348,
+      "rss_kib": 19121248
+    },
+    {
+      "monotonic": 30.016141375,
+      "rss_kib": 19121280
+    },
+    {
+      "monotonic": 30.175052333,
+      "rss_kib": 19121296
+    },
+    {
+      "monotonic": 30.29417525,
+      "rss_kib": 19121296
+    },
+    {
+      "monotonic": 30.412514333,
+      "rss_kib": 19121296
+    },
+    {
+      "monotonic": 30.604269333,
+      "rss_kib": 19121296
+    },
+    {
+      "monotonic": 30.802872208,
+      "rss_kib": 19121344
+    },
+    {
+      "monotonic": 30.92960625,
+      "rss_kib": 19121344
+    },
+    {
+      "monotonic": 31.054245166,
+      "rss_kib": 19121344
+    },
+    {
+      "monotonic": 31.170672166,
+      "rss_kib": 19121344
+    },
+    {
+      "monotonic": 31.355587541,
+      "rss_kib": 19121344
+    },
+    {
+      "monotonic": 31.5033475,
+      "rss_kib": 19121344
+    },
+    {
+      "monotonic": 31.619518541,
+      "rss_kib": 19121344
+    },
+    {
+      "monotonic": 31.767154958,
+      "rss_kib": 19121344
+    },
+    {
+      "monotonic": 31.901455166,
+      "rss_kib": 19121344
+    },
+    {
+      "monotonic": 32.034070291,
+      "rss_kib": 19121344
+    },
+    {
+      "monotonic": 32.151963791,
+      "rss_kib": 19121344
+    },
+    {
+      "monotonic": 32.275509791,
+      "rss_kib": 19121360
+    },
+    {
+      "monotonic": 32.390604333,
+      "rss_kib": 19136624
+    },
+    {
+      "monotonic": 32.515370416,
+      "rss_kib": 19136624
+    },
+    {
+      "monotonic": 32.688077916,
+      "rss_kib": 19136624
+    },
+    {
+      "monotonic": 32.812999708,
+      "rss_kib": 19141040
+    },
+    {
+      "monotonic": 32.940271333,
+      "rss_kib": 19141040
+    },
+    {
+      "monotonic": 33.056720125,
+      "rss_kib": 19141040
+    },
+    {
+      "monotonic": 33.184371625,
+      "rss_kib": 19141040
+    },
+    {
+      "monotonic": 33.317697541,
+      "rss_kib": 19142784
+    },
+    {
+      "monotonic": 33.455481083,
+      "rss_kib": 19142832
+    },
+    {
+      "monotonic": 33.596154125,
+      "rss_kib": 19142832
+    },
+    {
+      "monotonic": 33.719976458,
+      "rss_kib": 19142832
+    },
+    {
+      "monotonic": 33.853441041,
+      "rss_kib": 19142832
+    },
+    {
+      "monotonic": 33.973785041,
+      "rss_kib": 19142832
+    },
+    {
+      "monotonic": 34.100266416,
+      "rss_kib": 19142848
+    },
+    {
+      "monotonic": 34.229236583,
+      "rss_kib": 19142848
+    },
+    {
+      "monotonic": 34.356108,
+      "rss_kib": 19142864
+    },
+    {
+      "monotonic": 34.4848435,
+      "rss_kib": 19142864
+    },
+    {
+      "monotonic": 34.598456333,
+      "rss_kib": 19142864
+    },
+    {
+      "monotonic": 34.750363833,
+      "rss_kib": 19142864
+    },
+    {
+      "monotonic": 34.871592916,
+      "rss_kib": 19142864
+    },
+    {
+      "monotonic": 34.993189083,
+      "rss_kib": 19142864
+    },
+    {
+      "monotonic": 35.139044916,
+      "rss_kib": 19142864
+    },
+    {
+      "monotonic": 35.301250166,
+      "rss_kib": 19142912
+    },
+    {
+      "monotonic": 35.453957458,
+      "rss_kib": 19142912
+    },
+    {
+      "monotonic": 35.585477375,
+      "rss_kib": 19142912
+    },
+    {
+      "monotonic": 35.729866666,
+      "rss_kib": 19142912
+    },
+    {
+      "monotonic": 35.892050583,
+      "rss_kib": 19142912
+    },
+    {
+      "monotonic": 36.0562315,
+      "rss_kib": 19142928
+    },
+    {
+      "monotonic": 36.191360208,
+      "rss_kib": 19142928
+    },
+    {
+      "monotonic": 36.35986075,
+      "rss_kib": 19142928
+    },
+    {
+      "monotonic": 36.592926333,
+      "rss_kib": 19142928
+    },
+    {
+      "monotonic": 36.728382083,
+      "rss_kib": 19142928
+    },
+    {
+      "monotonic": 36.856460916,
+      "rss_kib": 19142928
+    },
+    {
+      "monotonic": 36.983513166,
+      "rss_kib": 19142928
+    },
+    {
+      "monotonic": 37.218937291,
+      "rss_kib": 19142928
+    },
+    {
+      "monotonic": 37.344515166,
+      "rss_kib": 19142928
+    },
+    {
+      "monotonic": 37.466872625,
+      "rss_kib": 19142928
+    },
+    {
+      "monotonic": 37.595480083,
+      "rss_kib": 19142928
+    },
+    {
+      "monotonic": 37.739689291,
+      "rss_kib": 19142928
+    },
+    {
+      "monotonic": 37.866649958,
+      "rss_kib": 19142928
+    },
+    {
+      "monotonic": 37.991653458,
+      "rss_kib": 19142928
+    },
+    {
+      "monotonic": 38.119765833,
+      "rss_kib": 19142992
+    },
+    {
+      "monotonic": 38.256175208,
+      "rss_kib": 19142992
+    },
+    {
+      "monotonic": 38.381907583,
+      "rss_kib": 19142992
+    },
+    {
+      "monotonic": 38.51942825,
+      "rss_kib": 19142992
+    },
+    {
+      "monotonic": 38.666478,
+      "rss_kib": 19142992
+    },
+    {
+      "monotonic": 38.795551791,
+      "rss_kib": 19142992
+    },
+    {
+      "monotonic": 38.944378083,
+      "rss_kib": 19142992
+    },
+    {
+      "monotonic": 39.150498166,
+      "rss_kib": 19142992
+    },
+    {
+      "monotonic": 39.27233825,
+      "rss_kib": 19142992
+    },
+    {
+      "monotonic": 39.40548575,
+      "rss_kib": 19142992
+    },
+    {
+      "monotonic": 39.559733083,
+      "rss_kib": 19142992
+    },
+    {
+      "monotonic": 39.682083333,
+      "rss_kib": 19142992
+    },
+    {
+      "monotonic": 39.814212875,
+      "rss_kib": 19142992
+    },
+    {
+      "monotonic": 39.942189416,
+      "rss_kib": 19142992
+    },
+    {
+      "monotonic": 40.069675541,
+      "rss_kib": 19143008
+    },
+    {
+      "monotonic": 40.198965541,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 40.324573541,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 40.472366083,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 40.5926115,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 40.721062833,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 40.848340208,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 40.973170083,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 41.097597958,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 41.222109791,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 41.348824083,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 41.473639458,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 41.59939275,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 41.728551083,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 41.863794291,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 41.99939975,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 42.12612175,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 42.272056625,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 42.403087708,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 42.549880291,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 42.692887916,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 42.8544005,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 42.991139,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 43.1263875,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 43.251998708,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 43.379595458,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 43.509644041,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 43.6495225,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 43.779695708,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 43.90558875,
+      "rss_kib": 19143024
+    },
+    {
+      "monotonic": 44.0607635,
+      "rss_kib": 19143040
+    },
+    {
+      "monotonic": 44.222693875,
+      "rss_kib": 19143040
+    },
+    {
+      "monotonic": 44.443979958,
+      "rss_kib": 19143040
+    },
+    {
+      "monotonic": 44.671247583,
+      "rss_kib": 19143040
+    },
+    {
+      "monotonic": 44.80306025,
+      "rss_kib": 19143040
+    },
+    {
+      "monotonic": 44.934119833,
+      "rss_kib": 19143040
+    },
+    {
+      "monotonic": 45.060434083,
+      "rss_kib": 19143040
+    },
+    {
+      "monotonic": 45.18762825,
+      "rss_kib": 19143040
+    },
+    {
+      "monotonic": 45.328991583,
+      "rss_kib": 19143040
+    },
+    {
+      "monotonic": 45.454364666,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 45.58149725,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 45.709167708,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 45.836860125,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 45.9585505,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 46.084779958,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 46.243051666,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 46.377444541,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 46.511876083,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 46.639207083,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 46.768022875,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 46.88960225,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 47.016262,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 47.143461166,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 47.273227,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 47.4006245,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 47.538676708,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 47.70003025,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 47.838616208,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 47.975256083,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 48.101054291,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 48.254716708,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 48.384239416,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 48.535942833,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 48.67781275,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 48.808760416,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 48.957874708,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 49.111406333,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 49.26215975,
+      "rss_kib": 19143056
+    },
+    {
+      "monotonic": 49.391206541,
+      "rss_kib": 19143072
+    },
+    {
+      "monotonic": 49.519807875,
+      "rss_kib": 19143072
+    },
+    {
+      "monotonic": 49.658940416,
+      "rss_kib": 19143072
+    },
+    {
+      "monotonic": 49.787999291,
+      "rss_kib": 19143072
+    },
+    {
+      "monotonic": 49.921644125,
+      "rss_kib": 19143072
+    },
+    {
+      "monotonic": 50.062054583,
+      "rss_kib": 19143072
+    },
+    {
+      "monotonic": 50.184457625,
+      "rss_kib": 19143072
+    },
+    {
+      "monotonic": 50.330716375,
+      "rss_kib": 19143088
+    },
+    {
+      "monotonic": 50.463665083,
+      "rss_kib": 19143088
+    },
+    {
+      "monotonic": 50.612768333,
+      "rss_kib": 19143088
+    },
+    {
+      "monotonic": 50.740521291,
+      "rss_kib": 19143088
+    },
+    {
+      "monotonic": 50.964666458,
+      "rss_kib": 19143088
+    },
+    {
+      "monotonic": 51.113064291,
+      "rss_kib": 19143120
+    },
+    {
+      "monotonic": 51.240067333,
+      "rss_kib": 19143088
+    },
+    {
+      "monotonic": 51.367362708,
+      "rss_kib": 19143088
+    },
+    {
+      "monotonic": 51.492364625,
+      "rss_kib": 19143088
+    },
+    {
+      "monotonic": 51.672040625,
+      "rss_kib": 19143104
+    },
+    {
+      "monotonic": 51.798781458,
+      "rss_kib": 19143104
+    },
+    {
+      "monotonic": 51.924241916,
+      "rss_kib": 19143104
+    },
+    {
+      "monotonic": 52.058384208,
+      "rss_kib": 19143104
+    },
+    {
+      "monotonic": 52.182672916,
+      "rss_kib": 19143104
+    },
+    {
+      "monotonic": 52.314180958,
+      "rss_kib": 19143104
+    },
+    {
+      "monotonic": 52.444452583,
+      "rss_kib": 19143104
+    },
+    {
+      "monotonic": 52.574791208,
+      "rss_kib": 19143104
+    },
+    {
+      "monotonic": 52.706226416,
+      "rss_kib": 19143104
+    },
+    {
+      "monotonic": 52.836884958,
+      "rss_kib": 19143104
+    },
+    {
+      "monotonic": 52.989758291,
+      "rss_kib": 19143104
+    },
+    {
+      "monotonic": 53.12180525,
+      "rss_kib": 19143104
+    },
+    {
+      "monotonic": 53.248214916,
+      "rss_kib": 19143104
+    },
+    {
+      "monotonic": 53.370310708,
+      "rss_kib": 19143104
+    },
+    {
+      "monotonic": 53.498877416,
+      "rss_kib": 19143104
+    },
+    {
+      "monotonic": 53.627770541,
+      "rss_kib": 19143104
+    },
+    {
+      "monotonic": 53.752741583,
+      "rss_kib": 19143104
+    },
+    {
+      "monotonic": 53.881799583,
+      "rss_kib": 19143104
+    },
+    {
+      "monotonic": 54.007634916,
+      "rss_kib": 19143104
+    },
+    {
+      "monotonic": 54.130779583,
+      "rss_kib": 19143120
+    },
+    {
+      "monotonic": 54.251054541,
+      "rss_kib": 19143136
+    },
+    {
+      "monotonic": 54.379723083,
+      "rss_kib": 19143136
+    },
+    {
+      "monotonic": 54.5107585,
+      "rss_kib": 19143136
+    },
+    {
+      "monotonic": 54.640016875,
+      "rss_kib": 19143152
+    },
+    {
+      "monotonic": 54.767265958,
+      "rss_kib": 19143152
+    },
+    {
+      "monotonic": 54.896976833,
+      "rss_kib": 19143152
+    },
+    {
+      "monotonic": 55.032605666,
+      "rss_kib": 19143152
+    },
+    {
+      "monotonic": 55.237710541,
+      "rss_kib": 19143168
+    },
+    {
+      "monotonic": 55.362734,
+      "rss_kib": 19143168
+    },
+    {
+      "monotonic": 55.487418916,
+      "rss_kib": 19143168
+    },
+    {
+      "monotonic": 55.616778541,
+      "rss_kib": 19143168
+    },
+    {
+      "monotonic": 55.775880416,
+      "rss_kib": 19143168
+    },
+    {
+      "monotonic": 55.96473575,
+      "rss_kib": 19143168
+    },
+    {
+      "monotonic": 56.093574291,
+      "rss_kib": 19143168
+    },
+    {
+      "monotonic": 56.219915166,
+      "rss_kib": 19143168
+    },
+    {
+      "monotonic": 56.352763625,
+      "rss_kib": 19143168
+    },
+    {
+      "monotonic": 56.481734375,
+      "rss_kib": 19143168
+    },
+    {
+      "monotonic": 56.609940333,
+      "rss_kib": 19143168
+    },
+    {
+      "monotonic": 56.735596125,
+      "rss_kib": 19143168
+    },
+    {
+      "monotonic": 56.86302775,
+      "rss_kib": 19143168
+    },
+    {
+      "monotonic": 56.998775,
+      "rss_kib": 19143168
+    },
+    {
+      "monotonic": 57.127703875,
+      "rss_kib": 19143168
+    },
+    {
+      "monotonic": 57.257685958,
+      "rss_kib": 19143216
+    },
+    {
+      "monotonic": 57.385764708,
+      "rss_kib": 19143216
+    },
+    {
+      "monotonic": 57.510723791,
+      "rss_kib": 19143216
+    },
+    {
+      "monotonic": 57.632512125,
+      "rss_kib": 19143216
+    },
+    {
+      "monotonic": 57.756125833,
+      "rss_kib": 19143216
+    },
+    {
+      "monotonic": 57.883064875,
+      "rss_kib": 19143216
+    },
+    {
+      "monotonic": 58.013082625,
+      "rss_kib": 19143216
+    },
+    {
+      "monotonic": 58.14357825,
+      "rss_kib": 19143216
+    },
+    {
+      "monotonic": 58.27443975,
+      "rss_kib": 19143216
+    },
+    {
+      "monotonic": 58.401751125,
+      "rss_kib": 19143216
+    },
+    {
+      "monotonic": 58.5695915,
+      "rss_kib": 19143216
+    },
+    {
+      "monotonic": 58.73869075,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 58.866810958,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 58.9957945,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 59.129145916,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 59.25464625,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 59.388977833,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 59.518157166,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 59.640495708,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 59.766875416,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 59.901747875,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 60.027729125,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 60.17332875,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 60.303505916,
+      "rss_kib": 19143216
+    },
+    {
+      "monotonic": 60.435328833,
+      "rss_kib": 19143216
+    },
+    {
+      "monotonic": 60.5588835,
+      "rss_kib": 19143216
+    },
+    {
+      "monotonic": 60.692679791,
+      "rss_kib": 19143216
+    },
+    {
+      "monotonic": 60.815116625,
+      "rss_kib": 19143216
+    },
+    {
+      "monotonic": 60.955895125,
+      "rss_kib": 19143216
+    },
+    {
+      "monotonic": 61.083212458,
+      "rss_kib": 19143216
+    },
+    {
+      "monotonic": 61.206624791,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 61.332763125,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 61.467946541,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 61.590456916,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 61.721528583,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 61.846795625,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 61.973036458,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 62.115038125,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 62.243324416,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 62.375646291,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 62.503565291,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 62.633126125,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 62.771310125,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 62.897209541,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 63.01767875,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 63.145524625,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 63.268778375,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 63.424146833,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 63.573346666,
+      "rss_kib": 19143232
+    },
+    {
+      "monotonic": 63.708479291,
+      "rss_kib": 17457392
+    },
+    {
+      "monotonic": 63.865253,
+      "rss_kib": 17457392
+    },
+    {
+      "monotonic": 63.992036041,
+      "rss_kib": 17457392
+    },
+    {
+      "monotonic": 64.116204958,
+      "rss_kib": 17457392
+    },
+    {
+      "monotonic": 64.23576675,
+      "rss_kib": 17457392
+    },
+    {
+      "monotonic": 64.353580291,
+      "rss_kib": 17457392
+    },
+    {
+      "monotonic": 64.480246208,
+      "rss_kib": 17062656
+    },
+    {
+      "monotonic": 64.6040355,
+      "rss_kib": 4744176
+    },
+    {
+      "monotonic": 64.727843583,
+      "rss_kib": 307776
+    },
+    {
+      "monotonic": 64.857517708,
+      "rss_kib": 307776
+    },
+    {
+      "monotonic": 64.978116875,
+      "rss_kib": 307776
+    },
+    {
+      "monotonic": 65.100579666,
+      "rss_kib": 307776
+    },
+    {
+      "monotonic": 65.2217,
+      "rss_kib": 307776
+    },
+    {
+      "monotonic": 65.334051916,
+      "rss_kib": 251984
+    }
+  ],
+  "peak_rss_kib": 19143232
+}

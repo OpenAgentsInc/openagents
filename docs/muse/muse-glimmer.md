@@ -1,14 +1,18 @@
-# Muse Glimmer in Omega
+# Muse Glimmer local runtime and Omega integration
 
 Date: 2026-08-10
 
-Status: implementation recommendation with measured text baseline
+Status: runtime validation complete; Omega integration active
 
-Measured evidence: [2026-08-10 M5 Max text-runtime benchmark](benchmarks/2026-08-10-muse-glimmer-m5-max.md)
+Measured evidence:
+
+- [M5 Max export and direct-runner benchmark](benchmarks/2026-08-10-muse-glimmer-m5-max.md)
+- [M5 Max HTTP runtime matrix](benchmarks/2026-08-10-m5-max-http-runtime-matrix.md)
 
 Repositories surveyed:
 
-- Omega `6cd70e2ea76fa701a62c1087b20b64b6b96b2176`
+- OpenAgents `8b7f62de369d7ec1a4a698346a863de0db00ba3b`
+- Omega `0eb8a263a20ab511306da8f936fae9657712d4a2`
 - Psionic `54201484bb8eb11b528f7038922db02724864523`
 - Hydralisk `73991d76e5d753abbbd3f38715b00ba893f80004`
 
@@ -20,6 +24,15 @@ External release pins:
   `f84ecc3a0ea984a4c04542a84269e3d065350a6e`
 - llama.cpp Muse Glimmer merge
   `62bf73d25c53b8161f8a22894d4f90c4aebbd7d0`
+- ExecuTorch source
+  `a3bf5568b81483ca1ec30198f846d10eaaab4b58`
+- Muse Glimmer ExecuTorch PTE revision
+  `b0376783689fb024c95b43a063552f938c678ec2`
+
+Tracking:
+
+- [Runtime benchmarks: omega#307](https://github.com/OpenAgentsInc/omega/issues/307)
+- [Isolated local chat: omega#308](https://github.com/OpenAgentsInc/omega/issues/308)
 
 ## 1. Purpose
 
@@ -27,32 +40,36 @@ This document records what Meta released as Muse Glimmer, which runtime should
 host it for Omega, how to connect it to Omega today, and what belongs in
 Psionic or Hydralisk later.
 
-The recommended first implementation is:
+The implementation order is:
 
-1. Run the official 17 GB GGUF target and DFlash drafter with llama.cpp on the
-   M5 Max Mac.
-2. Expose llama.cpp's OpenAI-compatible Chat Completions endpoint on localhost.
-3. Register that endpoint through Omega's configurable `openai_compatible`
-   provider.
-4. Prove text and sequential tool use first. Add the perception projector and
-   image input after that path passes.
+1. Establish target-only and DFlash baselines with the official 17 GB GGUF and
+   pinned llama.cpp Muse merge.
+2. Reproduce Meta's Apple-silicon path with the official ExecuTorch MLX solo
+   and DFlash Metal PTEs.
+3. Expose llama.cpp's OpenAI-compatible Chat Completions endpoint on localhost
+   and add a separate, opt-in `Muse Glimmer (Local)` entry to Omega.
+4. Prove text chat and conversation history before adding tools or images.
 
-This path requires no Omega code change. Psionic is the long-term home for a
-Rust-owned native runtime if that ownership is worth the port. Hydralisk is the
-later NVIDIA serving and validation lane. It is not the Mac runtime.
+The measured llama.cpp matrix found target-only Metal faster than its DFlash
+implementation on this M5 Max. ExecuTorch MLX accelerated generation-heavy
+workloads with DFlash, but its reference HTTP server buffered SSE output and
+re-evaluated large anonymous prompts. Target-only llama.cpp is therefore the
+first Omega host. Psionic is the long-term home for a Rust-owned native runtime
+if that ownership is worth the port. Hydralisk is the later NVIDIA serving and
+validation lane.
 
 ## 2. Host decision
 
 | Candidate          | Apple silicon             | Muse weights                     | DFlash                                             | Omega-facing API                                 | Recommendation                                      |
 | ------------------ | ------------------------- | -------------------------------- | -------------------------------------------------- | ------------------------------------------------ | --------------------------------------------------- |
-| llama.cpp          | Metal                     | GGUF                             | Native support                                     | OpenAI-compatible HTTP                           | First Omega proof                                   |
-| ExecuTorch         | MLX                       | GGUF to `.pte` export            | Native support                                     | Runner, no OpenAI server in Meta's guide         | Mac performance reference and second implementation |
+| llama.cpp          | Metal                     | GGUF                             | Native support                                     | OpenAI-compatible HTTP                           | Omega HTTP baseline; target-only currently wins on this Mac |
+| ExecuTorch         | MLX                       | Official prebuilt Metal `.pte`   | Native support; 1.3x–1.8x on generation-heavy local cases | Official runner and buffered OpenAI-compatible serving example | Mac performance lane after streaming/session work |
 | Psionic            | Metal substrate exists    | Muse architecture is unsupported | No native speculative loop                         | OpenAI-compatible server after a port            | Long-term native owner                              |
 | Hydralisk          | No Mac execution lane     | No Muse profile                  | No Muse DFlash integration                         | Authenticated proxy around supported GPU engines | NVIDIA scale and evidence later                     |
 | vLLM               | No Mac backend            | BF16/runtime-matched package     | No DFlash recipe; N-gram speculation is documented | OpenAI-compatible HTTP                           | NVIDIA production serving                           |
 | Ollama / LM Studio | Partner support announced | Availability is still landing    | Not yet verified here                              | OpenAI-compatible integrations                   | Re-evaluate after released builds are verified      |
 
-### Why llama.cpp first
+### Why llama.cpp is the Omega HTTP baseline
 
 Meta publishes the local checkpoints as GGUF and documents llama.cpp as the
 CPU, Metal, NVIDIA, and AMD path. llama.cpp merged Muse Glimmer architecture,
@@ -64,18 +81,21 @@ Metal execution, the Muse chat template, ATEM parsing, speculative decoding,
 and the KV cache. Omega sends ordinary OpenAI Chat Completions requests and
 receives ordinary streamed text and `tool_calls`.
 
-### Why ExecuTorch is still relevant
+### Why ExecuTorch MLX is required
 
 Meta's published M4 Max and M5 Max speed measurements use ExecuTorch with the
-MLX backend. The official export supports the quantized target, DFlash, and an
-optional perception projector. Its documented output is a `.pte` program run
-by `solo_runner` or `dflash_runner`; it does not provide an OpenAI-compatible
-server.
+MLX backend. Meta publishes self-contained solo and DFlash Metal `.pte`
+programs, `solo_runner` and `dflash_runner`, and a Muse serving example that
+provides OpenAI-compatible chat completions with ATEM parsing. The MLX path is
+therefore both the Mac performance reference and a viable second host.
 
-ExecuTorch is therefore the performance reference for the Mac. Using it in
-Omega requires a gateway that implements Chat Completions streaming, applies
-the Muse template, parses ATEM tool calls, and drives the runner. That is more
-work than the llama.cpp proof.
+It must be measured separately from llama.cpp. The runtimes use different
+execution and speculative-decoding implementations, so the DFlash slowdown in
+llama.cpp did not predict MLX behavior. The MLX worker improved several decode
+medians and produced byte-identical greedy output, but the reference server did
+not incrementally stream token deltas and had no addressable warm session for
+the released artifact. Omega uses llama.cpp first because its HTTP lifecycle is
+proven, it streams incrementally, and it consumes the released GGUF directly.
 
 ### Why Psionic is not the first host
 
@@ -220,6 +240,18 @@ works.
 The target GGUF files are text-only on their own. Add `mmproj-kquant.gguf` for
 image input. Add `dflash-kquant.gguf` for DFlash.
 
+Meta also publishes ready-to-run ExecuTorch PTEs. The MLX reproduction uses
+the two 17 GB text-only Metal artifacts from revision
+`b0376783689fb024c95b43a063552f938c678ec2`:
+
+| PTE | Exact bytes | SHA-256 | Purpose |
+| --- | ---: | --- | --- |
+| `muse-glimmer-k-quant-17G-128K-text-solo-metal.pte` | 17,945,894,528 | `aa94d2e3e101c3ad9a49f048e452cac1a6c6b64337a1bf6a85349394ed1029ef` | MLX target-only program |
+| `muse-glimmer-k-quant-17G-128K-text-dflash-metal.pte` | 19,641,819,904 | `6fbec8fc06f50e84c1a0e1fb1588bb825b1b5a3bbc314558faec2541a12f42e4` | MLX target and DFlash program |
+
+These PTEs are alternatives to exporting the GGUF files locally. They are
+self-contained on MLX and do not need a `.ptd` data file.
+
 Meta reports that a full-precision 30B model needs more than 55 GB for weights.
 The released K-quants reduce the language model below 20 GB, leaving room in a
 24 GB or 32 GB envelope for KV cache, perception, and drafting.
@@ -258,6 +290,13 @@ The M5 Max number is a target for this machine, not a promised llama.cpp
 result.
 
 ## 5. Performance evidence
+
+The [export and direct-runner report](benchmarks/2026-08-10-muse-glimmer-m5-max.md)
+records reproducible GGUF-to-PTE exports plus independent llama.cpp and
+ExecuTorch process runs. The [HTTP runtime matrix](benchmarks/2026-08-10-m5-max-http-runtime-matrix.md)
+adds six scenarios, official prebuilt PTEs, a DFlash block-size sweep,
+worker-backed OpenAI-compatible serving, real two-call history tests, raw
+responses, and server logs.
 
 Meta compares Muse Glimmer with Gemma4-31B and Qwen3.6-27B in thinking modes.
 Representative reported scores are:
@@ -302,13 +341,15 @@ providers.
 Configured `language_models.openai_compatible` providers are registered by a
 separate path before that return. A custom provider can also be selected by
 `agent.default_model`. This makes the generic OpenAI-compatible provider the
-working no-code seam.
+transport seam without adding a Muse-specific HTTP client.
 
-The proof has a product limitation: the native composer still presents a
-fixed `Omega Agent` executor and no model selector. A custom Muse default can
-drive a development thread, but a released product needs either a distinct
-local-model executor/model control or Muse behind the OpenAgents routing
-authority.
+Omega's product integration uses a separate persisted owner and composer entry
+named `Muse Glimmer (Local)`. It pins the exact `muse-glimmer/muse-glimmer`
+provider/model pair to the inherited native loop without entering the Omega
+router. The existing `Omega Agent` remains the first and default entry. Local
+threads suppress tools, images, cloud fallback, cloud title generation, and
+cloud compaction so an unavailable localhost endpoint fails locally instead
+of silently moving conversation data or answers to another provider.
 
 ### Required wire behavior
 
@@ -325,7 +366,9 @@ The host must provide:
 local` header Omega sends.
 
 llama.cpp owns the translation from Muse's ATEM output to this contract.
-DFlash remains entirely inside the host.
+DFlash remains entirely inside the host. The first Omega entry advertises text
+only and does not send tool definitions; the tool-call requirements above are
+for the follow-up that enables Muse's agent surface.
 
 ## 7. Reproducible first bring-up
 
@@ -371,6 +414,7 @@ llama.cpp/build/bin/llama-server \
   --model "$HOME/models/muse-glimmer/muse-glimmer-30B-kquant-17gb.gguf" \
   --spec-draft-model "$HOME/models/muse-glimmer/dflash-kquant.gguf" \
   --spec-type draft-dflash \
+  --spec-draft-n-max 15 \
   --alias muse-glimmer \
   --ctx-size 32768 \
   --parallel 1 \
@@ -379,8 +423,12 @@ llama.cpp/build/bin/llama-server \
   --port 8000
 ```
 
-Keep one server slot for the first test. DFlash primarily improves
-single-request latency, and one agent loop does not need batch throughput.
+Keep one server slot for the first test. The released block size is 16 and the
+pinned llama.cpp revision documents a maximum draft length of 15. DFlash is
+intended for single-request latency, and one agent loop does not need batch
+throughput. On the measured M5 Max, however, this llama.cpp DFlash path was
+slower than target-only Metal; see the local benchmark before choosing the
+default launch command.
 
 For vision, restart with:
 
@@ -449,19 +497,76 @@ curl http://127.0.0.1:8000/v1/chat/completions \
 The response should contain one standard `tool_calls` entry for
 `get_weather`, not raw ATEM markup.
 
-### 7.5 Configure Omega
+### 7.5 Reproduce ExecuTorch MLX
+
+Use ExecuTorch commit
+`a3bf5568b81483ca1ec30198f846d10eaaab4b58` and Python 3.10 or newer. Download
+only the two official 17 GB Metal exports:
+
+```sh
+hf download meta-models/Muse-Glimmer-30B-ExecuTorch-PTE \
+  --revision b0376783689fb024c95b43a063552f938c678ec2 \
+  --include 'muse-glimmer-k-quant-17G-128K-text-solo-metal/*' \
+  --include 'muse-glimmer-k-quant-17G-128K-text-dflash-metal/*' \
+  --local-dir "$HOME/models/muse-glimmer/executorch"
+```
+
+Keep the canonical tokenizer and chat template together:
+
+```sh
+hf download meta-models/Muse-Glimmer-30B \
+  --revision f84ecc3a0ea984a4c04542a84269e3d065350a6e \
+  tokenizer.json tokenizer_config.json chat_template.jinja \
+  --local-dir executorch/assets/hf
+```
+
+Build the MLX-specific runners and worker:
+
+```sh
+git clone https://github.com/pytorch/executorch.git
+git -C executorch checkout a3bf5568b81483ca1ec30198f846d10eaaab4b58
+(cd executorch/examples/models/muse-glimmer && \
+  cmake --workflow --preset muse-glimmer-mlx)
+```
+
+Run `solo_runner --help` and `dflash_runner --help` from
+`executorch/cmake-out/examples/models/muse-glimmer/` to inspect the pinned
+arguments, then execute one direct prompt through each PTE. For the same HTTP
+scenario suite used by llama.cpp, install the shared server requirements and
+start the official worker-backed serving example:
+
+```sh
+python -m pip install -r executorch/examples/llm_server/python/requirements.txt
+
+cd executorch
+python -m executorch.examples.models.muse_glimmer.serving.serve \
+  --model-path "$HOME/models/muse-glimmer/executorch/muse-glimmer-k-quant-17G-128K-text-solo-metal/muse-glimmer-k-quant-17G-128K-text-solo-metal.pte" \
+  --tokenizer-path assets/hf/tokenizer.json \
+  --hf-tokenizer assets/hf \
+  --worker-bin cmake-out/examples/models/muse-glimmer/muse_glimmer_worker \
+  --model-id muse-glimmer \
+  --tool-parser none \
+  --max-context 32768 \
+  --host 127.0.0.1 \
+  --port 8000
+```
+
+For DFlash, replace both `solo` path components with `dflash`. Do not pass
+`--data-path` for MLX. The worker detects the DFlash method contract embedded
+in the second PTE and uses `block_length=4`, `n_draft=3` by default; those
+defaults beat `8/7` and `16/15` in the local direct-runner sweep.
+
+The released greedy PTEs do not export sampling support. Use temperature zero
+and omit `seed`, `top_k`, and `top_p` from requests. The reference server emits
+valid SSE but buffers generation into a few events, so preserve its
+`llm_turn_stats` log for prefill and decode throughput.
+
+### 7.6 Configure Omega
 
 Add this to the development profile's `settings.json`:
 
 ```json
 {
-  "agent": {
-    "default_model": {
-      "provider": "muse-glimmer",
-      "model": "muse-glimmer",
-      "enable_thinking": false
-    }
-  },
   "language_models": {
     "openai_compatible": {
       "muse-glimmer": {
@@ -472,8 +577,9 @@ Add this to the development profile's `settings.json`:
             "display_name": "Muse Glimmer",
             "max_tokens": 32768,
             "max_output_tokens": 8192,
+            "reasoning_effort": "low",
             "capabilities": {
-              "tools": true,
+              "tools": false,
               "images": false,
               "parallel_tool_calls": false,
               "prompt_cache_key": false,
@@ -489,10 +595,10 @@ Add this to the development profile's `settings.json`:
 }
 ```
 
-`enable_thinking` stays false during bring-up so Omega does not add an
-OpenAI-style reasoning control that has not been verified through llama.cpp.
-Muse can still use the high reasoning strength embedded by its own chat
-template.
+The exact provider/model pair makes the separate `Muse Glimmer (Local)` entry
+available. It does not replace the existing Omega Agent default. The low
+reasoning setting keeps basic chat responsive; use a larger effort only with
+enough output headroom for Muse's separate reasoning turn.
 
 Omega maps the provider ID `muse-glimmer` to the environment variable
 `MUSE_GLIMMER_API_KEY`. Run an isolated development profile with the same key
@@ -534,8 +640,8 @@ task latency.
 
 ### Phase 1: Omega surface
 
-- Decide whether Muse is a named local executor or a model routed behind the
-  existing Omega Agent authority.
+- Add Muse as a separate named local executor and leave the existing Omega
+  Agent authority unchanged.
 - Expose model status, context limit, loaded artifacts, and local/remote
   provenance.
 - Keep `parallel_tool_calls` false for Muse.
@@ -565,6 +671,9 @@ claiming tools, images, or DFlash.
   until the path has broader release coverage.
 - Meta's published Mac speed uses ExecuTorch, so llama.cpp Metal performance
   must be measured locally.
+- ExecuTorch's reference server buffers token output and the released artifact
+  exposes no addressable warm sessions; fix those before choosing it as the
+  interactive default.
 - The model advertises 128K context, but KV-cache cost still grows with the
   configured context. Start smaller and increase only after measuring memory.
 - Muse supports one tool call per turn. Agent scaffolds must execute and return
