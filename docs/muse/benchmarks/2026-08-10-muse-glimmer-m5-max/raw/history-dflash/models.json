@@ -1,0 +1,53 @@
+{
+  "models": [
+    {
+      "name": "muse-glimmer",
+      "model": "muse-glimmer",
+      "modified_at": "",
+      "size": "",
+      "digest": "",
+      "type": "model",
+      "description": "",
+      "tags": [
+        ""
+      ],
+      "capabilities": [
+        "completion"
+      ],
+      "parameters": "",
+      "details": {
+        "parent_model": "",
+        "format": "gguf",
+        "family": "",
+        "families": [
+          ""
+        ],
+        "parameter_size": "",
+        "quantization_level": ""
+      }
+    }
+  ],
+  "object": "list",
+  "data": [
+    {
+      "id": "muse-glimmer",
+      "aliases": [
+        "muse-glimmer"
+      ],
+      "tags": [],
+      "object": "model",
+      "created": 1786375142,
+      "owned_by": "llamacpp",
+      "meta": {
+        "vocab_type": 2,
+        "n_vocab": 202048,
+        "n_ctx": 32768,
+        "n_ctx_train": 131072,
+        "n_embd": 6656,
+        "n_params": 27854794240,
+        "size": 16743567360,
+        "ftype": "Q4_K - Medium"
+      }
+    }
+  ]
+}

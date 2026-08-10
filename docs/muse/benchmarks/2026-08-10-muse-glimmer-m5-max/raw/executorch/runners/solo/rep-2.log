@@ -1,0 +1,28 @@
+I tokenizers:regex.cpp:27] Registering override fallback regex
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1786376309.903986 197340667 re2.cc:237] Error parsing '([^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?i:'s|'t|'re|'ve|'m|'l...': invalid perl operator: (?!
+I tokenizers:re2_regex.cpp:27] Re2 failed to compile regex: ([^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?i:'s|'t|'re|'ve|'m|'ll|'d)?|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*(?i:'s|'t|'re|'ve|'m|'ll|'d)?|\p{N}{1,3}| $
+I tokenizers:regex_lookahead.cpp:26] Creating PCRE2 regex
+Prompt tokens: 6
+Prefill: 6 tokens in 196.0 ms (30.6 tok/s)
+ Paris. It is the most populous city in France and the most populous city proper in the European Union. The Paris Region had a population of 12,405,426 in January 2023, the largest in the European Union, while the population of the city proper was 2,175,601. Since the 17th century, Paris has been one of Europe's major centres of finance, diplomacy, commerce, fashion, science and arts. For its leading role in the Enlightenment, in the 19th-century Paris was described as the capital of the world, and it remains a global hub of culture and
+Decode: 128 tokens in 9514.0 ms (13.5 tok/s)
+PyTorchObserver {"prefill_token_per_sec":30.6122,"decode_token_per_sec":13.4539,"prompt_tokens":6,"generated_tokens":128,"model_load_start_ms":1786376309533,"model_load_end_ms":1786376310792,"inference_start_ms":1786376310792,"inference_end_ms":1786376320502,"model_execution_start_ms":0,"model_execution_end_ms":0,"prompt_eval_end_ms":1786376310988,"first_token_ms":1786376311033,"aggregate_sampling_time_ms":0,"aggregate_model_execution_time_ms":0,"SCALING_FACTOR_UNITS_PER_SECOND":1000}
+       12.22 real         3.15 user         2.70 sys
+         18139217920  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             1119619  page reclaims
+                   6  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   0  voluntary context switches
+               82502  involuntary context switches
+         28671843589  instructions retired
+         18393591378  cycles elapsed
+          2180445528  peak memory footprint

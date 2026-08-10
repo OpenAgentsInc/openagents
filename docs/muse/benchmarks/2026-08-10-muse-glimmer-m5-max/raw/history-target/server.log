@@ -1,0 +1,36 @@
+0.00.302.698 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.308.234 I srv          init: The UI is disabled
+0.00.308.237 I srv          init: Use --ui/--no-ui (or deprecated --webui/--no-webui) to enable/disable
+0.00.314.752 I srv    load_model: loading model '$HOME/models/muse-glimmer/muse-glimmer-30B-kquant-17gb.gguf'
+0.02.973.192 W load: setting token '<|message|>' (200023) attribute to USER_DEFINED (16), old attributes: 8
+0.02.974.979 W load: setting token '<|start|>' (200022) attribute to USER_DEFINED (16), old attributes: 8
+0.02.990.533 W load: special_eot_id is not in special_eog_ids - the tokenizer config may be incorrect
+0.05.733.246 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 32768, kv_unified = 'false'
+0.05.745.133 I srv          init: chat template supports preserving reasoning, consider enabling it via --reasoning-preserve
+0.05.745.147 I srv  llama_server: model loaded
+0.05.745.149 I srv  llama_server: listening on http://127.0.0.1:18011
+0.05.929.335 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = -1
+0.05.929.548 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+0.17.241.684 I slot print_timing: id  0 | task 0 | n_decoded =    100, tg =  10.06 t/s, tg_3s =  10.06 t/s
+0.19.905.527 I slot print_timing: id  0 | task 0 | prompt eval time =    1367.16 ms /    68 tokens (   20.11 ms per token,    49.74 tokens per second)
+0.19.905.533 I slot print_timing: id  0 | task 0 |        eval time =   12608.64 ms /   133 tokens (   94.80 ms per token,    10.55 tokens per second)
+0.19.905.534 I slot print_timing: id  0 | task 0 |       total time =   13975.80 ms /   201 tokens
+0.19.905.535 I slot print_timing: id  0 | task 0 |    graphs reused =        132
+0.19.905.592 I slot      release: id  0 | task 0 | stop processing: n_tokens = 200, truncated = 0
+0.19.940.963 I slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, f_sim_best = 0.767 (> 0.100 thold), f_keep = 0.345
+0.19.952.644 I slot launch_slot_: id  0 | task 136 | processing task, is_child = 0
+0.28.564.961 I slot print_timing: id  0 | task 136 | n_decoded =    100, tg =  13.18 t/s, tg_3s =  13.18 t/s
+0.31.609.665 I slot print_timing: id  0 | task 136 | n_decoded =    139, tg =  13.07 t/s, tg_3s =  12.81 t/s
+0.34.640.854 I slot print_timing: id  0 | task 136 | n_decoded =    176, tg =  12.88 t/s, tg_3s =  12.21 t/s
+0.37.708.797 I slot print_timing: id  0 | task 136 | n_decoded =    215, tg =  12.85 t/s, tg_3s =  12.71 t/s
+0.40.753.396 I slot print_timing: id  0 | task 136 | n_decoded =    255, tg =  12.89 t/s, tg_3s =  13.14 t/s
+0.43.773.028 I slot print_timing: id  0 | task 136 | n_decoded =    296, tg =  12.98 t/s, tg_3s =  13.58 t/s
+0.46.778.013 I slot print_timing: id  0 | task 136 | n_decoded =    338, tg =  13.10 t/s, tg_3s =  13.98 t/s
+0.49.783.210 I slot print_timing: id  0 | task 136 | n_decoded =    379, tg =  13.16 t/s, tg_3s =  13.64 t/s
+0.52.787.946 I slot print_timing: id  0 | task 136 | n_decoded =    421, tg =  13.23 t/s, tg_3s =  13.98 t/s
+0.53.496.735 I slot print_timing: id  0 | task 136 | prompt eval time =    1022.85 ms /    27 tokens (   37.88 ms per token,    26.40 tokens per second)
+0.53.496.742 I slot print_timing: id  0 | task 136 |        eval time =   32521.20 ms /   430 tokens (   75.63 ms per token,    13.22 tokens per second)
+0.53.496.743 I slot print_timing: id  0 | task 136 |       total time =   33544.04 ms /   457 tokens
+0.53.496.744 I slot print_timing: id  0 | task 136 |    graphs reused =        558
+0.53.496.769 I slot      release: id  0 | task 136 | stop processing: n_tokens = 519, truncated = 0
+0.53.568.795 I srv    operator(): operator(): cleaning up before exit...

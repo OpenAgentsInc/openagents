@@ -1,0 +1,52 @@
+W0810 10:26:40.105000 43895 /tmp/muse-307-executorch-venv/lib/python3.12/site-packages/torch/distributed/elastic/multiprocessing/redirects.py:35] NOTE: Redirects are currently not supported in MacOs.
+W0810 10:26:40.171000 43895 /tmp/muse-307-executorch-venv/lib/python3.12/site-packages/torch/utils/_pytree.py:630] <enum 'KernelPreference'> is an Enum subclass and is now natively supported by torch.compile as an opaque value type. Calling register_constant() on Enum subclasses is deprecated and will be an error in a future release.
+W0810 10:26:40.199000 43895 /tmp/muse-307-executorch-venv/lib/python3.12/site-packages/torch/utils/_pytree.py:630] <enum 'ScaleCalculationMode'> is an Enum subclass and is now natively supported by torch.compile as an opaque value type. Calling register_constant() on Enum subclasses is deprecated and will be an error in a future release.
+/tmp/muse-307-executorch-venv/lib/python3.12/site-packages/executorch/extension/llm/export/gguf.py:561: UserWarning: The given buffer is not writable, and PyTorch does not support non-writable tensors. This means you can write to the underlying (supposedly non-writable) buffer using the tensor. You may want to copy the buffer to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/utils/tensor_new.cpp:1562.)
+  flat = torch.frombuffer(memoryview(tensor.data), dtype=torch.uint8)
+$HOME/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/copyreg.py:99: FutureWarning: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+  return cls.__new__(cls, *args)
+$HOME/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/copyreg.py:99: FutureWarning: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+  return cls.__new__(cls, *args)
+$HOME/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/copyreg.py:99: FutureWarning: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+  return cls.__new__(cls, *args)
+$HOME/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/copyreg.py:99: FutureWarning: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+  return cls.__new__(cls, *args)
+[INFO 2026-08-10 10:30:32,489 partitioner.py:163] ================================================================================
+[INFO 2026-08-10 10:30:32,489 partitioner.py:164] MLX Partitioner: UNSUPPORTED OPS SUMMARY
+[INFO 2026-08-10 10:30:32,489 partitioner.py:165] ================================================================================
+[INFO 2026-08-10 10:30:32,489 partitioner.py:171]   (All call_function nodes are supported!)
+[INFO 2026-08-10 10:30:32,489 partitioner.py:172] ================================================================================
+[INFO 2026-08-10 10:30:32,489 partitioner.py:251] MLX: Found 1 subgraphs to be partitioned.
+[INFO 2026-08-10 10:30:36,207 partitioner.py:163] ================================================================================
+[INFO 2026-08-10 10:30:36,207 partitioner.py:164] MLX Partitioner: UNSUPPORTED OPS SUMMARY
+[INFO 2026-08-10 10:30:36,207 partitioner.py:165] ================================================================================
+[INFO 2026-08-10 10:30:36,207 partitioner.py:171]   (All call_function nodes are supported!)
+[INFO 2026-08-10 10:30:36,207 partitioner.py:172] ================================================================================
+[INFO 2026-08-10 10:30:36,517 partitioner.py:251] MLX: Found 1 subgraphs to be partitioned.
+Loading GGUF from $HOME/models/muse-glimmer/muse-glimmer-30B-kquant-17gb.gguf...
+Building fused model on meta device...
+Model: 52 layers, dim=6656
+Exporting embed_text (T in [1, 512])...
+Exporting forward_from_embeddings (T in [1, 512], embeds)...
+Lowering 2 method(s) to ExecuTorch (MLX): embed_text, forward_from_embeddings...
+Saving to /tmp/muse-307-executorch-evidence/solo/model.pte...
+  17114.5 MB
+Done.
+      289.21 real       322.51 user       126.89 sys
+         55697326080  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+            13221612  page reclaims
+             1023136  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+               12564  voluntary context switches
+             4199446  involuntary context switches
+       3028389840162  instructions retired
+       1437418203297  cycles elapsed
+         69591501608  peak memory footprint

@@ -1,0 +1,46 @@
+0.00.086.045 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.087.040 I srv          init: The UI is disabled
+0.00.087.057 I srv          init: Use --ui/--no-ui (or deprecated --webui/--no-webui) to enable/disable
+0.00.087.702 I srv    load_model: loading model '$HOME/models/muse-glimmer/muse-glimmer-30B-kquant-17gb.gguf'
+0.01.455.415 E llama_init_from_model: failed to initialize the context: dflash requires ctx_other to be set (this warning is normal during memory fitting)
+0.01.551.011 W srv    load_model: [spec] failed to measure draft model memory: failed to create llama_context from model
+0.04.350.050 W load: setting token '<|message|>' (200023) attribute to USER_DEFINED (16), old attributes: 8
+0.04.352.237 W load: setting token '<|start|>' (200022) attribute to USER_DEFINED (16), old attributes: 8
+0.04.371.151 W load: special_eot_id is not in special_eog_ids - the tokenizer config may be incorrect
+0.07.387.996 I common_speculative_init_result: loading draft model '$HOME/models/muse-glimmer/dflash-kquant.gguf'
+0.08.982.844 W load: setting token '<|message|>' (200023) attribute to USER_DEFINED (16), old attributes: 8
+0.08.983.620 W load: setting token '<|start|>' (200022) attribute to USER_DEFINED (16), old attributes: 8
+0.09.031.165 W load: special_eot_id is not in special_eog_ids - the tokenizer config may be incorrect
+0.09.612.321 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 32768, kv_unified = 'false'
+0.09.612.579 I common_speculative_impl_draft_dflash: adding speculative implementation 'draft-dflash'
+0.09.612.580 I common_speculative_impl_draft_dflash: - n_max=3, n_min=0, p_min=0.00
+0.09.612.580 I common_speculative_impl_draft_dflash: - block_size=16, mask_token_id=201818, n_extract=5
+0.09.824.930 I srv          init: chat template supports preserving reasoning, consider enabling it via --reasoning-preserve
+0.09.824.944 I srv  llama_server: model loaded
+0.09.824.947 I srv  llama_server: listening on http://127.0.0.1:18012
+0.09.960.886 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = -1
+0.09.960.958 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+0.19.838.313 I slot print_timing: id  0 | task 0 | n_decoded =    101, tg =  11.29 t/s, tg_3s =  11.29 t/s
+0.22.841.166 I slot print_timing: id  0 | task 0 | prompt eval time =     933.56 ms /    68 tokens (   13.73 ms per token,    72.84 tokens per second)
+0.22.841.174 I slot print_timing: id  0 | task 0 |        eval time =   11945.69 ms /   133 tokens (   89.82 ms per token,    11.13 tokens per second)
+0.22.841.174 I slot print_timing: id  0 | task 0 |       total time =   12879.25 ms /   201 tokens
+0.22.841.176 I slot print_timing: id  0 | task 0 |    graphs reused =         47
+0.22.841.181 I slot print_timing: id  0 | task 0 | draft acceptance = 0.60993 (   86 accepted /   141 generated), mean len =  2.83
+0.22.841.252 I slot      release: id  0 | task 0 | stop processing: n_tokens = 201, truncated = 0
+0.22.850.248 I slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, f_sim_best = 0.767 (> 0.100 thold), f_keep = 0.343
+0.22.854.458 I slot launch_slot_: id  0 | task 51 | processing task, is_child = 0
+0.29.978.962 I slot print_timing: id  0 | task 51 | n_decoded =    100, tg =  16.28 t/s, tg_3s =  16.28 t/s
+0.33.045.741 I slot print_timing: id  0 | task 51 | n_decoded =    140, tg =  15.20 t/s, tg_3s =  13.04 t/s
+0.36.086.034 I slot print_timing: id  0 | task 51 | n_decoded =    179, tg =  14.61 t/s, tg_3s =  12.83 t/s
+0.39.457.640 I slot print_timing: id  0 | task 51 | n_decoded =    222, tg =  14.21 t/s, tg_3s =  12.75 t/s
+0.42.457.779 I slot print_timing: id  0 | task 51 | n_decoded =    265, tg =  14.23 t/s, tg_3s =  14.33 t/s
+0.45.610.646 I slot print_timing: id  0 | task 51 | n_decoded =    308, tg =  14.14 t/s, tg_3s =  13.64 t/s
+0.48.771.723 I slot print_timing: id  0 | task 51 | n_decoded =    360, tg =  14.44 t/s, tg_3s =  16.45 t/s
+0.51.890.598 I slot print_timing: id  0 | task 51 | n_decoded =    398, tg =  14.19 t/s, tg_3s =  12.18 t/s
+0.54.086.811 I slot print_timing: id  0 | task 51 | prompt eval time =     980.79 ms /    27 tokens (   36.33 ms per token,    27.53 tokens per second)
+0.54.086.892 I slot print_timing: id  0 | task 51 |        eval time =   30251.37 ms /   431 tokens (   70.19 ms per token,    14.25 tokens per second)
+0.54.086.893 I slot print_timing: id  0 | task 51 |       total time =   31232.16 ms /   458 tokens
+0.54.086.895 I slot print_timing: id  0 | task 51 |    graphs reused =        203
+0.54.086.900 I slot print_timing: id  0 | task 51 | draft acceptance = 0.56813 (  271 accepted /   477 generated), mean len =  2.70
+0.54.086.963 I slot      release: id  0 | task 51 | stop processing: n_tokens = 520, truncated = 0
+0.54.105.440 I srv    operator(): operator(): cleaning up before exit...
