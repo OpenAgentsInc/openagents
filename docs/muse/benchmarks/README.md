@@ -8,6 +8,22 @@ and raw evidence used to derive them.
 - [2026-08-10 M5 Max export and direct-runner benchmark](2026-08-10-muse-glimmer-m5-max.md)
 - [2026-08-10 M5 Max HTTP runtime matrix](2026-08-10-m5-max-http-runtime-matrix.md)
 - [2026-08-10 Omega live-chat acceptance](2026-08-10-omega-live-chat-acceptance.md)
+- [2026-08-10 M5 Max throughput optimization](2026-08-10-muse-throughput-optimization.md)
+
+## Throughput optimization evidence
+
+The follow-up report uses these raw harness results:
+
+- `evidence/2026-08-10-opt-long-target-f16.json`
+- `evidence/2026-08-10-opt-long-target-q8.json`
+- `evidence/2026-08-10-opt-long-target-q4.json`
+- `evidence/2026-08-10-opt-long-dflash-n3.json`
+- `evidence/2026-08-10-opt-long-dflash-n3-repeat.json`
+- `evidence/2026-08-10-opt-short-dflash-n2.json`
+- `evidence/2026-08-10-opt-short-dflash-n3-f16.json`
+- `evidence/2026-08-10-opt-short-dflash-n4.json`
+- `evidence/2026-08-10-opt-short-target-q8-three-run.json`
+- `evidence/2026-08-10-opt-short-dflash-n3-q8-three-run.json`
 
 ## Run the Chat Completions matrix
 

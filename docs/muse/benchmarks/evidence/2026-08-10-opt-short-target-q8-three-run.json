@@ -1,0 +1,233 @@
+{
+  "schema": "openagents.muse.chat_completions_benchmark.v2",
+  "configuration": "llama-target-q8-fa-compact",
+  "captured_at": "2026-08-10T18:09:06Z",
+  "environment": {
+    "platform": "macOS-26.4-arm64-arm-64bit",
+    "macos": "26.4",
+    "hardware_model": "Mac17,6",
+    "memory_bytes": 137438953472,
+    "server_pid": 95582,
+    "models": {
+      "models": [
+        {
+          "name": "muse-glimmer",
+          "model": "muse-glimmer",
+          "modified_at": "",
+          "size": "",
+          "digest": "",
+          "type": "model",
+          "description": "",
+          "tags": [
+            ""
+          ],
+          "capabilities": [
+            "completion"
+          ],
+          "parameters": "",
+          "details": {
+            "parent_model": "",
+            "format": "gguf",
+            "family": "",
+            "families": [
+              ""
+            ],
+            "parameter_size": "",
+            "quantization_level": ""
+          }
+        }
+      ],
+      "object": "list",
+      "data": [
+        {
+          "id": "muse-glimmer",
+          "aliases": [
+            "muse-glimmer"
+          ],
+          "tags": [],
+          "object": "model",
+          "created": 1786385346,
+          "owned_by": "llamacpp",
+          "meta": {
+            "vocab_type": 2,
+            "n_vocab": 202048,
+            "n_ctx": 32768,
+            "n_ctx_train": 131072,
+            "n_embd": 6656,
+            "n_params": 27854794240,
+            "size": 16743567360,
+            "ftype": "Q4_K - Medium"
+          }
+        }
+      ]
+    }
+  },
+  "memory": {
+    "samples": 8,
+    "peak_rss_kib": 16817696
+  },
+  "results": [
+    {
+      "scenario": "exact_instruction",
+      "repetition": 1,
+      "request": {
+        "model": "muse-glimmer",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Reply with exactly: muse-ready"
+          }
+        ],
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "seed": 42,
+        "reasoning_effort": "low"
+      },
+      "http_status": 200,
+      "error": null,
+      "finish_reason": "stop",
+      "event_count": 69,
+      "ttft_seconds": 0.452096667,
+      "first_content_seconds": 2.869672959,
+      "total_seconds": 2.976052584,
+      "observed_decode_seconds": 2.523955917,
+      "observed_completion_per_second": 30.11146093642332,
+      "end_to_end_completion_per_second": 25.537183183050907,
+      "visible_output": "muse-ready",
+      "reasoning_output": "Reply with exactly: muse-ready\n\nWe need reply with exactly: muse-ready\n\nProbably just output muse-ready. Exactly. No extra whitespace? Probably just that string. Ensure exactly. Possibly newline? \"exactly: muse-ready\". Probably just muse-ready.\n\nNo extra punctuation. Output exactly muse-ready.\n\nFollow instruction.",
+      "expected": "muse-ready",
+      "expected_observed": true,
+      "usage": {
+        "completion_tokens": 76,
+        "prompt_tokens": 62,
+        "total_tokens": 138,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 62,
+        "prompt_ms": 336.927,
+        "prompt_per_token_ms": 5.434306451612904,
+        "prompt_per_second": 184.01612218670513,
+        "predicted_n": 76,
+        "predicted_ms": 2630.895,
+        "predicted_per_token_ms": 34.61703947368421,
+        "predicted_per_second": 28.88750786329367
+      }
+    },
+    {
+      "scenario": "exact_instruction",
+      "repetition": 2,
+      "request": {
+        "model": "muse-glimmer",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Reply with exactly: muse-ready"
+          }
+        ],
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "seed": 42,
+        "reasoning_effort": "low"
+      },
+      "http_status": 200,
+      "error": null,
+      "finish_reason": "stop",
+      "event_count": 69,
+      "ttft_seconds": 0.20226887499999968,
+      "first_content_seconds": 2.615367042,
+      "total_seconds": 2.720722167,
+      "observed_decode_seconds": 2.5184532920000002,
+      "observed_completion_per_second": 30.17725214178798,
+      "end_to_end_completion_per_second": 27.93375998542375,
+      "visible_output": "muse-ready",
+      "reasoning_output": "Reply with exactly: muse-ready\n\nWe need reply with exactly: muse-ready\n\nProbably just output muse-ready. Exactly. No extra whitespace? Probably just that string. Ensure exactly. Possibly newline? \"exactly: muse-ready\". Probably just muse-ready.\n\nNo extra punctuation. Output exactly muse-ready.\n\nFollow instruction.",
+      "expected": "muse-ready",
+      "expected_observed": true,
+      "usage": {
+        "completion_tokens": 76,
+        "prompt_tokens": 62,
+        "total_tokens": 138,
+        "prompt_tokens_details": {
+          "cached_tokens": 57
+        }
+      },
+      "timings": {
+        "cache_n": 57,
+        "prompt_n": 5,
+        "prompt_ms": 92.917,
+        "prompt_per_token_ms": 18.5834,
+        "prompt_per_second": 53.811466147206644,
+        "predicted_n": 76,
+        "predicted_ms": 2625.517,
+        "predicted_per_token_ms": 34.54627631578947,
+        "predicted_per_second": 28.946679834866814
+      }
+    },
+    {
+      "scenario": "exact_instruction",
+      "repetition": 3,
+      "request": {
+        "model": "muse-glimmer",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Reply with exactly: muse-ready"
+          }
+        ],
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "seed": 42,
+        "reasoning_effort": "low"
+      },
+      "http_status": 200,
+      "error": null,
+      "finish_reason": "stop",
+      "event_count": 69,
+      "ttft_seconds": 0.20248120800000002,
+      "first_content_seconds": 2.6151567919999987,
+      "total_seconds": 2.720989249999999,
+      "observed_decode_seconds": 2.518508041999999,
+      "observed_completion_per_second": 30.176596116662324,
+      "end_to_end_completion_per_second": 27.931018103066755,
+      "visible_output": "muse-ready",
+      "reasoning_output": "Reply with exactly: muse-ready\n\nWe need reply with exactly: muse-ready\n\nProbably just output muse-ready. Exactly. No extra whitespace? Probably just that string. Ensure exactly. Possibly newline? \"exactly: muse-ready\". Probably just muse-ready.\n\nNo extra punctuation. Output exactly muse-ready.\n\nFollow instruction.",
+      "expected": "muse-ready",
+      "expected_observed": true,
+      "usage": {
+        "completion_tokens": 76,
+        "prompt_tokens": 62,
+        "total_tokens": 138,
+        "prompt_tokens_details": {
+          "cached_tokens": 57
+        }
+      },
+      "timings": {
+        "cache_n": 57,
+        "prompt_n": 5,
+        "prompt_ms": 94.026,
+        "prompt_per_token_ms": 18.8052,
+        "prompt_per_second": 53.17678089039202,
+        "predicted_n": 76,
+        "predicted_ms": 2625.14,
+        "predicted_per_token_ms": 34.541315789473686,
+        "predicted_per_second": 28.950836907745874
+      }
+    }
+  ]
+}

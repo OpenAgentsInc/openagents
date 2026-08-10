@@ -190,3 +190,14 @@ incremental SSE and addressable warm-session reuse before it replaces
 llama.cpp for this Omega path. Tools and images remain follow-up work; this
 acceptance intentionally proves text chat, history, cancellation, restoration,
 and local-only failure behavior first.
+
+## Throughput follow-up
+
+The [throughput optimization report](2026-08-10-muse-throughput-optimization.md)
+implements the prompt reduction identified above and corrects the original
+llama.cpp DFlash operating point. Muse now uses a compact text-only prompt that
+excludes the 20.5K-token project envelope, while Omega Agent remains unchanged.
+The prompt change is [Omega `1115dc54df`](https://github.com/OpenAgentsInc/omega/commit/1115dc54df98c9c57606fd7addfda9ea21f45004).
+On the matched compact workload, Q8 KV plus DFlash `n_max=3` reached a 37.87
+tok/s median versus 28.95 tok/s target-only. Use the follow-up report's command
+for compact chat and retain target-only Q8 for cold near-limit contexts.

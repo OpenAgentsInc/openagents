@@ -9,12 +9,14 @@ Measured evidence:
 - [M5 Max export and direct-runner benchmark](benchmarks/2026-08-10-muse-glimmer-m5-max.md)
 - [M5 Max HTTP runtime matrix](benchmarks/2026-08-10-m5-max-http-runtime-matrix.md)
 - [Omega live-chat acceptance](benchmarks/2026-08-10-omega-live-chat-acceptance.md)
+- [M5 Max throughput optimization](benchmarks/2026-08-10-muse-throughput-optimization.md)
 
 Repositories surveyed:
 
 - OpenAgents `8b7f62de369d7ec1a4a698346a863de0db00ba3b`
 - Omega `0eb8a263a20ab511306da8f936fae9657712d4a2`
 - Omega Muse integration `06323a7974a889bf9e2429008c8820315213eebc`
+- Omega compact Muse prompt `1115dc54df98c9c57606fd7addfda9ea21f45004`
 - Psionic `54201484bb8eb11b528f7038922db02724864523`
 - Hydralisk `73991d76e5d753abbbd3f38715b00ba893f80004`
 
@@ -52,19 +54,21 @@ The implementation order is:
    and add a separate, opt-in `Muse Glimmer (Local)` entry to Omega.
 4. Prove text chat and conversation history before adding tools or images.
 
-The measured llama.cpp matrix found target-only Metal faster than its DFlash
-implementation on this M5 Max. ExecuTorch MLX accelerated generation-heavy
-workloads with DFlash, but its reference HTTP server buffered SSE output and
-re-evaluated large anonymous prompts. Target-only llama.cpp is therefore the
-first Omega host. Psionic is the long-term home for a Rust-owned native runtime
-if that ownership is worth the port. Hydralisk is the later NVIDIA serving and
-validation lane.
+The first llama.cpp matrix found target-only Metal faster than DFlash because
+it tested the maximum 15-token proposal. The follow-up sweep found the useful
+local operating point: DFlash `n_max=3` with Q8 KV reached a 37.87 tok/s median
+on compact chat, 30.8% above the matched target-only median. Target-only Q8
+remains preferable for cold prompts near the context limit. ExecuTorch MLX
+accelerated generation-heavy workloads with DFlash, but its reference HTTP
+server buffered SSE output and re-evaluated large anonymous prompts. Psionic
+is the long-term home for a Rust-owned native runtime if that ownership is
+worth the port. Hydralisk is the later NVIDIA serving and validation lane.
 
 ## 2. Host decision
 
 | Candidate          | Apple silicon             | Muse weights                     | DFlash                                             | Omega-facing API                                 | Recommendation                                      |
 | ------------------ | ------------------------- | -------------------------------- | -------------------------------------------------- | ------------------------------------------------ | --------------------------------------------------- |
-| llama.cpp          | Metal                     | GGUF                             | Native support                                     | OpenAI-compatible HTTP                           | Omega HTTP baseline; target-only currently wins on this Mac |
+| llama.cpp          | Metal                     | GGUF                             | Native support                                     | OpenAI-compatible HTTP                           | Omega host; DFlash 3-token drafts for compact chat, target-only Q8 for cold long context |
 | ExecuTorch         | MLX                       | Official prebuilt Metal `.pte`   | Native support; 1.3x–1.8x on generation-heavy local cases | Official runner and buffered OpenAI-compatible serving example | Mac performance lane after streaming/session work |
 | Psionic            | Metal substrate exists    | Muse architecture is unsupported | No native speculative loop                         | OpenAI-compatible server after a port            | Long-term native owner                              |
 | Hydralisk          | No Mac execution lane     | No Muse profile                  | No Muse DFlash integration                         | Authenticated proxy around supported GPU engines | NVIDIA scale and evidence later                     |
@@ -416,21 +420,33 @@ llama.cpp/build/bin/llama-server \
   --model "$HOME/models/muse-glimmer/muse-glimmer-30B-kquant-17gb.gguf" \
   --spec-draft-model "$HOME/models/muse-glimmer/dflash-kquant.gguf" \
   --spec-type draft-dflash \
-  --spec-draft-n-max 15 \
+  --spec-draft-n-max 3 \
+  --spec-draft-n-min 0 \
+  --spec-draft-p-min 0.00 \
+  --spec-draft-backend-sampling \
+  --flash-attn on \
+  --cache-type-k q8_0 \
+  --cache-type-v q8_0 \
   --alias muse-glimmer \
   --ctx-size 32768 \
   --parallel 1 \
+  --seed 42 \
   --api-key local \
   --host 127.0.0.1 \
-  --port 8000
+  --port 8000 \
+  --metrics \
+  --log-timestamps \
+  --no-webui
 ```
 
-Keep one server slot for the first test. The released block size is 16 and the
-pinned llama.cpp revision documents a maximum draft length of 15. DFlash is
-intended for single-request latency, and one agent loop does not need batch
-throughput. On the measured M5 Max, however, this llama.cpp DFlash path was
-slower than target-only Metal; see the local benchmark before choosing the
-default launch command.
+Keep one server slot for the first test. The pinned llama.cpp revision permits
+15-token proposals, but the measured compact-chat optimum on this M5 Max was a
+three-token proposal. With Q8 KV and Flash Attention, that configuration
+reached a 37.87 tok/s median, 30.8% above the matched target-only median. For a
+workload dominated by cold prompts near the context limit, remove the draft
+model and its `--spec-*` options while retaining Q8 KV and Flash Attention.
+See the [throughput optimization report](benchmarks/2026-08-10-muse-throughput-optimization.md)
+for the sweep and raw evidence.
 
 For vision, restart with:
 
