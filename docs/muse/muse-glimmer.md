@@ -9,6 +9,7 @@ Measured evidence:
 - [M5 Max export and direct-runner benchmark](benchmarks/2026-08-10-muse-glimmer-m5-max.md)
 - [M5 Max HTTP runtime matrix](benchmarks/2026-08-10-m5-max-http-runtime-matrix.md)
 - [Omega live-chat acceptance](benchmarks/2026-08-10-omega-live-chat-acceptance.md)
+- [Omega tool-calling acceptance](benchmarks/2026-08-10-omega-tool-calling-acceptance.md)
 - [M5 Max throughput optimization](benchmarks/2026-08-10-muse-throughput-optimization.md)
 
 Repositories surveyed:
@@ -17,6 +18,7 @@ Repositories surveyed:
 - Omega `0eb8a263a20ab511306da8f936fae9657712d4a2`
 - Omega Muse integration `06323a7974a889bf9e2429008c8820315213eebc`
 - Omega compact Muse prompt `1115dc54df98c9c57606fd7addfda9ea21f45004`
+- Omega Muse tool calling `70bfe6ab75`
 - Psionic `54201484bb8eb11b528f7038922db02724864523`
 - Hydralisk `73991d76e5d753abbbd3f38715b00ba893f80004`
 
@@ -352,10 +354,11 @@ transport seam without adding a Muse-specific HTTP client.
 Omega's product integration uses a separate persisted owner and composer entry
 named `Muse Glimmer (Local)`. It pins the exact `muse-glimmer/muse-glimmer`
 provider/model pair to the inherited native loop without entering the Omega
-router. The existing `Omega Agent` remains the first and default entry. Local
-threads suppress tools, images, cloud fallback, cloud title generation, and
-cloud compaction so an unavailable localhost endpoint fails locally instead
-of silently moving conversation data or answers to another provider.
+router. The existing `Omega Agent` remains the first and default entry. Muse
+threads keep tool execution, title generation, summarization, and compaction on
+the pinned local model and disable hosted fallback. Tool exposure follows the
+model capability and the selected agent profile. Images remain disabled until
+the perception path passes acceptance.
 
 ### Required wire behavior
 
@@ -368,13 +371,12 @@ The host must provide:
   argument fragments.
 - A `tool_calls` or `function_call` finish reason.
 - The `max_tokens` output-limit parameter.
-- Bearer authentication, or tolerance for the local `Authorization: Bearer
-local` header Omega sends.
+- Tolerance for the internal `Authorization: Bearer local` header that Omega
+  sends to a loopback Muse endpoint. The person does not configure this token.
 
 llama.cpp owns the translation from Muse's ATEM output to this contract.
-DFlash remains entirely inside the host. The first Omega entry advertises text
-only and does not send tool definitions; the tool-call requirements above are
-for the follow-up that enables Muse's agent surface.
+DFlash remains entirely inside the host. Start llama.cpp with `--jinja` so it
+applies Muse's tool-aware chat template and ATEM parser.
 
 ## 7. Reproducible first bring-up
 
@@ -431,12 +433,12 @@ llama.cpp/build/bin/llama-server \
   --ctx-size 32768 \
   --parallel 1 \
   --seed 42 \
-  --api-key local \
   --host 127.0.0.1 \
   --port 8000 \
   --metrics \
   --log-timestamps \
-  --no-webui
+  --no-webui \
+  --jinja
 ```
 
 Keep one server slot for the first test. The pinned llama.cpp revision permits
@@ -463,14 +465,13 @@ Check the model alias:
 
 ```sh
 curl http://127.0.0.1:8000/v1/models \
-  -H "Authorization: Bearer local"
+  --fail
 ```
 
 Check streamed text:
 
 ```sh
 curl -N http://127.0.0.1:8000/v1/chat/completions \
-  -H "Authorization: Bearer local" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "muse-glimmer",
@@ -486,7 +487,6 @@ Check ATEM-to-OpenAI tool parsing:
 
 ```sh
 curl http://127.0.0.1:8000/v1/chat/completions \
-  -H "Authorization: Bearer local" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "muse-glimmer",
@@ -507,6 +507,10 @@ curl http://127.0.0.1:8000/v1/chat/completions \
         }
       }
     ],
+    "tool_choice": {
+      "type": "function",
+      "function": {"name": "get_weather"}
+    },
     "parallel_tool_calls": false,
     "stream": false
   }'
@@ -597,7 +601,7 @@ Add this to the development profile's `settings.json`:
             "max_output_tokens": 8192,
             "reasoning_effort": "low",
             "capabilities": {
-              "tools": false,
+              "tools": true,
               "images": false,
               "parallel_tool_calls": false,
               "prompt_cache_key": false,
@@ -618,13 +622,12 @@ available. It does not replace the existing Omega Agent default. The low
 reasoning setting keeps basic chat responsive; use a larger effort only with
 enough output headroom for Muse's separate reasoning turn.
 
-Omega maps the provider ID `muse-glimmer` to the environment variable
-`MUSE_GLIMMER_API_KEY`. Run an isolated development profile with the same key
-as the server:
+Omega recognizes the exact `muse-glimmer` provider on a loopback URL and uses
+an internal local bearer value. No API key, environment variable, credential
+entry, or llama.cpp `--api-key` option is required. Run the development app:
 
 ```sh
-MUSE_GLIMMER_API_KEY=local \
-  cargo run --profile release-fast -- --user-data-dir "$HOME/.omega-muse-dev"
+cargo run --profile release-fast -- --user-data-dir "$HOME/.omega-muse-dev"
 ```
 
 After the vision request passes, change `images` to `true` and validate an

@@ -8,6 +8,8 @@ Tracking: [OpenAgentsInc/omega#308](https://github.com/OpenAgentsInc/omega/issue
 
 Implementation: [Omega `06323a7974`](https://github.com/OpenAgentsInc/omega/commit/06323a7974a889bf9e2429008c8820315213eebc)
 
+Tool-calling follow-up: [Muse Glimmer tool-calling acceptance](2026-08-10-omega-tool-calling-acceptance.md)
+
 ## Accepted configuration
 
 | Property | Value |
@@ -187,9 +189,10 @@ improve first-turn latency more than enabling llama.cpp DFlash on this Mac.
 ExecuTorch MLX should remain an explicit performance lane. Its DFlash runtime
 won several generation-heavy scenarios, but its reference server needs
 incremental SSE and addressable warm-session reuse before it replaces
-llama.cpp for this Omega path. Tools and images remain follow-up work; this
-acceptance intentionally proves text chat, history, cancellation, restoration,
-and local-only failure behavior first.
+llama.cpp for this Omega path. The linked follow-up completes sequential tool
+calling. Images remain follow-up work; this acceptance intentionally preserves
+the text-chat, history, cancellation, restoration, and local-only failure
+baseline.
 
 ## Throughput follow-up
 
