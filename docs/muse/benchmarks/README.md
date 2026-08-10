@@ -7,6 +7,7 @@ and raw evidence used to derive them.
 
 - [2026-08-10 M5 Max export and direct-runner benchmark](2026-08-10-muse-glimmer-m5-max.md)
 - [2026-08-10 M5 Max HTTP runtime matrix](2026-08-10-m5-max-http-runtime-matrix.md)
+- [2026-08-10 Omega live-chat acceptance](2026-08-10-omega-live-chat-acceptance.md)
 
 ## Run the Chat Completions matrix
 

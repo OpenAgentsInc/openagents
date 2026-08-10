@@ -8,11 +8,13 @@ Measured evidence:
 
 - [M5 Max export and direct-runner benchmark](benchmarks/2026-08-10-muse-glimmer-m5-max.md)
 - [M5 Max HTTP runtime matrix](benchmarks/2026-08-10-m5-max-http-runtime-matrix.md)
+- [Omega live-chat acceptance](benchmarks/2026-08-10-omega-live-chat-acceptance.md)
 
 Repositories surveyed:
 
 - OpenAgents `8b7f62de369d7ec1a4a698346a863de0db00ba3b`
 - Omega `0eb8a263a20ab511306da8f936fae9657712d4a2`
+- Omega Muse integration `06323a7974a889bf9e2429008c8820315213eebc`
 - Psionic `54201484bb8eb11b528f7038922db02724864523`
 - Hydralisk `73991d76e5d753abbbd3f38715b00ba893f80004`
 
