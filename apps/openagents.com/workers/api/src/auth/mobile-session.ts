@@ -77,6 +77,12 @@ export const authIssuerAllowsWebRedirectHostname = (
   // prod issuer (OPENAUTH_ISSUER_URL=auth.openagents.com), so the allowlist must
   // live here. Prod hosts above are unchanged.
   hostname === 'openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app' ||
+  // One staging (OpenAgentsInc/one): the Rust app-server behind
+  // one.openagents.com uses this same shared web client with the exact
+  // callback https://one.openagents.com/auth/callback. WIDEN-ONLY — One
+  // independently verifies the code exchange, PKCE state cookie, and its
+  // own workspace membership before establishing a session.
+  hostname === 'one.openagents.com' ||
   // Aiur (#8499): a separate Cloud Run service at aiur.openagents.com, the
   // owner-only admin panel for the Khala Code mobile MVP. It reuses this
   // same downstream web client id (never a new registration), so its

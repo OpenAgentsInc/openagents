@@ -194,6 +194,8 @@ describe('auth email OTP hardening', () => {
     // Aiur (#8499): separate Cloud Run service, same downstream web client id.
     expect(authIssuerAllowsRedirectHostname('aiur.openagents.com')).toBe(true)
     expect(authIssuerAllowsRedirectHostname('pro.openagents.com')).toBe(true)
+    // One staging (OpenAgentsInc/one): exact staging application host.
+    expect(authIssuerAllowsRedirectHostname('one.openagents.com')).toBe(true)
 
     expect(authIssuerAllowsRedirectHostname('openagents.example.com')).toBe(
       false,
