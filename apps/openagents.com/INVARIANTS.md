@@ -895,13 +895,29 @@ true`, and `subscription_capacity_resale: false`. Any missing or mismatched
   routed to another owner, and never used to serve OpenAgents org demand.
 - Private GitHub checkout for Agent Computers must go through the Worker-owned
   SCM broker route `/api/pylon/github/git-credentials`. That route is
-  executor-agent-bearer-only, derives the GitHub identity token storage key from
-  the authenticated owner, requires matching public-safe `authRefs` and
-  `repo.github/<owner>/<repo>` refs, verifies the exact repo through GitHub, and
-  returns credentials only as a no-store broker response to Git. Assignment
-  payloads, placement requests, public projections, issue comments, docs, and
-  traces must carry only refs, never embedded GitHub OAuth tokens, PATs,
-  credentialed URLs, or credential helper output.
+  executor-agent-bearer-only. Legacy owner-linked callers derive the GitHub
+  identity token storage key from the authenticated owner and require its exact
+  `github-identity:token:<owner>` ref. A One repository connection instead
+  presents one high-entropy `github-scm-grant:<id>` ref minted by the external
+  browser authorization leg. The broker resolves that ref to its GitHub user
+  and one exact repository; the executor identity must never substitute either.
+  Both paths require the matching `repo.github/<owner>/<repo>` ref, reverify the
+  exact repository through GitHub, and return credentials only as a no-store
+  response to Git. Assignment payloads, placement requests, public projections,
+  issue comments, docs, and traces must carry only refs, never embedded GitHub
+  OAuth tokens, PATs, credentialed URLs, or credential helper output.
+- `GET/POST /api/pylon/github/authorize` plus the existing GitHub OAuth callback
+  are the external custody boundary for a One repository connection. The start
+  accepts only the exact One staging or production root as `returnTo`, binds a
+  bounded One workspace and one-time OAuth state, and stores provider material
+  only in external auth storage. The callback renders a no-store, script-free
+  repository picker. Confirmation is one-time, reverifies the selected
+  repository, and returns to One only `repoRepository` plus a high-entropy,
+  exact-repository grant reference. OAuth codes, access tokens, user identity
+  tokens, and the selection record never enter One, public URLs, HTML, logs, or
+  projections. Regression coverage lives in
+  `workers/api/src/github-scm-authorization.test.ts` and
+  `workers/api/src/github-scm-auth-broker-routes.test.ts`.
 - Agent Computer branch/PR writeback uses that same brokered GitHub user
   authorization. Scoped task branches may be pushed, but never force-pushed and
   never over the base branch. Permission and authorization failures must remain

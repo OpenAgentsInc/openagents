@@ -556,8 +556,10 @@ import {
 } from './full-auto-run-routes'
 import {
   GitHubScmAuthBrokerDependencyFailed,
+  handleGitHubScmAuthorizationCallback,
   routeGitHubScmAuthBrokerRequest,
 } from './github-scm-auth-broker-routes'
+import { makeGitHubScmAuthorizationService } from './github-scm-authorization'
 import {
   GITHUB_WRITE_REQUIRED_SCOPES,
   GitHubWriteApiFailure,
@@ -16963,6 +16965,57 @@ const managedSandboxProviderBrokerRoutes =
  * `routeExact`'s `===` comparison meant no real ref ever reached its handler,
  * and no test that called the handler directly could tell.
  */
+const githubScmAuthorizationForEnv = (env: OpenAgentsWorkerEnv) =>
+  makeGitHubScmAuthorizationService({
+    storage: authKvStoreForEnv(env),
+    authorizationUrl: state => gitHubWriteAuthorizeUrl(env, state, ['repo']),
+    exchangeOAuthCode: code =>
+      Effect.gen(function* () {
+        const token = yield* Effect.tryPromise({
+          try: () => exchangeGitHubOAuthCode(env, code),
+          catch: () =>
+            new GitHubScmAuthBrokerDependencyFailed({
+              reason: 'github_scm_oauth_exchange_failed',
+            }),
+        })
+        const user = yield* Effect.tryPromise({
+          try: () =>
+            fetchGitHubJson(
+              GitHubUser,
+              'https://api.github.com/user',
+              token.access_token,
+            ),
+          catch: () =>
+            new GitHubScmAuthBrokerDependencyFailed({
+              reason: 'github_scm_user_read_failed',
+            }),
+        })
+        const github = yield* GitHubRepositoryService
+        const repositories = yield* github.listRepositories(token.access_token)
+        return {
+          accessToken: token.access_token,
+          userId: String(user.id),
+          repositories: repositories.map(repository => ({
+            fullName: repository.fullName,
+            private: repository.private,
+          })),
+        }
+      }).pipe(Effect.provide(GitHubRepositoryService.layer)),
+    verifyRepositoryAccess: ({ accessToken, owner, name }) =>
+      Effect.gen(function* () {
+        const github = yield* GitHubRepositoryService
+        const repository = yield* github.getRepository(
+          accessToken,
+          owner,
+          name,
+        )
+        return { ok: true as const, fullName: repository.fullName }
+      }).pipe(
+        Effect.provide(GitHubRepositoryService.layer),
+        Effect.catch(() => Effect.succeed({ ok: false as const })),
+      ),
+  })
+
 export const routeWorkerRequest = makeWorkerRouteRequest({
   cleanProductRouteRedirectLocation,
   exactRoutes: exactRouteRegistry.routes,
@@ -17452,6 +17505,7 @@ export const routeWorkerRequest = makeWorkerRouteRequest({
     }),
   routeGithubScmAuthBrokerRequest: (request, env) =>
     routeGitHubScmAuthBrokerRequest(request, {
+      authorization: githubScmAuthorizationForEnv(env),
       authenticate: authRequest =>
         Effect.tryPromise({
           try: async () => {
@@ -17684,6 +17738,17 @@ const workerFetchProgram = Effect.gen(function* () {
   const { ctx, env, request, url } = yield* OpenAgentsWorkerRequest
 
   return yield* Effect.gen(function* () {
+    if (
+      url.hostname === 'auth.openagents.com' &&
+      url.pathname === '/github/callback' &&
+      url.searchParams.get('state')?.startsWith('github_scm_state_') === true
+    ) {
+      return yield* handleGitHubScmAuthorizationCallback(
+        request,
+        githubScmAuthorizationForEnv(env),
+      )
+    }
+
     if (url.hostname === 'auth.openagents.com') {
       return yield* Effect.promise(() =>
         routeAuthHostRequest(request, env, ctx),
