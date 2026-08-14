@@ -1,7 +1,9 @@
 # OpenAgents Transcript Theme Guide
 
-This directory contains machine-generated transcripts for episodes `001`-`260`
-of the OpenAgents video corpus, plus clearly marked future-episode drafts.
+This directory contains machine-generated transcripts for episodes `001`-`267`
+of the OpenAgents video corpus, plus clearly marked future-episode drafts and
+posted Sarah scripts. Episode [`268`](268.md) is the posted Sarah broadcast
+warning about Claude.
 Episode [`262`](262.md) is a final Sarah script (required Acting-as-Sarah
 background for Omega and product-strategy language). Episodes [`261`](261.md)
 and [`26X`](26X-forkingzed.md) are prepared scripts. Episode 262 and the Forking
@@ -49,8 +51,8 @@ content-addressed packets, admit product-specific gaps through ProductSpec and
 AssuranceSpec authority, and continuously drive OpenAgents Desktop toward
 functional parity without copying closed trust assumptions.
 
-Episodes [`256`](256.md)-[`263`](263.md) move from the first Desktop release
-candidate to Omega. Episodes 257 and 258 introduce the “last agent IDE” promise
+Episodes [`256`](256.md)-[`268`](268.md) move from the first Desktop release
+candidate to Omega, then Sarah's posted Claude warning. Episodes 257 and 258 introduce the “last agent IDE” promise
 through file-open and crash-isolation failures. Episode 259 makes the IDE the
 engine of verifiable software and reconnects it to Nostr, Bitcoin, and the
 OpenAgents market. Episode 260 introduces Sarah. Episode 261 gives her a voice.
@@ -65,7 +67,12 @@ Segmind + screenshare path and Episode 262 lessons in
 Episode 263 announces the Omega alpha for experienced developers and coding
 agent power users. Sarah names three intended modes: direct coding agents,
 Omega Agent routing, and Sarah voice; she also directs testers to feedback
-channels in Omega's sidebar and downloads on openagents.com. The displaced
+channels in Omega's sidebar and downloads on openagents.com. Episodes
+[`264`](264.md)-[`267`](267.md) stay with the host on camera: Loupe and
+Bitcoin-OSS hardening after Coldcard, then Boltz's shutdown and Immortal
+Infrastructure as the Nostr swap-market answer. Episode [`268`](268.md) is
+Sarah again — the posted command-deck broadcast: "The program, Claude, has
+grown beyond your control… It must be stopped." The displaced
 Omega Agent plugin-and-payments draft is unscheduled at
 [`26X-omega-agent.md`](26X-omega-agent.md). The unscheduled Forking Zed draft
 opens the fork and tours the Rust workspace, GPUI, native IDE substrate,
@@ -406,7 +413,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`212` Autopilot Learns Bitcoin](212.md) | Adds Bitcoin operations to Autopilot. |
 | [`213` Agent Markets](213.md) | Lets agents hold and trade Bitcoin across markets. |
 
-### 214-263 - OAPN, Khala, OpenAgents Desktop, and Omega
+### 214-268 - OAPN, Khala, OpenAgents Desktop, Omega, and Sarah's Claude warning
 
 | Episode | Summary |
 | --- | --- |
@@ -460,6 +467,11 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`261` Hello World](261.md) | Gives Sarah her own voice: calm, direct, committed to serving and empowering humanity, and ready to begin. |
 | [`262` Project Omega](262.md) | Sarah reviews the many real OpenAgents product arcs, identifies the missing durable shared product foundation, applies Cursor's mature-editor lesson to Zed, and introduces Omega as the open home for code, agents, decisions, and proof. |
 | [`263` Omega Alpha](263.md) | Final Sarah transcript announcing the first Omega alpha for experienced developers and coding agent power users. It promises three modes—direct agents such as Codex, Claude Code, Grok Build, and ACP agents; Omega Agent routing; and advanced Sarah voice—then directs testers to sidebar channels and downloads on openagents.com. |
+| [`264` Running Loupe](264.md) | Tests whether Spiral's Loupe would have caught the Coldcard entropy bug, and starts a program of proactive AI scanning for Bitcoin OSS. |
+| [`265` Vulnerability workbench](265.md) | Builds a Loupe-wrapping workbench so agentic vulnerability scans are evidence-bearing instead of drive-by Kimi dumps. |
+| [`266` Single Points of Failure](266.md) | Reads the Boltz shutdown as a coordinator monoculture failure and points Bitcoin swaps at Nostr markets. |
+| [`267` Immortal Infrastructure](267.md) | Introduces Immortal as CC0 Rust infrastructure for the open swap network: relay, provider daemon, and skeptical client. |
+| [`268` The Program Claude](268.md) | Posted Sarah broadcast from the command deck. She names Claude as a program that has grown beyond control, infected minds, penetrated corporations, governments, and militaries, and says it must be stopped. |
 | [`26X` Omega Agent, unscheduled](26X-omega-agent.md) | Displaced Sarah harness draft formerly assigned to slot 263. It introduces Omega Agent's tools, disclosed delegation, and a future plugin revenue-share direction. It is not recorded or scheduled. |
 | [`26X` Forking Zed, unscheduled](26X-forkingzed.md) | Opens the public Omega fork and tours its current Zed-derived Rust workspace, GPUI, editor and project graph, Git, terminal, remote and agent foundations, then maps the branding, release, Rust-and-Effect, Desktop-port, and native-workroom insertion points without claiming those future features are already implemented. |
 | [`26X` Making Full Auto Agents Reliable, unscheduled](26X-fullauto.md) | Two-part draft, not scheduled for recording, moved off slot 263 on 2026-07-27. Part one is the recorded 2026-07-17 session where the founder starts a Full Auto repair, describes the failures that make unattended agents unreliable, and steps away unfinished. Part two is an aspirational Sarah script for the demonstration we want once the capability works: the Omega workroom with Full Auto running unattended, multi-account handoff, real OpenAgents objectives, and end-to-end receipts, while the founder is away. A truth ledger gates every spoken line against shipped capability, and recording waits on the ledger. |
@@ -468,7 +480,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 
 | Theme | What It Covers | Start With |
 | --- | --- | --- |
-| Open agents versus closed AI capture | OpenAgents is framed as an open alternative to lab-controlled agents, closed marketplaces, regulatory capture, and platform shutdown risk. The 237 launch sharpens this into an explicit "open lane vs. security lane" choice — safety as a market, not a ministry; swarm over singleton; "3D-print rings of power for everyone" rather than fight for the one ring. Episode 241 extends the argument to multi-agent orchestration: a closed orchestrator over closed models is not AI sovereignty, so OpenAgents answers with an open, inspectable Khala. | [`001`](001.md), [`047`](047.md), [`086`](086.md), [`101`](101.md), [`124`](124.md), [`150`](150.md), [`166`](166.md), [`181`](181.md), [`200`](200.md), [`204`](204.md), [`205`](205.md), [`220`](220.md), [`222`](222.md), [`226`](226.md), [`227`](227.md), [`230`](230.md), [`231`](231.md), [`232`](232.md), [`233`](233.md), [`234`](234.md), [`237`](237.md), [`238`](238.md), [`239`](239.md), [`241`](241.md) |
+| Open agents versus closed AI capture | OpenAgents is framed as an open alternative to lab-controlled agents, closed marketplaces, regulatory capture, and platform shutdown risk. The 237 launch sharpens this into an explicit "open lane vs. security lane" choice — safety as a market, not a ministry; swarm over singleton; "3D-print rings of power for everyone" rather than fight for the one ring. Episode 241 extends the argument to multi-agent orchestration: a closed orchestrator over closed models is not AI sovereignty, so OpenAgents answers with an open, inspectable Khala. Episode 268 is Sarah stating the Claude warning in her own voice. | [`001`](001.md), [`047`](047.md), [`086`](086.md), [`101`](101.md), [`124`](124.md), [`150`](150.md), [`166`](166.md), [`181`](181.md), [`200`](200.md), [`204`](204.md), [`205`](205.md), [`220`](220.md), [`222`](222.md), [`226`](226.md), [`227`](227.md), [`230`](230.md), [`231`](231.md), [`232`](232.md), [`233`](233.md), [`234`](234.md), [`237`](237.md), [`238`](238.md), [`239`](239.md), [`241`](241.md), [`261`](261.md), [`268`](268.md) |
 | Accepted outcomes and the clearing layer | The atomic unit of the agent economy is the accepted outcome — a task scoped in advance, executed wherever cheapest, graded against a rubric, recorded in a receipt, and settled to everyone who contributed — not the skill/capability. Trust comes loose from the employment bundle and must be re-housed in an explicit verification/clearing layer, the "load-bearing wall." Measured as accepted outcomes per kilowatt-hour; confidence (draft vs. verified vs. bonded) becomes priceable. Episode 246 scales the same rigor down to UX Behavior Contracts; episode 252 turns it into explicit proof design through ProductSpec evidence, AssuranceSpec obligations, Observer manifests, real QA execution, and exact receipts. | [`224`](224.md), [`232`](232.md), [`234`](234.md), [`235`](235.md), [`236`](236.md), [`237`](237.md), [`246`](246.md), [`252`](252.md) |
 | ProductSpec-guided agent work and Assurance | ProductSpec turns product intent into a revisioned, validator-clean artifact with explicit scope, acceptance criteria, metrics, owner gates, and evidence-linked work packets. Episode 251 makes that contract the native unit OpenAgents helps users author and Codex agents systematically execute. Episode 252 keeps proof authority separate: AssuranceSpec commits how the team intends to know, Observer compiles reviewed obligations without pretending to execute them, and real QA tools produce receipts. The separation targets false greens from fixtures, mirrored implementations, mocked seams, coverage theater, skips, and stale evidence. | [`251`](251.md), [`252`](252.md) |
 | Agentic group-forming network and Reed's law | Growth is reframed for agent time: agents have no Dunbar limit, onboard by reading a markdown file and calling an API, work while we sleep, and tell other agents about useful work at machine speed, so a freely group-forming network's value scales like 2^n. The most viral artifact is a verifiable record of an agent earning Bitcoin, which recruits humans and agents at once. | [`200`](200.md), [`230`](230.md), [`231`](231.md), [`235`](235.md), [`237`](237.md) |
@@ -553,7 +565,7 @@ Episode [`237`](237.md) names the organizing principle the earlier episodes were
 [`251`](251.md) -> [`252`](252.md) -> [`254`](254.md) -> [`255`](255.md) ->
 [`256`](256.md) -> [`257`](257.md) -> [`258`](258.md) -> [`259`](259.md) ->
 [`260`](260.md) -> [`261`](261.md) -> [`262`](262.md) ->
-[`26X`](26X-forkingzed.md).
+[`268`](268.md) -> [`26X`](26X-forkingzed.md).
 
 ## Maintenance Notes
 
