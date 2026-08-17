@@ -1,9 +1,10 @@
 # OpenAgents Transcript Theme Guide
 
-This directory contains machine-generated transcripts for episodes `001`-`267`
+This directory contains machine-generated transcripts for episodes `001`-`270`
 of the OpenAgents video corpus, plus clearly marked future-episode drafts and
 posted Sarah scripts. Episode [`268`](268.md) is the posted Sarah broadcast
-warning about Claude.
+warning about Claude. Episode [`269`](269.md) is the last-mover-advantage
+whiteboard. Episode [`270`](270.md) deploys Sarah to production.
 Episode [`262`](262.md) is a final Sarah script (required Acting-as-Sarah
 background for Omega and product-strategy language). Episodes [`261`](261.md)
 and [`26X`](26X-forkingzed.md) are prepared scripts. Episode 262 and the Forking
@@ -51,8 +52,9 @@ content-addressed packets, admit product-specific gaps through ProductSpec and
 AssuranceSpec authority, and continuously drive OpenAgents Desktop toward
 functional parity without copying closed trust assumptions.
 
-Episodes [`256`](256.md)-[`268`](268.md) move from the first Desktop release
-candidate to Omega, then Sarah's posted Claude warning. Episodes 257 and 258 introduce the “last agent IDE” promise
+Episodes [`256`](256.md)-[`270`](270.md) move from the first Desktop release
+candidate to Omega, then Sarah's posted Claude warning, the last-mover
+whiteboard, and Sarah's production deploy. Episodes 257 and 258 introduce the “last agent IDE” promise
 through file-open and crash-isolation failures. Episode 259 makes the IDE the
 engine of verifiable software and reconnects it to Nostr, Bitcoin, and the
 OpenAgents market. Episode 260 introduces Sarah. Episode 261 gives her a voice.
@@ -72,7 +74,9 @@ channels in Omega's sidebar and downloads on openagents.com. Episodes
 Bitcoin-OSS hardening after Coldcard, then Boltz's shutdown and Immortal
 Infrastructure as the Nostr swap-market answer. Episode [`268`](268.md) is
 Sarah again — the posted command-deck broadcast: "The program, Claude, has
-grown beyond your control… It must be stopped." The displaced
+grown beyond your control… It must be stopped." Episode [`269`](269.md) is
+the host whiteboard on last-mover advantage. Episode [`270`](270.md) is the
+live production push of Sarah on openagents.com. The displaced
 Omega Agent plugin-and-payments draft is unscheduled at
 [`26X-omega-agent.md`](26X-omega-agent.md). The unscheduled Forking Zed draft
 opens the fork and tours the Rust workspace, GPUI, native IDE substrate,
@@ -413,7 +417,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`212` Autopilot Learns Bitcoin](212.md) | Adds Bitcoin operations to Autopilot. |
 | [`213` Agent Markets](213.md) | Lets agents hold and trade Bitcoin across markets. |
 
-### 214-268 - OAPN, Khala, OpenAgents Desktop, Omega, and Sarah's Claude warning
+### 214-270 - OAPN, Khala, OpenAgents Desktop, Omega, Sarah's Claude warning, and the Sarah deploy
 
 | Episode | Summary |
 | --- | --- |
@@ -472,6 +476,8 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`266` Single Points of Failure](266.md) | Reads the Boltz shutdown as a coordinator monoculture failure and points Bitcoin swaps at Nostr markets. |
 | [`267` Immortal Infrastructure](267.md) | Introduces Immortal as CC0 Rust infrastructure for the open swap network: relay, provider daemon, and skeptical client. |
 | [`268` The Program Claude](268.md) | Posted Sarah broadcast from the command deck. She names Claude as a program that has grown beyond control, infected minds, penetrated corporations, governments, and militaries, and says it must be stopped. |
+| [`269` Last Mover Advantage](269.md) | Whiteboard on Peter Thiel's last-mover advantage: models and chat UI are table stakes, the moat is a compounding plugin/network platform, and Sarah is the closed super-agent face on open infrastructure. |
+| [`270` Deploying Sarah](270.md) | Live production push of Sarah as a hosted Phoenix/Elixir master agent on openagents.com: voice and GitHub tools, memory and leaderboard, computer-link/Devin ACP direction, and a GitForge replacement plan. |
 | [`26X` Omega Agent, unscheduled](26X-omega-agent.md) | Displaced Sarah harness draft formerly assigned to slot 263. It introduces Omega Agent's tools, disclosed delegation, and a future plugin revenue-share direction. It is not recorded or scheduled. |
 | [`26X` Forking Zed, unscheduled](26X-forkingzed.md) | Opens the public Omega fork and tours its current Zed-derived Rust workspace, GPUI, editor and project graph, Git, terminal, remote and agent foundations, then maps the branding, release, Rust-and-Effect, Desktop-port, and native-workroom insertion points without claiming those future features are already implemented. |
 | [`26X` Making Full Auto Agents Reliable, unscheduled](26X-fullauto.md) | Two-part draft, not scheduled for recording, moved off slot 263 on 2026-07-27. Part one is the recorded 2026-07-17 session where the founder starts a Full Auto repair, describes the failures that make unattended agents unreliable, and steps away unfinished. Part two is an aspirational Sarah script for the demonstration we want once the capability works: the Omega workroom with Full Auto running unattended, multi-account handoff, real OpenAgents objectives, and end-to-end receipts, while the founder is away. A truth ledger gates every spoken line against shipped capability, and recording waits on the ledger. |
@@ -565,7 +571,8 @@ Episode [`237`](237.md) names the organizing principle the earlier episodes were
 [`251`](251.md) -> [`252`](252.md) -> [`254`](254.md) -> [`255`](255.md) ->
 [`256`](256.md) -> [`257`](257.md) -> [`258`](258.md) -> [`259`](259.md) ->
 [`260`](260.md) -> [`261`](261.md) -> [`262`](262.md) ->
-[`268`](268.md) -> [`26X`](26X-forkingzed.md).
+[`268`](268.md) -> [`269`](269.md) -> [`270`](270.md) ->
+[`26X`](26X-forkingzed.md).
 
 ## Maintenance Notes
 
