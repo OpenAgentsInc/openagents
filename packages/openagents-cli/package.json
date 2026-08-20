@@ -1,0 +1,47 @@
+{
+  "name": "@openagentsinc/cli",
+  "version": "0.1.0",
+  "description": "Effect TypeScript command-line client for OpenAgents repositories",
+  "bin": {
+    "openagents": "./dist/main.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "fmt": "vp fmt .",
+    "fmt:check": "vp fmt --check .",
+    "lint": "vp lint .",
+    "prepack": "pnpm run build",
+    "test": "vp test --run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify": "pnpm run fmt:check && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build",
+    "verify:package": "pnpm pack --dry-run"
+  },
+  "dependencies": {
+    "@effect/platform-node": "catalog:",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "0.2.4",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
