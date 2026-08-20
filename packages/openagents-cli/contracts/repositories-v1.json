@@ -86,6 +86,7 @@
       "invalid_repository",
       "namespace_not_allowed",
       "not_found",
+      "repository_quota_exceeded",
       "repository_name_conflict",
       "slow_down",
       "source_namespace_mismatch",

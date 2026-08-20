@@ -9,6 +9,7 @@ import {
   type ApiResponse,
 } from "../src/api-transport.js";
 import { RepositoryClient, repositoryClientLayer } from "../src/repository-client.js";
+import { TransportError } from "../src/errors.js";
 
 const token = Redacted.make("test-token");
 
@@ -49,7 +50,7 @@ const importFixture = (state: "pending" | "running" | "completed" | "failed") =>
 });
 
 const layerFromHandler = (
-  handler: (input: ApiRequest) => Effect.Effect<ApiResponse>,
+  handler: (input: ApiRequest) => Effect.Effect<ApiResponse, TransportError>,
 ): Layer.Layer<RepositoryClient> =>
   repositoryClientLayer.pipe(Layer.provide(apiTransportTestLayer(handler)));
 
@@ -131,6 +132,43 @@ describe("repository client", () => {
       }).pipe(Effect.provide(layer)),
     );
     expect(requests[0]?.path).toBe("/api/v3/orgs/acme/repos");
+  });
+
+  it("retries a disconnected create with the same idempotency key", async () => {
+    const requests: Array<ApiRequest> = [];
+    const layer = layerFromHandler((input) =>
+      Effect.suspend(() => {
+        requests.push(input);
+        if (requests.length === 1) {
+          return Effect.fail(
+            new TransportError({
+              operation: "sending the request",
+              message: "connection closed",
+              cause: new Error("closed"),
+            }),
+          );
+        }
+        return Effect.succeed({ status: 201, body: repositoryFixture() });
+      }),
+    );
+
+    const repository = await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* RepositoryClient;
+        return yield* client.create({
+          origin: "http://localhost:4000",
+          token,
+          name: "project",
+          private: true,
+        });
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(repository.full_name).toBe("octavia/project");
+    expect(requests).toHaveLength(2);
+    expect(requests[0]?.headers?.["idempotency-key"]).toBe(
+      requests[1]?.headers?.["idempotency-key"],
+    );
   });
 
   it("decodes list and view response envelopes", async () => {

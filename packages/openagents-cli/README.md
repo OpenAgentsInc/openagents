@@ -99,7 +99,8 @@ GitHub changes do not sync in either direction.
 Add `--json` before a subcommand to return machine-readable output. Add
 `--no-color`, or set `NO_COLOR`, to disable ANSI output. The clone command
 invokes `git` with an argument array and never puts a token in a URL or process
-argument.
+argument. `SIGINT` and `SIGTERM` cancel in-flight HTTP and Git child-process
+work and exit with status `130`.
 
 For standard Git commands, configure the origin-scoped credential helper in
 the current repository:

@@ -3,7 +3,7 @@ import { Schema } from "effect";
 export const REPOSITORY_CONTRACT_NAME = "openagents.repositories.v1";
 export const REPOSITORY_CONTRACT_VERSION = 1;
 export const REPOSITORY_CONTRACT_SHA256 =
-  "8ee2a118e15c7cbc6bc84d450a970724a4279fe2ae66fc3bd822770e92bebc02";
+  "9355cac5191e817b0c7c8f3e14caa89883d77a4676b524674bfd6514c84d56f4";
 
 export const AuthenticatedNamespace = Schema.Struct({
   id: Schema.Union([Schema.Number, Schema.String]),

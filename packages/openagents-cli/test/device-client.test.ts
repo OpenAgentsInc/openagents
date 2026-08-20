@@ -86,4 +86,79 @@ describe("device authorization client", () => {
     );
     expect(started.user_code).toBe("ABCD-EFGH");
   });
+
+  it("retries slow-down responses and rejects denial", async () => {
+    const slowProgram = Effect.gen(function* () {
+      const polls = yield* Ref.make(0);
+      const transport = ApiTransport.of({
+        request: () =>
+          Ref.getAndUpdate(polls, (count) => count + 1).pipe(
+            Effect.map((count) =>
+              count === 0
+                ? { status: 429, body: { code: "slow_down" } }
+                : {
+                    status: 200,
+                    body: {
+                      access_token: "oa_pat_after-slow-down",
+                      token_type: "Bearer",
+                      scope: "forge:write",
+                      expires_in: 60,
+                    },
+                  },
+            ),
+          ),
+      });
+      const layer = deviceClientLayer.pipe(Layer.provide(Layer.succeed(ApiTransport, transport)));
+      const fiber = yield* Effect.gen(function* () {
+        const client = yield* DeviceClient;
+        return yield* client.wait("http://localhost:4000", { ...authorization, interval: 1 });
+      }).pipe(Effect.provide(layer), Effect.forkChild);
+      yield* TestClock.adjust("1 second");
+      return yield* Fiber.join(fiber);
+    }).pipe(Effect.provide(TestClock.layer()));
+
+    expect(Redacted.value(await Effect.runPromise(slowProgram))).toBe("oa_pat_after-slow-down");
+
+    const deniedLayer = deviceClientLayer.pipe(
+      Layer.provide(
+        apiTransportTestLayer(() =>
+          Effect.succeed({ status: 400, body: { code: "access_denied" } }),
+        ),
+      ),
+    );
+    const denied = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const client = yield* DeviceClient;
+        return yield* client.wait("http://localhost:4000", authorization);
+      }).pipe(Effect.provide(deniedLayer)),
+    );
+    expect(denied._tag).toBe("Failure");
+    if (denied._tag === "Failure") expect(String(denied.cause)).toContain("denied");
+  });
+
+  it("stops pending authorization at its expiry deadline", async () => {
+    const program = Effect.gen(function* () {
+      const layer = deviceClientLayer.pipe(
+        Layer.provide(
+          apiTransportTestLayer(() =>
+            Effect.succeed({ status: 428, body: { code: "authorization_pending" } }),
+          ),
+        ),
+      );
+      const fiber = yield* Effect.gen(function* () {
+        const client = yield* DeviceClient;
+        return yield* client.wait("http://localhost:4000", {
+          ...authorization,
+          expires_in: 1,
+          interval: 1,
+        });
+      }).pipe(Effect.provide(layer), Effect.forkChild);
+      yield* TestClock.adjust("1 second");
+      return yield* Fiber.await(fiber);
+    }).pipe(Effect.provide(TestClock.layer()));
+
+    const exit = await Effect.runPromise(program);
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") expect(String(exit.cause)).toContain("expired before approval");
+  });
 });

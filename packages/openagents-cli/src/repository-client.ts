@@ -21,6 +21,7 @@ import {
   InputError,
   ProvisioningFailed,
   ProvisioningWaitTimeout,
+  TransportError,
   type CliError,
 } from "./errors.js";
 
@@ -168,6 +169,14 @@ class RepositoryPending extends Schema.TaggedErrorClass<RepositoryPending>()(
   { repository: Schema.String },
 ) {}
 
+const retryMutation = <A>(effect: Effect.Effect<A, CliError>) =>
+  effect.pipe(
+    Effect.retry({
+      times: 2,
+      while: (failure) => failure instanceof TransportError,
+    }),
+  );
+
 export const repositoryClientLayer = Layer.effect(
   RepositoryClient,
   Effect.gen(function* () {
@@ -289,14 +298,16 @@ export const repositoryClientLayer = Layer.effect(
       };
       const path =
         owner === undefined ? "/api/v3/user/repos" : `/api/v3/orgs/${encoded(owner)}/repos`;
-      const value = yield* request("create repository", {
-        ...input,
-        method: "POST",
-        path,
-        body,
-        headers: { "idempotency-key": idempotencyKey },
-        acceptedStatuses: [201, 202],
-      });
+      const value = yield* retryMutation(
+        request("create repository", {
+          ...input,
+          method: "POST",
+          path,
+          body,
+          headers: { "idempotency-key": idempotencyKey },
+          acceptedStatuses: [201, 202],
+        }),
+      );
       const repository = yield* decode("create repository", RepositoryResponse, value);
       if (repository.lifecycle_state === "ready" || input.waitTimeoutMs === 0) return repository;
       return yield* waitForRepository({
@@ -434,14 +445,16 @@ export const repositoryClientLayer = Layer.effect(
         owner === undefined
           ? "/api/v3/user/repos/imports"
           : `/api/v3/orgs/${encoded(owner)}/repos/imports`;
-      const value = yield* request("import repository", {
-        ...input,
-        method: "POST",
-        path,
-        body,
-        headers: { "idempotency-key": idempotencyKey },
-        acceptedStatuses: [201, 202],
-      });
+      const value = yield* retryMutation(
+        request("import repository", {
+          ...input,
+          method: "POST",
+          path,
+          body,
+          headers: { "idempotency-key": idempotencyKey },
+          acceptedStatuses: [201, 202],
+        }),
+      );
       const accepted = yield* decode("import repository", RepositoryImportAcceptedResponse, value);
       const repository = repositoryFromAcceptedImport(accepted);
       if (accepted.import.state === "completed" || input.waitTimeoutMs === 0) {
