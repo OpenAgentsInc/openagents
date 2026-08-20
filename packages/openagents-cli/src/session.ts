@@ -5,6 +5,7 @@ import { resolveEndpoint } from "./endpoint.js";
 import { AuthenticationRequired } from "./errors.js";
 import { CredentialStore } from "./credential-store.js";
 import { EnvironmentConfiguration } from "./environment.js";
+import { PersistedConfiguration } from "./persisted-configuration.js";
 
 export interface ApiSession {
   readonly endpoint: ApiEndpoint;
@@ -15,10 +16,15 @@ export const resolveApiEndpoint = Effect.fn("Session.resolveApiEndpoint")(functi
   overrides: EndpointOverrides,
 ) {
   const environment = yield* EnvironmentConfiguration;
-  return yield* resolveEndpoint(overrides, {
-    profile: environment.profile,
-    apiUrl: environment.apiUrl,
-  });
+  const persisted = yield* PersistedConfiguration;
+  return yield* resolveEndpoint(
+    overrides,
+    {
+      profile: environment.profile,
+      apiUrl: environment.apiUrl,
+    },
+    persisted,
+  );
 });
 
 export const findToken = Effect.fn("Session.findToken")(function* (origin: string) {

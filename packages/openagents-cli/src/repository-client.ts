@@ -3,6 +3,7 @@ import * as Context from "effect/Context";
 
 import {
   ApiErrorResponse,
+  AuthenticatedUser,
   Repository,
   RepositoryImport,
   RepositoryImportAcceptedResponse,
@@ -59,6 +60,17 @@ export interface ImportRepositoryResult {
   readonly repositoryImport: RepositoryImport;
 }
 
+export interface ListRepositoriesInput extends AuthenticatedApi {
+  readonly namespace?: string;
+  readonly limit: number;
+  readonly after?: string;
+}
+
+export interface ListRepositoriesResult {
+  readonly repositories: ReadonlyArray<Repository>;
+  readonly nextCursor: string | null;
+}
+
 export interface CloneRepositoryResult {
   readonly repository: Repository;
   readonly cloneUrl: string;
@@ -69,7 +81,10 @@ export interface RepositoryClientInterface {
   readonly import: (
     input: ImportRepositoryInput,
   ) => Effect.Effect<ImportRepositoryResult, CliError>;
-  readonly list: (input: AuthenticatedApi) => Effect.Effect<ReadonlyArray<Repository>, CliError>;
+  readonly authenticatedUser: (
+    input: AuthenticatedApi,
+  ) => Effect.Effect<AuthenticatedUser, CliError>;
+  readonly list: (input: ListRepositoriesInput) => Effect.Effect<ListRepositoriesResult, CliError>;
   readonly view: (
     input: AuthenticatedApi & RepositoryTarget,
   ) => Effect.Effect<Repository, CliError>;
@@ -128,14 +143,19 @@ export const parseRepositoryTarget = Effect.fn("RepositoryClient.parseTarget")(f
 
 const encoded = (value: string) => encodeURIComponent(value);
 
-const errorMessage = (body: unknown, status: number): { message: string; requestId?: string } => {
+const errorMessage = (
+  body: unknown,
+  status: number,
+): { message: string; code?: string; requestId?: string } => {
   const decoded = Schema.decodeUnknownOption(ApiErrorResponse)(body);
   if (Option.isNone(decoded)) return { message: `The API returned HTTP ${status}.` };
   const value = decoded.value;
   const message = value.message ?? value.error ?? `The API returned HTTP ${status}.`;
-  return typeof value.request_id === "string"
-    ? { message, requestId: value.request_id }
-    : { message };
+  return {
+    message,
+    ...(typeof value.code === "string" ? { code: value.code } : {}),
+    ...(typeof value.request_id === "string" ? { requestId: value.request_id } : {}),
+  };
 };
 
 class ImportPending extends Schema.TaggedErrorClass<ImportPending>()(
@@ -176,6 +196,7 @@ export const repositoryClientLayer = Layer.effect(
         return yield* new ApiError({
           operation,
           status: response.status,
+          ...(details.code === undefined ? {} : { code: details.code }),
           message: details.message,
           ...(response.requestId === undefined && details.requestId === undefined
             ? {}
@@ -288,36 +309,38 @@ export const repositoryClientLayer = Layer.effect(
       });
     });
 
-    const list = Effect.fn("RepositoryClient.list")(function* (input: AuthenticatedApi) {
-      const repositories: Array<Repository> = [];
-      let cursor: string | null = null;
-
-      for (let page = 0; page < 100; page += 1) {
-        const requestPath: string =
-          cursor === null
-            ? "/api/v3/user/repos?per_page=100"
-            : `/api/v3/user/repos?per_page=100&after=${encoded(cursor)}`;
-        const responseBody: unknown = yield* request("list repositories", {
-          ...input,
-          method: "GET",
-          path: requestPath,
-          acceptedStatuses: [200],
-        });
-        const pageResponse: typeof RepositoryListResponse.Type = yield* decode(
-          "list repositories",
-          RepositoryListResponse,
-          responseBody,
-        );
-        repositories.push(...pageResponse.repositories);
-        cursor = pageResponse.next_cursor;
-        if (cursor === null) return repositories;
-      }
-
-      return yield* new ContractError({
-        operation: "list repositories",
-        message: "The repository list exceeded the 100-page client bound.",
-        cause: new Error("repository pagination limit exceeded"),
+    const authenticatedUser = Effect.fn("RepositoryClient.authenticatedUser")(function* (
+      input: AuthenticatedApi,
+    ) {
+      const responseBody = yield* request("read authenticated user", {
+        ...input,
+        method: "GET",
+        path: "/api/v3/user",
+        acceptedStatuses: [200],
       });
+      return yield* decode("read authenticated user", AuthenticatedUser, responseBody);
+    });
+
+    const list = Effect.fn("RepositoryClient.list")(function* (input: ListRepositoriesInput) {
+      if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 100) {
+        return yield* new InputError({ message: "--limit must be between 1 and 100." });
+      }
+      const namespace =
+        input.namespace === undefined ? undefined : yield* validateOwner(input.namespace);
+      const parameters = new URLSearchParams({ per_page: String(input.limit) });
+      if (input.after !== undefined) parameters.set("after", input.after);
+      if (namespace !== undefined) parameters.set("namespace", namespace);
+      const responseBody = yield* request("list repositories", {
+        ...input,
+        method: "GET",
+        path: `/api/v3/user/repos?${parameters.toString()}`,
+        acceptedStatuses: [200],
+      });
+      const pageResponse = yield* decode("list repositories", RepositoryListResponse, responseBody);
+      return {
+        repositories: pageResponse.repositories,
+        nextCursor: pageResponse.next_cursor,
+      };
     });
 
     const view = Effect.fn("RepositoryClient.view")(function* (
@@ -469,6 +492,7 @@ export const repositoryClientLayer = Layer.effect(
     return RepositoryClient.of({
       create,
       import: importRepository,
+      authenticatedUser,
       list,
       view,
       cloneInfo,

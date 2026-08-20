@@ -21,6 +21,8 @@ describe("git clone argument construction", () => {
     });
     expect(argv).toEqual([
       "-c",
+      "credential.helper=",
+      "-c",
       "credential.http://localhost:4000.helper=!openagents --api-url http://localhost:4000 auth git-credential",
       "clone",
       "--",
@@ -32,6 +34,8 @@ describe("git clone argument construction", () => {
   it("never constructs a shell command or credential-bearing URL", () => {
     const argv = gitCloneArgv({ url: "https://openagents.com/git/octavia/project.git" });
     expect(argv).toEqual([
+      "-c",
+      "credential.helper=",
       "-c",
       "credential.https://openagents.com.helper=!openagents --api-url https://openagents.com auth git-credential",
       "clone",
@@ -91,6 +95,26 @@ describe("git clone argument construction", () => {
         remote: "origin",
         nextPushArguments: ["push", "-u", "origin", "HEAD"],
       });
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const git = yield* GitRunner;
+          yield* git.configureCredentialHelper("http://localhost:4000", "local", directory);
+        }).pipe(Effect.provide(layer)),
+      );
+      expect(
+        execFileSync(
+          "git",
+          [
+            "-C",
+            directory,
+            "config",
+            "--local",
+            "--get-all",
+            "credential.http://localhost:4000.helper",
+          ],
+          { encoding: "utf8" },
+        ).split("\n"),
+      ).toEqual(["", "!openagents --api-url http://localhost:4000 auth git-credential", ""]);
       await expect(
         Effect.runPromise(
           Effect.gen(function* () {

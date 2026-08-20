@@ -3,7 +3,21 @@ import { Schema } from "effect";
 export const REPOSITORY_CONTRACT_NAME = "openagents.repositories.v1";
 export const REPOSITORY_CONTRACT_VERSION = 1;
 export const REPOSITORY_CONTRACT_SHA256 =
-  "de1c5e531cb8e41d662af840603e1685ba914e64419473b1e1578dcf0919e893";
+  "8ee2a118e15c7cbc6bc84d450a970724a4279fe2ae66fc3bd822770e92bebc02";
+
+export const AuthenticatedNamespace = Schema.Struct({
+  id: Schema.Union([Schema.Number, Schema.String]),
+  login: Schema.String,
+  type: Schema.Literals(["user", "organization"]),
+});
+
+export const AuthenticatedUser = Schema.Struct({
+  id: Schema.Number,
+  login: Schema.String,
+  token_expires_at: Schema.String,
+  namespaces: Schema.Array(AuthenticatedNamespace),
+});
+export interface AuthenticatedUser extends Schema.Schema.Type<typeof AuthenticatedUser> {}
 
 export const RepositoryOwner = Schema.Struct({
   id: Schema.Union([Schema.Number, Schema.String]),

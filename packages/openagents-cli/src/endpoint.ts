@@ -82,6 +82,10 @@ const decodeProfile = Effect.fn("Endpoint.decodeProfile")(function* (value: stri
 export const resolveEndpoint = Effect.fn("Endpoint.resolve")(function* (
   overrides: EndpointOverrides,
   environment: EndpointEnvironment,
+  persisted: EndpointEnvironment = {
+    profile: Option.none(),
+    apiUrl: Option.none(),
+  },
 ) {
   if (Option.isSome(overrides.apiUrl)) {
     const origin = yield* normalizeApiOrigin(overrides.apiUrl.value);
@@ -98,8 +102,18 @@ export const resolveEndpoint = Effect.fn("Endpoint.resolve")(function* (
     return { origin, profile: "custom" } satisfies ApiEndpoint;
   }
 
-  const profile = Option.isSome(environment.profile)
-    ? yield* decodeProfile(environment.profile.value)
+  if (Option.isSome(environment.profile)) {
+    const profile = yield* decodeProfile(environment.profile.value);
+    return { origin: PROFILE_ORIGINS[profile], profile } satisfies ApiEndpoint;
+  }
+
+  if (Option.isSome(persisted.apiUrl)) {
+    const origin = yield* normalizeApiOrigin(persisted.apiUrl.value);
+    return { origin, profile: "custom" } satisfies ApiEndpoint;
+  }
+
+  const profile = Option.isSome(persisted.profile)
+    ? yield* decodeProfile(persisted.profile.value)
     : "production";
   return { origin: PROFILE_ORIGINS[profile], profile } satisfies ApiEndpoint;
 });

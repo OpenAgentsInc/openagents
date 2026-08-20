@@ -7,13 +7,13 @@ import { InputError } from "./errors.js";
 import { CredentialStore } from "./credential-store.js";
 import { DeviceClient } from "./device-client.js";
 import { type EndpointOverrides, Profile } from "./endpoint.js";
-import { EnvironmentConfiguration } from "./environment.js";
 import { GitRunner } from "./git-runner.js";
 import { runGitCredentialHelper } from "./git-credential-helper.js";
 import { Output, type OutputMode } from "./output.js";
 import { parseRepositoryTarget, RepositoryClient } from "./repository-client.js";
 import { SecretInput } from "./secret-input.js";
-import { resolveApiEndpoint, resolveApiSession } from "./session.js";
+import { findToken, resolveApiEndpoint, resolveApiSession } from "./session.js";
+import { TerminalSession } from "./terminal-session.js";
 
 export const VERSION = "0.1.0";
 
@@ -27,10 +27,16 @@ const apiUrlFlag = Flag.string("api-url").pipe(
   Flag.withDescription("Override the API origin"),
 );
 const jsonFlag = Flag.boolean("json").pipe(Flag.withDescription("Write machine-readable JSON"));
+const noColorFlag = Flag.boolean("no-color").pipe(Flag.withDescription("Disable ANSI output"));
 
 const rootCommand = Command.make("openagents").pipe(
   Command.withDescription("Manage OpenAgents repositories"),
-  Command.withSharedFlags({ profile: profileFlag, apiUrl: apiUrlFlag, json: jsonFlag }),
+  Command.withSharedFlags({
+    profile: profileFlag,
+    apiUrl: apiUrlFlag,
+    json: jsonFlag,
+    noColor: noColorFlag,
+  }),
 );
 
 const outputMode = (json: boolean): OutputMode => (json ? "json" : "human");
@@ -61,49 +67,60 @@ const authStatusCommand = Command.make("status", {}, () =>
   Effect.gen(function* () {
     const flags = yield* rootCommand;
     const endpoint = yield* resolveApiEndpoint(endpointOverrides(flags));
-    const environment = yield* EnvironmentConfiguration;
     const output = yield* Output;
-    if (Option.isSome(environment.token)) {
+    const token = yield* findToken(endpoint.origin).pipe(
+      Effect.catchTag("OpenAgentsCli.CredentialPersistenceUnavailable", () =>
+        Effect.succeed(Option.none()),
+      ),
+    );
+    if (Option.isNone(token)) {
       return yield* output.write(
         {
           value: {
             origin: endpoint.origin,
             profile: endpoint.profile,
-            authenticated: true,
-            token_source: "environment",
-            persistent_credentials: "os",
+            authenticated: false,
+            token_source: null,
+            account: null,
+            namespaces: [],
+            token_expires_at: null,
+            git_helper: { local: false, global: false },
           },
           human: [
             `API: ${endpoint.origin}`,
-            "Authenticated with OPENAGENTS_TOKEN.",
-            "The environment token is not persisted.",
+            "No token is available.",
+            "Set OPENAGENTS_TOKEN or run openagents auth login.",
           ],
         },
         outputMode(flags.json),
       );
     }
 
-    const credentials = yield* CredentialStore;
-    const stored = yield* credentials
-      .get(endpoint.origin)
-      .pipe(
-        Effect.catchTag("OpenAgentsCli.CredentialPersistenceUnavailable", () =>
-          Effect.succeed(Option.none()),
-        ),
-      );
+    const repositories = yield* RepositoryClient;
+    const git = yield* GitRunner;
+    const user = yield* repositories.authenticatedUser({
+      origin: endpoint.origin,
+      token: token.value.token,
+    });
+    const gitHelper = yield* git.credentialHelperState(endpoint.origin);
     yield* output.write(
       {
         value: {
           origin: endpoint.origin,
           profile: endpoint.profile,
-          authenticated: Option.isSome(stored),
-          token_source: Option.isSome(stored) ? "store" : null,
-          persistent_credentials: "os",
+          authenticated: true,
+          token_source: token.value.source,
+          account: { id: user.id, login: user.login },
+          namespaces: user.namespaces,
+          token_expires_at: user.token_expires_at,
+          git_helper: gitHelper,
         },
         human: [
           `API: ${endpoint.origin}`,
-          Option.isSome(stored) ? "Authenticated with a stored token." : "No token is available.",
-          "Set OPENAGENTS_TOKEN to authenticate without persistence.",
+          `Authenticated as ${user.login} (${user.id}) with a ${token.value.source} token.`,
+          `Eligible namespaces: ${user.namespaces.map((namespace) => namespace.login).join(", ")}.`,
+          `Token expires: ${user.token_expires_at}.`,
+          `Git helper: local ${gitHelper.local ? "configured" : "not configured"}; global ${gitHelper.global ? "configured" : "not configured"}.`,
         ],
       },
       outputMode(flags.json),
@@ -132,38 +149,53 @@ const authTokenStdinCommand = Command.make("token-stdin", {}, () =>
   Command.withDescription("Read a token from standard input and store it for the selected API"),
 );
 
-const authLoginCommand = Command.make("login", {}, () =>
-  Effect.gen(function* () {
-    const flags = yield* rootCommand;
-    const endpoint = yield* resolveApiEndpoint(endpointOverrides(flags));
-    const devices = yield* DeviceClient;
-    const browser = yield* BrowserLauncher;
-    const credentials = yield* CredentialStore;
-    const output = yield* Output;
-    const authorization = yield* devices.start(endpoint.origin);
-
-    yield* Console.error(
-      `Open ${authorization.verification_uri} and enter code ${authorization.user_code}.`,
-    );
-    yield* browser.open(authorization.verification_uri_complete);
-
-    const token = yield* devices.wait(endpoint.origin, authorization);
-    yield* credentials.set(endpoint.origin, token);
-    yield* output.write(
-      {
-        value: {
-          origin: endpoint.origin,
-          authenticated: true,
-          token_source: "os_credential_store",
+const loginTokenStdinFlag = Flag.boolean("token-stdin").pipe(
+  Flag.withDescription("Read and store a token from standard input instead of opening a browser"),
+);
+const authLoginCommand = Command.make(
+  "login",
+  { tokenStdin: loginTokenStdinFlag },
+  ({ tokenStdin }) =>
+    Effect.gen(function* () {
+      const flags = yield* rootCommand;
+      const endpoint = yield* resolveApiEndpoint(endpointOverrides(flags));
+      const credentials = yield* CredentialStore;
+      const output = yield* Output;
+      const token = tokenStdin
+        ? Redacted.make(yield* (yield* SecretInput).readToken())
+        : yield* Effect.gen(function* () {
+            if (!(yield* TerminalSession).interactive) {
+              return yield* new InputError({
+                message:
+                  "Browser login requires an interactive terminal. Use --token-stdin or OPENAGENTS_TOKEN.",
+              });
+            }
+            const devices = yield* DeviceClient;
+            const browser = yield* BrowserLauncher;
+            const authorization = yield* devices.start(endpoint.origin);
+            yield* Console.error(
+              `Open ${authorization.verification_uri} and enter code ${authorization.user_code}.`,
+            );
+            yield* browser.open(authorization.verification_uri_complete);
+            return yield* devices.wait(endpoint.origin, authorization);
+          });
+      yield* credentials.set(endpoint.origin, token);
+      yield* output.write(
+        {
+          value: {
+            origin: endpoint.origin,
+            authenticated: true,
+            token_source: tokenStdin ? "token_stdin" : "device_authorization",
+          },
+          human: [
+            `Authenticated with ${endpoint.origin}.`,
+            "The token is stored in your OS credential store.",
+            "Run openagents auth setup-git --local to configure Git for this repository.",
+          ],
         },
-        human: [
-          `Authenticated with ${endpoint.origin}.`,
-          "The token is stored in your OS credential store.",
-        ],
-      },
-      outputMode(flags.json),
-    );
-  }),
+        outputMode(flags.json),
+      );
+    }),
 ).pipe(Command.withDescription("Authorize the CLI in your browser and store the resulting token"));
 
 const authLogoutCommand = Command.make("logout", {}, () =>
@@ -214,6 +246,11 @@ const authSetupGitCommand = Command.make(
       }
       if (global && !yes) {
         return yield* new InputError({ message: "Global setup requires --yes confirmation." });
+      }
+      if (global && !(yield* TerminalSession).interactive) {
+        return yield* new InputError({
+          message: "Global Git helper setup requires an interactive terminal.",
+        });
       }
       const flags = yield* rootCommand;
       const endpoint = yield* resolveApiEndpoint(endpointOverrides(flags));
@@ -403,20 +440,44 @@ const repoImportCommand = Command.make(
       const repositories = yield* RepositoryClient;
       const output = yield* Output;
       const visibility = yield* privateVisibility(isPublic, isPrivate);
+      const sourceTarget = yield* parseRepositoryTarget(source);
+      const destination = Option.isSome(namespace) ? namespace.value : sourceTarget.owner;
+      if (destination.toLowerCase() !== sourceTarget.owner.toLowerCase()) {
+        return yield* new InputError({
+          message: "--namespace must match the GitHub source owner in the first release.",
+        });
+      }
+      const user = yield* repositories.authenticatedUser({
+        origin: session.endpoint.origin,
+        token: session.token,
+      });
+      const personal = destination.toLowerCase() === user.login.toLowerCase();
+      if (
+        !personal &&
+        !user.namespaces.some(
+          (candidate) =>
+            candidate.type === "organization" &&
+            candidate.login.toLowerCase() === destination.toLowerCase(),
+        )
+      ) {
+        return yield* new InputError({
+          message: `${destination} is not an eligible GitHub namespace for this account.`,
+        });
+      }
       const result = yield* repositories.import({
         origin: session.endpoint.origin,
         token: session.token,
-        source,
+        source: `${sourceTarget.owner}/${sourceTarget.repo}`,
         private: visibility,
         waitTimeoutMs: waitTimeout * 1_000,
         ...(Option.isNone(name) ? {} : { name: name.value }),
-        ...(Option.isNone(namespace) ? {} : { owner: namespace.value }),
+        ...(personal ? {} : { owner: destination }),
       });
       yield* output.write(
         {
           value: result,
           human: [
-            `Imported ${source} into ${result.repository.full_name}.`,
+            `Imported ${sourceTarget.owner}/${sourceTarget.repo} into ${result.repository.full_name}.`,
             `Import state: ${result.repositoryImport.state}`,
             "This is a one-time import. Later GitHub changes do not sync.",
           ],
@@ -426,27 +487,48 @@ const repoImportCommand = Command.make(
     }),
 ).pipe(Command.withDescription("Import a GitHub repository once"));
 
-const repoListCommand = Command.make("list", {}, () =>
-  Effect.gen(function* () {
-    const flags = yield* rootCommand;
-    const session = yield* resolveApiSession(endpointOverrides(flags));
-    const repositories = yield* RepositoryClient;
-    const output = yield* Output;
-    const listed = yield* repositories.list({
-      origin: session.endpoint.origin,
-      token: session.token,
-    });
-    yield* output.write(
-      {
-        value: { repositories: listed },
-        human:
-          listed.length === 0
-            ? ["No repositories found."]
-            : listed.map((repository) => repository.full_name),
-      },
-      outputMode(flags.json),
-    );
-  }),
+const listNamespaceFlag = Flag.string("namespace").pipe(
+  Flag.optional,
+  Flag.withDescription("Filter by a GitHub-backed namespace"),
+);
+const listLimitFlag = Flag.integer("limit").pipe(
+  Flag.withDefault(30),
+  Flag.withDescription("Return between 1 and 100 repositories"),
+);
+const listAfterFlag = Flag.string("after").pipe(
+  Flag.optional,
+  Flag.withDescription("Continue from an opaque repository cursor"),
+);
+const repoListCommand = Command.make(
+  "list",
+  { namespace: listNamespaceFlag, limit: listLimitFlag, after: listAfterFlag },
+  ({ after, limit, namespace }) =>
+    Effect.gen(function* () {
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const repositories = yield* RepositoryClient;
+      const output = yield* Output;
+      const listed = yield* repositories.list({
+        origin: session.endpoint.origin,
+        token: session.token,
+        limit,
+        ...(Option.isNone(namespace) ? {} : { namespace: namespace.value }),
+        ...(Option.isNone(after) ? {} : { after: after.value }),
+      });
+      yield* output.write(
+        {
+          value: { repositories: listed.repositories, next_cursor: listed.nextCursor },
+          human:
+            listed.repositories.length === 0
+              ? ["No repositories found."]
+              : [
+                  ...listed.repositories.map((repository) => repository.full_name),
+                  ...(listed.nextCursor === null ? [] : [`Next cursor: ${listed.nextCursor}`]),
+                ],
+        },
+        outputMode(flags.json),
+      );
+    }),
 ).pipe(Command.withDescription("List repositories available to you"));
 
 const repositoryArgument = Argument.string("repository").pipe(

@@ -29,8 +29,10 @@ Named profiles resolve to these origins:
 - `local`: `http://localhost:4000`
 
 You can also set `OPENAGENTS_PROFILE` or `OPENAGENTS_API_URL`. Command-line
-flags take precedence over environment variables. Explicit API URLs must use
-HTTPS, except for loopback development origins.
+flags take precedence over environment variables, and environment variables
+take precedence over `~/.config/openagents/config.json`. The configuration file
+accepts a `profile` or `api_url` field and never stores tokens. Explicit API
+URLs must use HTTPS, except for loopback development origins.
 
 ## Sign in
 
@@ -49,11 +51,8 @@ production credential to a plaintext file.
 You can also read a token from standard input:
 
 ```sh
-openagents auth token-stdin
+openagents auth login --token-stdin
 ```
-
-For an agent or another noninteractive process, set `OPENAGENTS_TOKEN` without
-storing it:
 
 Set `OPENAGENTS_TOKEN` to use a token without storing it:
 
@@ -74,6 +73,7 @@ openagents repo create --private acme/my-project
 openagents repo create --source . --remote openagents my-project
 openagents repo import --private acme/existing-project
 openagents repo list
+openagents repo list --namespace acme --limit 50
 openagents repo view acme/my-project
 openagents repo clone acme/my-project
 ```
@@ -91,13 +91,15 @@ automatically.
 repository, the CLI infers it only from an exact `/git/<owner>/<repo>.git` URL
 on the selected OpenAgents API origin.
 
-`repo import` takes a GitHub `owner/name`, records the accepted branch and tag
-snapshot, and copies it once. OpenAgents becomes the destination source of
-truth. Later GitHub changes do not sync in either direction.
+`repo import` takes a GitHub `owner/name`, imports into that same GitHub user or
+organization namespace, records the accepted branch and tag snapshot, and
+copies it once. OpenAgents becomes the destination source of truth. Later
+GitHub changes do not sync in either direction.
 
-Add `--json` before a subcommand to return machine-readable output. The clone
-command invokes `git` with an argument array and never puts a token in a URL or
-process argument.
+Add `--json` before a subcommand to return machine-readable output. Add
+`--no-color`, or set `NO_COLOR`, to disable ANSI output. The clone command
+invokes `git` with an argument array and never puts a token in a URL or process
+argument.
 
 For standard Git commands, configure the origin-scoped credential helper in
 the current repository:
@@ -107,7 +109,7 @@ openagents auth setup-git --local
 git push -u origin main
 ```
 
-Global setup requires explicit confirmation:
+Global setup requires an interactive terminal and explicit confirmation:
 
 ```sh
 openagents auth setup-git --global --yes

@@ -16,6 +16,7 @@
     ]
   },
   "endpoints": {
+    "get_authenticated_user": "GET /api/v3/user",
     "create_user_repository": "POST /api/v3/user/repos",
     "create_organization_repository": "POST /api/v3/orgs/{org}/repos",
     "import_user_repository": "POST /api/v3/user/repos/imports",
@@ -25,6 +26,10 @@
     "get_repository_import": "GET /api/v3/repository-imports/{id}",
     "create_device_authorization": "POST /api/v3/device/authorizations",
     "poll_device_authorization": "POST /api/v3/device/authorizations/token"
+  },
+  "authenticated_user": {
+    "required": ["id", "login", "namespaces", "token_expires_at"],
+    "namespace_required": ["id", "login", "type"]
   },
   "repository": {
     "required": [
@@ -61,6 +66,7 @@
   },
   "pagination": {
     "request_cursor": "after",
+    "namespace_filter": "namespace",
     "response_cursor": "next_cursor",
     "maximum_page_size": 100
   },

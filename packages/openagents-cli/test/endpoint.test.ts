@@ -40,6 +40,30 @@ describe("endpoint configuration", () => {
     expect(endpoint.origin).toBe("https://staging.openagents.com");
   });
 
+  it("uses environment settings before persisted configuration", async () => {
+    const endpoint = await Effect.runPromise(
+      resolveEndpoint(
+        noOverrides,
+        { ...noEnvironment, profile: Option.some("local") },
+        { ...noEnvironment, apiUrl: Option.some("https://configured.example") },
+      ),
+    );
+    expect(endpoint).toEqual({ origin: "http://localhost:4000", profile: "local" });
+  });
+
+  it("uses persisted configuration before the production default", async () => {
+    const endpoint = await Effect.runPromise(
+      resolveEndpoint(noOverrides, noEnvironment, {
+        ...noEnvironment,
+        profile: Option.some("staging"),
+      }),
+    );
+    expect(endpoint).toEqual({
+      origin: "https://staging.openagents.com",
+      profile: "staging",
+    });
+  });
+
   it("normalizes loopback and HTTPS origins", async () => {
     await expect(Effect.runPromise(normalizeApiOrigin("http://127.0.0.1:4000/"))).resolves.toBe(
       "http://127.0.0.1:4000",

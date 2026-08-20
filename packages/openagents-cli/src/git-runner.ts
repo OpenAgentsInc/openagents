@@ -22,6 +22,11 @@ export interface GitRemoteResult {
   readonly nextPushArguments: ReadonlyArray<string>;
 }
 
+export interface GitCredentialHelperState {
+  readonly local: boolean;
+  readonly global: boolean;
+}
+
 export interface GitRunnerInterface {
   readonly clone: (input: GitCloneInput) => Effect.Effect<void, GitExecutionError>;
   readonly attachRemote: (
@@ -34,7 +39,11 @@ export interface GitRunnerInterface {
   readonly configureCredentialHelper: (
     origin: string,
     scope: "local" | "global",
+    directory?: string,
   ) => Effect.Effect<void, GitExecutionError>;
+  readonly credentialHelperState: (
+    origin: string,
+  ) => Effect.Effect<GitCredentialHelperState, GitExecutionError>;
 }
 
 export class GitRunner extends Context.Service<GitRunner, GitRunnerInterface>()(
@@ -42,6 +51,8 @@ export class GitRunner extends Context.Service<GitRunner, GitRunnerInterface>()(
 ) {}
 
 export const gitCloneArgv = (input: GitCloneInput): ReadonlyArray<string> => [
+  "-c",
+  "credential.helper=",
   "-c",
   `credential.${new URL(input.url).origin}.helper=${credentialHelperCommand(new URL(input.url).origin)}`,
   "clone",
@@ -267,38 +278,65 @@ export const gitRunnerLayer = Layer.effect(
     const configureCredentialHelper = Effect.fn("GitRunner.configureCredentialHelper")(function* (
       origin: string,
       scope: "local" | "global",
+      directory?: string,
     ) {
-      const args = [
-        "config",
-        scope === "local" ? "--local" : "--global",
-        `credential.${origin}.helper`,
-        credentialHelperCommand(origin),
-      ];
-      const command = ChildProcess.make("git", args, {
-        shell: false,
-        stdin: "ignore",
-        stdout: "ignore",
-        stderr: "inherit",
-      });
-      const exitCode = yield* spawner.exitCode(command).pipe(
-        Effect.mapError(
-          (cause) =>
-            new GitExecutionError({
-              operation: "git credential helper configuration",
-              message: "The CLI could not start git config.",
-              cause,
-            }),
-        ),
+      const scopeFlag = scope === "local" ? "--local" : "--global";
+      const key = `credential.${origin}.helper`;
+      const reset = yield* runGit(
+        "Git credential helper reset",
+        ["config", scopeFlag, "--replace-all", key, ""],
+        directory,
       );
-      if (Number(exitCode) !== 0) {
+      if (reset.exitCode !== 0) {
         return yield* new GitExecutionError({
           operation: "git credential helper configuration",
-          exitCode: Number(exitCode),
-          message: `git config exited with status ${Number(exitCode)}.`,
+          exitCode: reset.exitCode,
+          message: `git config exited with status ${reset.exitCode}.`,
+        });
+      }
+      const configured = yield* runGit(
+        "Git credential helper configuration",
+        ["config", scopeFlag, "--add", key, credentialHelperCommand(origin)],
+        directory,
+      );
+      if (configured.exitCode !== 0) {
+        return yield* new GitExecutionError({
+          operation: "git credential helper configuration",
+          exitCode: configured.exitCode,
+          message: `git config exited with status ${configured.exitCode}.`,
         });
       }
     });
-    return GitRunner.of({ clone, attachRemote, inferRepository, configureCredentialHelper });
+
+    const credentialHelperState = Effect.fn("GitRunner.credentialHelperState")(function* (
+      origin: string,
+    ) {
+      const expected = credentialHelperCommand(origin);
+      const configured = (output: string) => output.split("\n").includes(expected);
+      const local = yield* runGit("local Git credential helper lookup", [
+        "config",
+        "--local",
+        "--get-all",
+        `credential.${origin}.helper`,
+      ]);
+      const global = yield* runGit("global Git credential helper lookup", [
+        "config",
+        "--global",
+        "--get-all",
+        `credential.${origin}.helper`,
+      ]);
+      return {
+        local: local.exitCode === 0 && configured(local.stdout),
+        global: global.exitCode === 0 && configured(global.stdout),
+      };
+    });
+    return GitRunner.of({
+      clone,
+      attachRemote,
+      inferRepository,
+      configureCredentialHelper,
+      credentialHelperState,
+    });
   }),
 );
 
@@ -314,5 +352,6 @@ export const gitRunnerTestLayer = (clone: GitRunnerInterface["clone"]): Layer.La
         }),
       inferRepository: () => Effect.succeed("octavia/project"),
       configureCredentialHelper: () => Effect.void,
+      credentialHelperState: () => Effect.succeed({ local: false, global: false }),
     }),
   );

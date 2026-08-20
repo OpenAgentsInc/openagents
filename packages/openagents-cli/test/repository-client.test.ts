@@ -54,6 +54,35 @@ const layerFromHandler = (
   repositoryClientLayer.pipe(Layer.provide(apiTransportTestLayer(handler)));
 
 describe("repository client", () => {
+  it("reads the authenticated GitHub identity used for namespace routing", async () => {
+    const requests: Array<ApiRequest> = [];
+    const layer = layerFromHandler((input) =>
+      Effect.sync(() => {
+        requests.push(input);
+        return {
+          status: 200,
+          body: {
+            id: 10,
+            login: "octavia",
+            token_expires_at: "2026-09-20T00:00:00Z",
+            namespaces: [
+              { id: 10, login: "octavia", type: "user" },
+              { id: 20, login: "acme", type: "organization" },
+            ],
+          },
+        };
+      }),
+    );
+    const user = await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* RepositoryClient;
+        return yield* client.authenticatedUser({ origin: "http://localhost:4000", token });
+      }).pipe(Effect.provide(layer)),
+    );
+    expect(user.login).toBe("octavia");
+    expect(requests[0]?.path).toBe("/api/v3/user");
+  });
+
   it("creates a personal repository with the Phoenix API contract", async () => {
     const requests: Array<ApiRequest> = [];
     const layer = layerFromHandler((input) =>
@@ -105,18 +134,26 @@ describe("repository client", () => {
   });
 
   it("decodes list and view response envelopes", async () => {
+    const requests: Array<ApiRequest> = [];
     const layer = layerFromHandler((input) =>
-      Effect.succeed(
-        input.path.startsWith("/api/v3/user/repos")
-          ? { status: 200, body: { repositories: [repositoryFixture()], next_cursor: null } }
-          : { status: 200, body: repositoryFixture() },
-      ),
+      Effect.sync(() => {
+        requests.push(input);
+        return input.path.startsWith("/api/v3/user/repos")
+          ? { status: 200, body: { repositories: [repositoryFixture()], next_cursor: "next" } }
+          : { status: 200, body: repositoryFixture() };
+      }),
     );
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const client = yield* RepositoryClient;
         return {
-          list: yield* client.list({ origin: "http://localhost:4000", token }),
+          list: yield* client.list({
+            origin: "http://localhost:4000",
+            token,
+            namespace: "octavia",
+            limit: 12,
+            after: "cursor value",
+          }),
           view: yield* client.view({
             origin: "http://localhost:4000",
             token,
@@ -126,8 +163,55 @@ describe("repository client", () => {
         };
       }).pipe(Effect.provide(layer)),
     );
-    expect(result.list).toHaveLength(1);
+    expect(result.list.repositories).toHaveLength(1);
+    expect(result.list.nextCursor).toBe("next");
+    expect(requests[0]?.path).toBe(
+      "/api/v3/user/repos?per_page=12&after=cursor+value&namespace=octavia",
+    );
     expect(result.view.full_name).toBe("octavia/project");
+  });
+
+  it("routes GitHub imports to the selected personal or organization namespace", async () => {
+    const requests: Array<ApiRequest> = [];
+    const layer = layerFromHandler((input) =>
+      Effect.sync(() => {
+        requests.push(input);
+        return {
+          status: 202,
+          body: {
+            ...repositoryFixture(
+              input.path.includes("/orgs/") ? "acme/project" : "octavia/project",
+            ),
+            import: importFixture("pending"),
+            replayed: false,
+          },
+        };
+      }),
+    );
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* RepositoryClient;
+        yield* client.import({
+          origin: "http://localhost:4000",
+          token,
+          source: "octavia/project",
+          private: true,
+          waitTimeoutMs: 0,
+        });
+        yield* client.import({
+          origin: "http://localhost:4000",
+          token,
+          owner: "acme",
+          source: "acme/project",
+          private: true,
+          waitTimeoutMs: 0,
+        });
+      }).pipe(Effect.provide(layer)),
+    );
+    expect(requests.map((request) => request.path)).toEqual([
+      "/api/v3/user/repos/imports",
+      "/api/v3/orgs/acme/repos/imports",
+    ]);
   });
 
   it("polls a one-time GitHub import to completion with TestClock", async () => {

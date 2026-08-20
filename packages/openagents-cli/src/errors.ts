@@ -55,6 +55,7 @@ export class TransportError extends Schema.TaggedErrorClass<TransportError>()(
 export class ApiError extends Schema.TaggedErrorClass<ApiError>()("OpenAgentsCli.ApiError", {
   operation: Schema.String,
   status: Schema.Number,
+  code: Schema.optionalKey(Schema.String),
   message: Schema.String,
   requestId: Schema.optionalKey(Schema.String),
 }) {}
@@ -145,30 +146,42 @@ export const exitCodeFor = (error: CliError): number => {
     case "OpenAgentsCli.AuthenticationRequired":
     case "OpenAgentsCli.CredentialPersistenceUnavailable":
     case "OpenAgentsCli.CredentialStoreError":
-      return 4;
+      return 3;
     case "OpenAgentsCli.NetworkRefused":
     case "OpenAgentsCli.TransportError":
     case "OpenAgentsCli.ContractError":
-      return 5;
+      return 6;
     case "OpenAgentsCli.ApiError":
-      if (error.status === 401 || error.status === 403) return 4;
-      if (error.status === 404) return 3;
-      if (error.status === 409 || error.status === 422) return 6;
-      if (error.status >= 500) return 5;
+      if (error.status === 401 || error.status === 403) return 3;
+      if (error.status === 404) return 4;
+      if (error.status === 409) return 5;
+      if (error.status === 400 || error.status === 422) return 2;
+      if (error.status >= 500) return 6;
       return 1;
     case "OpenAgentsCli.ImportFailed":
       return 7;
     case "OpenAgentsCli.ImportWaitTimeout":
-      return 8;
+      return 7;
     case "OpenAgentsCli.ProvisioningFailed":
       return 7;
     case "OpenAgentsCli.ProvisioningWaitTimeout":
-      return 8;
+      return 7;
     case "OpenAgentsCli.GitExecutionError":
-      return 9;
+      return 1;
     case "OpenAgentsCli.OutputError":
       return 1;
   }
 };
 
 export const errorMessage = (error: CliError): string => error.message;
+
+export const errorCode = (error: CliError): string => {
+  if (error._tag === "OpenAgentsCli.ApiError" && error.code !== undefined) return error.code;
+  return error._tag
+    .replace("OpenAgentsCli.", "")
+    .replaceAll(/([a-z])([A-Z])/gu, "$1_$2")
+    .toLowerCase();
+};
+
+export const requestIdFor = (error: CliError): string | undefined =>
+  error._tag === "OpenAgentsCli.ApiError" ? error.requestId : undefined;

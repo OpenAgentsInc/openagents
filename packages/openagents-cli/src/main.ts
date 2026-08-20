@@ -4,7 +4,7 @@ import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import { Console, Effect } from "effect";
 
 import { openagentsCommand, VERSION } from "./cli.js";
-import { errorMessage, exitCodeFor, type CliError } from "./errors.js";
+import { errorCode, errorMessage, exitCodeFor, requestIdFor, type CliError } from "./errors.js";
 import { runtimeLayer } from "./runtime.js";
 import { Command } from "effect/unstable/cli";
 
@@ -37,9 +37,18 @@ const program = Command.run(openagentsCommand, { version: VERSION }).pipe(
   Effect.catch((error) => {
     const message = isCliError(error) ? errorMessage(error) : String(error);
     const exitCode = isCliError(error) ? exitCodeFor(error) : 1;
-    return Console.error(`openagents: ${message}`).pipe(
-      Effect.andThen(Effect.sync(() => void (process.exitCode = exitCode))),
-    );
+    const json = process.argv.includes("--json");
+    const rendered =
+      json && isCliError(error)
+        ? JSON.stringify({
+            code: errorCode(error),
+            message,
+            exit_code: exitCode,
+            ...(requestIdFor(error) === undefined ? {} : { request_id: requestIdFor(error) }),
+          })
+        : `openagents: ${message}`;
+    const write = json ? Console.log(rendered) : Console.error(rendered);
+    return write.pipe(Effect.andThen(Effect.sync(() => void (process.exitCode = exitCode))));
   }),
   Effect.provide(runtimeLayer),
 );
