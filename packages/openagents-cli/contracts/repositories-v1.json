@@ -1,0 +1,96 @@
+{
+  "contract": "openagents.repositories.v1",
+  "version": 1,
+  "authentication": {
+    "type": "bearer",
+    "token_prefix": "oa_pat_",
+    "scope": "forge:write"
+  },
+  "idempotency": {
+    "header": "Idempotency-Key",
+    "required_for": [
+      "POST /api/v3/user/repos",
+      "POST /api/v3/orgs/{org}/repos",
+      "POST /api/v3/user/repos/imports",
+      "POST /api/v3/orgs/{org}/repos/imports"
+    ]
+  },
+  "endpoints": {
+    "get_authenticated_user": "GET /api/v3/user",
+    "create_user_repository": "POST /api/v3/user/repos",
+    "create_organization_repository": "POST /api/v3/orgs/{org}/repos",
+    "import_user_repository": "POST /api/v3/user/repos/imports",
+    "import_organization_repository": "POST /api/v3/orgs/{org}/repos/imports",
+    "list_repositories": "GET /api/v3/user/repos",
+    "get_repository": "GET /api/v3/repos/{owner}/{repo}",
+    "get_repository_import": "GET /api/v3/repository-imports/{id}",
+    "create_device_authorization": "POST /api/v3/device/authorizations",
+    "poll_device_authorization": "POST /api/v3/device/authorizations/token"
+  },
+  "authenticated_user": {
+    "required": ["id", "login", "namespaces", "token_expires_at"],
+    "namespace_required": ["id", "login", "type"]
+  },
+  "repository": {
+    "required": [
+      "id",
+      "name",
+      "full_name",
+      "owner",
+      "private",
+      "visibility",
+      "default_branch",
+      "lifecycle_state",
+      "clone_url",
+      "html_url",
+      "permissions",
+      "created_at",
+      "updated_at"
+    ],
+    "lifecycle_states": ["provisioning", "ready", "failed"],
+    "visibilities": ["private", "public"]
+  },
+  "repository_import": {
+    "required": [
+      "id",
+      "provider",
+      "source_full_name",
+      "source_default_branch",
+      "source_ref_digest",
+      "source_head_sha",
+      "state",
+      "lfs_warning",
+      "attempt_count"
+    ],
+    "states": ["pending", "running", "completed", "failed"]
+  },
+  "pagination": {
+    "request_cursor": "after",
+    "namespace_filter": "namespace",
+    "response_cursor": "next_cursor",
+    "maximum_page_size": 100
+  },
+  "errors": {
+    "shape": ["code", "message", "request_id"],
+    "stable_codes": [
+      "access_denied",
+      "authorization_pending",
+      "authorization_unavailable",
+      "github_connection_required",
+      "github_scope_required",
+      "github_unavailable",
+      "idempotency_conflict",
+      "invalid_idempotency_key",
+      "invalid_import",
+      "invalid_pagination",
+      "invalid_repository",
+      "namespace_not_allowed",
+      "not_found",
+      "repository_quota_exceeded",
+      "repository_name_conflict",
+      "slow_down",
+      "source_namespace_mismatch",
+      "source_repository_not_accessible"
+    ]
+  }
+}
