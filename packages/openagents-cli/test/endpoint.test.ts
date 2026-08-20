@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import { normalizeApiOrigin, Profile, resolveEndpoint } from "../src/endpoint.js";
 
+// Behavior contract: openagents_cli.api_profiles.v1
+
 const noOverrides = {
   profile: Option.none<Profile>(),
   apiUrl: Option.none<string>(),

@@ -6,13 +6,10 @@ import {
   Repository,
   RepositoryImport,
   RepositoryImportAcceptedResponse,
-  RepositoryImportResponse,
+  RepositoryImportStatusResponse,
   RepositoryListResponse,
   RepositoryResponse,
-  unwrapAcceptedImport,
-  unwrapRepository,
-  unwrapRepositoryImport,
-  unwrapRepositoryList,
+  repositoryFromAcceptedImport,
 } from "./api-contract.js";
 import { ApiTransport } from "./api-transport.js";
 import {
@@ -21,6 +18,8 @@ import {
   ImportFailed,
   ImportWaitTimeout,
   InputError,
+  ProvisioningFailed,
+  ProvisioningWaitTimeout,
   type CliError,
 } from "./errors.js";
 
@@ -39,6 +38,10 @@ export interface CreateRepositoryInput extends AuthenticatedApi {
   readonly name: string;
   readonly description?: string;
   readonly private: boolean;
+  readonly defaultBranch?: string;
+  readonly waitTimeoutMs?: number;
+  readonly pollIntervalMs?: number;
+  readonly idempotencyKey?: string;
 }
 
 export interface ImportRepositoryInput extends AuthenticatedApi {
@@ -48,6 +51,7 @@ export interface ImportRepositoryInput extends AuthenticatedApi {
   readonly private: boolean;
   readonly waitTimeoutMs: number;
   readonly pollIntervalMs?: number;
+  readonly idempotencyKey?: string;
 }
 
 export interface ImportRepositoryResult {
@@ -82,17 +86,16 @@ export class RepositoryClient extends Context.Service<
   RepositoryClientInterface
 >()("@openagentsinc/cli/RepositoryClient") {}
 
-const namePattern = /^[A-Za-z0-9._-]+$/;
+const namePattern = /^[a-z0-9](?:[a-z0-9_-]|\.(?=[a-z0-9])){0,63}$/;
 const ownerPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 
 export const validateRepositoryName = Effect.fn("RepositoryClient.validateName")(function* (
   name: string,
 ) {
-  const normalized = name.trim();
-  if (normalized.length === 0 || normalized.length > 100 || !namePattern.test(normalized)) {
+  const normalized = name.trim().toLowerCase();
+  if (!namePattern.test(normalized)) {
     return yield* new InputError({
-      message:
-        "Repository names must contain 1-100 letters, numbers, periods, underscores, or hyphens.",
+      message: "Repository names must match [a-z0-9](?:[a-z0-9_-]|\\.(?=[a-z0-9])){0,63}.",
     });
   }
   return normalized;
@@ -130,12 +133,19 @@ const errorMessage = (body: unknown, status: number): { message: string; request
   if (Option.isNone(decoded)) return { message: `The API returned HTTP ${status}.` };
   const value = decoded.value;
   const message = value.message ?? value.error ?? `The API returned HTTP ${status}.`;
-  return value.request_id === undefined ? { message } : { message, requestId: value.request_id };
+  return typeof value.request_id === "string"
+    ? { message, requestId: value.request_id }
+    : { message };
 };
 
 class ImportPending extends Schema.TaggedErrorClass<ImportPending>()(
   "OpenAgentsCli.Internal.ImportPending",
   { importId: Schema.String },
+) {}
+
+class RepositoryPending extends Schema.TaggedErrorClass<RepositoryPending>()(
+  "OpenAgentsCli.Internal.RepositoryPending",
+  { repository: Schema.String },
 ) {}
 
 export const repositoryClientLayer = Layer.effect(
@@ -149,6 +159,7 @@ export const repositoryClientLayer = Layer.effect(
         readonly method: "GET" | "POST";
         readonly path: string;
         readonly body?: unknown;
+        readonly headers?: Readonly<Record<string, string>>;
         readonly acceptedStatuses: ReadonlyArray<number>;
       },
     ) {
@@ -157,6 +168,7 @@ export const repositoryClientLayer = Layer.effect(
         method: input.method,
         path: input.path,
         token: input.token,
+        ...(input.headers === undefined ? {} : { headers: input.headers }),
         ...(input.body === undefined ? {} : { body: input.body }),
       });
       if (!input.acceptedStatuses.includes(response.status)) {
@@ -189,13 +201,70 @@ export const repositoryClientLayer = Layer.effect(
         ),
       );
 
+    const waitForRepository = Effect.fn("RepositoryClient.waitForRepository")(function* (input: {
+      readonly origin: string;
+      readonly token: Redacted.Redacted<string>;
+      readonly owner: string;
+      readonly repo: string;
+      readonly timeoutMs: number;
+      readonly pollIntervalMs: number;
+    }) {
+      const fullName = `${input.owner}/${input.repo}`;
+      const poll = request("read repository provisioning state", {
+        ...input,
+        method: "GET",
+        path: `/api/v3/repos/${encoded(input.owner)}/${encoded(input.repo)}`,
+        acceptedStatuses: [200],
+      }).pipe(
+        Effect.flatMap((value) => decode("read repository provisioning state", Repository, value)),
+        Effect.flatMap(
+          (repository): Effect.Effect<Repository, ProvisioningFailed | RepositoryPending> => {
+            if (repository.lifecycle_state === "ready") return Effect.succeed(repository);
+            if (repository.lifecycle_state === "failed") {
+              return Effect.fail(
+                new ProvisioningFailed({
+                  repository: fullName,
+                  message:
+                    repository.provision_error_code ??
+                    `Repository provisioning failed for ${fullName}.`,
+                }),
+              );
+            }
+            return Effect.fail(new RepositoryPending({ repository: fullName }));
+          },
+        ),
+      );
+      const result = yield* poll.pipe(
+        Effect.retry({
+          schedule: Schedule.spaced(Duration.millis(input.pollIntervalMs)),
+          while: (failure) => failure instanceof RepositoryPending,
+        }),
+        Effect.timeoutOption(Duration.millis(input.timeoutMs)),
+        Effect.catch((failure) =>
+          failure instanceof RepositoryPending
+            ? Effect.succeed(Option.none())
+            : Effect.fail(failure),
+        ),
+      );
+      if (Option.isNone(result)) {
+        return yield* new ProvisioningWaitTimeout({
+          repository: fullName,
+          timeoutMs: input.timeoutMs,
+          message: `Repository ${fullName} is still provisioning after ${input.timeoutMs} ms. Provisioning continues on the server.`,
+        });
+      }
+      return result.value;
+    });
+
     const create = Effect.fn("RepositoryClient.create")(function* (input: CreateRepositoryInput) {
       const name = yield* validateRepositoryName(input.name);
       const owner = input.owner === undefined ? undefined : yield* validateOwner(input.owner);
+      const idempotencyKey = input.idempotencyKey ?? globalThis.crypto.randomUUID();
       const body = {
         name,
         private: input.private,
         ...(input.description === undefined ? {} : { description: input.description }),
+        ...(input.defaultBranch === undefined ? {} : { default_branch: input.defaultBranch }),
       };
       const path =
         owner === undefined ? "/api/v3/user/repos" : `/api/v3/orgs/${encoded(owner)}/repos`;
@@ -204,21 +273,51 @@ export const repositoryClientLayer = Layer.effect(
         method: "POST",
         path,
         body,
+        headers: { "idempotency-key": idempotencyKey },
         acceptedStatuses: [201, 202],
       });
-      return unwrapRepository(yield* decode("create repository", RepositoryResponse, value));
+      const repository = yield* decode("create repository", RepositoryResponse, value);
+      if (repository.lifecycle_state === "ready" || input.waitTimeoutMs === 0) return repository;
+      return yield* waitForRepository({
+        origin: input.origin,
+        token: input.token,
+        owner: repository.owner.login,
+        repo: repository.name,
+        timeoutMs: input.waitTimeoutMs ?? 300_000,
+        pollIntervalMs: input.pollIntervalMs ?? 1_000,
+      });
     });
 
     const list = Effect.fn("RepositoryClient.list")(function* (input: AuthenticatedApi) {
-      const value = yield* request("list repositories", {
-        ...input,
-        method: "GET",
-        path: "/api/v3/user/repos",
-        acceptedStatuses: [200],
+      const repositories: Array<Repository> = [];
+      let cursor: string | null = null;
+
+      for (let page = 0; page < 100; page += 1) {
+        const requestPath: string =
+          cursor === null
+            ? "/api/v3/user/repos?per_page=100"
+            : `/api/v3/user/repos?per_page=100&after=${encoded(cursor)}`;
+        const responseBody: unknown = yield* request("list repositories", {
+          ...input,
+          method: "GET",
+          path: requestPath,
+          acceptedStatuses: [200],
+        });
+        const pageResponse: typeof RepositoryListResponse.Type = yield* decode(
+          "list repositories",
+          RepositoryListResponse,
+          responseBody,
+        );
+        repositories.push(...pageResponse.repositories);
+        cursor = pageResponse.next_cursor;
+        if (cursor === null) return repositories;
+      }
+
+      return yield* new ContractError({
+        operation: "list repositories",
+        message: "The repository list exceeded the 100-page client bound.",
+        cause: new Error("repository pagination limit exceeded"),
       });
-      return unwrapRepositoryList(
-        yield* decode("list repositories", RepositoryListResponse, value),
-      );
     });
 
     const view = Effect.fn("RepositoryClient.view")(function* (
@@ -232,7 +331,7 @@ export const repositoryClientLayer = Layer.effect(
         path: `/api/v3/repos/${encoded(owner)}/${encoded(repo)}`,
         acceptedStatuses: [200],
       });
-      return unwrapRepository(yield* decode("view repository", RepositoryResponse, value));
+      return yield* decode("view repository", RepositoryResponse, value);
     });
 
     const getImport = Effect.fn("RepositoryClient.getImport")(function* (
@@ -244,9 +343,12 @@ export const repositoryClientLayer = Layer.effect(
         path: `/api/v3/repository-imports/${encoded(input.importId)}`,
         acceptedStatuses: [200],
       });
-      return unwrapRepositoryImport(
-        yield* decode("read repository import", RepositoryImportResponse, value),
+      const response = yield* decode(
+        "read repository import",
+        RepositoryImportStatusResponse,
+        value,
       );
+      return response.import;
     });
 
     const waitForImport = Effect.fn("RepositoryClient.waitForImport")(function* (
@@ -265,9 +367,7 @@ export const repositoryClientLayer = Layer.effect(
                 new ImportFailed({
                   importId: input.importId,
                   message:
-                    repositoryImport.error_message ??
-                    repositoryImport.error_code ??
-                    `Repository import ${input.importId} failed.`,
+                    repositoryImport.error_code ?? `Repository import ${input.importId} failed.`,
                 }),
               );
             }
@@ -301,9 +401,9 @@ export const repositoryClientLayer = Layer.effect(
       const source = yield* parseRepositoryTarget(input.source);
       const owner = input.owner === undefined ? undefined : yield* validateOwner(input.owner);
       const name = input.name === undefined ? undefined : yield* validateRepositoryName(input.name);
+      const idempotencyKey = input.idempotencyKey ?? globalThis.crypto.randomUUID();
       const body = {
-        provider: "github",
-        repository: `${source.owner}/${source.repo}`,
+        source: { provider: "github", repository: `${source.owner}/${source.repo}` },
         private: input.private,
         ...(name === undefined ? {} : { name }),
       };
@@ -316,32 +416,54 @@ export const repositoryClientLayer = Layer.effect(
         method: "POST",
         path,
         body,
+        headers: { "idempotency-key": idempotencyKey },
         acceptedStatuses: [201, 202],
       });
-      const accepted = unwrapAcceptedImport(
-        yield* decode("import repository", RepositoryImportAcceptedResponse, value),
-      );
-      if (accepted.repositoryImport.state === "completed" || input.waitTimeoutMs === 0) {
-        return accepted;
+      const accepted = yield* decode("import repository", RepositoryImportAcceptedResponse, value);
+      const repository = repositoryFromAcceptedImport(accepted);
+      if (accepted.import.state === "completed" || input.waitTimeoutMs === 0) {
+        return { repository, repositoryImport: accepted.import };
       }
       const repositoryImport = yield* waitForImport({
         origin: input.origin,
         token: input.token,
-        importId: String(accepted.repositoryImport.id),
+        importId: accepted.import.id,
         timeoutMs: input.waitTimeoutMs,
         pollIntervalMs: input.pollIntervalMs ?? 1_000,
       });
-      return { ...accepted, repositoryImport };
+      return { repository, repositoryImport };
     });
 
     const cloneInfo = Effect.fn("RepositoryClient.cloneInfo")(function* (
       input: AuthenticatedApi & RepositoryTarget,
     ) {
       const repository = yield* view(input);
-      const cloneUrl =
-        repository.clone_url ??
-        `${input.origin}/git/${encoded(repository.owner.login)}/${encoded(repository.name)}.git`;
-      return { repository, cloneUrl };
+      const cloneUrl = repository.clone_url;
+      const parsed = yield* Effect.try({
+        try: () => new URL(cloneUrl),
+        catch: (cause) =>
+          new ContractError({
+            operation: "validate clone URL",
+            message: "The API returned an invalid clone URL.",
+            cause,
+          }),
+      });
+      const expectedPath = `/git/${encoded(repository.owner.login)}/${encoded(repository.name)}.git`;
+      if (
+        parsed.origin !== input.origin ||
+        parsed.username !== "" ||
+        parsed.password !== "" ||
+        parsed.search !== "" ||
+        parsed.hash !== "" ||
+        parsed.pathname !== expectedPath
+      ) {
+        return yield* new ContractError({
+          operation: "validate clone URL",
+          message: "The API returned a clone URL outside the selected OpenAgents origin.",
+          cause: new Error("clone URL authority mismatch"),
+        });
+      }
+      return { repository, cloneUrl: parsed.toString() };
     });
 
     return RepositoryClient.of({

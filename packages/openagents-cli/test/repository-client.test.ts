@@ -15,15 +15,38 @@ const token = Redacted.make("test-token");
 const repositoryFixture = (fullName = "octavia/project") => {
   const [owner = "octavia", name = "project"] = fullName.split("/");
   return {
-    id: 1,
+    id: "repository-1",
     name,
     full_name: fullName,
-    owner: { id: 10, login: owner },
+    owner: { id: 10, login: owner, type: "User" },
     private: true,
+    visibility: "private",
+    description: null,
     default_branch: "main",
+    lifecycle_state: "ready",
+    provision_error_code: null,
     clone_url: `http://localhost:4000/git/${fullName}.git`,
+    html_url: `http://localhost:4000/${fullName}`,
+    permissions: { admin: true, push: true, pull: true },
+    created_at: "2026-08-20T00:00:00Z",
+    updated_at: "2026-08-20T00:00:00Z",
   };
 };
+
+const importFixture = (state: "pending" | "running" | "completed" | "failed") => ({
+  id: "import-1",
+  provider: "github",
+  source_full_name: "octavia/project",
+  source_default_branch: "main",
+  source_ref_digest: "a".repeat(64),
+  source_head_sha: "b".repeat(40),
+  state,
+  lfs_warning: false,
+  attempt_count: 1,
+  error_code: null,
+  started_at: "2026-08-20T00:00:00Z",
+  completed_at: state === "completed" ? "2026-08-20T00:00:01Z" : null,
+});
 
 const layerFromHandler = (
   handler: (input: ApiRequest) => Effect.Effect<ApiResponse>,
@@ -55,6 +78,7 @@ describe("repository client", () => {
     expect(requests).toHaveLength(1);
     expect(requests[0]?.path).toBe("/api/v3/user/repos");
     expect(requests[0]?.body).toEqual({ name: "project", private: true });
+    expect(requests[0]?.headers?.["idempotency-key"]).toBeTypeOf("string");
   });
 
   it("creates an organization repository through the organization route", async () => {
@@ -62,7 +86,7 @@ describe("repository client", () => {
     const layer = layerFromHandler((input) =>
       Effect.sync(() => {
         requests.push(input);
-        return { status: 201, body: { repository: repositoryFixture("acme/project") } };
+        return { status: 201, body: repositoryFixture("acme/project") };
       }),
     );
     await Effect.runPromise(
@@ -83,9 +107,9 @@ describe("repository client", () => {
   it("decodes list and view response envelopes", async () => {
     const layer = layerFromHandler((input) =>
       Effect.succeed(
-        input.path === "/api/v3/user/repos"
-          ? { status: 200, body: { repositories: [repositoryFixture()] } }
-          : { status: 200, body: { repository: repositoryFixture() } },
+        input.path.startsWith("/api/v3/user/repos")
+          ? { status: 200, body: { repositories: [repositoryFixture()], next_cursor: null } }
+          : { status: 200, body: repositoryFixture() },
       ),
     );
     const result = await Effect.runPromise(
@@ -115,19 +139,17 @@ describe("repository client", () => {
             ? Effect.succeed({
                 status: 202,
                 body: {
-                  repository: repositoryFixture(),
-                  import: { id: "import-1", state: "pending" },
+                  ...repositoryFixture(),
+                  import: importFixture("pending"),
+                  replayed: false,
                 },
               })
             : Ref.getAndUpdate(calls, (count) => count + 1).pipe(
                 Effect.map((count) => ({
                   status: 200,
                   body: {
-                    import: {
-                      id: "import-1",
-                      state: count === 0 ? "running" : "completed",
-                      source_head_sha: "abc123",
-                    },
+                    repository: repositoryFixture(),
+                    import: importFixture(count === 0 ? "running" : "completed"),
                   },
                 })),
               ),
@@ -153,7 +175,7 @@ describe("repository client", () => {
 
     const result = await Effect.runPromise(program);
     expect(result.repositoryImport.state).toBe("completed");
-    expect(result.repositoryImport.source_head_sha).toBe("abc123");
+    expect(result.repositoryImport.source_head_sha).toBe("b".repeat(40));
   });
 
   it("maps non-success statuses to typed API errors", async () => {

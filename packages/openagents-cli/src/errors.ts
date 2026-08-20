@@ -85,6 +85,23 @@ export class ImportWaitTimeout extends Schema.TaggedErrorClass<ImportWaitTimeout
   },
 ) {}
 
+export class ProvisioningFailed extends Schema.TaggedErrorClass<ProvisioningFailed>()(
+  "OpenAgentsCli.ProvisioningFailed",
+  {
+    repository: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
+export class ProvisioningWaitTimeout extends Schema.TaggedErrorClass<ProvisioningWaitTimeout>()(
+  "OpenAgentsCli.ProvisioningWaitTimeout",
+  {
+    repository: Schema.String,
+    timeoutMs: Schema.Number,
+    message: Schema.String,
+  },
+) {}
+
 export class GitExecutionError extends Schema.TaggedErrorClass<GitExecutionError>()(
   "OpenAgentsCli.GitExecutionError",
   {
@@ -115,6 +132,8 @@ export type CliError =
   | ContractError
   | ImportFailed
   | ImportWaitTimeout
+  | ProvisioningFailed
+  | ProvisioningWaitTimeout
   | GitExecutionError
   | OutputError;
 
@@ -140,6 +159,10 @@ export const exitCodeFor = (error: CliError): number => {
     case "OpenAgentsCli.ImportFailed":
       return 7;
     case "OpenAgentsCli.ImportWaitTimeout":
+      return 8;
+    case "OpenAgentsCli.ProvisioningFailed":
+      return 7;
+    case "OpenAgentsCli.ProvisioningWaitTimeout":
       return 8;
     case "OpenAgentsCli.GitExecutionError":
       return 9;

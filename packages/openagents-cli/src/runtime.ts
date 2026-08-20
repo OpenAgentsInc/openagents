@@ -3,7 +3,9 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Layer } from "effect";
 
 import { apiTransportNodeLayer, networkPolicyLiveLayer } from "./api-transport.js";
-import { credentialStoreUnavailableLayer } from "./credential-store.js";
+import { browserLauncherLayer } from "./browser-launcher.js";
+import { credentialStoreOsLayer } from "./credential-store.js";
+import { deviceClientLayer } from "./device-client.js";
 import { environmentLayer } from "./environment.js";
 import { gitRunnerLayer } from "./git-runner.js";
 import { outputLayer } from "./output.js";
@@ -15,6 +17,9 @@ const transportLayer = apiTransportNodeLayer.pipe(
 );
 
 const repositoryLayer = repositoryClientLayer.pipe(Layer.provide(transportLayer));
+const deviceLayer = deviceClientLayer.pipe(Layer.provide(transportLayer));
+const credentialsLayer = credentialStoreOsLayer.pipe(Layer.provide(NodeServices.layer));
+const browserLayer = browserLauncherLayer.pipe(Layer.provide(NodeServices.layer));
 
 const nodeDependentServices = Layer.mergeAll(outputLayer, secretInputLayer, gitRunnerLayer).pipe(
   Layer.provide(NodeServices.layer),
@@ -23,7 +28,9 @@ const nodeDependentServices = Layer.mergeAll(outputLayer, secretInputLayer, gitR
 export const runtimeLayer = Layer.mergeAll(
   NodeServices.layer,
   environmentLayer,
-  credentialStoreUnavailableLayer,
+  credentialsLayer,
   repositoryLayer,
+  deviceLayer,
+  browserLayer,
   nodeDependentServices,
 );

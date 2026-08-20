@@ -11,12 +11,36 @@ import { RepositoryClient } from "../src/repository-client.js";
 import { secretInputTestLayer } from "../src/secret-input.js";
 
 const repository = {
-  id: 1,
+  id: "repository-1",
   name: "project",
   full_name: "octavia/project",
-  owner: { id: 10, login: "octavia" },
+  owner: { id: 10, login: "octavia", type: "User" },
   private: true,
+  visibility: "private" as const,
+  description: null,
   default_branch: "main",
+  lifecycle_state: "ready" as const,
+  provision_error_code: null,
+  clone_url: "http://localhost:4000/git/octavia/project.git",
+  html_url: "http://localhost:4000/octavia/project",
+  permissions: { admin: true, push: true, pull: true },
+  created_at: "2026-08-20T00:00:00Z",
+  updated_at: "2026-08-20T00:00:00Z",
+};
+
+const repositoryImport = {
+  id: "import-1",
+  provider: "github" as const,
+  source_full_name: "octavia/project",
+  source_default_branch: "main",
+  source_ref_digest: "a".repeat(64),
+  source_head_sha: "b".repeat(40),
+  state: "completed" as const,
+  lfs_warning: false,
+  attempt_count: 1,
+  error_code: null,
+  started_at: "2026-08-20T00:00:00Z",
+  completed_at: "2026-08-20T00:00:01Z",
 };
 
 describe("CLI command graph", () => {
@@ -32,7 +56,7 @@ describe("CLI command graph", () => {
             seenOrigins.push(input.origin);
             return {
               repository,
-              repositoryImport: { id: "import-1", state: "completed" as const },
+              repositoryImport,
             };
           }),
         list: (input) => Effect.sync(() => (seenOrigins.push(input.origin), [repository])),
@@ -42,7 +66,7 @@ describe("CLI command graph", () => {
             seenOrigins.push(input.origin);
             return { repository, cloneUrl: "http://localhost:4000/git/octavia/project.git" };
           }),
-        getImport: () => Effect.succeed({ id: "import-1", state: "completed" as const }),
+        getImport: () => Effect.succeed(repositoryImport),
       }),
     );
     const layer = Layer.mergeAll(

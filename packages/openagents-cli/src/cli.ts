@@ -1,12 +1,15 @@
-import { Effect, Option, Redacted } from "effect";
+import { Console, Effect, Option, Redacted } from "effect";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 
 import type { Repository } from "./api-contract.js";
+import { BrowserLauncher } from "./browser-launcher.js";
 import { InputError } from "./errors.js";
 import { CredentialStore } from "./credential-store.js";
+import { DeviceClient } from "./device-client.js";
 import { type EndpointOverrides, Profile } from "./endpoint.js";
 import { EnvironmentConfiguration } from "./environment.js";
 import { GitRunner } from "./git-runner.js";
+import { runGitCredentialHelper } from "./git-credential-helper.js";
 import { Output, type OutputMode } from "./output.js";
 import { parseRepositoryTarget, RepositoryClient } from "./repository-client.js";
 import { SecretInput } from "./secret-input.js";
@@ -51,9 +54,7 @@ const repositoryHuman = (repository: Repository): ReadonlyArray<string> => [
   repository.full_name,
   `Visibility: ${repository.private ? "private" : "public"}`,
   `Default branch: ${repository.default_branch ?? "not set"}`,
-  ...(repository.provisioning_state === undefined
-    ? []
-    : [`Provisioning: ${repository.provisioning_state}`]),
+  `Provisioning: ${repository.lifecycle_state}`,
 ];
 
 const authStatusCommand = Command.make("status", {}, () =>
@@ -70,12 +71,12 @@ const authStatusCommand = Command.make("status", {}, () =>
             profile: endpoint.profile,
             authenticated: true,
             token_source: "environment",
-            persistent_credentials: "unavailable",
+            persistent_credentials: "os",
           },
           human: [
             `API: ${endpoint.origin}`,
             "Authenticated with OPENAGENTS_TOKEN.",
-            "Persistent credential storage is unavailable in this release.",
+            "The environment token is not persisted.",
           ],
         },
         outputMode(flags.json),
@@ -97,7 +98,7 @@ const authStatusCommand = Command.make("status", {}, () =>
           profile: endpoint.profile,
           authenticated: Option.isSome(stored),
           token_source: Option.isSome(stored) ? "store" : null,
-          persistent_credentials: "unavailable",
+          persistent_credentials: "os",
         },
         human: [
           `API: ${endpoint.origin}`,
@@ -131,6 +132,40 @@ const authTokenStdinCommand = Command.make("token-stdin", {}, () =>
   Command.withDescription("Read a token from standard input and store it for the selected API"),
 );
 
+const authLoginCommand = Command.make("login", {}, () =>
+  Effect.gen(function* () {
+    const flags = yield* rootCommand;
+    const endpoint = yield* resolveApiEndpoint(endpointOverrides(flags));
+    const devices = yield* DeviceClient;
+    const browser = yield* BrowserLauncher;
+    const credentials = yield* CredentialStore;
+    const output = yield* Output;
+    const authorization = yield* devices.start(endpoint.origin);
+
+    yield* Console.error(
+      `Open ${authorization.verification_uri} and enter code ${authorization.user_code}.`,
+    );
+    yield* browser.open(authorization.verification_uri_complete);
+
+    const token = yield* devices.wait(endpoint.origin, authorization);
+    yield* credentials.set(endpoint.origin, token);
+    yield* output.write(
+      {
+        value: {
+          origin: endpoint.origin,
+          authenticated: true,
+          token_source: "os_credential_store",
+        },
+        human: [
+          `Authenticated with ${endpoint.origin}.`,
+          "The token is stored in your OS credential store.",
+        ],
+      },
+      outputMode(flags.json),
+    );
+  }),
+).pipe(Command.withDescription("Authorize the CLI in your browser and store the resulting token"));
+
 const authLogoutCommand = Command.make("logout", {}, () =>
   Effect.gen(function* () {
     const flags = yield* rootCommand;
@@ -148,9 +183,65 @@ const authLogoutCommand = Command.make("logout", {}, () =>
   }),
 ).pipe(Command.withDescription("Remove the stored token for the selected API"));
 
+const gitCredentialOperation = Argument.choice("operation", ["get", "store", "erase"] as const);
+const authGitCredentialCommand = Command.make(
+  "git-credential",
+  { operation: gitCredentialOperation },
+  ({ operation }) =>
+    Effect.gen(function* () {
+      const flags = yield* rootCommand;
+      const endpoint = yield* resolveApiEndpoint(endpointOverrides(flags));
+      yield* runGitCredentialHelper(endpoint.origin, operation);
+    }),
+).pipe(Command.withDescription("Internal Git credential-helper protocol endpoint"));
+
+const setupLocalFlag = Flag.boolean("local").pipe(
+  Flag.withDescription("Configure the current Git repository"),
+);
+const setupGlobalFlag = Flag.boolean("global").pipe(
+  Flag.withDescription("Configure your global Git settings"),
+);
+const setupYesFlag = Flag.boolean("yes").pipe(
+  Flag.withDescription("Confirm a global Git credential-helper change"),
+);
+const authSetupGitCommand = Command.make(
+  "setup-git",
+  { local: setupLocalFlag, global: setupGlobalFlag, yes: setupYesFlag },
+  ({ global, local, yes }) =>
+    Effect.gen(function* () {
+      if (local === global) {
+        return yield* new InputError({ message: "Choose exactly one of --local or --global." });
+      }
+      if (global && !yes) {
+        return yield* new InputError({ message: "Global setup requires --yes confirmation." });
+      }
+      const flags = yield* rootCommand;
+      const endpoint = yield* resolveApiEndpoint(endpointOverrides(flags));
+      const git = yield* GitRunner;
+      const output = yield* Output;
+      yield* git.configureCredentialHelper(endpoint.origin, local ? "local" : "global");
+      yield* output.write(
+        {
+          value: { origin: endpoint.origin, scope: local ? "local" : "global", configured: true },
+          human: [
+            `Configured the ${local ? "local" : "global"} Git credential helper for ${endpoint.origin}.`,
+          ],
+        },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(Command.withDescription("Configure Git to obtain OpenAgents credentials from this CLI"));
+
 const authCommand = Command.make("auth").pipe(
   Command.withDescription("Manage API authentication"),
-  Command.withSubcommands([authTokenStdinCommand, authStatusCommand, authLogoutCommand]),
+  Command.withSubcommands([
+    authLoginCommand,
+    authTokenStdinCommand,
+    authStatusCommand,
+    authLogoutCommand,
+    authSetupGitCommand,
+    authGitCredentialCommand,
+  ]),
 );
 
 const createTarget = Argument.string("name").pipe(
@@ -164,6 +255,25 @@ const publicFlag = Flag.boolean("public").pipe(Flag.withDescription("Create a pu
 const privateFlag = Flag.boolean("private").pipe(
   Flag.withDescription("Create a private repository (the default)"),
 );
+const defaultBranchFlag = Flag.string("default-branch").pipe(
+  Flag.withDefault("main"),
+  Flag.withDescription("Set the initial default branch"),
+);
+const waitTimeoutFlag = Flag.integer("wait-timeout").pipe(
+  Flag.withDefault(300),
+  Flag.withDescription("Seconds to wait for durable provisioning (0 does not wait)"),
+);
+const sourceDirectoryFlag = Flag.string("source").pipe(
+  Flag.optional,
+  Flag.withDescription("Attach the new repository to an existing Git worktree"),
+);
+const remoteNameFlag = Flag.string("remote").pipe(
+  Flag.optional,
+  Flag.withDescription("Name the Git remote attached with --source (defaults to origin)"),
+);
+
+const shellArgument = (value: string): string =>
+  /^[A-Za-z0-9_./:@=-]+$/u.test(value) ? value : `'${value.replaceAll("'", `'"'"'`)}'`;
 
 const repoCreateCommand = Command.make(
   "create",
@@ -172,13 +282,35 @@ const repoCreateCommand = Command.make(
     description: descriptionFlag,
     public: publicFlag,
     private: privateFlag,
+    defaultBranch: defaultBranchFlag,
+    waitTimeout: waitTimeoutFlag,
+    source: sourceDirectoryFlag,
+    remote: remoteNameFlag,
   },
-  ({ description, private: isPrivate, public: isPublic, target }) =>
+  ({
+    defaultBranch,
+    description,
+    private: isPrivate,
+    public: isPublic,
+    remote,
+    source,
+    target,
+    waitTimeout,
+  }) =>
     Effect.gen(function* () {
+      if (waitTimeout < 0) {
+        return yield* new InputError({ message: "--wait-timeout must be zero or greater." });
+      }
+      if (Option.isNone(source) && Option.isSome(remote)) {
+        return yield* new InputError({ message: "Use --remote only with --source." });
+      }
       const flags = yield* rootCommand;
       const session = yield* resolveApiSession(endpointOverrides(flags));
       const repositories = yield* RepositoryClient;
+      const git = yield* GitRunner;
       const output = yield* Output;
+      const sourceDirectory = Option.isSome(source) ? source.value : undefined;
+      const remoteName = Option.isSome(remote) ? remote.value : "origin";
       const visibility = yield* privateVisibility(isPublic, isPrivate);
       const parsed = target.includes("/") ? yield* parseRepositoryTarget(target) : undefined;
       const repository = yield* repositories.create({
@@ -186,11 +318,55 @@ const repoCreateCommand = Command.make(
         token: session.token,
         name: parsed?.repo ?? target,
         private: visibility,
+        defaultBranch,
+        waitTimeoutMs: waitTimeout * 1_000,
         ...(parsed === undefined ? {} : { owner: parsed.owner }),
         ...(Option.isNone(description) ? {} : { description: description.value }),
       });
+
+      const attached =
+        sourceDirectory !== undefined && repository.lifecycle_state === "ready"
+          ? yield* repositories
+              .cloneInfo({
+                origin: session.endpoint.origin,
+                token: session.token,
+                owner: repository.owner.login,
+                repo: repository.name,
+              })
+              .pipe(
+                Effect.flatMap((info) =>
+                  git.attachRemote({
+                    origin: session.endpoint.origin,
+                    url: info.cloneUrl,
+                    directory: sourceDirectory,
+                    remote: remoteName,
+                  }),
+                ),
+              )
+          : undefined;
+      const nextPush =
+        attached === undefined || sourceDirectory === undefined
+          ? undefined
+          : ["git", "-C", sourceDirectory, ...attached.nextPushArguments];
       yield* output.write(
-        { value: repository, human: ["Repository created.", ...repositoryHuman(repository)] },
+        {
+          value:
+            attached === undefined
+              ? repository
+              : { repository, remote: attached.remote, next_push: nextPush },
+          human: [
+            "Repository created.",
+            ...repositoryHuman(repository),
+            ...(attached === undefined
+              ? Option.isSome(source)
+                ? ["The repository is still provisioning, so the CLI did not configure a remote."]
+                : []
+              : [
+                  `Configured remote ${attached.remote} in ${sourceDirectory}.`,
+                  `Next: ${nextPush?.map(shellArgument).join(" ")}`,
+                ]),
+          ],
+        },
         outputMode(flags.json),
       );
     }),
@@ -207,11 +383,6 @@ const importNamespaceFlag = Flag.string("namespace").pipe(
   Flag.optional,
   Flag.withDescription("Import into an eligible GitHub organization namespace"),
 );
-const waitTimeoutFlag = Flag.integer("wait-timeout").pipe(
-  Flag.withDefault(300),
-  Flag.withDescription("Seconds to wait for the durable import (0 does not wait)"),
-);
-
 const repoImportCommand = Command.make(
   "import",
   {
@@ -281,32 +452,62 @@ const repoListCommand = Command.make("list", {}, () =>
 const repositoryArgument = Argument.string("repository").pipe(
   Argument.withDescription("Repository in namespace/name format"),
 );
+const optionalRepositoryArgument = repositoryArgument.pipe(Argument.optional);
+const repositoryOverrideFlag = Flag.string("repo").pipe(
+  Flag.withAlias("R"),
+  Flag.optional,
+  Flag.withDescription("Select OWNER/REPO instead of inferring the origin remote"),
+);
 
-const repoViewCommand = Command.make("view", { repository: repositoryArgument }, ({ repository }) =>
-  Effect.gen(function* () {
-    const flags = yield* rootCommand;
-    const session = yield* resolveApiSession(endpointOverrides(flags));
-    const target = yield* parseRepositoryTarget(repository);
-    const repositories = yield* RepositoryClient;
-    const output = yield* Output;
-    const value = yield* repositories.view({
-      origin: session.endpoint.origin,
-      token: session.token,
-      ...target,
-    });
-    yield* output.write({ value, human: repositoryHuman(value) }, outputMode(flags.json));
-  }),
-).pipe(Command.withDescription("Show one repository"));
+const resolveRepositoryArgument = Effect.fn("Cli.resolveRepositoryArgument")(function* (
+  positional: Option.Option<string>,
+  override: Option.Option<string>,
+  origin: string,
+) {
+  if (Option.isSome(positional) && Option.isSome(override)) {
+    return yield* new InputError({ message: "Pass a repository argument or --repo, not both." });
+  }
+  const git = yield* GitRunner;
+  const selected = Option.isSome(override)
+    ? override.value
+    : Option.isSome(positional)
+      ? positional.value
+      : yield* git.inferRepository(origin);
+  return yield* parseRepositoryTarget(selected);
+});
+
+const repoViewCommand = Command.make(
+  "view",
+  { repository: optionalRepositoryArgument, repo: repositoryOverrideFlag },
+  ({ repo, repository }) =>
+    Effect.gen(function* () {
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveRepositoryArgument(repository, repo, session.endpoint.origin);
+      const repositories = yield* RepositoryClient;
+      const output = yield* Output;
+      const value = yield* repositories.view({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+      });
+      yield* output.write({ value, human: repositoryHuman(value) }, outputMode(flags.json));
+    }),
+).pipe(Command.withDescription("Show one repository or infer it from the origin remote"));
 
 const cloneDirectory = Argument.string("directory").pipe(Argument.optional);
 const repoCloneCommand = Command.make(
   "clone",
-  { repository: repositoryArgument, directory: cloneDirectory },
-  ({ directory, repository }) =>
+  {
+    repository: optionalRepositoryArgument,
+    directory: cloneDirectory,
+    repo: repositoryOverrideFlag,
+  },
+  ({ directory, repo, repository }) =>
     Effect.gen(function* () {
       const flags = yield* rootCommand;
       const session = yield* resolveApiSession(endpointOverrides(flags));
-      const target = yield* parseRepositoryTarget(repository);
+      const target = yield* resolveRepositoryArgument(repository, repo, session.endpoint.origin);
       const repositories = yield* RepositoryClient;
       const git = yield* GitRunner;
       const output = yield* Output;

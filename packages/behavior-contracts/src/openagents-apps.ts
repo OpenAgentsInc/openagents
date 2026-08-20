@@ -946,7 +946,41 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       verification:
         "pnpm exec vp test --cwd apps/openagents-mobile runs the reconciler and account-control oracles in the normal mobile sweep; mobile typecheck plus behavior-contract coverage guard the phase-to-authority and phase-to-account-control boundaries.",
     },
+    {
+      authorityBoundary:
+        "Endpoint selection changes only the OpenAgents API origin and its origin-scoped credential. It never sends a test request to production or staging, permits plain HTTP only for loopback development, and does not grant repository authority without an admitted credential.",
+      blockerRefs: [],
+      contractId: "openagents_cli.api_profiles.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "packages/openagents-cli/src/endpoint.ts",
+        "packages/openagents-cli/src/api-transport.ts",
+        "packages/openagents-cli/test/endpoint.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "The endpoint oracle proves the production default, explicit local and staging profiles, command-line precedence, normalized HTTPS and loopback origins, and refusal of non-loopback HTTP and URL paths.",
+          id: "openagents_cli.api_profiles.endpoint_selection",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "packages/openagents-cli/test/endpoint.test.ts",
+        },
+      ],
+      productArea: "OpenAgents CLI endpoint selection",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-08-20",
+      },
+      state: "enforced",
+      statement:
+        "The OpenAgents CLI must target production by default and support explicit localhost, staging, and custom API origins. Automated tests must use localhost and fail closed before any production or staging network request.",
+      surface: "openagents-cli",
+      verification:
+        "pnpm --filter @openagentsinc/cli test runs the endpoint and network-policy oracles, and the behavior-contract sweep validates this registry entry.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-27.1",
+  version: "2026-08-20.1",
 };

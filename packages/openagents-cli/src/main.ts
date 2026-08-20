@@ -20,6 +20,8 @@ const cliErrorTags = new Set([
   "OpenAgentsCli.ContractError",
   "OpenAgentsCli.ImportFailed",
   "OpenAgentsCli.ImportWaitTimeout",
+  "OpenAgentsCli.ProvisioningFailed",
+  "OpenAgentsCli.ProvisioningWaitTimeout",
   "OpenAgentsCli.GitExecutionError",
   "OpenAgentsCli.OutputError",
 ]);

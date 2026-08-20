@@ -11,8 +11,9 @@ export interface ApiRequest {
   readonly origin: string;
   readonly method: HttpMethod;
   readonly path: string;
-  readonly token: Redacted.Redacted<string>;
+  readonly token?: Redacted.Redacted<string>;
   readonly body?: unknown;
+  readonly headers?: Readonly<Record<string, string>>;
 }
 
 export interface ApiResponse {
@@ -83,8 +84,13 @@ export const apiTransportNodeLayer = Layer.effect(
       const url = new URL(input.path, `${input.origin}/`);
       let httpRequest = HttpClientRequest.make(input.method)(url).pipe(
         HttpClientRequest.acceptJson,
-        HttpClientRequest.bearerToken(input.token),
       );
+      if (input.token !== undefined) {
+        httpRequest = HttpClientRequest.bearerToken(httpRequest, input.token);
+      }
+      if (input.headers !== undefined) {
+        httpRequest = HttpClientRequest.setHeaders(httpRequest, input.headers);
+      }
       if (input.body !== undefined) {
         httpRequest = yield* HttpClientRequest.bodyJson(httpRequest, input.body).pipe(
           Effect.mapError((cause) => transportError("encoding the request", cause)),

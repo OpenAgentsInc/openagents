@@ -152,7 +152,7 @@ describe("behavior contract registry", () => {
     // desktop loopback PKCE policy outlived that pass because its oracle and
     // evidence lived in apps/openagents.com; its OpenAuth client registration
     // was removed on 2026-08-05, so it is retired too — 32 to 31.
-    expect(decoded.contracts).toHaveLength(31)
+    expect(decoded.contracts).toHaveLength(32)
     const mobileAutomaticActivity = decoded.contracts.find(
       entry => entry.contractId === "openagents_mobile.home_automatic_desktop_activity.v1",
     )
