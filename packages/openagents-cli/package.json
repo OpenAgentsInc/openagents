@@ -1,7 +1,26 @@
 {
   "name": "@openagentsinc/cli",
   "version": "0.1.0",
+  "private": false,
   "description": "Effect TypeScript command-line client for OpenAgents repositories",
+  "keywords": [
+    "cli",
+    "git",
+    "github",
+    "import",
+    "openagents",
+    "repository"
+  ],
+  "homepage": "https://github.com/OpenAgentsInc/openagents/tree/main/packages/openagents-cli#readme",
+  "bugs": {
+    "url": "https://github.com/OpenAgentsInc/openagents/issues"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpenAgentsInc/openagents.git",
+    "directory": "packages/openagents-cli"
+  },
   "bin": {
     "openagents": "./dist/main.js"
   },
@@ -30,10 +49,11 @@
     "test": "vp test --run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify": "pnpm run fmt:check && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build",
-    "verify:package": "pnpm pack --dry-run"
+    "verify:package": "node scripts/verify-packed-install.mjs"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",
+    "@effect/platform-node-shared": "4.0.0-beta.94",
     "effect": "catalog:"
   },
   "devDependencies": {
@@ -43,6 +63,6 @@
     "vitest": "^4.1.10"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=24.15.0"
   }
 }

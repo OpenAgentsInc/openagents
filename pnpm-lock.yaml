@@ -2211,6 +2211,9 @@ importers:
       '@effect/platform-node':
         specifier: 'catalog:'
         version: 4.0.0-beta.94(effect@4.0.0-beta.94)(ioredis@5.11.1)
+      '@effect/platform-node-shared':
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94(effect@4.0.0-beta.94)
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
@@ -3164,6 +3167,12 @@ packages:
 
   '@effect/platform-browser@4.0.0-beta.94':
     resolution: {integrity: sha512-qtA331vhAFOe93uZ0C1BH/DarOEz9gdi+ssxWf9lZuZyMR3mRBV4czXUiC3Z2UHD6HNYcG/XfhUHctG5w1JeNQ==}
+    peerDependencies:
+      effect: 4.0.0-beta.94
+
+  '@effect/platform-node-shared@4.0.0-beta.94':
+    resolution: {integrity: sha512-8mCen8dhL4ockkkxevKdFOXqR8sksuZcPwyqkKZv3w30TIdj4TKXG5sQODmpPFI0+/quwm5T78kodqf/QlZwoA==}
+    engines: {node: '>=18.0.0'}
     peerDependencies:
       effect: 4.0.0-beta.94
 
@@ -10566,6 +10575,15 @@ snapshots:
     dependencies:
       effect: 4.0.0-beta.94
       multipasta: 0.2.8
+
+  '@effect/platform-node-shared@4.0.0-beta.94(effect@4.0.0-beta.94)':
+    dependencies:
+      '@types/ws': 8.18.1
+      effect: 4.0.0-beta.94
+      ws: 8.21.1
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
 
   '@effect/platform-node-shared@4.0.0-beta.98(effect@4.0.0-beta.94)':
     dependencies:

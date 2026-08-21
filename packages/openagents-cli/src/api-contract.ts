@@ -81,6 +81,7 @@ export const RepositoryImportStatusResponse = Schema.Struct({
   repository: Repository,
   import: RepositoryImport,
 });
+export type RepositoryImportStatusResponse = typeof RepositoryImportStatusResponse.Type;
 
 export const RepositoryImportAcceptedResponse = Schema.Struct({
   ...RepositoryFields,

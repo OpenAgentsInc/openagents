@@ -5,6 +5,24 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Repository imports are ready for npm installation
+
+- issues: none (direct owner request)
+- commits: this change, a80ab5914818
+- contracts-specs: `openagents.repositories.v1`; packed npm consumer contract
+- invariants: an import copies one accepted ref snapshot; credentials stay out of Git arguments and logs; npm installs one compatible Effect runtime
+- evidence: `packages/openagents-cli/scripts/verify-packed-install.mjs`; `packages/openagents-cli/test/repository-client.test.ts`; server provisioner regression at a80ab5914818
+- lane: codex/qualify-repository-import
+
+You can install the OpenAgents CLI from npm and use `openagents repo import`
+to copy a GitHub repository into OpenAgents. The command reports bounded
+server failures and makes clear that a timed-out client does not cancel an
+import that the server already accepted.
+
+The package gate now installs the packed tarball in a clean npm project. It
+checks the complete dependency tree, executable, version, and repository
+import help before publication.
+
 ## Mobile source prepares managed Sarah voice (#9273)
 
 - issues: #9273

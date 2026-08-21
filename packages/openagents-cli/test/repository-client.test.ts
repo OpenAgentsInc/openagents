@@ -262,6 +262,7 @@ describe("repository client", () => {
                 status: 202,
                 body: {
                   ...repositoryFixture(),
+                  lifecycle_state: "provisioning",
                   import: importFixture("pending"),
                   replayed: false,
                 },
@@ -296,8 +297,92 @@ describe("repository client", () => {
     }).pipe(Effect.provide(TestClock.layer()));
 
     const result = await Effect.runPromise(program);
+    expect(result.repository.lifecycle_state).toBe("ready");
     expect(result.repositoryImport.state).toBe("completed");
     expect(result.repositoryImport.source_head_sha).toBe("b".repeat(40));
+  });
+
+  it("returns the bounded server error when an import fails", async () => {
+    const layer = layerFromHandler((input) =>
+      Effect.succeed(
+        input.method === "POST"
+          ? {
+              status: 202,
+              body: {
+                ...repositoryFixture(),
+                import: importFixture("pending"),
+                replayed: false,
+              },
+            }
+          : {
+              status: 200,
+              body: {
+                repository: repositoryFixture(),
+                import: { ...importFixture("failed"), error_code: "source_fetch_failed" },
+              },
+            },
+      ),
+    );
+
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const client = yield* RepositoryClient;
+        return yield* client.import({
+          origin: "http://localhost:4000",
+          token,
+          source: "octavia/project",
+          private: true,
+          waitTimeoutMs: 1_000,
+          pollIntervalMs: 10,
+        });
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") expect(String(exit.cause)).toContain("source_fetch_failed");
+  });
+
+  it("reports a timeout without cancelling the server-side import", async () => {
+    const program = Effect.gen(function* () {
+      const layer = layerFromHandler((input) =>
+        Effect.succeed(
+          input.method === "POST"
+            ? {
+                status: 202,
+                body: {
+                  ...repositoryFixture(),
+                  import: importFixture("pending"),
+                  replayed: false,
+                },
+              }
+            : {
+                status: 200,
+                body: {
+                  repository: repositoryFixture(),
+                  import: importFixture("running"),
+                },
+              },
+        ),
+      );
+      const fiber = yield* Effect.gen(function* () {
+        const client = yield* RepositoryClient;
+        return yield* client.import({
+          origin: "http://localhost:4000",
+          token,
+          source: "octavia/project",
+          private: true,
+          waitTimeoutMs: 1_000,
+          pollIntervalMs: 100,
+        });
+      }).pipe(Effect.provide(layer), Effect.forkChild);
+
+      yield* TestClock.adjust("1 second");
+      return yield* Fiber.await(fiber);
+    }).pipe(Effect.provide(TestClock.layer()));
+
+    const exit = await Effect.runPromise(program);
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") expect(String(exit.cause)).toContain("continues on the server");
   });
 
   it("maps non-success statuses to typed API errors", async () => {

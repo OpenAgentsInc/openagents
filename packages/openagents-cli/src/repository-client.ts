@@ -368,7 +368,7 @@ export const repositoryClientLayer = Layer.effect(
       return yield* decode("view repository", RepositoryResponse, value);
     });
 
-    const getImport = Effect.fn("RepositoryClient.getImport")(function* (
+    const getImportStatus = Effect.fn("RepositoryClient.getImportStatus")(function* (
       input: AuthenticatedApi & { readonly importId: string },
     ) {
       const value = yield* request("read repository import", {
@@ -377,12 +377,13 @@ export const repositoryClientLayer = Layer.effect(
         path: `/api/v3/repository-imports/${encoded(input.importId)}`,
         acceptedStatuses: [200],
       });
-      const response = yield* decode(
-        "read repository import",
-        RepositoryImportStatusResponse,
-        value,
-      );
-      return response.import;
+      return yield* decode("read repository import", RepositoryImportStatusResponse, value);
+    });
+
+    const getImport = Effect.fn("RepositoryClient.getImport")(function* (
+      input: AuthenticatedApi & { readonly importId: string },
+    ) {
+      return (yield* getImportStatus(input)).import;
     });
 
     const waitForImport = Effect.fn("RepositoryClient.waitForImport")(function* (
@@ -392,23 +393,27 @@ export const repositoryClientLayer = Layer.effect(
         readonly pollIntervalMs: number;
       },
     ) {
-      const poll: Effect.Effect<RepositoryImport, CliError | ImportPending> = getImport(input).pipe(
-        Effect.flatMap(
-          (repositoryImport): Effect.Effect<RepositoryImport, ImportFailed | ImportPending> => {
-            if (repositoryImport.state === "completed") return Effect.succeed(repositoryImport);
-            if (repositoryImport.state === "failed") {
-              return Effect.fail(
-                new ImportFailed({
-                  importId: input.importId,
-                  message:
-                    repositoryImport.error_code ?? `Repository import ${input.importId} failed.`,
-                }),
-              );
-            }
-            return Effect.fail(new ImportPending({ importId: input.importId }));
-          },
-        ),
-      );
+      const poll: Effect.Effect<RepositoryImportStatusResponse, CliError | ImportPending> =
+        getImportStatus(input).pipe(
+          Effect.flatMap(
+            (
+              response,
+            ): Effect.Effect<RepositoryImportStatusResponse, ImportFailed | ImportPending> => {
+              const repositoryImport = response.import;
+              if (repositoryImport.state === "completed") return Effect.succeed(response);
+              if (repositoryImport.state === "failed") {
+                return Effect.fail(
+                  new ImportFailed({
+                    importId: input.importId,
+                    message:
+                      repositoryImport.error_code ?? `Repository import ${input.importId} failed.`,
+                  }),
+                );
+              }
+              return Effect.fail(new ImportPending({ importId: input.importId }));
+            },
+          ),
+        );
       const result = yield* poll.pipe(
         Effect.retry({
           schedule: Schedule.spaced(Duration.millis(input.pollIntervalMs)),
@@ -460,14 +465,14 @@ export const repositoryClientLayer = Layer.effect(
       if (accepted.import.state === "completed" || input.waitTimeoutMs === 0) {
         return { repository, repositoryImport: accepted.import };
       }
-      const repositoryImport = yield* waitForImport({
+      const completed = yield* waitForImport({
         origin: input.origin,
         token: input.token,
         importId: accepted.import.id,
         timeoutMs: input.waitTimeoutMs,
         pollIntervalMs: input.pollIntervalMs ?? 1_000,
       });
-      return { repository, repositoryImport };
+      return { repository: completed.repository, repositoryImport: completed.import };
     });
 
     const cloneInfo = Effect.fn("RepositoryClient.cloneInfo")(function* (

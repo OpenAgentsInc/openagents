@@ -5,7 +5,7 @@ repositories.
 
 ## Install
 
-The package targets Node.js 24 or later.
+The package targets Node.js 24.15 or later.
 
 ```sh
 npm install --global @openagentsinc/cli
