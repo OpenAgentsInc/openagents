@@ -5,6 +5,20 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Headless agents can complete CLI device authorization
+
+- issues: none (direct owner request)
+- commits: this change
+- contracts-specs: `openagents.repositories.v1` device authorization
+- invariants: a headless agent surfaces the approval URL and user code without receiving the user's GitHub token
+- evidence: `packages/openagents-cli/test/cli.test.ts`; live staging device authorization start
+- lane: codex/qualify-repository-import
+
+`openagents auth login` now works without a terminal. It prints the complete
+approval URL and user code, waits for the user to approve the request in any
+browser, stores the issued OpenAgents token, and continues. Interactive use
+still opens the browser automatically.
+
 ## Repository imports ship in CLI 0.1.0
 
 - issues: none (direct owner request)

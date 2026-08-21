@@ -15,7 +15,7 @@ import { SecretInput } from "./secret-input.js";
 import { findToken, resolveApiEndpoint, resolveApiSession } from "./session.js";
 import { TerminalSession } from "./terminal-session.js";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.1.1";
 
 const profileFlag = Flag.choice("profile", ["production", "staging", "local"]).pipe(
   Flag.withSchema(Profile),
@@ -164,19 +164,18 @@ const authLoginCommand = Command.make(
       const token = tokenStdin
         ? Redacted.make(yield* (yield* SecretInput).readToken())
         : yield* Effect.gen(function* () {
-            if (!(yield* TerminalSession).interactive) {
-              return yield* new InputError({
-                message:
-                  "Browser login requires an interactive terminal. Use --token-stdin or OPENAGENTS_TOKEN.",
-              });
-            }
             const devices = yield* DeviceClient;
-            const browser = yield* BrowserLauncher;
+            const terminal = yield* TerminalSession;
             const authorization = yield* devices.start(endpoint.origin);
             yield* Console.error(
-              `Open ${authorization.verification_uri} and enter code ${authorization.user_code}.`,
+              `OpenAgents authorization URL: ${authorization.verification_uri_complete}`,
             );
-            yield* browser.open(authorization.verification_uri_complete);
+            yield* Console.error(`OpenAgents authorization code: ${authorization.user_code}`);
+            yield* Console.error("Waiting for approval...");
+            if (terminal.interactive) {
+              const browser = yield* BrowserLauncher;
+              yield* browser.open(authorization.verification_uri_complete);
+            }
             return yield* devices.wait(endpoint.origin, authorization);
           });
       yield* credentials.set(endpoint.origin, token);

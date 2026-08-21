@@ -11,6 +11,24 @@ The package targets Node.js 24.15 or later.
 npm install --global @openagentsinc/cli
 ```
 
+Run one command without a global installation:
+
+```sh
+npx --yes @openagentsinc/cli@latest --version
+npx --yes @openagentsinc/cli@latest repo list
+```
+
+Pin the version for a reproducible run:
+
+```sh
+npx --yes @openagentsinc/cli@0.1.1 --version
+```
+
+Do not run `auth setup-git` through `npx`. That command saves a persistent Git
+helper that calls `openagents`, but the temporary executable is unavailable
+after `npx` exits. Install the CLI globally before you configure a local or
+global Git helper.
+
 ## Select an API
 
 The CLI uses `https://openagents.com` by default. Select a named profile or an
@@ -47,6 +65,11 @@ the operating system supports it, and stores the resulting `oa_pat_` token in
 your operating-system credential store. The CLI uses macOS Keychain through
 `security` and Linux Secret Service through `secret-tool`. It never writes a
 production credential to a plaintext file.
+
+In a headless or noninteractive process, the command prints the complete
+authorization URL and user code to standard error and waits. An agent can
+surface that URL and code to you; approve the request in any browser, and the
+waiting command continues without receiving your GitHub token.
 
 You can also read a token from standard input:
 
@@ -103,7 +126,7 @@ argument. `SIGINT` and `SIGTERM` cancel in-flight HTTP and Git child-process
 work and exit with status `130`.
 
 For standard Git commands, configure the origin-scoped credential helper in
-the current repository:
+the current repository. Install the CLI globally before you save this helper:
 
 ```sh
 openagents auth setup-git --local

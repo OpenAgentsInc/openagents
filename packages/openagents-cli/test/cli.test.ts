@@ -1,9 +1,12 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer, Option, Redacted } from "effect";
+import { TestConsole } from "effect/testing";
 import { describe, expect, it } from "vitest";
 
 import { runCliWith } from "../src/cli.js";
+import { browserLauncherTestLayer } from "../src/browser-launcher.js";
 import { CredentialStore, credentialStoreUnavailableLayer } from "../src/credential-store.js";
+import { deviceClientTestLayer } from "../src/device-client.js";
 import { environmentLayerFromValues } from "../src/environment.js";
 import { gitRunnerTestLayer } from "../src/git-runner.js";
 import { outputTestLayer, type OutputDocument, type OutputMode } from "../src/output.js";
@@ -180,7 +183,7 @@ describe("CLI command graph", () => {
     expect(owners).toEqual([undefined, "acme"]);
   });
 
-  it("supports token stdin without opening a browser and refuses headless browser login", async () => {
+  it("supports token stdin without opening a browser", async () => {
     const stored: Array<{ readonly origin: string; readonly token: string }> = [];
     const credentialLayer = Layer.succeed(
       CredentialStore,
@@ -209,12 +212,62 @@ describe("CLI command graph", () => {
       ),
     );
     expect(stored).toEqual([{ origin: "http://localhost:4000", token: "oa_pat_stdin-fixture" }]);
+  });
 
-    const headless = await Effect.runPromiseExit(
-      runCliWith(["--profile", "local", "auth", "login"]).pipe(Effect.provide(layer)),
+  it("prints a device URL and code and waits for approval without a TTY", async () => {
+    const stored: Array<{ readonly origin: string; readonly token: string }> = [];
+    const opened: Array<string> = [];
+    const credentialLayer = Layer.succeed(
+      CredentialStore,
+      CredentialStore.of({
+        get: () => Effect.succeed(Option.none()),
+        set: (origin, token) =>
+          Effect.sync(() => {
+            stored.push({ origin, token: Redacted.value(token) });
+          }),
+        remove: () => Effect.void,
+      }),
     );
-    expect(headless._tag).toBe("Failure");
-    if (headless._tag === "Failure")
-      expect(String(headless.cause)).toContain("interactive terminal");
+    const layer = Layer.mergeAll(
+      NodeServices.layer,
+      TestConsole.layer,
+      environmentLayerFromValues({}),
+      persistedConfigurationTestLayer({}),
+      terminalSessionTestLayer(false),
+      credentialLayer,
+      deviceClientTestLayer({
+        start: () =>
+          Effect.succeed({
+            device_code: "secret-device-code",
+            user_code: "ABCD-EFGH",
+            verification_uri: "http://localhost:4000/device",
+            verification_uri_complete: "http://localhost:4000/device?user_code=ABCD-EFGH",
+            expires_in: 600,
+            interval: 1,
+          }),
+        wait: () => Effect.succeed(Redacted.make("oa_pat_device-fixture")),
+      }),
+      browserLauncherTestLayer((url) =>
+        Effect.sync(() => {
+          opened.push(url);
+          return true;
+        }),
+      ),
+      outputTestLayer(() => Effect.void),
+    );
+
+    const errors = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* runCliWith(["--profile", "local", "auth", "login"]);
+        return yield* TestConsole.errorLines;
+      }).pipe(Effect.provide(layer)),
+    );
+
+    const displayed = errors.map(String).join("\n");
+    expect(displayed).toContain("http://localhost:4000/device?user_code=ABCD-EFGH");
+    expect(displayed).toContain("ABCD-EFGH");
+    expect(displayed).toContain("Waiting for approval");
+    expect(opened).toEqual([]);
+    expect(stored).toEqual([{ origin: "http://localhost:4000", token: "oa_pat_device-fixture" }]);
   });
 });
