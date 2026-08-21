@@ -22,7 +22,7 @@
     "directory": "packages/openagents-cli"
   },
   "bin": {
-    "openagents": "./dist/main.js"
+    "openagents": "dist/main.js"
   },
   "files": [
     "dist",
