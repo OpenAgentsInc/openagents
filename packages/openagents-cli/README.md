@@ -21,7 +21,7 @@ npx --yes @openagentsinc/cli@latest repo list
 Pin the version for a reproducible run:
 
 ```sh
-npx --yes @openagentsinc/cli@0.1.3 --version
+npx --yes @openagentsinc/cli@0.1.4 --version
 ```
 
 Do not run `auth setup-git` through `npx`. That command saves a persistent Git
@@ -60,16 +60,43 @@ Start the browser-assisted device flow:
 openagents auth login
 ```
 
-The command prints a verification URL and user code, opens your browser when
-the operating system supports it, and stores the resulting `oa_pat_` token in
-your operating-system credential store. The CLI uses macOS Keychain through
-`security` and Linux Secret Service through `secret-tool`. It never writes a
-production credential to a plaintext file.
+In an interactive terminal, the command prints a verification URL and user
+code, opens your browser when the operating system supports it, and waits for
+approval. If the browser does not open, use the printed URL. The CLI stores the
+resulting `oa_pat_` token in your operating-system credential store. The CLI
+uses macOS Keychain through `security` and Linux Secret Service through
+`secret-tool`. It never writes a production credential to a plaintext file.
 
-In a headless or noninteractive process, the command prints the complete
-authorization URL and user code to standard error and waits. An agent can
-surface that URL and code to you; approve the request in any browser, and the
-waiting command continues without receiving your GitHub token.
+In a headless or noninteractive process, the command returns immediately with
+the complete authorization URL, user code, and a resume command. An agent can
+surface the URL and code without needing streaming shell output. After you
+approve the request in any browser, the agent runs the resume command:
+
+```sh
+openagents auth login
+# Show the printed URL and code to the user. After approval:
+openagents auth login --resume
+```
+
+Use `--headless` to force the resumable flow in an interactive terminal. Use
+the global `--json` flag when an agent needs structured output:
+
+```sh
+openagents --json auth login
+openagents --json auth login --resume
+```
+
+The CLI stores the pending device request in a private, mode-`0600` local file.
+It removes that request after successful authorization or when it detects that
+the request expired. The agent sees the user code, but it never receives your
+GitHub credential or the resulting OpenAgents token.
+
+The same two-step flow works through `npx`:
+
+```sh
+npx --yes @openagentsinc/cli@latest --json auth login
+npx --yes @openagentsinc/cli@latest --json auth login --resume
+```
 
 You can also read a token from standard input:
 
@@ -83,6 +110,10 @@ Set `OPENAGENTS_TOKEN` to use a token without storing it:
 export OPENAGENTS_TOKEN="..."
 openagents auth status
 ```
+
+`OPENAGENTS_TOKEN` must contain an OpenAgents user token that starts with
+`oa_pat_`. `OPENAGENTS_AGENT_TOKEN` is an internal agent-runtime credential.
+Repository endpoints do not accept it, so do not use it with this CLI.
 
 Run `openagents auth status` to inspect the selected endpoint and credential
 source. Run `openagents auth logout` to remove the stored credential for that

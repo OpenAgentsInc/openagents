@@ -5,6 +5,7 @@ import { Layer } from "effect";
 import { apiTransportNodeLayer, networkPolicyLiveLayer } from "./api-transport.js";
 import { browserLauncherLayer } from "./browser-launcher.js";
 import { credentialStoreOsLayer } from "./credential-store.js";
+import { pendingDeviceAuthorizationStoreLayer } from "./device-authorization-store.js";
 import { deviceClientLayer } from "./device-client.js";
 import { environmentLayer } from "./environment.js";
 import { gitRunnerLayer } from "./git-runner.js";
@@ -21,6 +22,9 @@ const transportLayer = apiTransportNodeLayer.pipe(
 const repositoryLayer = repositoryClientLayer.pipe(Layer.provide(transportLayer));
 const deviceLayer = deviceClientLayer.pipe(Layer.provide(transportLayer));
 const credentialsLayer = credentialStoreOsLayer.pipe(Layer.provide(NodeServices.layer));
+const pendingAuthorizationLayer = pendingDeviceAuthorizationStoreLayer.pipe(
+  Layer.provide(environmentLayer),
+);
 const browserLayer = browserLauncherLayer.pipe(Layer.provide(NodeServices.layer));
 const persistedLayer = persistedConfigurationLayer.pipe(Layer.provide(environmentLayer));
 
@@ -34,6 +38,7 @@ export const runtimeLayer = Layer.mergeAll(
   persistedLayer,
   terminalSessionNodeLayer,
   credentialsLayer,
+  pendingAuthorizationLayer,
   repositoryLayer,
   deviceLayer,
   browserLayer,

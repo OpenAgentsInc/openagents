@@ -6,6 +6,10 @@ import { describe, expect, it } from "vitest";
 import { runCliWith } from "../src/cli.js";
 import { browserLauncherTestLayer } from "../src/browser-launcher.js";
 import { CredentialStore, credentialStoreUnavailableLayer } from "../src/credential-store.js";
+import {
+  PendingDeviceAuthorizationStore,
+  pendingDeviceAuthorizationStoreTestLayer,
+} from "../src/device-authorization-store.js";
 import { deviceClientTestLayer } from "../src/device-client.js";
 import { environmentLayerFromValues } from "../src/environment.js";
 import { gitRunnerTestLayer } from "../src/git-runner.js";
@@ -214,9 +218,11 @@ describe("CLI command graph", () => {
     expect(stored).toEqual([{ origin: "http://localhost:4000", token: "oa_pat_stdin-fixture" }]);
   });
 
-  it("prints a device URL and code and waits for approval without a TTY", async () => {
+  it("returns a resumable device URL and code immediately without a TTY", async () => {
+    // Contract: openagents_cli.agent_device_authorization.v1
     const stored: Array<{ readonly origin: string; readonly token: string }> = [];
     const opened: Array<string> = [];
+    const output: Array<{ readonly document: OutputDocument; readonly mode: OutputMode }> = [];
     const credentialLayer = Layer.succeed(
       CredentialStore,
       CredentialStore.of({
@@ -235,6 +241,75 @@ describe("CLI command graph", () => {
       persistedConfigurationTestLayer({}),
       terminalSessionTestLayer(false),
       credentialLayer,
+      pendingDeviceAuthorizationStoreTestLayer(),
+      deviceClientTestLayer({
+        start: () =>
+          Effect.succeed({
+            device_code: "secret-device-code",
+            user_code: "ABCD-EFGH",
+            verification_uri: "http://localhost:4000/device",
+            verification_uri_complete: "http://localhost:4000/device?user_code=ABCD-EFGH",
+            expires_in: 600,
+            interval: 1,
+          }),
+        wait: () => Effect.die("headless start must not wait for approval"),
+      }),
+      browserLauncherTestLayer((url) =>
+        Effect.sync(() => {
+          opened.push(url);
+          return true;
+        }),
+      ),
+      outputTestLayer((document, mode) =>
+        Effect.sync(() => {
+          output.push({ document, mode });
+        }),
+      ),
+    );
+
+    const pending = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* runCliWith(["--profile", "local", "auth", "login"]);
+        return yield* (yield* PendingDeviceAuthorizationStore).get("http://localhost:4000");
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(opened).toEqual([]);
+    expect(stored).toEqual([]);
+    expect(Option.isSome(pending)).toBe(true);
+    expect(output).toHaveLength(1);
+    expect(output[0]?.document.value).toMatchObject({
+      origin: "http://localhost:4000",
+      authenticated: false,
+      authorization_pending: true,
+      verification_url: "http://localhost:4000/device?user_code=ABCD-EFGH",
+      user_code: "ABCD-EFGH",
+      resume_command: "openagents --profile local auth login --resume",
+    });
+  });
+
+  it("resumes a headless device authorization and removes its local state", async () => {
+    // Contract: openagents_cli.agent_device_authorization.v1
+    const stored: Array<{ readonly origin: string; readonly token: string }> = [];
+    const output: Array<OutputDocument> = [];
+    const credentialLayer = Layer.succeed(
+      CredentialStore,
+      CredentialStore.of({
+        get: () => Effect.succeed(Option.none()),
+        set: (origin, token) =>
+          Effect.sync(() => {
+            stored.push({ origin, token: Redacted.value(token) });
+          }),
+        remove: () => Effect.void,
+      }),
+    );
+    const layer = Layer.mergeAll(
+      NodeServices.layer,
+      environmentLayerFromValues({}),
+      persistedConfigurationTestLayer({}),
+      terminalSessionTestLayer(false),
+      credentialLayer,
+      pendingDeviceAuthorizationStoreTestLayer(),
       deviceClientTestLayer({
         start: () =>
           Effect.succeed({
@@ -247,12 +322,62 @@ describe("CLI command graph", () => {
           }),
         wait: () => Effect.succeed(Redacted.make("oa_pat_device-fixture")),
       }),
-      browserLauncherTestLayer((url) =>
+      browserLauncherTestLayer(() => Effect.succeed(false)),
+      outputTestLayer((document) =>
         Effect.sync(() => {
-          opened.push(url);
-          return true;
+          output.push(document);
         }),
       ),
+    );
+
+    const pendingAfterResume = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* runCliWith(["--profile", "local", "auth", "login"]);
+        yield* runCliWith(["--profile", "local", "auth", "login", "--resume"]);
+        return yield* (yield* PendingDeviceAuthorizationStore).get("http://localhost:4000");
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(stored).toEqual([{ origin: "http://localhost:4000", token: "oa_pat_device-fixture" }]);
+    expect(Option.isNone(pendingAfterResume)).toBe(true);
+    expect(output.at(-1)?.value).toMatchObject({
+      origin: "http://localhost:4000",
+      authenticated: true,
+      token_source: "device_authorization",
+    });
+  });
+
+  it("prints the manual URL when an interactive browser cannot open", async () => {
+    // Contract: openagents_cli.agent_device_authorization.v1
+    const credentialLayer = Layer.succeed(
+      CredentialStore,
+      CredentialStore.of({
+        get: () => Effect.succeed(Option.none()),
+        set: () => Effect.void,
+        remove: () => Effect.void,
+      }),
+    );
+    const layer = Layer.mergeAll(
+      NodeServices.layer,
+      TestConsole.layer,
+      environmentLayerFromValues({}),
+      persistedConfigurationTestLayer({}),
+      terminalSessionTestLayer(true),
+      credentialLayer,
+      pendingDeviceAuthorizationStoreTestLayer(),
+      deviceClientTestLayer({
+        start: () =>
+          Effect.succeed({
+            device_code: "secret-device-code",
+            user_code: "ABCD-EFGH",
+            verification_uri: "http://localhost:4000/device",
+            verification_uri_complete: "http://localhost:4000/device?user_code=ABCD-EFGH",
+            expires_in: 600,
+            interval: 1,
+          }),
+        wait: () => Effect.succeed(Redacted.make("oa_pat_device-fixture")),
+      }),
+      browserLauncherTestLayer(() => Effect.succeed(false)),
       outputTestLayer(() => Effect.void),
     );
 
@@ -266,8 +391,6 @@ describe("CLI command graph", () => {
     const displayed = errors.map(String).join("\n");
     expect(displayed).toContain("http://localhost:4000/device?user_code=ABCD-EFGH");
     expect(displayed).toContain("ABCD-EFGH");
-    expect(displayed).toContain("Waiting for approval");
-    expect(opened).toEqual([]);
-    expect(stored).toEqual([{ origin: "http://localhost:4000", token: "oa_pat_device-fixture" }]);
+    expect(displayed).toContain("The browser did not open");
   });
 });

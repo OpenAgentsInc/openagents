@@ -51,6 +51,65 @@ interface ProcessResult {
   readonly stdout: string;
 }
 
+interface CredentialCommand {
+  readonly command: string;
+  readonly args: ReadonlyArray<string>;
+  readonly input?: string;
+}
+
+export const credentialCommandFor = (
+  platform: NodeJS.Platform,
+  operation: "get" | "set" | "remove",
+  origin: string,
+  token?: string,
+): CredentialCommand | undefined => {
+  if (platform === "darwin") {
+    if (operation === "get") {
+      return {
+        command: "security",
+        args: ["find-generic-password", "-a", origin, "-s", keychainService, "-w"],
+      };
+    }
+    if (operation === "set" && token !== undefined) {
+      return {
+        command: "security",
+        args: ["add-generic-password", "-U", "-a", origin, "-s", keychainService, "-w", token],
+      };
+    }
+    if (operation === "remove") {
+      return {
+        command: "security",
+        args: ["delete-generic-password", "-a", origin, "-s", keychainService],
+      };
+    }
+    return undefined;
+  }
+
+  if (platform === "linux") {
+    if (operation === "get") {
+      return {
+        command: "secret-tool",
+        args: ["lookup", "service", keychainService, "origin", origin],
+      };
+    }
+    if (operation === "set" && token !== undefined) {
+      return {
+        command: "secret-tool",
+        args: ["store", "--label=OpenAgents CLI", "service", keychainService, "origin", origin],
+        input: token,
+      };
+    }
+    if (operation === "remove") {
+      return {
+        command: "secret-tool",
+        args: ["clear", "service", keychainService, "origin", origin],
+      };
+    }
+  }
+
+  return undefined;
+};
+
 export const credentialStoreOsLayer = Layer.effect(
   CredentialStore,
   Effect.gen(function* () {
@@ -79,45 +138,12 @@ export const credentialStoreOsLayer = Layer.effect(
       );
     });
 
-    const commandFor = (
-      operation: "get" | "set" | "remove",
-      origin: string,
-    ): readonly [string, ReadonlyArray<string>] | undefined => {
-      if (process.platform === "darwin") {
-        if (operation === "get") {
-          return ["security", ["find-generic-password", "-a", origin, "-s", keychainService, "-w"]];
-        }
-        if (operation === "set") {
-          return [
-            "security",
-            ["add-generic-password", "-U", "-a", origin, "-s", keychainService, "-w"],
-          ];
-        }
-        return ["security", ["delete-generic-password", "-a", origin, "-s", keychainService]];
-      }
-
-      if (process.platform === "linux") {
-        if (operation === "get") {
-          return ["secret-tool", ["lookup", "service", keychainService, "origin", origin]];
-        }
-        if (operation === "set") {
-          return [
-            "secret-tool",
-            ["store", "--label=OpenAgents CLI", "service", keychainService, "origin", origin],
-          ];
-        }
-        return ["secret-tool", ["clear", "service", keychainService, "origin", origin]];
-      }
-
-      return undefined;
-    };
-
     const unsupported = () => Effect.fail(unavailable("Persistent authentication"));
 
     const get = Effect.fn("CredentialStore.OS.get")(function* (origin: string) {
-      const command = commandFor("get", origin);
+      const command = credentialCommandFor(process.platform, "get", origin);
       if (command === undefined) return yield* unsupported();
-      const result = yield* run(command[0], command[1]).pipe(
+      const result = yield* run(command.command, command.args, command.input).pipe(
         Effect.mapError((cause) => storeError("read the OS credential store", cause)),
       );
       if (result.exitCode !== 0) return Option.none();
@@ -132,10 +158,16 @@ export const credentialStoreOsLayer = Layer.effect(
       origin: string,
       token: Redacted.Redacted<string>,
     ) {
-      const command = commandFor("set", origin);
+      const tokenValue = Redacted.value(token);
+      const command = credentialCommandFor(process.platform, "set", origin, tokenValue);
       if (command === undefined) return yield* unsupported();
-      const result = yield* run(command[0], command[1], Redacted.value(token)).pipe(
-        Effect.mapError((cause) => storeError("write the OS credential store", cause)),
+      const result = yield* run(command.command, command.args, command.input).pipe(
+        Effect.mapError(() =>
+          storeError(
+            "write the OS credential store",
+            new Error("credential command could not start"),
+          ),
+        ),
       );
       if (result.exitCode !== 0) {
         return yield* storeError(
@@ -143,12 +175,19 @@ export const credentialStoreOsLayer = Layer.effect(
           new Error(`credential command exited ${result.exitCode}`),
         );
       }
+      const stored = yield* get(origin);
+      if (Option.isNone(stored) || Redacted.value(stored.value) !== tokenValue) {
+        return yield* storeError(
+          "verify the OS credential store",
+          new Error("credential readback did not match"),
+        );
+      }
     });
 
     const remove = Effect.fn("CredentialStore.OS.remove")(function* (origin: string) {
-      const command = commandFor("remove", origin);
+      const command = credentialCommandFor(process.platform, "remove", origin);
       if (command === undefined) return yield* unsupported();
-      yield* run(command[0], command[1]).pipe(
+      yield* run(command.command, command.args, command.input).pipe(
         Effect.mapError((cause) => storeError("remove the OS credential", cause)),
       );
     });
@@ -171,7 +210,7 @@ const hasErrorCode = (value: unknown): value is { readonly code: string } =>
 const storeError = (operation: string, cause: unknown) =>
   new CredentialStoreError({
     operation,
-    message: `The test credential store could not ${operation}.`,
+    message: `The CLI could not ${operation}.`,
     cause,
   });
 

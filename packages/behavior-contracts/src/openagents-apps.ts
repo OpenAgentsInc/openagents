@@ -48,6 +48,59 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
+        "The pending local record contains only one short-lived device request for the selected API origin. It grants no repository authority before the user approves the request. The agent receives the verification URL and user code, but never receives the user's GitHub credential or the issued OpenAgents token. OPENAGENTS_AGENT_TOKEN cannot substitute for an OpenAgents user token.",
+      blockerRefs: [],
+      contractId: "openagents_cli.agent_device_authorization.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "packages/openagents-cli/src/cli.ts",
+        "packages/openagents-cli/src/credential-store.ts",
+        "packages/openagents-cli/src/device-authorization-store.ts",
+        "packages/openagents-cli/test/cli.test.ts",
+        "packages/openagents-cli/test/credential-store.test.ts",
+        "packages/openagents-cli/test/device-authorization-store.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "The CLI oracle proves immediate noninteractive output, explicit resume after approval, and a visible manual fallback when an interactive browser does not open.",
+          id: "openagents_cli.agent_device_authorization.flow",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "packages/openagents-cli/test/cli.test.ts",
+        },
+        {
+          description:
+            "The credential oracle proves the macOS Keychain invocation receives the token through its required password argument instead of an ignored standard-input stream.",
+          id: "openagents_cli.agent_device_authorization.keychain",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "packages/openagents-cli/test/credential-store.test.ts",
+        },
+        {
+          description:
+            "The state oracle proves that a pending device request survives a second process in a mode-0600 file and disappears after completion.",
+          id: "openagents_cli.agent_device_authorization.pending_state",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "packages/openagents-cli/test/device-authorization-store.test.ts",
+        },
+      ],
+      productArea: "OpenAgents CLI device authorization",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-08-21",
+      },
+      state: "enforced",
+      statement:
+        "A noninteractive OpenAgents CLI login returns the authorization URL and user code immediately, preserves a private resumable device request, and completes after the user approves it. Interactive browser-launch failure leaves a usable manual URL, and credential storage must verify its own readback before reporting success.",
+      surface: "openagents-cli",
+      verification:
+        "The OpenAgents CLI test sweep runs the device-flow, pending-state, and credential-adapter oracles, and the behavior-contract sweep validates this registry entry.",
+    },
+    {
+      authorityBoundary:
         "This contract covers automatic projection into the read-only mobile home after the paired device bridge emits a mirror state. It grants no thread, run, file, terminal, git, sandbox, account, or release mutation authority. The live host-to-phone seam remains owned by the recorded cross-repository journey.",
       blockerRefs: [],
       contractId: "openagents_mobile.home_automatic_desktop_activity.v1",
@@ -780,8 +833,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         statedOn: "2026-07-28",
       },
       state: "enforced",
-      statement:
-        "WHAT THE FUCK IS THIS ISSUE 31 THING, FIX IT NOW AND NEVER EVER SHOW ISSUE 31.",
+      statement: "WHAT THE FUCK IS THIS ISSUE 31 THING, FIX IT NOW AND NEVER EVER SHOW ISSUE 31.",
       surface: "openagents-mobile",
       verification:
         "The notice oracle runs in the normal sweep, and every prose error string in packages/sarah and the mobile app now names the product (device mirror, device pairing) instead of the issue number. The desktop half is enforced in OpenAgentsInc/omega by OMEGA-DELTA-0168 (internal_issue_references_never_render), which scans every string literal in crates/ for the prose form.",
@@ -982,5 +1034,5 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-08-20.1",
+  version: "2026-08-21.1",
 };

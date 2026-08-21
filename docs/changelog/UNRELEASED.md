@@ -14,10 +14,17 @@ entries into the next dated release file.
 - evidence: `packages/openagents-cli/test/cli.test.ts`; live staging device authorization start
 - lane: codex/qualify-repository-import
 
-`openagents auth login` now works without a terminal. It prints the complete
-approval URL and user code, waits for the user to approve the request in any
-browser, stores the issued OpenAgents token, and continues. Interactive use
-still opens the browser automatically.
+`openagents auth login` now works with agents whose shell tools buffer output.
+In a headless or noninteractive process, it returns the complete approval URL,
+user code, and resume command immediately. After the user approves the request
+in any browser, `openagents auth login --resume` completes authorization and
+stores the issued OpenAgents token. Interactive use still opens the browser
+automatically and prints a manual instruction if the browser does not open.
+
+The macOS credential adapter now passes the token through the interface that
+Keychain requires and verifies the stored value before it reports success.
+Pending device requests use a private local file and disappear after success
+or detected expiry.
 
 Repository imports also report state transitions and attempt counts to
 standard error while the CLI waits. Machine-readable JSON remains isolated on

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   CredentialStore,
+  credentialCommandFor,
   credentialStoreTestFileLayer,
   credentialStoreUnavailableLayer,
 } from "../src/credential-store.js";
@@ -19,6 +20,25 @@ afterEach(async () => {
 });
 
 describe("credential store", () => {
+  it("passes a macOS token as the required Keychain password argument", () => {
+    // Contract: openagents_cli.agent_device_authorization.v1
+    expect(
+      credentialCommandFor("darwin", "set", "https://openagents.com", "oa_pat_keychain-fixture"),
+    ).toEqual({
+      command: "security",
+      args: [
+        "add-generic-password",
+        "-U",
+        "-a",
+        "https://openagents.com",
+        "-s",
+        "openagents-cli",
+        "-w",
+        "oa_pat_keychain-fixture",
+      ],
+    });
+  });
+
   it("scopes test tokens to normalized API origins", async () => {
     const directory = await mkdtemp(join(tmpdir(), "openagents-cli-credentials-"));
     temporaryDirectories.push(directory);

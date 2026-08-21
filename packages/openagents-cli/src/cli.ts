@@ -1,10 +1,11 @@
-import { Console, Effect, Option, Redacted } from "effect";
+import { Clock, Console, Effect, Option, Redacted } from "effect";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 
 import type { Repository } from "./api-contract.js";
 import { BrowserLauncher } from "./browser-launcher.js";
 import { InputError } from "./errors.js";
 import { CredentialStore } from "./credential-store.js";
+import { PendingDeviceAuthorizationStore } from "./device-authorization-store.js";
 import { DeviceClient } from "./device-client.js";
 import { type EndpointOverrides, Profile } from "./endpoint.js";
 import { GitRunner } from "./git-runner.js";
@@ -15,7 +16,7 @@ import { SecretInput } from "./secret-input.js";
 import { findToken, resolveApiEndpoint, resolveApiSession } from "./session.js";
 import { TerminalSession } from "./terminal-session.js";
 
-export const VERSION = "0.1.3";
+export const VERSION = "0.1.4";
 
 const profileFlag = Flag.choice("profile", ["production", "staging", "local"]).pipe(
   Flag.withSchema(Profile),
@@ -152,39 +153,157 @@ const authTokenStdinCommand = Command.make("token-stdin", {}, () =>
 const loginTokenStdinFlag = Flag.boolean("token-stdin").pipe(
   Flag.withDescription("Read and store a token from standard input instead of opening a browser"),
 );
+const loginHeadlessFlag = Flag.boolean("headless").pipe(
+  Flag.withDescription("Return an authorization URL and code without waiting for approval"),
+);
+const loginResumeFlag = Flag.boolean("resume").pipe(
+  Flag.withDescription("Complete the pending device authorization for the selected API"),
+);
+
+const resumeCommandFor = (endpoint: {
+  readonly origin: string;
+  readonly profile: string;
+}): string =>
+  endpoint.profile === "custom"
+    ? `openagents --api-url ${endpoint.origin} auth login --resume`
+    : `openagents --profile ${endpoint.profile} auth login --resume`;
+
 const authLoginCommand = Command.make(
   "login",
-  { tokenStdin: loginTokenStdinFlag },
-  ({ tokenStdin }) =>
+  { tokenStdin: loginTokenStdinFlag, headless: loginHeadlessFlag, resume: loginResumeFlag },
+  ({ headless, resume, tokenStdin }) =>
     Effect.gen(function* () {
+      if ((tokenStdin && (headless || resume)) || (headless && resume)) {
+        return yield* new InputError({
+          message: "Use only one of --token-stdin, --headless, or --resume.",
+        });
+      }
       const flags = yield* rootCommand;
       const endpoint = yield* resolveApiEndpoint(endpointOverrides(flags));
       const credentials = yield* CredentialStore;
       const output = yield* Output;
-      const token = tokenStdin
-        ? Redacted.make(yield* (yield* SecretInput).readToken())
-        : yield* Effect.gen(function* () {
-            const devices = yield* DeviceClient;
-            const terminal = yield* TerminalSession;
-            const authorization = yield* devices.start(endpoint.origin);
-            yield* Console.error(
-              `OpenAgents authorization URL: ${authorization.verification_uri_complete}`,
-            );
-            yield* Console.error(`OpenAgents authorization code: ${authorization.user_code}`);
-            yield* Console.error("Waiting for approval...");
-            if (terminal.interactive) {
-              const browser = yield* BrowserLauncher;
-              yield* browser.open(authorization.verification_uri_complete);
-            }
-            return yield* devices.wait(endpoint.origin, authorization);
+
+      if (tokenStdin) {
+        const token = Redacted.make(yield* (yield* SecretInput).readToken());
+        yield* credentials.set(endpoint.origin, token);
+        yield* output.write(
+          {
+            value: {
+              origin: endpoint.origin,
+              authenticated: true,
+              token_source: "token_stdin",
+            },
+            human: [
+              `Authenticated with ${endpoint.origin}.`,
+              "The token is stored in your OS credential store.",
+              "Run openagents auth setup-git --local to configure Git for this repository.",
+            ],
+          },
+          outputMode(flags.json),
+        );
+        return;
+      }
+
+      const pendingStore = yield* PendingDeviceAuthorizationStore;
+      if (!resume) {
+        const devices = yield* DeviceClient;
+        const terminal = yield* TerminalSession;
+        const authorization = yield* devices.start(endpoint.origin);
+        const returnForApproval = headless || !terminal.interactive || flags.json;
+        if (returnForApproval) {
+          const now = yield* Clock.currentTimeMillis;
+          const resumeCommand = resumeCommandFor(endpoint);
+          yield* pendingStore.set({
+            origin: endpoint.origin,
+            device_code: authorization.device_code,
+            user_code: authorization.user_code,
+            verification_uri: authorization.verification_uri,
+            verification_uri_complete: authorization.verification_uri_complete,
+            expires_at_ms: now + authorization.expires_in * 1_000,
+            interval: authorization.interval,
           });
+          yield* output.write(
+            {
+              value: {
+                origin: endpoint.origin,
+                authenticated: false,
+                authorization_pending: true,
+                verification_url: authorization.verification_uri_complete,
+                user_code: authorization.user_code,
+                expires_in: authorization.expires_in,
+                resume_command: resumeCommand,
+              },
+              human: [
+                "OpenAgents authorization is ready.",
+                `Open this URL: ${authorization.verification_uri_complete}`,
+                `Authorization code: ${authorization.user_code}`,
+                `After you approve the request, run: ${resumeCommand}`,
+              ],
+            },
+            outputMode(flags.json),
+          );
+          return;
+        }
+
+        yield* Console.error(
+          `OpenAgents authorization URL: ${authorization.verification_uri_complete}`,
+        );
+        yield* Console.error(`OpenAgents authorization code: ${authorization.user_code}`);
+        const browser = yield* BrowserLauncher;
+        if (!(yield* browser.open(authorization.verification_uri_complete))) {
+          yield* Console.error("The browser did not open. Open the authorization URL above.");
+        }
+        yield* Console.error("Waiting for approval...");
+        const token = yield* devices.wait(endpoint.origin, authorization);
+        yield* credentials.set(endpoint.origin, token);
+        yield* output.write(
+          {
+            value: {
+              origin: endpoint.origin,
+              authenticated: true,
+              token_source: "device_authorization",
+            },
+            human: [
+              `Authenticated with ${endpoint.origin}.`,
+              "The token is stored in your OS credential store.",
+              "Run openagents auth setup-git --local to configure Git for this repository.",
+            ],
+          },
+          outputMode(flags.json),
+        );
+        return;
+      }
+
+      const pending = yield* pendingStore.get(endpoint.origin);
+      if (Option.isNone(pending)) {
+        return yield* new InputError({
+          message: `No pending authorization exists for ${endpoint.origin}. Run openagents auth login first.`,
+        });
+      }
+      const now = yield* Clock.currentTimeMillis;
+      const expiresIn = Math.ceil((pending.value.expires_at_ms - now) / 1_000);
+      if (expiresIn <= 0) {
+        yield* pendingStore.remove(endpoint.origin);
+        return yield* new InputError({
+          message: "The pending authorization expired. Run openagents auth login again.",
+        });
+      }
+      const token = yield* (yield* DeviceClient).wait(endpoint.origin, {
+        device_code: pending.value.device_code,
+        user_code: pending.value.user_code,
+        verification_uri: pending.value.verification_uri,
+        verification_uri_complete: pending.value.verification_uri_complete,
+        expires_in: expiresIn,
+        interval: pending.value.interval,
+      });
       yield* credentials.set(endpoint.origin, token);
+      yield* pendingStore.remove(endpoint.origin);
       yield* output.write(
         {
           value: {
             origin: endpoint.origin,
             authenticated: true,
-            token_source: tokenStdin ? "token_stdin" : "device_authorization",
+            token_source: "device_authorization",
           },
           human: [
             `Authenticated with ${endpoint.origin}.`,

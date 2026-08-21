@@ -2,6 +2,7 @@ export * from "./api-contract.js";
 export * from "./api-transport.js";
 export * from "./cli.js";
 export * from "./credential-store.js";
+export * from "./device-authorization-store.js";
 export * from "./endpoint.js";
 export * from "./environment.js";
 export * from "./errors.js";
