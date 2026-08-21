@@ -26,7 +26,7 @@ const repository = {
   default_branch: "main",
   lifecycle_state: "ready" as const,
   provision_error_code: null,
-  clone_url: "http://localhost:4000/git/octavia/project.git",
+  clone_url: "http://localhost:4000/octavia/project.git",
   html_url: "http://localhost:4000/octavia/project",
   permissions: { admin: true, push: true, pull: true },
   created_at: "2026-08-20T00:00:00Z",
@@ -83,7 +83,7 @@ describe("CLI command graph", () => {
         cloneInfo: (input) =>
           Effect.sync(() => {
             seenOrigins.push(input.origin);
-            return { repository, cloneUrl: "http://localhost:4000/git/octavia/project.git" };
+            return { repository, cloneUrl: "http://localhost:4000/octavia/project.git" };
           }),
         getImport: () => Effect.succeed(repositoryImport),
       }),
@@ -140,7 +140,7 @@ describe("CLI command graph", () => {
         cloneInfo: () =>
           Effect.succeed({
             repository,
-            cloneUrl: "http://localhost:4000/git/octavia/project.git",
+            cloneUrl: "http://localhost:4000/octavia/project.git",
           }),
         getImport: () => Effect.succeed(repositoryImport),
       }),

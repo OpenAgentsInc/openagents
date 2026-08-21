@@ -104,7 +104,7 @@ it("terminates an in-flight Git child process before exiting with status 130", a
         default_branch: "main",
         lifecycle_state: "ready",
         provision_error_code: null,
-        clone_url: `http://127.0.0.1:${address.port}/git/octavia/project.git`,
+        clone_url: `http://127.0.0.1:${address.port}/octavia/project.git`,
         html_url: `http://127.0.0.1:${address.port}/octavia/project`,
         permissions: { admin: true, push: true, pull: true },
         created_at: "2026-08-20T00:00:00Z",

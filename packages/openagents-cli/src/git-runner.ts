@@ -90,16 +90,15 @@ export const repositoryFromRemoteUrl = Effect.fn("GitRunner.repositoryFromRemote
       }),
   });
   const parts = remote.pathname.split("/");
-  const owner = parts[2];
-  const repositoryWithSuffix = parts[3];
+  const owner = parts[1];
+  const repositoryWithSuffix = parts[2];
   if (
     remote.origin !== endpoint.origin ||
     remote.username !== "" ||
     remote.password !== "" ||
     remote.search !== "" ||
     remote.hash !== "" ||
-    parts.length !== 4 ||
-    parts[1] !== "git" ||
+    parts.length !== 3 ||
     owner === undefined ||
     repositoryWithSuffix === undefined ||
     !repositoryWithSuffix.endsWith(".git")

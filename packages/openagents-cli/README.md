@@ -21,7 +21,7 @@ npx --yes @openagentsinc/cli@latest repo list
 Pin the version for a reproducible run:
 
 ```sh
-npx --yes @openagentsinc/cli@0.1.2 --version
+npx --yes @openagentsinc/cli@0.1.3 --version
 ```
 
 Do not run `auth setup-git` through `npx`. That command saves a persistent Git
@@ -111,7 +111,7 @@ remote and prints the next `git push` command. The first release never pushes
 automatically.
 
 `repo view` and `repo clone` accept `-R, --repo <owner>/<name>`. When you omit a
-repository, the CLI infers it only from an exact `/git/<owner>/<repo>.git` URL
+repository, the CLI infers it only from an exact `/<owner>/<repo>.git` URL
 on the selected OpenAgents API origin.
 
 `repo import` takes a GitHub `owner/name`, imports into that same GitHub user or

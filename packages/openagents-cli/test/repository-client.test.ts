@@ -26,7 +26,7 @@ const repositoryFixture = (fullName = "octavia/project") => {
     default_branch: "main",
     lifecycle_state: "ready",
     provision_error_code: null,
-    clone_url: `http://localhost:4000/git/${fullName}.git`,
+    clone_url: `http://localhost:4000/${fullName}.git`,
     html_url: `http://localhost:4000/${fullName}`,
     permissions: { admin: true, push: true, pull: true },
     created_at: "2026-08-20T00:00:00Z",

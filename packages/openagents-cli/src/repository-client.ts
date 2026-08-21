@@ -510,7 +510,7 @@ export const repositoryClientLayer = Layer.effect(
             cause,
           }),
       });
-      const expectedPath = `/git/${encoded(repository.owner.login)}/${encoded(repository.name)}.git`;
+      const expectedPath = `/${encoded(repository.owner.login)}/${encoded(repository.name)}.git`;
       if (
         parsed.origin !== input.origin ||
         parsed.username !== "" ||
