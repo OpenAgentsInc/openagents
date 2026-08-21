@@ -595,6 +595,10 @@ Episode [`237`](237.md) names the organizing principle the earlier episodes were
 
 ## Maintenance Notes
 
+- Episode `a`/`b` X-HD stitches follow
+  [`STITCH_RUNBOOK.md`](STITCH_RUNBOOK.md). Do not reuse the 270–273 concat
+  filter. Episode 274 desynced after the part-A/part-B join because that
+  filter appends video and audio independently.
 - Keep this README tied to the transcript files in this directory. If a transcript is regenerated with materially better text, update affected episode summaries and theme references in the same change.
 - Keep episode links padded as three digits, matching the transcript filenames.
 - Episode `086` is intentionally an excerpt transcript from the YouTube event recording. Do not change its coverage note unless the full event is intentionally transcribed.
