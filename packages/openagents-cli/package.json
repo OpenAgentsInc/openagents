@@ -1,6 +1,6 @@
 {
   "name": "@openagentsinc/cli",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": false,
   "description": "Effect TypeScript command-line client for OpenAgents repositories",
   "keywords": [

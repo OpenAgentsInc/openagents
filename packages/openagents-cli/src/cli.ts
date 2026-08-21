@@ -16,7 +16,7 @@ import { SecretInput } from "./secret-input.js";
 import { findToken, resolveApiEndpoint, resolveApiSession } from "./session.js";
 import { TerminalSession } from "./terminal-session.js";
 
-export const VERSION = "0.1.4";
+export const VERSION = "0.1.5";
 
 const profileFlag = Flag.choice("profile", ["production", "staging", "local"]).pipe(
   Flag.withSchema(Profile),
@@ -475,6 +475,10 @@ const repoCreateCommand = Command.make(
         private: visibility,
         defaultBranch,
         waitTimeoutMs: waitTimeout * 1_000,
+        onProgress: ({ state, elapsedMs }) =>
+          Console.error(
+            `Repository provisioning: ${state} (${Math.floor(elapsedMs / 1_000)}s elapsed).`,
+          ),
         ...(parsed === undefined ? {} : { owner: parsed.owner }),
         ...(Option.isNone(description) ? {} : { description: description.value }),
       });
@@ -588,8 +592,10 @@ const repoImportCommand = Command.make(
         source: `${sourceTarget.owner}/${sourceTarget.repo}`,
         private: visibility,
         waitTimeoutMs: waitTimeout * 1_000,
-        onProgress: ({ state, attemptCount }) =>
-          Console.error(`Repository import state: ${state} (attempt ${attemptCount}).`),
+        onProgress: ({ state, attemptCount, elapsedMs }) =>
+          Console.error(
+            `Repository import: ${state} (shallow snapshot, attempt ${attemptCount}, ${Math.floor(elapsedMs / 1_000)}s elapsed).`,
+          ),
         ...(Option.isNone(name) ? {} : { name: name.value }),
         ...(personal ? {} : { owner: destination }),
       });

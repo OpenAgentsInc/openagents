@@ -134,6 +134,55 @@ describe("repository client", () => {
     expect(requests[0]?.path).toBe("/api/v3/orgs/acme/repos");
   });
 
+  it("reports repository provisioning progress before completion", async () => {
+    const progress: Array<string> = [];
+    const program = Effect.gen(function* () {
+      const calls = yield* Ref.make(0);
+      const transport = ApiTransport.of({
+        request: (input) =>
+          input.method === "POST"
+            ? Effect.succeed({
+                status: 202,
+                body: { ...repositoryFixture(), lifecycle_state: "provisioning" },
+              })
+            : Ref.getAndUpdate(calls, (count) => count + 1).pipe(
+                Effect.map((count) => ({
+                  status: 200,
+                  body: {
+                    ...repositoryFixture(),
+                    lifecycle_state: count === 0 ? "provisioning" : "ready",
+                  },
+                })),
+              ),
+      });
+      const clientLayer = repositoryClientLayer.pipe(
+        Layer.provide(Layer.succeed(ApiTransport, transport)),
+      );
+      const fiber = yield* Effect.gen(function* () {
+        const client = yield* RepositoryClient;
+        return yield* client.create({
+          origin: "http://localhost:4000",
+          token,
+          name: "project",
+          private: true,
+          waitTimeoutMs: 10_000,
+          pollIntervalMs: 1_000,
+          onProgress: ({ state, elapsedMs }) =>
+            Effect.sync(() => {
+              progress.push(`${state}:${elapsedMs}`);
+            }),
+        });
+      }).pipe(Effect.provide(clientLayer), Effect.forkChild);
+
+      yield* TestClock.adjust("2 seconds");
+      return yield* Fiber.join(fiber);
+    }).pipe(Effect.provide(TestClock.layer()));
+
+    const result = await Effect.runPromise(program);
+    expect(result.lifecycle_state).toBe("ready");
+    expect(progress).toEqual(["provisioning:0", "ready:1000"]);
+  });
+
   it("retries a disconnected create with the same idempotency key", async () => {
     const requests: Array<ApiRequest> = [];
     const layer = layerFromHandler((input) =>

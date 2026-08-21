@@ -21,7 +21,7 @@ npx --yes @openagentsinc/cli@latest repo list
 Pin the version for a reproducible run:
 
 ```sh
-npx --yes @openagentsinc/cli@0.1.4 --version
+npx --yes @openagentsinc/cli@0.1.5 --version
 ```
 
 Do not run `auth setup-git` through `npx`. That command saves a persistent Git
@@ -139,7 +139,8 @@ membership that can create repositories.
 `repo create --source <directory>` verifies the Git worktree and adds the
 server-provided clone URL as a remote. It refuses to overwrite an unrelated
 remote and prints the next `git push` command. The first release never pushes
-automatically.
+automatically. While the server creates repository storage, the CLI writes the
+current state and a five-second heartbeat to standard error.
 
 `repo view` and `repo clone` accept `-R, --repo <owner>/<name>`. When you omit a
 repository, the CLI infers it only from an exact `/<owner>/<repo>.git` URL
@@ -147,13 +148,16 @@ on the selected OpenAgents API origin.
 
 `repo import` takes a GitHub `owner/name`, imports into that same GitHub user or
 organization namespace, records the accepted branch and tag snapshot, and
-copies it once. OpenAgents becomes the destination source of truth. Later
-GitHub changes do not sync in either direction.
+copies the tip of every accepted branch and tag with depth 1. The shallow
+snapshot is the default so large repositories become usable without first
+copying years of history. OpenAgents becomes the destination source of truth.
+Later GitHub changes do not sync in either direction.
 
-While the command waits, it writes import state transitions and attempt counts
-to standard error. The server streams large Git bundles through durable
-storage without retaining the complete bundle in application memory. Use
-`--wait-timeout 0` to return after acceptance; the server import continues.
+While the command waits, it writes import state transitions, attempt counts,
+elapsed time, and a five-second heartbeat to standard error. The server streams
+Git bundles through durable storage without retaining the complete bundle in
+application memory. Use `--wait-timeout 0` to return after acceptance; the
+server import continues.
 
 Add `--json` before a subcommand to return machine-readable output. Add
 `--no-color`, or set `NO_COLOR`, to disable ANSI output. The clone command

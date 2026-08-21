@@ -1,4 +1,4 @@
-import { Duration, Effect, Layer, Option, Redacted, Schedule, Schema } from "effect";
+import { Clock, Duration, Effect, Layer, Option, Redacted, Schedule, Schema } from "effect";
 import * as Context from "effect/Context";
 
 import {
@@ -44,6 +44,10 @@ export interface CreateRepositoryInput extends AuthenticatedApi {
   readonly waitTimeoutMs?: number;
   readonly pollIntervalMs?: number;
   readonly idempotencyKey?: string;
+  readonly onProgress?: (progress: {
+    readonly state: Repository["lifecycle_state"];
+    readonly elapsedMs: number;
+  }) => Effect.Effect<void>;
 }
 
 export interface ImportRepositoryInput extends AuthenticatedApi {
@@ -57,6 +61,7 @@ export interface ImportRepositoryInput extends AuthenticatedApi {
   readonly onProgress?: (progress: {
     readonly state: RepositoryImport["state"];
     readonly attemptCount: number;
+    readonly elapsedMs: number;
   }) => Effect.Effect<void>;
 }
 
@@ -242,8 +247,30 @@ export const repositoryClientLayer = Layer.effect(
       readonly repo: string;
       readonly timeoutMs: number;
       readonly pollIntervalMs: number;
+      readonly onProgress?: CreateRepositoryInput["onProgress"];
     }) {
       const fullName = `${input.owner}/${input.repo}`;
+      const startedAt = yield* Clock.currentTimeMillis;
+      let lastState: Repository["lifecycle_state"] | undefined;
+      let lastReportedAt = Number.NEGATIVE_INFINITY;
+
+      const reportProgress = (repository: Repository) =>
+        Effect.gen(function* () {
+          if (input.onProgress === undefined) return;
+
+          const now = yield* Clock.currentTimeMillis;
+          const changed = repository.lifecycle_state !== lastState;
+          const heartbeatDue = now - lastReportedAt >= 5_000;
+          if (!changed && !heartbeatDue) return;
+
+          lastState = repository.lifecycle_state;
+          lastReportedAt = now;
+          yield* input.onProgress({
+            state: repository.lifecycle_state,
+            elapsedMs: now - startedAt,
+          });
+        });
+
       const poll = request("read repository provisioning state", {
         ...input,
         method: "GET",
@@ -251,6 +278,7 @@ export const repositoryClientLayer = Layer.effect(
         acceptedStatuses: [200],
       }).pipe(
         Effect.flatMap((value) => decode("read repository provisioning state", Repository, value)),
+        Effect.tap(reportProgress),
         Effect.flatMap(
           (repository): Effect.Effect<Repository, ProvisioningFailed | RepositoryPending> => {
             if (repository.lifecycle_state === "ready") return Effect.succeed(repository);
@@ -321,6 +349,7 @@ export const repositoryClientLayer = Layer.effect(
         repo: repository.name,
         timeoutMs: input.waitTimeoutMs ?? 300_000,
         pollIntervalMs: input.pollIntervalMs ?? 1_000,
+        ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
       });
     });
 
@@ -398,19 +427,29 @@ export const repositoryClientLayer = Layer.effect(
         readonly onProgress?: ImportRepositoryInput["onProgress"];
       },
     ) {
+      const startedAt = yield* Clock.currentTimeMillis;
       let lastProgress: string | undefined;
+      let lastReportedAt = Number.NEGATIVE_INFINITY;
 
-      const reportProgress = (repositoryImport: RepositoryImport) => {
-        const progress = `${repositoryImport.state}:${repositoryImport.attempt_count}`;
+      const reportProgress = (repositoryImport: RepositoryImport) =>
+        Effect.gen(function* () {
+          const progress = `${repositoryImport.state}:${repositoryImport.attempt_count}`;
 
-        if (input.onProgress === undefined || progress === lastProgress) return Effect.void;
+          if (input.onProgress === undefined) return;
 
-        lastProgress = progress;
-        return input.onProgress({
-          state: repositoryImport.state,
-          attemptCount: repositoryImport.attempt_count,
+          const now = yield* Clock.currentTimeMillis;
+          const changed = progress !== lastProgress;
+          const heartbeatDue = now - lastReportedAt >= 5_000;
+          if (!changed && !heartbeatDue) return;
+
+          lastProgress = progress;
+          lastReportedAt = now;
+          yield* input.onProgress({
+            state: repositoryImport.state,
+            attemptCount: repositoryImport.attempt_count,
+            elapsedMs: now - startedAt,
+          });
         });
-      };
 
       const poll: Effect.Effect<RepositoryImportStatusResponse, CliError | ImportPending> =
         getImportStatus(input).pipe(
