@@ -15,7 +15,7 @@ import { SecretInput } from "./secret-input.js";
 import { findToken, resolveApiEndpoint, resolveApiSession } from "./session.js";
 import { TerminalSession } from "./terminal-session.js";
 
-export const VERSION = "0.1.1";
+export const VERSION = "0.1.2";
 
 const profileFlag = Flag.choice("profile", ["production", "staging", "local"]).pipe(
   Flag.withSchema(Profile),

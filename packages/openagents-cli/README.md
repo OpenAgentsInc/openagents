@@ -5,7 +5,7 @@ repositories.
 
 ## Install
 
-The package targets Node.js 24.15 or later.
+The package targets Node.js 20 or later.
 
 ```sh
 npm install --global @openagentsinc/cli
@@ -21,7 +21,7 @@ npx --yes @openagentsinc/cli@latest repo list
 Pin the version for a reproducible run:
 
 ```sh
-npx --yes @openagentsinc/cli@0.1.1 --version
+npx --yes @openagentsinc/cli@0.1.2 --version
 ```
 
 Do not run `auth setup-git` through `npx`. That command saves a persistent Git
