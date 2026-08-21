@@ -84,6 +84,7 @@ describe("CLI command graph", () => {
             return { repositories: [repository], nextCursor: null };
           }),
         view: (input) => Effect.sync(() => (seenOrigins.push(input.origin), repository)),
+        remove: (input) => Effect.sync(() => void seenOrigins.push(input.origin)),
         cloneInfo: (input) =>
           Effect.sync(() => {
             seenOrigins.push(input.origin);
@@ -116,6 +117,24 @@ describe("CLI command graph", () => {
     expect(output).toHaveLength(1);
     expect(output[0]?.mode).toBe("json");
     expect(output[0]?.document.value).toEqual({ repositories: [repository], next_cursor: null });
+
+    await Effect.runPromise(
+      runCliWith([
+        "--profile",
+        "local",
+        "--json",
+        "repo",
+        "delete",
+        "octavia/project",
+        "--yes",
+      ]).pipe(Effect.provide(layer)),
+    );
+
+    expect(seenOrigins).toEqual(["http://localhost:4000", "http://localhost:4000"]);
+    expect(output[1]?.document.value).toEqual({
+      full_name: "octavia/project",
+      deleted: true,
+    });
   });
 
   it("defaults import to the matching GitHub user or organization namespace", async () => {
@@ -141,6 +160,7 @@ describe("CLI command graph", () => {
           }),
         list: () => Effect.succeed({ repositories: [], nextCursor: null }),
         view: () => Effect.succeed(repository),
+        remove: () => Effect.void,
         cloneInfo: () =>
           Effect.succeed({
             repository,

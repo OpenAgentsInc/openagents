@@ -5,7 +5,7 @@ import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { loopbackHostname } from "./endpoint.js";
 import { NetworkRefused, TransportError } from "./errors.js";
 
-export type HttpMethod = "GET" | "POST";
+export type HttpMethod = "DELETE" | "GET" | "POST";
 
 export interface ApiRequest {
   readonly origin: string;

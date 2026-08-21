@@ -23,6 +23,7 @@
     "import_organization_repository": "POST /api/v3/orgs/{org}/repos/imports",
     "list_repositories": "GET /api/v3/user/repos",
     "get_repository": "GET /api/v3/repos/{owner}/{repo}",
+    "delete_repository": "DELETE /api/v3/repos/{owner}/{repo}",
     "get_repository_import": "GET /api/v3/repository-imports/{id}",
     "create_device_authorization": "POST /api/v3/device/authorizations",
     "poll_device_authorization": "POST /api/v3/device/authorizations/token"
@@ -88,6 +89,8 @@
       "not_found",
       "repository_quota_exceeded",
       "repository_name_conflict",
+      "repository_busy",
+      "repository_delete_failed",
       "slow_down",
       "source_namespace_mismatch",
       "source_repository_not_accessible"

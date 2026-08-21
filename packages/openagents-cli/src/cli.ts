@@ -738,6 +738,40 @@ const repoCloneCommand = Command.make(
     }),
 ).pipe(Command.withDescription("Clone a repository with git"));
 
+const deleteYesFlag = Flag.boolean("yes").pipe(
+  Flag.withDescription("Confirm permanent repository deletion"),
+);
+const repoDeleteCommand = Command.make(
+  "delete",
+  { repository: optionalRepositoryArgument, repo: repositoryOverrideFlag, yes: deleteYesFlag },
+  ({ repo, repository, yes }) =>
+    Effect.gen(function* () {
+      if (!yes) {
+        return yield* new InputError({
+          message: "Repository deletion requires --yes confirmation.",
+        });
+      }
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveRepositoryArgument(repository, repo, session.endpoint.origin);
+      const repositories = yield* RepositoryClient;
+      const output = yield* Output;
+      yield* repositories.remove({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+      });
+      const fullName = `${target.owner}/${target.repo}`;
+      yield* output.write(
+        {
+          value: { full_name: fullName, deleted: true },
+          human: [`Deleted ${fullName}.`],
+        },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(Command.withDescription("Permanently delete a repository you own"));
+
 const repoCommand = Command.make("repo").pipe(
   Command.withDescription("Manage repositories"),
   Command.withSubcommands([
@@ -746,6 +780,7 @@ const repoCommand = Command.make("repo").pipe(
     repoListCommand,
     repoViewCommand,
     repoCloneCommand,
+    repoDeleteCommand,
   ]),
 );
 

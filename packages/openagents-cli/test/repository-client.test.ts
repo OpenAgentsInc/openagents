@@ -258,6 +258,32 @@ describe("repository client", () => {
     expect(result.view.full_name).toBe("octavia/project");
   });
 
+  it("deletes an owned repository through the GitHub-shaped API path", async () => {
+    const requests: Array<ApiRequest> = [];
+    const layer = layerFromHandler((input) =>
+      Effect.sync(() => {
+        requests.push(input);
+        return { status: 204, body: null };
+      }),
+    );
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* RepositoryClient;
+        yield* client.remove({
+          origin: "http://localhost:4000",
+          token,
+          owner: "octavia",
+          repo: "project",
+        });
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.method).toBe("DELETE");
+    expect(requests[0]?.path).toBe("/api/v3/repos/octavia/project");
+  });
+
   it("routes GitHub imports to the selected personal or organization namespace", async () => {
     const requests: Array<ApiRequest> = [];
     const layer = layerFromHandler((input) =>

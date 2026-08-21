@@ -130,6 +130,7 @@ openagents repo list
 openagents repo list --namespace acme --limit 50
 openagents repo view acme/my-project
 openagents repo clone acme/my-project
+openagents repo delete acme/my-project --yes
 ```
 
 Your OpenAgents namespace is your GitHub user or organization namespace. You
@@ -145,6 +146,12 @@ current state and a five-second heartbeat to standard error.
 `repo view` and `repo clone` accept `-R, --repo <owner>/<name>`. When you omit a
 repository, the CLI infers it only from an exact `/<owner>/<repo>.git` URL
 on the selected OpenAgents API origin.
+
+`repo delete` permanently deletes a repository you own, including its Git
+history, issues, projects, and import records. It accepts an explicit
+`owner/name` or the same `-R, --repo` and remote inference as `repo view`.
+You must pass `--yes` so an agent or script cannot delete a repository by
+accident.
 
 `repo import` takes a GitHub `owner/name`, imports into that same GitHub user or
 organization namespace, records the accepted branch and tag snapshot, and

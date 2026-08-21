@@ -101,6 +101,7 @@ export interface RepositoryClientInterface {
   readonly cloneInfo: (
     input: AuthenticatedApi & RepositoryTarget,
   ) => Effect.Effect<CloneRepositoryResult, CliError>;
+  readonly remove: (input: AuthenticatedApi & RepositoryTarget) => Effect.Effect<void, CliError>;
   readonly getImport: (
     input: AuthenticatedApi & { readonly importId: string },
   ) => Effect.Effect<RepositoryImport, CliError>;
@@ -194,7 +195,7 @@ export const repositoryClientLayer = Layer.effect(
     const request = Effect.fn("RepositoryClient.request")(function* (
       operation: string,
       input: AuthenticatedApi & {
-        readonly method: "GET" | "POST";
+        readonly method: "DELETE" | "GET" | "POST";
         readonly path: string;
         readonly body?: unknown;
         readonly headers?: Readonly<Record<string, string>>;
@@ -401,6 +402,19 @@ export const repositoryClientLayer = Layer.effect(
       return yield* decode("view repository", RepositoryResponse, value);
     });
 
+    const remove = Effect.fn("RepositoryClient.remove")(function* (
+      input: AuthenticatedApi & RepositoryTarget,
+    ) {
+      const owner = yield* validateOwner(input.owner);
+      const repo = yield* validateRepositoryName(input.repo);
+      yield* request("delete repository", {
+        ...input,
+        method: "DELETE",
+        path: `/api/v3/repos/${encoded(owner)}/${encoded(repo)}`,
+        acceptedStatuses: [204],
+      });
+    });
+
     const getImportStatus = Effect.fn("RepositoryClient.getImportStatus")(function* (
       input: AuthenticatedApi & { readonly importId: string },
     ) {
@@ -573,6 +587,7 @@ export const repositoryClientLayer = Layer.effect(
       authenticatedUser,
       list,
       view,
+      remove,
       cloneInfo,
       getImport,
     });
