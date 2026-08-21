@@ -139,6 +139,7 @@ describe("CLI command graph", () => {
 
   it("defaults import to the matching GitHub user or organization namespace", async () => {
     const owners: Array<string | undefined> = [];
+    const visibilities: Array<boolean | undefined> = [];
     const repositoryLayer = Layer.succeed(
       RepositoryClient,
       RepositoryClient.of({
@@ -156,6 +157,7 @@ describe("CLI command graph", () => {
         import: (input) =>
           Effect.sync(() => {
             owners.push(input.owner);
+            visibilities.push(input.private);
             return { repository, repositoryImport };
           }),
         list: () => Effect.succeed({ repositories: [], nextCursor: null }),
@@ -205,6 +207,7 @@ describe("CLI command graph", () => {
     );
 
     expect(owners).toEqual([undefined, "acme"]);
+    expect(visibilities).toEqual([undefined, undefined]);
   });
 
   it("supports token stdin without opening a browser", async () => {

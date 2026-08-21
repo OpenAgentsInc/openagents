@@ -16,7 +16,7 @@ import { SecretInput } from "./secret-input.js";
 import { findToken, resolveApiEndpoint, resolveApiSession } from "./session.js";
 import { TerminalSession } from "./terminal-session.js";
 
-export const VERSION = "0.1.6";
+export const VERSION = "0.1.7";
 
 const profileFlag = Flag.choice("profile", ["production", "staging", "local"]).pipe(
   Flag.withSchema(Profile),
@@ -55,6 +55,18 @@ const privateVisibility = Effect.fn("Cli.privateVisibility")(function* (
     return yield* new InputError({ message: "Use either --public or --private, not both." });
   }
   return !isPublic;
+});
+
+const importVisibility = Effect.fn("Cli.importVisibility")(function* (
+  isPublic: boolean,
+  isPrivate: boolean,
+) {
+  if (isPublic && isPrivate) {
+    return yield* new InputError({ message: "Use either --public or --private, not both." });
+  }
+  if (isPublic) return false;
+  if (isPrivate) return true;
+  return undefined;
 });
 
 const repositoryHuman = (repository: Repository): ReadonlyArray<string> => [
@@ -408,7 +420,7 @@ const descriptionFlag = Flag.string("description").pipe(
 );
 const publicFlag = Flag.boolean("public").pipe(Flag.withDescription("Create a public repository"));
 const privateFlag = Flag.boolean("private").pipe(
-  Flag.withDescription("Create a private repository (the default)"),
+  Flag.withDescription("Create a private repository"),
 );
 const defaultBranchFlag = Flag.string("default-branch").pipe(
   Flag.withDefault("main"),
@@ -561,7 +573,7 @@ const repoImportCommand = Command.make(
       const session = yield* resolveApiSession(endpointOverrides(flags));
       const repositories = yield* RepositoryClient;
       const output = yield* Output;
-      const visibility = yield* privateVisibility(isPublic, isPrivate);
+      const visibility = yield* importVisibility(isPublic, isPrivate);
       const sourceTarget = yield* parseRepositoryTarget(source);
       const destination = Option.isSome(namespace) ? namespace.value : sourceTarget.owner;
       if (destination.toLowerCase() !== sourceTarget.owner.toLowerCase()) {
@@ -590,12 +602,12 @@ const repoImportCommand = Command.make(
         origin: session.endpoint.origin,
         token: session.token,
         source: `${sourceTarget.owner}/${sourceTarget.repo}`,
-        private: visibility,
         waitTimeoutMs: waitTimeout * 1_000,
         onProgress: ({ state, attemptCount, elapsedMs }) =>
           Console.error(
             `Repository import: ${state} (shallow snapshot, attempt ${attemptCount}, ${Math.floor(elapsedMs / 1_000)}s elapsed).`,
           ),
+        ...(visibility === undefined ? {} : { private: visibility }),
         ...(Option.isNone(name) ? {} : { name: name.value }),
         ...(personal ? {} : { owner: destination }),
       });

@@ -133,6 +133,9 @@ openagents repo clone acme/my-project
 openagents repo delete acme/my-project --yes
 ```
 
+Without `--public` or `--private`, an import keeps the source repository's GitHub
+visibility.
+
 Your OpenAgents namespace is your GitHub user or organization namespace. You
 sign in with GitHub, and organization creation requires an active GitHub
 membership that can create repositories.

@@ -54,7 +54,7 @@ export interface ImportRepositoryInput extends AuthenticatedApi {
   readonly owner?: string;
   readonly source: string;
   readonly name?: string;
-  readonly private: boolean;
+  readonly private?: boolean;
   readonly waitTimeoutMs: number;
   readonly pollIntervalMs?: number;
   readonly idempotencyKey?: string;
@@ -516,7 +516,7 @@ export const repositoryClientLayer = Layer.effect(
       const idempotencyKey = input.idempotencyKey ?? globalThis.crypto.randomUUID();
       const body = {
         source: { provider: "github", repository: `${source.owner}/${source.repo}` },
-        private: input.private,
+        ...(input.private === undefined ? {} : { private: input.private }),
         ...(name === undefined ? {} : { name }),
       };
       const path =

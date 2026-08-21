@@ -308,7 +308,6 @@ describe("repository client", () => {
           origin: "http://localhost:4000",
           token,
           source: "octavia/project",
-          private: true,
           waitTimeoutMs: 0,
         });
         yield* client.import({
@@ -325,6 +324,13 @@ describe("repository client", () => {
       "/api/v3/user/repos/imports",
       "/api/v3/orgs/acme/repos/imports",
     ]);
+    expect(requests[0]?.body).toEqual({
+      source: { provider: "github", repository: "octavia/project" },
+    });
+    expect(requests[1]?.body).toEqual({
+      source: { provider: "github", repository: "acme/project" },
+      private: true,
+    });
   });
 
   it("polls a one-time GitHub import to completion with TestClock", async () => {
