@@ -54,6 +54,10 @@ export interface ImportRepositoryInput extends AuthenticatedApi {
   readonly waitTimeoutMs: number;
   readonly pollIntervalMs?: number;
   readonly idempotencyKey?: string;
+  readonly onProgress?: (progress: {
+    readonly state: RepositoryImport["state"];
+    readonly attemptCount: number;
+  }) => Effect.Effect<void>;
 }
 
 export interface ImportRepositoryResult {
@@ -391,10 +395,26 @@ export const repositoryClientLayer = Layer.effect(
         readonly importId: string;
         readonly timeoutMs: number;
         readonly pollIntervalMs: number;
+        readonly onProgress?: ImportRepositoryInput["onProgress"];
       },
     ) {
+      let lastProgress: string | undefined;
+
+      const reportProgress = (repositoryImport: RepositoryImport) => {
+        const progress = `${repositoryImport.state}:${repositoryImport.attempt_count}`;
+
+        if (input.onProgress === undefined || progress === lastProgress) return Effect.void;
+
+        lastProgress = progress;
+        return input.onProgress({
+          state: repositoryImport.state,
+          attemptCount: repositoryImport.attempt_count,
+        });
+      };
+
       const poll: Effect.Effect<RepositoryImportStatusResponse, CliError | ImportPending> =
         getImportStatus(input).pipe(
+          Effect.tap((response) => reportProgress(response.import)),
           Effect.flatMap(
             (
               response,
@@ -471,6 +491,7 @@ export const repositoryClientLayer = Layer.effect(
         importId: accepted.import.id,
         timeoutMs: input.waitTimeoutMs,
         pollIntervalMs: input.pollIntervalMs ?? 1_000,
+        ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
       });
       return { repository: completed.repository, repositoryImport: completed.import };
     });

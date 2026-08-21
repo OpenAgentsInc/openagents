@@ -119,6 +119,11 @@ organization namespace, records the accepted branch and tag snapshot, and
 copies it once. OpenAgents becomes the destination source of truth. Later
 GitHub changes do not sync in either direction.
 
+While the command waits, it writes import state transitions and attempt counts
+to standard error. The server streams large Git bundles through durable
+storage without retaining the complete bundle in application memory. Use
+`--wait-timeout 0` to return after acceptance; the server import continues.
+
 Add `--json` before a subcommand to return machine-readable output. Add
 `--no-color`, or set `NO_COLOR`, to disable ANSI output. The clone command
 invokes `git` with an argument array and never puts a token in a URL or process

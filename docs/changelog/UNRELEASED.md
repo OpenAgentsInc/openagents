@@ -19,6 +19,10 @@ approval URL and user code, waits for the user to approve the request in any
 browser, stores the issued OpenAgents token, and continues. Interactive use
 still opens the browser automatically.
 
+Repository imports also report state transitions and attempt counts to
+standard error while the CLI waits. Machine-readable JSON remains isolated on
+standard output.
+
 ## Repository imports ship in CLI 0.1.0
 
 - issues: none (direct owner request)

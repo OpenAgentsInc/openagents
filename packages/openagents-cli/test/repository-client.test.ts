@@ -253,6 +253,7 @@ describe("repository client", () => {
   });
 
   it("polls a one-time GitHub import to completion with TestClock", async () => {
+    const progress: Array<string> = [];
     const program = Effect.gen(function* () {
       const calls = yield* Ref.make(0);
       const transport = ApiTransport.of({
@@ -289,6 +290,10 @@ describe("repository client", () => {
           private: true,
           waitTimeoutMs: 10_000,
           pollIntervalMs: 1_000,
+          onProgress: ({ state, attemptCount }) =>
+            Effect.sync(() => {
+              progress.push(`${state}:${attemptCount}`);
+            }),
         });
       }).pipe(Effect.provide(clientLayer), Effect.forkChild);
 
@@ -300,6 +305,7 @@ describe("repository client", () => {
     expect(result.repository.lifecycle_state).toBe("ready");
     expect(result.repositoryImport.state).toBe("completed");
     expect(result.repositoryImport.source_head_sha).toBe("b".repeat(40));
+    expect(progress).toEqual(["running:1", "completed:1"]);
   });
 
   it("returns the bounded server error when an import fails", async () => {

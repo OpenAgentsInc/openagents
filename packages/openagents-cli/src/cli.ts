@@ -469,6 +469,8 @@ const repoImportCommand = Command.make(
         source: `${sourceTarget.owner}/${sourceTarget.repo}`,
         private: visibility,
         waitTimeoutMs: waitTimeout * 1_000,
+        onProgress: ({ state, attemptCount }) =>
+          Console.error(`Repository import state: ${state} (attempt ${attemptCount}).`),
         ...(Option.isNone(name) ? {} : { name: name.value }),
         ...(personal ? {} : { owner: destination }),
       });
