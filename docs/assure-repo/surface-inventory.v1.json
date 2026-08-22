@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:6cf58cd1647206fbeb4007ace14700724f047cc9f587fd4a09f8ccb504e631d1",
+  "sourceDigest": "sha256:26d9255762e90f6a3fd00da60fe5a8922d043a4689a9b42a0f80c101bafa2b68",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -1868,6 +1868,31 @@
       }
     },
     {
+      "id": "package:@openagentsinc/cli",
+      "kind": "package",
+      "owningPath": "packages/openagents-cli",
+      "title": "@openagentsinc/cli",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/openagents-cli (15 tracked test files)"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_cli.agent_device_authorization.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_cli.api_profiles.v1"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
+      }
+    },
+    {
       "id": "package:@openagentsinc/client-command-outbox",
       "kind": "package",
       "owningPath": "packages/client-command-outbox",
@@ -3360,17 +3385,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 179,
+    "totalSurfaces": 180,
     "byKind": {
       "app": 17,
       "crate": 7,
       "document": 52,
-      "package": 96,
+      "package": 97,
       "public-endpoint": 2,
       "release-pipeline": 4,
       "worker": 1
     },
-    "withOracle": 171,
+    "withOracle": 172,
     "unverified": 8,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3378,7 +3403,7 @@
       "reference-only": 1
     },
     "byObligationState": {
-      "designed": 135,
+      "designed": 136,
       "inconclusive": 4,
       "mapped": 36,
       "out-of-scope": 4
