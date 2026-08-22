@@ -24,6 +24,8 @@ export * from "./chat-mutators.js";
 export * from "./compaction.js";
 export * from "./compare-soak-metrics.js";
 export * from "./coding-session-projection.js";
+export * from "./cloud-computer-capacity.js";
+export * from "./cloud-computer-capacity-store.js";
 export * from "./cvr-service.js";
 export * from "./errors.js";
 export * from "./fleet-intents.js";
