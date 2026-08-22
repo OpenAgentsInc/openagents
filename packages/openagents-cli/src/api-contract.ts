@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 
 export const REPOSITORY_CONTRACT_NAME = "openagents.repositories.v1";
 export const REPOSITORY_CONTRACT_VERSION = 1;
@@ -96,6 +96,29 @@ export const ApiErrorResponse = Schema.Struct({
   error: Schema.optionalKey(Schema.String),
   request_id: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
+
+export interface ApiErrorDetails {
+  readonly message?: string;
+  readonly code?: string;
+  readonly requestId?: string;
+}
+
+/**
+ * Reads the optional error envelope the API returns with a failed request. The
+ * caller supplies its own fallback message, because a passthrough request and a
+ * typed repository request describe a failure differently.
+ */
+export const apiErrorDetails = (body: unknown): ApiErrorDetails => {
+  const decoded = Schema.decodeUnknownOption(ApiErrorResponse)(body);
+  if (Option.isNone(decoded)) return {};
+  const value = decoded.value;
+  const message = value.message ?? value.error;
+  return {
+    ...(typeof message === "string" ? { message } : {}),
+    ...(typeof value.code === "string" ? { code: value.code } : {}),
+    ...(typeof value.request_id === "string" ? { requestId: value.request_id } : {}),
+  };
+};
 
 export const repositoryFromAcceptedImport = (
   response: RepositoryImportAcceptedResponse,

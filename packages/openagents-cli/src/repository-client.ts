@@ -2,7 +2,7 @@ import { Clock, Duration, Effect, Layer, Option, Redacted, Schedule, Schema } fr
 import * as Context from "effect/Context";
 
 import {
-  ApiErrorResponse,
+  apiErrorDetails,
   AuthenticatedUser,
   Repository,
   RepositoryImport,
@@ -158,14 +158,10 @@ const errorMessage = (
   body: unknown,
   status: number,
 ): { message: string; code?: string; requestId?: string } => {
-  const decoded = Schema.decodeUnknownOption(ApiErrorResponse)(body);
-  if (Option.isNone(decoded)) return { message: `The API returned HTTP ${status}.` };
-  const value = decoded.value;
-  const message = value.message ?? value.error ?? `The API returned HTTP ${status}.`;
+  const details = apiErrorDetails(body);
   return {
-    message,
-    ...(typeof value.code === "string" ? { code: value.code } : {}),
-    ...(typeof value.request_id === "string" ? { requestId: value.request_id } : {}),
+    ...details,
+    message: details.message ?? `The API returned HTTP ${status}.`,
   };
 };
 

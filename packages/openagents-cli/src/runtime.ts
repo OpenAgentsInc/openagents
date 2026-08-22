@@ -12,6 +12,7 @@ import { gitRunnerLayer } from "./git-runner.js";
 import { outputLayer } from "./output.js";
 import { persistedConfigurationLayer } from "./persisted-configuration.js";
 import { repositoryClientLayer } from "./repository-client.js";
+import { requestBodyInputLayer } from "./request-body-input.js";
 import { secretInputLayer } from "./secret-input.js";
 import { terminalSessionNodeLayer } from "./terminal-session.js";
 
@@ -28,13 +29,17 @@ const pendingAuthorizationLayer = pendingDeviceAuthorizationStoreLayer.pipe(
 const browserLayer = browserLauncherLayer.pipe(Layer.provide(NodeServices.layer));
 const persistedLayer = persistedConfigurationLayer.pipe(Layer.provide(environmentLayer));
 
-const nodeDependentServices = Layer.mergeAll(outputLayer, secretInputLayer, gitRunnerLayer).pipe(
-  Layer.provide(NodeServices.layer),
-);
+const nodeDependentServices = Layer.mergeAll(
+  outputLayer,
+  secretInputLayer,
+  requestBodyInputLayer,
+  gitRunnerLayer,
+).pipe(Layer.provide(NodeServices.layer));
 
 export const runtimeLayer = Layer.mergeAll(
   NodeServices.layer,
   environmentLayer,
+  transportLayer,
   persistedLayer,
   terminalSessionNodeLayer,
   credentialsLayer,

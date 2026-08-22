@@ -119,6 +119,53 @@ Run `openagents auth status` to inspect the selected endpoint and credential
 source. Run `openagents auth logout` to remove the stored credential for that
 exact API origin.
 
+## Call any endpoint
+
+`openagents api` sends an authenticated request to any OpenAgents API route and
+writes the response body to standard output as JSON. Use it for the routes that
+have no dedicated command yet, and for scripting.
+
+```sh
+openagents api repos/OWNER/REPO/issues
+openagents api -X POST -f title="It fails on Tuesdays" -f body="Steps to reproduce" repos/OWNER/REPO/issues
+openagents api -X PATCH -f state=closed repos/OWNER/REPO/issues/41
+openagents api repos/OWNER/REPO/issues | jq '.[].title'
+```
+
+A path without a leading slash resolves under the API base `/api/v3/`, so
+`repos/OWNER/REPO/issues` and `/api/v3/repos/OWNER/REPO/issues` name the same
+route. An absolute path must start with `/api/`, and a complete URL must match
+the API origin you selected. The CLI refuses a path that would leave that
+origin.
+
+`-X, --method` accepts `GET`, `POST`, `PATCH`, `PUT`, and `DELETE`. Without it,
+a request that carries a body is a `POST` and a request without one is a `GET`.
+
+`-f, --field key=value` is repeatable and builds a JSON object. Every value is
+sent as a JSON string, and the CLI never guesses the type a route wants. For
+numbers, booleans, arrays, and nested objects, pass the whole body with
+`--input`:
+
+```sh
+openagents api --input body.json repos/OWNER/REPO/issues
+echo '{"labels":["bug"],"milestone":3}' | openagents api -X PATCH --input - repos/OWNER/REPO/issues/41
+```
+
+`--input` reads a file, or standard input when you pass `-`. `--field` and
+`--input` are mutually exclusive, and the CLI refuses a command that uses both.
+
+`-H, --header 'Name: value'` is repeatable. The CLI sets the authorization
+header from your OpenAgents session, so a `--header authorization` is refused.
+
+Standard output carries only the body of a successful response. A non-2xx
+status is a failed command: the CLI writes the response body and the request id
+to standard error and exits non-zero, with the exit code every other command
+uses for that status. A network failure exits with the transport status
+instead, so a script can tell a refused request from an unreachable server.
+
+`--profile`, `--api-url`, and `--json` work the same way they do for every other
+command. The body is JSON in both output modes; `--json` writes it on one line.
+
 ## Manage repositories
 
 ```sh

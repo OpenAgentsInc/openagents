@@ -1,4 +1,5 @@
 export * from "./api-contract.js";
+export * from "./api-passthrough.js";
 export * from "./api-transport.js";
 export * from "./cli.js";
 export * from "./credential-store.js";
@@ -9,5 +10,6 @@ export * from "./errors.js";
 export * from "./git-runner.js";
 export * from "./output.js";
 export * from "./repository-client.js";
+export * from "./request-body-input.js";
 export * from "./secret-input.js";
 export * from "./session.js";

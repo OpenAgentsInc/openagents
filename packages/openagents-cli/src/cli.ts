@@ -1,9 +1,20 @@
 import { Clock, Console, Effect, Option, Redacted } from "effect";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 
-import type { Repository } from "./api-contract.js";
+import { apiErrorDetails, type Repository } from "./api-contract.js";
+import {
+  API_BASE_PATH,
+  PASSTHROUGH_METHODS,
+  decodeRequestBody,
+  parseRequestFields,
+  parseRequestHeaders,
+  resolveApiPath,
+  resolveRequestMethod,
+  successfulStatus,
+} from "./api-passthrough.js";
+import { ApiTransport } from "./api-transport.js";
 import { BrowserLauncher } from "./browser-launcher.js";
-import { InputError } from "./errors.js";
+import { ApiError, InputError } from "./errors.js";
 import { CredentialStore } from "./credential-store.js";
 import { PendingDeviceAuthorizationStore } from "./device-authorization-store.js";
 import { DeviceClient } from "./device-client.js";
@@ -12,6 +23,7 @@ import { GitRunner } from "./git-runner.js";
 import { runGitCredentialHelper } from "./git-credential-helper.js";
 import { Output, type OutputMode } from "./output.js";
 import { parseRepositoryTarget, RepositoryClient } from "./repository-client.js";
+import { RequestBodyInput } from "./request-body-input.js";
 import { SecretInput } from "./secret-input.js";
 import { findToken, resolveApiEndpoint, resolveApiSession } from "./session.js";
 import { TerminalSession } from "./terminal-session.js";
@@ -796,8 +808,105 @@ const repoCommand = Command.make("repo").pipe(
   ]),
 );
 
+const apiPathArgument = Argument.string("path").pipe(
+  Argument.withDescription(
+    `API path. A path without a leading slash resolves under ${API_BASE_PATH}, so repos/OWNER/REPO/issues and ${API_BASE_PATH}repos/OWNER/REPO/issues name the same route`,
+  ),
+);
+const apiMethodFlag = Flag.choice("method", PASSTHROUGH_METHODS).pipe(
+  Flag.withAlias("X"),
+  Flag.optional,
+  Flag.withDescription("Set the HTTP method (defaults to GET, or POST when a body is supplied)"),
+);
+const apiFieldFlag = Flag.string("field").pipe(
+  Flag.withAlias("f"),
+  Flag.atLeast(0),
+  Flag.withDescription(
+    "Add a body field as key=value, repeatable; values are sent as JSON strings",
+  ),
+);
+const apiHeaderFlag = Flag.string("header").pipe(
+  Flag.withAlias("H"),
+  Flag.atLeast(0),
+  Flag.withDescription("Add a request header as 'Name: value', repeatable"),
+);
+const apiInputFlag = Flag.string("input").pipe(
+  Flag.optional,
+  Flag.withDescription("Read the whole JSON body from a file, or from - for standard input"),
+);
+
+const prettyJson = (value: unknown): string => JSON.stringify(value, null, 2) ?? "null";
+
+const apiCommand = Command.make(
+  "api",
+  {
+    path: apiPathArgument,
+    method: apiMethodFlag,
+    field: apiFieldFlag,
+    header: apiHeaderFlag,
+    input: apiInputFlag,
+  },
+  ({ field, header, input, method, path }) =>
+    Effect.gen(function* () {
+      if (field.length > 0 && Option.isSome(input)) {
+        return yield* new InputError({
+          message: "Use either --field or --input, not both.",
+        });
+      }
+      const flags = yield* rootCommand;
+      const headers = yield* parseRequestHeaders(header);
+      const fields = yield* parseRequestFields(field);
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const requestPath = yield* resolveApiPath(session.endpoint.origin, path);
+      const body = Option.isSome(input)
+        ? yield* decodeRequestBody(
+            yield* (yield* RequestBodyInput).read(input.value),
+            input.value === "-" ? "Standard input" : `The file ${input.value}`,
+          )
+        : field.length > 0
+          ? fields
+          : undefined;
+      const requestMethod = resolveRequestMethod(method, body !== undefined);
+
+      const transport = yield* ApiTransport;
+      const response = yield* transport.request({
+        origin: session.endpoint.origin,
+        method: requestMethod,
+        path: requestPath,
+        token: session.token,
+        ...(Object.keys(headers).length === 0 ? {} : { headers }),
+        ...(body === undefined ? {} : { body }),
+      });
+
+      const requestId = response.requestId ?? apiErrorDetails(response.body).requestId;
+      if (!successfulStatus(response.status)) {
+        if (response.body !== null) yield* Console.error(prettyJson(response.body));
+        if (requestId !== undefined) yield* Console.error(`Request id: ${requestId}`);
+        const details = apiErrorDetails(response.body);
+        const summary = `The API returned HTTP ${response.status} for ${requestMethod} ${requestPath}.`;
+        return yield* new ApiError({
+          operation: "api",
+          status: response.status,
+          ...(details.code === undefined ? {} : { code: details.code }),
+          message: details.message === undefined ? summary : `${summary} ${details.message}`,
+          ...(requestId === undefined ? {} : { requestId }),
+        });
+      }
+
+      const output = yield* Output;
+      yield* output.write(
+        { value: response.body, human: [prettyJson(response.body)] },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(
+  Command.withDescription(
+    `Send an authenticated request to any OpenAgents API route and write the response body as JSON. A path without a leading slash resolves under ${API_BASE_PATH}; an absolute path must start with /api/ and must stay on the selected API origin. Use --field for string body fields and --input for any other JSON. The two are mutually exclusive`,
+  ),
+);
+
 export const openagentsCommand = rootCommand.pipe(
-  Command.withSubcommands([authCommand, repoCommand]),
+  Command.withSubcommands([apiCommand, authCommand, repoCommand]),
 );
 
 export const runCliWith = Command.runWith(openagentsCommand, { version: VERSION });
