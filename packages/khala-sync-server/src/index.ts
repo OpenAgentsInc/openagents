@@ -26,6 +26,21 @@ export * from "./compare-soak-metrics.js";
 export * from "./coding-session-projection.js";
 export * from "./cloud-computer-capacity.js";
 export * from "./cloud-computer-capacity-store.js";
+export * from "./cloud-computer-command.js";
+export * from "./cloud-computer-command-artifact.js";
+export * from "./cloud-computer-command-cursor.js";
+export * from "./cloud-computer-command-dispatch.js";
+export * from "./cloud-computer-command-dispatch-store.js";
+export * from "./cloud-computer-command-postgres-journal.js";
+export * from "./cloud-computer-command-recovery.js";
+export * from "./cloud-computer-command-stream.js";
+export {
+  CloudComputerCommandDispatchClaim,
+  CloudComputerCommandStoreError,
+  PostgresCloudComputerCommandStore,
+  type CloudComputerCommand as StoredCloudComputerCommand,
+  type CloudComputerCommandStatus,
+} from "./cloud-computer-command-store.js";
 export * from "./cloud-computer-checkpoint.js";
 export * from "./cloud-computer-checkpoint-crypto.js";
 export * from "./cloud-computer-checkpoint-gcs.js";

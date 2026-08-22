@@ -40,6 +40,10 @@ OpenAgents Cloud infrastructure lives **in this monorepo**. The private
   defines encrypted GCS checkpoints, durable resumable operations, local
   copy-on-write restore, generation-fenced commits, retention, metering, and
   verifiable deletion.
+- [`openagents.cloud_computer_command.v1`](./contracts/openagents.cloud_computer_command.v1.md)
+  defines recoverable command dispatch, runtime acknowledgement and
+  reattachment, dense event cursors, bounded output retention, exact
+  cancellation, and durable terminal evidence.
 - [Managed agent sandboxes accepted plan](../sol/2026-07-19-managed-agent-sandboxes-accepted-plan.md)
   and [ProductSpec](../../specs/openagents/managed-agent-sandboxes.product-spec.md)
   — active #9023 program for one owner-scoped GCP `SandboxResource`, a
