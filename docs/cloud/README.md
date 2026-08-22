@@ -27,6 +27,11 @@ OpenAgents Cloud infrastructure lives **in this monorepo**. The private
 - [Invariants](./INVARIANTS.md)
 - [Architecture](./ARCHITECTURE.md)
 - Contracts under `docs/cloud/contracts/`
+- [`openagents.cloud_computer.v1`](./contracts/openagents.cloud_computer.v1.md)
+  defines durable logical computers, temporary runtime leases, cold inventory,
+  generation fencing, exact mutation retries, public runtime classes, provider
+  capabilities, and public-safe receipts. Issues 4 through 11 own its capacity,
+  checkpoint, execution, provider, integration, and qualification layers.
 - [Managed agent sandboxes accepted plan](../sol/2026-07-19-managed-agent-sandboxes-accepted-plan.md)
   and [ProductSpec](../../specs/openagents/managed-agent-sandboxes.product-spec.md)
   — active #9023 program for one owner-scoped GCP `SandboxResource`, a

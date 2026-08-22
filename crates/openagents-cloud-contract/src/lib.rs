@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+pub mod cloud_computer_v1;
+
 pub const CLOUD_NODE_CONTRACT_VERSION: &str = "openagents.cloud_node.v1";
 pub const ARTANIS_BOOTSTRAP_ASSIGNMENT_VERSION: &str = "openagents.artanis_bootstrap_assignment.v1";
 pub const CODEX_AUTH_GRANT_VERSION: &str = "openagents.codex_auth_grant.v1";

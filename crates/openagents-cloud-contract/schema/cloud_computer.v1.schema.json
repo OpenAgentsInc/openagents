@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/schemas/cloud_computer.v1.schema.json",
+  "title": "OpenAgents cloud computer v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "computer_ref",
+    "scope",
+    "kind",
+    "requested_runtime_class",
+    "generation",
+    "version",
+    "state",
+    "active_lease_ref",
+    "latest_checkpoint_ref",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema": { "const": "openagents.cloud_computer.v1" },
+    "computer_ref": { "$ref": "#/$defs/ref" },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner_ref",
+        "tenant_ref",
+        "conversation_or_program_ref",
+        "work_unit_ref",
+        "runtime_profile_ref",
+        "authority_snapshot_digest",
+        "budget_snapshot_digest",
+        "capability_refs"
+      ],
+      "properties": {
+        "owner_ref": { "$ref": "#/$defs/ref" },
+        "tenant_ref": { "$ref": "#/$defs/ref" },
+        "conversation_or_program_ref": { "$ref": "#/$defs/ref" },
+        "work_unit_ref": { "$ref": "#/$defs/ref" },
+        "runtime_profile_ref": { "$ref": "#/$defs/ref" },
+        "authority_snapshot_digest": { "$ref": "#/$defs/digest" },
+        "budget_snapshot_digest": { "$ref": "#/$defs/digest" },
+        "capability_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ref" },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "kind": { "enum": ["interactive_retained", "one_shot_batch"] },
+    "requested_runtime_class": { "enum": ["standard", "strong", "batch"] },
+    "generation": { "type": "integer", "minimum": 1 },
+    "version": { "type": "integer", "minimum": 1 },
+    "state": {
+      "enum": ["cold", "queued", "starting", "active", "stopping", "failed", "destroyed"]
+    },
+    "active_lease_ref": {
+      "oneOf": [{ "$ref": "#/$defs/ref" }, { "type": "null" }]
+    },
+    "latest_checkpoint_ref": {
+      "oneOf": [{ "$ref": "#/$defs/ref" }, { "type": "null" }]
+    },
+    "created_at": { "$ref": "#/$defs/timestamp" },
+    "updated_at": { "$ref": "#/$defs/timestamp" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "interactive_retained" } } },
+      "then": { "properties": { "requested_runtime_class": { "enum": ["standard", "strong"] } } },
+      "else": { "properties": { "requested_runtime_class": { "const": "batch" } } }
+    },
+    {
+      "if": { "properties": { "state": { "enum": ["cold", "queued", "destroyed"] } } },
+      "then": { "properties": { "active_lease_ref": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "state": { "enum": ["active", "stopping"] } } },
+      "then": { "properties": { "active_lease_ref": { "$ref": "#/$defs/ref" } } }
+    }
+  ],
+  "$defs": {
+    "ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^(owner|tenant|conversation|program|work|profile|capability|computer|command|key|receipt|lease|checkpoint|event|execution|actor|adapter)\\.[a-z0-9][a-z0-9._-]*$",
+      "not": { "pattern": "credential|secret|token|private_path|guest_address" }
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}
