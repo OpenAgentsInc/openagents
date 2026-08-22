@@ -31,6 +31,19 @@ change, update its linked runbook **and** fix the pointer here.
 - **Deploy/publish only from a clean `origin/main`.** Parallel agent sessions leave
   uncommitted WIP in the shared working tree — never publish from it. Use an isolated
   `git worktree` off `origin/main` when the shared tree is dirty.
+- **Pack and publish with `pnpm`, never `npm publish`.** 100 `package.json`
+  files in this workspace declare dependencies as `"catalog:"`. pnpm resolves
+  those to real versions while packing; npm publishes the literal string, and
+  the package installs nowhere — `EUNSUPPORTEDPROTOCOL: Unsupported URL Type
+  "catalog:"`. It cannot be fixed in place, because npm refuses unpublishing
+  outside its window; the only remedy is a new version plus `npm deprecate` on
+  the broken one (`@openagentsinc/cli@0.2.0`, 2026-08-21). Where a runbook says
+  `npm publish <tgz>`, the tarball must come from `pnpm pack`, which does the
+  same resolution.
+- **Prove a publish by installing it.** Run `npx --yes <pkg>@<version> --help`
+  in an empty directory and check `npm view <pkg>@<version> dependencies` for a
+  surviving `catalog:`. A publish command's own output says nothing about
+  whether the tarball works.
 - **Release candidates are pre-releases.** Stable `latest` stays on the last stable
   (e.g. npm `latest: 0.2.5`). RCs go to the npm `rc` dist-tag and a GitHub
   **prerelease**. Never let an RC take the `latest`/"Latest" badge.

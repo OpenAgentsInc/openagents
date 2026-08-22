@@ -820,6 +820,17 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   truth), the one-line recipe for each, the GitHub release-tag convention, and
   where the signing secrets live (`~/work/.secrets/` + GCP Secret Manager,
   project `openagentsgemini`).
+- **Publish npm packages with `pnpm publish`, never `npm publish`.** This is a
+  pnpm workspace and 100 of its `package.json` files declare dependencies as
+  `"catalog:"`. pnpm resolves those to real versions as it packs; npm does not,
+  and publishes the literal string. The tarball reaches the registry looking
+  healthy and fails for every consumer at install time with
+  `EUNSUPPORTEDPROTOCOL: Unsupported URL Type "catalog:"`. `@openagentsinc/cli@0.2.0`
+  shipped that way on 2026-08-21, was unusable, and could only be deprecated —
+  npm does not allow unpublishing after the window. Verify a publish by
+  installing it from the registry (`npx --yes <pkg>@<version> --help` in an
+  empty directory), not by reading the publish output, and check
+  `npm view <pkg>@<version> dependencies` for a surviving `catalog:`.
 - **Google Cloud Authentication (`gcloud` on Chris's dev machine):** Do NOT attempt interactive `gcloud auth login` or user OAuth. Prefix all `gcloud` commands and deployment scripts with `CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config` (or `/Users/christopherdavid/work/.secrets/gcloud-sa-config`). This uses the pre-authenticated workspace service account (`oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com`).
   Example:
   `CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config bash apps/openagents.com/workers/api/scripts/deploy-cloudrun.sh production`
