@@ -36,6 +36,10 @@ OpenAgents Cloud infrastructure lives **in this monorepo**. The private
   defines durable serializable admission, hierarchical resource budgets,
   protected cleanup headroom, fresh quota observations, weighted fair queuing,
   bounded starts, and generation-safe reconciliation.
+- [`openagents.cloud_computer_checkpoint.v1`](./contracts/openagents.cloud_computer_checkpoint.v1.md)
+  defines encrypted GCS checkpoints, durable resumable operations, local
+  copy-on-write restore, generation-fenced commits, retention, metering, and
+  verifiable deletion.
 - [Managed agent sandboxes accepted plan](../sol/2026-07-19-managed-agent-sandboxes-accepted-plan.md)
   and [ProductSpec](../../specs/openagents/managed-agent-sandboxes.product-spec.md)
   — active #9023 program for one owner-scoped GCP `SandboxResource`, a
