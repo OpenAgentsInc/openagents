@@ -57,8 +57,12 @@ import { findToken, resolveApiEndpoint, resolveApiSession } from "./session.js";
 import { TerminalSession } from "./terminal-session.js";
 
 // The version lives in `package.json`; see `version.ts`.
-export { VERSION } from "./version.js";
-import { VERSION as CLI_VERSION } from "./version.js";
+import { VERSION } from "./version.js";
+
+// Re-exported because `main.ts` reads it from here, and imported above because
+// this module uses it too. A bare `export … from` would do only the first, and
+// every use in this file would be an unbound name.
+export { VERSION };
 
 const profileFlag = Flag.choice("profile", ["production", "staging", "local"]).pipe(
   Flag.withSchema(Profile),
@@ -1696,4 +1700,4 @@ export const openagentsCommand = rootCommand.pipe(
   ]),
 );
 
-export const runCliWith = Command.runWith(openagentsCommand, { version: CLI_VERSION });
+export const runCliWith = Command.runWith(openagentsCommand, { version: VERSION });
