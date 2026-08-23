@@ -34,7 +34,11 @@ import {
   projectSessionUpdateForConformance,
   projectStopReasonForConformance,
 } from "./projection.ts";
-import { acpReleaseEvidenceClass, validateAcpReleaseMatrix } from "./release.ts";
+import {
+  acpReleaseEvidenceClass,
+  evaluateAcpReleaseMatrixGate,
+  validateAcpReleaseMatrix,
+} from "./release.ts";
 import { assertSecretAbsent } from "./transcript.ts";
 import {
   CONTENT_BLOCK_FIXTURES,
@@ -844,9 +848,39 @@ describe("MCP custody, durable evidence, and deterministic faults", () => {
     const matrix = JSON.parse(
       readFileSync(resolve(import.meta.dirname, "../compatibility/release-matrix.json"), "utf8"),
     ) as Record<string, unknown>;
-    expect(validateAcpReleaseMatrix(matrix, { now: new Date("2026-07-17T13:00:00.000Z") })).toEqual(
-      { valid: true, errors: [] },
-    );
+    const freshValidation = validateAcpReleaseMatrix(matrix, {
+      now: new Date("2026-07-17T13:00:00.000Z"),
+    });
+    expect(freshValidation).toMatchObject({
+      valid: true,
+      errors: [],
+      expiry: { _tag: "Fresh", freshnessDays: 30 },
+    });
+    expect(evaluateAcpReleaseMatrixGate(freshValidation, "push")).toMatchObject({
+      valid: true,
+      errors: [],
+    });
+
+    const staleValidation = validateAcpReleaseMatrix(matrix, {
+      now: new Date("2026-08-23T17:47:57.447Z"),
+    });
+    expect(staleValidation).toMatchObject({
+      valid: true,
+      errors: [],
+      expiry: { _tag: "Expired", freshnessDays: 30 },
+    });
+    const stalePushGate = evaluateAcpReleaseMatrixGate(staleValidation, "push");
+    expect(stalePushGate).toMatchObject({
+      valid: true,
+      errors: [],
+      warning: expect.stringContaining("recorded at 2026-07-17T12:16:40Z"),
+    });
+    expect(stalePushGate.warning).toContain("freshness window is 30 days");
+    expect(stalePushGate.warning).toContain("Refresh requires a qualifying live release run");
+    expect(evaluateAcpReleaseMatrixGate(staleValidation, "release")).toMatchObject({
+      valid: false,
+      errors: [expect.stringContaining("Refresh requires a qualifying live release run")],
+    });
 
     const promoted = structuredClone(matrix) as {
       peers: Array<{
@@ -930,9 +964,18 @@ describe("MCP custody, durable evidence, and deterministic faults", () => {
 
     const futureEvidence = structuredClone(matrix) as { recordedAt: string };
     futureEvidence.recordedAt = "2026-07-17T16:00:00.000Z";
-    expect(
-      validateAcpReleaseMatrix(futureEvidence, { now: new Date("2026-07-16T16:00:00.000Z") }),
-    ).toMatchObject({ valid: false });
+    const futureValidation = validateAcpReleaseMatrix(futureEvidence, {
+      now: new Date("2026-07-16T16:00:00.000Z"),
+    });
+    expect(futureValidation).toMatchObject({
+      valid: false,
+      errors: ["matrix evidence timestamp is in the future"],
+    });
+    expect(futureValidation.expiry).toBeUndefined();
+    expect(evaluateAcpReleaseMatrixGate(futureValidation, "push")).toMatchObject({
+      valid: false,
+      errors: ["matrix evidence timestamp is in the future"],
+    });
 
     const unsupportedPromotion = structuredClone(matrix) as {
       peers: Array<{

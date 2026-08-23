@@ -37,7 +37,10 @@ describe("checked ACP release evidence compiler", () => {
     const stale = compileAcpReleaseEvidence(checkedReleaseMatrix, {
       now: new Date("2026-09-01T00:00:00.000Z"),
     });
-    expect(stale).toMatchObject({ _tag: "ReleaseEvidenceUnavailable" });
+    expect(stale).toMatchObject({
+      _tag: "ReleaseEvidenceUnavailable",
+      diagnostics: [expect.stringContaining("freshness window is 30 days")],
+    });
 
     const incomplete = structuredClone(checkedReleaseMatrix) as any;
     incomplete.peers[0].scenarios.find((scenario: any) => scenario.id === "initialize").result =

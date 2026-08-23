@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { validateAcpReleaseMatrix } from "../src/release.ts";
+import { evaluateAcpReleaseMatrixGate, validateAcpReleaseMatrix } from "../src/release.ts";
 import {
   validateAcpDesktopReleaseArtifact,
   validateAcpLiveReleaseArtifact,
@@ -12,6 +12,8 @@ import {
 const path = resolve(import.meta.dirname, "../compatibility/release-matrix.json");
 const matrix = JSON.parse(readFileSync(path, "utf8")) as unknown;
 const validation = validateAcpReleaseMatrix(matrix);
+const requireFreshness = process.argv.includes("--require-freshness");
+const gate = evaluateAcpReleaseMatrixGate(validation, requireFreshness ? "release" : "push");
 const liveDirectory = resolve(import.meta.dirname, "../compatibility/live");
 const liveArtifactErrors = readdirSync(liveDirectory)
   .filter((name) => name.startsWith("release-run-") && name.endsWith(".json"))
@@ -56,16 +58,19 @@ const missingEvidence =
     : [];
 const result = {
   valid:
-    validation.valid &&
+    gate.valid &&
     missingEvidence.length === 0 &&
     liveArtifactErrors.length === 0 &&
     desktopArtifactErrors.length === 0,
   errors: [
-    ...validation.errors,
+    ...gate.errors,
     ...missingEvidence.map((ref) => `missing evidence ref: ${ref}`),
     ...liveArtifactErrors,
     ...desktopArtifactErrors,
   ],
+  ...(validation.expiry === undefined ? {} : { expiry: validation.expiry }),
 };
+if (!requireFreshness && gate.warning !== undefined)
+  process.stderr.write(`WARNING: ${gate.warning}\n`);
 process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 if (!result.valid) process.exitCode = 1;

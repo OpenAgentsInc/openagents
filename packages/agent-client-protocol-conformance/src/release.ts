@@ -160,7 +160,58 @@ export type AcpReleaseMatrix = Readonly<{
 export type AcpReleaseMatrixValidation = Readonly<{
   valid: boolean;
   errors: ReadonlyArray<string>;
+  expiry?: AcpReleaseMatrixExpiry;
 }>;
+
+export type AcpReleaseMatrixExpiry =
+  | Readonly<{
+      _tag: "Fresh";
+      recordedAt: string;
+      freshnessDays: number;
+      expiresAt: string;
+      ageMs: number;
+    }>
+  | Readonly<{
+      _tag: "Expired";
+      recordedAt: string;
+      freshnessDays: number;
+      expiresAt: string;
+      ageMs: number;
+      overdueMs: number;
+    }>;
+
+export type AcpReleaseMatrixGate = "push" | "release";
+
+const millisecondsPerDay = 86_400_000;
+
+const formatDays = (milliseconds: number): string =>
+  `${(milliseconds / millisecondsPerDay).toFixed(1)} days`;
+
+export const describeAcpReleaseExpiry = (
+  expiry: Extract<AcpReleaseMatrixExpiry, { _tag: "Expired" }>,
+): string =>
+  `matrix evidence recorded at ${expiry.recordedAt} is ${formatDays(expiry.ageMs)} old; freshness window is ${expiry.freshnessDays} days and expired ${formatDays(expiry.overdueMs)} ago. Refresh requires a qualifying live release run, its candidate artifact, and a human-reviewed compatibility/release-matrix.json update.`;
+
+export const evaluateAcpReleaseMatrixGate = (
+  validation: AcpReleaseMatrixValidation,
+  gate: AcpReleaseMatrixGate,
+): Readonly<{
+  valid: boolean;
+  errors: ReadonlyArray<string>;
+  warning?: string;
+}> => {
+  const expiry = validation.expiry;
+  const warning = expiry?._tag === "Expired" ? describeAcpReleaseExpiry(expiry) : undefined;
+  const errors =
+    gate === "release" && warning !== undefined
+      ? [...validation.errors, warning]
+      : validation.errors;
+  return {
+    valid: errors.length === 0,
+    errors,
+    ...(gate === "push" && warning !== undefined ? { warning } : {}),
+  };
+};
 
 const object = (value: unknown): Record<string, unknown> | undefined =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -211,17 +262,38 @@ export const validateAcpReleaseMatrix = (
     !exclusions.includes("A2A")
   )
     errors.push("protocol exclusions must name Agent Communication Protocol and A2A");
-  const recordedAt = typeof matrix.recordedAt === "string" ? Date.parse(matrix.recordedAt) : NaN;
+  const now = options.now ?? new Date();
+  const nowMs = now.getTime();
+  const recordedAtValue = typeof matrix.recordedAt === "string" ? matrix.recordedAt : undefined;
+  const recordedAt = recordedAtValue === undefined ? NaN : Date.parse(recordedAtValue);
   const freshnessDays =
     typeof matrix.freshnessDays === "number" && Number.isFinite(matrix.freshnessDays)
       ? matrix.freshnessDays
       : NaN;
+  let expiry: AcpReleaseMatrixExpiry | undefined;
   if (!Number.isFinite(recordedAt) || !Number.isFinite(freshnessDays) || freshnessDays <= 0)
     errors.push("matrix freshness metadata is invalid");
-  else if (recordedAt - (options.now ?? new Date()).getTime() > 300_000)
-    errors.push("matrix evidence timestamp is in the future");
-  else if ((options.now ?? new Date()).getTime() - recordedAt > freshnessDays * 86_400_000)
-    errors.push("matrix evidence is stale");
+  else if (recordedAt - nowMs > 300_000) errors.push("matrix evidence timestamp is in the future");
+  else {
+    const ageMs = nowMs - recordedAt;
+    const expiresAt = new Date(recordedAt + freshnessDays * millisecondsPerDay).toISOString();
+    const recordedAtText = recordedAtValue;
+    if (recordedAtText === undefined) {
+      errors.push("matrix freshness metadata is invalid");
+    } else {
+      expiry =
+        ageMs > freshnessDays * millisecondsPerDay
+          ? {
+              _tag: "Expired",
+              recordedAt: recordedAtText,
+              freshnessDays,
+              expiresAt,
+              ageMs,
+              overdueMs: ageMs - freshnessDays * millisecondsPerDay,
+            }
+          : { _tag: "Fresh", recordedAt: recordedAtText, freshnessDays, expiresAt, ageMs };
+    }
+  }
 
   const openAgents = object(matrix.openAgents);
   if (openAgents === undefined) errors.push("OpenAgents release identity is required");
@@ -375,5 +447,5 @@ export const validateAcpReleaseMatrix = (
     errors.push("matrix must independently identify Grok and Cursor");
   if (containsExportedSecret(matrix))
     errors.push("matrix contains secret-shaped or host-private data");
-  return { valid: errors.length === 0, errors };
+  return { valid: errors.length === 0, errors, ...(expiry === undefined ? {} : { expiry }) };
 };

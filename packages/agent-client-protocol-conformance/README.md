@@ -45,6 +45,7 @@ pnpm --dir packages/agent-client-protocol-conformance run test
 pnpm --dir packages/agent-client-protocol-conformance run check:artifacts
 pnpm --dir packages/agent-client-protocol-conformance run report
 pnpm --dir packages/agent-client-protocol-conformance run check:release
+pnpm --dir packages/agent-client-protocol-conformance run check:release:freshness
 ```
 
 `compatibility/release-matrix.json` is the release-defining named-peer ledger.
@@ -52,13 +53,15 @@ It uses a closed claim vocabulary (`supported`, `experimental`, `incompatible`,
 `not-installed`, `auth-required`, `degraded`) and distinguishes `live-pass`
 from fixture-only, blocked, untested, unsupported, and failed scenarios. The
 validator enforces the exact release/schema/platform/profile/binary identities,
-the complete 47-scenario catalog, freshness, and repository-local evidence
-references before recomputing release eligibility. Requiredness and evidence
-class are code-owned: required live peer and packaged Desktop rows require live
-proof, optional peer alternatives do not gate the default path, and only
-explicitly hermetic production-transport rows may be satisfied by executed
-fixture proof. Matrix flags cannot self-exempt a provider, and one
-provider can never mask the other. The current checked verdict is `supported`
+the complete 47-scenario catalog, and repository-local evidence references
+before recomputing release eligibility. The push-path `check:release` gate
+blocks content errors and prints a warning when the freshness window expires.
+The release-path `check:release:freshness` gate also blocks an expired window.
+Requiredness and evidence class are code-owned: required live peer and packaged
+Desktop rows require live proof, optional peer alternatives do not gate the
+default path, and only explicitly hermetic production-transport rows may be
+satisfied by executed fixture proof. Matrix flags cannot self-exempt a provider,
+and one provider can never mask the other. The current checked verdict is `supported`
 for the exact pinned Grok 0.2.101 and Cursor 2026.06.24 Darwin arm64 identities
 only. Other versions and platforms remain experimental or not tested.
 

@@ -2,7 +2,7 @@ import type { AcpConformanceEvidenceRecord } from "@openagentsinc/agent-client-p
 
 import checkedReleaseMatrix from "../compatibility/release-matrix.json" with { type: "json" };
 
-import { validateAcpReleaseMatrix } from "./release.ts";
+import { describeAcpReleaseExpiry, validateAcpReleaseMatrix } from "./release.ts";
 
 export type AcpReleaseEvidencePeer = "grok" | "cursor";
 
@@ -81,6 +81,11 @@ export const compileAcpReleaseEvidence = (
   });
   if (!validation.valid)
     return { _tag: "ReleaseEvidenceUnavailable", diagnostics: validation.errors };
+  if (validation.expiry?._tag === "Expired")
+    return {
+      _tag: "ReleaseEvidenceUnavailable",
+      diagnostics: [describeAcpReleaseExpiry(validation.expiry)],
+    };
 
   const matrix = object(value);
   const openAgents = object(matrix?.openAgents);

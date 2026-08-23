@@ -120,7 +120,7 @@
     "check:ste-control-semantics": "pnpm run check:ste-public-semantics",
     "check:node-vp-freeze": "node scripts/node-vp-cutover-inventory.mjs --check",
     "check:vp1-retirement": "node scripts/vp1-retired-money-surface-guard.mjs .",
-    "check:deploy": "pnpm run check:google-cloud-authority && pnpm run check:ste:public && pnpm run check:ste-public-semantics && pnpm run test:ste && pnpm run check:sol-docs && pnpm run test:sol-docs && pnpm --dir apps/openagents.com run check:deploy",
+    "check:deploy": "pnpm run check:google-cloud-authority && pnpm run check:ste:public && pnpm run check:ste-public-semantics && pnpm run test:ste && pnpm run check:sol-docs && pnpm run test:sol-docs && pnpm --dir packages/agent-client-protocol-conformance run check:release:freshness && pnpm --dir apps/openagents.com run check:deploy",
     "typecheck": "vp run --concurrency-limit 2 --filter './**' --filter '!./packages/probe' --filter '!./packages/probe/**' typecheck",
     "lint": "vp lint --report-unused-disable-directives",
     "fmt": "vp fmt",
