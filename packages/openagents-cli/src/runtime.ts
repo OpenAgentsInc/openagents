@@ -10,6 +10,7 @@ import { computerChannelNodeLayer, computerSocketNodeLayer } from "./computer-ch
 import { computerJournalLayer } from "./computer-journal.js";
 import { computerProbeLayer } from "./computer-probe.js";
 import { computerUpLayer } from "./computer-up.js";
+import { computerAgentProcessNodeLayer } from "./computer-agents.js";
 import { credentialStoreOsLayer } from "./credential-store.js";
 import { pendingDeviceAuthorizationStoreLayer } from "./device-authorization-store.js";
 import { deviceClientLayer } from "./device-client.js";
@@ -51,6 +52,7 @@ const computerUp = computerUpLayer.pipe(
   Layer.provide(
     Layer.mergeAll(
       computerChannel,
+      computerAgentProcessNodeLayer,
       computerClient,
       computerConfiguration,
       computerJournal,

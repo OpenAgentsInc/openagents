@@ -1,6 +1,7 @@
 import { Clock, Console, Effect, Option, Redacted } from "effect";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 import { hostname } from "node:os";
+import { VERSION } from "./version.js";
 
 import { apiErrorDetails, type Repository } from "./api-contract.js";
 import {

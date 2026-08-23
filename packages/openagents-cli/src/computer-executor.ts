@@ -25,7 +25,7 @@ export const computerExecutionDefaults: ComputerExecutionLimits = {
 
 const environmentNames = ["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "SHELL", "USER", "TERM"];
 
-const scrubEnvironment = (source: NodeJS.ProcessEnv): NodeJS.ProcessEnv =>
+export const scrubbedEnvironment = (source: NodeJS.ProcessEnv): Record<string, string> =>
   Object.fromEntries(
     environmentNames.flatMap((name) => {
       const value = source[name];
@@ -99,7 +99,7 @@ export const executeComputerCommand = (
     child = spawn(command, args, {
       cwd,
       detached: process.platform !== "win32",
-      env: scrubEnvironment(process.env),
+      env: scrubbedEnvironment(process.env),
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });

@@ -36,12 +36,21 @@ export interface ComputerResponder {
   readonly refused: (reason: string, detail: string) => void;
 }
 
+export interface ComputerAgentResponder extends ComputerResponder {
+  readonly session: (sessionId: string) => void;
+}
+
 export interface ComputerChannelHandlers {
   readonly onProbe: (requestId: string) => Promise<unknown>;
   readonly onRun: (
     requestId: string,
     payload: Record<string, unknown>,
     responder: ComputerResponder,
+  ) => void;
+  readonly onAgent?: (
+    requestId: string,
+    payload: Record<string, unknown>,
+    responder: ComputerAgentResponder,
   ) => void;
   readonly onCancel: (requestId: string) => void;
   readonly onJoined: () => void;
@@ -132,6 +141,10 @@ const serveConnection = (
       exit: (payload) => push("exit", { request_id: requestId, ...payload }),
       refused: (reason, detail) => push("refused", { request_id: requestId, reason, detail }),
     });
+    const agentResponder = (requestId: string): ComputerAgentResponder => ({
+      ...responder(requestId),
+      session: (sessionId) => push("session", { request_id: requestId, session_id: sessionId }),
+    });
 
     socket.on("open", () => {
       socket.send(JSON.stringify([joinRef, joinRef, topic, "phx_join", {}]));
@@ -195,6 +208,13 @@ const serveConnection = (
       } else if (event === "run") {
         handlers.onEvent(`run:${requestId.slice(0, 8)}`);
         handlers.onRun(requestId, payload, responder(requestId));
+      } else if (event === "agent") {
+        handlers.onEvent(`agent:${requestId.slice(0, 8)}`);
+        if (handlers.onAgent === undefined) {
+          agentResponder(requestId).refused("unsupported", "ACP delegation is unavailable");
+        } else {
+          handlers.onAgent(requestId, payload, agentResponder(requestId));
+        }
       } else if (event === "cancel") {
         handlers.onEvent(`cancel:${requestId.slice(0, 8)}`);
         handlers.onCancel(requestId);

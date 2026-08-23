@@ -16,7 +16,39 @@ export interface PolicyConfig {
   readonly tier: Tier;
   readonly roots: ReadonlyArray<string>;
   readonly preApproved: ReadonlyArray<string>;
+  readonly agents?: ReadonlyArray<{
+    readonly id: string;
+    readonly argv: ReadonlyArray<string>;
+    readonly env: ReadonlyArray<string>;
+  }>;
+  readonly registryAgents?: boolean;
+  readonly curatedExecute?: ReadonlyArray<string>;
 }
+
+export const defaultCuratedExecute: ReadonlyArray<string> = [
+  "git",
+  "gh",
+  "ls",
+  "cat",
+  "head",
+  "tail",
+  "wc",
+  "pwd",
+  "which",
+  "find",
+  "rg",
+  "grep",
+  "sed",
+  "node",
+  "npm",
+  "npx",
+  "pnpm",
+  "python3",
+  "cargo",
+  "go",
+  "make",
+  "mix",
+];
 
 export interface CommandRequest {
   readonly argv: ReadonlyArray<string>;

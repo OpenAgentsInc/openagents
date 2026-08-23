@@ -6,7 +6,7 @@ import { homedir } from "node:os";
 
 import { ConfigurationError } from "./errors.js";
 import { EnvironmentConfiguration } from "./environment.js";
-import { resolveRoots, type PolicyConfig } from "./computer-policy.js";
+import { defaultCuratedExecute, resolveRoots, type PolicyConfig } from "./computer-policy.js";
 
 export interface ComputerPaths {
   readonly config: string;
@@ -15,6 +15,12 @@ export interface ComputerPaths {
 
 export interface ComputerConfigurationValues extends PolicyConfig {
   readonly paths: ComputerPaths;
+}
+
+export interface AgentConfigEntry {
+  readonly id: string;
+  readonly argv: ReadonlyArray<string>;
+  readonly env: ReadonlyArray<string>;
 }
 
 export class ComputerConfiguration extends Context.Service<
@@ -26,6 +32,17 @@ const StoredConfiguration = Schema.Struct({
   tier: Schema.optionalKey(Schema.Literals(["probe", "curated", "shell"])),
   roots: Schema.optionalKey(Schema.Array(Schema.String)),
   pre_approved: Schema.optionalKey(Schema.Array(Schema.String)),
+  agents: Schema.optionalKey(
+    Schema.Record(
+      Schema.String,
+      Schema.Struct({
+        argv: Schema.Array(Schema.String),
+        env: Schema.optionalKey(Schema.Array(Schema.String)),
+      }),
+    ),
+  ),
+  registry_agents: Schema.optionalKey(Schema.Boolean),
+  curated_execute: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
 const defaultConfig = (paths: ComputerPaths): ComputerConfigurationValues => ({
@@ -33,6 +50,9 @@ const defaultConfig = (paths: ComputerPaths): ComputerConfigurationValues => ({
   roots: [],
   preApproved: [],
   paths,
+  agents: [],
+  registryAgents: false,
+  curatedExecute: [...defaultCuratedExecute],
 });
 
 const errorCode = (cause: unknown): string | undefined =>
@@ -91,6 +111,24 @@ const readConfiguration = (
       roots: resolveRoots(decoded.roots ?? []),
       preApproved: [...new Set(decoded.pre_approved ?? [])].slice(0, 64),
       paths,
+      agents: Object.entries(decoded.agents ?? {}).flatMap(([id, entry]) => {
+        if (!/^[a-z0-9][a-z0-9._-]{0,63}$/u.test(id) || entry.argv.length === 0) return [];
+        return [
+          {
+            id,
+            argv: entry.argv.slice(0, 16).map((value) => value.slice(0, 256)),
+            env: [
+              ...new Set(
+                (entry.env ?? []).filter((value) => /^[A-Z_][A-Z0-9_]{0,63}$/u.test(value)),
+              ),
+            ].slice(0, 32),
+          },
+        ];
+      }),
+      registryAgents: decoded.registry_agents ?? false,
+      curatedExecute: [...new Set(decoded.curated_execute ?? defaultCuratedExecute)]
+        .filter((value) => value.length > 0)
+        .slice(0, 64),
     };
   });
 
@@ -119,6 +157,17 @@ export const writeComputerConfiguration = (
             tier: config.tier,
             roots: resolveRoots(config.roots),
             pre_approved: config.preApproved,
+            agents: Object.fromEntries(
+              (config.agents ?? []).map((entry) => [
+                entry.id,
+                {
+                  argv: entry.argv,
+                  env: entry.env,
+                },
+              ]),
+            ),
+            registry_agents: config.registryAgents ?? false,
+            curated_execute: config.curatedExecute ?? defaultCuratedExecute,
           },
           null,
           2,

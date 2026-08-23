@@ -41,6 +41,7 @@ import {
   toolchainCatalog,
 } from "../src/computer-probe.js";
 import { executeComputerCommand } from "../src/computer-executor.js";
+import { ComputerAgentProcess, type AgentProcess } from "../src/computer-agents.js";
 import { ComputerClient, type ComputerStatus } from "../src/computer-client.js";
 import { ComputerUp, computerUpLayer } from "../src/computer-up.js";
 import { environmentLayerFromValues } from "../src/environment.js";
@@ -58,6 +59,9 @@ const computerConfigurationTestLayer = (
       tier: values.tier ?? "probe",
       roots: resolveRoots(values.roots ?? []),
       preApproved: values.preApproved ?? [],
+      agents: values.agents ?? [],
+      registryAgents: values.registryAgents ?? false,
+      curatedExecute: values.curatedExecute ?? [],
       paths: values.paths ?? computerPaths(),
     }),
   );
@@ -264,6 +268,7 @@ describe("local Computer probe", () => {
     expect(report.roots).toEqual([]);
     expect(report.host.platform).toBe(process.platform);
     expect(report.codingAgents.every((entry) => typeof entry.present === "boolean")).toBe(true);
+    expect(report.acp_agents).toBeDefined();
     expect(report.toolchains.every((entry) => typeof entry.version === "string")).toBe(true);
     expect(report.worktrees).toEqual([]);
   });
@@ -433,6 +438,70 @@ describe("Computer channel", () => {
     await expect(channelRun).resolves.toBe("phx_close");
   });
 
+  it("accepts agent frames and sends the ACP session before terminal output", async () => {
+    const socket = new StubSocket();
+    let agentResponder:
+      | {
+          readonly session: (sessionId: string) => void;
+          readonly chunk: (text: string) => void;
+          readonly exit: (payload: Record<string, unknown>) => void;
+          readonly refused: (reason: string, detail: string) => void;
+        }
+      | undefined;
+    const run = Effect.runPromise(
+      Effect.gen(function* () {
+        const channel = yield* ComputerChannel;
+        return yield* channel.serve(options, {
+          onProbe: async () => ({}),
+          onRun: () => undefined,
+          onAgent: (_requestId, _payload, responder) => {
+            agentResponder = responder;
+          },
+          onCancel: () => undefined,
+          onJoined: () => undefined,
+          onEvent: () => undefined,
+          onClosed: () => undefined,
+        });
+      }).pipe(Effect.provide(computerChannelTestLayer({ connect: () => socket }))),
+    );
+    await Promise.resolve();
+    socket.open();
+    socket.message(["1", "1", "computer:machine-1", "phx_reply", { status: "ok", response: {} }]);
+    socket.message([
+      "1",
+      null,
+      "computer:machine-1",
+      "agent",
+      { request_id: "agent-1", agent_id: "opencode", prompt: "work", cwd: "/workspace" },
+    ]);
+    agentResponder?.session("acp-session-1");
+    agentResponder?.chunk("done");
+    agentResponder?.exit({ status: "completed" });
+    expect(sentFrames(socket)).toContainEqual([
+      "1",
+      "3",
+      "computer:machine-1",
+      "session",
+      { request_id: "agent-1", session_id: "acp-session-1" },
+    ]);
+    expect(sentFrames(socket)).toContainEqual([
+      "1",
+      "4",
+      "computer:machine-1",
+      "chunk",
+      { request_id: "agent-1", text: "done" },
+    ]);
+    expect(sentFrames(socket)).toContainEqual([
+      "1",
+      "5",
+      "computer:machine-1",
+      "exit",
+      { request_id: "agent-1", status: "completed" },
+    ]);
+    socket.message(["1", null, "computer:machine-1", "phx_close", {}]);
+    await expect(run).resolves.toBe("phx_close");
+  });
+
   it("retries machine_reconnecting and stops on authorization refusals", async () => {
     vi.useFakeTimers();
     const reconnectingSockets: StubSocket[] = [];
@@ -570,6 +639,143 @@ describe("Computer channel", () => {
     await vi.advanceTimersByTimeAsync(20);
     expect(sentFrames(socket)).toContainEqual([null, "2", "phoenix", "heartbeat", {}]);
     await expect(result).resolves.toBe("heartbeat_timeout");
+  });
+
+  it("serves an accepted agent request through the local ACP process boundary", async () => {
+    let handlers: ComputerChannelHandlers | undefined;
+    const terminal: Array<Record<string, unknown>> = [];
+    let startedEnvironment: Readonly<Record<string, string>> = {};
+    const machineStatus: ComputerStatus = {
+      machine_id: "machine-1",
+      name: "test-computer",
+      status: "active",
+      token_expires_at: "2099-01-01T00:00:00.000Z",
+    };
+    const process: AgentProcess = {
+      request: async (method) => {
+        if (method === "initialize") return { agentCapabilities: {} };
+        if (method === "session/new") return { sessionId: "session-up" };
+        if (method === "session/prompt") return { stopReason: "end_turn" };
+        return {};
+      },
+      notify: () => undefined,
+      onNotification: () => () => undefined,
+      onRequest: () => () => undefined,
+      terminate: async () => undefined,
+    };
+    const channel = Layer.succeed(
+      ComputerChannel,
+      ComputerChannel.of({
+        serve: (_options, value) => {
+          handlers = value;
+          value.onJoined();
+          return Effect.succeed("phx_close");
+        },
+      }),
+    );
+    const processLayer = Layer.succeed(ComputerAgentProcess, {
+      start: (_entry, _cwd, env) => {
+        startedEnvironment = env;
+        return Effect.succeed(process);
+      },
+    });
+    const probe = Layer.succeed(
+      ComputerProbe,
+      ComputerProbe.of({
+        probe: () =>
+          Effect.succeed({
+            schema: "openagents.computer_probe.v1" as const,
+            host: {
+              platform: "linux",
+              release: "test",
+              architecture: "x64",
+              hostname: "test",
+              shell: "",
+              cpuCount: 1,
+              totalMemoryBytes: 1,
+              uptimeSeconds: 1,
+            },
+            codingAgents: [
+              { name: "opencode", present: true, path: "/usr/bin/opencode", version: "1.2.3" },
+            ],
+            toolchains: [],
+            roots: ["/workspace"],
+            worktrees: [],
+          }),
+      }),
+    );
+    const layer = computerUpLayer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          channel,
+          processLayer,
+          Layer.succeed(
+            ComputerClient,
+            ComputerClient.of({
+              start: () => Effect.die("unused"),
+              wait: () => Effect.die("unused"),
+              status: () => Effect.succeed(Option.some(machineStatus)),
+            }),
+          ),
+          Layer.succeed(
+            CredentialStore,
+            CredentialStore.of({
+              get: () => Effect.succeed(Option.some(Redacted.make("smct_test-secret"))),
+              set: () => Effect.void,
+              remove: () => Effect.void,
+            }),
+          ),
+          Layer.succeed(
+            ComputerJournal,
+            ComputerJournal.of({
+              append: (entry) => Effect.sync(() => terminal.push(entry)),
+              read: () => Effect.succeed([]),
+            }),
+          ),
+          probe,
+          computerConfigurationTestLayer({ tier: "curated", roots: ["/workspace"] }),
+        ),
+      ),
+    );
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const up = yield* ComputerUp;
+        return yield* up.serve("https://openagents.example", "0.2.1");
+      }).pipe(Effect.provide(layer)),
+    );
+    const responderOutput: Array<Record<string, unknown>> = [];
+    handlers?.onAgent?.(
+      "agent-1",
+      {
+        request_id: "agent-1",
+        agent_id: "opencode",
+        prompt: "delegate",
+        cwd: "/workspace",
+        assignment_credential: "forge-secret",
+        env: { FORGE_TOKEN: "forge-secret" },
+      },
+      {
+        session: () => undefined,
+        chunk: () => undefined,
+        exit: (value) => responderOutput.push(value),
+        refused: (reason, detail) => responderOutput.push({ reason, detail }),
+      },
+    );
+    for (let attempt = 0; attempt < 50 && responderOutput.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(responderOutput).toHaveLength(1);
+    expect(responderOutput[0]).toMatchObject({ status: "completed", session_id: "session-up" });
+    expect(startedEnvironment).not.toHaveProperty("FORGE_TOKEN");
+    expect(JSON.stringify(terminal)).not.toContain("smct_test-secret");
+    expect(JSON.stringify(terminal)).not.toContain("forge-secret");
+    expect(terminal).toContainEqual(
+      expect.objectContaining({
+        decision: "credentials_delivered",
+        outcome: "not_used",
+        detail: "scoped forge credentials delivered; not used by this ACP delegation",
+      }),
+    );
   });
 });
 

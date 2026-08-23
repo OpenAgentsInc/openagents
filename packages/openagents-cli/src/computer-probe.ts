@@ -6,6 +6,7 @@ import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { ComputerConfiguration } from "./computer-config.js";
+import { buildAgentCatalog, type AcpAgentInventoryEntry } from "./computer-agents.js";
 
 export interface ToolReport {
   readonly name: string;
@@ -38,6 +39,7 @@ export interface ProbeReport {
   readonly toolchains: ReadonlyArray<ToolReport>;
   readonly roots: ReadonlyArray<string>;
   readonly worktrees: ReadonlyArray<WorktreeReport>;
+  readonly acp_agents?: ReadonlyArray<AcpAgentInventoryEntry>;
 }
 
 interface Probed {
@@ -157,6 +159,11 @@ export const computerProbeLayer = Layer.effect(
         });
       const codingAgents = yield* Effect.forEach(codingAgentCatalog, probeOne, { concurrency: 4 });
       const toolchains = yield* Effect.forEach(toolchainCatalog, probeOne, { concurrency: 4 });
+      const acpAgents = buildAgentCatalog(config, codingAgents).map((entry) => ({
+        id: entry.id,
+        source: entry.source,
+        version: entry.version,
+      }));
       return {
         schema: "openagents.computer_probe.v1" as const,
         host: hostReport(),
@@ -164,6 +171,7 @@ export const computerProbeLayer = Layer.effect(
         toolchains,
         roots: resolvedRoots,
         worktrees: resolvedRoots.map(worktreeReport),
+        acp_agents: acpAgents,
       };
     });
     return ComputerProbe.of({ probe });
