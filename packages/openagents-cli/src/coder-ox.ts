@@ -104,12 +104,16 @@ export class OxAlphaReplySource {
         if (event.type === "text_delta") {
           const value = event.payload?.["value"];
           if (typeof value === "string" && value.length > 0) yield value;
-        } else if (event.type === "completed") {
+        } else if (event.type === "response_completed") {
           finished = true;
-        } else if (event.type === "failed") {
-          const reason = event.payload?.["message"] ?? event.payload?.["error"];
+        } else if (event.type === "response_failed") {
+          // The server names the terminal events `response_completed` and
+          // `response_failed`, and reports why in `reason` with a stable
+          // `code` beside it.
+          const reason = event.payload?.["reason"];
+          const code = event.payload?.["code"];
           throw new OxAlphaUnavailable(
-            "turn_failed",
+            typeof code === "string" ? code : "turn_failed",
             typeof reason === "string" ? reason : "The turn failed on the server.",
           );
         }

@@ -44,7 +44,7 @@ describe("OxAlphaReplySource", () => {
         [
           { run_id: "run-1", sequence: 1, type: "text_delta", payload: { value: "Hello" } },
           { run_id: "run-1", sequence: 2, type: "text_delta", payload: { value: " there" } },
-          { run_id: "run-1", sequence: 3, type: "completed", payload: {} },
+          { run_id: "run-1", sequence: 3, type: "response_completed", payload: {} },
         ],
       ],
       json(202, { turn: { id: "run-1" } }),
@@ -60,7 +60,7 @@ describe("OxAlphaReplySource", () => {
         [
           { run_id: "run-0", sequence: 9, type: "text_delta", payload: { value: "OLD" } },
           { run_id: "run-1", sequence: 1, type: "text_delta", payload: { value: "new" } },
-          { run_id: "run-1", sequence: 2, type: "completed", payload: {} },
+          { run_id: "run-1", sequence: 2, type: "response_completed", payload: {} },
         ],
       ],
       json(202, { turn: { id: "run-1" } }),
@@ -77,7 +77,7 @@ describe("OxAlphaReplySource", () => {
         [
           { run_id: "run-1", sequence: 1, type: "text_delta", payload: { value: "one" } },
           { run_id: "run-1", sequence: 2, type: "text_delta", payload: { value: " two" } },
-          { run_id: "run-1", sequence: 3, type: "completed", payload: {} },
+          { run_id: "run-1", sequence: 3, type: "response_completed", payload: {} },
         ],
       ],
       json(202, { turn: { id: "run-1" } }),
@@ -93,7 +93,7 @@ describe("OxAlphaReplySource", () => {
         [
           { run_id: "run-1", sequence: 1, type: "reasoning_delta", payload: { value: "thinking" } },
           { run_id: "run-1", sequence: 2, type: "text_delta", payload: { value: "said" } },
-          { run_id: "run-1", sequence: 3, type: "completed", payload: {} },
+          { run_id: "run-1", sequence: 3, type: "response_completed", payload: {} },
         ],
       ],
       json(202, { turn: { id: "run-1" } }),
@@ -121,8 +121,8 @@ describe("OxAlphaReplySource", () => {
           {
             run_id: "run-1",
             sequence: 1,
-            type: "failed",
-            payload: { message: "provider refused" },
+            type: "response_failed",
+            payload: { reason: "provider refused", code: "invalid_response" },
           },
         ],
       ],
@@ -147,7 +147,7 @@ describe("OxAlphaReplySource", () => {
         return Promise.resolve(
           json(200, {
             events: submitted
-              ? [{ run_id: "run-1", sequence: 1, type: "completed", payload: {} }]
+              ? [{ run_id: "run-1", sequence: 1, type: "response_completed", payload: {} }]
               : [],
           }),
         );
