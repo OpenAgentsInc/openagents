@@ -24,6 +24,13 @@ const cliErrorTags = new Set([
   "OpenAgentsCli.ProvisioningWaitTimeout",
   "OpenAgentsCli.GitExecutionError",
   "OpenAgentsCli.OutputError",
+  "OpenAgentsCli.ComputerAlreadyPaired",
+  "OpenAgentsCli.ComputerPairingInProgress",
+  "OpenAgentsCli.ComputerDisabled",
+  "OpenAgentsCli.ComputerPairingExpired",
+  "OpenAgentsCli.ComputerPairingRefused",
+  "OpenAgentsCli.ComputerPairingNetworkFailure",
+  "OpenAgentsCli.ComputerStatusNetworkFailure",
 ]);
 
 const isCliError = (value: unknown): value is CliError =>

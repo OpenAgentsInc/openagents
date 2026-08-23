@@ -15,6 +15,9 @@ export const PendingDeviceAuthorization = Schema.Struct({
   verification_uri_complete: Schema.String,
   expires_at_ms: Schema.Number,
   interval: Schema.Number,
+  kind: Schema.optionalKey(Schema.Literals(["device", "computer"])),
+  state: Schema.optionalKey(Schema.Literals(["pending", "paired"])),
+  machine_id: Schema.optionalKey(Schema.String),
 });
 export interface PendingDeviceAuthorization extends Schema.Schema.Type<
   typeof PendingDeviceAuthorization

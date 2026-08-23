@@ -121,6 +121,41 @@ export class OutputError extends Schema.TaggedErrorClass<OutputError>()(
   },
 ) {}
 
+export class ComputerAlreadyPaired extends Schema.TaggedErrorClass<ComputerAlreadyPaired>()(
+  "OpenAgentsCli.ComputerAlreadyPaired",
+  { message: Schema.String },
+) {}
+
+export class ComputerPairingInProgress extends Schema.TaggedErrorClass<ComputerPairingInProgress>()(
+  "OpenAgentsCli.ComputerPairingInProgress",
+  { message: Schema.String },
+) {}
+
+export class ComputerDisabled extends Schema.TaggedErrorClass<ComputerDisabled>()(
+  "OpenAgentsCli.ComputerDisabled",
+  { message: Schema.String },
+) {}
+
+export class ComputerPairingExpired extends Schema.TaggedErrorClass<ComputerPairingExpired>()(
+  "OpenAgentsCli.ComputerPairingExpired",
+  { message: Schema.String },
+) {}
+
+export class ComputerPairingRefused extends Schema.TaggedErrorClass<ComputerPairingRefused>()(
+  "OpenAgentsCli.ComputerPairingRefused",
+  { message: Schema.String },
+) {}
+
+export class ComputerPairingNetworkFailure extends Schema.TaggedErrorClass<ComputerPairingNetworkFailure>()(
+  "OpenAgentsCli.ComputerPairingNetworkFailure",
+  { message: Schema.String },
+) {}
+
+export class ComputerStatusNetworkFailure extends Schema.TaggedErrorClass<ComputerStatusNetworkFailure>()(
+  "OpenAgentsCli.ComputerStatusNetworkFailure",
+  { message: Schema.String },
+) {}
+
 export type CliError =
   | InputError
   | ConfigurationError
@@ -136,13 +171,33 @@ export type CliError =
   | ProvisioningFailed
   | ProvisioningWaitTimeout
   | GitExecutionError
-  | OutputError;
+  | OutputError
+  | ComputerAlreadyPaired
+  | ComputerPairingInProgress
+  | ComputerDisabled
+  | ComputerPairingExpired
+  | ComputerPairingRefused
+  | ComputerPairingNetworkFailure
+  | ComputerStatusNetworkFailure;
 
 export const exitCodeFor = (error: CliError): number => {
   switch (error._tag) {
     case "OpenAgentsCli.InputError":
     case "OpenAgentsCli.ConfigurationError":
       return 2;
+    case "OpenAgentsCli.ComputerAlreadyPaired":
+    case "OpenAgentsCli.ComputerPairingInProgress":
+      return 5;
+    case "OpenAgentsCli.ComputerDisabled":
+      return 8;
+    case "OpenAgentsCli.ComputerPairingExpired":
+      return 9;
+    case "OpenAgentsCli.ComputerPairingRefused":
+      return 10;
+    case "OpenAgentsCli.ComputerPairingNetworkFailure":
+      return 11;
+    case "OpenAgentsCli.ComputerStatusNetworkFailure":
+      return 12;
     case "OpenAgentsCli.AuthenticationRequired":
     case "OpenAgentsCli.CredentialPersistenceUnavailable":
     case "OpenAgentsCli.CredentialStoreError":

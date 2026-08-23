@@ -34,6 +34,9 @@ import {
   toolchainCatalog,
 } from "../src/computer-probe.js";
 import { environmentLayerFromValues } from "../src/environment.js";
+import { credentialStoreTestFileLayer } from "../src/credential-store.js";
+import { pendingDeviceAuthorizationStoreTestLayer } from "../src/device-authorization-store.js";
+import { persistedConfigurationTestLayer } from "../src/persisted-configuration.js";
 import { outputTestLayer, type OutputDocument, type OutputMode } from "../src/output.js";
 
 const computerConfigurationTestLayer = (
@@ -297,10 +300,15 @@ describe("Computer CLI output", () => {
 
   it("prints stable JSON policy and status without auth or network", async () => {
     const documents: Array<{ readonly document: OutputDocument; readonly mode: OutputMode }> = [];
+    const credentialPath = join("/tmp", "openagents-cli-status-credentials.json");
     const layer = Layer.mergeAll(
       computerConfigurationTestLayer({ roots: [] }),
       output(documents),
       NodeServices.layer,
+      environmentLayerFromValues({}),
+      persistedConfigurationTestLayer({}),
+      credentialStoreTestFileLayer(credentialPath),
+      pendingDeviceAuthorizationStoreTestLayer(),
     );
     await Effect.runPromise(
       runCliWith(["--json", "computer", "policy"]).pipe(Effect.provide(layer)),
@@ -324,6 +332,7 @@ describe("Computer CLI output", () => {
     });
     expect(JSON.stringify(documents)).not.toContain("oa_pat_");
     expect(JSON.stringify(documents)).not.toContain("oa_machine_");
+    await rm(credentialPath, { force: true });
   });
 
   it("prints stable JSON probe output without auth or network", async () => {

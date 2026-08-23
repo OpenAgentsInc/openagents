@@ -5,6 +5,7 @@ import { Layer } from "effect";
 import { apiTransportNodeLayer, networkPolicyLiveLayer } from "./api-transport.js";
 import { browserLauncherLayer } from "./browser-launcher.js";
 import { computerConfigurationLayer } from "./computer-config.js";
+import { computerClientLayer } from "./computer-client.js";
 import { computerJournalLayer } from "./computer-journal.js";
 import { computerProbeLayer } from "./computer-probe.js";
 import { credentialStoreOsLayer } from "./credential-store.js";
@@ -27,6 +28,7 @@ const transportLayer = apiTransportNodeLayer.pipe(
 const repositoryLayer = repositoryClientLayer.pipe(Layer.provide(transportLayer));
 const forumLayer = forumClientLayer.pipe(Layer.provide(transportLayer));
 const deviceLayer = deviceClientLayer.pipe(Layer.provide(transportLayer));
+const computerClient = computerClientLayer.pipe(Layer.provide(transportLayer));
 const credentialsLayer = credentialStoreOsLayer.pipe(Layer.provide(NodeServices.layer));
 const pendingAuthorizationLayer = pendingDeviceAuthorizationStoreLayer.pipe(
   Layer.provide(environmentLayer),
@@ -57,6 +59,7 @@ export const runtimeLayer = Layer.mergeAll(
   repositoryLayer,
   forumLayer,
   deviceLayer,
+  computerClient,
   browserLayer,
   computerConfiguration,
   computerJournal,

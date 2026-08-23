@@ -119,6 +119,27 @@ Run `openagents auth status` to inspect the selected endpoint and credential
 source. Run `openagents auth logout` to remove the stored credential for that
 exact API origin.
 
+## Pair a Computer
+
+Pair a local Computer with the selected OpenAgents API:
+
+```sh
+openagents computer pair
+```
+
+The command prints a browser approval URL and a short code, then waits for the
+owner to approve the pairing. The machine token is stored in the operating
+system credential store under the selected endpoint. It is not written to the
+configuration file, output, or local Computer journal. The poll secret stays
+in memory for the exchange.
+
+Use `openagents computer status` to inspect local policy and pairing state. When
+a Computer credential exists, status verifies it against the server and reports
+when the machine is no longer active. It preserves the local credential and
+directs you to run `openagents computer logout` for cleanup. A temporary
+network failure is reported separately from revocation. Production and staging
+use separate credential entries.
+
 ## Call any endpoint
 
 `openagents api` sends an authenticated request to any OpenAgents API route and

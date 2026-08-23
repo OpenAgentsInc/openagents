@@ -15,18 +15,32 @@ import {
 } from "./api-passthrough.js";
 import { ApiTransport } from "./api-transport.js";
 import { BrowserLauncher } from "./browser-launcher.js";
+<<<<<<< HEAD
 import { runCoderPlain } from "./coder-plain.js";
 import { CoderSession, DummyReplySource } from "./coder-session.js";
 import { runCoderUi } from "./coder-ui.js";
 import { OxAlphaReplySource } from "./coder-ox.js";
 import { describeWorkspace } from "./coder-workspace.js";
-import { ComputerConfiguration, type ComputerConfigurationValues } from "./computer-config.js";
+import { ComputerClient } from "./computer-client.js";
+import {
+  ComputerConfiguration,
+  type ComputerConfigurationValues,
+  writeComputerConfiguration,
+} from "./computer-config.js";
 import { ComputerJournal, journalMaxBytes, journalReadTailBytes } from "./computer-journal.js";
 import { ComputerProbe } from "./computer-probe.js";
-import { formatAllowlist, resolveRoots } from "./computer-policy.js";
-import { ApiError, InputError } from "./errors.js";
+import { formatAllowlist, resolveRoots, type Tier } from "./computer-policy.js";
+import {
+  ApiError,
+  ComputerAlreadyPaired,
+  ComputerPairingInProgress,
+  InputError,
+} from "./errors.js";
 import { CredentialStore } from "./credential-store.js";
-import { PendingDeviceAuthorizationStore } from "./device-authorization-store.js";
+import {
+  PendingDeviceAuthorizationStore,
+  type PendingDeviceAuthorization,
+} from "./device-authorization-store.js";
 import { DeviceClient } from "./device-client.js";
 import { type EndpointOverrides, Profile } from "./endpoint.js";
 import { ForumClient } from "./forum-client.js";
@@ -68,6 +82,10 @@ const outputMode = (json: boolean): OutputMode => (json ? "json" : "human");
 const computerRootFlag = Flag.string("root").pipe(
   Flag.atLeast(0),
   Flag.withDescription("Inspect a declared directory; repeatable. Empty means no roots."),
+);
+const computerTierFlag = Flag.choice("tier", ["probe", "curated", "shell"] as const).pipe(
+  Flag.optional,
+  Flag.withDescription("Set the local execution ceiling for this Computer"),
 );
 const computerJournalLimitFlag = Flag.integer("limit").pipe(
   Flag.withDefault(20),
@@ -157,11 +175,30 @@ const computerStatusCommand = Command.make("status", {}, () =>
   Effect.gen(function* () {
     const flags = yield* rootCommand;
     const config = yield* ComputerConfiguration;
+    const endpoint = yield* resolveApiEndpoint(endpointOverrides(flags));
+    const credentials = yield* CredentialStore;
+    const pendingStore = yield* PendingDeviceAuthorizationStore;
+    const stored = yield* credentials.get(endpoint.origin, "computer");
+    const pending = yield* pendingStore.get(endpoint.origin);
+    const computerPending =
+      Option.isSome(pending) && pending.value.kind === "computer" ? pending.value : undefined;
+    const remoteStatus = Option.isSome(stored)
+      ? yield* (yield* ComputerClient).status(endpoint.origin, stored.value)
+      : Option.none();
+    const paired = Option.isSome(remoteStatus);
+    const state = paired
+      ? "paired"
+      : Option.isSome(stored)
+        ? "unpaired"
+        : computerPending === undefined
+          ? "local"
+          : "pairing_pending";
     const output = yield* Output;
     const value = {
       schema: "openagents.computer_status.v1",
-      state: "local",
-      paired: false,
+      state,
+      paired,
+      endpoint: endpoint.origin,
       tier: config.tier,
       roots: config.roots,
       machine: {
@@ -176,13 +213,28 @@ const computerStatusCommand = Command.make("status", {}, () =>
       journal_retention_bytes: journalMaxBytes,
       journal_read_tail_bytes: journalReadTailBytes,
       network: false,
+      remote_state: paired ? "active" : "unpaired",
+      ...(Option.isSome(remoteStatus)
+        ? { machine_id: remoteStatus.value.machine_id }
+        : computerPending?.machine_id === undefined
+          ? {}
+          : { machine_id: computerPending.machine_id }),
     };
     yield* output.write(
       {
         value,
         human: [
-          "Computer state: local",
-          "Pairing: not required for local inspection",
+          `Computer state: ${state}`,
+          `Pairing: ${
+            paired
+              ? "paired"
+              : Option.isSome(stored)
+                ? "no longer active; run computer logout"
+                : computerPending === undefined
+                  ? "not configured"
+                  : "in progress"
+          }`,
+          `Endpoint: ${endpoint.origin}`,
           `Tier: ${config.tier}`,
           `Roots: ${config.roots.join(", ") || "(none declared)"}`,
           `Configuration: ${config.paths.config}`,
@@ -190,6 +242,9 @@ const computerStatusCommand = Command.make("status", {}, () =>
           `Journal retention: last ${journalMaxBytes} bytes; reads inspect the last ${journalReadTailBytes} bytes`,
           "The machine, not the server, decides what runs here.",
           "Path rules follow this host's POSIX or Windows semantics.",
+          ...(Option.isSome(stored) && !paired
+            ? ["The server no longer accepts this machine token; run computer logout."]
+            : []),
         ],
       },
       outputMode(flags.json),
@@ -197,9 +252,165 @@ const computerStatusCommand = Command.make("status", {}, () =>
   }),
 ).pipe(
   Command.withDescription(
-    "Show local Computer state and file locations without contacting OpenAgents or printing secrets.",
+    "Show local Computer state, pairing state, and file locations without printing secrets.",
   ),
 );
+
+const computerPairCommand = Command.make(
+  "pair",
+  { tier: computerTierFlag, root: computerRootFlag },
+  ({ root, tier }) =>
+    Effect.gen(function* () {
+      const flags = yield* rootCommand;
+      const endpoint = yield* resolveApiEndpoint(endpointOverrides(flags));
+      const config = yield* ComputerConfiguration;
+      const credentials = yield* CredentialStore;
+      const pendingStore = yield* PendingDeviceAuthorizationStore;
+      const output = yield* Output;
+      const stored = yield* credentials.get(endpoint.origin, "computer");
+      if (Option.isSome(stored)) {
+        return yield* new ComputerAlreadyPaired({
+          message: `This Computer is already paired with ${endpoint.origin}; run computer logout before pairing again.`,
+        });
+      }
+
+      const pending = yield* pendingStore.get(endpoint.origin);
+      if (Option.isSome(pending)) {
+        const pendingValue = pending.value;
+        if (pendingValue.kind !== "computer") {
+          return yield* new ComputerPairingInProgress({
+            message: `An OpenAgents authorization is already pending for ${endpoint.origin}; complete it before pairing this Computer.`,
+          });
+        }
+        const now = yield* Clock.currentTimeMillis;
+        if (pendingValue.expires_at_ms > now) {
+          return yield* new ComputerPairingInProgress({
+            message: `A Computer pairing is already pending for ${endpoint.origin}; finish it before starting another.`,
+          });
+        }
+        yield* pendingStore.remove(endpoint.origin);
+      }
+
+      const selectedTier: Tier = Option.getOrElse(tier, () => config.tier);
+      const roots = root.length === 0 ? config.roots : resolveRoots(root);
+      yield* writeComputerConfiguration(
+        { tier: selectedTier, roots, preApproved: config.preApproved },
+        config.paths,
+      );
+      const started = yield* (yield* ComputerClient).start(endpoint.origin, {
+        name: hostname(),
+        tier: selectedTier,
+        platform: `${process.platform}-${process.arch}`,
+        agentVersion: VERSION,
+        roots,
+      });
+      const expiresAtMs = Date.parse(started.expires_at);
+      if (!Number.isFinite(expiresAtMs)) {
+        return yield* new InputError({
+          message: "The Computer pairing response did not contain a valid expiry.",
+        });
+      }
+      const terminal = yield* TerminalSession;
+      if (terminal.interactive && !flags.json) {
+        const browser = yield* BrowserLauncher;
+        if (!(yield* browser.open(started.verify_url))) {
+          yield* Console.error("The browser did not open. Open the approval URL above.");
+        }
+      }
+      const pendingAuthorization: PendingDeviceAuthorization = {
+        origin: endpoint.origin,
+        device_code: started.pairing_id,
+        user_code: started.code,
+        verification_uri: started.verify_url,
+        verification_uri_complete: started.verify_url,
+        expires_at_ms: expiresAtMs,
+        interval: started.interval_seconds,
+        kind: "computer",
+        state: "pending",
+      };
+      yield* pendingStore.set(pendingAuthorization);
+      yield* output.write(
+        {
+          value: {
+            endpoint: endpoint.origin,
+            pairing_pending: true,
+            verification_url: started.verify_url,
+            code: started.code,
+            expires_at: started.expires_at,
+            interval_seconds: started.interval_seconds,
+            tier: selectedTier,
+            roots,
+          },
+          human: [
+            `Approve this Computer at ${started.verify_url}`,
+            `Pairing code: ${started.code}`,
+            "Waiting for approval...",
+          ],
+        },
+        outputMode(flags.json),
+      );
+
+      const claim = yield* (yield* ComputerClient).wait(endpoint.origin, started);
+      yield* credentials.set(endpoint.origin, Redacted.make(claim.token), "computer");
+      yield* pendingStore.set({
+        ...pendingAuthorization,
+        state: "paired",
+        machine_id: claim.machine_id,
+      });
+      yield* output.write(
+        {
+          value: {
+            endpoint: endpoint.origin,
+            paired: true,
+            machine_id: claim.machine_id,
+            name: claim.name,
+            token_source: "computer_credential_store",
+          },
+          human: [
+            `Computer paired with ${endpoint.origin}.`,
+            "The machine token is in the OS credential store.",
+          ],
+        },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(
+  Command.withDescription(
+    "Pair this Computer through browser approval and store its machine token",
+  ),
+);
+
+const computerLogoutCommand = Command.make("logout", {}, () =>
+  Effect.gen(function* () {
+    const flags = yield* rootCommand;
+    const endpoint = yield* resolveApiEndpoint(endpointOverrides(flags));
+    const credentials = yield* CredentialStore;
+    const pendingStore = yield* PendingDeviceAuthorizationStore;
+    const output = yield* Output;
+    const stored = yield* credentials.get(endpoint.origin, "computer");
+    const pending = yield* pendingStore.get(endpoint.origin);
+    if (Option.isSome(stored)) {
+      yield* credentials.remove(endpoint.origin, "computer");
+    }
+    if (Option.isSome(pending) && pending.value.kind === "computer") {
+      yield* pendingStore.remove(endpoint.origin);
+    }
+    yield* output.write(
+      {
+        value: {
+          endpoint: endpoint.origin,
+          removed: Option.isSome(stored),
+          remote_state: "unverified",
+        },
+        human: [
+          `Removed the local Computer pairing for ${endpoint.origin}.`,
+          "No local machine token remains. Remote pairing state is not queried.",
+        ],
+      },
+      outputMode(flags.json),
+    );
+  }),
+).pipe(Command.withDescription("Remove this Computer's local machine token and pairing state"));
 
 const computerJournalCommand = Command.make(
   "journal",
@@ -244,6 +455,8 @@ const computerCommand = Command.make("computer").pipe(
     computerProbeCommand,
     computerPolicyCommand,
     computerStatusCommand,
+    computerPairCommand,
+    computerLogoutCommand,
     computerJournalCommand,
   ]),
 );
@@ -434,6 +647,12 @@ const authLoginCommand = Command.make(
       }
 
       const pendingStore = yield* PendingDeviceAuthorizationStore;
+      const existingPending = yield* pendingStore.get(endpoint.origin);
+      if (!resume && Option.isSome(existingPending) && existingPending.value.kind === "computer") {
+        return yield* new InputError({
+          message: `A Computer pairing is already pending for ${endpoint.origin}; complete it before starting API authorization.`,
+        });
+      }
       if (!resume) {
         const devices = yield* DeviceClient;
         const terminal = yield* TerminalSession;
@@ -507,6 +726,11 @@ const authLoginCommand = Command.make(
       if (Option.isNone(pending)) {
         return yield* new InputError({
           message: `No pending authorization exists for ${endpoint.origin}. Run openagents auth login first.`,
+        });
+      }
+      if (pending.value.kind === "computer") {
+        return yield* new InputError({
+          message: `The pending authorization for ${endpoint.origin} is a Computer pairing; use openagents computer status.`,
         });
       }
       const now = yield* Clock.currentTimeMillis;

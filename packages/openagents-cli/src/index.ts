@@ -3,6 +3,7 @@ export * from "./api-passthrough.js";
 export * from "./api-transport.js";
 export * from "./cli.js";
 export * from "./computer-config.js";
+export * from "./computer-client.js";
 export * from "./computer-journal.js";
 export * from "./computer-policy.js";
 export * from "./computer-probe.js";

@@ -61,6 +61,31 @@ describe("credential store", () => {
     expect(Option.isNone(result.staging)).toBe(true);
   });
 
+  it("keeps Computer credentials separate from API credentials and endpoints", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "openagents-cli-credentials-kinds-"));
+    temporaryDirectories.push(directory);
+    const layer = credentialStoreTestFileLayer(join(directory, "tokens.json"));
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const store = yield* CredentialStore;
+        yield* store.set("https://openagents.com", Redacted.make("oa_pat_api"), "api");
+        yield* store.set("https://openagents.com", Redacted.make("smct_prod"), "computer");
+        yield* store.set("https://staging.openagents.com", Redacted.make("smct_stage"), "computer");
+        return {
+          api: yield* store.get("https://openagents.com", "api"),
+          production: yield* store.get("https://openagents.com", "computer"),
+          staging: yield* store.get("https://staging.openagents.com", "computer"),
+          local: yield* store.get("http://localhost:4000", "computer"),
+        };
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(Option.map(result.api, Redacted.value)).toEqual(Option.some("oa_pat_api"));
+    expect(Option.map(result.production, Redacted.value)).toEqual(Option.some("smct_prod"));
+    expect(Option.map(result.staging, Redacted.value)).toEqual(Option.some("smct_stage"));
+    expect(Option.isNone(result.local)).toBe(true);
+  });
+
   it("refuses production persistence when no OS adapter is admitted", async () => {
     const exit = await Effect.runPromiseExit(
       Effect.gen(function* () {

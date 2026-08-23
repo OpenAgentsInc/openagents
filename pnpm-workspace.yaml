@@ -57,6 +57,7 @@ allowBuilds:
   nostr-effect@https://github.com/OpenAgentsInc/nostr-effect/archive/2bb57870eeeb214ed80ca8a275292f5e4dd89863.tar.gz: false
   nostr-effect@https://codeload.github.com/OpenAgentsInc/nostr-effect/tar.gz/77073343c68f159f3dea80ddbe9e9896b1f052f2: false
   nostr-effect@https://github.com/OpenAgentsInc/nostr-effect/archive/77073343c68f159f3dea80ddbe9e9896b1f052f2.tar.gz: false
+  '@livekit/local-inference': set this to true or false
 
 overrides:
   "@effect/platform-browser": 4.0.0-beta.94
@@ -80,9 +81,9 @@ peerDependencyRules:
     - vite
 
 supportedArchitectures:
-  cpu: [current, x64]
-  libc: [current, glibc]
-  os: [current, linux]
+  cpu: [ current, x64 ]
+  libc: [ current, glibc ]
+  os: [ current, linux ]
 
 minimumReleaseAgeExclude:
   - blume@1.0.4

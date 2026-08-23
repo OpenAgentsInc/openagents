@@ -7,16 +7,22 @@ import { dirname } from "node:path";
 import { CredentialPersistenceUnavailable, CredentialStoreError } from "./errors.js";
 
 export type CredentialStoreFailure = CredentialPersistenceUnavailable | CredentialStoreError;
+export type CredentialKind = "api" | "computer";
 
 export interface CredentialStoreInterface {
   readonly get: (
     origin: string,
+    kind?: CredentialKind,
   ) => Effect.Effect<Option.Option<Redacted.Redacted<string>>, CredentialStoreFailure>;
   readonly set: (
     origin: string,
     token: Redacted.Redacted<string>,
+    kind?: CredentialKind,
   ) => Effect.Effect<void, CredentialStoreFailure>;
-  readonly remove: (origin: string) => Effect.Effect<void, CredentialStoreFailure>;
+  readonly remove: (
+    origin: string,
+    kind?: CredentialKind,
+  ) => Effect.Effect<void, CredentialStoreFailure>;
 }
 
 export class CredentialStore extends Context.Service<CredentialStore, CredentialStoreInterface>()(
@@ -43,7 +49,8 @@ export const credentialStoreUnavailableLayer = Layer.succeed(
   }),
 );
 
-const keychainService = "openagents-cli";
+const keychainService = (kind: CredentialKind): string =>
+  kind === "computer" ? "openagents-cli-computer" : "openagents-cli";
 const encoder = new TextEncoder();
 
 interface ProcessResult {
@@ -62,24 +69,34 @@ export const credentialCommandFor = (
   operation: "get" | "set" | "remove",
   origin: string,
   token?: string,
+  kind: CredentialKind = "api",
 ): CredentialCommand | undefined => {
   if (platform === "darwin") {
     if (operation === "get") {
       return {
         command: "security",
-        args: ["find-generic-password", "-a", origin, "-s", keychainService, "-w"],
+        args: ["find-generic-password", "-a", origin, "-s", keychainService(kind), "-w"],
       };
     }
     if (operation === "set" && token !== undefined) {
       return {
         command: "security",
-        args: ["add-generic-password", "-U", "-a", origin, "-s", keychainService, "-w", token],
+        args: [
+          "add-generic-password",
+          "-U",
+          "-a",
+          origin,
+          "-s",
+          keychainService(kind),
+          "-w",
+          token,
+        ],
       };
     }
     if (operation === "remove") {
       return {
         command: "security",
-        args: ["delete-generic-password", "-a", origin, "-s", keychainService],
+        args: ["delete-generic-password", "-a", origin, "-s", keychainService(kind)],
       };
     }
     return undefined;
@@ -89,20 +106,27 @@ export const credentialCommandFor = (
     if (operation === "get") {
       return {
         command: "secret-tool",
-        args: ["lookup", "service", keychainService, "origin", origin],
+        args: ["lookup", "service", keychainService(kind), "origin", origin],
       };
     }
     if (operation === "set" && token !== undefined) {
       return {
         command: "secret-tool",
-        args: ["store", "--label=OpenAgents CLI", "service", keychainService, "origin", origin],
+        args: [
+          "store",
+          "--label=OpenAgents CLI",
+          "service",
+          keychainService(kind),
+          "origin",
+          origin,
+        ],
         input: token,
       };
     }
     if (operation === "remove") {
       return {
         command: "secret-tool",
-        args: ["clear", "service", keychainService, "origin", origin],
+        args: ["clear", "service", keychainService(kind), "origin", origin],
       };
     }
   }
@@ -140,15 +164,20 @@ export const credentialStoreOsLayer = Layer.effect(
 
     const unsupported = () => Effect.fail(unavailable("Persistent authentication"));
 
-    const get = Effect.fn("CredentialStore.OS.get")(function* (origin: string) {
-      const command = credentialCommandFor(process.platform, "get", origin);
+    const get = Effect.fn("CredentialStore.OS.get")(function* (
+      origin: string,
+      kind: CredentialKind = "api",
+    ) {
+      const command = credentialCommandFor(process.platform, "get", origin, undefined, kind);
       if (command === undefined) return yield* unsupported();
       const result = yield* run(command.command, command.args, command.input).pipe(
         Effect.mapError((cause) => storeError("read the OS credential store", cause)),
       );
       if (result.exitCode !== 0) return Option.none();
       const token = result.stdout.trim();
-      if (!token.startsWith("oa_pat_") || token.length >= 160) {
+      const validPrefix =
+        kind === "computer" ? token.startsWith("smct_") : token.startsWith("oa_pat_");
+      if (!validPrefix || token.length >= 160) {
         return yield* storeError("read the OS credential store", new Error("invalid token record"));
       }
       return Option.some(Redacted.make(token));
@@ -157,9 +186,10 @@ export const credentialStoreOsLayer = Layer.effect(
     const set = Effect.fn("CredentialStore.OS.set")(function* (
       origin: string,
       token: Redacted.Redacted<string>,
+      kind: CredentialKind = "api",
     ) {
       const tokenValue = Redacted.value(token);
-      const command = credentialCommandFor(process.platform, "set", origin, tokenValue);
+      const command = credentialCommandFor(process.platform, "set", origin, tokenValue, kind);
       if (command === undefined) return yield* unsupported();
       const result = yield* run(command.command, command.args, command.input).pipe(
         Effect.mapError(() =>
@@ -175,7 +205,7 @@ export const credentialStoreOsLayer = Layer.effect(
           new Error(`credential command exited ${result.exitCode}`),
         );
       }
-      const stored = yield* get(origin);
+      const stored = yield* get(origin, kind);
       if (Option.isNone(stored) || Redacted.value(stored.value) !== tokenValue) {
         return yield* storeError(
           "verify the OS credential store",
@@ -184,8 +214,11 @@ export const credentialStoreOsLayer = Layer.effect(
       }
     });
 
-    const remove = Effect.fn("CredentialStore.OS.remove")(function* (origin: string) {
-      const command = credentialCommandFor(process.platform, "remove", origin);
+    const remove = Effect.fn("CredentialStore.OS.remove")(function* (
+      origin: string,
+      kind: CredentialKind = "api",
+    ) {
+      const command = credentialCommandFor(process.platform, "remove", origin, undefined, kind);
       if (command === undefined) return yield* unsupported();
       yield* run(command.command, command.args, command.input).pipe(
         Effect.mapError((cause) => storeError("remove the OS credential", cause)),
@@ -203,6 +236,9 @@ const CredentialFile = Schema.Struct({
 type CredentialFile = typeof CredentialFile.Type;
 
 const emptyCredentialFile = (): CredentialFile => ({ version: 1, tokens: {} });
+
+const credentialKey = (origin: string, kind: CredentialKind): string =>
+  kind === "computer" ? `computer:${origin}` : origin;
 
 const hasErrorCode = (value: unknown): value is { readonly code: string } =>
   typeof value === "object" && value !== null && "code" in value && typeof value.code === "string";
@@ -251,27 +287,34 @@ export const credentialStoreTestFileLayer = (path: string) =>
       });
     });
 
-    const get = Effect.fn("CredentialStore.TestFile.get")(function* (origin: string) {
+    const get = Effect.fn("CredentialStore.TestFile.get")(function* (
+      origin: string,
+      kind: CredentialKind = "api",
+    ) {
       const file = yield* load();
-      const token = file.tokens[origin];
+      const token = file.tokens[credentialKey(origin, kind)];
       return token === undefined ? Option.none() : Option.some(Redacted.make(token));
     });
 
     const set = Effect.fn("CredentialStore.TestFile.set")(function* (
       origin: string,
       token: Redacted.Redacted<string>,
+      kind: CredentialKind = "api",
     ) {
       const file = yield* load();
       yield* save({
         ...file,
-        tokens: { ...file.tokens, [origin]: Redacted.value(token) },
+        tokens: { ...file.tokens, [credentialKey(origin, kind)]: Redacted.value(token) },
       });
     });
 
-    const remove = Effect.fn("CredentialStore.TestFile.remove")(function* (origin: string) {
+    const remove = Effect.fn("CredentialStore.TestFile.remove")(function* (
+      origin: string,
+      kind: CredentialKind = "api",
+    ) {
       const file = yield* load();
       const tokens = { ...file.tokens };
-      delete tokens[origin];
+      delete tokens[credentialKey(origin, kind)];
       if (Object.keys(tokens).length === 0) {
         yield* Effect.tryPromise({
           try: () => rm(path, { force: true }),
