@@ -33,6 +33,7 @@ import {
   ComputerProbe,
   toolchainCatalog,
 } from "../src/computer-probe.js";
+import { executeComputerCommand } from "../src/computer-executor.js";
 import { environmentLayerFromValues } from "../src/environment.js";
 import { credentialStoreTestFileLayer } from "../src/credential-store.js";
 import { pendingDeviceAuthorizationStoreTestLayer } from "../src/device-authorization-store.js";
@@ -285,6 +286,41 @@ describe("local Computer journal", () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+});
+
+describe("local Computer execution", () => {
+  it("executes argv directly with scrubbed environment and bounded output", async () => {
+    const chunks: string[] = [];
+    const execution = executeComputerCommand(
+      [
+        process.execPath,
+        "-e",
+        "process.stdout.write((process.env.OPENAGENTS_COMPUTER_SECRET ?? 'missing') + 'x'.repeat(32))",
+      ],
+      process.cwd(),
+      { timeoutMillis: 5_000, maximumOutputBytes: 8 },
+      (chunk) => chunks.push(chunk),
+    );
+    const outcome = await execution.done;
+    expect(outcome.exitCode).toBe(0);
+    expect(outcome.truncated).toBe(true);
+    expect(chunks.join("")).toBe("missingx");
+    expect(chunks.join("")).not.toContain("oa_");
+  });
+
+  it("reports cancellation without fabricating an exit code", async () => {
+    const execution = executeComputerCommand(
+      [process.execPath, "-e", "setInterval(() => undefined, 10_000)"],
+      process.cwd(),
+      { timeoutMillis: 5_000, maximumOutputBytes: 64 },
+      () => undefined,
+    );
+    execution.cancel();
+    const outcome = await execution.done;
+    expect(outcome.cancelled).toBe(true);
+    expect(outcome.timedOut).toBe(false);
+    expect(outcome.exitCode).toBe(null);
   });
 });
 
