@@ -127,14 +127,13 @@ and digest-bound feature gates. Cursor's composer launches only a resolved
 flat installation closure, negotiates `cursor_login`, and
 keeps model discovery behind its versioned extension decoder. Diagnostic live
 probes and source-derived fixtures remain explicitly non-release evidence. A
-checked opt-in production runner now reproduces a redacted Grok/Cursor candidate
-receipt in disposable repositories. It has no claim authority. The checked
-[pinned live-binary matrix](packages/agent-client-protocol-conformance/compatibility/release-matrix.json)
-and [human proof ledger](docs/qa/2026-07-16-acp10-release-proof/README.md) now
-independently gate the two peers. Their current verdict is experimental because
-the complete checked evidence has not yet been bound into shipped admission.
-All code-owned required scenarios are now satisfied on tested Darwin arm64.
-other platforms remain explicitly untested. Execution is tracked in
+checked opt-in production runner is no longer part of the support path. The
+[human proof ledger](docs/qa/2026-07-16-acp10-release-proof/README.md) remains a
+historical record, and no release-evidence path can promote either peer above
+`experimental`. ACP peer support remains experimental because it has no
+release-evidence path.
+Hermetic conformance checks cover the required scenario catalog. Other
+platforms remain explicitly untested. Execution is tracked in
 [#8887 — Full Agent Client Protocol integration for Grok and Cursor](https://github.com/OpenAgentsInc/openagents/issues/8887).
 the wider reference set remains indexed in
 [Product Teardowns](docs/teardowns/README.md).

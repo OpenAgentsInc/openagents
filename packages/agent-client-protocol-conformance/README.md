@@ -44,26 +44,10 @@ pnpm --dir packages/agent-client-protocol-conformance run typecheck
 pnpm --dir packages/agent-client-protocol-conformance run test
 pnpm --dir packages/agent-client-protocol-conformance run check:artifacts
 pnpm --dir packages/agent-client-protocol-conformance run report
-pnpm --dir packages/agent-client-protocol-conformance run check:release
-pnpm --dir packages/agent-client-protocol-conformance run check:release:freshness
 ```
 
-`compatibility/release-matrix.json` is the release-defining named-peer ledger.
-It uses a closed claim vocabulary (`supported`, `experimental`, `incompatible`,
-`not-installed`, `auth-required`, `degraded`) and distinguishes `live-pass`
-from fixture-only, blocked, untested, unsupported, and failed scenarios. The
-validator enforces the exact release/schema/platform/profile/binary identities,
-the complete 47-scenario catalog, and repository-local evidence references
-before recomputing release eligibility. The push-path `check:release` gate
-blocks content errors and prints a warning when the freshness window expires.
-The release-path `check:release:freshness` gate also blocks an expired window.
-Requiredness and evidence class are code-owned: required live peer and packaged
-Desktop rows require live proof, optional peer alternatives do not gate the
-default path, and only explicitly hermetic production-transport rows may be
-satisfied by executed fixture proof. Matrix flags cannot self-exempt a provider,
-and one provider can never mask the other. The current checked verdict is `supported`
-for the exact pinned Grok 0.2.101 and Cursor 2026.06.24 Darwin arm64 identities
-only. Other versions and platforms remain experimental or not tested.
+ACP peer support remains experimental. This package has no release-evidence
+path and cannot promote Grok or Cursor above `experimental`.
 
 Live probes are inert unless explicitly armed and never run in ordinary CI:
 
@@ -71,62 +55,6 @@ Live probes are inert unless explicitly armed and never run in ordinary CI:
 GROK_ACP_LIVE=1 pnpm --dir packages/agent-client-protocol-conformance run live:grok
 CURSOR_ACP_LIVE=1 pnpm --dir packages/agent-client-protocol-conformance run live:cursor
 ```
-
-The deeper candidate runner launches the production Grok and Cursor runtimes in
-separate disposable Git repositories, authenticates through the peers' normal
-local login, performs sequential prompts, and attempts session listing, mode
-changes, streaming cancellation, and bounded shutdown where advertised. Its
-Grok lane also sends a random canary only through broker-materialized stdio MCP
-environment, proves the disposable server received it by digest, shuts Grok
-down, and scans the exact session/configuration persistence surfaces for the
-unredacted value:
-
-```bash
-ACP_RELEASE_LIVE=1 ACP_RELEASE_PEER=both \
-  pnpm --dir packages/agent-client-protocol-conformance run live:release
-```
-
-Set `ACP_RELEASE_OUTPUT` to an absolute `.json` path beneath
-`compatibility/live/` to retain its closed-schema, redacted receipt. The runner
-does not retain prompts, responses, session IDs, auth material, or absolute
-paths. Its artifact is deliberately marked `candidate-live` and has no power to
-change the release matrix or promote either peer. A human-reviewed matrix edit
-and the fail-closed `check:release` gate remain mandatory. The Cursor lane also
-proves client-side `cursor_login` cancellation using the ordinary HOME and
-stopping before `authenticate`. It never creates an empty HOME or changes login
-or keychain state. Its exact-binary extension qualification registers only the
-four allowlisted Cursor methods and retains aggregate observation counts. An
-unobserved extension remains blocked rather than inferred from a prompt. The
-same rule applies to permission qualification: only an option actually offered
-by the peer may be selected, and zero reverse calls remain zero live evidence.
-Cursor approval and refusal run in separate pinned processes with an empty
-allow/deny policy stored only in the disposable repository's `.cursor/cli.json`.
-the runner never changes the user's global Cursor configuration.
-The Grok qualification additionally enables bounded filesystem and simulated
-terminal handlers only inside the disposable repository, forces only its new
-disposable sessions out of inherited YOLO/auto mode through session metadata,
-and retains method counts rather than file, command, terminal, or response
-content. It never changes global Grok configuration.
-The shared runtime also preserves notification and prompt-completion `_meta` as
-private native evidence. Candidate receipts expose only metadata-presence and
-usage-presence counts. They never export token values, model/session IDs, or
-other metadata contents.
-
-After packaging Desktop, the separately armed peer journey proves real app
-workspace refusal, interruption, restart settlement, re-enable, completion,
-disable, and shutdown without changing HOME or credential/keychain state:
-
-```bash
-ACP_DESKTOP_RELEASE_LIVE=1 ACP_DESKTOP_RELEASE_PEER=<grok-or-cursor> \
-  ACP_DESKTOP_RELEASE_OUTPUT=<absolute compatibility/live JSON path> \
-  pnpm --dir apps/openagents-desktop run smoke:acp-release
-```
-
-The checked live records beneath `compatibility/live/` pin the installed
-commands, full reported builds, executable/installation-closure digests, wire
-version, advertised auth methods, and capability keys. The release matrix adds
-the deeper redacted peer runs described in the human ledger. Every unexercised
-required scenario remains an explicit blocker to a `supported` claim.
 
 Each probe emits one machine-readable diagnostic result with command, binary
 version, schema identity, and initialize outcome. It does not authenticate,
