@@ -364,6 +364,9 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         if (composer.length > 0) keys.push("esc to clear");
         else keys.push("ctrl+d to quit");
       }
+      // Only when there is another model to switch to, and only while nothing
+      // is running: a turn already accepted keeps the backend it named.
+      if (session.canCycleBackend && !snapshot.running) keys.push("tab to switch model");
       if (lines.length > transcriptHeight) keys.push("pgup/pgdn to scroll");
       if (focusedTool(snapshot) !== undefined) keys.push("ctrl+o to expand");
 
@@ -529,6 +532,15 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
 
         if (char === "\x0f") {
           toggleFocusedTool();
+          dirty = false;
+          index += 1;
+          continue;
+        }
+
+        // Tab is a printable character to the run scanner below, so it has to
+        // be claimed here or it lands in the composer as literal whitespace.
+        if (char === "\t" && session.canCycleBackend) {
+          session.cycleBackend();
           dirty = false;
           index += 1;
           continue;

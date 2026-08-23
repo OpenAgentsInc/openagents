@@ -1,11 +1,14 @@
 /**
- * A reply source backed by the account chat API, which runs Ox Alpha through
- * OpenRouter on the server.
+ * A reply source backed by the account chat API.
  *
- * The CLI never holds a provider key and never talks to OpenRouter. It submits
- * a turn and reads the durable event log the server writes, so a coder session
- * costs exactly what the server metered and leaves the same receipts the web
- * surface leaves.
+ * The CLI never holds a provider key and never talks to a model vendor. It
+ * submits a turn and reads the durable event log the server writes, so a coder
+ * thread costs exactly what the server metered and leaves the same receipts the
+ * web surface leaves.
+ *
+ * Which model answers is the server's `model` parameter, and every backend
+ * answers with the same events, so this file has no branch per backend: the
+ * backend is a value it sends and a label it reports.
  *
  * Two properties of the shipped contract shape this file:
  *
@@ -18,6 +21,7 @@
  *   appears in pieces rather than at once.
  */
 
+import { type CoderBackend, defaultBackend, nextBackend } from "./coder-backends.js";
 import type { ReplyChunk } from "./coder-session.js";
 
 const SUBMIT_PATH = "/api/v3/chat/turns";
@@ -27,12 +31,13 @@ const POLL_INTERVAL_MS = 250;
 /** Give up rather than poll forever when a turn never reaches a terminal event. */
 const TURN_TIMEOUT_MS = 300_000;
 
-export interface OxAlphaOptions {
+export interface ChatApiOptions {
   readonly origin: string;
   readonly token: string;
   /** Reasoning effort the server passes to the provider. */
   readonly reasoning?: string | undefined;
-  readonly model?: string | undefined;
+  /** The backend that answers. Defaults to the first in the published list. */
+  readonly backend?: CoderBackend | undefined;
 }
 
 interface ChatEvent {
@@ -60,13 +65,13 @@ interface ToolCallView {
   readonly status?: string;
 }
 
-export class OxAlphaUnavailable extends Error {
+export class ChatApiUnavailable extends Error {
   constructor(
     readonly code: string,
     message: string,
   ) {
     super(message);
-    this.name = "OxAlphaUnavailable";
+    this.name = "ChatApiUnavailable";
   }
 }
 
@@ -78,8 +83,8 @@ export class OxAlphaUnavailable extends Error {
  * which made a tool call invisible and joined the sentence before it to the
  * sentence after it.
  */
-export class OxAlphaReplySource {
-  readonly model: string;
+export class ChatApiReplySource {
+  private backend: CoderBackend;
 
   /**
    * The server records one conversation per account, so a turn submitted here
@@ -94,8 +99,30 @@ export class OxAlphaReplySource {
     "This conversation is the account's one conversation, shared with /chat " +
     "and with earlier coder runs, so the model remembers turns from all of them.";
 
-  constructor(private readonly options: OxAlphaOptions) {
-    this.model = options.model ?? "stealth/ox-alpha";
+  constructor(private readonly options: ChatApiOptions) {
+    this.backend = options.backend ?? defaultBackend();
+  }
+
+  /** The label the status line shows, which is the current backend's. */
+  get model(): string {
+    return this.backend.label;
+  }
+
+  /** The id the next turn sends as `model`. */
+  get backendId(): string {
+    return this.backend.id;
+  }
+
+  /**
+   * Move to the next backend and return its label.
+   *
+   * This changes only what the next turn asks for. A turn already running was
+   * submitted with the backend it named and keeps it, because the server has
+   * already accepted that turn and cannot be told to change its mind.
+   */
+  cycleBackend(): string {
+    this.backend = nextBackend(this.backend);
+    return this.backend.label;
   }
 
   async *reply(prompt: string, signal: AbortSignal): AsyncIterable<ReplyChunk> {
@@ -107,7 +134,7 @@ export class OxAlphaReplySource {
 
     while (!signal.aborted) {
       if (Date.now() - startedAt > TURN_TIMEOUT_MS) {
-        throw new OxAlphaUnavailable(
+        throw new ChatApiUnavailable(
           "turn_timed_out",
           "The turn produced no terminal event within five minutes.",
         );
@@ -154,7 +181,7 @@ export class OxAlphaReplySource {
           // `code` beside it.
           const reason = event.payload?.["reason"];
           const code = event.payload?.["code"];
-          throw new OxAlphaUnavailable(
+          throw new ChatApiUnavailable(
             typeof code === "string" ? code : "turn_failed",
             typeof reason === "string" ? reason : "The turn failed on the server.",
           );
@@ -189,6 +216,7 @@ export class OxAlphaReplySource {
       },
       body: JSON.stringify({
         message: prompt,
+        model: this.backend.id,
         ...(this.options.reasoning === undefined ? {} : { reasoning: this.options.reasoning }),
       }),
     });
@@ -196,23 +224,23 @@ export class OxAlphaReplySource {
     const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
 
     if (response.status === 401 || response.status === 403) {
-      throw new OxAlphaUnavailable(
+      throw new ChatApiUnavailable(
         "scope_missing",
         "This token cannot reach the chat API. Sign in again with the chat:account scope.",
       );
     }
     if (response.status === 409) {
-      throw new OxAlphaUnavailable(
+      throw new ChatApiUnavailable(
         "turn_in_progress",
         "The account already has a turn running. One turn runs at a time.",
       );
     }
     if (response.status === 429) {
-      throw new OxAlphaUnavailable("rate_limited", "The chat API is rate limiting this account.");
+      throw new ChatApiUnavailable("rate_limited", "The chat API is rate limiting this account.");
     }
     if (response.status < 200 || response.status >= 300) {
       const code = typeof body["error"] === "string" ? body["error"] : `http_${response.status}`;
-      throw new OxAlphaUnavailable(code, `The chat API refused the turn (${code}).`);
+      throw new ChatApiUnavailable(code, `The chat API refused the turn (${code}).`);
     }
 
     const turn = body["turn"];
@@ -233,7 +261,7 @@ export class OxAlphaReplySource {
     });
 
     if (response.status === 401 || response.status === 403) {
-      throw new OxAlphaUnavailable(
+      throw new ChatApiUnavailable(
         "scope_missing",
         "This token cannot read chat events. Sign in again with the chat:account scope.",
       );

@@ -259,4 +259,69 @@ describe("CoderSession", () => {
     const roles = new Set(session.snapshot().entries.map((entry) => entry.role));
     expect(roles).toEqual(new Set(["you", "reasoning", "tool", "assistant"]));
   });
+
+  describe("switching backend", () => {
+    const noop = () => {};
+
+    /** A source that can switch, and records how often it was asked to. */
+    const switchable = (hold: Promise<void>): ReplySource & { switches: number } => {
+      const state = {
+        switches: 0,
+        model: "First",
+        cycleBackend() {
+          state.switches += 1;
+          state.model = `Model ${state.switches}`;
+          return state.model;
+        },
+        async *reply() {
+          await hold;
+          yield { type: "text", value: "done" } as const;
+        },
+      };
+      return state;
+    };
+
+    it("a source with one backend offers no switch", () => {
+      const session = new CoderSession(new DummyReplySource(0), "repo", "main");
+
+      expect(session.canCycleBackend).toBe(false);
+      expect(session.cycleBackend()).toEqual({ switched: false, label: undefined });
+    });
+
+    it("switches while idle and names the new model", () => {
+      const session = new CoderSession(switchable(Promise.resolve()), "repo", "main");
+
+      expect(session.canCycleBackend).toBe(true);
+      expect(session.cycleBackend()).toEqual({ switched: true, label: "Model 1" });
+      expect(session.snapshot().model).toBe("Model 1");
+      expect(session.snapshot().entries.at(-1)?.text).toBe("Model switched to Model 1.");
+    });
+
+    it("refuses while a turn is running, and says why", async () => {
+      let release: () => void = noop;
+      const hold = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const source = switchable(hold);
+      const session = new CoderSession(source, "repo", "main");
+
+      const running = session.submit("go");
+      expect(session.running).toBe(true);
+
+      const result = session.cycleBackend();
+
+      // The turn on screen was submitted against the model the status line
+      // names, so the label must not move out from under it.
+      expect(result.switched).toBe(false);
+      expect(source.switches).toBe(0);
+      expect(session.snapshot().model).toBe("First");
+      expect(session.snapshot().entries.at(-1)?.text).toContain("on the next turn");
+
+      release();
+      await running;
+
+      // And it works again the moment the turn is over.
+      expect(session.cycleBackend().switched).toBe(true);
+    });
+  });
 });

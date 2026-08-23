@@ -18,7 +18,8 @@ import { BrowserLauncher } from "./browser-launcher.js";
 import { runCoderPlain } from "./coder-plain.js";
 import { CoderSession, DummyReplySource } from "./coder-session.js";
 import { runCoderUi } from "./coder-ui.js";
-import { OxAlphaReplySource } from "./coder-ox.js";
+import { backendIds, findBackend } from "./coder-backends.js";
+import { ChatApiReplySource } from "./coder-chat-api.js";
 import { describeWorkspace } from "./coder-workspace.js";
 import { ComputerClient } from "./computer-client.js";
 import { ComputerUp } from "./computer-up.js";
@@ -1401,6 +1402,12 @@ const coderReasoningFlag = Flag.choice("reasoning", [
   "high",
   "max",
 ]).pipe(Flag.optional, Flag.withDescription("Reasoning effort the server passes to the provider"));
+// The accepted values come from the same list the status line and Tab read, so
+// a backend cannot be offered by one and refused by another.
+const coderModelFlag = Flag.choice("model", backendIds() as string[]).pipe(
+  Flag.optional,
+  Flag.withDescription("The backend that answers the turn"),
+);
 
 const coderCommand = Command.make(
   "coder",
@@ -1409,18 +1416,19 @@ const coderCommand = Command.make(
     plain: coderPlainFlag,
     offline: coderOfflineFlag,
     reasoning: coderReasoningFlag,
+    model: coderModelFlag,
   },
-  ({ prompt, plain, offline, reasoning }) =>
+  ({ prompt, plain, offline, reasoning, model }) =>
     Effect.gen(function* () {
       const flags = yield* rootCommand;
       const terminal = yield* TerminalSession;
       const workspace = describeWorkspace();
       const endpoint = yield* resolveApiEndpoint(endpointOverrides(flags));
 
-      // Replies come from the account chat API, which runs Ox Alpha through
-      // OpenRouter on the server, so the CLI never holds a provider key and a
-      // session costs exactly what the server metered. Without a credential it
-      // falls back to the stand-in and says so rather than failing.
+      // Replies come from the account chat API, so the CLI never holds a
+      // provider key and a thread costs exactly what the server metered.
+      // Without a credential it falls back to the stand-in and says so rather
+      // than failing.
       const stored = offline
         ? Option.none()
         : yield* findToken(endpoint.origin).pipe(
@@ -1429,11 +1437,13 @@ const coderCommand = Command.make(
             ),
           );
 
+      const chosen = Option.getOrUndefined(model);
       const source = Option.isSome(stored)
-        ? new OxAlphaReplySource({
+        ? new ChatApiReplySource({
             origin: endpoint.origin,
             token: Redacted.value(stored.value.token),
             reasoning: Option.getOrUndefined(reasoning),
+            backend: chosen === undefined ? undefined : findBackend(chosen),
           })
         : new DummyReplySource();
 
@@ -1442,7 +1452,7 @@ const coderCommand = Command.make(
       if (Option.isNone(stored) && !offline) {
         session.notice(
           "No stored credential, so replies come from the built-in stand-in. " +
-            "Run `openagents auth login --scope chat:account` to reach Ox Alpha.",
+            "Run `openagents auth login --scope chat:account` to reach a real model.",
         );
       }
 

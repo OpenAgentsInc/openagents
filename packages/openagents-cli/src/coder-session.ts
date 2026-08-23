@@ -89,6 +89,14 @@ export interface ReplySource {
    */
   readonly scopeNotice?: string;
   /**
+   * Move to the next backend and return its new label.
+   *
+   * A source that has only one backend leaves this undefined, and the interface
+   * then offers no key for it. That is deliberate: the bottom bar names a key
+   * only where pressing it would do something.
+   */
+  cycleBackend?(): string;
+  /**
    * Yield the reply to `prompt` in chunks. Rendering appends each chunk as it
    * arrives, so a slow source shows partial text rather than nothing.
    */
@@ -219,6 +227,37 @@ export class CoderSession {
       turns: this.turnCount,
       scope: this.source.scopeNotice,
     };
+  }
+
+  /**
+   * Whether this thread can change backend at all.
+   *
+   * False for a source with nothing to switch to, which is what the interface
+   * reads before offering the key.
+   */
+  get canCycleBackend(): boolean {
+    return typeof this.source.cycleBackend === "function";
+  }
+
+  /**
+   * Move the next turn to the next backend.
+   *
+   * Refused while a turn is running. The running turn was submitted with the
+   * backend it named and the server has already accepted it, so switching now
+   * would change the label without changing the answer being streamed under it
+   * — the status line would name a model that did not produce the text on
+   * screen. The caller shows the refusal rather than switching silently.
+   */
+  cycleBackend(): { readonly switched: boolean; readonly label: string | undefined } {
+    if (this.source.cycleBackend === undefined) return { switched: false, label: undefined };
+    if (this.controller !== undefined) {
+      this.notice("A turn is running. The model switches on the next turn.");
+      return { switched: false, label: this.source.model };
+    }
+
+    const label = this.source.cycleBackend();
+    this.notice(`Model switched to ${label}.`);
+    return { switched: true, label };
   }
 
   onChange(listener: () => void): () => void {

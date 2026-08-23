@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
 
+import { CODER_BACKENDS, defaultBackend } from "../src/coder-backends.js";
 import { CoderSession, type ReplyChunk, type ReplySource } from "../src/coder-session.js";
 import { runCoderUi } from "../src/coder-ui.js";
 
@@ -38,6 +39,23 @@ const source = (chunks: ReadonlyArray<ReplyChunk>): ReplySource => ({
     for (const chunk of chunks) yield chunk;
   },
 });
+
+/** A source with backends to cycle, which is what makes Tab mean anything. */
+const switchable = (chunks: ReadonlyArray<ReplyChunk>): ReplySource => {
+  let index = 0;
+  return {
+    get model() {
+      return CODER_BACKENDS[index]?.label ?? "none";
+    },
+    cycleBackend() {
+      index = (index + 1) % CODER_BACKENDS.length;
+      return CODER_BACKENDS[index]?.label ?? "none";
+    },
+    async *reply() {
+      for (const chunk of chunks) yield chunk;
+    },
+  };
+};
 
 /**
  * Replay the painted rows.
@@ -220,5 +238,54 @@ describe("runCoderUi", () => {
     expect(bar).toContain("ctrl+d to quit");
     // There is nothing to interrupt while the session is idle.
     expect(bar).not.toContain("interrupt");
+    // And nothing to switch to, because this source has one backend.
+    expect(bar).not.toContain("tab to switch");
+  });
+
+  describe("switching backend with tab", () => {
+    const driveSwitchable = async (keys: ReadonlyArray<string>) => {
+      const stdin = new FakeIn();
+      const stdout = new FakeOut();
+      const session = new CoderSession(
+        switchable([{ type: "text", value: "hello" }]),
+        "repo",
+        "main",
+      );
+      const running = runCoderUi(session, {
+        stdin: stdin as unknown as NodeJS.ReadStream,
+        stdout: stdout as unknown as NodeJS.WriteStream,
+      });
+
+      await session.submit("go");
+      for (const key of keys) stdin.emit("data", key);
+      const painted = stdout.written;
+      stdin.emit("data", "\x04");
+      await running;
+      return { painted, rows: screen(painted), session };
+    };
+
+    it("names the key only where there is another backend to reach", async () => {
+      const { rows } = await driveSwitchable([]);
+      expect(rows.at(-1) ?? "").toContain("tab to switch model");
+    });
+
+    it("moves to the next backend and says so", async () => {
+      const { session, rows } = await driveSwitchable(["\t"]);
+
+      const expected = CODER_BACKENDS[1]?.label ?? "";
+      expect(session.snapshot().model).toBe(expected);
+      expect(rows.join("\n")).toContain(`Model switched to ${expected}.`);
+    });
+
+    it("wraps around, so every backend is reachable from one key", async () => {
+      const { session } = await driveSwitchable(CODER_BACKENDS.map(() => "\t"));
+      expect(session.snapshot().model).toBe(defaultBackend().label);
+    });
+
+    it("does not leave a tab in the composer", async () => {
+      const { rows } = await driveSwitchable(["\t"]);
+      const composer = rows.find((row) => row.includes(">")) ?? "";
+      expect(composer).not.toContain("\t");
+    });
   });
 });
