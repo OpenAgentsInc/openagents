@@ -215,10 +215,12 @@ export const decide = (request: CommandRequest, config: PolicyConfig): Decision 
   ) {
     return refuse("denied_argument", "a path argument is outside every declared root");
   }
-  if (config.tier === "probe") {
+  const allowsCurated = tierAllows(config.tier, "curated");
+  const allowsShell = tierAllows(config.tier, "shell");
+  if (!allowsCurated) {
     return refuse("tier_insufficient", "probe tier permits fixed discovery only");
   }
-  if (config.tier === "curated") {
+  if (!allowsShell) {
     if (name === "gh") {
       return ghReadOnlyAllowed(rest)
         ? { _tag: "Allowed", needsConfirmation: false }

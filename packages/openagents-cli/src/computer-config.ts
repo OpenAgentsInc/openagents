@@ -105,19 +105,6 @@ export const computerConfigurationLayer = Layer.effect(
   }),
 );
 
-export const computerConfigurationTestLayer = (
-  values: Partial<PolicyConfig> & { readonly paths?: ComputerPaths } = {},
-): Layer.Layer<ComputerConfiguration> =>
-  Layer.succeed(
-    ComputerConfiguration,
-    ComputerConfiguration.of({
-      tier: values.tier ?? "probe",
-      roots: resolveRoots(values.roots ?? []),
-      preApproved: values.preApproved ?? [],
-      paths: values.paths ?? computerPaths(),
-    }),
-  );
-
 export const writeComputerConfiguration = (
   config: PolicyConfig,
   paths: ComputerPaths,

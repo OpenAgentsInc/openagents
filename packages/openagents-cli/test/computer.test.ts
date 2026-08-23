@@ -9,12 +9,12 @@ import { runCliWith } from "../src/cli.js";
 import {
   ComputerConfiguration,
   computerConfigurationLayer,
-  computerConfigurationTestLayer,
   computerPaths,
+  type ComputerPaths,
 } from "../src/computer-config.js";
 import {
   ComputerJournal,
-  computerJournalTestLayer,
+  computerJournalLayer,
   journalMaxBytes,
   journalReadTailBytes,
 } from "../src/computer-journal.js";
@@ -23,6 +23,7 @@ import {
   decide,
   resolveRoots,
   tierAllows,
+  type PolicyConfig,
   withinRoot,
 } from "../src/computer-policy.js";
 import {
@@ -34,6 +35,28 @@ import {
 } from "../src/computer-probe.js";
 import { environmentLayerFromValues } from "../src/environment.js";
 import { outputTestLayer, type OutputDocument, type OutputMode } from "../src/output.js";
+
+const computerConfigurationTestLayer = (
+  values: Partial<PolicyConfig> & { readonly paths?: ComputerPaths } = {},
+): Layer.Layer<ComputerConfiguration> =>
+  Layer.succeed(
+    ComputerConfiguration,
+    ComputerConfiguration.of({
+      tier: values.tier ?? "probe",
+      roots: resolveRoots(values.roots ?? []),
+      preApproved: values.preApproved ?? [],
+      paths: values.paths ?? computerPaths(),
+    }),
+  );
+
+const computerJournalTestLayer = (path: string): Layer.Layer<ComputerJournal> =>
+  computerJournalLayer.pipe(
+    Layer.provide(
+      computerConfigurationTestLayer({
+        paths: { ...computerPaths(path), journal: path },
+      }),
+    ),
+  );
 
 describe("local Computer policy", () => {
   const root = "/workspace/project";

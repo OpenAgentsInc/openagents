@@ -1066,7 +1066,6 @@
     "packages/audio-contract/src/index.ts#decodeClientFrame",
     "packages/audio-contract/src/lifecycle-model.ts#acceptAudio",
     "packages/audio-contract/src/lifecycle-model.ts#acceptRetentionReceipt",
-    "packages/audio-contract/src/lifecycle-model.ts#acknowledge",
     "packages/audio-contract/src/lifecycle-model.ts#mute",
     "packages/audio-contract/src/lifecycle-model.ts#observeProse",
     "packages/audio-contract/src/lifecycle-model.ts#publishFinal",
@@ -2303,10 +2302,6 @@
     {
       "ref": "packages/nip-mkt/src/state.ts#generateIdempotencyKey",
       "reason": "Published NIP-MKT idempotency helper; Bazaar #3 will call it when its product-owned negotiation host creates a private requester operation outside the Immortal session engine."
-    },
-    {
-      "ref": "packages/nip-mkt/src/state.ts#reserveCapacity",
-      "reason": "Published NIP-MKT reservation projection; the demo provider in openagents.com issue #9310 will call it when it adopts this SDK."
     },
     {
       "ref": "packages/nip-mkt/src/transport.ts#serializeSignedEvent",

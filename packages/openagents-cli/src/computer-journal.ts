@@ -139,6 +139,3 @@ export const computerJournalLayer = Layer.effect(
     return ComputerJournal.of(makeJournal(config.paths.journal));
   }),
 );
-
-export const computerJournalTestLayer = (path: string): Layer.Layer<ComputerJournal> =>
-  Layer.succeed(ComputerJournal, ComputerJournal.of(makeJournal(path)));
