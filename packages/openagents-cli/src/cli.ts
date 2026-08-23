@@ -15,8 +15,13 @@ import {
 } from "./api-passthrough.js";
 import { ApiTransport } from "./api-transport.js";
 import { BrowserLauncher } from "./browser-launcher.js";
+import type { DelegationOutcome } from "./coder-delegate.js";
+import { DelegateFleet, describePrompt, OpencodeHarness } from "./coder-delegate.js";
+import { fleetPlainLines } from "./coder-fleet.js";
 import { runCoderPlain } from "./coder-plain.js";
+import type { CoderDelegation } from "./coder-session.js";
 import { CoderSession, DummyReplySource } from "./coder-session.js";
+import { CoderTaskRegistry } from "./coder-tasks.js";
 import { runCoderUi } from "./coder-ui.js";
 import { backendIds } from "./coder-backends.js";
 import { openThread, ThreadUnavailable } from "./coder-thread.js";
@@ -1437,6 +1442,78 @@ const coderRefusal = (origin: string, cause: unknown) => {
   });
 };
 
+/**
+ * Delegation flags, shared by `coder` and `delegate`.
+ *
+ * The child model is what turns delegation on. There is no default: a child
+ * spends money under a provider account, and a console that silently picked a
+ * model would spend it fifteen times over on a prompt the reader thought was
+ * going nowhere. Each flag falls back to an environment variable so a fleet can
+ * be configured once for a shell rather than typed on every launch.
+ */
+const childModelFlag = Flag.string("child-model").pipe(
+  Flag.optional,
+  Flag.withDescription(
+    "The model delegated children run, as `provider/model`. Defaults to " +
+      "OPENAGENTS_DELEGATE_MODEL. Delegation is unavailable without one",
+  ),
+);
+const childCommandFlag = Flag.string("child-command").pipe(
+  Flag.optional,
+  Flag.withDescription(
+    "The harness that runs a child. Defaults to OPENAGENTS_DELEGATE_COMMAND, or `opencode`",
+  ),
+);
+const childConfigFlag = Flag.string("child-config").pipe(
+  Flag.optional,
+  Flag.withDescription(
+    "A harness config file for children, passed as OPENCODE_CONFIG. This is how a " +
+      "provider credential reaches a child without being stored by the CLI",
+  ),
+);
+const childApproveFlag = Flag.boolean("child-approve").pipe(
+  Flag.withDescription(
+    "Let children use their tools without asking. A delegated child has nobody to " +
+      "ask, so a child that must edit files needs this",
+  ),
+);
+const concurrencyFlag = Flag.integer("concurrency").pipe(
+  Flag.withDefault(4),
+  Flag.withDescription("How many children may run at once. The rest queue"),
+);
+
+/**
+ * Assemble delegation, or nothing when no child model was named.
+ *
+ * Returning undefined rather than throwing is what lets `coder` open without a
+ * child model and say so when `/delegate` is typed, instead of refusing to
+ * start over a feature the reader may not use.
+ */
+function buildDelegation(options: {
+  readonly model: string | undefined;
+  readonly command: string | undefined;
+  readonly configPath: string | undefined;
+  readonly autoApprove: boolean;
+  readonly concurrency: number;
+  readonly cwd: string;
+}): CoderDelegation | undefined {
+  const model = options.model ?? process.env["OPENAGENTS_DELEGATE_MODEL"];
+  if (model === undefined || model.trim().length === 0) return undefined;
+
+  const harness = new OpencodeHarness({
+    model,
+    command: options.command ?? process.env["OPENAGENTS_DELEGATE_COMMAND"],
+    configPath: options.configPath ?? process.env["OPENAGENTS_DELEGATE_CONFIG"],
+    autoApprove: options.autoApprove,
+  });
+  const registry = new CoderTaskRegistry();
+  const fleet = new DelegateFleet(registry, harness, {
+    maxConcurrent: Math.max(1, options.concurrency),
+    cwd: options.cwd,
+  });
+  return { registry, fleet, label: `${harness.agent} (${model})` };
+}
+
 const coderCommand = Command.make(
   "coder",
   {
@@ -1445,8 +1522,24 @@ const coderCommand = Command.make(
     offline: coderOfflineFlag,
     reasoning: coderReasoningFlag,
     model: coderModelFlag,
+    childModel: childModelFlag,
+    childCommand: childCommandFlag,
+    childConfig: childConfigFlag,
+    childApprove: childApproveFlag,
+    concurrency: concurrencyFlag,
   },
-  ({ prompt, plain, offline, reasoning, model }) =>
+  ({
+    prompt,
+    plain,
+    offline,
+    reasoning,
+    model,
+    childModel,
+    childCommand,
+    childConfig,
+    childApprove,
+    concurrency,
+  }) =>
     Effect.gen(function* () {
       const flags = yield* rootCommand;
       const terminal = yield* TerminalSession;
@@ -1482,7 +1575,16 @@ const coderCommand = Command.make(
         : undefined;
 
       const source = thread ?? new DummyReplySource();
-      const session = new CoderSession(source, workspace.repository, workspace.branch);
+      const delegation = buildDelegation({
+        model: Option.getOrUndefined(childModel),
+        command: Option.getOrUndefined(childCommand),
+        configPath: Option.getOrUndefined(childConfig),
+        autoApprove: childApprove,
+        concurrency,
+        cwd: process.cwd(),
+      });
+
+      const session = new CoderSession(source, workspace.repository, workspace.branch, delegation);
 
       if (Option.isNone(stored) && !offline) {
         session.notice(
@@ -1529,9 +1631,149 @@ const coderCommand = Command.make(
     }),
 ).pipe(
   Command.withDescription(
-    "Open a terminal coding session on a thread of its own. Replies come from the thread's grant through the inference proxy, so nothing typed here reaches /chat; --offline answers from a built-in stand-in instead",
+    "Open a terminal coding session on a thread of its own. Replies come from the thread's grant through the inference proxy, so nothing typed here reaches /chat; --offline answers from a built-in stand-in instead. With --child-model, `/delegate [<n>x] <prompt>` runs child coding agents and the interface shows the fleet",
   ),
 );
+
+const delegatePrompt = Argument.string("prompt").pipe(
+  Argument.withDescription("The task every child performs"),
+);
+const delegateAgentsFlag = Flag.integer("agents").pipe(
+  Flag.withDefault(1),
+  Flag.withDescription("How many children run this prompt"),
+);
+const delegateDirFlag = Flag.string("dir").pipe(
+  Flag.optional,
+  Flag.withDescription("Where children work. Defaults to the current directory"),
+);
+const delegateDescriptionFlag = Flag.string("description").pipe(
+  Flag.optional,
+  Flag.withDescription("Three to five words naming the task. Defaults to the start of the prompt"),
+);
+
+/**
+ * Run a fleet of children from the shell and report every one of them.
+ *
+ * This is the headless half of delegation, and it exists for the same reason
+ * `--plain` does: a fan-out has to be runnable where there is no terminal to
+ * draw into — a script, a CI job, another agent. It prints transitions as they
+ * happen rather than a repainted table, because a log that overwrites itself is
+ * unreadable once it is a file.
+ */
+const delegateCommand = Command.make(
+  "delegate",
+  {
+    prompt: delegatePrompt,
+    agents: delegateAgentsFlag,
+    dir: delegateDirFlag,
+    description: delegateDescriptionFlag,
+    childModel: childModelFlag,
+    childCommand: childCommandFlag,
+    childConfig: childConfigFlag,
+    childApprove: childApproveFlag,
+    concurrency: concurrencyFlag,
+  },
+  ({
+    prompt,
+    agents,
+    dir,
+    description,
+    childModel,
+    childCommand,
+    childConfig,
+    childApprove,
+    concurrency,
+  }) =>
+    Effect.gen(function* () {
+      const flags = yield* rootCommand;
+      const cwd = Option.getOrUndefined(dir) ?? process.cwd();
+      const delegation = buildDelegation({
+        model: Option.getOrUndefined(childModel),
+        command: Option.getOrUndefined(childCommand),
+        configPath: Option.getOrUndefined(childConfig),
+        autoApprove: childApprove,
+        concurrency,
+        cwd,
+      });
+
+      if (delegation === undefined) {
+        return yield* new InputError({
+          message:
+            "No child model. Pass --child-model provider/model or set " +
+            "OPENAGENTS_DELEGATE_MODEL.",
+        });
+      }
+
+      const count = Math.max(1, agents);
+      const label = Option.getOrUndefined(description) ?? describePrompt(prompt);
+      const registry = delegation.registry;
+
+      const outcomes = yield* Effect.promise(async () => {
+        // Transitions only. A child that is working reports through its task,
+        // and reprinting every progress update would bury the four lines that
+        // say what happened.
+        const seen = new Map<string, string>();
+        const unsubscribe = flags.json
+          ? () => {}
+          : registry.onChange(() => {
+              for (const task of registry.list()) {
+                if (seen.get(task.id) === task.status) continue;
+                seen.set(task.id, task.status);
+                process.stderr.write(`${task.id} ${task.status} · ${task.description}\n`);
+              }
+            });
+
+        try {
+          return await Promise.all(
+            Array.from({ length: count }, () =>
+              delegation.fleet.submit({ description: label, prompt, cwd, background: false }),
+            ),
+          );
+        } finally {
+          unsubscribe();
+        }
+      });
+
+      if (flags.json) {
+        return yield* Console.log(
+          JSON.stringify(
+            {
+              agent: delegation.label,
+              cwd,
+              tasks: registry.list(),
+              outcomes,
+            },
+            null,
+            2,
+          ),
+        );
+      }
+
+      for (const line of fleetPlainLines(registry.list(), 100)) {
+        yield* Console.log(line);
+      }
+      for (const outcome of outcomes) {
+        yield* Console.log("");
+        yield* Console.log(describeOutcome(outcome));
+      }
+      // A fleet where a child failed did not succeed, and a script that reads
+      // only the exit code has to be told.
+      if (outcomes.some((outcome) => outcome.status !== "completed")) {
+        process.exitCode = 1;
+      }
+    }),
+).pipe(
+  Command.withDescription(
+    "Run one prompt on many child coding agents at once and report each result",
+  ),
+);
+
+function describeOutcome(outcome: DelegationOutcome): string {
+  if (outcome.status === "completed") return `${outcome.taskId} completed:\n${outcome.result}`;
+  if (outcome.status === "failed") return `${outcome.taskId} failed: ${outcome.error}`;
+  if (outcome.status === "stopped") return `${outcome.taskId} stopped.`;
+  return `refused (${outcome.code}): ${outcome.reason}`;
+}
 
 // The forum commands and their client were published in the CLI but their
 // source was never committed. Both are reconstructed from the compiled
@@ -2640,6 +2882,7 @@ export const openagentsCommand = rootCommand.pipe(
     apiCommand,
     authCommand,
     coderCommand,
+    delegateCommand,
     computerCommand,
     forumCommand,
     issueCommand,

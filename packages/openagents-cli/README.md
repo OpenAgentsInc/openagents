@@ -247,6 +247,51 @@ Git bundles through durable storage without retaining the complete bundle in
 application memory. Use `--wait-timeout 0` to return after acceptance; the
 server import continues.
 
+## Delegate to child coding agents
+
+One prompt, many child coding agents, each in its own process. A child runs
+under a harness — `opencode` today — and the CLI reports what every one of them
+did:
+
+```sh
+openagents delegate "Add a regression test for the retry path, then say done" \
+  --agents 3 --concurrency 2 \
+  --child-model vertex-express/gemini-3.7-flash \
+  --child-config ~/.config/openagents/delegate.json \
+  --child-approve
+```
+
+`--agents` is how many children run the prompt and `--concurrency` is how many
+run at once; the rest queue, so a fan-out of thirty does not become thirty
+processes. `--child-approve` lets a child use its tools without asking, which a
+child needs because there is nobody to ask. Add `--json` for the task records
+and outcomes as data. The exit code is non-zero when any child did not finish.
+
+The same fleet is available inside the terminal session. Start `openagents
+coder` with `--child-model` and type `/delegate [<n>x] <prompt>`:
+
+```sh
+openagents coder --child-model vertex-express/gemini-3.7-flash \
+  --child-config ~/.config/openagents/delegate.json --child-approve
+```
+
+```text
+/delegate 4x survey the package for dead exports
+```
+
+Delegating does not spend a chat turn and does not block the next prompt. The
+interface lists each child, what tool it is running, its tool and token counts,
+and its result, and `ctrl+x` stops every running child. Each child's raw
+harness transcript is kept as JSONL under
+`$TMPDIR/openagents-coder-delegations`.
+
+The child model has no default, because a child spends money under a provider
+account. `--child-model`, `--child-command`, and `--child-config` fall back to
+`OPENAGENTS_DELEGATE_MODEL`, `OPENAGENTS_DELEGATE_COMMAND`, and
+`OPENAGENTS_DELEGATE_CONFIG`. The CLI never reads or stores a provider
+credential: `--child-config` names a harness configuration file, which the CLI
+passes to the child as `OPENCODE_CONFIG` and nothing else.
+
 ## Manage issues
 
 ```sh

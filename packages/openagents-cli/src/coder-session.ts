@@ -11,7 +11,17 @@
  * order the source produced them. An earlier version yielded only text, so a
  * tool call left no entry at all and the sentences on either side of it were
  * appended to the same entry and read as one run-on sentence.
+ *
+ * Delegated children are deliberately not transcript entries. They outlive the
+ * entry that launched them and they change after it settles, so they live in a
+ * `CoderTaskRegistry` and reach renderers through `snapshot().tasks`. The
+ * session owns the join between the two: it turns a `/delegate` line into
+ * launches and reports each child's outcome back onto the transcript.
  */
+
+import type { DelegationOutcome, DelegationRequest } from "./coder-delegate.js";
+import { parseDelegateCommand } from "./coder-delegate.js";
+import type { CoderTask, CoderTaskId, CoderTaskRegistry } from "./coder-tasks.js";
 
 /** What a reply source produces. One entry kind per member. */
 export type ReplyChunk =
@@ -77,6 +87,20 @@ export interface CoderSnapshot {
    * the first frame.
    */
   readonly budget: string | undefined;
+  /**
+   * Delegated children, oldest first. Empty when nothing was delegated, and
+   * then no renderer draws a fleet at all.
+   */
+  readonly tasks: ReadonlyArray<CoderTask>;
+}
+
+/** What the session needs in order to delegate. Absent means it cannot. */
+export interface CoderDelegation {
+  readonly registry: CoderTaskRegistry;
+  /** Usually a `DelegateFleet`. Narrow on purpose, so tests can stand in. */
+  readonly fleet: { submit(request: DelegationRequest): Promise<DelegationOutcome> };
+  /** Shown when the reader asks for help, and in the launch notice. */
+  readonly label: string;
 }
 
 /** Where reply chunks come from. One implementation today; ACP is the next. */
@@ -212,12 +236,20 @@ export class CoderSession {
   private readonly listeners = new Set<() => void>();
   private controller: AbortController | undefined;
   private turnCount = 0;
+  private unsubscribeTasks: (() => void) | undefined;
 
   constructor(
     private readonly source: ReplySource,
     private readonly repository: string,
     private readonly branch: string,
-  ) {}
+    private readonly delegation?: CoderDelegation,
+  ) {
+    // A child reporting progress has to reach the renderer, and the renderer
+    // subscribes to the session rather than to the registry, so the session
+    // forwards. Without this the fleet block only moved when a chat chunk
+    // happened to arrive.
+    this.unsubscribeTasks = delegation?.registry.onChange(() => this.emit());
+  }
 
   snapshot(): CoderSnapshot {
     return {
@@ -228,7 +260,34 @@ export class CoderSession {
       model: this.source.model,
       turns: this.turnCount,
       budget: this.source.budget,
+      tasks: this.delegation?.registry.list() ?? [],
     };
+  }
+
+  /** Whether `/delegate` does anything, which is what the interface reads. */
+  get canDelegate(): boolean {
+    return this.delegation !== undefined;
+  }
+
+  /**
+   * Stop every running child.
+   *
+   * Children are stopped as a group because that is how they were launched and
+   * how they are read. Stopping one of fifteen is what the detail view is for.
+   */
+  stopTasks(): number {
+    const registry = this.delegation?.registry;
+    if (registry === undefined) return 0;
+    const running = registry.list().filter((task) => task.status === "running").length;
+    if (running === 0) return 0;
+    registry.stopAll();
+    this.notice(`Stopped ${String(running)} ${running === 1 ? "child" : "children"}.`);
+    return running;
+  }
+
+  /** Forget children nothing will look at again. Called on the interface tick. */
+  pruneTasks(): void {
+    this.delegation?.registry.prune();
   }
 
   /**
@@ -284,8 +343,20 @@ export class CoderSession {
    * to send.
    */
   async submit(prompt: string): Promise<void> {
-    if (this.controller !== undefined) return;
     if (prompt.trim().length === 0) return;
+
+    // Delegation is not a turn: it does not go to the model, it does not block
+    // the next prompt, and it is allowed while a reply is streaming. That is
+    // the point of a fleet — the console keeps working while children run.
+    const delegate = parseDelegateCommand(prompt);
+    if (delegate !== undefined) {
+      this.entries.push({ role: "you", text: prompt, settled: true });
+      this.startDelegation(delegate.count, delegate.prompt, delegate.description);
+      this.emit();
+      return;
+    }
+
+    if (this.controller !== undefined) return;
 
     this.entries.push({ role: "you", text: prompt, settled: true });
     // An empty assistant entry from the start, so the interface shows a caret
@@ -396,6 +467,76 @@ export class CoderSession {
     return true;
   }
 
+  /** Release the registry subscription. Safe to call twice. */
+  close(): void {
+    this.unsubscribeTasks?.();
+    this.unsubscribeTasks = undefined;
+  }
+
+  /**
+   * Launch `count` children on one prompt and report each as it lands.
+   *
+   * Not awaited: the whole reason to delegate is that the console stays usable
+   * while the children work, so this returns as soon as they are submitted and
+   * every outcome arrives later as a notice. Failures are reported per child
+   * rather than as one summary, because with fifteen children the reader needs
+   * to know which one.
+   */
+  private startDelegation(count: number, prompt: string, description: string): void {
+    const delegation = this.delegation;
+    if (delegation === undefined) {
+      this.notice(
+        "This session cannot delegate. Start it with a child model, for example " +
+          "`openagents coder --child-model vertex-express/gemini-3.7-flash`.",
+      );
+      return;
+    }
+    if (prompt.trim().length === 0) {
+      this.notice("Usage: /delegate [<n>x] <prompt>. For example `/delegate 3x add tests`.");
+      return;
+    }
+
+    this.notice(
+      `Delegating ${String(count)} ${count === 1 ? "child" : "children"} to ${delegation.label}.`,
+    );
+
+    for (let index = 0; index < count; index += 1) {
+      const request: DelegationRequest = {
+        description,
+        prompt,
+        background: true,
+      };
+      void delegation.fleet.submit(request).then((outcome) => this.reportOutcome(outcome));
+    }
+  }
+
+  private reportOutcome(outcome: DelegationOutcome): void {
+    const registry = this.delegation?.registry;
+    if (outcome.status === "refused") {
+      this.notice(`Delegation refused (${outcome.code}): ${outcome.reason}`);
+      return;
+    }
+
+    const task = registry?.get(outcome.taskId);
+    const label = task === undefined ? outcome.taskId : `${outcome.taskId} ${task.description}`;
+    if (outcome.status === "completed") {
+      const first = firstLine(outcome.result);
+      this.notice(first.length > 0 ? `${label} finished: ${first}` : `${label} finished.`);
+    } else if (outcome.status === "failed") {
+      this.notice(`${label} failed: ${outcome.error}`);
+    } else {
+      this.notice(`${label} stopped.`);
+    }
+
+    // Reported is read: the notice above is the delivery, so leaving the badge
+    // on would ask the reader to go and find what they were just told.
+    this.markRead(outcome.taskId);
+  }
+
+  private markRead(id: CoderTaskId): void {
+    this.delegation?.registry.markRead(id);
+  }
+
   private applyToolResult(chunk: Extract<ReplyChunk, { type: "tool_result" }>): void {
     for (let index = this.entries.length - 1; index >= 0; index -= 1) {
       const tool = this.entries[index]?.tool;
@@ -412,6 +553,15 @@ export class CoderSession {
   private emit(): void {
     for (const listener of this.listeners) listener();
   }
+}
+
+/** The first non-empty line, which is how a result is announced in one row. */
+function firstLine(text: string): string {
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.length > 0) return trimmed;
+  }
+  return "";
 }
 
 /** A renderer must not be able to mutate the transcript through its snapshot. */

@@ -29,8 +29,10 @@
  * own job instead.
  */
 
+import { fleetPhrase, fleetRows } from "./coder-fleet.js";
 import { renderMarkdown, visibleWidth, wrapStyled } from "./coder-markdown.js";
 import type { CoderEntry, CoderSession, CoderSnapshot, CoderToolCall } from "./coder-session.js";
+import type { CoderTaskStatus } from "./coder-tasks.js";
 
 const ALT_SCREEN_ON = "\x1b[?1049h";
 const ALT_SCREEN_OFF = "\x1b[?1049l";
@@ -57,6 +59,14 @@ const RED = "\x1b[31m";
 
 const STATUS_ROWS = 1;
 const COMPOSER_ROWS = 3;
+/**
+ * Rows the fleet block may take before it scrolls internally.
+ *
+ * A fleet is a status display, not the content: a 30-way fan-out must not push
+ * the transcript off the screen. Past this many children the block shows the
+ * ones that are still working and counts the rest.
+ */
+const FLEET_ROWS_MAX = 8;
 /** Width of the role gutter, so every entry's text starts in one column. */
 const GUTTER = 9;
 /**
@@ -104,6 +114,20 @@ function hints(keys: ReadonlyArray<string>, right: string, width: number): strin
     if (visibleWidth(left) + visibleWidth(right) + 2 <= width) return justify(left, right, width);
   }
   return right;
+}
+
+/**
+ * The colour a fleet row's mark takes, so the column can be scanned.
+ *
+ * Failure is the only one that is loud. A fleet of fifteen where every row is
+ * coloured is a fleet where nothing stands out, and the row a reader is looking
+ * for is the one that went wrong.
+ */
+function fleetColor(status: CoderTaskStatus): string {
+  if (status === "running") return YELLOW;
+  if (status === "completed") return GREEN;
+  if (status === "failed") return RED;
+  return DIM;
 }
 
 /** Human-readable elapsed time, in the shape a status line wants. */
@@ -209,6 +233,11 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         escapeTimer = undefined;
       }
       unsubscribe();
+      // Leaving the interface ends the fleet with it: a child holds a process,
+      // and a console that exits while fifteen of them keep spending would
+      // leave the reader nothing to stop them with.
+      session.stopTasks();
+      session.close();
       stdin.off("data", onData);
       stdout.off("resize", onResize);
       if (stdin.isTTY) stdin.setRawMode(false);
@@ -308,6 +337,36 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       return rows;
     };
 
+    /**
+     * The fleet block: one row per child.
+     *
+     * Drawn above the status line rather than in the transcript, because it is
+     * live state and the transcript is a record. A reader who scrolled back to
+     * an earlier tool call still needs to see what the fleet is doing now.
+     */
+    const fleetLines = (snapshot: CoderSnapshot, width: number): ReadonlyArray<string> => {
+      const tasks = snapshot.tasks;
+      if (tasks.length === 0) return [];
+
+      // Working children first when there are more than fit: a finished child
+      // has already been reported on the transcript, so it is the one to drop.
+      const shown =
+        tasks.length <= FLEET_ROWS_MAX
+          ? tasks
+          : [
+              ...tasks.filter((task) => task.status === "running" || task.status === "pending"),
+              ...tasks.filter((task) => task.status !== "running" && task.status !== "pending"),
+            ].slice(0, FLEET_ROWS_MAX);
+
+      const out = fleetRows(shown, Math.max(20, width - 8)).map((row) => {
+        const color = fleetColor(row.status);
+        return `  ${DIM}${row.branch}${RESET} ${color}${row.mark}${RESET} ${DIM}${row.text}${RESET}`;
+      });
+      const hidden = tasks.length - shown.length;
+      if (hidden > 0) out.push(`  ${DIM}   +${String(hidden)} more${RESET}`);
+      return out;
+    };
+
     /** The newest tool call, which is the one ctrl+o expands. */
     const focusedTool = (snapshot: CoderSnapshot): string | undefined => {
       for (let index = snapshot.entries.length - 1; index >= 0; index -= 1) {
@@ -324,17 +383,23 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       const height = stdout.rows ?? 24;
       const transcriptHeight = Math.max(1, height - STATUS_ROWS - COMPOSER_ROWS - 1);
 
+      const fleet = fleetLines(snapshot, width);
+      // The fleet takes its rows from the transcript, not from the chrome: the
+      // status line and composer stay where the reader's hands expect them.
+      const transcriptRows = Math.max(1, transcriptHeight - fleet.length);
+
       const lines = transcriptLines(snapshot, width);
       lineCount = lines.length;
-      viewport = transcriptHeight;
+      viewport = transcriptRows;
 
-      const maxStart = Math.max(0, lines.length - transcriptHeight);
+      const maxStart = Math.max(0, lines.length - transcriptRows);
       const start = anchor === undefined ? maxStart : Math.min(anchor, maxStart);
       const above = start;
-      const below = Math.max(0, lines.length - start - transcriptHeight);
+      const below = Math.max(0, lines.length - start - transcriptRows);
 
       const rows: string[] = [];
-      for (let row = 0; row < transcriptHeight; row += 1) rows.push(lines[start + row] ?? "");
+      for (let row = 0; row < transcriptRows; row += 1) rows.push(lines[start + row] ?? "");
+      rows.push(...fleet);
 
       // Bottom chrome, in the order a reader scans it: what the session is
       // doing now, then where the typing goes, then what the keys do. The
@@ -343,13 +408,19 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       const rule = `${DIM}${"─".repeat(Math.max(0, width))}${RESET}`;
       const inner = Math.max(10, width - 4);
 
+      const phrase = fleetPhrase(snapshot.tasks);
       // The elapsed time and nothing else. This said `streaming` until the
       // reply source became the inference proxy, which builds the whole body
       // and sends it once: a turn that shows one block after four silent
       // seconds was never streaming, and the status line must not say it was.
-      const activity = snapshot.running
+      const chatActivity = snapshot.running
         ? `${YELLOW}●${RESET} working… ${DIM}(${elapsed(runningSince, Date.now())})${RESET}`
         : `${DIM}○ ready${RESET}`;
+      // The fleet is named on the status line even though the block above lists
+      // it, because the block is what gives way first on a short terminal and
+      // the count is the part the reader is waiting on.
+      const activity =
+        phrase === undefined ? chatActivity : `${chatActivity} ${DIM}· ${phrase}${RESET}`;
       // Dropped from the left as the terminal narrows, because that is the
       // order of what a reader cannot recover elsewhere: they can see which
       // checkout they are in, they can ask git for the branch, and nothing on
@@ -383,8 +454,11 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       // Only when there is another model to switch to, and only while nothing
       // is running: a turn already accepted keeps the backend it named.
       if (session.canCycleBackend && !snapshot.running) keys.push("tab to switch model");
-      if (lines.length > transcriptHeight) keys.push("pgup/pgdn to scroll");
+      if (lines.length > transcriptRows) keys.push("pgup/pgdn to scroll");
       if (focusedTool(snapshot) !== undefined) keys.push("ctrl+o to expand");
+      if (snapshot.tasks.some((task) => task.status === "running")) {
+        keys.push("ctrl+x to stop agents");
+      }
 
       // `this run` is not decoration. The count is this process's, and a
       // source that is not the thread — the stand-in behind `--offline` — has
@@ -399,7 +473,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
             : `${DIM}${replies}${RESET}`;
       rows.push(`  ${hints(keys, counter, inner)}`);
 
-      paint(rows, transcriptHeight + 3, 4 + composer.length + 1);
+      paint(rows, transcriptRows + fleet.length + 3, 4 + composer.length + 1);
     };
 
     /**
@@ -444,8 +518,18 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       // The elapsed time has to advance between chunks, not only when one
       // arrives, or a slow reply looks stalled.
       ticker ??= setInterval(() => {
-        if (session.running) render();
+        session.pruneTasks();
+        if (session.running || session.snapshot().tasks.length > 0) render();
       }, 1000);
+
+      // A delegate line is not a turn: it returns as soon as the children are
+      // submitted and each one reports later, so nothing here waits on it and
+      // the ticker above keeps the fleet rows moving.
+      if (prompt.trimStart().startsWith("/delegate")) {
+        void session.submit(prompt);
+        render();
+        return;
+      }
 
       void session.submit(prompt).finally(() => {
         if (ticker !== undefined) {
@@ -549,6 +633,17 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         if (char === "\x0f") {
           toggleFocusedTool();
           dirty = false;
+          index += 1;
+          continue;
+        }
+
+        // Ctrl+X stops the children. Escape is not overloaded to do it: escape
+        // interrupts the reply the reader is watching, and a key that means
+        // "stop this" sometimes and "stop those fifteen" other times is how a
+        // fleet gets killed by accident.
+        if (char === "\x18") {
+          session.stopTasks();
+          dirty = true;
           index += 1;
           continue;
         }
