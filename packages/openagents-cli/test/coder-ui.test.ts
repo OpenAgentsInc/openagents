@@ -1,0 +1,158 @@
+import { EventEmitter } from "node:events";
+import { describe, expect, it } from "vitest";
+
+import { CoderSession, type ReplyChunk, type ReplySource } from "../src/coder-session.js";
+import { runCoderUi } from "../src/coder-ui.js";
+
+/** A writable that records what the interface painted. */
+class FakeOut extends EventEmitter {
+  columns = 100;
+  rows = 24;
+  written = "";
+  write(text: string): boolean {
+    this.written += text;
+    return true;
+  }
+}
+
+/** A readable TTY the test can push keystrokes into. */
+class FakeIn extends EventEmitter {
+  isTTY = true;
+  setRawMode(): this {
+    return this;
+  }
+  resume(): this {
+    return this;
+  }
+  pause(): this {
+    return this;
+  }
+  setEncoding(): this {
+    return this;
+  }
+}
+
+const source = (chunks: ReadonlyArray<ReplyChunk>): ReplySource => ({
+  model: "scripted",
+  async *reply() {
+    for (const chunk of chunks) yield chunk;
+  },
+});
+
+/**
+ * Replay the painted rows.
+ *
+ * Every row the interface writes is positioned absolutely and erased to the
+ * end of the line first, so the last write to a row is what that row shows.
+ */
+function screen(written: string): ReadonlyArray<string> {
+  const rows: string[] = [];
+  const positions = /\x1b\[(\d+);(\d+)H(\x1b\[K)?/g;
+  let row: number | undefined;
+  let from = 0;
+  const flush = (end: number) => {
+    if (row === undefined) return;
+    rows[row - 1] = written
+      .slice(from, end)
+      .replace(/\x1b\[[0-9;]*m/g, "")
+      .trimEnd();
+  };
+  for (let match = positions.exec(written); match !== null; match = positions.exec(written)) {
+    flush(match.index);
+    row = match[3] === undefined ? undefined : Number(match[1]);
+    from = positions.lastIndex;
+  }
+  flush(written.length);
+  return rows;
+}
+
+const drive = async (chunks: ReadonlyArray<ReplyChunk>, prompt = "go") => {
+  const stdin = new FakeIn();
+  const stdout = new FakeOut();
+  const session = new CoderSession(source(chunks), "repo", "main");
+  const running = runCoderUi(session, {
+    stdin: stdin as unknown as NodeJS.ReadStream,
+    stdout: stdout as unknown as NodeJS.WriteStream,
+  });
+
+  await session.submit(prompt);
+  const painted = stdout.written;
+  stdin.emit("data", "\x04");
+  await running;
+  return { painted, rows: screen(painted) };
+};
+
+describe("runCoderUi", () => {
+  it("never clears the screen and never writes a newline", async () => {
+    const { painted } = await drive([{ type: "text", value: "hello" }]);
+    // Both are how a frame reaches the terminal's own scrollback.
+    expect(painted).not.toContain("\x1b[2J");
+    expect(painted).not.toContain("\n");
+    expect(painted).toContain("\x1b[?1049h");
+  });
+
+  it("erases each row it repaints rather than clearing the screen", async () => {
+    const { painted } = await drive([{ type: "text", value: "hello" }]);
+    expect(/\x1b\[\d+;1H\x1b\[K/.test(painted)).toBe(true);
+  });
+
+  it("puts a blank row on both sides of a tool call", async () => {
+    const { rows } = await drive([
+      { type: "text", value: "Let me check what is connected:" },
+      { type: "tool_call", callId: "c1", name: "repo_grep", arguments: '{"pattern":"x"}' },
+      { type: "tool_result", callId: "c1", output: "{}", error: undefined },
+      { type: "text", value: "Here is the rundown" },
+    ]);
+
+    const tool = rows.findIndex((row) => row.includes("repo_grep"));
+    expect(tool).toBeGreaterThan(0);
+    expect(rows[tool - 1]).toBe("");
+    const after = rows.findIndex((row) => row.includes("Here is the rundown"));
+    expect(rows[after - 1]).toBe("");
+    // The sentences either side of the call are on different rows, which is
+    // the defect: they used to be appended to one another.
+    expect(rows.join("\n")).not.toContain("connected:Here");
+  });
+
+  it("shows the tool name, its arguments, and its outcome", async () => {
+    const { rows } = await drive([
+      { type: "tool_call", callId: "c1", name: "repo_grep", arguments: '{"pattern":"x"}' },
+      { type: "tool_result", callId: "c1", output: '{"matches":[]}', error: undefined },
+    ]);
+    const text = rows.join("\n");
+    expect(text).toContain("repo_grep");
+    expect(text).toContain('{"pattern":"x"}');
+    expect(text).toContain('{"matches":[]}');
+  });
+
+  it("renders assistant Markdown rather than its source", async () => {
+    const { painted, rows } = await drive([
+      { type: "text", value: "hello **ox-alpha** and `code`" },
+    ]);
+    expect(rows.join("\n")).toContain("hello ox-alpha and code");
+    expect(painted).toContain("\x1b[1mox-alpha\x1b[0m");
+  });
+
+  it("streams reasoning dim and italic, above the text of the same turn", async () => {
+    const { painted, rows } = await drive([
+      { type: "reasoning", value: "I should check first." },
+      { type: "text", value: "Done." },
+    ]);
+
+    const thought = rows.findIndex((row) => row.includes("I should check first."));
+    const answer = rows.findIndex((row) => row.includes("Done."));
+    expect(thought).toBeGreaterThanOrEqual(0);
+    expect(answer).toBeGreaterThan(thought);
+    expect(rows[answer - 1]).toBe("");
+    expect(painted).toContain("\x1b[2m\x1b[3mI should check first.\x1b[0m");
+  });
+
+  it("offers no key in the bottom bar that does nothing in that state", async () => {
+    const { rows } = await drive([{ type: "text", value: "hello" }]);
+    const bar = rows.at(-1) ?? "";
+    expect(bar).toContain("enter to send");
+    expect(bar).toContain("ctrl+d to quit");
+    // There is nothing to interrupt while the session is idle.
+    expect(bar).not.toContain("interrupt");
+  });
+});

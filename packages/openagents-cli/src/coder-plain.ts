@@ -8,11 +8,17 @@
  *
  * `docs/2026-08-23-openagents-coder-cli-spec.md` section 3.6 makes this the
  * contract: the interface is optional, the agent is not.
+ *
+ * It renders a subset on purpose. Assistant text is written as the Markdown
+ * source the model produced, with no ANSI, because this is the path a script
+ * reads. Tool calls are written as one line each, so a reader can still see
+ * that a call happened between two sentences. Reasoning is not written: it is
+ * a thought, and a pipe wants the answer.
  */
 
 import { createInterface } from "node:readline";
 
-import type { CoderSession } from "./coder-session.js";
+import type { CoderEntry, CoderSession } from "./coder-session.js";
 
 export interface CoderPlainOptions {
   readonly stdin: NodeJS.ReadableStream;
@@ -28,19 +34,27 @@ export async function runCoderPlain(
   const { stdin, stdout, prompt } = options;
 
   let written = 0;
-  // Notices are tracked by their text rather than by position: a failed turn
-  // removes the empty assistant entry, so an index into the transcript can move
-  // backwards and skip the very notice that explains the failure.
+  // Notices and tool lines are tracked by their text rather than by position: a
+  // failed turn removes the empty assistant entry, so an index into the
+  // transcript can move backwards and skip the very notice that explains the
+  // failure.
   const reported = new Set<string>();
+
+  const announce = (line: string) => {
+    if (reported.has(line)) return;
+    reported.add(line);
+    stdout.write(`${line}\n`);
+  };
+
   const flush = () => {
     const entries = session.snapshot().entries;
 
-    // Notices carry refusals and failures. Dropping them here is how a failed
-    // turn becomes a silent empty reply, so they are written as they arrive.
+    // Notices carry refusals and failures, and a tool call is the only sign
+    // that the text either side of it came from two different places. Dropping
+    // either here is how a turn becomes a silent or run-on reply.
     for (const entry of entries) {
-      if (entry.role !== "notice" || reported.has(entry.text)) continue;
-      reported.add(entry.text);
-      stdout.write(`${entry.text}\n`);
+      if (entry.role === "notice") announce(entry.text);
+      else if (entry.role === "tool") announce(toolLine(entry));
     }
 
     const last = entries.at(-1);
@@ -76,4 +90,20 @@ export async function runCoderPlain(
   } finally {
     unsubscribe();
   }
+}
+
+/**
+ * One line when the call starts and one when it ends.
+ *
+ * Both are keyed by their own text, so the start line is written once while
+ * the call runs and the outcome line replaces nothing: a reader of a pipe sees
+ * the call begin and sees how it ended.
+ */
+function toolLine(entry: CoderEntry): string {
+  const tool = entry.tool;
+  if (tool === undefined) return `[tool] ${entry.text}`;
+  if (tool.status === "running") {
+    return `\n[tool] ${tool.name} ${tool.arguments.replace(/\s+/g, " ").trim()}`;
+  }
+  return `[tool] ${tool.name} → ${tool.error === undefined ? "ok" : `failed: ${tool.error}`}`;
 }

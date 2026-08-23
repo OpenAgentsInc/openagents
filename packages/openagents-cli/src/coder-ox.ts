@@ -18,6 +18,8 @@
  *   appears in pieces rather than at once.
  */
 
+import type { ReplyChunk } from "./coder-session.js";
+
 const SUBMIT_PATH = "/api/v3/chat/turns";
 const EVENTS_PATH = "/api/v3/chat/events";
 
@@ -39,6 +41,23 @@ interface ChatEvent {
   readonly sequence?: number;
   readonly type?: string;
   readonly payload?: Record<string, unknown>;
+  /**
+   * The server's own projection of the tool call this event belongs to, which
+   * every `tool_call_*` event carries. It already holds pretty-printed
+   * arguments, the extracted result, and a structured error, so reading it
+   * rather than the raw payload keeps the CLI and the web surface showing the
+   * same tool call.
+   */
+  readonly tool_call?: ToolCallView;
+}
+
+interface ToolCallView {
+  readonly call_id?: string;
+  readonly name?: string;
+  readonly arguments?: string;
+  readonly output?: string | null;
+  readonly error?: { readonly code?: string | null; readonly message?: string | null } | null;
+  readonly status?: string;
 }
 
 export class OxAlphaUnavailable extends Error {
@@ -52,11 +71,12 @@ export class OxAlphaUnavailable extends Error {
 }
 
 /**
- * Submit a turn and yield the assistant text as the server records it.
+ * Submit a turn and yield what the server records, in the order it records it.
  *
- * Reasoning deltas are read but not yielded: the transcript shows what the
- * assistant said, and the runtime already treats a thought as something a
- * client may drop.
+ * A turn interleaves reasoning, tool calls, and assistant text. Every one of
+ * those becomes a chunk here. An earlier version yielded only `text_delta`,
+ * which made a tool call invisible and joined the sentence before it to the
+ * sentence after it.
  */
 export class OxAlphaReplySource {
   readonly model: string;
@@ -65,7 +85,7 @@ export class OxAlphaReplySource {
     this.model = options.model ?? "stealth/ox-alpha";
   }
 
-  async *reply(prompt: string, signal: AbortSignal): AsyncIterable<string> {
+  async *reply(prompt: string, signal: AbortSignal): AsyncIterable<ReplyChunk> {
     const seen = await this.latestSequence();
     const runId = await this.submit(prompt, signal);
     const startedAt = Date.now();
@@ -103,7 +123,16 @@ export class OxAlphaReplySource {
 
         if (event.type === "text_delta") {
           const value = event.payload?.["value"];
-          if (typeof value === "string" && value.length > 0) yield value;
+          if (typeof value === "string" && value.length > 0) yield { type: "text", value };
+        } else if (event.type === "reasoning_delta") {
+          const value = event.payload?.["value"];
+          if (typeof value === "string" && value.length > 0) yield { type: "reasoning", value };
+        } else if (event.type === "tool_call_started") {
+          const call = toolCall(event);
+          if (call !== undefined) yield call;
+        } else if (event.type === "tool_call_completed" || event.type === "tool_call_failed") {
+          const result = toolResult(event);
+          if (result !== undefined) yield result;
         } else if (event.type === "response_completed") {
           finished = true;
         } else if (event.type === "response_failed") {
@@ -202,6 +231,40 @@ export class OxAlphaReplySource {
     const events = body["events"];
     return Array.isArray(events) ? (events as ReadonlyArray<ChatEvent>) : [];
   }
+}
+
+/** The start of a tool call, read from the server's projection of it. */
+function toolCall(event: ChatEvent): Extract<ReplyChunk, { type: "tool_call" }> | undefined {
+  const view = event.tool_call;
+  const callId = view?.call_id ?? stringField(event.payload, "call_id");
+  if (callId === undefined) return undefined;
+  return {
+    type: "tool_call",
+    callId,
+    name: view?.name ?? stringField(event.payload, "name") ?? "tool",
+    arguments: view?.arguments ?? stringField(event.payload, "arguments") ?? "",
+  };
+}
+
+/** The outcome of a tool call. `error` decides whether it succeeded. */
+function toolResult(event: ChatEvent): Extract<ReplyChunk, { type: "tool_result" }> | undefined {
+  const view = event.tool_call;
+  const callId = view?.call_id ?? stringField(event.payload, "call_id");
+  if (callId === undefined) return undefined;
+
+  const message = view?.error?.message ?? stringField(event.payload, "error");
+  const error = message ?? (event.type === "tool_call_failed" ? "The tool failed." : undefined);
+  const output = view?.output ?? stringField(event.payload, "output");
+
+  return { type: "tool_result", callId, output: output ?? undefined, error };
+}
+
+function stringField(
+  payload: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = payload?.[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 /** The newest run in the log that the pre-submit snapshot did not know about. */

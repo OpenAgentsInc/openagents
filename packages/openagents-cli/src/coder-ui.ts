@@ -19,36 +19,60 @@
  *     ├──────────────────────────────┤
  *     │ composer                     │
  *     └──────────────────────────────┘
+ *
+ * Painting is differential. An earlier version cleared the whole screen and
+ * repainted it several times a second while a reply streamed, which left a
+ * stack of half-drawn frames wherever the terminal kept scrolled-off alternate
+ * screen rows. Nothing here clears the screen, writes a newline, or moves the
+ * cursor past the last row, so the terminal never scrolls and its own
+ * scrollback is never written to. Scrolling the transcript is the interface's
+ * own job instead.
  */
 
-import type { CoderEntry, CoderSession, CoderSnapshot } from "./coder-session.js";
+import { renderMarkdown, visibleWidth, wrapStyled } from "./coder-markdown.js";
+import type { CoderEntry, CoderSession, CoderSnapshot, CoderToolCall } from "./coder-session.js";
 
 const ALT_SCREEN_ON = "\x1b[?1049h";
 const ALT_SCREEN_OFF = "\x1b[?1049l";
 const CURSOR_HIDE = "\x1b[?25l";
 const CURSOR_SHOW = "\x1b[?25h";
-const CLEAR = "\x1b[2J";
+const ERASE_LINE = "\x1b[K";
+/**
+ * Alternate scroll: the terminal turns the wheel into arrow keys while the
+ * alternate screen is up. It costs one escape sequence and, unlike mouse
+ * reporting, leaves the terminal's own text selection alone.
+ */
+const ALT_SCROLL_ON = "\x1b[?1007h";
+const ALT_SCROLL_OFF = "\x1b[?1007l";
 
 const DIM = "\x1b[2m";
 const BOLD = "\x1b[1m";
+const ITALIC = "\x1b[3m";
 const RESET = "\x1b[0m";
 const CYAN = "\x1b[36m";
 const GREEN = "\x1b[32m";
 const YELLOW = "\x1b[33m";
+const MAGENTA = "\x1b[35m";
+const RED = "\x1b[31m";
 
 const STATUS_ROWS = 1;
 const COMPOSER_ROWS = 3;
-/** Escape arms interruption for this long, so an arrow key is not an escape. */
-const INTERRUPT_WINDOW_MS = 5000;
+/** Width of the role gutter, so every entry's text starts in one column. */
+const GUTTER = 9;
+/**
+ * How long a lone escape byte waits for the rest of a sequence.
+ *
+ * A bare `\x1b` and the first byte of an arrow key are the same byte, so the
+ * only way to tell them apart is to wait. Terminals deliver the rest of an
+ * arrow key in the same read or the one straight after, so this is below the
+ * threshold where a keypress feels delayed, and it lets a single escape
+ * interrupt rather than requiring two.
+ */
+const ESCAPE_WINDOW_MS = 40;
 
 export interface CoderUiOptions {
   readonly stdin: NodeJS.ReadStream;
   readonly stdout: NodeJS.WriteStream;
-}
-
-/** Visible width, ignoring ANSI styling. */
-function visibleWidth(text: string): number {
-  return [...text.replace(/\x1b\[[0-9;]*m/g, "")].length;
 }
 
 /**
@@ -73,34 +97,22 @@ function elapsed(sinceMs: number, nowMs: number): string {
   return `${minutes}m ${seconds % 60}s`;
 }
 
-/** Wrap one paragraph to the available width, preserving blank lines. */
-function wrap(text: string, width: number): ReadonlyArray<string> {
-  const lines: string[] = [];
-  for (const paragraph of text.split("\n")) {
-    if (paragraph.length === 0) {
-      lines.push("");
-      continue;
-    }
-    let current = "";
-    for (const word of paragraph.split(" ")) {
-      if (current.length === 0) {
-        current = word;
-      } else if (current.length + 1 + word.length <= width) {
-        current += ` ${word}`;
-      } else {
-        lines.push(current);
-        current = word;
-      }
-    }
-    lines.push(current);
-  }
-  return lines;
+/** Collapse to one line and cut to a visible width, marking what was cut. */
+function clip(text: string, width: number): string {
+  return truncate(text.replace(/\s+/g, " ").trim(), width);
+}
+
+/** Cut to a visible width, keeping the leading indentation intact. */
+function truncate(text: string, width: number): string {
+  const glyphs = [...text.replace(/\t/g, "  ")];
+  if (glyphs.length <= width) return glyphs.join("");
+  return `${glyphs.slice(0, Math.max(1, width - 1)).join("")}…`;
 }
 
 /**
- * Match a complete escape sequence at `index`, or return undefined for a bare
- * escape. Covers CSI (`\x1b[…final`), SS3 (`\x1bO…`), and the `\x1b[…~` forms
- * that carry PageUp and PageDown.
+ * Match a complete escape sequence at `index`, or return undefined when the
+ * bytes so far could still be the start of one. Covers CSI (`\x1b[…final`),
+ * SS3 (`\x1bO…`), and the `\x1b[…~` forms that carry PageUp and PageDown.
  */
 function matchEscapeSequence(text: string, index: number): string | undefined {
   if (text[index] !== "\x1b") return undefined;
@@ -125,7 +137,9 @@ function matchEscapeSequence(text: string, index: number): string | undefined {
     return index + 2 < text.length ? text.slice(index, index + 3) : undefined;
   }
 
-  return undefined;
+  // Anything else after the escape is not a sequence this interface reads, so
+  // the escape stands on its own and the next byte is an ordinary key.
+  return "\x1b";
 }
 
 /**
@@ -135,14 +149,30 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
   const { stdin, stdout } = options;
 
   let composer = "";
-  let scrollOffset = 0;
-  let escapeArmedAt = 0;
-  let armedNotice = false;
+  /**
+   * The first transcript line the viewport shows, or undefined while the
+   * viewport follows the newest content.
+   *
+   * Holding an absolute line rather than a distance from the bottom is what
+   * makes a scrolled-up reader stay put while a reply keeps arriving: the
+   * bottom moves, the anchor does not.
+   */
+  let anchor: number | undefined;
+  /** Tool calls the reader expanded with ctrl+o. */
+  const expanded = new Set<string>();
   let exitCode = 0;
   let closed = false;
   let runningSince = Date.now();
   /** Redraws the status line once a second so the elapsed time advances. */
   let ticker: NodeJS.Timeout | undefined;
+  /** Rows as last painted, so only what changed is written. */
+  let painted: string[] = [];
+  /** Geometry from the last paint, which is what the scroll keys act on. */
+  let lineCount = 0;
+  let viewport = 1;
+  /** Bytes held back because they may be the start of an escape sequence. */
+  let pendingEscape = "";
+  let escapeTimer: NodeJS.Timeout | undefined;
 
   const write = (text: string) => {
     stdout.write(text);
@@ -157,20 +187,26 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         clearInterval(ticker);
         ticker = undefined;
       }
+      if (escapeTimer !== undefined) {
+        clearTimeout(escapeTimer);
+        escapeTimer = undefined;
+      }
       unsubscribe();
       stdin.off("data", onData);
-      stdout.off("resize", render);
+      stdout.off("resize", onResize);
       if (stdin.isTTY) stdin.setRawMode(false);
       stdin.pause();
-      write(CURSOR_SHOW + ALT_SCREEN_OFF);
+      write(CURSOR_SHOW + ALT_SCROLL_OFF + ALT_SCREEN_OFF);
       resolve(exitCode);
     };
 
-    /** Turn the transcript into printable lines, newest last. */
+    /** Turn the transcript into printable rows, newest last. */
     const transcriptLines = (snapshot: CoderSnapshot, width: number): ReadonlyArray<string> => {
       const out: string[] = [];
-      const body = Math.max(20, width - 12);
+      const body = Math.max(20, width - GUTTER - 1);
 
+      // One blank row between entries. It is what keeps a tool call from
+      // reading as part of the sentence before it.
       for (const entry of snapshot.entries) {
         if (out.length > 0) out.push("");
         out.push(...renderEntry(entry, body));
@@ -179,23 +215,89 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
     };
 
     const renderEntry = (entry: CoderEntry, width: number): ReadonlyArray<string> => {
-      const label =
+      const [label, color] =
         entry.role === "you"
-          ? `${CYAN}${BOLD}you${RESET}`
+          ? ["you", CYAN]
           : entry.role === "assistant"
-            ? `${GREEN}${BOLD}coder${RESET}`
-            : `${YELLOW}${BOLD}note${RESET}`;
+            ? ["coder", GREEN]
+            : entry.role === "tool"
+              ? ["tool", MAGENTA]
+              : entry.role === "reasoning"
+                ? ["think", DIM]
+                : ["note", YELLOW];
 
-      const text = entry.text.length === 0 && !entry.settled ? "…" : entry.text;
-      const wrapped = wrap(text, width);
+      const head = `  ${color}${BOLD}${label}${RESET}${" ".repeat(GUTTER - 2 - label.length)}`;
+      const continuation = " ".repeat(GUTTER);
+      const rows = entryRows(entry, width);
       const caret = entry.settled ? "" : `${DIM}▌${RESET}`;
 
-      return wrapped.map((line, index) => {
-        const gutter = index === 0 ? label : "     ";
-        const tail = index === wrapped.length - 1 ? caret : "";
-        const pad = index === 0 ? "  " : "";
-        return `  ${gutter}${pad} ${line}${tail}`;
+      return rows.map((row, index) => {
+        const tail = index === rows.length - 1 ? caret : "";
+        return `${index === 0 ? head : continuation}${row}${tail}`;
       });
+    };
+
+    const entryRows = (entry: CoderEntry, width: number): ReadonlyArray<string> => {
+      if (entry.role === "tool" && entry.tool !== undefined) {
+        return toolRows(entry.tool, width, expanded.has(entry.tool.callId));
+      }
+      if (entry.text.length === 0 && !entry.settled) return ["…"];
+      // Reasoning is dim italic rather than Markdown. The styling already says
+      // what the text is, and emphasis nested inside italic reads worse than
+      // the source it came from.
+      if (entry.role === "reasoning") return wrapStyled(entry.text, width, `${DIM}${ITALIC}`);
+      if (entry.role === "assistant") return renderMarkdown(entry.text, width);
+      return wrapStyled(entry.text, width, entry.role === "notice" ? DIM : "");
+    };
+
+    const toolRows = (tool: CoderToolCall, width: number, open: boolean): ReadonlyArray<string> => {
+      const mark =
+        tool.status === "running"
+          ? `${YELLOW}◐${RESET}`
+          : tool.status === "failed"
+            ? `${RED}✗${RESET}`
+            : `${GREEN}✓${RESET}`;
+      const rows = [`${mark} ${BOLD}${tool.name}${RESET}`];
+
+      if (!open) {
+        const args = clip(tool.arguments, Math.max(8, width - 4));
+        if (args.length > 0) rows.push(`${DIM}${args}${RESET}`);
+        const outcome =
+          tool.error !== undefined
+            ? `${RED}${clip(tool.error, Math.max(8, width - 4))}${RESET}`
+            : tool.output !== undefined
+              ? `${DIM}→ ${clip(tool.output, Math.max(8, width - 6))}${RESET}`
+              : tool.status === "running"
+                ? `${DIM}→ running…${RESET}`
+                : "";
+        if (outcome.length > 0) rows.push(outcome);
+        return rows;
+      }
+
+      for (const line of tool.arguments.split("\n")) {
+        rows.push(`${DIM}${truncate(line, width)}${RESET}`);
+      }
+      if (tool.error !== undefined) {
+        rows.push(...wrapStyled(tool.error, width, RED));
+      } else if (tool.output !== undefined) {
+        // The arrow separates the call from its result, which otherwise read
+        // as one JSON document split over a blank line.
+        const lines = tool.output.split("\n");
+        for (const [index, line] of lines.entries()) {
+          const marker = index === 0 ? `${DIM}→${RESET} ` : "  ";
+          rows.push(`${marker}${DIM}${truncate(line, Math.max(4, width - 2))}${RESET}`);
+        }
+      }
+      return rows;
+    };
+
+    /** The newest tool call, which is the one ctrl+o expands. */
+    const focusedTool = (snapshot: CoderSnapshot): string | undefined => {
+      for (let index = snapshot.entries.length - 1; index >= 0; index -= 1) {
+        const callId = snapshot.entries[index]?.tool?.callId;
+        if (callId !== undefined) return callId;
+      }
+      return undefined;
     };
 
     const render = () => {
@@ -206,59 +308,94 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       const transcriptHeight = Math.max(1, height - STATUS_ROWS - COMPOSER_ROWS - 1);
 
       const lines = transcriptLines(snapshot, width);
-      const maxOffset = Math.max(0, lines.length - transcriptHeight);
-      if (scrollOffset > maxOffset) scrollOffset = maxOffset;
-      const start = Math.max(0, maxOffset - scrollOffset);
-      const visible = lines.slice(start, start + transcriptHeight);
+      lineCount = lines.length;
+      viewport = transcriptHeight;
 
-      const frame: string[] = [];
-      frame.push(CURSOR_HIDE, CLEAR, "\x1b[H");
+      const maxStart = Math.max(0, lines.length - transcriptHeight);
+      const start = anchor === undefined ? maxStart : Math.min(anchor, maxStart);
+      const above = start;
+      const below = Math.max(0, lines.length - start - transcriptHeight);
 
-      for (let row = 0; row < transcriptHeight; row += 1) {
-        frame.push(`\x1b[${row + 1};1H`, visible[row] ?? "");
-      }
+      const rows: string[] = [];
+      for (let row = 0; row < transcriptHeight; row += 1) rows.push(lines[start + row] ?? "");
 
       // Bottom chrome, in the order a reader scans it: what the session is
       // doing now, then where the typing goes, then what the keys do. The
       // composer sits between two rules so it reads as its own region rather
       // than as the last line of the transcript.
-      const rule = "─".repeat(Math.max(0, width));
+      const rule = `${DIM}${"─".repeat(Math.max(0, width))}${RESET}`;
       const inner = Math.max(10, width - 4);
 
       const activity = snapshot.running
         ? `${YELLOW}●${RESET} working… ${DIM}(${elapsed(runningSince, Date.now())} · streaming)${RESET}`
-        : armedNotice
-          ? `${YELLOW}●${RESET} ${YELLOW}again to interrupt${RESET}`
-          : `${DIM}○ ready${RESET}`;
+        : `${DIM}○ ready${RESET}`;
       const where = `${DIM}${snapshot.repository} · ${snapshot.branch} · ${snapshot.model}${RESET}`;
-      frame.push(`\x1b[${transcriptHeight + 1};1H`, `  ${justify(activity, where, inner)}`);
+      rows.push(`  ${justify(activity, where, inner)}`);
+      rows.push(rule);
+      rows.push(`  › ${composer}`);
+      rows.push(rule);
 
-      frame.push(`\x1b[${transcriptHeight + 2};1H`, `${DIM}${rule}${RESET}`);
+      // Every key named here does something in the state it is named in. An
+      // earlier version offered "esc esc to interrupt" while idle, where there
+      // was nothing to interrupt.
+      const keys: string[] = [];
+      if (snapshot.running) {
+        keys.push("esc to interrupt", "ctrl+c to stop");
+      } else {
+        keys.push("enter to send");
+        if (composer.length > 0) keys.push("esc to clear");
+        else keys.push("ctrl+d to quit");
+      }
+      if (lines.length > transcriptHeight) keys.push("pgup/pgdn to scroll");
+      if (focusedTool(snapshot) !== undefined) keys.push("ctrl+o to expand");
 
-      const promptPrefix = "  › ";
-      frame.push(`\x1b[${transcriptHeight + 3};1H`, `${promptPrefix}${composer}`);
-
-      frame.push(`\x1b[${transcriptHeight + 4};1H`, `${DIM}${rule}${RESET}`);
-
-      const keys = snapshot.running
-        ? `${DIM}esc esc to interrupt · ctrl+c to stop${RESET}`
-        : `${DIM}enter to send · esc esc to interrupt · ctrl+d to quit${RESET}`;
       const counter =
-        scrollOffset > 0
-          ? `${DIM}scrolled ${scrollOffset}${RESET}`
-          : `${DIM}${snapshot.turns} ${snapshot.turns === 1 ? "reply" : "replies"}${RESET}`;
-      frame.push(`\x1b[${transcriptHeight + 5};1H`, `  ${justify(keys, counter, inner)}`);
+        anchor !== undefined
+          ? `${YELLOW}scrolled${RESET}${DIM} · ↑${above} · ↓${below}${RESET}`
+          : above > 0
+            ? `${DIM}↑${above} above · ${snapshot.turns} ${snapshot.turns === 1 ? "reply" : "replies"}${RESET}`
+            : `${DIM}${snapshot.turns} ${snapshot.turns === 1 ? "reply" : "replies"}${RESET}`;
+      rows.push(`  ${justify(`${DIM}${keys.join(" · ")}${RESET}`, counter, inner)}`);
 
-      // Park the cursor at the composer so typing looks right.
-      frame.push(`\x1b[${transcriptHeight + 3};${promptPrefix.length + composer.length + 1}H`);
-      frame.push(CURSOR_SHOW);
+      paint(rows, transcriptHeight + 3, 4 + composer.length + 1);
+    };
+
+    /**
+     * Write only the rows that changed, erasing each to the end of the line.
+     *
+     * Nothing here emits a newline or writes past the last column, so the
+     * terminal has no reason to scroll and no frame can reach its scrollback.
+     */
+    const paint = (rows: ReadonlyArray<string>, cursorRow: number, cursorColumn: number) => {
+      const frame: string[] = [CURSOR_HIDE];
+      for (let index = 0; index < rows.length; index += 1) {
+        const next = rows[index] ?? "";
+        if (painted[index] === next) continue;
+        frame.push(`\x1b[${index + 1};1H`, ERASE_LINE, next);
+      }
+      painted = [...rows];
+      frame.push(`\x1b[${cursorRow};${cursorColumn}H`, CURSOR_SHOW);
       write(frame.join(""));
+    };
+
+    const onResize = () => {
+      // Every row is laid out for the old width, so none of it can be reused.
+      painted = [];
+      render();
+    };
+
+    /** Move the viewport by whole lines, snapping back to follow at the end. */
+    const scrollBy = (delta: number) => {
+      const maxStart = Math.max(0, lineCount - viewport);
+      const current = anchor ?? maxStart;
+      const next = Math.max(0, Math.min(maxStart, current + delta));
+      anchor = next >= maxStart ? undefined : next;
     };
 
     const submit = () => {
       const prompt = composer;
       composer = "";
-      scrollOffset = 0;
+      anchor = undefined;
       runningSince = Date.now();
       render();
 
@@ -277,6 +414,20 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       });
     };
 
+    /** A lone escape: interrupt if there is something to interrupt, else clear. */
+    const onEscape = () => {
+      if (!session.interrupt()) composer = "";
+      render();
+    };
+
+    const toggleFocusedTool = () => {
+      const callId = focusedTool(session.snapshot());
+      if (callId === undefined) return;
+      if (expanded.has(callId)) expanded.delete(callId);
+      else expanded.add(callId);
+      render();
+    };
+
     /**
      * Handle one chunk of terminal input.
      *
@@ -286,54 +437,43 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
      * text never submits, which is exactly what the first version did.
      */
     const onData = (chunk: string | Buffer) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
+      if (escapeTimer !== undefined) {
+        clearTimeout(escapeTimer);
+        escapeTimer = undefined;
+      }
+      const text = pendingEscape + (typeof chunk === "string" ? chunk : chunk.toString("utf8"));
+      pendingEscape = "";
       let index = 0;
       let dirty = false;
-
-      const disarm = () => {
-        if (armedNotice) {
-          armedNotice = false;
-          dirty = true;
-        }
-      };
 
       while (index < text.length) {
         const char = text[index] ?? "";
 
         if (char === "\x1b") {
           const sequence = matchEscapeSequence(text, index);
-          if (sequence !== undefined) {
-            disarm();
-            index += sequence.length;
-            if (sequence === "\x1b[5~") {
-              scrollOffset += 5;
-              dirty = true;
-            } else if (sequence === "\x1b[6~") {
-              scrollOffset = Math.max(0, scrollOffset - 5);
-              dirty = true;
-            }
-            // Every other sequence (arrows, home, end) is ignored rather than
-            // typed into the composer.
+          if (sequence === undefined) {
+            // The rest of the sequence has not arrived. Hold it: if nothing
+            // follows within the window it was a bare escape after all.
+            pendingEscape = text.slice(index);
+            break;
+          }
+          index += sequence.length;
+          if (sequence === "\x1b") {
+            onEscape();
+            dirty = false;
             continue;
           }
-
-          // A bare escape. The first arms interruption, the second inside the
-          // window performs it. Without the window an arrow key's leading byte
-          // is indistinguishable from a deliberate escape.
-          const now = Date.now();
-          if (armedNotice && now - escapeArmedAt <= INTERRUPT_WINDOW_MS) {
-            armedNotice = false;
-            if (!session.interrupt()) composer = "";
-          } else {
-            escapeArmedAt = now;
-            armedNotice = true;
-          }
+          const page = Math.max(1, viewport - 1);
+          if (sequence === "\x1b[5~") scrollBy(-page);
+          else if (sequence === "\x1b[6~") scrollBy(page);
+          else if (sequence === "\x1b[A" || sequence === "\x1bOA") scrollBy(-1);
+          else if (sequence === "\x1b[B" || sequence === "\x1bOB") scrollBy(1);
+          else if (sequence === "\x1b[1~" || sequence === "\x1b[H") scrollBy(-lineCount);
+          else if (sequence === "\x1b[4~" || sequence === "\x1b[F") scrollBy(lineCount);
+          else continue;
           dirty = true;
-          index += 1;
           continue;
         }
-
-        disarm();
 
         if (char === "\r" || char === "\n") {
           index += 1;
@@ -360,6 +500,13 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
             finish(0);
             return;
           }
+          index += 1;
+          continue;
+        }
+
+        if (char === "\x0f") {
+          toggleFocusedTool();
+          dirty = false;
           index += 1;
           continue;
         }
@@ -394,8 +541,21 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
           end += 1;
         }
         composer += text.slice(index, end);
+        // Typing means the reader wants to see what they are answering.
+        anchor = undefined;
         dirty = true;
         index = end;
+      }
+
+      if (pendingEscape.length > 0) {
+        escapeTimer = setTimeout(() => {
+          escapeTimer = undefined;
+          const held = pendingEscape;
+          pendingEscape = "";
+          // A lone escape byte and nothing after it. Anything longer was the
+          // start of a sequence the terminal never finished, and is dropped.
+          if (held === "\x1b") onEscape();
+        }, ESCAPE_WINDOW_MS);
       }
 
       if (dirty) render();
@@ -403,16 +563,16 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
 
     const unsubscribe = session.onChange(render);
 
-    write(ALT_SCREEN_ON);
+    write(ALT_SCREEN_ON + ALT_SCROLL_ON);
     if (stdin.isTTY) stdin.setRawMode(true);
     stdin.resume();
     stdin.setEncoding("utf8");
     stdin.on("data", onData);
-    stdout.on("resize", render);
+    stdout.on("resize", onResize);
 
     session.notice(
       "openagents coder — development build. Type a message and press enter. " +
-        "Ctrl+D quits, Esc Esc interrupts a reply.",
+        "Ctrl+D quits, Esc interrupts a reply.",
     );
     render();
   });

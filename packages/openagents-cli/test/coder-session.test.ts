@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { CoderSession, DummyReplySource, type ReplySource } from "../src/coder-session.js";
+import {
+  CoderSession,
+  DummyReplySource,
+  type ReplyChunk,
+  type ReplySource,
+} from "../src/coder-session.js";
 
 /** A source whose chunks are controlled by the test. */
-const scripted = (chunks: ReadonlyArray<string>, delayMs = 0): ReplySource => ({
+const source = (chunks: ReadonlyArray<ReplyChunk>, delayMs = 0): ReplySource => ({
   model: "scripted",
   async *reply(_prompt, signal) {
     for (const chunk of chunks) {
@@ -14,6 +19,13 @@ const scripted = (chunks: ReadonlyArray<string>, delayMs = 0): ReplySource => ({
     }
   },
 });
+
+/** The common case: a source that only produces assistant text. */
+const scripted = (chunks: ReadonlyArray<string>, delayMs = 0): ReplySource =>
+  source(
+    chunks.map((value) => ({ type: "text", value }) as const),
+    delayMs,
+  );
 
 describe("CoderSession", () => {
   it("appends the prompt and streams the reply into one entry", async () => {
@@ -82,6 +94,109 @@ describe("CoderSession", () => {
     expect(session.interrupt()).toBe(false);
   });
 
+  it("makes a tool call its own entry with the name and arguments the source gave", async () => {
+    const session = new CoderSession(
+      source([
+        { type: "tool_call", callId: "c1", name: "repo_grep", arguments: '{"pattern":"x"}' },
+        { type: "tool_result", callId: "c1", output: '{"matches":[]}', error: undefined },
+      ]),
+      "repo",
+      "main",
+    );
+    await session.submit("look");
+
+    const tool = session.snapshot().entries.find((entry) => entry.role === "tool");
+    expect(tool?.tool?.name).toBe("repo_grep");
+    expect(tool?.tool?.arguments).toBe('{"pattern":"x"}');
+    expect(tool?.tool?.output).toBe('{"matches":[]}');
+    expect(tool?.tool?.status).toBe("succeeded");
+    expect(tool?.settled).toBe(true);
+  });
+
+  it("records a failed tool call with the reason rather than an outcome", async () => {
+    const session = new CoderSession(
+      source([
+        { type: "tool_call", callId: "c1", name: "conversation_search", arguments: "{}" },
+        { type: "tool_result", callId: "c1", output: undefined, error: "not authorized" },
+      ]),
+      "repo",
+      "main",
+    );
+    await session.submit("look");
+
+    const tool = session.snapshot().entries.find((entry) => entry.role === "tool");
+    expect(tool?.tool?.status).toBe("failed");
+    expect(tool?.tool?.error).toBe("not authorized");
+  });
+
+  it("splits the text either side of a tool call rather than joining it", async () => {
+    const session = new CoderSession(
+      source([
+        { type: "text", value: "Let me check what is connected:" },
+        { type: "tool_call", callId: "c1", name: "repo_list", arguments: "{}" },
+        { type: "tool_result", callId: "c1", output: "[]", error: undefined },
+        { type: "text", value: "Here is the rundown" },
+      ]),
+      "repo",
+      "main",
+    );
+    await session.submit("what can you do");
+
+    const entries = session.snapshot().entries;
+    expect(entries.map((entry) => entry.role)).toEqual(["you", "assistant", "tool", "assistant"]);
+    expect(entries[1]?.text).toBe("Let me check what is connected:");
+    expect(entries[3]?.text).toBe("Here is the rundown");
+  });
+
+  it("keeps reasoning, a tool call, and text as three entries in arrival order", async () => {
+    const session = new CoderSession(
+      source([
+        { type: "reasoning", value: "I should " },
+        { type: "reasoning", value: "check first." },
+        { type: "tool_call", callId: "c1", name: "repo_grep", arguments: "{}" },
+        { type: "tool_result", callId: "c1", output: "[]", error: undefined },
+        { type: "text", value: "Done." },
+      ]),
+      "repo",
+      "main",
+    );
+    await session.submit("go");
+
+    const entries = session.snapshot().entries;
+    expect(entries.map((entry) => entry.role)).toEqual(["you", "reasoning", "tool", "assistant"]);
+    expect(entries[1]?.text).toBe("I should check first.");
+    // The opening placeholder is withdrawn when the turn starts with a thought,
+    // so an empty assistant entry never sits above the reasoning.
+    expect(entries.filter((entry) => entry.text.length === 0)).toEqual([]);
+  });
+
+  it("marks a tool call the turn never resolved as failed", async () => {
+    const session = new CoderSession(
+      source([{ type: "tool_call", callId: "c1", name: "repo_grep", arguments: "{}" }]),
+      "repo",
+      "main",
+    );
+    await session.submit("go");
+
+    const tool = session.snapshot().entries.find((entry) => entry.role === "tool");
+    expect(tool?.tool?.status).toBe("failed");
+    expect(tool?.settled).toBe(true);
+  });
+
+  it("does not let a renderer mutate the transcript through its snapshot", async () => {
+    const session = new CoderSession(
+      source([{ type: "tool_call", callId: "c1", name: "repo_grep", arguments: "{}" }]),
+      "repo",
+      "main",
+    );
+    await session.submit("go");
+
+    const taken = session.snapshot().entries.find((entry) => entry.role === "tool");
+    if (taken?.tool !== undefined) taken.tool.output = "changed";
+    const again = session.snapshot().entries.find((entry) => entry.role === "tool");
+    expect(again?.tool?.output).toBeUndefined();
+  });
+
   it("carries workspace and model into the snapshot for the status line", () => {
     const session = new CoderSession(new DummyReplySource(), "openagents", "main");
     const snapshot = session.snapshot();
@@ -97,5 +212,13 @@ describe("CoderSession", () => {
     const reply = session.snapshot().entries.at(-1)?.text ?? "";
     expect(reply).toContain("dummy reply");
     expect(reply).toContain("what does this repository do");
+  });
+
+  it("exercises every entry kind offline, so --offline can prove the rendering", async () => {
+    const session = new CoderSession(new DummyReplySource(0), "repo", "main");
+    await session.submit("what can you do");
+
+    const roles = new Set(session.snapshot().entries.map((entry) => entry.role));
+    expect(roles).toEqual(new Set(["you", "reasoning", "tool", "assistant"]));
   });
 });

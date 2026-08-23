@@ -1,15 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { OxAlphaReplySource, OxAlphaUnavailable } from "../src/coder-ox.js";
+import type { ReplyChunk } from "../src/coder-session.js";
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-const collect = async (source: OxAlphaReplySource, prompt = "hello") => {
-  const chunks: string[] = [];
-  for await (const chunk of source.reply(prompt, new AbortController().signal)) chunks.push(chunk);
-  return chunks.join("");
+const chunks = async (source: OxAlphaReplySource, prompt = "hello") => {
+  const out: ReplyChunk[] = [];
+  for await (const chunk of source.reply(prompt, new AbortController().signal)) out.push(chunk);
+  return out;
 };
+
+/** The assistant text a turn produced, which most of these tests assert on. */
+const collect = async (source: OxAlphaReplySource, prompt = "hello") =>
+  (await chunks(source, prompt))
+    .map((chunk) => (chunk.type === "text" ? chunk.value : ""))
+    .join("");
 
 const source = () =>
   new OxAlphaReplySource({ origin: "https://openagents.test", token: "test-token" });
@@ -86,7 +93,7 @@ describe("OxAlphaReplySource", () => {
     expect(await collect(source())).toBe("one two");
   });
 
-  it("ignores reasoning deltas, which the transcript does not show", async () => {
+  it("yields reasoning deltas beside the text, in the order they were recorded", async () => {
     stubFetch(
       [
         [],
@@ -99,7 +106,119 @@ describe("OxAlphaReplySource", () => {
       json(202, { turn: { id: "run-1" } }),
     );
 
-    expect(await collect(source())).toBe("said");
+    expect(await chunks(source())).toEqual([
+      { type: "reasoning", value: "thinking" },
+      { type: "text", value: "said" },
+    ]);
+  });
+
+  it("surfaces a tool call from the projection the event carries", async () => {
+    stubFetch(
+      [
+        [],
+        [
+          {
+            run_id: "run-1",
+            sequence: 1,
+            type: "tool_call_started",
+            payload: { call_id: "c1", name: "repo_grep", arguments: '{"pattern":"x"}' },
+            tool_call: {
+              call_id: "c1",
+              name: "repo_grep",
+              arguments: '{\n  "pattern": "x"\n}',
+              output: null,
+              error: null,
+              status: "running",
+            },
+          },
+          {
+            run_id: "run-1",
+            sequence: 2,
+            type: "tool_call_completed",
+            payload: { call_id: "c1", output: "{}" },
+            tool_call: {
+              call_id: "c1",
+              name: "repo_grep",
+              arguments: '{\n  "pattern": "x"\n}',
+              output: '{\n  "matches": []\n}',
+              error: null,
+              status: "succeeded",
+            },
+          },
+          { run_id: "run-1", sequence: 3, type: "response_completed", payload: {} },
+        ],
+      ],
+      json(202, { turn: { id: "run-1" } }),
+    );
+
+    // The pretty-printed projection is what the browser shows, so the CLI
+    // reads it rather than re-deriving the call from the raw payload.
+    expect(await chunks(source())).toEqual([
+      {
+        type: "tool_call",
+        callId: "c1",
+        name: "repo_grep",
+        arguments: '{\n  "pattern": "x"\n}',
+      },
+      { type: "tool_result", callId: "c1", output: '{\n  "matches": []\n}', error: undefined },
+    ]);
+  });
+
+  it("reports a failed tool call with the server's message", async () => {
+    stubFetch(
+      [
+        [],
+        [
+          {
+            run_id: "run-1",
+            sequence: 1,
+            type: "tool_call_failed",
+            payload: { call_id: "c1", error: "The tool is not authorized for this data scope." },
+            tool_call: {
+              call_id: "c1",
+              name: "conversation_search",
+              arguments: "{}",
+              output: null,
+              error: { code: null, message: "The tool is not authorized for this data scope." },
+              status: "failed",
+            },
+          },
+          { run_id: "run-1", sequence: 2, type: "response_completed", payload: {} },
+        ],
+      ],
+      json(202, { turn: { id: "run-1" } }),
+    );
+
+    expect(await chunks(source())).toEqual([
+      {
+        type: "tool_result",
+        callId: "c1",
+        output: undefined,
+        error: "The tool is not authorized for this data scope.",
+      },
+    ]);
+  });
+
+  it("reads a tool call from the raw payload when no projection is attached", async () => {
+    stubFetch(
+      [
+        [],
+        [
+          {
+            run_id: "run-1",
+            sequence: 1,
+            type: "tool_call_started",
+            payload: { call_id: "c1", name: "repo_grep", arguments: '{"pattern":"x"}' },
+          },
+          { run_id: "run-1", sequence: 2, type: "response_completed", payload: {} },
+        ],
+      ],
+      json(202, { turn: { id: "run-1" } }),
+    );
+
+    expect(await chunks(source())).toEqual([
+      { type: "tool_call", callId: "c1", name: "repo_grep", arguments: '{"pattern":"x"}' },
+    ]);
   });
 
   it("reports a missing scope rather than an empty reply", async () => {
