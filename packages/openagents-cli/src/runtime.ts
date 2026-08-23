@@ -16,8 +16,10 @@ import { deviceClientLayer } from "./device-client.js";
 import { environmentLayer } from "./environment.js";
 import { forumClientLayer } from "./forum-client.js";
 import { gitRunnerLayer } from "./git-runner.js";
+import { issueClientLayer } from "./issue-client.js";
 import { outputLayer } from "./output.js";
 import { persistedConfigurationLayer } from "./persisted-configuration.js";
+import { projectClientLayer } from "./project-client.js";
 import { repositoryClientLayer } from "./repository-client.js";
 import { requestBodyInputLayer } from "./request-body-input.js";
 import { secretInputLayer } from "./secret-input.js";
@@ -30,6 +32,8 @@ const transportLayer = apiTransportNodeLayer.pipe(
 const repositoryLayer = repositoryClientLayer.pipe(Layer.provide(transportLayer));
 const forumLayer = forumClientLayer.pipe(Layer.provide(transportLayer));
 const deviceLayer = deviceClientLayer.pipe(Layer.provide(transportLayer));
+const issueLayer = issueClientLayer.pipe(Layer.provide(transportLayer));
+const projectLayer = projectClientLayer.pipe(Layer.provide(transportLayer));
 const computerClient = computerClientLayer.pipe(Layer.provide(transportLayer));
 const credentialsLayer = credentialStoreOsLayer.pipe(Layer.provide(NodeServices.layer));
 const pendingAuthorizationLayer = pendingDeviceAuthorizationStoreLayer.pipe(
@@ -73,6 +77,8 @@ export const runtimeLayer = Layer.mergeAll(
   pendingAuthorizationLayer,
   repositoryLayer,
   forumLayer,
+  issueLayer,
+  projectLayer,
   deviceLayer,
   computerClient,
   browserLayer,

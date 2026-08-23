@@ -48,8 +48,10 @@ import { DeviceClient } from "./device-client.js";
 import { type EndpointOverrides, Profile } from "./endpoint.js";
 import { ForumClient } from "./forum-client.js";
 import { GitRunner } from "./git-runner.js";
+import { IssueClient } from "./issue-client.js";
 import { runGitCredentialHelper } from "./git-credential-helper.js";
 import { Output, type OutputMode } from "./output.js";
+import { ProjectClient } from "./project-client.js";
 import { parseRepositoryTarget, RepositoryClient } from "./repository-client.js";
 import { RequestBodyInput } from "./request-body-input.js";
 import { SecretInput } from "./secret-input.js";
@@ -1689,6 +1691,886 @@ const forumCommand = Command.make("forum").pipe(
   ]),
 );
 
+// The issue and project command groups. Both read the same repository
+// inference the `repo` group uses, so a caller inside a checkout names an
+// issue by its number alone.
+
+const issueNumberArgument = Argument.string("number").pipe(
+  Argument.withDescription("Issue number, with or without a leading #"),
+);
+const projectNumberArgument = Argument.string("number").pipe(
+  Argument.withDescription("Project number, with or without a leading #"),
+);
+const projectItemArgument = Argument.string("item").pipe(
+  Argument.withDescription("Project item id"),
+);
+
+const parseTrackerNumber = Effect.fn("Cli.parseTrackerNumber")(function* (
+  label: string,
+  value: string,
+) {
+  const trimmed = value.trim().replace(/^#/u, "");
+  if (!/^\d+$/u.test(trimmed) || Number.parseInt(trimmed, 10) < 1) {
+    return yield* new InputError({
+      message: `${label} must be a positive number, such as 129 or #129.`,
+    });
+  }
+  return Number.parseInt(trimmed, 10);
+});
+
+const parseTrackerNumbers = Effect.fn("Cli.parseTrackerNumbers")(function* (
+  label: string,
+  values: ReadonlyArray<string>,
+) {
+  const parsed: Array<number> = [];
+  for (const value of values) parsed.push(yield* parseTrackerNumber(label, value));
+  return parsed;
+});
+
+const bodyFlag = Flag.string("body").pipe(Flag.optional, Flag.withDescription("Body text"));
+const bodyFileFlag = Flag.string("body-file").pipe(
+  Flag.optional,
+  Flag.withDescription("Read the body from a file, or from - for standard input"),
+);
+
+const resolveBodyText = Effect.fn("Cli.resolveBodyText")(function* (
+  body: Option.Option<string>,
+  bodyFile: Option.Option<string>,
+) {
+  if (Option.isSome(body) && Option.isSome(bodyFile)) {
+    return yield* new InputError({ message: "Use either --body or --body-file, not both." });
+  }
+  if (Option.isSome(body)) return Option.some(body.value);
+  if (Option.isNone(bodyFile)) return Option.none<string>();
+  const bodyInput = yield* RequestBodyInput;
+  return Option.some(yield* bodyInput.read(bodyFile.value));
+});
+
+const resolveTrackerTarget = (repo: Option.Option<string>, origin: string) =>
+  resolveRepositoryArgument(Option.none<string>(), repo, origin);
+
+const names = (value: unknown, key: string): ReadonlyArray<string> =>
+  Array.isArray(value)
+    ? value.map((entry) => (typeof entry === "string" ? entry : String(record(entry)[key] ?? "")))
+    : [];
+
+const orNone = (values: ReadonlyArray<string>): string =>
+  values.length === 0 ? "none" : values.join(", ");
+
+const issueReferences = (value: unknown): ReadonlyArray<string> =>
+  Array.isArray(value) ? value.map((entry) => `#${String(record(entry)["number"] ?? "?")}`) : [];
+
+const issueRow = (issue: Record<string, unknown>): string => {
+  const extension = record(issue["openagents"]);
+  const labels = names(issue["labels"], "name");
+  return [
+    `#${String(issue["number"] ?? "?")}`.padEnd(7),
+    String(issue["state"] ?? "").padEnd(8),
+    String(issue["title"] ?? ""),
+    labels.length === 0 ? "" : `  (${labels.join(", ")})`,
+    extension["blocked"] === true ? "  [blocked]" : "",
+  ].join("");
+};
+
+const issueListHuman = (
+  issues: ReadonlyArray<Record<string, unknown>>,
+  pagination: Record<string, unknown>,
+): ReadonlyArray<string> => {
+  if (issues.length === 0) return ["No issues found."];
+  const total = pagination["total"];
+  return [
+    ...issues.map(issueRow),
+    "",
+    typeof total === "number"
+      ? `Showing ${issues.length} of ${total} issues.`
+      : `Showing ${issues.length} issues.`,
+  ];
+};
+
+const issueViewHuman = (value: unknown): ReadonlyArray<string> => {
+  const issue = record(value);
+  const extension = record(issue["openagents"]);
+  const milestone = record(issue["milestone"]);
+  const body = typeof issue["body"] === "string" ? issue["body"] : "";
+  return [
+    `#${String(issue["number"] ?? "?")}  ${String(issue["title"] ?? "")}`,
+    `State:      ${String(issue["state"] ?? "")}`,
+    `Author:     ${String(record(issue["user"])["login"] ?? "unknown")}`,
+    `Labels:     ${orNone(names(issue["labels"], "name"))}`,
+    `Assignees:  ${orNone(names(issue["assignees"], "login"))}`,
+    `Milestone:  ${milestone["title"] === undefined ? "none" : String(milestone["title"])}`,
+    `Progress:   ${String(extension["progress"] ?? "unknown")}`,
+    `Blocked:    ${extension["blocked"] === true ? "yes" : "no"}`,
+    `Blocked by: ${orNone(issueReferences(extension["blocked_by"]))}`,
+    `Blocks:     ${orNone(issueReferences(extension["blocks"]))}`,
+    "",
+    body,
+  ];
+};
+
+const commentThreadHuman = (value: unknown): ReadonlyArray<string> => {
+  const comments = rows(value, "comments");
+  if (comments.length === 0) return ["", "No comments."];
+  return [
+    "",
+    `Comments (${comments.length}):`,
+    ...comments.map(
+      (comment) =>
+        `- ${String(record(comment["user"])["login"] ?? "unknown")}: ${String(comment["body"] ?? "")}`,
+    ),
+  ];
+};
+
+const dependencyHuman = (value: unknown): ReadonlyArray<string> => {
+  const graph = record(value);
+  const edges = (key: string) =>
+    Array.isArray(graph[key])
+      ? graph[key].map(
+          (entry) =>
+            `  #${String(record(entry)["number"] ?? "?")} ${String(record(entry)["state"] ?? "")} ${String(record(entry)["title"] ?? "")}`,
+        )
+      : [];
+  const blockedBy = edges("blocked_by");
+  const blocks = edges("blocks");
+  return [
+    `Blocked: ${graph["blocked"] === true ? "yes" : "no"}`,
+    "Blocked by:",
+    ...(blockedBy.length === 0 ? ["  none"] : blockedBy),
+    "Blocks:",
+    ...(blocks.length === 0 ? ["  none"] : blocks),
+  ];
+};
+
+const issueListStateFlag = Flag.choice("state", ["open", "closed", "all"] as const).pipe(
+  Flag.withDefault("open" as const),
+  Flag.withDescription("Filter by state"),
+);
+const issueListLabelFlag = Flag.string("label").pipe(
+  Flag.optional,
+  Flag.withDescription("Filter by one label name"),
+);
+const issueListAssigneeFlag = Flag.string("assignee").pipe(
+  Flag.optional,
+  Flag.withDescription("Filter by assignee login"),
+);
+const issueListMilestoneFlag = Flag.string("milestone").pipe(
+  Flag.optional,
+  Flag.withDescription("Filter by milestone number"),
+);
+const issueListSearchFlag = Flag.string("search").pipe(
+  Flag.optional,
+  Flag.withDescription("Match a substring of the title or body"),
+);
+const issueListBlockedFlag = Flag.choice("blocked", ["true", "false"] as const).pipe(
+  Flag.optional,
+  Flag.withDescription("Keep only blocked or only unblocked issues"),
+);
+const issueListLimitFlag = Flag.integer("limit").pipe(
+  Flag.withDefault(25),
+  Flag.withDescription("Read this many issues, paging past the server's 25 to a page"),
+);
+
+const issueListCommand = Command.make(
+  "list",
+  {
+    repo: repositoryOverrideFlag,
+    state: issueListStateFlag,
+    label: issueListLabelFlag,
+    assignee: issueListAssigneeFlag,
+    milestone: issueListMilestoneFlag,
+    search: issueListSearchFlag,
+    blocked: issueListBlockedFlag,
+    limit: issueListLimitFlag,
+  },
+  ({ assignee, blocked, label, limit, milestone, repo, search, state }) =>
+    Effect.gen(function* () {
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const issues = yield* IssueClient;
+      const output = yield* Output;
+      const result = yield* issues.list({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        limit,
+        state,
+        ...(Option.isNone(label) ? {} : { label: label.value }),
+        ...(Option.isNone(assignee) ? {} : { assignee: assignee.value }),
+        ...(Option.isNone(milestone) ? {} : { milestone: milestone.value }),
+        ...(Option.isNone(search) ? {} : { search: search.value }),
+        ...(Option.isNone(blocked) ? {} : { blocked: blocked.value === "true" }),
+      });
+      yield* output.write(
+        {
+          value: { pagination: result.pagination, issues: result.issues },
+          human: issueListHuman(result.issues.map(record), result.pagination),
+        },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(Command.withDescription("List issues, paging until --limit is met"));
+
+const issueCommentsFlag = Flag.boolean("comments").pipe(
+  Flag.withDescription("Include the comment thread"),
+);
+
+const issueViewCommand = Command.make(
+  "view",
+  { number: issueNumberArgument, repo: repositoryOverrideFlag, comments: issueCommentsFlag },
+  ({ comments, number, repo }) =>
+    Effect.gen(function* () {
+      const issueNumber = yield* parseTrackerNumber("An issue number", number);
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const issues = yield* IssueClient;
+      const output = yield* Output;
+      const scope = {
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        number: issueNumber,
+      };
+      const value = yield* issues.view(scope);
+      if (!comments) {
+        yield* output.write({ value, human: issueViewHuman(value) }, outputMode(flags.json));
+        return;
+      }
+      const thread = yield* issues.comments(scope);
+      yield* output.write(
+        {
+          value: { issue: value, comments: rows(thread, "comments") },
+          human: [...issueViewHuman(value), ...commentThreadHuman(thread)],
+        },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(Command.withDescription("Show one issue, its prerequisites, and its body"));
+
+const issueTitleFlag = Flag.string("title").pipe(Flag.withDescription("Issue title"));
+const issueCreateLabelFlag = Flag.string("label").pipe(
+  Flag.atLeast(0),
+  Flag.withDescription("Apply an existing label; repeatable"),
+);
+const issueCreateAssigneeFlag = Flag.string("assignee").pipe(
+  Flag.atLeast(0),
+  Flag.withDescription("Assign a login; repeatable"),
+);
+const issueCreateMilestoneFlag = Flag.integer("milestone").pipe(
+  Flag.optional,
+  Flag.withDescription("Milestone number"),
+);
+
+const issueCreateCommand = Command.make(
+  "create",
+  {
+    repo: repositoryOverrideFlag,
+    title: issueTitleFlag,
+    body: bodyFlag,
+    bodyFile: bodyFileFlag,
+    label: issueCreateLabelFlag,
+    assignee: issueCreateAssigneeFlag,
+    milestone: issueCreateMilestoneFlag,
+  },
+  ({ assignee, body, bodyFile, label, milestone, repo, title }) =>
+    Effect.gen(function* () {
+      if (title.trim() === "") {
+        return yield* new InputError({ message: "Pass --title with the issue title." });
+      }
+      const text = yield* resolveBodyText(body, bodyFile);
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const issues = yield* IssueClient;
+      const output = yield* Output;
+      const value = yield* issues.create({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        title,
+        ...(Option.isNone(text) ? {} : { body: text.value }),
+        ...(label.length === 0 ? {} : { labels: label }),
+        ...(assignee.length === 0 ? {} : { assignees: assignee }),
+        ...(Option.isNone(milestone) ? {} : { milestone: milestone.value }),
+      });
+      const created = record(value);
+      yield* output.write(
+        {
+          value,
+          human: [
+            `Created #${String(created["number"] ?? "?")} ${String(created["title"] ?? "")}`,
+            String(created["html_url"] ?? ""),
+          ],
+        },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(Command.withDescription("Open an issue; --body-file - reads standard input"));
+
+const issueStateCommentFlag = Flag.string("comment").pipe(
+  Flag.optional,
+  Flag.withDescription("Post this comment before the state change"),
+);
+
+const issueStateCommand = (
+  name: "close" | "reopen",
+  state: "closed" | "open",
+  description: string,
+) =>
+  Command.make(
+    name,
+    { number: issueNumberArgument, repo: repositoryOverrideFlag, comment: issueStateCommentFlag },
+    ({ comment, number, repo }) =>
+      Effect.gen(function* () {
+        const issueNumber = yield* parseTrackerNumber("An issue number", number);
+        const flags = yield* rootCommand;
+        const session = yield* resolveApiSession(endpointOverrides(flags));
+        const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+        const issues = yield* IssueClient;
+        const output = yield* Output;
+        const scope = {
+          origin: session.endpoint.origin,
+          token: session.token,
+          ...target,
+          number: issueNumber,
+        };
+        // The comment is its own request. A state change that carried the
+        // issue text would overwrite the body it was never given.
+        const posted = Option.isNone(comment)
+          ? undefined
+          : yield* issues.comment({ ...scope, body: comment.value });
+        const value = yield* issues.setState({ ...scope, state });
+        yield* output.write(
+          {
+            value: posted === undefined ? value : { issue: value, comment: posted },
+            human: [
+              `${state === "closed" ? "Closed" : "Reopened"} #${issueNumber}.`,
+              ...(posted === undefined ? [] : ["Comment posted."]),
+            ],
+          },
+          outputMode(flags.json),
+        );
+      }),
+  ).pipe(Command.withDescription(description));
+
+const issueCloseCommand = issueStateCommand(
+  "close",
+  "closed",
+  "Close an issue, optionally with a comment that says why",
+);
+const issueReopenCommand = issueStateCommand(
+  "reopen",
+  "open",
+  "Reopen an issue, optionally with a comment that says why",
+);
+
+const issueCommentCommand = Command.make(
+  "comment",
+  {
+    number: issueNumberArgument,
+    repo: repositoryOverrideFlag,
+    body: bodyFlag,
+    bodyFile: bodyFileFlag,
+  },
+  ({ body, bodyFile, number, repo }) =>
+    Effect.gen(function* () {
+      const issueNumber = yield* parseTrackerNumber("An issue number", number);
+      const text = yield* resolveBodyText(body, bodyFile);
+      if (Option.isNone(text)) {
+        return yield* new InputError({ message: "Pass --body or --body-file with the comment." });
+      }
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const issues = yield* IssueClient;
+      const output = yield* Output;
+      const value = yield* issues.comment({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        number: issueNumber,
+        body: text.value,
+      });
+      yield* output.write(
+        { value, human: [`Commented on #${issueNumber}.`] },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(Command.withDescription("Comment on an issue"));
+
+const labelAddFlag = Flag.string("add").pipe(
+  Flag.atLeast(0),
+  Flag.withDescription("Apply a label; repeatable"),
+);
+const labelRemoveFlag = Flag.string("remove").pipe(
+  Flag.atLeast(0),
+  Flag.withDescription("Remove a label; repeatable"),
+);
+
+const issueLabelCommand = Command.make(
+  "label",
+  {
+    number: issueNumberArgument,
+    repo: repositoryOverrideFlag,
+    add: labelAddFlag,
+    remove: labelRemoveFlag,
+  },
+  ({ add, number, remove, repo }) =>
+    Effect.gen(function* () {
+      const issueNumber = yield* parseTrackerNumber("An issue number", number);
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const issues = yield* IssueClient;
+      const output = yield* Output;
+      const scope = {
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        number: issueNumber,
+      };
+      let value =
+        add.length === 0 && remove.length === 0
+          ? yield* issues.labels(scope)
+          : add.length === 0
+            ? undefined
+            : yield* issues.addLabels({ ...scope, labels: add });
+      for (const name of remove) {
+        value = yield* issues.removeLabel({ ...scope, label: name });
+      }
+      const applied = value ?? (yield* issues.labels(scope));
+      yield* output.write(
+        { value: applied, human: [`Labels: ${orNone(names(record(applied)["labels"], "name"))}`] },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(Command.withDescription("Read, apply, or remove the labels on an issue"));
+
+const assigneeArguments = Argument.string("login").pipe(
+  Argument.withDescription("Account login"),
+  Argument.variadic({ min: 1 }),
+);
+
+const issueAssignCommand = (name: "assign" | "unassign", description: string) =>
+  Command.make(
+    name,
+    { number: issueNumberArgument, logins: assigneeArguments, repo: repositoryOverrideFlag },
+    ({ logins, number, repo }) =>
+      Effect.gen(function* () {
+        const issueNumber = yield* parseTrackerNumber("An issue number", number);
+        const flags = yield* rootCommand;
+        const session = yield* resolveApiSession(endpointOverrides(flags));
+        const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+        const issues = yield* IssueClient;
+        const output = yield* Output;
+        const scope = {
+          origin: session.endpoint.origin,
+          token: session.token,
+          ...target,
+          number: issueNumber,
+          assignees: logins,
+        };
+        const value =
+          name === "assign"
+            ? yield* issues.addAssignees(scope)
+            : yield* issues.removeAssignees(scope);
+        yield* output.write(
+          {
+            value,
+            human: [`Assignees: ${orNone(names(record(value)["assignees"], "login"))}`],
+          },
+          outputMode(flags.json),
+        );
+      }),
+  ).pipe(Command.withDescription(description));
+
+const issueAssignRunCommand = issueAssignCommand("assign", "Assign an issue to one or more logins");
+const issueUnassignRunCommand = issueAssignCommand(
+  "unassign",
+  "Remove one or more logins from an issue",
+);
+
+const dependencyAddFlag = Flag.string("add").pipe(
+  Flag.atLeast(0),
+  Flag.withDescription("Record an issue this one waits on; repeatable"),
+);
+const dependencyRemoveFlag = Flag.string("remove").pipe(
+  Flag.atLeast(0),
+  Flag.withDescription("Drop a prerequisite edge; repeatable"),
+);
+
+const issueDepsCommand = Command.make(
+  "deps",
+  {
+    number: issueNumberArgument,
+    repo: repositoryOverrideFlag,
+    add: dependencyAddFlag,
+    remove: dependencyRemoveFlag,
+  },
+  ({ add, number, remove, repo }) =>
+    Effect.gen(function* () {
+      const issueNumber = yield* parseTrackerNumber("An issue number", number);
+      const additions = yield* parseTrackerNumbers("A prerequisite", add);
+      const removals = yield* parseTrackerNumbers("A prerequisite", remove);
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const issues = yield* IssueClient;
+      const output = yield* Output;
+      const scope = {
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        number: issueNumber,
+      };
+      let value =
+        additions.length === 0
+          ? undefined
+          : yield* issues.addDependencies({ ...scope, blockedBy: additions });
+      for (const blockedBy of removals) {
+        value = yield* issues.removeDependency({ ...scope, blockedBy });
+      }
+      const graph = value ?? (yield* issues.dependencies(scope));
+      yield* output.write({ value: graph, human: dependencyHuman(graph) }, outputMode(flags.json));
+    }),
+).pipe(Command.withDescription("Read, add, or remove the prerequisites of an issue"));
+
+const issueCommand = Command.make("issue").pipe(
+  Command.withDescription("Read and write issues"),
+  Command.withSubcommands([
+    issueListCommand,
+    issueViewCommand,
+    issueCreateCommand,
+    issueCloseCommand,
+    issueReopenCommand,
+    issueCommentCommand,
+    issueLabelCommand,
+    issueAssignRunCommand,
+    issueUnassignRunCommand,
+    issueDepsCommand,
+  ]),
+);
+
+const projectArchivedFlag = Flag.boolean("archived").pipe(
+  Flag.withDescription("Include archived boards"),
+);
+
+const projectRow = (project: Record<string, unknown>): string =>
+  [
+    `#${String(project["number"] ?? "?")}`.padEnd(6),
+    String(project["state"] ?? "").padEnd(8),
+    String(project["title"] ?? ""),
+    project["archived"] === true ? "  [archived]" : "",
+  ].join("");
+
+const projectListCommand = Command.make(
+  "list",
+  { repo: repositoryOverrideFlag, archived: projectArchivedFlag },
+  ({ archived, repo }) =>
+    Effect.gen(function* () {
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const projects = yield* ProjectClient;
+      const output = yield* Output;
+      const value = yield* projects.list({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        archived,
+      });
+      const boards = rows(value, "projects");
+      yield* output.write(
+        { value, human: boards.length === 0 ? ["No projects found."] : boards.map(projectRow) },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(Command.withDescription("List the projects of a repository"));
+
+const projectViewCommand = Command.make(
+  "view",
+  { number: projectNumberArgument, repo: repositoryOverrideFlag },
+  ({ number, repo }) =>
+    Effect.gen(function* () {
+      const projectNumber = yield* parseTrackerNumber("A project number", number);
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const projects = yield* ProjectClient;
+      const output = yield* Output;
+      const value = yield* projects.view({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        number: projectNumber,
+      });
+      const project = record(value);
+      yield* output.write(
+        {
+          value,
+          human: [
+            `#${String(project["number"] ?? "?")}  ${String(project["title"] ?? "")}`,
+            `State:    ${String(project["state"] ?? "")}`,
+            `Archived: ${project["archived"] === true ? "yes" : "no"}`,
+            `Owner:    ${String(project["owner"] ?? "unknown")}`,
+            "",
+            typeof project["description"] === "string" ? project["description"] : "",
+          ],
+        },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(Command.withDescription("Show one project"));
+
+const projectTitleFlag = Flag.string("title").pipe(Flag.withDescription("Project title"));
+const projectDescriptionFlag = Flag.string("description").pipe(
+  Flag.optional,
+  Flag.withDescription("Markdown project description"),
+);
+
+const projectCreateCommand = Command.make(
+  "create",
+  { repo: repositoryOverrideFlag, title: projectTitleFlag, description: projectDescriptionFlag },
+  ({ description, repo, title }) =>
+    Effect.gen(function* () {
+      if (title.trim() === "") {
+        return yield* new InputError({ message: "Pass --title with the project title." });
+      }
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const projects = yield* ProjectClient;
+      const output = yield* Output;
+      const value = yield* projects.create({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        title,
+        ...(Option.isNone(description) ? {} : { description: description.value }),
+      });
+      const project = record(value);
+      yield* output.write(
+        {
+          value,
+          human: [
+            `Created project #${String(project["number"] ?? "?")} ${String(project["title"] ?? "")}`,
+          ],
+        },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(Command.withDescription("Create a project board"));
+
+const projectItemRow = (item: Record<string, unknown>): string => {
+  const issue = record(item["issue"]);
+  const values = record(item["values"]);
+  const pairs = Object.entries(values).map(([field, value]) => `${field}=${String(value)}`);
+  return `${String(item["id"] ?? "?").padEnd(6)} #${String(issue["number"] ?? "?")}  ${pairs.join(" ")}`;
+};
+
+const projectItemsHuman = (value: unknown): ReadonlyArray<string> => {
+  const items = rows(value, "items");
+  return items.length === 0 ? ["No items on this board."] : items.map(projectItemRow);
+};
+
+const projectItemsCommand = Command.make(
+  "items",
+  { number: projectNumberArgument, repo: repositoryOverrideFlag },
+  ({ number, repo }) =>
+    Effect.gen(function* () {
+      const projectNumber = yield* parseTrackerNumber("A project number", number);
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const projects = yield* ProjectClient;
+      const output = yield* Output;
+      const value = yield* projects.items({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        number: projectNumber,
+      });
+      yield* output.write({ value, human: projectItemsHuman(value) }, outputMode(flags.json));
+    }),
+).pipe(Command.withDescription("List the items on a project board"));
+
+const projectFieldsCommand = Command.make(
+  "fields",
+  { number: projectNumberArgument, repo: repositoryOverrideFlag },
+  ({ number, repo }) =>
+    Effect.gen(function* () {
+      const projectNumber = yield* parseTrackerNumber("A project number", number);
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const projects = yield* ProjectClient;
+      const output = yield* Output;
+      const value = yield* projects.fields({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        number: projectNumber,
+      });
+      const fields = rows(value, "fields");
+      yield* output.write(
+        {
+          value,
+          human:
+            fields.length === 0
+              ? ["No fields on this board."]
+              : fields.map(
+                  (field) =>
+                    `${String(field["name"] ?? "")} (${String(field["data_type"] ?? "")}) ${orNone(names(record(field["options"])["values"], "name"))}`,
+                ),
+        },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(Command.withDescription("List the fields of a project board"));
+
+const projectIssueFlag = Flag.string("issue").pipe(
+  Flag.withDescription("Issue number to place on the board"),
+);
+
+const projectItemAddCommand = Command.make(
+  "item-add",
+  { number: projectNumberArgument, repo: repositoryOverrideFlag, issue: projectIssueFlag },
+  ({ issue, number, repo }) =>
+    Effect.gen(function* () {
+      const projectNumber = yield* parseTrackerNumber("A project number", number);
+      const issueNumber = yield* parseTrackerNumber("An issue number", issue);
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const projects = yield* ProjectClient;
+      const output = yield* Output;
+      const value = yield* projects.addItem({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        number: projectNumber,
+        issueNumber,
+      });
+      yield* output.write({ value, human: projectItemsHuman(value) }, outputMode(flags.json));
+    }),
+).pipe(Command.withDescription("Put an issue on a project board"));
+
+const projectValueFlag = Flag.keyValuePair("set").pipe(
+  Flag.optional,
+  Flag.withDescription("Set a field, as FIELD=VALUE; repeatable"),
+);
+const projectPositionFlag = Flag.integer("position").pipe(
+  Flag.optional,
+  Flag.withDescription("One-based rank within the destination column"),
+);
+
+const projectItemSetCommand = Command.make(
+  "item-set",
+  {
+    number: projectNumberArgument,
+    item: projectItemArgument,
+    repo: repositoryOverrideFlag,
+    set: projectValueFlag,
+  },
+  ({ item, number, repo, set }) =>
+    Effect.gen(function* () {
+      if (Option.isNone(set)) {
+        return yield* new InputError({ message: "Pass --set FIELD=VALUE with the field to set." });
+      }
+      const projectNumber = yield* parseTrackerNumber("A project number", number);
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const projects = yield* ProjectClient;
+      const output = yield* Output;
+      const value = yield* projects.setItemValues({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        number: projectNumber,
+        itemId: item,
+        values: set.value,
+      });
+      yield* output.write({ value, human: projectItemsHuman(value) }, outputMode(flags.json));
+    }),
+).pipe(Command.withDescription("Set stored field values on a project item"));
+
+const projectItemMoveCommand = Command.make(
+  "item-move",
+  {
+    number: projectNumberArgument,
+    item: projectItemArgument,
+    repo: repositoryOverrideFlag,
+    set: projectValueFlag,
+    position: projectPositionFlag,
+  },
+  ({ item, number, position, repo, set }) =>
+    Effect.gen(function* () {
+      if (Option.isNone(set) && Option.isNone(position)) {
+        return yield* new InputError({
+          message: "Pass --set FIELD=VALUE, --position, or both.",
+        });
+      }
+      const projectNumber = yield* parseTrackerNumber("A project number", number);
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const projects = yield* ProjectClient;
+      const output = yield* Output;
+      const value = yield* projects.moveItem({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        number: projectNumber,
+        itemId: item,
+        values: Option.isNone(set) ? {} : set.value,
+        ...(Option.isNone(position) ? {} : { position: position.value }),
+      });
+      yield* output.write({ value, human: projectItemsHuman(value) }, outputMode(flags.json));
+    }),
+).pipe(Command.withDescription("Move a project item to another column or rank"));
+
+const projectItemRemoveCommand = Command.make(
+  "item-remove",
+  { number: projectNumberArgument, item: projectItemArgument, repo: repositoryOverrideFlag },
+  ({ item, number, repo }) =>
+    Effect.gen(function* () {
+      const projectNumber = yield* parseTrackerNumber("A project number", number);
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const projects = yield* ProjectClient;
+      const output = yield* Output;
+      yield* projects.removeItem({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        number: projectNumber,
+        itemId: item,
+      });
+      yield* output.write(
+        { value: { item_id: item, removed: true }, human: [`Removed item ${item}.`] },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(Command.withDescription("Take an item off a project board"));
+
+const projectCommand = Command.make("project").pipe(
+  Command.withDescription("Read and write project boards"),
+  Command.withSubcommands([
+    projectListCommand,
+    projectViewCommand,
+    projectCreateCommand,
+    projectFieldsCommand,
+    projectItemsCommand,
+    projectItemAddCommand,
+    projectItemSetCommand,
+    projectItemMoveCommand,
+    projectItemRemoveCommand,
+  ]),
+);
+
 export const openagentsCommand = rootCommand.pipe(
   Command.withSubcommands([
     apiCommand,
@@ -1696,6 +2578,8 @@ export const openagentsCommand = rootCommand.pipe(
     coderCommand,
     computerCommand,
     forumCommand,
+    issueCommand,
+    projectCommand,
     repoCommand,
   ]),
 );

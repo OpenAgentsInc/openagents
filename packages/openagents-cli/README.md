@@ -237,6 +237,63 @@ Git bundles through durable storage without retaining the complete bundle in
 application memory. Use `--wait-timeout 0` to return after acceptance; the
 server import continues.
 
+## Manage issues
+
+```sh
+openagents issue list
+openagents issue list --state all --label area:cli --limit 100
+openagents issue list --blocked false --limit 50
+openagents issue view 129 --comments
+openagents issue create --title "It fails on Tuesdays" --body-file -
+openagents issue comment 129 --body "Reproduced on staging."
+openagents issue close 129 --comment "Shipped in 0.4.0."
+openagents issue reopen 129
+openagents issue label 129 --add agent-ready --remove needs-design
+openagents issue assign 129 octavia
+openagents issue unassign 129 octavia
+openagents issue deps 129
+openagents issue deps 129 --add 80 --remove 81
+```
+
+The list route holds 25 issues to a page and takes no page size, so
+`issue list --limit 100` pages until it has the issues you asked for. The
+human-facing table reports the API's own total, not the number of rows it
+printed.
+
+`issue create` takes `--body`, or `--body-file` with a path or `-` for standard
+input. `--label` and `--assignee` are repeatable, and a label has to exist in
+the repository already.
+
+`issue close` and `issue reopen` send the state change and nothing else. With
+`--comment`, the comment is posted first as its own request, so the issue text
+is never rewritten by a state change.
+
+`issue deps` reads, adds, and removes the prerequisite edges an orchestrator
+polls to find unblocked work. With no flags it reports what blocks the issue and
+what the issue blocks.
+
+## Manage projects
+
+```sh
+openagents project list
+openagents project list --archived
+openagents project view 2
+openagents project create --title "Issues and Projects delivery"
+openagents project fields 2
+openagents project items 2
+openagents project item-add 2 --issue 129
+openagents project item-set 2 175 --set Status=Done
+openagents project item-move 2 175 --set Status="In Progress" --position 1
+openagents project item-remove 2 175
+```
+
+Projects are repository-scoped, so every project command takes the same
+`-R, --repo` and remote inference the issue commands take.
+
+Every issue and project command accepts `-R, --repo <owner>/<name>` and falls
+back to the origin remote the way `repo view` does. Issue and project numbers
+are bare integers; a leading `#` is accepted and never required.
+
 Add `--json` before a subcommand to return machine-readable output. Add
 `--no-color`, or set `NO_COLOR`, to disable ANSI output. The clone command
 invokes `git` with an argument array and never puts a token in a URL or process
