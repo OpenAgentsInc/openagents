@@ -84,10 +84,14 @@ function screen(written: string): ReadonlyArray<string> {
   return rows;
 }
 
-const drive = async (chunks: ReadonlyArray<ReplyChunk>, prompt = "go") => {
+const drive = async (
+  chunks: ReadonlyArray<ReplyChunk>,
+  prompt = "go",
+  from: ReplySource = source(chunks),
+) => {
   const stdin = new FakeIn();
   const stdout = new FakeOut();
-  const session = new CoderSession(source(chunks), "repo", "main");
+  const session = new CoderSession(from, "repo", "main");
   const running = runCoderUi(session, {
     stdin: stdin as unknown as NodeJS.ReadStream,
     stdout: stdout as unknown as NodeJS.WriteStream,
@@ -265,5 +269,45 @@ describe("runCoderUi", () => {
       const composer = rows.find((row) => row.includes(">")) ?? "";
       expect(composer).not.toContain("\t");
     });
+  });
+
+  it("puts the thread's remaining budget in the status row beside the model", async () => {
+    const metered: ReplySource = { ...source([{ type: "text", value: "hi" }]) };
+    Object.defineProperty(metered, "budget", { get: () => "255 calls · 1.0M tok · $2.00" });
+
+    const { rows } = await drive([{ type: "text", value: "hi" }], "go", metered);
+    const status = rows.find((row) => row.includes("repo · main"));
+
+    expect(status).toContain("scripted · 255 calls · 1.0M tok · $2.00");
+  });
+
+  it("says only how long a turn has run, never that it is streaming", async () => {
+    // The inference proxy builds the whole body and sends it once, so a status
+    // line that claimed streaming would be describing something the reader can
+    // see is not happening.
+    const { rows } = await drive([{ type: "text", value: "hi" }]);
+    expect(rows.some((row) => row.includes("streaming"))).toBe(false);
+  });
+
+  it("drops the repository before the budget when the row will not fit", async () => {
+    const metered: ReplySource = { ...source([{ type: "text", value: "hi" }]) };
+    Object.defineProperty(metered, "budget", { get: () => "255 calls · 1.0M tok · $2.00" });
+
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    stdout.columns = 56;
+    const session = new CoderSession(metered, "a-long-repository-name", "main");
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+    await session.submit("go");
+    const rows = screen(stdout.written);
+    stdin.emit("data", "\x04");
+    await running;
+
+    const status = rows.find((row) => row.includes("calls"));
+    expect(status).not.toContain("a-long-repository-name");
+    expect(status).toContain("$2.00");
   });
 });

@@ -70,6 +70,13 @@ export interface CoderSnapshot {
    * this process never saw.
    */
   readonly turns: number;
+  /**
+   * What the source may still spend, or undefined for a source that spends
+   * nothing. A budget first shown when it runs out is a budget that already
+   * cost somebody the work it was funding, so the status line carries it from
+   * the first frame.
+   */
+  readonly budget: string | undefined;
 }
 
 /** Where reply chunks come from. One implementation today; ACP is the next. */
@@ -77,11 +84,12 @@ export interface ReplySource {
   /** The label the status line shows for the reply source. */
   readonly model: string;
   /**
-   * One sentence about where this source's turns are recorded, shown once at
-   * the start of a session. A source whose turns are private to this process
-   * leaves it unset; a source that writes into a conversation shared with
-   * another surface has to say so, because nothing else on screen would.
+   * What this source may still spend, already formatted for the status line,
+   * or undefined for a source that meters nothing. Read on every snapshot, so
+   * a source spending against a ceiling reports the figure it is at rather
+   * than the one it opened with.
    */
+  readonly budget?: string | undefined;
   /**
    * Move to the next backend and return its new label.
    *
@@ -219,6 +227,7 @@ export class CoderSession {
       branch: this.branch,
       model: this.source.model,
       turns: this.turnCount,
+      budget: this.source.budget,
     };
   }
 

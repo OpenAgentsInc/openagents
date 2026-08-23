@@ -15,7 +15,7 @@
  *     ┌──────────────────────────────┐
  *     │ transcript, scrollable       │
  *     ├──────────────────────────────┤
- *     │ status  repo · branch · model│
+ *     │ status  repo · branch · model · budget│
  *     ├──────────────────────────────┤
  *     │ composer                     │
  *     └──────────────────────────────┘
@@ -343,10 +343,26 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       const rule = `${DIM}${"─".repeat(Math.max(0, width))}${RESET}`;
       const inner = Math.max(10, width - 4);
 
+      // The elapsed time and nothing else. This said `streaming` until the
+      // reply source became the inference proxy, which builds the whole body
+      // and sends it once: a turn that shows one block after four silent
+      // seconds was never streaming, and the status line must not say it was.
       const activity = snapshot.running
-        ? `${YELLOW}●${RESET} working… ${DIM}(${elapsed(runningSince, Date.now())} · streaming)${RESET}`
+        ? `${YELLOW}●${RESET} working… ${DIM}(${elapsed(runningSince, Date.now())})${RESET}`
         : `${DIM}○ ready${RESET}`;
-      const where = `${DIM}${snapshot.repository} · ${snapshot.branch} · ${snapshot.model}${RESET}`;
+      // Dropped from the left as the terminal narrows, because that is the
+      // order of what a reader cannot recover elsewhere: they can see which
+      // checkout they are in, they can ask git for the branch, and nothing on
+      // screen but this says which model answers or what the thread has left.
+      const facts = [snapshot.repository, snapshot.branch, snapshot.model];
+      if (snapshot.budget !== undefined) facts.push(snapshot.budget);
+      let where = "";
+      for (let from = 0; from < facts.length; from += 1) {
+        const candidate = `${DIM}${facts.slice(from).join(" · ")}${RESET}`;
+        if (visibleWidth(activity) + visibleWidth(candidate) + 2 > inner) continue;
+        where = candidate;
+        break;
+      }
       rows.push(`  ${justify(activity, where, inner)}`);
       rows.push(rule);
       rows.push(`  › ${composer}`);
@@ -370,10 +386,10 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       if (lines.length > transcriptHeight) keys.push("pgup/pgdn to scroll");
       if (focusedTool(snapshot) !== undefined) keys.push("ctrl+o to expand");
 
-      // `this run` is not decoration. The count is this process's, and the
-      // source may be writing into a conversation that already holds turns
-      // from `/chat` and from earlier runs, so an unlabelled number would read
-      // as the conversation's and contradict what the model remembers.
+      // `this run` is not decoration. The count is this process's, and a
+      // source that is not the thread — the stand-in behind `--offline` — has
+      // no ceiling the number could be read against, so an unlabelled figure
+      // would invite the reader to compare it with a budget beside it.
       const replies = `${snapshot.turns} ${snapshot.turns === 1 ? "reply" : "replies"} this run`;
       const counter =
         anchor !== undefined

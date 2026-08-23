@@ -18,8 +18,8 @@ import { BrowserLauncher } from "./browser-launcher.js";
 import { runCoderPlain } from "./coder-plain.js";
 import { CoderSession, DummyReplySource } from "./coder-session.js";
 import { runCoderUi } from "./coder-ui.js";
-import { backendIds, findBackend } from "./coder-backends.js";
-import { ChatApiReplySource } from "./coder-chat-api.js";
+import { backendIds } from "./coder-backends.js";
+import { openThread, ThreadUnavailable } from "./coder-thread.js";
 import { describeWorkspace } from "./coder-workspace.js";
 import { ComputerClient } from "./computer-client.js";
 import { ComputerUp } from "./computer-up.js";
@@ -39,6 +39,7 @@ import {
   ComputerPairingInProgress,
   ComputerReconnectExhausted,
   InputError,
+  NetworkRefused,
 } from "./errors.js";
 import { CredentialStore } from "./credential-store.js";
 import {
@@ -1401,13 +1402,40 @@ const coderReasoningFlag = Flag.choice("reasoning", [
   "medium",
   "high",
   "max",
-]).pipe(Flag.optional, Flag.withDescription("Reasoning effort the server passes to the provider"));
-// The accepted values come from the same list the status line and Tab read, so
-// a backend cannot be offered by one and refused by another.
+]).pipe(
+  Flag.optional,
+  Flag.withDescription("Reasoning effort recorded on the thread as its admitted execution shape"),
+);
+// The accepted values are still the chat API's published backends. A thread's
+// grant pins its own model and `POST /api/v3/threads` publishes no model
+// parameter, so naming one here cannot change which model answers; the session
+// says so rather than letting the flag look like it worked.
 const coderModelFlag = Flag.choice("model", backendIds() as string[]).pipe(
   Flag.optional,
-  Flag.withDescription("The backend that answers the turn"),
+  Flag.withDescription("A chat API backend. The thread's grant pins its own model"),
 );
+
+/**
+ * Turn a refused thread into an error the CLI already knows how to print.
+ *
+ * The server's code and sentence are carried through unchanged, so a caller
+ * reading `--json` branches on `thread_quota_reached` and a person reading the
+ * terminal is told the limit and how many threads the account is holding.
+ */
+const coderRefusal = (origin: string, cause: unknown) => {
+  if (!(cause instanceof ThreadUnavailable)) {
+    return new InputError({ message: `The thread could not be opened: ${String(cause)}` });
+  }
+  if (cause.code === "network_refused") {
+    return new NetworkRefused({ origin, message: cause.message });
+  }
+  return new ApiError({
+    operation: "coder.thread.open",
+    status: cause.status,
+    code: cause.code,
+    message: cause.message,
+  });
+};
 
 const coderCommand = Command.make(
   "coder",
@@ -1425,10 +1453,10 @@ const coderCommand = Command.make(
       const workspace = describeWorkspace();
       const endpoint = yield* resolveApiEndpoint(endpointOverrides(flags));
 
-      // Replies come from the account chat API, so the CLI never holds a
-      // provider key and a thread costs exactly what the server metered.
-      // Without a credential it falls back to the stand-in and says so rather
-      // than failing.
+      // The session opens a thread of its own and spends that thread's grant,
+      // so the CLI still holds no provider key and nothing typed here reaches
+      // the account's conversation. Without a credential it falls back to the
+      // stand-in and says so rather than failing.
       const stored = offline
         ? Option.none()
         : yield* findToken(endpoint.origin).pipe(
@@ -1437,16 +1465,23 @@ const coderCommand = Command.make(
             ),
           );
 
-      const chosen = Option.getOrUndefined(model);
-      const source = Option.isSome(stored)
-        ? new ChatApiReplySource({
-            origin: endpoint.origin,
-            token: Redacted.value(stored.value.token),
-            reasoning: Option.getOrUndefined(reasoning),
-            backend: chosen === undefined ? undefined : findBackend(chosen),
+      const thread = Option.isSome(stored)
+        ? yield* Effect.tryPromise({
+            try: () =>
+              openThread({
+                origin: endpoint.origin,
+                token: Redacted.value(stored.value.token),
+                objective: `openagents coder in ${workspace.repository} on ${workspace.branch}`,
+                reasoning: Option.getOrUndefined(reasoning),
+              }),
+            // The server's own code and sentence, which is what turns a ninth
+            // concurrent session from an obscure failure into an instruction
+            // naming the ceiling and how many threads the account is holding.
+            catch: (cause) => coderRefusal(endpoint.origin, cause),
           })
-        : new DummyReplySource();
+        : undefined;
 
+      const source = thread ?? new DummyReplySource();
       const session = new CoderSession(source, workspace.repository, workspace.branch);
 
       if (Option.isNone(stored) && !offline) {
@@ -1456,18 +1491,37 @@ const coderCommand = Command.make(
         );
       }
 
+      // A grant pins the model the proxy will use, and the thread route takes
+      // no model parameter, so a named backend cannot reach this turn. Saying
+      // nothing would leave a reader with a flag that appeared to work.
+      if (thread !== undefined && Option.isSome(model)) {
+        session.notice(
+          `This thread's grant pins ${thread.model}. \`--model\` names a chat API ` +
+            "backend, which the inference proxy does not route to, so it had no effect.",
+        );
+      }
+
       const oneShot = Option.getOrUndefined(prompt);
       const interactive = terminal.interactive && !plain && !flags.json && oneShot === undefined;
 
-      const code = yield* Effect.promise(() =>
-        interactive
-          ? runCoderUi(session, { stdin: process.stdin, stdout: process.stdout })
-          : runCoderPlain(session, {
-              stdin: process.stdin,
-              stdout: process.stdout,
-              prompt: oneShot,
-            }),
-      );
+      const code = yield* Effect.promise(async () => {
+        try {
+          return interactive
+            ? await runCoderUi(session, { stdin: process.stdin, stdout: process.stdout })
+            : await runCoderPlain(session, {
+                stdin: process.stdin,
+                stdout: process.stdout,
+                prompt: oneShot,
+              });
+        } finally {
+          // An account holds eight open threads at once. A terminal that closed
+          // without giving its slot back would hold one until the authority
+          // expired an hour later, which is the ninth session refused for a
+          // session nobody is in. A process killed outright still leaves it to
+          // the server's expiry reap.
+          if (thread !== undefined) await thread.revoke();
+        }
+      });
 
       if (code !== 0) {
         process.exitCode = code;
@@ -1475,7 +1529,7 @@ const coderCommand = Command.make(
     }),
 ).pipe(
   Command.withDescription(
-    "Open a terminal coding session. Replies come from Ox Alpha through the account chat API; --offline answers from a built-in stand-in instead",
+    "Open a terminal coding session on a thread of its own. Replies come from the thread's grant through the inference proxy, so nothing typed here reaches /chat; --offline answers from a built-in stand-in instead",
   ),
 );
 
