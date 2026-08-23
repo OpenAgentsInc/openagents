@@ -26,7 +26,6 @@ const run = (command, arguments_, options = {}) => {
   return { stdout: result.stdout, stderr: result.stderr };
 };
 
-
 /** Subcommand names from `--help`, which lists them one per line after SUBCOMMANDS. */
 const subcommands = (help) => {
   const section = help.split("SUBCOMMANDS")[1];
