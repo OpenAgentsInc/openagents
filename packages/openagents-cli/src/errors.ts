@@ -156,6 +156,21 @@ export class ComputerStatusNetworkFailure extends Schema.TaggedErrorClass<Comput
   { message: Schema.String },
 ) {}
 
+export class ComputerMachineUnavailable extends Schema.TaggedErrorClass<ComputerMachineUnavailable>()(
+  "OpenAgentsCli.ComputerMachineUnavailable",
+  { message: Schema.String },
+) {}
+
+export class ComputerMachineMismatch extends Schema.TaggedErrorClass<ComputerMachineMismatch>()(
+  "OpenAgentsCli.ComputerMachineMismatch",
+  { message: Schema.String },
+) {}
+
+export class ComputerReconnectExhausted extends Schema.TaggedErrorClass<ComputerReconnectExhausted>()(
+  "OpenAgentsCli.ComputerReconnectExhausted",
+  { message: Schema.String },
+) {}
+
 export type CliError =
   | InputError
   | ConfigurationError
@@ -178,7 +193,10 @@ export type CliError =
   | ComputerPairingExpired
   | ComputerPairingRefused
   | ComputerPairingNetworkFailure
-  | ComputerStatusNetworkFailure;
+  | ComputerStatusNetworkFailure
+  | ComputerMachineUnavailable
+  | ComputerMachineMismatch
+  | ComputerReconnectExhausted;
 
 export const exitCodeFor = (error: CliError): number => {
   switch (error._tag) {
@@ -198,6 +216,12 @@ export const exitCodeFor = (error: CliError): number => {
       return 11;
     case "OpenAgentsCli.ComputerStatusNetworkFailure":
       return 12;
+    case "OpenAgentsCli.ComputerMachineUnavailable":
+      return 13;
+    case "OpenAgentsCli.ComputerMachineMismatch":
+      return 14;
+    case "OpenAgentsCli.ComputerReconnectExhausted":
+      return 15;
     case "OpenAgentsCli.AuthenticationRequired":
     case "OpenAgentsCli.CredentialPersistenceUnavailable":
     case "OpenAgentsCli.CredentialStoreError":

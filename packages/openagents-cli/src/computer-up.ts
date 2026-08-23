@@ -17,7 +17,7 @@ import { CredentialStore } from "./credential-store.js";
 import { InputError, type CliError } from "./errors.js";
 
 export interface ComputerUpInterface {
-  readonly serve: (origin: string) => Effect.Effect<string, CliError>;
+  readonly serve: (origin: string, agentVersion: string) => Effect.Effect<string, CliError>;
 }
 
 export class ComputerUp extends Context.Service<ComputerUp, ComputerUpInterface>()(
@@ -89,7 +89,7 @@ export const computerUpLayer = Layer.effect(
     const probe = yield* ComputerProbe;
     const probeContext = yield* Effect.context<ComputerProbe>();
 
-    const serve = Effect.fn("ComputerUp.serve")(function* (origin: string) {
+    const serve = Effect.fn("ComputerUp.serve")(function* (origin: string, agentVersion: string) {
       const stored = yield* credentials.get(origin, "computer");
       if (Option.isNone(stored)) {
         return yield* new InputError({
@@ -264,7 +264,7 @@ export const computerUpLayer = Layer.effect(
           token: stored.value,
           machineId: status.value.machine_id,
           hello: {
-            agent_version: "openagents-cli",
+            agent_version: agentVersion,
             tier: config.tier,
             roots: config.roots,
             platform: `${process.platform}-${process.arch}`,

@@ -1,11 +1,18 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option, Redacted } from "effect";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCliWith } from "../src/cli.js";
+import {
+  ComputerChannel,
+  computerChannelNodeLayer,
+  ComputerSocketTransport,
+  type ComputerChannelHandlers,
+  type ComputerSocket,
+} from "../src/computer-channel.js";
 import {
   ComputerConfiguration,
   computerConfigurationLayer,
@@ -34,8 +41,10 @@ import {
   toolchainCatalog,
 } from "../src/computer-probe.js";
 import { executeComputerCommand } from "../src/computer-executor.js";
+import { ComputerClient, type ComputerStatus } from "../src/computer-client.js";
+import { ComputerUp, computerUpLayer } from "../src/computer-up.js";
 import { environmentLayerFromValues } from "../src/environment.js";
-import { credentialStoreTestFileLayer } from "../src/credential-store.js";
+import { CredentialStore, credentialStoreTestFileLayer } from "../src/credential-store.js";
 import { pendingDeviceAuthorizationStoreTestLayer } from "../src/device-authorization-store.js";
 import { persistedConfigurationTestLayer } from "../src/persisted-configuration.js";
 import { outputTestLayer, type OutputDocument, type OutputMode } from "../src/output.js";
@@ -61,6 +70,50 @@ const computerJournalTestLayer = (path: string): Layer.Layer<ComputerJournal> =>
       }),
     ),
   );
+
+class StubSocket implements ComputerSocket {
+  readyState = 0;
+  readonly sent: string[] = [];
+  private readonly listeners = new Map<string, Array<(...args: ReadonlyArray<unknown>) => void>>();
+
+  on(event: string, listener: (...args: ReadonlyArray<unknown>) => void): void {
+    this.listeners.set(event, [...(this.listeners.get(event) ?? []), listener]);
+  }
+
+  send(data: string): void {
+    this.sent.push(data);
+  }
+
+  close(): void {
+    this.readyState = 3;
+    this.emit("close");
+  }
+
+  open(): void {
+    this.readyState = 1;
+    this.emit("open");
+  }
+
+  message(value: unknown): void {
+    this.emit("message", JSON.stringify(value));
+  }
+
+  emit(event: string, ...args: ReadonlyArray<unknown>): void {
+    for (const listener of this.listeners.get(event) ?? []) listener(...args);
+  }
+}
+
+const sentFrames = (socket: StubSocket): Array<ReadonlyArray<unknown>> =>
+  socket.sent.map((value) => JSON.parse(value) as ReadonlyArray<unknown>);
+
+const computerChannelTestLayer = (transport: {
+  readonly connect: (url: string) => ComputerSocket;
+}): Layer.Layer<ComputerChannel> =>
+  computerChannelNodeLayer.pipe(Layer.provide(Layer.succeed(ComputerSocketTransport, transport)));
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("local Computer policy", () => {
   const root = "/workspace/project";
@@ -289,6 +342,415 @@ describe("local Computer journal", () => {
   });
 });
 
+describe("Computer channel", () => {
+  const options = {
+    origin: "https://openagents.example",
+    token: Redacted.make("smct_test-secret"),
+    machineId: "machine-1",
+    hello: {
+      agent_version: "0.2.1",
+      tier: "curated",
+      roots: ["/workspace"],
+      probe: { schema: "openagents.computer_probe.v1" },
+    },
+    heartbeatMillis: 30_000,
+    maximumReconnectAttempts: 0,
+  };
+
+  it("joins, sends hello, answers probes, and correlates run responses", async () => {
+    const socket = new StubSocket();
+    const events: string[] = [];
+    const cancelled: string[] = [];
+    let runResponder:
+      | {
+          readonly chunk: (text: string) => void;
+          readonly exit: (payload: Record<string, unknown>) => void;
+          readonly refused: (reason: string, detail: string) => void;
+        }
+      | undefined;
+    const channelRun = Effect.runPromise(
+      Effect.gen(function* () {
+        const channel = yield* ComputerChannel;
+        return yield* channel.serve(options, {
+          onProbe: async () => ({ schema: "openagents.computer_probe.v1", roots: ["/workspace"] }),
+          onRun: (_requestId, _payload, responder) => {
+            runResponder = responder;
+          },
+          onCancel: (requestId) => cancelled.push(requestId),
+          onJoined: () => events.push("joined"),
+          onEvent: (event) => events.push(event),
+          onClosed: (reason) => events.push(`closed:${reason}`),
+        });
+      }).pipe(Effect.provide(computerChannelTestLayer({ connect: () => socket }))),
+    );
+    await Promise.resolve();
+    socket.open();
+    expect(sentFrames(socket)[0]).toEqual(["1", "1", "computer:machine-1", "phx_join", {}]);
+    socket.message(["1", "1", "computer:machine-1", "phx_reply", { status: "ok", response: {} }]);
+    expect(sentFrames(socket)[1]).toEqual(["1", "2", "computer:machine-1", "hello", options.hello]);
+
+    socket.message(["1", null, "computer:machine-1", "probe", { request_id: "probe-1" }]);
+    await Promise.resolve();
+    expect(sentFrames(socket)).toContainEqual([
+      "1",
+      "3",
+      "computer:machine-1",
+      "probe_result",
+      {
+        request_id: "probe-1",
+        probe: { schema: "openagents.computer_probe.v1", roots: ["/workspace"] },
+      },
+    ]);
+
+    socket.message([
+      "1",
+      null,
+      "computer:machine-1",
+      "run",
+      { request_id: "run-1", argv: ["echo", "hello"], cwd: "/workspace" },
+    ]);
+    runResponder?.chunk("hello\n");
+    runResponder?.exit({ status: "completed", exit_code: 0 });
+    socket.message(["1", null, "computer:machine-1", "cancel", { request_id: "run-1" }]);
+    expect(sentFrames(socket)).toContainEqual([
+      "1",
+      "4",
+      "computer:machine-1",
+      "chunk",
+      { request_id: "run-1", text: "hello\n" },
+    ]);
+    expect(sentFrames(socket)).toContainEqual([
+      "1",
+      "5",
+      "computer:machine-1",
+      "exit",
+      { request_id: "run-1", status: "completed", exit_code: 0 },
+    ]);
+    expect(cancelled).toEqual(["run-1"]);
+    expect(events).toContain("joined");
+    expect(JSON.stringify(sentFrames(socket))).not.toContain("smct_test-secret");
+    socket.message(["1", null, "computer:machine-1", "phx_close", {}]);
+    await expect(channelRun).resolves.toBe("phx_close");
+  });
+
+  it("retries machine_reconnecting and stops on authorization refusals", async () => {
+    vi.useFakeTimers();
+    const reconnectingSockets: StubSocket[] = [];
+    const reconnectingEvents: string[] = [];
+    const reconnectingRun = Effect.runPromise(
+      Effect.gen(function* () {
+        const channel = yield* ComputerChannel;
+        return yield* channel.serve(
+          { ...options, reconnectBackoffMillis: 0, maximumReconnectAttempts: 1 },
+          {
+            onProbe: async () => ({}),
+            onRun: () => undefined,
+            onCancel: () => undefined,
+            onJoined: () => undefined,
+            onEvent: (event) => reconnectingEvents.push(event),
+            onClosed: () => undefined,
+          },
+        );
+      }).pipe(
+        Effect.provide(
+          computerChannelTestLayer({
+            connect: () => {
+              const socket = new StubSocket();
+              reconnectingSockets.push(socket);
+              return socket;
+            },
+          }),
+        ),
+      ),
+    );
+    await Promise.resolve();
+    reconnectingSockets[0]?.open();
+    reconnectingSockets[0]?.message([
+      "1",
+      "1",
+      "computer:machine-1",
+      "phx_reply",
+      { status: "error", response: { reason: "machine_reconnecting" } },
+    ]);
+    await vi.advanceTimersByTimeAsync(0);
+    reconnectingSockets[1]?.open();
+    reconnectingSockets[1]?.message([
+      "1",
+      "1",
+      "computer:machine-1",
+      "phx_reply",
+      { status: "error", response: { reason: "machine_unavailable" } },
+    ]);
+    await expect(reconnectingRun).resolves.toBe("join_refused:machine_unavailable");
+    expect(reconnectingEvents).toContain("reconnect:join_refused:machine_reconnecting:1");
+
+    for (const reason of ["machine_unavailable", "machine_mismatch"] as const) {
+      const socket = new StubSocket();
+      const result = Effect.runPromise(
+        Effect.gen(function* () {
+          const channel = yield* ComputerChannel;
+          return yield* channel.serve(options, {
+            onProbe: async () => ({}),
+            onRun: () => undefined,
+            onCancel: () => undefined,
+            onJoined: () => undefined,
+            onEvent: () => undefined,
+            onClosed: () => undefined,
+          });
+        }).pipe(Effect.provide(computerChannelTestLayer({ connect: () => socket }))),
+      );
+      await Promise.resolve();
+      socket.open();
+      socket.message([
+        "1",
+        "1",
+        "computer:machine-1",
+        "phx_reply",
+        { status: "error", response: { reason } },
+      ]);
+      await expect(result).resolves.toBe(`join_refused:${reason}`);
+    }
+
+    const transportSockets: StubSocket[] = [];
+    const transportRun = Effect.runPromise(
+      Effect.gen(function* () {
+        const channel = yield* ComputerChannel;
+        return yield* channel.serve(
+          { ...options, reconnectBackoffMillis: 0, maximumReconnectAttempts: 1 },
+          {
+            onProbe: async () => ({}),
+            onRun: () => undefined,
+            onCancel: () => undefined,
+            onJoined: () => undefined,
+            onEvent: (event) => reconnectingEvents.push(event),
+            onClosed: () => undefined,
+          },
+        );
+      }).pipe(
+        Effect.provide(
+          computerChannelTestLayer({
+            connect: () => {
+              const socket = new StubSocket();
+              transportSockets.push(socket);
+              return socket;
+            },
+          }),
+        ),
+      ),
+    );
+    await Promise.resolve();
+    transportSockets[0]?.open();
+    transportSockets[0]?.close();
+    await vi.advanceTimersByTimeAsync(0);
+    transportSockets[1]?.open();
+    transportSockets[1]?.close();
+    await expect(transportRun).resolves.toBe("transport_retry_exhausted:closed");
+  });
+
+  it("ends after an unacknowledged heartbeat", async () => {
+    vi.useFakeTimers();
+    const socket = new StubSocket();
+    const result = Effect.runPromise(
+      Effect.gen(function* () {
+        const channel = yield* ComputerChannel;
+        return yield* channel.serve(
+          { ...options, heartbeatMillis: 10 },
+          {
+            onProbe: async () => ({}),
+            onRun: () => undefined,
+            onCancel: () => undefined,
+            onJoined: () => undefined,
+            onEvent: () => undefined,
+            onClosed: () => undefined,
+          },
+        );
+      }).pipe(Effect.provide(computerChannelTestLayer({ connect: () => socket }))),
+    );
+    socket.open();
+    await vi.advanceTimersByTimeAsync(20);
+    expect(sentFrames(socket)).toContainEqual([null, "2", "phoenix", "heartbeat", {}]);
+    await expect(result).resolves.toBe("heartbeat_timeout");
+  });
+});
+
+describe("Computer up service", () => {
+  const probeReport = {
+    schema: "openagents.computer_probe.v1",
+    host: {
+      platform: "linux",
+      release: "test",
+      architecture: "x64",
+      hostname: "test",
+      shell: "",
+      cpuCount: 1,
+      totalMemoryBytes: 1,
+      uptimeSeconds: 1,
+    },
+    codingAgents: [],
+    toolchains: [],
+    roots: ["/workspace"],
+    worktrees: [],
+  } as const;
+  const status: ComputerStatus = {
+    machine_id: "machine-1",
+    name: "test-computer",
+    status: "active",
+    token_expires_at: "2099-01-01T00:00:00.000Z",
+  };
+
+  const fixture = (tier: "probe" | "curated" | "shell", roots = ["/workspace"]) => {
+    let channelHandlers: ComputerChannelHandlers | undefined;
+    let channelOptions:
+      | {
+          readonly hello: unknown;
+          readonly token: Redacted.Redacted<string>;
+        }
+      | undefined;
+    const entries: Array<Record<string, unknown>> = [];
+    const output: string[] = [];
+    const terminal: Array<Record<string, unknown>> = [];
+    const journal = Layer.succeed(
+      ComputerJournal,
+      ComputerJournal.of({
+        append: (entry) => Effect.sync(() => entries.push(entry)),
+        read: () => Effect.succeed([]),
+      }),
+    );
+    const channel = Layer.succeed(
+      ComputerChannel,
+      ComputerChannel.of({
+        serve: (options, handlers) => {
+          channelOptions = options;
+          channelHandlers = handlers;
+          handlers.onJoined();
+          return Effect.succeed("phx_close");
+        },
+      }),
+    );
+    const client = Layer.succeed(
+      ComputerClient,
+      ComputerClient.of({
+        start: () => Effect.die("unused"),
+        wait: () => Effect.die("unused"),
+        status: () => Effect.succeed(Option.some(status)),
+      }),
+    );
+    const credentials = Layer.succeed(
+      CredentialStore,
+      CredentialStore.of({
+        get: () => Effect.succeed(Option.some(Redacted.make("smct_test-secret"))),
+        set: () => Effect.void,
+        remove: () => Effect.void,
+      }),
+    );
+    const probe = Layer.succeed(
+      ComputerProbe,
+      ComputerProbe.of({ probe: () => Effect.succeed(probeReport) }),
+    );
+    const config = computerConfigurationTestLayer({
+      tier,
+      roots,
+      preApproved: tier === "shell" ? ["node"] : [],
+    });
+    const layer = computerUpLayer.pipe(
+      Layer.provide(Layer.mergeAll(channel, client, credentials, journal, probe, config)),
+    );
+    return {
+      layer,
+      entries,
+      output,
+      terminal,
+      handlers: () => channelHandlers,
+      hello: () => channelOptions?.hello,
+      token: () => channelOptions?.token,
+      emitRun: (payload: Record<string, unknown>) => {
+        const handlers = channelHandlers;
+        if (handlers === undefined) throw new Error("channel was not started");
+        handlers.onRun("request-1", payload, {
+          chunk: (text) => output.push(text),
+          exit: (value) => terminal.push(value),
+          refused: (reason, detail) => terminal.push({ reason, detail }),
+        });
+      },
+    };
+  };
+
+  it("reports the CLI version, clamps limits, streams output, and journals outcomes", async () => {
+    const value = fixture("shell", [process.cwd()]);
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const up = yield* ComputerUp;
+        return yield* up.serve("https://openagents.example", "0.1.7");
+      }).pipe(Effect.provide(value.layer)),
+    );
+    expect(value.hello()).toMatchObject({ agent_version: "0.1.7", tier: "shell" });
+    expect(value.token()).toBeDefined();
+    value.emitRun({
+      argv: [process.execPath, "-e", "process.stdout.write('abcdef')"],
+      cwd: process.cwd(),
+      tier: "shell",
+      timeout_ms: 999_999,
+      maximum_output_bytes: 3,
+    });
+    for (let attempt = 0; attempt < 50 && value.terminal.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(value.output.join("")).toBe("abc");
+    expect(value.terminal[0]).toMatchObject({
+      status: "completed",
+      exit_code: 0,
+      truncated: true,
+    });
+    expect(value.entries.map((entry) => entry.outcome)).toEqual(
+      expect.arrayContaining(["pending", "running", "completed"]),
+    );
+    expect(value.entries.map((entry) => entry.decision)).toContain("allowed");
+    expect(JSON.stringify(value.entries)).not.toContain("smct_test-secret");
+  });
+
+  it("refuses requests for tiers, roots, allowlists, and denied patterns", async () => {
+    const value = fixture("probe");
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const up = yield* ComputerUp;
+        return yield* up.serve("https://openagents.example", "0.1.7");
+      }).pipe(Effect.provide(value.layer)),
+    );
+    const cases = [
+      {
+        argv: ["echo", "hello"],
+        cwd: "/workspace",
+        tier: "shell",
+        reason: "tier_insufficient",
+      },
+      {
+        argv: ["node", "--version"],
+        cwd: "/outside",
+        tier: "probe",
+        reason: "root_not_declared",
+      },
+      {
+        argv: ["not-allowlisted"],
+        cwd: "/workspace",
+        tier: "curated",
+        reason: "tier_insufficient",
+      },
+      {
+        argv: ["cat", ".env"],
+        cwd: "/workspace",
+        tier: "probe",
+        reason: "denied_argument",
+      },
+    ] as const;
+    for (const request of cases) {
+      value.emitRun(request);
+      expect(value.terminal.at(-1)).toMatchObject({ reason: request.reason });
+    }
+    expect(value.entries.filter((entry) => entry.outcome === "refused")).toHaveLength(4);
+    expect(JSON.stringify(value.entries)).not.toContain("smct_test-secret");
+  });
+});
+
 describe("local Computer execution", () => {
   it("executes argv directly with scrubbed environment and bounded output", async () => {
     const chunks: string[] = [];
@@ -321,6 +783,20 @@ describe("local Computer execution", () => {
     expect(outcome.cancelled).toBe(true);
     expect(outcome.timedOut).toBe(false);
     expect(outcome.exitCode).toBe(null);
+  });
+
+  it("keeps a natural exit truthful when cancellation arrives afterward", async () => {
+    const execution = executeComputerCommand(
+      [process.execPath, "-e", "process.exit(0)"],
+      process.cwd(),
+      { timeoutMillis: 5_000, maximumOutputBytes: 64 },
+      () => undefined,
+    );
+    const outcome = await execution.done;
+    execution.cancel();
+    expect(outcome.cancelled).toBe(false);
+    expect(outcome.timedOut).toBe(false);
+    expect(outcome.exitCode).toBe(0);
   });
 });
 

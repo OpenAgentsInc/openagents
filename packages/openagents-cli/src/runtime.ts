@@ -6,7 +6,7 @@ import { apiTransportNodeLayer, networkPolicyLiveLayer } from "./api-transport.j
 import { browserLauncherLayer } from "./browser-launcher.js";
 import { computerConfigurationLayer } from "./computer-config.js";
 import { computerClientLayer } from "./computer-client.js";
-import { computerChannelNodeLayer } from "./computer-channel.js";
+import { computerChannelNodeLayer, computerSocketNodeLayer } from "./computer-channel.js";
 import { computerJournalLayer } from "./computer-journal.js";
 import { computerProbeLayer } from "./computer-probe.js";
 import { computerUpLayer } from "./computer-up.js";
@@ -42,10 +42,11 @@ const computerJournal = computerJournalLayer.pipe(Layer.provide(computerConfigur
 const computerProbe = computerProbeLayer.pipe(
   Layer.provide(Layer.merge(computerConfiguration, NodeServices.layer)),
 );
+const computerChannel = computerChannelNodeLayer.pipe(Layer.provide(computerSocketNodeLayer));
 const computerUp = computerUpLayer.pipe(
   Layer.provide(
     Layer.mergeAll(
-      computerChannelNodeLayer,
+      computerChannel,
       computerClient,
       computerConfiguration,
       computerJournal,

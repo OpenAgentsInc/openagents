@@ -10,7 +10,25 @@ export interface ComputerChannelOptions {
   readonly machineId: string;
   readonly hello: unknown;
   readonly heartbeatMillis?: number;
+  readonly reconnectBackoffMillis?: number;
+  readonly maximumReconnectAttempts?: number;
 }
+
+export interface ComputerSocket {
+  readonly readyState: number;
+  readonly send: (data: string) => void;
+  readonly close: () => void;
+  readonly on: (event: string, listener: (...args: ReadonlyArray<unknown>) => void) => void;
+}
+
+export interface ComputerSocketTransportInterface {
+  readonly connect: (url: string) => ComputerSocket;
+}
+
+export class ComputerSocketTransport extends Context.Service<
+  ComputerSocketTransport,
+  ComputerSocketTransportInterface
+>()("@openagentsinc/cli/ComputerSocketTransport") {}
 
 export interface ComputerResponder {
   readonly chunk: (text: string) => void;
@@ -56,9 +74,24 @@ const record = (value: unknown): Record<string, unknown> =>
 const socketUrl = (origin: string, token: string): string =>
   `${origin.replace(/^http/u, "ws").replace(/\/$/u, "")}/controller/socket/websocket?vsn=2.0.0&token=${encodeURIComponent(token)}`;
 
-const serveLive = (
+const reconnectableTransportReason = (reason: string): boolean =>
+  reason === "closed" ||
+  reason === "phx_close" ||
+  reason === "phx_error" ||
+  reason === "heartbeat_timeout" ||
+  reason === "socket_not_open" ||
+  reason.startsWith("error:");
+
+const wait = (milliseconds: number): Promise<void> =>
+  new Promise((resolve) => {
+    const timer = setTimeout(resolve, milliseconds);
+    timer.unref();
+  });
+
+const serveConnection = (
   options: ComputerChannelOptions,
   handlers: ComputerChannelHandlers,
+  transport: ComputerSocketTransportInterface,
 ): Promise<string> =>
   new Promise((resolve) => {
     const topic = `computer:${options.machineId}`;
@@ -68,21 +101,21 @@ const serveLive = (
     let heartbeat: NodeJS.Timeout | undefined;
     let heartbeatPending = false;
     let finished = false;
-    const socket = new WebSocket(socketUrl(options.origin, Redacted.value(options.token)));
+    const socket = transport.connect(socketUrl(options.origin, Redacted.value(options.token)));
 
     const finish = (reason: string): void => {
       if (finished) return;
       finished = true;
       if (heartbeat !== undefined) clearInterval(heartbeat);
       handlers.onClosed(reason);
-      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+      if (socket.readyState === 1 || socket.readyState === 0) {
         socket.close();
       }
       resolve(reason);
     };
 
     const push = (event: string, payload: unknown, joined = true, forcedRef?: string): void => {
-      if (socket.readyState !== WebSocket.OPEN) return;
+      if (socket.readyState !== 1) return;
       reference += 1;
       const outgoing: Frame = [
         joined ? joinRef : null,
@@ -107,7 +140,7 @@ const serveLive = (
           finish("heartbeat_timeout");
           return;
         }
-        if (socket.readyState !== WebSocket.OPEN) {
+        if (socket.readyState !== 1) {
           finish("socket_not_open");
           return;
         }
@@ -119,10 +152,10 @@ const serveLive = (
       heartbeat.unref();
     });
 
-    socket.on("message", (data: WebSocket.RawData) => {
+    socket.on("message", (data: unknown) => {
       let parsed: unknown;
       try {
-        parsed = JSON.parse(data.toString());
+        parsed = JSON.parse(String(data));
       } catch {
         return;
       }
@@ -140,7 +173,9 @@ const serveLive = (
           handlers.onJoined();
           push("hello", options.hello);
         } else {
-          finish(`join_refused:${JSON.stringify(payload.response ?? {})}`);
+          const response = record(payload.response);
+          const reason = response.reason;
+          finish(`join_refused:${typeof reason === "string" ? reason : "unknown"}`);
         }
         return;
       }
@@ -165,15 +200,48 @@ const serveLive = (
         handlers.onCancel(requestId);
       }
     });
-    socket.on("error", (cause: Error) => finish(`error:${cause.message}`));
+    socket.on("error", (cause: unknown) =>
+      finish(`error:${cause instanceof Error ? cause.message : String(cause)}`),
+    );
     socket.on("close", () => finish("closed"));
   });
 
+const serveLive = async (
+  options: ComputerChannelOptions,
+  handlers: ComputerChannelHandlers,
+  transport: ComputerSocketTransportInterface,
+): Promise<string> => {
+  const maximumReconnectAttempts = options.maximumReconnectAttempts ?? 3;
+  const backoffMillis = options.reconnectBackoffMillis ?? 250;
+  let reconnectAttempts = 0;
+  while (true) {
+    const reason = await serveConnection(options, handlers, transport);
+    const joinReason = reason.startsWith("join_refused:")
+      ? reason.slice("join_refused:".length)
+      : "";
+    const retryable = joinReason === "machine_reconnecting" || reconnectableTransportReason(reason);
+    if (!retryable || reconnectAttempts >= maximumReconnectAttempts) {
+      return retryable && reconnectAttempts > 0
+        ? `${joinReason === "machine_reconnecting" ? "machine_reconnecting" : "transport"}_retry_exhausted:${reason}`
+        : reason;
+    }
+    reconnectAttempts += 1;
+    const delay = Math.min(10_000, backoffMillis * 2 ** (reconnectAttempts - 1));
+    handlers.onEvent(`reconnect:${reason}:${reconnectAttempts}`);
+    await wait(delay);
+  }
+};
+
 export const computerChannelNodeLayer = Layer.effect(
   ComputerChannel,
-  Effect.succeed(
-    ComputerChannel.of({
-      serve: (options, handlers) => Effect.promise(() => serveLive(options, handlers)),
-    }),
-  ),
+  Effect.gen(function* () {
+    const transport = yield* ComputerSocketTransport;
+    return ComputerChannel.of({
+      serve: (options, handlers) => Effect.promise(() => serveLive(options, handlers, transport)),
+    });
+  }),
 );
+
+export const computerSocketNodeLayer = Layer.succeed(ComputerSocketTransport, {
+  connect: (url) => new WebSocket(url) as unknown as ComputerSocket,
+});

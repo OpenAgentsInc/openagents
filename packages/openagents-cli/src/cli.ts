@@ -33,7 +33,10 @@ import { formatAllowlist, resolveRoots, type Tier } from "./computer-policy.js";
 import {
   ApiError,
   ComputerAlreadyPaired,
+  ComputerMachineMismatch,
+  ComputerMachineUnavailable,
   ComputerPairingInProgress,
+  ComputerReconnectExhausted,
   InputError,
 } from "./errors.js";
 import { CredentialStore } from "./credential-store.js";
@@ -263,7 +266,22 @@ const computerUpCommand = Command.make("up", {}, () =>
     const flags = yield* rootCommand;
     const endpoint = yield* resolveApiEndpoint(endpointOverrides(flags));
     const up = yield* ComputerUp;
-    const reason = yield* up.serve(endpoint.origin);
+    const reason = yield* up.serve(endpoint.origin, VERSION);
+    if (reason.includes("machine_unavailable")) {
+      return yield* new ComputerMachineUnavailable({
+        message: "The Computer machine is unavailable; the connection stopped.",
+      });
+    }
+    if (reason.includes("machine_mismatch")) {
+      return yield* new ComputerMachineMismatch({
+        message: "The Computer machine does not match the paired identity; the connection stopped.",
+      });
+    }
+    if (reason.includes("retry_exhausted")) {
+      return yield* new ComputerReconnectExhausted({
+        message: `The Computer connection stopped after bounded retries (${reason}).`,
+      });
+    }
     const output = yield* Output;
     yield* output.write(
       {
@@ -275,7 +293,7 @@ const computerUpCommand = Command.make("up", {}, () =>
   }),
 ).pipe(
   Command.withDescription(
-    "Serve bounded Computer requests over an outbound connection until the server disconnects.",
+    "Serve bounded Computer requests over an outbound connection. Transport loss and machine_reconnecting retry with bounded backoff; authorization refusals stop the command.",
   ),
 );
 

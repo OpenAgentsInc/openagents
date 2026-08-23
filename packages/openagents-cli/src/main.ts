@@ -31,6 +31,9 @@ const cliErrorTags = new Set([
   "OpenAgentsCli.ComputerPairingRefused",
   "OpenAgentsCli.ComputerPairingNetworkFailure",
   "OpenAgentsCli.ComputerStatusNetworkFailure",
+  "OpenAgentsCli.ComputerMachineUnavailable",
+  "OpenAgentsCli.ComputerMachineMismatch",
+  "OpenAgentsCli.ComputerReconnectExhausted",
 ]);
 
 const isCliError = (value: unknown): value is CliError =>
