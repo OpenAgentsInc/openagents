@@ -86,7 +86,7 @@ export const repositoryFromRemoteUrl = Effect.fn("GitRunner.repositoryFromRemote
     try: () => new URL(remoteUrl),
     catch: () =>
       new InputError({
-        message: "The origin remote is not an admitted OpenAgents repository URL.",
+        message: "That Git remote URL is not an admitted OpenAgents repository URL.",
       }),
   });
   const parts = remote.pathname.split("/");
@@ -104,7 +104,7 @@ export const repositoryFromRemoteUrl = Effect.fn("GitRunner.repositoryFromRemote
     !repositoryWithSuffix.endsWith(".git")
   ) {
     return yield* new InputError({
-      message: "The origin remote is not an admitted OpenAgents repository URL.",
+      message: "That Git remote URL is not an admitted OpenAgents repository URL.",
     });
   }
   const repository = repositoryWithSuffix.slice(0, -4);
@@ -112,7 +112,7 @@ export const repositoryFromRemoteUrl = Effect.fn("GitRunner.repositoryFromRemote
     try: () => [decodeURIComponent(owner), decodeURIComponent(repository)] as const,
     catch: () =>
       new InputError({
-        message: "The origin remote is not an admitted OpenAgents repository URL.",
+        message: "That Git remote URL is not an admitted OpenAgents repository URL.",
       }),
   });
   if (
@@ -122,11 +122,66 @@ export const repositoryFromRemoteUrl = Effect.fn("GitRunner.repositoryFromRemote
     decodedRepository.length === 0
   ) {
     return yield* new InputError({
-      message: "The origin remote is not an admitted OpenAgents repository URL.",
+      message: "That Git remote URL is not an admitted OpenAgents repository URL.",
     });
   }
   return `${decodedOwner}/${decodedRepository}`;
 });
+
+export interface GitRemoteUrl {
+  readonly name: string;
+  readonly url: string;
+}
+
+/**
+ * Reads `git remote -v` into one URL per remote.
+ *
+ * Each remote prints a fetch line and a push line. The fetch URL is the one a
+ * repository is read from, so it wins; a remote configured for push alone
+ * still contributes the URL it has.
+ */
+export const parseGitRemotes = (output: string): ReadonlyArray<GitRemoteUrl> => {
+  const urls = new Map<string, string>();
+  for (const rawLine of output.split("\n")) {
+    const match = /^(\S+)\s+(.+)\s+\((fetch|push)\)$/u.exec(rawLine.trim());
+    if (match === null) continue;
+    const name = match[1];
+    const url = match[2];
+    if (name === undefined || url === undefined) continue;
+    if (match[3] === "fetch" || !urls.has(name)) urls.set(name, url);
+  }
+  return [...urls].map(([name, url]) => ({ name, url }));
+};
+
+/**
+ * Remote names tried first, in order.
+ *
+ * A name never admits a remote; only its URL does. This order decides between
+ * remotes that already point at the API origin in use. `origin` comes first so
+ * a checkout that resolved before this rule existed still resolves to the same
+ * repository, then the forge name this project's own documentation uses. Any
+ * other remote follows in the order `git remote -v` printed it, which git
+ * emits by name, so the same checkout always answers the same way.
+ */
+const PREFERRED_REMOTE_NAMES: ReadonlyArray<string> = ["origin", "openagents"];
+
+export const orderedRemoteNames = (names: ReadonlyArray<string>): ReadonlyArray<string> => [
+  ...PREFERRED_REMOTE_NAMES.filter((preferred) => names.includes(preferred)),
+  ...names.filter((name) => !PREFERRED_REMOTE_NAMES.includes(name)),
+];
+
+/** Why one remote is not the repository, in the words a reader can act on. */
+const remoteRejection = (origin: string, url: string): string => {
+  let remote: URL;
+  try {
+    remote = new URL(url);
+  } catch {
+    return "is not an HTTP URL";
+  }
+  if (remote.protocol !== "http:" && remote.protocol !== "https:") return "is not an HTTP URL";
+  if (remote.origin !== origin) return `points at ${remote.origin}`;
+  return "is not an OWNER/REPO.git path on that origin";
+};
 
 export const gitRunnerLayer = Layer.effect(
   GitRunner,
@@ -257,21 +312,52 @@ export const gitRunnerLayer = Layer.effect(
       return { remote, nextPushArguments: ["push", "-u", remote, "HEAD"] };
     });
 
+    /**
+     * The repository this checkout belongs to, taken from its Git remotes.
+     *
+     * A remote's name is a local convention: this project's own contract names
+     * the forge remote `openagents` and reserves `origin` for the GitHub
+     * mirror, while other checkouts name the forge `origin`. The URL is the
+     * fact, so a remote is admitted only when its URL is a repository URL on
+     * the API origin this invocation is already talking to. A mirror is
+     * therefore never inferred, whatever it is called.
+     */
     const inferRepository = Effect.fn("GitRunner.inferRepository")(function* (
       origin: string,
       directory = ".",
     ) {
-      const existing = yield* runGit(
-        "git origin lookup",
-        ["remote", "get-url", "--", "origin"],
-        directory,
-      );
-      if (existing.exitCode !== 0 || existing.stdout.length === 0) {
+      const listed = yield* runGit("git remote lookup", ["remote", "-v"], directory);
+      if (listed.exitCode !== 0) {
         return yield* new InputError({
-          message: "Pass OWNER/REPO or configure an admitted OpenAgents origin remote.",
+          message: `The CLI could not read the Git remotes of ${directory}. Pass OWNER/REPO instead.`,
         });
       }
-      return yield* repositoryFromRemoteUrl(origin, existing.stdout);
+
+      const remotes = parseGitRemotes(listed.stdout);
+      if (remotes.length === 0) {
+        return yield* new InputError({
+          message: `This checkout has no Git remotes. Pass OWNER/REPO, or add a remote for ${origin}.`,
+        });
+      }
+
+      const byName = new Map(remotes.map((remote) => [remote.name, remote.url]));
+      const rejected: Array<string> = [];
+      for (const name of orderedRemoteNames([...byName.keys()])) {
+        const url = byName.get(name);
+        if (url === undefined) continue;
+        const repository = yield* repositoryFromRemoteUrl(origin, url).pipe(
+          Effect.orElseSucceed((): string | undefined => undefined),
+        );
+        if (repository !== undefined) return repository;
+        rejected.push(`${name} ${remoteRejection(origin, url)}`);
+      }
+
+      return yield* new InputError({
+        message:
+          `No Git remote of this checkout is a repository on ${origin}, the OpenAgents origin in use: ` +
+          `${rejected.join("; ")}. A remote's name does not decide this; its URL does. ` +
+          "Pass OWNER/REPO instead.",
+      });
     });
 
     const configureCredentialHelper = Effect.fn("GitRunner.configureCredentialHelper")(function* (

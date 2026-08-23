@@ -10,6 +10,8 @@ import {
   GitRunner,
   gitCloneArgv,
   gitRunnerLayer,
+  orderedRemoteNames,
+  parseGitRemotes,
   repositoryFromRemoteUrl,
 } from "../src/git-runner.js";
 
@@ -142,5 +144,116 @@ describe("git clone argument construction", () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+});
+
+const FORGE = "http://localhost:4000";
+
+/** A throwaway checkout carrying exactly the remotes a case is about. */
+const withRemotes = async (
+  remotes: ReadonlyArray<readonly [string, string]>,
+  assert: (directory: string) => Promise<void>,
+) => {
+  const directory = await mkdtemp(join(tmpdir(), "openagents-cli-remotes-"));
+  try {
+    execFileSync("git", ["init", "--quiet", directory]);
+    for (const [name, url] of remotes) {
+      execFileSync("git", ["-C", directory, "remote", "add", name, url]);
+    }
+    await assert(directory);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+};
+
+const infer = (directory: string) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const git = yield* GitRunner;
+      return yield* git.inferRepository(FORGE, directory);
+    }).pipe(Effect.provide(gitRunnerLayer.pipe(Layer.provide(NodeServices.layer)))),
+  );
+
+describe("repository inference from Git remotes", () => {
+  it("reads one URL per remote and prefers the fetch URL", () => {
+    expect(
+      parseGitRemotes(
+        [
+          "openagents\thttp://localhost:4000/octavia/project.git (fetch)",
+          "openagents\thttp://localhost:4000/octavia/project.git (push)",
+          "mirror\thttps://github.com/octavia/project.git (fetch)",
+          "mirror\tno-push (push)",
+        ].join("\n"),
+      ),
+    ).toEqual([
+      { name: "openagents", url: "http://localhost:4000/octavia/project.git" },
+      { name: "mirror", url: "https://github.com/octavia/project.git" },
+    ]);
+  });
+
+  it("tries origin, then the documented forge name, then the rest as listed", () => {
+    expect(orderedRemoteNames(["upstream", "openagents", "origin"])).toEqual([
+      "origin",
+      "openagents",
+      "upstream",
+    ]);
+    expect(orderedRemoteNames(["zulu", "alpha"])).toEqual(["zulu", "alpha"]);
+  });
+
+  it("infers from a forge remote named openagents, the name this project mandates", async () => {
+    await withRemotes([["openagents", `${FORGE}/octavia/project.git`]], async (directory) => {
+      await expect(infer(directory)).resolves.toBe("octavia/project");
+    });
+  });
+
+  it("still infers where the forge remote is named origin", async () => {
+    await withRemotes([["origin", `${FORGE}/octavia/project.git`]], async (directory) => {
+      await expect(infer(directory)).resolves.toBe("octavia/project");
+    });
+  });
+
+  it("ignores a GitHub mirror and takes the forge remote beside it", async () => {
+    await withRemotes(
+      [
+        ["origin", "https://github.com/octavia/project.git"],
+        ["openagents", `${FORGE}/octavia/forge-name.git`],
+      ],
+      async (directory) => {
+        await expect(infer(directory)).resolves.toBe("octavia/forge-name");
+      },
+    );
+  });
+
+  it("prefers origin when both remotes are on the forge, so existing setups do not move", async () => {
+    await withRemotes(
+      [
+        ["openagents", `${FORGE}/octavia/second.git`],
+        ["origin", `${FORGE}/octavia/first.git`],
+      ],
+      async (directory) => {
+        await expect(infer(directory)).resolves.toBe("octavia/first");
+      },
+    );
+  });
+
+  it("refuses a checkout whose only remote is a GitHub mirror, and says why", async () => {
+    await withRemotes([["origin", "https://github.com/octavia/project.git"]], async (directory) => {
+      await expect(infer(directory)).rejects.toThrow(/origin points at https:\/\/github\.com/u);
+      await expect(infer(directory)).rejects.toThrow(/name does not decide this/u);
+    });
+  });
+
+  it("names a remote on the forge whose path is not a repository", async () => {
+    await withRemotes([["openagents", `${FORGE}/octavia/deep/project.git`]], async (directory) => {
+      await expect(infer(directory)).rejects.toThrow(
+        /openagents is not an OWNER\/REPO\.git path on that origin/u,
+      );
+    });
+  });
+
+  it("refuses a checkout with no remotes at all", async () => {
+    await withRemotes([], async (directory) => {
+      await expect(infer(directory)).rejects.toThrow(/has no Git remotes/u);
+    });
   });
 });

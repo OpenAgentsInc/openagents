@@ -215,8 +215,18 @@ automatically. While the server creates repository storage, the CLI writes the
 current state and a five-second heartbeat to standard error.
 
 `repo view` and `repo clone` accept `-R, --repo <owner>/<name>`. When you omit a
-repository, the CLI infers it only from an exact `/<owner>/<repo>.git` URL
-on the selected OpenAgents API origin.
+repository, the CLI infers it from this checkout's Git remotes.
+
+A remote's name does not decide this; its URL does. The CLI reads every remote
+and takes the first whose URL is an exact `/<owner>/<repo>.git` path on the
+OpenAgents API origin in use, so a forge remote named `openagents` and one named
+`origin` both work. A GitHub mirror is never inferred, whatever it is called,
+because the forge is the authority for issues and projects and a mirror is not.
+When more than one remote points at the forge, `origin` wins, then `openagents`,
+then the rest in the order `git remote -v` lists them.
+
+When no remote qualifies, the CLI names each remote it examined and why it was
+rejected, and asks for `OWNER/REPO` instead.
 
 `repo delete` permanently deletes a repository you own, including its Git
 history, issues, projects, and import records. It accepts an explicit
@@ -290,9 +300,10 @@ openagents project item-remove 2 175
 Projects are repository-scoped, so every project command takes the same
 `-R, --repo` and remote inference the issue commands take.
 
-Every issue and project command accepts `-R, --repo <owner>/<name>` and falls
-back to the origin remote the way `repo view` does. Issue and project numbers
-are bare integers; a leading `#` is accepted and never required.
+Every issue and project command accepts `-R, --repo <owner>/<name>` and
+otherwise infers the repository from the forge remote the way `repo view` does,
+whatever that remote is named. Issue and project numbers are bare integers; a
+leading `#` is accepted and never required.
 
 Add `--json` before a subcommand to return machine-readable output. Add
 `--no-color`, or set `NO_COLOR`, to disable ANSI output. The clone command
