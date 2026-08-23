@@ -26,6 +26,14 @@ const run = (command, arguments_, options = {}) => {
   return { stdout: result.stdout, stderr: result.stderr };
 };
 
+
+/** Subcommand names from `--help`, which lists them one per line after SUBCOMMANDS. */
+const subcommands = (help) => {
+  const section = help.split("SUBCOMMANDS")[1];
+  if (section === undefined) return [];
+  return [...section.matchAll(/^\s{2}([a-z][a-z-]*)\s{2,}/gm)].map((match) => match[1]).sort();
+};
+
 try {
   mkdirSync(tarballDirectory);
   mkdirSync(consumerDirectory);
@@ -65,7 +73,26 @@ try {
     throw new Error("The packed repository import help output is incomplete");
   }
 
-  process.stdout.write("Packed npm install and CLI entry point passed.\n");
+  // The published package once carried a `forum` command that existed in no
+  // source file, because nothing compared what shipped against what a clean
+  // build produces. Comparing the two command surfaces is that check.
+  const packedSubcommands = subcommands(help);
+  const localHelp = run("node", [join(packageRoot, "dist", "main.js"), "--help"]).stdout;
+  const localSubcommands = subcommands(localHelp);
+
+  const onlyPacked = packedSubcommands.filter((name) => !localSubcommands.includes(name));
+  const onlyLocal = localSubcommands.filter((name) => !packedSubcommands.includes(name));
+  if (onlyPacked.length > 0 || onlyLocal.length > 0) {
+    throw new Error(
+      "The packed CLI and a clean build disagree about their commands. " +
+        `Only in the tarball: ${onlyPacked.join(", ") || "none"}. ` +
+        `Only in the build: ${onlyLocal.join(", ") || "none"}.`,
+    );
+  }
+
+  process.stdout.write(
+    `Packed npm install, CLI entry point, and command surface passed (${packedSubcommands.join(", ")}).\n`,
+  );
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true });
 }

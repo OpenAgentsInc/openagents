@@ -53,7 +53,9 @@ import { SecretInput } from "./secret-input.js";
 import { findToken, resolveApiEndpoint, resolveApiSession } from "./session.js";
 import { TerminalSession } from "./terminal-session.js";
 
-export const VERSION = "0.1.7";
+// The version lives in `package.json`; see `version.ts`.
+export { VERSION } from "./version.js";
+import { VERSION as CLI_VERSION } from "./version.js";
 
 const profileFlag = Flag.choice("profile", ["production", "staging", "local"]).pipe(
   Flag.withSchema(Profile),
@@ -1676,4 +1678,4 @@ export const openagentsCommand = rootCommand.pipe(
   ]),
 );
 
-export const runCliWith = Command.runWith(openagentsCommand, { version: VERSION });
+export const runCliWith = Command.runWith(openagentsCommand, { version: CLI_VERSION });
