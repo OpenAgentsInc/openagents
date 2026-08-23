@@ -15,6 +15,10 @@ import {
 } from "./api-passthrough.js";
 import { ApiTransport } from "./api-transport.js";
 import { BrowserLauncher } from "./browser-launcher.js";
+import { runCoderPlain } from "./coder-plain.js";
+import { CoderSession, DummyReplySource } from "./coder-session.js";
+import { runCoderUi } from "./coder-ui.js";
+import { describeWorkspace } from "./coder-workspace.js";
 import { ComputerConfiguration, type ComputerConfigurationValues } from "./computer-config.js";
 import { ComputerJournal, journalMaxBytes, journalReadTailBytes } from "./computer-journal.js";
 import { ComputerProbe } from "./computer-probe.js";
@@ -1093,8 +1097,64 @@ const apiCommand = Command.make(
   ),
 );
 
+const coderPrompt = Argument.string("prompt").pipe(
+  Argument.optional,
+  Argument.withDescription(
+    "Answer this prompt and exit instead of opening the interactive interface",
+  ),
+);
+const coderPlainFlag = Flag.boolean("plain").pipe(
+  Flag.withDescription("Use line-oriented output with no cursor control, even on a terminal"),
+);
+
+const coderCommand = Command.make(
+  "coder",
+  { prompt: coderPrompt, plain: coderPlainFlag },
+  ({ prompt, plain }) =>
+    Effect.gen(function* () {
+      const flags = yield* rootCommand;
+      const terminal = yield* TerminalSession;
+      const workspace = describeWorkspace();
+
+      // The reply source is a stand-in until the ACP client lands. Nothing
+      // else in this command changes when it is replaced.
+      const session = new CoderSession(
+        new DummyReplySource(),
+        workspace.repository,
+        workspace.branch,
+      );
+
+      const oneShot = Option.getOrUndefined(prompt);
+      const interactive = terminal.interactive && !plain && !flags.json && oneShot === undefined;
+
+      const code = yield* Effect.promise(() =>
+        interactive
+          ? runCoderUi(session, { stdin: process.stdin, stdout: process.stdout })
+          : runCoderPlain(session, {
+              stdin: process.stdin,
+              stdout: process.stdout,
+              prompt: oneShot,
+            }),
+      );
+
+      if (code !== 0) {
+        process.exitCode = code;
+      }
+    }),
+).pipe(
+  Command.withDescription(
+    "Open a terminal coding session. Development build: the interface, the session loop, and streaming are real; the replies are a stand-in until the agent runtime is attached",
+  ),
+);
+
 export const openagentsCommand = rootCommand.pipe(
-  Command.withSubcommands([apiCommand, authCommand, repoCommand, computerCommand]),
+  Command.withSubcommands([
+    apiCommand,
+    authCommand,
+    coderCommand,
+    computerCommand,
+    repoCommand,
+  ]),
 );
 
 export const runCliWith = Command.runWith(openagentsCommand, { version: VERSION });
