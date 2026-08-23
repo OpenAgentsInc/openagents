@@ -223,18 +223,6 @@ describe("CoderSession", () => {
     expect(session.snapshot().turns).toBe(1);
   });
 
-  it("carries the source's scope notice, and nothing when the source has none", () => {
-    const local = new CoderSession(scripted([]), "repo", "main");
-    expect(local.snapshot().scope).toBeUndefined();
-
-    const shared = new CoderSession(
-      { ...scripted([]), scopeNotice: "shared with /chat" },
-      "repo",
-      "main",
-    );
-    expect(shared.snapshot().scope).toBe("shared with /chat");
-  });
-
   it("carries workspace and model into the snapshot for the status line", () => {
     const session = new CoderSession(new DummyReplySource(), "openagents", "main");
     const snapshot = session.snapshot();

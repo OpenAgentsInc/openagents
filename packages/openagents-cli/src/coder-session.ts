@@ -70,11 +70,6 @@ export interface CoderSnapshot {
    * this process never saw.
    */
   readonly turns: number;
-  /**
-   * What a reader needs to know about where this source records its turns, or
-   * undefined when there is nothing to say. Shown once, at the start.
-   */
-  readonly scope: string | undefined;
 }
 
 /** Where reply chunks come from. One implementation today; ACP is the next. */
@@ -87,7 +82,6 @@ export interface ReplySource {
    * leaves it unset; a source that writes into a conversation shared with
    * another surface has to say so, because nothing else on screen would.
    */
-  readonly scopeNotice?: string;
   /**
    * Move to the next backend and return its new label.
    *
@@ -225,7 +219,6 @@ export class CoderSession {
       branch: this.branch,
       model: this.source.model,
       turns: this.turnCount,
-      scope: this.source.scopeNotice,
     };
   }
 

@@ -609,8 +609,6 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       "openagents coder — development build. Type a message and press enter. " +
         "Ctrl+D quits, Esc interrupts a reply.",
     );
-    const scope = session.snapshot().scope;
-    if (scope !== undefined) session.notice(scope);
     render();
   });
 }

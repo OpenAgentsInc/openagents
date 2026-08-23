@@ -65,12 +65,6 @@ export async function runCoderPlain(
     }
   };
 
-  // Where the turns are recorded is a property of the session, not of the
-  // interface, so the piped path says it too rather than leaving it to the
-  // one reader who happens to be on a TTY.
-  const scope = session.snapshot().scope;
-  if (scope !== undefined) stdout.write(`${scope}\n`);
-
   const unsubscribe = session.onChange(flush);
   flush();
 

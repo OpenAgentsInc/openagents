@@ -86,19 +86,6 @@ export class ChatApiUnavailable extends Error {
 export class ChatApiReplySource {
   private backend: CoderBackend;
 
-  /**
-   * The server records one conversation per account, so a turn submitted here
-   * lands in the same conversation `/chat` writes to and every earlier
-   * `openagents coder` run wrote to. That is why the model remembers a
-   * question this terminal never asked, and there is nothing else on screen
-   * that would tell a reader so. The Thread work replaces this; until a thread
-   * exists the interface must not imply the session is private to this
-   * terminal.
-   */
-  readonly scopeNotice =
-    "This conversation is the account's one conversation, shared with /chat " +
-    "and with earlier coder runs, so the model remembers turns from all of them.";
-
   constructor(private readonly options: ChatApiOptions) {
     this.backend = options.backend ?? defaultBackend();
   }

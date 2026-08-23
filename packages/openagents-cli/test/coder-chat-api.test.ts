@@ -336,11 +336,4 @@ describe("ChatApiReplySource", () => {
     expect(new Set(labels).size).toBe(CODER_BACKENDS.length);
     expect(cycling.model).toBe(defaultBackend().label);
   });
-
-  it("says that its turns land in the account's one shared conversation", () => {
-    // The server records one conversation per account, so this source cannot
-    // let the interface imply the session is private to one terminal.
-    expect(source().scopeNotice).toContain("/chat");
-    expect(source().scopeNotice).toContain("remembers");
-  });
 });

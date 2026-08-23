@@ -204,28 +204,6 @@ describe("runCoderUi", () => {
     expect(rows.at(-1)).toContain("1 reply this run");
   });
 
-  it("says once where the turns are recorded when the source is not private", async () => {
-    const stdin = new FakeIn();
-    const stdout = new FakeOut();
-    const session = new CoderSession(
-      { ...source([{ type: "text", value: "hi" }]), scopeNotice: "shared with /chat" },
-      "repo",
-      "main",
-    );
-    const running = runCoderUi(session, {
-      stdin: stdin as unknown as NodeJS.ReadStream,
-      stdout: stdout as unknown as NodeJS.WriteStream,
-    });
-    await session.submit("go");
-    const rows = screen(stdout.written);
-    stdin.emit("data", "\x04");
-    await running;
-
-    const notes = rows.filter((row) => row.includes("shared with /chat"));
-    expect(notes).toHaveLength(1);
-    expect(notes[0]).toContain("note");
-  });
-
   it("says nothing about scope when the source keeps its turns to itself", async () => {
     const { rows } = await drive([{ type: "text", value: "hello" }]);
     expect(rows.join("\n")).not.toContain("shared with");
