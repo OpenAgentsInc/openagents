@@ -46,6 +46,33 @@ export interface CoderUiOptions {
   readonly stdout: NodeJS.WriteStream;
 }
 
+/** Visible width, ignoring ANSI styling. */
+function visibleWidth(text: string): number {
+  return [...text.replace(/\x1b\[[0-9;]*m/g, "")].length;
+}
+
+/**
+ * Put `left` at the start of a row and `right` at the end.
+ *
+ * Padding is computed on visible width so styling does not shift the right
+ * edge. When the two would collide the right side is dropped rather than
+ * wrapping the bar onto a second row.
+ */
+function justify(left: string, right: string, width: number): string {
+  const used = visibleWidth(left) + visibleWidth(right);
+  if (right.length === 0) return left;
+  if (used + 2 > width) return left;
+  return left + " ".repeat(width - used) + right;
+}
+
+/** Human-readable elapsed time, in the shape a status line wants. */
+function elapsed(sinceMs: number, nowMs: number): string {
+  const seconds = Math.max(0, Math.round((nowMs - sinceMs) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m ${seconds % 60}s`;
+}
+
 /** Wrap one paragraph to the available width, preserving blank lines. */
 function wrap(text: string, width: number): ReadonlyArray<string> {
   const lines: string[] = [];
@@ -113,6 +140,9 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
   let armedNotice = false;
   let exitCode = 0;
   let closed = false;
+  let runningSince = Date.now();
+  /** Redraws the status line once a second so the elapsed time advances. */
+  let ticker: NodeJS.Timeout | undefined;
 
   const write = (text: string) => {
     stdout.write(text);
@@ -123,6 +153,10 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       if (closed) return;
       closed = true;
       exitCode = code;
+      if (ticker !== undefined) {
+        clearInterval(ticker);
+        ticker = undefined;
+      }
       unsubscribe();
       stdin.off("data", onData);
       stdout.off("resize", render);
@@ -184,29 +218,39 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         frame.push(`\x1b[${row + 1};1H`, visible[row] ?? "");
       }
 
-      // Separator, status line, separator.
+      // Bottom chrome, in the order a reader scans it: what the session is
+      // doing now, then where the typing goes, then what the keys do. The
+      // composer sits between two rules so it reads as its own region rather
+      // than as the last line of the transcript.
       const rule = "─".repeat(Math.max(0, width));
-      frame.push(`\x1b[${transcriptHeight + 1};1H`, `${DIM}${rule}${RESET}`);
+      const inner = Math.max(10, width - 4);
 
-      const scrolled = scrollOffset > 0 ? `  ·  scrolled ${scrollOffset}` : "";
-      const state = snapshot.running ? `${YELLOW}working${RESET}` : `${DIM}ready${RESET}`;
-      const status =
-        `  ${snapshot.repository} ${DIM}·${RESET} ${snapshot.branch} ` +
-        `${DIM}·${RESET} ${snapshot.model} ${DIM}·${RESET} ${snapshot.turns} replies ` +
-        `${DIM}·${RESET} ${state}${DIM}${scrolled}${RESET}`;
-      frame.push(`\x1b[${transcriptHeight + 2};1H`, status);
-      frame.push(`\x1b[${transcriptHeight + 3};1H`, `${DIM}${rule}${RESET}`);
+      const activity = snapshot.running
+        ? `${YELLOW}●${RESET} working… ${DIM}(${elapsed(runningSince, Date.now())} · streaming)${RESET}`
+        : armedNotice
+          ? `${YELLOW}●${RESET} ${YELLOW}again to interrupt${RESET}`
+          : `${DIM}○ ready${RESET}`;
+      const where = `${DIM}${snapshot.repository} · ${snapshot.branch} · ${snapshot.model}${RESET}`;
+      frame.push(`\x1b[${transcriptHeight + 1};1H`, `  ${justify(activity, where, inner)}`);
 
-      const hint = snapshot.running
-        ? `${DIM}esc esc interrupt${RESET}`
-        : `${DIM}enter send  ·  ctrl+d quit${RESET}`;
-      const armed = armedNotice ? `  ${YELLOW}again to interrupt${RESET}` : "";
+      frame.push(`\x1b[${transcriptHeight + 2};1H`, `${DIM}${rule}${RESET}`);
+
       const promptPrefix = "  › ";
-      frame.push(`\x1b[${transcriptHeight + 4};1H`, `${promptPrefix}${composer}`);
-      frame.push(`\x1b[${transcriptHeight + 5};1H`, `  ${hint}${armed}`);
+      frame.push(`\x1b[${transcriptHeight + 3};1H`, `${promptPrefix}${composer}`);
+
+      frame.push(`\x1b[${transcriptHeight + 4};1H`, `${DIM}${rule}${RESET}`);
+
+      const keys = snapshot.running
+        ? `${DIM}esc esc to interrupt · ctrl+c to stop${RESET}`
+        : `${DIM}enter to send · esc esc to interrupt · ctrl+d to quit${RESET}`;
+      const counter =
+        scrollOffset > 0
+          ? `${DIM}scrolled ${scrollOffset}${RESET}`
+          : `${DIM}${snapshot.turns} ${snapshot.turns === 1 ? "reply" : "replies"}${RESET}`;
+      frame.push(`\x1b[${transcriptHeight + 5};1H`, `  ${justify(keys, counter, inner)}`);
 
       // Park the cursor at the composer so typing looks right.
-      frame.push(`\x1b[${transcriptHeight + 4};${promptPrefix.length + composer.length + 1}H`);
+      frame.push(`\x1b[${transcriptHeight + 3};${promptPrefix.length + composer.length + 1}H`);
       frame.push(CURSOR_SHOW);
       write(frame.join(""));
     };
@@ -215,8 +259,22 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       const prompt = composer;
       composer = "";
       scrollOffset = 0;
+      runningSince = Date.now();
       render();
-      void session.submit(prompt);
+
+      // The elapsed time has to advance between chunks, not only when one
+      // arrives, or a slow reply looks stalled.
+      ticker ??= setInterval(() => {
+        if (session.running) render();
+      }, 1000);
+
+      void session.submit(prompt).finally(() => {
+        if (ticker !== undefined) {
+          clearInterval(ticker);
+          ticker = undefined;
+        }
+        render();
+      });
     };
 
     /**

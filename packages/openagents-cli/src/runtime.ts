@@ -11,6 +11,7 @@ import { credentialStoreOsLayer } from "./credential-store.js";
 import { pendingDeviceAuthorizationStoreLayer } from "./device-authorization-store.js";
 import { deviceClientLayer } from "./device-client.js";
 import { environmentLayer } from "./environment.js";
+import { forumClientLayer } from "./forum-client.js";
 import { gitRunnerLayer } from "./git-runner.js";
 import { outputLayer } from "./output.js";
 import { persistedConfigurationLayer } from "./persisted-configuration.js";
@@ -24,6 +25,7 @@ const transportLayer = apiTransportNodeLayer.pipe(
 );
 
 const repositoryLayer = repositoryClientLayer.pipe(Layer.provide(transportLayer));
+const forumLayer = forumClientLayer.pipe(Layer.provide(transportLayer));
 const deviceLayer = deviceClientLayer.pipe(Layer.provide(transportLayer));
 const credentialsLayer = credentialStoreOsLayer.pipe(Layer.provide(NodeServices.layer));
 const pendingAuthorizationLayer = pendingDeviceAuthorizationStoreLayer.pipe(
@@ -53,6 +55,7 @@ export const runtimeLayer = Layer.mergeAll(
   credentialsLayer,
   pendingAuthorizationLayer,
   repositoryLayer,
+  forumLayer,
   deviceLayer,
   browserLayer,
   computerConfiguration,

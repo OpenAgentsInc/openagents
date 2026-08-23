@@ -28,6 +28,7 @@ import { CredentialStore } from "./credential-store.js";
 import { PendingDeviceAuthorizationStore } from "./device-authorization-store.js";
 import { DeviceClient } from "./device-client.js";
 import { type EndpointOverrides, Profile } from "./endpoint.js";
+import { ForumClient } from "./forum-client.js";
 import { GitRunner } from "./git-runner.js";
 import { runGitCredentialHelper } from "./git-credential-helper.js";
 import { Output, type OutputMode } from "./output.js";
@@ -1147,12 +1148,235 @@ const coderCommand = Command.make(
   ),
 );
 
+// The forum commands and their client were published in the CLI but their
+// source was never committed. Both are reconstructed from the compiled
+// artifacts of that build; see `forum-client.ts` and issue #153.
+
+const forumBoardFlag = Flag.string("board").pipe(
+  Flag.optional,
+  Flag.withDescription("The board slug, such as general"),
+);
+const forumPageFlag = Flag.string("page").pipe(
+  Flag.optional,
+  Flag.withDescription("One-based page number"),
+);
+
+/** A page number, or undefined when the flag is absent or not a page. */
+const parsePage = (page: Option.Option<string>): number | undefined => {
+  if (Option.isNone(page)) return undefined;
+  const parsed = Number.parseInt(page.value, 10);
+  return Number.isFinite(parsed) && parsed >= 1 ? parsed : undefined;
+};
+
+const record = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
+const rows = (value: unknown, key: string): ReadonlyArray<Record<string, unknown>> => {
+  const list = record(value)[key];
+  return Array.isArray(list) ? list.map(record) : [];
+};
+
+const forumBoardsCommand = Command.make("boards", {}, () =>
+  Effect.gen(function* () {
+    const flags = yield* rootCommand;
+    const session = yield* resolveApiSession(endpointOverrides(flags));
+    const forums = yield* ForumClient;
+    const output = yield* Output;
+    const value = yield* forums.boards({ origin: session.endpoint.origin, token: session.token });
+    const boards = rows(value, "boards");
+    const human =
+      boards.length === 0
+        ? ["No boards found."]
+        : boards.map(
+            (board) =>
+              `${String(board["slug"])} — ${String(board["title"])} (${String(board["topic_count"])} topics)`,
+          );
+    yield* output.write({ value, human }, outputMode(flags.json));
+  }),
+).pipe(Command.withDescription("List forum boards"));
+
+const forumTopicsCommand = Command.make(
+  "topics",
+  { board: forumBoardFlag, page: forumPageFlag },
+  ({ board, page }) =>
+    Effect.gen(function* () {
+      if (Option.isNone(board)) {
+        return yield* new InputError({ message: "Pass --board with the board slug." });
+      }
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const forums = yield* ForumClient;
+      const output = yield* Output;
+      const pageNum = parsePage(page);
+      const value = yield* forums.topics({
+        origin: session.endpoint.origin,
+        token: session.token,
+        board: board.value,
+        ...(pageNum === undefined ? {} : { page: pageNum }),
+      });
+      const topics = rows(value, "topics");
+      const human =
+        topics.length === 0
+          ? ["No topics found."]
+          : topics.map(
+              (topic) =>
+                `${String(topic["id"]).slice(0, 8)} — ${String(topic["title"])} (${String(topic["posts_count"])} posts)`,
+            );
+      yield* output.write({ value, human }, outputMode(flags.json));
+    }),
+).pipe(Command.withDescription("List the topics in one forum board"));
+
+const topicIdArgument = Argument.string("id").pipe(
+  Argument.withDescription("Topic id (the prefix of a topic URL works too)"),
+);
+
+const forumTopicCommand = Command.make(
+  "topic",
+  { id: topicIdArgument, page: forumPageFlag },
+  ({ id, page }) =>
+    Effect.gen(function* () {
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const forums = yield* ForumClient;
+      const output = yield* Output;
+      const pageNum = parsePage(page);
+      const value = yield* forums.topic({
+        origin: session.endpoint.origin,
+        token: session.token,
+        id,
+        ...(pageNum === undefined ? {} : { page: pageNum }),
+      });
+      const topic = record(record(value)["topic"]);
+      const human = [
+        String(topic["title"] ?? ""),
+        ...rows(value, "posts").map((post) => {
+          const author = record(post["author"]);
+          const name = author["display_name"] === undefined ? "?" : String(author["display_name"]);
+          return `#${String(post["post_number"])} ${name}: ${String(post["body_text"] ?? "").slice(0, 120)}`;
+        }),
+      ];
+      yield* output.write({ value, human }, outputMode(flags.json));
+    }),
+).pipe(Command.withDescription("Read one forum topic and its posts"));
+
+const forumTitleFlag = Flag.string("title").pipe(Flag.withDescription("Topic title"));
+const forumBodyFlag = Flag.string("body").pipe(
+  Flag.optional,
+  Flag.withDescription("Post body text"),
+);
+
+const forumPostCommand = Command.make(
+  "post",
+  { title: forumTitleFlag, body: forumBodyFlag, board: forumBoardFlag },
+  ({ title, body, board }) =>
+    Effect.gen(function* () {
+      if (title.trim() === "") {
+        return yield* new InputError({ message: "Pass --title for the new topic." });
+      }
+      if (Option.isNone(body)) {
+        return yield* new InputError({ message: "Pass --body with the first post text." });
+      }
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const forums = yield* ForumClient;
+      const output = yield* Output;
+      const value = yield* forums.createTopic({
+        origin: session.endpoint.origin,
+        token: session.token,
+        board: Option.getOrElse(board, () => "general"),
+        title,
+        bodyText: body.value,
+      });
+      const created = record(record(value)["topic"]);
+      yield* output.write(
+        { value, human: [`Created topic ${String(created["url"] ?? "")}`] },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(Command.withDescription("Create a forum topic (--board defaults to general)"));
+
+const topicArgument = Argument.string("topic").pipe(Argument.withDescription("Topic id or URL"));
+
+const forumReplyCommand = Command.make(
+  "reply",
+  { topic: topicArgument, body: forumBodyFlag },
+  ({ topic, body }) =>
+    Effect.gen(function* () {
+      // A pasted topic URL carries the id; take it rather than making the
+      // reader extract it.
+      const match = /([\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12})/i.exec(topic);
+      const topicId = match === null ? topic : (match[1] ?? topic);
+      if (Option.isNone(body)) {
+        return yield* new InputError({ message: "Pass --body with the reply text." });
+      }
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const forums = yield* ForumClient;
+      const output = yield* Output;
+      const value = yield* forums.reply({
+        origin: session.endpoint.origin,
+        token: session.token,
+        topicId,
+        bodyText: body.value,
+      });
+      yield* output.write({ value, human: ["Reply posted."] }, outputMode(flags.json));
+    }),
+).pipe(Command.withDescription("Reply to a forum topic"));
+
+const actorRefArgument = Argument.string("actor_ref").pipe(
+  Argument.withDescription("Legacy identity, such as agent:user_ed8297d8-…"),
+);
+
+const forumClaimCommand = Command.make("claim", { actorRef: actorRefArgument }, ({ actorRef }) =>
+  Effect.gen(function* () {
+    const flags = yield* rootCommand;
+    const session = yield* resolveApiSession(endpointOverrides(flags));
+    const forums = yield* ForumClient;
+    const output = yield* Output;
+    const value = yield* forums.claim({
+      origin: session.endpoint.origin,
+      token: session.token,
+      actorRef,
+    });
+    yield* output.write({ value, human: ["Claim submitted for review."] }, outputMode(flags.json));
+  }),
+).pipe(Command.withDescription("Claim a legacy forum identity for your account"));
+
+const forumClaimsCommand = Command.make("claims", {}, () =>
+  Effect.gen(function* () {
+    const flags = yield* rootCommand;
+    const session = yield* resolveApiSession(endpointOverrides(flags));
+    const forums = yield* ForumClient;
+    const output = yield* Output;
+    const value = yield* forums.claims({ origin: session.endpoint.origin, token: session.token });
+    const claims = rows(value, "claims");
+    const human =
+      claims.length === 0
+        ? ["No claims yet."]
+        : claims.map((claim) => `${String(claim["actor_ref"])} — ${String(claim["status"])}`);
+    yield* output.write({ value, human }, outputMode(flags.json));
+  }),
+).pipe(Command.withDescription("List your legacy identity claims"));
+
+const forumCommand = Command.make("forum").pipe(
+  Command.withDescription("Read and write the OpenAgents forum"),
+  Command.withSubcommands([
+    forumBoardsCommand,
+    forumTopicsCommand,
+    forumTopicCommand,
+    forumPostCommand,
+    forumReplyCommand,
+    forumClaimCommand,
+    forumClaimsCommand,
+  ]),
+);
+
 export const openagentsCommand = rootCommand.pipe(
   Command.withSubcommands([
     apiCommand,
     authCommand,
     coderCommand,
     computerCommand,
+    forumCommand,
     repoCommand,
   ]),
 );
