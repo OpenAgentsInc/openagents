@@ -1,5 +1,6 @@
 import { Clock, Console, Effect, Option, Redacted } from "effect";
 import { Argument, Command, Flag } from "effect/unstable/cli";
+import { hostname } from "node:os";
 
 import { apiErrorDetails, type Repository } from "./api-contract.js";
 import {
@@ -14,6 +15,10 @@ import {
 } from "./api-passthrough.js";
 import { ApiTransport } from "./api-transport.js";
 import { BrowserLauncher } from "./browser-launcher.js";
+import { ComputerConfiguration, type ComputerConfigurationValues } from "./computer-config.js";
+import { ComputerJournal, journalMaxBytes, journalReadTailBytes } from "./computer-journal.js";
+import { ComputerProbe } from "./computer-probe.js";
+import { formatAllowlist, resolveRoots } from "./computer-policy.js";
 import { ApiError, InputError } from "./errors.js";
 import { CredentialStore } from "./credential-store.js";
 import { PendingDeviceAuthorizationStore } from "./device-authorization-store.js";
@@ -53,6 +58,189 @@ const rootCommand = Command.make("openagents").pipe(
 );
 
 const outputMode = (json: boolean): OutputMode => (json ? "json" : "human");
+
+const computerRootFlag = Flag.string("root").pipe(
+  Flag.atLeast(0),
+  Flag.withDescription("Inspect a declared directory; repeatable. Empty means no roots."),
+);
+const computerJournalLimitFlag = Flag.integer("limit").pipe(
+  Flag.withDefault(20),
+  Flag.withDescription("Maximum number of local journal entries to show"),
+);
+
+const computerConfigurationView = (
+  config: ComputerConfigurationValues,
+  roots: ReadonlyArray<string>,
+) => ({
+  tier: config.tier,
+  roots: roots.length === 0 ? config.roots : resolveRoots(roots),
+  pre_approved: config.preApproved,
+  authority: "local_machine",
+  paths: {
+    config: config.paths.config,
+    journal: config.paths.journal,
+  },
+});
+
+const computerProbeCommand = Command.make("probe", { root: computerRootFlag }, ({ root }) =>
+  Effect.gen(function* () {
+    const flags = yield* rootCommand;
+    const config = yield* ComputerConfiguration;
+    const probe = yield* ComputerProbe;
+    const roots = root.length === 0 ? config.roots : resolveRoots(root);
+    const report = yield* probe.probe(roots);
+    const output = yield* Output;
+    yield* output.write(
+      {
+        value: report,
+        human: [
+          `Host: ${report.host.platform} ${report.host.release} ${report.host.architecture}`,
+          `Hostname: ${report.host.hostname}`,
+          `Roots: ${report.roots.join(", ") || "(none declared)"}`,
+          `Coding agents present: ${report.codingAgents.filter((tool) => tool.present).length}/${report.codingAgents.length}`,
+          `Toolchains present: ${report.toolchains.filter((tool) => tool.present).length}/${report.toolchains.length}`,
+          `Worktrees inspected: ${report.worktrees.length}`,
+        ],
+      },
+      outputMode(flags.json),
+    );
+  }),
+).pipe(
+  Command.withDescription(
+    "Inspect this machine with fixed read-only probes. It needs no account or pairing; the local machine controls all access.",
+  ),
+);
+
+const computerPolicyCommand = Command.make("policy", { root: computerRootFlag }, ({ root }) =>
+  Effect.gen(function* () {
+    const flags = yield* rootCommand;
+    const config = yield* ComputerConfiguration;
+    const output = yield* Output;
+    const view = computerConfigurationView(config, root);
+    yield* output.write(
+      {
+        value: {
+          schema: "openagents.computer_policy.v1",
+          ...view,
+          allowlist: formatAllowlist(),
+          scope: "local inspection and policy",
+          network: false,
+        },
+        human: [
+          "Authority: this machine decides what may run.",
+          `Effective tier: ${view.tier}`,
+          `Declared roots: ${view.roots.join(", ") || "(none declared)"}`,
+          "Empty roots mean that no working directory is reachable.",
+          "Path rules follow this host's POSIX or Windows semantics.",
+          "Curated allowlist:",
+          ...formatAllowlist().map((entry) => `  ${entry}`),
+          `Configuration: ${view.paths.config}`,
+          "No account, pairing, or network is needed for this command.",
+        ],
+      },
+      outputMode(flags.json),
+    );
+  }),
+).pipe(
+  Command.withDescription(
+    "Show the local Computer tier, roots, and read-only allowlist. Path rules follow this host's POSIX or Windows semantics; the server cannot raise this machine's policy.",
+  ),
+);
+
+const computerStatusCommand = Command.make("status", {}, () =>
+  Effect.gen(function* () {
+    const flags = yield* rootCommand;
+    const config = yield* ComputerConfiguration;
+    const output = yield* Output;
+    const value = {
+      schema: "openagents.computer_status.v1",
+      state: "local",
+      paired: false,
+      tier: config.tier,
+      roots: config.roots,
+      machine: {
+        platform: process.platform,
+        architecture: process.arch,
+        hostname: hostname(),
+      },
+      paths: {
+        config: config.paths.config,
+        journal: config.paths.journal,
+      },
+      journal_retention_bytes: journalMaxBytes,
+      journal_read_tail_bytes: journalReadTailBytes,
+      network: false,
+    };
+    yield* output.write(
+      {
+        value,
+        human: [
+          "Computer state: local",
+          "Pairing: not required for local inspection",
+          `Tier: ${config.tier}`,
+          `Roots: ${config.roots.join(", ") || "(none declared)"}`,
+          `Configuration: ${config.paths.config}`,
+          `Journal: ${config.paths.journal}`,
+          `Journal retention: last ${journalMaxBytes} bytes; reads inspect the last ${journalReadTailBytes} bytes`,
+          "The machine, not the server, decides what runs here.",
+          "Path rules follow this host's POSIX or Windows semantics.",
+        ],
+      },
+      outputMode(flags.json),
+    );
+  }),
+).pipe(
+  Command.withDescription(
+    "Show local Computer state and file locations without contacting OpenAgents or printing secrets.",
+  ),
+);
+
+const computerJournalCommand = Command.make(
+  "journal",
+  { limit: computerJournalLimitFlag },
+  ({ limit }) =>
+    Effect.gen(function* () {
+      if (limit < 0) {
+        return yield* new InputError({ message: "--limit must be zero or greater." });
+      }
+      const flags = yield* rootCommand;
+      const journal = yield* ComputerJournal;
+      const output = yield* Output;
+      const entries = yield* journal.read(limit);
+      yield* output.write(
+        {
+          value: {
+            schema: "openagents.computer_journal.v1",
+            entries,
+          },
+          human:
+            entries.length === 0
+              ? ["No local Computer requests are recorded."]
+              : entries.map(
+                  (entry) =>
+                    `${entry.at} ${entry.decision}/${entry.outcome} ${entry.requestId} ${entry.argv.join(" ")}`,
+                ),
+        },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(
+  Command.withDescription(
+    "Show the local record of Computer requests and decisions, including refusals; the journal is never sent to the server.",
+  ),
+);
+
+const computerCommand = Command.make("computer").pipe(
+  Command.withDescription(
+    "Inspect local Computer policy and discovery. No account or pairing is needed; pairing, channel, and delegation are separate commands.",
+  ),
+  Command.withSubcommands([
+    computerProbeCommand,
+    computerPolicyCommand,
+    computerStatusCommand,
+    computerJournalCommand,
+  ]),
+);
 
 const endpointOverrides = (flags: {
   readonly profile: Option.Option<Profile>;
@@ -906,7 +1094,7 @@ const apiCommand = Command.make(
 );
 
 export const openagentsCommand = rootCommand.pipe(
-  Command.withSubcommands([apiCommand, authCommand, repoCommand]),
+  Command.withSubcommands([apiCommand, authCommand, repoCommand, computerCommand]),
 );
 
 export const runCliWith = Command.runWith(openagentsCommand, { version: VERSION });
