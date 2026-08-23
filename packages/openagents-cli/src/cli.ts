@@ -18,6 +18,7 @@ import { BrowserLauncher } from "./browser-launcher.js";
 import { runCoderPlain } from "./coder-plain.js";
 import { CoderSession, DummyReplySource } from "./coder-session.js";
 import { runCoderUi } from "./coder-ui.js";
+import { OxAlphaReplySource } from "./coder-ox.js";
 import { describeWorkspace } from "./coder-workspace.js";
 import { ComputerConfiguration, type ComputerConfigurationValues } from "./computer-config.js";
 import { ComputerJournal, journalMaxBytes, journalReadTailBytes } from "./computer-journal.js";
@@ -373,6 +374,12 @@ const loginTokenStdinFlag = Flag.boolean("token-stdin").pipe(
 const loginHeadlessFlag = Flag.boolean("headless").pipe(
   Flag.withDescription("Return an authorization URL and code without waiting for approval"),
 );
+const loginScopeFlag = Flag.string("scope").pipe(
+  Flag.atLeast(0),
+  Flag.withDescription(
+    "Request a scope for the new token; repeatable. Omit to take the server's default. Use chat:account to reach the chat API from `openagents coder`.",
+  ),
+);
 const loginResumeFlag = Flag.boolean("resume").pipe(
   Flag.withDescription("Complete the pending device authorization for the selected API"),
 );
@@ -387,8 +394,13 @@ const resumeCommandFor = (endpoint: {
 
 const authLoginCommand = Command.make(
   "login",
-  { tokenStdin: loginTokenStdinFlag, headless: loginHeadlessFlag, resume: loginResumeFlag },
-  ({ headless, resume, tokenStdin }) =>
+  {
+    tokenStdin: loginTokenStdinFlag,
+    headless: loginHeadlessFlag,
+    resume: loginResumeFlag,
+    scope: loginScopeFlag,
+  },
+  ({ headless, resume, scope, tokenStdin }) =>
     Effect.gen(function* () {
       if ((tokenStdin && (headless || resume)) || (headless && resume)) {
         return yield* new InputError({
@@ -425,7 +437,7 @@ const authLoginCommand = Command.make(
       if (!resume) {
         const devices = yield* DeviceClient;
         const terminal = yield* TerminalSession;
-        const authorization = yield* devices.start(endpoint.origin);
+        const authorization = yield* devices.start(endpoint.origin, scope);
         const returnForApproval = headless || !terminal.interactive || flags.json;
         if (returnForApproval) {
           const now = yield* Clock.currentTimeMillis;
@@ -1107,23 +1119,60 @@ const coderPrompt = Argument.string("prompt").pipe(
 const coderPlainFlag = Flag.boolean("plain").pipe(
   Flag.withDescription("Use line-oriented output with no cursor control, even on a terminal"),
 );
+const coderOfflineFlag = Flag.boolean("offline").pipe(
+  Flag.withDescription("Answer from the built-in stand-in instead of the chat API"),
+);
+const coderReasoningFlag = Flag.choice("reasoning", [
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "max",
+]).pipe(Flag.optional, Flag.withDescription("Reasoning effort the server passes to the provider"));
 
 const coderCommand = Command.make(
   "coder",
-  { prompt: coderPrompt, plain: coderPlainFlag },
-  ({ prompt, plain }) =>
+  {
+    prompt: coderPrompt,
+    plain: coderPlainFlag,
+    offline: coderOfflineFlag,
+    reasoning: coderReasoningFlag,
+  },
+  ({ prompt, plain, offline, reasoning }) =>
     Effect.gen(function* () {
       const flags = yield* rootCommand;
       const terminal = yield* TerminalSession;
       const workspace = describeWorkspace();
+      const endpoint = yield* resolveApiEndpoint(endpointOverrides(flags));
 
-      // The reply source is a stand-in until the ACP client lands. Nothing
-      // else in this command changes when it is replaced.
-      const session = new CoderSession(
-        new DummyReplySource(),
-        workspace.repository,
-        workspace.branch,
-      );
+      // Replies come from the account chat API, which runs Ox Alpha through
+      // OpenRouter on the server, so the CLI never holds a provider key and a
+      // session costs exactly what the server metered. Without a credential it
+      // falls back to the stand-in and says so rather than failing.
+      const stored = offline
+        ? Option.none()
+        : yield* findToken(endpoint.origin).pipe(
+            Effect.catchTag("OpenAgentsCli.CredentialPersistenceUnavailable", () =>
+              Effect.succeed(Option.none()),
+            ),
+          );
+
+      const source = Option.isSome(stored)
+        ? new OxAlphaReplySource({
+            origin: endpoint.origin,
+            token: Redacted.value(stored.value.token),
+            reasoning: Option.getOrUndefined(reasoning),
+          })
+        : new DummyReplySource();
+
+      const session = new CoderSession(source, workspace.repository, workspace.branch);
+
+      if (Option.isNone(stored) && !offline) {
+        session.notice(
+          "No stored credential, so replies come from the built-in stand-in. " +
+            "Run `openagents auth login --scope chat:account` to reach Ox Alpha.",
+        );
+      }
 
       const oneShot = Option.getOrUndefined(prompt);
       const interactive = terminal.interactive && !plain && !flags.json && oneShot === undefined;
@@ -1144,7 +1193,7 @@ const coderCommand = Command.make(
     }),
 ).pipe(
   Command.withDescription(
-    "Open a terminal coding session. Development build: the interface, the session loop, and streaming are real; the replies are a stand-in until the agent runtime is attached",
+    "Open a terminal coding session. Replies come from Ox Alpha through the account chat API; --offline answers from a built-in stand-in instead",
   ),
 );
 

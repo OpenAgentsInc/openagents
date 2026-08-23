@@ -176,6 +176,15 @@ export class CoderSession {
         // failure, so what the agent already said stays on the transcript.
         reply.text += "\n\n[interrupted]";
       }
+    } catch (cause) {
+      // A failed turn ends the turn, not the session. The reason belongs on the
+      // transcript where the prompt that caused it is still visible, and any
+      // text the source produced before failing is kept.
+      const message = cause instanceof Error ? cause.message : String(cause);
+      if (reply.text.length === 0) {
+        this.entries.splice(this.entries.indexOf(reply), 1);
+      }
+      this.entries.push({ role: "notice", text: message, settled: true });
     } finally {
       reply.settled = true;
       this.controller = undefined;

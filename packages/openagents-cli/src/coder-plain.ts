@@ -28,9 +28,22 @@ export async function runCoderPlain(
   const { stdin, stdout, prompt } = options;
 
   let written = 0;
+  // Notices are tracked by their text rather than by position: a failed turn
+  // removes the empty assistant entry, so an index into the transcript can move
+  // backwards and skip the very notice that explains the failure.
+  const reported = new Set<string>();
   const flush = () => {
-    const snapshot = session.snapshot();
-    const last = snapshot.entries.at(-1);
+    const entries = session.snapshot().entries;
+
+    // Notices carry refusals and failures. Dropping them here is how a failed
+    // turn becomes a silent empty reply, so they are written as they arrive.
+    for (const entry of entries) {
+      if (entry.role !== "notice" || reported.has(entry.text)) continue;
+      reported.add(entry.text);
+      stdout.write(`${entry.text}\n`);
+    }
+
+    const last = entries.at(-1);
     if (last === undefined || last.role !== "assistant") return;
     if (last.text.length > written) {
       stdout.write(last.text.slice(written));
@@ -39,6 +52,7 @@ export async function runCoderPlain(
   };
 
   const unsubscribe = session.onChange(flush);
+  flush();
 
   const answer = async (line: string) => {
     written = 0;

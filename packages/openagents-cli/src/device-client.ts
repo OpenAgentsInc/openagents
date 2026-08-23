@@ -29,7 +29,10 @@ class DevicePending extends Schema.TaggedErrorClass<DevicePending>()(
 ) {}
 
 export interface DeviceClientInterface {
-  readonly start: (origin: string) => Effect.Effect<DeviceAuthorization, CliError>;
+  readonly start: (
+    origin: string,
+    scopes?: ReadonlyArray<string>,
+  ) => Effect.Effect<DeviceAuthorization, CliError>;
   readonly wait: (
     origin: string,
     authorization: DeviceAuthorization,
@@ -45,12 +48,18 @@ export const deviceClientLayer = Layer.effect(
   Effect.gen(function* () {
     const transport = yield* ApiTransport;
 
-    const start = Effect.fn("DeviceClient.start")(function* (origin: string) {
+    const start = Effect.fn("DeviceClient.start")(function* (
+      origin: string,
+      scopes?: ReadonlyArray<string>,
+    ) {
       const response = yield* transport.request({
         origin,
         method: "POST",
         path: "/api/v3/device/authorizations",
-        body: {},
+        // The server decides the default scope set. Asking for none keeps that
+        // decision on the server; asking names exactly what the approval page
+        // must show the person approving it.
+        body: scopes === undefined || scopes.length === 0 ? {} : { scope: scopes.join(" ") },
       });
       if (response.status !== 201) {
         return yield* new ApiError({
