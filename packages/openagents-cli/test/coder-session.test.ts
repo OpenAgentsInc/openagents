@@ -197,6 +197,44 @@ describe("CoderSession", () => {
     expect(again?.tool?.output).toBeUndefined();
   });
 
+  it("counts the turn while it is streaming rather than only once it settles", async () => {
+    const session = new CoderSession(scripted(["a", "b", "c"], 15), "repo", "main");
+    const seen: number[] = [];
+    session.onChange(() => {
+      if (session.snapshot().running) seen.push(session.snapshot().turns);
+    });
+
+    await session.submit("go");
+
+    // A reply the reader can watch arrive is a turn that has happened.
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every((turns) => turns === 1)).toBe(true);
+    expect(session.snapshot().turns).toBe(1);
+  });
+
+  it("does not count a prompt it refused", async () => {
+    const session = new CoderSession(scripted(["a"]), "repo", "main");
+    await session.submit("   ");
+    expect(session.snapshot().turns).toBe(0);
+
+    const first = session.submit("first");
+    await session.submit("second while the first runs");
+    await first;
+    expect(session.snapshot().turns).toBe(1);
+  });
+
+  it("carries the source's scope notice, and nothing when the source has none", () => {
+    const local = new CoderSession(scripted([]), "repo", "main");
+    expect(local.snapshot().scope).toBeUndefined();
+
+    const shared = new CoderSession(
+      { ...scripted([]), scopeNotice: "shared with /chat" },
+      "repo",
+      "main",
+    );
+    expect(shared.snapshot().scope).toBe("shared with /chat");
+  });
+
   it("carries workspace and model into the snapshot for the status line", () => {
     const session = new CoderSession(new DummyReplySource(), "openagents", "main");
     const snapshot = session.snapshot();

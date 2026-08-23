@@ -89,6 +89,23 @@ function justify(left: string, right: string, width: number): string {
   return left + " ".repeat(width - used) + right;
 }
 
+/**
+ * Lay out the key hints against the counter, dropping hints from the end until
+ * the row fits.
+ *
+ * The counter is state the reader is trying to read; the hints are reminders
+ * of keys that work whether or not they are printed. So the hints are what
+ * gives way. Padding the two apart and dropping the counter instead is how a
+ * wide-enough terminal still managed to hide the reply count.
+ */
+function hints(keys: ReadonlyArray<string>, right: string, width: number): string {
+  for (let count = keys.length; count > 0; count -= 1) {
+    const left = `${DIM}${keys.slice(0, count).join(" · ")}${RESET}`;
+    if (visibleWidth(left) + visibleWidth(right) + 2 <= width) return justify(left, right, width);
+  }
+  return right;
+}
+
 /** Human-readable elapsed time, in the shape a status line wants. */
 function elapsed(sinceMs: number, nowMs: number): string {
   const seconds = Math.max(0, Math.round((nowMs - sinceMs) / 1000));
@@ -335,9 +352,10 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       rows.push(`  › ${composer}`);
       rows.push(rule);
 
-      // Every key named here does something in the state it is named in. An
-      // earlier version offered "esc esc to interrupt" while idle, where there
-      // was nothing to interrupt.
+      // Every key named here does something in the state it is named in, and
+      // they are listed in the order a reader needs them, because a narrow row
+      // drops them from the end. An earlier version offered "esc esc to
+      // interrupt" while idle, where there was nothing to interrupt.
       const keys: string[] = [];
       if (snapshot.running) {
         keys.push("esc to interrupt", "ctrl+c to stop");
@@ -349,13 +367,18 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       if (lines.length > transcriptHeight) keys.push("pgup/pgdn to scroll");
       if (focusedTool(snapshot) !== undefined) keys.push("ctrl+o to expand");
 
+      // `this run` is not decoration. The count is this process's, and the
+      // source may be writing into a conversation that already holds turns
+      // from `/chat` and from earlier runs, so an unlabelled number would read
+      // as the conversation's and contradict what the model remembers.
+      const replies = `${snapshot.turns} ${snapshot.turns === 1 ? "reply" : "replies"} this run`;
       const counter =
         anchor !== undefined
           ? `${YELLOW}scrolled${RESET}${DIM} · ↑${above} · ↓${below}${RESET}`
           : above > 0
-            ? `${DIM}↑${above} above · ${snapshot.turns} ${snapshot.turns === 1 ? "reply" : "replies"}${RESET}`
-            : `${DIM}${snapshot.turns} ${snapshot.turns === 1 ? "reply" : "replies"}${RESET}`;
-      rows.push(`  ${justify(`${DIM}${keys.join(" · ")}${RESET}`, counter, inner)}`);
+            ? `${DIM}↑${above} above · ${replies}${RESET}`
+            : `${DIM}${replies}${RESET}`;
+      rows.push(`  ${hints(keys, counter, inner)}`);
 
       paint(rows, transcriptHeight + 3, 4 + composer.length + 1);
     };
@@ -574,6 +597,8 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       "openagents coder — development build. Type a message and press enter. " +
         "Ctrl+D quits, Esc interrupts a reply.",
     );
+    const scope = session.snapshot().scope;
+    if (scope !== undefined) session.notice(scope);
     render();
   });
 }

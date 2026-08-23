@@ -60,14 +60,34 @@ export interface CoderSnapshot {
   readonly repository: string;
   readonly branch: string;
   readonly model: string;
-  /** Replies produced this session, shown where a real grant shows call count. */
+  /**
+   * Turns this process has submitted, counted from the moment one starts.
+   *
+   * A turn in flight is counted, because a status line that reads `0` under a
+   * visibly streaming reply contradicts what the reader can see. The number is
+   * deliberately about this process and nothing else, and the renderer says so:
+   * the source may be writing into a conversation that already holds turns
+   * this process never saw.
+   */
   readonly turns: number;
+  /**
+   * What a reader needs to know about where this source records its turns, or
+   * undefined when there is nothing to say. Shown once, at the start.
+   */
+  readonly scope: string | undefined;
 }
 
 /** Where reply chunks come from. One implementation today; ACP is the next. */
 export interface ReplySource {
   /** The label the status line shows for the reply source. */
   readonly model: string;
+  /**
+   * One sentence about where this source's turns are recorded, shown once at
+   * the start of a session. A source whose turns are private to this process
+   * leaves it unset; a source that writes into a conversation shared with
+   * another surface has to say so, because nothing else on screen would.
+   */
+  readonly scopeNotice?: string;
   /**
    * Yield the reply to `prompt` in chunks. Rendering appends each chunk as it
    * arrives, so a slow source shows partial text rather than nothing.
@@ -197,6 +217,7 @@ export class CoderSession {
       branch: this.branch,
       model: this.source.model,
       turns: this.turnCount,
+      scope: this.source.scopeNotice,
     };
   }
 
@@ -246,6 +267,10 @@ export class CoderSession {
 
     const controller = new AbortController();
     this.controller = controller;
+    // Counted here rather than on completion. A turn that is happening is a
+    // turn, and counting it only once it settled is what made the status line
+    // read `0 replies` under a reply the reader was watching arrive.
+    this.turnCount += 1;
     this.emit();
 
     try {
@@ -319,7 +344,6 @@ export class CoderSession {
         if (entry.tool?.status === "running") entry.tool.status = "failed";
       }
       this.controller = undefined;
-      this.turnCount += 1;
       this.emit();
     }
   }

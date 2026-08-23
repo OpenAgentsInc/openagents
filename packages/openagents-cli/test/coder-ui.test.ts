@@ -147,6 +147,72 @@ describe("runCoderUi", () => {
     expect(painted).toContain("\x1b[2m\x1b[3mI should check first.\x1b[0m");
   });
 
+  it("counts the streaming turn, so the bar never reads zero under a live reply", async () => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const paused: ReplySource = {
+      model: "scripted",
+      async *reply() {
+        yield { type: "text", value: "still arriving" } as const;
+        await held;
+      },
+    };
+
+    const session = new CoderSession(paused, "repo", "main");
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+    const turn = session.submit("go");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(session.snapshot().running).toBe(true);
+    const bar = screen(stdout.written).at(-1) ?? "";
+    expect(bar).toContain("1 reply this run");
+    expect(bar).not.toContain("0 replies");
+
+    release();
+    await turn;
+    stdin.emit("data", "\x04");
+    await running;
+  });
+
+  it("labels the count as this run's, because the conversation is not", async () => {
+    const { rows } = await drive([{ type: "text", value: "hello" }]);
+    expect(rows.at(-1)).toContain("1 reply this run");
+  });
+
+  it("says once where the turns are recorded when the source is not private", async () => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    const session = new CoderSession(
+      { ...source([{ type: "text", value: "hi" }]), scopeNotice: "shared with /chat" },
+      "repo",
+      "main",
+    );
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+    await session.submit("go");
+    const rows = screen(stdout.written);
+    stdin.emit("data", "\x04");
+    await running;
+
+    const notes = rows.filter((row) => row.includes("shared with /chat"));
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain("note");
+  });
+
+  it("says nothing about scope when the source keeps its turns to itself", async () => {
+    const { rows } = await drive([{ type: "text", value: "hello" }]);
+    expect(rows.join("\n")).not.toContain("shared with");
+  });
+
   it("offers no key in the bottom bar that does nothing in that state", async () => {
     const { rows } = await drive([{ type: "text", value: "hello" }]);
     const bar = rows.at(-1) ?? "";
