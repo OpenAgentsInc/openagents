@@ -21,6 +21,7 @@ import { runCoderUi } from "./coder-ui.js";
 import { OxAlphaReplySource } from "./coder-ox.js";
 import { describeWorkspace } from "./coder-workspace.js";
 import { ComputerClient } from "./computer-client.js";
+import { ComputerUp } from "./computer-up.js";
 import {
   ComputerConfiguration,
   type ComputerConfigurationValues,
@@ -255,6 +256,27 @@ const computerStatusCommand = Command.make("status", {}, () =>
   ),
 );
 
+const computerUpCommand = Command.make("up", {}, () =>
+  Effect.gen(function* () {
+    const flags = yield* rootCommand;
+    const endpoint = yield* resolveApiEndpoint(endpointOverrides(flags));
+    const up = yield* ComputerUp;
+    const reason = yield* up.serve(endpoint.origin);
+    const output = yield* Output;
+    yield* output.write(
+      {
+        value: { schema: "openagents.computer_connection.v1", state: "closed", reason },
+        human: [`Computer connection ended: ${reason}`],
+      },
+      outputMode(flags.json),
+    );
+  }),
+).pipe(
+  Command.withDescription(
+    "Serve bounded Computer requests over an outbound connection until the server disconnects.",
+  ),
+);
+
 const computerPairCommand = Command.make(
   "pair",
   { tier: computerTierFlag, root: computerRootFlag },
@@ -454,6 +476,7 @@ const computerCommand = Command.make("computer").pipe(
     computerProbeCommand,
     computerPolicyCommand,
     computerStatusCommand,
+    computerUpCommand,
     computerPairCommand,
     computerLogoutCommand,
     computerJournalCommand,

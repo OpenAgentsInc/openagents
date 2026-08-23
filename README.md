@@ -130,8 +130,7 @@ probes and source-derived fixtures remain explicitly non-release evidence. A
 checked opt-in production runner is no longer part of the support path. The
 [human proof ledger](docs/qa/2026-07-16-acp10-release-proof/README.md) remains a
 historical record, and no release-evidence path can promote either peer above
-`experimental`. ACP peer support remains experimental because it has no
-release-evidence path.
+`experimental`.
 Hermetic conformance checks cover the required scenario catalog. Other
 platforms remain explicitly untested. Execution is tracked in
 [#8887 — Full Agent Client Protocol integration for Grok and Cursor](https://github.com/OpenAgentsInc/openagents/issues/8887).

@@ -6,8 +6,10 @@ import { apiTransportNodeLayer, networkPolicyLiveLayer } from "./api-transport.j
 import { browserLauncherLayer } from "./browser-launcher.js";
 import { computerConfigurationLayer } from "./computer-config.js";
 import { computerClientLayer } from "./computer-client.js";
+import { computerChannelNodeLayer } from "./computer-channel.js";
 import { computerJournalLayer } from "./computer-journal.js";
 import { computerProbeLayer } from "./computer-probe.js";
+import { computerUpLayer } from "./computer-up.js";
 import { credentialStoreOsLayer } from "./credential-store.js";
 import { pendingDeviceAuthorizationStoreLayer } from "./device-authorization-store.js";
 import { deviceClientLayer } from "./device-client.js";
@@ -40,6 +42,18 @@ const computerJournal = computerJournalLayer.pipe(Layer.provide(computerConfigur
 const computerProbe = computerProbeLayer.pipe(
   Layer.provide(Layer.merge(computerConfiguration, NodeServices.layer)),
 );
+const computerUp = computerUpLayer.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      computerChannelNodeLayer,
+      computerClient,
+      computerConfiguration,
+      computerJournal,
+      computerProbe,
+      credentialsLayer,
+    ),
+  ),
+);
 
 const nodeDependentServices = Layer.mergeAll(
   outputLayer,
@@ -64,5 +78,6 @@ export const runtimeLayer = Layer.mergeAll(
   computerConfiguration,
   computerJournal,
   computerProbe,
+  computerUp,
   nodeDependentServices,
 );

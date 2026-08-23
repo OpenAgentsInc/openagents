@@ -30,7 +30,8 @@ export type RefusalReason =
   | "root_not_declared"
   | "denied_command"
   | "denied_argument"
-  | "shell_metacharacter";
+  | "shell_metacharacter"
+  | "confirmation_required";
 
 export type Decision =
   | { readonly _tag: "Allowed"; readonly needsConfirmation: boolean }

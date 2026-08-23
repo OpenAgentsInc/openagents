@@ -54,10 +54,12 @@
   "dependencies": {
     "@effect/platform-node": "catalog:",
     "@effect/platform-node-shared": "4.0.0-beta.94",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "ws": "8.21.1"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/ws": "8.18.1",
     "typescript": "catalog:",
     "vite-plus": "0.2.4",
     "vitest": "^4.1.10"
