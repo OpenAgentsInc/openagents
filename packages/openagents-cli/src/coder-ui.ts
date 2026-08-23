@@ -7,7 +7,7 @@
  * `index.bun.js` beside a `.dylib` and no N-API entry point), so
  * `createCliRenderer` fails on Node with "OpenTUI native FFI is not available
  * for this runtime yet". The CLI installs as an npm package that people run on
- * Node, so the interface cannot require Bun. See `docs/2026-08-23-openagents-
+ * Node, so the interface cannot require the Bun runtime. See `docs/2026-08-23-openagents-
  * coder-cli-spec.md` section 3 and its open questions.
  *
  * The layout follows that document:
