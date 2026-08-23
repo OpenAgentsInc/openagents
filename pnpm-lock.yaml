@@ -1154,16 +1154,10 @@ importers:
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
-      ws:
-        specifier: 8.21.1
-        version: 8.21.1
     devDependencies:
       '@types/node':
         specifier: 24.13.1
         version: 24.13.1
-      '@types/ws':
-        specifier: 8.18.1
-        version: 8.18.1
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
@@ -2223,10 +2217,16 @@ importers:
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
+      ws:
+        specifier: 8.21.1
+        version: 8.21.1
     devDependencies:
       '@types/node':
         specifier: 24.13.1
         version: 24.13.1
+      '@types/ws':
+        specifier: 8.18.1
+        version: 8.18.1
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
