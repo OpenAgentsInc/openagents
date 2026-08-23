@@ -15,7 +15,6 @@ import {
 } from "./api-passthrough.js";
 import { ApiTransport } from "./api-transport.js";
 import { BrowserLauncher } from "./browser-launcher.js";
-<<<<<<< HEAD
 import { runCoderPlain } from "./coder-plain.js";
 import { CoderSession, DummyReplySource } from "./coder-session.js";
 import { runCoderUi } from "./coder-ui.js";
