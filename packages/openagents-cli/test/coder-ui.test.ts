@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { CODER_BACKENDS, defaultBackend } from "../src/coder-backends.js";
 import { CoderSession, type ReplyChunk, type ReplySource } from "../src/coder-session.js";
+import { CoderTaskRegistry } from "../src/coder-tasks.js";
 import { runCoderUi } from "../src/coder-ui.js";
 
 /** A writable that records what the interface painted. */
@@ -309,6 +310,58 @@ describe("runCoderUi", () => {
     const status = rows.find((row) => row.includes("calls"));
     expect(status).not.toContain("a-long-repository-name");
     expect(status).toContain("$2.00");
+  });
+
+  it("keeps the stop key on a narrow row that has run out of room", async () => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    stdout.columns = 80;
+    const registry = new CoderTaskRegistry();
+    const session = new CoderSession(
+      source([
+        {
+          type: "text",
+          value: Array.from({ length: 40 }, (_, index) => `line ${index}`).join("\n"),
+        },
+      ]),
+      "repo",
+      "main",
+      {
+        registry,
+        fleet: {
+          submit: async () => ({ status: "refused", code: "empty_prompt", reason: "not used" }),
+        },
+        label: "fake (fake/model)",
+      },
+    );
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    // A transcript long enough to scroll grows the counter on the right, which
+    // is what used to push every hint off an eighty-column row.
+    await session.submit("go");
+    const task = registry.register(
+      {
+        id: "d1",
+        description: "run the long build",
+        prompt: "build",
+        agent: "opencode",
+        model: "fake/model",
+        cwd: "/tmp",
+        background: true,
+      },
+      0,
+    );
+    registry.start(task.id, new AbortController());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const rows = screen(stdout.written);
+    stdin.emit("data", "\x04");
+    await running;
+    session.close();
+
+    expect(rows.at(-1) ?? "").toContain("ctrl+x to stop agents");
   });
 
   it("keeps a long typed line inside the row, showing its tail", async () => {

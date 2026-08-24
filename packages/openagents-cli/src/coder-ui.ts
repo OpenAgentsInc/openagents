@@ -99,6 +99,12 @@ function justify(left: string, right: string, width: number): string {
   return left + " ".repeat(width - used) + right;
 }
 
+/** A key hint. A pinned one is kept even when the row has to give something up. */
+interface Hint {
+  readonly text: string;
+  readonly pinned?: boolean;
+}
+
 /**
  * Lay out the key hints against the counter, dropping hints from the end until
  * the row fits.
@@ -107,13 +113,33 @@ function justify(left: string, right: string, width: number): string {
  * of keys that work whether or not they are printed. So the hints are what
  * gives way. Padding the two apart and dropping the counter instead is how a
  * wide-enough terminal still managed to hide the reply count.
+ *
+ * A pinned hint outranks the counter, because a key that stops fifteen agents
+ * from spending is not a reminder. Ordering the hints so the stop came before
+ * the conveniences was not enough: at eighty columns the counter grows as the
+ * transcript scrolls, and the row dropped every hint at once.
  */
-function hints(keys: ReadonlyArray<string>, right: string, width: number): string {
-  for (let count = keys.length; count > 0; count -= 1) {
-    const left = `${DIM}${keys.slice(0, count).join(" · ")}${RESET}`;
-    if (visibleWidth(left) + visibleWidth(right) + 2 <= width) return justify(left, right, width);
+function hints(keys: ReadonlyArray<Hint>, right: string, width: number): string {
+  const shown = [...keys];
+  for (;;) {
+    const left = `${DIM}${shown.map((key) => key.text).join(" · ")}${RESET}`;
+    if (shown.length > 0 && visibleWidth(left) + visibleWidth(right) + 2 <= width) {
+      return justify(left, right, width);
+    }
+    const droppable = shown.reduce<number>(
+      (last, key, index) => (key.pinned === true ? last : index),
+      -1,
+    );
+    if (droppable < 0) break;
+    shown.splice(droppable, 1);
   }
-  return right;
+
+  const plain = shown.map((key) => key.text).join(" · ");
+  if (plain.length === 0) return right;
+  const letters = [...plain];
+  const clipped =
+    letters.length > width ? `${letters.slice(0, Math.max(0, width - 1)).join("")}…` : plain;
+  return `${DIM}${clipped}${RESET}`;
 }
 
 /**
@@ -453,25 +479,25 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       // they are listed in the order a reader needs them, because a narrow row
       // drops them from the end. An earlier version offered "esc esc to
       // interrupt" while idle, where there was nothing to interrupt.
-      const keys: string[] = [];
+      const keys: Hint[] = [];
       if (snapshot.running) {
-        keys.push("esc to interrupt", "ctrl+c to stop");
+        keys.push({ text: "esc to interrupt" }, { text: "ctrl+c to stop" });
       } else {
-        keys.push("enter to send");
-        if (composer.length > 0) keys.push("esc to clear");
-        else keys.push("ctrl+d to quit");
+        keys.push({ text: "enter to send" });
+        if (composer.length > 0) keys.push({ text: "esc to clear" });
+        else keys.push({ text: "ctrl+d to quit" });
       }
-      // Stopping the fleet comes before the conveniences, because the row is
+      // Stopping the fleet is pinned rather than merely early: the row is
       // clipped from the end and this hint only appears while children are
-      // spending. Offered last, it was dropped exactly when it applied.
+      // spending, so an unpinned one went exactly when it applied.
       if (snapshot.tasks.some((task) => task.status === "running")) {
-        keys.push("ctrl+x to stop agents");
+        keys.push({ text: "ctrl+x to stop agents", pinned: true });
       }
       // Only when there is another model to switch to, and only while nothing
       // is running: a turn already accepted keeps the backend it named.
-      if (session.canCycleBackend && !snapshot.running) keys.push("tab to switch model");
-      if (lines.length > transcriptRows) keys.push("pgup/pgdn to scroll");
-      if (focusedTool(snapshot) !== undefined) keys.push("ctrl+o to expand");
+      if (session.canCycleBackend && !snapshot.running) keys.push({ text: "tab to switch model" });
+      if (lines.length > transcriptRows) keys.push({ text: "pgup/pgdn to scroll" });
+      if (focusedTool(snapshot) !== undefined) keys.push({ text: "ctrl+o to expand" });
 
       // `this run` is not decoration. The count is this process's, and a
       // source that is not the thread — the stand-in behind `--offline` — has
