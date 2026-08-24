@@ -46,6 +46,18 @@ const ERASE_LINE = "\x1b[K";
  * alternate screen is up. It costs one escape sequence and, unlike mouse
  * reporting, leaves the terminal's own text selection alone.
  */
+/**
+ * Ask the terminal to report modified keys unambiguously.
+ *
+ * Flag 1 of the keyboard protocol — disambiguate escape codes. Without it
+ * shift+enter arrives as the same carriage return as enter, and the two cannot
+ * be told apart at all. Ordinary text is unaffected; only keys that were
+ * already ambiguous change shape, and a terminal that does not implement this
+ * ignores it, which leaves enter doing the default and costs nothing.
+ */
+const KEYS_DISAMBIGUATE_ON = "\x1b[>1u";
+const KEYS_DISAMBIGUATE_OFF = "\x1b[<u";
+
 const ALT_SCROLL_ON = "\x1b[?1007h";
 const ALT_SCROLL_OFF = "\x1b[?1007l";
 
@@ -295,7 +307,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       stdout.off("resize", onResize);
       if (stdin.isTTY) stdin.setRawMode(false);
       stdin.pause();
-      write(CURSOR_SHOW + ALT_SCROLL_OFF + ALT_SCREEN_OFF);
+      write(CURSOR_SHOW + KEYS_DISAMBIGUATE_OFF + ALT_SCROLL_OFF + ALT_SCREEN_OFF);
       resolve(exitCode);
     };
 
@@ -595,7 +607,11 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       // interrupt" while idle, where there was nothing to interrupt.
       const keys: Hint[] = [];
       if (snapshot.running) {
-        keys.push({ text: "esc to interrupt" }, { text: "ctrl+c to stop" });
+        keys.push(
+          { text: "enter to steer" },
+          { text: "shift+enter to queue" },
+          { text: "esc to interrupt" },
+        );
       } else {
         keys.push({ text: "enter to send" });
         if (composer.length > 0) keys.push({ text: "esc to clear" });
@@ -661,7 +677,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       anchor = next >= maxStart ? undefined : next;
     };
 
-    const submit = () => {
+    const submit = (mode: "steer" | "queue" = "steer") => {
       const prompt = composer;
       composer = "";
       anchor = undefined;
@@ -715,7 +731,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         return;
       }
 
-      void session.submit(prompt).finally(() => {
+      void session.submit(prompt, mode).finally(() => {
         if (ticker !== undefined) {
           clearInterval(ticker);
           ticker = undefined;
@@ -828,8 +844,29 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
             break;
           }
           index += sequence.length;
+          // Before the bare escape is taken as an interrupt: some terminals
+          // send escape then return for shift or alt enter, and an escape with
+          // a return immediately behind it is not something a reader types by
+          // accident.
+          if (sequence === "\x1b" && text[index] === "\r") {
+            index += 1;
+            submit("queue");
+            dirty = false;
+            continue;
+          }
           if (sequence === "\x1b") {
             onEscape();
+            dirty = false;
+            continue;
+          }
+          // Enter reported through the keyboard protocol: `13` is the key and
+          // the second parameter is the modifier, where 2 is shift. Shift+enter
+          // queues; enter, with or without other modifiers, steers.
+          const enter = /^\x1b\[13(?:;(\d+))?u$/.exec(sequence);
+          if (enter !== null) {
+            if (!session.running || composer.length > 0) {
+              submit(enter[1] === "2" ? "queue" : "steer");
+            }
             dirty = false;
             continue;
           }
@@ -956,7 +993,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
 
     const unsubscribe = session.onChange(render);
 
-    write(ALT_SCREEN_ON + ALT_SCROLL_ON);
+    write(ALT_SCREEN_ON + ALT_SCROLL_ON + KEYS_DISAMBIGUATE_ON);
     if (stdin.isTTY) stdin.setRawMode(true);
     stdin.resume();
     stdin.setEncoding("utf8");

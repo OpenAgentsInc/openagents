@@ -461,7 +461,7 @@ export class CoderSession {
    * prompt that lands after an interruption is a prompt the user did not mean
    * to send.
    */
-  async submit(prompt: string): Promise<void> {
+  async submit(prompt: string, mode: "steer" | "queue" = "steer"): Promise<void> {
     if (prompt.trim().length === 0) return;
 
     // Delegation is not a turn: it does not go to the model, it does not block
@@ -518,10 +518,11 @@ export class CoderSession {
     if (this.controller !== undefined) {
       this.entries.push({ role: "you", text: prompt, settled: true, at: Date.now() });
 
-      // Steering first: a source that runs a loop of model calls can read this
-      // at its next step, so the model sees it while it is still working. A
-      // source that cannot holds it until the turn ends instead of dropping it.
-      if (this.source.steer?.(prompt) === true) {
+      // Steering by default: a source that runs a loop of model calls reads
+      // this at its next step, so the model sees it while it is still working.
+      // A reader who wants the turn finished first asks for `queue`, and a
+      // source that cannot steer holds it to the end either way.
+      if (mode === "steer" && this.source.steer?.(prompt) === true) {
         this.notice("Steering: the model reads this at its next step.");
         this.emit();
         return;

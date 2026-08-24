@@ -656,6 +656,64 @@ describe("typing while a turn is running", () => {
     await running;
   });
 
+
+  it("steers on enter and queues on shift+enter", async () => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    const modes: string[] = [];
+    const { source: paused, release } = held();
+    const session = new CoderSession(paused, "repo", "main");
+    const realSubmit = session.submit.bind(session);
+    session.submit = (prompt: string, mode?: "steer" | "queue") => {
+      modes.push(mode ?? "steer");
+      return realSubmit(prompt, mode);
+    };
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    const turn = session.submit("go");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    stdin.emit("data", "one");
+    stdin.emit("data", "\r");
+    // Shift+enter, as the keyboard protocol reports it: key 13, modifier 2.
+    stdin.emit("data", "two");
+    stdin.emit("data", "\x1b[13;2u");
+    // And as the terminals that do not speak the protocol send it.
+    stdin.emit("data", "three");
+    stdin.emit("data", "\x1b\r");
+
+    expect(modes).toEqual(["steer", "steer", "queue", "queue"]);
+
+    release();
+    await turn;
+    stdin.emit("data", "\x04");
+    await running;
+  });
+
+  it("asks the terminal to tell enter and shift+enter apart, and stops asking on the way out", async () => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    const session = new CoderSession(source([]), "repo", "main");
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    // Without this they arrive as the same carriage return and cannot be told
+    // apart at all.
+    expect(stdout.written).toContain("\x1b[>1u");
+
+    stdin.emit("data", "\x04");
+    await running;
+
+    // Left as it was found: a terminal still reporting this after the session
+    // has gone is a terminal the next program has to cope with.
+    expect(stdout.written).toContain("\x1b[<u");
+  });
+
   it("queues ordinary text and sends it when the turn ends", async () => {
     const stdin = new FakeIn();
     const stdout = new FakeOut();
