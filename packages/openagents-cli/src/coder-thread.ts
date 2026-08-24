@@ -91,6 +91,16 @@ export interface ThreadOptions {
   readonly objective: string;
   /** Recorded on the thread as its admitted execution shape. */
   readonly reasoning?: string | undefined;
+  /**
+   * The model the thread's grant pins, and therefore the model every call
+   * through the proxy reaches. Omitted, the server pins its default.
+   *
+   * This is the only place a model is chosen: the proxy refuses a model named
+   * in a request body. So a session that wants its children on another model
+   * opens a second thread naming it, with its own budget, rather than lending
+   * them the authority its own turns spend.
+   */
+  readonly model?: string | undefined;
 }
 
 export class ThreadUnavailable extends Error {
@@ -125,6 +135,7 @@ export async function openThread(options: ThreadOptions): Promise<ThreadReplySou
     body: JSON.stringify({
       objective: options.objective,
       ...(options.reasoning === undefined ? {} : { reasoning: options.reasoning }),
+      ...(options.model === undefined ? {} : { model: options.model }),
     }),
   }).catch((cause: unknown) => {
     throw new ThreadUnavailable(
@@ -138,7 +149,7 @@ export async function openThread(options: ThreadOptions): Promise<ThreadReplySou
   if (response.status === 401 || response.status === 403) {
     throw new ThreadUnavailable(
       "scope_missing",
-      "This token cannot open a thread. Sign in again with the chat:account scope.",
+      "This token cannot open a thread. Run `openagents auth login` to sign in again.",
       response.status,
     );
   }

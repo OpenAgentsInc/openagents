@@ -27,7 +27,7 @@ import { CoderSession, DummyReplySource } from "./coder-session.js";
 import { CoderTaskRegistry } from "./coder-tasks.js";
 import { runCoderUi } from "./coder-ui.js";
 import { backendIds } from "./coder-backends.js";
-import { openThread, ThreadUnavailable } from "./coder-thread.js";
+import { openThread, ThreadUnavailable, type ThreadReplySource } from "./coder-thread.js";
 import { delegateTool } from "./coder-tools.js";
 import { describeWorkspace } from "./coder-workspace.js";
 import { ComputerClient } from "./computer-client.js";
@@ -649,7 +649,7 @@ const loginHeadlessFlag = Flag.boolean("headless").pipe(
 const loginScopeFlag = Flag.string("scope").pipe(
   Flag.atLeast(0),
   Flag.withDescription(
-    "Request a scope for the new token; repeatable. Omit to take the server's default. Use chat:account to reach the chat API from `openagents coder`.",
+    "Request a scope for the new token; repeatable. Omit to take the server's default, which already reaches the chat API from `openagents coder`.",
   ),
 );
 const loginResumeFlag = Flag.boolean("resume").pipe(
@@ -1489,6 +1489,54 @@ const concurrencyFlag = Flag.integer("concurrency").pipe(
   Flag.withDescription("How many children may run at once. The rest queue"),
 );
 
+/**
+ * The model delegated children run on.
+ *
+ * A child is a coding agent, and the model a session's own turns run on is
+ * chosen for conversation, so children are pinned to Ox Alpha rather than
+ * inheriting the parent's. It is a separate thread with its own budget, so a
+ * fan-out cannot spend the authority the conversation is holding, and the
+ * server issues it — no provider key reaches this process either way.
+ */
+const CHILD_THREAD_MODEL = "ox-alpha";
+
+/** The children's thread, or the server's own words for why there is none. */
+type ChildThread =
+  | { readonly kind: "opened"; readonly thread: ThreadReplySource }
+  | { readonly kind: "refused"; readonly reason: string };
+
+/**
+ * Open the thread children spend.
+ *
+ * A refusal is reported, never absorbed. Lending children the conversation's
+ * own grant instead would run them on the conversation's model while the
+ * interface said Ox Alpha, so a session that cannot open this thread delegates
+ * to nothing and says which refusal stopped it.
+ */
+async function openChildThread(options: {
+  readonly origin: string;
+  readonly token: string;
+  readonly objective: string;
+}): Promise<ChildThread> {
+  try {
+    return {
+      kind: "opened",
+      thread: await openThread({
+        origin: options.origin,
+        token: options.token,
+        objective: options.objective,
+        model: process.env["OPENAGENTS_DELEGATE_THREAD_MODEL"] ?? CHILD_THREAD_MODEL,
+      }),
+    };
+  } catch (cause) {
+    const reason =
+      cause instanceof ThreadUnavailable
+        ? `${cause.message} (${cause.code})`
+        : `The thread could not be opened: ${String(cause)}`;
+    return { kind: "refused", reason };
+  }
+}
+
 /** Delegation and whatever has to be torn down with it. */
 interface DelegationSetup {
   readonly delegation: CoderDelegation;
@@ -1621,6 +1669,23 @@ const coderCommand = Command.make(
         : undefined;
 
       const source = thread ?? new DummyReplySource();
+
+      // Children get their own thread on their own model. The conversation
+      // stays on the model it opened with, and a fan-out spends a budget the
+      // reader's next question does not share.
+      const childThread =
+        thread !== undefined && Option.isSome(stored)
+          ? yield* Effect.promise(() =>
+              openChildThread({
+                origin: endpoint.origin,
+                token: Redacted.value(stored.value.token),
+                objective: `delegated children of openagents coder in ${workspace.repository}`,
+              }),
+            )
+          : undefined;
+
+      const childGrant = childThread?.kind === "opened" ? childThread.thread.childGrant : undefined;
+
       const setup = yield* Effect.promise(() =>
         buildDelegation({
           model: Option.getOrUndefined(childModel),
@@ -1629,7 +1694,7 @@ const coderCommand = Command.make(
           autoApprove: !childAsk,
           concurrency,
           cwd: process.cwd(),
-          grant: thread?.childGrant,
+          grant: childGrant,
         }),
       );
 
@@ -1648,10 +1713,17 @@ const coderCommand = Command.make(
         thread.useTools([delegateTool(setup.delegation)]);
       }
 
+      // Delegation is off rather than quietly running children on the
+      // conversation's model, so the refusal that turned it off is what the
+      // reader sees.
+      if (childThread?.kind === "refused") {
+        session.notice(`This session cannot delegate: ${childThread.reason}`);
+      }
+
       if (Option.isNone(stored) && !offline) {
         session.notice(
           "No stored credential, so replies come from the built-in stand-in. " +
-            "Run `openagents auth login --scope chat:account` to reach a real model.",
+            "Run `openagents auth login` to reach a real model.",
         );
       }
 
@@ -1684,6 +1756,7 @@ const coderCommand = Command.make(
           // session nobody is in. A process killed outright still leaves it to
           // the server's expiry reap.
           if (thread !== undefined) await thread.revoke();
+          if (childThread?.kind === "opened") await childThread.thread.revoke();
           if (setup !== undefined) await setup.close();
         }
       });
@@ -1694,7 +1767,7 @@ const coderCommand = Command.make(
     }),
 ).pipe(
   Command.withDescription(
-    "Open a terminal coding session on a thread of its own. Replies come from the thread's grant through the inference proxy, so nothing typed here reaches /chat; --offline answers from a built-in stand-in instead. The session can delegate: ask it to split work and it runs child coding agents on the same grant, or launch a fan-out yourself with `/delegate [<n>x] <prompt>`, and the interface shows the fleet",
+    "Open a terminal coding session on a thread of its own. Replies come from the thread's grant through the inference proxy, so nothing typed here reaches /chat; --offline answers from a built-in stand-in instead. The session can delegate: ask it to split work and it runs child coding agents on a thread of their own pinned to Ox Alpha, or launch a fan-out yourself with `/delegate [<n>x] <prompt>`, and the interface shows the fleet",
   ),
 );
 
@@ -1766,6 +1839,9 @@ const delegateCommand = Command.make(
             )
           : Option.none();
 
+      // Every turn on this thread is a child's, so it is opened on the child
+      // model directly rather than opening one thread to hold and another to
+      // spend.
       const thread = Option.isSome(stored)
         ? yield* Effect.tryPromise({
             try: () =>
@@ -1773,6 +1849,7 @@ const delegateCommand = Command.make(
                 origin: endpoint.origin,
                 token: Redacted.value(stored.value.token),
                 objective: `openagents delegate: ${describePrompt(prompt)}`,
+                model: process.env["OPENAGENTS_DELEGATE_THREAD_MODEL"] ?? CHILD_THREAD_MODEL,
               }),
             catch: (cause) => coderRefusal(endpoint.origin, cause),
           })
@@ -1793,9 +1870,9 @@ const delegateCommand = Command.make(
       if (setup === undefined) {
         return yield* new InputError({
           message:
-            "Nothing to run children on. Sign in with `openagents auth login --scope " +
-            "chat:account` so children can spend a thread, or pass --child-model " +
-            "provider/model to run them on a provider of your own.",
+            "Nothing to run children on. Sign in with `openagents auth login` so " +
+            "children can spend a thread, or pass --child-model provider/model to run " +
+            "them on a provider of your own.",
         });
       }
       const delegation = setup.delegation;

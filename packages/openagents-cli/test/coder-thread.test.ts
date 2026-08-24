@@ -129,6 +129,36 @@ describe("openThread", () => {
     expect(calls[0]?.body).toEqual({ objective: "coder in repo on main", reasoning: "high" });
   });
 
+  it("names the model the thread's grant should pin, so children can run on another", async () => {
+    const calls = stub({});
+    await openThread({
+      origin: ORIGIN,
+      token: ACCOUNT_TOKEN,
+      objective: "delegated children",
+      model: "ox-alpha",
+    });
+
+    expect(calls[0]?.body).toEqual({ objective: "delegated children", model: "ox-alpha" });
+  });
+
+  it("lends children the model their own thread pinned, not the conversation's", async () => {
+    stub({
+      create: json(201, {
+        ...CREATED,
+        grant: { ...CREATED.grant, model: "ox-alpha" },
+      }),
+    });
+
+    const source = await openThread({
+      origin: ORIGIN,
+      token: ACCOUNT_TOKEN,
+      objective: "delegated children",
+      model: "ox-alpha",
+    });
+
+    expect(source.childGrant.model).toBe("ox-alpha");
+  });
+
   it("starts with the ceilings the grant was minted with", async () => {
     stub({});
     expect((await open()).budget).toBe("256 calls · 1.0M tok · $2.00");

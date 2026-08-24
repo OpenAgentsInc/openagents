@@ -487,7 +487,7 @@ export class CoderSession {
     if (delegation === undefined) {
       this.notice(
         "This session cannot delegate: children spend the session's thread, and this " +
-          "session has none. Sign in with `openagents auth login --scope chat:account`, " +
+          "session has none. Sign in with `openagents auth login`, " +
           "or start the session with `--child-model provider/model` to run children on a " +
           "provider of your own.",
       );
