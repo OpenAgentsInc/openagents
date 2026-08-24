@@ -102,7 +102,12 @@ const bounded = (output: string, keep: number): string => {
   return `${output.slice(0, half)}\n\n[${String(cut)} characters omitted from the middle; run it again more narrowly if you need them]\n\n${output.slice(-half)}`;
 };
 
-const boundedResult = (output: string): string => bounded(output, TOOL_RESULT_KEPT);
+/**
+ * A tool result as the model transcript carries it. Exported for the replay in
+ * `coder-resume.ts`, which must feed a resumed model exactly what the live
+ * loop would have.
+ */
+export const boundedResult = (output: string): string => bounded(output, TOOL_RESULT_KEPT);
 
 /** What the thread may still spend, as the server last reported it. */
 export interface ThreadBudget {
@@ -217,6 +222,102 @@ export async function openThread(options: ThreadOptions): Promise<ThreadReplySou
   });
 }
 
+export interface ResumeGrantOptions {
+  readonly origin: string;
+  /** The account token that owns the thread. */
+  readonly token: string;
+  /** The open thread `--resume` is continuing. */
+  readonly threadId: string;
+}
+
+/**
+ * Continue an existing thread by asking the server to re-mint its authority.
+ *
+ * `OpenAgents.Threads.mint_grant/1` is the server's fence for exactly this:
+ * it revokes every active grant naming the thread, bumps the thread's
+ * generation, and mints fresh authority against the same thread — the grant
+ * lineage a resume is supposed to continue. This client asks for that at
+ * `POST /api/v3/threads/{id}/grants`.
+ *
+ * Today the server publishes no such route. `GET /api/v3/threads/{id}` reports
+ * the grant's status and limits but never its token — the plaintext exists
+ * exactly once, at minting — so there is no other honest way to spend an
+ * existing thread. A 404 here is therefore the server saying it cannot yet
+ * re-grant, and it is reported as exactly that (`grant_unavailable`) rather
+ * than as the thread being missing: the caller has already fetched the thread
+ * by the time it asks for authority.
+ */
+export async function remintThread(options: ResumeGrantOptions): Promise<ThreadReplySource> {
+  const response = await fetch(
+    new URL(`${THREADS_PATH}/${options.threadId}/grants`, options.origin),
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${options.token}`,
+        "content-type": "application/json",
+        accept: "application/json",
+      },
+      body: JSON.stringify({}),
+    },
+  ).catch((cause: unknown) => {
+    throw new ThreadUnavailable(
+      "network_refused",
+      `The API at ${options.origin} could not be reached: ${String(cause)}`,
+    );
+  });
+
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+  if (response.status === 401 || response.status === 403) {
+    throw new ThreadUnavailable(
+      "scope_missing",
+      "This token cannot mint a grant for this thread. Run `openagents auth login` to sign in again.",
+      response.status,
+    );
+  }
+  if (response.status === 404) {
+    throw new ThreadUnavailable(
+      "grant_unavailable",
+      "This server cannot hand back authority for an existing thread: " +
+        "GET /api/v3/threads/{id} reports the grant without its token, and " +
+        "POST /api/v3/threads/{id}/grants is not there to re-mint one. " +
+        "The transcript is readable, but new turns cannot spend this thread " +
+        "until the server can re-grant it.",
+      response.status,
+    );
+  }
+  if (response.status < 200 || response.status >= 300) {
+    const code = typeof body["code"] === "string" ? body["code"] : `http_${response.status}`;
+    const message =
+      typeof body["message"] === "string"
+        ? body["message"]
+        : `The server refused to re-mint this thread's grant (${code}).`;
+    throw new ThreadUnavailable(code, message, response.status);
+  }
+
+  const grant = record(body["grant"]);
+  const token = string(grant["token"]);
+  const url = string(grant["url"]);
+  const model = string(grant["model"]);
+
+  if (token === undefined || url === undefined || model === undefined) {
+    throw new ThreadUnavailable(
+      "malformed_thread",
+      "The server re-minted this thread but did not return the grant needed to spend it.",
+    );
+  }
+
+  return new ThreadReplySource({
+    origin: options.origin,
+    accountToken: options.token,
+    threadId: string(record(body["thread"])["id"]) ?? options.threadId,
+    grantToken: Redacted.make(token),
+    proxyUrl: url,
+    model,
+    budget: budgetOf(record(grant["remaining"]), record(grant["limits"])),
+  });
+}
+
 interface SourceState {
   readonly origin: string;
   readonly accountToken: string;
@@ -228,7 +329,7 @@ interface SourceState {
 }
 
 /** One call in an assistant message, in the chat-completions wire shape. */
-interface WireToolCall {
+export interface WireToolCall {
   readonly id: string;
   readonly type: "function";
   readonly function: { readonly name: string; readonly arguments: string };
@@ -241,8 +342,12 @@ interface WireToolCall {
  * the proxy replays them to the provider without interpreting them, and a
  * parse-and-reserialize here could reorder keys or normalize whitespace in a
  * string the provider expects byte for byte.
+ *
+ * Exported because a resume rebuilds this transcript from the thread's durable
+ * events and hands it back through `preload`, and the two sides of that
+ * exchange have to agree on the shape.
  */
-type WireMessage =
+export type WireMessage =
   | { readonly role: "user"; readonly content: string }
   | {
       readonly role: "assistant";
@@ -382,6 +487,18 @@ export class ThreadReplySource implements ReplySource {
       token: this.state.grantToken,
       model: this.state.model,
     };
+  }
+
+  /**
+   * Seed the model transcript with a resumed thread's replayed history.
+   *
+   * Straight onto the wire transcript and nowhere else: the durable copy on
+   * the server already holds these turns, so the sink is deliberately not
+   * touched — a resume must never re-post events the thread already carries.
+   * Called once, before the first new turn.
+   */
+  preload(messages: ReadonlyArray<WireMessage>): void {
+    for (const message of messages) this.transcript.push(message);
   }
 
   /** Take a message for the next step of the running turn. */

@@ -44,7 +44,24 @@ import {
   parseOllamaModelFlag,
   resolveOllamaModel,
 } from "./coder-ollama.js";
-import { openThread, ThreadUnavailable, type ThreadReplySource } from "./coder-thread.js";
+import {
+  openThread,
+  remintThread,
+  ThreadUnavailable,
+  type ThreadReplySource,
+} from "./coder-thread.js";
+import {
+  assertResumable,
+  fetchAllEvents,
+  fetchThread,
+  listThreads,
+  pickLast,
+  pickThread,
+  replayEntries,
+  replayWire,
+  resumableThreads,
+  type ThreadSummary,
+} from "./coder-resume.js";
 import { ThreadTranscriptWriter } from "./coder-transcript.js";
 import { delegateTool, openagentsTool, shellTool, skillTool } from "./coder-tools.js";
 import {
@@ -1426,7 +1443,23 @@ const apiCommand = Command.make(
 const coderPrompt = Argument.string("prompt").pipe(
   Argument.optional,
   Argument.withDescription(
-    "Answer this prompt and exit instead of opening the interactive interface",
+    "Answer this prompt and exit instead of opening the interactive interface. " +
+      "With --resume, this names the thread id to continue",
+  ),
+);
+const coderResumeFlag = Flag.boolean("resume").pipe(
+  Flag.withDescription(
+    "Continue a thread of the account's instead of opening a new one. Bare --resume " +
+      "shows a picker over this repository's recent threads; `--resume <id>` names one; " +
+      "`--resume --last` continues the most recent without asking",
+  ),
+);
+const coderLastFlag = Flag.boolean("last").pipe(
+  Flag.withDescription("With --resume, continue the most recent thread without asking"),
+);
+const coderAllFlag = Flag.boolean("all").pipe(
+  Flag.withDescription(
+    "With --resume, list every thread on the account rather than this repository's",
   ),
 );
 const coderPlainFlag = Flag.boolean("plain").pipe(
@@ -1464,7 +1497,7 @@ const coderModelFlag = Flag.string("model").pipe(
  * reading `--json` branches on `thread_quota_reached` and a person reading the
  * terminal is told the limit and how many threads the account is holding.
  */
-const coderRefusal = (origin: string, cause: unknown) => {
+const coderRefusal = (origin: string, cause: unknown, operation = "coder.thread.open") => {
   if (!(cause instanceof ThreadUnavailable)) {
     return new InputError({ message: `The thread could not be opened: ${String(cause)}` });
   }
@@ -1472,7 +1505,7 @@ const coderRefusal = (origin: string, cause: unknown) => {
     return new NetworkRefused({ origin, message: cause.message });
   }
   return new ApiError({
-    operation: "coder.thread.open",
+    operation,
     status: cause.status,
     code: cause.code,
     message: cause.message,
@@ -1732,6 +1765,9 @@ const coderCommand = Command.make(
     prompt: coderPrompt,
     plain: coderPlainFlag,
     offline: coderOfflineFlag,
+    resume: coderResumeFlag,
+    last: coderLastFlag,
+    all: coderAllFlag,
     reasoning: coderReasoningFlag,
     model: coderModelFlag,
     childModel: childModelFlag,
@@ -1744,6 +1780,9 @@ const coderCommand = Command.make(
     prompt,
     plain,
     offline,
+    resume,
+    last,
+    all,
     reasoning,
     model,
     childModel,
@@ -1767,9 +1806,30 @@ const coderCommand = Command.make(
       // the model they already chose is a flag that carries no decision. The
       // hosted backends stay one `--model` away, and `--offline` asks for
       // neither.
+      // `--resume` continues a server thread, so the lanes that never touch
+      // one are refused up front rather than silently ignored: a resumed
+      // session that answered from the stand-in or a local model would show
+      // the history of a thread it is not continuing.
+      if ((last || all) && !resume) {
+        return yield* new InputError({
+          message: `--${last ? "last" : "all"} belongs to --resume.`,
+        });
+      }
+      if (resume && offline) {
+        return yield* new InputError({
+          message: "--resume reads the thread from the server; it cannot combine with --offline.",
+        });
+      }
+      if (resume && Option.isSome(model)) {
+        return yield* new InputError({
+          message:
+            "--resume continues the thread on the model its grant pins; --model cannot change it.",
+        });
+      }
+
       const named = Option.getOrUndefined(model);
       const localModel =
-        named === undefined && !offline
+        named === undefined && !offline && !resume
           ? yield* Effect.promise(() => discoverOllamaModel())
           : undefined;
 
@@ -1828,22 +1888,92 @@ const coderCommand = Command.make(
             ),
           );
 
+      // `--resume`: pick the thread, replay its transcript through the events
+      // cursor, and re-mint its authority so the same thread continues on the
+      // same grant lineage. The replay is read-only — nothing here posts an
+      // event — and the picker is TTY-only: the non-interactive forms are
+      // `--resume <id>` and `--resume --last`.
+      const resumed = resume
+        ? yield* Effect.tryPromise({
+            try: async () => {
+              if (Option.isNone(stored)) {
+                throw new ThreadUnavailable(
+                  "scope_missing",
+                  "Resuming reads the account's threads. Run `openagents auth login` first.",
+                );
+              }
+              const api = { origin: endpoint.origin, token: Redacted.value(stored.value.token) };
+              const explicit = Option.getOrUndefined(prompt);
+
+              let summary: ThreadSummary | undefined;
+              if (explicit !== undefined) {
+                summary = await fetchThread({ ...api, threadId: explicit });
+              } else {
+                const candidates = resumableThreads(
+                  await listThreads(api),
+                  workspace.repository,
+                  all,
+                );
+                if (candidates.length === 0) {
+                  throw new ThreadUnavailable(
+                    "nothing_to_resume",
+                    all
+                      ? "This account holds no threads to resume."
+                      : `No threads were opened from ${workspace.repository}. ` +
+                          "Use --all to list every thread on the account.",
+                  );
+                }
+                if (last) {
+                  summary = pickLast(candidates);
+                } else if (terminal.interactive && !plain && !flags.json) {
+                  summary = await pickThread(candidates, {
+                    stdin: process.stdin,
+                    stdout: process.stdout,
+                  });
+                  // An empty answer cancels, and cancelling is not a failure.
+                  if (summary === undefined) return undefined;
+                } else {
+                  throw new ThreadUnavailable(
+                    "picker_needs_terminal",
+                    "The picker needs a terminal. Use `--resume <id>` or `--resume --last`.",
+                  );
+                }
+              }
+              if (summary === undefined) return undefined;
+
+              assertResumable(summary);
+              const events = await fetchAllEvents({ ...api, threadId: summary.id });
+              const source = await remintThread({ ...api, threadId: summary.id });
+              // The replayed history reaches the model transcript and the
+              // interface, never the transcript writer: the server already
+              // holds these events, and a resume must not post them twice.
+              source.preload(replayWire(events));
+              return { source, entries: replayEntries(events) };
+            },
+            catch: (cause) => coderRefusal(endpoint.origin, cause, "coder.thread.resume"),
+          })
+        : undefined;
+
+      if (resume && resumed === undefined) return;
+
       const thread =
-        Option.isSome(stored) && !wantsOllama
-          ? yield* Effect.tryPromise({
-              try: () =>
-                openThread({
-                  origin: endpoint.origin,
-                  token: Redacted.value(stored.value.token),
-                  objective: `openagents coder in ${workspace.repository} on ${workspace.branch}`,
-                  reasoning: Option.getOrUndefined(reasoning),
-                }),
-              // The server's own code and sentence, which is what turns a ninth
-              // concurrent session from an obscure failure into an instruction
-              // naming the ceiling and how many threads the account is holding.
-              catch: (cause) => coderRefusal(endpoint.origin, cause),
-            })
-          : undefined;
+        resumed !== undefined
+          ? resumed.source
+          : Option.isSome(stored) && !wantsOllama && !resume
+            ? yield* Effect.tryPromise({
+                try: () =>
+                  openThread({
+                    origin: endpoint.origin,
+                    token: Redacted.value(stored.value.token),
+                    objective: `openagents coder in ${workspace.repository} on ${workspace.branch}`,
+                    reasoning: Option.getOrUndefined(reasoning),
+                  }),
+                // The server's own code and sentence, which is what turns a ninth
+                // concurrent session from an obscure failure into an instruction
+                // naming the ceiling and how many threads the account is holding.
+                catch: (cause) => coderRefusal(endpoint.origin, cause),
+              })
+            : undefined;
 
       // A `--model ollama:<name>` session answers from the local Ollama server,
       // so it takes neither a thread nor the stand-in.
@@ -1903,6 +2033,10 @@ const coderCommand = Command.make(
         setup?.delegation,
         standingContext(skills.active(), process.cwd()),
       );
+
+      // The resumed thread's history goes on the session before anything new,
+      // so both interfaces open showing the conversation being continued.
+      if (resumed !== undefined) session.restore(resumed.entries);
 
       // The thread lane writes its transcript to the server as the turn loop
       // runs — `POST /api/v3/threads/{id}/events`, on the account token that
@@ -1996,7 +2130,8 @@ const coderCommand = Command.make(
         );
       }
 
-      const oneShot = Option.getOrUndefined(prompt);
+      // With --resume the positional argument named the thread, not a prompt.
+      const oneShot = resume ? undefined : Option.getOrUndefined(prompt);
       const interactive = terminal.interactive && !plain && !flags.json && oneShot === undefined;
 
       const code = yield* Effect.promise(async () => {
@@ -2061,7 +2196,7 @@ const coderCommand = Command.make(
     }),
 ).pipe(
   Command.withDescription(
-    "Open a terminal coding session on a thread of its own. Replies come from the thread's grant through the inference proxy, so nothing typed here reaches /chat; --offline answers from a built-in stand-in instead. The session can delegate: ask it to split work and it runs child coding agents on a thread of their own pinned to Ox Alpha, or launch a fan-out yourself with `/delegate [<n>x] <prompt>`, and the interface shows the fleet",
+    "Open a terminal coding session on a thread of its own, or continue one with --resume. Replies come from the thread's grant through the inference proxy, so nothing typed here reaches /chat; --offline answers from a built-in stand-in instead. The session can delegate: ask it to split work and it runs child coding agents on a thread of their own pinned to Ox Alpha, or launch a fan-out yourself with `/delegate [<n>x] <prompt>`, and the interface shows the fleet",
   ),
 );
 

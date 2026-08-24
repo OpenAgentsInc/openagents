@@ -388,6 +388,12 @@ export class CoderSession {
   private readonly pending: string[] = [];
   private turnCount = 0;
   private unsubscribeTasks: (() => void) | undefined;
+  /**
+   * Set when `restore` has replayed a prior thread's transcript. The standing
+   * context was already delivered on that thread's first turn and sits in the
+   * replayed history, so the first new turn must not pay for it again.
+   */
+  private restored = false;
 
   constructor(
     private readonly source: ReplySource,
@@ -416,6 +422,24 @@ export class CoderSession {
     // forwards. Without this the fleet block only moved when a chat chunk
     // happened to arrive.
     this.unsubscribeTasks = delegation?.registry.onChange(() => this.emit());
+  }
+
+  /**
+   * Put a resumed thread's replayed transcript on the session, ahead of
+   * anything new.
+   *
+   * The entries arrive settled — they are history, not a stream — and they do
+   * not count as turns: `snapshot().turns` is what this process submitted, and
+   * these were submitted by the process that recorded them. Restoring also
+   * marks the standing context as already delivered, because the replayed
+   * history carries it in its first turn.
+   */
+  restore(entries: ReadonlyArray<CoderEntry>): void {
+    for (const entry of entries) {
+      this.entries.push(copyEntry({ ...entry, settled: true }));
+    }
+    this.restored = true;
+    this.emit();
   }
 
   snapshot(): CoderSnapshot {
@@ -586,9 +610,7 @@ export class CoderSession {
           model: this.source.modelId ?? this.source.model,
           toolDefinitions: this.source.toolDefinitions?.(),
           version: VERSION,
-          ...(this.exports === undefined
-            ? {}
-            : { directory: this.exports.directory, copy: false }),
+          ...(this.exports === undefined ? {} : { directory: this.exports.directory, copy: false }),
         });
         this.notice(
           `Exported ${String(written.steps)} step${written.steps === 1 ? "" : "s"} as ATIF to ${written.path}` +
@@ -706,7 +728,7 @@ export class CoderSession {
       // The reader's entry above keeps what they typed; the model receives the
       // standing context ahead of it on the first turn only.
       const sent =
-        this.standing === undefined || this.turnCount > 1
+        this.standing === undefined || this.turnCount > 1 || this.restored
           ? prompt
           : `${this.standing}\n\n---\n\n${prompt}`;
 
