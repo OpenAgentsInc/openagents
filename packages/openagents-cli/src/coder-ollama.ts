@@ -35,6 +35,44 @@ export interface OllamaOptions {
   readonly host?: string | undefined;
 }
 
+/**
+ * The local model to answer from, or undefined when there is no server.
+ *
+ * Probed with a short deadline because it runs before the first prompt on every
+ * session: a machine with no Ollama on it must not pay for the question. A
+ * refusal, a timeout, and an empty library are the same answer -- nothing to
+ * answer from -- so the caller gets `undefined` for all three rather than a
+ * failure to handle.
+ *
+ * The most recently modified model wins. With one model installed there is no
+ * choice to make, and with several the one most recently pulled is the one the
+ * reader was last working with.
+ */
+export const discoverOllamaModel = async (
+  host: string = DEFAULT_HOST,
+  timeoutMs = 300,
+): Promise<string | undefined> => {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  try {
+    const response = await fetch(new URL("/api/tags", host), { signal: deadline });
+    if (!response.ok) return undefined;
+    const body = (await response.json()) as {
+      models?: ReadonlyArray<{ name?: unknown; modified_at?: unknown }>;
+    };
+    const models = (body.models ?? []).filter(
+      (model): model is { name: string; modified_at?: string } => typeof model.name === "string",
+    );
+    if (models.length === 0) return undefined;
+    // Sorting a fresh array, so nothing shared is mutated.
+    // eslint-disable-next-line unicorn/no-array-sort -- the spread is the copy
+    return [...models].sort((left, right) =>
+      String(right.modified_at ?? "").localeCompare(String(left.modified_at ?? "")),
+    )[0]?.name;
+  } catch {
+    return undefined;
+  }
+};
+
 /** True when `--model` names an Ollama source. */
 export const isOllamaModelFlag = (value: string): boolean => value.startsWith("ollama:");
 
@@ -140,6 +178,14 @@ export class OllamaReplySource implements ReplySource {
     );
 
     return parts.join("\n");
+  }
+
+  /** The tools as declared, in the shape ATIF records them. */
+  toolDefinitions(): ReadonlyArray<Record<string, unknown>> {
+    return this.tools.map((tool) => ({
+      type: "function",
+      function: { name: tool.name, description: tool.description, parameters: tool.parameters },
+    }));
   }
 
   async *reply(prompt: string, signal: AbortSignal): AsyncIterable<ReplyChunk> {

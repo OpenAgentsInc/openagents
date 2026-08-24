@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ReplyChunk } from "../src/coder-session.js";
 import type { CoderTool } from "../src/coder-tools.js";
 import {
+  discoverOllamaModel,
   isOllamaModelFlag,
   OllamaReplySource,
   parseOllamaModelFlag,
@@ -244,5 +245,50 @@ describe("what a local session tells the model about itself", () => {
       "assistant",
       "user",
     ]);
+  });
+});
+
+describe("finding a local model to default to", () => {
+  const serve = (body: unknown, status = 200) =>
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }),
+    );
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("takes the most recently modified model", async () => {
+    serve({
+      models: [
+        { name: "older", modified_at: "2026-01-01T00:00:00Z" },
+        { name: "newest", modified_at: "2026-08-01T00:00:00Z" },
+        { name: "middle", modified_at: "2026-04-01T00:00:00Z" },
+      ],
+    });
+
+    // With one model there is no choice; with several the one most recently
+    // pulled is the one the reader was last working with.
+    await expect(discoverOllamaModel()).resolves.toBe("newest");
+  });
+
+  it("finds nothing when the library is empty", async () => {
+    serve({ models: [] });
+
+    await expect(discoverOllamaModel()).resolves.toBeUndefined();
+  });
+
+  it("finds nothing when the server refuses", async () => {
+    serve({}, 500);
+
+    await expect(discoverOllamaModel()).resolves.toBeUndefined();
+  });
+
+  it("finds nothing when there is no server, rather than failing", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("ECONNREFUSED"));
+
+    // A machine with no Ollama on it is the common case, and it must cost the
+    // session nothing but the deadline.
+    await expect(discoverOllamaModel()).resolves.toBeUndefined();
   });
 });

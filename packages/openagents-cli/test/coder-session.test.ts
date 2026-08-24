@@ -1,3 +1,4 @@
+import { rmSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -362,5 +363,32 @@ describe("the /system command", () => {
     await session.submit("what is in your /system prompt");
 
     expect(reply.prompts).toEqual(["what is in your /system prompt"]);
+  });
+});
+
+describe("the /export command", () => {
+  it("writes the conversation and never reaches the model", async () => {
+    const prompts: string[] = [];
+    const reply: ReplySource = {
+      model: "scripted",
+      // eslint-disable-next-line require-yield -- a turn that must not happen
+      async *reply(prompt) {
+        prompts.push(prompt);
+      },
+    };
+    const session = new CoderSession(reply, "repo", "main");
+
+    await session.submit("/export");
+
+    const { entries, turns } = session.snapshot();
+    expect(entries.map((entry) => entry.role)).toEqual(["you", "notice"]);
+    expect(entries[1]?.text).toContain("as ATIF to");
+    expect(prompts).toEqual([]);
+    expect(turns).toBe(0);
+
+    // The wiring writes a real file. Take it away again: a test suite should
+    // not leave anything behind in the directory a person exports into.
+    const written = /as ATIF to (\S+\.json)/.exec(entries[1]?.text ?? "")?.[1];
+    if (written !== undefined) rmSync(written, { force: true });
   });
 });

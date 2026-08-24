@@ -28,7 +28,12 @@ import { CoderSession, DummyReplySource } from "./coder-session.js";
 import { CoderTaskRegistry } from "./coder-tasks.js";
 import { runCoderUi } from "./coder-ui.js";
 import { backendIds } from "./coder-backends.js";
-import { OllamaReplySource, isOllamaModelFlag, parseOllamaModelFlag } from "./coder-ollama.js";
+import {
+  discoverOllamaModel,
+  isOllamaModelFlag,
+  OllamaReplySource,
+  parseOllamaModelFlag,
+} from "./coder-ollama.js";
 import { openThread, ThreadUnavailable, type ThreadReplySource } from "./coder-thread.js";
 import { delegateTool, skillTool } from "./coder-tools.js";
 import { loadSkillSelection } from "./coder-skills.js";
@@ -1648,17 +1653,28 @@ const coderCommand = Command.make(
 
       // A `--model` value that starts with `ollama:` goes to the local Ollama
       // server and needs no account credential.
-      const wantsOllama = Option.isSome(model) && isOllamaModelFlag(model.value);
+      //
+      // With no `--model` at all, a machine already running Ollama answers from
+      // it. That is the cheaper and more private default, and it is the one a
+      // reader who installed Ollama meant: naming the model every time to get
+      // the model they already chose is a flag that carries no decision. The
+      // hosted backends stay one `--model` away, and `--offline` asks for
+      // neither.
+      const named = Option.getOrUndefined(model);
+      const localModel =
+        named === undefined && !offline ? yield* Effect.promise(() => discoverOllamaModel()) : undefined;
+
+      const wantsOllama = named === undefined ? localModel !== undefined : isOllamaModelFlag(named);
       const ollamaName =
-        wantsOllama && Option.isSome(model) ? parseOllamaModelFlag(model.value) : undefined;
+        named === undefined ? localModel : isOllamaModelFlag(named) ? parseOllamaModelFlag(named) : undefined;
 
       // Any other `--model` value still has to name a published backend. The
       // flag takes a string so an `ollama:` prefix can reach the local server,
       // which costs the enum `Flag.choice` used to enforce, so the check moves
       // here rather than disappearing.
-      if (Option.isSome(model) && !wantsOllama && !backendIds().includes(model.value)) {
+      if (named !== undefined && !wantsOllama && !backendIds().includes(named)) {
         return yield* new InputError({
-          message: `Unknown model ${model.value}. Use ollama:<model> for a local Ollama server, or one of: ${backendIds().join(", ")}.`,
+          message: `Unknown model ${named}. Use ollama:<model> for a local Ollama server, or one of: ${backendIds().join(", ")}.`,
         });
       }
 

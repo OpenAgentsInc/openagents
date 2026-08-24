@@ -266,6 +266,14 @@ export class ThreadReplySource implements ReplySource {
    * process never saw. A `/system` that guessed would be worse than one that
    * admits the boundary.
    */
+  /** The tools as declared, in the shape ATIF records them. */
+  toolDefinitions(): ReadonlyArray<Record<string, unknown>> {
+    return this.tools.map((tool) => ({
+      type: "function",
+      function: { name: tool.name, description: tool.description, parameters: tool.parameters },
+    }));
+  }
+
   describeContext(): string {
     const declarations =
       this.tools.length === 0

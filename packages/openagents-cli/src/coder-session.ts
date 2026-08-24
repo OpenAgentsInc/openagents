@@ -21,6 +21,8 @@
 
 import type { DelegationOutcome, DelegationRequest } from "./coder-delegate.js";
 import { parseDelegateCommand } from "./coder-delegate.js";
+import { exportTrajectory } from "./coder-export.js";
+import { VERSION } from "./version.js";
 import type { CoderTask, CoderTaskId, CoderTaskRegistry } from "./coder-tasks.js";
 import type { CoderTool } from "./coder-tools.js";
 
@@ -55,6 +57,14 @@ export interface CoderToolCall {
 /** One entry in the transcript. */
 export interface CoderEntry {
   readonly role: "you" | "assistant" | "notice" | "tool" | "reasoning";
+  /**
+   * When this entry was opened, in epoch milliseconds.
+   *
+   * Kept because a trajectory is a sequence of timed steps: `/export` has to
+   * say when each turn happened, and reconstructing that from the order alone
+   * would be inventing it.
+   */
+  readonly at: number;
   /** Rendered text. Streaming entries grow while chunks arrive. */
   text: string;
   /** False while chunks are still arriving, so a renderer can show a caret. */
@@ -141,6 +151,14 @@ export interface ReplySource {
    * does not compose its own context leaves this undefined.
    */
   describeContext?(): string;
+  /**
+   * The tools as declared, in the shape a trajectory records them.
+   *
+   * Optional for the same reason `describeContext` is: a source that declares
+   * nothing has nothing to report, and an export then simply omits the field
+   * the format already makes optional.
+   */
+  toolDefinitions?(): ReadonlyArray<Record<string, unknown>>;
   /**
    * Yield the reply to `prompt` in chunks. Rendering appends each chunk as it
    * arrives, so a slow source shows partial text rather than nothing.
@@ -346,7 +364,7 @@ export class CoderSession {
   }
 
   notice(text: string): void {
-    this.entries.push({ role: "notice", text, settled: true });
+    this.entries.push({ role: "notice", text, settled: true, at: Date.now() });
     this.emit();
   }
 
@@ -371,7 +389,7 @@ export class CoderSession {
     // shows it as a notice, and sends nothing. A reader checking what the model
     // was told should not have to change what the model was told to find out.
     if (/^\/system\s*$/.test(prompt.trim())) {
-      this.entries.push({ role: "you", text: prompt, settled: true });
+      this.entries.push({ role: "you", text: prompt, settled: true, at: Date.now() });
       const context = this.source.describeContext?.();
       this.notice(
         context === undefined
@@ -382,9 +400,31 @@ export class CoderSession {
       return;
     }
 
+    // `/export` is not a turn either: it writes what has already happened.
+    if (/^\/export\s*$/.test(prompt.trim())) {
+      this.entries.push({ role: "you", text: prompt, settled: true, at: Date.now() });
+      try {
+        const written = exportTrajectory(this.snapshot(), {
+          model: this.source.model,
+          toolDefinitions: this.source.toolDefinitions?.(),
+          version: VERSION,
+        });
+        this.notice(
+          `Exported ${String(written.steps)} step${written.steps === 1 ? "" : "s"} as ATIF to ${written.path}` +
+            (written.copied ? " (path copied to the clipboard)." : "."),
+        );
+      } catch (cause) {
+        this.notice(
+          `The export could not be written: ${cause instanceof Error ? cause.message : String(cause)}`,
+        );
+      }
+      this.emit();
+      return;
+    }
+
     const delegate = parseDelegateCommand(prompt);
     if (delegate !== undefined) {
-      this.entries.push({ role: "you", text: prompt, settled: true });
+      this.entries.push({ role: "you", text: prompt, settled: true, at: Date.now() });
       this.startDelegation(delegate.count, delegate.prompt, delegate.description);
       this.emit();
       return;
@@ -392,11 +432,11 @@ export class CoderSession {
 
     if (this.controller !== undefined) return;
 
-    this.entries.push({ role: "you", text: prompt, settled: true });
+    this.entries.push({ role: "you", text: prompt, settled: true, at: Date.now() });
     // An empty assistant entry from the start, so the interface shows a caret
     // rather than nothing while the first chunk is in flight. It is withdrawn
     // if the turn opens with reasoning or a tool call instead of text.
-    const opening: CoderEntry = { role: "assistant", text: "", settled: false };
+    const opening: CoderEntry = { role: "assistant", text: "", settled: false, at: Date.now() };
     this.entries.push(opening);
 
     /** The entry each streaming chunk kind is currently appending to. */
@@ -427,7 +467,7 @@ export class CoderSession {
           if (text === undefined) {
             settle(reasoning);
             reasoning = undefined;
-            text = { role: "assistant", text: "", settled: false };
+            text = { role: "assistant", text: "", settled: false, at: Date.now() };
             this.entries.push(text);
           }
           text.text += chunk.value;
@@ -436,7 +476,7 @@ export class CoderSession {
             if (text === opening) withdrawOpening();
             settle(text);
             text = undefined;
-            reasoning = { role: "reasoning", text: "", settled: false };
+            reasoning = { role: "reasoning", text: "", settled: false, at: Date.now() };
             this.entries.push(reasoning);
           }
           reasoning.text += chunk.value;
@@ -450,6 +490,7 @@ export class CoderSession {
             role: "tool",
             text: chunk.name,
             settled: false,
+            at: Date.now(),
             tool: {
               callId: chunk.callId,
               name: chunk.name,
@@ -481,7 +522,7 @@ export class CoderSession {
         this.entries.splice(this.entries.indexOf(text), 1);
         text = undefined;
       }
-      this.entries.push({ role: "notice", text: message, settled: true });
+      this.entries.push({ role: "notice", text: message, settled: true, at: Date.now() });
     } finally {
       for (const entry of this.entries) {
         if (entry.settled) continue;
