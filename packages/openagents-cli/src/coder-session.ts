@@ -38,6 +38,19 @@ export type ReplyChunk =
       readonly arguments: string;
     }
   | {
+      /**
+       * What the turn cost, reported once at the end of it.
+       *
+       * A turn may take several LLM calls -- a model that asks for tools and
+       * then answers -- so this is their total, with the count, rather than the
+       * last call's figures presented as the turn's.
+       */
+      readonly type: "usage";
+      readonly promptTokens?: number | undefined;
+      readonly completionTokens?: number | undefined;
+      readonly calls?: number | undefined;
+    }
+  | {
       readonly type: "tool_result";
       readonly callId: string;
       readonly output: string | undefined;
@@ -52,6 +65,14 @@ export interface CoderToolCall {
   output: string | undefined;
   error: string | undefined;
   status: "running" | "succeeded" | "failed";
+}
+
+/** What a turn cost, on the entry that closed it. */
+export interface CoderMetrics {
+  readonly promptTokens?: number | undefined;
+  readonly completionTokens?: number | undefined;
+  /** How many LLM calls the figures aggregate. */
+  readonly calls?: number | undefined;
 }
 
 /** One entry in the transcript. */
@@ -71,6 +92,8 @@ export interface CoderEntry {
   settled: boolean;
   /** Present on a `tool` entry only. */
   readonly tool?: CoderToolCall;
+  /** Set on the entry a turn ended on, when the source reported the cost. */
+  metrics?: CoderMetrics;
 }
 
 /** Everything a renderer needs. No renderer reads anything else. */
@@ -118,6 +141,14 @@ export interface CoderDelegation {
 export interface ReplySource {
   /** The label the status line shows for the reply source. */
   readonly model: string;
+  /**
+   * The model's identifier, when it differs from the label above.
+   *
+   * `model` is written for a narrow status bar. A record has to name something
+   * a reader could run again, so an export prefers this and falls back to the
+   * label when a source has only one name for itself.
+   */
+  readonly modelId?: string | undefined;
   /**
    * What this source may still spend, already formatted for the status line,
    * or undefined for a source that meters nothing. Read on every snapshot, so
@@ -405,7 +436,7 @@ export class CoderSession {
       this.entries.push({ role: "you", text: prompt, settled: true, at: Date.now() });
       try {
         const written = exportTrajectory(this.snapshot(), {
-          model: this.source.model,
+          model: this.source.modelId ?? this.source.model,
           toolDefinitions: this.source.toolDefinitions?.(),
           version: VERSION,
         });
@@ -500,6 +531,18 @@ export class CoderSession {
               status: "running",
             },
           });
+        } else if (chunk.type === "usage") {
+          // Onto the entry the turn ended on, which is the step a reader of the
+          // trajectory would attribute the cost to. `calls` says how many LLM
+          // calls it aggregates, so a turn that used tools is not read as one.
+          const closing = text ?? reasoning ?? this.entries.at(-1);
+          if (closing !== undefined) {
+            closing.metrics = {
+              promptTokens: chunk.promptTokens,
+              completionTokens: chunk.completionTokens,
+              calls: chunk.calls,
+            };
+          }
         } else {
           this.applyToolResult(chunk);
         }

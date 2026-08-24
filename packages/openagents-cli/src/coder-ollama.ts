@@ -143,6 +143,16 @@ export class OllamaReplySource implements ReplySource {
     return `Ollama ${this.modelName}`;
   }
 
+  /**
+   * The identifier, as against `model`, which is the label a status line shows.
+   *
+   * A record has to name the model a reader could run again. "Ollama qwen3.8"
+   * is for a narrow bar; `qwen3.8:27b-mtp-q8_0` is the thing itself.
+   */
+  get modelId(): string {
+    return this.modelName;
+  }
+
   constructor(options: OllamaOptions) {
     this.client = new Ollama({ host: options.host ?? DEFAULT_HOST });
     this.modelName = options.model;
@@ -200,6 +210,10 @@ export class OllamaReplySource implements ReplySource {
     // A turn is a loop, not a single call: the model may answer, or it may ask
     // for tools and then answer once it has seen what they returned. The
     // ceiling is what stops a model that only ever delegates.
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let llmCalls = 0;
+
     for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
       if (signal.aborted) return;
 
@@ -252,7 +266,15 @@ export class OllamaReplySource implements ReplySource {
           const toolCalls = chunk.message.tool_calls;
           if (Array.isArray(toolCalls)) calls.push(...toolCalls);
 
-          if (chunk.done) break;
+          if (chunk.done) {
+            // The counts ride on the final chunk of each round, so they are
+            // summed across the rounds a turn took rather than reported from
+            // the last one.
+            promptTokens += chunk.prompt_eval_count ?? 0;
+            completionTokens += chunk.eval_count ?? 0;
+            llmCalls += 1;
+            break;
+          }
         }
       } finally {
         signal.removeEventListener("abort", onAbort);
@@ -268,7 +290,10 @@ export class OllamaReplySource implements ReplySource {
         ...(calls.length === 0 ? {} : { tool_calls: calls }),
       });
 
-      if (calls.length === 0) return;
+      if (calls.length === 0) {
+        yield { type: "usage", promptTokens, completionTokens, calls: llmCalls };
+        return;
+      }
 
       for (const call of calls) {
         if (signal.aborted) return;
@@ -282,6 +307,7 @@ export class OllamaReplySource implements ReplySource {
       type: "text",
       value: `\n\nStopped after ${String(MAX_TOOL_STEPS)} rounds of tool calls without an answer.`,
     };
+    yield { type: "usage", promptTokens, completionTokens, calls: llmCalls };
   }
 
   /**

@@ -392,3 +392,21 @@ describe("the /export command", () => {
     if (written !== undefined) rmSync(written, { force: true });
   });
 });
+
+describe("a turn's cost", () => {
+  it("lands on the entry the turn ended on", async () => {
+    const session = new CoderSession(
+      source([
+        { type: "text", value: "answer" },
+        { type: "usage", promptTokens: 12, completionTokens: 34, calls: 2 },
+      ]),
+      "repo",
+      "main",
+    );
+
+    await session.submit("go");
+
+    const assistant = session.snapshot().entries.find((entry) => entry.role === "assistant");
+    expect(assistant?.metrics).toEqual({ promptTokens: 12, completionTokens: 34, calls: 2 });
+  });
+});

@@ -183,6 +183,37 @@ describe("exporting a conversation as ATIF", () => {
     expect(document["steps"]).toHaveLength(1);
   });
 
+
+  it("records what a turn cost, and how many calls that was", () => {
+    const { document } = write([
+      entry({ role: "you", text: "ask" }),
+      entry({
+        role: "assistant",
+        text: "answer",
+        metrics: { promptTokens: 2334, completionTokens: 114, calls: 2 },
+      }),
+    ]);
+
+    const steps = document["steps"] as ReadonlyArray<Record<string, unknown>>;
+    expect(steps[1]).toMatchObject({
+      metrics: { prompt_tokens: 2334, completion_tokens: 114 },
+      // A turn that asked for a tool and then answered is two calls, not one.
+      llm_call_count: 2,
+    });
+    expect(document["final_metrics"]).toMatchObject({
+      total_prompt_tokens: 2334,
+      total_completion_tokens: 114,
+      total_steps: 2,
+    });
+  });
+
+  it("reports no totals rather than zero when nothing measured any", () => {
+    const { document } = write([entry({ role: "assistant", text: "answer" })]);
+
+    // A total of 0 on a session that never measured would be a measurement.
+    expect(document["final_metrics"]).toEqual({ total_steps: 1 });
+  });
+
   it("writes one file per export, named so they sort by time", () => {
     const { directory } = write([entry({ role: "you", text: "one" })]);
 

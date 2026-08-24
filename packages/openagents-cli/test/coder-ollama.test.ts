@@ -70,10 +70,13 @@ describe("an ollama reply", () => {
 
     const chunks = await collect(source, "hi");
 
-    expect(chunks).toEqual([
+    // Every turn closes with what it cost, so the text chunks are read apart
+    // from the usage chunk that trails them.
+    expect(chunks.filter((piece) => piece.type !== "usage")).toEqual([
       { type: "reasoning", value: "weighing it" },
       { type: "text", value: "Hello" },
     ]);
+    expect(chunks.at(-1)).toMatchObject({ type: "usage" });
     expect(stub.requests[0]).not.toHaveProperty("tools");
   });
 });
@@ -115,7 +118,8 @@ describe("an ollama turn that calls a tool", () => {
     // The call and its result share an id, which is how a renderer pairs them.
     expect(result).toMatchObject({ callId: (call as { callId: string }).callId });
     // The turn continued rather than ending on the tool result.
-    expect(chunks.at(-1)).toEqual({ type: "text", value: "They said PONG." });
+    const spoken = chunks.filter((piece) => piece.type !== "usage");
+    expect(spoken.at(-1)).toEqual({ type: "text", value: "They said PONG." });
 
     // The tool was declared, and the second round carried the exchange back.
     expect(stub.requests[0]).toHaveProperty("tools");
@@ -127,6 +131,33 @@ describe("an ollama turn that calls a tool", () => {
       "tool",
     ]);
     expect(messages.at(-1)).toMatchObject({ content: "child 1 said PONG", tool_name: "delegate" });
+  });
+
+
+  it("reports the turn's cost, summed over the rounds it took", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const { source } = sourceWith([
+      [
+        chunk({
+          content: "",
+          tool_calls: [{ function: { name: "delegate", arguments: { prompt: "go" } } }],
+        }),
+        { message: {}, done: true, prompt_eval_count: 100, eval_count: 10 },
+      ],
+      [{ message: { content: "done" }, done: true, prompt_eval_count: 200, eval_count: 20 }],
+    ] as never);
+    source.useTools([delegate(calls)]);
+
+    const chunks = await collect(source, "delegate this");
+
+    // Two LLM calls in one turn: the counts are their total, not the last
+    // round's presented as the turn's.
+    expect(chunks.at(-1)).toEqual({
+      type: "usage",
+      promptTokens: 300,
+      completionTokens: 30,
+      calls: 2,
+    });
   });
 
   it("reports a tool that throws instead of ending the turn", async () => {
@@ -146,7 +177,10 @@ describe("an ollama turn that calls a tool", () => {
       error: "the fleet is full",
       output: "the fleet is full",
     });
-    expect(chunks.at(-1)).toEqual({ type: "text", value: "It failed." });
+    expect(chunks.filter((piece) => piece.type !== "usage").at(-1)).toEqual({
+      type: "text",
+      value: "It failed.",
+    });
   });
 
   it("tells the model when it asks for a tool the session does not have", async () => {
@@ -175,8 +209,9 @@ describe("an ollama turn that calls a tool", () => {
 
     // Six rounds, then a sentence saying why it stopped.
     expect(stub.chat).toHaveBeenCalledTimes(6);
-    expect(chunks.at(-1)).toMatchObject({ type: "text" });
-    expect((chunks.at(-1) as { value: string }).value).toContain("Stopped after 6 rounds");
+    const spoken = chunks.filter((piece) => piece.type !== "usage");
+    expect(spoken.at(-1)).toMatchObject({ type: "text" });
+    expect((spoken.at(-1) as { value: string }).value).toContain("Stopped after 6 rounds");
   });
 });
 

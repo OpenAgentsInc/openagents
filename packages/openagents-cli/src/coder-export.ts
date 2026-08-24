@@ -44,6 +44,8 @@ interface AtifStep {
   message: string;
   model_name?: string;
   reasoning_content?: string;
+  metrics?: { prompt_tokens?: number; completion_tokens?: number };
+  llm_call_count?: number;
   tool_calls?: ReadonlyArray<{
     tool_call_id: string;
     function_name: string;
@@ -51,6 +53,27 @@ interface AtifStep {
   }>;
   observation?: { results: ReadonlyArray<{ source_call_id: string; content: string }> };
 }
+
+/**
+ * The trajectory's totals.
+ *
+ * Summed from what the sources reported and omitted when nothing did: a
+ * `total_prompt_tokens` of 0 on a session that never measured any would be a
+ * measurement, and this has none to give.
+ */
+const sumMetrics = (
+  entries: ReadonlyArray<CoderEntry>,
+): { total_prompt_tokens?: number; total_completion_tokens?: number } => {
+  const measured = entries.filter((entry) => entry.metrics !== undefined);
+  if (measured.length === 0) return {};
+  return {
+    total_prompt_tokens: measured.reduce((sum, entry) => sum + (entry.metrics?.promptTokens ?? 0), 0),
+    total_completion_tokens: measured.reduce(
+      (sum, entry) => sum + (entry.metrics?.completionTokens ?? 0),
+      0,
+    ),
+  };
+};
 
 export interface ExportedTrajectory {
   /** Where the file was written. */
@@ -87,6 +110,22 @@ const argumentsOf = (source: string): Record<string, unknown> => {
   }
 };
 
+/** A step's metrics, present only when the source reported any. */
+const metricsOf = (entry: CoderEntry): Partial<AtifStep> => {
+  const metrics = entry.metrics;
+  if (metrics === undefined) return {};
+  const figures = {
+    ...(metrics.promptTokens === undefined ? {} : { prompt_tokens: metrics.promptTokens }),
+    ...(metrics.completionTokens === undefined
+      ? {}
+      : { completion_tokens: metrics.completionTokens }),
+  };
+  return {
+    ...(Object.keys(figures).length === 0 ? {} : { metrics: figures }),
+    ...(metrics.calls === undefined ? {} : { llm_call_count: metrics.calls }),
+  };
+};
+
 /** Fold the transcript into ATIF steps. */
 const stepsOf = (entries: ReadonlyArray<CoderEntry>, model: string): ReadonlyArray<AtifStep> => {
   const steps: AtifStep[] = [];
@@ -99,7 +138,8 @@ const stepsOf = (entries: ReadonlyArray<CoderEntry>, model: string): ReadonlyArr
     if (entry.role === "notice") continue;
 
     if (entry.role === "reasoning") {
-      pendingReasoning = pendingReasoning === undefined ? entry.text : `${pendingReasoning}\n${entry.text}`;
+      pendingReasoning =
+        pendingReasoning === undefined ? entry.text : `${pendingReasoning}\n${entry.text}`;
       continue;
     }
 
@@ -124,6 +164,7 @@ const stepsOf = (entries: ReadonlyArray<CoderEntry>, model: string): ReadonlyArr
         observation: {
           results: [{ source_call_id: callId, content: error ?? output ?? "" }],
         },
+        ...metricsOf(entry),
       });
       pendingReasoning = undefined;
       continue;
@@ -140,6 +181,7 @@ const stepsOf = (entries: ReadonlyArray<CoderEntry>, model: string): ReadonlyArr
         message: entry.text,
         model_name: model,
         ...(pendingReasoning === undefined ? {} : { reasoning_content: pendingReasoning }),
+        ...metricsOf(entry),
       });
       pendingReasoning = undefined;
     }
@@ -212,7 +254,10 @@ export function exportTrajectory(
         : { tool_definitions: options.toolDefinitions }),
     },
     steps,
-    final_metrics: { total_steps: steps.length },
+    final_metrics: {
+      ...sumMetrics(snapshot.entries),
+      total_steps: steps.length,
+    },
     extra: {
       exporter: "openagents.coder.atif_export.v1",
       exported_at: at.toISOString(),
