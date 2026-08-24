@@ -135,6 +135,53 @@ describe("an ollama turn that calls a tool", () => {
   });
 
 
+
+  it("keeps the turn's reasoning on the transcript it sends back", async () => {
+    const { source, stub } = sourceWith([
+      [
+        chunk({ thinking: "I should read the file first." }),
+        chunk({
+          content: "",
+          tool_calls: [{ function: { name: "t", arguments: {} } }],
+        }),
+        chunk({}, true),
+      ],
+      [chunk({ content: "done" }, true)],
+    ]);
+    source.useTools([
+      { name: "t", description: "d", parameters: {}, run: () => Promise.resolve("ok") },
+    ]);
+
+    await collect(source, "go");
+
+    const messages = stub.requests[1]?.["messages"] as ReadonlyArray<Record<string, unknown>>;
+    const assistant = messages.find((message) => message["role"] === "assistant");
+
+    // Reasoning is part of the turn rather than decoration on it: a model that
+    // cannot see how it reached the last answer re-reasons its way there.
+    expect(assistant?.["thinking"]).toBe("I should read the file first.");
+  });
+
+  it("sends no thinking when the model produced none", async () => {
+    const { source, stub } = sourceWith([
+      [
+        chunk({ content: "", tool_calls: [{ function: { name: "t", arguments: {} } }] }),
+        chunk({}, true),
+      ],
+      [chunk({ content: "done" }, true)],
+    ]);
+    source.useTools([
+      { name: "t", description: "d", parameters: {}, run: () => Promise.resolve("ok") },
+    ]);
+
+    await collect(source, "go");
+
+    const messages = stub.requests[1]?.["messages"] as ReadonlyArray<Record<string, unknown>>;
+    expect(messages.find((message) => message["role"] === "assistant")).not.toHaveProperty(
+      "thinking",
+    );
+  });
+
   it("reports the turn's cost, summed over the rounds it took", async () => {
     const calls: Record<string, unknown>[] = [];
     const { source } = sourceWith([

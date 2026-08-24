@@ -403,6 +403,7 @@ export class OllamaReplySource implements ReplySource {
 
       const calls: OllamaToolCall[] = [];
       let assistant = "";
+      let reasoning = "";
 
       // The last round is answered without tools. Reaching the ceiling with the
       // tools still on the table produced a turn that stopped mid-work and said
@@ -451,6 +452,7 @@ export class OllamaReplySource implements ReplySource {
 
           const thinking = chunk.message.thinking;
           if (typeof thinking === "string" && thinking.length > 0) {
+            reasoning += thinking;
             yield { type: "reasoning", value: thinking };
           }
 
@@ -481,11 +483,16 @@ export class OllamaReplySource implements ReplySource {
 
       if (signal.aborted) return;
 
-      // Whatever the model said before asking is kept with the calls, so the
-      // next round sees its own turn as it happened.
+      // Whatever the model said before asking is kept with the calls, and so is
+      // what it thought. Reasoning is part of the turn, not decoration on it: a
+      // model that cannot see how it reached the last answer re-reasons its way
+      // there, and a transcript missing it is not the turn that happened. Only
+      // the deltas are discarded, and only because they are how the text
+      // arrived rather than what it is.
       this.transcript.push({
         role: "assistant",
         content: assistant,
+        ...(reasoning.length === 0 ? {} : { thinking: reasoning }),
         ...(calls.length === 0 ? {} : { tool_calls: calls }),
       });
 
