@@ -1127,6 +1127,8 @@ export function transientProviderFailure(message: string): boolean {
     "etimedout",
     "gateway timeout",
     "bad gateway",
+    "database is locked",
+    "sqlite_busy",
     "502",
     "503",
     "504",
