@@ -1,0 +1,3 @@
+The forge remembers every push.
+A plugin declares what it needs, and absence means denial.
+This file exists so file_stats has something to measure.

@@ -1,0 +1,33 @@
+# The guest-plugin workspace: the owned PDK and the plugins built on it.
+#
+# Deliberately separate from the repo-root Cloud workspace: guest crates
+# compile to `wasm32-unknown-unknown` artifacts that are checked in beside
+# their manifests, and the monorepo's native builds must not pull them in.
+#
+# Build every artifact from here:
+#
+#     cargo build --release --target wasm32-unknown-unknown
+#
+# Built with rustc 1.94.1. See each plugin's README for the copy-and-digest
+# step that follows a rebuild.
+
+[workspace]
+resolver = "2"
+members = ["pdk", "word-stats", "file-stats"]
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+openagents-pdk = { path = "pdk" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Small artifacts: the .wasm files are checked in, so size is a review cost.
+[profile.release]
+opt-level = "z"
+lto = true
+panic = "abort"
+codegen-units = 1
+strip = true

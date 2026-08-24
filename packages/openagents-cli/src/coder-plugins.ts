@@ -1,65 +1,64 @@
 /**
- * The demo WASM plugin host for `openagents coder`.
+ * The WASM plugin host for `openagents coder`.
  *
- * This is the one-off walking demo ahead of the plugin walking skeleton
- * (OpenAgentsInc/openagents#26): load a manifest, verify the artifact digest,
- * instantiate a pure-compute WASM module, call `handle_packet(bytes) -> bytes`
- * under a timeout, and surface the whole thing to the model as a session
- * tool. `docs/plugins/2026-08-24-coder-plugin-demo-shape.md` records what the
- * real skeleton keeps and what it replaces.
+ * The walking skeleton for OpenAgentsInc/openagents#26: load a manifest,
+ * verify the artifact digest, prove by inspection that the module asks for
+ * exactly the capabilities its manifest declares, and invoke
+ * `handle_packet(bytes) -> bytes` through the engine seam under the
+ * declared limits. `docs/plugins/2026-08-24-coder-plugin-demo-shape.md`
+ * records the demo this grew from.
  *
- * The contract, in miniature:
+ * The contract:
  *
- * - **Manifest first.** Identity, artifact digest, typed input and output
- *   schemas, and capability declarations. Absence of a capability means
- *   denial; this demo host accepts only the empty declaration — no mounts,
- *   no hosts — because it implements no host imports at all.
+ * - **Manifest first.** Identity, artifact digest pin, the `packet-v0` ABI
+ *   declaration, typed input and output schemas, and capability
+ *   declarations. Absence of a capability means denial.
  * - **Digest before load.** The artifact's SHA-256 is compared to the
  *   manifest's pin before the module is compiled. A mismatch is a refusal,
  *   not a warning.
- * - **Pure compute only.** The module's import list must be empty. A module
- *   that asks for imports is refused by inspection, before instantiation, so
- *   the sandbox is a property of what was loaded rather than a hope about
- *   what it does.
- * - **Timeout by termination.** A WASM call is synchronous and cannot be
- *   preempted in-process, so every invocation runs in a `worker_threads`
- *   worker the host terminates when the manifest's bound expires. A runaway
- *   guest costs its own worker and nothing else.
+ * - **Imports must be declared.** A module's import list must be covered by
+ *   the capabilities its manifest declares: nothing for pure compute, and
+ *   exactly `openagents.read_file` when the manifest declares read-only
+ *   mounts. Anything else is refused by inspection, before instantiation,
+ *   so the sandbox is a property of what was loaded rather than a hope
+ *   about what it does.
+ * - **Mounts are read-only and confined.** A declared mount resolves to a
+ *   real directory at load; at invocation the engine's `read_file` import
+ *   canonicalizes every path, refuses absolute paths, `..` escapes, and
+ *   symlinks, and bounds the bytes per file.
+ * - **Limits are the engine's job.** Timeout by termination, cancellation
+ *   the same way. See {@link PluginEngine} in `coder-plugin-engine.ts`.
  * - **Typed refusals both ways.** The host refuses with `{code, reason}`;
  *   the guest returns `{"refusal": {...}}` inside its output packet. Both
- *   read as text to the model, which can act on a refusal and cannot act on
- *   a turn that died.
+ *   read as text to the model, which can act on a refusal and cannot act
+ *   on a turn that died.
  */
 
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { Worker } from "node:worker_threads";
 
+import {
+  defaultEngine,
+  isRefusal,
+  refuse,
+  type PluginEngine,
+  type PluginRefusal,
+} from "./coder-plugin-engine.js";
 import type { CoderTool } from "./coder-tools.js";
 
-/** Why the host would not do what was asked. Never thrown; always returned. */
-export interface PluginRefusal {
-  readonly code:
-    | "manifest_unreadable"
-    | "manifest_invalid"
-    | "artifact_unreadable"
-    | "digest_mismatch"
-    | "capabilities_unsupported"
-    | "imports_declared"
-    | "exports_missing"
-    | "not_wasm"
-    | "timeout"
-    | "trap"
-    | "bad_packet";
-  readonly reason: string;
-}
+export { isRefusal, type PluginEngine, type PluginRefusal } from "./coder-plugin-engine.js";
 
-export const isRefusal = (value: unknown): value is PluginRefusal =>
-  typeof value === "object" &&
-  value !== null &&
-  typeof (value as PluginRefusal).code === "string" &&
-  typeof (value as PluginRefusal).reason === "string";
+/** The one packet ABI this host speaks. The manifest must declare it. */
+export const SUPPORTED_ABI = "packet-v0";
+
+/** A read-only directory grant, as the manifest declares it. */
+export interface PluginMount {
+  /** Directory path, resolved relative to the manifest's directory. */
+  readonly path: string;
+  /** Only `true` is accepted; a writable mount is refused, not downgraded. */
+  readonly readonly: true;
+}
 
 /** The manifest fields this host reads. The file may carry more. */
 export interface PluginManifest {
@@ -67,13 +66,13 @@ export interface PluginManifest {
   readonly version: string;
   readonly description: string;
   readonly artifact: { readonly path: string; readonly digest: string };
-  readonly abi: { readonly entry: string; readonly alloc: string };
+  readonly abi: { readonly kind: string; readonly entry: string; readonly alloc: string };
   readonly interface: {
     readonly input: Record<string, unknown>;
     readonly output: Record<string, unknown>;
   };
   readonly capabilities: {
-    readonly mounts: ReadonlyArray<unknown>;
+    readonly mounts: ReadonlyArray<PluginMount>;
     readonly hosts: ReadonlyArray<unknown>;
     readonly timeout_ms: number;
   };
@@ -86,25 +85,32 @@ export interface LoadedPlugin {
   readonly wasm: Uint8Array;
   /** The verified digest, `sha256:<hex>`, for receipts and notices. */
   readonly digest: string;
+  /** Declared mounts, resolved to realpath'd absolute directory roots. */
+  readonly mounts: ReadonlyArray<string>;
 }
 
 /** Ceiling on the manifest's own timeout, so a manifest cannot ask for an hour. */
 const TIMEOUT_CEILING_MS = 30_000;
 
+/** Per-file byte bound for reads through a mount. */
+export const MOUNT_FILE_LIMIT = 1_048_576;
+
 /** How much plugin output the model is shown. */
 const PLUGIN_OUTPUT_LIMIT = 16_000;
 
-const refuse = (code: PluginRefusal["code"], reason: string): PluginRefusal => ({ code, reason });
-
 /**
  * Load a plugin from its manifest: parse, validate, verify the digest, and
- * prove by inspection that the module is pure compute with the declared ABI.
+ * prove by inspection that the module's imports are covered by its declared
+ * capabilities.
  *
- * Everything that can be checked before the first invocation is checked here,
- * so `/plugin load` either says exactly what is wrong or hands back a plugin
- * whose next failure can only be about the packet.
+ * Everything that can be checked before the first invocation is checked
+ * here, so `/plugin load` either says exactly what is wrong or hands back a
+ * plugin whose next failure can only be about the packet.
  */
-export function loadPluginFromManifest(manifestPath: string): LoadedPlugin | PluginRefusal {
+export function loadPluginFromManifest(
+  manifestPath: string,
+  engine: PluginEngine = defaultEngine,
+): LoadedPlugin | PluginRefusal {
   let raw: string;
   try {
     raw = readFileSync(manifestPath, "utf8");
@@ -122,18 +128,33 @@ export function loadPluginFromManifest(manifestPath: string): LoadedPlugin | Plu
   const manifest = validateManifest(parsed);
   if (isRefusal(manifest)) return manifest;
 
-  // This host implements no imports, so the only capability set it can
-  // enforce is the empty one. Declared-but-denied, never declared-and-ignored.
-  if (manifest.capabilities.mounts.length > 0 || manifest.capabilities.hosts.length > 0) {
+  // The only host capability that exists is the read-only mount. Anything
+  // else is declared-but-denied, never declared-and-ignored.
+  if (manifest.capabilities.hosts.length > 0) {
     return refuse(
       "capabilities_unsupported",
-      "this host runs pure computation only: the manifest declares mounts or hosts, " +
-        "and there are no host imports to grant them through",
+      "the manifest declares network hosts, and this host has no network capability to grant",
     );
   }
 
+  const manifestDir = dirname(manifestPath);
+  const mounts: string[] = [];
+  for (const mount of manifest.capabilities.mounts) {
+    const declared = resolve(manifestDir, mount.path);
+    let root: string;
+    try {
+      root = realpathSync(declared);
+      if (!statSync(root).isDirectory()) {
+        return refuse("mount_invalid", `mount \`${mount.path}\` is not a directory`);
+      }
+    } catch {
+      return refuse("mount_invalid", `mount \`${mount.path}\` does not resolve to a readable directory`);
+    }
+    mounts.push(root);
+  }
+
   let wasm: Uint8Array<ArrayBuffer>;
-  const artifactPath = resolve(dirname(manifestPath), manifest.artifact.path);
+  const artifactPath = resolve(manifestDir, manifest.artifact.path);
   try {
     // Copied out of the Buffer pool so the bytes sit on their own
     // ArrayBuffer, which both the compiler and the worker transfer want.
@@ -151,30 +172,32 @@ export function loadPluginFromManifest(manifestPath: string): LoadedPlugin | Plu
     );
   }
 
-  let module: WebAssembly.Module;
-  try {
-    module = new WebAssembly.Module(wasm);
-  } catch (cause) {
-    return refuse("not_wasm", cause instanceof Error ? cause.message : String(cause));
-  }
+  const shape = engine.inspect(wasm);
+  if (isRefusal(shape)) return shape;
 
-  const imports = WebAssembly.Module.imports(module);
-  if (imports.length > 0) {
-    const named = imports.map((entry) => `${entry.module}.${entry.name}`).join(", ");
+  // Every import must be granted by a declared capability. Mounts grant
+  // exactly one: the read_file capability import.
+  const granted = new Set(mounts.length > 0 ? ["openagents.read_file"] : []);
+  const undeclared = shape.imports.filter((name) => !granted.has(name));
+  if (undeclared.length > 0) {
+    const grantHint =
+      mounts.length > 0
+        ? "the declared mounts grant only `openagents.read_file`"
+        : "the manifest declares no capabilities, so the module may import nothing";
     return refuse(
-      "imports_declared",
-      `the module asks for host imports (${named}); this host instantiates with none`,
+      "imports_undeclared",
+      `the module asks for host imports its manifest does not declare (${undeclared.join(", ")}); ${grantHint}`,
     );
   }
 
-  const exports = new Set(WebAssembly.Module.exports(module).map((entry) => entry.name));
+  const exports = new Set(shape.exports);
   for (const name of [manifest.abi.entry, manifest.abi.alloc, "memory"]) {
     if (!exports.has(name)) {
       return refuse("exports_missing", `the module does not export \`${name}\``);
     }
   }
 
-  return { manifest, wasm, digest };
+  return { manifest, wasm, digest, mounts };
 }
 
 function validateManifest(value: unknown): PluginManifest | PluginRefusal {
@@ -208,10 +231,17 @@ function validateManifest(value: unknown): PluginManifest | PluginRefusal {
   if (
     typeof abi !== "object" ||
     abi === null ||
+    typeof abi["kind"] !== "string" ||
     typeof abi["entry"] !== "string" ||
     typeof abi["alloc"] !== "string"
   ) {
-    return bad("`abi` (`entry` and `alloc` export names)");
+    return bad("`abi` (`kind`, `entry`, and `alloc`)");
+  }
+  if (abi["kind"] !== SUPPORTED_ABI) {
+    return refuse(
+      "abi_unsupported",
+      `the manifest declares abi \`${abi["kind"]}\` and this host speaks \`${SUPPORTED_ABI}\` only`,
+    );
   }
 
   const iface = record["interface"] as Record<string, unknown> | undefined;
@@ -238,18 +268,40 @@ function validateManifest(value: unknown): PluginManifest | PluginRefusal {
     return bad("`capabilities` (`mounts`, `hosts`, positive `timeout_ms`)");
   }
 
+  const mounts: PluginMount[] = [];
+  for (const entry of capabilities["mounts"]) {
+    const mount = entry as Record<string, unknown> | null;
+    if (
+      typeof mount !== "object" ||
+      mount === null ||
+      typeof mount["path"] !== "string" ||
+      mount["path"].length === 0
+    ) {
+      return bad("`capabilities.mounts[]` (each mount needs a `path`)");
+    }
+    if (mount["readonly"] !== true) {
+      // Writable mounts are a capability this host does not have. Refusing
+      // here keeps "declared means enforced" honest.
+      return refuse(
+        "capabilities_unsupported",
+        `mount \`${mount["path"]}\` is not marked \`"readonly": true\`; only read-only mounts exist`,
+      );
+    }
+    mounts.push({ path: mount["path"], readonly: true });
+  }
+
   return {
     name,
     version,
     description,
     artifact: { path: artifact["path"], digest: artifact["digest"] },
-    abi: { entry: abi["entry"], alloc: abi["alloc"] },
+    abi: { kind: abi["kind"], entry: abi["entry"], alloc: abi["alloc"] },
     interface: {
       input: iface["input"] as Record<string, unknown>,
       output: iface["output"] as Record<string, unknown>,
     },
     capabilities: {
-      mounts: capabilities["mounts"],
+      mounts,
       hosts: capabilities["hosts"],
       timeout_ms: Math.min(capabilities["timeout_ms"], TIMEOUT_CEILING_MS),
     },
@@ -257,102 +309,39 @@ function validateManifest(value: unknown): PluginManifest | PluginRefusal {
 }
 
 /**
- * The invocation worker, as source.
- *
- * A string rather than a file because the worker is part of this module's
- * contract, and a path into `dist/` breaks the moment tests run from source.
- * The worker instantiates the already-verified bytes with an empty import
- * object, copies the packet in through the guest's allocator, calls the entry,
- * and posts the output packet back. Anything the guest does wrong — a trap, an
- * out-of-range packet — comes back as a message, and anything it does forever
- * is ended by the host's timer terminating the whole worker.
- */
-const INVOKE_WORKER = `
-const { parentPort, workerData } = require("node:worker_threads");
-(async () => {
-  const { wasm, input, entry, alloc } = workerData;
-  try {
-    const { instance } = await WebAssembly.instantiate(wasm, {});
-    const call = instance.exports[entry];
-    const reserve = instance.exports[alloc];
-    const memory = instance.exports.memory;
-    const ptr = reserve(input.length);
-    new Uint8Array(memory.buffer).set(input, ptr);
-    const packed = call(ptr, input.length);
-    const outPtr = Number(BigInt(packed) >> 32n);
-    const outLen = Number(BigInt(packed) & 0xffffffffn);
-    // Re-read the buffer: the call may have grown memory, detaching the old view.
-    const view = new Uint8Array(memory.buffer);
-    if (outPtr + outLen > view.length) {
-      parentPort.postMessage({ trap: "the output packet points outside guest memory" });
-      return;
-    }
-    parentPort.postMessage({ output: view.slice(outPtr, outPtr + outLen) });
-  } catch (cause) {
-    parentPort.postMessage({ trap: cause instanceof Error ? cause.message : String(cause) });
-  }
-})();
-`;
-
-/**
  * Call the plugin once: packet bytes in, packet bytes out, or a refusal.
- *
- * One worker per invocation. That costs a few milliseconds of instantiation
- * and buys the two properties the contract cares about: the timeout is
- * enforceable against a guest that never returns, and no state survives from
- * one call to the next, so every invocation runs on memory the previous one
- * cannot have corrupted.
+ * The engine owns instantiation, the capability imports, and the limits.
  */
 export function invokePlugin(
   plugin: LoadedPlugin,
   input: Uint8Array,
-  options?: { readonly timeoutMs?: number | undefined },
+  options?: {
+    readonly timeoutMs?: number | undefined;
+    readonly signal?: AbortSignal | undefined;
+    readonly engine?: PluginEngine | undefined;
+  },
 ): Promise<Uint8Array | PluginRefusal> {
-  const timeoutMs = options?.timeoutMs ?? plugin.manifest.capabilities.timeout_ms;
-
-  return new Promise((settle) => {
-    const worker = new Worker(INVOKE_WORKER, {
-      eval: true,
-      workerData: {
-        wasm: plugin.wasm,
-        input,
-        entry: plugin.manifest.abi.entry,
-        alloc: plugin.manifest.abi.alloc,
-      },
-    });
-
-    let done = false;
-    const finish = (outcome: Uint8Array | PluginRefusal) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      void worker.terminate();
-      settle(outcome);
-    };
-
-    const timer = setTimeout(() => {
-      finish(
-        refuse(
-          "timeout",
-          `the plugin did not answer within ${String(timeoutMs)}ms, the bound its manifest declares, ` +
-            "and its worker was terminated",
-        ),
-      );
-    }, timeoutMs);
-
-    worker.on("message", (message: { output?: Uint8Array; trap?: string }) => {
-      if (message.output !== undefined) finish(new Uint8Array(message.output));
-      else finish(refuse("trap", message.trap ?? "the plugin trapped without a message"));
-    });
-    worker.on("error", (cause) => {
-      finish(refuse("trap", cause.message));
-    });
-    worker.on("exit", (code) => {
-      if (!done && code !== 0)
-        finish(refuse("trap", `the plugin worker exited with code ${String(code)}`));
-    });
+  const engine = options?.engine ?? defaultEngine;
+  return engine.invoke({
+    wasm: plugin.wasm,
+    entry: plugin.manifest.abi.entry,
+    alloc: plugin.manifest.abi.alloc,
+    input,
+    timeoutMs: options?.timeoutMs ?? plugin.manifest.capabilities.timeout_ms,
+    mounts: plugin.mounts,
+    mountFileLimit: MOUNT_FILE_LIMIT,
+    signal: options?.signal,
   });
 }
+
+/** One sentence describing what the plugin can reach, for the model. */
+const reachDescription = (plugin: LoadedPlugin): string =>
+  plugin.mounts.length > 0
+    ? `It runs sandboxed with read-only access to ${String(plugin.mounts.length)} mounted ` +
+      "director" +
+      (plugin.mounts.length === 1 ? "y" : "ies") +
+      "; no writes, no network, no environment access."
+    : "It runs sandboxed pure computation: no file, network, or environment access.";
 
 /**
  * The tool a loaded plugin materializes for the session.
@@ -363,20 +352,19 @@ export function invokePlugin(
  * plugin, output packet back as text — and every host refusal is a sentence
  * the model can act on rather than an exception the turn dies of.
  */
-export function pluginTool(plugin: LoadedPlugin): CoderTool {
+export function pluginTool(plugin: LoadedPlugin, engine?: PluginEngine): CoderTool {
   const { manifest } = plugin;
   return {
     name: manifest.name,
     description:
       `${manifest.description}\n\n` +
       `Experimental WASM plugin \`${manifest.name}\` v${manifest.version}, loaded for this ` +
-      `session only (${plugin.digest.slice(0, 19)}…). It runs sandboxed pure computation: no ` +
-      "file, network, or environment access. The result is a JSON object with either `ok` or " +
-      "`refusal`.",
+      `session only (${plugin.digest.slice(0, 19)}…). ${reachDescription(plugin)} The result ` +
+      "is a JSON object with either `ok` or `refusal`.",
     parameters: manifest.interface.input,
-    run: async (args) => {
+    run: async (args, signal) => {
       const packet = new TextEncoder().encode(JSON.stringify(args));
-      const outcome = await invokePlugin(plugin, packet);
+      const outcome = await invokePlugin(plugin, packet, { signal, engine });
       if (isRefusal(outcome)) {
         return `The plugin refused (${outcome.code}): ${outcome.reason}`;
       }
@@ -441,9 +429,13 @@ export function describeLoad(outcome: LoadedPlugin | PluginRefusal): string {
     return `Plugin not loaded (${outcome.code}): ${outcome.reason}`;
   }
   const { manifest } = outcome;
+  const reach =
+    outcome.mounts.length > 0
+      ? `${String(outcome.mounts.length)} read-only mount${outcome.mounts.length === 1 ? "" : "s"}`
+      : "pure compute";
   return (
     `Loaded plugin \`${manifest.name}\` v${manifest.version} — digest verified ` +
-    `(${outcome.digest.slice(0, 19)}…, ${String(outcome.wasm.length)} bytes, pure compute, ` +
+    `(${outcome.digest.slice(0, 19)}…, ${String(outcome.wasm.length)} bytes, ${reach}, ` +
     `${String(manifest.capabilities.timeout_ms)}ms bound). The \`${manifest.name}\` tool is ` +
     "declared to the model for this session. Experimental."
   );

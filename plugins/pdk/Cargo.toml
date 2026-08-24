@@ -1,0 +1,10 @@
+[package]
+name = "openagents-pdk"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "The owned Rust PDK for OpenAgents WASM plugins: the packet-v0 ABI, serde packets, typed refusals, and the host capability imports."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }

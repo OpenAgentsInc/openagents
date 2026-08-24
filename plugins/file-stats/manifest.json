@@ -1,0 +1,59 @@
+{
+  "manifest_version": 1,
+  "name": "file_stats",
+  "version": "0.1.0",
+  "author": "OpenAgents",
+  "description": "Compute statistics for one file inside the plugin's declared read-only mount: byte count, whether it is UTF-8 text, and its line count. It cannot write, list directories, or reach outside the mount. Use it when asked to measure a mounted file.",
+  "artifact": {
+    "path": "file_stats.wasm",
+    "digest": "sha256:1f44edeadd163efd8a6ee73eb89725a94e93c1fbabb66791ce02bbc6bcb3be7d"
+  },
+  "abi": {
+    "kind": "packet-v0",
+    "entry": "handle_packet",
+    "alloc": "packet_alloc"
+  },
+  "interface": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path of the file to measure, relative to the plugin's mount root."
+        }
+      },
+      "required": ["path"],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string" },
+            "bytes": { "type": "integer" },
+            "utf8": { "type": "boolean" },
+            "lines": { "type": "integer" }
+          }
+        },
+        "refusal": {
+          "type": "object",
+          "properties": {
+            "code": { "type": "string" },
+            "reason": { "type": "string" }
+          },
+          "required": ["code", "reason"]
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "mounts": [{ "path": "data", "readonly": true }],
+    "hosts": [],
+    "timeout_ms": 2000,
+    "memory_max_mib": 64
+  },
+  "price_msats": null,
+  "license": "Apache-2.0"
+}

@@ -1,12 +1,12 @@
 {
   "manifest_version": 1,
   "name": "word_stats",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "OpenAgents",
   "description": "Compute statistics for a piece of text: byte, character, word, and line counts, the longest word, and the most frequent word. Pure computation with no file, network, or environment access. Use it when asked to measure or summarize the size or composition of text.",
   "artifact": {
     "path": "word_stats.wasm",
-    "digest": "sha256:7c724f993da2d9de7c1256b020e2c80e6b998cf3c484d123efeebbab8afc9947"
+    "digest": "sha256:340fc35fec83dfb17d48c12544fbe5d12de5d5689d8dd1ea4745c4dc55a3c33f"
   },
   "abi": {
     "kind": "packet-v0",
