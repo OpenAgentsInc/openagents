@@ -1001,9 +1001,12 @@ describe("the delegate preview inline under the tool call", () => {
       registry.recordToolUse(id, { toolName: "shell", target: "mix test" });
     });
 
-    const boxed = rows.filter((row) => /[╭╰]/.test(row) || row.includes(" │ "));
-    expect(boxed).toHaveLength(5); // top border, three activity rows, floor.
-    const text = boxed.join("\n");
+    const delegateRow = rows.findIndex((row) => row.includes("delegate"));
+    expect(delegateRow).toBeGreaterThan(0);
+    const childRow = delegateRow + 1;
+    const previews = rows.slice(childRow + 1, childRow + 4);
+    expect(previews).toHaveLength(3);
+    const text = previews.join("\n");
     expect(text).toContain("shell(mix test)");
     expect(text).toContain("edit(src/b.ts)");
     expect(text).toContain("bash(pnpm test)");
@@ -1012,7 +1015,7 @@ describe("the delegate preview inline under the tool call", () => {
     expect(text).not.toContain("grep(needle)");
 
     // Newest last, so reading down is reading forward in time.
-    const at = (phrase: string) => boxed.findIndex((row) => row.includes(phrase));
+    const at = (phrase: string) => previews.findIndex((row) => row.includes(phrase));
     expect(at("bash(pnpm test)")).toBeLessThan(at("edit(src/b.ts)"));
     expect(at("edit(src/b.ts)")).toBeLessThan(at("shell(mix test)"));
   });
@@ -1022,6 +1025,6 @@ describe("the delegate preview inline under the tool call", () => {
       registerChild(registry);
     });
 
-    expect(rows.join("\n")).not.toContain("╭");
+    expect(rows.join("\n")).not.toContain(" → ");
   });
 });

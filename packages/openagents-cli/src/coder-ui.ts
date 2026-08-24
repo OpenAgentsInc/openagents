@@ -470,28 +470,25 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
                 ...tasks.filter((task) => task.status !== "running" && task.status !== "pending"),
               ].slice(0, FLEET_ROWS_MAX);
 
-        for (const child of fleetRows(shown, Math.max(20, width - 9))) {
+        const childRows = fleetRows(shown, Math.max(20, width - 9));
+        for (const [index, task] of shown.entries()) {
+          const child = childRows[index];
+          if (child === undefined) continue;
           const color = fleetColor(child.status);
           rows.push(
             `${DIM}${child.branch}${RESET} ${color}${child.mark}${RESET} ${DIM}${child.text}${RESET}`,
           );
+
+          // Three lines of the child's own latest activity, nested under it.
+          const activities = latestActivities([task], PREVIEW_ROWS);
+          for (const activity of activities) {
+            const text = truncate(activityPhrase(activity), Math.max(4, width - 12));
+            rows.push(`${DIM}  → ${text}${RESET}`);
+          }
         }
 
         const hidden = tasks.length - shown.length;
         if (hidden > 0) rows.push(`${DIM}   +${String(hidden)} more${RESET}`);
-
-        const activities = latestActivities(tasks, PREVIEW_ROWS);
-        if (activities.length > 0) {
-          const boxWidth = Math.max(10, width - 4);
-          const frame = `${DIM}╭${"─".repeat(boxWidth + 2)}╮${RESET}`;
-          const floor = `${DIM}╰${"─".repeat(boxWidth + 2)}╯${RESET}`;
-          const lines = activities.map((activity) => {
-            const text = truncate(activityPhrase(activity), boxWidth);
-            const pad = " ".repeat(Math.max(0, boxWidth - [...text].length));
-            return `${DIM}│${RESET} ${text}${pad} ${DIM}│${RESET}`;
-          });
-          rows.push(frame, ...lines, floor);
-        }
       }
 
       if (open) {
