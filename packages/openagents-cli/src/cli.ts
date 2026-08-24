@@ -1723,6 +1723,19 @@ const delegateCommand = Command.make(
               }
             });
 
+        // Ctrl+C has to reach the children. Without this the command exits and
+        // leaves every child agent running, spending, with nothing left
+        // holding a handle on them. The handler is prepended and repeated on
+        // exit because the runtime installs a signal handler of its own that
+        // tears the process down, and whichever ends the process first must not
+        // be the one that skips the children.
+        const onSignal = () => {
+          registry.stopAll();
+        };
+        process.prependListener("SIGINT", onSignal);
+        process.prependListener("SIGTERM", onSignal);
+        process.prependListener("exit", onSignal);
+
         try {
           return await Promise.all(
             Array.from({ length: count }, () =>
@@ -1730,6 +1743,9 @@ const delegateCommand = Command.make(
             ),
           );
         } finally {
+          process.off("SIGINT", onSignal);
+          process.off("SIGTERM", onSignal);
+          process.off("exit", onSignal);
           unsubscribe();
         }
       });

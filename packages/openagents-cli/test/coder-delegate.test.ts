@@ -325,7 +325,7 @@ describe("fleet rendering", () => {
     expect(rows[0]?.branch).toBe("└─");
     expect(rows[0]?.mark).toBe("◐");
     expect(rows[0]?.text).toContain("bash(pnpm test)");
-    expect(rows[0]?.text).toContain("8.2k");
+    expect(rows[0]?.text).toContain("8.2k tokens");
   });
 
   it("replaces the counters with a total once the child is done", () => {
@@ -335,6 +335,28 @@ describe("fleet rendering", () => {
     if (done === undefined) return;
     expect(taskActivity(done)).toBe("Done (1 tool use · 8.2k tokens · 3s)");
     expect(fleetPhrase([done])).toBe("1 done · 1 unread");
+  });
+
+  it("leaves usage out of a row until the harness has reported some", () => {
+    const fresh = new CoderTaskRegistry();
+    const started = fresh.register(
+      {
+        id: "d2",
+        description: "read a file",
+        prompt: "read it",
+        agent: "opencode",
+        model: "fake/model",
+        cwd: "/tmp",
+        background: true,
+      },
+      0,
+    );
+    fresh.start(started.id, new AbortController());
+    fresh.recordToolUse(started.id, { toolName: "read", target: "x.ts" });
+
+    const row = fleetRows(fresh.list(), 80)[0];
+    expect(row?.text).toContain("1 tool");
+    expect(row?.text).not.toContain(" 0");
   });
 
   it("shortens token counts", () => {

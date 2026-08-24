@@ -436,7 +436,17 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       }
       rows.push(`  ${justify(activity, where, inner)}`);
       rows.push(rule);
-      rows.push(`  › ${composer}`);
+      // The composer shows its tail, never more characters than the row holds.
+      // A row written past the last column makes the terminal wrap it, which
+      // pushes the rule and the hints down a line and leaves the text they used
+      // to occupy on screen with nothing to erase it.
+      const composerRoom = Math.max(4, width - 4);
+      const typed = [...composer];
+      const visible =
+        typed.length > composerRoom
+          ? `…${typed.slice(typed.length - composerRoom + 1).join("")}`
+          : composer;
+      rows.push(`  › ${visible}`);
       rows.push(rule);
 
       // Every key named here does something in the state it is named in, and
@@ -451,14 +461,17 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         if (composer.length > 0) keys.push("esc to clear");
         else keys.push("ctrl+d to quit");
       }
+      // Stopping the fleet comes before the conveniences, because the row is
+      // clipped from the end and this hint only appears while children are
+      // spending. Offered last, it was dropped exactly when it applied.
+      if (snapshot.tasks.some((task) => task.status === "running")) {
+        keys.push("ctrl+x to stop agents");
+      }
       // Only when there is another model to switch to, and only while nothing
       // is running: a turn already accepted keeps the backend it named.
       if (session.canCycleBackend && !snapshot.running) keys.push("tab to switch model");
       if (lines.length > transcriptRows) keys.push("pgup/pgdn to scroll");
       if (focusedTool(snapshot) !== undefined) keys.push("ctrl+o to expand");
-      if (snapshot.tasks.some((task) => task.status === "running")) {
-        keys.push("ctrl+x to stop agents");
-      }
 
       // `this run` is not decoration. The count is this process's, and a
       // source that is not the thread — the stand-in behind `--offline` — has
@@ -473,7 +486,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
             : `${DIM}${replies}${RESET}`;
       rows.push(`  ${hints(keys, counter, inner)}`);
 
-      paint(rows, transcriptRows + fleet.length + 3, 4 + composer.length + 1);
+      paint(rows, transcriptRows + fleet.length + 3, 4 + [...visible].length + 1);
     };
 
     /**

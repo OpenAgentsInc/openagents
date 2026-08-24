@@ -29,7 +29,8 @@
  * shape then breaks one small tested function rather than the scheduler.
  */
 
-import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createWriteStream, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -248,6 +249,83 @@ export interface OpencodeHarnessOptions {
   readonly env?: Readonly<Record<string, string | undefined>> | undefined;
 }
 
+/** How long a stopped child has to leave on its own before it is killed. */
+const KILL_GRACE_MS = 3_000;
+
+/**
+ * Signal a child and everything it started.
+ *
+ * The negative pid is the process group, which is why the child is spawned
+ * detached. It falls back to the child alone when the group is already gone,
+ * because a group whose last member exited between the two calls raises rather
+ * than reporting nothing to do.
+ */
+function killGroup(child: ChildProcess, signal: "SIGTERM" | "SIGKILL"): void {
+  const pid = child.pid;
+  if (pid === undefined) return;
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      child.kill(signal);
+    } catch {
+      // Already gone, which is the outcome that was wanted.
+    }
+  }
+}
+
+/**
+ * Every process descended from `root`, deepest last.
+ *
+ * A harness is free to put its own tool processes in groups of their own, and
+ * opencode does: signalling the group takes out opencode and leaves whatever a
+ * bash tool started running under pid 1. The tree has to be read while the
+ * parent is still alive, because reparenting erases the link.
+ */
+function descendants(root: number): ReadonlyArray<number> {
+  let listing: string;
+  try {
+    listing = execFileSync("ps", ["-A", "-o", "pid=,ppid="], { encoding: "utf8" });
+  } catch {
+    return [];
+  }
+
+  const byParent = new Map<number, Array<number>>();
+  for (const line of listing.split("\n")) {
+    const [pid, parent] = line.trim().split(/\s+/).map(Number);
+    if (pid === undefined || parent === undefined) continue;
+    if (!Number.isInteger(pid) || !Number.isInteger(parent)) continue;
+    const siblings = byParent.get(parent);
+    if (siblings === undefined) byParent.set(parent, [pid]);
+    else siblings.push(pid);
+  }
+
+  const found: Array<number> = [];
+  const walk = (pid: number): void => {
+    for (const child of byParent.get(pid) ?? []) {
+      if (found.includes(child)) continue;
+      found.push(child);
+      walk(child);
+    }
+  };
+  walk(root);
+  return found;
+}
+
+/** Signal a child, its group, and every process either of them started. */
+function killTree(child: ChildProcess, signal: "SIGTERM" | "SIGKILL"): void {
+  const pid = child.pid;
+  const tree = pid === undefined ? [] : descendants(pid);
+  killGroup(child, signal);
+  for (const descendant of tree) {
+    try {
+      process.kill(descendant, signal);
+    } catch {
+      // Already gone, which is the outcome that was wanted.
+    }
+  }
+}
+
 /** Runs children as `opencode run --format json` subprocesses. */
 export class OpencodeHarness implements DelegateHarness {
   readonly agent = "opencode";
@@ -276,6 +354,11 @@ export class OpencodeHarness implements DelegateHarness {
           : { OPENCODE_CONFIG: this.options.configPath }),
       },
       stdio: ["ignore", "pipe", "pipe"],
+      // Its own process group, so stopping a child stops what the child
+      // started. A coding agent shells out, and killing only the agent leaves
+      // its build or its `sleep` running with nothing left to stop it — with a
+      // fan-out of fifteen, every cancelled fleet would leave a pile behind.
+      detached: true,
     });
 
     // The transcript is written as the events arrive, not at the end, so a
@@ -294,7 +377,12 @@ export class OpencodeHarness implements DelegateHarness {
     let failure: string | undefined;
 
     const onAbort = () => {
-      child.kill("SIGTERM");
+      killTree(child, "SIGTERM");
+      // A harness that ignores the term, or a tool that will not stop, still
+      // has to go: the reader asked for the child to end, not to be asked.
+      const grace = setTimeout(() => killTree(child, "SIGKILL"), KILL_GRACE_MS);
+      grace.unref();
+      child.once("close", () => clearTimeout(grace));
     };
     signal.addEventListener("abort", onAbort, { once: true });
 

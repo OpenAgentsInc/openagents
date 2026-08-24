@@ -310,4 +310,29 @@ describe("runCoderUi", () => {
     expect(status).not.toContain("a-long-repository-name");
     expect(status).toContain("$2.00");
   });
+
+  it("keeps a long typed line inside the row, showing its tail", async () => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    const session = new CoderSession(source([]), "repo", "main");
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    // A row written past the last column is wrapped by the terminal, which
+    // shifts every row below it and leaves text nothing will erase.
+    stdin.emit("data", `${"a".repeat(120)}END`);
+    const rows = screen(stdout.written);
+    // Ctrl+D quits only from an empty composer, so clear it first.
+    stdin.emit("data", "\x1b");
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    stdin.emit("data", "\x04");
+    await running;
+
+    const composer = rows.find((row) => row.startsWith("  ›")) ?? "";
+    expect([...composer].length).toBeLessThanOrEqual(stdout.columns);
+    expect(composer.endsWith("END")).toBe(true);
+    expect(composer).toContain("…");
+  });
 });

@@ -102,8 +102,13 @@ export function taskActivity(task: CoderTask): string {
 export function taskCounters(task: CoderTask): string {
   if (isTerminal(task.status)) return "";
   const tools = task.progress.toolUseCount;
-  if (tools === 0 && task.progress.tokenCount === 0) return "";
-  return `${String(tools)} ${tools === 1 ? "tool" : "tools"} · ${formatTokens(task.progress.tokenCount)}`;
+  const tokens = task.progress.tokenCount;
+  const parts: Array<string> = [];
+  if (tools > 0) parts.push(`${String(tools)} ${tools === 1 ? "tool" : "tools"}`);
+  // Usage is omitted until the harness has reported some, because a bare `0`
+  // in a counter column reads as a missing number rather than as "not yet".
+  if (tokens > 0) parts.push(`${formatTokens(tokens)} tokens`);
+  return parts.join(" · ");
 }
 
 /**
