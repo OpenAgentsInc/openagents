@@ -14,6 +14,7 @@
  * reads, and a function that runs on this machine.
  */
 
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -286,6 +287,42 @@ const refusalFor = (args: ReadonlyArray<string>): string | undefined => {
 };
 
 /**
+ * The command tree, read out of the CLI's own completion script.
+ *
+ * A session that did not know `issue list` existed spent two turns finding out:
+ * `issue --help`, then `issue list --help`, then the command it wanted. Two
+ * round-trips of a model's time to learn two words.
+ *
+ * So the tree goes in the tool description. It is not written down here -- it
+ * is asked for once, from the binary that is running, through the completion
+ * script that already enumerates every command and subcommand. One process at
+ * session start, and it cannot describe a CLI other than this one.
+ *
+ * Flags are still left to `--help`. There are hundreds and they change; the
+ * command names are few and are what the round-trips were being spent on.
+ */
+const commandTree = (entry: string): string | undefined => {
+  const shown = spawnSync(process.execPath, [entry, "--completions", "zsh"], {
+    encoding: "utf8",
+    timeout: 10_000,
+  });
+  if (shown.status !== 0 || typeof shown.stdout !== "string") return undefined;
+
+  const lines: string[] = [];
+  // Each `commands=( … )` block belongs to the function it sits in, and that
+  // function is named for the command whose subcommands it lists.
+  for (const match of shown.stdout.matchAll(/_openagents(_[a-z_]*)?\(\)\s*\{([\s\S]*?)\n\}/g)) {
+    const owner = (match[1] ?? "").replaceAll("_", " ").trim();
+    const block = /commands=\(([\s\S]*?)\n\s*\)/.exec(match[2] ?? "");
+    if (block === null) continue;
+    const names = [...(block[1] ?? "").matchAll(/'([a-z][a-z0-9-]*):/g)].map((found) => found[1]);
+    if (names.length === 0) continue;
+    lines.push(owner.length === 0 ? `openagents ${names.join(" | ")}` : `  ${owner} ${names.join(" | ")}`);
+  }
+  return lines.length === 0 ? undefined : lines.join("\n");
+};
+
+/**
  * The openagents tool: run the CLI this session is part of.
  *
  * The same binary that is running answers, found through `process.argv` rather
@@ -295,16 +332,24 @@ const refusalFor = (args: ReadonlyArray<string>): string | undefined => {
  * can go stale.
  */
 export function openagentsTool(): CoderTool {
+  const entry = cliEntry();
+  const tree = entry === undefined ? undefined : commandTree(entry);
   return {
     name: "openagents",
     description:
       "Run the OpenAgents CLI: issues, projects, repositories, the forum, authentication, and " +
       "any API route through `api`. Pass the arguments after `openagents` as a list, without " +
-      "`openagents` itself. Discover what exists with `--help` on any command rather than " +
-      "guessing at flags, and add `--json` when you are going to read a field out of the " +
-      "answer. Reads are free; a write is visible to other people at once, so say what you are " +
-      "about to write before the first one. Read the `openagents-cli` skill for the auth model " +
-      "and what works with no credential.",
+      "`openagents` itself.\n\n" +
+      (tree === undefined ? "" : `Commands:\n${tree}\n\n`) +
+      "Run `<command> --help` when you need a flag you do not know; the commands above are the " +
+      "whole set, so you do not need to go looking for them.\n\n" +
+      "Read the plain output. It is what a person reads and it is small: a list of three issues " +
+      "is 442 bytes plain and 20,000 as JSON, because the JSON carries every issue's whole body. " +
+      "Add `--json` only when you need one field out of one record, and prefer a narrower " +
+      "command over a wider one you then have to read past.\n\n" +
+      "Reads are free; a write is visible to other people at once, so say what you are about to " +
+      "write before the first one. Read the `openagents-cli` skill for the auth model and what " +
+      "works with no credential.",
     parameters: {
       type: "object",
       properties: {
@@ -331,7 +376,6 @@ export function openagentsTool(): CoderTool {
       if (refusal !== undefined) return refusal;
 
       const { spawn } = await import("node:child_process");
-      const entry = cliEntry();
       if (entry === undefined) return "This session cannot find the CLI it is running from.";
 
       return await new Promise<string>((resolve) => {
@@ -373,9 +417,16 @@ export function openagentsTool(): CoderTool {
         });
 
         child.on("close", (code) => {
+          // The advice has to fit what was run. This used to say "or use
+          // --json" on every truncation, which for a list is the thing that
+          // caused it: three issues are 442 bytes plain and 20,000 as JSON,
+          // because the JSON carries every body.
+          const advice = args.includes("--json")
+            ? "drop --json and read the plain output, or ask for one record"
+            : "narrow it with a flag such as --limit, --label, or --state";
           const bounded =
             output.length > CLI_OUTPUT_LIMIT
-              ? `${output.slice(0, CLI_OUTPUT_LIMIT)}\n\n[truncated; narrow the command or use --json]`
+              ? `${output.slice(0, CLI_OUTPUT_LIMIT)}\n\n[The output was cut off here. Run it again and ${advice}; what you have above is incomplete and must not be summarized as if it were the whole answer.]`
               : output;
           const body = bounded.trim();
           // The exit code is reported on failure because it is what the CLI

@@ -9,17 +9,24 @@ You are running inside `openagents coder`, which is one subcommand of the
 `openagents` CLI. The `openagents` tool runs the rest of it. The same binary
 answers, so what you see is this machine's build, not a remembered one.
 
-## Find out what a command does by asking it
+## Finding a command, and reading its answer
 
-Every command documents itself. `openagents --help` lists the subcommands;
-`openagents <command> --help` gives one command's flags and arguments;
-`openagents <command> <subcommand> --help` goes a level deeper.
+The `openagents` tool's own description lists every command and subcommand,
+read from this binary. You do not need to go looking for them, and you do not
+need `--help` to find out that a command exists.
 
-Ask before you guess. This file deliberately does not list flags: a written
-copy of them goes stale the first time one changes, and the help output cannot.
+Use `<command> --help` for a flag you do not know. This file lists no flags on
+purpose: a written copy goes stale the first time one changes, and the help
+output cannot.
 
-Add `--json` to any command to get the response as JSON rather than as prose.
-Prefer it when you are going to read a field out of the answer.
+**Read the plain output.** It is what a person reads and it is small. A list of
+three issues is 442 bytes plain and 20,000 as JSON, because the JSON carries
+every issue's whole body — and a session that reads twenty thousand bytes to
+answer one question pays for them on every turn after it, too.
+
+Add `--json` only when you need one field out of one record. Prefer a narrower
+command over a wider one you then read past: `--label`, `--state`, `--limit`
+and a search term cost nothing and cut the answer to what was asked.
 
 ## What works with no credential
 

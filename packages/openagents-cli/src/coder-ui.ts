@@ -62,6 +62,14 @@ const RED = "\x1b[31m";
 const STATUS_ROWS = 1;
 const COMPOSER_ROWS = 3;
 /**
+ * One blank row between the transcript and the composer.
+ *
+ * The composer sat directly under the last line of the reply, so a rule was
+ * doing all the work of saying where reading stops and typing starts. A line of
+ * nothing does it better and costs one row.
+ */
+const SPACER_ROWS = 1;
+/**
  * Rows the fleet block may take before it scrolls internally.
  *
  * A fleet is a status display, not the content: a 30-way fan-out must not push
@@ -502,7 +510,10 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         paint(rows, rows.length, 1);
         return;
       }
-      const transcriptHeight = Math.max(1, height - STATUS_ROWS - COMPOSER_ROWS - 1);
+      const transcriptHeight = Math.max(
+        1,
+        height - STATUS_ROWS - COMPOSER_ROWS - SPACER_ROWS - 1,
+      );
 
       const fleet = fleetLines(snapshot, width);
       // The fleet takes its rows from the transcript, not from the chrome: the
@@ -522,9 +533,9 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       for (let row = 0; row < transcriptRows; row += 1) rows.push(lines[start + row] ?? "");
       rows.push(...fleet);
 
-      // Bottom chrome, in the order a reader scans it: what the session is
-      // doing now, then where the typing goes, then what the keys do. The
-      // composer sits between two rules so it reads as its own region rather
+      // Bottom chrome, in the order a reader scans it: where the typing goes,
+      // what the session is doing, then what the keys do. The composer sits
+      // between a blank row and a rule so it reads as its own region rather
       // than as the last line of the transcript.
       const rule = `${DIM}${"─".repeat(Math.max(0, width))}${RESET}`;
       const inner = Math.max(10, width - 4);
@@ -555,7 +566,11 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         where = candidate;
         break;
       }
-      rows.push(`  ${justify(activity, where, inner)}`);
+      // A blank row, then the composer, then what the session is doing. The
+      // status line reads as a caption under the thing it describes: the reader
+      // looks at where they type, and the state of the session is the next
+      // thing down rather than something to scan back up for.
+      rows.push("");
       rows.push(rule);
       // The composer shows its tail, never more characters than the row holds.
       // A row written past the last column makes the terminal wrap it, which
@@ -568,6 +583,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
           ? `…${typed.slice(typed.length - composerRoom + 1).join("")}`
           : composer;
       rows.push(`  › ${visible}`);
+      rows.push(`  ${justify(activity, where, inner)}`);
       rows.push(rule);
 
       // Every key named here does something in the state it is named in, and
