@@ -66,6 +66,7 @@ import type { ChildGrant } from "./coder-child-gateway.js";
 import { merge } from "./coder-merge.js";
 import type { ReplyChunk, ReplySource } from "./coder-session.js";
 import type { CoderTool } from "./coder-tools.js";
+import type { TranscriptSink } from "./coder-transcript.js";
 
 const THREADS_PATH = "/api/v3/threads";
 
@@ -83,13 +84,27 @@ const MAX_TOOL_STEPS = 100;
 /** How much of one tool's output is kept on the transcript. */
 const TOOL_RESULT_KEPT = 4_000;
 
-/** A long tool result, kept at both ends, which is what it is read for. */
-const boundedResult = (output: string): string => {
-  if (output.length <= TOOL_RESULT_KEPT) return output;
-  const half = Math.floor(TOOL_RESULT_KEPT / 2);
-  const cut = output.length - TOOL_RESULT_KEPT;
+/**
+ * How much of one tool's output reaches the durable `tool.ran` event.
+ *
+ * A separate figure from `TOOL_RESULT_KEPT`, because they answer different
+ * questions. The 4,000 above is a context-budget decision made against a
+ * model's window: it is re-sent on every round of the turn. This one bounds a
+ * record written once, so it is set where every result a real session has
+ * produced fits whole — the largest measured was 8.4 KB — and only a
+ * pathological dump is cut, kept at both ends the same way.
+ */
+const EVENT_RESULT_KEPT = 64_000;
+
+/** A long tool output, kept at both ends, which is what it is read for. */
+const bounded = (output: string, keep: number): string => {
+  if (output.length <= keep) return output;
+  const half = Math.floor(keep / 2);
+  const cut = output.length - keep;
   return `${output.slice(0, half)}\n\n[${String(cut)} characters omitted from the middle; run it again more narrowly if you need them]\n\n${output.slice(-half)}`;
 };
+
+const boundedResult = (output: string): string => bounded(output, TOOL_RESULT_KEPT);
 
 /** What the thread may still spend, as the server last reported it. */
 export interface ThreadBudget {
@@ -238,6 +253,14 @@ export class ThreadReplySource implements ReplySource {
   private readonly transcript: WireMessage[] = [];
   private remaining: ThreadBudget;
   private tools: ReadonlyArray<CoderTool> = [];
+  /**
+   * Where the turn loop writes the durable transcript, when the session has
+   * one. Absent, nothing is recorded — the offline and local lanes never
+   * attach one — and every call below is a no-op through optional chaining.
+   */
+  private sink: TranscriptSink | undefined;
+  /** The running turn's token usage, accumulated across its model calls. */
+  private turnUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, calls: 0 };
   /** Set for the one round that must answer rather than call another tool. */
   private mustAnswer = false;
   /**
@@ -279,6 +302,19 @@ export class ThreadReplySource implements ReplySource {
    */
   useTools(tools: ReadonlyArray<CoderTool>): void {
     this.tools = tools;
+  }
+
+  /**
+   * Attach the writer that puts this session's turns on the server.
+   *
+   * Set after construction for the same reason `useTools` is: the writer needs
+   * the thread's id, so it cannot exist until the thread does, and the failure
+   * notice it surfaces needs the session, which is built later still. The
+   * server copy is the only durable copy — this process keeps no transcript
+   * file of its own.
+   */
+  useTranscript(sink: TranscriptSink): void {
+    this.sink = sink;
   }
 
   /**
@@ -342,7 +378,13 @@ export class ThreadReplySource implements ReplySource {
     // Per turn, not per session: a turn that had to answer without tools must
     // not leave the next one without them.
     this.mustAnswer = false;
+    this.turnUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, calls: 0 };
+    /** The answer so far, across steps, for the one `turn.assistant` event. */
+    let turnText = "";
+    /** How many tools this turn ran, reported on `turn.assistant`. */
+    let turnToolCalls = 0;
     this.transcript.push({ role: "user", content: prompt });
+    this.sink?.record("turn.user", { text: prompt });
 
     try {
       for (let step = 0; ; step += 1) {
@@ -350,22 +392,38 @@ export class ThreadReplySource implements ReplySource {
         // model is asked again.
         for (const said of this.steered.splice(0)) {
           this.transcript.push({ role: "user", content: said });
+          // Steered mid-turn rather than asked between turns, and the record
+          // says so, or a replay would show a question the answer ignores.
+          this.sink?.record("turn.user", { text: said, steered: true });
         }
 
         const calls: WireCall[] = [];
         let assistant = "";
+        let reasoning = "";
 
         for await (const chunk of this.stream(signal, calls)) {
           if (signal.aborted) break;
           if (chunk.type === "text") assistant += chunk.value;
+          if (chunk.type === "reasoning") reasoning += chunk.value;
           yield chunk;
         }
+
+        // One event per block, whole, never deltas. The proxy carries no
+        // reasoning today, so this records nothing against a live model; the
+        // day a `reasoning` chunk exists here, its record does too.
+        if (reasoning.length > 0) this.sink?.record("turn.reasoning", { text: reasoning });
 
         // Whatever the model said belongs to the thread even when the turn was
         // interrupted, or the next turn answers a question it cannot see it
         // half-answered.
-        if (assistant.length > 0) this.transcript.push({ role: "assistant", content: assistant });
-        if (signal.aborted || calls.length === 0) return;
+        if (assistant.length > 0) {
+          this.transcript.push({ role: "assistant", content: assistant });
+          turnText = turnText.length === 0 ? assistant : `${turnText}\n\n${assistant}`;
+        }
+        if (signal.aborted || calls.length === 0) {
+          this.recordAnswer(turnText, turnToolCalls, signal.aborted);
+          return;
+        }
 
         if (step >= MAX_TOOL_STEPS) {
           // Take the tools away for one more round rather than stopping on a
@@ -384,7 +442,11 @@ export class ThreadReplySource implements ReplySource {
         // Concurrently. A model asking for two tools in one turn is saying they do
         // not depend on each other, and running them in order anyway makes a fan-out
         // to two models cost the sum of both.
-        if (signal.aborted) return;
+        if (signal.aborted) {
+          this.recordAnswer(turnText, turnToolCalls, true);
+          return;
+        }
+        turnToolCalls += calls.length;
         yield* merge(calls.map((call) => this.invoke(call, signal)));
       }
     } finally {
@@ -395,6 +457,30 @@ export class ThreadReplySource implements ReplySource {
       // cut short.
       await this.refresh();
     }
+  }
+
+  /**
+   * Record the turn's answer, with what it cost.
+   *
+   * One event per turn, whatever the turn took to get there: several model
+   * calls, several tool rounds, one figure each. An interrupted turn is
+   * recorded too, marked as such, because whatever streamed before Escape was
+   * said and the next reader of this thread will be answered against it.
+   */
+  private recordAnswer(text: string, toolCalls: number, interrupted: boolean): void {
+    if (this.sink === undefined) return;
+    if (text.length === 0 && this.turnUsage.calls === 0) return;
+    this.sink.record("turn.assistant", {
+      text,
+      usage: {
+        prompt_tokens: this.turnUsage.promptTokens,
+        completion_tokens: this.turnUsage.completionTokens,
+        total_tokens: this.turnUsage.totalTokens,
+        calls: this.turnUsage.calls,
+      },
+      tool_calls: toolCalls,
+      ...(interrupted ? { interrupted: true } : {}),
+    });
   }
 
   /**
@@ -430,6 +516,20 @@ export class ThreadReplySource implements ReplySource {
       output: failure === undefined ? output : undefined,
       error: failure,
     };
+
+    // Call and result are one fact, so they are one event. The tool's name is
+    // its identity for later attribution — a plugin's tool carries the name it
+    // was declared under — and the result is bounded far above the model-wire
+    // bound, where every result a real session has produced is stored whole.
+    this.sink?.record("tool.ran", {
+      call_id: call.id,
+      tool: call.name,
+      arguments: bounded(call.args, EVENT_RESULT_KEPT),
+      status: failure === undefined ? "succeeded" : "failed",
+      ...(failure === undefined
+        ? { output: bounded(output, EVENT_RESULT_KEPT) }
+        : { error: bounded(failure, EVENT_RESULT_KEPT) }),
+    });
 
     this.transcript.push({
       role: "assistant",
@@ -561,6 +661,15 @@ export class ThreadReplySource implements ReplySource {
       calls: Math.max(0, this.remaining.calls - 1),
       totalTokens: Math.max(0, this.remaining.totalTokens - total),
       costMicrousd: this.remaining.costMicrousd,
+    };
+    // The same report feeds the turn's own tally, which `turn.assistant`
+    // carries: a turn is several calls, and the record holds their sum with
+    // the count rather than the last call's figures presented as the turn's.
+    this.turnUsage = {
+      promptTokens: this.turnUsage.promptTokens + number(usage["prompt_tokens"]),
+      completionTokens: this.turnUsage.completionTokens + number(usage["completion_tokens"]),
+      totalTokens: this.turnUsage.totalTokens + total,
+      calls: this.turnUsage.calls + 1,
     };
   }
 

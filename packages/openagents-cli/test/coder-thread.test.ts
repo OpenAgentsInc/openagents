@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ReplyChunk } from "../src/coder-session.js";
 import { openThread, ThreadUnavailable, type ThreadReplySource } from "../src/coder-thread.js";
+import { ThreadTranscriptWriter } from "../src/coder-transcript.js";
 
 const ORIGIN = "https://openagents.test";
 const ACCOUNT_TOKEN = "oa_pat_account";
@@ -399,5 +400,194 @@ describe("ThreadReplySource", () => {
     );
 
     await expect((await open()).revoke()).resolves.toBeUndefined();
+  });
+});
+
+/** A sink that just remembers, standing in for the writer. */
+const recorder = () => {
+  const events: Array<{ eventType: string; payload: Record<string, unknown> }> = [];
+  return {
+    events,
+    record(eventType: string, payload: Record<string, unknown>) {
+      events.push({ eventType, payload });
+    },
+  };
+};
+
+const withTool = (run: (args: Record<string, unknown>) => Promise<string>) => ({
+  name: "shell",
+  description: "run a command",
+  parameters: { type: "object" },
+  run,
+});
+
+describe("the thread's durable transcript", () => {
+  const TOOL_ROUND = [
+    `data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"shell","arguments":"{\\"command\\":\\"ls\\"}"}}]}}]}`,
+    `data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+    `data: {"choices":[],"usage":{"completion_tokens":5,"prompt_tokens":40,"total_tokens":45}}`,
+    `data: [DONE]`,
+    "",
+  ].join("\n\n");
+
+  const ANSWER_ROUND = [
+    `data: {"choices":[{"delta":{"content":"Two files."},"index":0}]}`,
+    `data: {"choices":[],"usage":{"completion_tokens":11,"prompt_tokens":60,"total_tokens":71}}`,
+    `data: [DONE]`,
+    "",
+  ].join("\n\n");
+
+  it("records the turn in order: what was asked, each tool run, the answer", async () => {
+    stub({ proxy: [sse([TOOL_ROUND]), sse([ANSWER_ROUND])] });
+    const source = await open();
+    const sink = recorder();
+    source.useTranscript(sink);
+    source.useTools([withTool(async () => "README.md\nsrc")]);
+
+    await chunks(source, "what is in this repo?");
+
+    expect(sink.events.map((event) => event.eventType)).toEqual([
+      "turn.user",
+      "tool.ran",
+      "turn.assistant",
+    ]);
+    expect(sink.events[0]?.payload).toEqual({ text: "what is in this repo?" });
+    expect(sink.events[1]?.payload).toEqual({
+      call_id: "call-1",
+      tool: "shell",
+      arguments: `{"command":"ls"}`,
+      status: "succeeded",
+      output: "README.md\nsrc",
+    });
+  });
+
+  it("records the answer with the turn's summed usage and its call count", async () => {
+    stub({ proxy: [sse([TOOL_ROUND]), sse([ANSWER_ROUND])] });
+    const source = await open();
+    const sink = recorder();
+    source.useTranscript(sink);
+    source.useTools([withTool(async () => "README.md\nsrc")]);
+
+    await chunks(source, "what is in this repo?");
+
+    const answer = sink.events.find((event) => event.eventType === "turn.assistant");
+    // The turn took two model calls; the record holds their sum with the
+    // count, not the last call's figures presented as the turn's.
+    expect(answer?.payload).toEqual({
+      text: "Two files.",
+      usage: { prompt_tokens: 100, completion_tokens: 16, total_tokens: 116, calls: 2 },
+      tool_calls: 1,
+    });
+  });
+
+  it("records a failed tool as one event carrying its error", async () => {
+    stub({ proxy: [sse([TOOL_ROUND]), sse([ANSWER_ROUND])] });
+    const source = await open();
+    const sink = recorder();
+    source.useTranscript(sink);
+    source.useTools([
+      withTool(async () => {
+        throw new Error("permission denied");
+      }),
+    ]);
+
+    await chunks(source, "try it");
+
+    const ran = sink.events.find((event) => event.eventType === "tool.ran");
+    expect(ran?.payload).toEqual({
+      call_id: "call-1",
+      tool: "shell",
+      arguments: `{"command":"ls"}`,
+      status: "failed",
+      error: "permission denied",
+    });
+  });
+
+  it("bounds a tool result on its way into the record", async () => {
+    stub({ proxy: [sse([TOOL_ROUND]), sse([ANSWER_ROUND])] });
+    const source = await open();
+    const sink = recorder();
+    source.useTranscript(sink);
+    source.useTools([withTool(async () => "x".repeat(200_000))]);
+
+    await chunks(source, "dump it");
+
+    const ran = sink.events.find((event) => event.eventType === "tool.ran");
+    const output = ran?.payload["output"] as string;
+    // Kept at both ends around a marker, and far above the model-wire bound,
+    // so every result a real session has produced is stored whole.
+    expect(output.length).toBeLessThan(70_000);
+    expect(output).toContain("characters omitted");
+  });
+
+  it("records a message steered into the running turn as the reader's", async () => {
+    stub({ proxy: [sse([TOOL_ROUND]), sse([ANSWER_ROUND])] });
+    const source = await open();
+    const sink = recorder();
+    source.useTranscript(sink);
+    source.useTools([
+      withTool(async () => {
+        source.steer("only the top level");
+        return "README.md\nsrc";
+      }),
+    ]);
+
+    await chunks(source, "list the files");
+
+    expect(sink.events.map((event) => event.eventType)).toEqual([
+      "turn.user",
+      "tool.ran",
+      "turn.user",
+      "turn.assistant",
+    ]);
+    expect(sink.events[2]?.payload).toEqual({ text: "only the top level", steered: true });
+  });
+
+  it("records nothing extra for a turn without tools", async () => {
+    stub({});
+    const source = await open();
+    const sink = recorder();
+    source.useTranscript(sink);
+
+    await chunks(source, "hello");
+
+    expect(sink.events.map((event) => event.eventType)).toEqual(["turn.user", "turn.assistant"]);
+    expect(sink.events[1]?.payload).toMatchObject({ text: "Hello! Nice", tool_calls: 0 });
+  });
+
+  it("still answers when every transcript post fails", async () => {
+    // The real writer against a server that refuses the events route: the
+    // turn loop must neither throw nor wait on it.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (target: URL | string, init?: RequestInit) => {
+        const url = typeof target === "string" ? target : target.toString();
+        if (url.endsWith("/events")) throw new Error("socket closed");
+        if (url.endsWith("/api/inference/proxy")) return sse([LIVE_SSE]);
+        if ((init?.method ?? "GET") === "POST") return json(201, CREATED);
+        return json(200, { thread: {}, grant: {} });
+      }),
+    );
+
+    const source = await openThread({
+      origin: ORIGIN,
+      token: ACCOUNT_TOKEN,
+      objective: "coder in repo on main",
+    });
+    const notices: string[] = [];
+    const writer = new ThreadTranscriptWriter({
+      origin: ORIGIN,
+      threadId: source.threadId,
+      token: ACCOUNT_TOKEN,
+      retryDelaysMs: [0, 0, 10],
+      onTrouble: (message) => {
+        notices.push(message);
+      },
+    });
+    source.useTranscript(writer);
+
+    expect(textOf(await chunks(source))).toBe("Hello! Nice");
+    await writer.close(100);
+    expect(notices).toHaveLength(1);
   });
 });

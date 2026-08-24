@@ -45,6 +45,7 @@ import {
   resolveOllamaModel,
 } from "./coder-ollama.js";
 import { openThread, ThreadUnavailable, type ThreadReplySource } from "./coder-thread.js";
+import { ThreadTranscriptWriter } from "./coder-transcript.js";
 import { delegateTool, openagentsTool, shellTool, skillTool } from "./coder-tools.js";
 import {
   describeLoad,
@@ -1903,6 +1904,25 @@ const coderCommand = Command.make(
         standingContext(skills.active(), process.cwd()),
       );
 
+      // The thread lane writes its transcript to the server as the turn loop
+      // runs — `POST /api/v3/threads/{id}/events`, on the account token that
+      // opened the thread. The server copy is the only durable copy; the
+      // offline, Ollama, and stand-in lanes keep no record and attach nothing.
+      // A failed post never reaches the turn loop: the writer queues, retries,
+      // and says so once on the status line.
+      const transcript =
+        thread !== undefined && Option.isSome(stored)
+          ? new ThreadTranscriptWriter({
+              origin: endpoint.origin,
+              threadId: thread.threadId,
+              token: Redacted.value(stored.value.token),
+              onTrouble: (message) => {
+                session.notice(message);
+              },
+            })
+          : undefined;
+      if (transcript !== undefined) thread?.useTranscript(transcript);
+
       // The model is told what it can do rather than the reader being asked to
       // remember a slash command. A turn that needs three agents asks for them
       // mid-sentence, and `/delegate` stays as the way to launch a fan-out
@@ -2002,6 +2022,9 @@ const coderCommand = Command.make(
           // expired an hour later, which is the ninth session refused for a
           // session nobody is in. A process killed outright still leaves it to
           // the server's expiry reap.
+          // Flush before revoking: revoking makes the thread terminal, and a
+          // terminal thread refuses the events that are still queued.
+          if (transcript !== undefined) await transcript.close();
           if (thread !== undefined) await thread.revoke();
           if (childThread?.kind === "opened") await childThread.thread.revoke();
           if (setup !== undefined) await setup.close();
