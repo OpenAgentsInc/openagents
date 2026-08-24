@@ -748,3 +748,30 @@ describe("typing while a turn is running", () => {
     await running;
   });
 });
+
+describe("reasoning in the transcript", () => {
+  it("renders the Markdown a model writes in it", async () => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    const session = new CoderSession(
+      source([{ type: "reasoning", value: "1. **#160** is the bug" }]),
+      "repo",
+      "main",
+    );
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    await session.submit("go");
+    const rows = screen(stdout.written).join("\n");
+
+    // Models write `**bold**` and numbered lists in their reasoning, and
+    // unrendered markup is harder to read than rendered markup in any style.
+    expect(rows).toContain("#160 is the bug");
+    expect(rows).not.toContain("**#160**");
+
+    stdin.emit("data", "\x04");
+    await running;
+  });
+});

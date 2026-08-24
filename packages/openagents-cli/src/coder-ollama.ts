@@ -55,25 +55,67 @@ export const discoverOllamaModel = async (
   host: string = DEFAULT_HOST,
   timeoutMs = 300,
 ): Promise<string | undefined> => {
-  const deadline = AbortSignal.timeout(timeoutMs);
+  return (await installedModels(host, timeoutMs))[0];
+};
+
+/**
+ * The installed models, most recently modified first.
+ *
+ * Shared by discovery and by resolution, so the two cannot disagree about what
+ * is on the machine.
+ */
+const installedModels = async (
+  host: string,
+  timeoutMs: number,
+): Promise<ReadonlyArray<string>> => {
   try {
-    const response = await fetch(new URL("/api/tags", host), { signal: deadline });
-    if (!response.ok) return undefined;
+    const response = await fetch(new URL("/api/tags", host), {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) return [];
     const body = (await response.json()) as {
       models?: ReadonlyArray<{ name?: unknown; modified_at?: unknown }>;
     };
     const models = (body.models ?? []).filter(
       (model): model is { name: string; modified_at?: string } => typeof model.name === "string",
     );
-    if (models.length === 0) return undefined;
-    // Sorting a fresh array, so nothing shared is mutated.
     // eslint-disable-next-line unicorn/no-array-sort -- the spread is the copy
-    return [...models].sort((left, right) =>
-      String(right.modified_at ?? "").localeCompare(String(left.modified_at ?? "")),
-    )[0]?.name;
+    return [...models]
+      .sort((left, right) =>
+        String(right.modified_at ?? "").localeCompare(String(left.modified_at ?? "")),
+      )
+      .map((model) => model.name);
   } catch {
-    return undefined;
+    return [];
   }
+};
+
+/**
+ * The installed model a name means, or undefined when none does.
+ *
+ * An Ollama name carries its size and quantisation after a colon —
+ * `qwen3.8:27b-mtp-q8_0` — and a reader naming the model they pulled says
+ * `qwen3.8`. Sending that unresolved gets `model not found` from a server that
+ * has the model, which reads as the model being missing.
+ *
+ * Exact first, so a full name is never reinterpreted. Then the family prefix,
+ * which is what a short name means. The most recently modified wins where
+ * several match, the same rule the default uses.
+ */
+export const resolveOllamaModel = async (
+  name: string,
+  host: string = DEFAULT_HOST,
+  timeoutMs = 2_000,
+): Promise<{ readonly model?: string; readonly installed: ReadonlyArray<string> }> => {
+  const installed = await installedModels(host, timeoutMs);
+  if (installed.includes(name)) return { model: name, installed };
+
+  // `qwen3.8` means `qwen3.8:…` and nothing else. A looser prefix would let it
+  // mean `qwen3.85:…`, which is a different model: running one because it
+  // shares a few characters with the one that was asked for is worse than
+  // saying nothing matched and listing what is there.
+  const family = installed.find((candidate) => candidate.startsWith(`${name}:`));
+  return { ...(family === undefined ? {} : { model: family }), installed };
 };
 
 /** True when `--model` names an Ollama source. */

@@ -353,10 +353,14 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         return toolRows(entry.tool, width, expanded.has(entry.tool.callId));
       }
       if (entry.text.length === 0 && !entry.settled) return ["…"];
-      // Reasoning is dim italic rather than Markdown. The styling already says
-      // what the text is, and emphasis nested inside italic reads worse than
-      // the source it came from.
-      if (entry.role === "reasoning") return wrapStyled(entry.text, width, `${DIM}${ITALIC}`);
+      // Reasoning is Markdown too, rendered inside dim italic. It was plain
+      // text on the theory that emphasis nested in italic reads worse than the
+      // source — but the source is what a reader actually got: models write
+      // `**#160**` and numbered lists in their reasoning, and unrendered
+      // markup is harder to read than rendered markup in any style.
+      if (entry.role === "reasoning") {
+        return renderMarkdown(entry.text, width, `${DIM}${ITALIC}`);
+      }
       if (entry.role === "assistant") return renderMarkdown(entry.text, width);
       return wrapStyled(entry.text, width, entry.role === "notice" ? DIM : "");
     };
@@ -681,7 +685,10 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       const prompt = composer;
       composer = "";
       anchor = undefined;
-      runningSince = Date.now();
+      // Only when a turn actually begins. Resetting on every submission made
+      // `/export` mid-turn put the elapsed clock back to zero, which reads as
+      // the turn having restarted when nothing happened to it at all.
+      if (!session.running) runningSince = Date.now();
       render();
 
       // The elapsed time has to advance between chunks, not only when one

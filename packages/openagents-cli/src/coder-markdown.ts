@@ -54,7 +54,18 @@ export function wrapStyled(text: string, width: number, style: string): Readonly
 }
 
 /** Render Markdown source as styled rows no wider than `width`. */
-export function renderMarkdown(text: string, width: number): ReadonlyArray<string> {
+export function renderMarkdown(
+  text: string,
+  width: number,
+  /**
+   * A style every row sits in, restored after each reset the markup emits.
+   *
+   * Without this a caller cannot render Markdown inside a style of its own:
+   * the first bold or code span ends with a reset, and everything after it on
+   * that row loses the dim or the italic the caller asked for.
+   */
+  base = "",
+): ReadonlyArray<string> {
   const rows: string[] = [];
   /** The fence marker that opened the current code block, if one is open. */
   let fence: string | undefined;
@@ -81,7 +92,10 @@ export function renderMarkdown(text: string, width: number): ReadonlyArray<strin
     rows.push(...blockRows(line, width));
   }
 
-  return rows;
+  if (base.length === 0) return rows;
+  // Reapplied after every reset the markup wrote, and opened again on each row,
+  // because a row is painted on its own and carries no style from the last.
+  return rows.map((row) => `${base}${row.replaceAll(RESET, `${RESET}${base}`)}${RESET}`);
 }
 
 /** One non-fenced source line as one or more rendered rows. */

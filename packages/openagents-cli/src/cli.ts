@@ -33,6 +33,7 @@ import {
   isOllamaModelFlag,
   OllamaReplySource,
   parseOllamaModelFlag,
+  resolveOllamaModel,
 } from "./coder-ollama.js";
 import { openThread, ThreadUnavailable, type ThreadReplySource } from "./coder-thread.js";
 import { delegateTool, openagentsTool, shellTool, skillTool } from "./coder-tools.js";
@@ -1686,8 +1687,34 @@ const coderCommand = Command.make(
         named === undefined && !offline ? yield* Effect.promise(() => discoverOllamaModel()) : undefined;
 
       const wantsOllama = named === undefined ? localModel !== undefined : isOllamaModelFlag(named);
-      const ollamaName =
-        named === undefined ? localModel : isOllamaModelFlag(named) ? parseOllamaModelFlag(named) : undefined;
+      const askedFor =
+        named === undefined
+          ? localModel
+          : isOllamaModelFlag(named)
+            ? parseOllamaModelFlag(named)
+            : undefined;
+
+      // A name is resolved against what is installed, so `ollama:qwen3.8`
+      // reaches `qwen3.8:27b-mtp-q8_0`. An Ollama name carries its size and
+      // quantisation after a colon, and a reader names the model they pulled;
+      // sending that unresolved gets `model not found` from a server that has
+      // it, which reads as the model being missing. The discovered default is
+      // already a real name and needs no round trip.
+      const resolved =
+        wantsOllama && askedFor !== undefined && named !== undefined
+          ? yield* Effect.promise(() => resolveOllamaModel(askedFor))
+          : undefined;
+
+      if (resolved !== undefined && resolved.model === undefined) {
+        return yield* new InputError({
+          message:
+            resolved.installed.length === 0
+              ? `No Ollama model matches ${askedFor}, and none are installed. Pull one with \`ollama pull\`.`
+              : `No Ollama model matches ${askedFor}. Installed: ${resolved.installed.join(", ")}.`,
+        });
+      }
+
+      const ollamaName = resolved?.model ?? askedFor;
 
       // Any other `--model` value still has to name a published backend. The
       // flag takes a string so an `ollama:` prefix can reach the local server,

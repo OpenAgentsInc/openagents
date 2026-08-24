@@ -4,6 +4,7 @@ import type { ReplyChunk } from "../src/coder-session.js";
 import type { CoderTool } from "../src/coder-tools.js";
 import {
   discoverOllamaModel,
+  resolveOllamaModel,
   isOllamaModelFlag,
   OllamaReplySource,
   parseOllamaModelFlag,
@@ -337,5 +338,54 @@ describe("finding a local model to default to", () => {
     // A machine with no Ollama on it is the common case, and it must cost the
     // session nothing but the deadline.
     await expect(discoverOllamaModel()).resolves.toBeUndefined();
+  });
+});
+
+describe("naming a model by the part a reader remembers", () => {
+  const serve = (names: ReadonlyArray<string>) =>
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          models: names.map((name, at) => ({
+            name,
+            modified_at: `2026-0${String(at + 1)}-01T00:00:00Z`,
+          })),
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("resolves a family name to the installed tag", async () => {
+    serve(["qwen3.8:27b-mtp-q8_0"]);
+
+    // An Ollama name carries its size and quantisation after a colon, and a
+    // reader names the model they pulled.
+    await expect(resolveOllamaModel("qwen3.8")).resolves.toMatchObject({
+      model: "qwen3.8:27b-mtp-q8_0",
+    });
+  });
+
+  it("takes a full name exactly, without reinterpreting it", async () => {
+    serve(["qwen3.8:27b-mtp-q8_0", "qwen3.8:7b"]);
+
+    await expect(resolveOllamaModel("qwen3.8:7b")).resolves.toMatchObject({ model: "qwen3.8:7b" });
+  });
+
+  it("does not let one family stand for another", async () => {
+    serve(["qwen3.85:7b"]);
+
+    // `qwen3.8` means `qwen3.8:…`, and must not mean `qwen3.85:…`.
+    const found = await resolveOllamaModel("qwen3.8");
+    expect(found.model).not.toBe("qwen3.85:7b");
+  });
+
+  it("reports what is installed when nothing matches", async () => {
+    serve(["llama3:8b"]);
+
+    await expect(resolveOllamaModel("qwen3.8")).resolves.toEqual({ installed: ["llama3:8b"] });
   });
 });
