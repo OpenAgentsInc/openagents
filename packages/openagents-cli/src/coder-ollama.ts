@@ -142,6 +142,7 @@ const systemPrompt = (tools: ReadonlyArray<CoderTool>): string => {
 
 export class OllamaReplySource implements ReplySource {
   private readonly client: Ollama;
+  private readonly host: string;
   private readonly modelName: string;
   private readonly transcript: WireMessage[] = [];
   private tools: ReadonlyArray<CoderTool> = [];
@@ -162,7 +163,8 @@ export class OllamaReplySource implements ReplySource {
   }
 
   constructor(options: OllamaOptions) {
-    this.client = new Ollama({ host: options.host ?? DEFAULT_HOST });
+    this.host = options.host ?? DEFAULT_HOST;
+    this.client = new Ollama({ host: this.host });
     this.modelName = options.model;
   }
 
@@ -206,7 +208,31 @@ export class OllamaReplySource implements ReplySource {
     }));
   }
 
+  /**
+   * The turn, with the endpoint named if the server stops answering.
+   *
+   * A local server that has stopped, or dropped the connection part way through
+   * a long turn, reports as `fetch failed` and nothing else. Which server and
+   * which model is the part a reader needs, and so is knowing the transcript
+   * survives.
+   */
   async *reply(prompt: string, signal: AbortSignal): AsyncIterable<ReplyChunk> {
+    try {
+      yield* this.turn(prompt, signal);
+    } catch (cause) {
+      // Neutral about the reason, because the reason follows: a refused
+      // connection and a model that does not exist are both reported here, and
+      // claiming the server is down when it answered would send a reader to
+      // check the wrong thing.
+      throw new Error(
+        `Ollama at ${this.host} could not answer for ${this.modelName}. ` +
+          "This conversation is kept, so say `continue` once it can",
+        { cause },
+      );
+    }
+  }
+
+  private async *turn(prompt: string, signal: AbortSignal): AsyncIterable<ReplyChunk> {
     // Built on the first turn rather than in the constructor: the tools are
     // declared after construction, and the prompt is derived from them.
     if (this.transcript.length === 0) {

@@ -604,3 +604,89 @@ describe("the /reload command", () => {
     expect(session.snapshot().turns).toBe(0);
   });
 });
+
+describe("typing while a turn is running", () => {
+  const held = (): { source: ReplySource; release: () => void; sent: string[] } => {
+    const sent: string[] = [];
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return {
+      sent,
+      release: () => release(),
+      source: {
+        model: "scripted",
+        async *reply(prompt: string) {
+          sent.push(prompt);
+          yield { type: "text", value: "working" } as const;
+          await gate;
+        },
+      },
+    };
+  };
+
+  it("runs an interface command at once rather than dropping the key", async () => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    const { source: paused, release } = held();
+    const session = new CoderSession(paused, "repo", "main");
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    const turn = session.submit("go");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(session.snapshot().running).toBe(true);
+
+    // `/export` was impossible mid-turn: enter was ignored while running.
+    stdin.emit("data", "/system");
+    stdin.emit("data", "\r");
+
+    const notices = session
+      .snapshot()
+      .entries.filter((entry) => entry.role === "notice")
+      .map((entry) => entry.text);
+    expect(notices.some((text) => text.includes("standing context") || text.length > 0)).toBe(true);
+
+    release();
+    await turn;
+    stdin.emit("data", "\x04");
+    await running;
+  });
+
+  it("queues ordinary text and sends it when the turn ends", async () => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    const { source: paused, release, sent } = held();
+    const session = new CoderSession(paused, "repo", "main");
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    const turn = session.submit("go");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    stdin.emit("data", "steer me");
+    stdin.emit("data", "\r");
+
+    // Shown at once, sent later: a reader sees what they said when they said it.
+    expect(
+      session
+        .snapshot()
+        .entries.filter((entry) => entry.role === "you")
+        .map((entry) => entry.text),
+    ).toEqual(["go", "steer me"]);
+    expect(sent).toEqual(["go"]);
+
+    release();
+    await turn;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(sent).toEqual(["go", "steer me"]);
+
+    stdin.emit("data", "\x04");
+    await running;
+  });
+});

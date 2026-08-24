@@ -67,6 +67,29 @@ export interface CoderToolCall {
   status: "running" | "succeeded" | "failed";
 }
 
+/**
+ * A failure, with the reason underneath it.
+ *
+ * Node reports a failed request as `fetch failed` and puts what actually
+ * happened — the refused connection, the reset socket — in `cause`. Reporting
+ * only the top of that chain tells a reader nothing they can act on, which is
+ * how a session came to show `fetch failed` and nothing else.
+ */
+const describeFailure = (cause: unknown): string => {
+  const seen = new Set<unknown>();
+  const parts: string[] = [];
+  let current = cause;
+
+  while (current !== undefined && current !== null && !seen.has(current)) {
+    seen.add(current);
+    const text = current instanceof Error ? current.message : String(current);
+    if (text.length > 0 && !parts.includes(text)) parts.push(text);
+    current = current instanceof Error ? (current as { cause?: unknown }).cause : undefined;
+  }
+
+  return parts.length === 0 ? "The turn failed." : parts.join(": ");
+};
+
 /** What a turn cost, on the entry that closed it. */
 export interface CoderMetrics {
   readonly promptTokens?: number | undefined;
@@ -303,6 +326,13 @@ export class CoderSession {
   private readonly entries: CoderEntry[] = [];
   private readonly listeners = new Set<() => void>();
   private controller: AbortController | undefined;
+  /**
+   * Prompts typed while a turn was running, in the order they were typed.
+   *
+   * Their entries are already on the transcript, so a reader sees what they
+   * said the moment they said it; only the sending waits.
+   */
+  private readonly pending: string[] = [];
   private turnCount = 0;
   private unsubscribeTasks: (() => void) | undefined;
 
@@ -470,9 +500,32 @@ export class CoderSession {
       return;
     }
 
-    if (this.controller !== undefined) return;
+    // A turn is running, so this one waits its place rather than being dropped.
+    // Typing while the model works is how a reader steers, and an interface
+    // that silently ignores the key is one that cannot be steered at all.
+    if (this.controller !== undefined) {
+      this.entries.push({ role: "you", text: prompt, settled: true, at: Date.now() });
+      this.pending.push(prompt);
+      this.notice(
+        this.pending.length === 1
+          ? "Queued. It goes to the model when this turn ends; press escape to interrupt and send it now."
+          : `Queued, ${String(this.pending.length)} waiting.`,
+      );
+      this.emit();
+      return;
+    }
 
     this.entries.push({ role: "you", text: prompt, settled: true, at: Date.now() });
+    await this.run(prompt);
+  }
+
+  /**
+   * Send one prompt and stream its reply.
+   *
+   * Split from `submit` so a queued prompt, whose entry is already on the
+   * transcript, is sent without adding a second one.
+   */
+  private async run(prompt: string): Promise<void> {
     // An empty assistant entry from the start, so the interface shows a caret
     // rather than nothing while the first chunk is in flight. It is withdrawn
     // if the turn opens with reasoning or a tool call instead of text.
@@ -576,7 +629,7 @@ export class CoderSession {
       // A failed turn ends the turn, not the session. The reason belongs on the
       // transcript where the prompt that caused it is still visible, and any
       // text the source produced before failing is kept.
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = describeFailure(cause);
       if (text !== undefined && text.text.length === 0) {
         this.entries.splice(this.entries.indexOf(text), 1);
         text = undefined;
@@ -592,6 +645,11 @@ export class CoderSession {
       this.controller = undefined;
       this.emit();
     }
+
+    // Whatever was typed during the turn goes now, in order. Its entry is
+    // already on the transcript, so this sends without adding another.
+    const next = this.pending.shift();
+    if (next !== undefined) await this.run(next);
   }
 
   /** Interrupt the running reply. No effect when nothing is running. */

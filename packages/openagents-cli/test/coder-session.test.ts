@@ -71,17 +71,47 @@ describe("CoderSession", () => {
     expect(session.snapshot().running).toBe(false);
   });
 
-  it("refuses a second prompt while one is running rather than queueing it", async () => {
-    const session = new CoderSession(scripted(["a", "b"], 15), "repo", "main");
+  it("queues a prompt typed during a turn, and sends it when the turn ends", async () => {
+    const sent: string[] = [];
+    const recording: ReplySource = {
+      model: "scripted",
+      async *reply(prompt) {
+        sent.push(prompt);
+        await new Promise((resolve) => setTimeout(resolve, 15));
+        yield { type: "text", value: "ok" } as const;
+      },
+    };
+    const session = new CoderSession(recording, "repo", "main");
+
     const first = session.submit("first");
     await session.submit("second");
     await first;
+    // The queued turn starts as the first one ends.
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    // Typing while the model works is how a reader steers. Dropping the key
+    // was what made steering impossible.
+    expect(sent).toEqual(["first", "second"]);
 
     const prompts = session
       .snapshot()
       .entries.filter((entry) => entry.role === "you")
       .map((entry) => entry.text);
-    expect(prompts).toEqual(["first"]);
+    // Shown the moment it was typed, not when it was sent, and shown once.
+    expect(prompts).toEqual(["first", "second"]);
+  });
+
+  it("says a prompt was queued rather than accepting it silently", async () => {
+    const session = new CoderSession(scripted(["a"], 15), "repo", "main");
+    const first = session.submit("first");
+    await session.submit("second");
+    await first;
+
+    const notices = session
+      .snapshot()
+      .entries.filter((entry) => entry.role === "notice")
+      .map((entry) => entry.text);
+    expect(notices.some((text) => text.startsWith("Queued."))).toBe(true);
   });
 
   it("ignores an empty prompt", async () => {
@@ -213,15 +243,19 @@ describe("CoderSession", () => {
     expect(session.snapshot().turns).toBe(1);
   });
 
-  it("does not count a prompt it refused", async () => {
-    const session = new CoderSession(scripted(["a"]), "repo", "main");
+  it("counts a queued prompt only when its turn starts", async () => {
+    const session = new CoderSession(scripted(["a"], 15), "repo", "main");
     await session.submit("   ");
     expect(session.snapshot().turns).toBe(0);
 
     const first = session.submit("first");
     await session.submit("second while the first runs");
-    await first;
+    // Waiting to be sent is not a turn in flight.
     expect(session.snapshot().turns).toBe(1);
+
+    await first;
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(session.snapshot().turns).toBe(2);
   });
 
   it("carries workspace and model into the snapshot for the status line", () => {

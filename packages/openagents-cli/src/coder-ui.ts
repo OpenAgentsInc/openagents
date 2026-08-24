@@ -737,7 +737,11 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         render();
         return;
       }
-      if (!session.interrupt()) composer = "";
+      // Say that it happened. An interrupt that only stops the stream leaves a
+      // reader looking at a settled reply with no way to tell whether the key
+      // did anything, which reads as the key not working.
+      if (session.interrupt()) session.notice("Interrupted.");
+      else composer = "";
       render();
     };
 
@@ -845,10 +849,13 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
           index += 1;
           // Swallow a CRLF pair so a paste does not submit twice.
           if (char === "\r" && text[index] === "\n") index += 1;
-          if (!session.running) {
-            submit();
-            dirty = false;
-          }
+          // Always. A turn already running is not a reason to drop what was
+          // typed: an interface command runs at once, and anything else is
+          // queued by the session and sent when the turn ends. Ignoring the key
+          // is what made `/export` impossible mid-turn and steering impossible
+          // at all.
+          submit();
+          dirty = false;
           continue;
         }
 
