@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
 
-import { CODER_BACKENDS, defaultBackend } from "../src/coder-backends.js";
+import { CODER_BACKENDS } from "../src/coder-backends.js";
 import { CoderSession, type ReplyChunk, type ReplySource } from "../src/coder-session.js";
 import { CoderTaskRegistry } from "../src/coder-tasks.js";
 import { runCoderUi } from "../src/coder-ui.js";
@@ -262,7 +262,7 @@ describe("runCoderUi", () => {
 
     it("wraps around, so every backend is reachable from one key", async () => {
       const { session } = await driveSwitchable(CODER_BACKENDS.map(() => "\t"));
-      expect(session.snapshot().model).toBe(defaultBackend().label);
+      expect(session.snapshot().model).toBe(CODER_BACKENDS[0]?.label);
     });
 
     it("does not leave a tab in the composer", async () => {

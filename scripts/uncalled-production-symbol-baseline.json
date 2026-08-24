@@ -6,8 +6,7 @@
     "allowed: intentional, permanent exceptions. Each one needs a written reason.",
     "Rationale: docs/quality/uncalled-production-symbols.md",
     "2026-08-03: the guard counted names in comments and strings as callers; fixing that revealed 171 findings it had been blind to. They are inherited debt, not approvals, and the list may only shrink.",
-    "2026-08-23: clean origin/main at df62c1fe already failed the guard with 47 pre-existing findings; the currently flagged refs recorded below are inherited debt, not approvals, and the two stale ledger entries were pruned separately.",
-    "2026-08-23: running the coder on its own thread took the model choice from the client, so coder-backends' defaultBackend, findBackend, and nextBackend lost their production callers while their tests stayed. Inherited debt: either the proxy takes a client-named model again, or the picker and its tests go."
+    "2026-08-23: clean origin/main at df62c1fe already failed the guard with 47 pre-existing findings; the currently flagged refs recorded below are inherited debt, not approvals, and the two stale ledger entries were pruned separately."
   ],
   "baselinedAt": "2026-07-31",
   "inheritedDebt": [
@@ -1586,9 +1585,6 @@
     "packages/openagents-cli/src/api-transport.ts#networkPolicyTestLoopbackLayer",
     "packages/openagents-cli/src/browser-launcher.ts#browserLauncherTestLayer",
     "packages/openagents-cli/src/cli.ts#runCliWith",
-    "packages/openagents-cli/src/coder-backends.ts#defaultBackend",
-    "packages/openagents-cli/src/coder-backends.ts#findBackend",
-    "packages/openagents-cli/src/coder-backends.ts#nextBackend",
     "packages/openagents-cli/src/credential-store.ts#credentialStoreTestFileLayer",
     "packages/openagents-cli/src/credential-store.ts#credentialStoreUnavailableLayer",
     "packages/openagents-cli/src/device-authorization-store.ts#pendingDeviceAuthorizationStoreTestLayer",

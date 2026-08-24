@@ -1,19 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  backendIds,
-  CODER_BACKENDS,
-  defaultBackend,
-  findBackend,
-  nextBackend,
-} from "../src/coder-backends.js";
+import { backendIds, CODER_BACKENDS } from "../src/coder-backends.js";
 
 /**
- * The list three surfaces read.
+ * The list two surfaces read.
  *
- * `--model` takes its accepted values from it, the status line takes its label
- * from it, and Tab walks it. These pin the properties those three depend on, so
- * adding a backend stays one entry rather than one entry plus three fixes.
+ * `--model` takes its accepted values from it and the status line takes its
+ * label from it. These pin the properties those two depend on, so adding a
+ * backend stays one entry rather than one entry plus two fixes.
  */
 describe("coder backends", () => {
   it("names each backend once", () => {
@@ -26,24 +20,6 @@ describe("coder backends", () => {
       expect(backend.label).not.toBe("");
       expect(backend.id).not.toBe("");
     }
-  });
-
-  it("defaults to the first entry, and finds a backend by the id the server takes", () => {
-    expect(defaultBackend()).toBe(CODER_BACKENDS[0]);
-    expect(findBackend("gemini-3.7-flash")?.label).toBe("Gemini 3.7 Flash");
-    expect(findBackend("gpt-4")).toBeUndefined();
-  });
-
-  it("reaches every backend by cycling, and returns to the start", () => {
-    const seen: string[] = [];
-    let current = defaultBackend();
-    for (let step = 0; step < CODER_BACKENDS.length; step += 1) {
-      current = nextBackend(current);
-      seen.push(current.id);
-    }
-
-    expect(new Set(seen)).toEqual(new Set(backendIds()));
-    expect(current).toBe(defaultBackend());
   });
 
   it("publishes ids the chat API's own enum lists", () => {
