@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ReplyChunk } from "../src/coder-session.js";
-import { openThread, ThreadUnavailable, type ThreadReplySource } from "../src/coder-thread.js";
+import { openThread, resolveProxyUrl, ThreadUnavailable, type ThreadReplySource } from "../src/coder-thread.js";
 import { ThreadTranscriptWriter } from "../src/coder-transcript.js";
 
 const ORIGIN = "https://openagents.test";
@@ -1018,5 +1018,19 @@ describe("the session's anchor on the thread lane", () => {
     expect(shown).toContain("`openagents coder`");
     expect(shown).toContain("Workspace facts.");
     expect(shown).not.toContain("composed by the server");
+  });
+});
+
+describe("resolveProxyUrl", () => {
+  it("resolves the grant's path against the client's origin", () => {
+    expect(
+      resolveProxyUrl("http://localhost:4000/api/inference/proxy", "http://host.docker.internal:4000"),
+    ).toBe("http://host.docker.internal:4000/api/inference/proxy");
+  });
+
+  it("keeps a same-origin grant URL intact", () => {
+    expect(
+      resolveProxyUrl("https://openagents.com/api/inference/proxy", "https://openagents.com"),
+    ).toBe("https://openagents.com/api/inference/proxy");
   });
 });

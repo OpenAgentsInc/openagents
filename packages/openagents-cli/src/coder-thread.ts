@@ -225,7 +225,7 @@ export async function openThread(options: ThreadOptions): Promise<ThreadReplySou
     accountToken: options.token,
     threadId: id,
     grantToken: Redacted.make(token),
-    proxyUrl: url,
+    proxyUrl: resolveProxyUrl(url, options.origin),
     model,
     budget: budgetOf(record(grant["limits"]), record(grant["limits"])),
   });
@@ -321,7 +321,7 @@ export async function remintThread(options: ResumeGrantOptions): Promise<ThreadR
     accountToken: options.token,
     threadId: string(record(body["thread"])["id"]) ?? options.threadId,
     grantToken: Redacted.make(token),
-    proxyUrl: url,
+    proxyUrl: resolveProxyUrl(url, options.origin),
     model,
     budget: budgetOf(record(grant["remaining"]), record(grant["limits"])),
   });
@@ -1087,7 +1087,23 @@ function dollars(microusd: number): string {
   return `$${(microusd / 1_000_000).toFixed(2)}`;
 }
 
+/**
+ * The grant names the proxy with the server's own idea of its host, and
+ * inside a container the server's "localhost" is the wrong machine. The
+ * path is the server's contract; the origin is the client's — the same one
+ * it authenticated against — so the URL resolves against it.
+ */
+export const resolveProxyUrl = (grantUrl: string, origin: string): string => {
+  try {
+    const named = new URL(grantUrl);
+    return new URL(named.pathname, origin).toString();
+  } catch {
+    return grantUrl;
+  }
+};
+
 function record(value: unknown): Record<string, unknown> {
+
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
