@@ -16,7 +16,7 @@
  * keeps the provider credential on the server, so the CLI still holds no
  * provider key. `DELETE /api/v3/threads/{id}` revokes the thread on exit, which
  * matters because an account may hold only eight open threads at once and a
- * closed terminal would otherwise hold a slot until the authority expired.
+ * closed terminal would otherwise hold a slot until its authority was spent.
  *
  * Three properties of that proxy shape this file, and each is a real loss
  * against the event log this replaces:
@@ -1000,7 +1000,11 @@ async function proxyRefusal(response: Response): Promise<ThreadUnavailable> {
 
   const sentences: Record<string, string> = {
     grant_revoked: "This thread was revoked. Start a new session to open another.",
-    grant_expired: "This thread's authority expired. Start a new session to open another.",
+    // Not a sentence about a clock. A thread's authority has no deadline —
+    // this reaches a caller only where the deployment minted one that does,
+    // and it says what the reader can act on rather than naming an expiry a
+    // coder session cannot have.
+    grant_expired: "This thread's authority is no longer live. Start a new session to open another.",
     grant_exhausted: "This thread spent its budget. Start a new session to open another.",
     grant_budget_reached: "This thread reached its budget ceiling and cannot buy another call.",
     invalid_grant: "The inference proxy did not recognize this thread's grant.",
