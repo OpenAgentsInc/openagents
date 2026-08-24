@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { discoverSkills, loadSkillSelection } from "../src/coder-skills.js";
+import { discoverSkills, loadSkillSelection, standingContext } from "../src/coder-skills.js";
 import { skillTool } from "../src/coder-tools.js";
 
 /** A repository with the given skills under `.agents/skills`. */
@@ -260,5 +260,45 @@ describe("the skills the CLI ships with", () => {
     expect(cli?.body).toContain("chat:account");
     expect(cli?.body).toContain("forge:write");
     expect(cli?.body).toContain("auth login --headless");
+  });
+});
+
+describe("what a session is told without asking", () => {
+  const AUTO = "---\nname: method\ndescription: How to work.\nauto: true\n---\n\nWork this way.";
+  const NORMAL = "---\nname: other\ndescription: Something else.\n---\n\nRead me on request.";
+
+  it("marks a skill that loads itself", () => {
+    const found = discoverSkills(workspace({ method: AUTO, other: NORMAL }), EMPTY_HOME, NO_BUILT_INS);
+
+    expect(found.find((skill) => skill.name === "method")?.auto).toBe(true);
+    expect(found.find((skill) => skill.name === "other")?.auto).toBe(false);
+  });
+
+  it("carries an auto-loaded body and leaves the rest in the catalog", () => {
+    const found = discoverSkills(workspace({ method: AUTO, other: NORMAL }), EMPTY_HOME, NO_BUILT_INS);
+
+    const standing = standingContext(found, "/somewhere/else") ?? "";
+    expect(standing).toContain("Work this way.");
+    // The whole point of the catalog is that a body is read when it is wanted.
+    expect(standing).not.toContain("Read me on request.");
+  });
+
+  it("says nothing when nothing loads itself", () => {
+    const found = discoverSkills(workspace({ other: NORMAL }), EMPTY_HOME, NO_BUILT_INS);
+
+    expect(standingContext(found, "/somewhere/else")).toBeUndefined();
+  });
+
+  it("tells a session inside OpenAgents which repository is which", () => {
+    // Both were worked out from scratch, repeatedly, by sessions that had no
+    // way to know: one is Phoenix, the other holds the CLI.
+    const standing = standingContext([], "/Users/x/work/openagents.com") ?? "";
+
+    expect(standing).toContain("Phoenix");
+    expect(standing).toContain("packages/openagents-cli");
+  });
+
+  it("says nothing about repositories anywhere else", () => {
+    expect(standingContext([], "/Users/x/work/something")).toBeUndefined();
   });
 });

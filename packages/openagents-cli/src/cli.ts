@@ -39,7 +39,7 @@ import { delegateTool, openagentsTool, shellTool, skillTool } from "./coder-tool
 import { spawnSync } from "node:child_process";
 
 import { rebuild, RELOAD_EXIT_CODE, sourceCheckout } from "./coder-reload.js";
-import { loadSkillSelection } from "./coder-skills.js";
+import { loadSkillSelection, standingContext } from "./coder-skills.js";
 import { describeWorkspace } from "./coder-workspace.js";
 import { ComputerClient } from "./computer-client.js";
 import { ComputerUp } from "./computer-up.js";
@@ -1767,11 +1767,13 @@ const coderCommand = Command.make(
         }),
       );
 
+      const skills = loadSkillSelection();
       const session = new CoderSession(
         source,
         workspace.repository,
         workspace.branch,
         setup?.delegation,
+        standingContext(skills.active(), process.cwd()),
       );
 
       // The model is told what it can do rather than the reader being asked to
@@ -1781,7 +1783,6 @@ const coderCommand = Command.make(
       // Skills do not depend on delegation: a session with no credential still
       // reads this repository's conventions, it just cannot hand work to a
       // child. A session with neither declares no tools at all.
-      const skills = loadSkillSelection();
       // Re-declared rather than declared once: switching a skill off in
       // `/skills` has to change what the next turn carries, and the tool
       // holding the catalog is the thing that changes.

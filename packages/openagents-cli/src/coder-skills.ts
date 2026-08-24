@@ -51,6 +51,18 @@ const BODY_LIMIT = 32_000;
 export interface CoderSkill {
   /** The name the model asks for, from the front matter. */
   readonly name: string;
+  /**
+   * Whether the body is put in front of the model without being asked for.
+   *
+   * The catalog exists so a body is read only when it is wanted. A skill that
+   * says how to approach the work is the exception: a session told to burn
+   * through a backlog needs the method before its first decision, and a skill
+   * it has to think to ask for is one it will not ask for.
+   *
+   * Set with `auto: true` in the front matter. Use it sparingly — every
+   * auto-loaded body is paid for on every turn.
+   */
+  readonly auto: boolean;
   /** When to use it, from the front matter. One sentence, shown in the catalog. */
   readonly description: string;
   /** The instructions, front matter removed. */
@@ -67,15 +79,20 @@ export interface CoderSkill {
  * is a dependency that can also do something surprising with a file anyone may
  * drop in a skills directory.
  */
-const frontMatter = (source: string): { name?: string; description?: string } => {
+const frontMatter = (source: string): { name?: string; description?: string; auto?: boolean } => {
   if (!source.startsWith("---")) return {};
   const end = source.indexOf("\n---", 3);
   if (end < 0) return {};
 
-  const fields: { name?: string; description?: string } = {};
+  const fields: { name?: string; description?: string; auto?: boolean } = {};
   const lines = source.slice(3, end).split("\n");
 
   for (const [at, line] of lines.entries()) {
+    const auto = /^auto:\s*(true|false)\s*$/.exec(line);
+    if (auto !== null) {
+      fields.auto = auto[1] === "true";
+      continue;
+    }
     const match = /^(name|description):\s*(.*)$/.exec(line);
     if (match === null) continue;
     const key = match[1] as "name" | "description";
@@ -145,13 +162,19 @@ export function discoverSkills(
         continue;
       }
 
-      const { name, description } = frontMatter(source);
+      const { name, description, auto } = frontMatter(source);
       // A skill with no name cannot be asked for, and one with no description
       // gives the model nothing to choose on. Both are required.
       if (name === undefined || description === undefined) continue;
       if (found.has(name)) continue;
 
-      found.set(name, { name, description, body: withoutFrontMatter(source), path });
+      found.set(name, {
+        name,
+        description,
+        auto: auto ?? false,
+        body: withoutFrontMatter(source),
+        path,
+      });
     }
   }
 
@@ -264,3 +287,55 @@ export function loadSkillSelection(
     active: () => all.filter((skill) => !disabled.has(skill.name)),
   };
 }
+
+/**
+ * The standing context for a session: every auto-loaded skill, in one block.
+ *
+ * Returns undefined when there is none, so a caller adds nothing rather than an
+ * empty heading.
+ */
+export const standingContext = (
+  skills: ReadonlyArray<CoderSkill>,
+  cwd: string = process.cwd(),
+): string | undefined => {
+  const parts: string[] = [];
+
+  const workspace = openAgentsWorkspace(cwd);
+  if (workspace !== undefined) parts.push(workspace);
+
+  for (const skill of skills) {
+    if (!skill.auto) continue;
+    parts.push(`The \`${skill.name}\` skill, which applies to this session:\n\n${skill.body}`);
+  }
+
+  return parts.length === 0 ? undefined : parts.join("\n\n");
+};
+
+/**
+ * What the two OpenAgents repositories are, when the session is in one.
+ *
+ * A session in `openagents.com` spent turns working out that it was in the
+ * Phoenix application, and one in `openagents` that the CLI lives under
+ * `packages/`. Both are facts about the workspace rather than about the work,
+ * and neither is discoverable without reading around.
+ *
+ * Keyed on the path because that is what is true at the time: a directory named
+ * for one of them is one of them, and a directory that is not gets nothing
+ * rather than a guess.
+ */
+const openAgentsWorkspace = (cwd: string): string | undefined => {
+  if (!/openagents/i.test(cwd)) return undefined;
+  return [
+    `This session is working in ${cwd}, which is part of OpenAgents. Two repositories carry`,
+    "most of the work, and they are easy to confuse:",
+    "",
+    "- **`openagents.com`** is the web application: a Phoenix and Elixir codebase serving the",
+    "  site, the forge, and the `/api/v3` API. Its issues are the site's issues.",
+    "- **`openagents`** is the monorepo: the `openagents` CLI lives in",
+    "  `packages/openagents-cli`, alongside the other packages. Its issues are the CLI's and the",
+    "  monorepo's.",
+    "",
+    "They are separate repositories with separate issue lists, so name the one you mean when you",
+    "read or write issues, and do not assume the current directory is the one being asked about.",
+  ].join("\n");
+};

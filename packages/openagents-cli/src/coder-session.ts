@@ -311,6 +311,15 @@ export class CoderSession {
     private readonly repository: string,
     private readonly branch: string,
     private readonly delegation?: CoderDelegation,
+    /**
+     * Put in front of the first prompt, and nowhere else.
+     *
+     * A session told how to approach its work needs that before its first
+     * decision. It goes ahead of the first turn rather than into every one:
+     * after that it is in the transcript, and paying for it again each turn
+     * buys nothing.
+     */
+    private readonly standing?: string,
   ) {
     // A child reporting progress has to reach the renderer, and the renderer
     // subscribes to the session rather than to the registry, so the session
@@ -491,7 +500,14 @@ export class CoderSession {
     this.emit();
 
     try {
-      for await (const chunk of this.source.reply(prompt, controller.signal)) {
+      // The reader's entry above keeps what they typed; the model receives the
+      // standing context ahead of it on the first turn only.
+      const sent =
+        this.standing === undefined || this.turnCount > 1
+          ? prompt
+          : `${this.standing}\n\n---\n\n${prompt}`;
+
+      for await (const chunk of this.source.reply(sent, controller.signal)) {
         if (controller.signal.aborted) break;
 
         if (chunk.type === "text") {

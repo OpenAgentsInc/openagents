@@ -69,12 +69,15 @@ import type { CoderTool } from "./coder-tools.js";
 const THREADS_PATH = "/api/v3/threads";
 
 /**
- * How many times one turn may call tools before it has to answer.
+ * How many rounds of tool calls one turn may take before it has to answer.
  *
- * A ceiling rather than a preference: a model that keeps delegating is a model
- * spending the thread's budget without ever reporting to the reader.
+ * A backstop against a model that loops forever, not a budget. It was six, and
+ * six is a number real work passes: a session reading a package hit it after
+ * twenty steps and ended saying it had stopped, throwing away everything it had
+ * read. Escape stops a turn at any time, and that is the control that should
+ * decide when enough is enough.
  */
-const MAX_TOOL_STEPS = 6;
+const MAX_TOOL_STEPS = 100;
 
 /** What the thread may still spend, as the server last reported it. */
 export interface ThreadBudget {
@@ -223,6 +226,8 @@ export class ThreadReplySource implements ReplySource {
   private readonly transcript: WireMessage[] = [];
   private remaining: ThreadBudget;
   private tools: ReadonlyArray<CoderTool> = [];
+  /** Set for the one round that must answer rather than call another tool. */
+  private mustAnswer = false;
 
   constructor(private readonly state: SourceState) {
     this.threadId = state.threadId;
@@ -309,6 +314,9 @@ export class ThreadReplySource implements ReplySource {
   }
 
   async *reply(prompt: string, signal: AbortSignal): AsyncIterable<ReplyChunk> {
+    // Per turn, not per session: a turn that had to answer without tools must
+    // not leave the next one without them.
+    this.mustAnswer = false;
     this.transcript.push({ role: "user", content: prompt });
 
     try {
@@ -329,11 +337,17 @@ export class ThreadReplySource implements ReplySource {
         if (signal.aborted || calls.length === 0) return;
 
         if (step >= MAX_TOOL_STEPS) {
-          yield {
-            type: "text",
-            value: `\n\n[stopped after ${String(MAX_TOOL_STEPS)} tool steps in one turn]`,
-          };
-          return;
+          // Take the tools away for one more round rather than stopping on a
+          // tool result. The work already done is the reason the turn is long,
+          // and ending on "stopped" throws all of it away.
+          this.mustAnswer = true;
+          this.transcript.push({
+            role: "user",
+            content:
+              "You have reached this turn's limit on tool calls. Do not call another tool. " +
+              "Answer now with what you have found, and say plainly what is still unfinished.",
+          });
+          continue;
         }
 
         for (const call of calls) {
@@ -434,7 +448,7 @@ export class ThreadReplySource implements ReplySource {
         model: this.state.model,
         stream: true,
         messages: this.transcript,
-        ...(this.tools.length === 0
+        ...(this.tools.length === 0 || this.mustAnswer
           ? {}
           : {
               tools: this.tools.map((tool) => ({

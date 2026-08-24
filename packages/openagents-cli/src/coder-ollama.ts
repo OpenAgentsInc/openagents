@@ -20,13 +20,16 @@ import type { CoderTool } from "./coder-tools.js";
 const DEFAULT_HOST = "http://127.0.0.1:11434";
 
 /**
- * How many times one turn may call tools before it has to answer.
+ * How many rounds of tool calls one turn may take before it has to answer.
  *
- * The same ceiling the thread lane uses, for the same reason: a model that
- * keeps delegating never reports to the reader. A local model spends no metered
- * budget, but it does spend the reader's wall clock and the children's.
+ * High, because the ceiling is a backstop against a model that loops forever,
+ * not a budget. It was six, and six is a number real work passes: a session
+ * reading a package hit it after twenty steps and eighty thousand tokens and
+ * ended with `Stopped after 6 rounds of tool calls without an answer` — every
+ * one of those reads thrown away. A reader can stop a turn with escape at any
+ * time, and that is the control that should decide when enough is enough.
  */
-const MAX_TOOL_STEPS = 6;
+const MAX_TOOL_STEPS = 100;
 
 export interface OllamaOptions {
   /** The Ollama model name, without the `ollama:` prefix. */
@@ -225,6 +228,20 @@ export class OllamaReplySource implements ReplySource {
       const calls: OllamaToolCall[] = [];
       let assistant = "";
 
+      // The last round is answered without tools. Reaching the ceiling with the
+      // tools still on the table produced a turn that stopped mid-work and said
+      // so, throwing away everything it had read; taking them away instead
+      // leaves the model one thing it can do, which is report what it found.
+      const finalRound = step === MAX_TOOL_STEPS - 1;
+      if (finalRound && this.tools.length > 0) {
+        this.transcript.push({
+          role: "user",
+          content:
+            "You have reached this turn's limit on tool calls. Do not call another tool. " +
+            "Answer now with what you have found, and say plainly what is still unfinished.",
+        });
+      }
+
       const stream = await this.client.chat({
         model: this.modelName,
         // A snapshot, not the live array: the transcript grows while the round
@@ -232,7 +249,7 @@ export class OllamaReplySource implements ReplySource {
         // request nobody can reason about.
         messages: [...this.transcript],
         stream: true,
-        ...(this.tools.length === 0
+        ...(this.tools.length === 0 || finalRound
           ? {}
           : {
               tools: this.tools.map((tool) => ({
@@ -306,12 +323,6 @@ export class OllamaReplySource implements ReplySource {
       }
     }
 
-    // The ceiling was reached. Say so rather than ending on a tool result the
-    // reader has to interpret as an answer.
-    yield {
-      type: "text",
-      value: `\n\nStopped after ${String(MAX_TOOL_STEPS)} rounds of tool calls without an answer.`,
-    };
     yield { type: "usage", promptTokens, completionTokens, calls: llmCalls };
   }
 

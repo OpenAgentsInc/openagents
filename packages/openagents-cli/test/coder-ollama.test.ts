@@ -200,18 +200,27 @@ describe("an ollama turn that calls a tool", () => {
     });
   });
 
-  it("stops after the tool-call ceiling rather than looping forever", async () => {
-    const rounds = Array.from({ length: 8 }, () => CALLING);
+  it("answers on the last round instead of stopping mid-work", async () => {
+    // Always asking for a tool, so the ceiling is what ends the turn. The
+    // ceiling is a backstop against looping forever, not a budget: reaching it
+    // used to end with "Stopped after 6 rounds" and throw away every read.
+    const rounds = Array.from({ length: 200 }, () => CALLING);
     const { source, stub } = sourceWith(rounds);
     source.useTools([delegate([])]);
 
-    const chunks = await collect(source, "keep going");
+    await collect(source, "keep going");
 
-    // Six rounds, then a sentence saying why it stopped.
-    expect(stub.chat).toHaveBeenCalledTimes(6);
-    const spoken = chunks.filter((piece) => piece.type !== "usage");
-    expect(spoken.at(-1)).toMatchObject({ type: "text" });
-    expect((spoken.at(-1) as { value: string }).value).toContain("Stopped after 6 rounds");
+    expect(stub.chat).toHaveBeenCalledTimes(100);
+
+    // The last round is asked without tools, so the model has one thing left it
+    // can do: report what it found.
+    const last = stub.requests.at(-1);
+    expect(last).not.toHaveProperty("tools");
+    const messages = last?.["messages"] as ReadonlyArray<Record<string, unknown>>;
+    expect(messages.at(-1)).toMatchObject({
+      role: "user",
+      content: expect.stringContaining("Do not call another tool"),
+    });
   });
 });
 
