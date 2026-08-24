@@ -19,7 +19,13 @@ import type { ChildGrant } from "./coder-child-gateway.js";
 import { startChildGateway } from "./coder-child-gateway.js";
 import { writeChildHarnessConfig } from "./coder-child-config.js";
 import type { DelegationOutcome } from "./coder-delegate.js";
-import { DelegateFleet, DevinHarness, describePrompt, OpencodeHarness } from "./coder-delegate.js";
+import {
+  DelegateFleet,
+  DevinHarness,
+  describePrompt,
+  firstAvailableChildModel,
+  OpencodeHarness,
+} from "./coder-delegate.js";
 import { fleetPlainLines } from "./coder-fleet.js";
 import { runCoderPlain } from "./coder-plain.js";
 import type { CoderDelegation } from "./coder-session.js";
@@ -1577,6 +1583,8 @@ async function buildDelegation(options: {
   readonly cwd: string;
   /** The session's grant, when it has one. Children spend it by default. */
   readonly grant: ChildGrant | undefined;
+  /** Mint a fresh grant, for when the one in hand has expired. */
+  readonly refreshGrant?: (() => Promise<ChildGrant | undefined>) | undefined;
 }): Promise<DelegationSetup | undefined> {
   const named = options.model ?? process.env["OPENAGENTS_DELEGATE_MODEL"];
   const command = options.command ?? process.env["OPENAGENTS_DELEGATE_COMMAND"];
@@ -1604,12 +1612,39 @@ async function buildDelegation(options: {
   let configPath: string | undefined;
   let close: () => Promise<void>;
 
+  // Free and grant-free first. A thread grant lives an hour, has to be minted,
+  // and expires under a console that outlives it; the harness's own catalog
+  // costs nothing and needs no credential from us. The grant stays as the
+  // fallback for a machine whose harness lists none of them.
+  const free =
+    named === undefined || named.trim().length === 0
+      ? await firstAvailableChildModel(command ?? "opencode")
+      : undefined;
+
+  if (free !== undefined) {
+    const harness = new OpencodeHarness({
+      model: free,
+      ...(command === undefined ? {} : { command }),
+      ...(namedConfig === undefined ? {} : { configPath: namedConfig }),
+      autoApprove: options.autoApprove,
+    });
+    const registry = new CoderTaskRegistry();
+    const fleet = new DelegateFleet(registry, harness, {
+      maxConcurrent: Math.max(1, options.concurrency),
+      cwd: options.cwd,
+    });
+    return {
+      delegation: { registry, fleet, label: `${harness.agent} (${free})` },
+      close: () => Promise.resolve(),
+    };
+  }
+
   if (named !== undefined && named.trim().length > 0) {
     model = named;
     configPath = namedConfig;
     close = () => Promise.resolve();
   } else if (options.grant !== undefined) {
-    const gateway = await startChildGateway(options.grant);
+    const gateway = await startChildGateway(options.grant, options.refreshGrant);
     const harnessConfig = writeChildHarnessConfig({
       baseUrl: gateway.baseUrl,
       model: options.grant.model,
@@ -1794,6 +1829,19 @@ const coderCommand = Command.make(
           concurrency,
           cwd: process.cwd(),
           grant: childGrant,
+          // A thread grant lives an hour; a console does not stop at one. When
+          // the grant in hand has expired, another thread is opened and its
+          // grant used, so a fan-out started in the afternoon does not fail on
+          // a credential minted at breakfast.
+          refreshGrant: async () => {
+            if (Option.isNone(stored)) return undefined;
+            const reopened = await openChildThread({
+              origin: endpoint.origin,
+              token: Redacted.value(stored.value.token),
+              objective: `delegated children of openagents coder in ${workspace.repository}`,
+            }).catch(() => undefined);
+            return reopened?.kind === "opened" ? reopened.thread.childGrant : undefined;
+          },
         }),
       );
 

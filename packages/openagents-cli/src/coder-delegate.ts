@@ -492,6 +492,50 @@ export class DevinHarness implements DelegateHarness {
   }
 }
 
+/**
+ * The models a child is given, in the order they are preferred.
+ *
+ * Free and grant-free, both on purpose. A thread grant lives an hour, has to be
+ * minted, and expires under a console that outlives it — four children once
+ * came back `grant_expired` together — while the harness's own catalog costs
+ * nothing and needs no credential from us at all.
+ *
+ * Resolved against what the harness actually lists, so a name that goes away
+ * falls through to the next rather than failing a fan-out.
+ */
+export const FREE_CHILD_MODELS: ReadonlyArray<string> = [
+  "opencode/big-pickle",
+  "opencode/gemini-3.7-flash",
+  "opencode/gemini-3.6-flash",
+  "opencode/gemini-3.5-flash",
+];
+
+/**
+ * The first preferred model the harness offers, or undefined when it lists none.
+ *
+ * A listing that cannot be read says nothing rather than guessing, for the same
+ * reason the preflight does: a harness whose subcommand differs must not be
+ * able to block a fan-out that would have worked.
+ */
+export async function firstAvailableChildModel(
+  command = "opencode",
+  preferred: ReadonlyArray<string> = FREE_CHILD_MODELS,
+): Promise<string | undefined> {
+  const listed = await new Promise<string>((resolve) => {
+    const probe = spawn(command, ["models"], { stdio: ["ignore", "pipe", "ignore"] });
+    let out = "";
+    probe.stdout.setEncoding("utf8");
+    probe.stdout.on("data", (chunk: string) => {
+      out += chunk;
+    });
+    probe.on("error", () => resolve(""));
+    probe.on("close", () => resolve(out));
+  });
+  if (listed.trim().length === 0) return undefined;
+  const names = new Set(listed.split("\n").map((line) => line.trim()));
+  return preferred.find((candidate) => names.has(candidate));
+}
+
 export class OpencodeHarness implements DelegateHarness {
   readonly agent = "opencode";
   readonly model: string;

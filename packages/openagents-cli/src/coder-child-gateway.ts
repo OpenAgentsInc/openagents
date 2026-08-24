@@ -152,12 +152,43 @@ export const CHILD_PROVIDER = "openagents";
  * Resolves once it is listening, because a child launched against a port that
  * is not up yet fails on its first call and reports it as a provider error.
  */
-export async function startChildGateway(grant: ChildGrant): Promise<ChildGateway> {
+export async function startChildGateway(
+  grant: ChildGrant,
+  /**
+   * Mint a fresh grant, when the one in hand has expired.
+   *
+   * A thread grant lives an hour and the session that minted it does not. A
+   * console open longer than that dispatched four children onto a grant minted
+   * at breakfast, and all four came back `grant_expired` — the first sign of
+   * which was four failed children rather than anything about the grant.
+   *
+   * Left out by a caller that has no way to mint another, and the refusal then
+   * reaches the child as it did before.
+   */
+  refresh?: () => Promise<ChildGrant | undefined>,
+): Promise<ChildGateway> {
+  // The grant in hand, replaced rather than reused once it has expired.
+  let current = grant;
+
   const server = createServer((request, response) => {
     const chunks: Buffer[] = [];
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
     request.on("end", () => {
-      void forward(Buffer.concat(chunks).toString("utf8"), grant, response);
+      void (async () => {
+        const body = Buffer.concat(chunks).toString("utf8");
+        const first = await forward(body, current, response, refresh !== undefined);
+        if (first !== "grant_expired" || refresh === undefined) return;
+
+        // Once. A second expiry on a grant minted moments ago is a refusal
+        // about something else, and retrying it forever would hide that.
+        const minted = await refresh().catch(() => undefined);
+        if (minted === undefined) {
+          await forward(body, current, response, false);
+          return;
+        }
+        current = minted;
+        await forward(body, current, response, false);
+      })();
     });
   });
 
@@ -185,7 +216,9 @@ async function forward(
   body: string,
   grant: ChildGrant,
   response: import("node:http").ServerResponse,
-): Promise<void> {
+  /** When set, an expired grant is reported to the caller instead of the child. */
+  reportExpiry: boolean,
+): Promise<"grant_expired" | undefined> {
   let payload: Record<string, unknown> = {};
   try {
     const parsed: unknown = JSON.parse(body === "" ? "{}" : body);
@@ -232,6 +265,9 @@ async function forward(
     // message is the difference between a child that says
     // `budget_exhausted` and three children that say `exited with code 1`.
     const detail = (await upstream.text().catch(() => "")).slice(0, 400);
+    if (reportExpiry && upstream.status === 403 && detail.includes("grant_expired")) {
+      return "grant_expired";
+    }
     response.writeHead(upstream.status, { "content-type": "application/json" });
     response.end(
       JSON.stringify({
@@ -243,7 +279,7 @@ async function forward(
         },
       }),
     );
-    return;
+    return undefined;
   }
 
   response.writeHead(upstream.status, {
@@ -252,7 +288,7 @@ async function forward(
 
   if (upstream.body === null) {
     response.end();
-    return;
+    return undefined;
   }
 
   const reader = upstream.body.getReader();
@@ -264,4 +300,5 @@ async function forward(
     response.write(Buffer.from(value));
   }
   response.end();
+  return undefined;
 }
