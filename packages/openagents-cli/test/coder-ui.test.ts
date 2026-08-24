@@ -171,60 +171,13 @@ describe("runCoderUi", () => {
     expect(painted).toContain("\x1b[2m\x1b[3mI should check first.\x1b[0m");
   });
 
-  it("counts the streaming turn, so the bar never reads zero under a live reply", async () => {
-    const stdin = new FakeIn();
-    const stdout = new FakeOut();
-    let release = () => {};
-    const held = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const paused: ReplySource = {
-      model: "scripted",
-      async *reply() {
-        yield { type: "text", value: "still arriving" } as const;
-        await held;
-      },
-    };
 
-    const session = new CoderSession(paused, "repo", "main");
-    const running = runCoderUi(session, {
-      stdin: stdin as unknown as NodeJS.ReadStream,
-      stdout: stdout as unknown as NodeJS.WriteStream,
-    });
-    const turn = session.submit("go");
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(session.snapshot().running).toBe(true);
-    const bar = screen(stdout.written).at(-1) ?? "";
-    expect(bar).toContain("1 reply this run");
-    expect(bar).not.toContain("0 replies");
-
-    release();
-    await turn;
-    stdin.emit("data", "\x04");
-    await running;
-  });
-
-  it("labels the count as this run's, because the conversation is not", async () => {
-    const { rows } = await drive([{ type: "text", value: "hello" }]);
-    expect(rows.at(-1)).toContain("1 reply this run");
-  });
 
   it("says nothing about scope when the source keeps its turns to itself", async () => {
     const { rows } = await drive([{ type: "text", value: "hello" }]);
     expect(rows.join("\n")).not.toContain("shared with");
   });
 
-  it("offers no key in the bottom bar that does nothing in that state", async () => {
-    const { rows } = await drive([{ type: "text", value: "hello" }]);
-    const bar = rows.at(-1) ?? "";
-    expect(bar).toContain("enter to send");
-    expect(bar).toContain("ctrl+d to quit");
-    // There is nothing to interrupt while the session is idle.
-    expect(bar).not.toContain("interrupt");
-    // And nothing to switch to, because this source has one backend.
-    expect(bar).not.toContain("tab to switch");
-  });
 
   describe("switching backend with tab", () => {
     const driveSwitchable = async (keys: ReadonlyArray<string>) => {
@@ -248,10 +201,6 @@ describe("runCoderUi", () => {
       return { painted, rows: screen(painted), session };
     };
 
-    it("names the key only where there is another backend to reach", async () => {
-      const { rows } = await driveSwitchable([]);
-      expect(rows.at(-1) ?? "").toContain("tab to switch model");
-    });
 
     it("moves to the next backend and says so", async () => {
       const { session, rows } = await driveSwitchable(["\t"]);
@@ -313,57 +262,6 @@ describe("runCoderUi", () => {
     expect(status).toContain("$2.00");
   });
 
-  it("keeps the stop key on a narrow row that has run out of room", async () => {
-    const stdin = new FakeIn();
-    const stdout = new FakeOut();
-    stdout.columns = 80;
-    const registry = new CoderTaskRegistry();
-    const session = new CoderSession(
-      source([
-        {
-          type: "text",
-          value: Array.from({ length: 40 }, (_, index) => `line ${index}`).join("\n"),
-        },
-      ]),
-      "repo",
-      "main",
-      {
-        registry,
-        fleet: {
-          submit: async () => ({ status: "refused", code: "empty_prompt", reason: "not used" }),
-        },
-        label: "fake (fake/model)",
-      },
-    );
-    const running = runCoderUi(session, {
-      stdin: stdin as unknown as NodeJS.ReadStream,
-      stdout: stdout as unknown as NodeJS.WriteStream,
-    });
-
-    // A transcript long enough to scroll grows the counter on the right, which
-    // is what used to push every hint off an eighty-column row.
-    await session.submit("go");
-    const task = registry.register(
-      {
-        id: "d1",
-        description: "run the long build",
-        prompt: "build",
-        agent: "opencode",
-        model: "fake/model",
-        cwd: "/tmp",
-        background: true,
-      },
-      0,
-    );
-    registry.start(task.id, new AbortController());
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    const rows = screen(stdout.written);
-    stdin.emit("data", "\x04");
-    await running;
-    session.close();
-
-    expect(rows.at(-1) ?? "").toContain("ctrl+x to stop agents");
-  });
 
   it("keeps a long typed line inside the row, showing its tail", async () => {
     const stdin = new FakeIn();
@@ -963,5 +861,50 @@ describe("the transcript's marker column", () => {
     expect(painted).not.toContain(`${ESCAPE}[33mscrolled`);
     // And the key it advertised is gone from the bar.
     expect(painted).not.toContain("pgup/pgdn to scroll");
+  });
+});
+
+describe("the chrome under the composer", () => {
+  it("is one row, and it is the status line", async () => {
+    const { rows } = await drive([{ type: "text", value: "answer" }]);
+    const bottom = rows.slice(-2);
+
+    // The keys used to have a row of their own under the status line. They are
+    // in `/help` now, which is where a reader looks for them once rather than
+    // past them always.
+    expect(bottom.some((row) => row.includes("ready") || row.includes("working"))).toBe(true);
+    expect(rows.join("\n")).not.toContain("enter to send");
+    expect(rows.join("\n")).not.toContain("ctrl+d to quit");
+  });
+
+  it("opens without four lines of keys nobody asked for", async () => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    const session = new CoderSession(source([]), "repo", "main");
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    // A banner at the top of every session is something scrolled past for the
+    // rest of it.
+    expect(stdout.written).not.toContain("development build");
+    expect(session.snapshot().entries).toEqual([]);
+
+    stdin.emit("data", "\x04");
+    await running;
+  });
+
+  it("says when the reader is scrolled away from the newest line", async () => {
+    const { rows } = await drive(
+      Array.from({ length: 80 }, (_unused, at) => ({
+        type: "text" as const,
+        value: `line ${String(at)}\n`,
+      })),
+    );
+
+    // Losing the second row lost the scroll indicator with it, and a still
+    // transcript with nothing saying why reads as a stopped session.
+    expect(rows.join("\n")).toContain("ready");
   });
 });

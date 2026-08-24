@@ -730,6 +730,61 @@ export class CoderSession {
       this.entries.push({ role: "you", text: prompt, settled: true, at: Date.now() });
       this.notice(
         [
+          "Commands",
+          "  /help                       this list",
+          "  /system                     what the model is told: tools, skills, and its",
+          "                              standing context",
+          "  /skills                     choose which skills the model is offered",
+          "  /export                     write this conversation as an ATIF trajectory",
+          "  /reload                     rebuild and restart on the current source",
+          "  /delegate [<n>x] <prompt>   run child agents on a prompt",
+          "",
+          "Keys",
+          "  enter                       send · steer a running turn",
+          "  shift+enter                 queue for when the turn ends",
+          "  esc                         interrupt the reply · clear the composer",
+          "  tab                         switch model",
+          "  shift+tab                   change how hard it thinks",
+          "  ctrl+o                      expand a tool call",
+          "  ctrl+x                      stop the children",
+          "  pgup / pgdn                 scroll the transcript",
+          "  ctrl+c                      stop · ctrl+d  quit",
+        ].join("\n"),
+      );
+      this.emit();
+      return;
+    }
+
+    // `/export` is not a turn either: it writes what has already happened.
+    if (/^\/export\s*$/.test(prompt.trim())) {
+      this.entries.push({ role: "you", text: prompt, settled: true, at: Date.now() });
+      try {
+        const written = exportTrajectory(this.snapshot(), {
+          model: this.source.modelId ?? this.source.model,
+          toolDefinitions: this.source.toolDefinitions?.(),
+          version: VERSION,
+          ...(this.exports === undefined ? {} : { directory: this.exports.directory, copy: false }),
+        });
+        this.notice(
+          `Exported ${String(written.steps)} step${written.steps === 1 ? "" : "s"} as ATIF to ${written.path}` +
+            (written.copied ? " (path copied to the clipboard)." : "."),
+        );
+      } catch (cause) {
+        this.notice(
+          `The export could not be written: ${cause instanceof Error ? cause.message : String(cause)}`,
+        );
+      }
+      this.emit();
+      return;
+    }
+
+    // `/help` was going to the model, which answered with nothing. The keys and
+    // the commands are the interface's own facts and it should not have to ask
+    // anything to state them.
+    if (/^\/(help|\?)\s*$/.test(prompt.trim())) {
+      this.entries.push({ role: "you", text: prompt, settled: true, at: Date.now() });
+      this.notice(
+        [
           "Commands:",
           "  /help     this list",
           "  /system   what the model is told, including tools and skills",

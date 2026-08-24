@@ -88,6 +88,18 @@ const FROM_FLAG: Record<string, string> = {
 /** The levels, in the order the interface cycles them. */
 export const OLLAMA_REASONING_LEVELS = Object.keys(THINK);
 
+/**
+ * Where a model's reasoning starts when nobody says.
+ *
+ * `qwen3.8` thinks at length by default — one measured turn produced 150,322
+ * characters of reasoning against 8,232 of answer — and on a local machine that
+ * is the wall clock. It starts low, and `shift+tab` raises it for the turn that
+ * needs it, which is the right way round: the reader asks for more thinking when
+ * the work wants it rather than waiting for it on every question.
+ */
+const defaultReasoningFor = (model: string): string =>
+  /^qwen3\.8\b/.test(model) ? "low" : "medium";
+
 export interface OllamaOptions {
   /** The Ollama model name, without the `ollama:` prefix. */
   readonly model: string;
@@ -277,7 +289,9 @@ export class OllamaReplySource implements ReplySource {
 
   constructor(options: OllamaOptions) {
     this.reasoningLevel =
-      options.reasoning === undefined ? "medium" : (FROM_FLAG[options.reasoning] ?? "medium");
+      options.reasoning === undefined
+        ? defaultReasoningFor(options.model)
+        : (FROM_FLAG[options.reasoning] ?? "medium");
     this.host = options.host ?? DEFAULT_HOST;
     this.client = new Ollama({ host: this.host });
     this.modelName = options.model;

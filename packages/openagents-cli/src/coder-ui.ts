@@ -161,25 +161,18 @@ function justify(left: string, right: string, width: number): string {
   return left + " ".repeat(width - used) + right;
 }
 
-/** A key hint. A pinned one is kept even when the row has to give something up. */
+/** A key hint. */
 interface Hint {
   readonly text: string;
-  readonly pinned?: boolean;
 }
 
 /**
- * Lay out the key hints against the counter, dropping hints from the end until
- * the row fits.
+ * Lay out the key hints, dropping them from the end until the row fits.
  *
- * The counter is state the reader is trying to read; the hints are reminders
- * of keys that work whether or not they are printed. So the hints are what
- * gives way. Padding the two apart and dropping the counter instead is how a
- * wide-enough terminal still managed to hide the reply count.
- *
- * A pinned hint outranks the counter, because a key that stops fifteen agents
- * from spending is not a reminder. Ordering the hints so the stop came before
- * the conveniences was not enough: at eighty columns the counter grows as the
- * transcript scrolls, and the row dropped every hint at once.
+ * Only the skills screen shows these now: the chat's keys moved into `/help`,
+ * where a reader looks for them once rather than past them always. A hint that
+ * outranked everything else on the row went with that move — it existed for the
+ * key that stops the fleet, and the fleet's row is no longer here.
  */
 function hints(keys: ReadonlyArray<Hint>, right: string, width: number): string {
   const shown = [...keys];
@@ -188,12 +181,8 @@ function hints(keys: ReadonlyArray<Hint>, right: string, width: number): string 
     if (shown.length > 0 && visibleWidth(left) + visibleWidth(right) + 2 <= width) {
       return justify(left, right, width);
     }
-    const droppable = shown.reduce<number>(
-      (last, key, index) => (key.pinned === true ? last : index),
-      -1,
-    );
-    if (droppable < 0) break;
-    shown.splice(droppable, 1);
+    if (shown.length === 0) break;
+    shown.pop();
   }
 
   const plain = shown.map((key) => key.text).join(" · ");
@@ -602,7 +591,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         paint(rows, rows.length, 1);
         return;
       }
-      const transcriptHeight = Math.max(1, height - STATUS_ROWS - COMPOSER_ROWS - SPACER_ROWS - 1);
+      const transcriptHeight = Math.max(1, height - STATUS_ROWS - COMPOSER_ROWS - SPACER_ROWS);
 
       const fleet = fleetLines(snapshot, width);
       // The fleet takes its rows from the transcript, not from the chrome: the
@@ -615,8 +604,9 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
 
       const maxStart = Math.max(0, lines.length - transcriptRows);
       const start = anchor === undefined ? maxStart : Math.min(anchor, maxStart);
+      // Kept for the status line: a reader scrolled up with nothing saying so
+      // reads a still transcript as a stopped session.
       const above = start;
-      const below = Math.max(0, lines.length - start - transcriptRows);
 
       const rows: string[] = [];
       for (let row = 0; row < transcriptRows; row += 1) rows.push(lines[start + row] ?? "");
@@ -640,8 +630,10 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       // The fleet is named on the status line even though the block above lists
       // it, because the block is what gives way first on a short terminal and
       // the count is the part the reader is waiting on.
+      const scrolled = anchor === undefined ? "" : `${DIM} · scrolled ↑${String(above)}${RESET}`;
       const activity =
-        phrase === undefined ? chatActivity : `${chatActivity} ${DIM}· ${phrase}${RESET}`;
+        (phrase === undefined ? chatActivity : `${chatActivity} ${DIM}· ${phrase}${RESET}`) +
+        scrolled;
       // Dropped from the left as the terminal narrows, because that is the
       // order of what a reader cannot recover elsewhere: they can see which
       // checkout they are in, they can ask git for the branch, and nothing on
@@ -689,49 +681,9 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       // and a caption sits outside the thing it describes.
       rows.push(`  ${justify(activity, where, inner)}`);
 
-      // Every key named here does something in the state it is named in, and
-      // they are listed in the order a reader needs them, because a narrow row
-      // drops them from the end. An earlier version offered "esc esc to
-      // interrupt" while idle, where there was nothing to interrupt.
-      const keys: Hint[] = [];
-      if (snapshot.running) {
-        keys.push(
-          { text: "enter to steer" },
-          { text: "shift+enter to queue" },
-          { text: "esc to interrupt" },
-        );
-      } else {
-        keys.push({ text: "enter to send" });
-        if (composer.length > 0) keys.push({ text: "esc to clear" });
-        else keys.push({ text: "ctrl+d to quit" });
-      }
-      // Stopping the fleet is pinned rather than merely early: the row is
-      // clipped from the end and this hint only appears while children are
-      // spending, so an unpinned one went exactly when it applied.
-      if (snapshot.tasks.some((task) => task.status === "running")) {
-        keys.push({ text: "ctrl+x to stop agents", pinned: true });
-      }
-      // Only when there is another model to switch to, and only while nothing
-      // is running: a turn already accepted keeps the backend it named.
-      if (session.canCycleBackend && !snapshot.running) keys.push({ text: "tab to switch model" });
-      if (session.canCycleReasoning && !snapshot.running) {
-        keys.push({ text: "shift+tab to change thinking" });
-      }
-
-      if (focusedTool(snapshot) !== undefined) keys.push({ text: "ctrl+o to expand" });
-
-      // `this run` is not decoration. The count is this process's, and a
-      // source that is not the thread — the stand-in behind `--offline` — has
-      // no ceiling the number could be read against, so an unlabelled figure
-      // would invite the reader to compare it with a budget beside it.
-      const replies = `${snapshot.turns} ${snapshot.turns === 1 ? "reply" : "replies"} this run`;
-      const counter =
-        anchor !== undefined
-          ? `${DIM}scrolled · ↑${above} · ↓${below}${RESET}`
-          : above > 0
-            ? `${DIM}↑${above} above · ${replies}${RESET}`
-            : `${DIM}${replies}${RESET}`;
-      rows.push(`  ${hints(keys, counter, inner)}`);
+      // One row of chrome under the composer, and it is the status line. The
+      // keys used to live on a second row; they are in `/help` now, which is
+      // where a reader looks for them once rather than past them always.
 
       paint(rows, transcriptRows + fleet.length + 3, 4 + [...visible].length + 1);
     };
@@ -1151,12 +1103,9 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
     stdin.on("data", onData);
     stdout.on("resize", onResize);
 
-    session.notice(
-      "openagents coder — development build. Type a message and press enter. " +
-        "Ctrl+D quits, Esc interrupts a reply. `/system` shows what the model is told, " +
-        "`/skills` chooses which skills it is offered, `/export` writes the conversation " +
-        "as ATIF, `/reload` restarts on the current source.",
-    );
+    // No banner. Four lines of keys and commands at the top of every session is
+    // four lines a reader scrolls past for the rest of it, and `/help` says the
+    // same thing when it is wanted.
     render();
   });
 }
