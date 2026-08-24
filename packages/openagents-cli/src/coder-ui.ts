@@ -535,8 +535,8 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
 
       // Bottom chrome, in the order a reader scans it: where the typing goes,
       // what the session is doing, then what the keys do. The composer sits
-      // between a blank row and a rule so it reads as its own region rather
-      // than as the last line of the transcript.
+      // between two rules so it reads as its own region rather than as the last
+      // line of the transcript, and the status line sits under that region.
       const rule = `${DIM}${"─".repeat(Math.max(0, width))}${RESET}`;
       const inner = Math.max(10, width - 4);
 
@@ -583,8 +583,11 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
           ? `…${typed.slice(typed.length - composerRoom + 1).join("")}`
           : composer;
       rows.push(`  › ${visible}`);
-      rows.push(`  ${justify(activity, where, inner)}`);
       rows.push(rule);
+      // Under the composer's own region, not inside it. Between the rules is
+      // where typing goes; what the session is doing is a caption on the box,
+      // and a caption sits outside the thing it describes.
+      rows.push(`  ${justify(activity, where, inner)}`);
 
       // Every key named here does something in the state it is named in, and
       // they are listed in the order a reader needs them, because a narrow row
