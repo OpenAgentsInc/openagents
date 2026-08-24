@@ -10,14 +10,14 @@
  * Node, so the interface cannot require the Bun runtime. See `docs/2026-08-23-openagents-
  * coder-cli-spec.md` section 3 and its open questions.
  *
- * The layout follows that document:
+ * The layout:
  *
  *     ┌──────────────────────────────┐
  *     │ transcript, scrollable       │
+ *     │   delegate preview inline    │
  *     │ delegate rows                │
- *     │ status line                  │
- *     │ activity preview, three rows │
  *     ├──────────────────────────────┤
+ *     │ status line                  │
  *     │ composer                     │
  *     └──────────────────────────────┘
  *
@@ -33,9 +33,9 @@
 import { activityPhrase, fleetPhrase, fleetRows, latestActivities } from "./coder-fleet.js";
 import { renderMarkdown, visibleWidth, wrapStyled } from "./coder-markdown.js";
 import type { CoderEntry, CoderSession, CoderSnapshot, CoderToolCall } from "./coder-session.js";
+import type { CoderTask, CoderTaskStatus } from "./coder-tasks.js";
 import { RELOAD_EXIT_CODE, sourceCheckout } from "./coder-reload.js";
 import type { SkillSelection } from "./coder-skills.js";
-import type { CoderTaskStatus } from "./coder-tasks.js";
 
 const ALT_SCREEN_ON = "\x1b[?1049h";
 const ALT_SCREEN_OFF = "\x1b[?1049l";
@@ -401,12 +401,12 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       // reading as part of the sentence before it.
       for (const entry of snapshot.entries) {
         if (out.length > 0) out.push("");
-        out.push(...renderEntry(entry, body));
+        out.push(...renderEntry(entry, body, snapshot.tasks));
       }
       return out;
     };
 
-    const renderEntry = (entry: CoderEntry, width: number): ReadonlyArray<string> => {
+    const renderEntry = (entry: CoderEntry, width: number, tasks: ReadonlyArray<CoderTask>): ReadonlyArray<string> => {
       const color =
         entry.role === "you"
           ? CYAN
@@ -424,7 +424,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       const glyph = entry.settled ? "●" : pulse ? "●" : "○";
       const head = `  ${color}${glyph}${RESET} `;
       const continuation = " ".repeat(GUTTER);
-      const rows = entryRows(entry, width);
+      const rows = entryRows(entry, width, tasks);
       const caret = "";
 
       return rows.map((row, index) => {
@@ -433,9 +433,9 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       });
     };
 
-    const entryRows = (entry: CoderEntry, width: number): ReadonlyArray<string> => {
+    const entryRows = (entry: CoderEntry, width: number, tasks: ReadonlyArray<CoderTask>): ReadonlyArray<string> => {
       if (entry.role === "tool" && entry.tool !== undefined) {
-        return toolRows(entry.tool, width, expanded.has(entry.tool.callId));
+        return toolRows(entry.tool, width, expanded.has(entry.tool.callId), tasks);
       }
       if (entry.text.length === 0 && !entry.settled) return ["…"];
       // Reasoning is Markdown too, rendered inside dim italic. It was plain
@@ -450,7 +450,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       return wrapStyled(entry.text, width, entry.role === "notice" ? DIM : "");
     };
 
-    const toolRows = (tool: CoderToolCall, width: number, open: boolean): ReadonlyArray<string> => {
+    const toolRows = (tool: CoderToolCall, width: number, open: boolean, tasks: ReadonlyArray<CoderTask>): ReadonlyArray<string> => {
       const mark =
         tool.status === "running"
           ? `${YELLOW}◐${RESET}`
@@ -459,7 +459,42 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
             : `${GREEN}✓${RESET}`;
       const rows = [`${mark} ${BOLD}${tool.name}${RESET}`];
 
-      if (!open) {
+      if (tool.name === "delegate" && tool.status === "running") {
+        const phrase = fleetPhrase(tasks) ?? "starting children…";
+        rows.push(`${DIM}→ ${phrase}${RESET}`);
+        const activities = latestActivities(tasks, PREVIEW_ROWS);
+        if (activities.length > 0) {
+          const boxWidth = Math.max(10, width - 4);
+          const frame = `${DIM}╭${"─".repeat(boxWidth + 2)}╮${RESET}`;
+          const floor = `${DIM}╰${"─".repeat(boxWidth + 2)}╯${RESET}`;
+          const lines = activities.map((activity) => {
+            const text = truncate(activityPhrase(activity), boxWidth);
+            const pad = " ".repeat(Math.max(0, boxWidth - [...text].length));
+            return `${DIM}│${RESET} ${text}${pad} ${DIM}│${RESET}`;
+          });
+          rows.push(frame, ...lines, floor);
+        }
+      }
+
+      if (open) {
+        for (const line of tool.arguments.split("\n")) {
+          rows.push(`${DIM}${truncate(line, width)}${RESET}`);
+        }
+        if (tool.error !== undefined) {
+          rows.push(...wrapStyled(tool.error, width, RED));
+        } else if (tool.output !== undefined) {
+          // The arrow separates the call from its result, which otherwise read
+          // as one JSON document split over a blank line.
+          const lines = tool.output.split("\n");
+          for (const [index, line] of lines.entries()) {
+            const marker = index === 0 ? `${DIM}→${RESET} ` : "  ";
+            rows.push(`${marker}${DIM}${truncate(line, Math.max(4, width - 2))}${RESET}`);
+          }
+        }
+        return rows;
+      }
+
+      if (tool.name !== "delegate" || tool.status !== "running") {
         const args = clip(tool.arguments, Math.max(8, width - 4));
         if (args.length > 0) rows.push(`${DIM}${args}${RESET}`);
         const outcome =
@@ -467,26 +502,10 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
             ? `${RED}${clip(tool.error, Math.max(8, width - 4))}${RESET}`
             : tool.output !== undefined
               ? `${DIM}→ ${clip(tool.output, Math.max(8, width - 6))}${RESET}`
-              : tool.status === "running"
+              : tool.status === "running" && tool.name !== "delegate"
                 ? `${DIM}→ running…${RESET}`
                 : "";
         if (outcome.length > 0) rows.push(outcome);
-        return rows;
-      }
-
-      for (const line of tool.arguments.split("\n")) {
-        rows.push(`${DIM}${truncate(line, width)}${RESET}`);
-      }
-      if (tool.error !== undefined) {
-        rows.push(...wrapStyled(tool.error, width, RED));
-      } else if (tool.output !== undefined) {
-        // The arrow separates the call from its result, which otherwise read
-        // as one JSON document split over a blank line.
-        const lines = tool.output.split("\n");
-        for (const [index, line] of lines.entries()) {
-          const marker = index === 0 ? `${DIM}→${RESET} ` : "  ";
-          rows.push(`${marker}${DIM}${truncate(line, Math.max(4, width - 2))}${RESET}`);
-        }
       }
       return rows;
     };
@@ -519,31 +538,6 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       const hidden = tasks.length - shown.length;
       if (hidden > 0) out.push(`  ${DIM}   +${String(hidden)} more${RESET}`);
       return out;
-    };
-
-    /**
-     * The preview box: what the working children last did, one line per thing.
-     *
-     * Drawn beside the fleet rather than inside it because a fleet row has one
-     * line for everything a child is, and what a child did in its last three
-     * steps does not fit in that line. The box scrolls by staying fixed: every
-     * new activity pushes the rows up, and the oldest falls off the top.
-     */
-    const previewLines = (snapshot: CoderSnapshot, width: number): ReadonlyArray<string> => {
-      const activities = latestActivities(snapshot.tasks, PREVIEW_ROWS);
-      if (activities.length === 0) return [];
-
-      // Aligned with the rules and the status line: two columns of gutter,
-      // then a box whose right edge meets theirs.
-      const body = Math.max(10, width - 6);
-      const frame = `${DIM}╭${"─".repeat(body + 2)}╮${RESET}`;
-      const floor = `${DIM}╰${"─".repeat(body + 2)}╯${RESET}`;
-      const rows = activities.map((activity) => {
-        const text = truncate(activityPhrase(activity), body);
-        const pad = " ".repeat(Math.max(0, body - [...text].length));
-        return `  ${DIM}│${RESET} ${text}${pad} ${DIM}│${RESET}`;
-      });
-      return [`  ${frame}`, ...rows, `  ${floor}`];
     };
 
     /** The newest tool call, which is the one ctrl+o expands. */
@@ -637,13 +631,11 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       const transcriptHeight = Math.max(1, height - STATUS_ROWS - COMPOSER_ROWS - SPACER_ROWS);
 
       const fleet = fleetLines(snapshot, width);
-      const preview = previewLines(snapshot, width);
-      // The fleet and the preview take their rows from the transcript, not
-      // from the chrome: the composer stays where the reader's hands expect
-      // it. The status line moved up beside them; its row is already priced
-      // into `transcriptHeight`, which is what keeps every frame the same
-      // height whether children are running or not.
-      const transcriptRows = Math.max(1, transcriptHeight - fleet.length - preview.length);
+      // The fleet takes its rows from the transcript, not from the chrome:
+      // the composer stays where the reader's hands expect it. The status
+      // line is priced into `transcriptHeight`, which keeps every frame the
+      // same height whether children are running or not.
+      const transcriptRows = Math.max(1, transcriptHeight - fleet.length);
 
       const lines = transcriptLines(snapshot, width);
       lineCount = lines.length;
@@ -659,15 +651,13 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       for (let row = 0; row < transcriptRows; row += 1) rows.push(lines[start + row] ?? "");
       rows.push(...fleet);
 
-      // Bottom chrome, in the order a reader scans it. The status line sits
-      // directly under the delegate rows now: what the session is doing is a
-      // caption on the thing it describes, and the children are that thing
-      // whenever any exist. The preview box follows it, then the composer in
-      // its own region between two rules.
+      // Bottom chrome, in the order a reader scans it. The status line is the
+      // main agent's state; the delegate preview lives inline under the
+      // delegate tool call. The composer follows in its own region between two
+      // rules.
       const rule = `${DIM}${"─".repeat(Math.max(0, width))}${RESET}`;
       const inner = Math.max(10, width - 4);
 
-      const phrase = fleetPhrase(snapshot.tasks);
       // The elapsed time and nothing else. This said `streaming` until the
       // reply source became the inference proxy, which builds the whole body
       // and sends it once: a turn that shows one block after four silent
@@ -675,13 +665,8 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       const chatActivity = snapshot.running
         ? `${YELLOW}●${RESET} working… ${DIM}(${elapsed(runningSince, Date.now())})${RESET}`
         : `${DIM}○ ready${RESET}`;
-      // The fleet is named on the status line even though the block above lists
-      // it, because the block is what gives way first on a short terminal and
-      // the count is the part the reader is waiting on.
       const scrolled = anchor === undefined ? "" : `${DIM} · scrolled ↑${String(above)}${RESET}`;
-      const activity =
-        (phrase === undefined ? chatActivity : `${chatActivity} ${DIM}· ${phrase}${RESET}`) +
-        scrolled;
+      const activity = chatActivity + scrolled;
       // Dropped from the left as the terminal narrows, because that is the
       // order of what a reader cannot recover elsewhere: they can see which
       // checkout they are in, they can ask git for the branch, and nothing on
@@ -697,7 +682,6 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         break;
       }
       rows.push(`  ${justify(activity, where, inner)}`);
-      rows.push(...preview);
 
       // A blank row, then the composer. The keys used to live on a second row
       // under it; they are in `/help` now, which is where a reader looks for
@@ -729,7 +713,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
 
       paint(
         rows,
-        transcriptRows + fleet.length + 1 + preview.length + 3,
+        transcriptRows + fleet.length + 4,
         4 + [...visible].length + 1,
       );
     };
@@ -747,10 +731,10 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         if (painted[index] === next) continue;
         frame.push(`\x1b[${index + 1};1H`, ERASE_LINE, next);
       }
-      // Rows the last frame had that this one does not. The preview box and
-      // the fleet both come and go with the work, so a frame can be shorter
-      // than the one before it, and whatever it left below would otherwise
-      // stay on screen with nothing owning it.
+      // Rows the last frame had that this one does not. The fleet comes and
+      // goes with the work, so a frame can be shorter than the one before it,
+      // and whatever it left below would otherwise stay on screen with nothing
+      // owning it.
       for (let index = rows.length; index < painted.length; index += 1) {
         frame.push(`\x1b[${index + 1};1H`, ERASE_LINE);
       }

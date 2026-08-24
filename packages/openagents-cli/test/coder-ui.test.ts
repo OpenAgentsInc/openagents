@@ -907,30 +907,58 @@ describe("the chrome under the composer", () => {
   });
 });
 
-describe("the status line under the delegate rows", () => {
-  /** A session that can delegate, driven by writing to its registry by hand. */
+describe("the delegate preview inline under the tool call", () => {
+  /** A session with a running delegate tool call, for testing the inline preview. */
   const driveDelegated = async (
     record: (registry: CoderTaskRegistry) => void,
   ): Promise<ReadonlyArray<string>> => {
     const stdin = new FakeIn();
     const stdout = new FakeOut();
     const registry = new CoderTaskRegistry();
-    const session = new CoderSession(source([{ type: "text", value: "hi" }]), "repo", "main", {
-      registry,
-      fleet: {
-        submit: (): Promise<never> => new Promise(() => {}),
+    const session = new CoderSession(
+      {
+        model: "scripted",
+        async *reply(_prompt: string, signal: AbortSignal) {
+          yield {
+            type: "tool_call",
+            callId: "c1",
+            name: "delegate",
+            arguments: JSON.stringify({
+              prompt: "look around",
+              count: 1,
+              description: "inspect the repo",
+            }),
+          };
+          await new Promise<void>((resolve) => {
+            if (signal.aborted) return resolve();
+            signal.addEventListener("abort", () => resolve(), { once: true });
+          });
+        },
       },
-      label: "fake",
-    });
+      "repo",
+      "main",
+      {
+        registry,
+        fleet: {
+          submit: (): Promise<never> => new Promise(() => {}),
+        },
+        label: "fake",
+      },
+    );
     const running = runCoderUi(session, {
       stdin: stdin as unknown as NodeJS.ReadStream,
       stdout: stdout as unknown as NodeJS.WriteStream,
     });
 
+    const turn = session.submit("go");
+    await new Promise((resolve) => setTimeout(resolve, 0));
     record(registry);
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const painted = stdout.written;
     stdin.emit("data", "\x04");
     await running;
+    session.interrupt();
+    await turn;
     return screen(painted);
   };
 
@@ -953,11 +981,14 @@ describe("the status line under the delegate rows", () => {
       registerChild(registry);
     });
 
-    const delegateRow = rows.findIndex((row) => row.includes("inspect the repo"));
+    const delegateRow = rows.findIndex((row) => row.includes("delegate"));
     expect(delegateRow).toBeGreaterThan(0);
     const status = rows[delegateRow + 1] ?? "";
     expect(status).toContain("1 agent");
-    expect(status).toContain("repo · main");
+    // The session status lives at the bottom and does not repeat the fleet.
+    const bottom = rows.filter((row) => row.includes("repo · main")).at(-1) ?? "";
+    expect(bottom).toContain("repo · main");
+    expect(bottom).not.toContain("1 agent");
   });
 
   it("previews the child's latest activity one line per thing, three lines at most", async () => {
