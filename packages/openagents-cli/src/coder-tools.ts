@@ -15,6 +15,7 @@
  */
 
 import type { CoderDelegation } from "./coder-session.js";
+import { catalogEntry, renderSkill, type CoderSkill } from "./coder-skills.js";
 import { describePrompt, MAX_DELEGATE_COUNT } from "./coder-delegate.js";
 import type { DelegationOutcome } from "./coder-delegate.js";
 
@@ -167,4 +168,53 @@ function report(outcomes: ReadonlyArray<DelegationOutcome>, delegation: CoderDel
 
 function clip(text: string, limit: number): string {
   return text.length <= limit ? text : `${text.slice(0, limit)}\n…[truncated]`;
+}
+
+/**
+ * The skill tool: read one of this session's skills.
+ *
+ * The catalog is the description rather than a system prompt, so the same tool
+ * carries it on the local lane, where the client writes the prompt, and on the
+ * thread lane, where the server does. Bodies are not sent until asked for: the
+ * catalog is a line each, and the skills on one machine already run to tens of
+ * kilobytes.
+ *
+ * Returned as text rather than thrown for a name that does not match, and the
+ * text lists what does: a model that misremembers a name can correct itself on
+ * the next call, and cannot correct a turn that died.
+ */
+export function skillTool(skills: ReadonlyArray<CoderSkill>): CoderTool {
+  const catalog = skills.map((skill) => catalogEntry(skill)).join("\n");
+  return {
+    name: "skill",
+    description:
+      "Read one of this repository's skills: a written procedure for a kind of work, with the " +
+      "conventions, commands, and rules it needs. Call it before doing work a skill covers, and " +
+      "follow what it says over your own habits. Skills available:\n" +
+      catalog,
+    parameters: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          enum: skills.map((skill) => skill.name),
+          description: "The skill to read.",
+        },
+      },
+      required: ["name"],
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const name = typeof args["name"] === "string" ? args["name"].trim() : "";
+      const skill = skills.find((candidate) => candidate.name === name);
+      if (skill === undefined) {
+        return Promise.resolve(
+          `There is no \`${name}\` skill. This session has: ${skills
+            .map((candidate) => `\`${candidate.name}\``)
+            .join(", ")}.`,
+        );
+      }
+      return Promise.resolve(renderSkill(skill));
+    },
+  };
 }

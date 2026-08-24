@@ -30,7 +30,8 @@ import { runCoderUi } from "./coder-ui.js";
 import { backendIds } from "./coder-backends.js";
 import { OllamaReplySource, isOllamaModelFlag, parseOllamaModelFlag } from "./coder-ollama.js";
 import { openThread, ThreadUnavailable, type ThreadReplySource } from "./coder-thread.js";
-import { delegateTool } from "./coder-tools.js";
+import { delegateTool, skillTool } from "./coder-tools.js";
+import { discoverSkills } from "./coder-skills.js";
 import { describeWorkspace } from "./coder-workspace.js";
 import { ComputerClient } from "./computer-client.js";
 import { ComputerUp } from "./computer-up.js";
@@ -1740,8 +1741,16 @@ const coderCommand = Command.make(
       // remember a slash command. A turn that needs three agents asks for them
       // mid-sentence, and `/delegate` stays as the way to launch a fan-out
       // without spending a turn to ask for one.
-      if (setup !== undefined) {
-        source.useTools?.([delegateTool(setup.delegation)]);
+      // Skills do not depend on delegation: a session with no credential still
+      // reads this repository's conventions, it just cannot hand work to a
+      // child. A session with neither declares no tools at all.
+      const skills = discoverSkills();
+      const tools = [
+        ...(skills.length === 0 ? [] : [skillTool(skills)]),
+        ...(setup === undefined ? [] : [delegateTool(setup.delegation)]),
+      ];
+      if (tools.length > 0) {
+        source.useTools?.(tools);
       }
 
       // Delegation is off rather than quietly running children on the
