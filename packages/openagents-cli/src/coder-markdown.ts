@@ -70,8 +70,29 @@ export function renderMarkdown(
   /** The fence marker that opened the current code block, if one is open. */
   let fence: string | undefined;
 
-  for (const line of text.split("\n")) {
+  const source = text.split("\n");
+  for (let at = 0; at < source.length; at += 1) {
+    const line = source[at] ?? "";
     const fenced = /^\s*(```+|~~~+)/.exec(line);
+
+    // A table is a block, not a run of lines, so it is taken whole before the
+    // line-at-a-time path sees it as seven paragraphs of pipes.
+    if (
+      fence === undefined &&
+      fenced === null &&
+      isTableRow(line) &&
+      isTableRule(source[at + 1] ?? "")
+    ) {
+      const block: string[] = [line, source[at + 1] ?? ""];
+      let end = at + 2;
+      while (end < source.length && isTableRow(source[end] ?? "")) {
+        block.push(source[end] ?? "");
+        end += 1;
+      }
+      rows.push(...tableRows(block, width));
+      at = end - 1;
+      continue;
+    }
 
     if (fence !== undefined) {
       // A fence closes only on its own marker, so a ``` inside a ~~~ block is
@@ -99,6 +120,136 @@ export function renderMarkdown(
 }
 
 /** One non-fenced source line as one or more rendered rows. */
+
+/** A row of cells, as written between pipes. */
+const tableCells = (line: string): ReadonlyArray<string> =>
+  line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+
+/** True for the `| --- | :--: |` line that makes the row above a header. */
+const isTableRule = (line: string): boolean => {
+  const cells = tableCells(line);
+  return cells.length > 0 && cells.every((cell) => /^:?-{1,}:?$/.test(cell));
+};
+
+/** True for anything that could be a row of a table. */
+const isTableRow = (line: string): boolean => line.trim().startsWith("|");
+
+type Alignment = "left" | "right" | "center";
+
+const alignments = (rule: string): ReadonlyArray<Alignment> =>
+  tableCells(rule).map((cell) => {
+    const left = cell.startsWith(":");
+    const right = cell.endsWith(":");
+    if (left && right) return "center";
+    return right ? "right" : "left";
+  });
+
+/** Pad a styled cell to a column, by its visible width rather than its bytes. */
+const padCell = (cell: string, room: number, how: Alignment): string => {
+  const slack = Math.max(0, room - visibleWidth(cell));
+  if (how === "right") return `${" ".repeat(slack)}${cell}`;
+  if (how === "center") {
+    const left = Math.floor(slack / 2);
+    return `${" ".repeat(left)}${cell}${" ".repeat(slack - left)}`;
+  }
+  return `${cell}${" ".repeat(slack)}`;
+};
+
+/**
+ * Render a Markdown table as aligned columns.
+ *
+ * It was rendered as its source: seven lines of pipes and a row of dashes,
+ * which is the one shape of Markdown that is harder to read unrendered than
+ * any prose. Cells keep their inline markup, so a code span in a cell is still
+ * a code span.
+ *
+ * Columns are sized to their widest cell and then shrunk together if the whole
+ * is too wide, because a table that overflows the terminal wraps into
+ * something worse than the source it came from.
+ */
+function tableRows(lines: ReadonlyArray<string>, width: number): ReadonlyArray<string> {
+  const [header, rule, ...body] = lines;
+  if (header === undefined || rule === undefined) return lines.map((line) => line);
+
+  const how = alignments(rule);
+  const headings = tableCells(header);
+  const cells = body.map((line) => tableCells(line));
+  const columns = Math.max(headings.length, ...cells.map((row) => row.length));
+
+  /**
+   * Style a cell, and cut it to a column if it does not fit.
+   *
+   * Cut on the spans rather than on either the source or the styled string.
+   * The source counts markup a reader never sees — a cell written `` `the` ``
+   * is eight columns and ten characters — and the styled string counts escape
+   * bytes. Both make a cell that fits look like one that does not.
+   */
+  const styled = (text: string, style: string, room = Number.POSITIVE_INFINITY) => {
+    const spans = scan(text, style);
+    const total = spans.reduce((sum, span) => sum + [...span.text].length, 0);
+    const trim = total > room;
+    let left = trim ? Math.max(1, room - 1) : room;
+    const out: string[] = [];
+
+    for (const span of spans) {
+      if (left <= 0) break;
+      const glyphs = [...span.text];
+      const take = glyphs.slice(0, left).join("");
+      left -= [...take].length;
+      out.push(`${span.style}${take}${span.style === "" ? "" : RESET}`);
+    }
+
+    return `${out.join("")}${trim ? "…" : ""}`;
+  };
+
+  // Measured on the text a reader sees, not on the styled string: markup adds
+  // escape bytes that occupy no columns, and sizing by them makes every column
+  // that contains a code span too wide.
+  const plain = (text: string) => visibleWidth(styled(text, ""));
+
+
+  const widths: number[] = [];
+  for (let column = 0; column < columns; column += 1) {
+    const widest = cells.reduce(
+      (most, row) => Math.max(most, plain(row[column] ?? "")),
+      plain(headings[column] ?? ""),
+    );
+    widths.push(widest);
+  }
+
+  // Two spaces between columns. If that does not fit, the widest column gives
+  // way first, and keeps giving way until it does.
+  const gap = 2;
+  let total = () => widths.reduce((sum, room) => sum + room, 0) + gap * (columns - 1);
+  while (total() > width && widths.some((room) => room > 4)) {
+    const widest = widths.indexOf(Math.max(...widths));
+    widths[widest] = Math.max(4, (widths[widest] ?? 4) - 1);
+  }
+
+  const line = (values: ReadonlyArray<string>, style: string) =>
+    Array.from({ length: columns }, (_unused, column) =>
+      padCell(
+        styled(values[column] ?? "", style, widths[column] ?? 0),
+        widths[column] ?? 0,
+        how[column] ?? "left",
+      ),
+    )
+      .join(" ".repeat(gap))
+      .trimEnd();
+
+  const out = [line(headings, BOLD)];
+  out.push(
+    `${DIM}${widths.map((room) => "─".repeat(room)).join("─".repeat(gap))}${RESET}`,
+  );
+  for (const row of cells) out.push(line(row, ""));
+  return out;
+}
+
 function blockRows(line: string, width: number): ReadonlyArray<string> {
   if (line.trim().length === 0) return [""];
 
