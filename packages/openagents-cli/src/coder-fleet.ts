@@ -19,7 +19,7 @@
  * ragged text, and the transcript underneath it disappears.
  */
 
-import type { CoderTask, CoderTaskStatus } from "./coder-tasks.js";
+import type { CoderTask, CoderTaskStatus, CoderToolActivity } from "./coder-tasks.js";
 import { isTerminal } from "./coder-tasks.js";
 
 /** One rendered child. The caller decides how `status` is coloured. */
@@ -93,8 +93,43 @@ export function taskActivity(task: CoderTask, now: number = Date.now()): string 
   const running = formatDuration(now - task.startedAt);
   const activity = task.progress.lastActivity;
   if (activity === undefined) return `Initializing… (${running})`;
+  return `${activityPhrase(activity)} (${running})`;
+}
+
+/**
+ * What an activity says on its own, with no clock and no status around it.
+ *
+ * The preview box wants the doing, not the duration: the duration belongs to
+ * the fleet row, which already carries it, and repeating it one row down says
+ * the same thing twice.
+ */
+export function activityPhrase(activity: CoderToolActivity): string {
   const target = activity.target === undefined ? "" : `(${collapse(activity.target)})`;
-  return `${activity.toolName}${target} (${running})`;
+  return `${activity.toolName}${target}`;
+}
+
+/**
+ * The newest activities across a fleet, oldest first, at most `count` of them.
+ *
+ * Within a child, `recentActivities` is oldest to newest. Across children the
+ * activities are appended in launch order, which is exact for the one-child
+ * case a preview is usually watching and stable for a fan-out: no timestamp
+ * exists on an activity to order by, so launch order is the only honest one.
+ *
+ * Terminal children are left out. Their last actions were their outcome's
+ * business, and that outcome is announced on the transcript; keeping the lines
+ * here would leave a preview of work nothing is doing anymore.
+ */
+export function latestActivities(
+  tasks: ReadonlyArray<CoderTask>,
+  count: number,
+): ReadonlyArray<CoderToolActivity> {
+  const out: CoderToolActivity[] = [];
+  for (const task of tasks) {
+    if (isTerminal(task.status)) continue;
+    out.push(...task.progress.recentActivities);
+  }
+  return out.slice(Math.max(0, out.length - Math.max(0, count)));
 }
 
 /**

@@ -8,7 +8,14 @@ import {
   parseDelegateCommand,
   parseOpencodeEvent,
 } from "../src/coder-delegate.js";
-import { fleetPhrase, fleetRows, formatTokens, taskActivity } from "../src/coder-fleet.js";
+import {
+  activityPhrase,
+  fleetPhrase,
+  fleetRows,
+  formatTokens,
+  latestActivities,
+  taskActivity,
+} from "../src/coder-fleet.js";
 import { CoderSession, type ReplySource } from "../src/coder-session.js";
 import { CoderTaskRegistry } from "../src/coder-tasks.js";
 import { mkdtempSync } from "node:fs";
@@ -371,5 +378,70 @@ describe("fleet rendering", () => {
   it("cuts a row to the width it was given", () => {
     const rows = fleetRows(registry.list(), 30);
     expect(rows.every((row) => [...row.text].length <= 30)).toBe(true);
+  });
+
+  it("says an activity on its own, with no clock around it", () => {
+    expect(activityPhrase({ toolName: "read", target: "src/a.ts" })).toBe("read(src/a.ts)");
+    expect(activityPhrase({ toolName: "think", target: undefined })).toBe("think");
+  });
+});
+
+describe("latestActivities", () => {
+  const startedRegistry = () => {
+    const registry = new CoderTaskRegistry();
+    const task = registry.register(
+      {
+        id: "d1",
+        description: "inspect the repo",
+        prompt: "look around",
+        agent: "opencode",
+        model: "fake/model",
+        cwd: "/tmp",
+        background: true,
+      },
+      0,
+    );
+    registry.start(task.id, new AbortController());
+    return { registry, id: task.id };
+  };
+
+  it("returns nothing when no child has done anything", () => {
+    expect(latestActivities([], 3)).toEqual([]);
+
+    const { registry, id } = startedRegistry();
+    expect(latestActivities(registry.list(), 3)).toEqual([]);
+    registry.complete(id, "done", 10);
+    expect(latestActivities(registry.list(), 3)).toEqual([]);
+  });
+
+  it("keeps the newest few, oldest first, across the fleet", () => {
+    const { registry, id } = startedRegistry();
+    for (const [name, target] of [
+      ["read", "a.ts"],
+      ["grep", "needle"],
+      ["bash", "ls"],
+      ["edit", "b.ts"],
+    ] as const) {
+      registry.recordToolUse(id, { toolName: name, target });
+    }
+
+    expect(latestActivities(registry.list(), 3)).toEqual([
+      { toolName: "grep", target: "needle" },
+      { toolName: "bash", target: "ls" },
+      { toolName: "edit", target: "b.ts" },
+    ]);
+  });
+
+  it("leaves a finished child's steps out of a live preview", () => {
+    const first = startedRegistry();
+    first.registry.recordToolUse(first.id, { toolName: "bash", target: "stale" });
+    first.registry.complete(first.id, "done", 10);
+
+    const second = startedRegistry();
+    second.registry.recordToolUse(second.id, { toolName: "grep", target: "fresh" });
+
+    expect(latestActivities([...first.registry.list(), ...second.registry.list()], 3)).toEqual([
+      { toolName: "grep", target: "fresh" },
+    ]);
   });
 });

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { CODER_BACKENDS } from "../src/coder-backends.js";
 import { CoderSession, type ReplyChunk, type ReplySource } from "../src/coder-session.js";
+import { CoderTaskRegistry } from "../src/coder-tasks.js";
 import { RELOAD_EXIT_CODE } from "../src/coder-reload.js";
 import { runCoderUi } from "../src/coder-ui.js";
 
@@ -170,13 +171,10 @@ describe("runCoderUi", () => {
     expect(painted).toContain("\x1b[2m\x1b[3mI should check first.\x1b[0m");
   });
 
-
-
   it("says nothing about scope when the source keeps its turns to itself", async () => {
     const { rows } = await drive([{ type: "text", value: "hello" }]);
     expect(rows.join("\n")).not.toContain("shared with");
   });
-
 
   describe("switching backend with tab", () => {
     const driveSwitchable = async (keys: ReadonlyArray<string>) => {
@@ -199,7 +197,6 @@ describe("runCoderUi", () => {
       await running;
       return { painted, rows: screen(painted), session };
     };
-
 
     it("moves to the next backend and says so", async () => {
       const { session, rows } = await driveSwitchable(["\t"]);
@@ -260,7 +257,6 @@ describe("runCoderUi", () => {
     expect(status).not.toContain("a-long-repository-name");
     expect(status).toContain("$2.00");
   });
-
 
   it("keeps a long typed line inside the row, showing its tail", async () => {
     const stdin = new FakeIn();
@@ -864,14 +860,17 @@ describe("the transcript's marker column", () => {
 });
 
 describe("the chrome under the composer", () => {
-  it("is one row, and it is the status line", async () => {
+  it("closes the composer with its floor rule, and no longer carries the status line", async () => {
     const { rows } = await drive([{ type: "text", value: "answer" }]);
-    const bottom = rows.slice(-2);
+    const composerAt = rows.findIndex((row) => row.includes("›"));
+    const statusAt = rows.findIndex((row) => row.includes("repo · main"));
 
-    // The keys used to have a row of their own under the status line. They are
-    // in `/help` now, which is where a reader looks for them once rather than
-    // past them always.
-    expect(bottom.some((row) => row.includes("ready") || row.includes("working"))).toBe(true);
+    // The status line moved up beside the delegate rows; what is left under
+    // the composer is its own region and nothing else.
+    expect(composerAt).toBeGreaterThan(0);
+    expect(statusAt).toBeGreaterThanOrEqual(0);
+    expect(statusAt).toBeLessThan(composerAt);
+    expect(rows.at(-1)).toMatch(/^─+$/);
     expect(rows.join("\n")).not.toContain("enter to send");
     expect(rows.join("\n")).not.toContain("ctrl+d to quit");
   });
@@ -905,5 +904,95 @@ describe("the chrome under the composer", () => {
     // Losing the second row lost the scroll indicator with it, and a still
     // transcript with nothing saying why reads as a stopped session.
     expect(rows.join("\n")).toContain("ready");
+  });
+});
+
+describe("the status line under the delegate rows", () => {
+  /** A session that can delegate, driven by writing to its registry by hand. */
+  const driveDelegated = async (
+    record: (registry: CoderTaskRegistry) => void,
+  ): Promise<ReadonlyArray<string>> => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    const registry = new CoderTaskRegistry();
+    const session = new CoderSession(source([{ type: "text", value: "hi" }]), "repo", "main", {
+      registry,
+      fleet: {
+        submit: (): Promise<never> => new Promise(() => {}),
+      },
+      label: "fake",
+    });
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    record(registry);
+    const painted = stdout.written;
+    stdin.emit("data", "\x04");
+    await running;
+    return screen(painted);
+  };
+
+  const registerChild = (registry: CoderTaskRegistry): string => {
+    const task = registry.register({
+      id: "d1",
+      description: "inspect the repo",
+      prompt: "look around",
+      agent: "opencode",
+      model: "fake/model",
+      cwd: "/tmp",
+      background: true,
+    });
+    registry.start(task.id, new AbortController());
+    return task.id;
+  };
+
+  it("sits directly under the delegate row while a child runs", async () => {
+    const rows = await driveDelegated((registry) => {
+      registerChild(registry);
+    });
+
+    const delegateRow = rows.findIndex((row) => row.includes("inspect the repo"));
+    expect(delegateRow).toBeGreaterThan(0);
+    const status = rows[delegateRow + 1] ?? "";
+    expect(status).toContain("1 agent");
+    expect(status).toContain("repo · main");
+  });
+
+  it("previews the child's latest activity one line per thing, three lines at most", async () => {
+    const rows = await driveDelegated((registry) => {
+      const id = registerChild(registry);
+      // Five activities against a box that holds three: the two oldest have
+      // to fall off the top, which is what keeps the box a preview.
+      registry.recordToolUse(id, { toolName: "read", target: "src/a.ts" });
+      registry.recordToolUse(id, { toolName: "grep", target: "needle" });
+      registry.recordToolUse(id, { toolName: "bash", target: "pnpm test" });
+      registry.recordToolUse(id, { toolName: "edit", target: "src/b.ts" });
+      registry.recordToolUse(id, { toolName: "shell", target: "mix test" });
+    });
+
+    const boxed = rows.filter((row) => /[╭╰]/.test(row) || row.includes(" │ "));
+    expect(boxed).toHaveLength(5); // top border, three activity rows, floor.
+    const text = boxed.join("\n");
+    expect(text).toContain("shell(mix test)");
+    expect(text).toContain("edit(src/b.ts)");
+    expect(text).toContain("bash(pnpm test)");
+    // Pushed out by the newer work.
+    expect(text).not.toContain("read(src/a.ts)");
+    expect(text).not.toContain("grep(needle)");
+
+    // Newest last, so reading down is reading forward in time.
+    const at = (phrase: string) => boxed.findIndex((row) => row.includes(phrase));
+    expect(at("bash(pnpm test)")).toBeLessThan(at("edit(src/b.ts)"));
+    expect(at("edit(src/b.ts)")).toBeLessThan(at("shell(mix test)"));
+  });
+
+  it("draws no preview until the child has done something", async () => {
+    const rows = await driveDelegated((registry) => {
+      registerChild(registry);
+    });
+
+    expect(rows.join("\n")).not.toContain("╭");
   });
 });

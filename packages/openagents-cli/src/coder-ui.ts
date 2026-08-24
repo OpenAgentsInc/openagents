@@ -14,8 +14,9 @@
  *
  *     ┌──────────────────────────────┐
  *     │ transcript, scrollable       │
- *     ├──────────────────────────────┤
- *     │ status  repo · branch · model · budget│
+ *     │ delegate rows                │
+ *     │ status line                  │
+ *     │ activity preview, three rows │
  *     ├──────────────────────────────┤
  *     │ composer                     │
  *     └──────────────────────────────┘
@@ -29,7 +30,7 @@
  * own job instead.
  */
 
-import { fleetPhrase, fleetRows } from "./coder-fleet.js";
+import { activityPhrase, fleetPhrase, fleetRows, latestActivities } from "./coder-fleet.js";
 import { renderMarkdown, visibleWidth, wrapStyled } from "./coder-markdown.js";
 import type { CoderEntry, CoderSession, CoderSnapshot, CoderToolCall } from "./coder-session.js";
 import { RELOAD_EXIT_CODE, sourceCheckout } from "./coder-reload.js";
@@ -86,6 +87,14 @@ const MAGENTA = "\x1b[35m";
 const RED = "\x1b[31m";
 
 const STATUS_ROWS = 1;
+/**
+ * The status line sits under the delegate rows rather than under the composer.
+ *
+ * What the session is doing reads as a caption on the thing it describes, and
+ * when children are running that thing is the fleet block above the line, not
+ * the composer below it. The row is still paid for out of the transcript's
+ * height, so the composer never moves.
+ */
 const COMPOSER_ROWS = 3;
 /**
  * One blank row between the transcript and the composer.
@@ -103,6 +112,15 @@ const SPACER_ROWS = 1;
  * ones that are still working and counts the rest.
  */
 const FLEET_ROWS_MAX = 8;
+/**
+ * Activity lines the preview box holds.
+ *
+ * Fixed at three because a preview that grows with the run is a transcript in
+ * miniature, and the transcript already exists. Newer activity pushes the
+ * older rows up and out: the box always names the latest things the children
+ * are doing and never more than three of them.
+ */
+const PREVIEW_ROWS = 3;
 /** Width of the role gutter, so every entry's text starts in one column. */
 /**
  * Width of the marker column.
@@ -503,6 +521,31 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       return out;
     };
 
+    /**
+     * The preview box: what the working children last did, one line per thing.
+     *
+     * Drawn beside the fleet rather than inside it because a fleet row has one
+     * line for everything a child is, and what a child did in its last three
+     * steps does not fit in that line. The box scrolls by staying fixed: every
+     * new activity pushes the rows up, and the oldest falls off the top.
+     */
+    const previewLines = (snapshot: CoderSnapshot, width: number): ReadonlyArray<string> => {
+      const activities = latestActivities(snapshot.tasks, PREVIEW_ROWS);
+      if (activities.length === 0) return [];
+
+      // Aligned with the rules and the status line: two columns of gutter,
+      // then a box whose right edge meets theirs.
+      const body = Math.max(10, width - 6);
+      const frame = `${DIM}╭${"─".repeat(body + 2)}╮${RESET}`;
+      const floor = `${DIM}╰${"─".repeat(body + 2)}╯${RESET}`;
+      const rows = activities.map((activity) => {
+        const text = truncate(activityPhrase(activity), body);
+        const pad = " ".repeat(Math.max(0, body - [...text].length));
+        return `  ${DIM}│${RESET} ${text}${pad} ${DIM}│${RESET}`;
+      });
+      return [`  ${frame}`, ...rows, `  ${floor}`];
+    };
+
     /** The newest tool call, which is the one ctrl+o expands. */
     const focusedTool = (snapshot: CoderSnapshot): string | undefined => {
       for (let index = snapshot.entries.length - 1; index >= 0; index -= 1) {
@@ -594,9 +637,13 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       const transcriptHeight = Math.max(1, height - STATUS_ROWS - COMPOSER_ROWS - SPACER_ROWS);
 
       const fleet = fleetLines(snapshot, width);
-      // The fleet takes its rows from the transcript, not from the chrome: the
-      // status line and composer stay where the reader's hands expect them.
-      const transcriptRows = Math.max(1, transcriptHeight - fleet.length);
+      const preview = previewLines(snapshot, width);
+      // The fleet and the preview take their rows from the transcript, not
+      // from the chrome: the composer stays where the reader's hands expect
+      // it. The status line moved up beside them; its row is already priced
+      // into `transcriptHeight`, which is what keeps every frame the same
+      // height whether children are running or not.
+      const transcriptRows = Math.max(1, transcriptHeight - fleet.length - preview.length);
 
       const lines = transcriptLines(snapshot, width);
       lineCount = lines.length;
@@ -612,10 +659,11 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       for (let row = 0; row < transcriptRows; row += 1) rows.push(lines[start + row] ?? "");
       rows.push(...fleet);
 
-      // Bottom chrome, in the order a reader scans it: where the typing goes,
-      // what the session is doing, then what the keys do. The composer sits
-      // between two rules so it reads as its own region rather than as the last
-      // line of the transcript, and the status line sits under that region.
+      // Bottom chrome, in the order a reader scans it. The status line sits
+      // directly under the delegate rows now: what the session is doing is a
+      // caption on the thing it describes, and the children are that thing
+      // whenever any exist. The preview box follows it, then the composer in
+      // its own region between two rules.
       const rule = `${DIM}${"─".repeat(Math.max(0, width))}${RESET}`;
       const inner = Math.max(10, width - 4);
 
@@ -648,10 +696,12 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         where = candidate;
         break;
       }
-      // A blank row, then the composer, then what the session is doing. The
-      // status line reads as a caption under the thing it describes: the reader
-      // looks at where they type, and the state of the session is the next
-      // thing down rather than something to scan back up for.
+      rows.push(`  ${justify(activity, where, inner)}`);
+      rows.push(...preview);
+
+      // A blank row, then the composer. The keys used to live on a second row
+      // under it; they are in `/help` now, which is where a reader looks for
+      // them once rather than past them always.
       rows.push("");
       rows.push(rule);
       // The composer shows its tail, never more characters than the row holds.
@@ -676,16 +726,12 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
           : summarised;
       rows.push(`  › ${visible}`);
       rows.push(rule);
-      // Under the composer's own region, not inside it. Between the rules is
-      // where typing goes; what the session is doing is a caption on the box,
-      // and a caption sits outside the thing it describes.
-      rows.push(`  ${justify(activity, where, inner)}`);
 
-      // One row of chrome under the composer, and it is the status line. The
-      // keys used to live on a second row; they are in `/help` now, which is
-      // where a reader looks for them once rather than past them always.
-
-      paint(rows, transcriptRows + fleet.length + 3, 4 + [...visible].length + 1);
+      paint(
+        rows,
+        transcriptRows + fleet.length + 1 + preview.length + 3,
+        4 + [...visible].length + 1,
+      );
     };
 
     /**
@@ -700,6 +746,13 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         const next = rows[index] ?? "";
         if (painted[index] === next) continue;
         frame.push(`\x1b[${index + 1};1H`, ERASE_LINE, next);
+      }
+      // Rows the last frame had that this one does not. The preview box and
+      // the fleet both come and go with the work, so a frame can be shorter
+      // than the one before it, and whatever it left below would otherwise
+      // stay on screen with nothing owning it.
+      for (let index = rows.length; index < painted.length; index += 1) {
+        frame.push(`\x1b[${index + 1};1H`, ERASE_LINE);
       }
       painted = [...rows];
       frame.push(`\x1b[${cursorRow};${cursorColumn}H`, CURSOR_SHOW);
