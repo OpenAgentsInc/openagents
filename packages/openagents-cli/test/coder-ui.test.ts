@@ -848,3 +848,57 @@ describe("changing how hard the model thinks", () => {
     expect(session.snapshot().reasoning).toBeUndefined();
   });
 });
+
+describe("quitting with the keyboard protocol on", () => {
+  it("quits on ctrl+d in either spelling", async () => {
+    for (const key of ["\x04", "\x1b[100;5u"]) {
+      const stdin = new FakeIn();
+      const stdout = new FakeOut();
+      const session = new CoderSession(source([]), "repo", "main");
+      const running = runCoderUi(session, {
+        stdin: stdin as unknown as NodeJS.ReadStream,
+        stdout: stdout as unknown as NodeJS.WriteStream,
+      });
+
+      stdin.emit("data", key);
+
+      // Asking the terminal to disambiguate escape codes buys shift+enter and
+      // costs every control key: ctrl+d arrives as `\x1b[100;5u`, and a console
+      // that reads only the byte stops being quittable.
+      await expect(running).resolves.toBe(0);
+    }
+  });
+
+  it("stops on ctrl+c in either spelling", async () => {
+    for (const key of ["\x03", "\x1b[99;5u"]) {
+      const stdin = new FakeIn();
+      const stdout = new FakeOut();
+      const session = new CoderSession(source([]), "repo", "main");
+      const running = runCoderUi(session, {
+        stdin: stdin as unknown as NodeJS.ReadStream,
+        stdout: stdout as unknown as NodeJS.WriteStream,
+      });
+
+      stdin.emit("data", key);
+
+      await expect(running).resolves.toBe(130);
+    }
+  });
+
+  it("leaves an ordinary tab meaning tab", async () => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    const session = new CoderSession(switchable([]), "repo", "main");
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    const before = session.snapshot().model;
+    stdin.emit("data", "\x1b[9u");
+    expect(session.snapshot().model).not.toBe(before);
+
+    stdin.emit("data", "\x04");
+    await running;
+  });
+});

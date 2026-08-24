@@ -212,6 +212,38 @@ function truncate(text: string, width: number): string {
  * bytes so far could still be the start of one. Covers CSI (`\x1b[…final`),
  * SS3 (`\x1bO…`), and the `\x1b[…~` forms that carry PageUp and PageDown.
  */
+/**
+ * The legacy byte a keyboard-protocol sequence stands for, if any.
+ *
+ * Asking the terminal to disambiguate escape codes buys shift+enter, and costs
+ * every control key: with the protocol on, ctrl+c arrives as `\x1b[99;5u`
+ * rather than as `\x03`, so a console that reads only the byte stops being
+ * quittable. Decoding back to the byte keeps one set of handlers for both
+ * spellings rather than two that can disagree.
+ *
+ * Only what this interface actually binds. An unrecognized sequence is left
+ * alone for the caller to handle or ignore.
+ */
+function controlFromKeyboardProtocol(sequence: string): string | undefined {
+  const match = /^\x1b\[(\d+)(?:;(\d+))?u$/.exec(sequence);
+  if (match === null) return undefined;
+
+  const code = Number(match[1]);
+  // The modifier is a bitfield offset by one: 1 is none, 5 is ctrl, 2 is shift.
+  const modifiers = Number(match[2] ?? "1") - 1;
+  const ctrl = (modifiers & 4) !== 0;
+
+  if (ctrl && code >= 97 && code <= 122) {
+    // ctrl+a is 1, ctrl+c is 3, and so on down the alphabet.
+    return String.fromCharCode(code - 96);
+  }
+  // Tab with no modifier at all. Shift+tab is a different key here and is
+  // matched further down; decoding it to a bare tab cycled the model instead of
+  // the reasoning level.
+  if (modifiers === 0 && code === 9) return "\t";
+  return undefined;
+}
+
 function matchEscapeSequence(text: string, index: number): string | undefined {
   if (text[index] !== "\x1b") return undefined;
   const second = text[index + 1];
@@ -793,7 +825,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         clearTimeout(escapeTimer);
         escapeTimer = undefined;
       }
-      const text = pendingEscape + (typeof chunk === "string" ? chunk : chunk.toString("utf8"));
+      let text = pendingEscape + (typeof chunk === "string" ? chunk : chunk.toString("utf8"));
       pendingEscape = "";
       let index = 0;
       let dirty = false;
@@ -870,6 +902,14 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
             dirty = false;
             continue;
           }
+          // A control key in its protocol spelling is handled as the byte it
+          // stands for, so ctrl+c and ctrl+d keep working with the protocol on.
+          const asControl = controlFromKeyboardProtocol(sequence);
+          if (asControl !== undefined) {
+            text = text.slice(0, index) + asControl + text.slice(index);
+            continue;
+          }
+
           // Enter reported through the keyboard protocol: `13` is the key and
           // the second parameter is the modifier, where 2 is shift. Shift+enter
           // queues; enter, with or without other modifiers, steers.
