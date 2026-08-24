@@ -117,6 +117,13 @@ export interface CoderEntry {
   readonly tool?: CoderToolCall;
   /** Set on the entry a turn ended on, when the source reported the cost. */
   metrics?: CoderMetrics;
+  /**
+   * What this notice replaces, when it replaces one.
+   *
+   * Two notices about the same setting are one notice: the second is what is
+   * true and the first is what used to be.
+   */
+  readonly supersedes?: string;
 }
 
 /** Everything a renderer needs. No renderer reads anything else. */
@@ -469,7 +476,7 @@ export class CoderSession {
       return { changed: false, level: this.source.reasoning?.level };
     }
     const level = this.source.cycleReasoning();
-    this.notice(`Reasoning set to ${level}.`);
+    this.notice(`Reasoning set to ${level}.`, "reasoning");
     return { changed: true, level };
   }
 
@@ -481,7 +488,7 @@ export class CoderSession {
     }
 
     const label = this.source.cycleBackend();
-    this.notice(`Model switched to ${label}.`);
+    this.notice(`Model switched to ${label}.`, "model");
     return { switched: true, label };
   }
 
@@ -490,8 +497,30 @@ export class CoderSession {
     return () => this.listeners.delete(listener);
   }
 
-  notice(text: string): void {
-    this.entries.push({ role: "notice", text, settled: true, at: Date.now() });
+  notice(text: string, supersedes?: string): void {
+    // A notice that supersedes another replaces it rather than stacking under
+    // it. Cycling the reasoning level four times left four notes saying what it
+    // had been set to, three of which were no longer true, and the reader had
+    // to read to the bottom to find the one that was.
+    const last = this.entries.at(-1);
+    if (
+      supersedes !== undefined &&
+      last !== undefined &&
+      last.role === "notice" &&
+      last.supersedes === supersedes
+    ) {
+      last.text = text;
+      this.emit();
+      return;
+    }
+
+    this.entries.push({
+      role: "notice",
+      text,
+      settled: true,
+      at: Date.now(),
+      ...(supersedes === undefined ? {} : { supersedes }),
+    });
     this.emit();
   }
 

@@ -448,3 +448,40 @@ describe("a turn's cost", () => {
     expect(assistant?.metrics).toEqual({ promptTokens: 12, completionTokens: 34, calls: 2 });
   });
 });
+
+describe("notices that replace one another", () => {
+  it("keeps the last of a run about the same setting, and only the last", async () => {
+    const session = new CoderSession(scripted(["a"]), "repo", "main");
+
+    session.notice("Reasoning set to low.", "reasoning");
+    session.notice("Reasoning set to high.", "reasoning");
+    session.notice("Reasoning set to off.", "reasoning");
+
+    expect(session.snapshot().entries.map((entry) => entry.text)).toEqual([
+      "Reasoning set to off.",
+    ]);
+  });
+
+  it("does not fold two notices that are about different things", async () => {
+    const session = new CoderSession(scripted(["a"]), "repo", "main");
+
+    session.notice("Reasoning set to low.", "reasoning");
+    session.notice("Model switched to Ox Alpha.", "model");
+    session.notice("Reasoning set to high.", "reasoning");
+
+    // The model notice separates them, so the second reasoning notice is a new
+    // one rather than a replacement: what it replaced is no longer the last
+    // thing said.
+    expect(session.snapshot().entries).toHaveLength(3);
+  });
+
+  it("leaves an ordinary notice alone", async () => {
+    const session = new CoderSession(scripted(["a"]), "repo", "main");
+
+    session.notice("Interrupted.");
+    session.notice("Interrupted.");
+
+    // Two interruptions are two events, not one restated.
+    expect(session.snapshot().entries).toHaveLength(2);
+  });
+});

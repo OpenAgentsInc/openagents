@@ -827,6 +827,15 @@ describe("changing how hard the model thinks", () => {
     stdin.emit("data", "\x1b[9;2u");
     expect(session.snapshot().reasoning).toBe("medium");
 
+    // Four presses left four notes, three of which were no longer true.
+    stdin.emit("data", "\x1b[Z");
+    stdin.emit("data", "\x1b[Z");
+    const notes = session
+      .snapshot()
+      .entries.filter((entry) => entry.text.startsWith("Reasoning set to"))
+      .map((entry) => entry.text);
+    expect(notes).toEqual(["Reasoning set to off."]);
+
     stdin.emit("data", "\x04");
     await running;
   });
