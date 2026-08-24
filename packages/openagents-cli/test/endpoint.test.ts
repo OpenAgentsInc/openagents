@@ -73,6 +73,12 @@ describe("endpoint configuration", () => {
     );
   });
 
+  it("allows the container-to-host development name over HTTP", async () => {
+    await expect(
+      Effect.runPromise(normalizeApiOrigin("http://host.docker.internal:4000")),
+    ).resolves.toBe("http://host.docker.internal:4000");
+  });
+
   it("refuses non-loopback HTTP and URL paths", async () => {
     const insecure = await Effect.runPromiseExit(normalizeApiOrigin("http://openagents.com"));
     const path = await Effect.runPromiseExit(normalizeApiOrigin("https://openagents.com/api"));

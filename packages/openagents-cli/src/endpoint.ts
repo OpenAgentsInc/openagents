@@ -34,7 +34,14 @@ export const loopbackHostname = (hostname: string): boolean => {
     normalized === "127.0.0.1" ||
     normalized.startsWith("127.") ||
     normalized === "[::1]" ||
-    normalized === "::1"
+    normalized === "::1" ||
+    // The container-to-host development path: inside a local Docker
+    // container, the host machine's loopback is reachable only by this
+    // name. A benchmark container running the coder against a dev server
+    // on the host (the Gym's Harbor lane) has no other address for it.
+    // Reaching anything beyond the developer's own machine still requires
+    // HTTPS.
+    normalized === "host.docker.internal"
   );
 };
 
