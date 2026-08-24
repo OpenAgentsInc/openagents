@@ -233,7 +233,10 @@ describe("what a local session tells the model about itself", () => {
     expect(system.content).toContain("`delegate`");
     // The failure this exists to stop: the model answering with the tools a
     // coding agent usually has rather than the ones it was given.
-    expect(system.content).toContain("no file, shell, search, or web tools of your own");
+    // Stated as a closed list, not by naming what is absent: this once said
+    // there was no shell, and then a shell tool was added.
+    expect(system.content).toContain("a capability not on it is one you do not have");
+    expect(system.content).not.toMatch(/no file, shell/);
     // A tool description says what a child can do. That is not the model's.
     expect(system.content).toContain("that is the child's capability and not yours");
   });

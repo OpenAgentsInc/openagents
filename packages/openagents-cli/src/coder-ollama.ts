@@ -113,19 +113,24 @@ const systemPrompt = (tools: ReadonlyArray<CoderTool>): string => {
 
   if (tools.length === 0) {
     lines.push(
-      "You have no tools in this session. You cannot read or write files, run commands, search " +
-        "the repository, or fetch a URL. Answer from what the reader tells you, and say plainly " +
-        "when something would need a tool you do not have.",
+      "You have no tools in this session: you cannot read or write files, run commands, or " +
+        "reach anything outside this conversation. Answer from what the reader tells you, and " +
+        "say plainly when something would need a tool you do not have.",
     );
   } else {
     lines.push(
       `You have ${String(tools.length)} tool${tools.length === 1 ? "" : "s"}, and no others:`,
       ...tools.map((tool) => `- \`${tool.name}\``),
       "",
-      "That list is complete. You have no file, shell, search, or web tools of your own: any " +
-        "capability not on that list is one you do not have. Where a tool's description says what " +
-        "a child agent can do, that is the child's capability and not yours. Never say you ran " +
-        "something you did not run.",
+      // Stated as a closed list rather than by naming the capabilities that are
+      // absent. The absent ones change as tools are added -- this once said
+      // there was no shell, and then there was one -- and a system message that
+      // has to be edited when the tool list changes is one that will be wrong
+      // in between.
+      "That list is complete: a capability not on it is one you do not have, whatever a model " +
+        "like you usually has. Read a tool's description before assuming what it covers. Where " +
+        "a description says what a child agent can do, that is the child's capability and not " +
+        "yours. Never say you ran something you did not run.",
     );
   }
 

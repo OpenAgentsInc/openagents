@@ -18,6 +18,13 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import type { CoderDelegation } from "./coder-session.js";
+import {
+  DEFAULT_TIMEOUT_MS,
+  MAXIMUM_TIMEOUT_MS,
+  refusalFor as shellRefusalFor,
+  renderShell,
+  runShell,
+} from "./coder-shell.js";
 import { catalogEntry, renderSkill, type CoderSkill } from "./coder-skills.js";
 import { describePrompt, MAX_DELEGATE_COUNT } from "./coder-delegate.js";
 import type { DelegationOutcome } from "./coder-delegate.js";
@@ -382,6 +389,68 @@ export function openagentsTool(): CoderTool {
           );
         });
       });
+    },
+  };
+}
+
+/**
+ * The shell tool: run a command on this machine.
+ *
+ * The session had no way to look at anything. Asked for its working directory
+ * it started a child coding agent on a hosted model to run `pwd` -- minutes and
+ * real money for one line, reported second-hand. Reading a file, listing a
+ * directory, running the tests: all of it went through a whole agent or through
+ * the reader.
+ *
+ * So `delegate` goes back to what it is for. A fan-out is worth an agent each;
+ * `pwd` is worth a process.
+ */
+export function shellTool(cwd: string): CoderTool {
+  return {
+    name: "shell",
+    description:
+      "Run a shell command on this machine, in the session's working directory, and return what " +
+      "it printed. Use it for anything you would type at a terminal: reading files, listing " +
+      "directories, searching, git, running builds and tests. Prefer it over `delegate` for " +
+      "single commands -- a child agent is for work worth a whole agent, not for one line of " +
+      "output. Both output streams come back together with the exit code. There is no terminal, " +
+      "so a command that would prompt gets end-of-file instead of waiting; pass a flag that " +
+      "answers the prompt. A few commands that cannot be undone are refused, such as erasing a " +
+      "root or a home directory, reformatting a disk, or halting the machine.",
+    parameters: {
+      type: "object",
+      properties: {
+        command: {
+          type: "string",
+          description: "The command line, as you would type it. Runs through `/bin/sh -c`.",
+        },
+        timeout_seconds: {
+          type: "integer",
+          minimum: 1,
+          maximum: MAXIMUM_TIMEOUT_MS / 1000,
+          description: `How long to wait. Defaults to ${String(DEFAULT_TIMEOUT_MS / 1000)}; raise it for a build or a test run.`,
+        },
+      },
+      required: ["command"],
+      additionalProperties: false,
+    },
+    run: async (args, signal) => {
+      const command = typeof args["command"] === "string" ? args["command"].trim() : "";
+      if (command.length === 0) {
+        return "No command was run: `command` is required and must say what to run.";
+      }
+
+      const refusal = shellRefusalFor(command);
+      if (refusal !== undefined) return refusal;
+
+      const asked = typeof args["timeout_seconds"] === "number" ? args["timeout_seconds"] : undefined;
+      const timeoutMs = Math.min(
+        asked === undefined ? DEFAULT_TIMEOUT_MS : Math.max(1, Math.trunc(asked)) * 1000,
+        MAXIMUM_TIMEOUT_MS,
+      );
+
+      const result = await runShell(command, { cwd, timeoutMs, signal });
+      return renderShell(result, timeoutMs);
     },
   };
 }
