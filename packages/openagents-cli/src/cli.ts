@@ -68,6 +68,7 @@ import {
   describeLoad,
   isRefusal,
   loadPluginFromManifest,
+  pluginIdentity,
   pluginTool,
   type LoadedPlugin,
 } from "./coder-plugins.js";
@@ -2086,17 +2087,48 @@ const coderCommand = Command.make(
       declareTools();
 
       const loadPlugin = (manifestPath: string): string => {
-        const outcome = loadPluginFromManifest(resolvePath(process.cwd(), manifestPath));
-        if (!isRefusal(outcome)) {
-          // Reloading a name replaces it: a demo iterates on one plugin, and
-          // two tools with one name would be a declaration the model cannot
-          // tell apart.
-          const at = plugins.findIndex((held) => held.manifest.name === outcome.manifest.name);
-          if (at >= 0) plugins.splice(at, 1);
-          plugins.push(outcome);
-          declareTools();
+        const manifestFile = resolvePath(process.cwd(), manifestPath);
+        const outcome = loadPluginFromManifest(manifestFile);
+        const described = describeLoad(outcome);
+        // The load is recorded both ways on purpose: the notice the interface
+        // shows stays interface chatter, and the typed occurrence on the
+        // session is what `/export` writes as a `source: "system"` step — a
+        // capability-surface change with the full digest, ordered among the
+        // turns. Refusals are recorded too; a trajectory that omits the load
+        // that failed cannot explain the session that follows it.
+        if (isRefusal(outcome)) {
+          session.recordPluginEvent({
+            message: described,
+            event: "plugin_load_refused",
+            code: outcome.code,
+            plugin: { manifestPath: manifestFile },
+          });
+          return described;
         }
-        return describeLoad(outcome);
+        // Reloading a name replaces it: a demo iterates on one plugin, and
+        // two tools with one name would be a declaration the model cannot
+        // tell apart.
+        const at = plugins.findIndex((held) => held.manifest.name === outcome.manifest.name);
+        if (at >= 0) plugins.splice(at, 1);
+        plugins.push(outcome);
+        declareTools();
+        const identity = pluginIdentity(outcome);
+        session.recordPluginEvent({
+          message: described,
+          event: "plugin_loaded",
+          plugin: {
+            name: identity.name,
+            version: identity.version,
+            artifactDigest: identity.artifactDigest,
+            bytes: identity.bytes,
+            abi: identity.abi,
+            timeoutMs: identity.timeoutMs,
+            capabilities: identity.capabilities,
+            manifestPath: manifestFile,
+            toolName: identity.toolName,
+          },
+        });
+        return described;
       };
 
       // Delegation is off rather than quietly running children on the

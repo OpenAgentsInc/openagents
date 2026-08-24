@@ -393,6 +393,48 @@ export function pluginTool(plugin: LoadedPlugin): CoderTool {
   };
 }
 
+/**
+ * The loaded plugin's identity, for provenance records.
+ *
+ * Everything a receipt or a trajectory needs to say which exact artifact ran:
+ * the digest here is the full `sha256:<hex>` the host verified, never the
+ * truncated form the prose notices show.
+ */
+export interface PluginIdentity {
+  readonly name: string;
+  readonly version: string;
+  /** The verified digest, full `sha256:<hex>`. */
+  readonly artifactDigest: string;
+  /** The artifact's size in bytes. */
+  readonly bytes: number;
+  readonly abi: { readonly entry: string; readonly alloc: string };
+  readonly timeoutMs: number;
+  readonly capabilities: {
+    readonly mounts: ReadonlyArray<unknown>;
+    readonly hosts: ReadonlyArray<unknown>;
+  };
+  /** The tool the plugin materializes, which is the manifest's name. */
+  readonly toolName: string;
+}
+
+/** Read a loaded plugin's identity, as a provenance record understands it. */
+export function pluginIdentity(plugin: LoadedPlugin): PluginIdentity {
+  const { manifest } = plugin;
+  return {
+    name: manifest.name,
+    version: manifest.version,
+    artifactDigest: plugin.digest,
+    bytes: plugin.wasm.length,
+    abi: { entry: manifest.abi.entry, alloc: manifest.abi.alloc },
+    timeoutMs: manifest.capabilities.timeout_ms,
+    capabilities: {
+      mounts: manifest.capabilities.mounts,
+      hosts: manifest.capabilities.hosts,
+    },
+    toolName: manifest.name,
+  };
+}
+
 /** What `/plugin load` reports, for a notice or a plain line. */
 export function describeLoad(outcome: LoadedPlugin | PluginRefusal): string {
   if (isRefusal(outcome)) {

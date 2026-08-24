@@ -485,3 +485,92 @@ describe("notices that replace one another", () => {
     expect(session.snapshot().entries).toHaveLength(2);
   });
 });
+
+describe("plugin occurrences", () => {
+  const digest = `sha256:${"ab".repeat(32)}`;
+
+  const loaded = {
+    message: "Loaded plugin `word_stats` v0.1.0.",
+    event: "plugin_loaded" as const,
+    plugin: {
+      name: "word_stats",
+      version: "0.1.0",
+      artifactDigest: digest,
+      bytes: 1024,
+      abi: { entry: "handle_packet", alloc: "packet_alloc" },
+      timeoutMs: 2000,
+      capabilities: { mounts: [], hosts: [] },
+      manifestPath: "/work/demo/plugin.json",
+      toolName: "word_stats",
+    },
+  };
+
+  it("records loads and refusals on the snapshot, not the transcript", () => {
+    const session = new CoderSession(scripted(["a"]), "repo", "main");
+
+    session.recordPluginEvent({
+      message: "Plugin not loaded (digest_mismatch): wrong artifact.",
+      event: "plugin_load_refused",
+      code: "digest_mismatch",
+      plugin: { manifestPath: "/work/demo/plugin.json" },
+    });
+    session.recordPluginEvent(loaded);
+
+    const { entries, pluginEvents } = session.snapshot();
+    // A renderer draws entries; the occurrences are the export's to read.
+    expect(entries).toHaveLength(0);
+    expect(pluginEvents?.map((event) => event.event)).toEqual([
+      "plugin_load_refused",
+      "plugin_loaded",
+    ]);
+    expect(pluginEvents?.[1]?.plugin.artifactDigest).toBe(digest);
+    expect(pluginEvents?.[0]?.at).toBeGreaterThan(0);
+  });
+
+  it("stamps a call of the loaded tool with the plugin's identity", async () => {
+    const session = new CoderSession(
+      source([
+        { type: "tool_call", callId: "c1", name: "word_stats", arguments: "{}" },
+        { type: "tool_result", callId: "c1", output: "{}", error: undefined },
+        { type: "tool_call", callId: "c2", name: "shell", arguments: "{}" },
+        { type: "tool_result", callId: "c2", output: "", error: undefined },
+      ]),
+      "repo",
+      "main",
+    );
+    session.recordPluginEvent(loaded);
+
+    await session.submit("count");
+
+    const tools = session.snapshot().entries.filter((entry) => entry.role === "tool");
+    expect(tools[0]?.tool?.plugin).toEqual({
+      name: "word_stats",
+      version: "0.1.0",
+      artifactDigest: digest,
+    });
+    // A tool no plugin backs carries no provenance to mistake for some.
+    expect(tools[1]?.tool?.plugin).toBeUndefined();
+  });
+
+  it("does not register a tool from a refused load", async () => {
+    const session = new CoderSession(
+      source([
+        { type: "tool_call", callId: "c1", name: "word_stats", arguments: "{}" },
+        { type: "tool_result", callId: "c1", output: "{}", error: undefined },
+      ]),
+      "repo",
+      "main",
+    );
+    session.recordPluginEvent({
+      message: "Plugin not loaded (manifest_unreadable): no such file.",
+      event: "plugin_load_refused",
+      code: "manifest_unreadable",
+      plugin: { manifestPath: "/work/demo/plugin.json" },
+    });
+
+    await session.submit("count");
+
+    const tool = session.snapshot().entries.find((entry) => entry.role === "tool");
+    expect(tool?.tool?.plugin).toBeUndefined();
+  });
+});

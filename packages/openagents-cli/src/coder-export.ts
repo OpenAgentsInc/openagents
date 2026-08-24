@@ -14,6 +14,11 @@
  * Notices are the interface talking to the reader, not the model, so they are
  * not steps -- they are recorded under `extra` where a reader can still see
  * them without a consumer mistaking them for turns.
+ *
+ * Plugin loads are the exception that proves the rule: the notice stays a
+ * notice, but the act itself changed what the agent could do, so it also
+ * exports as a `source: "system"` step carrying the typed record -- which
+ * plugin, which exact artifact, what bounds -- in its observation's `extra`.
  */
 
 import { spawnSync } from "node:child_process";
@@ -21,7 +26,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { CoderEntry, CoderSnapshot } from "./coder-session.js";
+import type { CoderEntry, CoderPluginEvent, CoderSnapshot } from "./coder-session.js";
 
 const SCHEMA_VERSION = "ATIF-v1.7";
 
@@ -50,8 +55,18 @@ interface AtifStep {
     tool_call_id: string;
     function_name: string;
     arguments: Record<string, unknown>;
+    /** Per-call metadata the format leaves open. Plugin provenance goes here. */
+    extra?: Record<string, unknown>;
   }>;
-  observation?: { results: ReadonlyArray<{ source_call_id: string; content: string }> };
+  observation?: {
+    results: ReadonlyArray<{
+      /** Null for a system-initiated operation, which no tool call sourced. */
+      source_call_id: string | null;
+      content: string;
+      /** Result-level metadata the format leaves open. */
+      extra?: Record<string, unknown>;
+    }>;
+  };
 }
 
 /**
@@ -126,13 +141,71 @@ const metricsOf = (entry: CoderEntry): Partial<AtifStep> => {
   };
 };
 
+/**
+ * The typed half of a plugin lifecycle step, in the shape ATIF's `extra`
+ * fields carry it.
+ *
+ * The digest is written whole. The notices truncate it for a human eye;
+ * anything a machine reads gets the full `sha256:<hex>`, because a truncated
+ * digest identifies nothing.
+ */
+const pluginEventExtra = (event: CoderPluginEvent): Record<string, unknown> => {
+  const plugin = event.plugin;
+  return {
+    event: event.event,
+    ...(event.code === undefined ? {} : { code: event.code }),
+    plugin: {
+      ...(plugin.name === undefined ? {} : { name: plugin.name }),
+      ...(plugin.version === undefined ? {} : { version: plugin.version }),
+      ...(plugin.artifactDigest === undefined ? {} : { artifact_digest: plugin.artifactDigest }),
+      ...(plugin.bytes === undefined ? {} : { bytes: plugin.bytes }),
+      ...(plugin.abi === undefined ? {} : { abi: plugin.abi }),
+      ...(plugin.timeoutMs === undefined ? {} : { timeout_ms: plugin.timeoutMs }),
+      ...(plugin.capabilities === undefined ? {} : { capabilities: plugin.capabilities }),
+      manifest_path: plugin.manifestPath,
+      ...(plugin.toolName === undefined ? {} : { tool_name: plugin.toolName }),
+    },
+  };
+};
+
 /** Fold the transcript into ATIF steps. */
-const stepsOf = (entries: ReadonlyArray<CoderEntry>, model: string): ReadonlyArray<AtifStep> => {
+const stepsOf = (
+  entries: ReadonlyArray<CoderEntry>,
+  pluginEvents: ReadonlyArray<CoderPluginEvent>,
+  model: string,
+): ReadonlyArray<AtifStep> => {
   const steps: AtifStep[] = [];
   /** Reasoning arrives before the turn it belongs to and attaches to it. */
   let pendingReasoning: string | undefined;
+  /** The next plugin event still waiting for its place among the turns. */
+  let nextEvent = 0;
+
+  // A plugin load is a system-initiated capability change, and ATIF v1.5+
+  // gives it a home: a `source: "system"` step whose observation carries the
+  // typed record. It lands where it happened — between the turns on either
+  // side of it — so a consumer replaying the steps sees the capability appear
+  // before the call that used it.
+  const emitEventsThrough = (at: number) => {
+    while (nextEvent < pluginEvents.length) {
+      const event = pluginEvents[nextEvent];
+      if (event === undefined || event.at > at) break;
+      steps.push({
+        step_id: steps.length + 1,
+        timestamp: new Date(event.at).toISOString(),
+        source: "system",
+        message: event.message,
+        observation: {
+          results: [
+            { source_call_id: null, content: event.message, extra: pluginEventExtra(event) },
+          ],
+        },
+      });
+      nextEvent += 1;
+    }
+  };
 
   for (const entry of entries) {
+    emitEventsThrough(entry.at);
     const timestamp = new Date(entry.at).toISOString();
 
     if (entry.role === "notice") continue;
@@ -150,7 +223,7 @@ const stepsOf = (entries: ReadonlyArray<CoderEntry>, model: string): ReadonlyArr
     }
 
     if (entry.role === "tool" && entry.tool !== undefined) {
-      const { callId, name, arguments: args, output, error } = entry.tool;
+      const { callId, name, arguments: args, output, error, plugin } = entry.tool;
       steps.push({
         step_id: steps.length + 1,
         timestamp,
@@ -159,7 +232,25 @@ const stepsOf = (entries: ReadonlyArray<CoderEntry>, model: string): ReadonlyArr
         model_name: model,
         ...(pendingReasoning === undefined ? {} : { reasoning_content: pendingReasoning }),
         tool_calls: [
-          { tool_call_id: callId, function_name: name, arguments: argumentsOf(args) },
+          {
+            tool_call_id: callId,
+            function_name: name,
+            arguments: argumentsOf(args),
+            // A plugin-backed call names the exact artifact that answered it,
+            // digest whole, so a trace feeds usage attribution the same way a
+            // thread's `tool.ran` event does.
+            ...(plugin === undefined
+              ? {}
+              : {
+                  extra: {
+                    plugin: {
+                      name: plugin.name,
+                      version: plugin.version,
+                      artifact_digest: plugin.artifactDigest,
+                    },
+                  },
+                }),
+          },
         ],
         observation: {
           results: [{ source_call_id: callId, content: error ?? output ?? "" }],
@@ -186,6 +277,9 @@ const stepsOf = (entries: ReadonlyArray<CoderEntry>, model: string): ReadonlyArr
       pendingReasoning = undefined;
     }
   }
+
+  // A load after the last turn still happened in this session.
+  emitEventsThrough(Number.POSITIVE_INFINITY);
 
   return steps;
 };
@@ -248,7 +342,7 @@ export function exportTrajectory(
 ): ExportedTrajectory {
   const at = options.now ?? new Date();
   const directory = options.directory ?? join(homedir(), ".openagents", "exports");
-  const steps = stepsOf(snapshot.entries, options.model);
+  const steps = stepsOf(snapshot.entries, snapshot.pluginEvents ?? [], options.model);
 
   const document = {
     schema_version: SCHEMA_VERSION,

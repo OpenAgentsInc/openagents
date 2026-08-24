@@ -65,6 +65,60 @@ export interface CoderToolCall {
   output: string | undefined;
   error: string | undefined;
   status: "running" | "succeeded" | "failed";
+  /**
+   * Which plugin backed this call, when one did.
+   *
+   * Stamped when the call entry is opened, not looked up at export: a plugin
+   * reloaded mid-session changes what later calls ran, and a call must carry
+   * the identity of the artifact that actually answered it.
+   */
+  readonly plugin?: CoderPluginProvenance;
+}
+
+/**
+ * The identity a plugin-backed tool call carries.
+ *
+ * The digest is the full `sha256:<hex>` the host verified. Prose may truncate
+ * it; anything machine-read carries the whole thing.
+ */
+export interface CoderPluginProvenance {
+  readonly name: string;
+  readonly version: string;
+  readonly artifactDigest: string;
+}
+
+/**
+ * A plugin lifecycle occurrence: a `/plugin load` that succeeded or refused.
+ *
+ * Not a transcript entry. The notice a load produces is the interface talking
+ * to the reader and stays a notice; this is the typed record of the same act,
+ * kept on the side so `/export` can write it as a `source: "system"` step — a
+ * capability-surface change a trajectory consumer can machine-read — without
+ * any renderer having to learn a new entry kind.
+ */
+export interface CoderPluginEvent {
+  /** When it happened, in epoch milliseconds, for ordering among the turns. */
+  readonly at: number;
+  /** The human notice, exactly as the interface showed it. */
+  readonly message: string;
+  readonly event: "plugin_loaded" | "plugin_load_refused";
+  /** The refusal code, on refusals. */
+  readonly code?: string | undefined;
+  readonly plugin: {
+    readonly name?: string | undefined;
+    readonly version?: string | undefined;
+    /** Full `sha256:<hex>`, never truncated. */
+    readonly artifactDigest?: string | undefined;
+    readonly bytes?: number | undefined;
+    readonly abi?: { readonly entry: string; readonly alloc: string } | undefined;
+    readonly timeoutMs?: number | undefined;
+    readonly capabilities?:
+      | { readonly mounts: ReadonlyArray<unknown>; readonly hosts: ReadonlyArray<unknown> }
+      | undefined;
+    /** Always known: the path the load was asked for, even when it refused. */
+    readonly manifestPath: string;
+    readonly toolName?: string | undefined;
+  };
 }
 
 /**
@@ -158,6 +212,15 @@ export interface CoderSnapshot {
    * then no renderer draws a fleet at all.
    */
   readonly tasks: ReadonlyArray<CoderTask>;
+  /**
+   * Plugin loads and refusals, oldest first.
+   *
+   * A side-channel rather than transcript entries: renderers ignore it, and
+   * `/export` merges it into the steps by timestamp. Optional so a snapshot
+   * built by hand — a test fixture above all — does not have to say "no
+   * plugins" to be a snapshot.
+   */
+  readonly pluginEvents?: ReadonlyArray<CoderPluginEvent>;
 }
 
 /** What the session needs in order to delegate. Absent means it cannot. */
@@ -394,6 +457,13 @@ export class CoderSession {
    * replayed history, so the first new turn must not pay for it again.
    */
   private restored = false;
+  /** Plugin loads and refusals, in the order they happened. */
+  private readonly pluginEvents: CoderPluginEvent[] = [];
+  /**
+   * Which plugin currently backs each tool name, so a tool entry can be
+   * stamped with its provenance the moment the call arrives.
+   */
+  private readonly pluginTools = new Map<string, CoderPluginProvenance>();
 
   constructor(
     private readonly source: ReplySource,
@@ -453,7 +523,35 @@ export class CoderSession {
       turns: this.turnCount,
       budget: this.source.budget,
       tasks: this.delegation?.registry.list() ?? [],
+      pluginEvents: this.pluginEvents.map((event) => ({
+        ...event,
+        plugin: { ...event.plugin },
+      })),
     };
+  }
+
+  /**
+   * Record a plugin load or refusal as a typed occurrence.
+   *
+   * The caller keeps showing its notice however it does — this is the record,
+   * not the display. A successful load also registers the tool it declared,
+   * so every later call of that tool carries the plugin's identity; loading a
+   * name again re-registers it, because the calls after a reload ran the new
+   * artifact.
+   */
+  recordPluginEvent(event: Omit<CoderPluginEvent, "at">): void {
+    this.pluginEvents.push({ at: Date.now(), ...event });
+    const { toolName, name, version, artifactDigest } = event.plugin;
+    if (
+      event.event === "plugin_loaded" &&
+      toolName !== undefined &&
+      name !== undefined &&
+      version !== undefined &&
+      artifactDigest !== undefined
+    ) {
+      this.pluginTools.set(toolName, { name, version, artifactDigest });
+    }
+    this.emit();
   }
 
   /** Whether `/delegate` does anything, which is what the interface reads. */
@@ -758,6 +856,10 @@ export class CoderSession {
           settle(reasoning);
           text = undefined;
           reasoning = undefined;
+          // A call to a plugin-backed tool carries the plugin's identity from
+          // the moment it opens, so the record says which artifact answered
+          // even if the plugin is reloaded before the export.
+          const provenance = this.pluginTools.get(chunk.name);
           this.entries.push({
             role: "tool",
             text: chunk.name,
@@ -770,6 +872,7 @@ export class CoderSession {
               output: undefined,
               error: undefined,
               status: "running",
+              ...(provenance === undefined ? {} : { plugin: provenance }),
             },
           });
         } else if (chunk.type === "usage") {

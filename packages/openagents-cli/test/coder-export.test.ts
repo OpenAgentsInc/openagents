@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { exportTrajectory } from "../src/coder-export.js";
-import type { CoderEntry, CoderSnapshot } from "../src/coder-session.js";
+import type { CoderEntry, CoderPluginEvent, CoderSnapshot } from "../src/coder-session.js";
 
 const AT = Date.parse("2026-08-24T14:00:00.000Z");
 
@@ -15,7 +15,10 @@ const entry = (partial: Partial<CoderEntry> & Pick<CoderEntry, "role">): CoderEn
   ...partial,
 });
 
-const snapshot = (entries: ReadonlyArray<CoderEntry>): CoderSnapshot =>
+const snapshot = (
+  entries: ReadonlyArray<CoderEntry>,
+  pluginEvents?: ReadonlyArray<CoderPluginEvent>,
+): CoderSnapshot =>
   ({
     entries,
     repository: "openagents.com",
@@ -24,11 +27,15 @@ const snapshot = (entries: ReadonlyArray<CoderEntry>): CoderSnapshot =>
     turns: 1,
     running: false,
     tasks: [],
+    ...(pluginEvents === undefined ? {} : { pluginEvents }),
   }) as unknown as CoderSnapshot;
 
-const write = (entries: ReadonlyArray<CoderEntry>) => {
+const write = (
+  entries: ReadonlyArray<CoderEntry>,
+  pluginEvents?: ReadonlyArray<CoderPluginEvent>,
+) => {
   const directory = mkdtempSync(join(tmpdir(), "coder-export-"));
-  const result = exportTrajectory(snapshot(entries), {
+  const result = exportTrajectory(snapshot(entries, pluginEvents), {
     model: "Ollama qwen",
     version: "0.3.5",
     now: new Date(AT),
@@ -42,6 +49,9 @@ const write = (entries: ReadonlyArray<CoderEntry>) => {
     document: JSON.parse(readFileSync(result.path, "utf8")) as Record<string, unknown>,
   };
 };
+
+/** A full digest, as the host verifies it: `sha256:` and 64 hex characters. */
+const FULL_DIGEST = `sha256:${"7c724f993da2".padEnd(64, "0")}`;
 
 describe("exporting a conversation as ATIF", () => {
   it("writes the envelope the rest of the system reads", () => {
@@ -240,5 +250,183 @@ describe("exporting a conversation as ATIF", () => {
 
     const [name] = readdirSync(directory);
     expect(name).toMatch(/^2026-08-24T14-00-00-000Z-openagents\.com-atif\.json$/);
+  });
+});
+
+describe("plugin provenance in the export", () => {
+  const refusedLoad: CoderPluginEvent = {
+    at: AT + 1_000,
+    message: "Plugin not loaded (digest_mismatch): the artifact is not the one described",
+    event: "plugin_load_refused",
+    code: "digest_mismatch",
+    plugin: { manifestPath: "/work/demo/plugin.json" },
+  };
+
+  const successfulLoad: CoderPluginEvent = {
+    at: AT + 2_000,
+    message: "Loaded plugin `word_stats` v0.1.0 — digest verified (sha256:7c724f993da2…).",
+    event: "plugin_loaded",
+    plugin: {
+      name: "word_stats",
+      version: "0.1.0",
+      artifactDigest: FULL_DIGEST,
+      bytes: 18_432,
+      abi: { entry: "handle_packet", alloc: "packet_alloc" },
+      timeoutMs: 2_000,
+      capabilities: { mounts: [], hosts: [] },
+      manifestPath: "/work/demo/plugin.json",
+      toolName: "word_stats",
+    },
+  };
+
+  const pluginCall = entry({
+    role: "tool",
+    text: "word_stats",
+    at: AT + 4_000,
+    tool: {
+      callId: "call-p1",
+      name: "word_stats",
+      arguments: '{"text":"one two"}',
+      output: '{"ok":{"words":2}}',
+      error: undefined,
+      status: "succeeded",
+      plugin: { name: "word_stats", version: "0.1.0", artifactDigest: FULL_DIGEST },
+    },
+  });
+
+  const plainCall = entry({
+    role: "tool",
+    text: "shell",
+    at: AT + 5_000,
+    tool: {
+      callId: "call-s1",
+      name: "shell",
+      arguments: '{"command":"ls"}',
+      output: "README.md",
+      error: undefined,
+      status: "succeeded",
+    },
+  });
+
+  const fixture = () =>
+    write(
+      [
+        entry({ role: "you", text: "load it", at: AT }),
+        entry({ role: "notice", text: "Loaded plugin `word_stats` v0.1.0.", at: AT + 2_500 }),
+        entry({ role: "you", text: "count the words", at: AT + 3_000 }),
+        pluginCall,
+        plainCall,
+      ],
+      [refusedLoad, successfulLoad],
+    );
+
+  it("writes loads and refusals as system steps, in order among the turns", () => {
+    const { document } = fixture();
+
+    const steps = document["steps"] as ReadonlyArray<Record<string, unknown>>;
+    expect(steps.map((step) => step["source"])).toEqual([
+      "user",
+      "system",
+      "system",
+      "user",
+      "agent",
+      "agent",
+    ]);
+    expect(steps.map((step) => step["step_id"])).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(steps[1]).toMatchObject({ message: refusedLoad.message });
+    expect(steps[2]).toMatchObject({ message: successfulLoad.message });
+  });
+
+  it("types the refusal on the system step's observation", () => {
+    const { document } = fixture();
+
+    const steps = document["steps"] as ReadonlyArray<Record<string, unknown>>;
+    expect(steps[1]).toMatchObject({
+      observation: {
+        results: [
+          {
+            source_call_id: null,
+            content: refusedLoad.message,
+            extra: {
+              event: "plugin_load_refused",
+              code: "digest_mismatch",
+              plugin: { manifest_path: "/work/demo/plugin.json" },
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  it("types the load, with the full digest, on the system step's observation", () => {
+    const { document } = fixture();
+
+    const steps = document["steps"] as ReadonlyArray<Record<string, unknown>>;
+    const loadStep = steps[2] as Record<string, unknown>;
+    const observation = loadStep["observation"] as Record<string, unknown>;
+    const [result] = observation["results"] as ReadonlyArray<Record<string, unknown>>;
+    expect(result).toMatchObject({
+      source_call_id: null,
+      extra: {
+        event: "plugin_loaded",
+        plugin: {
+          name: "word_stats",
+          version: "0.1.0",
+          artifact_digest: FULL_DIGEST,
+          bytes: 18_432,
+          abi: { entry: "handle_packet", alloc: "packet_alloc" },
+          timeout_ms: 2_000,
+          capabilities: { mounts: [], hosts: [] },
+          manifest_path: "/work/demo/plugin.json",
+          tool_name: "word_stats",
+        },
+      },
+    });
+    // The prose may truncate the digest; the machine-read record never does.
+    const extra = result?.["extra"] as { plugin: { artifact_digest: string } };
+    expect(extra.plugin.artifact_digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+  });
+
+  it("stamps a plugin-backed call with its provenance, and no other call", () => {
+    const { document } = fixture();
+
+    const steps = document["steps"] as ReadonlyArray<Record<string, unknown>>;
+    const [pluginStep, plainStep] = steps.slice(4);
+    expect(pluginStep).toMatchObject({
+      tool_calls: [
+        {
+          tool_call_id: "call-p1",
+          function_name: "word_stats",
+          extra: {
+            plugin: { name: "word_stats", version: "0.1.0", artifact_digest: FULL_DIGEST },
+          },
+        },
+      ],
+    });
+    const [plainToolCall] = (plainStep as Record<string, unknown>)["tool_calls"] as ReadonlyArray<
+      Record<string, unknown>
+    >;
+    expect(plainToolCall?.["extra"]).toBeUndefined();
+  });
+
+  it("keeps interface chatter in extra.notices, unchanged", () => {
+    const { document } = fixture();
+
+    expect((document["extra"] as Record<string, unknown>)["notices"]).toEqual([
+      expect.objectContaining({ text: "Loaded plugin `word_stats` v0.1.0." }),
+    ]);
+  });
+
+  it("counts system steps in the totals", () => {
+    const { document } = fixture();
+
+    expect(document["final_metrics"]).toMatchObject({ total_steps: 6 });
+  });
+
+  it("writes a load after the last turn, rather than dropping it", () => {
+    const { document } = write([entry({ role: "you", text: "ask", at: AT })], [successfulLoad]);
+
+    const steps = document["steps"] as ReadonlyArray<Record<string, unknown>>;
+    expect(steps.map((step) => step["source"])).toEqual(["user", "system"]);
   });
 });
