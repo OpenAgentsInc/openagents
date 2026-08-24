@@ -486,8 +486,10 @@ export class CoderSession {
     const delegation = this.delegation;
     if (delegation === undefined) {
       this.notice(
-        "This session cannot delegate. Start it with a child model, for example " +
-          "`openagents coder --child-model vertex-express/gemini-3.7-flash`.",
+        "This session cannot delegate: children spend the session's thread, and this " +
+          "session has none. Sign in with `openagents auth login --scope chat:account`, " +
+          "or start the session with `--child-model provider/model` to run children on a " +
+          "provider of your own.",
       );
       return;
     }

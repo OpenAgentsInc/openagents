@@ -189,11 +189,7 @@ export function parseOpencodeEvent(line: string): DelegateEvent | undefined {
   }
 
   if (type === "error") {
-    const message =
-      stringField(event, "message") ??
-      (isRecord(event["error"]) ? stringField(event["error"], "message") : undefined) ??
-      "The child agent reported an error.";
-    return { type: "error", message };
+    return { type: "error", message: describeHarnessError(event) };
   }
 
   const sessionId = stringField(event, "sessionID");
@@ -202,6 +198,34 @@ export function parseOpencodeEvent(line: string): DelegateEvent | undefined {
   }
 
   return undefined;
+}
+
+/**
+ * The sentence behind a harness error event.
+ *
+ * opencode nests the sentence: the event carries an `error` with a `name` and a
+ * `data` holding the `message` and a support `ref`. Reading only `message` off
+ * the outer object — which is what this did — found nothing, so the fleet fell
+ * back to the exit code and every failure on screen read `exited with code 1`,
+ * which says nothing about the provider refusal, the missing credential, or the
+ * unreachable endpoint that actually happened.
+ */
+function describeHarnessError(event: Record<string, unknown>): string {
+  const error = isRecord(event["error"]) ? event["error"] : {};
+  const data = isRecord(error["data"]) ? error["data"] : {};
+  const sentence =
+    stringField(event, "message") ??
+    stringField(error, "message") ??
+    stringField(data, "message") ??
+    stringField(data, "error");
+  const name = stringField(error, "name");
+  const ref = stringField(data, "ref");
+
+  const parts: string[] = [];
+  if (name !== undefined && name !== "Error") parts.push(name);
+  parts.push(sentence ?? "the child agent reported an error");
+  const text = parts.join(": ");
+  return ref === undefined ? text : `${text} (${ref})`;
 }
 
 /**
@@ -335,11 +359,80 @@ export class OpencodeHarness implements DelegateHarness {
     this.model = options.model;
   }
 
+  /** The preflight, run once and shared by every child of this fleet. */
+  private preflight: Promise<string | undefined> | undefined;
+
+  /**
+   * Check that the harness exists and knows the model, once per fleet.
+   *
+   * Without this, a model the harness cannot resolve fails inside its provider
+   * and is reported as `Unexpected server error`, once per child — fifteen
+   * identical sentences naming nothing. `opencode models` costs one process at
+   * the start of a fan-out and turns that into the model id and the fact that
+   * it is not on the list.
+   *
+   * A preflight that cannot answer says nothing rather than guessing: a
+   * harness that lists no models, or a build whose subcommand differs, must
+   * not be able to block a fleet that would have worked.
+   */
+  private check(command: string): Promise<string | undefined> {
+    this.preflight ??= new Promise<string | undefined>((resolve) => {
+      const probe = spawn(command, ["models"], {
+        env: {
+          ...process.env,
+          ...this.options.env,
+          ...(this.options.configPath === undefined
+            ? {}
+            : { OPENCODE_CONFIG: this.options.configPath }),
+        },
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+
+      let listing = "";
+      probe.stdout.setEncoding("utf8");
+      probe.stdout.on("data", (chunk: string) => {
+        listing += chunk;
+      });
+
+      probe.on("error", (cause: Error) => {
+        resolve(
+          (cause as NodeJS.ErrnoException).code === "ENOENT"
+            ? `The \`${command}\` harness is not installed. Install it with ` +
+                "`npm i -g opencode-ai`, or name another with --child-command."
+            : `The \`${command}\` harness could not be started: ${cause.message}`,
+        );
+      });
+
+      probe.on("close", (code) => {
+        const models = listing
+          .split("\n")
+          .map((line) => stripAnsi(line).trim())
+          .filter((line) => line.includes("/"));
+        if (code !== 0 || models.length === 0 || models.includes(this.model)) {
+          resolve(undefined);
+          return;
+        }
+        resolve(
+          `The \`${command}\` harness has no model \`${this.model}\`. ` +
+            `It offers ${String(models.length)}, including ${models.slice(0, 3).join(", ")}.`,
+        );
+      });
+    });
+    return this.preflight;
+  }
+
   async *run(
     input: { readonly prompt: string; readonly cwd: string; readonly transcriptPath: string },
     signal: AbortSignal,
   ): AsyncIterable<DelegateEvent> {
     const command = this.options.command ?? "opencode";
+
+    const problem = await this.check(command);
+    if (problem !== undefined) {
+      yield { type: "error", message: problem };
+      throw new Error(problem);
+    }
+
     const args = ["run", "--format", "json", "--model", this.model, "--dir", input.cwd];
     if (this.options.autoApprove === true) args.push("--auto");
     args.push(input.prompt);
@@ -373,6 +466,9 @@ export class OpencodeHarness implements DelegateHarness {
     };
 
     let stderr = "";
+    /** The tail of stdout, kept for a child that failed without an event. */
+    let stdout = "";
+    let reported: string | undefined;
     let exited = false;
     let failure: string | undefined;
 
@@ -390,13 +486,17 @@ export class OpencodeHarness implements DelegateHarness {
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
       transcript.write(chunk);
+      stdout = `${stdout}${chunk}`.slice(-4000);
       pending += chunk;
       let newline = pending.indexOf("\n");
       while (newline >= 0) {
         const line = pending.slice(0, newline);
         pending = pending.slice(newline + 1);
         const event = parseOpencodeEvent(line);
-        if (event !== undefined) queue.push(event);
+        if (event !== undefined) {
+          if (event.type === "error") reported = event.message;
+          queue.push(event);
+        }
         newline = pending.indexOf("\n");
       }
       wake();
@@ -420,9 +520,17 @@ export class OpencodeHarness implements DelegateHarness {
 
     child.on("close", (code) => {
       const trailing = parseOpencodeEvent(pending);
-      if (trailing !== undefined) queue.push(trailing);
+      if (trailing !== undefined) {
+        if (trailing.type === "error") reported = trailing.message;
+        queue.push(trailing);
+      }
       if (failure === undefined && code !== 0 && !signal.aborted) {
-        failure = describeExit(code, stderr);
+        // What the harness said beats what the shell said. A child that
+        // reported `provider refused the key` and then exited 1 has already
+        // explained itself, and replacing that with the exit code is how a
+        // fleet ends up reporting three identical `code 1` lines that name
+        // nothing a reader could fix.
+        failure = reported ?? describeExit(code, stderr, stdout);
       }
       exited = true;
       wake();
@@ -448,15 +556,28 @@ export class OpencodeHarness implements DelegateHarness {
   }
 }
 
-function describeExit(code: number | null, stderr: string): string {
-  const tail = stderr
+/**
+ * Why a child ended, in one sentence.
+ *
+ * Both streams are read, stderr first: a harness that dies before it starts
+ * writes there, and one that dies mid-run may have written only structured
+ * output that this side could not name. An exit code on its own is the last
+ * resort, not the first answer.
+ */
+function describeExit(code: number | null, stderr: string, stdout = ""): string {
+  const exit = code === null ? "was killed" : `exited with code ${code}`;
+  const tail = lastLines(stderr) ?? lastLines(stdout);
+  return tail === undefined ? `The child ${exit}.` : `The child ${exit}: ${tail}`;
+}
+
+function lastLines(text: string): string | undefined {
+  const tail = text
     .split("\n")
     .map((line) => stripAnsi(line).trim())
     .filter((line) => line.length > 0)
     .slice(-2)
     .join(" ");
-  const exit = code === null ? "was killed" : `exited with code ${code}`;
-  return tail.length > 0 ? `The child ${exit}: ${tail}` : `The child ${exit}.`;
+  return tail.length === 0 ? undefined : tail.slice(-400);
 }
 
 function stripAnsi(text: string): string {

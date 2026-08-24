@@ -34,13 +34,19 @@
  *   ever produced here, and the interface's dim-italic reasoning entry, which
  *   the stand-in behind `--offline` still exercises, never appears against a
  *   live model.
- * - **No tool runs.** The chat lane ran tools on the server and reported each
+ * - **Tools run here.** The chat lane ran tools on the server and reported each
  *   one. The proxy is a bare completions surface: it forwards the `tools` a
  *   caller declares and returns the calls the model asks for, and the caller
- *   executes them. This CLI declares none and has no tool runtime, so the
- *   `tool_calls` translation below is the honest mapping of a frame that does
- *   not arrive today. It is kept because the frame is part of the surface and
- *   the alternative is discovering the mapping is missing on the day tools land.
+ *   executes them. So the loop below is the tool runtime — `useTools` gives it
+ *   the tools a session declares, and a turn continues until the model stops
+ *   asking for one.
+ *
+ *   A tool result is fed back as plain turns rather than as a `tool` message.
+ *   The proxy maps a `tool` message to a `function_call_output` item and sends
+ *   it on its own, which the provider refuses without the `function_call` that
+ *   preceded it, and the response id that would link the two is never given to
+ *   a client. Until the proxy carries a tool exchange, the honest thing is to
+ *   say what was called and what came back in turns it does accept.
  *
  * Nothing here announces any of that on screen. `2c15c6ed20` removed the
  * `scopeNotice` seam with the reasoning that a session private to its own
@@ -56,9 +62,19 @@
 
 import { Redacted } from "effect";
 
+import type { ChildGrant } from "./coder-child-gateway.js";
 import type { ReplyChunk, ReplySource } from "./coder-session.js";
+import type { CoderTool } from "./coder-tools.js";
 
 const THREADS_PATH = "/api/v3/threads";
+
+/**
+ * How many times one turn may call tools before it has to answer.
+ *
+ * A ceiling rather than a preference: a model that keeps delegating is a model
+ * spending the thread's budget without ever reporting to the reader.
+ */
+const MAX_TOOL_STEPS = 6;
 
 /** What the thread may still spend, as the server last reported it. */
 export interface ThreadBudget {
@@ -178,6 +194,13 @@ interface WireMessage {
   readonly content: string;
 }
 
+/** A call the model asked for, assembled from its fragments. */
+interface WireCall {
+  readonly id: string;
+  readonly name: string;
+  readonly args: string;
+}
+
 export class ThreadReplySource implements ReplySource {
   readonly threadId: string;
   /**
@@ -188,6 +211,7 @@ export class ThreadReplySource implements ReplySource {
    */
   private readonly transcript: WireMessage[] = [];
   private remaining: ThreadBudget;
+  private tools: ReadonlyArray<CoderTool> = [];
 
   constructor(private readonly state: SourceState) {
     this.threadId = state.threadId;
@@ -211,21 +235,65 @@ export class ThreadReplySource implements ReplySource {
     return formatBudget(this.remaining);
   }
 
+  /**
+   * Declare the tools the model may call.
+   *
+   * Set after construction because the tools need things the thread produces:
+   * the delegate tool runs children on this grant, so it cannot exist until the
+   * grant does.
+   */
+  useTools(tools: ReadonlyArray<CoderTool>): void {
+    this.tools = tools;
+  }
+
+  /**
+   * The grant, for lending to child agents.
+   *
+   * Handed out as a `Redacted` so a child harness's config or command line
+   * cannot print it, and only to callers inside this process.
+   */
+  get childGrant(): ChildGrant {
+    return {
+      proxyUrl: this.state.proxyUrl,
+      token: this.state.grantToken,
+      model: this.state.model,
+    };
+  }
+
   async *reply(prompt: string, signal: AbortSignal): AsyncIterable<ReplyChunk> {
     this.transcript.push({ role: "user", content: prompt });
 
-    let assistant = "";
     try {
-      for await (const chunk of this.stream(signal)) {
-        if (signal.aborted) break;
-        if (chunk.type === "text") assistant += chunk.value;
-        yield chunk;
+      for (let step = 0; ; step += 1) {
+        const calls: WireCall[] = [];
+        let assistant = "";
+
+        for await (const chunk of this.stream(signal, calls)) {
+          if (signal.aborted) break;
+          if (chunk.type === "text") assistant += chunk.value;
+          yield chunk;
+        }
+
+        // Whatever the model said belongs to the thread even when the turn was
+        // interrupted, or the next turn answers a question it cannot see it
+        // half-answered.
+        if (assistant.length > 0) this.transcript.push({ role: "assistant", content: assistant });
+        if (signal.aborted || calls.length === 0) return;
+
+        if (step >= MAX_TOOL_STEPS) {
+          yield {
+            type: "text",
+            value: `\n\n[stopped after ${String(MAX_TOOL_STEPS)} tool steps in one turn]`,
+          };
+          return;
+        }
+
+        for (const call of calls) {
+          if (signal.aborted) return;
+          yield* this.invoke(call, signal);
+        }
       }
     } finally {
-      // Whatever the model said belongs to the thread even when the turn was
-      // interrupted, or the next turn answers a question it cannot see it
-      // half-answered.
-      if (assistant.length > 0) this.transcript.push({ role: "assistant", content: assistant });
       // Read the budget on the way out of every turn, including an interrupted
       // one. Interrupting is a client-side abort: the proxy had already bought
       // the call and metered it, so a status line that kept the figure it
@@ -233,6 +301,47 @@ export class ThreadReplySource implements ReplySource {
       // cut short.
       await this.refresh();
     }
+  }
+
+  /**
+   * Run one call, report it, and put the exchange on the thread.
+   *
+   * The transcript keeps the call and its result as an assistant turn and a
+   * user turn for the reason given at the top of this file: a `tool` message is
+   * not carried by the proxy today, and a model that cannot see what its own
+   * call returned calls it again.
+   */
+  private async *invoke(call: WireCall, signal: AbortSignal): AsyncIterable<ReplyChunk> {
+    yield { type: "tool_call", callId: call.id, name: call.name, arguments: call.args };
+
+    const tool = this.tools.find((candidate) => candidate.name === call.name);
+    let output: string;
+    let failure: string | undefined;
+
+    if (tool === undefined) {
+      failure = `This session has no \`${call.name}\` tool.`;
+      output = failure;
+    } else {
+      try {
+        output = await tool.run(parseArguments(call.args), signal);
+      } catch (cause) {
+        failure = cause instanceof Error ? cause.message : String(cause);
+        output = failure;
+      }
+    }
+
+    yield {
+      type: "tool_result",
+      callId: call.id,
+      output: failure === undefined ? output : undefined,
+      error: failure,
+    };
+
+    this.transcript.push({
+      role: "assistant",
+      content: `[tool call]\n${call.name}(${call.args})`,
+    });
+    this.transcript.push({ role: "user", content: `[tool result ${call.name}]\n${output}` });
   }
 
   /**
@@ -254,8 +363,14 @@ export class ThreadReplySource implements ReplySource {
     }).catch(() => undefined);
   }
 
-  /** Spend one call against the proxy and translate what comes back. */
-  private async *stream(signal: AbortSignal): AsyncIterable<ReplyChunk> {
+  /**
+   * Spend one call against the proxy and translate what comes back.
+   *
+   * Calls the model asked for are appended to `collected` rather than yielded,
+   * because the turn has to run them and report each result, and a caller that
+   * only saw a chunk could not.
+   */
+  private async *stream(signal: AbortSignal, collected: WireCall[]): AsyncIterable<ReplyChunk> {
     const response = await fetch(this.state.proxyUrl, {
       method: "POST",
       signal,
@@ -271,6 +386,18 @@ export class ThreadReplySource implements ReplySource {
         model: this.state.model,
         stream: true,
         messages: this.transcript,
+        ...(this.tools.length === 0
+          ? {}
+          : {
+              tools: this.tools.map((tool) => ({
+                type: "function",
+                function: {
+                  name: tool.name,
+                  description: tool.description,
+                  parameters: tool.parameters,
+                },
+              })),
+            }),
       }),
     }).catch((cause: unknown) => {
       if (signal.aborted) return undefined;
@@ -316,7 +443,7 @@ export class ThreadReplySource implements ReplySource {
     }
 
     for (const call of calls.values()) {
-      yield { type: "tool_call", callId: call.id, name: call.name, arguments: call.args };
+      collected.push(call);
     }
   }
 
@@ -508,4 +635,15 @@ function string(value: unknown): string | undefined {
 
 function number(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * A call's arguments as an object.
+ *
+ * A model that emits invalid JSON must reach the tool anyway: the tool's own
+ * refusal ("prompt is required") is a sentence the model can act on, and a
+ * parse error thrown here would end the turn instead.
+ */
+function parseArguments(args: string): Record<string, unknown> {
+  return parse(args) ?? {};
 }

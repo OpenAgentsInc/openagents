@@ -251,46 +251,57 @@ server import continues.
 
 One prompt, many child coding agents, each in its own process. A child runs
 under a harness — `opencode` today — and the CLI reports what every one of them
-did:
+did.
+
+Inside `openagents coder`, delegation is a tool the model calls, so you ask for
+it in the conversation and nothing else is required:
+
+```text
+> split this three ways: each agent surveys one package for dead exports
+```
+
+The model calls `delegate`, the interface lists each child with the tool it is
+running, its tool and token counts, and its result, and `ctrl+x` stops every
+running child. `/delegate [<n>x] <prompt>` still works when you want to start
+children yourself without spending a turn.
+
+Children run on the session's own thread grant, so there is no child model to
+choose and no provider credential to install. The CLI holds the grant in the
+parent process, opens a loopback gateway on `127.0.0.1`, and points the child
+harness at it; the child never receives the grant token, and its spending is
+the thread's spending, under the same server-side budget.
+
+The children need the harness itself on `PATH`:
+
+```sh
+npm i -g opencode-ai
+```
+
+Headless, the same fleet runs without a session:
 
 ```sh
 openagents delegate "Add a regression test for the retry path, then say done" \
-  --agents 3 --concurrency 2 \
-  --child-model vertex-express/gemini-3.7-flash \
-  --child-config ~/.config/openagents/delegate.json \
-  --child-approve
+  --agents 3 --concurrency 2
 ```
 
 `--agents` is how many children run the prompt and `--concurrency` is how many
 run at once; the rest queue, so a fan-out of thirty does not become thirty
-processes. `--child-approve` lets a child use its tools without asking, which a
-child needs because there is nobody to ask. Add `--json` for the task records
-and outcomes as data. The exit code is non-zero when any child did not finish.
+processes. Add `--json` for the task records and outcomes as data. The exit code
+is non-zero when any child did not finish. Each child's raw harness transcript
+is kept as JSONL under `$TMPDIR/openagents-coder-delegations`.
 
-The same fleet is available inside the terminal session. Start `openagents
-coder` with `--child-model` and type `/delegate [<n>x] <prompt>`:
+When a child fails, the CLI reports what the child reported — the harness error
+and its reference, the provider or proxy refusal with its status, a model the
+harness does not have, or a missing executable — rather than an exit code.
 
-```sh
-openagents coder --child-model vertex-express/gemini-3.7-flash \
-  --child-config ~/.config/openagents/delegate.json --child-approve
-```
-
-```text
-/delegate 4x survey the package for dead exports
-```
-
-Delegating does not spend a chat turn and does not block the next prompt. The
-interface lists each child, what tool it is running, its tool and token counts,
-and its result, and `ctrl+x` stops every running child. Each child's raw
-harness transcript is kept as JSONL under
-`$TMPDIR/openagents-coder-delegations`.
-
-The child model has no default, because a child spends money under a provider
-account. `--child-model`, `--child-command`, and `--child-config` fall back to
+To run children on a provider of your own instead of the thread grant, name it:
+`--child-model`, `--child-command`, and `--child-config` fall back to
 `OPENAGENTS_DELEGATE_MODEL`, `OPENAGENTS_DELEGATE_COMMAND`, and
 `OPENAGENTS_DELEGATE_CONFIG`. The CLI never reads or stores a provider
 credential: `--child-config` names a harness configuration file, which the CLI
-passes to the child as `OPENCODE_CONFIG` and nothing else.
+passes to the child as `OPENCODE_CONFIG` and nothing else. A child approves its
+own tool use, because a delegated child has nobody to ask; `--child-ask` stops
+it at its first edit for a dry run.
 
 ## Manage issues
 

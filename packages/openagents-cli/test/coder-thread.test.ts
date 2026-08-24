@@ -232,6 +232,9 @@ describe("ThreadReplySource", () => {
       ],
     });
 
+    // A call the session cannot run is still reported, and the turn continues
+    // with the refusal on the thread, because the alternative is a turn that
+    // ends on a tool row and never answers.
     expect(await chunks(await open())).toEqual([
       {
         type: "tool_call",
@@ -239,7 +242,90 @@ describe("ThreadReplySource", () => {
         name: "repo_grep",
         arguments: `{"pattern":"thread"}`,
       },
+      {
+        type: "tool_result",
+        callId: "call-1",
+        output: undefined,
+        error: "This session has no `repo_grep` tool.",
+      },
+      { type: "text", value: "Hello" },
+      { type: "text", value: "!" },
+      { type: "text", value: " Nice" },
     ]);
+  });
+
+  it("runs a declared tool and answers from its result", async () => {
+    const calls = stub({
+      proxy: [
+        sse([
+          [
+            `data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"delegate","arguments":"{\\"prompt\\":\\"add tests\\"}"}}]}}]}`,
+            `data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+            `data: [DONE]`,
+            "",
+          ].join("\n\n"),
+        ]),
+        sse([
+          [
+            `data: {"choices":[{"delta":{"content":"Two children finished."},"index":0}]}`,
+            `data: [DONE]`,
+            "",
+          ].join("\n\n"),
+        ]),
+      ],
+    });
+
+    const source = await open();
+    const seen: Array<Record<string, unknown>> = [];
+    source.useTools([
+      {
+        name: "delegate",
+        description: "run children",
+        parameters: { type: "object" },
+        run: async (args) => {
+          seen.push(args);
+          return "2 of 2 children completed.";
+        },
+      },
+    ]);
+
+    const out = await chunks(source);
+
+    expect(seen).toEqual([{ prompt: "add tests" }]);
+    expect(out).toContainEqual({
+      type: "tool_result",
+      callId: "call-1",
+      output: "2 of 2 children completed.",
+      error: undefined,
+    });
+    expect(textOf(out)).toBe("Two children finished.");
+
+    // The tool declaration reaches the model, and the exchange is on the
+    // thread, or the next turn cannot see what its own call returned.
+    const proxied = calls.filter((call) => call.url.includes("/inference/proxy"));
+    const first = proxied[0];
+    expect(first?.body["tools"]).toEqual([
+      {
+        type: "function",
+        function: { name: "delegate", description: "run children", parameters: { type: "object" } },
+      },
+    ]);
+    const second = proxied[1];
+    expect(second?.body["messages"]).toEqual([
+      { role: "user", content: "hello" },
+      { role: "assistant", content: `[tool call]\ndelegate({"prompt":"add tests"})` },
+      { role: "user", content: "[tool result delegate]\n2 of 2 children completed." },
+    ]);
+  });
+
+  it("lends the grant to children without handing over the token", async () => {
+    stub({});
+    const grant = (await open()).childGrant;
+    expect(grant.model).toBe("gpt-5.6-luna");
+    expect(grant.proxyUrl).toBe(`${ORIGIN}/api/inference/proxy`);
+    // Redacted, so an interpolation into a config or a command line cannot
+    // print it.
+    expect(String(grant.token)).not.toContain(GRANT_TOKEN);
   });
 
   it("reports a revoked grant with a sentence rather than a status", async () => {

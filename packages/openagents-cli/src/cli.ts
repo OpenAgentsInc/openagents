@@ -15,6 +15,9 @@ import {
 } from "./api-passthrough.js";
 import { ApiTransport } from "./api-transport.js";
 import { BrowserLauncher } from "./browser-launcher.js";
+import type { ChildGrant } from "./coder-child-gateway.js";
+import { startChildGateway } from "./coder-child-gateway.js";
+import { writeChildHarnessConfig } from "./coder-child-config.js";
 import type { DelegationOutcome } from "./coder-delegate.js";
 import { DelegateFleet, describePrompt, OpencodeHarness } from "./coder-delegate.js";
 import { fleetPlainLines } from "./coder-fleet.js";
@@ -25,6 +28,7 @@ import { CoderTaskRegistry } from "./coder-tasks.js";
 import { runCoderUi } from "./coder-ui.js";
 import { backendIds } from "./coder-backends.js";
 import { openThread, ThreadUnavailable } from "./coder-thread.js";
+import { delegateTool } from "./coder-tools.js";
 import { describeWorkspace } from "./coder-workspace.js";
 import { ComputerClient } from "./computer-client.js";
 import { ComputerUp } from "./computer-up.js";
@@ -1445,17 +1449,19 @@ const coderRefusal = (origin: string, cause: unknown) => {
 /**
  * Delegation flags, shared by `coder` and `delegate`.
  *
- * The child model is what turns delegation on. There is no default: a child
- * spends money under a provider account, and a console that silently picked a
- * model would spend it fifteen times over on a prompt the reader thought was
- * going nowhere. Each flag falls back to an environment variable so a fleet can
- * be configured once for a shell rather than typed on every launch.
+ * None of them is required. Children run on the session's own thread grant
+ * through a loopback gateway, which is what makes delegation work in a fresh
+ * install with nothing configured: the earlier design demanded a child model
+ * and a provider credential of the reader's own, so the fleet was off by
+ * default and asking for one got a refusal. These flags are for the case where
+ * somebody wants children on a different provider than the session.
  */
 const childModelFlag = Flag.string("child-model").pipe(
   Flag.optional,
   Flag.withDescription(
-    "The model delegated children run, as `provider/model`. Defaults to " +
-      "OPENAGENTS_DELEGATE_MODEL. Delegation is unavailable without one",
+    "Run children on this model instead of the session's own, as `provider/model`. " +
+      "Defaults to OPENAGENTS_DELEGATE_MODEL, and to the session's thread grant when " +
+      "neither is set",
   ),
 );
 const childCommandFlag = Flag.string("child-command").pipe(
@@ -1471,10 +1477,11 @@ const childConfigFlag = Flag.string("child-config").pipe(
       "provider credential reaches a child without being stored by the CLI",
   ),
 );
-const childApproveFlag = Flag.boolean("child-approve").pipe(
+const childAskFlag = Flag.boolean("child-ask").pipe(
   Flag.withDescription(
-    "Let children use their tools without asking. A delegated child has nobody to " +
-      "ask, so a child that must edit files needs this",
+    "Make children ask before using a tool. A delegated child has nobody to ask, so " +
+      "this stops it at its first edit; it exists for a dry run over a directory you " +
+      "do not want touched",
   ),
 );
 const concurrencyFlag = Flag.integer("concurrency").pipe(
@@ -1482,28 +1489,64 @@ const concurrencyFlag = Flag.integer("concurrency").pipe(
   Flag.withDescription("How many children may run at once. The rest queue"),
 );
 
+/** Delegation and whatever has to be torn down with it. */
+interface DelegationSetup {
+  readonly delegation: CoderDelegation;
+  /** Stops the child gateway and removes the generated harness config. */
+  close(): Promise<void>;
+}
+
 /**
- * Assemble delegation, or nothing when no child model was named.
+ * Assemble delegation.
  *
- * Returning undefined rather than throwing is what lets `coder` open without a
- * child model and say so when `/delegate` is typed, instead of refusing to
- * start over a feature the reader may not use.
+ * Three ways a child gets a model, in order: a model named on the command line
+ * or in the environment, with the reader's own harness config; the session's
+ * thread grant, lent to children through a loopback gateway; or nothing, which
+ * is only reached with no credential and no flag, and is what makes `/delegate`
+ * say so instead of failing later.
  */
-function buildDelegation(options: {
+async function buildDelegation(options: {
   readonly model: string | undefined;
   readonly command: string | undefined;
   readonly configPath: string | undefined;
   readonly autoApprove: boolean;
   readonly concurrency: number;
   readonly cwd: string;
-}): CoderDelegation | undefined {
-  const model = options.model ?? process.env["OPENAGENTS_DELEGATE_MODEL"];
-  if (model === undefined || model.trim().length === 0) return undefined;
+  /** The session's grant, when it has one. Children spend it by default. */
+  readonly grant: ChildGrant | undefined;
+}): Promise<DelegationSetup | undefined> {
+  const named = options.model ?? process.env["OPENAGENTS_DELEGATE_MODEL"];
+  const command = options.command ?? process.env["OPENAGENTS_DELEGATE_COMMAND"];
+  const namedConfig = options.configPath ?? process.env["OPENAGENTS_DELEGATE_CONFIG"];
+
+  let model: string;
+  let configPath: string | undefined;
+  let close: () => Promise<void>;
+
+  if (named !== undefined && named.trim().length > 0) {
+    model = named;
+    configPath = namedConfig;
+    close = () => Promise.resolve();
+  } else if (options.grant !== undefined) {
+    const gateway = await startChildGateway(options.grant);
+    const harnessConfig = writeChildHarnessConfig({
+      baseUrl: gateway.baseUrl,
+      model: options.grant.model,
+    });
+    model = gateway.modelId;
+    configPath = harnessConfig.path;
+    close = async () => {
+      await gateway.close();
+      harnessConfig.remove();
+    };
+  } else {
+    return undefined;
+  }
 
   const harness = new OpencodeHarness({
     model,
-    command: options.command ?? process.env["OPENAGENTS_DELEGATE_COMMAND"],
-    configPath: options.configPath ?? process.env["OPENAGENTS_DELEGATE_CONFIG"],
+    command,
+    configPath,
     autoApprove: options.autoApprove,
   });
   const registry = new CoderTaskRegistry();
@@ -1511,7 +1554,10 @@ function buildDelegation(options: {
     maxConcurrent: Math.max(1, options.concurrency),
     cwd: options.cwd,
   });
-  return { registry, fleet, label: `${harness.agent} (${model})` };
+  return {
+    delegation: { registry, fleet, label: `${harness.agent} (${model})` },
+    close,
+  };
 }
 
 const coderCommand = Command.make(
@@ -1525,7 +1571,7 @@ const coderCommand = Command.make(
     childModel: childModelFlag,
     childCommand: childCommandFlag,
     childConfig: childConfigFlag,
-    childApprove: childApproveFlag,
+    childAsk: childAskFlag,
     concurrency: concurrencyFlag,
   },
   ({
@@ -1537,7 +1583,7 @@ const coderCommand = Command.make(
     childModel,
     childCommand,
     childConfig,
-    childApprove,
+    childAsk,
     concurrency,
   }) =>
     Effect.gen(function* () {
@@ -1575,16 +1621,32 @@ const coderCommand = Command.make(
         : undefined;
 
       const source = thread ?? new DummyReplySource();
-      const delegation = buildDelegation({
-        model: Option.getOrUndefined(childModel),
-        command: Option.getOrUndefined(childCommand),
-        configPath: Option.getOrUndefined(childConfig),
-        autoApprove: childApprove,
-        concurrency,
-        cwd: process.cwd(),
-      });
+      const setup = yield* Effect.promise(() =>
+        buildDelegation({
+          model: Option.getOrUndefined(childModel),
+          command: Option.getOrUndefined(childCommand),
+          configPath: Option.getOrUndefined(childConfig),
+          autoApprove: !childAsk,
+          concurrency,
+          cwd: process.cwd(),
+          grant: thread?.childGrant,
+        }),
+      );
 
-      const session = new CoderSession(source, workspace.repository, workspace.branch, delegation);
+      const session = new CoderSession(
+        source,
+        workspace.repository,
+        workspace.branch,
+        setup?.delegation,
+      );
+
+      // The model is told what it can do rather than the reader being asked to
+      // remember a slash command. A turn that needs three agents asks for them
+      // mid-sentence, and `/delegate` stays as the way to launch a fan-out
+      // without spending a turn to ask for one.
+      if (thread !== undefined && setup !== undefined) {
+        thread.useTools([delegateTool(setup.delegation)]);
+      }
 
       if (Option.isNone(stored) && !offline) {
         session.notice(
@@ -1622,6 +1684,7 @@ const coderCommand = Command.make(
           // session nobody is in. A process killed outright still leaves it to
           // the server's expiry reap.
           if (thread !== undefined) await thread.revoke();
+          if (setup !== undefined) await setup.close();
         }
       });
 
@@ -1631,7 +1694,7 @@ const coderCommand = Command.make(
     }),
 ).pipe(
   Command.withDescription(
-    "Open a terminal coding session on a thread of its own. Replies come from the thread's grant through the inference proxy, so nothing typed here reaches /chat; --offline answers from a built-in stand-in instead. With --child-model, `/delegate [<n>x] <prompt>` runs child coding agents and the interface shows the fleet",
+    "Open a terminal coding session on a thread of its own. Replies come from the thread's grant through the inference proxy, so nothing typed here reaches /chat; --offline answers from a built-in stand-in instead. The session can delegate: ask it to split work and it runs child coding agents on the same grant, or launch a fan-out yourself with `/delegate [<n>x] <prompt>`, and the interface shows the fleet",
   ),
 );
 
@@ -1670,7 +1733,7 @@ const delegateCommand = Command.make(
     childModel: childModelFlag,
     childCommand: childCommandFlag,
     childConfig: childConfigFlag,
-    childApprove: childApproveFlag,
+    childAsk: childAskFlag,
     concurrency: concurrencyFlag,
   },
   ({
@@ -1681,28 +1744,61 @@ const delegateCommand = Command.make(
     childModel,
     childCommand,
     childConfig,
-    childApprove,
+    childAsk,
     concurrency,
   }) =>
     Effect.gen(function* () {
       const flags = yield* rootCommand;
       const cwd = Option.getOrUndefined(dir) ?? process.cwd();
-      const delegation = buildDelegation({
-        model: Option.getOrUndefined(childModel),
-        command: Option.getOrUndefined(childCommand),
-        configPath: Option.getOrUndefined(childConfig),
-        autoApprove: childApprove,
-        concurrency,
-        cwd,
-      });
+      const endpoint = yield* resolveApiEndpoint(endpointOverrides(flags));
+      const named = Option.getOrUndefined(childModel) ?? process.env["OPENAGENTS_DELEGATE_MODEL"];
 
-      if (delegation === undefined) {
+      // Children spend a thread the same way the interactive session does, so
+      // this command opens one rather than demanding a provider of its own. It
+      // is skipped when a child model was named, because then the reader is
+      // paying somebody else and a thread would be opened and never spent.
+      const stored =
+        named === undefined
+          ? yield* findToken(endpoint.origin).pipe(
+              Effect.catchTag("OpenAgentsCli.CredentialPersistenceUnavailable", () =>
+                Effect.succeed(Option.none()),
+              ),
+            )
+          : Option.none();
+
+      const thread = Option.isSome(stored)
+        ? yield* Effect.tryPromise({
+            try: () =>
+              openThread({
+                origin: endpoint.origin,
+                token: Redacted.value(stored.value.token),
+                objective: `openagents delegate: ${describePrompt(prompt)}`,
+              }),
+            catch: (cause) => coderRefusal(endpoint.origin, cause),
+          })
+        : undefined;
+
+      const setup = yield* Effect.promise(() =>
+        buildDelegation({
+          model: Option.getOrUndefined(childModel),
+          command: Option.getOrUndefined(childCommand),
+          configPath: Option.getOrUndefined(childConfig),
+          autoApprove: !childAsk,
+          concurrency,
+          cwd,
+          grant: thread?.childGrant,
+        }),
+      );
+
+      if (setup === undefined) {
         return yield* new InputError({
           message:
-            "No child model. Pass --child-model provider/model or set " +
-            "OPENAGENTS_DELEGATE_MODEL.",
+            "Nothing to run children on. Sign in with `openagents auth login --scope " +
+            "chat:account` so children can spend a thread, or pass --child-model " +
+            "provider/model to run them on a provider of your own.",
         });
       }
+      const delegation = setup.delegation;
 
       const count = Math.max(1, agents);
       const label = Option.getOrUndefined(description) ?? describePrompt(prompt);
@@ -1747,6 +1843,11 @@ const delegateCommand = Command.make(
           process.off("SIGTERM", onSignal);
           process.off("exit", onSignal);
           unsubscribe();
+          await setup.close();
+          // The thread's slot goes back even on the failure path: an account
+          // holds eight, and a script that delegates in a loop would otherwise
+          // be refused on its ninth run.
+          if (thread !== undefined) await thread.revoke();
         }
       });
 
@@ -1780,7 +1881,7 @@ const delegateCommand = Command.make(
     }),
 ).pipe(
   Command.withDescription(
-    "Run one prompt on many child coding agents at once and report each result",
+    "Run one prompt on many child coding agents at once and report each result. Children run on a thread of their own by default, so this needs no provider credential",
   ),
 );
 
