@@ -504,7 +504,13 @@ export class DevinHarness implements DelegateHarness {
  * falls through to the next rather than failing a fan-out.
  */
 export const FREE_CHILD_MODELS: ReadonlyArray<string> = [
-  "opencode/big-pickle",
+  // Ox Alpha, free and unlimited while it lasts. The slug says neither `ox`
+  // nor `alpha`: opencode's own normalization maps `x-preview-f` to `ox-alpha`
+  // (`packages/stats/core/src/domain/model-normalization.ts`), and the `-free`
+  // entry is the unlimited tier the picker calls "Ox Alpha Free (Unlimited)".
+  // Searching the model list for its name finds nothing, which is how a first
+  // pass at this list picked a different model entirely.
+  "opencode/x-preview-f-free",
   "opencode/gemini-3.7-flash",
   "opencode/gemini-3.6-flash",
   "opencode/gemini-3.5-flash",
