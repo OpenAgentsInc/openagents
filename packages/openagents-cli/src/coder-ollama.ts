@@ -121,6 +121,27 @@ export class OllamaReplySource implements ReplySource {
     this.tools = tools;
   }
 
+  /**
+   * Everything standing that goes to the model: the system message and the tool
+   * declarations, rendered from the same values the request carries.
+   */
+  describeContext(): string {
+    const parts = [`System message sent with every turn:\n\n${systemPrompt(this.tools)}`];
+
+    parts.push(
+      this.tools.length === 0
+        ? "\nNo tools are declared to the model."
+        : `\n${String(this.tools.length)} tool${this.tools.length === 1 ? "" : "s"} declared to the model:\n\n${this.tools
+            .map(
+              (tool) =>
+                `- \`${tool.name}\`\n  ${tool.description}\n  parameters: ${JSON.stringify(tool.parameters)}`,
+            )
+            .join("\n\n")}`,
+    );
+
+    return parts.join("\n");
+  }
+
   async *reply(prompt: string, signal: AbortSignal): AsyncIterable<ReplyChunk> {
     // Built on the first turn rather than in the constructor: the tools are
     // declared after construction, and the prompt is derived from them.

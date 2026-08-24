@@ -133,6 +133,15 @@ export interface ReplySource {
    */
   useTools?(tools: ReadonlyArray<CoderTool>): void;
   /**
+   * The standing context this source sends with every turn, as text.
+   *
+   * What `/system` shows. A source reports what it actually sends rather than a
+   * description of it, so the two cannot drift: a reader checking why a model
+   * behaved a certain way is reading the thing the model read. A source that
+   * does not compose its own context leaves this undefined.
+   */
+  describeContext?(): string;
+  /**
    * Yield the reply to `prompt` in chunks. Rendering appends each chunk as it
    * arrives, so a slow source shows partial text rather than nothing.
    */
@@ -358,6 +367,21 @@ export class CoderSession {
     // Delegation is not a turn: it does not go to the model, it does not block
     // the next prompt, and it is allowed while a reply is streaming. That is
     // the point of a fleet — the console keeps working while children run.
+    // `/system` is not a turn either: it reads what the session already holds,
+    // shows it as a notice, and sends nothing. A reader checking what the model
+    // was told should not have to change what the model was told to find out.
+    if (/^\/system\s*$/.test(prompt.trim())) {
+      this.entries.push({ role: "you", text: prompt, settled: true });
+      const context = this.source.describeContext?.();
+      this.notice(
+        context === undefined
+          ? "This reply source composes no context of its own, so there is nothing to show."
+          : context,
+      );
+      this.emit();
+      return;
+    }
+
     const delegate = parseDelegateCommand(prompt);
     if (delegate !== undefined) {
       this.entries.push({ role: "you", text: prompt, settled: true });

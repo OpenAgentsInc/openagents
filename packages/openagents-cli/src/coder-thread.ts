@@ -258,6 +258,35 @@ export class ThreadReplySource implements ReplySource {
   }
 
   /**
+   * What this lane sends as standing context.
+   *
+   * The tool declarations are the client's and are reported in full. The system
+   * message is not: the proxy is a completions surface and the server composes
+   * what precedes the turn, so this says so rather than printing a prompt this
+   * process never saw. A `/system` that guessed would be worse than one that
+   * admits the boundary.
+   */
+  describeContext(): string {
+    const declarations =
+      this.tools.length === 0
+        ? "No tools are declared to the model."
+        : `${String(this.tools.length)} tool${this.tools.length === 1 ? "" : "s"} declared to the model:\n\n${this.tools
+            .map(
+              (tool) =>
+                `- \`${tool.name}\`\n  ${tool.description}\n  parameters: ${JSON.stringify(tool.parameters)}`,
+            )
+            .join("\n\n")}`;
+
+    return [
+      "This session runs on a thread. The system message is composed by the server for the",
+      "thread's grant and is not sent from this machine, so it cannot be shown here. What follows",
+      "is what this process does send with every turn.",
+      "",
+      declarations,
+    ].join("\n");
+  }
+
+  /**
    * The grant, for lending to child agents.
    *
    * Handed out as a `Redacted` so a child harness's config or command line

@@ -757,7 +757,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
 
     session.notice(
       "openagents coder — development build. Type a message and press enter. " +
-        "Ctrl+D quits, Esc interrupts a reply.",
+        "Ctrl+D quits, Esc interrupts a reply. `/system` shows what the model is told.",
     );
     render();
   });

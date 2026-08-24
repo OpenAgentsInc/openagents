@@ -313,3 +313,54 @@ describe("CoderSession", () => {
     });
   });
 });
+
+describe("the /system command", () => {
+  /** A source that records whether the model was reached. */
+  const watched = (context?: string): ReplySource & { prompts: string[] } => {
+    const prompts: string[] = [];
+    return {
+      model: "scripted",
+      prompts,
+      ...(context === undefined ? {} : { describeContext: () => context }),
+      // eslint-disable-next-line require-yield -- a turn that must not happen
+      async *reply(prompt) {
+        prompts.push(prompt);
+      },
+    };
+  };
+
+  it("shows the source's context as a notice and never reaches the model", async () => {
+    const reply = watched("System message sent with every turn:\n\nYou are `openagents coder`.");
+    const session = new CoderSession(reply, "repo", "main");
+
+    await session.submit("/system");
+
+    const { entries, turns } = session.snapshot();
+    // A notice, so the interface dims it: what the model was told is not
+    // something the model said.
+    expect(entries.map((entry) => entry.role)).toEqual(["you", "notice"]);
+    expect(entries[1]?.text).toContain("You are `openagents coder`.");
+    // Reading what the model was told must not change what the model was told.
+    expect(reply.prompts).toEqual([]);
+    expect(turns).toBe(0);
+  });
+
+  it("says so when the source composes no context of its own", async () => {
+    const reply = watched();
+    const session = new CoderSession(reply, "repo", "main");
+
+    await session.submit("/system");
+
+    expect(session.snapshot().entries[1]?.text).toContain("composes no context of its own");
+    expect(reply.prompts).toEqual([]);
+  });
+
+  it("is the whole line, so a question about the system prompt is still a turn", async () => {
+    const reply = watched("context");
+    const session = new CoderSession(reply, "repo", "main");
+
+    await session.submit("what is in your /system prompt");
+
+    expect(reply.prompts).toEqual(["what is in your /system prompt"]);
+  });
+});
