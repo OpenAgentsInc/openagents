@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:af15df8b34d2e3460ecbf7b203c47c9954542d67339d5e8c60f0df82068652d1",
+  "sourceDigest": "sha256:fa51430aa7088a241031ae0315284f5cd3a33e732a8f6448669d93983c12ae06",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -1876,7 +1876,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/openagents-cli (26 tracked test files)"
+          "ref": "packages/openagents-cli (28 tracked test files)"
         },
         {
           "type": "behavior-contract",
