@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 
 import { CODER_BACKENDS } from "../src/coder-backends.js";
 import { CoderSession, type ReplyChunk, type ReplySource } from "../src/coder-session.js";
-import { CoderTaskRegistry } from "../src/coder-tasks.js";
 import { RELOAD_EXIT_CODE } from "../src/coder-reload.js";
 import { runCoderUi } from "../src/coder-ui.js";
 
