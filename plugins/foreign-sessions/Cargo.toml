@@ -1,0 +1,17 @@
+# The foreign-session discovery plugin: the scanner half of
+# OpenAgentsInc/openagents.com#198, as a packet-v0 guest.
+
+[package]
+name = "foreign-sessions"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Guest plugin that discovers recent Claude Code and Codex CLI sessions from their read-only mounted state directories: metadata only, bounded, never a resume."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+openagents-pdk = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

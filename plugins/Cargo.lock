@@ -3,11 +3,28 @@
 version = 4
 
 [[package]]
+name = "dir-stats"
+version = "0.1.0"
+dependencies = [
+ "openagents-pdk",
+ "serde",
+]
+
+[[package]]
 name = "file-stats"
 version = "0.1.0"
 dependencies = [
  "openagents-pdk",
  "serde",
+]
+
+[[package]]
+name = "foreign-sessions"
+version = "0.1.0"
+dependencies = [
+ "openagents-pdk",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -1,0 +1,72 @@
+{
+  "manifest_version": 1,
+  "name": "dir_stats",
+  "version": "0.1.0",
+  "author": "OpenAgents",
+  "description": "List one directory inside the plugin's declared read-only mount: entry names, kinds (file, dir, symlink), sizes, and modification times, bounded per listing. It cannot read file contents, write, or reach outside the mount. Use it when asked what a mounted directory contains.",
+  "artifact": {
+    "path": "dir_stats.wasm",
+    "digest": "sha256:8156d9eba67c9467d6b9a2e562d000ec3a99046d8788f3ba42e1163f4adf4952"
+  },
+  "abi": {
+    "kind": "packet-v0",
+    "entry": "handle_packet",
+    "alloc": "packet_alloc"
+  },
+  "interface": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "mount_index": {
+          "type": "integer",
+          "description": "Which declared mount to list, by manifest order. Defaults to 0."
+        },
+        "path": {
+          "type": "string",
+          "description": "Directory path relative to the mount root; empty lists the root itself."
+        }
+      },
+      "required": ["path"],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "object",
+          "properties": {
+            "entries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "kind": { "type": "string" },
+                  "size": { "type": "integer" },
+                  "mtime_ms": { "type": "integer" }
+                }
+              }
+            },
+            "truncated": { "type": "boolean" }
+          }
+        },
+        "refusal": {
+          "type": "object",
+          "properties": {
+            "code": { "type": "string" },
+            "reason": { "type": "string" }
+          },
+          "required": ["code", "reason"]
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "mounts": [{ "path": "data", "readonly": true }],
+    "hosts": [],
+    "timeout_ms": 2000,
+    "memory_max_mib": 64
+  },
+  "price_msats": null,
+  "license": "Apache-2.0"
+}

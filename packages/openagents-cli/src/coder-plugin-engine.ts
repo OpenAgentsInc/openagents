@@ -21,11 +21,12 @@
  * survives between calls.
  *
  * Capability imports live host-side of this seam too. When the job carries
- * mounts, the worker exposes exactly one import — `openagents.read_file` —
- * and confines every path: relative to a declared root only, `..` resolved
- * and checked, symlinks refused, and a per-file size bound. The answer
- * crosses back as a status-prefixed packet the PDK decodes: `0x00` + bytes,
- * or `0x01` + a `{"code", "reason"}` refusal.
+ * mounts, the worker exposes exactly two imports — `openagents.read_file`
+ * and `openagents.list_dir` — and confines every path: relative to a
+ * declared root only, `..` resolved and checked, symlinks refused, a
+ * per-file size bound on reads, and a per-listing entry bound on listings.
+ * The answer crosses back as a status-prefixed packet the PDK decodes:
+ * `0x00` + bytes, or `0x01` + a `{"code", "reason"}` refusal.
  */
 
 import { Worker } from "node:worker_threads";
@@ -86,6 +87,8 @@ export interface EngineJob {
   readonly mounts: ReadonlyArray<string>;
   /** Per-file byte bound for mounted reads. */
   readonly mountFileLimit: number;
+  /** Per-listing entry bound for mounted directory listings. */
+  readonly mountDirEntryLimit: number;
   /** Cancels the invocation the same way the timeout does. */
   readonly signal?: AbortSignal | undefined;
 }
@@ -121,10 +124,10 @@ export interface PluginEngine {
  */
 const INVOKE_WORKER = `
 const { parentPort, workerData } = require("node:worker_threads");
-const { lstatSync, readFileSync, realpathSync } = require("node:fs");
-const { isAbsolute, resolve, sep } = require("node:path");
+const { lstatSync, readdirSync, readFileSync, realpathSync } = require("node:fs");
+const { isAbsolute, join, resolve, sep } = require("node:path");
 (async () => {
-  const { wasm, input, entry, alloc, mounts, mountFileLimit } = workerData;
+  const { wasm, input, entry, alloc, mounts, mountFileLimit, mountDirEntryLimit } = workerData;
   try {
     let guest = null;
 
@@ -188,6 +191,77 @@ const { isAbsolute, resolve, sep } = require("node:path");
       return refusalPacket("mount_denied", "no declared mount contains the path");
     };
 
+    // List one directory inside one declared mount, by mount index. The
+    // index makes the target root explicit — a scanner over two mounts
+    // (say ~/.claude and ~/.codex) must never have "which root answered?"
+    // ambiguity for a listing. Same confinement as readMounted, plus an
+    // entry bound instead of a byte bound.
+    const listMounted = (mountIndex, path) => {
+      if (!Number.isInteger(mountIndex) || mountIndex < 0 || mountIndex >= mounts.length) {
+        return refusalPacket("mount_denied", "the mount index names no declared mount");
+      }
+      if (isAbsolute(path)) {
+        return refusalPacket("mount_denied", "absolute paths are refused; mounted paths are relative to a declared mount root");
+      }
+      const root = mounts[mountIndex];
+      const candidate = resolve(root, path);
+      if (candidate !== root && !candidate.startsWith(root + sep)) {
+        return refusalPacket("mount_denied", "the path escapes the mount root");
+      }
+      let stat;
+      try {
+        stat = lstatSync(candidate);
+      } catch {
+        return refusalPacket("file_unreadable", "the mount has no such directory");
+      }
+      if (stat.isSymbolicLink()) {
+        return refusalPacket("mount_denied", "symlinks inside a mount are refused");
+      }
+      if (!stat.isDirectory()) {
+        return refusalPacket("file_unreadable", "the path is not a directory");
+      }
+      let real;
+      try {
+        real = realpathSync(candidate);
+      } catch (cause) {
+        return refusalPacket("file_unreadable", String((cause && cause.message) || cause));
+      }
+      if (real !== root && !real.startsWith(root + sep)) {
+        return refusalPacket("mount_denied", "the path resolves outside the mount root");
+      }
+      let names;
+      try {
+        names = readdirSync(candidate);
+      } catch (cause) {
+        return refusalPacket("file_unreadable", String((cause && cause.message) || cause));
+      }
+      names.sort();
+      const truncated = names.length > mountDirEntryLimit;
+      const entries = [];
+      for (const name of names.slice(0, mountDirEntryLimit)) {
+        let kind = "other";
+        let size = 0;
+        let mtimeMs = 0;
+        try {
+          const entryStat = lstatSync(join(candidate, name));
+          kind = entryStat.isSymbolicLink()
+            ? "symlink"
+            : entryStat.isFile()
+              ? "file"
+              : entryStat.isDirectory()
+                ? "dir"
+                : "other";
+          size = entryStat.size;
+          mtimeMs = Math.floor(entryStat.mtimeMs);
+        } catch {
+          // A racing unlink between readdir and lstat: report the name as
+          // "other" so the guest can skip it, rather than failing the listing.
+        }
+        entries.push({ name, kind, size, mtime_ms: mtimeMs });
+      }
+      return okPacket(new TextEncoder().encode(JSON.stringify({ entries, truncated })));
+    };
+
     // Write an answer packet into guest memory through the guest's own
     // allocator and pack its location the way handle_packet does.
     const answerGuest = (packet) => {
@@ -196,18 +270,29 @@ const { isAbsolute, resolve, sep } = require("node:path");
       return (BigInt(ptr) << 32n) | BigInt(packet.length);
     };
 
-    // The capability import exists only when the manifest declared mounts;
+    // The capability imports exist only when the manifest declared mounts;
     // the loader has already refused any module that asks for more.
+    const guestPath = (pathPtr, pathLen) => {
+      const memory = new Uint8Array(guest.memory.buffer);
+      return new TextDecoder().decode(memory.slice(pathPtr, pathPtr + pathLen));
+    };
     const imports =
       mounts.length > 0
         ? {
             openagents: {
               read_file: (pathPtr, pathLen) => {
-                const memory = new Uint8Array(guest.memory.buffer);
-                const path = new TextDecoder().decode(memory.slice(pathPtr, pathPtr + pathLen));
                 let packet;
                 try {
-                  packet = readMounted(path);
+                  packet = readMounted(guestPath(pathPtr, pathLen));
+                } catch (cause) {
+                  packet = refusalPacket("file_unreadable", String((cause && cause.message) || cause));
+                }
+                return answerGuest(packet);
+              },
+              list_dir: (mountIndex, pathPtr, pathLen) => {
+                let packet;
+                try {
+                  packet = listMounted(mountIndex, guestPath(pathPtr, pathLen));
                 } catch (cause) {
                   packet = refusalPacket("file_unreadable", String((cause && cause.message) || cause));
                 }
@@ -276,6 +361,7 @@ export const nodeWorkerEngine: PluginEngine = {
           alloc: job.alloc,
           mounts: [...job.mounts],
           mountFileLimit: job.mountFileLimit,
+          mountDirEntryLimit: job.mountDirEntryLimit,
         },
       });
 

@@ -6,7 +6,7 @@
   "description": "Compute statistics for one file inside the plugin's declared read-only mount: byte count, whether it is UTF-8 text, and its line count. It cannot write, list directories, or reach outside the mount. Use it when asked to measure a mounted file.",
   "artifact": {
     "path": "file_stats.wasm",
-    "digest": "sha256:1f44edeadd163efd8a6ee73eb89725a94e93c1fbabb66791ce02bbc6bcb3be7d"
+    "digest": "sha256:6479f4eac6b2b24d61ddc92ad3dd0f263f5ba5b9fe47e9bf8ab1f40cfad39006"
   },
   "abi": {
     "kind": "packet-v0",

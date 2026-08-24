@@ -6,7 +6,7 @@
   "description": "Compute statistics for a piece of text: byte, character, word, and line counts, the longest word, and the most frequent word. Pure computation with no file, network, or environment access. Use it when asked to measure or summarize the size or composition of text.",
   "artifact": {
     "path": "word_stats.wasm",
-    "digest": "sha256:340fc35fec83dfb17d48c12544fbe5d12de5d5689d8dd1ea4745c4dc55a3c33f"
+    "digest": "sha256:30428d45ace3993d0503abaf4e33a406d251e106a44f4687acd6a6f6438bea26"
   },
   "abi": {
     "kind": "packet-v0",

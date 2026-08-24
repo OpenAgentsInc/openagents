@@ -42,12 +42,13 @@
 //!
 //! ## Host capabilities
 //!
-//! [`read_mounted_file`] is the first host import: available only when the
-//! plugin's manifest declares read-only mounts, and answered by the host
-//! with either the file bytes or a typed refusal (`mount_denied`,
-//! `file_unreadable`, `file_too_large`). A plugin that never calls it
-//! links no imports at all — the compiler strips the unused extern — so a
-//! pure-compute plugin still passes the host's empty-import inspection.
+//! [`read_mounted_file`] and [`list_mounted_dir`] are the host imports:
+//! available only when the plugin's manifest declares read-only mounts,
+//! and answered by the host with either the payload or a typed refusal
+//! (`mount_denied`, `file_unreadable`, `file_too_large`). A plugin that
+//! never calls them links no imports at all — the compiler strips the
+//! unused externs — so a pure-compute plugin still passes the host's
+//! empty-import inspection.
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -101,6 +102,8 @@ impl RefusalCode {
 
     /// The code for a host-authored refusal packet. Unknown codes fold to
     /// [`RefusalCode::Internal`]; the caller keeps the raw text in the reason.
+    /// Reached only from the wasm-side import decoding (and its tests).
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     fn parse(code: &str) -> Option<Self> {
         match code {
             "bad_packet" => Some(RefusalCode::BadPacket),
@@ -187,8 +190,50 @@ pub fn read_mounted_file(path: &str) -> Result<Vec<u8>, Refusal> {
     imp::read_mounted_file(path)
 }
 
-/// Parse a host `read_file` answer packet: one status byte, then either
-/// the file bytes (0) or a `{"code", "reason"}` refusal (1).
+/// One entry of a mounted directory listing, as the host reports it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct MountDirEntry {
+    pub name: String,
+    /// `"file"`, `"dir"`, `"symlink"`, or `"other"`. Symlinks are reported
+    /// but never followed; a read through one is refused by the host.
+    pub kind: String,
+    pub size: u64,
+    /// Modification time in milliseconds since the Unix epoch.
+    pub mtime_ms: i64,
+}
+
+/// A mounted directory listing: at most the host's entry bound, sorted by
+/// name, with `truncated` set when the directory held more.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct MountDirListing {
+    pub entries: Vec<MountDirEntry>,
+    pub truncated: bool,
+}
+
+/// List a directory inside one of the manifest's declared read-only mounts.
+///
+/// `mount_index` names the mount by its position in the manifest's
+/// `capabilities.mounts` array — explicit, because a scanner over several
+/// mounts must never wonder which root answered a listing. The path is
+/// relative to that mount's root (`""` or `"."` lists the root itself);
+/// the host confines it exactly as it confines reads (no absolute paths,
+/// no `..` escapes, no symlinks) and bounds the entries per listing. On a
+/// target other than `wasm32-unknown-unknown` the import does not exist
+/// and this returns `unsupported`.
+pub fn list_mounted_dir(mount_index: u32, path: &str) -> Result<MountDirListing, Refusal> {
+    imp::list_mounted_dir(mount_index, path)
+}
+
+/// Decode a host listing packet's payload into [`MountDirListing`].
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+fn parse_listing(bytes: &[u8]) -> Result<MountDirListing, Refusal> {
+    serde_json::from_slice(bytes)
+        .map_err(|err| Refusal::internal(format!("the host's listing packet does not decode: {err}")))
+}
+
+/// Parse a host answer packet: one status byte, then either the payload
+/// bytes (0) or a `{"code", "reason"}` refusal (1).
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 fn parse_host_packet(packet: &[u8]) -> Result<Vec<u8>, Refusal> {
     #[derive(serde::Deserialize)]
     struct RawRefusal {
@@ -210,7 +255,7 @@ fn parse_host_packet(packet: &[u8]) -> Result<Vec<u8>, Refusal> {
 
 #[cfg(target_arch = "wasm32")]
 mod imp {
-    use super::{parse_host_packet, Refusal};
+    use super::{parse_host_packet, parse_listing, MountDirListing, Refusal};
 
     #[link(wasm_import_module = "openagents")]
     extern "C" {
@@ -218,27 +263,49 @@ mod imp {
         /// of an answer packet the host wrote into guest memory through
         /// `packet_alloc`. Present only when the manifest declares mounts.
         fn read_file(path_ptr: *const u8, path_len: u32) -> u64;
+        /// Host capability import: list one directory of the mount named by
+        /// `mount_index`. Same answer-packet shape as `read_file`; the
+        /// payload is the JSON encoding of a listing. Present only when the
+        /// manifest declares mounts.
+        fn list_dir(mount_index: u32, path_ptr: *const u8, path_len: u32) -> u64;
     }
 
-    pub fn read_mounted_file(path: &str) -> Result<Vec<u8>, Refusal> {
-        let packed = unsafe { read_file(path.as_ptr(), path.len() as u32) };
+    /// Unpack a host answer word into the packet slice it points at.
+    unsafe fn host_packet<'a>(packed: u64) -> Result<&'a [u8], Refusal> {
         let ptr = (packed >> 32) as u32 as usize as *const u8;
         let len = (packed & 0xffff_ffff) as usize;
         if ptr.is_null() {
             return Err(Refusal::internal("the host answered with a null packet"));
         }
-        let packet = unsafe { core::slice::from_raw_parts(ptr, len) };
+        Ok(core::slice::from_raw_parts(ptr, len))
+    }
+
+    pub fn read_mounted_file(path: &str) -> Result<Vec<u8>, Refusal> {
+        let packed = unsafe { read_file(path.as_ptr(), path.len() as u32) };
+        let packet = unsafe { host_packet(packed) }?;
         parse_host_packet(packet)
+    }
+
+    pub fn list_mounted_dir(mount_index: u32, path: &str) -> Result<MountDirListing, Refusal> {
+        let packed = unsafe { list_dir(mount_index, path.as_ptr(), path.len() as u32) };
+        let packet = unsafe { host_packet(packed) }?;
+        parse_listing(&parse_host_packet(packet)?)
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 mod imp {
-    use super::Refusal;
+    use super::{MountDirListing, Refusal};
 
     pub fn read_mounted_file(_path: &str) -> Result<Vec<u8>, Refusal> {
         Err(Refusal::unsupported(
             "read_mounted_file is a host capability import; it exists only inside the WASM host",
+        ))
+    }
+
+    pub fn list_mounted_dir(_mount_index: u32, _path: &str) -> Result<MountDirListing, Refusal> {
+        Err(Refusal::unsupported(
+            "list_mounted_dir is a host capability import; it exists only inside the WASM host",
         ))
     }
 }
@@ -369,5 +436,33 @@ mod tests {
     fn off_wasm_the_mount_import_is_an_unsupported_refusal() {
         let refusal = read_mounted_file("anything.txt").unwrap_err();
         assert_eq!(refusal.code, RefusalCode::Unsupported);
+    }
+
+    #[test]
+    fn off_wasm_the_listing_import_is_an_unsupported_refusal() {
+        let refusal = list_mounted_dir(0, "anywhere").unwrap_err();
+        assert_eq!(refusal.code, RefusalCode::Unsupported);
+    }
+
+    #[test]
+    fn a_listing_payload_decodes_into_typed_entries() {
+        let payload = br#"{"entries":[{"name":"a.jsonl","kind":"file","size":12,"mtime_ms":1000}],"truncated":true}"#;
+        let listing = parse_listing(payload).unwrap();
+        assert!(listing.truncated);
+        assert_eq!(
+            listing.entries,
+            vec![MountDirEntry {
+                name: "a.jsonl".to_string(),
+                kind: "file".to_string(),
+                size: 12,
+                mtime_ms: 1000,
+            }]
+        );
+    }
+
+    #[test]
+    fn an_undecodable_listing_payload_is_an_internal_refusal() {
+        let refusal = parse_listing(b"not json").unwrap_err();
+        assert_eq!(refusal.code, RefusalCode::Internal);
     }
 }

@@ -18,14 +18,16 @@
  *   not a warning.
  * - **Imports must be declared.** A module's import list must be covered by
  *   the capabilities its manifest declares: nothing for pure compute, and
- *   exactly `openagents.read_file` when the manifest declares read-only
- *   mounts. Anything else is refused by inspection, before instantiation,
- *   so the sandbox is a property of what was loaded rather than a hope
- *   about what it does.
+ *   exactly `openagents.read_file` plus `openagents.list_dir` when the
+ *   manifest declares read-only mounts. Anything else is refused by
+ *   inspection, before instantiation, so the sandbox is a property of what
+ *   was loaded rather than a hope about what it does.
  * - **Mounts are read-only and confined.** A declared mount resolves to a
- *   real directory at load; at invocation the engine's `read_file` import
- *   canonicalizes every path, refuses absolute paths, `..` escapes, and
- *   symlinks, and bounds the bytes per file.
+ *   real directory at load (relative to the manifest, absolute, or
+ *   `~`-expanded); at invocation the engine's `read_file` and `list_dir`
+ *   imports canonicalize every path, refuse absolute paths, `..` escapes,
+ *   and symlinks, bound the bytes per file, and bound the entries per
+ *   listing.
  * - **Limits are the engine's job.** Timeout by termination, cancellation
  *   the same way. See {@link PluginEngine} in `coder-plugin-engine.ts`.
  * - **Typed refusals both ways.** The host refuses with `{code, reason}`;
@@ -36,7 +38,8 @@
 
 import { createHash } from "node:crypto";
 import { readFileSync, realpathSync, statSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 
 import {
   defaultEngine,
@@ -54,10 +57,29 @@ export const SUPPORTED_ABI = "packet-v0";
 
 /** A read-only directory grant, as the manifest declares it. */
 export interface PluginMount {
-  /** Directory path, resolved relative to the manifest's directory. */
+  /**
+   * Directory path. Relative paths resolve against the manifest's
+   * directory; absolute paths are taken as-is; a leading `~/` (or a bare
+   * `~`) expands to the invoking user's home directory. Whatever the form,
+   * the root must exist and be a directory at load, or the plugin refuses
+   * to load.
+   */
   readonly path: string;
   /** Only `true` is accepted; a writable mount is refused, not downgraded. */
   readonly readonly: true;
+}
+
+/**
+ * Expand a manifest mount path's `~` prefix to the user's home directory.
+ *
+ * Only a bare `~` or a `~/...` prefix expands — `~alice/...` is somebody
+ * else's home and stays literal, which then fails the exists-and-is-a-
+ * directory check rather than silently reading another account.
+ */
+export function expandMountPath(path: string): string {
+  if (path === "~") return homedir();
+  if (path.startsWith("~/")) return join(homedir(), path.slice(2));
+  return path;
 }
 
 /** The manifest fields this host reads. The file may carry more. */
@@ -94,6 +116,9 @@ const TIMEOUT_CEILING_MS = 30_000;
 
 /** Per-file byte bound for reads through a mount. */
 export const MOUNT_FILE_LIMIT = 1_048_576;
+
+/** Entry bound per directory listing through a mount; the rest is truncated. */
+export const MOUNT_DIR_ENTRY_LIMIT = 500;
 
 /** How much plugin output the model is shown. */
 const PLUGIN_OUTPUT_LIMIT = 16_000;
@@ -140,7 +165,7 @@ export function loadPluginFromManifest(
   const manifestDir = dirname(manifestPath);
   const mounts: string[] = [];
   for (const mount of manifest.capabilities.mounts) {
-    const declared = resolve(manifestDir, mount.path);
+    const declared = resolve(manifestDir, expandMountPath(mount.path));
     let root: string;
     try {
       root = realpathSync(declared);
@@ -176,13 +201,15 @@ export function loadPluginFromManifest(
   if (isRefusal(shape)) return shape;
 
   // Every import must be granted by a declared capability. Mounts grant
-  // exactly one: the read_file capability import.
-  const granted = new Set(mounts.length > 0 ? ["openagents.read_file"] : []);
+  // exactly two: the read_file and list_dir capability imports.
+  const granted = new Set(
+    mounts.length > 0 ? ["openagents.read_file", "openagents.list_dir"] : [],
+  );
   const undeclared = shape.imports.filter((name) => !granted.has(name));
   if (undeclared.length > 0) {
     const grantHint =
       mounts.length > 0
-        ? "the declared mounts grant only `openagents.read_file`"
+        ? "the declared mounts grant only `openagents.read_file` and `openagents.list_dir`"
         : "the manifest declares no capabilities, so the module may import nothing";
     return refuse(
       "imports_undeclared",
@@ -330,6 +357,7 @@ export function invokePlugin(
     timeoutMs: options?.timeoutMs ?? plugin.manifest.capabilities.timeout_ms,
     mounts: plugin.mounts,
     mountFileLimit: MOUNT_FILE_LIMIT,
+    mountDirEntryLimit: MOUNT_DIR_ENTRY_LIMIT,
     signal: options?.signal,
   });
 }

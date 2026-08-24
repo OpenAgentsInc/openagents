@@ -1,0 +1,106 @@
+{
+  "manifest_version": 1,
+  "name": "foreign_sessions",
+  "version": "0.1.0",
+  "author": "OpenAgents",
+  "description": "Discover recent Claude Code and Codex CLI sessions from their local state directories, mounted read-only: for each session its source, id, working directory, modification time, size, and record count. Metadata only — it never reads whole conversations back, never writes, and cannot resume anything. Use it when asked what foreign coding-agent sessions exist on this machine, optionally filtered to a working directory.",
+  "artifact": {
+    "path": "foreign_sessions.wasm",
+    "digest": "sha256:164eed5637ccadd11c1df698e22436cdeeb963194b7a765dd845a745fcf3854d"
+  },
+  "abi": {
+    "kind": "packet-v0",
+    "entry": "handle_packet",
+    "alloc": "packet_alloc"
+  },
+  "interface": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "sources": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["claude", "codex"] },
+          "description": "Which stores to scan. Both when omitted."
+        },
+        "cwd_filter": {
+          "type": "string",
+          "description": "Only report sessions whose working directory contains this substring."
+        },
+        "max_age_days": {
+          "type": "number",
+          "description": "Only report sessions modified within this many days. Default 30."
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Most sessions to report, newest first. Default 50, capped at 50."
+        },
+        "now_ms": {
+          "type": "integer",
+          "description": "Current time in milliseconds since the Unix epoch, for the age cutoff. The sandbox has no clock; when omitted, the newest session's own timestamp stands in."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "object",
+          "properties": {
+            "sessions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "source": { "type": "string" },
+                  "session_id": { "type": "string" },
+                  "path": { "type": "string" },
+                  "cwd": { "type": "string" },
+                  "project_dir": { "type": "string" },
+                  "mtime_ms": { "type": "integer" },
+                  "size_bytes": { "type": "integer" },
+                  "record_count": { "type": "integer" },
+                  "metadata_truncated": { "type": "boolean" }
+                }
+              }
+            },
+            "scanned_dirs": { "type": "integer" },
+            "scanned_files": { "type": "integer" },
+            "skipped": {
+              "type": "object",
+              "properties": {
+                "malformed": { "type": "integer" },
+                "unreadable": { "type": "integer" },
+                "symlinked": { "type": "integer" }
+              }
+            },
+            "oversized": { "type": "integer" },
+            "missing_sources": { "type": "array", "items": { "type": "string" } },
+            "scan_truncated": { "type": "boolean" },
+            "read_budget_exhausted": { "type": "boolean" }
+          }
+        },
+        "refusal": {
+          "type": "object",
+          "properties": {
+            "code": { "type": "string" },
+            "reason": { "type": "string" }
+          },
+          "required": ["code", "reason"]
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "mounts": [
+      { "path": "~/.claude", "readonly": true },
+      { "path": "~/.codex", "readonly": true }
+    ],
+    "hosts": [],
+    "timeout_ms": 10000,
+    "memory_max_mib": 128
+  },
+  "price_msats": null,
+  "license": "Apache-2.0"
+}
