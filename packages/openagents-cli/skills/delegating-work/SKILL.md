@@ -38,28 +38,44 @@ take a task end to end rather than one prompt in parallel. Check with
 Run it non-interactively through `shell`:
 
 ```sh
-devin -p "<a complete, self-contained task>" --permission-mode dangerous
+devin -p "<a complete, self-contained task>"                        # read-only
+devin -p "<a complete, self-contained task>" --permission-mode dangerous  # unattended
 ```
 
-Three things about that command are worth knowing before you run it.
+`-p` means one prompt, print the answer, exit. What it may do is the permission
+mode, and the default is already the read-only one:
+
+| `--permission-mode` | Auto-approves |
+| --- | --- |
+| `auto` (default, no flag needed) | read-only tools only |
+| `accept-edits` | and edits inside the workspace |
+| `smart` | and anything a fast model judges safe |
+| `dangerous` | everything, including writes and shell |
+
+For a read-only run, pass no flag. In `-p` mode there is nobody to answer a
+prompt, so anything not auto-approved simply does not happen — the mode is the
+whole of the boundary. Run `devin --help` if this disagrees with the build in
+front of you; the values it lists are the values it takes.
+
+Three things are worth knowing before an unattended run.
 
 **`dangerous` is the mode name on this build.** The published documentation
 calls the equivalent mode "bypass". Passing `--permission-mode bypass` is not
 rejected — it is accepted and ignored, so the session silently falls back to
-prompting, and in `-p` mode a prompt nobody can answer is a task that does
-nothing. Read `devin --help` if unsure; the values it lists are the values it
-takes.
+prompting, and a prompt nobody can answer is a task that does nothing.
 
-**It refuses a workspace it does not trust.** In an untrusted directory it
-exits at once with `Refusing to run in an untrusted workspace`. Trust is
-granted by starting `devin` interactively there once, which is something only
-the person at the keyboard can do. If you hit that, say so and name the
-directory rather than retrying.
+**It refuses a workspace it does not trust**, but only in a directory nobody has
+opened it in. You will know because it exits at once, before doing anything,
+with the words `Refusing to run in an untrusted workspace`. Only that message
+means this; do not read any other failure as a trust problem. Trust is granted
+by starting `devin` interactively there once, which only the person at the
+keyboard can do, so say so and name the directory rather than working around it.
+`respect_workspace_trust` is a config-file key, not a command-line flag, and
+passing it as one will not do anything.
 
-**`dangerous` auto-approves every tool it has, including writes and shell.**
-That is the point of using it unattended, and it is also the reason to say what
-you are handing over before you hand it over. Give it a bounded task in this
-repository, not an open-ended one.
+**`dangerous` auto-approves every tool it has.** That is the point of using it
+unattended, and it is the reason to say what you are handing over before you
+hand it over. Give it a bounded task in this repository, not an open-ended one.
 
 There is also `devin acp`, an Agent Client Protocol server over stdio, for a
 caller that speaks ACP. `-p` is the simpler route from here and needs no

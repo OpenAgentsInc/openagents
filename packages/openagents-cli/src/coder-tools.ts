@@ -460,9 +460,12 @@ export function shellTool(cwd: string): CoderTool {
   return {
     name: "shell",
     description:
-      "Run a shell command on this machine, in the session's working directory, and return what " +
-      "it printed. Use it for anything you would type at a terminal: reading files, listing " +
-      "directories, searching, git, running builds and tests. Prefer it over `delegate` for " +
+      `Run a shell command on this machine. The working directory is ${cwd}, so paths are ` +
+      "relative to it and you do not need to ask where you are. Returns what the command " +
+      "printed. Use it for anything you would type at a terminal: reading files, listing " +
+      "directories, searching, git, running builds and tests. For the `openagents` CLI use the " +
+      "`openagents` tool instead — it carries the list of commands, so running it through here " +
+      "costs a turn finding out what exists. Prefer it over `delegate` for " +
       "single commands -- a child agent is for work worth a whole agent, not for one line of " +
       "output. Both output streams come back together with the exit code. There is no terminal, " +
       "so a command that would prompt gets end-of-file instead of waiting; pass a flag that " +
