@@ -61,13 +61,16 @@ const isSqliteBusy = (error: unknown): boolean =>
 
 const withSqliteBusyRetry = <T>(fn: () => T): T => {
   let lastError: unknown
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
     try {
       return fn()
     } catch (error) {
-      if (!isSqliteBusy(error) || attempt === 3) throw error
+      if (!isSqliteBusy(error) || attempt === 7) throw error
       lastError = error
-      sleepSync(25 * (attempt + 1))
+      // SQLite contention is transient, but 3 or more workers can start at
+      // the same moment, so the backoff grows exponentially rather than
+      // racing on the same short windows.
+      sleepSync(Math.min(5000, 50 * 2 ** attempt))
     }
   }
   throw lastError
