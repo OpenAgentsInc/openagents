@@ -1,5 +1,6 @@
 import { Clock, Console, Effect, Option, Redacted } from "effect";
 import { Argument, Command, Flag } from "effect/unstable/cli";
+import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 
 import { apiErrorDetails, type Repository } from "./api-contract.js";
@@ -95,9 +96,13 @@ import {
   ComputerMachineUnavailable,
   ComputerPairingInProgress,
   ComputerReconnectExhausted,
+  DeploymentFailed,
+  DeploymentRollingReplaceRequired,
   InputError,
   NetworkRefused,
+  type CliError,
 } from "./errors.js";
+import { FleetClient, OPERATOR_SCOPE, targetStatus, terminalStatus } from "./fleet-client.js";
 import { CredentialStore } from "./credential-store.js";
 import {
   PendingDeviceAuthorizationStore,
@@ -3539,6 +3544,381 @@ const projectCommand = Command.make("project").pipe(
 
 const traceCommand = makeTraceCommand(rootCommand);
 
+// The deploy command group: named operator deployment commands over the
+// operator-only fleet promotion API from OpenAgentsInc/openagents.com#57.
+// It consumes only that API — never `/admin/forge`, SSH, or an internal RPC —
+// and it needs a token holding `deployments:promote`; `forge:write` cannot
+// promote. The operator states every production input explicitly: the CLI
+// never resolves a branch name, never promotes the working tree, and never
+// assumes an environment.
+
+const fullShaPattern = /^[0-9a-f]{40}$/u;
+
+const deployRepoFlag = Flag.string("repo").pipe(
+  Flag.optional,
+  Flag.withDescription(
+    "Canonical repository exactly as the server allows it, such as openagents.com",
+  ),
+);
+const deployShaFlag = Flag.string("sha").pipe(
+  Flag.optional,
+  Flag.withDescription("Full 40-character commit SHA; branch names and abbreviations are refused"),
+);
+const deployEnvironmentFlag = Flag.string("environment").pipe(
+  Flag.optional,
+  Flag.withDescription("Deployment environment, stated explicitly; the server admits production"),
+);
+const deployIdempotencyKeyFlag = Flag.string("idempotency-key").pipe(
+  Flag.optional,
+  Flag.withDescription(
+    "Caller-generated idempotency key for controlled automation; omitted, the CLI generates one and reuses it across automatic retries. Never printed",
+  ),
+);
+const deployExpectedTargetFlag = Flag.string("expected-current-target").pipe(
+  Flag.optional,
+  Flag.withDescription(
+    "Compare-and-set: refuse the promotion when the current target is no longer this ID",
+  ),
+);
+const deployWaitFlag = Flag.boolean("wait").pipe(
+  Flag.withDescription(
+    "Poll the status resource with bounded backoff until the target reaches live, failed, reverted, or needs_rolling_replace",
+  ),
+);
+const deployWaitTimeoutFlag = Flag.integer("wait-timeout").pipe(
+  Flag.withDefault(600),
+  Flag.withDescription(
+    "Seconds --wait polls before reporting a timeout (the target keeps running)",
+  ),
+);
+const deployListLimitFlag = Flag.integer("limit").pipe(
+  Flag.withDefault(10),
+  Flag.withDescription("Return between 1 and 50 recent targets"),
+);
+const deployTargetArgument = Argument.string("target-id").pipe(
+  Argument.withDescription("Fleet target ID returned by deploy promote or deploy list"),
+);
+
+/**
+ * An operator refused for standing or scope needs the exact next command, not
+ * a bare status. The remediation names the privileged scope and says plainly
+ * that `forge:write` is not it.
+ */
+const operatorRemediation = (error: CliError): CliError =>
+  error._tag === "OpenAgentsCli.ApiError" && (error.status === 401 || error.status === 403)
+    ? new ApiError({
+        operation: error.operation,
+        status: error.status,
+        ...(error.code === undefined ? {} : { code: error.code }),
+        message:
+          `${error.message} Fleet promotion requires an operator API token holding ` +
+          `${OPERATOR_SCOPE}; forge:write cannot promote, and neither can a Git credential ` +
+          `or a browser session. An operator obtains one with: ` +
+          `openagents auth login --scope ${OPERATOR_SCOPE}`,
+        ...(error.requestId === undefined ? {} : { requestId: error.requestId }),
+      })
+    : error;
+
+const fleetTargetId = (target: Record<string, unknown>): string => String(target["id"] ?? "");
+
+// Environment, repository, full SHA, target ID, state, and status URL come
+// before any success wording, so the operator reads what was promoted before
+// reading how it went.
+const fleetTargetHuman = (target: Record<string, unknown>): ReadonlyArray<string> => [
+  `Environment: ${String(target["environment"] ?? "")}`,
+  `Repository:  ${String(target["repo"] ?? "")}`,
+  `SHA:         ${String(target["sha"] ?? "")}`,
+  `Target:      ${fleetTargetId(target)}`,
+  `State:       ${targetStatus(target)}`,
+  `Status URL:  ${String(target["status_url"] ?? "")}`,
+];
+
+const fleetFailureCode = (target: Record<string, unknown>): string | null => {
+  const code = target["error_code"];
+  return typeof code === "string" ? code : null;
+};
+
+const fleetOutcome = (target: Record<string, unknown>, nonterminal: string): string => {
+  const status = targetStatus(target);
+  return terminalStatus(status) ? status : nonterminal;
+};
+
+const fleetTargetDocument = (
+  schema: string,
+  target: Record<string, unknown>,
+  nonterminal: string,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> => ({
+  schema,
+  ...extra,
+  outcome: fleetOutcome(target, nonterminal),
+  live: targetStatus(target) === "live",
+  terminal: terminalStatus(targetStatus(target)),
+  failure_code: fleetFailureCode(target),
+  target,
+});
+
+const fleetTerminalHuman = (target: Record<string, unknown>): string => {
+  switch (targetStatus(target)) {
+    case "live":
+      return "The fleet target is live.";
+    case "needs_rolling_replace":
+      return "The target needs an operator-driven rolling replacement; the automatic lanes stopped.";
+    default:
+      return `The fleet target reached ${targetStatus(target)}.`;
+  }
+};
+
+/**
+ * Turns a terminal target into the command's exit behavior after the full
+ * document is already written: `failed` and `reverted` are a deployment
+ * failure, `needs_rolling_replace` is its own condition, `live` succeeds.
+ */
+const concludeFleetTarget = Effect.fn("Cli.concludeFleetTarget")(function* (
+  target: Record<string, unknown>,
+) {
+  const status = targetStatus(target);
+  const id = fleetTargetId(target);
+  if (status === "failed" || status === "reverted") {
+    const code = fleetFailureCode(target);
+    return yield* new DeploymentFailed({
+      targetId: id,
+      status,
+      ...(code === null ? {} : { code }),
+      message: `The fleet target ${id} reached ${status}${code === null ? "" : ` (${code})`}.`,
+    });
+  }
+  if (status === "needs_rolling_replace") {
+    return yield* new DeploymentRollingReplaceRequired({
+      targetId: id,
+      message: `The fleet target ${id} needs a rolling replacement before it can be live.`,
+    });
+  }
+});
+
+// Interrupting the poll stops only the CLI's watching. No cancellation is
+// sent — the API defines none — and the hint names the target so the
+// operator resumes instead of guessing.
+const watchFleetTarget = (
+  session: {
+    readonly endpoint: { readonly origin: string };
+    readonly token: Redacted.Redacted<string>;
+  },
+  id: string,
+  waitTimeoutSeconds: number,
+) =>
+  Effect.gen(function* () {
+    const fleet = yield* FleetClient;
+    return yield* fleet
+      .wait({
+        origin: session.endpoint.origin,
+        token: session.token,
+        id,
+        timeoutMs: waitTimeoutSeconds * 1_000,
+      })
+      .pipe(
+        Effect.mapError(operatorRemediation),
+        Effect.onInterrupt(() =>
+          Console.error(
+            `Polling stopped; the server-side target is untouched. ` +
+              `Resume with: openagents deploy view ${id} --wait`,
+          ).pipe(Effect.ignore),
+        ),
+      );
+  });
+
+const deployPromoteCommand = Command.make(
+  "promote",
+  {
+    repo: deployRepoFlag,
+    sha: deployShaFlag,
+    environment: deployEnvironmentFlag,
+    idempotencyKey: deployIdempotencyKeyFlag,
+    expectedCurrentTarget: deployExpectedTargetFlag,
+    wait: deployWaitFlag,
+    waitTimeout: deployWaitTimeoutFlag,
+  },
+  ({ environment, expectedCurrentTarget, idempotencyKey, repo, sha, wait, waitTimeout }) =>
+    Effect.gen(function* () {
+      if (Option.isNone(repo)) {
+        return yield* new InputError({
+          message:
+            "Pass --repo with the canonical repository the server deploys, such as --repo openagents.com.",
+        });
+      }
+      if (Option.isNone(sha)) {
+        return yield* new InputError({
+          message: "Pass --sha with the full 40-character commit SHA you reviewed.",
+        });
+      }
+      const shaValue = sha.value.trim().toLowerCase();
+      if (!fullShaPattern.test(shaValue)) {
+        return yield* new InputError({
+          message:
+            "--sha must be one full 40-character commit SHA. Branch names, tags, and " +
+            "abbreviations are refused; print the exact reviewed value with: git rev-parse HEAD",
+        });
+      }
+      if (Option.isNone(environment)) {
+        return yield* new InputError({
+          message:
+            "Pass --environment production explicitly. Production promotion never assumes an environment.",
+        });
+      }
+      if (waitTimeout < 1) {
+        return yield* new InputError({ message: "--wait-timeout must be at least 1 second." });
+      }
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const fleet = yield* FleetClient;
+      const output = yield* Output;
+      // Generated once and reused across automatic transport retries; passed
+      // through --idempotency-key for controlled automation. Never printed.
+      const key = Option.isSome(idempotencyKey) ? idempotencyKey.value : randomUUID();
+      const result = yield* fleet
+        .promote({
+          origin: session.endpoint.origin,
+          token: session.token,
+          repo: repo.value,
+          sha: shaValue,
+          environment: environment.value,
+          idempotencyKey: key,
+          ...(Option.isNone(expectedCurrentTarget)
+            ? {}
+            : { expectedCurrentTargetId: expectedCurrentTarget.value }),
+        })
+        .pipe(Effect.mapError(operatorRemediation));
+      const id = fleetTargetId(result.target);
+      if (!wait) {
+        // 202 means the promotion was recorded, not that production is live.
+        yield* output.write(
+          {
+            value: fleetTargetDocument("openagents.fleet_promotion.v1", result.target, "accepted", {
+              accepted: true,
+              replayed: result.replayed,
+            }),
+            human: [
+              ...fleetTargetHuman(result.target),
+              result.replayed
+                ? "This idempotency key already named this promotion; the original target is returned."
+                : "Promotion accepted. Accepted means recorded, not live; the fleet deploys it now.",
+              `Follow it with: openagents deploy view ${id} --wait`,
+            ],
+          },
+          outputMode(flags.json),
+        );
+        return;
+      }
+      const finalTarget = yield* watchFleetTarget(session, id, waitTimeout);
+      yield* output.write(
+        {
+          value: fleetTargetDocument("openagents.fleet_promotion.v1", finalTarget, "accepted", {
+            accepted: true,
+            replayed: result.replayed,
+          }),
+          human: [...fleetTargetHuman(finalTarget), fleetTerminalHuman(finalTarget)],
+        },
+        outputMode(flags.json),
+      );
+      yield* concludeFleetTarget(finalTarget);
+    }),
+).pipe(
+  Command.withDescription(
+    "Promote an exact pushed commit as the production fleet target (operator only)",
+  ),
+);
+
+const deployViewCommand = Command.make(
+  "view",
+  { target: deployTargetArgument, wait: deployWaitFlag, waitTimeout: deployWaitTimeoutFlag },
+  ({ target, wait, waitTimeout }) =>
+    Effect.gen(function* () {
+      if (waitTimeout < 1) {
+        return yield* new InputError({ message: "--wait-timeout must be at least 1 second." });
+      }
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const fleet = yield* FleetClient;
+      const output = yield* Output;
+      if (!wait) {
+        // A bare view is a read: it reports the state and exits zero even for
+        // a failed target. Exit behavior for terminal states belongs to --wait.
+        const value = yield* fleet
+          .view({ origin: session.endpoint.origin, token: session.token, id: target })
+          .pipe(Effect.mapError(operatorRemediation));
+        yield* output.write(
+          {
+            value: fleetTargetDocument("openagents.fleet_target.v1", value, "pending"),
+            human: fleetTargetHuman(value),
+          },
+          outputMode(flags.json),
+        );
+        return;
+      }
+      const finalTarget = yield* watchFleetTarget(session, target, waitTimeout);
+      yield* output.write(
+        {
+          value: fleetTargetDocument("openagents.fleet_target.v1", finalTarget, "pending"),
+          human: [...fleetTargetHuman(finalTarget), fleetTerminalHuman(finalTarget)],
+        },
+        outputMode(flags.json),
+      );
+      yield* concludeFleetTarget(finalTarget);
+    }),
+).pipe(Command.withDescription("Show one fleet target; --wait follows it to a terminal state"));
+
+const fleetTargetRow = (target: Record<string, unknown>): string =>
+  [
+    fleetTargetId(target).padEnd(38),
+    targetStatus(target).padEnd(22),
+    String(target["sha"] ?? ""),
+    `  ${String(target["promoted_at"] ?? "")}`,
+  ].join("");
+
+const deployListCommand = Command.make(
+  "list",
+  { repo: deployRepoFlag, limit: deployListLimitFlag },
+  ({ limit, repo }) =>
+    Effect.gen(function* () {
+      if (limit < 1 || limit > 50) {
+        return yield* new InputError({ message: "--limit must be between 1 and 50." });
+      }
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const fleet = yield* FleetClient;
+      const output = yield* Output;
+      const value = yield* fleet
+        .list({
+          origin: session.endpoint.origin,
+          token: session.token,
+          limit,
+          ...(Option.isNone(repo) ? {} : { repo: repo.value }),
+        })
+        .pipe(Effect.mapError(operatorRemediation));
+      const targets = rows(value, "targets");
+      yield* output.write(
+        {
+          value,
+          human:
+            targets.length === 0
+              ? ["No fleet targets found."]
+              : [
+                  `Repository: ${String(record(value)["repo"] ?? "")}`,
+                  ...targets.map(fleetTargetRow),
+                ],
+        },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(Command.withDescription("List recent fleet targets, newest first"));
+
+const deployCommand = Command.make("deploy").pipe(
+  Command.withDescription(
+    `Operator deployment of the OpenAgents fleet. Requires an operator token holding ${OPERATOR_SCOPE}; forge:write cannot promote`,
+  ),
+  Command.withSubcommands([deployPromoteCommand, deployViewCommand, deployListCommand]),
+);
+
 export const openagentsCommand = rootCommand.pipe(
   Command.withSubcommands([
     apiCommand,
@@ -3546,6 +3926,7 @@ export const openagentsCommand = rootCommand.pipe(
     coderCommand,
     delegateCommand,
     computerCommand,
+    deployCommand,
     forumCommand,
     issueCommand,
     projectCommand,

@@ -12,6 +12,7 @@ export * from "./device-authorization-store.js";
 export * from "./endpoint.js";
 export * from "./environment.js";
 export * from "./errors.js";
+export * from "./fleet-client.js";
 export * from "./git-runner.js";
 export * from "./issue-client.js";
 export * from "./output.js";

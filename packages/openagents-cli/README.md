@@ -356,6 +356,75 @@ openagents project item-remove 2 175
 Projects are repository-scoped, so every project command takes the same
 `-R, --repo` and remote inference the issue commands take.
 
+## Deploy the fleet (operators)
+
+The `deploy` commands drive the operator-only fleet promotion API
+(`/api/v3/admin/forge/targets`). They require an API token holding the
+privileged `deployments:promote` scope, and the server additionally checks
+that the account is a current operator on every request. `forge:write` cannot
+promote, and neither can a Git credential or a browser session.
+
+Sign in with the privileged scope through the same device flow. The server
+mints the scope only for an operator account, shows it on the approval page,
+and gives the credential a shorter lifetime than an ordinary token:
+
+```sh
+openagents --profile production auth login --scope deployments:promote
+```
+
+Promote an exact pushed commit. Every production input is explicit: the CLI
+never resolves a branch name, never promotes the working tree, and never
+assumes an environment. Print the value you reviewed with `git rev-parse HEAD`
+and pass it whole:
+
+```sh
+openagents deploy promote \
+  --repo openagents.com \
+  --sha "$(git rev-parse HEAD)" \
+  --environment production \
+  --wait
+```
+
+A `202 Accepted` without `--wait` means the promotion was recorded, not that
+production is live. `--wait` polls the status resource with bounded backoff
+until the target reaches `live`, `failed`, `reverted`, or
+`needs_rolling_replace`, and `--wait-timeout` bounds the watching (the target
+keeps running when the CLI stops watching). Observe and resume at any time:
+
+```sh
+openagents deploy view <target-id> --wait
+openagents deploy list --limit 10
+```
+
+For release automation, pass `--idempotency-key` with a key your pipeline
+owns: retrying the same key with the same inputs returns the original target
+instead of deploying twice, and different inputs under the same key are
+refused with a conflict. Left out, the CLI generates a key once and reuses it
+across its own automatic transport retries. The key is never printed. Guard
+against racing operators with compare-and-set:
+
+```sh
+openagents deploy promote --repo openagents.com --sha <full-sha> \
+  --environment production \
+  --expected-current-target <current-target-id>
+```
+
+Exit codes keep the outcomes apart for scripts: authentication or operator
+refusals exit `3`, an invalid or unknown commit exits `2`, a stale expected
+target or idempotency conflict exits `5`, a target that reached `failed` or
+`reverted` exits `17`, a poll that outlived `--wait-timeout` while the target
+was still running exits `18`, and `needs_rolling_replace` exits `19`. A
+transport failure exits `6` and never claims the deployment failed. `SIGINT`
+stops local polling without touching the server-side target and prints the
+`deploy view` command that resumes.
+
+If a privileged credential leaks or an operator leaves, revoke the token in
+the account's API token settings; the server also rechecks operator standing
+on every request, so removing the account from the operator allowlist takes
+effect immediately, before the token expires. During an incident, promote the
+last known-good SHA from `deploy list` the same way — an exact SHA, an
+explicit environment, and a fresh idempotency key.
+
 Every issue and project command accepts `-R, --repo <owner>/<name>` and
 otherwise infers the repository from the forge remote the way `repo view` does,
 whatever that remote is named. Issue and project numbers are bare integers; a

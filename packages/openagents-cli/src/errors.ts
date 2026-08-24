@@ -176,6 +176,40 @@ export class TraceUploadUnsupported extends Schema.TaggedErrorClass<TraceUploadU
   { message: Schema.String },
 ) {}
 
+/** A fleet promotion target reached `failed` or `reverted`. */
+export class DeploymentFailed extends Schema.TaggedErrorClass<DeploymentFailed>()(
+  "OpenAgentsCli.DeploymentFailed",
+  {
+    targetId: Schema.String,
+    status: Schema.String,
+    code: Schema.optionalKey(Schema.String),
+    message: Schema.String,
+  },
+) {}
+
+/**
+ * Polling ended while the fleet target was still nonterminal. The target
+ * itself has not failed; the CLI simply stopped watching.
+ */
+export class DeploymentWaitTimeout extends Schema.TaggedErrorClass<DeploymentWaitTimeout>()(
+  "OpenAgentsCli.DeploymentWaitTimeout",
+  {
+    targetId: Schema.String,
+    timeoutMs: Schema.Number,
+    lastStatus: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
+/** The target needs an operator-driven rolling replacement to finish. */
+export class DeploymentRollingReplaceRequired extends Schema.TaggedErrorClass<DeploymentRollingReplaceRequired>()(
+  "OpenAgentsCli.DeploymentRollingReplaceRequired",
+  {
+    targetId: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
 export type CliError =
   | InputError
   | ConfigurationError
@@ -202,7 +236,10 @@ export type CliError =
   | ComputerMachineUnavailable
   | ComputerMachineMismatch
   | ComputerReconnectExhausted
-  | TraceUploadUnsupported;
+  | TraceUploadUnsupported
+  | DeploymentFailed
+  | DeploymentWaitTimeout
+  | DeploymentRollingReplaceRequired;
 
 export const exitCodeFor = (error: CliError): number => {
   switch (error._tag) {
@@ -230,6 +267,15 @@ export const exitCodeFor = (error: CliError): number => {
       return 15;
     case "OpenAgentsCli.TraceUploadUnsupported":
       return 16;
+    // Deployment outcomes stay apart from each other and from transport
+    // failures, so release automation can tell "the fleet rejected these
+    // bytes" from "the CLI stopped watching" without parsing prose.
+    case "OpenAgentsCli.DeploymentFailed":
+      return 17;
+    case "OpenAgentsCli.DeploymentWaitTimeout":
+      return 18;
+    case "OpenAgentsCli.DeploymentRollingReplaceRequired":
+      return 19;
     case "OpenAgentsCli.AuthenticationRequired":
     case "OpenAgentsCli.CredentialPersistenceUnavailable":
     case "OpenAgentsCli.CredentialStoreError":

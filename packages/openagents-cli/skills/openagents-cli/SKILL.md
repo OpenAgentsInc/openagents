@@ -58,6 +58,11 @@ minted for `chat:account` alone cannot push, and one minted for `forge:write`
 alone cannot open a thread, and each failure arrives a command later where it
 reads as the product being broken.
 
+One privileged scope exists beyond these: `deployments:promote`, which the
+`openagents deploy` commands need and which the server mints only for a
+current operator. Do not request it unless the person is an operator asking to
+deploy the fleet; `forge:write` cannot promote.
+
 Check with `openagents auth status`, which names the account, the eligible
 namespaces, and the expiry without printing the token.
 

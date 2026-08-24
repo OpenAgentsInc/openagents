@@ -15,6 +15,7 @@ import { credentialStoreOsLayer } from "./credential-store.js";
 import { pendingDeviceAuthorizationStoreLayer } from "./device-authorization-store.js";
 import { deviceClientLayer } from "./device-client.js";
 import { environmentLayer } from "./environment.js";
+import { fleetClientLayer } from "./fleet-client.js";
 import { forumClientLayer } from "./forum-client.js";
 import { gitRunnerLayer } from "./git-runner.js";
 import { issueClientLayer } from "./issue-client.js";
@@ -32,6 +33,7 @@ const transportLayer = apiTransportNodeLayer.pipe(
 
 const repositoryLayer = repositoryClientLayer.pipe(Layer.provide(transportLayer));
 const forumLayer = forumClientLayer.pipe(Layer.provide(transportLayer));
+const fleetLayer = fleetClientLayer.pipe(Layer.provide(transportLayer));
 const deviceLayer = deviceClientLayer.pipe(Layer.provide(transportLayer));
 const issueLayer = issueClientLayer.pipe(Layer.provide(transportLayer));
 const projectLayer = projectClientLayer.pipe(Layer.provide(transportLayer));
@@ -79,6 +81,7 @@ export const runtimeLayer = Layer.mergeAll(
   pendingAuthorizationLayer,
   repositoryLayer,
   forumLayer,
+  fleetLayer,
   issueLayer,
   projectLayer,
   deviceLayer,
