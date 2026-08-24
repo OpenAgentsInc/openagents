@@ -37,7 +37,7 @@ import type { ReplySource } from "./coder-session.js";
 import { CoderSession, DummyReplySource } from "./coder-session.js";
 import { CoderTaskRegistry } from "./coder-tasks.js";
 import { runCoderUi } from "./coder-ui.js";
-import { backendIds } from "./coder-backends.js";
+import { backendIds, defaultBackendId } from "./coder-backends.js";
 import {
   discoverOllamaModel,
   isOllamaModelFlag,
@@ -1475,6 +1475,11 @@ const coderPlainFlag = Flag.boolean("plain").pipe(
 const coderOfflineFlag = Flag.boolean("offline").pipe(
   Flag.withDescription("Answer from the built-in stand-in instead of the chat API"),
 );
+const coderLocalFlag = Flag.boolean("local").pipe(
+  Flag.withDescription(
+    "Answer from a model running on this machine through Ollama, instead of the coder backend",
+  ),
+);
 const coderReasoningFlag = Flag.choice("reasoning", [
   "minimal",
   "low",
@@ -1772,6 +1777,7 @@ const coderCommand = Command.make(
     prompt: coderPrompt,
     plain: coderPlainFlag,
     offline: coderOfflineFlag,
+    local: coderLocalFlag,
     resume: coderResumeFlag,
     last: coderLastFlag,
     all: coderAllFlag,
@@ -1787,6 +1793,7 @@ const coderCommand = Command.make(
     prompt,
     plain,
     offline,
+    local,
     resume,
     last,
     all,
@@ -1835,10 +1842,24 @@ const coderCommand = Command.make(
       }
 
       const named = Option.getOrUndefined(model);
+
+      // Local is asked for, not fallen into. It used to be the default whenever
+      // a machine happened to be running Ollama, which made the session's model
+      // a property of what was running on the laptop rather than a choice, and
+      // a reader who started the server for something else got a different
+      // coder without asking for one.
       const localModel =
-        named === undefined && !offline && !resume
+        local && named === undefined && !offline && !resume
           ? yield* Effect.promise(() => discoverOllamaModel())
           : undefined;
+
+      if (local && named === undefined && localModel === undefined && !offline && !resume) {
+        return yield* new InputError({
+          message:
+            "--local answers from a model on this machine, and no Ollama server is running " +
+            "with one. Start it, pull a model, or drop --local to use the coder backend.",
+        });
+      }
 
       const wantsOllama = named === undefined ? localModel !== undefined : isOllamaModelFlag(named);
       const askedFor =
@@ -1977,6 +1998,8 @@ const coderCommand = Command.make(
                     // records it on the thread, and `--resume` filters on it
                     // rather than parsing the objective back.
                     repository: workspace.repository,
+                    // The named backend, or the one this build leads with.
+                    model: named ?? defaultBackendId(),
                     reasoning: Option.getOrUndefined(reasoning),
                   }),
                 // The server's own code and sentence, which is what turns a ninth

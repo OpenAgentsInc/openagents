@@ -32,5 +32,25 @@ export const CODER_BACKENDS: readonly CoderBackend[] = [
   { id: "gemini-3.7-flash", label: "Gemini 3.7 Flash" },
 ];
 
+/**
+ * What a coder session opens on when nobody names a backend.
+ *
+ * Deliberately not the server's own default, which is the catalog's first entry
+ * and serves every caller of the chat API. A coder turn is a long one with tools
+ * in it, and this build leads with the fast model for that; a reader who wants
+ * the other says so with `--model`.
+ *
+ * Named rather than taken from the list's order, because the order here mirrors
+ * the server's published enum and a test holds the two together. Expressing a
+ * preference by reordering would have broken that agreement to say something the
+ * list was never saying.
+ */
+export const DEFAULT_CODER_BACKEND = "gemini-3.7-flash";
+
+export const defaultBackendId = (): string =>
+  CODER_BACKENDS.some((backend) => backend.id === DEFAULT_CODER_BACKEND)
+    ? DEFAULT_CODER_BACKEND
+    : (CODER_BACKENDS[0]?.id ?? "");
+
 /** Every id, for a flag's error message and its accepted values. */
 export const backendIds = (): readonly string[] => CODER_BACKENDS.map((backend) => backend.id);

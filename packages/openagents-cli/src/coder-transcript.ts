@@ -184,6 +184,16 @@ export class ThreadTranscriptWriter implements TranscriptSink {
           continue;
         }
 
+        if (outcome === "unsupported") {
+          this.threadClosed = true;
+          this.queue.length = 0;
+          this.trouble(
+            "This server does not serve a thread transcript yet, so this session is not " +
+              "recorded on it. The work is unaffected.",
+          );
+          break;
+        }
+
         if (outcome === "thread_closed") {
           this.threadClosed = true;
           this.queue.length = 0;
@@ -227,7 +237,7 @@ export class ThreadTranscriptWriter implements TranscriptSink {
   /** One POST, translated to what the pump can act on. Never throws. */
   private async send(
     event: QueuedEvent,
-  ): Promise<"posted" | "retry" | "refused" | "thread_closed"> {
+  ): Promise<"posted" | "retry" | "refused" | "thread_closed" | "unsupported"> {
     let response: Response;
     try {
       response = await this.post(
@@ -249,6 +259,13 @@ export class ThreadTranscriptWriter implements TranscriptSink {
     if (response.status >= 200 && response.status < 300) return "posted";
     // A server that is down answers 5xx; the event is still good.
     if (response.status >= 500) return "retry";
+
+    // A server without the route is a server older than this client, not a
+    // server calling the event invalid. Retrying cannot help and neither can
+    // editing the payload, so the record stops for the session and says why
+    // once — rather than reporting a refusal on every turn for a route that was
+    // never reached.
+    if (response.status === 404 || response.status === 405) return "unsupported";
 
     const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     if (body["code"] === "thread_terminal") return "thread_closed";
