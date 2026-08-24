@@ -25,9 +25,10 @@ It provides:
 The Grok and Cursor fixtures are independently versioned beneath
 `fixtures/peers`. Their provenance labels say exactly what they prove. The
 current checked fixtures are source-derived synthetic evidence, not captured
-binary transcripts and not release compatibility claims. The checked ACP-10
-release matrix owns pinned real-binary release admission. Stable, unstable, and
-vendor extension fixtures remain in separate namespaces.
+binary transcripts and not release compatibility claims. The release-matrix
+admission path was removed in `80e61fbb21`; this package has no
+release-evidence path. Stable, unstable, and vendor extension fixtures remain
+in separate namespaces.
 
 Live initialize summaries retain only safe identity/capability keys. This
 includes nested auth-capability keys so unavailable stable methods such as
