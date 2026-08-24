@@ -301,6 +301,20 @@ export interface ReplySource {
    */
   useTools?(tools: ReadonlyArray<CoderTool>): void;
   /**
+   * Take the session's standing context — workspace facts and active skills.
+   *
+   * A source that implements this puts the text in its own system message,
+   * where standing context belongs: it is instruction about the session, not
+   * something the reader said. A source that does not leaves this undefined,
+   * and the session falls back to prefixing the first prompt with it.
+   *
+   * The fallback is the weaker of the two. Glued to a prompt, the context is a
+   * user turn: a model can argue with it, a stand-in echoes it back, and the
+   * whole preamble ends up quoted inside the first tool call. It is kept only
+   * because a source that composes no system message has nowhere better.
+   */
+  useContext?(standing: string): void;
+  /**
    * Take a message mid-turn, to be read at the next step of the running turn.
    *
    * A turn is a loop of model calls, and between two of them is a place where
@@ -471,12 +485,12 @@ export class CoderSession {
     private readonly branch: string,
     private readonly delegation?: CoderDelegation,
     /**
-     * Put in front of the first prompt, and nowhere else.
+     * Workspace facts and the active skills, as text.
      *
-     * A session told how to approach its work needs that before its first
-     * decision. It goes ahead of the first turn rather than into every one:
-     * after that it is in the transcript, and paying for it again each turn
-     * buys nothing.
+     * Handed to the source through `useContext` where the source composes a
+     * system message, which is where this belongs. Where it does not, it goes
+     * in front of the first prompt and nowhere else: after that it is in the
+     * transcript, and paying for it again each turn buys nothing.
      */
     private readonly standing?: string,
     /**
@@ -492,6 +506,10 @@ export class CoderSession {
     // forwards. Without this the fleet block only moved when a chat chunk
     // happened to arrive.
     this.unsubscribeTasks = delegation?.registry.onChange(() => this.emit());
+
+    // Handed over before the first turn, so a source that composes a system
+    // message has the context when it composes one.
+    if (standing !== undefined && standing.length > 0) this.source.useContext?.(standing);
   }
 
   /**
@@ -881,7 +899,13 @@ export class CoderSession {
       // The reader's entry above keeps what they typed; the model receives the
       // standing context ahead of it on the first turn only.
       const sent =
-        this.standing === undefined || this.turnCount > 1 || this.restored
+        this.standing === undefined ||
+        this.turnCount > 1 ||
+        this.restored ||
+        // A source that took the context put it in its system message, where
+        // it is sent with every turn. Prefixing the prompt too would send it
+        // twice and read as the reader having typed it.
+        this.source.useContext !== undefined
           ? prompt
           : `${this.standing}\n\n---\n\n${prompt}`;
 

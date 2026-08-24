@@ -105,6 +105,20 @@ const chunks = async (source: ThreadReplySource, prompt = "hello") => {
   return out;
 };
 
+/**
+ * The conversation as the model receives it, without the session's anchor.
+ *
+ * Every session now opens with a system message naming what it is and what
+ * tools it has. These assertions are about the shape of the conversation that
+ * follows it, so they read past it rather than restating it; `anchorOf` is
+ * where the anchor itself is checked.
+ */
+const conversation = (body: unknown) =>
+  (body as Array<Record<string, unknown>>).filter((message) => message["role"] !== "system");
+
+const anchorOf = (body: unknown) =>
+  (body as Array<Record<string, unknown>>).find((message) => message["role"] === "system");
+
 const textOf = (out: ReadonlyArray<ReplyChunk>) =>
   out.map((chunk) => (chunk.type === "text" ? chunk.value : "")).join("");
 
@@ -247,7 +261,7 @@ describe("ThreadReplySource", () => {
     await chunks(source, "second");
 
     const spends = calls.filter((call) => call.url.endsWith("/api/inference/proxy"));
-    expect(spends[1]?.body["messages"]).toEqual([
+    expect(conversation(spends[1]?.body["messages"])).toEqual([
       { role: "user", content: "first" },
       { role: "assistant", content: "Hello! Nice" },
       { role: "user", content: "second" },
@@ -364,7 +378,7 @@ describe("ThreadReplySource", () => {
       },
     ]);
     const second = proxied[1];
-    expect(second?.body["messages"]).toEqual([
+    expect(conversation(second?.body["messages"])).toEqual([
       { role: "user", content: "hello" },
       {
         role: "assistant",
@@ -423,7 +437,7 @@ describe("ThreadReplySource", () => {
     await chunks(source, "second");
 
     const spends = calls.filter((call) => call.url.endsWith("/api/inference/proxy"));
-    expect(spends[1]?.body["messages"]).toEqual([
+    expect(conversation(spends[1]?.body["messages"])).toEqual([
       { role: "user", content: "first" },
       { role: "assistant", content: "Answer." },
       { role: "user", content: "second" },
@@ -497,7 +511,7 @@ describe("ThreadReplySource", () => {
     await chunks(source, "run both");
 
     const spends = calls.filter((call) => call.url.endsWith("/api/inference/proxy"));
-    expect(spends[1]?.body["messages"]).toEqual([
+    expect(conversation(spends[1]?.body["messages"])).toEqual([
       { role: "user", content: "run both" },
       {
         role: "assistant",
@@ -527,7 +541,7 @@ describe("ThreadReplySource", () => {
     await chunks(source, "look");
 
     const spends = calls.filter((call) => call.url.endsWith("/api/inference/proxy"));
-    const messages = spends[1]?.body["messages"] as Array<Record<string, unknown>>;
+    const messages = conversation(spends[1]?.body["messages"]);
     expect(messages[1]).toMatchObject({ role: "assistant", content: "Looking now." });
     expect(messages[1]?.["tool_calls"]).toHaveLength(1);
   });
@@ -863,5 +877,146 @@ describe("the thread's durable transcript", () => {
     expect(textOf(await chunks(source))).toBe("Hello! Nice");
     await writer.close(100);
     expect(notices).toHaveLength(1);
+  });
+});
+
+describe("a provider failure mid-session", () => {
+  const proxyCalls = (calls: ReadonlyArray<Call>) =>
+    calls.filter((call) => call.url.endsWith("/api/inference/proxy"));
+
+  it("carries the server's failure class into the sentence a reader sees", async () => {
+    const calls = stub({
+      proxy: [
+        json(502, { error: { code: "provider_failed", reason: "context_length_exceeded" } }),
+        json(502, { error: { code: "provider_failed", reason: "context_length_exceeded" } }),
+        json(502, { error: { code: "provider_failed", reason: "context_length_exceeded" } }),
+      ],
+    });
+    const source = await open();
+
+    await expect(chunks(source)).rejects.toThrow(/context_length_exceeded/);
+    // Non-vacuous: the generic sentence is still there, with the class beside it.
+    expect(proxyCalls(calls)).toHaveLength(3);
+  });
+
+  it("retries a provider failure rather than losing the turn to one hiccup", async () => {
+    const calls = stub({
+      proxy: [json(502, { error: { code: "provider_failed" } }), sse([LIVE_SSE])],
+    });
+    const source = await open();
+
+    expect(textOf(await chunks(source))).toBe("Hello! Nice");
+    expect(proxyCalls(calls)).toHaveLength(2);
+  });
+
+  it("gives up after a bounded number of attempts", async () => {
+    const calls = stub({
+      proxy: [
+        json(502, { error: { code: "provider_failed" } }),
+        json(502, { error: { code: "provider_failed" } }),
+        json(502, { error: { code: "provider_failed" } }),
+        sse([LIVE_SSE]),
+      ],
+    });
+    const source = await open();
+
+    await expect(chunks(source)).rejects.toBeInstanceOf(ThreadUnavailable);
+    // Stops at three; the fourth response, which would have succeeded, is never
+    // asked for. A retry re-spends budget, so the ceiling has to bite.
+    expect(proxyCalls(calls)).toHaveLength(3);
+  });
+
+  it("does not retry a settled grant", async () => {
+    for (const [status, code] of [
+      [403, "grant_revoked"],
+      [403, "grant_expired"],
+      [429, "grant_exhausted"],
+      [401, "invalid_grant"],
+    ] as const) {
+      const calls = stub({
+        proxy: [json(status, { error: { code } }), sse([LIVE_SSE])],
+      });
+      const source = await open();
+
+      await expect(chunks(source)).rejects.toBeInstanceOf(ThreadUnavailable);
+      // Retrying a settled refusal tells the reader the same thing three times.
+      expect(proxyCalls(calls)).toHaveLength(1);
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("the session's anchor on the thread lane", () => {
+  const proxied = (calls: ReadonlyArray<Call>) =>
+    calls.filter((call) => call.url.endsWith("/api/inference/proxy"));
+
+  const tool = (name: string) => ({
+    name,
+    description: `the ${name} tool`,
+    parameters: { type: "object" as const },
+    run: async () => "done",
+  });
+
+  it("says what the session is, so the model does not answer with the name underneath", async () => {
+    // The gap this closes: asked "who are you", a thread session answered
+    // "I'm ChatGPT" — the hosted model's own name — because nothing on this
+    // lane had ever told it otherwise.
+    const calls = stub({});
+    const source = await open();
+    await chunks(source);
+
+    const anchor = anchorOf(proxied(calls)[0]?.body["messages"]);
+    expect(anchor?.["content"]).toContain("`openagents coder`");
+    expect(anchor?.["content"]).toContain("inference proxy");
+  });
+
+  it("names the declared tools as a closed list", async () => {
+    const calls = stub({});
+    const source = await open();
+    source.useTools([tool("shell"), tool("delegate")]);
+    await chunks(source);
+
+    const content = String(anchorOf(proxied(calls)[0]?.body["messages"])?.["content"]);
+    expect(content).toContain("You have 2 tools, and no others:");
+    expect(content).toContain("`shell`");
+    expect(content).toContain("`delegate`");
+  });
+
+  it("carries the standing context, rather than gluing it to what the reader typed", async () => {
+    const calls = stub({});
+    const source = await open();
+    source.useContext("This session is working in /repo.");
+    await chunks(source, "hello");
+
+    const messages = proxied(calls)[0]?.body["messages"] as Array<Record<string, unknown>>;
+    expect(String(anchorOf(messages)?.["content"])).toContain("This session is working in /repo.");
+    // The reader's turn is the reader's words and nothing else. Prefixed onto
+    // the prompt, the preamble read as something they had typed.
+    expect(conversation(messages)).toEqual([{ role: "user", content: "hello" }]);
+  });
+
+  it("sends the anchor once, not on every turn", async () => {
+    const calls = stub({});
+    const source = await open();
+    await chunks(source, "first");
+    await chunks(source, "second");
+
+    const messages = proxied(calls)[1]?.body["messages"] as Array<Record<string, unknown>>;
+    expect(messages.filter((message) => message["role"] === "system")).toHaveLength(1);
+    expect(messages[0]?.["role"]).toBe("system");
+  });
+
+  it("shows the reader the same text it sends", async () => {
+    stub({});
+    const source = await open();
+    source.useTools([tool("shell")]);
+    source.useContext("Workspace facts.");
+
+    // `/system` reads the thing the model read. It used to say the server
+    // composed this, which was both untrue and hiding that nothing was sent.
+    const shown = source.describeContext();
+    expect(shown).toContain("`openagents coder`");
+    expect(shown).toContain("Workspace facts.");
+    expect(shown).not.toContain("composed by the server");
   });
 });

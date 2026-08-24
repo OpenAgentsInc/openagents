@@ -547,7 +547,11 @@ describe("remintThread", () => {
     // The model was answered against the whole replayed history plus the new
     // prompt, in order.
     const turn = calls.find((call) => call.url.endsWith("/api/inference/proxy"));
-    expect(turn?.body["messages"]).toEqual([...replayed, { role: "user", content: "carry on" }]);
+    const sent = turn?.body["messages"] as Array<Record<string, unknown>>;
+    expect(sent.filter((message) => message["role"] !== "system")).toEqual([
+      ...replayed,
+      { role: "user", content: "carry on" },
+    ]);
 
     // Only the new turn reached the transcript writer.
     expect(recorded.map((event) => event.eventType)).toEqual(["turn.user", "turn.assistant"]);

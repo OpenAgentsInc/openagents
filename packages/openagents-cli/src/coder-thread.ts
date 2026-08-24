@@ -64,6 +64,7 @@ import type { ChildGrant } from "./coder-child-gateway.js";
 import { merge } from "./coder-merge.js";
 import type { ReplyChunk, ReplySource } from "./coder-session.js";
 import type { CoderTool } from "./coder-tools.js";
+import { systemPrompt, THREAD_LANE } from "./coder-system.js";
 import type { TranscriptSink } from "./coder-transcript.js";
 
 const THREADS_PATH = "/api/v3/threads";
@@ -355,6 +356,9 @@ export interface WireToolCall {
  * exchange have to agree on the shape.
  */
 export type WireMessage =
+  // The session's own anchor, first and once. The proxy passes system messages
+  // through to the provider and composes none of its own.
+  | { readonly role: "system"; readonly content: string }
   | { readonly role: "user"; readonly content: string }
   | {
       readonly role: "assistant";
@@ -428,6 +432,13 @@ export class ThreadReplySource implements ReplySource {
    * the delegate tool runs children on this grant, so it cannot exist until the
    * grant does.
    */
+  /** The session's workspace facts and active skills, for the system message. */
+  private standing: string | undefined;
+
+  useContext(standing: string): void {
+    this.standing = standing;
+  }
+
   useTools(tools: ReadonlyArray<CoderTool>): void {
     this.tools = tools;
   }
@@ -448,11 +459,11 @@ export class ThreadReplySource implements ReplySource {
   /**
    * What this lane sends as standing context.
    *
-   * The tool declarations are the client's and are reported in full. The system
-   * message is not: the proxy is a completions surface and the server composes
-   * what precedes the turn, so this says so rather than printing a prompt this
-   * process never saw. A `/system` that guessed would be worse than one that
-   * admits the boundary.
+   * Both halves are this process's own and are reported in full. This once
+   * said the server composed the system message, which was not true — the
+   * proxy passes system messages through from the request and composes none —
+   * and the honest reading of that claim was that the lane sent no system
+   * message at all, which is exactly what it did.
    */
   /** The tools as declared, in the shape ATIF records them. */
   toolDefinitions(): ReadonlyArray<Record<string, unknown>> {
@@ -474,9 +485,7 @@ export class ThreadReplySource implements ReplySource {
             .join("\n\n")}`;
 
     return [
-      "This session runs on a thread. The system message is composed by the server for the",
-      "thread's grant and is not sent from this machine, so it cannot be shown here. What follows",
-      "is what this process does send with every turn.",
+      `System message sent with every turn:\n\n${systemPrompt(this.tools, THREAD_LANE, this.standing)}`,
       "",
       declarations,
     ].join("\n");
@@ -523,6 +532,21 @@ export class ThreadReplySource implements ReplySource {
     let turnText = "";
     /** How many tools this turn ran, reported on `turn.assistant`. */
     let turnToolCalls = 0;
+    // The anchor goes on once, ahead of everything. Without it the model
+    // answered "who are you" with the name of whatever it was underneath, and
+    // listed tools from what a coding agent usually has rather than from what
+    // this session declared.
+    //
+    // Composed at the first turn rather than at construction because the tools
+    // and the context are both set after it, and a system message written
+    // before them would name neither.
+    if (!this.transcript.some((message) => message.role === "system")) {
+      this.transcript.unshift({
+        role: "system",
+        content: systemPrompt(this.tools, THREAD_LANE, this.standing),
+      });
+    }
+
     this.transcript.push({ role: "user", content: prompt });
     this.sink?.record("turn.user", { text: prompt });
 
@@ -728,48 +752,79 @@ export class ThreadReplySource implements ReplySource {
    * because the turn has to run them and report each result, and a caller that
    * only saw a chunk could not.
    */
-  private async *stream(signal: AbortSignal, collected: WireCall[]): AsyncIterable<ReplyChunk> {
-    const response = await fetch(this.state.proxyUrl, {
-      method: "POST",
-      signal,
-      headers: {
-        authorization: `Bearer ${Redacted.value(this.state.grantToken)}`,
-        "content-type": "application/json",
-        // The body is an event stream and the refusals are JSON, and both have
-        // to be acceptable: the `:api` pipeline negotiates on `json` and
-        // answers `406` to a request that will only take `text/event-stream`.
-        accept: "text/event-stream, application/json",
-      },
-      body: JSON.stringify({
-        model: this.state.model,
-        stream: true,
-        messages: this.transcript,
-        ...(this.tools.length === 0 || this.mustAnswer
-          ? {}
-          : {
-              tools: this.tools.map((tool) => ({
-                type: "function",
-                function: {
-                  name: tool.name,
-                  description: tool.description,
-                  parameters: tool.parameters,
-                },
-              })),
-            }),
-      }),
-    }).catch((cause: unknown) => {
-      if (signal.aborted) return undefined;
-      throw new ThreadUnavailable(
-        "network_refused",
-        `The inference proxy could not be reached: ${String(cause)}`,
-      );
-    });
+  /**
+   * One call to the proxy, retried while the failure is one a retry can fix.
+   *
+   * A provider failure is a `502` the server produced *before* any of the
+   * stream reached this client, so re-sending is the same call rather than a
+   * duplicated one. Dropping the turn on the first one is what put "The model
+   * provider failed" on screen twice in a row with the work lost both times.
+   *
+   * Only transient classes are retried. A revoked, expired, or exhausted grant
+   * is settled — retrying it spends the reader's time to be told the same thing
+   * three times — and every 4xx is a request this client would send again
+   * unchanged. A retry does re-spend budget where the failed call was metered
+   * for partial usage, which is why the ceiling is low.
+   */
+  private async callProxy(signal: AbortSignal): Promise<Response | undefined> {
+    const attempts = 3;
 
-    if (response === undefined || signal.aborted) return;
-    if (response.status < 200 || response.status >= 300) {
-      throw await proxyRefusal(response);
+    for (let attempt = 1; ; attempt += 1) {
+      const response = await fetch(this.state.proxyUrl, {
+        method: "POST",
+        signal,
+        headers: {
+          authorization: `Bearer ${Redacted.value(this.state.grantToken)}`,
+          "content-type": "application/json",
+          // The body is an event stream and the refusals are JSON, and both have
+          // to be acceptable: the `:api` pipeline negotiates on `json` and
+          // answers `406` to a request that will only take `text/event-stream`.
+          accept: "text/event-stream, application/json",
+        },
+        body: JSON.stringify({
+          model: this.state.model,
+          stream: true,
+          messages: this.transcript,
+          ...(this.tools.length === 0 || this.mustAnswer
+            ? {}
+            : {
+                tools: this.tools.map((tool) => ({
+                  type: "function",
+                  function: {
+                    name: tool.name,
+                    description: tool.description,
+                    parameters: tool.parameters,
+                  },
+                })),
+              }),
+        }),
+      }).catch((cause: unknown) => {
+        if (signal.aborted) return undefined;
+        throw new ThreadUnavailable(
+          "network_refused",
+          `The inference proxy could not be reached: ${String(cause)}`,
+        );
+      });
+
+      if (response === undefined || signal.aborted) return undefined;
+      if (response.status >= 200 && response.status < 300) return response;
+
+      const refusal = await proxyRefusal(response);
+      const transient = response.status === 502 || response.status === 503 || response.status === 504;
+      if (!transient || attempt >= attempts) throw refusal;
+
+      // Short and fixed. The failure is on the provider's side and a reader is
+      // watching a cursor; a long backoff reads as a hang.
+      await new Promise((resolve) => setTimeout(resolve, 400 * attempt));
+      if (signal.aborted) return undefined;
     }
+  }
+
+  private async *stream(signal: AbortSignal, collected: WireCall[]): AsyncIterable<ReplyChunk> {
+    const response = await this.callProxy(signal);
+    if (response === undefined || signal.aborted) return;
     if (response.body === null) return;
+
 
     /** Tool call fragments by their wire index, assembled as frames arrive. */
     const calls = new Map<number, { id: string; name: string; args: string }>();
@@ -940,7 +995,8 @@ function accumulate(
 /** The proxy's typed refusal, turned into a sentence a reader can act on. */
 async function proxyRefusal(response: Response): Promise<ThreadUnavailable> {
   const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-  const code = string(record(body["error"])["code"]) ?? `http_${response.status}`;
+  const error = record(body["error"]);
+  const code = string(error["code"]) ?? `http_${response.status}`;
 
   const sentences: Record<string, string> = {
     grant_revoked: "This thread was revoked. Start a new session to open another.",
@@ -951,9 +1007,15 @@ async function proxyRefusal(response: Response): Promise<ThreadUnavailable> {
     provider_failed: "The model provider failed. The call was not completed.",
   };
 
+  // The server names the failure class on a provider failure. It is one bounded
+  // word, and it is the difference between a reader who knows the call ran out
+  // of context and one who only knows something went wrong.
+  const why = string(error["reason"]);
+  const sentence = sentences[code] ?? `The inference proxy refused the call (${code}).`;
+
   return new ThreadUnavailable(
     code,
-    sentences[code] ?? `The inference proxy refused the call (${code}).`,
+    why === undefined ? sentence : `${sentence} (${why})`,
     response.status,
   );
 }

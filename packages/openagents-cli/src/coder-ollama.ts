@@ -16,6 +16,7 @@ import type { Message as OllamaMessage, Tool as OllamaTool, ToolCall as OllamaTo
 
 import { merge } from "./coder-merge.js";
 import type { ReplyChunk, ReplySource } from "./coder-session.js";
+import { LOCAL_LANE, systemPrompt } from "./coder-system.js";
 import type { CoderTool } from "./coder-tools.js";
 
 const DEFAULT_HOST = "http://127.0.0.1:11434";
@@ -207,52 +208,6 @@ export const parseOllamaModelFlag = (value: string): string | undefined => {
  */
 type WireMessage = OllamaMessage;
 
-/**
- * What the session tells a local model about itself.
- *
- * Derived from the tools actually declared rather than written out, so it
- * cannot claim a tool the session does not pass or miss one it does.
- *
- * The thread lane sends the server an objective at thread creation. The local
- * lane sent nothing, and a model with no system prompt has nothing anchoring
- * what it is: asked what tools it has, it answered from what a coding agent
- * usually has -- files, shell, search, web -- and none of that is declared
- * here. The invented answer then sat in the transcript, and the next turn read
- * it back as instruction. So the anchor is the tool list itself.
- */
-const systemPrompt = (tools: ReadonlyArray<CoderTool>): string => {
-  const lines = [
-    "You are `openagents coder`, a coding assistant in a terminal. You answer from a model " +
-      "running locally on this machine.",
-    "",
-  ];
-
-  if (tools.length === 0) {
-    lines.push(
-      "You have no tools in this session: you cannot read or write files, run commands, or " +
-        "reach anything outside this conversation. Answer from what the reader tells you, and " +
-        "say plainly when something would need a tool you do not have.",
-    );
-  } else {
-    lines.push(
-      `You have ${String(tools.length)} tool${tools.length === 1 ? "" : "s"}, and no others:`,
-      ...tools.map((tool) => `- \`${tool.name}\``),
-      "",
-      // Stated as a closed list rather than by naming the capabilities that are
-      // absent. The absent ones change as tools are added -- this once said
-      // there was no shell, and then there was one -- and a system message that
-      // has to be edited when the tool list changes is one that will be wrong
-      // in between.
-      "That list is complete: a capability not on it is one you do not have, whatever a model " +
-        "like you usually has. Read a tool's description before assuming what it covers. Where " +
-        "a description says what a child agent can do, that is the child's capability and not " +
-        "yours. Never say you ran something you did not run.",
-    );
-  }
-
-  return lines.join("\n");
-};
-
 export class OllamaReplySource implements ReplySource {
   private readonly client: Ollama;
   private readonly host: string;
@@ -304,6 +259,13 @@ export class OllamaReplySource implements ReplySource {
    * the tools need things built after the source exists, such as the fleet a
    * `delegate` call submits to.
    */
+  /** The session's workspace facts and active skills, for the system message. */
+  private standing: string | undefined;
+
+  useContext(standing: string): void {
+    this.standing = standing;
+  }
+
   useTools(tools: ReadonlyArray<CoderTool>): void {
     this.tools = tools;
   }
@@ -313,7 +275,9 @@ export class OllamaReplySource implements ReplySource {
    * declarations, rendered from the same values the request carries.
    */
   describeContext(): string {
-    const parts = [`System message sent with every turn:\n\n${systemPrompt(this.tools)}`];
+    const parts = [
+      `System message sent with every turn:\n\n${systemPrompt(this.tools, LOCAL_LANE, this.standing)}`,
+    ];
 
     parts.push(
       this.tools.length === 0
@@ -394,7 +358,10 @@ export class OllamaReplySource implements ReplySource {
     // Built on the first turn rather than in the constructor: the tools are
     // declared after construction, and the prompt is derived from them.
     if (this.transcript.length === 0) {
-      this.transcript.push({ role: "system", content: systemPrompt(this.tools) });
+      this.transcript.push({
+        role: "system",
+        content: systemPrompt(this.tools, LOCAL_LANE, this.standing),
+      });
     }
 
     this.transcript.push({ role: "user", content: prompt });
