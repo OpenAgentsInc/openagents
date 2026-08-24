@@ -55,8 +55,22 @@ const ERASE_LINE = "\x1b[K";
  * already ambiguous change shape, and a terminal that does not implement this
  * ignores it, which leaves enter doing the default and costs nothing.
  */
+const PASTE_START = "\x1b[200~";
+const PASTE_END = "\x1b[201~";
+
 const KEYS_DISAMBIGUATE_ON = "\x1b[>1u";
 const KEYS_DISAMBIGUATE_OFF = "\x1b[<u";
+
+/**
+ * Ask the terminal to bracket pasted text.
+ *
+ * Without it a paste is indistinguishable from typing, so every newline in it
+ * is an enter: a twelve-line paste became twelve messages, each steering the
+ * turn the one before it started. With it the terminal wraps the blob in
+ * `\x1b[200~` and `\x1b[201~`, and the newlines inside are text.
+ */
+const BRACKETED_PASTE_ON = "\x1b[?2004h";
+const BRACKETED_PASTE_OFF = "\x1b[?2004l";
 
 const ALT_SCROLL_ON = "\x1b[?1007h";
 const ALT_SCROLL_OFF = "\x1b[?1007l";
@@ -90,7 +104,16 @@ const SPACER_ROWS = 1;
  */
 const FLEET_ROWS_MAX = 8;
 /** Width of the role gutter, so every entry's text starts in one column. */
-const GUTTER = 9;
+/**
+ * Width of the marker column.
+ *
+ * The transcript used to name every entry down the left — `you`, `think`,
+ * `coder`, `note`, `tool` — which is five words of chrome per turn saying what
+ * the styling already said. What is worth a column is the one thing styling
+ * cannot say: whether a reply is finished. So the column is a dot, and it is
+ * two glyphs wide plus a space.
+ */
+const GUTTER = 4;
 /**
  * How long a lone escape byte waits for the rest of a sequence.
  *
@@ -309,6 +332,13 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
   let exitCode = 0;
   let closed = false;
   let runningSince = Date.now();
+  /**
+   * Which half of a second the pulse is in.
+   *
+   * Advanced by the same ticker that moves the elapsed clock, so an unfinished
+   * reply blinks without a timer of its own.
+   */
+  let pulse = true;
   /** Redraws the status line once a second so the elapsed time advances. */
   let ticker: NodeJS.Timeout | undefined;
   /** Rows as last painted, so only what changed is written. */
@@ -318,6 +348,8 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
   let viewport = 1;
   /** Bytes held back because they may be the start of an escape sequence. */
   let pendingEscape = "";
+  /** A paste whose end has not arrived yet. */
+  let pendingPaste = "";
   let escapeTimer: NodeJS.Timeout | undefined;
 
   const write = (text: string) => {
@@ -347,7 +379,9 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       stdout.off("resize", onResize);
       if (stdin.isTTY) stdin.setRawMode(false);
       stdin.pause();
-      write(CURSOR_SHOW + KEYS_DISAMBIGUATE_OFF + ALT_SCROLL_OFF + ALT_SCREEN_OFF);
+      write(
+        CURSOR_SHOW + BRACKETED_PASTE_OFF + KEYS_DISAMBIGUATE_OFF + ALT_SCROLL_OFF + ALT_SCREEN_OFF,
+      );
       resolve(exitCode);
     };
 
@@ -366,21 +400,25 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
     };
 
     const renderEntry = (entry: CoderEntry, width: number): ReadonlyArray<string> => {
-      const [label, color] =
+      const color =
         entry.role === "you"
-          ? ["you", CYAN]
+          ? CYAN
           : entry.role === "assistant"
-            ? ["coder", GREEN]
+            ? GREEN
             : entry.role === "tool"
-              ? ["tool", MAGENTA]
+              ? MAGENTA
               : entry.role === "reasoning"
-                ? ["think", DIM]
-                : ["note", YELLOW];
+                ? DIM
+                : YELLOW;
 
-      const head = `  ${color}${BOLD}${label}${RESET}${" ".repeat(GUTTER - 2 - label.length)}`;
+      // A reply still arriving pulses; a finished one is solid. The dot is the
+      // only thing in this column because it is the only thing the colour and
+      // the styling do not already say.
+      const glyph = entry.settled ? "●" : pulse ? "●" : "○";
+      const head = `  ${color}${glyph}${RESET} `;
       const continuation = " ".repeat(GUTTER);
       const rows = entryRows(entry, width);
-      const caret = entry.settled ? "" : `${DIM}▌${RESET}`;
+      const caret = "";
 
       return rows.map((row, index) => {
         const tail = index === rows.length - 1 ? caret : "";
@@ -629,11 +667,21 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       // pushes the rule and the hints down a line and leaves the text they used
       // to occupy on screen with nothing to erase it.
       const composerRoom = Math.max(4, width - 4);
-      const typed = [...composer];
-      const visible =
-        typed.length > composerRoom
-          ? `…${typed.slice(typed.length - composerRoom + 1).join("")}`
+      // A pasted blob is shown as what it is rather than as its last row. The
+      // composer holds every line; the reader needs to know how many there are
+      // and that they will go as one message, not to read them here.
+      const pasted = composer.split("\n");
+      const summarised =
+        pasted.length > 1
+          ? `${pasted[0] ?? ""} ${DIM}[+${String(pasted.length - 1)} more ${
+              pasted.length === 2 ? "line" : "lines"
+            }]${RESET}`
           : composer;
+      const typed = [...summarised];
+      const visible =
+        visibleWidth(summarised) > composerRoom
+          ? `…${typed.slice(typed.length - composerRoom + 1).join("")}`
+          : summarised;
       rows.push(`  › ${visible}`);
       rows.push(rule);
       // Under the composer's own region, not inside it. Between the rules is
@@ -669,7 +717,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       if (session.canCycleReasoning && !snapshot.running) {
         keys.push({ text: "shift+tab to change thinking" });
       }
-      if (lines.length > transcriptRows) keys.push({ text: "pgup/pgdn to scroll" });
+
       if (focusedTool(snapshot) !== undefined) keys.push({ text: "ctrl+o to expand" });
 
       // `this run` is not decoration. The count is this process's, and a
@@ -679,7 +727,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       const replies = `${snapshot.turns} ${snapshot.turns === 1 ? "reply" : "replies"} this run`;
       const counter =
         anchor !== undefined
-          ? `${YELLOW}scrolled${RESET}${DIM} · ↑${above} · ↓${below}${RESET}`
+          ? `${DIM}scrolled · ↑${above} · ↓${below}${RESET}`
           : above > 0
             ? `${DIM}↑${above} above · ${replies}${RESET}`
             : `${DIM}${replies}${RESET}`;
@@ -732,10 +780,14 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
 
       // The elapsed time has to advance between chunks, not only when one
       // arrives, or a slow reply looks stalled.
+      // Twice a second, because the same tick drives the pulse on an unfinished
+      // reply as well as the elapsed clock, and a dot that blinks once a second
+      // reads as a dot that is broken.
       ticker ??= setInterval(() => {
         session.pruneTasks();
+        pulse = !pulse;
         if (session.running || session.snapshot().tasks.length > 0) render();
-      }, 1000);
+      }, 500);
 
       // A delegate line is not a turn: it returns as soon as the children are
       // submitted and each one reports later, so nothing here waits on it and
@@ -845,13 +897,32 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         clearTimeout(escapeTimer);
         escapeTimer = undefined;
       }
-      let text = pendingEscape + (typeof chunk === "string" ? chunk : chunk.toString("utf8"));
+      let text =
+        pendingPaste + pendingEscape + (typeof chunk === "string" ? chunk : chunk.toString("utf8"));
+      pendingPaste = "";
       pendingEscape = "";
       let index = 0;
       let dirty = false;
 
       while (index < text.length) {
         const char = text[index] ?? "";
+
+        // A paste is taken whole, before anything in here reads one of its
+        // newlines as an enter. The terminal says where it ends; if the end has
+        // not arrived yet the rest is held for the next chunk, because half a
+        // paste submitted as a message is the bug this exists to stop.
+        if (text.startsWith(PASTE_START, index)) {
+          const from = index + PASTE_START.length;
+          const to = text.indexOf(PASTE_END, from);
+          if (to < 0) {
+            pendingPaste = text.slice(index);
+            break;
+          }
+          composer += text.slice(from, to);
+          index = to + PASTE_END.length;
+          dirty = true;
+          continue;
+        }
 
         // The skills screen takes the keyboard while it is up. Only the keys it
         // names do anything: a stray letter must not fall through into the
@@ -1073,7 +1144,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
 
     const unsubscribe = session.onChange(render);
 
-    write(ALT_SCREEN_ON + ALT_SCROLL_ON + KEYS_DISAMBIGUATE_ON);
+    write(ALT_SCREEN_ON + ALT_SCROLL_ON + KEYS_DISAMBIGUATE_ON + BRACKETED_PASTE_ON);
     if (stdin.isTTY) stdin.setRawMode(true);
     stdin.resume();
     stdin.setEncoding("utf8");

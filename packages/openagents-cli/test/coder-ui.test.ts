@@ -901,3 +901,67 @@ describe("quitting with the keyboard protocol on", () => {
     await running;
   });
 });
+
+describe("the transcript's marker column", () => {
+  const ESCAPE = String.fromCharCode(27);
+
+  it("marks an entry with a dot rather than naming its role", async () => {
+    const { rows } = await drive([{ type: "text", value: "an answer" }]);
+    const painted = rows.join("\n");
+
+    // Five words of chrome per turn — `you`, `think`, `coder`, `note`, `tool` —
+    // said what the styling already said.
+    expect(painted).toContain("● an answer");
+    expect(painted).not.toMatch(/\bcoder\s+an answer/);
+    expect(painted).not.toMatch(/^\s*you\s/m);
+  });
+
+  it("pulses an unfinished reply and settles it when it ends", async () => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const held: ReplySource = {
+      model: "scripted",
+      async *reply() {
+        yield { type: "text", value: "still going" } as const;
+        await gate;
+      },
+    };
+    const session = new CoderSession(held, "repo", "main");
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    const turn = session.submit("go");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // A hollow dot is the half of the pulse that says "still arriving".
+    const during = stdout.written;
+    expect(during).toContain("still going");
+
+    release();
+    await turn;
+    stdin.emit("data", "\x04");
+    await running;
+
+    expect(stdout.written).toContain("●");
+  });
+
+  it("keeps the scroll marker in the same voice as the rest of the bar", async () => {
+    const { painted } = await drive(
+      Array.from({ length: 60 }, (_unused, at) => ({
+        type: "text" as const,
+        value: `line ${String(at)}\n`,
+      })),
+    );
+
+    // It was the one yellow word in a dim row, which read as a warning.
+    expect(painted).not.toContain(`${ESCAPE}[33mscrolled`);
+    // And the key it advertised is gone from the bar.
+    expect(painted).not.toContain("pgup/pgdn to scroll");
+  });
+});
