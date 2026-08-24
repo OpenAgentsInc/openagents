@@ -21,12 +21,29 @@
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-/** Where skills live, nearest first. A repository skill wins its name. */
-const SKILL_DIRECTORIES = (cwd: string, home: string): ReadonlyArray<string> => [
+/**
+ * Where skills live, nearest first. The first to claim a name keeps it.
+ *
+ * The CLI ships its own last, so a repository or a person can replace one by
+ * writing a skill of the same name and nothing has to be uninstalled. They are
+ * ordinary skills otherwise: they appear in the catalog, and `/skills` switches
+ * them off like any other.
+ */
+const SKILL_DIRECTORIES = (
+  cwd: string,
+  home: string,
+  builtIn: string,
+): ReadonlyArray<string> => [
   join(cwd, ".agents", "skills"),
   join(home, ".agents", "skills"),
+  builtIn,
 ];
+
+/** The skills packaged with this CLI, beside the compiled output. */
+const builtInSkills = (): string =>
+  join(dirname(fileURLToPath(import.meta.url)), "..", "skills");
 
 /** How much of one skill body is handed back. */
 const BODY_LIMIT = 32_000;
@@ -103,12 +120,14 @@ export function discoverSkills(
   cwd: string = process.cwd(),
   // Taken rather than read so a test can point at a directory it made. A
   // function that always reads the real home directory can only be tested on a
-  // machine that happens to have the right skills in it.
+  // machine that happens to have the right skills in it, and the same goes for
+  // the directory this package ships.
   home: string = homedir(),
+  builtIn: string = builtInSkills(),
 ): ReadonlyArray<CoderSkill> {
   const found = new Map<string, CoderSkill>();
 
-  for (const directory of SKILL_DIRECTORIES(cwd, home)) {
+  for (const directory of SKILL_DIRECTORIES(cwd, home, builtIn)) {
     let entries: ReadonlyArray<string>;
     try {
       entries = readdirSync(directory);
@@ -226,8 +245,9 @@ const writeDisabled = (path: string, workspace: string, disabled: ReadonlySet<st
 export function loadSkillSelection(
   cwd: string = process.cwd(),
   home: string = homedir(),
+  builtIn?: string,
 ): SkillSelection {
-  const all = discoverSkills(cwd, home);
+  const all = discoverSkills(cwd, home, builtIn);
   const path = selectionPath(home);
   const disabled = new Set(readDisabled(path, cwd));
 

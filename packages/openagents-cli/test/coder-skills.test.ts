@@ -20,6 +20,9 @@ const workspace = (skills: Record<string, string>): string => {
 /** A home directory with no skills in it, so a test reads only its workspace. */
 const EMPTY_HOME = mkdtempSync(join(tmpdir(), "coder-skills-home-"));
 
+/** No packaged skills either, so a test reads only what it made. */
+const NO_BUILT_INS = mkdtempSync(join(tmpdir(), "coder-skills-builtin-"));
+
 const SKILL = `---
 name: house-style
 description: How this repository writes prose.
@@ -32,7 +35,7 @@ Use sentence case.
 
 describe("discovering skills", () => {
   it("reads the name, the description, and the body without its front matter", () => {
-    const [skill] = discoverSkills(workspace({ "house-style": SKILL }), EMPTY_HOME);
+    const [skill] = discoverSkills(workspace({ "house-style": SKILL }), EMPTY_HOME, NO_BUILT_INS);
 
     expect(skill).toMatchObject({
       name: "house-style",
@@ -44,7 +47,7 @@ describe("discovering skills", () => {
   });
 
   it("takes the name from the front matter, not from the directory", () => {
-    const [skill] = discoverSkills(workspace({ "some-folder": SKILL }), EMPTY_HOME);
+    const [skill] = discoverSkills(workspace({ "some-folder": SKILL }), EMPTY_HOME, NO_BUILT_INS);
 
     expect(skill?.name).toBe("house-style");
   });
@@ -53,7 +56,7 @@ describe("discovering skills", () => {
     const root = workspace({ "house-style": SKILL });
     mkdirSync(join(root, ".agents", "skills", "empty"), { recursive: true });
 
-    expect(discoverSkills(root, EMPTY_HOME).map((skill) => skill.name)).toEqual(["house-style"]);
+    expect(discoverSkills(root, EMPTY_HOME, NO_BUILT_INS).map((skill) => skill.name)).toEqual(["house-style"]);
   });
 
   it("skips a skill missing a name or a description", () => {
@@ -64,7 +67,7 @@ describe("discovering skills", () => {
     });
 
     // One cannot be asked for and the other gives nothing to choose on.
-    expect(discoverSkills(root, EMPTY_HOME).map((skill) => skill.name)).toEqual(["house-style"]);
+    expect(discoverSkills(root, EMPTY_HOME, NO_BUILT_INS).map((skill) => skill.name)).toEqual(["house-style"]);
   });
 
 
@@ -83,7 +86,7 @@ describe("discovering skills", () => {
     });
 
     // Taking `>-` as the value is how a skill came to describe itself as ">-".
-    expect(discoverSkills(root, EMPTY_HOME)[0]?.description).toBe(
+    expect(discoverSkills(root, EMPTY_HOME, NO_BUILT_INS)[0]?.description).toBe(
       "Use when the reader wants one sentence spread over two lines.",
     );
   });
@@ -95,11 +98,11 @@ describe("discovering skills", () => {
       ),
     });
 
-    expect(discoverSkills(root, EMPTY_HOME)[0]?.description).toBe("One.\nTwo.");
+    expect(discoverSkills(root, EMPTY_HOME, NO_BUILT_INS)[0]?.description).toBe("One.\nTwo.");
   });
 
   it("is empty for a repository with no skills directory", () => {
-    expect(discoverSkills(mkdtempSync(join(tmpdir(), "coder-skills-")), EMPTY_HOME)).toEqual([]);
+    expect(discoverSkills(mkdtempSync(join(tmpdir(), "coder-skills-")), EMPTY_HOME, NO_BUILT_INS)).toEqual([]);
   });
 
   it("strips the quotes from a quoted description", () => {
@@ -107,12 +110,12 @@ describe("discovering skills", () => {
       quoted: '---\nname: quoted\ndescription: "Quoted, with a comma."\n---\n\nBody.',
     });
 
-    expect(discoverSkills(root, EMPTY_HOME)[0]?.description).toBe("Quoted, with a comma.");
+    expect(discoverSkills(root, EMPTY_HOME, NO_BUILT_INS)[0]?.description).toBe("Quoted, with a comma.");
   });
 });
 
 describe("the skill tool", () => {
-  const skills = discoverSkills(workspace({ "house-style": SKILL }), EMPTY_HOME);
+  const skills = discoverSkills(workspace({ "house-style": SKILL }), EMPTY_HOME, NO_BUILT_INS);
   const tool = skillTool(skills);
 
   it("carries the catalog in its description, so both lanes read it", () => {
@@ -156,14 +159,14 @@ describe("choosing which skills the model is offered", () => {
   };
 
   it("offers every skill until one is switched off", () => {
-    const selection = loadSkillSelection(workspace(two), home());
+    const selection = loadSkillSelection(workspace(two), home(), NO_BUILT_INS);
 
     expect(selection.active().map((skill) => skill.name)).toEqual(["alpha", "beta"]);
     expect(selection.isOn("alpha")).toBe(true);
   });
 
   it("drops a switched-off skill from what the model is offered", () => {
-    const selection = loadSkillSelection(workspace(two), home());
+    const selection = loadSkillSelection(workspace(two), home(), NO_BUILT_INS);
 
     selection.toggle("alpha");
 
@@ -177,19 +180,19 @@ describe("choosing which skills the model is offered", () => {
     const root = workspace(two);
     const where = home();
 
-    loadSkillSelection(root, where).toggle("beta");
+    loadSkillSelection(root, where, NO_BUILT_INS).toggle("beta");
 
-    expect(loadSkillSelection(root, where).active().map((skill) => skill.name)).toEqual(["alpha"]);
+    expect(loadSkillSelection(root, where, NO_BUILT_INS).active().map((skill) => skill.name)).toEqual(["alpha"]);
   });
 
   it("switches one back on", () => {
     const root = workspace(two);
     const where = home();
 
-    loadSkillSelection(root, where).toggle("beta");
-    loadSkillSelection(root, where).toggle("beta");
+    loadSkillSelection(root, where, NO_BUILT_INS).toggle("beta");
+    loadSkillSelection(root, where, NO_BUILT_INS).toggle("beta");
 
-    expect(loadSkillSelection(root, where).active().map((skill) => skill.name)).toEqual([
+    expect(loadSkillSelection(root, where, NO_BUILT_INS).active().map((skill) => skill.name)).toEqual([
       "alpha",
       "beta",
     ]);
@@ -200,10 +203,10 @@ describe("choosing which skills the model is offered", () => {
     const one = workspace(two);
     const other = workspace(two);
 
-    loadSkillSelection(one, where).toggle("alpha");
+    loadSkillSelection(one, where, NO_BUILT_INS).toggle("alpha");
 
     // A skill switched off for one repository is not switched off everywhere.
-    expect(loadSkillSelection(other, where).active().map((skill) => skill.name)).toEqual([
+    expect(loadSkillSelection(other, where, NO_BUILT_INS).active().map((skill) => skill.name)).toEqual([
       "alpha",
       "beta",
     ]);
@@ -212,7 +215,7 @@ describe("choosing which skills the model is offered", () => {
   it("offers a skill added after the choice was made", () => {
     const root = workspace(two);
     const where = home();
-    loadSkillSelection(root, where).toggle("alpha");
+    loadSkillSelection(root, where, NO_BUILT_INS).toggle("alpha");
 
     mkdirSync(join(root, ".agents", "skills", "gamma"), { recursive: true });
     writeFileSync(
@@ -221,9 +224,41 @@ describe("choosing which skills the model is offered", () => {
     );
 
     // Off is what is recorded, so something nobody has ruled on is on.
-    expect(loadSkillSelection(root, where).active().map((skill) => skill.name)).toEqual([
+    expect(loadSkillSelection(root, where, NO_BUILT_INS).active().map((skill) => skill.name)).toEqual([
       "beta",
       "gamma",
     ]);
+  });
+});
+
+describe("the skills the CLI ships with", () => {
+  it("offers its own, so a session knows the CLI it is part of", () => {
+    const found = discoverSkills(mkdtempSync(join(tmpdir(), "coder-skills-")), EMPTY_HOME);
+
+    expect(found.map((skill) => skill.name)).toContain("openagents-cli");
+  });
+
+  it("lets a repository replace one by name, with nothing to uninstall", () => {
+    const root = workspace({
+      "openagents-cli": "---\nname: openagents-cli\ndescription: Ours.\n---\n\nOur version.",
+    });
+
+    const found = discoverSkills(root, EMPTY_HOME);
+    const ours = found.find((skill) => skill.name === "openagents-cli");
+
+    // Nearest wins, and the packaged one is furthest.
+    expect(ours?.description).toBe("Ours.");
+    expect(found.filter((skill) => skill.name === "openagents-cli")).toHaveLength(1);
+  });
+
+  it("says what works with no credential, which help output does not", () => {
+    const found = discoverSkills(mkdtempSync(join(tmpdir(), "coder-skills-")), EMPTY_HOME);
+    const cli = found.find((skill) => skill.name === "openagents-cli");
+
+    // The auth boundary is the part a model cannot discover by asking --help.
+    expect(cli?.body).toContain("What works with no credential");
+    expect(cli?.body).toContain("chat:account");
+    expect(cli?.body).toContain("forge:write");
+    expect(cli?.body).toContain("auth login --headless");
   });
 });

@@ -27,7 +27,8 @@
   "files": [
     "dist",
     "contracts",
-    "README.md"
+    "README.md",
+    "skills"
   ],
   "type": "module",
   "sideEffects": false,

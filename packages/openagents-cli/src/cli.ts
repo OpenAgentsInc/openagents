@@ -35,7 +35,7 @@ import {
   parseOllamaModelFlag,
 } from "./coder-ollama.js";
 import { openThread, ThreadUnavailable, type ThreadReplySource } from "./coder-thread.js";
-import { delegateTool, skillTool } from "./coder-tools.js";
+import { delegateTool, openagentsTool, skillTool } from "./coder-tools.js";
 import { spawnSync } from "node:child_process";
 
 import { rebuild, RELOAD_EXIT_CODE, sourceCheckout } from "./coder-reload.js";
@@ -1771,6 +1771,7 @@ const coderCommand = Command.make(
         const active = skills.active();
         const tools = [
           ...(active.length === 0 ? [] : [skillTool(active)]),
+          openagentsTool(),
           ...(setup === undefined ? [] : [delegateTool(setup.delegation)]),
         ];
         source.useTools?.(tools);
