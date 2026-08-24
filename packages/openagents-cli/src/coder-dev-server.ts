@@ -1,0 +1,177 @@
+import { spawn } from "node:child_process";
+import { existsSync, openSync, readFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+
+/**
+ * Starting and waiting on the `openagents.com` development server for `--dev`.
+ *
+ * `--dev` exists because a deploy can take half an hour. Telling the reader to
+ * go and start a server themselves puts a second wait in front of the first
+ * one, so this starts it: a session that asks for the dev lane gets the dev
+ * lane, and the only thing it has to be told is which log to read if the server
+ * does not come up.
+ *
+ * The server is left running when the session ends. It compiles on boot and
+ * that cost is worth paying once rather than once per session, and a reader who
+ * wants it gone knows where it is.
+ */
+
+/** Where the server's output goes, so a failed boot can be read rather than guessed at. */
+export const devServerLog = (): string => join(tmpdir(), "openagents-dev-server.log");
+
+/**
+ * The `openagents.com` checkout to start a server from.
+ *
+ * Walks up from the working directory first, so a session already inside the
+ * repository starts that copy rather than one somewhere else on the machine.
+ * `OPENAGENTS_COM_PATH` overrides for a checkout in neither place.
+ */
+export const findSiteCheckout = (
+  from: string = process.cwd(),
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined => {
+  const named = env["OPENAGENTS_COM_PATH"];
+  if (named !== undefined && isSiteCheckout(named)) return resolve(named);
+
+  for (let path = resolve(from); ; path = dirname(path)) {
+    if (isSiteCheckout(path)) return path;
+    if (dirname(path) === path) break;
+  }
+
+  const beside = join(homedir(), "work", "openagents.com");
+  return isSiteCheckout(beside) ? beside : undefined;
+};
+
+/**
+ * Whether this directory is the Phoenix application rather than some other Mix
+ * project. Read from `mix.exs`, because a directory named `openagents.com` that
+ * is not the app would fail later and less clearly.
+ */
+const isSiteCheckout = (path: string): boolean => {
+  const manifest = join(path, "mix.exs");
+  if (!existsSync(manifest)) return false;
+  try {
+    return /app:\s*:openagents\b/.test(readFileSync(manifest, "utf8"));
+  } catch {
+    return false;
+  }
+};
+
+/** What `/healthz` says: serving, needs migrations, or not answering. */
+type Health = "ok" | "pending_migrations" | "down";
+
+const health = async (origin: string, timeoutMs = 1_500): Promise<Health> => {
+  try {
+    const answer = await fetch(new URL("/healthz", origin), {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const body = await answer.text();
+    if (answer.ok && body.includes(`"status"`)) return "ok";
+    // Phoenix serves the pending-migration error as its own debug page, which
+    // is a live server that cannot answer yet rather than a dead one.
+    return body.includes("PendingMigrationError") ? "pending_migrations" : "down";
+  } catch {
+    return "down";
+  }
+};
+
+/** Whether a server is already serving at this origin. */
+export const devServerReady = async (origin: string): Promise<boolean> =>
+  (await health(origin)) === "ok";
+
+const run = (command: string, args: readonly string[], cwd: string, log: number) =>
+  new Promise<number>((settle) => {
+    const child = spawn(command, args, {
+      cwd,
+      stdio: ["ignore", log, log],
+      env: { ...process.env, MIX_ENV: "dev" },
+    });
+    child.on("close", (code) => settle(code ?? 1));
+    child.on("error", () => settle(1));
+  });
+
+export interface DevServerStart {
+  readonly started: boolean;
+  /** Why it could not be started, for a reader who has to act on it. */
+  readonly refusal?: string;
+}
+
+/**
+ * Bring a development server up at this origin, or report why not.
+ *
+ * Already serving is success and starts nothing. Otherwise it starts one in the
+ * checkout it finds, migrates when the server says its database is behind, and
+ * waits for `/healthz` to answer — a first boot compiles, so the wait is long
+ * and says so rather than looking like a hang.
+ */
+export const startDevServer = async (
+  origin: string,
+  options: {
+    readonly notice?: (message: string) => void;
+    readonly timeoutMs?: number;
+    readonly cwd?: string;
+  } = {},
+): Promise<DevServerStart> => {
+  const notice = options.notice ?? (() => undefined);
+  const deadline = Date.now() + (options.timeoutMs ?? 240_000);
+
+  const current = await health(origin);
+  if (current === "ok") return { started: false };
+
+  const checkout = findSiteCheckout(options.cwd);
+  if (checkout === undefined) {
+    return {
+      started: false,
+      refusal:
+        `No development server is answering at ${origin}, and no openagents.com ` +
+        "checkout was found to start one from. Set OPENAGENTS_COM_PATH to it, or drop --dev.",
+    };
+  }
+
+  const logPath = devServerLog();
+  const log = openSync(logPath, "a");
+
+  // A server that is up but refusing every request because its database is
+  // behind is one migration away from working, and running it is what a person
+  // would do next anyway.
+  if (current === "pending_migrations") {
+    notice("The dev server's database is behind. Migrating.");
+    await run("mix", ["ecto.migrate"], checkout, log);
+    if (await devServerReady(origin)) return { started: true };
+  }
+
+  notice(`Starting a dev server in ${checkout}. First boot compiles, so this can take a minute.`);
+
+  // Detached, so the server outlives this session: the next `--dev` finds it
+  // already up and pays no boot cost at all.
+  const server = spawn("mix", ["phx.server"], {
+    cwd: checkout,
+    stdio: ["ignore", log, log],
+    detached: true,
+    env: { ...process.env, MIX_ENV: "dev" },
+  });
+  server.unref();
+
+  let migrated = false;
+  for (;;) {
+    if (Date.now() > deadline) {
+      return {
+        started: false,
+        refusal:
+          `A dev server was started in ${checkout} but did not answer at ${origin} in time. ` +
+          `Its output is in ${logPath}.`,
+      };
+    }
+
+    await new Promise((wake) => setTimeout(wake, 1_000));
+    const state = await health(origin);
+    if (state === "ok") return { started: true };
+
+    if (state === "pending_migrations" && !migrated) {
+      migrated = true;
+      notice("The dev server's database is behind. Migrating.");
+      await run("mix", ["ecto.migrate"], checkout, log);
+    }
+  }
+};

@@ -84,6 +84,7 @@ import { resolve as resolvePath } from "node:path";
 
 import { rebuild, RELOAD_EXIT_CODE, sourceCheckout } from "./coder-reload.js";
 import { loadSkillSelection, standingContext } from "./coder-skills.js";
+import { startDevServer } from "./coder-dev-server.js";
 import { describeWorkspace } from "./coder-workspace.js";
 import { ComputerClient } from "./computer-client.js";
 import { ComputerUp } from "./computer-up.js";
@@ -1850,24 +1851,21 @@ const coderCommand = Command.make(
       );
 
       if (dev) {
-        const reachable = yield* Effect.promise(async () => {
-          try {
-            const answer = await fetch(new URL("/healthz", endpoint.origin), {
-              signal: AbortSignal.timeout(1_500),
-            });
-            return answer.ok;
-          } catch {
-            return false;
-          }
-        });
+        // Started rather than asked for. `--dev` exists to remove a wait, and
+        // telling the reader to go and start a server puts a second wait in
+        // front of the first.
+        const boot = yield* Effect.promise(() =>
+          startDevServer(endpoint.origin, {
+            notice: (message) => {
+              process.stderr.write(`${message}\n`);
+            },
+          }),
+        );
 
-        if (!reachable) {
-          return yield* new InputError({
-            message:
-              `No development server is answering at ${endpoint.origin}. ` +
-              "Start it with `mix phx.server` in the openagents.com checkout, or drop --dev.",
-          });
+        if (boot.refusal !== undefined) {
+          return yield* new InputError({ message: boot.refusal });
         }
+        if (boot.started) process.stderr.write(`Dev server ready at ${endpoint.origin}.\n`);
       }
 
       // A `--model` value that starts with `ollama:` goes to the local Ollama
