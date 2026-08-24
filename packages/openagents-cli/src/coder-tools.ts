@@ -56,9 +56,11 @@ export function delegateTool(delegation: CoderDelegation): CoderTool {
       "depend on each other: several files to change the same way, several hypotheses to check, " +
       "several tests to run down. Each child is a full coding agent with its own file and shell " +
       "tools, it starts with no context from this conversation, and it cannot ask questions, so " +
-      "the prompt has to be self-contained. Children run on this session's budget. Each child is " +
-      'told which number it is out of the count, so a prompt may say "work on your own numbered ' +
-      'file". Prefer one call with a count over several calls. At most ' +
+      "the prompt has to be self-contained. Children run on this session's budget. Every child " +
+      "runs the same prompt, and each is told separately which number it is, so write the prompt " +
+      'for whichever child reads it: say "read the file at your own number" rather than naming ' +
+      'one child ("you are child 1"), which gives every child the same work and wastes the ' +
+      "fan-out. Prefer one call with a count over several calls. At most " +
       `${String(MAX_DELEGATE_COUNT)} children.`,
     parameters: {
       type: "object",

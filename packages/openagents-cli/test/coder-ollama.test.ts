@@ -119,7 +119,12 @@ describe("an ollama turn that calls a tool", () => {
     // The tool was declared, and the second round carried the exchange back.
     expect(stub.requests[0]).toHaveProperty("tools");
     const messages = stub.requests[1]?.["messages"] as ReadonlyArray<Record<string, unknown>>;
-    expect(messages.map((message) => message["role"])).toEqual(["user", "assistant", "tool"]);
+    expect(messages.map((message) => message["role"])).toEqual([
+      "system",
+      "user",
+      "assistant",
+      "tool",
+    ]);
     expect(messages.at(-1)).toMatchObject({ content: "child 1 said PONG", tool_name: "delegate" });
   });
 
@@ -171,5 +176,73 @@ describe("an ollama turn that calls a tool", () => {
     expect(stub.chat).toHaveBeenCalledTimes(6);
     expect(chunks.at(-1)).toMatchObject({ type: "text" });
     expect((chunks.at(-1) as { value: string }).value).toContain("Stopped after 6 rounds");
+  });
+});
+
+describe("what a local session tells the model about itself", () => {
+  const systemOf = (stub: { requests: Record<string, unknown>[] }, round = 0) => {
+    const messages = stub.requests[round]?.["messages"] as ReadonlyArray<Record<string, unknown>>;
+    return messages[0] as { role: string; content: string };
+  };
+
+  it("opens with a system message naming every declared tool and no others", async () => {
+    const { source, stub } = sourceWith([[chunk({ content: "ok" }, true)]]);
+    source.useTools([delegate([])]);
+
+    await collect(source, "hi");
+
+    const system = systemOf(stub);
+    expect(system.role).toBe("system");
+    expect(system.content).toContain("1 tool");
+    expect(system.content).toContain("`delegate`");
+    // The failure this exists to stop: the model answering with the tools a
+    // coding agent usually has rather than the ones it was given.
+    expect(system.content).toContain("no file, shell, search, or web tools of your own");
+    // A tool description says what a child can do. That is not the model's.
+    expect(system.content).toContain("that is the child's capability and not yours");
+  });
+
+  it("says it has none when the session declares no tools", async () => {
+    const { source, stub } = sourceWith([[chunk({ content: "ok" }, true)]]);
+
+    await collect(source, "hi");
+
+    expect(systemOf(stub).content).toContain("You have no tools in this session");
+  });
+
+  it("is derived from the tools, so it cannot name one the session does not pass", async () => {
+    const { source, stub } = sourceWith([[chunk({ content: "ok" }, true)]]);
+    source.useTools([
+      { name: "alpha", description: "a", parameters: {}, run: () => Promise.resolve("") },
+      { name: "beta", description: "b", parameters: {}, run: () => Promise.resolve("") },
+    ]);
+
+    await collect(source, "hi");
+
+    const system = systemOf(stub);
+    expect(system.content).toContain("2 tools");
+    expect(system.content).toContain("`alpha`");
+    expect(system.content).toContain("`beta`");
+    expect(system.content).not.toContain("`delegate`");
+  });
+
+  it("says it once, not on every turn", async () => {
+    const { source, stub } = sourceWith([
+      [chunk({ content: "one" }, true)],
+      [chunk({ content: "two" }, true)],
+    ]);
+    source.useTools([delegate([])]);
+
+    await collect(source, "first");
+    await collect(source, "second");
+
+    const messages = stub.requests[1]?.["messages"] as ReadonlyArray<Record<string, unknown>>;
+    expect(messages.filter((message) => message["role"] === "system")).toHaveLength(1);
+    expect(messages.map((message) => message["role"])).toEqual([
+      "system",
+      "user",
+      "assistant",
+      "user",
+    ]);
   });
 });
