@@ -1,23 +1,27 @@
 /**
  * The backends `openagents coder` can send a turn to.
  *
- * The server owns the real list and publishes it at `GET /api/v3` under
- * `extensions["chat.openagents"].parameters.model`. This is the client's copy,
- * kept as data for the same reason the server keeps one: a backend the status
- * line shows and the `--model` flag accepts has to be one list, or the two
- * drift and the CLI offers something the server refuses.
+ * The server owns the real list and publishes it at `GET /api/v3/models`, and a
+ * session that can reach the server reads it from there — see
+ * `fetchServedCatalog` below. The list in this file is the fallback for a
+ * session that cannot: `--offline`, or no stored credential.
+ *
+ * A hardcoded copy is a copy that drifts. This one did: it named
+ * `gemini-3.7-flash`, no deployment had ever served a model by that id, and a
+ * session that took the name from here opened its thread against a catalog that
+ * refused it. The published catalog also says which models are *available* —
+ * served here, credential configured — which a static list cannot say at all,
+ * and which is the difference between a thread that answers and a 422.
  *
  * Choosing between them is not the client's call today. A coder session runs on
  * a thread, and the inference proxy takes the model from that thread's grant,
  * so this list is what the flag validates against and what the status line
  * names, nothing more.
  *
- * Adding a backend is one entry here and one entry on the server. Nothing else
- * in this package names a backend.
- *
- * The `id` is what `POST /api/v3/chat/turns` takes as `model`, so it must match
- * the server's published enum exactly. The `label` is what a person reads in
- * the status bar, where the whole line is competing for a narrow terminal.
+ * The `id` is what `POST /api/v3/threads` takes as `model`. The `label` is what
+ * a person reads in the status bar, where the whole line is competing for a
+ * narrow terminal; a model the server serves and this file has never heard of
+ * is labelled with its own id.
  */
 
 export interface CoderBackend {
@@ -33,17 +37,12 @@ export const CODER_BACKENDS: readonly CoderBackend[] = [
 ];
 
 /**
- * What a coder session opens on when nobody names a backend.
+ * The backend a coder session leads with when nobody names one.
  *
- * Deliberately not the server's own default, which is the catalog's first entry
- * and serves every caller of the chat API. A coder turn is a long one with tools
- * in it, and this build leads with the fast model for that; a reader who wants
- * the other says so with `--model`.
- *
- * Named rather than taken from the list's order, because the order here mirrors
- * the server's published enum and a test holds the two together. Expressing a
- * preference by reordering would have broken that agreement to say something the
- * list was never saying.
+ * A *preference*, not an answer. A coder turn is a long one with tools in it,
+ * and this build leads with the fast model for that — but only where the server
+ * actually serves it. Where it does not, `chooseBackend` falls to the server's
+ * own default rather than opening a thread on a name the catalog will refuse.
  */
 export const DEFAULT_CODER_BACKEND = "gemini-3.7-flash";
 
@@ -54,3 +53,109 @@ export const defaultBackendId = (): string =>
 
 /** Every id, for a flag's error message and its accepted values. */
 export const backendIds = (): readonly string[] => CODER_BACKENDS.map((backend) => backend.id);
+
+/** One model as the server publishes it at `GET /api/v3/models`. */
+export interface ServedModel {
+  readonly id: string;
+  /** Served here *and* its provider credential configured. */
+  readonly available: boolean;
+  /** The model the server itself falls back to. */
+  readonly isDefault: boolean;
+}
+
+/**
+ * What this deployment serves, read from the server rather than assumed.
+ *
+ * `undefined` means the question could not be asked — an older server without
+ * the route, an unreachable one, a token that cannot read it. That is not the
+ * same as "serves nothing", so the caller falls back to the static list rather
+ * than refusing to start.
+ */
+export const fetchServedCatalog = async (
+  api: { readonly origin: string; readonly token: string },
+  signal?: AbortSignal,
+): Promise<readonly ServedModel[] | undefined> => {
+  try {
+    const response = await fetch(new URL("/api/v3/models", api.origin), {
+      headers: { authorization: `Bearer ${api.token}`, accept: "application/json" },
+      signal: signal ?? AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) return undefined;
+
+    const body = (await response.json()) as {
+      readonly models?: readonly {
+        readonly id?: unknown;
+        readonly availability?: unknown;
+        readonly default?: unknown;
+      }[];
+    };
+    if (!Array.isArray(body.models)) return undefined;
+
+    const served = body.models.flatMap((model) =>
+      typeof model.id === "string" && model.id.length > 0
+        ? [
+            {
+              id: model.id,
+              // Anything other than the word `available` is treated as not
+              // available: a vocabulary this client has not seen is a reason to
+              // pick a different model, not to assume the new word is benign.
+              available: model.availability === "available",
+              isDefault: model.default === true,
+            },
+          ]
+        : [],
+    );
+    return served.length === 0 ? undefined : served;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * The backend to open a thread on, given what the server actually serves.
+ *
+ * The preference wins where it is served and available. Otherwise the server's
+ * own default, then whatever else is available — because a session that can run
+ * on something should run, and a reader who wanted the other model says so with
+ * `--model` and gets told plainly when it cannot be had.
+ *
+ * `undefined` means the catalog is real and nothing in it can answer. That is a
+ * server with no provider credential configured, and it is worth saying rather
+ * than opening a thread that will fail at its first turn.
+ */
+export const chooseBackend = (
+  served: readonly ServedModel[],
+  preferred: string = DEFAULT_CODER_BACKEND,
+): ServedModel | undefined =>
+  served.find((model) => model.id === preferred && model.available) ??
+  served.find((model) => model.isDefault && model.available) ??
+  served.find((model) => model.available);
+
+/**
+ * Why this named model cannot be opened, or `undefined` if it can.
+ *
+ * Refusing here turns the server's `422 Validation Failed` — which names no
+ * model and suggests no alternative — into a sentence that says which model,
+ * why, and what this deployment does serve.
+ */
+export const refuseBackend = (
+  served: readonly ServedModel[],
+  named: string,
+): string | undefined => {
+  const match = served.find((model) => model.id === named);
+  const usable = served.filter((model) => model.available).map((model) => model.id);
+  const alternatives =
+    usable.length === 0
+      ? "This server has no model with a configured credential."
+      : `This server serves ${usable.join(", ")}.`;
+
+  if (match === undefined) return `No model called '${named}' is served here. ${alternatives}`;
+  if (!match.available) {
+    return `'${named}' is served here but its provider credential is not configured. ${alternatives}`;
+  }
+  return undefined;
+};
+
+/** The status-line name for a model id, which may be one the static list lacks. */
+export const backendLabel = (id: string): string =>
+  CODER_BACKENDS.find((backend) => backend.id === id)?.label ?? id;

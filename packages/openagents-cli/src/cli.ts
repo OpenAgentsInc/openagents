@@ -37,7 +37,13 @@ import type { ReplySource } from "./coder-session.js";
 import { CoderSession, DummyReplySource } from "./coder-session.js";
 import { CoderTaskRegistry } from "./coder-tasks.js";
 import { runCoderUi } from "./coder-ui.js";
-import { backendIds, defaultBackendId } from "./coder-backends.js";
+import {
+  backendIds,
+  chooseBackend,
+  defaultBackendId,
+  fetchServedCatalog,
+  refuseBackend,
+} from "./coder-backends.js";
 import {
   discoverOllamaModel,
   isOllamaModelFlag,
@@ -709,6 +715,23 @@ const loginScopeFlag = Flag.string("scope").pipe(
 const loginResumeFlag = Flag.boolean("resume").pipe(
   Flag.withDescription("Complete the pending device authorization for the selected API"),
 );
+
+/**
+ * The login that reaches this session's server. Credentials are stored per
+ * endpoint, so a session pointed anywhere other than production is not served
+ * by a bare `openagents auth login` — the same profile has to be named again,
+ * and a hint that omits it sends the reader around a loop that never signs
+ * them in.
+ */
+const loginCommandFor = (endpoint: {
+  readonly origin: string;
+  readonly profile: string;
+}): string =>
+  endpoint.profile === "production"
+    ? "openagents auth login"
+    : endpoint.profile === "custom"
+      ? `openagents --api-url ${endpoint.origin} auth login`
+      : `openagents --profile ${endpoint.profile} auth login`;
 
 const resumeCommandFor = (endpoint: {
   readonly origin: string;
@@ -1475,6 +1498,11 @@ const coderPlainFlag = Flag.boolean("plain").pipe(
 const coderOfflineFlag = Flag.boolean("offline").pipe(
   Flag.withDescription("Answer from the built-in stand-in instead of the chat API"),
 );
+const coderDevFlag = Flag.boolean("dev").pipe(
+  Flag.withDescription(
+    "Talk to a development server on this machine instead of the production API",
+  ),
+);
 const coderLocalFlag = Flag.boolean("local").pipe(
   Flag.withDescription(
     "Answer from a model running on this machine through Ollama, instead of the coder backend",
@@ -1778,6 +1806,7 @@ const coderCommand = Command.make(
     plain: coderPlainFlag,
     offline: coderOfflineFlag,
     local: coderLocalFlag,
+    dev: coderDevFlag,
     resume: coderResumeFlag,
     last: coderLastFlag,
     all: coderAllFlag,
@@ -1794,6 +1823,7 @@ const coderCommand = Command.make(
     plain,
     offline,
     local,
+    dev,
     resume,
     last,
     all,
@@ -1809,7 +1839,36 @@ const coderCommand = Command.make(
       const flags = yield* rootCommand;
       const terminal = yield* TerminalSession;
       const workspace = describeWorkspace();
-      const endpoint = yield* resolveApiEndpoint(endpointOverrides(flags));
+      // `--dev` is the `local` profile by another name, so one flag points a
+      // session at a server on this machine. A deploy can take half an hour,
+      // and iterating against a server nobody has deployed to yet is the
+      // difference between a change being testable now and after lunch.
+      const endpoint = yield* resolveApiEndpoint(
+        dev
+          ? { profile: Option.some("local" as Profile), apiUrl: Option.none() }
+          : endpointOverrides(flags),
+      );
+
+      if (dev) {
+        const reachable = yield* Effect.promise(async () => {
+          try {
+            const answer = await fetch(new URL("/healthz", endpoint.origin), {
+              signal: AbortSignal.timeout(1_500),
+            });
+            return answer.ok;
+          } catch {
+            return false;
+          }
+        });
+
+        if (!reachable) {
+          return yield* new InputError({
+            message:
+              `No development server is answering at ${endpoint.origin}. ` +
+              "Start it with `mix phx.server` in the openagents.com checkout, or drop --dev.",
+          });
+        }
+      }
 
       // A `--model` value that starts with `ollama:` goes to the local Ollama
       // server and needs no account credential.
@@ -1891,16 +1950,6 @@ const coderCommand = Command.make(
 
       const ollamaName = resolved?.model ?? askedFor;
 
-      // Any other `--model` value still has to name a published backend. The
-      // flag takes a string so an `ollama:` prefix can reach the local server,
-      // which costs the enum `Flag.choice` used to enforce, so the check moves
-      // here rather than disappearing.
-      if (named !== undefined && !wantsOllama && !backendIds().includes(named)) {
-        return yield* new InputError({
-          message: `Unknown model ${named}. Use ollama:<model> for a local Ollama server, or one of: ${backendIds().join(", ")}.`,
-        });
-      }
-
       // The session opens a thread of its own and spends that thread's grant,
       // so the CLI still holds no provider key and nothing typed here reaches
       // the account's conversation. Without a credential it falls back to the
@@ -1927,7 +1976,7 @@ const coderCommand = Command.make(
               if (Option.isNone(stored)) {
                 throw new ThreadUnavailable(
                   "scope_missing",
-                  "Resuming reads the account's threads. Run `openagents auth login` first.",
+                  `Resuming reads the account's threads. Run \`${loginCommandFor(endpoint)}\` first.`,
                 );
               }
               const api = { origin: endpoint.origin, token: Redacted.value(stored.value.token) };
@@ -1984,6 +2033,52 @@ const coderCommand = Command.make(
 
       if (resume && resumed === undefined) return;
 
+      // What this deployment actually serves. Asked once, before a thread is
+      // opened, because the model a session leads with is a preference and the
+      // catalog is the only thing that knows whether it can be honoured here.
+      // A dev server and production do not serve the same list, and a client
+      // that assumes one of them is wrong against the other.
+      const served =
+        Option.isSome(stored) && !wantsOllama && !offline && resumed === undefined
+          ? yield* Effect.promise(() =>
+              fetchServedCatalog({
+                origin: endpoint.origin,
+                token: Redacted.value(stored.value.token),
+              }),
+            )
+          : undefined;
+
+      // A named model the server cannot serve is refused here, where the reason
+      // can name the model and list the alternatives, rather than at the thread
+      // route, where it is a bare `Validation Failed`.
+      //
+      // Where the catalog could not be read, the static list stands in. It is
+      // the weaker check — it cannot know what a given deployment has a
+      // credential for — so it runs only when there is nothing better, and it
+      // never overrules a server that has spoken. The flag takes a string
+      // rather than an enum so an `ollama:` prefix can reach the local server,
+      // which is why this is a check and not `Flag.choice`.
+      if (named !== undefined && !wantsOllama) {
+        const refusal =
+          served !== undefined
+            ? refuseBackend(served, named)
+            : backendIds().includes(named)
+              ? undefined
+              : `Unknown model ${named}. Use ollama:<model> for a local Ollama server, ` +
+                `or one of: ${backendIds().join(", ")}.`;
+        if (refusal !== undefined) return yield* new InputError({ message: refusal });
+      }
+
+      const chosen = served === undefined ? undefined : chooseBackend(served, named);
+
+      if (served !== undefined && chosen === undefined) {
+        return yield* new InputError({
+          message:
+            `No model on ${endpoint.origin} has a configured provider credential, ` +
+            "so a session opened there could not answer.",
+        });
+      }
+
       const thread =
         resumed !== undefined
           ? resumed.source
@@ -1998,8 +2093,10 @@ const coderCommand = Command.make(
                     // records it on the thread, and `--resume` filters on it
                     // rather than parsing the objective back.
                     repository: workspace.repository,
-                    // The named backend, or the one this build leads with.
-                    model: named ?? defaultBackendId(),
+                    // What the server said it serves, having been asked. The
+                    // static fallback is for a server too old to publish a
+                    // catalog, which is the only case where `chosen` is absent.
+                    model: chosen?.id ?? named ?? defaultBackendId(),
                     reasoning: Option.getOrUndefined(reasoning),
                   }),
                 // The server's own code and sentence, which is what turns a ninth
@@ -2174,7 +2271,7 @@ const coderCommand = Command.make(
       if (Option.isNone(stored) && !offline && !wantsOllama) {
         session.notice(
           "No stored credential, so replies come from the built-in stand-in. " +
-            "Run `openagents auth login` to reach a real model.",
+            `Run \`${loginCommandFor(endpoint)}\` to reach a real model.`,
         );
       }
 
@@ -2364,7 +2461,7 @@ const delegateCommand = Command.make(
       if (setup === undefined) {
         return yield* new InputError({
           message:
-            "Nothing to run children on. Sign in with `openagents auth login` so " +
+            `Nothing to run children on. Sign in with \`${loginCommandFor(endpoint)}\` so ` +
             "children can spend a thread, or pass --child-model provider/model to run " +
             "them on a provider of your own.",
         });
