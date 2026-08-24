@@ -109,12 +109,15 @@ export const startDevServer = async (
   origin: string,
   options: {
     readonly notice?: (message: string) => void;
+    readonly onProgress?: (elapsedMs: number) => void;
     readonly timeoutMs?: number;
     readonly cwd?: string;
   } = {},
 ): Promise<DevServerStart> => {
   const notice = options.notice ?? (() => undefined);
-  const deadline = Date.now() + (options.timeoutMs ?? 240_000);
+  const onProgress = options.onProgress ?? (() => undefined);
+  const start = Date.now();
+  const deadline = start + (options.timeoutMs ?? 240_000);
 
   const current = await health(origin);
   if (current === "ok") return { started: false };
@@ -155,6 +158,7 @@ export const startDevServer = async (
 
   let migrated = false;
   for (;;) {
+    onProgress(Date.now() - start);
     if (Date.now() > deadline) {
       return {
         started: false,

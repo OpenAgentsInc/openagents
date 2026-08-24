@@ -1860,9 +1860,17 @@ const coderCommand = Command.make(
             notice: (message) => {
               process.stderr.write(`${message}\n`);
             },
+            onProgress: (elapsedMs) => {
+              const elapsed = Math.floor(elapsedMs / 1_000);
+              const frame = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+              process.stderr.write(
+                `\r${frame[elapsed % frame.length]} Compiling openagents.com... ${elapsed}s`,
+              );
+            },
           }),
         );
 
+        process.stderr.write("\n");
         if (boot.refusal !== undefined) {
           return yield* new InputError({ message: boot.refusal });
         }
