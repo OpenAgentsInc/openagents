@@ -374,6 +374,13 @@ export class CoderSession {
      * buys nothing.
      */
     private readonly standing?: string,
+    /**
+     * Where `/export` writes, and whether it takes the clipboard.
+     *
+     * For tests. A suite that wrote into the reader's own export directory and
+     * took their clipboard is a suite that changed the machine it was checking.
+     */
+    private readonly exports?: { readonly directory: string },
   ) {
     // A child reporting progress has to reach the renderer, and the renderer
     // subscribes to the session rather than to the registry, so the session
@@ -528,6 +535,9 @@ export class CoderSession {
           model: this.source.modelId ?? this.source.model,
           toolDefinitions: this.source.toolDefinitions?.(),
           version: VERSION,
+          ...(this.exports === undefined
+            ? {}
+            : { directory: this.exports.directory, copy: false }),
         });
         this.notice(
           `Exported ${String(written.steps)} step${written.steps === 1 ? "" : "s"} as ATIF to ${written.path}` +

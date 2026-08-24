@@ -33,6 +33,8 @@ const write = (entries: ReadonlyArray<CoderEntry>) => {
     version: "0.3.5",
     now: new Date(AT),
     directory,
+    // A suite must not take the reader's clipboard.
+    copy: false,
   });
   return {
     result,
@@ -212,6 +214,25 @@ describe("exporting a conversation as ATIF", () => {
 
     // A total of 0 on a session that never measured would be a measurement.
     expect(document["final_metrics"]).toEqual({ total_steps: 1 });
+  });
+
+
+  it("takes the clipboard only when asked to", () => {
+    const directory = mkdtempSync(join(tmpdir(), "coder-export-"));
+
+    // The default is a person exporting, and they want the path. Anything else
+    // — a test above all — must say so: a suite that took the clipboard once
+    // replaced a reader's own export path with one pointing at a file the suite
+    // then deleted, and the reader pasted it and was told it did not exist.
+    const quiet = exportTrajectory(snapshot([entry({ role: "you", text: "hi" })]), {
+      model: "m",
+      version: "0",
+      now: new Date(AT),
+      directory,
+      copy: false,
+    });
+
+    expect(quiet.copied).toBe(false);
   });
 
   it("writes one file per export, named so they sort by time", () => {

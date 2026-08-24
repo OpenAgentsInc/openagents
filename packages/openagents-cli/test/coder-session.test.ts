@@ -1,4 +1,6 @@
-import { rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -410,7 +412,10 @@ describe("the /export command", () => {
         prompts.push(prompt);
       },
     };
-    const session = new CoderSession(reply, "repo", "main");
+    // Its own directory, and no clipboard: a test that writes where a reader
+    // exports, and takes their clipboard, changes the machine it is checking.
+    const directory = mkdtempSync(join(tmpdir(), "coder-session-export-"));
+    const session = new CoderSession(reply, "repo", "main", undefined, undefined, { directory });
 
     await session.submit("/export");
 
@@ -420,10 +425,9 @@ describe("the /export command", () => {
     expect(prompts).toEqual([]);
     expect(turns).toBe(0);
 
-    // The wiring writes a real file. Take it away again: a test suite should
-    // not leave anything behind in the directory a person exports into.
-    const written = /as ATIF to (\S+\.json)/.exec(entries[1]?.text ?? "")?.[1];
-    if (written !== undefined) rmSync(written, { force: true });
+    // Written into the test's own directory, so there is nothing to clean out
+    // of the reader's.
+    expect(entries[1]?.text).toContain(directory);
   });
 });
 

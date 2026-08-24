@@ -235,6 +235,15 @@ export function exportTrajectory(
     readonly version: string;
     readonly now?: Date | undefined;
     readonly directory?: string | undefined;
+    /**
+     * Whether the path goes to the system clipboard. On by default.
+     *
+     * Off for anything that is not a person exporting: a test that took the
+     * clipboard replaced a reader's own export path with one pointing at a file
+     * the test then deleted, and the reader pasted it and was told the path did
+     * not exist.
+     */
+    readonly copy?: boolean | undefined;
   },
 ): ExportedTrajectory {
   const at = options.now ?? new Date();
@@ -276,5 +285,6 @@ export function exportTrajectory(
   const path = join(directory, fileName(snapshot.repository, at));
   writeFileSync(path, `${JSON.stringify(document, undefined, 2)}\n`, "utf8");
 
-  return { path, copied: copyToClipboard(path), steps: steps.length };
+  const copy = options.copy ?? true;
+  return { path, copied: copy && copyToClipboard(path), steps: steps.length };
 }
