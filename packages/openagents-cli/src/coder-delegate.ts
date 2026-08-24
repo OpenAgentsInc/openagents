@@ -517,6 +517,55 @@ export const FREE_CHILD_MODELS: ReadonlyArray<string> = [
 ];
 
 /**
+ * What a lane is called, and what it resolves to.
+ *
+ * The names are the ones people use. Ox Alpha's slug is
+ * `opencode/x-preview-f-free` — it says neither `ox` nor `alpha`, because
+ * opencode's normalization maps `x-preview-f` to `ox-alpha` elsewhere — so a
+ * session offered only the slug is a session nobody can ask for Ox Alpha by
+ * name. Asked "can you delegate to ox alpha", one answered no while holding
+ * exactly that lane under a name it could not connect to the question.
+ *
+ * A slug still resolves to itself, so nothing that already worked stops.
+ */
+export const CHILD_LANE_ALIASES: Readonly<Record<string, string>> = {
+  "ox-alpha": "opencode/x-preview-f-free",
+  gemini: "opencode/gemini-3.7-flash",
+};
+
+/**
+ * Every lane a `delegate` call may name, by the name a caller would use.
+ *
+ * Devin is here because it brings its own credentials rather than spending this
+ * session's grant. Offered as an enum so a call chooses from what exists rather
+ * than from what it remembers.
+ */
+export const CHILD_MODELS: ReadonlyArray<string> = [
+  ...Object.keys(CHILD_LANE_ALIASES),
+  ...FREE_CHILD_MODELS,
+  "devin",
+];
+
+/**
+ * The name a lane is known by, given its slug.
+ *
+ * So a lane reached by its slug still reports the name a reader would recognise,
+ * whichever way it was reached.
+ */
+export const childLaneName = (lane: string): string =>
+  Object.entries(CHILD_LANE_ALIASES).find(([, slug]) => slug === lane)?.[0] ?? lane;
+
+/** The lane a name means, whether it is an alias, a slug, or Devin. */
+export const resolveChildLane = (name: string): string | undefined => {
+  const asked = name.trim();
+  if (asked.length === 0) return undefined;
+  if (/^devin(:.+)?$/.test(asked)) return asked;
+  const aliased = CHILD_LANE_ALIASES[asked];
+  if (aliased !== undefined) return aliased;
+  return FREE_CHILD_MODELS.includes(asked) ? asked : undefined;
+};
+
+/**
  * The first preferred model the harness offers, or undefined when it lists none.
  *
  * A listing that cannot be read says nothing rather than guessing, for the same

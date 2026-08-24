@@ -161,12 +161,34 @@ export interface CoderSnapshot {
 }
 
 /** What the session needs in order to delegate. Absent means it cannot. */
-export interface CoderDelegation {
-  readonly registry: CoderTaskRegistry;
+export interface CoderDelegationFleet {
   /** Usually a `DelegateFleet`. Narrow on purpose, so tests can stand in. */
   readonly fleet: { submit(request: DelegationRequest): Promise<DelegationOutcome> };
   /** Shown when the reader asks for help, and in the launch notice. */
   readonly label: string;
+}
+
+export interface CoderDelegation extends CoderDelegationFleet {
+  readonly registry: CoderTaskRegistry;
+  /**
+   * The models a call may name, for the tool to offer and to validate against.
+   *
+   * Empty when the session can only run children one way, and the tool then
+   * offers no choice rather than one that goes nowhere.
+   */
+  readonly models?: ReadonlyArray<string>;
+  /**
+   * A fleet running children on `model`, or the default when none is named.
+   *
+   * Built here rather than at session start because the choice belongs to the
+   * call: a fan-out of straightforward fixes and a fan-out of design questions
+   * are different work and want different models, and a session that had to be
+   * restarted to change lanes is a session that will not change them.
+   *
+   * Returns undefined for a model this session cannot reach, so the tool can
+   * say which ones it can rather than failing a child at launch.
+   */
+  fleetFor?(model: string): CoderDelegationFleet | undefined;
 }
 
 /** Where reply chunks come from. One implementation today; ACP is the next. */

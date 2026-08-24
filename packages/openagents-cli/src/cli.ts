@@ -20,11 +20,14 @@ import { startChildGateway } from "./coder-child-gateway.js";
 import { writeChildHarnessConfig } from "./coder-child-config.js";
 import type { DelegationOutcome } from "./coder-delegate.js";
 import {
+  CHILD_MODELS,
+  childLaneName,
   DelegateFleet,
   DevinHarness,
   describePrompt,
   firstAvailableChildModel,
   OpencodeHarness,
+  resolveChildLane,
 } from "./coder-delegate.js";
 import { fleetPlainLines } from "./coder-fleet.js";
 import { runCoderPlain } from "./coder-plain.js";
@@ -1590,20 +1593,61 @@ async function buildDelegation(options: {
   const command = options.command ?? process.env["OPENAGENTS_DELEGATE_COMMAND"];
   const namedConfig = options.configPath ?? process.env["OPENAGENTS_DELEGATE_CONFIG"];
 
+  // One registry for the session, whatever a call chooses to run on, so the
+  // children of two models still render as one fleet and stop together.
+  const registry = new CoderTaskRegistry();
+
+  // Labelled by the name that was asked for. A caller who names `ox-alpha` and
+  // is answered `x-preview-f-free` cannot tell whether the request was honoured
+  // or silently fell back, and one that was asked exactly this said so rather
+  // than guess.
+  const laneFor = (choice: string) => {
+    const harness = /^devin(:.+)?$/.test(choice)
+      ? new DevinHarness(
+          choice.startsWith("devin:") ? { permissionMode: choice.slice(6) } : {},
+        )
+      : new OpencodeHarness({
+          model: choice,
+          ...(command === undefined ? {} : { command }),
+          ...(namedConfig === undefined ? {} : { configPath: namedConfig }),
+          autoApprove: options.autoApprove,
+        });
+
+    return {
+      fleet: new DelegateFleet(registry, harness, {
+        maxConcurrent: Math.max(1, options.concurrency),
+        cwd: options.cwd,
+      }),
+      label: `${harness.agent} (${childLaneName(harness.model)})`,
+    };
+  };
+
+  // Cached, so a second call on the same model reuses its fleet rather than
+  // starting a second one that competes with the first for the same cap.
+  const lanes = new Map<string, { fleet: DelegateFleet; label: string }>();
+  const fleetFor = (choice: string) => {
+    const lane = resolveChildLane(choice);
+    if (lane === undefined) return undefined;
+    const existing = lanes.get(lane);
+    if (existing !== undefined) return existing;
+    const built = laneFor(lane);
+    lanes.set(lane, built);
+    return built;
+  };
+
   // `--child-model devin` runs children on the Devin CLI instead. It brings its
   // own credentials and its own model, so it needs neither this session's grant
   // nor a gateway, and it is refused up front when it is not installed rather
   // than once per child.
-  if (named !== undefined && /^devin(:(.+))?$/.test(named.trim())) {
-    const mode = /^devin:(.+)$/.exec(named.trim())?.[1];
-    const harness = new DevinHarness(mode === undefined ? {} : { permissionMode: mode });
-    const registry = new CoderTaskRegistry();
-    const fleet = new DelegateFleet(registry, harness, {
-      maxConcurrent: Math.max(1, options.concurrency),
-      cwd: options.cwd,
-    });
+  // An alias on the flag too, so `--child-model ox-alpha` means what it says
+  // and the skill that documents it is not documenting a thing that fails.
+  const askedFor = named === undefined ? undefined : resolveChildLane(named);
+
+  if (askedFor !== undefined && /^devin(:(.+))?$/.test(askedFor)) {
+    const mode = /^devin:(.+)$/.exec(askedFor)?.[1];
+    const lane = laneFor(mode === undefined ? "devin" : `devin:${mode}`);
     return {
-      delegation: { registry, fleet, label: `${harness.agent} (${harness.model})` },
+      delegation: { registry, ...lane, models: CHILD_MODELS, fleetFor },
       close: () => Promise.resolve(),
     };
   }
@@ -1622,25 +1666,19 @@ async function buildDelegation(options: {
       : undefined;
 
   if (free !== undefined) {
-    const harness = new OpencodeHarness({
-      model: free,
-      ...(command === undefined ? {} : { command }),
-      ...(namedConfig === undefined ? {} : { configPath: namedConfig }),
-      autoApprove: options.autoApprove,
-    });
-    const registry = new CoderTaskRegistry();
-    const fleet = new DelegateFleet(registry, harness, {
-      maxConcurrent: Math.max(1, options.concurrency),
-      cwd: options.cwd,
-    });
+    const lane = fleetFor(free) ?? laneFor(free);
     return {
-      delegation: { registry, fleet, label: `${harness.agent} (${free})` },
+      delegation: { registry, ...lane, models: CHILD_MODELS, fleetFor },
       close: () => Promise.resolve(),
     };
   }
 
   if (named !== undefined && named.trim().length > 0) {
-    model = named;
+    // `--child-model ox-alpha` means the lane, not a literal model name the
+    // harness has never heard of. Resolved here so the flag and the tool's
+    // `model` parameter accept the same words, and an unrecognised name is
+    // still passed through for the harness to refuse by name.
+    model = askedFor ?? named;
     configPath = namedConfig;
     close = () => Promise.resolve();
   } else if (options.grant !== undefined) {
@@ -1665,13 +1703,18 @@ async function buildDelegation(options: {
     configPath,
     autoApprove: options.autoApprove,
   });
-  const registry = new CoderTaskRegistry();
   const fleet = new DelegateFleet(registry, harness, {
     maxConcurrent: Math.max(1, options.concurrency),
     cwd: options.cwd,
   });
   return {
-    delegation: { registry, fleet, label: `${harness.agent} (${model})` },
+    delegation: {
+      registry,
+      fleet,
+      label: `${harness.agent} (${model})`,
+      models: CHILD_MODELS,
+      fleetFor,
+    },
     close,
   };
 }

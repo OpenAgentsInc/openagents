@@ -19,6 +19,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import type { CoderDelegation } from "./coder-session.js";
+import type { CoderTaskRegistry } from "./coder-tasks.js";
 import {
   DEFAULT_TIMEOUT_MS,
   MAXIMUM_TIMEOUT_MS,
@@ -60,6 +61,7 @@ const CHILD_RESULT_LIMIT = 2_000;
  * the renderer reads the registry, not this call.
  */
 export function delegateTool(delegation: CoderDelegation): CoderTool {
+  const models = delegation.fleetFor === undefined ? [] : (delegation.models ?? []);
   return {
     name: "delegate",
     description:
@@ -73,7 +75,10 @@ export function delegateTool(delegation: CoderDelegation): CoderTool {
       'for whichever child reads it: say "read the file at your own number" rather than naming ' +
       'one child ("you are child 1"), which gives every child the same work and wastes the ' +
       "fan-out. Prefer one call with a count over several calls. At most " +
-      `${String(MAX_DELEGATE_COUNT)} children.`,
+      `${String(MAX_DELEGATE_COUNT)} children.` +
+      (models.length === 0
+        ? ""
+        : ` Children run on ${delegation.label} unless \`model\` names another: ${models.join(", ")}.`),
     parameters: {
       type: "object",
       properties: {
@@ -93,6 +98,18 @@ export function delegateTool(delegation: CoderDelegation): CoderTool {
           type: "string",
           description: "Three to five words naming the task, shown in the fleet.",
         },
+        ...(models.length === 0
+          ? {}
+          : {
+              model: {
+                type: "string",
+                enum: [...models],
+                description:
+                  "Which model the children run on. Defaults to " +
+                  `${delegation.label}. Straightforward engineering suits a fast model; ` +
+                  "work whose shape is the question suits a stronger one.",
+              },
+            }),
       },
       required: ["prompt"],
       additionalProperties: false,
@@ -101,6 +118,20 @@ export function delegateTool(delegation: CoderDelegation): CoderTool {
       const prompt = typeof args["prompt"] === "string" ? args["prompt"].trim() : "";
       if (prompt.length === 0) {
         return "No children were started: `prompt` is required and must say what the child does.";
+      }
+
+      // The lane is chosen per call. A session that had to be restarted to
+      // change models is a session that will not change them.
+      const named = typeof args["model"] === "string" ? args["model"].trim() : "";
+      const lane =
+        named.length === 0
+          ? { fleet: delegation.fleet, label: delegation.label }
+          : delegation.fleetFor?.(named);
+
+      if (lane === undefined) {
+        return models.length === 0
+          ? `This session runs children one way only, on ${delegation.label}, so \`model\` cannot be chosen here.`
+          : `There is no \`${named}\` lane. This session can run children on: ${models.join(", ")}.`;
       }
 
       const requested = typeof args["count"] === "number" ? Math.trunc(args["count"]) : 1;
@@ -116,14 +147,14 @@ export function delegateTool(delegation: CoderDelegation): CoderTool {
       try {
         const outcomes = await Promise.all(
           Array.from({ length: count }, (_unused, index) =>
-            delegation.fleet.submit({
+            lane.fleet.submit({
               description,
               prompt: identify(prompt, index + 1, count),
               background: true,
             }),
           ),
         );
-        return report(outcomes, delegation);
+        return report(outcomes, delegation.registry, lane.label);
       } finally {
         signal.removeEventListener("abort", onAbort);
       }
@@ -145,7 +176,14 @@ function identify(prompt: string, index: number, count: number): string {
 }
 
 /** Every child's outcome, in the order they were launched. */
-function report(outcomes: ReadonlyArray<DelegationOutcome>, delegation: CoderDelegation): string {
+// The registry is the session's and is shared by every lane, so the children of
+// two models still render as one fleet. The label is the lane's own, because
+// that is what answered.
+function report(
+  outcomes: ReadonlyArray<DelegationOutcome>,
+  registry: CoderTaskRegistry,
+  label: string,
+): string {
   const lines: string[] = [];
   let completed = 0;
 
@@ -155,7 +193,7 @@ function report(outcomes: ReadonlyArray<DelegationOutcome>, delegation: CoderDel
       continue;
     }
 
-    const task = delegation.registry.get(outcome.taskId);
+    const task = registry.get(outcome.taskId);
     const label = `${outcome.taskId}${task === undefined ? "" : ` ${task.description}`}`;
     if (outcome.status === "completed") {
       completed += 1;
@@ -168,12 +206,12 @@ function report(outcomes: ReadonlyArray<DelegationOutcome>, delegation: CoderDel
     } else {
       lines.push(`${label} stopped before finishing.`);
     }
-    delegation.registry.markRead(outcome.taskId);
+    registry.markRead(outcome.taskId);
   }
 
   const header =
     `${String(completed)} of ${String(outcomes.length)} ` +
-    `${outcomes.length === 1 ? "child" : "children"} completed on ${delegation.label}.`;
+    `${outcomes.length === 1 ? "child" : "children"} completed on ${label}.`;
   return [header, "", ...lines].join("\n");
 }
 

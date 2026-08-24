@@ -23,12 +23,19 @@ conversation and cannot ask questions, so the prompt carries everything. Every
 child gets the same prompt and is told its own number separately — write for
 whichever child is reading rather than naming one.
 
-`--child-model devin` runs the children on the Devin CLI instead, and
-`devin:<mode>` picks a permission mode other than the default `dangerous`. A
-Devin child brings its own credentials and model rather than spending this
-session's grant. Prefer this over running `devin` yourself through `shell`: a
-fleet child renders, stops with `ctrl+x`, and does not block the turn, while a
-shell child is one opaque call that freezes the session until it ends.
+**The lane is chosen per call.** `delegate` takes a `model`, and its enum is
+the lanes this session can reach: `ox-alpha`, `gemini`, `devin`, and the model
+slugs behind them. The same names work on the CLI as `--child-model`. A fan-out
+of straightforward fixes and a fan-out of design questions are different work
+and want different models, and there is no need to restart a session to change
+lanes.
+
+`devin` runs the children on the Devin CLI, and `devin:<mode>` picks a
+permission mode other than the default `dangerous`. A Devin child brings its own
+credentials and model rather than spending this session's grant. Prefer it over
+running `devin` yourself through `shell`: a fleet child renders, stops with
+`ctrl+x`, and does not block the turn, while a shell child is one opaque call
+that freezes the session until it ends.
 
 ## Burning through a backlog
 
@@ -66,9 +73,8 @@ child its own git worktree so their edits cannot meet.
 
 - **Devin** for straightforward engineering: a named fix, a test to write, a
   migration, a rename, a documented change with a clear shape.
-- **opencode on Ox Alpha** (`--child-model ox-alpha`) for high-concept and
-  strategic work: design, architecture, anything where the shape of the answer
-  is the question.
+- **Ox Alpha** (`model: "ox-alpha"`) for high-concept and strategic work:
+  design, architecture, anything where the shape of the answer is the question.
 
 If you cannot tell which, it is the second kind.
 
