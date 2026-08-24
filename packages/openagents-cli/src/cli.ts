@@ -36,6 +36,9 @@ import {
 } from "./coder-ollama.js";
 import { openThread, ThreadUnavailable, type ThreadReplySource } from "./coder-thread.js";
 import { delegateTool, skillTool } from "./coder-tools.js";
+import { spawnSync } from "node:child_process";
+
+import { rebuild, RELOAD_EXIT_CODE, sourceCheckout } from "./coder-reload.js";
 import { loadSkillSelection } from "./coder-skills.js";
 import { describeWorkspace } from "./coder-workspace.js";
 import { ComputerClient } from "./computer-client.js";
@@ -1834,6 +1837,30 @@ const coderCommand = Command.make(
           if (setup !== undefined) await setup.close();
         }
       });
+
+      // The interface asks for a restart by exiting with a code of its own. It
+      // is done here rather than there because the rebuild has to happen after
+      // the screen is given back: a compiler writing over a live alt-screen is
+      // a session the reader cannot read.
+      if (code === RELOAD_EXIT_CODE) {
+        const root = sourceCheckout();
+        if (root !== undefined) {
+          const built = rebuild(root);
+          if (built.ok) {
+            const restarted = spawnSync(process.execPath, process.argv.slice(1), {
+              stdio: "inherit",
+            });
+            process.exitCode = restarted.status ?? 0;
+            return;
+          }
+          // The compiler's own words, and the old session is not resumed: a
+          // reload onto code that does not build would be a reload onto the
+          // build before it, silently.
+          process.stderr.write(`${built.output}\n\nReload failed: the build did not pass.\n`);
+          process.exitCode = 1;
+          return;
+        }
+      }
 
       if (code !== 0) {
         process.exitCode = code;

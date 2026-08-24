@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { CODER_BACKENDS } from "../src/coder-backends.js";
 import { CoderSession, type ReplyChunk, type ReplySource } from "../src/coder-session.js";
 import { CoderTaskRegistry } from "../src/coder-tasks.js";
+import { RELOAD_EXIT_CODE } from "../src/coder-reload.js";
 import { runCoderUi } from "../src/coder-ui.js";
 
 /** A writable that records what the interface painted. */
@@ -569,5 +570,37 @@ describe("the /skills screen", () => {
     stdin.emit("data", "\x1b");
     stdin.emit("data", "\x04");
     await running;
+  });
+});
+
+describe("the /reload command", () => {
+  it("asks the runner to restart, and sends nothing to the model", async () => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    const prompts: string[] = [];
+    const session = new CoderSession(
+      {
+        model: "scripted",
+        // eslint-disable-next-line require-yield -- a turn that must not happen
+        async *reply(prompt: string) {
+          prompts.push(prompt);
+        },
+      },
+      "repo",
+      "main",
+    );
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    stdin.emit("data", "/reload");
+    stdin.emit("data", "\r");
+
+    // These tests run from a source checkout, so the command applies: the
+    // interface exits with the code its runner rebuilds on.
+    await expect(running).resolves.toBe(RELOAD_EXIT_CODE);
+    expect(prompts).toEqual([]);
+    expect(session.snapshot().turns).toBe(0);
   });
 });

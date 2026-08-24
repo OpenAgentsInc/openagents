@@ -32,6 +32,7 @@
 import { fleetPhrase, fleetRows } from "./coder-fleet.js";
 import { renderMarkdown, visibleWidth, wrapStyled } from "./coder-markdown.js";
 import type { CoderEntry, CoderSession, CoderSnapshot, CoderToolCall } from "./coder-session.js";
+import { RELOAD_EXIT_CODE, sourceCheckout } from "./coder-reload.js";
 import type { SkillSelection } from "./coder-skills.js";
 import type { CoderTaskStatus } from "./coder-tasks.js";
 
@@ -658,6 +659,27 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       // A delegate line is not a turn: it returns as soon as the children are
       // submitted and each one reports later, so nothing here waits on it and
       // the ticker above keeps the fleet rows moving.
+      // `/reload` restarts this session on the code as it is now. The rebuild
+      // and the restart belong to the runner, which has the screen back by
+      // then; the interface only asks, by exiting with a code of its own.
+      if (/^\/reload\s*$/.test(prompt.trim())) {
+        const root = sourceCheckout();
+        if (root === undefined) {
+          session.notice(
+            "This session is not running from a source checkout, so there is nothing to " +
+              "rebuild. `/reload` works where `openagents coder` was started from the repository.",
+          );
+          render();
+          return;
+        }
+        // The transcript ends here. It is not written out on the way past:
+        // reloading is something a reader does many times in a sitting, and a
+        // command that quietly leaves a file behind each time is one they have
+        // to clean up after. `/export` keeps a conversation when it is wanted.
+        finish(RELOAD_EXIT_CODE);
+        return;
+      }
+
       // `/skills` opens a screen rather than sending a turn: it changes what
       // the next turn carries, so it is not something to say to the model.
       if (/^\/skills\s*$/.test(prompt.trim())) {
@@ -919,7 +941,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       "openagents coder — development build. Type a message and press enter. " +
         "Ctrl+D quits, Esc interrupts a reply. `/system` shows what the model is told, " +
         "`/skills` chooses which skills it is offered, `/export` writes the conversation " +
-        "as ATIF.",
+        "as ATIF, `/reload` restarts on the current source.",
     );
     render();
   });

@@ -19,6 +19,7 @@
 import { createInterface } from "node:readline";
 
 import type { CoderEntry, CoderSession } from "./coder-session.js";
+import { RELOAD_EXIT_CODE, sourceCheckout } from "./coder-reload.js";
 import type { SkillSelection } from "./coder-skills.js";
 
 export interface CoderPlainOptions {
@@ -71,7 +72,23 @@ export async function runCoderPlain(
   const unsubscribe = session.onChange(flush);
   flush();
 
+  /** Set when `/reload` asks the runner to rebuild and start again. */
+  let reloading = false;
+
   const answer = async (line: string) => {
+    // The same command as in the interface, and the same division of labour:
+    // this only asks, and the runner rebuilds once it has the terminal back.
+    if (/^\/reload\s*$/.test(line.trim())) {
+      if (sourceCheckout() === undefined) {
+        stdout.write(
+          "\nThis session is not running from a source checkout, so there is nothing to rebuild.\n",
+        );
+        return;
+      }
+      reloading = true;
+      return;
+    }
+
     // `/skills` is a screen in the interface. There is no screen here, so it
     // reports instead: the same facts, without the switch. Saying nothing and
     // sending it to the model as a question would be worse than either.
@@ -99,15 +116,16 @@ export async function runCoderPlain(
   try {
     if (prompt !== undefined) {
       await answer(prompt);
-      return 0;
+      return reloading ? RELOAD_EXIT_CODE : 0;
     }
 
     const reader = createInterface({ input: stdin, terminal: false });
     for await (const line of reader) {
       if (line.trim().length === 0) continue;
       await answer(line);
+      if (reloading) break;
     }
-    return 0;
+    return reloading ? RELOAD_EXIT_CODE : 0;
   } finally {
     unsubscribe();
   }
