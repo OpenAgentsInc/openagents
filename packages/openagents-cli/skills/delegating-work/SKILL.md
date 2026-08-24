@@ -29,7 +29,27 @@ questions, so the prompt has to carry everything. Every child gets the same
 prompt and is told its own number separately — write for whichever child is
 reading, rather than naming one.
 
-## The Devin CLI, for a whole task
+## `delegate --child-model devin`, for a Devin fan-out
+
+If `devin` is on `PATH`, `delegate` can run its children on it instead of on
+opencode: pass `--child-model devin`, or `devin:<mode>` for a permission mode
+other than the default `dangerous`.
+
+Prefer this over running `devin` yourself through `shell`. A child started this
+way is a fleet child like any other — it reports through the registry the
+interface renders, it can be stopped with `ctrl+x`, it does not block the turn
+that started it, and several run at once. Run through `shell`, the same work is
+one call that freezes the session and shows nothing until it ends.
+
+A Devin child brings its own credentials and its own model rather than spending
+this session's grant, which is a different trust and billing boundary from an
+opencode child. That is why the fleet names the agent.
+
+Its print mode has no structured output, so a Devin child reports its answer
+once at the end rather than streaming its tool calls the way an opencode child
+does.
+
+## The Devin CLI directly, for one task you will wait on
 
 If `devin` is on `PATH`, it is another coding agent on this machine, and it can
 take a task end to end rather than one prompt in parallel. Check with
@@ -64,14 +84,12 @@ calls the equivalent mode "bypass". Passing `--permission-mode bypass` is not
 rejected — it is accepted and ignored, so the session silently falls back to
 prompting, and a prompt nobody can answer is a task that does nothing.
 
-**It refuses a workspace it does not trust**, but only in a directory nobody has
-opened it in. You will know because it exits at once, before doing anything,
-with the words `Refusing to run in an untrusted workspace`. Only that message
-means this; do not read any other failure as a trust problem. Trust is granted
-by starting `devin` interactively there once, which only the person at the
-keyboard can do, so say so and name the directory rather than working around it.
-`respect_workspace_trust` is a config-file key, not a command-line flag, and
-passing it as one will not do anything.
+**It refuses a workspace nobody has opened it in**, exiting at once with
+`Refusing to run in an untrusted workspace`. Print mode cannot show the trust
+prompt, so it fails rather than asking. Pass `--respect-workspace-trust false`
+to skip the check, which is what print mode is for; the alternative is someone
+starting `devin` interactively in that directory once. Only that exact message
+means trust — do not read other failures as a trust problem.
 
 **`dangerous` auto-approves every tool it has.** That is the point of using it
 unattended, and it is the reason to say what you are handing over before you

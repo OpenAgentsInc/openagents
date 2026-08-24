@@ -351,6 +351,147 @@ function killTree(child: ChildProcess, signal: "SIGTERM" | "SIGKILL"): void {
 }
 
 /** Runs children as `opencode run --format json` subprocesses. */
+/** How a Devin child is run. */
+export interface DevinHarnessOptions {
+  /** The binary, so a test can point at a stand-in. Defaults to `devin`. */
+  readonly command?: string | undefined;
+  /**
+   * The permission mode passed through.
+   *
+   * `dangerous` is this build's name for the unattended mode -- the published
+   * documentation calls it "bypass", and passing that is accepted and ignored,
+   * so a child would silently fall back to prompting where nobody can answer.
+   */
+  readonly permissionMode?: string | undefined;
+  /** Extra environment for the child. */
+  readonly env?: Record<string, string> | undefined;
+}
+
+/**
+ * Children run by the Devin CLI.
+ *
+ * A second harness rather than a shell command, so a Devin fan-out is a fleet
+ * like any other: it reports through the registry the renderer reads, it can be
+ * stopped with the rest, and it does not block the turn that started it. Run
+ * through `shell` instead, the same work is one opaque call that freezes the
+ * session and shows nothing while it runs.
+ *
+ * Devin's print mode has no structured output, so a child reports its answer
+ * once at the end rather than streaming tool calls the way `opencode --format
+ * json` does. The fleet still shows it start, run, and finish, which is the
+ * part the reader is waiting on.
+ *
+ * Its own credentials are used, not this session's grant. That is a different
+ * trust and billing boundary from an `opencode` child, and it is the reason the
+ * agent is named in the fleet rather than left implicit.
+ */
+export class DevinHarness implements DelegateHarness {
+  readonly agent = "devin";
+  readonly model: string;
+
+  constructor(private readonly options: DevinHarnessOptions = {}) {
+    // Devin picks its own model from its own configuration, and print mode does
+    // not report which. Naming one here would be inventing it.
+    this.model = options.permissionMode ?? "dangerous";
+  }
+
+  async *run(
+    input: { readonly prompt: string; readonly cwd: string; readonly transcriptPath: string },
+    signal: AbortSignal,
+  ): AsyncIterable<DelegateEvent> {
+    const command = this.options.command ?? "devin";
+    const mode = this.options.permissionMode ?? "dangerous";
+
+    const child = spawn(
+      command,
+      [
+        "-p",
+        input.prompt,
+        "--permission-mode",
+        mode,
+        // Print mode cannot show the trust prompt, so without this a child in a
+        // directory nobody has opened Devin in exits before doing anything.
+        "--respect-workspace-trust",
+        "false",
+      ],
+      {
+        cwd: input.cwd,
+        env: { ...process.env, ...this.options.env },
+        // No terminal: a child that would prompt gets end-of-file and stops
+        // rather than waiting where the fleet shows it as still working.
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+
+    const events: DelegateEvent[] = [];
+    let resolveNext: (() => void) | undefined;
+    const wake = () => {
+      resolveNext?.();
+      resolveNext = undefined;
+    };
+
+    let answer = "";
+    let failure = "";
+    let done = false;
+    let startFailure: Error | undefined;
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      answer += chunk;
+    });
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      failure += chunk;
+    });
+
+    const onAbort = () => child.kill("SIGKILL");
+    signal.addEventListener("abort", onAbort, { once: true });
+
+    child.on("error", (cause: Error) => {
+      startFailure =
+        (cause as NodeJS.ErrnoException).code === "ENOENT"
+          ? new Error(`The \`${command}\` command is not on PATH.`)
+          : cause;
+      done = true;
+      wake();
+    });
+    child.on("close", (code: number | null) => {
+      const text = answer.trim();
+      if (code === 0) {
+        if (text.length > 0) events.push({ type: "text", value: text });
+      } else {
+        const said = `${failure.trim()}\n${text}`.trim();
+        events.push({
+          type: "error",
+          message:
+            said.length > 0
+              ? said
+              : `The \`${command}\` child exited with code ${String(code ?? -1)}.`,
+        });
+      }
+      done = true;
+      wake();
+    });
+
+    try {
+      for (;;) {
+        while (events.length > 0) {
+          const next = events.shift();
+          if (next !== undefined) yield next;
+        }
+        if (done) break;
+        await new Promise<void>((resolve) => {
+          resolveNext = resolve;
+        });
+      }
+    } finally {
+      signal.removeEventListener("abort", onAbort);
+    }
+
+    if (startFailure !== undefined) throw startFailure;
+  }
+}
+
 export class OpencodeHarness implements DelegateHarness {
   readonly agent = "opencode";
   readonly model: string;

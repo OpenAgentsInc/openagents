@@ -19,7 +19,7 @@ import type { ChildGrant } from "./coder-child-gateway.js";
 import { startChildGateway } from "./coder-child-gateway.js";
 import { writeChildHarnessConfig } from "./coder-child-config.js";
 import type { DelegationOutcome } from "./coder-delegate.js";
-import { DelegateFleet, describePrompt, OpencodeHarness } from "./coder-delegate.js";
+import { DelegateFleet, DevinHarness, describePrompt, OpencodeHarness } from "./coder-delegate.js";
 import { fleetPlainLines } from "./coder-fleet.js";
 import { runCoderPlain } from "./coder-plain.js";
 import type { CoderDelegation } from "./coder-session.js";
@@ -1580,6 +1580,24 @@ async function buildDelegation(options: {
   const named = options.model ?? process.env["OPENAGENTS_DELEGATE_MODEL"];
   const command = options.command ?? process.env["OPENAGENTS_DELEGATE_COMMAND"];
   const namedConfig = options.configPath ?? process.env["OPENAGENTS_DELEGATE_CONFIG"];
+
+  // `--child-model devin` runs children on the Devin CLI instead. It brings its
+  // own credentials and its own model, so it needs neither this session's grant
+  // nor a gateway, and it is refused up front when it is not installed rather
+  // than once per child.
+  if (named !== undefined && /^devin(:(.+))?$/.test(named.trim())) {
+    const mode = /^devin:(.+)$/.exec(named.trim())?.[1];
+    const harness = new DevinHarness(mode === undefined ? {} : { permissionMode: mode });
+    const registry = new CoderTaskRegistry();
+    const fleet = new DelegateFleet(registry, harness, {
+      maxConcurrent: Math.max(1, options.concurrency),
+      cwd: options.cwd,
+    });
+    return {
+      delegation: { registry, fleet, label: `${harness.agent} (${harness.model})` },
+      close: () => Promise.resolve(),
+    };
+  }
 
   let model: string;
   let configPath: string | undefined;
