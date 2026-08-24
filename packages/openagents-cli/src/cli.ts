@@ -27,6 +27,7 @@ import { CoderSession, DummyReplySource } from "./coder-session.js";
 import { CoderTaskRegistry } from "./coder-tasks.js";
 import { runCoderUi } from "./coder-ui.js";
 import { backendIds } from "./coder-backends.js";
+import { OllamaReplySource, isOllamaModelFlag, parseOllamaModelFlag } from "./coder-ollama.js";
 import { openThread, ThreadUnavailable, type ThreadReplySource } from "./coder-thread.js";
 import { delegateTool } from "./coder-tools.js";
 import { describeWorkspace } from "./coder-workspace.js";
@@ -1415,13 +1416,16 @@ const coderReasoningFlag = Flag.choice("reasoning", [
   Flag.optional,
   Flag.withDescription("Reasoning effort recorded on the thread as its admitted execution shape"),
 );
-// The accepted values are still the chat API's published backends. A thread's
-// grant pins its own model and `POST /api/v3/threads` publishes no model
-// parameter, so naming one here cannot change which model answers; the session
-// says so rather than letting the flag look like it worked.
-const coderModelFlag = Flag.choice("model", backendIds() as string[]).pipe(
+// `--model` can name an `ollama:<model>` local model or a chat API backend.
+// For a chat API backend a thread's grant still pins its own model and
+// `POST /api/v3/threads` publishes no model parameter, so naming one cannot
+// change which model answers. For `ollama:<model>` the local Ollama server is
+// used directly and the named model is the one that runs.
+const coderModelFlag = Flag.string("model").pipe(
   Flag.optional,
-  Flag.withDescription("A chat API backend. The thread's grant pins its own model"),
+  Flag.withDescription(
+    "A model name. Use `ollama:<model>` for a local Ollama server, or a chat API backend id",
+  ),
 );
 
 /**
@@ -1640,35 +1644,58 @@ const coderCommand = Command.make(
       const workspace = describeWorkspace();
       const endpoint = yield* resolveApiEndpoint(endpointOverrides(flags));
 
+      // A `--model` value that starts with `ollama:` goes to the local Ollama
+      // server and needs no account credential.
+      const wantsOllama = Option.isSome(model) && isOllamaModelFlag(model.value);
+      const ollamaName =
+        wantsOllama && Option.isSome(model) ? parseOllamaModelFlag(model.value) : undefined;
+
+      // Any other `--model` value still has to name a published backend. The
+      // flag takes a string so an `ollama:` prefix can reach the local server,
+      // which costs the enum `Flag.choice` used to enforce, so the check moves
+      // here rather than disappearing.
+      if (Option.isSome(model) && !wantsOllama && !backendIds().includes(model.value)) {
+        return yield* new InputError({
+          message: `Unknown model ${model.value}. Use ollama:<model> for a local Ollama server, or one of: ${backendIds().join(", ")}.`,
+        });
+      }
+
       // The session opens a thread of its own and spends that thread's grant,
       // so the CLI still holds no provider key and nothing typed here reaches
       // the account's conversation. Without a credential it falls back to the
       // stand-in and says so rather than failing.
-      const stored = offline
-        ? Option.none()
-        : yield* findToken(endpoint.origin).pipe(
-            Effect.catchTag("OpenAgentsCli.CredentialPersistenceUnavailable", () =>
-              Effect.succeed(Option.none()),
-            ),
-          );
+      const stored =
+        offline || wantsOllama
+          ? Option.none()
+          : yield* findToken(endpoint.origin).pipe(
+              Effect.catchTag("OpenAgentsCli.CredentialPersistenceUnavailable", () =>
+                Effect.succeed(Option.none()),
+              ),
+            );
 
-      const thread = Option.isSome(stored)
-        ? yield* Effect.tryPromise({
-            try: () =>
-              openThread({
-                origin: endpoint.origin,
-                token: Redacted.value(stored.value.token),
-                objective: `openagents coder in ${workspace.repository} on ${workspace.branch}`,
-                reasoning: Option.getOrUndefined(reasoning),
-              }),
-            // The server's own code and sentence, which is what turns a ninth
-            // concurrent session from an obscure failure into an instruction
-            // naming the ceiling and how many threads the account is holding.
-            catch: (cause) => coderRefusal(endpoint.origin, cause),
-          })
-        : undefined;
+      const thread =
+        Option.isSome(stored) && !wantsOllama
+          ? yield* Effect.tryPromise({
+              try: () =>
+                openThread({
+                  origin: endpoint.origin,
+                  token: Redacted.value(stored.value.token),
+                  objective: `openagents coder in ${workspace.repository} on ${workspace.branch}`,
+                  reasoning: Option.getOrUndefined(reasoning),
+                }),
+              // The server's own code and sentence, which is what turns a ninth
+              // concurrent session from an obscure failure into an instruction
+              // naming the ceiling and how many threads the account is holding.
+              catch: (cause) => coderRefusal(endpoint.origin, cause),
+            })
+          : undefined;
 
-      const source = thread ?? new DummyReplySource();
+      // A `--model ollama:<name>` session answers from the local Ollama server,
+      // so it takes neither a thread nor the stand-in.
+      const source =
+        wantsOllama && ollamaName !== undefined
+          ? new OllamaReplySource({ model: ollamaName })
+          : (thread ?? new DummyReplySource());
 
       // Children get their own thread on their own model. The conversation
       // stays on the model it opened with, and a fan-out spends a budget the
@@ -1720,17 +1747,24 @@ const coderCommand = Command.make(
         session.notice(`This session cannot delegate: ${childThread.reason}`);
       }
 
-      if (Option.isNone(stored) && !offline) {
+      if (Option.isNone(stored) && !offline && !wantsOllama) {
         session.notice(
           "No stored credential, so replies come from the built-in stand-in. " +
             "Run `openagents auth login` to reach a real model.",
         );
       }
 
+      if (wantsOllama && ollamaName === undefined) {
+        session.notice(
+          "`--model ollama:` is missing a model name. Use `ollama:<model>`, " +
+            "for example `ollama:qwen3.8:27b-mtp-q8_0`.",
+        );
+      }
+
       // A grant pins the model the proxy will use, and the thread route takes
       // no model parameter, so a named backend cannot reach this turn. Saying
       // nothing would leave a reader with a flag that appeared to work.
-      if (thread !== undefined && Option.isSome(model)) {
+      if (thread !== undefined && Option.isSome(model) && !wantsOllama) {
         session.notice(
           `This thread's grant pins ${thread.model}. \`--model\` names a chat API ` +
             "backend, which the inference proxy does not route to, so it had no effect.",
