@@ -130,6 +130,28 @@ describe("openThread", () => {
     expect(calls[0]?.body).toEqual({ objective: "coder in repo on main", reasoning: "high" });
   });
 
+  it("sends the repository beside the objective, so resume can filter structurally", async () => {
+    const calls = stub({});
+    await openThread({
+      origin: ORIGIN,
+      token: ACCOUNT_TOKEN,
+      objective: "openagents coder in OpenAgentsInc/openagents.com on main",
+      repository: "OpenAgentsInc/openagents.com",
+    });
+
+    expect(calls[0]?.body).toEqual({
+      objective: "openagents coder in OpenAgentsInc/openagents.com on main",
+      repository: "OpenAgentsInc/openagents.com",
+    });
+  });
+
+  it("omits the repository key entirely when none is named", async () => {
+    const calls = stub({});
+    await open();
+
+    expect(calls[0]?.body).toEqual({ objective: "coder in repo on main" });
+  });
+
   it("names the model the thread's grant should pin, so children can run on another", async () => {
     const calls = stub({});
     await openThread({

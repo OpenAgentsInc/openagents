@@ -226,6 +226,46 @@ describe("listThreads", () => {
     expect(threads[0]?.repository).toBe("openagents");
     expect(threads[0]?.eventCount).toBe(7);
   });
+
+  it("prefers the thread's own repository field over the parsed objective", async () => {
+    const transport = async () =>
+      new Response(
+        JSON.stringify({
+          threads: [
+            {
+              id: THREAD_ID,
+              status: "open",
+              // The sentence names one repository, the field another. The
+              // field wins: it is the thread's own record, written at open.
+              objective: "openagents coder in renamed-checkout on main",
+              repository: "OpenAgentsInc/openagents.com",
+              event_count: 2,
+              started_at: "2026-08-24T12:00:00Z",
+            },
+            {
+              id: "older-thread-before-the-field",
+              status: "open",
+              // A thread opened before the server recorded the field still
+              // resolves through the sentence this CLI composed.
+              objective: "openagents coder in openagents on main",
+              repository: null,
+              event_count: 1,
+              started_at: "2026-08-23T12:00:00Z",
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+
+    const threads = await listThreads({ origin: ORIGIN, token: TOKEN, fetch: transport });
+
+    expect(threads[0]?.repository).toBe("OpenAgentsInc/openagents.com");
+    expect(threads[1]?.repository).toBe("openagents");
+
+    // And the picker filter acts on the structured field, so the renamed
+    // sentence does not hide the thread from its repository.
+    expect(resumableThreads(threads, "OpenAgentsInc/openagents.com", false)).toEqual([threads[0]]);
+  });
 });
 
 describe("fetchAllEvents", () => {

@@ -1967,6 +1967,10 @@ const coderCommand = Command.make(
                     origin: endpoint.origin,
                     token: Redacted.value(stored.value.token),
                     objective: `openagents coder in ${workspace.repository} on ${workspace.branch}`,
+                    // The structured field beside the sentence: the server
+                    // records it on the thread, and `--resume` filters on it
+                    // rather than parsing the objective back.
+                    repository: workspace.repository,
                     reasoning: Option.getOrUndefined(reasoning),
                   }),
                 // The server's own code and sentence, which is what turns a ninth

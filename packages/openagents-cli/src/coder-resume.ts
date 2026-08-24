@@ -26,12 +26,13 @@
  * Neither replay touches the transcript writer. The events being replayed are
  * the server's own; posting them again would double the record.
  *
- * The repository filter reads the objective. `POST /api/v3/threads` records
- * no structured repository or workspace field — the objective sentence is the
- * only place the opening session names where it ran — so the filter parses
- * back the exact sentence this CLI composes (`openagents coder in <repo> on
- * <branch>`). A thread opened with any other objective has no repository to
- * match and appears only under `--all`.
+ * The repository filter prefers the thread's own field. Since
+ * openagents.com #210, `POST /api/v3/threads` records a structured
+ * `repository` and every thread view returns it, so a summary takes that
+ * first. Threads opened before the field existed carry none, so the objective
+ * sentence this CLI composes (`openagents coder in <repo> on <branch>`) is
+ * still parsed back as the fallback. A thread with neither has no repository
+ * to match and appears only under `--all`.
  */
 
 import { createInterface } from "node:readline";
@@ -51,7 +52,10 @@ export interface ThreadSummary {
   readonly objective: string;
   readonly eventCount: number;
   readonly startedAt: string | undefined;
-  /** Parsed from the objective when this CLI composed it; otherwise absent. */
+  /**
+   * The thread's own `repository` field when the server reports one, else
+   * parsed from the objective when this CLI composed it; otherwise absent.
+   */
   readonly repository: string | undefined;
   readonly branch: string | undefined;
 }
@@ -423,13 +427,19 @@ async function get(
 function summaryOf(raw: Record<string, unknown>): ThreadSummary {
   const objective = text(raw["objective"]);
   const named = repositoryOf(objective);
+  // The structured field first: it is the thread's own record of where it
+  // ran, written at open. The parsed sentence remains only for threads opened
+  // before the server recorded one.
+  const recorded = raw["repository"];
+  const repository =
+    typeof recorded === "string" && recorded.length > 0 ? recorded : named?.repository;
   return {
     id: text(raw["id"]),
     status: text(raw["status"]) || "unknown",
     objective,
     eventCount: count(raw["event_count"]),
     startedAt: typeof raw["started_at"] === "string" ? raw["started_at"] : undefined,
-    repository: named?.repository,
+    repository,
     branch: named?.branch,
   };
 }

@@ -122,6 +122,12 @@ export interface ThreadOptions {
   readonly token: string;
   /** What this body of work is for. The server requires one. */
   readonly objective: string;
+  /**
+   * The repository the work concerns, as `owner/name`. Recorded structurally
+   * on the thread so `--resume` filters the picker on the server's field
+   * rather than parsing the objective sentence back (openagents.com #210).
+   */
+  readonly repository?: string | undefined;
   /** Recorded on the thread as its admitted execution shape. */
   readonly reasoning?: string | undefined;
   /**
@@ -167,6 +173,7 @@ export async function openThread(options: ThreadOptions): Promise<ThreadReplySou
     },
     body: JSON.stringify({
       objective: options.objective,
+      ...(options.repository === undefined ? {} : { repository: options.repository }),
       ...(options.reasoning === undefined ? {} : { reasoning: options.reasoning }),
       ...(options.model === undefined ? {} : { model: options.model }),
     }),
