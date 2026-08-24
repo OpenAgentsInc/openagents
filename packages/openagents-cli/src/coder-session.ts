@@ -22,6 +22,7 @@
 import type { DelegationOutcome, DelegationRequest } from "./coder-delegate.js";
 import { parseDelegateCommand } from "./coder-delegate.js";
 import type { CoderTask, CoderTaskId, CoderTaskRegistry } from "./coder-tasks.js";
+import type { CoderTool } from "./coder-tools.js";
 
 /** What a reply source produces. One entry kind per member. */
 export type ReplyChunk =
@@ -122,6 +123,15 @@ export interface ReplySource {
    * only where pressing it would do something.
    */
   cycleBackend?(): string;
+  /**
+   * Declare the tools the model may call.
+   *
+   * Optional because the tool runtime is the client's, not the transport's: a
+   * source reaches it by running the calls a model asks for and reporting them
+   * as chunks. A source that cannot do that leaves this undefined, and the
+   * session then declares no tools rather than declaring tools nothing runs.
+   */
+  useTools?(tools: ReadonlyArray<CoderTool>): void;
   /**
    * Yield the reply to `prompt` in chunks. Rendering appends each chunk as it
    * arrives, so a slow source shows partial text rather than nothing.

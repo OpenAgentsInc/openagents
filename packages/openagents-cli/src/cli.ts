@@ -23,6 +23,7 @@ import { DelegateFleet, describePrompt, OpencodeHarness } from "./coder-delegate
 import { fleetPlainLines } from "./coder-fleet.js";
 import { runCoderPlain } from "./coder-plain.js";
 import type { CoderDelegation } from "./coder-session.js";
+import type { ReplySource } from "./coder-session.js";
 import { CoderSession, DummyReplySource } from "./coder-session.js";
 import { CoderTaskRegistry } from "./coder-tasks.js";
 import { runCoderUi } from "./coder-ui.js";
@@ -1664,8 +1665,11 @@ const coderCommand = Command.make(
       // so the CLI still holds no provider key and nothing typed here reaches
       // the account's conversation. Without a credential it falls back to the
       // stand-in and says so rather than failing.
+      // An Ollama session reads the credential too, though it opens no thread of
+      // its own. The parent answers locally; children still spend a server
+      // grant, so a local session delegates exactly as a thread session does.
       const stored =
-        offline || wantsOllama
+        offline
           ? Option.none()
           : yield* findToken(endpoint.origin).pipe(
               Effect.catchTag("OpenAgentsCli.CredentialPersistenceUnavailable", () =>
@@ -1692,7 +1696,7 @@ const coderCommand = Command.make(
 
       // A `--model ollama:<name>` session answers from the local Ollama server,
       // so it takes neither a thread nor the stand-in.
-      const source =
+      const source: ReplySource =
         wantsOllama && ollamaName !== undefined
           ? new OllamaReplySource({ model: ollamaName })
           : (thread ?? new DummyReplySource());
@@ -1701,7 +1705,7 @@ const coderCommand = Command.make(
       // stays on the model it opened with, and a fan-out spends a budget the
       // reader's next question does not share.
       const childThread =
-        thread !== undefined && Option.isSome(stored)
+        Option.isSome(stored)
           ? yield* Effect.promise(() =>
               openChildThread({
                 origin: endpoint.origin,
@@ -1736,8 +1740,8 @@ const coderCommand = Command.make(
       // remember a slash command. A turn that needs three agents asks for them
       // mid-sentence, and `/delegate` stays as the way to launch a fan-out
       // without spending a turn to ask for one.
-      if (thread !== undefined && setup !== undefined) {
-        thread.useTools([delegateTool(setup.delegation)]);
+      if (setup !== undefined) {
+        source.useTools?.([delegateTool(setup.delegation)]);
       }
 
       // Delegation is off rather than quietly running children on the
