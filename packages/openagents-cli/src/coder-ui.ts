@@ -112,6 +112,14 @@ export interface CoderUiOptions {
   readonly skills?: SkillSelection | undefined;
   /** Re-declare the tools after a skill is switched. */
   readonly onSkillsChanged?: (() => void) | undefined;
+  /**
+   * Load a WASM plugin from a manifest path and say what happened.
+   *
+   * Experimental, for `/plugin load <manifest>`. The caller owns the plugin
+   * registry and the tool re-declaration; this interface only relays the path
+   * and shows the sentence that comes back.
+   */
+  readonly loadPlugin?: ((manifestPath: string) => string) | undefined;
   readonly stdin: NodeJS.ReadStream;
   readonly stdout: NodeJS.WriteStream;
 }
@@ -523,9 +531,11 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         // row in hand: eight descriptions at once is the wall of text the
         // catalog exists to avoid.
         if (focused) {
-          rows.push(...wrapStyled(skill.description, Math.max(20, width - 8), DIM).map(
-            (line) => `        ${line}`,
-          ));
+          rows.push(
+            ...wrapStyled(skill.description, Math.max(20, width - 8), DIM).map(
+              (line) => `        ${line}`,
+            ),
+          );
         }
       }
 
@@ -545,11 +555,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         rows.push(
           `${DIM}${"─".repeat(Math.max(0, width))}${RESET}`,
           hints(
-            [
-              { text: "↑↓ move" },
-              { text: "space toggles" },
-              { text: "esc returns" },
-            ],
+            [{ text: "↑↓ move" }, { text: "space toggles" }, { text: "esc returns" }],
             "",
             width,
           ),
@@ -558,10 +564,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         paint(rows, rows.length, 1);
         return;
       }
-      const transcriptHeight = Math.max(
-        1,
-        height - STATUS_ROWS - COMPOSER_ROWS - SPACER_ROWS - 1,
-      );
+      const transcriptHeight = Math.max(1, height - STATUS_ROWS - COMPOSER_ROWS - SPACER_ROWS - 1);
 
       const fleet = fleetLines(snapshot, width);
       // The fleet takes its rows from the transcript, not from the chrome: the
@@ -764,6 +767,23 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         screen = "skills";
         skillRow = 0;
         painted = [];
+        render();
+        return;
+      }
+
+      // `/plugin load` changes what the next turn carries, like `/skills`, so
+      // it is not something to say to the model. Experimental.
+      const pluginLoad = /^\/plugin\s+load\s+(.+)$/.exec(prompt.trim());
+      if (pluginLoad !== null || /^\/plugin\b/.test(prompt.trim())) {
+        const path = pluginLoad?.[1]?.trim();
+        session.notice(
+          path === undefined || path.length === 0
+            ? "Usage: /plugin load <path-to-manifest.json>. Experimental: loads a WASM plugin " +
+                "as a session tool."
+            : options.loadPlugin === undefined
+              ? "This session cannot load plugins."
+              : options.loadPlugin(path),
+        );
         render();
         return;
       }

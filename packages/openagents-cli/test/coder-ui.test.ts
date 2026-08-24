@@ -394,6 +394,7 @@ describe("runCoderUi", () => {
 describe("the /skills screen", () => {
   const skill = (name: string, description: string) => ({
     name,
+    auto: false,
     description,
     body: "Body.",
     path: `/tmp/${name}/SKILL.md`,
@@ -523,7 +524,6 @@ describe("the /skills screen", () => {
     screenUnderTest.stdin.emit("data", "\x04");
     await screenUnderTest.running;
   });
-
 
   it("returns on a lone escape, the way a terminal sends one", async () => {
     const screenUnderTest = await open(selection());
@@ -655,7 +655,6 @@ describe("typing while a turn is running", () => {
     stdin.emit("data", "\x04");
     await running;
   });
-
 
   it("steers on enter and queues on shift+enter", async () => {
     const stdin = new FakeIn();

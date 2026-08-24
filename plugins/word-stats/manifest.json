@@ -1,0 +1,67 @@
+{
+  "manifest_version": 1,
+  "name": "word_stats",
+  "version": "0.1.0",
+  "author": "OpenAgents",
+  "description": "Compute statistics for a piece of text: byte, character, word, and line counts, the longest word, and the most frequent word. Pure computation with no file, network, or environment access. Use it when asked to measure or summarize the size or composition of text.",
+  "artifact": {
+    "path": "word_stats.wasm",
+    "digest": "sha256:7c724f993da2d9de7c1256b020e2c80e6b998cf3c484d123efeebbab8afc9947"
+  },
+  "abi": {
+    "kind": "packet-v0",
+    "entry": "handle_packet",
+    "alloc": "packet_alloc"
+  },
+  "interface": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "The text to analyze."
+        }
+      },
+      "required": ["text"],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "object",
+          "properties": {
+            "bytes": { "type": "integer" },
+            "chars": { "type": "integer" },
+            "words": { "type": "integer" },
+            "lines": { "type": "integer" },
+            "longest_word": { "type": "string" },
+            "top_word": {
+              "type": "object",
+              "properties": {
+                "word": { "type": "string" },
+                "count": { "type": "integer" }
+              }
+            }
+          }
+        },
+        "refusal": {
+          "type": "object",
+          "properties": {
+            "code": { "type": "string" },
+            "reason": { "type": "string" }
+          },
+          "required": ["code", "reason"]
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "mounts": [],
+    "hosts": [],
+    "timeout_ms": 2000,
+    "memory_max_mib": 64
+  },
+  "price_msats": null,
+  "license": "Apache-2.0"
+}

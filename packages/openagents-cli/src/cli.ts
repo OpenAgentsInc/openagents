@@ -46,7 +46,15 @@ import {
 } from "./coder-ollama.js";
 import { openThread, ThreadUnavailable, type ThreadReplySource } from "./coder-thread.js";
 import { delegateTool, openagentsTool, shellTool, skillTool } from "./coder-tools.js";
+import {
+  describeLoad,
+  isRefusal,
+  loadPluginFromManifest,
+  pluginTool,
+  type LoadedPlugin,
+} from "./coder-plugins.js";
 import { spawnSync } from "node:child_process";
+import { resolve as resolvePath } from "node:path";
 
 import { rebuild, RELOAD_EXIT_CODE, sourceCheckout } from "./coder-reload.js";
 import { loadSkillSelection, standingContext } from "./coder-skills.js";
@@ -1603,9 +1611,7 @@ async function buildDelegation(options: {
   // than guess.
   const laneFor = (choice: string) => {
     const harness = /^devin(:.+)?$/.test(choice)
-      ? new DevinHarness(
-          choice.startsWith("devin:") ? { permissionMode: choice.slice(6) } : {},
-        )
+      ? new DevinHarness(choice.startsWith("devin:") ? { permissionMode: choice.slice(6) } : {})
       : new OpencodeHarness({
           model: choice,
           ...(command === undefined ? {} : { command }),
@@ -1762,7 +1768,9 @@ const coderCommand = Command.make(
       // neither.
       const named = Option.getOrUndefined(model);
       const localModel =
-        named === undefined && !offline ? yield* Effect.promise(() => discoverOllamaModel()) : undefined;
+        named === undefined && !offline
+          ? yield* Effect.promise(() => discoverOllamaModel())
+          : undefined;
 
       const wantsOllama = named === undefined ? localModel !== undefined : isOllamaModelFlag(named);
       const askedFor =
@@ -1811,14 +1819,13 @@ const coderCommand = Command.make(
       // An Ollama session reads the credential too, though it opens no thread of
       // its own. The parent answers locally; children still spend a server
       // grant, so a local session delegates exactly as a thread session does.
-      const stored =
-        offline
-          ? Option.none()
-          : yield* findToken(endpoint.origin).pipe(
-              Effect.catchTag("OpenAgentsCli.CredentialPersistenceUnavailable", () =>
-                Effect.succeed(Option.none()),
-              ),
-            );
+      const stored = offline
+        ? Option.none()
+        : yield* findToken(endpoint.origin).pipe(
+            Effect.catchTag("OpenAgentsCli.CredentialPersistenceUnavailable", () =>
+              Effect.succeed(Option.none()),
+            ),
+          );
 
       const thread =
         Option.isSome(stored) && !wantsOllama
@@ -1850,16 +1857,15 @@ const coderCommand = Command.make(
       // Children get their own thread on their own model. The conversation
       // stays on the model it opened with, and a fan-out spends a budget the
       // reader's next question does not share.
-      const childThread =
-        Option.isSome(stored)
-          ? yield* Effect.promise(() =>
-              openChildThread({
-                origin: endpoint.origin,
-                token: Redacted.value(stored.value.token),
-                objective: `delegated children of openagents coder in ${workspace.repository}`,
-              }),
-            )
-          : undefined;
+      const childThread = Option.isSome(stored)
+        ? yield* Effect.promise(() =>
+            openChildThread({
+              origin: endpoint.origin,
+              token: Redacted.value(stored.value.token),
+              objective: `delegated children of openagents coder in ${workspace.repository}`,
+            }),
+          )
+        : undefined;
 
       const childGrant = childThread?.kind === "opened" ? childThread.thread.childGrant : undefined;
 
@@ -1907,6 +1913,11 @@ const coderCommand = Command.make(
       // Re-declared rather than declared once: switching a skill off in
       // `/skills` has to change what the next turn carries, and the tool
       // holding the catalog is the thing that changes.
+      // Session-scoped WASM plugins, loaded with `/plugin load <manifest>`.
+      // Experimental: the demo ahead of the plugin walking skeleton. A loaded
+      // plugin materializes one tool for the rest of this session and nothing
+      // outlives the process.
+      const plugins: LoadedPlugin[] = [];
       const declareTools = () => {
         const active = skills.active();
         const tools = [
@@ -1914,10 +1925,25 @@ const coderCommand = Command.make(
           ...(active.length === 0 ? [] : [skillTool(active)]),
           openagentsTool(),
           ...(setup === undefined ? [] : [delegateTool(setup.delegation)]),
+          ...plugins.map((plugin) => pluginTool(plugin)),
         ];
         source.useTools?.(tools);
       };
       declareTools();
+
+      const loadPlugin = (manifestPath: string): string => {
+        const outcome = loadPluginFromManifest(resolvePath(process.cwd(), manifestPath));
+        if (!isRefusal(outcome)) {
+          // Reloading a name replaces it: a demo iterates on one plugin, and
+          // two tools with one name would be a declaration the model cannot
+          // tell apart.
+          const at = plugins.findIndex((held) => held.manifest.name === outcome.manifest.name);
+          if (at >= 0) plugins.splice(at, 1);
+          plugins.push(outcome);
+          declareTools();
+        }
+        return describeLoad(outcome);
+      };
 
       // Delegation is off rather than quietly running children on the
       // conversation's model, so the refusal that turned it off is what the
@@ -1961,12 +1987,14 @@ const coderCommand = Command.make(
                 stdout: process.stdout,
                 skills,
                 onSkillsChanged: declareTools,
+                loadPlugin,
               })
             : await runCoderPlain(session, {
                 stdin: process.stdin,
                 stdout: process.stdout,
                 prompt: oneShot,
                 skills,
+                loadPlugin,
               });
         } finally {
           // An account holds eight open threads at once. A terminal that closed

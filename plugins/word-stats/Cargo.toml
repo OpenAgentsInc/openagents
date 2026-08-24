@@ -1,0 +1,24 @@
+[package]
+name = "word-stats"
+version = "0.1.0"
+edition = "2021"
+description = "Demo guest plugin for the OpenAgents coder plugin walking skeleton: text statistics, bytes in, bytes out."
+license = "Apache-2.0"
+
+# Standalone on purpose: the demo artifact must not join the monorepo's cargo
+# workspace build. The real skeleton decides where guest crates live.
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+# No dependencies on purpose: the artifact builds offline with a stock
+# `rustup target add wasm32-unknown-unknown` toolchain, and the checked-in
+# .wasm can be reproduced without touching a registry.
+
+[profile.release]
+opt-level = "z"
+lto = true
+panic = "abort"
+codegen-units = 1
+strip = true

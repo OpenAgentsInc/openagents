@@ -29,6 +29,13 @@ export interface CoderPlainOptions {
   readonly prompt?: string | undefined;
   /** The workspace's skills, so `/skills` can report them. */
   readonly skills?: SkillSelection | undefined;
+  /**
+   * Load a WASM plugin from a manifest path and say what happened.
+   *
+   * Experimental, for `/plugin load <manifest>`. The caller owns the plugin
+   * registry and the tool re-declaration.
+   */
+  readonly loadPlugin?: ((manifestPath: string) => string) | undefined;
 }
 
 export async function runCoderPlain(
@@ -100,9 +107,26 @@ export async function runCoderPlain(
           : `\n${all
               .map(
                 (skill) =>
-                  `${options.skills?.isOn(skill.name) ?? true ? "[on] " : "[off]"} ${skill.name}`,
+                  `${(options.skills?.isOn(skill.name) ?? true) ? "[on] " : "[off]"} ${skill.name}`,
               )
               .join("\n")}\nRun the interactive session to switch one.\n`,
+      );
+      return;
+    }
+
+    // The same command as in the interface: it changes what the next turn
+    // carries, so it is not sent to the model. Experimental.
+    const pluginLoad = /^\/plugin\s+load\s+(.+)$/.exec(line.trim());
+    if (pluginLoad !== null || /^\/plugin\b/.test(line.trim())) {
+      const path = pluginLoad?.[1]?.trim();
+      stdout.write(
+        `\n${
+          path === undefined || path.length === 0
+            ? "Usage: /plugin load <path-to-manifest.json>. Experimental: loads a WASM plugin as a session tool."
+            : options.loadPlugin === undefined
+              ? "This session cannot load plugins."
+              : options.loadPlugin(path)
+        }\n`,
       );
       return;
     }
