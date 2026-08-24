@@ -146,6 +146,13 @@ export class OllamaReplySource implements ReplySource {
   private readonly modelName: string;
   private readonly transcript: WireMessage[] = [];
   private tools: ReadonlyArray<CoderTool> = [];
+  /**
+   * Messages that arrived mid-turn, waiting for the next step of it.
+   *
+   * Read between two model calls rather than at the end of the turn, which is
+   * the difference between steering a model and waiting one out.
+   */
+  private steered: string[] = [];
   private callCount = 0;
 
   get model(): string {
@@ -216,6 +223,12 @@ export class OllamaReplySource implements ReplySource {
    * which model is the part a reader needs, and so is knowing the transcript
    * survives.
    */
+  /** Take a message for the next step of the running turn. */
+  steer(text: string): boolean {
+    this.steered.push(text);
+    return true;
+  }
+
   async *reply(prompt: string, signal: AbortSignal): AsyncIterable<ReplyChunk> {
     try {
       yield* this.turn(prompt, signal);
@@ -250,6 +263,13 @@ export class OllamaReplySource implements ReplySource {
 
     for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
       if (signal.aborted) return;
+
+      // Anything the reader said since the last step joins here, before the
+      // model is asked again. It reads as an ordinary turn in the conversation,
+      // because that is what it is.
+      for (const said of this.steered.splice(0)) {
+        this.transcript.push({ role: "user", content: said });
+      }
 
       const calls: OllamaToolCall[] = [];
       let assistant = "";

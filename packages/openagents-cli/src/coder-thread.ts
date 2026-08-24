@@ -228,6 +228,13 @@ export class ThreadReplySource implements ReplySource {
   private tools: ReadonlyArray<CoderTool> = [];
   /** Set for the one round that must answer rather than call another tool. */
   private mustAnswer = false;
+  /**
+   * Messages that arrived mid-turn, waiting for the next step of it.
+   *
+   * Read between two model calls rather than at the end of the turn, which is
+   * the difference between steering a model and waiting one out.
+   */
+  private steered: string[] = [];
 
   constructor(private readonly state: SourceState) {
     this.threadId = state.threadId;
@@ -313,6 +320,12 @@ export class ThreadReplySource implements ReplySource {
     };
   }
 
+  /** Take a message for the next step of the running turn. */
+  steer(text: string): boolean {
+    this.steered.push(text);
+    return true;
+  }
+
   async *reply(prompt: string, signal: AbortSignal): AsyncIterable<ReplyChunk> {
     // Per turn, not per session: a turn that had to answer without tools must
     // not leave the next one without them.
@@ -321,6 +334,12 @@ export class ThreadReplySource implements ReplySource {
 
     try {
       for (let step = 0; ; step += 1) {
+        // Anything the reader said since the last step joins here, before the
+        // model is asked again.
+        for (const said of this.steered.splice(0)) {
+          this.transcript.push({ role: "user", content: said });
+        }
+
         const calls: WireCall[] = [];
         let assistant = "";
 

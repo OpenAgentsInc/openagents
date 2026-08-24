@@ -197,6 +197,18 @@ export interface ReplySource {
    */
   useTools?(tools: ReadonlyArray<CoderTool>): void;
   /**
+   * Take a message mid-turn, to be read at the next step of the running turn.
+   *
+   * A turn is a loop of model calls, and between two of them is a place where
+   * another message can join without stopping anything. That is what steering
+   * is: not interrupting the model, and not waiting for it to finish, but
+   * putting a sentence where it will be read next.
+   *
+   * Returns false when the source cannot take one, and the caller then holds it
+   * until the turn ends rather than dropping it.
+   */
+  steer?(text: string): boolean;
+  /**
    * The standing context this source sends with every turn, as text.
    *
    * What `/system` shows. A source reports what it actually sends rather than a
@@ -505,6 +517,16 @@ export class CoderSession {
     // that silently ignores the key is one that cannot be steered at all.
     if (this.controller !== undefined) {
       this.entries.push({ role: "you", text: prompt, settled: true, at: Date.now() });
+
+      // Steering first: a source that runs a loop of model calls can read this
+      // at its next step, so the model sees it while it is still working. A
+      // source that cannot holds it until the turn ends instead of dropping it.
+      if (this.source.steer?.(prompt) === true) {
+        this.notice("Steering: the model reads this at its next step.");
+        this.emit();
+        return;
+      }
+
       this.pending.push(prompt);
       this.notice(
         this.pending.length === 1
