@@ -31,7 +31,7 @@ import { backendIds } from "./coder-backends.js";
 import { OllamaReplySource, isOllamaModelFlag, parseOllamaModelFlag } from "./coder-ollama.js";
 import { openThread, ThreadUnavailable, type ThreadReplySource } from "./coder-thread.js";
 import { delegateTool, skillTool } from "./coder-tools.js";
-import { discoverSkills } from "./coder-skills.js";
+import { loadSkillSelection } from "./coder-skills.js";
 import { describeWorkspace } from "./coder-workspace.js";
 import { ComputerClient } from "./computer-client.js";
 import { ComputerUp } from "./computer-up.js";
@@ -1744,14 +1744,19 @@ const coderCommand = Command.make(
       // Skills do not depend on delegation: a session with no credential still
       // reads this repository's conventions, it just cannot hand work to a
       // child. A session with neither declares no tools at all.
-      const skills = discoverSkills();
-      const tools = [
-        ...(skills.length === 0 ? [] : [skillTool(skills)]),
-        ...(setup === undefined ? [] : [delegateTool(setup.delegation)]),
-      ];
-      if (tools.length > 0) {
+      const skills = loadSkillSelection();
+      // Re-declared rather than declared once: switching a skill off in
+      // `/skills` has to change what the next turn carries, and the tool
+      // holding the catalog is the thing that changes.
+      const declareTools = () => {
+        const active = skills.active();
+        const tools = [
+          ...(active.length === 0 ? [] : [skillTool(active)]),
+          ...(setup === undefined ? [] : [delegateTool(setup.delegation)]),
+        ];
         source.useTools?.(tools);
-      }
+      };
+      declareTools();
 
       // Delegation is off rather than quietly running children on the
       // conversation's model, so the refusal that turned it off is what the
@@ -1790,11 +1795,17 @@ const coderCommand = Command.make(
       const code = yield* Effect.promise(async () => {
         try {
           return interactive
-            ? await runCoderUi(session, { stdin: process.stdin, stdout: process.stdout })
+            ? await runCoderUi(session, {
+                stdin: process.stdin,
+                stdout: process.stdout,
+                skills,
+                onSkillsChanged: declareTools,
+              })
             : await runCoderPlain(session, {
                 stdin: process.stdin,
                 stdout: process.stdout,
                 prompt: oneShot,
+                skills,
               });
         } finally {
           // An account holds eight open threads at once. A terminal that closed

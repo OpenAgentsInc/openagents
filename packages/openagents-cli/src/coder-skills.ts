@@ -18,9 +18,9 @@
  * server's. A tool description reaches both.
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 /** Where skills live, nearest first. A repository skill wins its name. */
 const SKILL_DIRECTORIES = (cwd: string, home: string): ReadonlyArray<string> => [
@@ -153,3 +153,94 @@ export const renderSkill = (skill: CoderSkill): string => {
       : skill.body;
   return `Skill \`${skill.name}\` (${skill.path}):\n\n${body}`;
 };
+
+/**
+ * Which skills this workspace offers the model.
+ *
+ * A skill costs context whether or not it is used: its description sits in the
+ * `skill` tool for the whole session. A reader who knows a skill is irrelevant
+ * to today's work should be able to take it out, and have it stay out.
+ *
+ * The choice is stored per workspace, keyed by path, because the reason to
+ * switch a skill off is usually the repository rather than the machine. It is
+ * stored under the config directory rather than in the repository so that
+ * switching one off is not a change someone else has to review.
+ *
+ * Off is recorded, not on: a skill added later is on until someone says
+ * otherwise, which is the behaviour of a session that has never been touched.
+ */
+export interface SkillSelection {
+  /** Every skill found, switched on or off. */
+  readonly all: ReadonlyArray<CoderSkill>;
+  /** Whether this skill is offered to the model. */
+  isOn(name: string): boolean;
+  /** Switch one skill, persist the choice, and return its new state. */
+  toggle(name: string): boolean;
+  /** The skills the model is offered, in catalog order. */
+  active(): ReadonlyArray<CoderSkill>;
+}
+
+const selectionPath = (home: string): string =>
+  join(home, ".config", "openagents", "coder-skills.json");
+
+/** Names switched off for this workspace, or none when nothing is recorded. */
+const readDisabled = (path: string, workspace: string): ReadonlySet<string> => {
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    if (typeof parsed !== "object" || parsed === null) return new Set();
+    const entry = (parsed as Record<string, unknown>)[workspace];
+    if (!Array.isArray(entry)) return new Set();
+    return new Set(entry.filter((name): name is string => typeof name === "string"));
+  } catch {
+    // No file, unreadable, or not the shape this writes. A preference nobody
+    // can read is a preference nobody set, and the session opens with every
+    // skill on rather than refusing to start.
+    return new Set();
+  }
+};
+
+const writeDisabled = (path: string, workspace: string, disabled: ReadonlySet<string>): void => {
+  let all: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    if (typeof parsed === "object" && parsed !== null) all = parsed as Record<string, unknown>;
+  } catch {
+    // Start a fresh file rather than lose the choice being made now.
+  }
+
+  // An empty list is the default, so it is removed rather than recorded. A file
+  // of empty arrays is a file that says nothing.
+  if (disabled.size === 0) delete all[workspace];
+  else all[workspace] = [...disabled].sort();
+
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify(all, undefined, 2)}\n`, "utf8");
+  } catch {
+    // The choice still holds for this session. A preference that cannot be
+    // written is not a reason to refuse the preference.
+  }
+};
+
+/** Read the skills for this workspace and the choice made about them. */
+export function loadSkillSelection(
+  cwd: string = process.cwd(),
+  home: string = homedir(),
+): SkillSelection {
+  const all = discoverSkills(cwd, home);
+  const path = selectionPath(home);
+  const disabled = new Set(readDisabled(path, cwd));
+
+  return {
+    all,
+    isOn: (name) => !disabled.has(name),
+    toggle: (name) => {
+      const on = disabled.has(name);
+      if (on) disabled.delete(name);
+      else disabled.add(name);
+      writeDisabled(path, cwd, disabled);
+      return on;
+    },
+    active: () => all.filter((skill) => !disabled.has(skill.name)),
+  };
+}

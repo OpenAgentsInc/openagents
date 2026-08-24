@@ -19,12 +19,15 @@
 import { createInterface } from "node:readline";
 
 import type { CoderEntry, CoderSession } from "./coder-session.js";
+import type { SkillSelection } from "./coder-skills.js";
 
 export interface CoderPlainOptions {
   readonly stdin: NodeJS.ReadableStream;
   readonly stdout: NodeJS.WritableStream;
   /** When set, answer this one prompt and exit rather than reading a loop. */
   readonly prompt?: string | undefined;
+  /** The workspace's skills, so `/skills` can report them. */
+  readonly skills?: SkillSelection | undefined;
 }
 
 export async function runCoderPlain(
@@ -69,6 +72,24 @@ export async function runCoderPlain(
   flush();
 
   const answer = async (line: string) => {
+    // `/skills` is a screen in the interface. There is no screen here, so it
+    // reports instead: the same facts, without the switch. Saying nothing and
+    // sending it to the model as a question would be worse than either.
+    if (/^\/skills\s*$/.test(line.trim())) {
+      const all = options.skills?.all ?? [];
+      stdout.write(
+        all.length === 0
+          ? "\nNo skills were found.\n"
+          : `\n${all
+              .map(
+                (skill) =>
+                  `${options.skills?.isOn(skill.name) ?? true ? "[on] " : "[off]"} ${skill.name}`,
+              )
+              .join("\n")}\nRun the interactive session to switch one.\n`,
+      );
+      return;
+    }
+
     written = 0;
     stdout.write(`\ncoder> `);
     await session.submit(line);

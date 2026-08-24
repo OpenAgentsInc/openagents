@@ -389,3 +389,156 @@ describe("runCoderUi", () => {
     expect(composer).toContain("…");
   });
 });
+
+describe("the /skills screen", () => {
+  const skill = (name: string, description: string) => ({
+    name,
+    description,
+    body: "Body.",
+    path: `/tmp/${name}/SKILL.md`,
+  });
+
+  /** A selection over two skills, recording what was switched. */
+  const selection = () => {
+    const off = new Set<string>();
+    const all = [skill("alpha", "The first skill."), skill("beta", "The second skill.")];
+    return {
+      all,
+      isOn: (name: string) => !off.has(name),
+      toggle: (name: string) => {
+        const on = off.has(name);
+        if (on) off.delete(name);
+        else off.add(name);
+        return on;
+      },
+      active: () => all.filter((candidate) => !off.has(candidate.name)),
+    };
+  };
+
+  const open = async (skills: ReturnType<typeof selection>) => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    const session = new CoderSession(source([]), "repo", "main");
+    let declared = 0;
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+      skills,
+      onSkillsChanged: () => {
+        declared += 1;
+      },
+    });
+
+    // Typed the way a reader types it, then entered.
+    stdin.emit("data", "/skills");
+    stdin.emit("data", "\r");
+
+    return {
+      stdin,
+      stdout,
+      session,
+      running,
+      declarations: () => declared,
+      rows: () => screen(stdout.written),
+      close: async () => {
+        stdin.emit("data", "\x1b");
+        stdin.emit("data", "\x04");
+        await running;
+      },
+    };
+  };
+
+  it("lists every skill with its state, and describes the row in hand", async () => {
+    const screenUnderTest = await open(selection());
+    const rows = screenUnderTest.rows().join("\n");
+
+    expect(rows).toContain("Skills");
+    expect(rows).toContain("[on]  alpha");
+    expect(rows).toContain("[on]  beta");
+    // The description of the focused row only: eight at once is the wall of
+    // text the catalog exists to avoid.
+    expect(rows).toContain("The first skill.");
+    expect(rows).not.toContain("The second skill.");
+
+    await screenUnderTest.close();
+  });
+
+  it("moves the focus with the arrow keys", async () => {
+    const screenUnderTest = await open(selection());
+
+    screenUnderTest.stdin.emit("data", "\x1b[B");
+    const rows = screenUnderTest.rows().join("\n");
+
+    expect(rows).toContain("The second skill.");
+
+    await screenUnderTest.close();
+  });
+
+  it("switches the focused skill with space and re-declares the tools", async () => {
+    const skills = selection();
+    const screenUnderTest = await open(skills);
+
+    screenUnderTest.stdin.emit("data", " ");
+
+    expect(skills.isOn("alpha")).toBe(false);
+    expect(skills.active().map((candidate) => candidate.name)).toEqual(["beta"]);
+    // Re-declared at the keystroke, so what the model is told matches the
+    // screen the moment it is left.
+    expect(screenUnderTest.declarations()).toBe(1);
+    expect(screenUnderTest.rows().join("\n")).toContain("[off] alpha");
+
+    await screenUnderTest.close();
+  });
+
+  it("sends nothing to the model, on the way in or out", async () => {
+    const skills = selection();
+    const screenUnderTest = await open(skills);
+
+    screenUnderTest.stdin.emit("data", " ");
+    screenUnderTest.stdin.emit("data", "\x1b");
+
+    // `/skills` is a screen, not a turn: no prompt was sent and none was
+    // recorded as one.
+    expect(screenUnderTest.session.snapshot().turns).toBe(0);
+    expect(
+      screenUnderTest.session.snapshot().entries.filter((entry) => entry.role === "you"),
+    ).toEqual([]);
+
+    screenUnderTest.stdin.emit("data", "\x04");
+    await screenUnderTest.running;
+  });
+
+  it("holds the keyboard, so typing does not reach the composer behind it", async () => {
+    const screenUnderTest = await open(selection());
+
+    screenUnderTest.stdin.emit("data", "hello");
+    screenUnderTest.stdin.emit("data", "\x1b");
+    const rows = screenUnderTest.rows().join("\n");
+
+    // The letters went nowhere: a screen the reader cannot see must not be
+    // collecting what they type.
+    expect(rows).not.toContain("hello");
+
+    screenUnderTest.stdin.emit("data", "\x04");
+    await screenUnderTest.running;
+  });
+
+  it("says so when the workspace has no skills", async () => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    const session = new CoderSession(source([]), "repo", "main");
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    stdin.emit("data", "/skills");
+    stdin.emit("data", "\r");
+
+    expect(screen(stdout.written).join("\n")).toContain("No skills were found");
+
+    stdin.emit("data", "\x1b");
+    stdin.emit("data", "\x04");
+    await running;
+  });
+});

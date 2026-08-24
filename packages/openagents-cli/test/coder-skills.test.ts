@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { discoverSkills } from "../src/coder-skills.js";
+import { discoverSkills, loadSkillSelection } from "../src/coder-skills.js";
 import { skillTool } from "../src/coder-tools.js";
 
 /** A repository with the given skills under `.agents/skills`. */
@@ -143,5 +143,87 @@ describe("the skill tool", () => {
     // that died.
     expect(output).toContain("There is no `nope` skill");
     expect(output).toContain("`house-style`");
+  });
+});
+
+describe("choosing which skills the model is offered", () => {
+  /** A home the test owns, so the choice is written where it can be read back. */
+  const home = () => mkdtempSync(join(tmpdir(), "coder-skills-home-"));
+
+  const two = {
+    alpha: "---\nname: alpha\ndescription: First.\n---\n\nBody.",
+    beta: "---\nname: beta\ndescription: Second.\n---\n\nBody.",
+  };
+
+  it("offers every skill until one is switched off", () => {
+    const selection = loadSkillSelection(workspace(two), home());
+
+    expect(selection.active().map((skill) => skill.name)).toEqual(["alpha", "beta"]);
+    expect(selection.isOn("alpha")).toBe(true);
+  });
+
+  it("drops a switched-off skill from what the model is offered", () => {
+    const selection = loadSkillSelection(workspace(two), home());
+
+    selection.toggle("alpha");
+
+    expect(selection.isOn("alpha")).toBe(false);
+    expect(selection.active().map((skill) => skill.name)).toEqual(["beta"]);
+    // Still found, so the screen can offer to switch it back on.
+    expect(selection.all).toHaveLength(2);
+  });
+
+  it("remembers the choice for the next session", () => {
+    const root = workspace(two);
+    const where = home();
+
+    loadSkillSelection(root, where).toggle("beta");
+
+    expect(loadSkillSelection(root, where).active().map((skill) => skill.name)).toEqual(["alpha"]);
+  });
+
+  it("switches one back on", () => {
+    const root = workspace(two);
+    const where = home();
+
+    loadSkillSelection(root, where).toggle("beta");
+    loadSkillSelection(root, where).toggle("beta");
+
+    expect(loadSkillSelection(root, where).active().map((skill) => skill.name)).toEqual([
+      "alpha",
+      "beta",
+    ]);
+  });
+
+  it("keeps the choice to the workspace it was made in", () => {
+    const where = home();
+    const one = workspace(two);
+    const other = workspace(two);
+
+    loadSkillSelection(one, where).toggle("alpha");
+
+    // A skill switched off for one repository is not switched off everywhere.
+    expect(loadSkillSelection(other, where).active().map((skill) => skill.name)).toEqual([
+      "alpha",
+      "beta",
+    ]);
+  });
+
+  it("offers a skill added after the choice was made", () => {
+    const root = workspace(two);
+    const where = home();
+    loadSkillSelection(root, where).toggle("alpha");
+
+    mkdirSync(join(root, ".agents", "skills", "gamma"), { recursive: true });
+    writeFileSync(
+      join(root, ".agents", "skills", "gamma", "SKILL.md"),
+      "---\nname: gamma\ndescription: Third.\n---\n\nBody.",
+    );
+
+    // Off is what is recorded, so something nobody has ruled on is on.
+    expect(loadSkillSelection(root, where).active().map((skill) => skill.name)).toEqual([
+      "beta",
+      "gamma",
+    ]);
   });
 });

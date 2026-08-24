@@ -32,6 +32,7 @@
 import { fleetPhrase, fleetRows } from "./coder-fleet.js";
 import { renderMarkdown, visibleWidth, wrapStyled } from "./coder-markdown.js";
 import type { CoderEntry, CoderSession, CoderSnapshot, CoderToolCall } from "./coder-session.js";
+import type { SkillSelection } from "./coder-skills.js";
 import type { CoderTaskStatus } from "./coder-tasks.js";
 
 const ALT_SCREEN_ON = "\x1b[?1049h";
@@ -81,6 +82,15 @@ const GUTTER = 9;
 const ESCAPE_WINDOW_MS = 40;
 
 export interface CoderUiOptions {
+  /**
+   * The workspace's skills and the choice made about them, for `/skills`.
+   *
+   * Optional so a caller with no skills, and every test, can leave it out; the
+   * screen then says there are none rather than being unreachable.
+   */
+  readonly skills?: SkillSelection | undefined;
+  /** Re-declare the tools after a skill is switched. */
+  readonly onSkillsChanged?: (() => void) | undefined;
   readonly stdin: NodeJS.ReadStream;
   readonly stdout: NodeJS.WriteStream;
 }
@@ -216,6 +226,14 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
   const { stdin, stdout } = options;
 
   let composer = "";
+  /**
+   * Which screen has the keyboard. The chat is the interface; `/skills` is a
+   * screen over it rather than a turn in it, because switching a skill off is
+   * a change to what the next turn carries, not something to say to the model.
+   */
+  let screen: "chat" | "skills" = "chat";
+  /** The row `/skills` acts on. */
+  let skillRow = 0;
   /**
    * The first transcript line the viewport shows, or undefined while the
    * viewport follows the newest content.
@@ -402,11 +420,87 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       return undefined;
     };
 
+    /**
+     * The `/skills` screen: every skill found, and whether the model is told
+     * about it.
+     *
+     * The description is shown because it is the whole of what a switched-on
+     * skill costs and the whole of what the model chooses on. A reader deciding
+     * whether to keep one needs to see the sentence the model sees.
+     */
+    const skillsLines = (width: number): ReadonlyArray<string> => {
+      const rows: string[] = [];
+      const all = options.skills?.all ?? [];
+
+      rows.push(`${BOLD}Skills${RESET}`, "");
+      if (all.length === 0) {
+        rows.push(
+          ...wrapStyled(
+            "No skills were found. A skill is a directory holding a SKILL.md, under " +
+              ".agents/skills in this repository or under your home directory.",
+            width,
+            DIM,
+          ),
+        );
+        return rows;
+      }
+
+      rows.push(
+        ...wrapStyled(
+          "Switched-off skills are left out of the tool the model is given, so they cost " +
+            "it nothing and it cannot call them. The choice is remembered for this workspace.",
+          width,
+          DIM,
+        ),
+        "",
+      );
+
+      for (const [at, skill] of all.entries()) {
+        const on = options.skills?.isOn(skill.name) ?? true;
+        const focused = at === skillRow;
+        const mark = on ? `${GREEN}[on] ${RESET}` : `${DIM}[off]${RESET}`;
+        const caret = focused ? `${CYAN}❯${RESET} ` : "  ";
+        const name = focused ? `${BOLD}${skill.name}${RESET}` : skill.name;
+        rows.push(`${caret}${mark} ${on ? name : `${DIM}${skill.name}${RESET}`}`);
+        // The description is indented under its own row, dim, and only for the
+        // row in hand: eight descriptions at once is the wall of text the
+        // catalog exists to avoid.
+        if (focused) {
+          rows.push(...wrapStyled(skill.description, Math.max(20, width - 8), DIM).map(
+            (line) => `        ${line}`,
+          ));
+        }
+      }
+
+      return rows;
+    };
+
     const render = () => {
       if (closed) return;
       const snapshot = session.snapshot();
       const width = stdout.columns ?? 80;
       const height = stdout.rows ?? 24;
+
+      if (screen === "skills") {
+        const body = skillsLines(width);
+        const rows: string[] = [];
+        for (let row = 0; row < Math.max(1, height - 2); row += 1) rows.push(body[row] ?? "");
+        rows.push(
+          `${DIM}${"─".repeat(Math.max(0, width))}${RESET}`,
+          hints(
+            [
+              { text: "↑↓ move" },
+              { text: "space toggles" },
+              { text: "esc returns" },
+            ],
+            "",
+            width,
+          ),
+        );
+        // No cursor to place: the screen is a list, not a field.
+        paint(rows, rows.length, 1);
+        return;
+      }
       const transcriptHeight = Math.max(1, height - STATUS_ROWS - COMPOSER_ROWS - 1);
 
       const fleet = fleetLines(snapshot, width);
@@ -564,6 +658,16 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       // A delegate line is not a turn: it returns as soon as the children are
       // submitted and each one reports later, so nothing here waits on it and
       // the ticker above keeps the fleet rows moving.
+      // `/skills` opens a screen rather than sending a turn: it changes what
+      // the next turn carries, so it is not something to say to the model.
+      if (/^\/skills\s*$/.test(prompt.trim())) {
+        screen = "skills";
+        skillRow = 0;
+        painted = [];
+        render();
+        return;
+      }
+
       if (prompt.trimStart().startsWith("/delegate")) {
         void session.submit(prompt);
         render();
@@ -613,6 +717,51 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
 
       while (index < text.length) {
         const char = text[index] ?? "";
+
+        // The skills screen takes the keyboard while it is up. Only the keys it
+        // names do anything: a stray letter must not fall through into the
+        // composer of a screen the reader cannot see.
+        if (screen === "skills") {
+          const count = options.skills?.all.length ?? 0;
+
+          if (char === "\x1b") {
+            const sequence = matchEscapeSequence(text, index);
+            if (sequence === undefined) {
+              pendingEscape = text.slice(index);
+              break;
+            }
+            index += sequence.length;
+            if (sequence === "\x1b") {
+              screen = "chat";
+              painted = [];
+            } else if (sequence === "\x1b[A" || sequence === "\x1bOA") {
+              skillRow = Math.max(0, skillRow - 1);
+            } else if (sequence === "\x1b[B" || sequence === "\x1bOB") {
+              skillRow = Math.min(Math.max(0, count - 1), skillRow + 1);
+            } else {
+              continue;
+            }
+            render();
+            continue;
+          }
+
+          index += 1;
+          if (char === " ") {
+            const skill = options.skills?.all[skillRow];
+            if (skill !== undefined) {
+              options.skills?.toggle(skill.name);
+              // Re-declared now rather than on the next turn, so `/system`
+              // agrees with this screen the moment it is left.
+              options.onSkillsChanged?.();
+            }
+            render();
+          } else if (char === "\x03" || char === "\x04") {
+            screen = "chat";
+            painted = [];
+            render();
+          }
+          continue;
+        }
 
         if (char === "\x1b") {
           const sequence = matchEscapeSequence(text, index);
@@ -757,7 +906,8 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
 
     session.notice(
       "openagents coder — development build. Type a message and press enter. " +
-        "Ctrl+D quits, Esc interrupts a reply. `/system` shows what the model is told.",
+        "Ctrl+D quits, Esc interrupts a reply. `/system` shows what the model is told, " +
+        "`/skills` chooses which skills it is offered.",
     );
     render();
   });
