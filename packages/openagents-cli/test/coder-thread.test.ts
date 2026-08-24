@@ -344,9 +344,231 @@ describe("ThreadReplySource", () => {
     const second = proxied[1];
     expect(second?.body["messages"]).toEqual([
       { role: "user", content: "hello" },
-      { role: "assistant", content: `[tool call]\ndelegate({"prompt":"add tests"})` },
-      { role: "user", content: "[tool result delegate]\n2 of 2 children completed." },
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [
+          {
+            id: "call-1",
+            type: "function",
+            function: { name: "delegate", arguments: `{"prompt":"add tests"}` },
+          },
+        ],
+      },
+      { role: "tool", tool_call_id: "call-1", content: "2 of 2 children completed." },
     ]);
+  });
+
+  it("translates reasoning deltas into reasoning chunks, in stream order", async () => {
+    stub({
+      proxy: [
+        sse([
+          [
+            `data: {"choices":[{"delta":{"reasoning":"Let me think."},"index":0}]}`,
+            `data: {"choices":[{"delta":{"reasoning":" Two files."},"index":0}]}`,
+            `data: {"choices":[{"delta":{"content":"Answer."},"index":0}]}`,
+            `data: [DONE]`,
+            "",
+          ].join("\n\n"),
+        ]),
+      ],
+    });
+
+    expect(await chunks(await open())).toEqual([
+      { type: "reasoning", value: "Let me think." },
+      { type: "reasoning", value: " Two files." },
+      { type: "text", value: "Answer." },
+    ]);
+  });
+
+  it("keeps reasoning off the wire transcript: the next turn replays only what was said", async () => {
+    const calls = stub({
+      proxy: [
+        sse([
+          [
+            `data: {"choices":[{"delta":{"reasoning":"Thinking."},"index":0}]}`,
+            `data: {"choices":[{"delta":{"content":"Answer."},"index":0}]}`,
+            `data: [DONE]`,
+            "",
+          ].join("\n\n"),
+        ]),
+        sse([LIVE_SSE]),
+      ],
+    });
+
+    const source = await open();
+    await chunks(source, "first");
+    await chunks(source, "second");
+
+    const spends = calls.filter((call) => call.url.endsWith("/api/inference/proxy"));
+    expect(spends[1]?.body["messages"]).toEqual([
+      { role: "user", content: "first" },
+      { role: "assistant", content: "Answer." },
+      { role: "user", content: "second" },
+    ]);
+  });
+
+  it("replays two calls of one round in call order with their raw arguments", async () => {
+    // The second call's arguments carry spacing the model chose. A parse and
+    // re-serialize would normalize it; the wire must not.
+    const rawFirst = `{"command":  "ls -la"}`;
+    const rawSecond = `{"pattern": "thread",  "limit": 2}`;
+    const round = [
+      `data: ${JSON.stringify({
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call-a",
+                  type: "function",
+                  function: { name: "shell", arguments: rawFirst },
+                },
+                {
+                  index: 1,
+                  id: "call-b",
+                  type: "function",
+                  function: { name: "grep", arguments: rawSecond },
+                },
+              ],
+            },
+          },
+        ],
+      })}`,
+      `data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+      `data: [DONE]`,
+      "",
+    ].join("\n\n");
+
+    const calls = stub({ proxy: [sse([round]), sse([LIVE_SSE])] });
+    const source = await open();
+
+    // The first tool finishes last, so completion order is the reverse of
+    // call order, and the transcript must not care.
+    let releaseFirst: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    source.useTools([
+      {
+        name: "shell",
+        description: "run a command",
+        parameters: { type: "object" },
+        run: async () => {
+          await gate;
+          return "shell output";
+        },
+      },
+      {
+        name: "grep",
+        description: "search",
+        parameters: { type: "object" },
+        run: async () => {
+          releaseFirst();
+          return "grep output";
+        },
+      },
+    ]);
+
+    await chunks(source, "run both");
+
+    const spends = calls.filter((call) => call.url.endsWith("/api/inference/proxy"));
+    expect(spends[1]?.body["messages"]).toEqual([
+      { role: "user", content: "run both" },
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [
+          { id: "call-a", type: "function", function: { name: "shell", arguments: rawFirst } },
+          { id: "call-b", type: "function", function: { name: "grep", arguments: rawSecond } },
+        ],
+      },
+      { role: "tool", tool_call_id: "call-a", content: "shell output" },
+      { role: "tool", tool_call_id: "call-b", content: "grep output" },
+    ]);
+  });
+
+  it("carries the words an assistant said alongside the calls it made", async () => {
+    const round = [
+      `data: {"choices":[{"delta":{"content":"Looking now."},"index":0}]}`,
+      `data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"shell","arguments":"{}"}}]}}]}`,
+      `data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+      `data: [DONE]`,
+      "",
+    ].join("\n\n");
+    const calls = stub({ proxy: [sse([round]), sse([LIVE_SSE])] });
+    const source = await open();
+    source.useTools([withTool(async () => "done")]);
+
+    await chunks(source, "look");
+
+    const spends = calls.filter((call) => call.url.endsWith("/api/inference/proxy"));
+    const messages = spends[1]?.body["messages"] as Array<Record<string, unknown>>;
+    expect(messages[1]).toMatchObject({ role: "assistant", content: "Looking now." });
+    expect(messages[1]?.["tool_calls"]).toHaveLength(1);
+  });
+
+  it("bounds a tool result on the wire while the record keeps the fuller copy", async () => {
+    const round = [
+      `data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"shell","arguments":"{}"}}]}}]}`,
+      `data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+      `data: [DONE]`,
+      "",
+    ].join("\n\n");
+    const calls = stub({ proxy: [sse([round]), sse([LIVE_SSE])] });
+    const source = await open();
+    const sink = recorder();
+    source.useTranscript(sink);
+    source.useTools([withTool(async () => "x".repeat(10_000))]);
+
+    await chunks(source, "dump it");
+
+    const spends = calls.filter((call) => call.url.endsWith("/api/inference/proxy"));
+    const messages = spends[1]?.body["messages"] as Array<Record<string, unknown>>;
+    const result = messages.find((message) => message["role"] === "tool");
+    const wire = result?.["content"] as string;
+    // The 4,000-char context budget still holds on the way to the model...
+    expect(wire.length).toBeLessThan(4_200);
+    expect(wire).toContain("characters omitted");
+    // ...while the durable event keeps the result whole, as before.
+    const ran = sink.events.find((event) => event.eventType === "tool.ran");
+    expect(ran?.payload["output"]).toBe("x".repeat(10_000));
+  });
+
+  it("drops the calls past the step limit and asks for an answer without tools", async () => {
+    const round = [
+      `data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"shell","arguments":"{}"}}]}}]}`,
+      `data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+      `data: [DONE]`,
+      "",
+    ].join("\n\n");
+    // Steps 0..100 each ask for a tool; step 100 is past the limit, so its
+    // call is dropped and step 101 must answer in words.
+    const calls = stub({
+      proxy: [...Array.from({ length: 101 }, () => sse([round])), sse([LIVE_SSE])],
+    });
+    const source = await open();
+    source.useTools([withTool(async () => "ok")]);
+
+    expect(textOf(await chunks(source, "loop"))).toBe("Hello! Nice");
+
+    const spends = calls.filter((call) => call.url.endsWith("/api/inference/proxy"));
+    expect(spends).toHaveLength(102);
+    const last = spends[101];
+    // The tools are withheld for the answering round.
+    expect(last?.body["tools"]).toBeUndefined();
+    const messages = last?.body["messages"] as Array<Record<string, unknown>>;
+    // The dropped round left no orphan: every assistant `tool_calls` message
+    // is answered by a `tool` message, and the nudge closes the transcript.
+    const asked = messages.filter((message) => Array.isArray(message["tool_calls"])).length;
+    const answered = messages.filter((message) => message["role"] === "tool").length;
+    expect(asked).toBe(100);
+    expect(answered).toBe(100);
+    expect(messages[messages.length - 1]?.["content"]).toContain(
+      "You have reached this turn's limit on tool calls.",
+    );
   });
 
   it("lends the grant to children without handing over the token", async () => {
@@ -541,6 +763,36 @@ describe("the thread's durable transcript", () => {
       "turn.assistant",
     ]);
     expect(sink.events[2]?.payload).toEqual({ text: "only the top level", steered: true });
+  });
+
+  it("records the turn's reasoning whole, one event per block", async () => {
+    stub({
+      proxy: [
+        sse([
+          [
+            `data: {"choices":[{"delta":{"reasoning":"Let me think."},"index":0}]}`,
+            `data: {"choices":[{"delta":{"reasoning":" Two files."},"index":0}]}`,
+            `data: {"choices":[{"delta":{"content":"Two files."},"index":0}]}`,
+            `data: [DONE]`,
+            "",
+          ].join("\n\n"),
+        ]),
+      ],
+    });
+    const source = await open();
+    const sink = recorder();
+    source.useTranscript(sink);
+
+    await chunks(source, "what is in this repo?");
+
+    expect(sink.events.map((event) => event.eventType)).toEqual([
+      "turn.user",
+      "turn.reasoning",
+      "turn.assistant",
+    ]);
+    // The deltas are how the thinking arrived, not what it is: one event
+    // carries the block whole.
+    expect(sink.events[1]?.payload).toEqual({ text: "Let me think. Two files." });
   });
 
   it("records nothing extra for a turn without tools", async () => {

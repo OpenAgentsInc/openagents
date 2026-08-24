@@ -26,14 +26,12 @@
  *   against the stream anyway rather than against `await response.text()`, so
  *   chunked delivery becomes visible here the day the server sends it, with no
  *   change on this side.
- * - **It carries no reasoning.** `OpenAgents.Providers.ProviderEvent` has no
- *   reasoning member at all — the union is `response_started`, `text_delta`,
- *   `tool_call`, `usage`, `response_completed`, `failed`, `cancelled` — and the
- *   proxy drops everything it cannot name. The chat event log had
- *   `reasoning_delta`; nothing on this path does. So no `reasoning` chunk is
- *   ever produced here, and the interface's dim-italic reasoning entry, which
- *   the stand-in behind `--offline` still exercises, never appears against a
- *   live model.
+ * - **It carries reasoning as `delta.reasoning`.** Since openagents.com
+ *   `c26c188` the proxy forwards a model's thinking as string chunks on
+ *   `choices[0].delta.reasoning`, interleaved with `delta.content` in stream
+ *   order. The parser below turns each into a `reasoning` chunk, which the
+ *   interface renders as its dim-italic reasoning entry and the transcript
+ *   writer records whole as `turn.reasoning`.
  * - **Tools run here.** The chat lane ran tools on the server and reported each
  *   one. The proxy is a bare completions surface: it forwards the `tools` a
  *   caller declares and returns the calls the model asks for, and the caller
@@ -41,12 +39,12 @@
  *   the tools a session declares, and a turn continues until the model stops
  *   asking for one.
  *
- *   A tool result is fed back as plain turns rather than as a `tool` message.
- *   The proxy maps a `tool` message to a `function_call_output` item and sends
- *   it on its own, which the provider refuses without the `function_call` that
- *   preceded it, and the response id that would link the two is never given to
- *   a client. Until the proxy carries a tool exchange, the honest thing is to
- *   say what was called and what came back in turns it does accept.
+ *   A tool exchange is fed back in the standard chat shape: the assistant
+ *   message carries its `tool_calls` array (content may be empty), and each
+ *   result follows as a `role: "tool"` message named by `tool_call_id`. The
+ *   same `c26c188` made the proxy replay both faithfully to the provider, so
+ *   the plain-turn paraphrase this file used to send — `[tool call]` and
+ *   `[tool result]` written into user turns — is gone.
  *
  * Nothing here announces any of that on screen. `2c15c6ed20` removed the
  * `scopeNotice` seam with the reasoning that a session private to its own
@@ -229,11 +227,29 @@ interface SourceState {
   readonly budget: ThreadBudget;
 }
 
-/** One chat-completions message, which is what the proxy takes as its input. */
-interface WireMessage {
-  readonly role: "user" | "assistant";
-  readonly content: string;
+/** One call in an assistant message, in the chat-completions wire shape. */
+interface WireToolCall {
+  readonly id: string;
+  readonly type: "function";
+  readonly function: { readonly name: string; readonly arguments: string };
 }
+
+/**
+ * One chat-completions message, which is what the proxy takes as its input.
+ *
+ * The `arguments` a model produced stay the raw JSON string on the way back:
+ * the proxy replays them to the provider without interpreting them, and a
+ * parse-and-reserialize here could reorder keys or normalize whitespace in a
+ * string the provider expects byte for byte.
+ */
+type WireMessage =
+  | { readonly role: "user"; readonly content: string }
+  | {
+      readonly role: "assistant";
+      readonly content: string;
+      readonly tool_calls?: ReadonlyArray<WireToolCall>;
+    }
+  | { readonly role: "tool"; readonly tool_call_id: string; readonly content: string };
 
 /** A call the model asked for, assembled from its fragments. */
 interface WireCall {
@@ -408,19 +424,18 @@ export class ThreadReplySource implements ReplySource {
           yield chunk;
         }
 
-        // One event per block, whole, never deltas. The proxy carries no
-        // reasoning today, so this records nothing against a live model; the
-        // day a `reasoning` chunk exists here, its record does too.
+        // One event per block, whole, never deltas: the record is what was
+        // thought, not the pieces it arrived in.
         if (reasoning.length > 0) this.sink?.record("turn.reasoning", { text: reasoning });
 
         // Whatever the model said belongs to the thread even when the turn was
         // interrupted, or the next turn answers a question it cannot see it
         // half-answered.
         if (assistant.length > 0) {
-          this.transcript.push({ role: "assistant", content: assistant });
           turnText = turnText.length === 0 ? assistant : `${turnText}\n\n${assistant}`;
         }
         if (signal.aborted || calls.length === 0) {
+          if (assistant.length > 0) this.transcript.push({ role: "assistant", content: assistant });
           this.recordAnswer(turnText, turnToolCalls, signal.aborted);
           return;
         }
@@ -428,7 +443,10 @@ export class ThreadReplySource implements ReplySource {
         if (step >= MAX_TOOL_STEPS) {
           // Take the tools away for one more round rather than stopping on a
           // tool result. The work already done is the reason the turn is long,
-          // and ending on "stopped" throws all of it away.
+          // and ending on "stopped" throws all of it away. The calls are
+          // dropped rather than written: an assistant `tool_calls` message
+          // whose results never follow is a transcript the provider refuses.
+          if (assistant.length > 0) this.transcript.push({ role: "assistant", content: assistant });
           this.mustAnswer = true;
           this.transcript.push({
             role: "user",
@@ -439,15 +457,33 @@ export class ThreadReplySource implements ReplySource {
           continue;
         }
 
+        // The exchange in the standard chat shape: one assistant message
+        // carrying every call of the round — content may be empty, and the
+        // arguments stay the raw JSON string the model produced — then, after
+        // the tools have run, one `tool` message per result in the order the
+        // calls were made, whatever order they finished in.
+        this.transcript.push({
+          role: "assistant",
+          content: assistant,
+          tool_calls: calls.map((call) => ({
+            id: call.id,
+            type: "function" as const,
+            function: { name: call.name, arguments: call.args },
+          })),
+        });
+        turnToolCalls += calls.length;
         // Concurrently. A model asking for two tools in one turn is saying they do
         // not depend on each other, and running them in order anyway makes a fan-out
         // to two models cost the sum of both.
-        if (signal.aborted) {
-          this.recordAnswer(turnText, turnToolCalls, true);
-          return;
+        const results = new Map<string, string>();
+        yield* merge(calls.map((call) => this.invoke(call, signal, results)));
+        for (const call of calls) {
+          this.transcript.push({
+            role: "tool",
+            tool_call_id: call.id,
+            content: results.get(call.id) ?? "",
+          });
         }
-        turnToolCalls += calls.length;
-        yield* merge(calls.map((call) => this.invoke(call, signal)));
       }
     } finally {
       // Read the budget on the way out of every turn, including an interrupted
@@ -484,14 +520,18 @@ export class ThreadReplySource implements ReplySource {
   }
 
   /**
-   * Run one call, report it, and put the exchange on the thread.
+   * Run one call, report it, and leave its result for the caller to file.
    *
-   * The transcript keeps the call and its result as an assistant turn and a
-   * user turn for the reason given at the top of this file: a `tool` message is
-   * not carried by the proxy today, and a model that cannot see what its own
-   * call returned calls it again.
+   * The result goes into `results` under the call's id rather than onto the
+   * transcript here: calls of one round run concurrently and finish in any
+   * order, and the turn loop writes the `tool` messages afterward in the
+   * order the calls were made, so the wire history is deterministic.
    */
-  private async *invoke(call: WireCall, signal: AbortSignal): AsyncIterable<ReplyChunk> {
+  private async *invoke(
+    call: WireCall,
+    signal: AbortSignal,
+    results: Map<string, string>,
+  ): AsyncIterable<ReplyChunk> {
     yield { type: "tool_call", callId: call.id, name: call.name, arguments: call.args };
 
     const tool = this.tools.find((candidate) => candidate.name === call.name);
@@ -531,18 +571,11 @@ export class ThreadReplySource implements ReplySource {
         : { error: bounded(failure, EVENT_RESULT_KEPT) }),
     });
 
-    this.transcript.push({
-      role: "assistant",
-      content: `[tool call]\n${call.name}(${call.args})`,
-    });
-    // Bounded on the way onto the transcript, not on the way to the reader:
-    // this is what goes back to the model on every round after, and a session
-    // that re-sends everything it has already read spends its wall clock on
-    // reading it again.
-    this.transcript.push({
-      role: "user",
-      content: `[tool result ${call.name}]\n${boundedResult(output)}`,
-    });
+    // Bounded on the way toward the model, not on the way to the reader or the
+    // record: this is what goes back on every round after, and a session that
+    // re-sends everything it has already read spends its wall clock on reading
+    // it again. The `tool.ran` event above kept the fuller copy.
+    results.set(call.id, boundedResult(output));
   }
 
   /**
@@ -632,6 +665,13 @@ export class ThreadReplySource implements ReplySource {
 
       for (const choice of choices) {
         const delta = record(record(choice)["delta"]);
+
+        // Reasoning precedes the words it produced, and the proxy interleaves
+        // the two in stream order, so within one delta it is yielded first.
+        const thought = delta["reasoning"];
+        if (typeof thought === "string" && thought.length > 0) {
+          yield { type: "reasoning", value: thought };
+        }
 
         const content = delta["content"];
         if (typeof content === "string" && content.length > 0) {
