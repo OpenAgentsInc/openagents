@@ -85,6 +85,7 @@ import { resolve as resolvePath } from "node:path";
 import { rebuild, RELOAD_EXIT_CODE, sourceCheckout } from "./coder-reload.js";
 import { loadSkillSelection, standingContext } from "./coder-skills.js";
 import { startDevServer } from "./coder-dev-server.js";
+import { ZenReplySource, zenCredential } from "./coder-zen.js";
 import { describeWorkspace } from "./coder-workspace.js";
 import { ComputerClient } from "./computer-client.js";
 import { ComputerUp } from "./computer-up.js";
@@ -1918,7 +1919,31 @@ const coderCommand = Command.make(
         });
       }
 
+      // `--model opencode:<slug>` answers from OpenCode Zen on the credential
+      // opencode already holds here. It is how a session runs on Ox Alpha,
+      // which is free there and which no deployment serves.
+      const wantsZen = named !== undefined && /^opencode:/.test(named);
+      const zenAsked = wantsZen && named !== undefined ? named.slice("opencode:".length) : undefined;
+
       const wantsOllama = named === undefined ? localModel !== undefined : isOllamaModelFlag(named);
+      const zenKey = wantsZen ? zenCredential() : undefined;
+
+      if (wantsZen && (zenAsked === undefined || zenAsked.length === 0)) {
+        return yield* new InputError({
+          message:
+            "`--model opencode:` is missing a model name. Use `opencode:<model>`, " +
+            "for example `opencode:ox-alpha`.",
+        });
+      }
+
+      if (wantsZen && zenKey === undefined) {
+        return yield* new InputError({
+          message:
+            "No OpenCode Zen credential is available on this machine. Sign in with " +
+            "`opencode providers`, or set OPENCODE_API_KEY.",
+        });
+      }
+
       const askedFor =
         named === undefined
           ? localModel
@@ -2037,7 +2062,7 @@ const coderCommand = Command.make(
       // A dev server and production do not serve the same list, and a client
       // that assumes one of them is wrong against the other.
       const served =
-        Option.isSome(stored) && !wantsOllama && !offline && resumed === undefined
+        Option.isSome(stored) && !wantsOllama && !wantsZen && !offline && resumed === undefined
           ? yield* Effect.promise(() =>
               fetchServedCatalog({
                 origin: endpoint.origin,
@@ -2056,7 +2081,7 @@ const coderCommand = Command.make(
       // never overrules a server that has spoken. The flag takes a string
       // rather than an enum so an `ollama:` prefix can reach the local server,
       // which is why this is a check and not `Flag.choice`.
-      if (named !== undefined && !wantsOllama) {
+      if (named !== undefined && !wantsOllama && !wantsZen) {
         const refusal =
           served !== undefined
             ? refuseBackend(served, named)
@@ -2080,7 +2105,7 @@ const coderCommand = Command.make(
       const thread =
         resumed !== undefined
           ? resumed.source
-          : Option.isSome(stored) && !wantsOllama && !resume
+          : Option.isSome(stored) && !wantsOllama && !wantsZen && !resume
             ? yield* Effect.tryPromise({
                 try: () =>
                   openThread({
@@ -2107,12 +2132,14 @@ const coderCommand = Command.make(
       // A `--model ollama:<name>` session answers from the local Ollama server,
       // so it takes neither a thread nor the stand-in.
       const source: ReplySource =
-        wantsOllama && ollamaName !== undefined
-          ? new OllamaReplySource({
-              model: ollamaName,
-              ...(Option.isSome(reasoning) ? { reasoning: reasoning.value } : {}),
-            })
-          : (thread ?? new DummyReplySource());
+        wantsZen && zenAsked !== undefined && zenKey !== undefined
+          ? new ZenReplySource({ model: zenAsked, key: zenKey })
+          : wantsOllama && ollamaName !== undefined
+            ? new OllamaReplySource({
+                model: ollamaName,
+                ...(Option.isSome(reasoning) ? { reasoning: reasoning.value } : {}),
+              })
+            : (thread ?? new DummyReplySource());
 
       // Children get their own thread on their own model. The conversation
       // stays on the model it opened with, and a fan-out spends a budget the
@@ -2259,14 +2286,18 @@ const coderCommand = Command.make(
         return described;
       };
 
-      // Delegation is off rather than quietly running children on the
-      // conversation's model, so the refusal that turned it off is what the
-      // reader sees.
-      if (childThread?.kind === "refused") {
+      // Only when there is really no way to run a child. A refused child
+      // thread is not that: `buildDelegation` prefers a free harness model over
+      // the account's grant anyway, so the grant lane failing is the normal
+      // path rather than a loss of capability. Reporting it as "this session
+      // cannot delegate" was false — the `delegate` tool was declared, the
+      // model correctly said it could delegate, and the notice above it said
+      // the opposite.
+      if (setup === undefined && childThread?.kind === "refused") {
         session.notice(`This session cannot delegate: ${childThread.reason}`);
       }
 
-      if (Option.isNone(stored) && !offline && !wantsOllama) {
+      if (Option.isNone(stored) && !offline && !wantsOllama && !wantsZen) {
         session.notice(
           "No stored credential, so replies come from the built-in stand-in. " +
             `Run \`${loginCommandFor(endpoint)}\` to reach a real model.`,
@@ -2283,7 +2314,7 @@ const coderCommand = Command.make(
       // A grant pins the model the proxy will use, and the thread route takes
       // no model parameter, so a named backend cannot reach this turn. Saying
       // nothing would leave a reader with a flag that appeared to work.
-      if (thread !== undefined && Option.isSome(model) && !wantsOllama) {
+      if (thread !== undefined && Option.isSome(model) && !wantsOllama && !wantsZen) {
         session.notice(
           `This thread's grant pins ${thread.model}. \`--model\` names a chat API ` +
             "backend, which the inference proxy does not route to, so it had no effect.",

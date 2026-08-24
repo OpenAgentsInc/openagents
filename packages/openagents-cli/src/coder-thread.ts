@@ -914,7 +914,7 @@ export class ThreadReplySource implements ReplySource {
 }
 
 /** Frames of an SSE body, yielded as the body arrives rather than after it. */
-async function* frames(
+export async function* frames(
   body: ReadableStream<Uint8Array>,
   signal: AbortSignal,
 ): AsyncIterable<string> {
@@ -957,7 +957,7 @@ function dataOf(frame: string): string | undefined {
   return parts.length === 0 ? undefined : parts.join("\n");
 }
 
-function parse(frame: string): Record<string, unknown> | undefined {
+export function parse(frame: string): Record<string, unknown> | undefined {
   try {
     const value: unknown = JSON.parse(frame);
     return typeof value === "object" && value !== null
@@ -974,7 +974,7 @@ function parse(frame: string): Record<string, unknown> | undefined {
  * Chat-completions splits one call across frames and identifies the pieces by
  * `index`, so a name and its arguments can arrive separately.
  */
-function accumulate(
+export function accumulate(
   calls: Map<number, { id: string; name: string; args: string }>,
   fragments: ReadonlyArray<unknown>,
 ): void {
@@ -1080,6 +1080,6 @@ function number(value: unknown): number {
  * refusal ("prompt is required") is a sentence the model can act on, and a
  * parse error thrown here would end the turn instead.
  */
-function parseArguments(args: string): Record<string, unknown> {
+export function parseArguments(args: string): Record<string, unknown> {
   return parse(args) ?? {};
 }
