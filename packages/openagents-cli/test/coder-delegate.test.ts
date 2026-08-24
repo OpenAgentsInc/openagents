@@ -319,9 +319,12 @@ describe("fleet rendering", () => {
     const running = registry.list()[0];
     expect(running).toBeDefined();
     if (running === undefined) return;
-    expect(taskActivity(running)).toBe("bash(pnpm test)");
+    // A running child says how long it has been running, so the reader can
+    // tell a slow child from a stuck one.
+    const now = running.startedAt + 95_000;
+    expect(taskActivity(running, now)).toBe("bash(pnpm test) (1m 35s)");
     expect(fleetPhrase([running])).toBe("1 agent");
-    const rows = fleetRows([running], 80);
+    const rows = fleetRows([running], 80, now);
     expect(rows[0]?.branch).toBe("└─");
     expect(rows[0]?.mark).toBe("◐");
     expect(rows[0]?.text).toContain("bash(pnpm test)");

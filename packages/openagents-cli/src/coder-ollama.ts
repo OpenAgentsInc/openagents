@@ -14,6 +14,7 @@
 import { Ollama } from "ollama";
 import type { Message as OllamaMessage, Tool as OllamaTool, ToolCall as OllamaToolCall } from "ollama";
 
+import { merge } from "./coder-merge.js";
 import type { ReplyChunk, ReplySource } from "./coder-session.js";
 import type { CoderTool } from "./coder-tools.js";
 
@@ -498,10 +499,11 @@ export class OllamaReplySource implements ReplySource {
 
       if (calls.length === 0) return;
 
-      for (const call of calls) {
-        if (signal.aborted) return;
-        yield* this.invoke(call, signal);
-      }
+      // Concurrently. A model asking for two tools in one turn is saying they do
+      // not depend on each other, and running them in order anyway makes a fan-out
+      // to two models cost the sum of both.
+      if (signal.aborted) return;
+      yield* merge(calls.map((call) => this.invoke(call, signal)));
     }
 
 

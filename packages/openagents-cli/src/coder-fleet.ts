@@ -73,7 +73,7 @@ export function fleetPhrase(tasks: ReadonlyArray<CoderTask>): string | undefined
  * wrong. A running child with no activity yet says `Initializing…` rather than
  * nothing, because an empty cell reads as a stalled child.
  */
-export function taskActivity(task: CoderTask): string {
+export function taskActivity(task: CoderTask, now: number = Date.now()): string {
   if (task.status === "pending") return "Queued";
   if (task.status === "stopped") return "Stopped";
   if (task.status === "failed") return `Failed: ${collapse(task.error ?? "unknown error")}`;
@@ -86,10 +86,15 @@ export function taskActivity(task: CoderTask): string {
     return `Done (${cost})`;
   }
 
+  // A running child says how long it has been running, because the reader's
+  // question is never "what is it doing" alone — it is "is this slow or is it
+  // stuck". A recon child that thinks for ninety seconds before its first tool
+  // call showed `Initializing…` for all ninety, which reads as stuck.
+  const running = formatDuration(now - task.startedAt);
   const activity = task.progress.lastActivity;
-  if (activity === undefined) return "Initializing…";
+  if (activity === undefined) return `Initializing… (${running})`;
   const target = activity.target === undefined ? "" : `(${collapse(activity.target)})`;
-  return `${activity.toolName}${target}`;
+  return `${activity.toolName}${target} (${running})`;
 }
 
 /**
@@ -119,7 +124,11 @@ export function taskCounters(task: CoderTask): string {
  * lines up, which is what lets a reader scan fifteen children for the one that
  * failed.
  */
-export function fleetRows(tasks: ReadonlyArray<CoderTask>, width: number): ReadonlyArray<FleetRow> {
+export function fleetRows(
+  tasks: ReadonlyArray<CoderTask>,
+  width: number,
+  now: number = Date.now(),
+): ReadonlyArray<FleetRow> {
   const room = Math.max(20, width);
   const descriptionRoom = Math.min(28, Math.max(12, Math.floor(room * 0.35)));
   const longest = tasks.reduce((most, task) => Math.max(most, task.description.length), 0);
@@ -129,7 +138,7 @@ export function fleetRows(tasks: ReadonlyArray<CoderTask>, width: number): Reado
     const branch = index === tasks.length - 1 ? "└─" : "├─";
     const description = pad(cut(task.description, column), column);
     const counters = taskCounters(task);
-    const activity = taskActivity(task);
+    const activity = taskActivity(task, now);
     const tail = counters.length > 0 ? `${activity} · ${counters}` : activity;
     return {
       status: task.status,
