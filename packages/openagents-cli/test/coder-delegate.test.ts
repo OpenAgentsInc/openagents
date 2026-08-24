@@ -7,6 +7,7 @@ import {
   describePrompt,
   parseDelegateCommand,
   parseOpencodeEvent,
+  transientProviderFailure,
 } from "../src/coder-delegate.js";
 import {
   activityPhrase,
@@ -441,4 +442,162 @@ describe("latestActivities", () => {
       { toolName: "grep", target: "fresh" },
     ]);
   });
+});
+
+describe("classifying a child's failure", () => {
+  it("recognises the provider going away, in the shape opencode reports it", () => {
+    // The message seen in practice, verbatim.
+    expect(
+      transientProviderFailure(
+        "APIError: Error from provider (Console): Upstream request failed: Endpoint is unavailable.",
+      ),
+    ).toBe(true);
+  });
+
+  it("recognises the other ways a provider drops", () => {
+    for (const message of [
+      "503 Service Unavailable",
+      "Provider overloaded, try again",
+      "Rate limit exceeded",
+      "socket hang up",
+      "ECONNRESET",
+      "502 Bad Gateway",
+    ]) {
+      expect(transientProviderFailure(message)).toBe(true);
+    }
+  });
+
+  it("does not retry a failure that will recur", () => {
+    for (const message of [
+      "Permission denied by the user",
+      "Model not found: nonsense/model",
+      "The prompt could not be carried out",
+      "Unauthorized: invalid API key",
+      // Wording that overlaps a transient shape but names the request.
+      "Quota exceeded: too many requests this month",
+    ]) {
+      expect(transientProviderFailure(message)).toBe(false);
+    }
+  });
+});
+
+describe("retrying a child whose provider dropped", () => {
+  /** A harness that fails the first `failures` runs, then succeeds. */
+  const flaky = (
+    failures: number,
+    message: string,
+    options: { readonly session?: string; readonly toolsBeforeFailing?: number } = {},
+  ) => {
+    const runs: Array<string | undefined> = [];
+    let seen = 0;
+
+    const built: DelegateHarness = {
+      agent: "fake",
+      model: "fake/model",
+      async *run(input) {
+        runs.push(input.resumeSessionId);
+        seen += 1;
+        if (options.session !== undefined) {
+          yield { type: "session", sessionId: options.session };
+        }
+        for (let index = 0; index < (options.toolsBeforeFailing ?? 0); index += 1) {
+          yield { type: "tool", callId: `c${String(seen)}-${String(index)}`, name: "read", target: "f" };
+        }
+        if (seen <= failures) {
+          yield { type: "error", message };
+          return;
+        }
+        yield { type: "text", value: "finished" };
+      },
+    };
+
+    return { harness: built, runs };
+  };
+
+  const fleetFor = (built: DelegateHarness) =>
+    new DelegateFleet(new CoderTaskRegistry(), built, {
+      maxConcurrent: 1,
+      cwd: mkdtempSync(join(tmpdir(), "oa-retry-")),
+    });
+
+  it("resumes the session rather than starting the work again", async () => {
+    const { harness: built, runs } = flaky(1, "Endpoint is unavailable", {
+      session: "ses_abc",
+      toolsBeforeFailing: 3,
+    });
+
+    const outcome = await fleetFor(built).submit({
+      description: "flaky",
+      prompt: "do the thing",
+      cwd: ".",
+      background: false,
+    });
+
+    expect(outcome.status).toBe("completed");
+    // The retry carried the session, so the three tools already run are not
+    // run again from the prompt.
+    expect(runs).toEqual([undefined, "ses_abc"]);
+  }, 20_000);
+
+  it("gives up after a bounded number of attempts", async () => {
+    const { harness: built, runs } = flaky(9, "Endpoint is unavailable", { session: "ses_abc" });
+
+    const outcome = await fleetFor(built).submit({
+      description: "always failing",
+      prompt: "do the thing",
+      cwd: ".",
+      background: false,
+    });
+
+    expect(outcome.status).toBe("failed");
+    expect(runs).toHaveLength(3);
+  }, 20_000);
+
+  it("does not retry a failure that will recur", async () => {
+    const { harness: built, runs } = flaky(1, "Permission denied by the user", {
+      session: "ses_abc",
+    });
+
+    const outcome = await fleetFor(built).submit({
+      description: "refused",
+      prompt: "do the thing",
+      cwd: ".",
+      background: false,
+    });
+
+    expect(outcome.status).toBe("failed");
+    expect(runs).toHaveLength(1);
+  });
+
+  it("refuses to redo work it cannot resume", async () => {
+    // No session reported, and the child already ran tools: re-running from
+    // the prompt would apply its edits a second time.
+    const { harness: built, runs } = flaky(1, "Endpoint is unavailable", {
+      toolsBeforeFailing: 2,
+    });
+
+    const outcome = await fleetFor(built).submit({
+      description: "unresumable",
+      prompt: "do the thing",
+      cwd: ".",
+      background: false,
+    });
+
+    expect(outcome.status).toBe("failed");
+    expect(runs).toHaveLength(1);
+  });
+
+  it("retries a child that had done nothing yet, session or not", async () => {
+    const { harness: built, runs } = flaky(1, "Endpoint is unavailable");
+
+    const outcome = await fleetFor(built).submit({
+      description: "nothing done",
+      prompt: "do the thing",
+      cwd: ".",
+      background: false,
+    });
+
+    expect(outcome.status).toBe("completed");
+    expect(runs).toHaveLength(2);
+  }, 20_000);
 });

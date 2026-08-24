@@ -112,9 +112,10 @@ export const boundedResult = (output: string): string => bounded(output, TOOL_RE
 
 /** What the thread may still spend, as the server last reported it. */
 export interface ThreadBudget {
-  readonly calls: number;
-  readonly totalTokens: number;
-  readonly costMicrousd: number;
+  /** `undefined` where the server set no ceiling: there is nothing counting down. */
+  readonly calls: number | undefined;
+  readonly totalTokens: number | undefined;
+  readonly costMicrousd: number | undefined;
 }
 
 export interface ThreadOptions {
@@ -876,9 +877,15 @@ export class ThreadReplySource implements ReplySource {
    */
   private spend(usage: Record<string, unknown>): void {
     const total = number(usage["total_tokens"]);
+    // A ceiling that was never set has no remainder to decrement. Counting one
+    // down from `undefined` would have invented a limit the server does not
+    // hold, and shown it running out.
     this.remaining = {
-      calls: Math.max(0, this.remaining.calls - 1),
-      totalTokens: Math.max(0, this.remaining.totalTokens - total),
+      calls: this.remaining.calls === undefined ? undefined : Math.max(0, this.remaining.calls - 1),
+      totalTokens:
+        this.remaining.totalTokens === undefined
+          ? undefined
+          : Math.max(0, this.remaining.totalTokens - total),
       costMicrousd: this.remaining.costMicrousd,
     };
     // The same report feeds the turn's own tally, which `turn.assistant`
@@ -1032,10 +1039,14 @@ function budgetOf(
   remaining: Record<string, unknown>,
   limits: Record<string, unknown>,
 ): ThreadBudget {
+  // `null` from the server means unbounded, and is carried as `undefined`
+  // rather than collapsed to zero. A ceiling of nothing left and a ceiling that
+  // was never set are opposite facts, and `number()` would have printed both as
+  // `0 calls` — a session with no limit reading as one with none remaining.
   return {
-    calls: number(remaining["calls"] ?? limits["max_calls"]),
-    totalTokens: number(remaining["total_tokens"] ?? limits["max_total_tokens"]),
-    costMicrousd: number(remaining["cost_microusd"] ?? limits["max_cost_microusd"]),
+    calls: optional(remaining["calls"] ?? limits["max_calls"]),
+    totalTokens: optional(remaining["total_tokens"] ?? limits["max_total_tokens"]),
+    costMicrousd: optional(remaining["cost_microusd"] ?? limits["max_cost_microusd"]),
   };
 }
 
@@ -1048,7 +1059,20 @@ function budgetOf(
  * expensive model runs into instead.
  */
 export function formatBudget(budget: ThreadBudget): string {
-  return `${budget.calls} calls · ${compact(budget.totalTokens)} tok · ${dollars(budget.costMicrousd)}`;
+  // Only the ceilings that exist. A thread with none shows nothing here, which
+  // is the honest reading of a session nothing is counting down.
+  const parts = [
+    budget.calls === undefined ? undefined : `${String(budget.calls)} calls`,
+    budget.totalTokens === undefined ? undefined : `${compact(budget.totalTokens)} tok`,
+    budget.costMicrousd === undefined ? undefined : dollars(budget.costMicrousd),
+  ].filter((part): part is string => part !== undefined);
+
+  return parts.join(" · ");
+}
+
+/** A number the server gave, or `undefined` where it gave `null` for "no limit". */
+function optional(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function compact(tokens: number): string {

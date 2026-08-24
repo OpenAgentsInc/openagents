@@ -140,7 +140,20 @@ export interface DelegateHarness {
    * permissions, provider credentials — is the harness's business.
    */
   run(
-    input: { readonly prompt: string; readonly cwd: string; readonly transcriptPath: string },
+    input: {
+      readonly prompt: string;
+      readonly cwd: string;
+      readonly transcriptPath: string;
+      /**
+       * A session to continue rather than start.
+       *
+       * Set only on a retry, and only when the first attempt got far enough to
+       * report one. Resuming is what makes a retry safe: a child that ran
+       * twenty-five tools before its provider dropped has already edited files,
+       * and starting it again from the prompt would redo all of it.
+       */
+      readonly resumeSessionId?: string | undefined;
+    },
     signal: AbortSignal,
   ): AsyncIterable<DelegateEvent>;
 }
@@ -396,7 +409,12 @@ export class DevinHarness implements DelegateHarness {
   }
 
   async *run(
-    input: { readonly prompt: string; readonly cwd: string; readonly transcriptPath: string },
+    input: {
+      readonly prompt: string;
+      readonly cwd: string;
+      readonly transcriptPath: string;
+      readonly resumeSessionId?: string | undefined;
+    },
     signal: AbortSignal,
   ): AsyncIterable<DelegateEvent> {
     const command = this.options.command ?? "devin";
@@ -662,7 +680,12 @@ export class OpencodeHarness implements DelegateHarness {
   }
 
   async *run(
-    input: { readonly prompt: string; readonly cwd: string; readonly transcriptPath: string },
+    input: {
+      readonly prompt: string;
+      readonly cwd: string;
+      readonly transcriptPath: string;
+      readonly resumeSessionId?: string | undefined;
+    },
     signal: AbortSignal,
   ): AsyncIterable<DelegateEvent> {
     const command = this.options.command ?? "opencode";
@@ -675,7 +698,19 @@ export class OpencodeHarness implements DelegateHarness {
 
     const args = ["run", "--format", "json", "--model", this.model, "--dir", input.cwd];
     if (this.options.autoApprove === true) args.push("--auto");
-    args.push(input.prompt);
+
+    if (input.resumeSessionId === undefined) {
+      args.push(input.prompt);
+    } else {
+      // The work already done stays done. `--continue` picks the session back
+      // up with its whole transcript, so the child carries on from where its
+      // provider dropped rather than re-reading and re-editing everything.
+      args.push("--session", input.resumeSessionId, "--continue");
+      args.push(
+        "The previous attempt stopped when the model provider became unavailable. " +
+          "Continue from where you left off and finish the task.",
+      );
+    }
 
     const child = spawn(command, args, {
       cwd: input.cwd,
@@ -941,49 +976,100 @@ export class DelegateFleet {
 
     /** Tool calls already counted. A harness reports one call several times. */
     const counted = new Set<string>();
+    /** The child's session, once it reports one, so a retry can resume it. */
+    let sessionId: string | undefined;
     let text = "";
-    let reported: string | undefined;
 
-    try {
-      for await (const event of this.harness.run(
-        { prompt: request.prompt, cwd, transcriptPath },
-        controller.signal,
-      )) {
-        if (controller.signal.aborted) break;
-        if (event.type === "tool") {
-          if (counted.has(event.callId)) continue;
-          counted.add(event.callId);
-          const activity: CoderToolActivity = { toolName: event.name, target: event.target };
-          this.registry.recordToolUse(id, activity);
-        } else if (event.type === "tokens") {
-          this.registry.recordTokens(id, { input: event.input, output: event.output });
-        } else if (event.type === "text") {
-          // Only the final assistant text is the child's answer, and a harness
-          // emits one text part per step, so the last one wins.
-          text = event.value;
-        } else if (event.type === "error") {
-          reported = event.message;
+    for (let attempt = 1; ; attempt += 1) {
+      let reported: string | undefined;
+      let thrown: string | undefined;
+
+      try {
+        for await (const event of this.harness.run(
+          {
+            prompt: request.prompt,
+            cwd,
+            transcriptPath,
+            ...(sessionId === undefined ? {} : { resumeSessionId: sessionId }),
+          },
+          controller.signal,
+        )) {
+          if (controller.signal.aborted) break;
+          if (event.type === "session") {
+            sessionId = event.sessionId;
+          } else if (event.type === "tool") {
+            if (counted.has(event.callId)) continue;
+            counted.add(event.callId);
+            const activity: CoderToolActivity = { toolName: event.name, target: event.target };
+            this.registry.recordToolUse(id, activity);
+          } else if (event.type === "tokens") {
+            this.registry.recordTokens(id, { input: event.input, output: event.output });
+          } else if (event.type === "text") {
+            // Only the final assistant text is the child's answer, and a
+            // harness emits one text part per step, so the last one wins.
+            text = event.value;
+          } else if (event.type === "error") {
+            reported = event.message;
+          }
         }
+      } catch (cause) {
+        thrown = cause instanceof Error ? cause.message : String(cause);
       }
 
-      if (controller.signal.aborted) {
-        return { status: "stopped", taskId: id };
-      }
-      if (reported !== undefined) {
-        this.registry.fail(id, reported);
-        return { status: "failed", taskId: id, error: reported };
+      if (controller.signal.aborted) return { status: "stopped", taskId: id };
+
+      const failure = reported ?? thrown;
+      if (failure === undefined) {
+        this.registry.complete(id, text);
+        return { status: "completed", taskId: id, result: text };
       }
 
-      this.registry.complete(id, text);
-      return { status: "completed", taskId: id, result: text };
-    } catch (cause) {
-      if (controller.signal.aborted) {
-        return { status: "stopped", taskId: id };
+      const retry = this.retryDelay(failure, attempt, sessionId, counted.size);
+      if (retry === undefined) {
+        this.registry.fail(id, failure);
+        return { status: "failed", taskId: id, error: failure };
       }
-      const message = cause instanceof Error ? cause.message : String(cause);
-      this.registry.fail(id, message);
-      return { status: "failed", taskId: id, error: message };
+
+      this.registry.recordToolUse(id, {
+        toolName: "retry",
+        target: `provider unavailable, attempt ${String(attempt + 1)}`,
+      });
+
+      await new Promise((wake) => setTimeout(wake, retry));
+      if (controller.signal.aborted) return { status: "stopped", taskId: id };
     }
+  }
+
+  /**
+   * How long to wait before running this child again, or `undefined` to stop.
+   *
+   * A provider that went away is the one failure worth retrying: nothing about
+   * the request was wrong, and the six minutes of work the child had already
+   * done are thrown away with it. Everything else — a refused permission, a
+   * missing model, a prompt the child could not carry out — recurs on the
+   * second attempt exactly as it did on the first.
+   *
+   * A retry that cannot resume the child's session is refused once the child
+   * has run a tool. That child has edited files, and starting it again from
+   * the prompt would apply its work twice; losing the run is the better of two
+   * bad outcomes. With a session to continue, the work already done stays
+   * done and the retry is safe.
+   */
+  private retryDelay(
+    failure: string,
+    attempt: number,
+    sessionId: string | undefined,
+    toolsRun: number,
+  ): number | undefined {
+    const attempts = 3;
+    if (attempt >= attempts) return undefined;
+    if (!transientProviderFailure(failure)) return undefined;
+    if (sessionId === undefined && toolsRun > 0) return undefined;
+
+    // Exponential, from two seconds. A provider that has just dropped is
+    // usually back within a few, and a child is not a keystroke — waiting eight
+    // seconds to save six minutes of work is not a wait anyone notices.
+    return 2_000 * 2 ** (attempt - 1);
   }
 
   private mintId(): CoderTaskId {
@@ -1006,4 +1092,43 @@ function stringField(record: Record<string, unknown>, key: string): string | und
 function numberField(record: Record<string, unknown>, key: string): number | undefined {
   const value = record[key];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * Whether this failure is the provider going away rather than the work being
+ * wrong.
+ *
+ * Matched on the message because that is all a harness gives: `opencode`
+ * reports its provider's error as text, and the shape seen in practice is
+ * `APIError: Error from provider (Console): Upstream request failed: Endpoint
+ * is unavailable.` The list is deliberately narrow. A false positive re-runs a
+ * child that was never going to succeed, which costs minutes and money for the
+ * same answer.
+ */
+export function transientProviderFailure(message: string): boolean {
+  const text = message.toLowerCase();
+
+  // A refusal that names the request is not the provider being away, however
+  // much of the surrounding wording matches.
+  if (/\b(invalid|unauthorized|forbidden|not found|unsupported|quota)\b/.test(text)) return false;
+
+  return [
+    "endpoint is unavailable",
+    "upstream request failed",
+    "service unavailable",
+    "temporarily unavailable",
+    "overloaded",
+    "rate limit",
+    "too many requests",
+    "connection reset",
+    "connection refused",
+    "socket hang up",
+    "econnreset",
+    "etimedout",
+    "gateway timeout",
+    "bad gateway",
+    "502",
+    "503",
+    "504",
+  ].some((needle) => text.includes(needle));
 }
