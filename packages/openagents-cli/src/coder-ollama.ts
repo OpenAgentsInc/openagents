@@ -32,6 +32,27 @@ const DEFAULT_HOST = "http://127.0.0.1:11434";
 const MAX_TOOL_STEPS = 100;
 
 /**
+ * How much of one tool's output is kept on the transcript.
+ *
+ * The reader sees all of it; this is only what goes back to the model on every
+ * round after. A session that read the issue boards accumulated 82 KB of tool
+ * output and re-sent it 25 times, which is where its wall clock went: 91% of
+ * everything sent each round was output the model had already read.
+ *
+ * Generous enough that a normal command survives whole, and the head and the
+ * tail are what a long one is read for anyway.
+ */
+const TOOL_RESULT_KEPT = 4_000;
+
+/** A long tool result, kept at both ends. */
+const bounded = (output: string): string => {
+  if (output.length <= TOOL_RESULT_KEPT) return output;
+  const half = Math.floor(TOOL_RESULT_KEPT / 2);
+  const cut = output.length - TOOL_RESULT_KEPT;
+  return `${output.slice(0, half)}\n\n[${String(cut)} characters omitted from the middle; run it again more narrowly if you need them]\n\n${output.slice(-half)}`;
+};
+
+/**
  * What a reasoning level means to Ollama.
  *
  * `think` takes a boolean or, on a model that advertises thinking, one of these
@@ -233,6 +254,10 @@ export class OllamaReplySource implements ReplySource {
    */
   private steered: string[] = [];
   private reasoningLevel: string;
+  /** What the turn in flight has spent, so it is reported however it ends. */
+  private spentIn = 0;
+  private spentOut = 0;
+  private calls = 0;
   private callCount = 0;
 
   get model(): string {
@@ -339,6 +364,18 @@ export class OllamaReplySource implements ReplySource {
   }
 
   private async *turn(prompt: string, signal: AbortSignal): AsyncIterable<ReplyChunk> {
+    // Reported on the way out however the turn ends. Yielding it only where a
+    // turn finished cleanly lost it on exactly the expensive ones: a long turn
+    // that was interrupted, or that lost the server, recorded nothing, and the
+    // export showed one turn's figures for a whole session.
+    try {
+      yield* this.rounds(prompt, signal);
+    } finally {
+      yield { type: "usage", promptTokens: this.spentIn, completionTokens: this.spentOut, calls: this.calls };
+    }
+  }
+
+  private async *rounds(prompt: string, signal: AbortSignal): AsyncIterable<ReplyChunk> {
     // Built on the first turn rather than in the constructor: the tools are
     // declared after construction, and the prompt is derived from them.
     if (this.transcript.length === 0) {
@@ -350,9 +387,9 @@ export class OllamaReplySource implements ReplySource {
     // A turn is a loop, not a single call: the model may answer, or it may ask
     // for tools and then answer once it has seen what they returned. The
     // ceiling is what stops a model that only ever delegates.
-    let promptTokens = 0;
-    let completionTokens = 0;
-    let llmCalls = 0;
+    this.spentIn = 0;
+    this.spentOut = 0;
+    this.calls = 0;
 
     for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
       if (signal.aborted) return;
@@ -432,9 +469,9 @@ export class OllamaReplySource implements ReplySource {
             // The counts ride on the final chunk of each round, so they are
             // summed across the rounds a turn took rather than reported from
             // the last one.
-            promptTokens += chunk.prompt_eval_count ?? 0;
-            completionTokens += chunk.eval_count ?? 0;
-            llmCalls += 1;
+            this.spentIn += chunk.prompt_eval_count ?? 0;
+            this.spentOut += chunk.eval_count ?? 0;
+            this.calls += 1;
             break;
           }
         }
@@ -452,10 +489,7 @@ export class OllamaReplySource implements ReplySource {
         ...(calls.length === 0 ? {} : { tool_calls: calls }),
       });
 
-      if (calls.length === 0) {
-        yield { type: "usage", promptTokens, completionTokens, calls: llmCalls };
-        return;
-      }
+      if (calls.length === 0) return;
 
       for (const call of calls) {
         if (signal.aborted) return;
@@ -463,7 +497,7 @@ export class OllamaReplySource implements ReplySource {
       }
     }
 
-    yield { type: "usage", promptTokens, completionTokens, calls: llmCalls };
+
   }
 
   /**
@@ -503,6 +537,6 @@ export class OllamaReplySource implements ReplySource {
 
     yield { type: "tool_result", callId, output, error: failure };
 
-    this.transcript.push({ role: "tool", content: output, tool_name: name });
+    this.transcript.push({ role: "tool", content: bounded(output), tool_name: name });
   }
 }

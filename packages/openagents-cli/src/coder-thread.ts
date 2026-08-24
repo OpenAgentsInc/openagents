@@ -79,6 +79,17 @@ const THREADS_PATH = "/api/v3/threads";
  */
 const MAX_TOOL_STEPS = 100;
 
+/** How much of one tool's output is kept on the transcript. */
+const TOOL_RESULT_KEPT = 4_000;
+
+/** A long tool result, kept at both ends, which is what it is read for. */
+const boundedResult = (output: string): string => {
+  if (output.length <= TOOL_RESULT_KEPT) return output;
+  const half = Math.floor(TOOL_RESULT_KEPT / 2);
+  const cut = output.length - TOOL_RESULT_KEPT;
+  return `${output.slice(0, half)}\n\n[${String(cut)} characters omitted from the middle; run it again more narrowly if you need them]\n\n${output.slice(-half)}`;
+};
+
 /** What the thread may still spend, as the server last reported it. */
 export interface ThreadBudget {
   readonly calls: number;
@@ -422,7 +433,14 @@ export class ThreadReplySource implements ReplySource {
       role: "assistant",
       content: `[tool call]\n${call.name}(${call.args})`,
     });
-    this.transcript.push({ role: "user", content: `[tool result ${call.name}]\n${output}` });
+    // Bounded on the way onto the transcript, not on the way to the reader:
+    // this is what goes back to the model on every round after, and a session
+    // that re-sends everything it has already read spends its wall clock on
+    // reading it again.
+    this.transcript.push({
+      role: "user",
+      content: `[tool result ${call.name}]\n${boundedResult(output)}`,
+    });
   }
 
   /**

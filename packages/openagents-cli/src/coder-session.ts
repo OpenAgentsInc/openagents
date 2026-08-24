@@ -542,6 +542,34 @@ export class CoderSession {
       return;
     }
 
+    // `/help` was going to the model, which answered with nothing. The keys and
+    // the commands are the interface's own facts and it should not have to ask
+    // anything to state them.
+    if (/^\/(help|\?)\s*$/.test(prompt.trim())) {
+      this.entries.push({ role: "you", text: prompt, settled: true, at: Date.now() });
+      this.notice(
+        [
+          "Commands:",
+          "  /help     this list",
+          "  /system   what the model is told, including tools and skills",
+          "  /skills   choose which skills the model is offered",
+          "  /export   write this conversation as an ATIF trajectory",
+          "  /reload   rebuild and restart on the current source",
+          "  /delegate [<n>x] <prompt>   run child agents on a prompt",
+          "",
+          "Keys:",
+          "  enter        send, or steer a running turn",
+          "  shift+enter  queue for when the turn ends",
+          "  esc          interrupt the reply",
+          "  tab          switch model · shift+tab  change thinking",
+          "  ctrl+o       expand a tool call · ctrl+x  stop children",
+          "  pgup/pgdn    scroll · ctrl+d  quit",
+        ].join("\n"),
+      );
+      this.emit();
+      return;
+    }
+
     const delegate = parseDelegateCommand(prompt);
     if (delegate !== undefined) {
       this.entries.push({ role: "you", text: prompt, settled: true, at: Date.now() });

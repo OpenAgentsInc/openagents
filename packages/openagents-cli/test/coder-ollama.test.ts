@@ -442,3 +442,71 @@ describe("how hard the model is asked to think", () => {
     expect(new OllamaReplySource({ model: "m", reasoning: "low" }).reasoning.level).toBe("low");
   });
 });
+
+describe("what goes back to the model each round", () => {
+  it("keeps a long tool result at both ends rather than whole", async () => {
+    const long = "A".repeat(3_000) + "MIDDLE" + "B".repeat(3_000);
+    const { source, stub } = sourceWith([
+      [
+        chunk({ content: "", tool_calls: [{ function: { name: "t", arguments: {} } }] }),
+        chunk({}, true),
+      ],
+      [chunk({ content: "done" }, true)],
+    ]);
+    source.useTools([
+      { name: "t", description: "d", parameters: {}, run: () => Promise.resolve(long) },
+    ]);
+
+    await collect(source, "go");
+
+    const messages = stub.requests[1]?.["messages"] as ReadonlyArray<Record<string, unknown>>;
+    const result = messages.find((message) => message["role"] === "tool");
+    const content = String(result?.["content"]);
+
+    // The reader saw all of it; this is what is re-sent on every round after,
+    // and a session that re-sends what it has already read spends its wall
+    // clock reading it again.
+    expect(content.length).toBeLessThan(long.length);
+    expect(content).toContain("characters omitted from the middle");
+    // Both ends survive, which is what a long output is read for.
+    expect(content.startsWith("A")).toBe(true);
+    expect(content.endsWith("B")).toBe(true);
+  });
+
+  it("leaves an ordinary result alone", async () => {
+    const { source, stub } = sourceWith([
+      [
+        chunk({ content: "", tool_calls: [{ function: { name: "t", arguments: {} } }] }),
+        chunk({}, true),
+      ],
+      [chunk({ content: "done" }, true)],
+    ]);
+    source.useTools([
+      { name: "t", description: "d", parameters: {}, run: () => Promise.resolve("short output") },
+    ]);
+
+    await collect(source, "go");
+
+    const messages = stub.requests[1]?.["messages"] as ReadonlyArray<Record<string, unknown>>;
+    expect(messages.find((message) => message["role"] === "tool")?.["content"]).toBe(
+      "short output",
+    );
+  });
+
+  it("reports what a turn spent even when it is cut short", async () => {
+    const { source } = sourceWith([
+      [{ message: {}, done: true, prompt_eval_count: 500, eval_count: 50 } as never],
+    ]);
+    const controller = new AbortController();
+    const chunks: unknown[] = [];
+
+    for await (const piece of source.reply("go", controller.signal)) {
+      chunks.push(piece);
+      controller.abort();
+    }
+
+    // The expensive turns are the ones that get interrupted, and those were
+    // recording nothing at all.
+    expect(chunks.at(-1)).toMatchObject({ type: "usage" });
+  });
+});
