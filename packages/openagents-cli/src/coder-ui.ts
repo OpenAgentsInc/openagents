@@ -681,8 +681,6 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         where = candidate;
         break;
       }
-      rows.push(`  ${justify(activity, where, inner)}`);
-
       // A blank row, then the composer. The keys used to live on a second row
       // under it; they are in `/help` now, which is where a reader looks for
       // them once rather than past them always.
@@ -711,9 +709,14 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       rows.push(`  › ${visible}`);
       rows.push(rule);
 
+      // The status line sits under the composer. Main agent state, workspace,
+      // model, and budget stay here so the transcript and any running work are
+      // read first and the bottom chrome is the last thing the eye reaches.
+      rows.push(`  ${justify(activity, where, inner)}`);
+
       paint(
         rows,
-        transcriptRows + fleet.length + 4,
+        transcriptRows + fleet.length + 3,
         4 + [...visible].length + 1,
       );
     };

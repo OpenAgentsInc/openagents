@@ -860,17 +860,14 @@ describe("the transcript's marker column", () => {
 });
 
 describe("the chrome under the composer", () => {
-  it("closes the composer with its floor rule, and no longer carries the status line", async () => {
+  it("is one row, and it is the status line", async () => {
     const { rows } = await drive([{ type: "text", value: "answer" }]);
-    const composerAt = rows.findIndex((row) => row.includes("›"));
-    const statusAt = rows.findIndex((row) => row.includes("repo · main"));
+    const bottom = rows.slice(-2);
 
-    // The status line moved up beside the delegate rows; what is left under
-    // the composer is its own region and nothing else.
-    expect(composerAt).toBeGreaterThan(0);
-    expect(statusAt).toBeGreaterThanOrEqual(0);
-    expect(statusAt).toBeLessThan(composerAt);
-    expect(rows.at(-1)).toMatch(/^─+$/);
+    // The keys used to have a row of their own under the status line. They are
+    // in `/help` now, which is where a reader looks for them once rather than
+    // past them always.
+    expect(bottom.some((row) => row.includes("ready") || row.includes("working"))).toBe(true);
     expect(rows.join("\n")).not.toContain("enter to send");
     expect(rows.join("\n")).not.toContain("ctrl+d to quit");
   });
