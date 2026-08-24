@@ -523,6 +523,35 @@ describe("the /skills screen", () => {
     await screenUnderTest.running;
   });
 
+
+  it("returns on a lone escape, the way a terminal sends one", async () => {
+    const screenUnderTest = await open(selection());
+    expect(screenUnderTest.rows().join("\n")).toContain("Skills");
+
+    // One escape byte and nothing after it. The interface holds a bare escape
+    // for its window in case a sequence follows, so this only leaves the screen
+    // once the window has passed -- which is the case a test that sends another
+    // key immediately never exercises, and the one every terminal sends.
+    screenUnderTest.stdin.emit("data", "\x1b");
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    expect(screenUnderTest.rows().join("\n")).not.toContain("space toggles");
+
+    screenUnderTest.stdin.emit("data", "\x04");
+    await screenUnderTest.running;
+  });
+
+  it("returns on ctrl+c without ending the session", async () => {
+    const screenUnderTest = await open(selection());
+
+    screenUnderTest.stdin.emit("data", "\x03");
+
+    expect(screenUnderTest.rows().join("\n")).not.toContain("space toggles");
+
+    screenUnderTest.stdin.emit("data", "\x04");
+    await screenUnderTest.running;
+  });
+
   it("says so when the workspace has no skills", async () => {
     const stdin = new FakeIn();
     const stdout = new FakeOut();

@@ -685,6 +685,17 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
 
     /** A lone escape: interrupt if there is something to interrupt, else clear. */
     const onEscape = () => {
+      // Every settled bare escape lands here, whether it was recognised in the
+      // chunk it arrived in or held for the window and released by the timer.
+      // Leaving the screen out of this path is what made escape work in a test,
+      // where another key follows immediately, and not in a terminal, where a
+      // lone escape byte is all that ever arrives.
+      if (screen === "skills") {
+        screen = "chat";
+        painted = [];
+        render();
+        return;
+      }
       if (!session.interrupt()) composer = "";
       render();
     };
@@ -732,8 +743,8 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
             }
             index += sequence.length;
             if (sequence === "\x1b") {
-              screen = "chat";
-              painted = [];
+              onEscape();
+              continue;
             } else if (sequence === "\x1b[A" || sequence === "\x1bOA") {
               skillRow = Math.max(0, skillRow - 1);
             } else if (sequence === "\x1b[B" || sequence === "\x1bOB") {
