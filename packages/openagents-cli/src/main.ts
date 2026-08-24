@@ -34,6 +34,7 @@ const cliErrorTags = new Set([
   "OpenAgentsCli.ComputerMachineUnavailable",
   "OpenAgentsCli.ComputerMachineMismatch",
   "OpenAgentsCli.ComputerReconnectExhausted",
+  "OpenAgentsCli.TraceUploadUnsupported",
 ]);
 
 const isCliError = (value: unknown): value is CliError =>

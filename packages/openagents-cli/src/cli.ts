@@ -115,6 +115,7 @@ import { parseRepositoryTarget, RepositoryClient } from "./repository-client.js"
 import { RequestBodyInput } from "./request-body-input.js";
 import { SecretInput } from "./secret-input.js";
 import { findToken, resolveApiEndpoint, resolveApiSession } from "./session.js";
+import { makeTraceCommand } from "./trace-command.js";
 import { TerminalSession } from "./terminal-session.js";
 
 // The version lives in `package.json`; see `version.ts`.
@@ -3536,6 +3537,8 @@ const projectCommand = Command.make("project").pipe(
   ]),
 );
 
+const traceCommand = makeTraceCommand(rootCommand);
+
 export const openagentsCommand = rootCommand.pipe(
   Command.withSubcommands([
     apiCommand,
@@ -3547,6 +3550,7 @@ export const openagentsCommand = rootCommand.pipe(
     issueCommand,
     projectCommand,
     repoCommand,
+    traceCommand,
   ]),
 );
 

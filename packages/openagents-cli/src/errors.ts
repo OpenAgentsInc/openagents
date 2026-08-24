@@ -171,6 +171,11 @@ export class ComputerReconnectExhausted extends Schema.TaggedErrorClass<Computer
   { message: Schema.String },
 ) {}
 
+export class TraceUploadUnsupported extends Schema.TaggedErrorClass<TraceUploadUnsupported>()(
+  "OpenAgentsCli.TraceUploadUnsupported",
+  { message: Schema.String },
+) {}
+
 export type CliError =
   | InputError
   | ConfigurationError
@@ -196,7 +201,8 @@ export type CliError =
   | ComputerStatusNetworkFailure
   | ComputerMachineUnavailable
   | ComputerMachineMismatch
-  | ComputerReconnectExhausted;
+  | ComputerReconnectExhausted
+  | TraceUploadUnsupported;
 
 export const exitCodeFor = (error: CliError): number => {
   switch (error._tag) {
@@ -222,6 +228,8 @@ export const exitCodeFor = (error: CliError): number => {
       return 14;
     case "OpenAgentsCli.ComputerReconnectExhausted":
       return 15;
+    case "OpenAgentsCli.TraceUploadUnsupported":
+      return 16;
     case "OpenAgentsCli.AuthenticationRequired":
     case "OpenAgentsCli.CredentialPersistenceUnavailable":
     case "OpenAgentsCli.CredentialStoreError":
