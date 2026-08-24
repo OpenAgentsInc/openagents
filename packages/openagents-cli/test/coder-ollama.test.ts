@@ -389,3 +389,56 @@ describe("naming a model by the part a reader remembers", () => {
     await expect(resolveOllamaModel("qwen3.8")).resolves.toEqual({ installed: ["llama3:8b"] });
   });
 });
+
+describe("how hard the model is asked to think", () => {
+  const seen: unknown[] = [];
+  const sourceWithThink = () => {
+    const source = new OllamaReplySource({ model: "m" });
+    (source as unknown as { client: unknown }).client = {
+      chat: async (request: Record<string, unknown>) => {
+        seen.push(request["think"]);
+        return Object.assign(
+          (async function* () {
+            yield { message: { content: "x" }, done: true };
+          })(),
+          { abort: () => {} },
+        );
+      },
+    };
+    return source;
+  };
+
+  it("sends the level on every request", async () => {
+    seen.length = 0;
+    const source = sourceWithThink();
+
+    for await (const _ of source.reply("x", new AbortController().signal)) void _;
+
+    expect(seen.at(-1)).toBe("medium");
+  });
+
+  it("cycles through the levels Ollama has, and off is not a level", async () => {
+    seen.length = 0;
+    const source = sourceWithThink();
+
+    expect(source.reasoning.levels).toEqual(["off", "low", "medium", "high"]);
+
+    const sent: unknown[] = [];
+    for (let round = 0; round < 4; round += 1) {
+      for await (const _ of source.reply("x", new AbortController().signal)) void _;
+      sent.push(seen.at(-1));
+      source.cycleReasoning();
+    }
+
+    // A model asked to think at no level still thinks; the way to stop it is to
+    // say not to, which is the boolean.
+    expect(sent).toEqual(["medium", "high", false, "low"]);
+  });
+
+  it("maps the flag's ladder onto the four rungs Ollama has", () => {
+    // The flag is the thread lane's, and has five names.
+    expect(new OllamaReplySource({ model: "m", reasoning: "minimal" }).reasoning.level).toBe("off");
+    expect(new OllamaReplySource({ model: "m", reasoning: "max" }).reasoning.level).toBe("high");
+    expect(new OllamaReplySource({ model: "m", reasoning: "low" }).reasoning.level).toBe("low");
+  });
+});

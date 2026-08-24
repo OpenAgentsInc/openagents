@@ -1763,7 +1763,10 @@ const coderCommand = Command.make(
       // so it takes neither a thread nor the stand-in.
       const source: ReplySource =
         wantsOllama && ollamaName !== undefined
-          ? new OllamaReplySource({ model: ollamaName })
+          ? new OllamaReplySource({
+              model: ollamaName,
+              ...(Option.isSome(reasoning) ? { reasoning: reasoning.value } : {}),
+            })
           : (thread ?? new DummyReplySource());
 
       // Children get their own thread on their own model. The conversation

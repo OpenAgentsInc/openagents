@@ -574,6 +574,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       // checkout they are in, they can ask git for the branch, and nothing on
       // screen but this says which model answers or what the thread has left.
       const facts = [snapshot.repository, snapshot.branch, snapshot.model];
+      if (snapshot.reasoning !== undefined) facts.push(`thinking ${snapshot.reasoning}`);
       if (snapshot.budget !== undefined) facts.push(snapshot.budget);
       let where = "";
       for (let from = 0; from < facts.length; from += 1) {
@@ -630,6 +631,9 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       // Only when there is another model to switch to, and only while nothing
       // is running: a turn already accepted keeps the backend it named.
       if (session.canCycleBackend && !snapshot.running) keys.push({ text: "tab to switch model" });
+      if (session.canCycleReasoning && !snapshot.running) {
+        keys.push({ text: "shift+tab to change thinking" });
+      }
       if (lines.length > transcriptRows) keys.push({ text: "pgup/pgdn to scroll" });
       if (focusedTool(snapshot) !== undefined) keys.push({ text: "ctrl+o to expand" });
 
@@ -877,6 +881,15 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
             dirty = false;
             continue;
           }
+          // Shift+tab, in both spellings: the classic back-tab and the one the
+          // keyboard protocol reports. Tab moves the model, shift+tab moves how
+          // hard it is asked to think.
+          if (sequence === "\x1b[Z" || sequence === "\x1b[9;2u") {
+            session.cycleReasoning();
+            dirty = true;
+            continue;
+          }
+
           const page = Math.max(1, viewport - 1);
           if (sequence === "\x1b[5~") scrollBy(-page);
           else if (sequence === "\x1b[6~") scrollBy(page);

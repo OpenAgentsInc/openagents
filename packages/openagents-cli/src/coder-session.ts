@@ -127,6 +127,8 @@ export interface CoderSnapshot {
   readonly repository: string;
   readonly branch: string;
   readonly model: string;
+  /** How hard the model is asked to think, when the source says. */
+  readonly reasoning: string | undefined;
   /**
    * Turns this process has submitted, counted from the moment one starts.
    *
@@ -187,6 +189,16 @@ export interface ReplySource {
    * only where pressing it would do something.
    */
   cycleBackend?(): string;
+  /**
+   * How hard the model is asked to think, and what else it could be asked.
+   *
+   * A source that cannot vary it reports the level it is fixed at and offers no
+   * others, which is how the interface knows to show the level without offering
+   * a key that would do nothing.
+   */
+  readonly reasoning?: { readonly level: string; readonly levels: ReadonlyArray<string> };
+  /** Move to the next reasoning level and return it. */
+  cycleReasoning?(): string;
   /**
    * Declare the tools the model may call.
    *
@@ -377,6 +389,7 @@ export class CoderSession {
       repository: this.repository,
       branch: this.branch,
       model: this.source.model,
+      reasoning: this.source.reasoning?.level,
       turns: this.turnCount,
       budget: this.source.budget,
       tasks: this.delegation?.registry.list() ?? [],
@@ -428,6 +441,31 @@ export class CoderSession {
    * — the status line would name a model that did not produce the text on
    * screen. The caller shows the refusal rather than switching silently.
    */
+  /** Whether another reasoning level exists to move to. */
+  get canCycleReasoning(): boolean {
+    return (this.source.reasoning?.levels.length ?? 0) > 1;
+  }
+
+  /**
+   * Move to the next reasoning level.
+   *
+   * Refused while a turn runs, for the reason switching a backend is: a turn
+   * already accepted keeps the shape it was accepted with, and a level that
+   * changed halfway through would describe neither half.
+   */
+  cycleReasoning(): { readonly changed: boolean; readonly level: string | undefined } {
+    if (!this.canCycleReasoning || this.source.cycleReasoning === undefined) {
+      return { changed: false, level: this.source.reasoning?.level };
+    }
+    if (this.running) {
+      this.notice("A turn is running. The reasoning level changes on the next turn.");
+      return { changed: false, level: this.source.reasoning?.level };
+    }
+    const level = this.source.cycleReasoning();
+    this.notice(`Reasoning set to ${level}.`);
+    return { changed: true, level };
+  }
+
   cycleBackend(): { readonly switched: boolean; readonly label: string | undefined } {
     if (this.source.cycleBackend === undefined) return { switched: false, label: undefined };
     if (this.controller !== undefined) {

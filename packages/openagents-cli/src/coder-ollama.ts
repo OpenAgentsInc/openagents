@@ -31,11 +31,48 @@ const DEFAULT_HOST = "http://127.0.0.1:11434";
  */
 const MAX_TOOL_STEPS = 100;
 
+/**
+ * What a reasoning level means to Ollama.
+ *
+ * `think` takes a boolean or, on a model that advertises thinking, one of these
+ * names. `off` is the boolean, because a model asked to think at no level still
+ * thinks; the way to stop it is to say not to.
+ */
+const THINK: Record<string, boolean | "low" | "medium" | "high"> = {
+  off: false,
+  low: "low",
+  medium: "medium",
+  high: "high",
+};
+
+/**
+ * What `--reasoning` means here.
+ *
+ * The flag's ladder is the thread lane's — minimal through max — and Ollama has
+ * four rungs, not five. `minimal` is off because a minimal amount of thinking
+ * from a model that cannot be asked for a little is none, and `max` is `high`
+ * because there is nothing above it. Named rather than silently clamped, so a
+ * reader who asked for `max` and sees `high` can see why.
+ */
+const FROM_FLAG: Record<string, string> = {
+  minimal: "off",
+  off: "off",
+  low: "low",
+  medium: "medium",
+  high: "high",
+  max: "high",
+};
+
+/** The levels, in the order the interface cycles them. */
+export const OLLAMA_REASONING_LEVELS = Object.keys(THINK);
+
 export interface OllamaOptions {
   /** The Ollama model name, without the `ollama:` prefix. */
   readonly model: string;
   /** The Ollama server endpoint. Defaults to `http://127.0.0.1:11434`. */
   readonly host?: string | undefined;
+  /** Where the reasoning level starts. Defaults to the model's own default. */
+  readonly reasoning?: string | undefined;
 }
 
 /**
@@ -195,6 +232,7 @@ export class OllamaReplySource implements ReplySource {
    * the difference between steering a model and waiting one out.
    */
   private steered: string[] = [];
+  private reasoningLevel: string;
   private callCount = 0;
 
   get model(): string {
@@ -212,6 +250,8 @@ export class OllamaReplySource implements ReplySource {
   }
 
   constructor(options: OllamaOptions) {
+    this.reasoningLevel =
+      options.reasoning === undefined ? "medium" : (FROM_FLAG[options.reasoning] ?? "medium");
     this.host = options.host ?? DEFAULT_HOST;
     this.client = new Ollama({ host: this.host });
     this.modelName = options.model;
@@ -265,6 +305,17 @@ export class OllamaReplySource implements ReplySource {
    * which model is the part a reader needs, and so is knowing the transcript
    * survives.
    */
+  get reasoning(): { readonly level: string; readonly levels: ReadonlyArray<string> } {
+    return { level: this.reasoningLevel, levels: OLLAMA_REASONING_LEVELS };
+  }
+
+  cycleReasoning(): string {
+    const at = OLLAMA_REASONING_LEVELS.indexOf(this.reasoningLevel);
+    this.reasoningLevel =
+      OLLAMA_REASONING_LEVELS[(at + 1) % OLLAMA_REASONING_LEVELS.length] ?? "medium";
+    return this.reasoningLevel;
+  }
+
   /** Take a message for the next step of the running turn. */
   steer(text: string): boolean {
     this.steered.push(text);
@@ -337,6 +388,7 @@ export class OllamaReplySource implements ReplySource {
         // request nobody can reason about.
         messages: [...this.transcript],
         stream: true,
+        think: THINK[this.reasoningLevel] ?? "medium",
         ...(this.tools.length === 0 || finalRound
           ? {}
           : {

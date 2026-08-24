@@ -775,3 +775,67 @@ describe("reasoning in the transcript", () => {
     await running;
   });
 });
+
+describe("changing how hard the model thinks", () => {
+  const thinking = () => {
+    let at = 0;
+    const levels = ["off", "low", "medium", "high"] as const;
+    return {
+      model: "scripted",
+      get reasoning() {
+        return { level: levels[at] ?? "medium", levels };
+      },
+      cycleReasoning() {
+        at = (at + 1) % levels.length;
+        return levels[at] ?? "medium";
+      },
+      async *reply() {
+        yield { type: "text", value: "ok" } as const;
+      },
+    };
+  };
+
+  it("shows the level in the status line", async () => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    const session = new CoderSession(thinking(), "repo", "main");
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    expect(screen(stdout.written).join("\n")).toContain("thinking off");
+
+    stdin.emit("data", "\x04");
+    await running;
+  });
+
+  it("cycles it on shift+tab, in both spellings", async () => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    const session = new CoderSession(thinking(), "repo", "main");
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    // The classic back-tab.
+    stdin.emit("data", "\x1b[Z");
+    expect(session.snapshot().reasoning).toBe("low");
+
+    // And the one the keyboard protocol reports.
+    stdin.emit("data", "\x1b[9;2u");
+    expect(session.snapshot().reasoning).toBe("medium");
+
+    stdin.emit("data", "\x04");
+    await running;
+  });
+
+  it("offers no key when a source has one level and no other", async () => {
+    const session = new CoderSession(source([]), "repo", "main");
+
+    // Showing a key that does nothing is worse than showing none.
+    expect(session.canCycleReasoning).toBe(false);
+    expect(session.snapshot().reasoning).toBeUndefined();
+  });
+});
