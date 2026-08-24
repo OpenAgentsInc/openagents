@@ -40,32 +40,6 @@ const MARKS: Record<CoderTaskStatus, string> = {
 };
 
 /**
- * The one-line summary for the status bar, or undefined when there is no fleet.
- *
- * Running children come first because they are what the reader is waiting on,
- * and the terminal counts follow only when there are any, so a plain fan-out
- * does not carry a trail of zeroes.
- */
-export function fleetPhrase(tasks: ReadonlyArray<CoderTask>): string | undefined {
-  if (tasks.length === 0) return undefined;
-
-  const active = tasks.filter((task) => !isTerminal(task.status));
-  const done = tasks.filter((task) => task.status === "completed");
-  const failed = tasks.filter((task) => task.status === "failed");
-  const unread = tasks.filter((task) => task.unread);
-
-  const parts: string[] = [];
-  if (active.length > 0) {
-    parts.push(`${String(active.length)} ${active.length === 1 ? "agent" : "agents"}`);
-  }
-  if (done.length > 0) parts.push(`${String(done.length)} done`);
-  if (failed.length > 0) parts.push(`${String(failed.length)} failed`);
-  if (unread.length > 0) parts.push(`${String(unread.length)} unread`);
-  if (parts.length === 0) return `${String(tasks.length)} agents finished`;
-  return parts.join(" · ");
-}
-
-/**
  * What a child is doing, in one phrase.
  *
  * Three cases and no more, which is the whole reason a fleet of fifteen is

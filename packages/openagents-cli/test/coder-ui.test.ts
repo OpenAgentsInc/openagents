@@ -980,8 +980,9 @@ describe("the delegate preview inline under the tool call", () => {
 
     const delegateRow = rows.findIndex((row) => row.includes("delegate"));
     expect(delegateRow).toBeGreaterThan(0);
-    const status = rows[delegateRow + 1] ?? "";
-    expect(status).toContain("1 agent");
+    const childRow = rows[delegateRow + 1] ?? "";
+    expect(childRow).toContain("inspect the repo");
+    expect(childRow).toContain("Initializing");
     // The session status lives at the bottom and does not repeat the fleet.
     const bottom = rows.filter((row) => row.includes("repo · main")).at(-1) ?? "";
     expect(bottom).toContain("repo · main");

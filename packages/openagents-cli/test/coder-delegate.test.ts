@@ -10,7 +10,6 @@ import {
 } from "../src/coder-delegate.js";
 import {
   activityPhrase,
-  fleetPhrase,
   fleetRows,
   formatTokens,
   latestActivities,
@@ -330,7 +329,6 @@ describe("fleet rendering", () => {
     // tell a slow child from a stuck one.
     const now = running.startedAt + 95_000;
     expect(taskActivity(running, now)).toBe("bash(pnpm test) (1m 35s)");
-    expect(fleetPhrase([running])).toBe("1 agent");
     const rows = fleetRows([running], 80, now);
     expect(rows[0]?.branch).toBe("└─");
     expect(rows[0]?.mark).toBe("◐");
@@ -344,7 +342,6 @@ describe("fleet rendering", () => {
     expect(done).toBeDefined();
     if (done === undefined) return;
     expect(taskActivity(done)).toBe("Done (1 tool use · 8.2k tokens · 3s)");
-    expect(fleetPhrase([done])).toBe("1 done · 1 unread");
   });
 
   it("leaves usage out of a row until the harness has reported some", () => {

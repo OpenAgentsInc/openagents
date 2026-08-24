@@ -30,7 +30,7 @@
  * own job instead.
  */
 
-import { activityPhrase, fleetPhrase, fleetRows, latestActivities } from "./coder-fleet.js";
+import { activityPhrase, fleetRows, latestActivities } from "./coder-fleet.js";
 import { renderMarkdown, visibleWidth, wrapStyled } from "./coder-markdown.js";
 import type { CoderEntry, CoderSession, CoderSnapshot, CoderToolCall } from "./coder-session.js";
 import type { CoderTask, CoderTaskStatus } from "./coder-tasks.js";
@@ -460,8 +460,26 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       const rows = [`${mark} ${BOLD}${tool.name}${RESET}`];
 
       if (tool.name === "delegate" && tool.status === "running") {
-        const phrase = fleetPhrase(tasks) ?? "starting children…";
-        rows.push(`${DIM}→ ${phrase}${RESET}`);
+        // Working children first when there are more than fit: a finished child
+        // has already been reported on the transcript, so it is the one to drop.
+        const shown =
+          tasks.length <= FLEET_ROWS_MAX
+            ? tasks
+            : [
+                ...tasks.filter((task) => task.status === "running" || task.status === "pending"),
+                ...tasks.filter((task) => task.status !== "running" && task.status !== "pending"),
+              ].slice(0, FLEET_ROWS_MAX);
+
+        for (const child of fleetRows(shown, Math.max(20, width - 9))) {
+          const color = fleetColor(child.status);
+          rows.push(
+            `${DIM}${child.branch}${RESET} ${color}${child.mark}${RESET} ${DIM}${child.text}${RESET}`,
+          );
+        }
+
+        const hidden = tasks.length - shown.length;
+        if (hidden > 0) rows.push(`${DIM}   +${String(hidden)} more${RESET}`);
+
         const activities = latestActivities(tasks, PREVIEW_ROWS);
         if (activities.length > 0) {
           const boxWidth = Math.max(10, width - 4);
@@ -508,36 +526,6 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         if (outcome.length > 0) rows.push(outcome);
       }
       return rows;
-    };
-
-    /**
-     * The fleet block: one row per child.
-     *
-     * Drawn above the status line rather than in the transcript, because it is
-     * live state and the transcript is a record. A reader who scrolled back to
-     * an earlier tool call still needs to see what the fleet is doing now.
-     */
-    const fleetLines = (snapshot: CoderSnapshot, width: number): ReadonlyArray<string> => {
-      const tasks = snapshot.tasks;
-      if (tasks.length === 0) return [];
-
-      // Working children first when there are more than fit: a finished child
-      // has already been reported on the transcript, so it is the one to drop.
-      const shown =
-        tasks.length <= FLEET_ROWS_MAX
-          ? tasks
-          : [
-              ...tasks.filter((task) => task.status === "running" || task.status === "pending"),
-              ...tasks.filter((task) => task.status !== "running" && task.status !== "pending"),
-            ].slice(0, FLEET_ROWS_MAX);
-
-      const out = fleetRows(shown, Math.max(20, width - 8)).map((row) => {
-        const color = fleetColor(row.status);
-        return `  ${DIM}${row.branch}${RESET} ${color}${row.mark}${RESET} ${DIM}${row.text}${RESET}`;
-      });
-      const hidden = tasks.length - shown.length;
-      if (hidden > 0) out.push(`  ${DIM}   +${String(hidden)} more${RESET}`);
-      return out;
     };
 
     /** The newest tool call, which is the one ctrl+o expands. */
@@ -630,26 +618,18 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       }
       const transcriptHeight = Math.max(1, height - STATUS_ROWS - COMPOSER_ROWS - SPACER_ROWS);
 
-      const fleet = fleetLines(snapshot, width);
-      // The fleet takes its rows from the transcript, not from the chrome:
-      // the composer stays where the reader's hands expect it. The status
-      // line is priced into `transcriptHeight`, which keeps every frame the
-      // same height whether children are running or not.
-      const transcriptRows = Math.max(1, transcriptHeight - fleet.length);
-
       const lines = transcriptLines(snapshot, width);
       lineCount = lines.length;
-      viewport = transcriptRows;
+      viewport = transcriptHeight;
 
-      const maxStart = Math.max(0, lines.length - transcriptRows);
+      const maxStart = Math.max(0, lines.length - transcriptHeight);
       const start = anchor === undefined ? maxStart : Math.min(anchor, maxStart);
       // Kept for the status line: a reader scrolled up with nothing saying so
       // reads a still transcript as a stopped session.
       const above = start;
 
       const rows: string[] = [];
-      for (let row = 0; row < transcriptRows; row += 1) rows.push(lines[start + row] ?? "");
-      rows.push(...fleet);
+      for (let row = 0; row < transcriptHeight; row += 1) rows.push(lines[start + row] ?? "");
 
       // Bottom chrome, in the order a reader scans it. The status line is the
       // main agent's state; the delegate preview lives inline under the
@@ -716,7 +696,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
 
       paint(
         rows,
-        transcriptRows + fleet.length + 3,
+        transcriptHeight + 3,
         4 + [...visible].length + 1,
       );
     };
