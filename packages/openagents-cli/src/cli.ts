@@ -2417,13 +2417,34 @@ const coderCommand = Command.make(
       // nothing was named, the named model's tier when it has one. A model
       // outside the tier map leaves tier switching off rather than mislabeled.
       const initialTier: CoderTierId | undefined =
-        ollamaSource !== undefined
-          ? "local"
-          : thread !== undefined
-            ? named === undefined
-              ? "auto"
-              : tierForModel(thread.modelId)
-            : undefined;
+        responsesSource !== undefined
+          ? "auto"
+          : ollamaSource !== undefined
+            ? "local"
+            : thread !== undefined
+              ? named === undefined
+                ? "auto"
+                : tierForModel(thread.modelId)
+              : undefined;
+
+      // The dev lane flips tiers too: every tier is the same stub today, so a
+      // switch changes the label and the notice, and the loop that arrives
+      // behind the surface inherits a client whose tier key already works.
+      const devTiers =
+        responsesSource !== undefined
+          ? {
+              initial: "auto" as CoderTierId,
+              build: (_tier: CoderTierId, _history: ReadonlyArray<unknown>) =>
+                Promise.resolve<ReplySource>(
+                  new ResponsesReplySource({
+                    origin: endpoint.origin,
+                    ...(Option.isSome(stored)
+                      ? { token: Redacted.value(stored.value.token) }
+                      : {}),
+                  }),
+                ),
+            }
+          : undefined;
 
       const session = new CoderSession(
         source,
@@ -2432,9 +2453,10 @@ const coderCommand = Command.make(
         setup?.delegation,
         standingContext(skills.active(), process.cwd()),
         undefined,
-        buildTier !== undefined && initialTier !== undefined
-          ? { initial: initialTier, build: buildTier }
-          : undefined,
+        devTiers ??
+          (buildTier !== undefined && initialTier !== undefined
+            ? { initial: initialTier, build: buildTier }
+            : undefined),
       );
 
       // The resumed thread's history goes on the session before anything new,
