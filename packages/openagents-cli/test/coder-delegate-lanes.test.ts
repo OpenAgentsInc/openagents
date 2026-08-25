@@ -40,7 +40,7 @@ describe("naming a lane", () => {
     // Reached by slug or by alias, it reports the same name, so a caller can
     // tell whether the lane they asked for is the lane that answered.
     expect(childLaneName(SELF_CHILD_LANE)).toBe("ox-alpha");
-    expect(childLaneName("opencode/gemini-3.7-flash")).toBe("gemini");
+    expect(childLaneName("gemini")).toBe("gemini");
   });
 
   it("offers the names first, since those are what a call would say", () => {

@@ -529,9 +529,6 @@ export const FREE_CHILD_MODELS: ReadonlyArray<string> = [
   // Searching the model list for its name finds nothing, which is how a first
   // pass at this list picked a different model entirely.
   "opencode/x-preview-f-free",
-  "opencode/gemini-3.7-flash",
-  "opencode/gemini-3.6-flash",
-  "opencode/gemini-3.5-flash",
 ];
 
 /**
@@ -563,7 +560,7 @@ export const CHILD_LANE_ALIASES: Readonly<Record<string, string>> = {
   // route to the same model is still reachable, by its own slug.
   "ox-alpha": SELF_CHILD_LANE,
   [SELF_CHILD_LANE]: SELF_CHILD_LANE,
-  gemini: "opencode/gemini-3.7-flash",
+  gemini: SELF_CHILD_LANE,
 };
 
 /**
