@@ -21,3 +21,12 @@ export const THREADS_PATH = `${API_VERSION_PATH}/threads`;
  * The endpoint path for operator fleet targets.
  */
 export const FLEET_TARGETS_PATH = `${API_VERSION_PATH}/admin/forge/targets`;
+
+/**
+ * The endpoint path for the account's cloud memories.
+ *
+ * Named once because two callers share it: the Effect-based `MemoryClient`
+ * behind `openagents memory`, and the `remember` tool a coder session declares,
+ * which posts here directly rather than through the CLI runtime.
+ */
+export const MEMORIES_PATH = `${API_VERSION_PATH}/memories`;

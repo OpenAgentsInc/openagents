@@ -20,6 +20,7 @@ import { fleetClientLayer } from "./fleet-client.js";
 import { forumClientLayer } from "./forum-client.js";
 import { gitRunnerLayer } from "./git-runner.js";
 import { issueClientLayer } from "./issue-client.js";
+import { memoryClientLayer } from "./memory-client.js";
 import { outputLayer } from "./output.js";
 import { persistedConfigurationLayer } from "./persisted-configuration.js";
 import { projectClientLayer } from "./project-client.js";
@@ -38,6 +39,7 @@ const fleetLayer = fleetClientLayer.pipe(Layer.provide(transportLayer));
 const deviceLayer = deviceClientLayer.pipe(Layer.provide(transportLayer));
 const issueLayer = issueClientLayer.pipe(Layer.provide(transportLayer));
 const projectLayer = projectClientLayer.pipe(Layer.provide(transportLayer));
+const memoryLayer = memoryClientLayer.pipe(Layer.provide(transportLayer));
 const boxClient = boxClientLayer.pipe(Layer.provide(transportLayer));
 const computerClient = computerClientLayer.pipe(Layer.provide(transportLayer));
 const credentialsLayer = credentialStoreOsLayer.pipe(Layer.provide(NodeServices.layer));
@@ -86,6 +88,7 @@ export const runtimeLayer = Layer.mergeAll(
   fleetLayer,
   issueLayer,
   projectLayer,
+  memoryLayer,
   deviceLayer,
   boxClient,
   computerClient,
