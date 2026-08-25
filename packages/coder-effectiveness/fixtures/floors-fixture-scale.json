@@ -1,0 +1,13 @@
+{
+  "$comment": [
+    "Floors sized for the fixture jobs in this directory, which hold three or",
+    "four trials rather than the twelve a real cross-section run does. The",
+    "shipped suite floors live in thresholds/, and this file exists so the CLI",
+    "cases can reach the cost criterion instead of stopping at the trial count."
+  ],
+  "id": "fixture-scale",
+  "minGradedTrials": 2,
+  "minSuccessRate": 0.4,
+  "maxUngradedRatio": 0.25,
+  "maxCostPerAcceptedOutcomeUsd": 2.0
+}

@@ -1,0 +1,13 @@
+{
+  "trial_name": "port-forward__b0b0b0b0",
+  "task_name": "port-forward",
+  "agent_execution": {
+    "started_at": "2026-08-25T13:12:00Z",
+    "finished_at": "2026-08-25T13:15:00Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 0
+    }
+  }
+}

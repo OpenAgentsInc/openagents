@@ -1,0 +1,14 @@
+{
+  "$comment": [
+    "The same fixture-scale floors, with the explicit opt-in to score a dollar",
+    "ceiling against rates the forge config marks provisional. This is what a",
+    "relative regression check looks like when the operator has decided the",
+    "placeholder rates are good enough to compare two runs against each other."
+  ],
+  "id": "fixture-scale-placeholder-ok",
+  "minGradedTrials": 2,
+  "minSuccessRate": 0.4,
+  "maxUngradedRatio": 0.25,
+  "maxCostPerAcceptedOutcomeUsd": 2.0,
+  "acceptPlaceholderRates": true
+}

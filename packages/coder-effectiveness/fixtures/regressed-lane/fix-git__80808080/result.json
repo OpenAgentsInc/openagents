@@ -1,0 +1,13 @@
+{
+  "trial_name": "fix-git__80808080",
+  "task_name": "fix-git",
+  "agent_execution": {
+    "started_at": "2026-08-25T13:00:00Z",
+    "finished_at": "2026-08-25T13:04:00Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1
+    }
+  }
+}

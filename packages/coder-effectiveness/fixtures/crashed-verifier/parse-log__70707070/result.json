@@ -1,0 +1,12 @@
+{
+  "trial_name": "parse-log__70707070",
+  "task_name": "parse-log",
+  "agent_execution": {
+    "started_at": "2026-08-25T12:02:00Z",
+    "finished_at": "2026-08-25T12:03:00Z"
+  },
+  "verifier_result": null,
+  "exception_info": {
+    "exception_type": "VerifierCrashedError"
+  }
+}

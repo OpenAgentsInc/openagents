@@ -1,0 +1,40 @@
+{
+  "schema_version": "ATIF-v1.7",
+  "session_id": "fixture-gemini-3.7-flash",
+  "trajectory_id": "fixture-gemini-3.7-flash",
+  "agent": {
+    "name": "openagents-coder",
+    "version": "0.4.1",
+    "model_name": "gemini-3.7-flash"
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-08-25T09:00:00Z",
+      "source": "user",
+      "message": "open the tunnel"
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-08-25T09:00:00Z",
+      "source": "agent",
+      "message": "wrong interface",
+      "model_name": "gemini-3.7-flash",
+      "metrics": {
+        "prompt_tokens": 35000,
+        "completion_tokens": 900,
+        "extra": {
+          "cache_read_input_tokens": 0
+        }
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 35000,
+    "total_completion_tokens": 900,
+    "total_steps": 2
+  },
+  "extra": {
+    "exporter": "openagents.coder.atif_export.v1"
+  }
+}

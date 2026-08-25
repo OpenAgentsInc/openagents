@@ -172,6 +172,8 @@
     "test:assure-repo": "vp test --run packages/assure-repo/test",
     "audit:assure-repo": "node --import tsx packages/assure-repo/src/cli.ts audit-generate",
     "check:assure-repo-audit": "node --import tsx packages/assure-repo/src/cli.ts audit-check",
+    "effectiveness:report": "node --import tsx packages/coder-effectiveness/src/cli.ts",
+    "test:coder-effectiveness": "vp test --run packages/coder-effectiveness/src",
     "test:product-spec": "vp test --run packages/product-spec",
     "check:assure-repo-drift": "node --import tsx packages/assure-repo/src/cli.ts drift-check",
     "sweep:assure-repo": "node --import tsx packages/assure-repo/src/cli.ts sweep",

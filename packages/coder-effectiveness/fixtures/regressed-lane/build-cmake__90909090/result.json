@@ -1,0 +1,13 @@
+{
+  "trial_name": "build-cmake__90909090",
+  "task_name": "build-cmake",
+  "agent_execution": {
+    "started_at": "2026-08-25T13:04:00Z",
+    "finished_at": "2026-08-25T13:09:00Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 0
+    }
+  }
+}

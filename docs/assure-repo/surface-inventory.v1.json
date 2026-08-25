@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:d8cd295762f49628cb5b8f0b739a7c2f863cfa6b021515152743307a3736f13c",
+  "sourceDigest": "sha256:393cbfb62fb12f46fc1d8141ce09db98fe2310378007b0e6b4672fa0b033e9e3",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -1927,6 +1927,23 @@
       }
     },
     {
+      "id": "package:@openagentsinc/coder-effectiveness",
+      "kind": "package",
+      "owningPath": "packages/coder-effectiveness",
+      "title": "@openagentsinc/coder-effectiveness",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/coder-effectiveness (4 tracked test files)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
       "id": "package:@openagentsinc/codex-app-server-protocol",
       "kind": "package",
       "owningPath": "packages/codex-app-server-protocol",
@@ -3385,17 +3402,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 180,
+    "totalSurfaces": 181,
     "byKind": {
       "app": 17,
       "crate": 7,
       "document": 52,
-      "package": 97,
+      "package": 98,
       "public-endpoint": 2,
       "release-pipeline": 4,
       "worker": 1
     },
-    "withOracle": 172,
+    "withOracle": 173,
     "unverified": 8,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3403,7 +3420,7 @@
       "reference-only": 1
     },
     "byObligationState": {
-      "designed": 136,
+      "designed": 137,
       "inconclusive": 4,
       "mapped": 36,
       "out-of-scope": 4

@@ -1,0 +1,19 @@
+{
+  "$comment": [
+    "Floors for the tb2-cross-section suite (bench/suites/tb2-cross-section.txt).",
+    "A run below a floor fails the gate. A floor that cannot be measured on the",
+    "run leaves the gate unverifiable, which exits 2 and is not a pass.",
+    "acceptPlaceholderRates is deliberately absent: every rate in the forge",
+    "model catalog is marked provisional today, so a dollar ceiling scored",
+    "against them would be scored against a guess. Set it to true only for a",
+    "relative regression check, and say so when you do.",
+    "minSuccessRate starts low on purpose. It is a floor that catches a",
+    "regression, not a target that flatters a number, and it should be raised",
+    "as scheduled runs establish what the lane actually holds."
+  ],
+  "id": "tb2-cross-section",
+  "minGradedTrials": 8,
+  "minSuccessRate": 0.25,
+  "maxUngradedRatio": 0.2,
+  "maxCostPerAcceptedOutcomeUsd": 2.0
+}

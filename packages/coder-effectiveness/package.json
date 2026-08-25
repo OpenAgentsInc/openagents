@@ -1,0 +1,30 @@
+{
+  "name": "@openagentsinc/coder-effectiveness",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The coder effectiveness suite: grade a Harbor job of openagents coder runs, count accepted outcomes, and report cost per accepted outcome with unpriced lanes marked unknown rather than zero.",
+  "files": [
+    "src",
+    "thresholds",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "report": "node --import tsx src/cli.ts",
+    "test": "vp test --run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/vite-plus-matchers": "workspace:*",
+    "tsx": "4.20.6",
+    "typescript": "catalog:"
+  }
+}

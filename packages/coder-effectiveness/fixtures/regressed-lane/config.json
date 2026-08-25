@@ -1,0 +1,4 @@
+{
+  "dataset": "terminal-bench@2.0",
+  "model": "google/gemini-3.7-flash"
+}

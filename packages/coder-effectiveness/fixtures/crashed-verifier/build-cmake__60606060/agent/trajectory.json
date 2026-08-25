@@ -1,0 +1,40 @@
+{
+  "schema_version": "ATIF-v1.7",
+  "session_id": "fixture-gemini-3.7-flash",
+  "trajectory_id": "fixture-gemini-3.7-flash",
+  "agent": {
+    "name": "openagents-coder",
+    "version": "0.4.0",
+    "model_name": "gemini-3.7-flash"
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-08-25T09:00:00Z",
+      "source": "user",
+      "message": "make the build pass"
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-08-25T09:00:00Z",
+      "source": "agent",
+      "message": "ok",
+      "model_name": "gemini-3.7-flash",
+      "metrics": {
+        "prompt_tokens": 11000,
+        "completion_tokens": 450,
+        "extra": {
+          "cache_read_input_tokens": 0
+        }
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 11000,
+    "total_completion_tokens": 450,
+    "total_steps": 2
+  },
+  "extra": {
+    "exporter": "openagents.coder.atif_export.v1"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "trial_name": "parse-log__40404040",
+  "task_name": "parse-log",
+  "agent_execution": {
+    "started_at": "2026-08-25T11:02:00Z",
+    "finished_at": "2026-08-25T11:03:00Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1
+    }
+  }
+}
