@@ -21,12 +21,16 @@ import {
   ledgerEntriesAsHeuristics,
   promoteHeuristicToPattern,
   signSupersedingEngram,
+  project,
+  projectedValue,
+  projectionMatches,
   verifyEngramEventId,
-  verifySupersessionChain,
+  COMPANION_SCHEMA_ID,
   HarvestedLedgerEntry,
   type EngramEvent,
   type EngramBody,
   type ParentHeuristic,
+  type Projection,
 } from "./memory/index.js";
 import { Schema as S } from "effect";
 
@@ -112,6 +116,7 @@ export class CoderMemory implements CoderDelegationMemory {
   private readonly now: () => number;
   private readonly dreamThreshold: number;
   private key: Buffer | undefined;
+  private cachedProjection: Projection | undefined;
 
   constructor(options: CoderMemoryOptions = {}) {
     this.directory = options.directory ?? join(homedir(), ".openagents", "memory");
@@ -174,6 +179,7 @@ export class CoderMemory implements CoderDelegationMemory {
       sign,
     );
     appendFileSync(this.ledgerPath, `${JSON.stringify(event)}\n`, { mode: 0o600 });
+    this.cachedProjection = undefined;
     return event;
   }
 
@@ -198,6 +204,21 @@ export class CoderMemory implements CoderDelegationMemory {
     );
     appendFileSync(this.ledgerPath, `${JSON.stringify(event)}\n`, { mode: 0o600 });
     return event;
+  }
+
+  /** Every engram on disk, malformed lines dropped. The projection judges them. */
+  private events(): ReadonlyArray<EngramEvent> {
+    if (!existsSync(this.ledgerPath)) return [];
+    const events: Array<EngramEvent> = [];
+    for (const line of readFileSync(this.ledgerPath, "utf8").split("\n")) {
+      if (line.trim().length === 0) continue;
+      try {
+        events.push(JSON.parse(line) as EngramEvent);
+      } catch {
+        continue;
+      }
+    }
+    return events;
   }
 
   /** All ledger events grouped per slug in append order, invalid lines dropped. */
@@ -232,21 +253,46 @@ export class CoderMemory implements CoderDelegationMemory {
   }
 
   private living(): ReadonlyArray<{ body: EngramBody; createdAtMs: number }> {
-    const out: Array<{ body: EngramBody; createdAtMs: number }> = [];
-    for (const chain of this.chains().values()) {
-      if (!verifySupersessionChain(chain)) continue;
-      const last = chain[chain.length - 1];
-      if (last === undefined) continue;
-      let body: EngramBody;
-      try {
-        body = JSON.parse(last.content) as EngramBody;
-      } catch {
-        continue;
-      }
-      if (body.value === null) continue;
-      out.push({ body, createdAtMs: last.created_at * 1000 });
+    const projection = this.projection();
+    return projection.entries.map((entry) => ({
+      body: {
+        slug: entry.slug,
+        value: entry.value,
+        openagents: {
+          schema: COMPANION_SCHEMA_ID,
+          admission: "admitted",
+          entityId: entry.entityId,
+          contentDigest: engramContentDigest(entry.value),
+          sourceEventRefs: [],
+          relations: [],
+          derivedFromSlugs: [...entry.derivedFromSlugs],
+        },
+      },
+      createdAtMs: entry.updatedAt * 1000,
+    }));
+  }
+
+  /**
+   * The queryable view over the ledger (issue #223).
+   *
+   * Derived, never stored: the projection resolves each slug's supersession
+   * chain, names tombstones rather than dropping them, refuses a forked or
+   * broken chain whole, and counts what it refused. It is cached against the
+   * log it was built from and rebuilt the moment they disagree, so a cold
+   * start and a warm one are the same value.
+   */
+  projection(): Projection {
+    const events = this.events();
+    if (this.cachedProjection !== undefined && projectionMatches(this.cachedProjection, events)) {
+      return this.cachedProjection;
     }
-    return out;
+    this.cachedProjection = project(events);
+    return this.cachedProjection;
+  }
+
+  /** The live value for one slug, or undefined when absent or tombstoned. */
+  recall(slug: string): string | undefined {
+    return projectedValue(this.projection(), slug);
   }
 
   /**

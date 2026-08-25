@@ -2,3 +2,4 @@
 export * from "./engram.js";
 export * from "./consolidation.js";
 export * from "./subagent-memory.js";
+export * from "./projection.js";
