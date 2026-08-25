@@ -155,6 +155,7 @@ import { IssueClient } from "./issue-client.js";
 import { runGitCredentialHelper } from "./git-credential-helper.js";
 import { Output, type OutputMode } from "./output.js";
 import { ProjectClient } from "./project-client.js";
+import { makeProviderCommand } from "./provider-command.js";
 import { parseRepositoryTarget, RepositoryClient } from "./repository-client.js";
 import { RequestBodyInput } from "./request-body-input.js";
 import { SecretInput } from "./secret-input.js";
@@ -3957,6 +3958,8 @@ const identityCommand = makeIdentityCommand(rootCommand);
 
 const traceCommand = makeTraceCommand(rootCommand);
 
+const providerCommand = makeProviderCommand(rootCommand);
+
 // The deploy command group: named operator deployment commands over the
 // operator-only fleet promotion API from OpenAgentsInc/openagents.com#57.
 // It consumes only that API — never `/admin/forge`, SSH, or an internal RPC —
@@ -4344,6 +4347,7 @@ export const openagentsCommand = rootCommand.pipe(
     identityCommand,
     issueCommand,
     projectCommand,
+    providerCommand,
     repoCommand,
     traceCommand,
   ]),
