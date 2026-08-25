@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { summarizeToolCall } from "../src/coder-tool-summary.js";
+import { formatToolUseHeader, summarizeToolCall } from "../src/coder-tool-summary.js";
 
 describe("a tool call in one line", () => {
   it("turns an argument vector back into the command line it was", () => {
@@ -9,6 +9,17 @@ describe("a tool call in one line", () => {
     expect(
       summarizeToolCall(`{"args":["issue","view","212","-R","OpenAgentsInc/openagents.com"]}`),
     ).toBe("issue view 212 -R OpenAgentsInc/openagents.com");
+  });
+
+  it("formats tool headers in Claude Code style", () => {
+    expect(
+      formatToolUseHeader(
+        "openagents",
+        `{"args":["issue","view","212","-R","OpenAgentsInc/openagents.com"]}`,
+      ),
+    ).toBe("openagents(issue view 212 -R OpenAgentsInc/openagents.com)");
+    expect(formatToolUseHeader("shell", `{"command":"git status"}`)).toBe("shell(git status)");
+    expect(formatToolUseHeader("read", `{"file_path":"src/main.ts"}`)).toBe("read(src/main.ts)");
   });
 
   it("quotes an argument with a space, so it still reads as one", () => {
@@ -34,10 +45,8 @@ describe("a tool call in one line", () => {
   });
 
   it("drops the punctuation when nothing is named", () => {
-    // `delegate` has no single subject, and its fields are still what a reader
-    // wants: how many children, and what they were asked for.
     expect(summarizeToolCall(`{"count":3,"description":"audit the providers"}`)).toBe(
-      `count=3 description="audit the providers"`,
+      "audit the providers",
     );
   });
 
