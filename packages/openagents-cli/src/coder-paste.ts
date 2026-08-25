@@ -2,6 +2,16 @@
  * Types and utilities for compact paste placeholders in the coder composer.
  */
 
+import {
+  expandImageRefsForModel,
+  formatImageRef,
+  mimeTypeForImage,
+  parseDroppedImagePaths,
+  type PastedImageContent,
+} from "./coder-image.js";
+import * as path from "node:path";
+import * as fs from "node:fs";
+
 export const PASTE_TEXT_THRESHOLD = 800;
 export const PASTE_MAX_LINES = 1;
 
@@ -66,6 +76,18 @@ export function expandPastedTextRefs(
 }
 
 /**
+ * Replace both text and image references for model submission.
+ */
+export function expandComposerPrompt(
+  input: string,
+  pastedText: ReadonlyMap<number, PastedTextContent> | Record<number, PastedTextContent>,
+  pastedImages: ReadonlyMap<number, PastedImageContent> | Record<number, PastedImageContent>,
+): string {
+  const withText = expandPastedTextRefs(input, pastedText);
+  return expandImageRefsForModel(withText, pastedImages);
+}
+
+/**
  * Check if a pasted string qualifies for compact placeholder representation.
  */
 export function shouldCollapsePaste(text: string, maxLines = PASTE_MAX_LINES): boolean {
@@ -74,12 +96,63 @@ export function shouldCollapsePaste(text: string, maxLines = PASTE_MAX_LINES): b
 }
 
 /**
- * Remove trailing reference token if the backspace lands on it.
+ * Process a pasted raw string chunk from bracketed paste or normal paste.
+ * If the paste consists of dropped image file paths, creates image entries and returns token placeholders.
+ */
+export function handleIncomingPasteChunk(
+  text: string,
+  state: {
+    nextTextId: number;
+    nextImageId: number;
+    pastedText: Map<number, PastedTextContent>;
+    pastedImages: Map<number, PastedImageContent>;
+  },
+): string {
+  const imagePaths = parseDroppedImagePaths(text);
+  if (imagePaths.length > 0) {
+    const tokens: string[] = [];
+    for (const imgPath of imagePaths) {
+      const id = state.nextImageId++;
+      let sizeBytes = 0;
+      try {
+        sizeBytes = fs.statSync(imgPath).size;
+      } catch {
+        // ignore
+      }
+      const entry: PastedImageContent = {
+        id,
+        path: imgPath,
+        filename: path.basename(imgPath),
+        mime: mimeTypeForImage(imgPath),
+        sizeBytes,
+      };
+      state.pastedImages.set(id, entry);
+      tokens.push(formatImageRef(id));
+    }
+    return tokens.join(" ");
+  }
+
+  if (shouldCollapsePaste(text)) {
+    const pasteId = state.nextTextId++;
+    state.pastedText.set(pasteId, { id: pasteId, content: text });
+    const numLines = getPastedTextRefNumLines(text);
+    return formatPastedTextRef(pasteId, numLines);
+  }
+
+  return text;
+}
+
+/**
+ * Remove trailing reference token (text or image) if the backspace lands on it.
  */
 export function backspaceComposer(composer: string): string {
-  const trailingToken = /\[Pasted text #\d+(?: \+\d+ lines?)?\]$/.exec(composer);
-  if (trailingToken !== null) {
-    return composer.slice(0, -trailingToken[0].length);
+  const trailingPastedToken = /\[Pasted text #\d+(?: \+\d+ lines?)?\]$/.exec(composer);
+  if (trailingPastedToken !== null) {
+    return composer.slice(0, -trailingPastedToken[0].length);
+  }
+  const trailingImageToken = /\[Image #\d+\]$/.exec(composer);
+  if (trailingImageToken !== null) {
+    return composer.slice(0, -trailingImageToken[0].length);
   }
   return composer.slice(0, -1);
 }
