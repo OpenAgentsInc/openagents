@@ -957,6 +957,12 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       const facts = [snapshot.repository, snapshot.branch, snapshot.model];
       if (snapshot.reasoning !== undefined) facts.push(`thinking ${snapshot.reasoning}`);
       if (snapshot.budget !== undefined) facts.push(snapshot.budget);
+      if (snapshot.goal !== undefined && snapshot.goal.status === "active") {
+        const goalSnippet = snapshot.goal.objective.length > 25
+          ? snapshot.goal.objective.slice(0, 22) + "…"
+          : snapshot.goal.objective;
+        facts.push(`goal: "${goalSnippet}"`);
+      }
       let where = "";
       for (let from = 0; from < facts.length; from += 1) {
         const candidate = `${DIM}${facts.slice(from).join(" · ")}${RESET}`;

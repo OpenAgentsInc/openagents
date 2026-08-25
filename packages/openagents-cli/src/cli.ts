@@ -86,6 +86,7 @@ import { toolFamilyOf } from "./coder-tool-families.js";
 import { openLocalThread, threadAnnouncement, threadSyncWanted } from "./coder-local-thread.js";
 import { ThreadTranscriptWriter } from "./coder-transcript.js";
 import { delegateTool, openagentsTool, shellTool, skillTool } from "./coder-tools.js";
+import { InMemoryGoalStore, goalTool } from "./coder-goals.js";
 import {
   describeLoad,
   invokePlugin,
@@ -2448,6 +2449,7 @@ const coderCommand = Command.make(
             }
           : undefined;
 
+      const goalStore = new InMemoryGoalStore();
       const session = new CoderSession(
         source,
         workspace.repository,
@@ -2460,6 +2462,7 @@ const coderCommand = Command.make(
             ? { initial: initialTier, build: buildTier }
             : undefined),
         (prompt) => capabilityRetrieval(prompt),
+        goalStore,
       );
 
       // The resumed thread's history goes on the session before anything new,
@@ -2578,6 +2581,7 @@ const coderCommand = Command.make(
           shellTool(process.cwd()),
           ...(active.length === 0 ? [] : [skillTool(active)]),
           openagentsTool(),
+          goalTool(goalStore),
           ...(setup === undefined ? [] : [delegateTool(setup.delegation)]),
           capability,
           ...visiblePlugins().map((plugin) => {

@@ -26,6 +26,13 @@ import { exportTrajectory } from "./coder-export.js";
 import { VERSION } from "./version.js";
 import type { CoderTask, CoderTaskId, CoderTaskRegistry } from "./coder-tasks.js";
 import type { CoderTool } from "./coder-tools.js";
+import {
+  formatGoalNotice,
+  isGoalSlashCommand,
+  parseGoalSlashCommand,
+  type GoalStore,
+  type PersistentGoal,
+} from "./coder-goals.js";
 
 /** What a reply source produces. One entry kind per member. */
 export type ReplyChunk =
@@ -237,6 +244,8 @@ export interface CoderSnapshot {
    * then no renderer draws a fleet at all.
    */
   readonly tasks: ReadonlyArray<CoderTask>;
+  /** The active persistent goal for this session, if one is set. */
+  readonly goal?: PersistentGoal | undefined;
   /**
    * Plugin loads and refusals, oldest first.
    *
@@ -516,6 +525,7 @@ export class CoderSession {
    * stamped with its provenance the moment the call arrives.
    */
   private readonly pluginTools = new Map<string, CoderPluginProvenance>();
+  private readonly goalStore: GoalStore | undefined;
 
   constructor(
     private source: ReplySource,
@@ -561,6 +571,7 @@ export class CoderSession {
      * the turn nothing. The model is never expected to consult a registry.
      */
     private readonly retrieve?: (prompt: string) => Promise<string | undefined>,
+    goalStore?: GoalStore | undefined,
   ) {
     this.tier = tiers?.initial;
     // A child reporting progress has to reach the renderer, and the renderer
@@ -571,6 +582,7 @@ export class CoderSession {
 
     // Handed over before the first turn, so a source that composes a system
     // message has the context when it composes one.
+    this.goalStore = goalStore;
     if (standing !== undefined && standing.length > 0) this.source.useContext?.(standing);
   }
 
@@ -608,6 +620,7 @@ export class CoderSession {
       turns: this.turnCount,
       budget: this.source.budget,
       tasks: this.delegation?.registry.list() ?? [],
+      goal: this.goalStore?.getGoal(),
       pluginEvents: this.pluginEvents.map((event) => ({
         ...event,
         plugin: { ...event.plugin },
@@ -858,6 +871,39 @@ export class CoderSession {
       return;
     }
 
+    // `/goal` manages persistent task goals across turns.
+    if (isGoalSlashCommand(prompt)) {
+      this.entries.push({ role: "you", text: prompt, settled: true, at: Date.now() });
+      const parsed = parseGoalSlashCommand(prompt);
+      if (this.goalStore === undefined) {
+        this.notice("This session does not have goal storage configured.");
+        this.emit();
+        return;
+      }
+
+      if (!parsed || parsed.kind === "status") {
+        this.notice(formatGoalNotice(this.goalStore.getGoal()));
+      } else if (parsed.kind === "clear") {
+        const cleared = this.goalStore.clearGoal();
+        this.notice(cleared ? "Cleared active task goal." : "No active task goal to clear.");
+      } else if (parsed.kind === "pause") {
+        const updated = this.goalStore.updateStatus("paused");
+        this.notice(updated ? `Paused task goal: "${updated.objective}"` : "No active task goal to pause.");
+      } else if (parsed.kind === "resume") {
+        const updated = this.goalStore.updateStatus("active");
+        this.notice(updated ? `Resumed task goal: "${updated.objective}"` : "No task goal to resume.");
+      } else if (parsed.kind === "set" && parsed.objective) {
+        const goal = this.goalStore.setGoal(parsed.objective, parsed.tokenBudget);
+        this.notice(
+          `Set active goal: "${goal.objective}"` +
+            (goal.tokenBudget !== undefined ? ` (Budget: ${goal.tokenBudget.toLocaleString()} tokens)` : "") +
+            "\nCall /goal for details, or /goal clear to remove.",
+        );
+      }
+      this.emit();
+      return;
+    }
+
     // `/export` is not a turn either: it writes what has already happened.
     if (/^\/export\s*$/.test(prompt.trim())) {
       this.entries.push({ role: "you", text: prompt, settled: true, at: Date.now() });
@@ -890,6 +936,7 @@ export class CoderSession {
         [
           "Commands",
           "  /help                       this list",
+          "  /goal [<objective>]         set, inspect, or manage the task goal",
           "  /system                     what the model is told: tools, skills, and its",
           "                              standing context",
           "  /skills                     choose which skills the model is offered",
@@ -948,6 +995,7 @@ export class CoderSession {
         [
           "Commands:",
           "  /help     this list",
+          "  /goal     set, inspect, or manage the task goal",
           "  /system   what the model is told, including tools and skills",
           "  /skills   choose which skills the model is offered",
           "  /resume   list or select a recent foreign coding session",
@@ -1043,6 +1091,7 @@ export class CoderSession {
 
     const controller = new AbortController();
     this.controller = controller;
+    const turnStart = Date.now();
     // Counted here rather than on completion. A turn that is happening is a
     // turn, and counting it only once it settled is what made the status line
     // read `0 replies` under a reply the reader was watching arrive.
@@ -1155,6 +1204,10 @@ export class CoderSession {
                 ? {}
                 : { cacheReadInputTokens: chunk.cacheReadInputTokens }),
             };
+          }
+          if (this.goalStore !== undefined) {
+            const totalTokens = (chunk.promptTokens ?? 0) + (chunk.completionTokens ?? 0);
+            this.goalStore.addUsage(totalTokens, (Date.now() - turnStart) / 1000);
           }
         } else {
           this.applyToolResult(chunk);
