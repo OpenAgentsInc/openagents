@@ -29,6 +29,7 @@ import {
   pricingFromModelsPayload,
 } from "./pricing.ts";
 import { renderReport } from "./render.ts";
+import { appendResultRow } from "./results-store.ts";
 import { evaluateThresholds, parseThresholds, type ThresholdGate } from "./thresholds.ts";
 
 const USAGE = `Usage: coder-effectiveness report <job-dir> [options]
@@ -45,12 +46,25 @@ Options:
   --models <file>        A captured GET /api/v1/models body to price from,
                          instead of the pinned rate catalog. A model the served
                          catalog leaves unpriced stays unpriced here.
+  --append <store>       Append this run to an append-only bench-results store,
+                         chained to the receipt of the row before it. Refuses a
+                         Harbor job the store already holds, and refuses to
+                         extend a store that does not verify.
   --json                 Emit the report as JSON instead of text.
   -h, --help             Show this help.
 
-Exit codes: 0 gate passed, 1 a floor was breached, 2 the gate was unverifiable.
-An unverifiable gate is not a pass: a criterion could not be measured, most
-often because the lane carries no published rate.`;
+Exit codes: 0 gate passed, 1 a floor was breached, 2 the gate was unverifiable,
+3 the run was scored but --append refused to record it. An unverifiable gate is
+not a pass: a criterion could not be measured, most often because the lane
+carries no published rate. A non-zero gate always outranks 3 — a breach matters
+more than a bookkeeping refusal.`;
+
+/**
+ * Its own code, so a scheduled run whose result never reached the store is not
+ * reported as a clean pass. It only ever replaces a 0: a gate that failed or
+ * could not be verified is the more important finding.
+ */
+const APPEND_REFUSED_EXIT = 3;
 
 interface Arguments {
   readonly jobDir: string;
@@ -58,6 +72,7 @@ interface Arguments {
   readonly lane: string;
   readonly thresholdsPath: string | null;
   readonly modelsPath: string | null;
+  readonly appendPath: string | null;
   readonly json: boolean;
 }
 
@@ -68,6 +83,7 @@ const parseArguments = (argv: ReadonlyArray<string>): Arguments | "help" => {
   let lane = "proxy";
   let thresholdsPath: string | null = null;
   let modelsPath: string | null = null;
+  let appendPath: string | null = null;
   let json = false;
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -94,6 +110,10 @@ const parseArguments = (argv: ReadonlyArray<string>): Arguments | "help" => {
       modelsPath = expectValue(argv, (index += 1), "--models");
       continue;
     }
+    if (argument === "--append") {
+      appendPath = expectValue(argv, (index += 1), "--append");
+      continue;
+    }
     if (argument.startsWith("-")) {
       throw new Error(`unknown option: ${argument}`);
     }
@@ -107,7 +127,7 @@ const parseArguments = (argv: ReadonlyArray<string>): Arguments | "help" => {
   if (lane !== "proxy" && lane !== "local") {
     throw new Error(`--lane must be proxy or local, got: ${lane}`);
   }
-  return { jobDir, suite, lane, thresholdsPath, modelsPath, json };
+  return { jobDir, suite, lane, thresholdsPath, modelsPath, appendPath, json };
 };
 
 const expectValue = (argv: ReadonlyArray<string>, index: number, option: string): string => {
@@ -161,10 +181,29 @@ const main = (argv: ReadonlyArray<string>): number => {
             parseThresholds(JSON.parse(readFileSync(parsed.thresholdsPath, "utf8"))),
           );
 
+    const appended =
+      parsed.appendPath === null
+        ? null
+        : appendResultRow(parsed.appendPath, report, gate, {
+            recordedAt: new Date().toISOString(),
+          });
+
     process.stdout.write(
-      parsed.json ? `${JSON.stringify({ report, gate }, null, 2)}\n` : renderReport(report, gate),
+      parsed.json
+        ? `${JSON.stringify({ report, gate, appended }, null, 2)}\n`
+        : renderReport(report, gate),
     );
-    return exitCodeFor(gate);
+    if (appended !== null && !parsed.json) {
+      process.stdout.write(
+        appended.appended
+          ? `\nAppended to ${parsed.appendPath!} as ${appended.row.receipt}\n`
+          : `\nNot appended (${appended.refusal}): ${appended.reason}\n`,
+      );
+    }
+
+    const gateCode = exitCodeFor(gate);
+    if (gateCode !== 0) return gateCode;
+    return appended !== null && !appended.appended ? APPEND_REFUSED_EXIT : 0;
   } catch (error) {
     process.stderr.write(`coder-effectiveness: ${(error as Error).message}\n`);
     return 1;

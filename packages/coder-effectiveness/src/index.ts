@@ -1,4 +1,14 @@
 export {
+  type Comparison,
+  compareRuns,
+  type Delta,
+  type DeltaDirection,
+  type LaneComparison,
+  type LaneRow,
+  type LaneTrend,
+  type TrendStep,
+} from "./compare.ts";
+export {
   type CostAggregate,
   type CostPerAcceptedOutcome,
   type EffectivenessReport,
@@ -20,7 +30,22 @@ export {
   pricingFromModelsPayload,
   type RateBasis,
 } from "./pricing.ts";
+export { renderComparison } from "./render-compare.ts";
 export { renderReport } from "./render.ts";
+export {
+  type AppendRefusal,
+  type AppendResult,
+  appendResultRow,
+  BENCH_RESULT_SCHEMA,
+  type BenchResultRow,
+  buildResultRow,
+  type ChainBreak,
+  type ChainVerdict,
+  readResultRows,
+  receiptOf,
+  suiteKeyOf,
+  verifyResultChain,
+} from "./results-store.ts";
 export {
   type EffectivenessThresholds,
   evaluateThresholds,

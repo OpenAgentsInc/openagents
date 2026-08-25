@@ -19,10 +19,14 @@ question the run was for.
 bench/run-suite.sh bench/suites/tb2-cross-section.txt \
   --model openai/gpt-5.6-luna --jobs-dir /tmp/gym-jobs-run
 
-# 2. Score it.
+# 2. Score it, and record it.
 pnpm run effectiveness:report -- /tmp/gym-jobs-run/<job-dir> \
   --suite tb2-cross-section --lane proxy \
-  --thresholds packages/coder-effectiveness/thresholds/tb2-cross-section.json
+  --thresholds packages/coder-effectiveness/thresholds/tb2-cross-section.json \
+  --append bench-results/tb2-cross-section.jsonl
+
+# 3. Read the trend and the lanes.
+pnpm run effectiveness:compare -- bench-results/tb2-cross-section.jsonl
 ```
 
 Nothing new has to be produced by the coder for this to work. The suite reads
@@ -108,11 +112,66 @@ A measured breach outranks an unmeasurable criterion: a run that fails the
 success floor and cannot be priced is `failed`, because something _was_
 measured and it broke.
 
-| Exit | Meaning                                     |
-| ---- | ------------------------------------------- |
-| 0    | Every applicable floor passed.              |
-| 1    | A floor was breached.                       |
-| 2    | The gate could not be verified. Not a pass. |
+| Exit | Meaning                                                 |
+| ---- | ------------------------------------------------------- |
+| 0    | Every applicable floor passed.                          |
+| 1    | A floor was breached.                                   |
+| 2    | The gate could not be verified. Not a pass.             |
+| 3    | The run was scored but `--append` refused to record it. |
+
+Code 3 only ever replaces a 0. A breach or an unverifiable gate is the more
+important finding, so a non-zero gate always outranks a bookkeeping refusal.
+
+## The store
+
+`--append <file>` writes the run into an append-only JSONL store — one line per
+run, one file per suite, under `bench-results/`. Every row carries a
+`receipt:<sha256>` over its own fields **and** the receipt of the row before it,
+so editing a figure in place breaks that row's receipt and inserting or removing
+a row breaks the next row's link. Both are named findings rather than silent
+ones, which is what makes the file append-only in practice rather than by
+convention.
+
+Two refusals, both reported rather than thrown:
+
+- `duplicate_job` — the store already holds this Harbor job. Re-scoring a run
+  against different floors is a useful thing to do, and a second row is not what
+  it produces; two rows for one execution would double-count it in every trend
+  that follows.
+- `chain_broken` — the store does not verify, so appending would extend a
+  rewritten history and bury the break one row deeper.
+
+An unpriced run records `null`, never `0`, and carries the disposition and
+coverage that say why. See `bench-results/README.md`.
+
+## Comparing runs
+
+```sh
+pnpm run effectiveness:compare -- bench-results/tb2-cross-section.jsonl
+```
+
+The chain is verified first, and a store that does not verify is refused rather
+than compared: a trend over a rewritten history reads exactly like a trend over
+an honest one. Then two views come off the same rows.
+
+**Trend** is one suite on one lane over time — the shape #34's acceptance clause
+asks for, and the shape a regression appears in. **Lanes** is one suite across
+lanes at their most recent runs, each measured against a baseline.
+
+Three rules keep both honest:
+
+- **Only rows sharing a `suiteKey` are compared.** That key is the suite, the
+  sorted task list, and the rate catalog. Lane, model, and CLI version are
+  excluded, because those are the axes a comparison varies. Rows in other groups
+  are reported as their own groups, never folded into one table with a footnote.
+- **A cost delta needs both sides priced.** If either row is unpriced, the delta
+  is `unpriced` — not zero, and not "improved". It is the same refusal the report
+  makes about a single run, applied to the difference between two.
+- **A comparison that varies two things says so.** A lane comparison whose rows
+  carry different CLI versions is flagged `confounded`, as is a trend that also
+  changes model, and any comparison touching a row priced from placeholder
+  rates. Nothing is suppressed: a confounded comparison is often the only one
+  available, and it is readable as long as it is labelled.
 
 ## Grading
 
@@ -138,6 +197,9 @@ called, no Docker image runs, and no clock is read.
 | `mixed-lane`       | A partly priced run withholds the number.                         |
 | `crashed-verifier` | Ungraded trials stay out of both buckets.                         |
 | `regressed-lane`   | A regression raises cost per accepted outcome and trips the gate. |
+
+The store and comparison cases build their rows from the same fixtures, into a
+temporary store, with the clock injected.
 
 ```sh
 pnpm --dir packages/coder-effectiveness test
@@ -165,7 +227,10 @@ leaves unpriced stays unpriced here — that omission is the signal.
   per-model-family seam, the token-economy delta it measures is readable from
   this suite's rows without a change here.
 - **Two consecutive scheduled runs and a caught live regression.** Issue #34's
-  acceptance needs real Harbor runs on amd64 hardware; the fixture runs prove
-  the grading and the arithmetic, not the schedule.
-- **Appending results to `bench-results` with receipts.** The report is
-  `--json`-shaped and ready for it; the store is not wired.
+  acceptance needs real Harbor runs on amd64 hardware. The store and the
+  comparison now hold the rows those runs will produce, and the fixture cases
+  prove the trend reads a regression as a rise in cost per accepted outcome —
+  but a fixture is not a schedule, and no real run has been recorded.
+- **The 20-30 task suite.** The floors point at
+  `bench/suites/tb2-cross-section.txt`, twelve tasks. The wider suite and the
+  owned set drawn from this tracker's closed issues are not built.
