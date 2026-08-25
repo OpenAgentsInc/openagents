@@ -2,6 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { InMemoryGoalStore } from "../src/coder-goals.js";
 
 import {
   CoderSession,
@@ -599,5 +600,47 @@ describe("plugin occurrences", () => {
 
     const tool = session.snapshot().entries.find((entry) => entry.role === "tool");
     expect(tool?.tool?.plugin).toBeUndefined();
+  });
+});
+
+describe("the /goal command in CoderSession", () => {
+  it("handles /goal lifecycle via session prompts", async () => {
+    const store = new InMemoryGoalStore();
+    const session = new CoderSession(
+      scripted(["hello"]),
+      "repo",
+      "main",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      store,
+    );
+
+    // Initial status notice
+    await session.submit("/goal");
+    const snap1 = session.snapshot();
+    const notice1 = snap1.entries.find((e) => e.role === "notice");
+    expect(notice1?.text).toContain("No active task goal.");
+
+    // Set goal
+    await session.submit("/goal Build persistent task goals");
+    expect(store.getGoal()?.objective).toBe("Build persistent task goals");
+    expect(store.getGoal()?.status).toBe("active");
+    expect(session.snapshot().goal?.objective).toBe("Build persistent task goals");
+
+    // Pause goal
+    await session.submit("/goal pause");
+    expect(store.getGoal()?.status).toBe("paused");
+
+    // Resume goal
+    await session.submit("/goal resume");
+    expect(store.getGoal()?.status).toBe("active");
+
+    // Clear goal
+    await session.submit("/goal clear");
+    expect(store.getGoal()).toBeUndefined();
+    expect(session.snapshot().goal).toBeUndefined();
   });
 });
