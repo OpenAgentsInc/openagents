@@ -20,9 +20,27 @@
 import type { ReplyChunk, ReplySource } from "./coder-session.js";
 import { tierLabel } from "./coder-tiers.js";
 import type { CoderTool } from "./coder-tools.js";
+import type { TranscriptSink } from "./coder-transcript.js";
 
 /** Default backoff ladder for transient responses API failures (5xx or network drops). */
 const DEFAULT_RETRY_DELAYS_MS: ReadonlyArray<number> = [250, 500, 1000, 2000];
+
+/**
+ * How much of one tool's output reaches the durable `tool.ran` event.
+ *
+ * The same figure the thread and local lanes use: it bounds a record written
+ * once, so it is set where every result a real session has produced fits
+ * whole. What the model is re-sent each round is bounded separately.
+ */
+const EVENT_RESULT_KEPT = 64_000;
+
+/** A long tool result, kept at both ends. */
+const bounded = (output: string, keep: number): string => {
+  if (output.length <= keep) return output;
+  const half = Math.floor(keep / 2);
+  const cut = output.length - keep;
+  return `${output.slice(0, half)}\n\n[${String(cut)} of ${String(output.length)} characters omitted from the middle; run it again more narrowly if you need them]\n\n${output.slice(-half)}`;
+};
 
 export interface ResponsesOptions {
   /** The API origin, such as `http://localhost:4000`. */
@@ -56,6 +74,13 @@ export class ResponsesReplySource implements ReplySource {
   private tools: ReadonlyArray<CoderTool> = [];
   private standing: string | undefined;
   private readonly retryDelaysMs: ReadonlyArray<number>;
+  /**
+   * The transcript writer, when the session opened a transcript-only thread
+   * for this lane (OpenAgentsInc/openagents#59). Absent, nothing is recorded —
+   * a `--dev` session without a credential runs exactly as before, it just
+   * leaves no record on the server.
+   */
+  private sink: TranscriptSink | undefined;
 
   constructor(private readonly options: ResponsesOptions) {
     this.retryDelaysMs = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
@@ -79,17 +104,47 @@ export class ResponsesReplySource implements ReplySource {
     this.standing = standing;
   }
 
+  /**
+   * Attach the writer that puts this session's turns on the server.
+   *
+   * The same vocabulary the thread and local lanes record — `turn.user`,
+   * `turn.reasoning`, `tool.ran`, `turn.assistant` — so `/threads/:id`, the
+   * export, and a resume read a dev session exactly as they read a hosted
+   * one. Set after construction because the writer needs the thread's id,
+   * which does not exist until the transcript-only thread is opened.
+   */
+  useTranscript(sink: TranscriptSink): void {
+    this.sink = sink;
+  }
+
   async *reply(prompt: string, signal: AbortSignal): AsyncIterable<ReplyChunk> {
     this.items.push({ role: "user", content: prompt });
+    this.sink?.record("turn.user", { text: prompt });
     let calls = 0;
+    /** The answer so far, across steps, for the one `turn.assistant` event. */
+    let turnText = "";
+    /** How many tools this turn ran, reported on `turn.assistant`. */
+    let turnToolCalls = 0;
 
     for (;;) {
       calls += 1;
-      const { text, requested } = yield* this.once(signal);
+      const { text, reasoning, requested } = yield* this.once(signal);
       if (text !== "") this.items.push({ role: "assistant", content: text });
+
+      // One event per block, whole, never deltas: the record is what was
+      // thought, not the pieces it arrived in.
+      if (reasoning.length > 0) this.sink?.record("turn.reasoning", { text: reasoning });
+
+      // Whatever the model said belongs to the thread even when the turn was
+      // interrupted, or the next turn answers a question it cannot see it
+      // half-answered.
+      if (text.length > 0) {
+        turnText = turnText.length === 0 ? text : `${turnText}\n\n${text}`;
+      }
 
       if (requested.length === 0) {
         yield { type: "usage", calls };
+        this.recordAnswer(turnText, turnToolCalls, calls, signal.aborted);
         return;
       }
 
@@ -112,9 +167,40 @@ export class ResponsesReplySource implements ReplySource {
           call_id: call.callId,
           output: outcome.output ?? outcome.error ?? "",
         });
+        turnToolCalls += 1;
+        // Call and result are one fact, so they are one event — the thread
+        // lane's shape exactly, bounded far above the model-wire bound so the
+        // record keeps what the model was fed a cut of.
+        this.sink?.record("tool.ran", {
+          call_id: call.callId,
+          tool: call.name,
+          arguments: bounded(call.args, EVENT_RESULT_KEPT),
+          status: outcome.error === undefined ? "succeeded" : "failed",
+          ...(outcome.error === undefined
+            ? { output: bounded(outcome.output ?? "", EVENT_RESULT_KEPT) }
+            : { error: bounded(outcome.error, EVENT_RESULT_KEPT) }),
+        });
       }
     }
+  }
 
+  /**
+   * Record the turn's answer, with what it cost.
+   *
+   * One event per turn, whatever the turn took to get there, the same shape
+   * the thread lane records. This surface reports no token counts, so the
+   * usage carries only the call count — absent figures stay absent rather
+   * than being written as zeros a reader would take for measurements.
+   */
+  private recordAnswer(text: string, toolCalls: number, calls: number, interrupted: boolean): void {
+    if (this.sink === undefined) return;
+    if (text.length === 0 && toolCalls === 0) return;
+    this.sink.record("turn.assistant", {
+      text,
+      usage: { calls },
+      tool_calls: toolCalls,
+      ...(interrupted ? { interrupted: true } : {}),
+    });
   }
 
   /**
@@ -192,10 +278,11 @@ export class ResponsesReplySource implements ReplySource {
   /** One request: stream the events, yield what renders, return the rest. */
   private async *once(
     signal: AbortSignal,
-  ): AsyncGenerator<ReplyChunk, { text: string; requested: Call[] }> {
+  ): AsyncGenerator<ReplyChunk, { text: string; reasoning: string; requested: Call[] }> {
     const response = await this.request(signal);
 
     let text = "";
+    let reasoning = "";
     const requested: Call[] = [];
 
     for await (const data of frames(response.body!, signal)) {
@@ -214,6 +301,7 @@ export class ResponsesReplySource implements ReplySource {
         case "response.reasoning_summary_text.delta": {
           const delta = event["delta"];
           if (typeof delta === "string" && delta.length > 0) {
+            reasoning += delta;
             yield { type: "reasoning", value: delta };
           }
           break;
@@ -236,14 +324,11 @@ export class ResponsesReplySource implements ReplySource {
       }
     }
 
-    return { text, requested };
+    return { text, reasoning, requested };
   }
 
   /** Run one tool call; a missing tool or a throw is a result, not a crash. */
-  private async run(
-    call: Call,
-    signal: AbortSignal,
-  ): Promise<{ output?: string; error?: string }> {
+  private async run(call: Call, signal: AbortSignal): Promise<{ output?: string; error?: string }> {
     const tool = this.tools.find((candidate) => candidate.name === call.name);
     if (tool === undefined) {
       return { error: `No tool named \`${call.name}\` is declared in this session.` };
@@ -251,7 +336,8 @@ export class ResponsesReplySource implements ReplySource {
     let args: Record<string, unknown>;
     try {
       const parsed: unknown = JSON.parse(call.args === "" ? "{}" : call.args);
-      args = parsed !== null && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+      args =
+        parsed !== null && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
     } catch {
       return { error: "The call's arguments were not valid JSON." };
     }

@@ -2268,6 +2268,30 @@ const coderCommand = Command.make(
           })
         : undefined;
 
+      // The dev lane records too (OpenAgentsInc/openagents#59): with a
+      // credential and the switch not off, it opens the same transcript-only
+      // thread the local lane opens — no grant minted or spent, the replies
+      // come from the responses surface — so a dev session's history,
+      // reasoning, and tool executions land in the threads database exactly
+      // as a standard or ollama session's do. `openLocalThread` never throws:
+      // no credential or no reachable thread route degrades silently to an
+      // unrecorded session, never a broken turn.
+      const devThread =
+        responsesSource !== undefined && Option.isSome(stored) && threadSyncWanted(process.env)
+          ? yield* Effect.promise(() =>
+              openLocalThread({
+                origin: endpoint.origin,
+                token: Redacted.value(stored.value.token),
+                objective: `openagents coder in ${workspace.repository} on ${workspace.branch}`,
+                repository: workspace.repository,
+                // The product id, not a vendor string: the dev server picks
+                // what answers, so the record names the surface that did.
+                model: responsesSource.modelId,
+                reasoning: Option.getOrUndefined(reasoning),
+              }),
+            )
+          : undefined;
+
       const source: ReplySource =
         wantsZen && zenAsked !== undefined && zenKey !== undefined
           ? new ZenReplySource({ model: zenAsked, key: zenKey })
@@ -2438,15 +2462,18 @@ const coderCommand = Command.make(
         responsesSource !== undefined
           ? {
               initial: "auto" as CoderTierId,
-              build: (_tier: CoderTierId, _history: ReadonlyArray<unknown>) =>
-                Promise.resolve<ReplySource>(
-                  new ResponsesReplySource({
-                    origin: endpoint.origin,
-                    ...(Option.isSome(stored)
-                      ? { token: Redacted.value(stored.value.token) }
-                      : {}),
-                  }),
-                ),
+              build: (_tier: CoderTierId, _history: ReadonlyArray<unknown>) => {
+                const fresh = new ResponsesReplySource({
+                  origin: endpoint.origin,
+                  ...(Option.isSome(stored) ? { token: Redacted.value(stored.value.token) } : {}),
+                });
+                // The switched source keeps writing to the same thread: the
+                // writer is shared, so the record stays one sequence. Safe to
+                // reference here — `build` runs on a tier switch, long after
+                // the writer below is constructed.
+                if (transcript !== undefined) fresh.useTranscript(transcript);
+                return Promise.resolve<ReplySource>(fresh);
+              },
             }
           : undefined;
 
@@ -2476,7 +2503,7 @@ const coderCommand = Command.make(
       // durable copy; the offline and stand-in lanes keep no record and
       // attach nothing. A failed post never reaches the turn loop: the
       // writer queues, retries, and says so once on the status line.
-      const transcriptThreadId = thread?.threadId ?? localThread?.threadId;
+      const transcriptThreadId = thread?.threadId ?? localThread?.threadId ?? devThread?.threadId;
       const transcript =
         transcriptThreadId !== undefined && Option.isSome(stored)
           ? new ThreadTranscriptWriter({
@@ -2491,6 +2518,7 @@ const coderCommand = Command.make(
       if (transcript !== undefined) {
         thread?.useTranscript(transcript);
         ollamaSource?.useTranscript(transcript);
+        responsesSource?.useTranscript(transcript);
       }
 
       // The machine-readable announcement (OpenAgentsInc/openagents#38): in
