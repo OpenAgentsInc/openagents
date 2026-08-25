@@ -167,9 +167,12 @@ export class ZenReplySource implements ReplySource {
 
       // Read between two model calls rather than at the end of the turn, which
       // is the difference between steering a model and waiting one out.
-      for (const said of this.steered.splice(0)) {
+      const steered = this.steered.splice(0);
+      for (const said of steered) {
         this.transcript.push({ role: "user", content: said });
       }
+      // The interface dims a steered message until this says it was read.
+      if (steered.length > 0) yield { type: "steered", texts: steered };
 
       const calls: Map<number, { id: string; name: string; args: string }> = new Map();
       let assistant = "";

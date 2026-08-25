@@ -495,6 +495,12 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         return renderMarkdown(entry.text, width, `${DIM}${ITALIC}`);
       }
       if (entry.role === "assistant") return renderMarkdown(entry.text, width);
+      // A steered message the model has not been given yet, dim and italic:
+      // the same styling reasoning gets, for the same reason — it is on screen
+      // but it is not part of the conversation yet.
+      if (entry.role === "you" && entry.pending === true) {
+        return wrapStyled(entry.text, width, `${DIM}${ITALIC}`);
+      }
       return wrapStyled(entry.text, width, entry.role === "notice" ? DIM : "");
     };
 

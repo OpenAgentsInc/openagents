@@ -386,9 +386,12 @@ export class OllamaReplySource implements ReplySource {
       // Anything the reader said since the last step joins here, before the
       // model is asked again. It reads as an ordinary turn in the conversation,
       // because that is what it is.
-      for (const said of this.steered.splice(0)) {
+      const steered = this.steered.splice(0);
+      for (const said of steered) {
         this.transcript.push({ role: "user", content: said });
       }
+      // The interface dims a steered message until this says it was read.
+      if (steered.length > 0) yield { type: "steered", texts: steered };
 
       const calls: OllamaToolCall[] = [];
       let assistant = "";

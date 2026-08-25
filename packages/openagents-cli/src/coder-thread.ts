@@ -561,12 +561,15 @@ export class ThreadReplySource implements ReplySource {
       for (let step = 0; ; step += 1) {
         // Anything the reader said since the last step joins here, before the
         // model is asked again.
-        for (const said of this.steered.splice(0)) {
+        const steered = this.steered.splice(0);
+        for (const said of steered) {
           this.transcript.push({ role: "user", content: said });
           // Steered mid-turn rather than asked between turns, and the record
           // says so, or a replay would show a question the answer ignores.
           this.sink?.record("turn.user", { text: said, steered: true });
         }
+        // The interface dims a steered message until this says it was read.
+        if (steered.length > 0) yield { type: "steered", texts: steered };
 
         const calls: WireCall[] = [];
         let assistant = "";

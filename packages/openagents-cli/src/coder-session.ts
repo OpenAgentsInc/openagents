@@ -55,6 +55,20 @@ export type ReplyChunk =
       readonly callId: string;
       readonly output: string | undefined;
       readonly error: string | undefined;
+    }
+  | {
+      /**
+       * What the reader steered, at the moment the model was given it.
+       *
+       * A steered message is typed while the model is working and read at its
+       * next step, which can be seconds later and several tool calls down. The
+       * transcript showed it where it was typed, settled, indistinguishable
+       * from a message that had been answered — so a reader could not tell
+       * what the model had actually seen. The source says when it hands one
+       * over, and the entry moves to that point and stops looking pending.
+       */
+      readonly type: "steered";
+      readonly texts: ReadonlyArray<string>;
     };
 
 /** The tool half of a `tool` entry. Grows when the outcome arrives. */
@@ -169,6 +183,14 @@ export interface CoderEntry {
   settled: boolean;
   /** Present on a `tool` entry only. */
   readonly tool?: CoderToolCall;
+  /**
+   * Set on a steered `you` entry the model has not been given yet.
+   *
+   * The interface dims it. It is the difference between "you said this" and
+   * "you said this and it was heard", and a turn is long enough that the two
+   * are not the same fact.
+   */
+  pending?: boolean;
   /** Set on the entry a turn ended on, when the source reported the cost. */
   metrics?: CoderMetrics;
   /**
@@ -838,17 +860,27 @@ export class CoderSession {
     // Typing while the model works is how a reader steers, and an interface
     // that silently ignores the key is one that cannot be steered at all.
     if (this.controller !== undefined) {
-      this.entries.push({ role: "you", text: prompt, settled: true, at: Date.now() });
-
       // Steering by default: a source that runs a loop of model calls reads
       // this at its next step, so the model sees it while it is still working.
       // A reader who wants the turn finished first asks for `queue`, and a
       // source that cannot steer holds it to the end either way.
       if (mode === "steer" && this.source.steer?.(prompt) === true) {
-        this.notice("Steering: the model reads this at its next step.");
+        // Pending until the source says it handed it over. It used to land
+        // here settled, with a notice under it saying the model would read it
+        // later — which is a sentence describing what the entry itself should
+        // have been showing.
+        this.entries.push({
+          role: "you",
+          text: prompt,
+          settled: true,
+          at: Date.now(),
+          pending: true,
+        });
         this.emit();
         return;
       }
+
+      this.entries.push({ role: "you", text: prompt, settled: true, at: Date.now() });
 
       this.pending.push(prompt);
       this.notice(
@@ -956,6 +988,28 @@ export class CoderSession {
               ...(provenance === undefined ? {} : { plugin: provenance }),
             },
           });
+        } else if (chunk.type === "steered") {
+          // Moved to where the model was actually given it, which is here: the
+          // source yields this as it splices the message into the transcript,
+          // so the current end of the entries is that point in the chain.
+          for (const said of chunk.texts) {
+            const at = this.entries.findIndex(
+              (entry) => entry.role === "you" && entry.pending === true && entry.text === said,
+            );
+            if (at === -1) continue;
+
+            const [entry] = this.entries.splice(at, 1);
+            if (entry === undefined) continue;
+            entry.pending = false;
+            this.entries.push(entry);
+          }
+
+          // The streaming entries are the ones being appended to, and the
+          // splice moved the transcript out from under them. Reopening keeps
+          // the next chunk from growing an entry that is no longer last.
+          text = undefined;
+          reasoning = undefined;
+          this.emit();
         } else if (chunk.type === "usage") {
           // Onto the entry the turn ended on, which is the step a reader of the
           // trajectory would attribute the cost to. `calls` says how many LLM
