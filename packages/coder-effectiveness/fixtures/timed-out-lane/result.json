@@ -1,0 +1,6 @@
+{
+ "id": "job-timed-out-lane",
+ "started_at": "2026-08-25T10:00:00.000000",
+ "finished_at": "2026-08-25T10:30:00.000000",
+ "n_total_trials": 1
+}

@@ -210,3 +210,40 @@ describe("cost per accepted outcome", () => {
     expect(after.successRate!).toBeLessThan(before.successRate!);
   });
 });
+
+/**
+ * A trial that hit the agent timeout, which is what a degraded lane's run is
+ * mostly made of.
+ *
+ * The coder writes its ATIF export at the end of a session, so a killed session
+ * leaves none — and every figure this suite reads from a trajectory goes with
+ * it. What must not go with it is the model, because a run whose lane failed is
+ * the run you most want to know the lane of.
+ */
+describe("a trial with no trajectory", () => {
+  test("recovers the model from Harbor's own trial config", () => {
+    const result = report("timed-out-lane", "local");
+
+    expect(result.models).toEqual(["ollama:qwen3.8:27b-mtp-q8_0"]);
+    // Harbor spells it `ollama/…`; the catalog id the adapter sends is
+    // `ollama:…`, and a recovered id has to price like a read one.
+    expect(result.perTrial[0]!.disposition).toBe("unmetered_local_lane");
+    expect(result.perTrial[0]!.disposition).not.toBe("unknown_model");
+  });
+
+  test("still reports the verifier's decision and leaves the token counts unknown", () => {
+    const result = report("timed-out-lane", "local");
+
+    expect(result.rejected).toBe(1);
+    expect(result.accepted).toBe(0);
+    expect(result.promptTokens).toBeNull();
+    expect(result.toolCalls).toBeNull();
+    expect(result.wallClockSeconds).toBe(1800);
+  });
+
+  test("leaves the CLI version unknown, because nothing on disk records it", () => {
+    // Recoverable and unrecoverable are different, and inventing the second
+    // would be worse than reporting it.
+    expect(report("timed-out-lane", "local").agentVersions).toEqual([]);
+  });
+});

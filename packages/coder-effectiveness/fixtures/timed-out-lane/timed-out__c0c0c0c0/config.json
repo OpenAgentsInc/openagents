@@ -1,0 +1,10 @@
+{
+ "task": {
+  "path": "timed-out"
+ },
+ "trial_name": "timed-out__c0c0c0c0",
+ "agent": {
+  "import_path": "adapters.openagents_coder:OpenAgentsCoder",
+  "model_name": "ollama/qwen3.8:27b-mtp-q8_0"
+ }
+}

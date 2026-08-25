@@ -1,0 +1,17 @@
+{
+ "id": "trial-timed-out",
+ "task_name": "timed-out",
+ "trial_name": "timed-out__c0c0c0c0",
+ "exception_info": {
+  "exception_type": "AgentTimeoutError"
+ },
+ "verifier_result": {
+  "rewards": {
+   "reward": 0.0
+  }
+ },
+ "agent_execution": {
+  "started_at": "2026-08-25T10:00:00.000000",
+  "finished_at": "2026-08-25T10:30:00.000000"
+ }
+}

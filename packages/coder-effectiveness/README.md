@@ -277,6 +277,7 @@ called, no Docker image runs, and no clock is read.
 | `mixed-lane`       | A partly priced run withholds the number.                         |
 | `crashed-verifier` | Ungraded trials stay out of both buckets.                         |
 | `regressed-lane`   | A regression raises cost per accepted outcome and trips the gate. |
+| `timed-out-lane`   | A killed session leaves no trajectory; the model pin survives it. |
 
 The suite manifests beside them cover the pin and the smoke rule:
 `fixture-suite` pins the four tasks the priced and regressed jobs ran,

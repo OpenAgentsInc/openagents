@@ -114,7 +114,9 @@ const readTrial = (dirName: string, trialDir: string, trialResult: unknown): Tri
   return {
     task: dirName.includes("__") ? dirName.slice(0, dirName.lastIndexOf("__")) : dirName,
     outcome: outcomeOf(trialResult),
-    modelId: readString(readField(agent, "model_name")),
+    modelId:
+      readString(readField(agent, "model_name")) ??
+      modelFromTrialConfig(readJson(join(trialDir, "config.json"))),
     agentVersion: readString(readField(agent, "version")),
     promptTokens: usage.promptTokens,
     completionTokens: usage.completionTokens,
@@ -124,6 +126,41 @@ const readTrial = (dirName: string, trialDir: string, trialResult: unknown): Tri
     threadId: threadIdOf(trialDir),
     exception: readString(readField(readField(trialResult, "exception_info"), "exception_type")),
   };
+};
+
+/**
+ * The model, recovered from Harbor's own trial config when the trajectory is
+ * missing.
+ *
+ * The coder writes its ATIF export at the end of a session, so a trial that hit
+ * the agent timeout or crashed leaves no trajectory and no model id — exactly
+ * the trials a regression run is full of. Losing the model pin there is the
+ * wrong way round: a run whose lane failed is the run you most want to know the
+ * lane of, and a whole run of timeouts would otherwise report `model unknown`
+ * and price as `unknown_model` for a reason that has nothing to do with pricing.
+ *
+ * Harbor records the model on every trial before the agent starts, spelled the
+ * way its `--model` flag takes it. The adapter maps that spelling onto the
+ * coder's catalog id, and this repeats that mapping so a recovered id prices
+ * the same as one read from a trajectory. It is a second copy of a two-line
+ * rule; the alternative is a model pin that disappears precisely when it
+ * matters. Keep it in step with `_catalog_model` in
+ * `bench/adapters/openagents_coder.py`.
+ */
+const modelFromTrialConfig = (trialConfig: unknown): string | null => {
+  // The trial's own `config.json` holds the agent block at the top level; the
+  // same block appears one level down inside a trial `result.json`. Both are
+  // read so a caller does not have to know which file it handed over.
+  const spelled =
+    readString(readField(readField(trialConfig, "agent"), "model_name")) ??
+    readString(readField(readField(readField(trialConfig, "config"), "agent"), "model_name"));
+  if (spelled === null) return null;
+  const separator = spelled.indexOf("/");
+  if (separator === -1) return spelled;
+  const provider = spelled.slice(0, separator);
+  const name = spelled.slice(separator + 1);
+  if (provider === "ollama") return `ollama:${name}`;
+  return name === "" ? provider : name;
 };
 
 /**
