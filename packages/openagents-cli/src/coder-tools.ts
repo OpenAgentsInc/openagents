@@ -508,7 +508,10 @@ export function shellTool(cwd: string): CoderTool {
       "output. Both output streams come back together with the exit code. There is no terminal, " +
       "so a command that would prompt gets end-of-file instead of waiting; pass a flag that " +
       "answers the prompt. A few commands that cannot be undone are refused, such as erasing a " +
-      "root or a home directory, reformatting a disk, or halting the machine.",
+      "root or a home directory, reformatting a disk, or halting the machine. Work economically: " +
+      "batch independent commands into one call with && instead of one call each — every call " +
+      "replays the conversation so far. Use quiet flags and `git --no-pager`; prefer `--stat` " +
+      "before `-p`, and dump a full patch only for the file you are actually deciding about.",
     parameters: {
       type: "object",
       properties: {

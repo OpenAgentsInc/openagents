@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  CHILD_LANE_ALIASES,
   CHILD_MODELS,
   childLaneName,
   resolveChildLane,

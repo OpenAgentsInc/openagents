@@ -55,8 +55,12 @@ export const systemPrompt = (
 
 /** The lane sentence for a session answering from a model on this machine. */
 export const LOCAL_LANE =
-  "You answer from a model running locally on this machine through Ollama.";
+  "You answer from a model running locally on this machine through Ollama. Tokens here cost " +
+  "nothing, but generation is slow: prefer a few composite tool calls over many small ones, " +
+  "keep narration brief, and verify in one final pass rather than several.";
 
 /** The lane sentence for a session answering through the account's thread. */
 export const THREAD_LANE =
-  "You answer through the OpenAgents inference proxy, on a thread opened for this session.";
+  "You answer through the OpenAgents inference proxy, on a thread opened for this session. " +
+  "Every round of tool calls re-sends the whole conversation to a metered model, so batch " +
+  "independent commands into one call and keep large dumps out of the transcript.";

@@ -61,6 +61,7 @@
 import { Redacted } from "effect";
 
 import type { ChildGrant } from "./coder-child-gateway.js";
+import { declaredDescription, toolFamilyOf } from "./coder-tool-families.js";
 import { merge } from "./coder-merge.js";
 import type { ReplyChunk, ReplySource } from "./coder-session.js";
 import type { CoderTool } from "./coder-tools.js";
@@ -468,9 +469,14 @@ export class ThreadReplySource implements ReplySource {
    */
   /** The tools as declared, in the shape ATIF records them. */
   toolDefinitions(): ReadonlyArray<Record<string, unknown>> {
+    const family = toolFamilyOf(this.model);
     return this.tools.map((tool) => ({
       type: "function",
-      function: { name: tool.name, description: tool.description, parameters: tool.parameters },
+      function: {
+        name: tool.name,
+        description: declaredDescription(tool, family),
+        parameters: tool.parameters,
+      },
     }));
   }
 
@@ -801,11 +807,14 @@ export class ThreadReplySource implements ReplySource {
           ...(this.tools.length === 0 || this.mustAnswer
             ? {}
             : {
+                // Declarations resolve per model family: the base says what
+                // a tool is, and a family override adds the emphasis that
+                // family has measurably needed (coder-tool-families.ts).
                 tools: this.tools.map((tool) => ({
                   type: "function",
                   function: {
                     name: tool.name,
-                    description: tool.description,
+                    description: declaredDescription(tool, toolFamilyOf(this.model)),
                     parameters: tool.parameters,
                   },
                 })),

@@ -14,6 +14,7 @@
 import { Ollama } from "ollama";
 import type { Message as OllamaMessage, Tool as OllamaTool, ToolCall as OllamaToolCall } from "ollama";
 
+import { declaredDescription } from "./coder-tool-families.js";
 import { merge } from "./coder-merge.js";
 import type { ReplyChunk, ReplySource } from "./coder-session.js";
 import { LOCAL_LANE, systemPrompt } from "./coder-system.js";
@@ -297,7 +298,13 @@ export class OllamaReplySource implements ReplySource {
   toolDefinitions(): ReadonlyArray<Record<string, unknown>> {
     return this.tools.map((tool) => ({
       type: "function",
-      function: { name: tool.name, description: tool.description, parameters: tool.parameters },
+      function: {
+        name: tool.name,
+        // The local family's emphasis is the lane's economics — free tokens,
+        // slow generation — so it applies whatever weights answer.
+        description: declaredDescription(tool, "local"),
+        parameters: tool.parameters,
+      },
     }));
   }
 
@@ -416,7 +423,7 @@ export class OllamaReplySource implements ReplySource {
                 type: "function",
                 function: {
                   name: tool.name,
-                  description: tool.description,
+                  description: declaredDescription(tool, "local"),
                   // The client's type for a schema is narrower than JSON
                   // Schema. The server takes the schema as written.
                   parameters: tool.parameters as NonNullable<OllamaTool["function"]["parameters"]>,
