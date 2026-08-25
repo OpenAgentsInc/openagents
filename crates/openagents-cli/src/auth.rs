@@ -1,9 +1,10 @@
-//! Authentication, credential store, device pairing and persistent state
+//! Authentication, credential store, OS keychain / secret-tool adapter, and persistent state
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthConfig {
@@ -62,9 +63,63 @@ impl CredentialStore {
                 return Some(env_token.trim().to_string());
             }
         }
-        let config = self.load().ok()?;
-        let profile_key = config.default_profile.unwrap_or_else(|| "default".to_string());
-        config.profiles.get(&profile_key).and_then(|p| p.token.clone())
+
+        if let Ok(config) = self.load() {
+            let profile_key = config.default_profile.unwrap_or_else(|| "default".to_string());
+            if let Some(token) = config.profiles.get(&profile_key).and_then(|p| p.token.clone()) {
+                if !token.trim().is_empty() {
+                    return Some(token);
+                }
+            }
+        }
+
+        // Try OS Keychain on macOS with explicit origin account keys
+        #[cfg(target_os = "macos")]
+        {
+            for origin in ["https://openagents.com", "http://localhost:4000", "https://staging.openagents.com"] {
+                if let Ok(output) = Command::new("security")
+                    .args(["find-generic-password", "-a", origin, "-s", "openagents-cli", "-w"])
+                    .output()
+                {
+                    if output.status.success() {
+                        let token_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                        if token_str.starts_with("oa_pat_") || token_str.starts_with("smct_") {
+                            return Some(token_str);
+                        }
+                    }
+                }
+            }
+
+            if let Ok(output) = Command::new("security")
+                .args(["find-generic-password", "-s", "openagents-cli", "-w"])
+                .output()
+            {
+                if output.status.success() {
+                    let token_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if token_str.starts_with("oa_pat_") || token_str.starts_with("smct_") {
+                        return Some(token_str);
+                    }
+                }
+            }
+        }
+
+        // Try secret-tool on Linux
+        #[cfg(target_os = "linux")]
+        {
+            if let Ok(output) = Command::new("secret-tool")
+                .args(["lookup", "service", "openagents-cli"])
+                .output()
+            {
+                if output.status.success() {
+                    let token_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if !token_str.is_empty() {
+                        return Some(token_str);
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     pub fn set_token(&self, token: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -75,7 +130,16 @@ impl CredentialStore {
         let profile_key = config.default_profile.clone().unwrap_or_else(|| "default".to_string());
         let profile = config.profiles.entry(profile_key).or_insert_with(Default::default);
         profile.token = Some(token.to_string());
-        self.save(&config)
+        self.save(&config)?;
+
+        #[cfg(target_os = "macos")]
+        {
+            let _ = Command::new("security")
+                .args(["add-generic-password", "-U", "-a", "https://openagents.com", "-s", "openagents-cli", "-w", token])
+                .output();
+        }
+
+        Ok(())
     }
 
     pub fn clear_token(&self) -> Result<(), Box<dyn std::error::Error>> {
@@ -88,6 +152,15 @@ impl CredentialStore {
                 profile.token = None;
             }
         }
-        self.save(&config)
+        self.save(&config)?;
+
+        #[cfg(target_os = "macos")]
+        {
+            let _ = Command::new("security")
+                .args(["delete-generic-password", "-a", "https://openagents.com", "-s", "openagents-cli"])
+                .output();
+        }
+
+        Ok(())
     }
 }

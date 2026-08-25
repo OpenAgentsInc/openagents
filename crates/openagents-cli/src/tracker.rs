@@ -1,7 +1,7 @@
 //! Real tracker client implementation for OpenAgents Issues, Projects, Comments, and Milestones
 //! Talking to real `/api/v1` routes with authenticated requests
 
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,6 +41,7 @@ impl TrackerClient {
     fn headers(&self) -> HeaderMap {
         let mut map = HeaderMap::new();
         map.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        map.insert(ACCEPT, HeaderValue::from_static("application/json"));
         if let Some(tok) = &self.token {
             if let Ok(val) = HeaderValue::from_str(&format!("Bearer {}", tok)) {
                 map.insert(AUTHORIZATION, val);
@@ -50,8 +51,14 @@ impl TrackerClient {
     }
 
     pub async fn list_issues(&self, repo: &str) -> Result<Vec<Issue>, Box<dyn std::error::Error + Send + Sync>> {
-        let url = format!("{}/repos/{}/issues", self.api_base, repo);
-        let resp = self.http.get(&url).headers(self.headers()).send().await?;
+        let repo_path = if repo.starts_with("repos/") {
+            repo.to_string()
+        } else {
+            format!("repos/{}", repo)
+        };
+        let url = format!("{}/{}", self.api_base, repo_path);
+        let url_issues = format!("{}/issues", url);
+        let resp = self.http.get(&url_issues).headers(self.headers()).send().await?;
 
         if resp.status().is_success() {
             let body: serde_json::Value = resp.json().await?;
@@ -87,7 +94,12 @@ impl TrackerClient {
     }
 
     pub async fn get_issue(&self, repo: &str, number: u64) -> Result<Option<Issue>, Box<dyn std::error::Error + Send + Sync>> {
-        let url = format!("{}/repos/{}/issues/{}", self.api_base, repo, number);
+        let repo_path = if repo.starts_with("repos/") {
+            repo.to_string()
+        } else {
+            format!("repos/{}", repo)
+        };
+        let url = format!("{}/{}/issues/{}", self.api_base, repo_path, number);
         let resp = self.http.get(&url).headers(self.headers()).send().await?;
 
         if resp.status().is_success() {
@@ -116,7 +128,12 @@ impl TrackerClient {
     }
 
     pub async fn create_issue(&self, repo: &str, title: &str, body: Option<&str>) -> Result<Option<Issue>, Box<dyn std::error::Error + Send + Sync>> {
-        let url = format!("{}/repos/{}/issues", self.api_base, repo);
+        let repo_path = if repo.starts_with("repos/") {
+            repo.to_string()
+        } else {
+            format!("repos/{}", repo)
+        };
+        let url = format!("{}/{}/issues", self.api_base, repo_path);
         let mut payload = serde_json::json!({
             "title": title,
         });
@@ -143,7 +160,12 @@ impl TrackerClient {
     }
 
     pub async fn close_issue(&self, repo: &str, number: u64) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-        let url = format!("{}/repos/{}/issues/{}", self.api_base, repo, number);
+        let repo_path = if repo.starts_with("repos/") {
+            repo.to_string()
+        } else {
+            format!("repos/{}", repo)
+        };
+        let url = format!("{}/{}/issues/{}", self.api_base, repo_path, number);
         let resp = self.http.patch(&url).headers(self.headers()).json(&serde_json::json!({
             "state": "closed"
         })).send().await?;
@@ -151,7 +173,12 @@ impl TrackerClient {
     }
 
     pub async fn comment_issue(&self, repo: &str, number: u64, body: &str) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-        let url = format!("{}/repos/{}/issues/{}/comments", self.api_base, repo, number);
+        let repo_path = if repo.starts_with("repos/") {
+            repo.to_string()
+        } else {
+            format!("repos/{}", repo)
+        };
+        let url = format!("{}/{}/issues/{}/comments", self.api_base, repo_path, number);
         let resp = self.http.post(&url).headers(self.headers()).json(&serde_json::json!({
             "body": body
         })).send().await?;
@@ -159,7 +186,12 @@ impl TrackerClient {
     }
 
     pub async fn list_projects(&self, repo: &str) -> Result<Vec<Project>, Box<dyn std::error::Error + Send + Sync>> {
-        let url = format!("{}/repos/{}/projects", self.api_base, repo);
+        let repo_path = if repo.starts_with("repos/") {
+            repo.to_string()
+        } else {
+            format!("repos/{}", repo)
+        };
+        let url = format!("{}/{}/projects", self.api_base, repo_path);
         let resp = self.http.get(&url).headers(self.headers()).send().await?;
 
         if resp.status().is_success() {
