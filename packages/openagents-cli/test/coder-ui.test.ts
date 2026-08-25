@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { CODER_BACKENDS } from "../src/coder-backends.js";
 import { CoderSession, type ReplyChunk, type ReplySource } from "../src/coder-session.js";
+import { InMemoryGoalStore } from "../src/coder-goals.js";
 import { CoderTaskRegistry } from "../src/coder-tasks.js";
 import { RELOAD_EXIT_CODE } from "../src/coder-reload.js";
 import { runCoderUi } from "../src/coder-ui.js";
@@ -1220,4 +1221,39 @@ describe("inspecting a child from the column", () => {
   });
 
   const drillKeys = async () => driveKeys(two, [[], ["\x1b[C"], ["\x1b[D"]]);
+});
+
+describe("active goal status bar display", () => {
+  it("renders active goal in bottom status line", async () => {
+    const out = new FakeOut();
+    out.columns = 120;
+    const input = new FakeIn();
+
+    const goalStore = new InMemoryGoalStore();
+    goalStore.setGoal("Build persistent task goals", 50000);
+
+    const session = new CoderSession(
+      source([]),
+      "repo",
+      "main",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      goalStore,
+    );
+
+    const done = runCoderUi(session, {
+      stdin: input as unknown as NodeJS.ReadStream,
+      stdout: out as unknown as NodeJS.WriteStream,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(out.written).toContain('goal: "Build persistent task');
+    expect(out.written).toContain('…"');
+
+    input.emit("data", "\x04");
+    await done;
+  });
 });
