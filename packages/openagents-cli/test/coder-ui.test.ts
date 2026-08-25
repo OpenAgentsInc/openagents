@@ -904,13 +904,15 @@ describe("the chrome under the composer", () => {
   });
 });
 
-describe("the delegate preview inline under the tool call", () => {
-  /** A session with a running delegate tool call, for testing the inline preview. */
+describe("where a running child is shown", () => {
+  /** A session with a running delegate tool call, at a given terminal width. */
   const driveDelegated = async (
     record: (registry: CoderTaskRegistry) => void,
+    columns = 100,
   ): Promise<ReadonlyArray<string>> => {
     const stdin = new FakeIn();
     const stdout = new FakeOut();
+    stdout.columns = columns;
     const registry = new CoderTaskRegistry();
     const session = new CoderSession(
       {
@@ -973,20 +975,57 @@ describe("the delegate preview inline under the tool call", () => {
     return task.id;
   };
 
-  it("sits directly under the delegate row while a child runs", async () => {
+  it("puts a running child in the right column, beside the conversation", async () => {
     const rows = await driveDelegated((registry) => {
       registerChild(registry);
     });
 
-    const delegateRow = rows.findIndex((row) => row.includes("delegate"));
-    expect(delegateRow).toBeGreaterThan(0);
-    const childRow = rows[delegateRow + 1] ?? "";
-    expect(childRow).toContain("inspect the repo");
-    expect(childRow).toContain("Initializing");
+    const heading = rows.find((row) => row.includes("children"));
+    expect(heading).toBeDefined();
+    expect(heading).toContain("1 working");
+
+    const at = rows.findIndex((row) => row.includes("inspect the repo"));
+    expect(at).toBeGreaterThan(0);
+    // Beside, not below: the divider is to its left, so the transcript still
+    // has the row it is on.
+    expect(rows[at]).toContain("│");
+    // A child that has not called a tool yet still says what it is doing.
+    expect(rows[at + 1] ?? "").toContain("Initializing");
+
     // The session status lives at the bottom and does not repeat the fleet.
     const bottom = rows.filter((row) => row.includes("repo · main")).at(-1) ?? "";
     expect(bottom).toContain("repo · main");
     expect(bottom).not.toContain("1 agent");
+  });
+
+  it("says it once: the fleet is in the column or in the feed, never both", async () => {
+    const rows = await driveDelegated((registry) => {
+      registerChild(registry);
+    });
+
+    // The inline block drew the child directly under the `delegate` row. With
+    // a column open that would be the same child twice on one screen.
+    const delegateRow = rows.findIndex((row) => row.includes("delegate"));
+    expect(delegateRow).toBeGreaterThan(0);
+    const under = rows[delegateRow + 1] ?? "";
+    expect(under).not.toContain("inspect the repo");
+
+    const mentions = rows.filter((row) => row.includes("inspect the repo"));
+    expect(mentions).toHaveLength(1);
+  });
+
+  it("falls back to the feed on a terminal too narrow for a column", async () => {
+    // A fleet with nowhere to go is worse than one read in the feed, and a
+    // column carved out of eighty would leave the transcript wrapping.
+    const rows = await driveDelegated((registry) => {
+      registerChild(registry);
+    }, 80);
+
+    expect(rows.some((row) => row.includes("children"))).toBe(false);
+
+    const delegateRow = rows.findIndex((row) => row.includes("delegate"));
+    expect(delegateRow).toBeGreaterThan(0);
+    expect(rows[delegateRow + 1] ?? "").toContain("inspect the repo");
   });
 
   it("previews the child's latest activity one line per thing, three lines at most", async () => {
@@ -1001,9 +1040,8 @@ describe("the delegate preview inline under the tool call", () => {
       registry.recordToolUse(id, { toolName: "shell", target: "mix test" });
     });
 
-    const delegateRow = rows.findIndex((row) => row.includes("delegate"));
-    expect(delegateRow).toBeGreaterThan(0);
-    const childRow = delegateRow + 1;
+    const childRow = rows.findIndex((row) => row.includes("inspect the repo"));
+    expect(childRow).toBeGreaterThan(0);
     const previews = rows.slice(childRow + 1, childRow + 4);
     expect(previews).toHaveLength(3);
     const text = previews.join("\n");

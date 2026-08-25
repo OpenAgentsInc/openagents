@@ -12,14 +12,19 @@
  *
  * The layout:
  *
- *     ┌──────────────────────────────┐
- *     │ transcript, scrollable       │
- *     │   delegate preview inline    │
- *     │ delegate rows                │
- *     ├──────────────────────────────┤
- *     │ status line                  │
- *     │ composer                     │
- *     └──────────────────────────────┘
+ *     ┌───────────────────────┬──────────┐
+ *     │ transcript, scrollable │ children │
+ *     │                        │  ├─ one  │
+ *     │                        │  └─ two  │
+ *     ├───────────────────────┴──────────┤
+ *     │ composer                         │
+ *     │ status line                      │
+ *     └──────────────────────────────────┘
+ *
+ * The right column appears only while children are running and only on a
+ * terminal wide enough to give it room without squeezing the transcript. On a
+ * narrow terminal the same rows go inline under the `delegate` call instead,
+ * because a fleet that has nowhere to go is worse than one read in the feed.
  *
  * Painting is differential. An earlier version cleared the whole screen and
  * repainted it several times a second while a reply streamed, which left a
@@ -30,7 +35,7 @@
  * own job instead.
  */
 
-import { activityPhrase, fleetRows, latestActivities } from "./coder-fleet.js";
+import { activityPhrase, fleetRows, latestActivities, taskActivity } from "./coder-fleet.js";
 import { renderMarkdown, visibleWidth, wrapStyled } from "./coder-markdown.js";
 import type { CoderEntry, CoderSession, CoderSnapshot, CoderToolCall } from "./coder-session.js";
 import type { CoderTask, CoderTaskStatus } from "./coder-tasks.js";
@@ -121,6 +126,17 @@ const FLEET_ROWS_MAX = 8;
  * are doing and never more than three of them.
  */
 const PREVIEW_ROWS = 3;
+
+/**
+ * The right column's width, and the narrowest terminal that gets one.
+ *
+ * A fleet row needs about thirty columns before its description and its
+ * activity both survive being cut. Below the threshold the transcript would
+ * pay for the sidebar in wrapped lines, so there is no sidebar and the fleet
+ * stays inline.
+ */
+const SIDEBAR_WIDTH = 34;
+const SIDEBAR_MINIMUM_TERMINAL = 100;
 /** Width of the role gutter, so every entry's text starts in one column. */
 /**
  * Width of the marker column.
@@ -393,7 +409,14 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
     };
 
     /** Turn the transcript into printable rows, newest last. */
-    const transcriptLines = (snapshot: CoderSnapshot, width: number): ReadonlyArray<string> => {
+    const transcriptLines = (
+      snapshot: CoderSnapshot,
+      width: number,
+      // The children are on screen already, in the column to the right. Drawing
+      // them inline as well would say everything twice, and the feed is where
+      // the reader is following the conversation rather than the fleet.
+      sidebar: boolean,
+    ): ReadonlyArray<string> => {
       const out: string[] = [];
       const body = Math.max(20, width - GUTTER - 1);
 
@@ -401,7 +424,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       // reading as part of the sentence before it.
       for (const entry of snapshot.entries) {
         if (out.length > 0) out.push("");
-        out.push(...renderEntry(entry, body, snapshot.tasks));
+        out.push(...renderEntry(entry, body, sidebar ? [] : snapshot.tasks));
       }
       return out;
     };
@@ -591,6 +614,75 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       return rows;
     };
 
+    /**
+     * The right column: what every child is doing, while any of them is.
+     *
+     * The same rows the inline block draws, one per child with its own latest
+     * activity under it, but given a column of their own they do not push the
+     * conversation off screen — a fan-out of fifteen used to take the whole
+     * viewport at the moment the reader most wanted to see what the parent
+     * had said.
+     */
+    const sidebarLines = (
+      tasks: ReadonlyArray<CoderTask>,
+      height: number,
+    ): ReadonlyArray<string> => {
+      const inner = SIDEBAR_WIDTH - 2;
+      const running = tasks.filter(
+        (task) => task.status === "running" || task.status === "pending",
+      ).length;
+
+      const heading =
+        running === 0
+          ? `${BOLD}children${RESET}`
+          : `${BOLD}children${RESET} ${DIM}${String(running)} working${RESET}`;
+
+      const rows: string[] = [heading, ""];
+
+      // Working children first. A finished one has already been reported on
+      // the transcript, so it is the one to drop when the column runs out.
+      const ordered = [
+        ...tasks.filter((task) => task.status === "running" || task.status === "pending"),
+        ...tasks.filter((task) => task.status !== "running" && task.status !== "pending"),
+      ];
+
+      const built = fleetRows(ordered, inner);
+
+      for (const [index, task] of ordered.entries()) {
+        const row = built[index];
+        if (row === undefined) continue;
+        // Two rows per child at least — the row itself and one activity — so
+        // the count is what decides how many fit rather than the cut.
+        if (rows.length + 2 > height) break;
+
+        const color = fleetColor(row.status);
+        rows.push(`${color}${row.mark}${RESET} ${truncate(task.description, inner - 2)}`);
+
+        const activities = latestActivities([task], PREVIEW_ROWS);
+
+        if (activities.length === 0) {
+          // A child that has not called a tool yet still has a state, and an
+          // empty cell under its name reads as a stalled child.
+          rows.push(`${DIM}  ${truncate(taskActivity(task), inner - 2)}${RESET}`);
+        }
+
+        for (const activity of activities) {
+          if (rows.length + 1 > height) break;
+          rows.push(`${DIM}  → ${truncate(activityPhrase(activity), inner - 4)}${RESET}`);
+        }
+
+        rows.push("");
+      }
+
+      const shown = ordered.filter((_task, index) => built[index] !== undefined).length;
+      const hidden = tasks.length - Math.min(shown, tasks.length);
+      if (hidden > 0 && rows.length < height) {
+        rows.push(`${DIM}+${String(hidden)} more${RESET}`);
+      }
+
+      return rows;
+    };
+
     const render = () => {
       if (closed) return;
       const snapshot = session.snapshot();
@@ -615,7 +707,14 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       }
       const transcriptHeight = Math.max(1, height - STATUS_ROWS - COMPOSER_ROWS - SPACER_ROWS);
 
-      const lines = transcriptLines(snapshot, width);
+      // The column appears when there is something to put in it and room to
+      // put it. Both conditions are live: it opens when the first child starts
+      // and closes when the last one is cleared, and a terminal resized narrow
+      // gives the width back to the transcript.
+      const sidebar = snapshot.tasks.length > 0 && width >= SIDEBAR_MINIMUM_TERMINAL;
+      const transcriptWidth = sidebar ? width - SIDEBAR_WIDTH - 1 : width;
+
+      const lines = transcriptLines(snapshot, transcriptWidth, sidebar);
       lineCount = lines.length;
       viewport = transcriptHeight;
 
@@ -625,8 +724,22 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       // reads a still transcript as a stopped session.
       const above = start;
 
+      const column = sidebar ? sidebarLines(snapshot.tasks, transcriptHeight) : [];
+
       const rows: string[] = [];
-      for (let row = 0; row < transcriptHeight; row += 1) rows.push(lines[start + row] ?? "");
+      for (let row = 0; row < transcriptHeight; row += 1) {
+        const left = lines[start + row] ?? "";
+        if (!sidebar) {
+          rows.push(left);
+          continue;
+        }
+
+        // Padded to the column, because a styled row is longer in bytes than
+        // it is on screen and the divider has to land in the same place on
+        // every row or it is not a divider.
+        const padded = left + " ".repeat(Math.max(0, transcriptWidth - visibleWidth(left)));
+        rows.push(`${padded}${DIM}│${RESET} ${column[row] ?? ""}`);
+      }
 
       // Bottom chrome, in the order a reader scans it. The status line is the
       // main agent's state; the delegate preview lives inline under the

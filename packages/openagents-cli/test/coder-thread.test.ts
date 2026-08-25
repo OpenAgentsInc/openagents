@@ -232,7 +232,11 @@ describe("ThreadReplySource", () => {
     stub({});
     const out = await chunks(await open());
 
-    expect(out.every((chunk) => chunk.type === "text")).toBe(true);
+    // Every chunk but the turn's own tally, which arrives once at the end.
+    expect(out.filter((chunk) => chunk.type !== "usage").every((c) => c.type === "text")).toBe(
+      true,
+    );
+    expect(out.at(-1)).toMatchObject({ type: "usage", calls: 1 });
     expect(textOf(out)).toBe("Hello! Nice");
   });
 
@@ -302,7 +306,10 @@ describe("ThreadReplySource", () => {
     // A call the session cannot run is still reported, and the turn continues
     // with the refusal on the thread, because the alternative is a turn that
     // ends on a tool row and never answers.
-    expect(await chunks(await open())).toEqual([
+    const produced = await chunks(await open());
+    // The turn's tally is asserted where it is about the tally; here the shape
+    // under test is the call assembly.
+    expect(produced.filter((chunk) => chunk.type !== "usage")).toEqual([
       {
         type: "tool_call",
         callId: "call-1",
