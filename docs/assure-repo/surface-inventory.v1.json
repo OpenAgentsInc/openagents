@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:06d91d678ccdb6342846e1afb2fc334b332edef4f2187d84658f4a3bb5d1ceec",
+  "sourceDigest": "sha256:eb9b5934d3654ed799abf96a1edc79e8f94c87ffbb8c45b31ed7bf0754af8e1a",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -533,6 +533,23 @@
         {
           "type": "test",
           "ref": "crates/oa-workroomd (cargo test --workspace)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
+      "id": "crate:openagents-cli",
+      "kind": "crate",
+      "owningPath": "crates/openagents-cli",
+      "title": "openagents-cli",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "crates/openagents-cli (cargo test --workspace)"
         }
       ],
       "obligation": {
@@ -3402,17 +3419,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 181,
+    "totalSurfaces": 182,
     "byKind": {
       "app": 17,
-      "crate": 7,
+      "crate": 8,
       "document": 52,
       "package": 98,
       "public-endpoint": 2,
       "release-pipeline": 4,
       "worker": 1
     },
-    "withOracle": 173,
+    "withOracle": 174,
     "unverified": 8,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3420,7 +3437,7 @@
       "reference-only": 1
     },
     "byObligationState": {
-      "designed": 137,
+      "designed": 138,
       "inconclusive": 4,
       "mapped": 36,
       "out-of-scope": 4
