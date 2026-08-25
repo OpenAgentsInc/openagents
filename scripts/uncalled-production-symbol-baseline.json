@@ -2030,23 +2030,23 @@
     },
     {
       "ref": "packages/mkt-swp-compare/src/reservation.ts#detectReservationForks",
-      "reason": "Reservation fork detection (openagents#9318 \u00a73); SWAP-0 (openagents#9315) runs it over ingested quotes and feeds the forks into compareTableView when the widget shell lands."
+      "reason": "Reservation fork detection (openagents#9318 §3); SWAP-0 (openagents#9315) runs it over ingested quotes and feeds the forks into compareTableView when the widget shell lands."
     },
     {
       "ref": "packages/mkt-swp-compare/src/reservation.ts#observeReservations",
-      "reason": "Reservation observation projection (openagents#9318 \u00a73); SWAP-0 (openagents#9315) calls it on quote ingestion before fork detection when the widget shell lands."
+      "reason": "Reservation observation projection (openagents#9318 §3); SWAP-0 (openagents#9315) calls it on quote ingestion before fork detection when the widget shell lands."
     },
     {
       "ref": "packages/mkt-swp-compare/src/selection.ts#orderAcceptance",
-      "reason": "Indicative-quote acceptance discipline (openagents#9318 \u00a72); SWAP-0 (openagents#9315) drives it from provider Status ingestion after order creation."
+      "reason": "Indicative-quote acceptance discipline (openagents#9318 §2); SWAP-0 (openagents#9315) drives it from provider Status ingestion after order creation."
     },
     {
       "ref": "packages/mkt-swp-compare/src/selection.ts#selectOrder",
-      "reason": "Order selection discipline (openagents#9318 \u00a77); SWAP-0 (openagents#9315) calls it when the user selects a quote in the comparison table."
+      "reason": "Order selection discipline (openagents#9318 §7); SWAP-0 (openagents#9315) calls it when the user selects a quote in the comparison table."
     },
     {
       "ref": "packages/mkt-swp-compare/src/testkit.ts#custodialMintCustody",
-      "reason": "Seeded custodial mint-route fixture (openagents#9318 \u00a75) for the comparison corpus until immortal#14 lands a second live provider; SWAP-0 demo seeding consumes it."
+      "reason": "Seeded custodial mint-route fixture (openagents#9318 §5) for the comparison corpus until immortal#14 lands a second live provider; SWAP-0 demo seeding consumes it."
     },
     {
       "ref": "packages/mkt-swp-compare/src/testkit.ts#testFirmHardQuote",
@@ -2054,7 +2054,7 @@
     },
     {
       "ref": "packages/mkt-swp-compare/src/testkit.ts#testVerifyReport",
-      "reason": "Seeded engine verify-report fixture (openagents#9318 \u00a76); SWAP-0 demo seeding consumes it until the engine binding lands behind the SWAP-0 boundary."
+      "reason": "Seeded engine verify-report fixture (openagents#9318 §6); SWAP-0 demo seeding consumes it until the engine binding lands behind the SWAP-0 boundary."
     },
     {
       "ref": "packages/mkt-swp-compare/src/view.ts#compareTableView",
@@ -2070,11 +2070,11 @@
     },
     {
       "ref": "packages/mkt-swp-destination/src/qr.ts#acceptScannedText",
-      "reason": "QR scan intake routing through the shared destination parser (openagents#9317 \u00a78); SWAP-0 (openagents#9315) mounts the scanner in the swap widget shell and becomes its production caller."
+      "reason": "QR scan intake routing through the shared destination parser (openagents#9317 §8); SWAP-0 (openagents#9315) mounts the scanner in the swap widget shell and becomes its production caller."
     },
     {
       "ref": "packages/mkt-swp-destination/src/qr.ts#qrUnavailable",
-      "reason": "Default no-camera capability for hosts without a scanner (openagents#9317 \u00a78); SWAP-0 (openagents#9315) provides it where the widget shell has no camera probe."
+      "reason": "Default no-camera capability for hosts without a scanner (openagents#9317 §8); SWAP-0 (openagents#9315) provides it where the widget shell has no camera probe."
     },
     {
       "ref": "packages/mkt-swp-destination/src/resolve.ts#resolveDeferredDestination",
@@ -2130,19 +2130,19 @@
     },
     {
       "ref": "packages/mkt-swp-pair/src/view.ts#feePanelView",
-      "reason": "Render-ready rate/fee panel view model for openagents#9316 \u00a75; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
+      "reason": "Render-ready rate/fee panel view model for openagents#9316 §5; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
     },
     {
       "ref": "packages/mkt-swp-pair/src/view.ts#limitsView",
-      "reason": "Render-ready pre-typed limits view for openagents#9316 \u00a74; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
+      "reason": "Render-ready pre-typed limits view for openagents#9316 §4; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
     },
     {
       "ref": "packages/mkt-swp-pair/src/view.ts#pairSelectorView",
-      "reason": "Render-ready pair selector view with pre-selection reachability for openagents#9316 \u00a71; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
+      "reason": "Render-ready pair selector view with pre-selection reachability for openagents#9316 §1; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
     },
     {
       "ref": "packages/mkt-swp-pair/src/view.ts#primaryActionView",
-      "reason": "Render-ready primary-action gate view (single most proximate refusal) for openagents#9316 \u00a74; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
+      "reason": "Render-ready primary-action gate view (single most proximate refusal) for openagents#9316 §4; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
     },
     {
       "ref": "packages/mkt-swp-session-store/src/export.ts#EXPORT_SENSITIVITY_KEY",
@@ -2374,15 +2374,15 @@
     },
     {
       "ref": "packages/omega-effectd/scripts/full-auto-control-client.ts#buildFullAutoPolicyOptions",
-      "reason": "Published Full Auto control client shipped under the package's ./scripts/* export. Omega (github.com/OpenAgentsInc/omega, pinned by pack:digest, never a workspace path) is the surviving caller; docs/omega/2026-07-24-full-auto-port-audit.md \u00a78.1 keeps the control server and its client until the framed protocol replaces them."
+      "reason": "Published Full Auto control client shipped under the package's ./scripts/* export. Omega (github.com/OpenAgentsInc/omega, pinned by pack:digest, never a workspace path) is the surviving caller; docs/omega/2026-07-24-full-auto-port-audit.md §8.1 keeps the control server and its client until the framed protocol replaces them."
     },
     {
       "ref": "packages/omega-effectd/scripts/full-auto-control-client.ts#readControlConnection",
-      "reason": "Published Full Auto control client connection reader (./scripts/* export). The deleted Electron full-auto CLI was its in-repo caller; Omega's packaged omega-effectd is the surviving caller per docs/omega/2026-07-24-full-auto-port-audit.md \u00a78.1."
+      "reason": "Published Full Auto control client connection reader (./scripts/* export). The deleted Electron full-auto CLI was its in-repo caller; Omega's packaged omega-effectd is the surviving caller per docs/omega/2026-07-24-full-auto-port-audit.md §8.1."
     },
     {
       "ref": "packages/omega-effectd/src/engine/full-auto-churn.ts#buildFullAutoTurnAction",
-      "reason": "Full Auto turn-action classifier in the ./engine/* published surface. Its Schema is already consumed by full-auto-run-registry; the constructor's caller was the deleted Electron main process, and Omega GPUI becomes the fourth caller of the ported engine (docs/omega/2026-07-24-full-auto-port-audit.md \u00a77.2)."
+      "reason": "Full Auto turn-action classifier in the ./engine/* published surface. Its Schema is already consumed by full-auto-run-registry; the constructor's caller was the deleted Electron main process, and Omega GPUI becomes the fourth caller of the ported engine (docs/omega/2026-07-24-full-auto-port-audit.md §7.2)."
     },
     {
       "ref": "packages/omega-effectd/src/engine/full-auto-churn.ts#detectFullAutoChurn",
@@ -2394,23 +2394,23 @@
     },
     {
       "ref": "packages/omega-effectd/src/engine/full-auto-control-server.ts#isFullAutoControlEnabled",
-      "reason": "Env gate for the Full Auto loopback control API. docs/omega/2026-07-24-full-auto-port-audit.md \u00a78.1 explicitly keeps the control server and contract in omega-effectd until the framed protocol replaces them; the deleted Electron main process was the in-repo starter."
+      "reason": "Env gate for the Full Auto loopback control API. docs/omega/2026-07-24-full-auto-port-audit.md §8.1 explicitly keeps the control server and contract in omega-effectd until the framed protocol replaces them; the deleted Electron main process was the in-repo starter."
     },
     {
       "ref": "packages/omega-effectd/src/engine/full-auto-control-server.ts#startFullAutoControlServer",
-      "reason": "The OpenAPI-documented Full Auto loopback control server. docs/omega/2026-07-24-full-auto-port-audit.md \u00a78.1 keeps it in omega-effectd until the framed protocol supersedes it; its FullAutoControlCapabilities type is already consumed by the live protocol/server.ts and full-auto-run-actions.ts."
+      "reason": "The OpenAPI-documented Full Auto loopback control server. docs/omega/2026-07-24-full-auto-port-audit.md §8.1 keeps it in omega-effectd until the framed protocol supersedes it; its FullAutoControlCapabilities type is already consumed by the live protocol/server.ts and full-auto-run-actions.ts."
     },
     {
       "ref": "packages/omega-effectd/src/engine/full-auto-lane.ts#fullAutoPrompt",
-      "reason": "Lane prompt builder in the published ./engine/* surface. The deleted Electron codex runtime was its in-repo caller; Omega dispatches admitted provider turns through the same ported lane (docs/omega/2026-07-24-full-auto-port-audit.md \u00a77.1)."
+      "reason": "Lane prompt builder in the published ./engine/* surface. The deleted Electron codex runtime was its in-repo caller; Omega dispatches admitted provider turns through the same ported lane (docs/omega/2026-07-24-full-auto-port-audit.md §7.1)."
     },
     {
       "ref": "packages/omega-effectd/src/engine/full-auto-mission.ts#appendFullAutoQueuedInstruction",
-      "reason": "Mission queued-instruction appender; docs/omega/2026-07-24-full-auto-port-audit.md \u00a78.1 keeps mission/verification/completion in omega-effectd. The module's compile/render functions are already live in protocol/server.ts; only the queued-instruction path lost its Electron caller."
+      "reason": "Mission queued-instruction appender; docs/omega/2026-07-24-full-auto-port-audit.md §8.1 keeps mission/verification/completion in omega-effectd. The module's compile/render functions are already live in protocol/server.ts; only the queued-instruction path lost its Electron caller."
     },
     {
       "ref": "packages/omega-effectd/src/engine/full-auto-plan.ts#advanceFullAutoPlanFromTurn",
-      "reason": "Full Auto plan advancement from a turn transcript, in the published ./engine/* surface. The deleted Electron main process was the in-repo caller; Omega GPUI becomes the fourth caller of the same ported action surface (docs/omega/2026-07-24-full-auto-port-audit.md \u00a77.2)."
+      "reason": "Full Auto plan advancement from a turn transcript, in the published ./engine/* surface. The deleted Electron main process was the in-repo caller; Omega GPUI becomes the fourth caller of the same ported action surface (docs/omega/2026-07-24-full-auto-port-audit.md §7.2)."
     },
     {
       "ref": "packages/omega-effectd/src/engine/full-auto-plan.ts#makeFullAutoPlan",
@@ -2422,7 +2422,7 @@
     },
     {
       "ref": "packages/omega-effectd/src/engine/full-auto-routing.ts#makeFullAutoRoutingLaneGate",
-      "reason": "Fail-closed routing lane gate. docs/omega/2026-07-24-full-auto-port-audit.md \u00a78.1 keeps full-auto-routing and readiness in omega-effectd; the module's policy validator and lane-gate type are already consumed by the live control server, readiness, and capacity modules."
+      "reason": "Fail-closed routing lane gate. docs/omega/2026-07-24-full-auto-port-audit.md §8.1 keeps full-auto-routing and readiness in omega-effectd; the module's policy validator and lane-gate type are already consumed by the live control server, readiness, and capacity modules."
     },
     {
       "ref": "packages/portable-session-contract/src/ide13-model.ts#checkIdePortableModel",
@@ -2443,6 +2443,14 @@
     {
       "ref": "packages/sovereign-identity/src/machinery/retire.ts#ReadOnlyLegacyPlaintextGuardInterface.deleteFile",
       "reason": "Fail-closed half of the read-only legacy-plaintext guard: it exists to REFUSE deleting a protected legacy file while verification is active. Its sibling writeFile is unflagged only because .writeFile collides with common production dot-accesses; dropping the delete refusal would leave the guard able to block writes but not deletions."
+    },
+    {
+      "ref": "packages/openagents-cli/src/coder-goals.ts#goalBudgetExhaustedPrompt",
+      "reason": "Goal prompt helper for autonomous turn continuation when token budget is exhausted; used by goal test suite and future autonomous loop."
+    },
+    {
+      "ref": "packages/openagents-cli/src/coder-goals.ts#goalContinuationPrompt",
+      "reason": "Goal prompt helper for autonomous turn continuation toward active goal; used by goal test suite and future autonomous loop."
     }
   ]
 }
