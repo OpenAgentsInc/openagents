@@ -22,10 +22,22 @@ The CLI installs from a tarball packed beside this file (`npm pack` in
 published npm version. The trajectory is the coder's own ATIF export: the
 run pipes `/export` after the instruction and copies the newest export to
 the trial's `trajectory.json`.
+
+When `OPENAGENTS_GYM_RUN_ID` is set (`bench/run-suite.sh` registers the run
+against the Gym lifecycle API, OpenAgentsInc/openagents#38), the adapter
+reports each trial to the run from the host side: state `running` at
+agent-phase start, and again after the agent phase with the thread id parsed
+from the captured coder output (`coder.txt`, the `[oa:thread <uuid>]` line
+the coder prints in `--plain` mode). Reporting never fails a trial: a
+refused or unreachable Gym is logged and the trial continues.
 """
 
+import json
 import os
+import re
 import shlex
+import sys
+import urllib.request
 from pathlib import Path
 from typing import override
 
@@ -55,6 +67,10 @@ _TARBALL = _find_tarball()
 _REMOTE_TARBALL = "/installed-agent/openagents-cli.tgz"
 _DEFAULT_API_URL = "http://host.docker.internal:4000"
 _EXPORT_DIR = "$HOME/.openagents/exports"
+
+# The coder's --plain thread announcement (OpenAgentsInc/openagents#39). The
+# format is a contract between the CLI and this adapter; do not loosen it.
+_THREAD_LINE = re.compile(r"\[oa:thread ([0-9a-fA-F-]{36})\]")
 
 
 class OpenAgentsCoder(BaseInstalledAgent):
@@ -99,6 +115,53 @@ class OpenAgentsCoder(BaseInstalledAgent):
     @property
     def _local_lane(self) -> bool:
         return bool(self.model_name) and self.model_name.startswith("ollama/")
+
+    @property
+    def _task_name(self) -> str:
+        # `logs_dir` is the host-side `<job>/<trial>/agent` directory, and
+        # Harbor names the trial directory `<task>__<shortuuid>`. The task
+        # half is the upsert key the run's trials endpoint keeps per task.
+        trial = Path(self.logs_dir).parent.name
+        return trial.rsplit("__", 1)[0] or trial
+
+    def _thread_id_from_log(self) -> str | None:
+        """The thread id the coder announced, or None when it ran offline."""
+        try:
+            text = (Path(self.logs_dir) / "coder.txt").read_text(errors="replace")
+        except OSError:
+            return None
+        match = _THREAD_LINE.search(text)
+        return match.group(1) if match else None
+
+    def _report_trial(self, state: str, thread_id: str | None = None) -> None:
+        """Report this trial to the registered Gym run, from the host side.
+
+        `run()` executes on the host, so the POST goes to the host-side
+        `OPENAGENTS_GYM_API_URL` on `OPENAGENTS_TOKEN`. Reporting must never
+        fail the trial: every failure is logged and swallowed.
+        """
+        run_id = os.environ.get("OPENAGENTS_GYM_RUN_ID", "")
+        api_url = os.environ.get("OPENAGENTS_GYM_API_URL", "")
+        token = os.environ.get("OPENAGENTS_TOKEN", "")
+        if not run_id or not api_url or not token:
+            return
+        payload: dict[str, str] = {"task": self._task_name, "state": state}
+        if thread_id:
+            payload["thread_id"] = thread_id
+        request = urllib.request.Request(
+            f"{api_url}/api/v1/gym/runs/{run_id}/trials",
+            data=json.dumps(payload).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {token}",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=10):
+                pass
+        except Exception as error:  # noqa: BLE001 - reporting never fails the trial
+            print(f"gym trial report failed for {self._task_name}: {error}", file=sys.stderr)
 
     @override
     async def install(self, environment: BaseEnvironment) -> None:
@@ -170,8 +233,17 @@ class OpenAgentsCoder(BaseInstalledAgent):
                 "OPENAGENTS_CODER_OLLAMA_HOST", "http://host.docker.internal:11434"
             )
 
-        await self.exec_as_agent(
-            environment,
-            command=command,
-            env=env,
-        )
+        # The trial exists before the agent phase does anything, and after it
+        # the coder's captured output names the thread the session opened —
+        # on both lanes now that the local lane reports too (#39). The second
+        # report runs in `finally` so a failed agent phase still links its
+        # trial before the exception continues to Harbor.
+        self._report_trial("running")
+        try:
+            await self.exec_as_agent(
+                environment,
+                command=command,
+                env=env,
+            )
+        finally:
+            self._report_trial("running", self._thread_id_from_log())

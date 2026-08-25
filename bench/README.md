@@ -24,9 +24,13 @@ PYTHONPATH=bench OPENAGENTS_TOKEN=... harbor run \
   -i fix-git --n-concurrent 1 --jobs-dir /tmp/gym-jobs
 ```
 
-`bench/post_gym_run.py` posts a completed job's graded result to
-`POST /api/v3/gym/runs`. Post only runs whose verifier actually ran: a
-score is a claim, and a crashed grader is not a grade.
+`bench/post_gym_run.py` posts a completed job's graded result to the Gym.
+Without a run id it posts one summary row to `POST /api/v3/gym/runs`. With
+`--run-id` (or `OPENAGENTS_GYM_RUN_ID` in the environment) it finalizes a
+run that `run-suite.sh` registered against the lifecycle API: it upserts
+each trial's final state and patches the run to `graded`, or to `abandoned`
+when no verifier ran. Post only runs whose verifier actually ran: a score
+is a claim, and a crashed grader is not a grade.
 
 If the dev server binds loopback only (another session started it
 without `PHX_LISTEN_ALL`), bridge instead of fighting over the port: run
@@ -42,7 +46,8 @@ for scored runs. The agent phase itself runs fine under qemu.
 
 ## Suite runner
 
-`bench/run-suite.sh` runs a suite file through Harbor and posts the result.
+`bench/run-suite.sh` runs a suite file through Harbor and reports the run
+to the Gym.
 
 ```sh
 bench/run-suite.sh <suite-file> --model <harbor-model> [options]
@@ -61,3 +66,30 @@ bench/run-suite.sh bench/suites/tb2-cross-section.txt \
 Options include `--lane`, `--api-url`, `--jobs-dir`, `--n-concurrent`,
 `--timeout-multiplier`, and `--dry-run`. Set `OPENAGENTS_TOKEN` unless the
 model starts with `ollama/`.
+
+### Run lifecycle
+
+When you set `OPENAGENTS_TOKEN`, the runner registers the run with
+`POST /api/v1/gym/runs/start` before Harbor starts, so `/gym` shows the run
+while its trials are still executing. The runner exports
+`OPENAGENTS_GYM_RUN_ID` and `OPENAGENTS_GYM_API_URL` — the host-side API
+URL, not the container-rewritten one — into the Harbor run, and the adapter
+reports each trial to `POST /api/v1/gym/runs/{id}/trials` from the host:
+state `running` when the agent phase starts, then again with the thread id
+it parses from the coder's `[oa:thread <uuid>]` line in the trial's
+`coder.txt`. The coder prints that line in `--plain` mode on both lanes
+when it has a server thread; a trial whose coder ran without one is
+registered and graded without linkage. A failed trial report never fails
+the trial.
+
+After grading, the runner finalizes through `post_gym_run.py --run-id`,
+which upserts each trial's final state — `passed`, `failed`, or `ungraded`
+when the verifier never ran — and patches the run to `graded`. When no
+verifier ran at all, it patches the run to `abandoned` instead: a crashed
+grader is not a grade, but it must not stay a forever-running row. When the
+suite fails before grading, `run-suite.sh` patches the run to `abandoned`.
+
+Without a token, for example an `ollama/...` dry run, the runner skips
+registration and the trials run without live reporting. If registration
+fails, the suite still runs and the post-hoc one-shot path posts the graded
+result as before.

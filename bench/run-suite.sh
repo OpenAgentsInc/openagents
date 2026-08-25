@@ -37,8 +37,16 @@ Optional options:
 
 Environment:
   OPENAGENTS_TOKEN        Required for the Harbor run unless --model starts
-                          with ollama/. Required for posting results.
+                          with ollama/. Required for posting results and for
+                          registering the run against the Gym lifecycle API;
+                          without it registration is skipped.
   OPENAGENTS_CODER_API_URL Overrides the coder container API URL.
+
+With OPENAGENTS_TOKEN set, the runner registers the run at
+POST <api-url>/api/v1/gym/runs/start before Harbor starts, exports
+OPENAGENTS_GYM_RUN_ID and OPENAGENTS_GYM_API_URL into the Harbor run so the
+adapter reports each trial live, and finalizes through post_gym_run.py
+--run-id. A suite that fails before grading patches the run to abandoned.
 
 Examples:
   bench/run-suite.sh bench/suites/tb2-cross-section.txt \
@@ -58,6 +66,67 @@ log() {
 coder_api_url_for() {
   local url="$1"
   echo "$url" | sed -E 's#(https?://)(localhost|127\.0\.0\.1)(:[0-9]+)?#\1host.docker.internal\3#'
+}
+
+# Register the run against the Gym lifecycle API and print its id
+# (OpenAgentsInc/openagents#38). Prints nothing on failure: the suite still
+# runs, and the post-hoc one-shot path still posts the graded result.
+register_gym_run() {
+  python3 - "$API_URL" "$SUITE_NAME" "$CATALOG_MODEL" "$LANE" "$1" <<'PY'
+import json, os, sys, urllib.request
+
+api_url, suite, model, lane, tasks_total = sys.argv[1:6]
+payload = {
+    "suite": suite,
+    "agent": "openagents-coder",
+    "model": model,
+    "lane": lane,
+    "tasks_total": int(tasks_total),
+}
+request = urllib.request.Request(
+    f"{api_url}/api/v1/gym/runs/start",
+    data=json.dumps(payload).encode(),
+    headers={
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {os.environ.get('OPENAGENTS_TOKEN', '')}",
+    },
+    method="POST",
+)
+try:
+    with urllib.request.urlopen(request, timeout=15) as response:
+        body = json.loads(response.read() or b"{}")
+        run_id = (body.get("run") or {}).get("id")
+        if run_id:
+            print(run_id)
+except Exception as error:
+    print(f"gym run registration failed: {error}", file=sys.stderr)
+PY
+}
+
+# Close a registered run without grades. A crashed suite is not a grade, but
+# it should not be a forever-running row on /gym either.
+abandon_gym_run() {
+  [ -n "${GYM_RUN_ID:-}" ] || return 0
+  log "Marking Gym run $GYM_RUN_ID abandoned..."
+  python3 - "$API_URL" "$GYM_RUN_ID" <<'PY'
+import json, os, sys, urllib.request
+
+api_url, run_id = sys.argv[1:3]
+request = urllib.request.Request(
+    f"{api_url}/api/v1/gym/runs/{run_id}",
+    data=json.dumps({"status": "abandoned"}).encode(),
+    headers={
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {os.environ.get('OPENAGENTS_TOKEN', '')}",
+    },
+    method="PATCH",
+)
+try:
+    with urllib.request.urlopen(request, timeout=15):
+        pass
+except Exception as error:
+    print(f"gym run abandon failed: {error}", file=sys.stderr)
+PY
 }
 
 # Argument defaults
@@ -192,6 +261,16 @@ done
 SUITE_NAME="$(basename "$SUITE_FILE" .txt)"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 
+# The catalog name the run registers under: Harbor spells models
+# provider/name, the catalog id is the name, and an ollama/ model is the
+# coder's `ollama:<name>` local-lane shape — the same mapping the adapter
+# applies.
+if [[ "$MODEL" == ollama/* ]]; then
+  CATALOG_MODEL="ollama:${MODEL#ollama/}"
+else
+  CATALOG_MODEL="${MODEL#*/}"
+fi
+
 if [ -z "$JOBS_DIR" ]; then
   JOBS_DIR="/tmp/gym-jobs-${TIMESTAMP}"
 fi
@@ -228,18 +307,38 @@ if [ "$DRY_RUN" -eq 1 ]; then
   echo "[dry-run] Pack command:"
   echo "[dry-run]   (cd $(printf '%q' packages/openagents-cli) && pnpm build && pnpm pack --pack-destination $(printf '%q' ../../bench))"
   echo
+  if [ -n "$OPENAGENTS_TOKEN" ]; then
+    echo "[dry-run] Register command:"
+    echo "[dry-run]   POST $API_URL/api/v1/gym/runs/start {\"suite\": \"$SUITE_NAME\", \"agent\": \"openagents-coder\", \"model\": \"$CATALOG_MODEL\", \"lane\": \"$LANE\", \"tasks_total\": ${#TASKS[@]}}"
+    echo "[dry-run]   (exports OPENAGENTS_GYM_RUN_ID=<run-id> and OPENAGENTS_GYM_API_URL=$API_URL into the Harbor run)"
+  else
+    echo "[dry-run] Register command: skipped (OPENAGENTS_TOKEN is not set)"
+  fi
+  GYM_ENV_ARGS=()
+  RUN_ID_SUFFIX=""
+  if [ -n "$OPENAGENTS_TOKEN" ]; then
+    GYM_ENV_ARGS=("OPENAGENTS_GYM_RUN_ID=<run-id>" "OPENAGENTS_GYM_API_URL=$API_URL")
+    RUN_ID_SUFFIX=" --run-id '<run-id>'"
+  fi
+  echo
   echo "[dry-run] Harbor command:"
   echo -n "[dry-run]   "
   printf '%q ' \
     "PYTHONPATH=$BENCH_DIR" \
     "OPENAGENTS_TOKEN=$TOKEN_DISPLAY" \
     "OPENAGENTS_CODER_API_URL=$CANDIDATE_CODER_API_URL" \
+    ${GYM_ENV_ARGS[@]+"${GYM_ENV_ARGS[@]}"} \
     harbor run \
     "${HARBOR_ARGS[@]}"
   echo
   echo
   echo "[dry-run] Post command (after locating the job directory under $JOBS_DIR):"
-  echo "[dry-run]   python3 $(printf '%q' "$BENCH_DIR/post_gym_run.py") <job-dir> --api-url $(printf '%q' "$API_URL") --lane $(printf '%q' "$LANE") --suite $(printf '%q' "$SUITE_NAME")"
+  echo "[dry-run]   python3 $(printf '%q' "$BENCH_DIR/post_gym_run.py") <job-dir> --api-url $(printf '%q' "$API_URL") --lane $(printf '%q' "$LANE") --suite $(printf '%q' "$SUITE_NAME")$RUN_ID_SUFFIX"
+  if [ -n "$OPENAGENTS_TOKEN" ]; then
+    echo
+    echo "[dry-run] On a suite failure before grading:"
+    echo "[dry-run]   PATCH $API_URL/api/v1/gym/runs/<run-id> {\"status\": \"abandoned\"}"
+  fi
   exit 0
 fi
 
@@ -262,8 +361,24 @@ if ! ls "$BENCH_DIR"/openagentsinc-cli-*.tgz >/dev/null 2>&1; then
   exit 1
 fi
 
+# Register the run so /gym shows it while the trials are still executing.
+# Without a token (ollama dry runs) there is nothing to register against;
+# a failed registration degrades to the post-hoc one-shot path.
+GYM_RUN_ID=""
+if [ -n "$OPENAGENTS_TOKEN" ]; then
+  log "Registering Gym run at $API_URL..."
+  GYM_RUN_ID="$(register_gym_run "${#TASKS[@]}" || true)"
+  if [ -n "$GYM_RUN_ID" ]; then
+    log "Gym run id: $GYM_RUN_ID"
+  else
+    log "Gym run registration failed; continuing without live run reporting."
+  fi
+else
+  log "OPENAGENTS_TOKEN is not set; skipping Gym run registration."
+fi
+
 log "Running Harbor suite: $SUITE_NAME (${#TASKS[@]} tasks)..."
-(
+if ! (
   export PYTHONPATH="$BENCH_DIR"
   export OPENAGENTS_TOKEN
   if [ -n "${OPENAGENTS_CODER_API_URL:-}" ]; then
@@ -271,8 +386,18 @@ log "Running Harbor suite: $SUITE_NAME (${#TASKS[@]} tasks)..."
   else
     export OPENAGENTS_CODER_API_URL="$CANDIDATE_CODER_API_URL"
   fi
+  if [ -n "$GYM_RUN_ID" ]; then
+    # The adapter reports trials host-side, so it takes the host api url,
+    # not the container-rewritten OPENAGENTS_CODER_API_URL.
+    export OPENAGENTS_GYM_RUN_ID="$GYM_RUN_ID"
+    export OPENAGENTS_GYM_API_URL="$API_URL"
+  fi
   harbor run "${HARBOR_ARGS[@]}"
-)
+); then
+  log "Harbor run failed."
+  abandon_gym_run
+  exit 1
+fi
 
 # Locate the completed job directory. Harbor creates a child directory under
 # --jobs-dir, but if it writes directly into the directory, use that.
@@ -305,12 +430,15 @@ fi
 
 if [ -z "$JOB_DIR" ] || [ ! -d "$JOB_DIR" ]; then
   log "Could not locate Harbor job directory under $JOBS_DIR"
+  abandon_gym_run
   exit 1
 fi
 
 log "Harbor job directory: $JOB_DIR"
 
-# Post the graded result.
+# Post the graded result. With a registered run this is the finalize step:
+# post_gym_run.py upserts each trial's final state and patches the run to
+# graded, or to abandoned when no verifier ran.
 if [ -z "$OPENAGENTS_TOKEN" ]; then
   log "OPENAGENTS_TOKEN is not set; skipping result post."
   log "To post later, run:"
@@ -318,7 +446,16 @@ if [ -z "$OPENAGENTS_TOKEN" ]; then
   exit 0
 fi
 
+RUN_ID_ARGS=()
+if [ -n "$GYM_RUN_ID" ]; then
+  RUN_ID_ARGS=(--run-id "$GYM_RUN_ID")
+fi
+
 log "Posting result to $API_URL..."
-python3 "$BENCH_DIR/post_gym_run.py" "$JOB_DIR" --api-url "$API_URL" --lane "$LANE" --suite "$SUITE_NAME"
+if ! python3 "$BENCH_DIR/post_gym_run.py" "$JOB_DIR" --api-url "$API_URL" --lane "$LANE" --suite "$SUITE_NAME" ${RUN_ID_ARGS[@]+"${RUN_ID_ARGS[@]}"}; then
+  log "Result post failed."
+  abandon_gym_run
+  exit 1
+fi
 
 log "Suite run complete: $SUITE_NAME"
