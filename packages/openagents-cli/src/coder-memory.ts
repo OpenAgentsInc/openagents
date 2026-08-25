@@ -1,4 +1,4 @@
-import { createHmac, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import {
   appendFileSync,
   chmodSync,
@@ -9,28 +9,31 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { schnorr } from "@noble/curves/secp256k1";
+import { bytesToHex } from "@noble/hashes/utils";
 
 import {
   buildEngramBody,
-  buildEngramEvent,
+  buildSupersedingBody,
   buildSubagentMemoryContext,
+  computeEngramEventId,
   consolidateEpisodes,
   engramContentDigest,
   guardEngramContent,
   harvestSubagentOutcome,
   ledgerEntriesAsHeuristics,
   promoteHeuristicToPattern,
-  signSupersedingEngram,
   EngramSyncQueue,
+  EngramBody,
+  EngramEvent,
+  ENGRAM_ALT,
   MemoryTransport,
   project,
   projectedValue,
   projectionMatches,
-  verifyEngramEventId,
   COMPANION_SCHEMA_ID,
+  ENGRAM_KIND,
   HarvestedLedgerEntry,
-  type EngramEvent,
-  type EngramBody,
   type EngramTransport,
   type ParentHeuristic,
   type Projection,
@@ -47,13 +50,13 @@ import { Schema as S } from "effect";
  * bounded advisory block (#226). Between sessions the ledger is the memory —
  * one JSONL file of NIP-AE-shaped engram events under `~/.openagents/memory`,
  * every value through the hard-unsafe redaction gate before it is signed, and
- * every read re-verifying event ids and supersession chains.
+ * every read re-verifying event ids, NIP-01 Schnorr signatures, supersession
+ * chains, and author identity.
  *
- * The signature is a local HMAC over the canonical event id with a key held at
- * `~/.openagents/memory/signing-key` (0600) — integrity against accidental
- * edits and a stable authorship mark for this machine, not a Nostr Schnorr
- * signature. When the relay sync adapter (#222) lands, the same events re-sign
- * under a real Nostr key; the body and chain shapes are already NIP-AE.
+ * The secret key is a 32-byte Nostr private key held at
+ * `~/.openagents/memory/signing-key` (0600). The same key file is reused from
+ * the HMAC era: the 64-hex bytes are now interpreted as a secp256k1 private
+ * key. Old HMAC-signed events fail verification and are not projected.
  */
 
 const decodeLedgerEntry = S.decodeUnknownSync(HarvestedLedgerEntry);
@@ -125,7 +128,7 @@ export class CoderMemory implements CoderDelegationMemory {
   private readonly projectScope: string;
   private readonly now: () => number;
   private readonly dreamThreshold: number;
-  private key: Buffer | undefined;
+  private cachedIdentity: { readonly secretKey: Uint8Array; readonly pubkey: string } | undefined;
   private cachedProjection: Projection | undefined;
   private readonly sync: EngramSyncQueue;
 
@@ -158,27 +161,67 @@ export class CoderMemory implements CoderDelegationMemory {
     return this.sync.drain();
   }
 
-  /** The local signing key, created on first use. */
-  private signingKey(): Buffer {
-    if (this.key !== undefined) return this.key;
+  /**
+   * The local secp256k1 private key, created on first use and stored 0600.
+   *
+   * HMAC-era `signing-key` files were also 64-hex bytes, but their value was
+   * used as an HMAC secret. NIP-01 migrations keep the same file and treat the
+   * 32 bytes as a secp256k1 private key. If the bytes are not a valid Nostr
+   * private key, the file is overwritten with a fresh generated key and the
+   * ledger key changes. Old HMAC-signed events then fail author/signature
+   * verification and are not projected.
+   */
+  private signingKey(): { readonly secretKey: Uint8Array; readonly pubkey: string } {
+    if (this.cachedIdentity !== undefined) return this.cachedIdentity;
     mkdirSync(this.directory, { recursive: true, mode: 0o700 });
-    if (!existsSync(this.keyPath)) {
-      writeFileSync(this.keyPath, randomBytes(32).toString("hex"), { mode: 0o600 });
-      chmodSync(this.keyPath, 0o600);
+    let loaded: string | undefined;
+    if (existsSync(this.keyPath)) {
+      const raw = readFileSync(this.keyPath, "utf8").trim().toLowerCase();
+      if (/^[0-9a-f]{64}$/.test(raw)) {
+        loaded = raw;
+      }
     }
-    this.key = Buffer.from(readFileSync(this.keyPath, "utf8").trim(), "hex");
-    return this.key;
+
+    if (loaded !== undefined) {
+      const secretKey = Buffer.from(loaded, "hex");
+      try {
+        const pubkey = bytesToHex(schnorr.getPublicKey(secretKey));
+        this.cachedIdentity = { secretKey, pubkey };
+        return this.cachedIdentity;
+      } catch {
+        // Invalid legacy key; fall through to generate a fresh one.
+      }
+    }
+
+    let secretKey: Uint8Array;
+    let pubkey: string;
+    do {
+      secretKey = randomBytes(32);
+      try {
+        pubkey = bytesToHex(schnorr.getPublicKey(secretKey));
+      } catch {
+        pubkey = "";
+      }
+    } while (pubkey === "");
+    this.writePrivateKey(Buffer.from(secretKey).toString("hex"));
+    this.cachedIdentity = { secretKey, pubkey };
+    return this.cachedIdentity;
   }
 
-  private signer(): { pubkey: string; sign: (eventId: string) => string } {
-    const key = this.signingKey();
-    // A stable 64-hex identity derived from the key, so events from the same
-    // machine share an author without the key itself ever leaving the file.
-    const pubkey = createHmac("sha256", key).update("openagents.coder-memory.pubkey").digest("hex");
-    return {
-      pubkey,
-      sign: (eventId: string) => createHmac("sha256", key).update(eventId).digest("hex"),
-    };
+  private writePrivateKey(privateKey: string): void {
+    writeFileSync(this.keyPath, privateKey, { mode: 0o600 });
+    chmodSync(this.keyPath, 0o600);
+  }
+
+  /** True when the event id, signature, and author all match this key. */
+  private isValidEngram(event: EngramEvent): boolean {
+    if (event.pubkey !== this.signingKey().pubkey) return false;
+    if (event.id !== computeEngramEventId(event)) return false;
+    try {
+      return schnorr.verify(event.sig, event.id, event.pubkey);
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -201,14 +244,17 @@ export class CoderMemory implements CoderDelegationMemory {
       relations: [],
       derivedFromSlugs: [...derivedFromSlugs],
     });
-    const { pubkey, sign } = this.signer();
-    const event = buildEngramEvent(
-      pubkey,
-      Math.floor(this.now() / 1000),
-      slug,
-      JSON.stringify(body),
-      sign,
-    );
+    const { secretKey, pubkey } = this.signingKey();
+    const created_at = Math.floor(this.now() / 1000);
+    const tags = [
+      ["d", slug],
+      ["alt", ENGRAM_ALT],
+    ];
+    const content = JSON.stringify(body);
+    const partial = { kind: ENGRAM_KIND, created_at, tags, content, pubkey };
+    const id = computeEngramEventId(partial as unknown as EngramEvent);
+    const sig = bytesToHex(schnorr.sign(id, secretKey));
+    const event = S.decodeUnknownSync(EngramEvent)({ kind: ENGRAM_KIND, created_at, tags, content, pubkey, id, sig });
     appendFileSync(this.ledgerPath, `${JSON.stringify(event)}\n`, { mode: 0o600 });
     this.cachedProjection = undefined;
     // Local-first: the engram is on disk and readable now. Sync catches up.
@@ -227,36 +273,46 @@ export class CoderMemory implements CoderDelegationMemory {
     if (prior === undefined) return undefined;
     const verdict = guardEngramContent(newValue);
     if (!verdict.storable) return undefined;
-    const { pubkey, sign } = this.signer();
-    const event = signSupersedingEngram(
-      prior,
-      verdict.redacted,
-      Math.max(Math.floor(this.now() / 1000), prior.created_at + 1),
-      pubkey,
-      sign,
-    );
+    const dTag = prior.tags.find((tag) => tag[0] === "d")?.[1];
+    if (dTag === undefined) return undefined;
+    const priorBody = S.decodeUnknownSync(EngramBody)(JSON.parse(prior.content));
+    const body = buildSupersedingBody(priorBody, verdict.redacted, prior.id);
+    const { secretKey, pubkey } = this.signingKey();
+    const created_at = Math.max(Math.floor(this.now() / 1000), prior.created_at + 1);
+    const tags = [
+      ["d", dTag],
+      ["alt", ENGRAM_ALT],
+    ];
+    const content = JSON.stringify(body);
+    const partial = { kind: ENGRAM_KIND, created_at, tags, content, pubkey };
+    const id = computeEngramEventId(partial as unknown as EngramEvent);
+    const sig = bytesToHex(schnorr.sign(id, secretKey));
+    const event = S.decodeUnknownSync(EngramEvent)({ kind: ENGRAM_KIND, created_at, tags, content, pubkey, id, sig });
     appendFileSync(this.ledgerPath, `${JSON.stringify(event)}\n`, { mode: 0o600 });
     this.cachedProjection = undefined;
     this.sync.publish(event);
     return event;
   }
 
-  /** Every engram on disk, malformed lines dropped. The projection judges them. */
+  /** Every verified engram on disk; malformed or unverified lines are dropped. */
   private events(): ReadonlyArray<EngramEvent> {
     if (!existsSync(this.ledgerPath)) return [];
     const events: Array<EngramEvent> = [];
     for (const line of readFileSync(this.ledgerPath, "utf8").split("\n")) {
       if (line.trim().length === 0) continue;
+      let event: EngramEvent;
       try {
-        events.push(JSON.parse(line) as EngramEvent);
+        event = S.decodeUnknownSync(EngramEvent)(JSON.parse(line));
       } catch {
         continue;
       }
+      if (!this.isValidEngram(event)) continue;
+      events.push(event);
     }
     return events;
   }
 
-  /** All ledger events grouped per slug in append order, invalid lines dropped. */
+  /** All verified ledger events grouped per slug in append order. */
   private chains(): Map<string, Array<EngramEvent>> {
     const chains = new Map<string, Array<EngramEvent>>();
     if (!existsSync(this.ledgerPath)) return chains;
@@ -264,11 +320,11 @@ export class CoderMemory implements CoderDelegationMemory {
       if (line.trim().length === 0) continue;
       let event: EngramEvent;
       try {
-        event = JSON.parse(line) as EngramEvent;
+        event = S.decodeUnknownSync(EngramEvent)(JSON.parse(line));
       } catch {
         continue;
       }
-      if (!verifyEngramEventId(event)) continue;
+      if (!this.isValidEngram(event)) continue;
       const dTag = event.tags.find((tag) => tag[0] === "d")?.[1];
       if (dTag === undefined) continue;
       const chain = chains.get(dTag) ?? [];

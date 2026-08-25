@@ -56,6 +56,8 @@
     "@effect/platform-node": "catalog:",
     "@effect/platform-node-shared": "4.0.0-beta.94",
     "effect": "catalog:",
+    "@noble/curves": "1.8.1",
+    "@noble/hashes": "1.7.1",
     "ollama": "^0.6.3",
     "ws": "8.21.1"
   },

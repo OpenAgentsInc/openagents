@@ -1,12 +1,43 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHmac } from "node:crypto";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { schnorr } from "@noble/curves/secp256k1";
+import { bytesToHex } from "@noble/hashes/utils";
 
 import { CoderMemory } from "../src/coder-memory.js";
-import { MemoryTransport } from "../src/memory/index.js";
+import {
+  MemoryTransport,
+  buildEngramBody,
+  buildEngramEvent,
+  engramContentDigest,
+} from "../src/memory/index.js";
 import { DelegateFleet, type DelegateEvent, type DelegateHarness } from "../src/coder-delegate.js";
 import { CoderTaskRegistry } from "../src/coder-tasks.js";
+
+const localPrivateKeyHex = `${"0".repeat(63)}1`;
+const foreignPrivateKeyHex = `${"0".repeat(63)}2`;
+
+const runPubkey = (hex: string): string => bytesToHex(schnorr.getPublicKey(Buffer.from(hex, "hex")));
+
+const signWith = (hex: string) => (message: string): string =>
+  bytesToHex(schnorr.sign(message, Buffer.from(hex, "hex")));
+
+const hmacPubkeyFor = (keyHex: string): string =>
+  createHmac("sha256", Buffer.from(keyHex, "hex")).update("openagents.coder-memory.pubkey").digest("hex");
+
+const hmacSignFor = (keyHex: string) => (eventId: string): string =>
+  createHmac("sha256", Buffer.from(keyHex, "hex")).update(eventId).digest("hex");
+
+const memoryAtWithKey = (
+  dir: string,
+  keyHex = localPrivateKeyHex,
+  nowMs = 1_756_000_000_000,
+): CoderMemory => {
+  writeFileSync(join(dir, "signing-key"), keyHex, { mode: 0o600 });
+  return new CoderMemory({ directory: dir, projectScope: "project:test", now: () => nowMs });
+};
 
 const dirs: Array<string> = [];
 const freshDir = (): string => {
@@ -271,5 +302,85 @@ describe("memory sync", () => {
     await memory.flush();
     expect(memory.syncStatus()).toMatchObject({ pending: 0, delivered: 1 });
     expect(transport.stored()).toHaveLength(1);
+  });
+});
+
+describe("NIP-01 secp256k1 ledger integrity", () => {
+  const makeBody = (slug: string, value: string) =>
+    buildEngramBody(
+      slug,
+      value,
+      {
+        admission: "admitted",
+        entityId: "test",
+        contentDigest: engramContentDigest(value),
+        sourceEventRefs: [],
+        relations: [],
+        derivedFromSlugs: [],
+      } as const,
+    );
+
+  it("records an engram with a 128-hex NIP-01 Schnorr signature and its own public key", () => {
+    const dir = freshDir();
+    const memory = memoryAtWithKey(dir, localPrivateKeyHex);
+    const event = memory.record("note/nip01", "ranged reads are better", "note-1");
+    expect(event).toBeDefined();
+    expect(event!.sig).toMatch(/^[0-9a-f]{128}$/);
+    expect(event!.pubkey).toBe(runPubkey(localPrivateKeyHex));
+    expect(memoryAtWithKey(dir, localPrivateKeyHex).bodies()).toHaveLength(1);
+  });
+
+  it("rejects an event with a valid content id but an invalid signature", () => {
+    const dir = freshDir();
+    memoryAtWithKey(dir, localPrivateKeyHex).record("note/one", "a finding", "note-1");
+    const path = join(dir, "engrams.jsonl");
+    const lines = readFileSync(path, "utf8").trim().split("\n");
+    const event = JSON.parse(lines[0]!);
+    event.sig = "f".repeat(128);
+    rmSync(path);
+    writeFileSync(path, `${JSON.stringify(event)}\n`);
+    expect(memoryAtWithKey(dir, localPrivateKeyHex).bodies()).toHaveLength(0);
+  });
+
+  it("rejects a foreign-key engram with a valid NIP-01 signature", () => {
+    const dir = freshDir();
+    memoryAtWithKey(dir, localPrivateKeyHex);
+    const foreignPubkey = runPubkey(foreignPrivateKeyHex);
+    const foreignSign = signWith(foreignPrivateKeyHex);
+    const foreignEvent = buildEngramEvent(
+      foreignPubkey,
+      1000,
+      "foreign/one",
+      JSON.stringify(makeBody("foreign/one", "from someone else")),
+      foreignSign,
+    );
+    appendFileSync(join(dir, "engrams.jsonl"), `${JSON.stringify(foreignEvent)}\n`);
+    expect(memoryAtWithKey(dir, localPrivateKeyHex).bodies()).toHaveLength(0);
+  });
+
+  it("does not crash on an HMAC-era ledger and does not project its events", () => {
+    const dir = freshDir();
+    const hmacPubkey = hmacPubkeyFor(localPrivateKeyHex);
+    const hmacSign = hmacSignFor(localPrivateKeyHex);
+    const body = makeBody("hmac/one", "hmac-era content");
+    const hmacEvent = buildEngramEvent(
+      hmacPubkey,
+      1000,
+      "hmac/one",
+      JSON.stringify(body),
+      hmacSign,
+    );
+    writeFileSync(join(dir, "signing-key"), localPrivateKeyHex, { mode: 0o600 });
+    writeFileSync(join(dir, "engrams.jsonl"), `${JSON.stringify(hmacEvent)}\n`);
+    const reader = new CoderMemory({
+      directory: dir,
+      projectScope: "project:test",
+      now: () => 1_756_000_000_000,
+    });
+    expect(() => reader.bodies()).not.toThrow();
+    expect(reader.bodies()).toHaveLength(0);
+    // New NIP-01 records continue to work using the same key file.
+    reader.record("note/one", "new fact", "note-1");
+    expect(reader.bodies()).toHaveLength(1);
   });
 });
