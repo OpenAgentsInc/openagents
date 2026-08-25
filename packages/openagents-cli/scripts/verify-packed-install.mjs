@@ -48,6 +48,35 @@ try {
   }
 
   const tarball = join(tarballDirectory, tarballs[0]);
+
+  // A workspace specifier that survives packing makes the published package
+  // uninstallable: `npm install` cannot resolve `catalog:` or `workspace:` and
+  // fails with EUNSUPPORTEDPROTOCOL, which names the protocol and not the
+  // mistake. `pnpm pack` rewrites them and `npm pack` does not, so this is
+  // exactly what a publish packed the wrong way looks like. Read from the
+  // packed manifest rather than the source one, because the rewrite is the
+  // thing under test.
+  const packedManifest = JSON.parse(
+    run("tar", ["-xOf", tarball, "package/package.json"]).stdout,
+  );
+
+  const unresolved = ["dependencies", "peerDependencies", "optionalDependencies"].flatMap(
+    (field) =>
+      Object.entries(packedManifest[field] ?? {})
+        .filter(([, range]) => /^(catalog:|workspace:)/.test(String(range)))
+        .map(([name, range]) => `${field}.${name}: ${String(range)}`),
+  );
+
+  if (unresolved.length > 0) {
+    throw new Error(
+      "The packed manifest carries workspace specifiers npm cannot resolve, so " +
+        "the published package would not install:\n  " +
+        unresolved.join("\n  ") +
+        "\nPack and publish with pnpm, never npm: `pnpm publish` rewrites these " +
+        "to concrete versions and `npm pack` leaves them.",
+    );
+  }
+
   run("npm", ["install", tarball, "--no-audit", "--no-fund", "--no-package-lock", "--save-exact"], {
     cwd: consumerDirectory,
   });

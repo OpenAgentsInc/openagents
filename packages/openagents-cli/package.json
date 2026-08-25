@@ -50,7 +50,8 @@
     "test": "vp test --run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify": "pnpm run fmt:check && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build",
-    "verify:package": "node scripts/verify-packed-install.mjs"
+    "verify:package": "node scripts/verify-packed-install.mjs",
+    "prepublishOnly": "pnpm run verify:package"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",
